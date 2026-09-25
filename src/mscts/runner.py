@@ -143,8 +143,11 @@ async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_time
         return process.returncode
     how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
     exit_code = await process.wait()  # at once: it has exited
-    _log.info(
-        "%s (pid %d) stopped by %s with exit code %d", plan.argv[0], process.pid, how, exit_code
+    graceful = how == ("stdin" if plan.stop_stdin is not None else "SIGTERM")
+    _log.log(
+        logging.INFO if graceful else logging.WARNING,
+        "%s (pid %d) stopped by %s with exit code %d",
+        *(plan.argv[0], process.pid, how, exit_code),
     )
     return exit_code
 
@@ -152,9 +155,18 @@ async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_time
 async def _stop_steps(
     process: asyncio.subprocess.Process, stop_stdin: bytes | None, stop_timeout: float
 ) -> str:
-    """Stop the process, escalating after each `stop_timeout`; return what stopped it."""
+    """Stop the process, escalating after each `stop_timeout`; return what stopped it.
+
+    The stop line (if any) and the closing of stdin, then SIGTERM to the process group,
+    then SIGKILL to the process group.
+    """
     if stop_stdin is not None and await _within(stop_timeout, _ask_to_stop(process, stop_stdin)):
         return "stdin"
+    if process.stdin is not None:
+        process.stdin.close()
+    _signal_group(process, signal.SIGTERM)
+    if await _within(stop_timeout, process.wait()):
+        return "SIGTERM"
     _signal_group(process, signal.SIGKILL)
     await process.wait()
     return "SIGKILL"
