@@ -1,11 +1,13 @@
 """Codec.encode / Codec.decode driven by a Schema, on a synthetic packet table."""
 
-from mscts.codec.packets import Codec, Direction, State
+import pytest
+
+from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.codec.schema import LONG, USHORT, VAR_INT, Schema, String
 
 STATE, DIRECTION = State.STATUS, Direction.SERVERBOUND
 CODEC = Codec(
-    {(STATE, DIRECTION): {"test:fields": 0x2A, "test:nested": 0x2B}},
+    {(STATE, DIRECTION): {"test:fields": 0x2A, "test:nested": 0x2B, "test:raw": 0x2C}},
     schemas={
         (STATE, DIRECTION): {
             "test:fields": Schema(number=VAR_INT, text=String(16), port=USHORT, stamp=LONG),
@@ -43,3 +45,8 @@ def test_a_schema_nests_as_a_compound_field() -> None:
     data = bytes.fromhex("2b 01 63dd")
     assert CODEC.encode(STATE, DIRECTION, "test:nested", fields) == data
     assert CODEC.decode(STATE, DIRECTION, data).fields == fields
+
+
+def test_encode_of_packet_without_schema_raises() -> None:
+    with pytest.raises(CodecError, match="status serverbound test:raw has no schema"):
+        CODEC.encode(STATE, DIRECTION, "test:raw", {})

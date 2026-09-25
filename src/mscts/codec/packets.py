@@ -137,10 +137,13 @@ class Codec:
 
         Raises:
             UnknownPacketError: The Target has no such packet there.
-            CodecError: `fields` do not fit the packet's schema.
+            CodecError: The packet has no schema, or `fields` do not fit it.
         """
         writer = Writer().var_int(self.packet_id(state, direction, name))
-        schema = self._schemas[state, direction, name]
+        schema = self._schemas.get((state, direction, name))
+        if schema is None:
+            msg = f"{state} {direction} {name} has no schema"
+            raise CodecError(msg)
         try:
             schema.write(writer, fields)
         except WireError as exc:
