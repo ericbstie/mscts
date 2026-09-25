@@ -65,5 +65,7 @@ then one commit.
 - If a regression appeared at some point in history, run
   `git bisect start <bad> <good>` then
   `git bisect run uv run pytest <test>`.
-- If you are going in circles, `git stash` back to the last green commit
-  and take a smaller step.
+- If you are going in circles, go back to the last green commit
+  (`git reset --hard HEAD` in your own worktree) and take a smaller step.
+  Never use `git stash`: all worktrees share one stash stack, so you could
+  pop another worker's changes.
