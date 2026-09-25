@@ -1,8 +1,11 @@
 """Packets of a Target: connection states, directions and decoded frames."""
 
+import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from importlib import resources
+from typing import Self
 
 
 class State(StrEnum):
@@ -41,3 +44,70 @@ class Packet:
     packet_id: int
     payload: bytes
     fields: Mapping[str, object] | None
+
+
+class CodecError(ValueError):
+    """Packet data, a packet, or packet fields that the Codec cannot accept."""
+
+
+type PacketIds = Mapping[tuple[State, Direction], Mapping[str, int]]
+"""Packet ids by name, for each (state, direction) the Target defines."""
+
+
+class Codec:
+    """Packet names, ids and schemas of one Target."""
+
+    def __init__(self, packet_ids: PacketIds) -> None:
+        """Index `packet_ids` both ways."""
+        self._ids = {
+            (state, direction, name): packet_id
+            for (state, direction), by_name in packet_ids.items()
+            for name, packet_id in by_name.items()
+        }
+        self._names = {
+            (state, direction, packet_id): name
+            for (state, direction, name), packet_id in self._ids.items()
+        }
+
+    @classmethod
+    def load(cls, minecraft_version: str) -> Self:
+        """Load the Codec for a Minecraft version from `codec/data/<minecraft_version>/`."""
+        resource = resources.files("mscts.codec").joinpath(
+            "data", minecraft_version, "packets.json"
+        )
+        report: object = json.loads(resource.read_text(encoding="utf-8"))
+        return cls(_parse_packet_report(report))
+
+    def packet_id(self, state: State, direction: Direction, name: str) -> int:
+        """Return the id of packet `name` in `state`, travelling `direction`."""
+        return self._ids[state, direction, name]
+
+    def packet_name(self, state: State, direction: Direction, packet_id: int) -> str:
+        """Return the name of packet `packet_id` in `state`, travelling `direction`."""
+        return self._names[state, direction, packet_id]
+
+
+def _parse_packet_report(report: object) -> dict[tuple[State, Direction], dict[str, int]]:
+    """Read the generator's `{state: {direction: {name: {"protocol_id": id}}}}` report."""
+    return {
+        (State(state), Direction(direction)): {
+            name: _protocol_id(entry) for name, entry in _json_object(by_name).items()
+        }
+        for state, by_direction in _json_object(report).items()
+        for direction, by_name in _json_object(by_direction).items()
+    }
+
+
+def _json_object(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        msg = f"packet report: expected a JSON object, got {type(value).__name__}"
+        raise CodecError(msg)
+    return {str(key): item for key, item in value.items()}
+
+
+def _protocol_id(entry: object) -> int:
+    protocol_id = _json_object(entry).get("protocol_id")
+    if not isinstance(protocol_id, int) or isinstance(protocol_id, bool):
+        msg = f"packet report: expected an integer protocol_id, got {protocol_id!r}"
+        raise CodecError(msg)
+    return protocol_id

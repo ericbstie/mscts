@@ -1,0 +1,56 @@
+import json
+from collections.abc import Iterator
+from importlib import resources
+
+import pytest
+
+from mscts.codec.packets import Codec, Direction, State
+
+CODEC = Codec.load("26.3")
+
+KNOWN_IDS = [
+    (State.HANDSHAKE, Direction.SERVERBOUND, "minecraft:intention", 0),
+    (State.STATUS, Direction.CLIENTBOUND, "minecraft:status_response", 0),
+    (State.STATUS, Direction.CLIENTBOUND, "minecraft:pong_response", 1),
+    (State.STATUS, Direction.SERVERBOUND, "minecraft:status_request", 0),
+    (State.STATUS, Direction.SERVERBOUND, "minecraft:ping_request", 1),
+]
+
+
+@pytest.mark.parametrize(("state", "direction", "name", "packet_id"), KNOWN_IDS)
+def test_packet_id_of_known_packet(
+    state: State, direction: Direction, name: str, packet_id: int
+) -> None:
+    assert CODEC.packet_id(state, direction, name) == packet_id
+
+
+@pytest.mark.parametrize(("state", "direction", "name", "packet_id"), KNOWN_IDS)
+def test_packet_name_of_known_id(
+    state: State, direction: Direction, name: str, packet_id: int
+) -> None:
+    assert CODEC.packet_name(state, direction, packet_id) == name
+
+
+def _report_entries() -> Iterator[tuple[State, Direction, str, int]]:
+    """Walk the committed packet report independently of the Codec's own loader."""
+    resource = resources.files("mscts.codec").joinpath("data", "26.3", "packets.json")
+    report: object = json.loads(resource.read_text(encoding="utf-8"))
+    assert isinstance(report, dict)
+    for state, by_direction in report.items():
+        assert isinstance(by_direction, dict)
+        for direction, by_name in by_direction.items():
+            assert isinstance(by_name, dict)
+            for name, entry in by_name.items():
+                assert isinstance(entry, dict)
+                for key, packet_id in entry.items():
+                    assert key == "protocol_id"
+                    assert isinstance(packet_id, int)
+                    yield State(state), Direction(direction), str(name), packet_id
+
+
+def test_every_report_entry_maps_name_to_id_and_back() -> None:
+    entries = list(_report_entries())
+    assert len(entries) == 260  # 1 + 2 + 2 + 6 + 5 + 21 + 10 + 144 + 69
+    for state, direction, name, packet_id in entries:
+        assert CODEC.packet_id(state, direction, name) == packet_id
+        assert CODEC.packet_name(state, direction, packet_id) == name

@@ -83,7 +83,13 @@ class Packet:
     payload: bytes                  # bytes after the packet id
     fields: Mapping[str, object] | None   # None ⇔ no schema yet for this packet
 
+class CodecError(ValueError): ...   # bad packet data, an unknown packet, or fields that do not fit
+
 class Codec:                        # one per Target; loaded from codec/data/<version>/
+    def __init__(self, packet_ids: Mapping[tuple[State, Direction], Mapping[str, int]]) -> None: ...
+    @classmethod
+    def load(cls, minecraft_version: str) -> Codec: ...     # codec/data/<version>/packets.json
+    # (a `for_target(target: Target)` classmethod arrives with target.py)
     def packet_id(self, state: State, direction: Direction, name: str) -> int: ...
     def packet_name(self, state: State, direction: Direction, packet_id: int) -> str: ...
     def encode(self, state: State, direction: Direction, name: str,
