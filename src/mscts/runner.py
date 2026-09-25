@@ -100,8 +100,17 @@ async def running(
             start_new_session=True,
         )
     try:
-        async with asyncio.timeout_at(deadline):
-            ready_ns = await _ready_ns(process, ready, plan.endpoint)
+        readiness = asyncio.timeout_at(deadline)
+        try:
+            async with readiness:
+                ready_ns = await _ready_ns(process, ready, plan.endpoint)
+        except TimeoutError:
+            if not readiness.expired():  # the probe's own TimeoutError: a probe bug
+                raise
+            exit_code = await _stop(process)
+            host, port = plan.endpoint.host, plan.endpoint.port
+            reason = f"{plan.argv[0]} was not ready at {host}:{port} within {ready_timeout} s"
+            raise _failure(reason, exit_code, log_path) from None
         if ready_ns is None:
             reason = f"{plan.argv[0]} exited with code {process.returncode} before it was ready"
             raise _failure(reason, process.returncode, log_path)
@@ -113,8 +122,14 @@ async def running(
             log_path=log_path,
         )
     finally:
+        await _stop(process)
+
+
+async def _stop(process: asyncio.subprocess.Process) -> int:
+    """Stop the process if it still runs, reap it, and return its exit code."""
+    if process.returncode is None:
         _signal_group(process, signal.SIGKILL)
-        await process.wait()
+    return await process.wait()
 
 
 async def _ready_ns(
