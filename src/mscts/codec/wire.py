@@ -216,3 +216,13 @@ class Reader:
         value = uuid.UUID(bytes=self._data[self._offset : end])
         self._offset = end
         return value
+
+    def expect_end(self) -> None:
+        """Raise WireError unless every byte has been consumed.
+
+        Lets a strict decoder assert it consumed its payload exactly.
+        """
+        remaining = len(self._data) - self._offset
+        if remaining:
+            msg = f"{remaining} unconsumed byte(s) remain"
+            raise WireError(msg)

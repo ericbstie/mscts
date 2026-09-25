@@ -272,3 +272,24 @@ def test_uuid_decodes_big_endian_bytes(value: uuid.UUID) -> None:
 def test_uuid_reader_raises_on_truncated_input() -> None:
     with pytest.raises(WireError):
         Reader(SAMPLE_UUID.bytes[:-1]).uuid()
+
+
+# Reader.expect_end(): lets a strict decoder assert it consumed the payload
+# exactly, per PLAN.md's "decode must consume the payload exactly".
+
+
+def test_expect_end_passes_when_fully_consumed() -> None:
+    reader = Reader(bytes([1]))
+    reader.var_int()
+    reader.expect_end()  # must not raise
+
+
+def test_expect_end_raises_when_bytes_remain() -> None:
+    reader = Reader(bytes([1, 2, 3]))
+    reader.var_int()
+    with pytest.raises(WireError):
+        reader.expect_end()
+
+
+def test_expect_end_passes_on_empty_reader() -> None:
+    Reader(b"").expect_end()  # must not raise
