@@ -1,6 +1,6 @@
 import pytest
 
-from mscts.codec.wire import Reader, Writer
+from mscts.codec.wire import Reader, WireError, Writer
 
 # Sample table from minecraft.wiki "Java Edition protocol/VarInt and VarLong".
 VAR_INT_SAMPLES = [
@@ -26,3 +26,20 @@ def test_var_int_encodes_to_wiki_sample(value: int, encoded: str) -> None:
 @pytest.mark.parametrize(("value", "encoded"), VAR_INT_SAMPLES)
 def test_var_int_decodes_wiki_sample(value: int, encoded: str) -> None:
     assert Reader(bytes.fromhex(encoded)).var_int() == value
+
+
+def test_var_int_raises_on_truncated_input() -> None:
+    # A continuation byte with nothing after it: the value is incomplete.
+    with pytest.raises(WireError):
+        Reader(bytes.fromhex("80")).var_int()
+
+
+def test_var_int_raises_on_empty_input() -> None:
+    with pytest.raises(WireError):
+        Reader(b"").var_int()
+
+
+def test_var_int_raises_when_longer_than_five_bytes() -> None:
+    # Five continuation bytes followed by a terminator: 6 bytes total.
+    with pytest.raises(WireError):
+        Reader(bytes.fromhex("8080808080 00".replace(" ", ""))).var_int()
