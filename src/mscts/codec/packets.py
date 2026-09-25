@@ -8,6 +8,7 @@ from importlib import resources
 from typing import Self
 
 from mscts.codec.schema import Schema
+from mscts.codec.schemas import handshake
 from mscts.codec.wire import Reader, WireError, Writer
 
 
@@ -63,6 +64,13 @@ type PacketIds = Mapping[tuple[State, Direction], Mapping[str, int]]
 type Schemas = Mapping[tuple[State, Direction], Mapping[str, Schema]]
 """Schemas by packet name, for each (state, direction) that has any."""
 
+_SCHEMAS: Mapping[str, Schemas] = {
+    "26.3": {
+        (State.HANDSHAKE, Direction.SERVERBOUND): handshake.SERVERBOUND,
+    },
+}
+"""The schemas `Codec.load` attaches, by Minecraft version."""
+
 
 class Codec:
     """Packet names, ids and schemas of one Target."""
@@ -107,7 +115,7 @@ class Codec:
             msg = f"no packet data for Minecraft {minecraft_version}"
             raise CodecError(msg) from None
         report: object = json.loads(text)
-        return cls(_parse_packet_report(report))
+        return cls(_parse_packet_report(report), _SCHEMAS.get(minecraft_version))
 
     def packet_id(self, state: State, direction: Direction, name: str) -> int:
         """Return the id of packet `name` in `state`, travelling `direction`.
