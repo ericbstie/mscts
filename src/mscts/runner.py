@@ -6,6 +6,7 @@ an injected probe (in a Run, the status ping).
 
 import asyncio
 import contextlib
+import logging
 import os
 import signal
 import socket
@@ -25,6 +26,8 @@ _POLL_INTERVAL_S = 0.02
 # How much of the console a RunnerError quotes.
 LOG_TAIL_LINES = 40
 _LOG_TAIL_BYTES = 64 * 1024  # read at most this much, however big the log grew
+
+_log = logging.getLogger(__name__)
 
 
 class RunnerError(RuntimeError):
@@ -80,12 +83,16 @@ async def running(
     *,
     ready: Callable[[Endpoint], Awaitable[bool]],
     ready_timeout: float,
+    stop_timeout: float = 10.0,
 ) -> AsyncIterator[Instance]:
     """Launch `plan`, yield its Instance once `ready(endpoint)` is True, then stop it.
 
     `ready` is polled until it returns True; it returns False while the server is not
     ready yet. The process runs in its own session with exactly `plan.env`, stdin piped,
     and stdout and stderr in `log_path` (overwritten by each launch).
+
+    On leaving the context, `plan.stop_stdin` is written to stdin, which is then closed,
+    and the process gets `stop_timeout` seconds to exit. How it stopped is logged.
     """
     log_path = plan.cwd / CONSOLE_LOG
     deadline = asyncio.get_running_loop().time() + ready_timeout
@@ -112,7 +119,7 @@ async def running(
         except TimeoutError:
             if not readiness.expired():  # the probe's own TimeoutError: a probe bug
                 raise
-            exit_code = await _stop(process)
+            exit_code = await _stop(process, plan, stop_timeout)
             host, port = plan.endpoint.host, plan.endpoint.port
             reason = f"{plan.argv[0]} was not ready at {host}:{port} within {ready_timeout} s"
             raise _failure(reason, exit_code, log_path) from None
@@ -127,14 +134,50 @@ async def running(
             log_path=log_path,
         )
     finally:
-        await _stop(process)
+        await _stop(process, plan, stop_timeout)
 
 
-async def _stop(process: asyncio.subprocess.Process) -> int:
+async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_timeout: float) -> int:
     """Stop the process if it still runs, reap it, and return its exit code."""
-    if process.returncode is None:
-        _signal_group(process, signal.SIGKILL)
-    return await process.wait()
+    if process.returncode is not None:
+        return process.returncode
+    how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
+    exit_code = await process.wait()  # at once: it has exited
+    _log.info(
+        "%s (pid %d) stopped by %s with exit code %d", plan.argv[0], process.pid, how, exit_code
+    )
+    return exit_code
+
+
+async def _stop_steps(
+    process: asyncio.subprocess.Process, stop_stdin: bytes | None, stop_timeout: float
+) -> str:
+    """Stop the process, escalating after each `stop_timeout`; return what stopped it."""
+    if stop_stdin is not None and await _within(stop_timeout, _ask_to_stop(process, stop_stdin)):
+        return "stdin"
+    _signal_group(process, signal.SIGKILL)
+    await process.wait()
+    return "SIGKILL"
+
+
+async def _ask_to_stop(process: asyncio.subprocess.Process, stop_stdin: bytes) -> None:
+    """Write `stop_stdin`, close stdin, and wait for the process to exit."""
+    if process.stdin is not None:  # always: stdin is piped
+        with contextlib.suppress(ConnectionError):  # it has already closed its end
+            process.stdin.write(stop_stdin)
+            await process.stdin.drain()
+        process.stdin.close()
+    await process.wait()
+
+
+async def _within(seconds: float, work: Awaitable[object]) -> bool:
+    """Whether `work` finished within `seconds` (it is cancelled if not)."""
+    try:
+        async with asyncio.timeout(seconds):
+            await work
+    except TimeoutError:
+        return False
+    return True
 
 
 async def _ready_ns(
