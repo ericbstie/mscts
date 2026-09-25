@@ -18,14 +18,22 @@ by a test.
 2. **The vanilla data generator**, which produces the packet names and IDs
    plus the registries, blocks and commands:
    ```sh
-   java -DbundlerMainClass=net.minecraft.data.Main -jar server.jar --reports --output <dir>
+   # run from a scratch dir OUTSIDE the repo: the bundler unpacks libraries/ and versions/
+   # into the cwd, and plain `java`/`mise exec` outside the repo resolve Java 21
+   "$(mise where java)/bin/java" -DbundlerMainClass=net.minecraft.data.Main \
+       -jar server.jar --reports --output <dir>
    # <dir>/reports/packets.json, registries.json, blocks.json, commands.json
    ```
+   The output is deterministic (byte-identical across runs), so a regen
+   can be verified by diffing it against the committed copy.
 3. **minecraft.wiki as raw wikitext**, for field layouts and semantics:
    `curl -sS 'https://minecraft.wiki/w/Java_Edition_protocol/Packets?action=raw'`.
    Check that the page header names the Target protocol, and record the
    revision id:
    `https://minecraft.wiki/api.php?action=query&prop=revisions&titles=Java_Edition_protocol/Packets&rvprop=ids|timestamp&format=json`.
+   Then fetch **that exact revision**, because a plain `action=raw` can race
+   with an edit:
+   `https://minecraft.wiki/index.php?title=Java_Edition_protocol/Packets&action=raw&oldid=<revid>`.
    Also useful: `Java_Edition_protocol/Data_types`,
    `Java_Edition_protocol/VarInt_and_VarLong`, `Java_Edition_protocol/FAQ`.
 4. Candidate source code, only to understand a Candidate. Never use it to

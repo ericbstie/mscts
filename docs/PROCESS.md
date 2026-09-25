@@ -73,9 +73,29 @@ Increments (in order, one commit each): <numbered list, each a single failing te
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
 Out of scope: <what not to touch>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist>
+Base: <main commit the brief was written against>
 Context: <facts, file paths, gotchas the tech lead already knows; list reusable
          scratchpad artifacts (jars, generated reports, probe scripts) by path>
 ```
+
+## Audit checklist
+
+Every audit brief checks at least these, and adds items as reviews find
+new classes of defect:
+
+- **Strict at the boundaries.** Every Reader/Writer and wire type raises
+  on out-of-range or malformed input, and has a boundary test on each
+  side. Worker C found `Writer.var_int` silently wrapping out-of-range
+  values.
+- **No silent defaults.** Invariants live in one named table, config is
+  complete and golden-file tested, and nothing depends on a server or
+  host default.
+- **Tests bite.** A throwaway mutation of each critical branch turns some
+  test red.
+- **Cleanup.** Processes, sockets and temp dirs are released on success,
+  error, timeout and cancellation.
+- **No drift.** The code matches the PLAN interfaces, CONTEXT vocabulary
+  and ADRs, or the docs were updated in the same commit.
 
 ## Worker contract
 
@@ -134,6 +154,17 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-25 | worker C (codec) | The worktree guard refuses complex Bash (a repeat of B's finding; C started before that fix landed) | **adopt** (already): Worker contract "Shell in worktrees"; watch for a third occurrence |
+| 2026-09-25 | worker C | ty cannot index an `isinstance`-narrowed JSON dict | **adopt**: red-green Known traps recipe |
+| 2026-09-25 | worker C | `Writer.var_int`/`var_long` masked out-of-range values; the done-criteria tested only wiki samples | **adopt**: Audit checklist "strict at the boundaries" |
+| 2026-09-25 | worker C | The data generator must run outside the repo with mise's Java 25 path; its output is deterministic | **adopt**: protocol-research command, plus a diff-verified regen |
+| 2026-09-25 | worker C | `action=raw` can race with wiki edits | **adopt**: fetch by `oldid` in protocol-research |
+| 2026-09-25 | worker C | ADR-0003 named the data path `protocol/data/` | **adopt**: corrected to `src/mscts/codec/data/` |
+| 2026-09-25 | worker C | Brief increment 4 became 7 commits | **reject**: splitting to one failing test is by design; briefs stay at milestone grain |
+| 2026-09-25 | worker C | Main moved 20 commits during the brief | **adopt**: brief template has a `Base:` line; integration is the lead's job |
+| 2026-09-25 | worker C | `Packet.fields` is a mutable dict inside a frozen dataclass | **defer**: decide with the Transcript/Comparison design (M2); added to PLAN open questions |
+| 2026-09-25 | worker C | Decoded values are plain int/str/bool/bytes/UUID/list/dict/None | **adopt**: confirmed as the codec value model |
+| 2026-09-25 | worker C | ADR-0003's reference-tier layout verification needs Connection | **defer**: part of the Connection + `Bot.status` brief |
 | 2026-09-25 | worker B (vanilla) | **Offline vanilla calls Mojang services** (authlib discovery, public keys, name lookups). It only fails fast here by accident | **adopt**: opus hardening brief to research `-Dminecraft.api.*` and enforce the invariant "an Instance makes no outbound network calls" |
 | 2026-09-25 | worker B | Write/Edit tools turn `\uXXXX` into literal characters | **adopt**: red-green Known traps |
 | 2026-09-25 | worker B | The worktree sandbox refuses complex Bash (rm -rf, env -i, heredocs, variable paths) | **adopt**: Worker contract "Shell in worktrees" |

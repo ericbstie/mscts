@@ -14,7 +14,7 @@ anything works end to end.
 
 - Support exactly one Target: **26.3 / 777**.
 - The Target is still passed explicitly as a value. Packet data lives
-  under a version-keyed path (`protocol/data/26.3/`), so adding a second
+  under a version-keyed path (`src/mscts/codec/data/26.3/`), so adding a second
   Target is an extension, not a rewrite.
 - Packet IDs come from the vanilla data generator for that jar and are
   committed. Field layouts come from minecraft.wiki raw wikitext at a

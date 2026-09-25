@@ -73,6 +73,10 @@ then one commit.
 - ty's `unsound-return-statement` rejects returning an `Any` (e.g. urllib's
   `response.read()`). Narrow it with `isinstance` and raise, since S101
   forbids `assert` in `src/`.
+- JSON under ty: `json.loads` returns `Any`, and a value narrowed by
+  `isinstance(x, dict)` is `Top[dict[Unknown, Unknown]]`, which cannot be
+  indexed. Recipe: annotate as `object`, narrow with `isinstance`, iterate
+  `.items()`, and rebuild a typed `dict[str, object]`.
 - `respect-type-ignore-comments = false` means `# type: ignore` does
   nothing. A frozen-dataclass test must use `setattr(obj, name, v)` with a
   non-literal name.

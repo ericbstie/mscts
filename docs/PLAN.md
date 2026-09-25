@@ -441,3 +441,5 @@ then record the answer in an ADR:
   need Masks, and should Comparisons be scoped to windows between Marks?
 - How should chunk data be compared: decode the palette into block states,
   or compare raw?
+- Should `Packet.fields` be deeply immutable (MappingProxyType, tuples) so
+  Packets are hashable in Transcripts and Comparisons?
