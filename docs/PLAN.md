@@ -123,7 +123,7 @@ class Bot:                          # what Scenarios use; answers keep_alive / t
 ### Servers
 
 ```python
-class WorldPreset(StrEnum): FLAT, VOID
+class WorldPreset(StrEnum): FLAT                                # VOID only once verified on the Reference
 class GameMode(StrEnum):    SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR
 class Difficulty(StrEnum):  PEACEFUL, EASY, NORMAL, HARD
 
