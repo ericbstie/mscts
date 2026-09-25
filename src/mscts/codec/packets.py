@@ -72,6 +72,7 @@ class Codec:
 
         Raises:
             CodecError: Two names share an id in the same state and direction.
+            UnknownPacketError: A schema is keyed by a packet `packet_ids` lacks.
         """
         self._ids: dict[tuple[State, Direction, str], int] = {}
         self._names: dict[tuple[State, Direction, int], str] = {}
@@ -82,11 +83,13 @@ class Codec:
                     msg = f"{state} {direction}: {other} and {name} share id {packet_id:#04x}"
                     raise CodecError(msg)
                 self._ids[state, direction, name] = packet_id
-        self._schemas = {
-            (state, direction, name): schema
-            for (state, direction), by_name in (schemas or {}).items()
-            for name, schema in by_name.items()
-        }
+        self._schemas: dict[tuple[State, Direction, str], Schema] = {}
+        for (state, direction), by_name in (schemas or {}).items():
+            for name, schema in by_name.items():
+                if (state, direction, name) not in self._ids:
+                    msg = f"schema for no packet {state} {direction} {name}"
+                    raise UnknownPacketError(msg)
+                self._schemas[state, direction, name] = schema
 
     @classmethod
     def load(cls, minecraft_version: str) -> Self:

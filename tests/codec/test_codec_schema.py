@@ -2,7 +2,7 @@
 
 import pytest
 
-from mscts.codec.packets import Codec, CodecError, Direction, State
+from mscts.codec.packets import Codec, CodecError, Direction, State, UnknownPacketError
 from mscts.codec.schema import LONG, USHORT, VAR_INT, Schema, String
 
 STATE, DIRECTION = State.STATUS, Direction.SERVERBOUND
@@ -110,3 +110,13 @@ def test_encode_rejects_a_value_its_field_type_cannot_encode(
 def test_encode_rejects_a_non_mapping_for_a_compound_field() -> None:
     with pytest.raises(CodecError, match="test:nested: inner: expected a mapping"):
         CODEC.encode(STATE, DIRECTION, "test:nested", {"outer": 1, "inner": 25565})
+
+
+def test_codec_rejects_a_schema_for_a_packet_the_target_does_not_define() -> None:
+    with pytest.raises(
+        UnknownPacketError, match="schema for no packet status serverbound test:typo"
+    ):
+        Codec(
+            {(STATE, DIRECTION): {"test:fields": 0x2A}},
+            schemas={(STATE, DIRECTION): {"test:typo": Schema()}},
+        )
