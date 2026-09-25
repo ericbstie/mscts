@@ -92,3 +92,9 @@ def test_unknown_packet_error_is_a_codec_error() -> None:
 def test_load_of_a_version_without_packet_data_raises() -> None:
     with pytest.raises(CodecError, match=r"no packet data for Minecraft 0\.0"):
         Codec.load("0.0")
+
+
+def test_codec_rejects_two_names_sharing_an_id() -> None:
+    table = {(State.STATUS, Direction.CLIENTBOUND): {"test:first": 0, "test:second": 0}}
+    with pytest.raises(CodecError, match="test:first and test:second share id 0x00"):
+        Codec(table)

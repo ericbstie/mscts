@@ -62,16 +62,20 @@ class Codec:
     """Packet names, ids and schemas of one Target."""
 
     def __init__(self, packet_ids: PacketIds) -> None:
-        """Index `packet_ids` both ways."""
-        self._ids = {
-            (state, direction, name): packet_id
-            for (state, direction), by_name in packet_ids.items()
-            for name, packet_id in by_name.items()
-        }
-        self._names = {
-            (state, direction, packet_id): name
-            for (state, direction, name), packet_id in self._ids.items()
-        }
+        """Index `packet_ids` both ways.
+
+        Raises:
+            CodecError: Two names share an id in the same state and direction.
+        """
+        self._ids: dict[tuple[State, Direction, str], int] = {}
+        self._names: dict[tuple[State, Direction, int], str] = {}
+        for (state, direction), by_name in packet_ids.items():
+            for name, packet_id in by_name.items():
+                other = self._names.setdefault((state, direction, packet_id), name)
+                if other != name:
+                    msg = f"{state} {direction}: {other} and {name} share id {packet_id:#04x}"
+                    raise CodecError(msg)
+                self._ids[state, direction, name] = packet_id
 
     @classmethod
     def load(cls, minecraft_version: str) -> Self:
