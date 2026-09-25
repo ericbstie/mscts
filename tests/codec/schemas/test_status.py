@@ -58,3 +58,25 @@ def test_status_response_json_is_at_most_32767_code_units() -> None:
     assert _decode(CLIENTBOUND, encoded).fields == longest
     with pytest.raises(CodecError, match="json_response: string exceeds max length 32767"):
         _encode(CLIENTBOUND, "minecraft:status_response", {"json_response": "x" * 32768})
+
+
+@pytest.mark.parametrize(
+    ("direction", "name"),
+    [(SERVERBOUND, "minecraft:ping_request"), (CLIENTBOUND, "minecraft:pong_response")],
+)
+@pytest.mark.parametrize(
+    ("timestamp", "long_hex"),
+    [
+        (0x0102_0304_0506_0708, "0102030405060708"),
+        (-1, "ffffffffffffffff"),
+        (2**63 - 1, "7fffffffffffffff"),
+    ],
+)
+def test_ping_and_pong_round_trip_a_long_timestamp(
+    direction: Direction, name: str, timestamp: int, long_hex: str
+) -> None:
+    data = bytes.fromhex("01" + long_hex)  # packet id 0x01 both ways, then timestamp: Long
+    assert _encode(direction, name, {"timestamp": timestamp}) == data
+    packet = _decode(direction, data)
+    assert packet.name == name
+    assert packet.fields == {"timestamp": timestamp}
