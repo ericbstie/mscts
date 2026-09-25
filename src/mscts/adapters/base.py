@@ -14,6 +14,10 @@ class ProvisionError(RuntimeError):
     """An Installation could not be obtained or failed verification."""
 
 
+class PrepareError(RuntimeError):
+    """prepare cannot produce a LaunchPlan that meets the Adapter contract."""
+
+
 @dataclass(frozen=True, slots=True)
 class Installation:
     """The binaries an Adapter has provisioned for a Target, cached on disk."""

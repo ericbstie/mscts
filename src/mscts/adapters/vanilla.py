@@ -4,6 +4,7 @@ import hashlib
 import http.client
 import json
 import os
+import shutil
 import ssl
 import tempfile
 import urllib.request
@@ -15,7 +16,7 @@ from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
 
-from mscts.adapters.base import Installation, LaunchPlan, ProvisionError
+from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
@@ -32,6 +33,8 @@ JAR = "server.jar"
 HEAP = "-Xmx1G"
 # ops.json level for ServerSpec.operators: all commands, as op-permission-level.
 OPERATOR_LEVEL = 4
+# The java launcher to run the Reference with, if the constructor names none.
+JAVA_ENV = "MSCTS_JAVA"
 _FETCH_TIMEOUT_S = 60
 
 
@@ -326,9 +329,15 @@ class VanillaAdapter:
 
     name = "vanilla"
 
-    def __init__(self, fetch: Fetch = https_get) -> None:
-        """Download with `fetch`; unit tests pass a fake so they never touch the network."""
+    def __init__(self, fetch: Fetch = https_get, *, java: Path | None = None) -> None:
+        """Download with `fetch`, and launch with the `java` launcher.
+
+        Unit tests pass a fake `fetch` so they never touch the network. Without `java`,
+        the launcher is MSCTS_JAVA, else the `java` on the harness PATH, looked up at
+        prepare time.
+        """
         self._fetch = fetch
+        self._java = java
 
     def provision(self, target: Target, cache_dir: Path) -> Installation:
         """Download the server jar for `target` into `cache_dir/vanilla/<version>/`.
@@ -369,8 +378,21 @@ class VanillaAdapter:
         server = version["downloads"]["server"]
         return _Download(url=str(server["url"]), sha1=str(server["sha1"]), size=int(server["size"]))
 
+    def _java_launcher(self) -> Path:
+        """The real, absolute path of the java launcher: constructor, MSCTS_JAVA, then PATH.
+
+        Symlinks are resolved, so the LaunchPlan names the exact runtime even if a
+        versionless link (mise's temurin-25, /etc/alternatives) is repointed later.
+        """
+        named = self._java or os.environ.get(JAVA_ENV) or shutil.which("java")
+        if not named:
+            msg = f"no java launcher: pass java=, set {JAVA_ENV}, or put java on PATH"
+            raise PrepareError(msg)
+        return Path(named).resolve()
+
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete vanilla config for `spec` into `workdir`."""
+        java = self._java_launcher()
         workdir.mkdir(parents=True, exist_ok=True)
         (workdir / "eula.txt").write_bytes(b"eula=true\n")
         (workdir / "server.properties").write_text(
@@ -380,9 +402,9 @@ class VanillaAdapter:
         jar = installation.root.absolute() / JAR
         no_network = tuple(f"-D{name}={value}" for name, value in NO_NETWORK.items())
         return LaunchPlan(
-            argv=("java", HEAP, *no_network, "-jar", str(jar), "nogui"),
+            argv=(str(java), HEAP, *no_network, "-jar", str(jar), "nogui"),
             cwd=workdir,
-            # Only PATH, so `java` resolves to the Target's JVM that mise put on it.
+            # Only PATH passes through (argv[0] is absolute, so it no longer picks the JVM).
             # Nothing else leaks from the harness: no JAVA_TOOL_OPTIONS (here it injects
             # proxy settings), no locale, no JAVA_HOME.
             env=MappingProxyType({"PATH": os.environ.get("PATH", os.defpath)}),

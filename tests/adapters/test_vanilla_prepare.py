@@ -8,6 +8,9 @@ from mscts.net import Endpoint
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
+# prepare looks up a Java launcher; a fake Java 25 keeps the unit tier off the host's.
+pytestmark = pytest.mark.usefixtures("java_25")
+
 
 @pytest.fixture
 def installation(tmp_path: Path) -> Installation:
@@ -25,13 +28,13 @@ def test_prepare_accepts_the_eula(installation: Installation, workdir: Path) -> 
 
 
 def test_prepare_returns_the_launch_plan(
-    installation: Installation, workdir: Path, monkeypatch: pytest.MonkeyPatch
+    installation: Installation, workdir: Path, monkeypatch: pytest.MonkeyPatch, java_25: Path
 ) -> None:
     monkeypatch.setenv("PATH", "/opt/jdk-25/bin:/usr/bin")
     plan = VanillaAdapter().prepare(installation, ServerSpec(port=25599), workdir)
     assert plan == LaunchPlan(
         argv=(
-            "java",
+            str(java_25.resolve()),
             "-Xmx1G",
             "-Dminecraft.api.discovery.host=http://127.0.0.1:0/",
             "-Djdk.net.hosts.file=/dev/null",

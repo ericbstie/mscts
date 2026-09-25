@@ -7,6 +7,9 @@ from mscts.adapters.vanilla import VanillaAdapter
 from mscts.spec import Difficulty, GameMode, ServerSpec
 from mscts.target import TARGET
 
+# prepare looks up a Java launcher; a fake Java 25 keeps the unit tier off the host's.
+pytestmark = pytest.mark.usefixtures("java_25")
+
 # Every key vanilla 26.3 writes to server.properties on first run (observed 2026-09-25).
 VANILLA_26_3_KEYS = frozenset(
     [

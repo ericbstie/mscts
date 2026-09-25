@@ -213,6 +213,7 @@ class LaunchPlan:
     stop_stdin: bytes | None        # graceful stop via stdin (b"stop\n"); None → SIGTERM
 
 class ProvisionError(RuntimeError): ...   # provision could not obtain or verify an Installation
+class PrepareError(RuntimeError): ...     # prepare cannot produce a LaunchPlan that meets the contract
 
 class Adapter(Protocol):
     name: str
@@ -225,7 +226,9 @@ class Adapter(Protocol):
 #   world/ban/icon state leaks between Instances;
 # - the complete-config test is a golden file derived from the server's own pristine
 #   first-run output, with every substitution documented;
-# - argv[0] is an absolute path to the exact runtime (e.g. Java 25), never a bare name;
+# - argv[0] is an absolute path to the exact runtime (e.g. Java 25), never a bare name.
+#   VanillaAdapter(fetch=https_get, *, java=None) takes the java launcher from `java`, else
+#   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved;
 # - invariants live in one visibly named table, applied last.
 
 @frozen

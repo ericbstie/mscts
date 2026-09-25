@@ -8,6 +8,9 @@ from mscts.adapters.vanilla import VanillaAdapter, offline_uuid
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
+# prepare looks up a Java launcher; a fake Java 25 keeps the unit tier off the host's.
+pytestmark = pytest.mark.usefixtures("java_25")
+
 
 # From Java's UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(UTF_8)) in jshell.
 @pytest.mark.parametrize(
