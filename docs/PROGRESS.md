@@ -9,29 +9,33 @@ Milestone **M0 (Harness)** is done. **M1 (Talk to vanilla)** has started:
 VarInt encode/decode is green. Work now runs under the tech-lead/worker
 model (`docs/PROCESS.md`).
 
-Batch 1 in flight:
-- **A** (sonnet): `codec` wire types and framing (Next 1–4).
+Done: worker **A** (sonnet) finished the `codec` wire types (VarInt,
+VarLong, String, UShort, Long, Bool, UUID, strict end) and framing
+(`encode_frame`, `FrameDecoder`).
+
+In flight:
 - **B** (opus): `Target`, `ServerSpec` and `VanillaAdapter` (`prepare` +
-  `provision`), from the M1 list.
+  `provision`).
+- **C** (opus): `Codec`, with `packets.json` 26.3, name ↔ id, the schema
+  mechanism, and the handshake/status schemas.
 
 ## Next
 
 Take the first item. Split it if it is more than one failing test.
 
-1. `codec`: `Reader.var_int` raises `WireError` on truncated input and on
-   encodings longer than 5 bytes.
-2. `codec`: VarLong encode/decode against the wiki sample table (see the
-   `protocol-research` skill for `VarInt_and_VarLong?action=raw`).
-3. `codec`: String (VarInt byte-length prefix, UTF-8, max length in UTF-16
-   units per the Data types page), UShort, Long, Bool, UUID.
-4. `codec`: `framing`, meaning frame encode, plus a decoder that yields
-   whole frames from partial chunks.
-5. `codec`: commit the generated `codec/data/26.3/packets.json` with a
-   regen script (the data generator command is in `protocol-research`),
-   plus `Codec.packet_id` / `packet_name`.
-6. Continue down the **M1** list in `docs/PLAN.md` (schemas for
-   handshake/status, `ServerSpec`, `VanillaAdapter.prepare` → `provision`
-   → `runner.running` → `Bot.status` against the live Reference).
+1. `codec`: packets.json regen script built on `VanillaAdapter.provision`,
+   plus `Codec.for_target(TARGET)` (after B and C land).
+2. `runner`: `running(plan, target)` launches, reaches status-ping
+   readiness, and stops gracefully (stdin → SIGTERM → SIGKILL); reference
+   tier.
+3. `net` + `bot`: `Connection` (framing, compression switch, State
+   transitions, Transcript hook) and `Bot.status` against the live
+   Reference returning protocol 777.
+4. `adapter/pumpkin`: provision nightly (record sha256 + version), and a
+   complete `pumpkin.toml` enforcing the invariants (offline,
+   `encryption = false`, Bedrock off, telemetry off, no favicon, flat
+   world if supported).
+5. Then **M2** in `docs/PLAN.md`.
 
 ## Log
 
