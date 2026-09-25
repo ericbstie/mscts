@@ -52,6 +52,8 @@ need is missing, add it here in the same commit that introduces it.
   overrides and prerequisites.
 - **Transcript**: the ordered, timestamped record of every Packet each Bot
   sent and received, plus Marks.
+- **Event**: one entry of a Transcript: a Packet one Bot sent or received,
+  and when.
 - **Mark**: a named timestamp a Scenario records so a Measurement can be
   computed.
 - **Mask**: a normalization rule that declares a field nondeterministic

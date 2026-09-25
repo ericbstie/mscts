@@ -278,11 +278,14 @@ class Mark:
     label: str
 
 @dataclass
-class Transcript:
+class Transcript:                   # a plain data holder: no I/O
     scenario_id: str
     server: str                     # adapter name
-    events: list[Event]
-    marks: list[Mark]
+    events: list[Event] = []        # (default_factory=list)
+    marks: list[Mark] = []
+    start_ns: int = time.monotonic_ns()   # (default_factory) the origin of every t_ns;
+                                          # compare=False, it only anchors this process's clock
+    def now_ns(self) -> int: ...    # monotonic ns since start_ns
     # to_jsonl() / from_jsonl() — payload as hex, fields as JSON
 
 class ScenarioContext:
