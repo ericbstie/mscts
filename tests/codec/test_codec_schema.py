@@ -50,3 +50,18 @@ def test_a_schema_nests_as_a_compound_field() -> None:
 def test_encode_of_packet_without_schema_raises() -> None:
     with pytest.raises(CodecError, match="status serverbound test:raw has no schema"):
         CODEC.encode(STATE, DIRECTION, "test:raw", {})
+
+
+def test_decode_rejects_bytes_after_the_last_field() -> None:
+    with pytest.raises(CodecError, match=r"test:fields: 1 unconsumed byte\(s\) remain"):
+        CODEC.decode(STATE, DIRECTION, DATA + b"\x00")
+
+
+def test_decode_rejects_a_payload_that_ends_inside_a_field() -> None:
+    with pytest.raises(CodecError, match="status serverbound test:fields: stamp: long truncated"):
+        CODEC.decode(STATE, DIRECTION, DATA[:-1])
+
+
+def test_decode_error_in_a_nested_field_names_its_path() -> None:
+    with pytest.raises(CodecError, match="test:nested: inner: port: ushort truncated"):
+        CODEC.decode(STATE, DIRECTION, bytes.fromhex("2b 01 63"))

@@ -159,7 +159,8 @@ class Codec:
         Raises:
             UnknownPacketError: The Target has no packet with that id there.
             CodecError: `data` does not start with a complete packet id, or the
-                payload does not fit the packet's schema.
+                payload does not fit the packet's schema exactly (a field is invalid or
+                truncated, or bytes remain after the last field).
         """
         reader = Reader(data)
         try:
@@ -174,6 +175,7 @@ class Codec:
         if schema is not None:
             try:
                 fields = schema.read(reader)
+                reader.expect_end()
             except WireError as exc:
                 msg = f"{state} {direction} {name}: {exc}"
                 raise CodecError(msg) from exc
