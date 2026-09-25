@@ -5,11 +5,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from importlib import resources
-from typing import Self
+from typing import TYPE_CHECKING, Self
 
 from mscts.codec.schema import Schema
 from mscts.codec.schemas import handshake, status
 from mscts.codec.wire import Reader, WireError, Writer
+
+if TYPE_CHECKING:
+    from mscts.target import Target
 
 
 class State(StrEnum):
@@ -118,6 +121,11 @@ class Codec:
             raise CodecError(msg) from None
         report: object = json.loads(text)
         return cls(_parse_packet_report(report), _SCHEMAS.get(minecraft_version))
+
+    @classmethod
+    def for_target(cls, target: "Target") -> Self:
+        """Load the Codec for `target`'s Minecraft version (see `load`)."""
+        return cls.load(target.minecraft_version)
 
     def packet_id(self, state: State, direction: Direction, name: str) -> int:
         """Return the id of packet `name` in `state`, travelling `direction`.

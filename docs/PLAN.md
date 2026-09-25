@@ -95,7 +95,8 @@ class Codec:                        # one per Target; loaded from codec/data/<ve
     @classmethod
     def load(cls, minecraft_version: str) -> Codec: ...     # codec/data/<version>/packets.json
                                                             # + that version's codec/schemas
-    # (a `for_target(target: Target)` classmethod arrives with target.py)
+    @classmethod
+    def for_target(cls, target: Target) -> Codec: ...        # load(target.minecraft_version)
     def packet_id(self, state: State, direction: Direction, name: str) -> int: ...
     def packet_name(self, state: State, direction: Direction, packet_id: int) -> str: ...
     def encode(self, state: State, direction: Direction, name: str,

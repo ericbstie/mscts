@@ -5,6 +5,7 @@ from importlib import resources
 import pytest
 
 from mscts.codec.packets import Codec, CodecError, Direction, State, UnknownPacketError
+from mscts.target import TARGET
 
 CODEC = Codec.load("26.3")
 
@@ -98,3 +99,8 @@ def test_codec_rejects_two_names_sharing_an_id() -> None:
     table = {(State.STATUS, Direction.CLIENTBOUND): {"test:first": 0, "test:second": 0}}
     with pytest.raises(CodecError, match="test:first and test:second share id 0x00"):
         Codec(table)
+
+
+def test_for_target_loads_the_codec_of_the_targets_minecraft_version() -> None:
+    codec = Codec.for_target(TARGET)
+    assert codec.packet_id(State.HANDSHAKE, Direction.SERVERBOUND, "minecraft:intention") == 0
