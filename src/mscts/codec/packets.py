@@ -7,6 +7,8 @@ from enum import StrEnum
 from importlib import resources
 from typing import Self
 
+from mscts.codec.wire import Reader, WireError
+
 
 class State(StrEnum):
     """A connection state; values are the keys of the vanilla packet report."""
@@ -118,6 +120,28 @@ class Codec:
         except KeyError:
             msg = f"no packet {state} {direction} {packet_id:#04x}"
             raise UnknownPacketError(msg) from None
+
+    def decode(self, state: State, direction: Direction, data: bytes) -> Packet:
+        """Decode one frame's data, `VarInt packet id ‖ payload`, seen in `state`.
+
+        Raises:
+            UnknownPacketError: The Target has no packet with that id there.
+            CodecError: `data` does not start with a complete packet id.
+        """
+        reader = Reader(data)
+        try:
+            packet_id = reader.var_int()
+        except WireError as exc:
+            msg = f"{state} {direction} packet id: {exc}"
+            raise CodecError(msg) from exc
+        return Packet(
+            state=state,
+            direction=direction,
+            name=self.packet_name(state, direction, packet_id),
+            packet_id=packet_id,
+            payload=data[len(data) - reader.remaining :],
+            fields=None,
+        )
 
 
 def _parse_packet_report(report: object) -> dict[tuple[State, Direction], dict[str, int]]:
