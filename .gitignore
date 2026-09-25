@@ -6,3 +6,5 @@ __pycache__/
 dist/
 # downloaded jars/binaries, generated reports, server workdirs
 .cache/
+# agent worktrees (tech-lead/worker model)
+.claude/worktrees/
