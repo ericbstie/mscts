@@ -1,0 +1,59 @@
+---
+name: protocol-research
+description: How to establish a Minecraft Java protocol or server-behaviour fact for mscts (packet IDs, field layouts, connection sequence, server config defaults) and pin it. Use before writing any codec schema, Scenario, Mask or Adapter config, and whenever vanilla or a Candidate behaves unexpectedly.
+---
+
+# protocol-research
+
+The Reference defines correct behaviour. Documentation only describes it,
+and it can be stale or wrong. Every fact the code relies on must be pinned
+by a test.
+
+## Sources, in order of trust
+
+1. **The vanilla jar for the Target.** Get the URL and sha1 from
+   `https://piston-meta.mojang.com/mc/game/version_manifest_v2.json` →
+   the version JSON → `downloads.server`. `version.json` inside the jar
+   gives the protocol and Java version.
+2. **The vanilla data generator**, which produces the packet names and IDs
+   plus the registries, blocks and commands:
+   ```sh
+   java -DbundlerMainClass=net.minecraft.data.Main -jar server.jar --reports --output <dir>
+   # <dir>/reports/packets.json, registries.json, blocks.json, commands.json
+   ```
+3. **minecraft.wiki as raw wikitext**, for field layouts and semantics:
+   `curl -sS 'https://minecraft.wiki/w/Java_Edition_protocol/Packets?action=raw'`.
+   Check that the page header names the Target protocol, and record the
+   revision id:
+   `https://minecraft.wiki/api.php?action=query&prop=revisions&titles=Java_Edition_protocol/Packets&rvprop=ids|timestamp&format=json`.
+   Also useful: `Java_Edition_protocol/Data_types`,
+   `Java_Edition_protocol/VarInt_and_VarLong`, `Java_Edition_protocol/FAQ`.
+4. Candidate source code, only to understand a Candidate. Never use it to
+   decide what is correct.
+
+Do **not** rely on a summarizer (WebFetch or similar) for field layouts.
+One summary got a 26.3 field order wrong. Grep the raw wikitext table
+instead.
+
+## Pinning a fact
+
+- A layout or ID becomes a codec schema plus a `unit` test built from the
+  wiki's sample bytes, and a `reference`-tier test that round-trips it
+  against a live vanilla Instance.
+- A server default or quirk becomes a line in the current
+  `docs/research/*.md` note (marked **verified** if you observed it
+  yourself), plus a test on the Adapter that overrides it.
+
+## Known traps (26.3)
+
+- The vanilla defaults `white-list=true` and `pause-when-empty-seconds=60`
+  must be overridden.
+- `accept_teleportation` echoes the pose: `VarInt id, 3×Double, 2×Float`.
+- After `login_compression`, every frame is `VarInt data-length ‖ data`,
+  where data-length 0 means uncompressed.
+- Pumpkin sends an encryption request in offline mode unless
+  `encryption = false`. Its Bedrock listener and telemetry are on by
+  default.
+
+Record anything new under `docs/research/` and in this list if it will
+bite again.
