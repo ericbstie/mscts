@@ -10,10 +10,17 @@ _INT_SIGN = 0x8000_0000
 _VAR_LONG_MAX_BYTES = 10
 _LONG_MASK = 0xFFFF_FFFF_FFFF_FFFF
 _LONG_SIGN = 0x8000_0000_0000_0000
+_NON_BMP_THRESHOLD = 0xFFFF
+_BYTES_PER_CODE_UNIT = 3
 
 
 class WireError(ValueError):
     """Bytes that do not form a valid value of the expected wire type."""
+
+
+def _utf16_length(text: str) -> int:
+    """Count UTF-16 code units `text` would take (a scalar > U+FFFF counts as two)."""
+    return sum(2 if ord(char) > _NON_BMP_THRESHOLD else 1 for char in text)
 
 
 class Writer:
@@ -44,6 +51,23 @@ class Writer:
                 self._buffer.append(segment)
                 return self
             self._buffer.append(segment | _CONTINUE)
+
+    def string(self, value: str, *, max_length: int) -> Self:
+        """Append a String: a VarInt UTF-8 byte-length prefix, then the UTF-8 bytes.
+
+        `max_length` (the protocol's `n`) bounds the number of UTF-16 code units
+        `value` represents (a scalar value above U+FFFF counts as two).
+        """
+        if _utf16_length(value) > max_length:
+            msg = f"string exceeds max length {max_length} UTF-16 code units"
+            raise WireError(msg)
+        encoded = value.encode("utf-8")
+        if len(encoded) > max_length * _BYTES_PER_CODE_UNIT:
+            msg = f"string exceeds max byte length {max_length * _BYTES_PER_CODE_UNIT}"
+            raise WireError(msg)
+        self.var_int(len(encoded))
+        self._buffer.extend(encoded)
+        return self
 
     def to_bytes(self) -> bytes:
         """Return everything written so far."""
@@ -87,3 +111,30 @@ class Reader:
                 return result - (1 << 64) if result & _LONG_SIGN else result
         msg = "VarLong longer than 10 bytes"
         raise WireError(msg)
+
+    def string(self, *, max_length: int) -> str:
+        """Consume a String: a VarInt UTF-8 byte-length prefix, then the UTF-8 bytes.
+
+        `max_length` (the protocol's `n`) bounds the number of UTF-16 code units
+        the result represents (a scalar value above U+FFFF counts as two).
+        """
+        byte_length = self.var_int()
+        max_bytes = max_length * _BYTES_PER_CODE_UNIT
+        if byte_length < 0 or byte_length > max_bytes:
+            msg = f"string byte length {byte_length} exceeds max {max_bytes}"
+            raise WireError(msg)
+        end = self._offset + byte_length
+        if end > len(self._data):
+            msg = "string truncated"
+            raise WireError(msg)
+        raw = self._data[self._offset : end]
+        self._offset = end
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            msg = "string is not valid UTF-8"
+            raise WireError(msg) from exc
+        if _utf16_length(text) > max_length:
+            msg = f"string exceeds max length {max_length} UTF-16 code units"
+            raise WireError(msg)
+        return text

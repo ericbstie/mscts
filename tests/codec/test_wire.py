@@ -85,3 +85,75 @@ def test_var_long_raises_when_longer_than_ten_bytes() -> None:
     # Ten continuation bytes followed by a terminator: 11 bytes total.
     with pytest.raises(WireError):
         Reader(bytes.fromhex("80" * 10 + "00")).var_long()
+
+
+# String: VarInt byte-length prefix ‖ UTF-8 bytes. The length limit `n` counts
+# UTF-16 code units (a scalar value above U+FFFF counts as two), and the byte
+# length must be <= n * 3. Source: minecraft.wiki
+# "Java Edition protocol/Data types", the String row.
+
+
+def test_string_round_trips_ascii() -> None:
+    written = Writer().string("hello", max_length=5).to_bytes()
+    assert written == bytes([5]) + b"hello"
+    assert Reader(written).string(max_length=5) == "hello"
+
+
+def test_string_round_trips_multibyte_utf8() -> None:
+    # "café": 4 code points / 4 UTF-16 units, but 5 UTF-8 bytes (é is 2 bytes).
+    written = Writer().string("café", max_length=4).to_bytes()
+    encoded = "café".encode()
+    assert written == bytes([len(encoded)]) + encoded
+    assert Reader(written).string(max_length=4) == "café"
+
+
+def test_string_non_bmp_scalar_counts_as_two_code_units() -> None:
+    # U+1F600 is one scalar value / one Python character, but two UTF-16
+    # code units, and needs 4 UTF-8 bytes.
+    emoji = "\U0001f600"
+    written = Writer().string(emoji, max_length=2).to_bytes()
+    encoded = emoji.encode()
+    assert written == bytes([len(encoded)]) + encoded
+    assert Reader(written).string(max_length=2) == emoji
+
+
+def test_string_writer_raises_when_code_units_exceed_max_length() -> None:
+    emoji = "\U0001f600"  # 2 UTF-16 code units
+    with pytest.raises(WireError):
+        Writer().string(emoji, max_length=1)
+
+
+def test_string_writer_allows_exactly_max_length() -> None:
+    Writer().string("abcde", max_length=5)  # must not raise
+
+
+def test_string_writer_raises_when_one_over_max_length() -> None:
+    with pytest.raises(WireError):
+        Writer().string("abcdef", max_length=5)
+
+
+def test_string_reader_raises_when_declared_length_exceeds_three_times_max() -> None:
+    # Declared byte length 4 > max_length(1) * 3 == 3: reject before reading.
+    data = bytes([4]) + b"abcd"
+    with pytest.raises(WireError):
+        Reader(data).string(max_length=1)
+
+
+def test_string_reader_raises_when_truncated() -> None:
+    # Declares 5 bytes but only 2 follow.
+    data = bytes([5]) + b"ab"
+    with pytest.raises(WireError):
+        Reader(data).string(max_length=5)
+
+
+def test_string_reader_raises_on_invalid_utf8() -> None:
+    data = bytes([2]) + b"\xff\xfe"
+    with pytest.raises(WireError):
+        Reader(data).string(max_length=5)
+
+
+def test_string_reader_raises_when_decoded_code_units_exceed_max_length() -> None:
+    # Byte length 2 <= max_length(1) * 3, but "ab" decodes to 2 code units.
+    data = bytes([2]) + b"ab"
+    with pytest.raises(WireError):
+        Reader(data).string(max_length=1)
