@@ -50,7 +50,7 @@ test needs it:
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Installation`, `LaunchPlan` |
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
-| `runner.py` | `running(plan)` → `Instance`: launch, readiness, stop, process stats |
+| `runner.py` | `running(plan)` → `Instance`: launch, readiness, stop, process stats; `free_port` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
 | `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, registry |
 | `scenarios/*.py` | the Scenarios themselves |
@@ -245,8 +245,13 @@ class Instance:
     log_path: Path
 
 @asynccontextmanager
-async def running(plan: LaunchPlan, target: Target, *,
-                  ready_timeout: float) -> AsyncIterator[Instance]: ...      # stop: stdin → SIGTERM → SIGKILL
+async def running(plan: LaunchPlan, *, ready: Callable[[Endpoint], Awaitable[bool]],
+                  ready_timeout: float, stop_timeout: float = 10.0) -> AsyncIterator[Instance]: ...
+# Readiness is an injected probe, polled until it returns True. In a Run it is the status
+# ping answering Target.protocol_version (ADR-0004); tests inject simpler probes.
+# Stop: stdin → SIGTERM → SIGKILL.
+
+def free_port() -> int: ...         # a 127.0.0.1 port free a moment ago; racy by nature (TOCTOU)
 ```
 
 ### Scenarios, Transcripts, Comparison
