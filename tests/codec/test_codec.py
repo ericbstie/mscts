@@ -4,7 +4,7 @@ from importlib import resources
 
 import pytest
 
-from mscts.codec.packets import Codec, Direction, State
+from mscts.codec.packets import Codec, CodecError, Direction, State, UnknownPacketError
 
 CODEC = Codec.load("26.3")
 
@@ -54,3 +54,36 @@ def test_every_report_entry_maps_name_to_id_and_back() -> None:
     for state, direction, name, packet_id in entries:
         assert CODEC.packet_id(state, direction, name) == packet_id
         assert CODEC.packet_name(state, direction, packet_id) == name
+
+
+@pytest.mark.parametrize(
+    ("state", "direction", "name"),
+    [
+        (State.STATUS, Direction.SERVERBOUND, "minecraft:no_such_packet"),
+        (State.HANDSHAKE, Direction.CLIENTBOUND, "minecraft:intention"),  # wrong direction
+        (State.LOGIN, Direction.SERVERBOUND, "minecraft:intention"),  # wrong state
+    ],
+)
+def test_packet_id_of_unknown_name_raises(state: State, direction: Direction, name: str) -> None:
+    with pytest.raises(UnknownPacketError, match=f"{state} {direction} {name}"):
+        CODEC.packet_id(state, direction, name)
+
+
+@pytest.mark.parametrize(
+    ("direction", "count"),
+    [(Direction.CLIENTBOUND, 144), (Direction.SERVERBOUND, 69)],
+)
+def test_play_ids_are_dense_up_to_the_26_3_packet_count(direction: Direction, count: int) -> None:
+    for packet_id in range(count):
+        CODEC.packet_name(State.PLAY, direction, packet_id)
+    with pytest.raises(UnknownPacketError, match=f"play {direction} {count:#04x}"):
+        CODEC.packet_name(State.PLAY, direction, count)
+
+
+def test_packet_name_of_negative_id_raises() -> None:
+    with pytest.raises(UnknownPacketError):
+        CODEC.packet_name(State.STATUS, Direction.CLIENTBOUND, -1)
+
+
+def test_unknown_packet_error_is_a_codec_error() -> None:
+    assert issubclass(UnknownPacketError, CodecError)

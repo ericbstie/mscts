@@ -50,6 +50,10 @@ class CodecError(ValueError):
     """Packet data, a packet, or packet fields that the Codec cannot accept."""
 
 
+class UnknownPacketError(CodecError):
+    """A packet name or id that the Target does not define for that state and direction."""
+
+
 type PacketIds = Mapping[tuple[State, Direction], Mapping[str, int]]
 """Packet ids by name, for each (state, direction) the Target defines."""
 
@@ -79,12 +83,28 @@ class Codec:
         return cls(_parse_packet_report(report))
 
     def packet_id(self, state: State, direction: Direction, name: str) -> int:
-        """Return the id of packet `name` in `state`, travelling `direction`."""
-        return self._ids[state, direction, name]
+        """Return the id of packet `name` in `state`, travelling `direction`.
+
+        Raises:
+            UnknownPacketError: The Target has no such packet there.
+        """
+        try:
+            return self._ids[state, direction, name]
+        except KeyError:
+            msg = f"no packet {state} {direction} {name}"
+            raise UnknownPacketError(msg) from None
 
     def packet_name(self, state: State, direction: Direction, packet_id: int) -> str:
-        """Return the name of packet `packet_id` in `state`, travelling `direction`."""
-        return self._names[state, direction, packet_id]
+        """Return the name of packet `packet_id` in `state`, travelling `direction`.
+
+        Raises:
+            UnknownPacketError: The Target has no such packet there.
+        """
+        try:
+            return self._names[state, direction, packet_id]
+        except KeyError:
+            msg = f"no packet {state} {direction} {packet_id:#04x}"
+            raise UnknownPacketError(msg) from None
 
 
 def _parse_packet_report(report: object) -> dict[tuple[State, Direction], dict[str, int]]:

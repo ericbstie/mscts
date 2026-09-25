@@ -84,6 +84,7 @@ class Packet:
     fields: Mapping[str, object] | None   # None ⇔ no schema yet for this packet
 
 class CodecError(ValueError): ...   # bad packet data, an unknown packet, or fields that do not fit
+class UnknownPacketError(CodecError): ...   # packet_id / packet_name / decode: no such name or id
 
 class Codec:                        # one per Target; loaded from codec/data/<version>/
     def __init__(self, packet_ids: Mapping[tuple[State, Direction], Mapping[str, int]]) -> None: ...
