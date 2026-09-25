@@ -251,6 +251,12 @@ async def running(plan: LaunchPlan, *, ready: Callable[[Endpoint], Awaitable[boo
 # ping answering Target.protocol_version (ADR-0004); tests inject simpler probes.
 # Stop: stdin → SIGTERM → SIGKILL.
 
+class RunnerError(RuntimeError):    # the Instance exited before it was ready, or was not ready in time
+    reason: str
+    exit_code: int | None           # negative: killed by that signal
+    log_path: Path
+    log_tail: tuple[str, ...]       # the last 40 console lines
+
 def free_port() -> int: ...         # a 127.0.0.1 port free a moment ago; racy by nature (TOCTOU)
 ```
 

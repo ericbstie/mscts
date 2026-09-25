@@ -22,6 +22,27 @@ LOOPBACK = "127.0.0.1"
 CONSOLE_LOG = "mscts-console.log"
 # Between readiness probes. It bounds how late ready_ns can be.
 _POLL_INTERVAL_S = 0.02
+# How much of the console a RunnerError quotes.
+LOG_TAIL_LINES = 40
+_LOG_TAIL_BYTES = 64 * 1024  # read at most this much, however big the log grew
+
+
+class RunnerError(RuntimeError):
+    """An Instance could not be started: it exited before it was ready, or never was.
+
+    `exit_code` follows asyncio: negative means killed by that signal.
+    """
+
+    def __init__(
+        self, reason: str, *, exit_code: int | None, log_path: Path, log_tail: tuple[str, ...]
+    ) -> None:
+        """Explain `reason`, quoting the last lines of the Instance's console."""
+        self.reason = reason
+        self.exit_code = exit_code
+        self.log_path = log_path
+        self.log_tail = log_tail
+        quote = "\n".join((f"--- last {len(log_tail)} lines of {log_path} ---", *log_tail))
+        super().__init__(f"{reason}\n{quote}")
 
 
 def free_port() -> int:
@@ -80,7 +101,10 @@ async def running(
         )
     try:
         async with asyncio.timeout_at(deadline):
-            ready_ns = await _ready_ns(ready, plan.endpoint)
+            ready_ns = await _ready_ns(process, ready, plan.endpoint)
+        if ready_ns is None:
+            reason = f"{plan.argv[0]} exited with code {process.returncode} before it was ready"
+            raise _failure(reason, process.returncode, log_path)
         yield Instance(
             endpoint=plan.endpoint,
             pid=process.pid,
@@ -93,12 +117,35 @@ async def running(
         await process.wait()
 
 
-async def _ready_ns(ready: Callable[[Endpoint], Awaitable[bool]], endpoint: Endpoint) -> int:
-    """Poll `ready` until it returns True; return when it did."""
+async def _ready_ns(
+    process: asyncio.subprocess.Process,
+    ready: Callable[[Endpoint], Awaitable[bool]],
+    endpoint: Endpoint,
+) -> int | None:
+    """Poll `ready` until it returns True and return when it did; None if the process exits."""
     while True:
-        if await ready(endpoint):
+        answer = await ready(endpoint)
+        if process.returncode is not None:
+            return None
+        if answer:
             return time.monotonic_ns()
         await asyncio.sleep(_POLL_INTERVAL_S)
+
+
+def _failure(reason: str, exit_code: int | None, log_path: Path) -> RunnerError:
+    return RunnerError(reason, exit_code=exit_code, log_path=log_path, log_tail=_log_tail(log_path))
+
+
+def _log_tail(log_path: Path) -> tuple[str, ...]:
+    """The last LOG_TAIL_LINES lines of the console, or none if it cannot be read."""
+    try:
+        with log_path.open("rb") as log:
+            size = log.seek(0, os.SEEK_END)
+            log.seek(max(0, size - _LOG_TAIL_BYTES))
+            text = log.read().decode(errors="replace")
+    except OSError:
+        return ()
+    return tuple(text.splitlines()[-LOG_TAIL_LINES:])
 
 
 def _signal_group(process: asyncio.subprocess.Process, signum: signal.Signals) -> None:
