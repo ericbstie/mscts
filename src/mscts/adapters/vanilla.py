@@ -7,7 +7,7 @@ import os
 import ssl
 import urllib.request
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
@@ -15,6 +15,9 @@ from urllib.parse import urlsplit
 from mscts.adapters.base import Installation, LaunchPlan, ProvisionError
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
+from mscts.target import Target
+
+MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 
 # The server binds loopback only: in offline mode anyone who can reach the port can log
 # in under an operator's name. The Endpoint uses the same address, so it is exactly
@@ -57,6 +60,9 @@ def https_get(url: str) -> bytes:
             msg = f"unexpected response {type(response).__name__} from {url}"
             raise TypeError(msg)
         return response.read()
+
+
+type Fetch = Callable[[str], bytes]
 
 
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
@@ -258,6 +264,20 @@ class VanillaAdapter:
     """Provisions the vanilla server jar and prepares it for a ServerSpec."""
 
     name = "vanilla"
+
+    def __init__(self, fetch: Fetch = https_get) -> None:
+        """Download with `fetch`; unit tests pass a fake so they never touch the network."""
+        self._fetch = fetch
+
+    def provision(self, target: Target, cache_dir: Path) -> Installation:
+        """Download the server jar for `target` into `cache_dir/vanilla/<version>/`."""
+        manifest = json.loads(self._fetch(MANIFEST_URL))
+        entry = next(v for v in manifest["versions"] if v["id"] == target.minecraft_version)
+        server = json.loads(self._fetch(entry["url"]))["downloads"]["server"]
+        root = cache_dir.absolute() / self.name / target.minecraft_version
+        root.mkdir(parents=True, exist_ok=True)
+        (root / JAR).write_bytes(self._fetch(server["url"]))
+        return Installation(adapter=self.name, target=target, root=root)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete vanilla config for `spec` into `workdir`."""

@@ -1,7 +1,79 @@
+import hashlib
+import io
+import json
+import zipfile
+from pathlib import Path
+
 import pytest
 
-from mscts.adapters.base import ProvisionError
-from mscts.adapters.vanilla import https_get
+from mscts.adapters.base import Adapter, Installation, ProvisionError
+from mscts.adapters.vanilla import VanillaAdapter, https_get
+from mscts.target import TARGET
+
+MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+VERSION_URL = "https://piston-meta.example/v1/packages/abc/26.3.json"
+JAR_URL = "https://piston-data.example/v1/objects/def/server.jar"
+
+
+def sha1(data: bytes) -> str:
+    return hashlib.sha1(data, usedforsecurity=False).hexdigest()
+
+
+def fake_jar(protocol_version: int = 777) -> bytes:
+    """A tiny stand-in for the server jar: a zip whose version.json names the protocol."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as jar:
+        version = {"id": "26.3", "protocol_version": protocol_version, "java_version": 25}
+        jar.writestr("version.json", json.dumps(version))
+        jar.writestr("net/minecraft/bundler/Main.class", b"\xca\xfe\xba\xbe")
+    return buffer.getvalue()
+
+
+def serve(
+    *, jar: bytes | None = None, java_major: int = 25, size: int | None = None
+) -> dict[str, bytes]:
+    """The manifest, version JSON and jar, shaped like Mojang's, keyed by URL."""
+    jar = fake_jar() if jar is None else jar
+    version = json.dumps(
+        {
+            "id": "26.3",
+            "javaVersion": {"component": "java-runtime-epsilon", "majorVersion": java_major},
+            "downloads": {
+                "server": {
+                    "sha1": sha1(jar),
+                    "size": len(jar) if size is None else size,
+                    "url": JAR_URL,
+                }
+            },
+        }
+    ).encode()
+    manifest = json.dumps(
+        {
+            "latest": {"release": "26.3", "snapshot": "26.4-snapshot-1"},
+            "versions": [
+                {
+                    "id": "26.4-snapshot-1",
+                    "type": "snapshot",
+                    "url": "https://piston-meta.example/v1/packages/0/26.4-snapshot-1.json",
+                    "sha1": "0" * 40,
+                },
+                {"id": "26.3", "type": "release", "url": VERSION_URL, "sha1": sha1(version)},
+            ],
+        }
+    ).encode()
+    return {MANIFEST_URL: manifest, VERSION_URL: version, JAR_URL: jar}
+
+
+class FakeMojang:
+    """A fetch that serves canned documents and records every URL it was asked for."""
+
+    def __init__(self, files: dict[str, bytes]) -> None:
+        self.files = files
+        self.fetched: list[str] = []
+
+    def __call__(self, url: str) -> bytes:
+        self.fetched.append(url)
+        return self.files[url]
 
 
 @pytest.mark.parametrize(
@@ -10,3 +82,20 @@ from mscts.adapters.vanilla import https_get
 def test_https_get_refuses_other_schemes_before_connecting(url: str) -> None:
     with pytest.raises(ProvisionError, match="HTTPS"):
         https_get(url)
+
+
+def test_provision_downloads_the_jar_into_the_cache(tmp_path: Path) -> None:
+    mojang = FakeMojang(serve())
+    adapter: Adapter = VanillaAdapter(fetch=mojang)
+    installation = adapter.provision(TARGET, tmp_path)
+    assert installation == Installation(
+        adapter="vanilla", target=TARGET, root=tmp_path / "vanilla/26.3"
+    )
+    assert (installation.root / "server.jar").read_bytes() == mojang.files[JAR_URL]
+    assert mojang.fetched == [MANIFEST_URL, VERSION_URL, JAR_URL]
+
+
+def test_installation_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    installation = VanillaAdapter(fetch=FakeMojang(serve())).provision(TARGET, Path("cache"))
+    assert installation.root == tmp_path / "cache/vanilla/26.3"
