@@ -5,6 +5,7 @@ import http.client
 import json
 import os
 import ssl
+import tempfile
 import urllib.request
 import uuid
 from collections.abc import Callable, Mapping
@@ -78,6 +79,14 @@ def _verify(data: bytes, *, sha1: str, size: int | None = None, what: str) -> No
     if _sha1(data) != sha1:
         msg = f"{what}: sha1 {_sha1(data)} does not match the published {sha1}"
         raise ProvisionError(msg)
+
+
+def _replace_atomically(path: Path, data: bytes) -> None:
+    """Put `data` at `path` with one rename, so nobody ever sees a partial file there."""
+    descriptor, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
+    with os.fdopen(descriptor, "wb") as file:
+        file.write(data)
+    Path(part).replace(path)
 
 
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
@@ -290,10 +299,12 @@ class VanillaAdapter:
         entry = next(v for v in manifest["versions"] if v["id"] == target.minecraft_version)
         server = json.loads(self._fetch(entry["url"]))["downloads"]["server"]
         root = cache_dir.absolute() / self.name / target.minecraft_version
-        jar = self._fetch(server["url"])
-        _verify(jar, sha1=server["sha1"], size=server["size"], what=server["url"])
-        root.mkdir(parents=True, exist_ok=True)
-        (root / JAR).write_bytes(jar)
+        cached = root / JAR
+        if not (cached.is_file() and _sha1(cached.read_bytes()) == server["sha1"]):
+            jar = self._fetch(server["url"])
+            _verify(jar, sha1=server["sha1"], size=server["size"], what=server["url"])
+            root.mkdir(parents=True, exist_ok=True)
+            _replace_atomically(cached, jar)
         return Installation(adapter=self.name, target=target, root=root)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:

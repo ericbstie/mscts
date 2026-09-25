@@ -95,6 +95,25 @@ def test_provision_downloads_the_jar_into_the_cache(tmp_path: Path) -> None:
     assert mojang.fetched == [MANIFEST_URL, VERSION_URL, JAR_URL]
 
 
+def test_provision_reuses_a_cached_jar_whose_sha1_matches(tmp_path: Path) -> None:
+    files = serve()
+    VanillaAdapter(fetch=FakeMojang(files)).provision(TARGET, tmp_path)
+    again = FakeMojang(files)
+    VanillaAdapter(fetch=again).provision(TARGET, tmp_path)
+    assert again.fetched == [MANIFEST_URL, VERSION_URL]
+
+
+def test_provision_replaces_a_cached_jar_whose_sha1_mismatches(tmp_path: Path) -> None:
+    root = tmp_path / "vanilla/26.3"
+    root.mkdir(parents=True)
+    (root / "server.jar").write_bytes(b"a truncated download")
+    mojang = FakeMojang(serve())
+    VanillaAdapter(fetch=mojang).provision(TARGET, tmp_path)
+    assert mojang.fetched == [MANIFEST_URL, VERSION_URL, JAR_URL]
+    assert (root / "server.jar").read_bytes() == mojang.files[JAR_URL]
+    assert [path.name for path in root.iterdir()] == ["server.jar"]
+
+
 def test_provision_rejects_a_download_whose_sha1_differs(tmp_path: Path) -> None:
     files = serve()
     tampered = bytearray(files[JAR_URL])
