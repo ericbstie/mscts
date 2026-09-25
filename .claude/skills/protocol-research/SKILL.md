@@ -64,8 +64,12 @@ instead.
   UUID). Write `ops.json` directly, with
   `UUID.nameUUIDFromBytes("OfflinePlayer:" + name)`.
 - Offline vanilla still calls Mojang services (authlib discovery,
-  public keys, name lookups). See the research note. Whether and how
-  this is blocked is being settled.
+  public keys, name lookups), and log4j resolves the host name through
+  the OS resolver. `VanillaAdapter.NO_NETWORK` blocks both with JVM
+  properties (`minecraft.api.discovery.host`, `jdk.net.hosts.file`).
+  Never set `minecraft.api.env`, because it overrides the discovery URL.
+  When checking a launch configuration for network use, run it under
+  `strace -f -e trace=connect,sendto,sendmsg,sendmmsg,openat`.
 - Pumpkin sends an encryption request in offline mode unless
   `encryption = false`. Its Bedrock listener and telemetry are on by
   default.

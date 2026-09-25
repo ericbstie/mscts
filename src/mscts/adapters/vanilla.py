@@ -106,11 +106,28 @@ def _replace_atomically(path: Path, data: bytes) -> None:
     Path(part).replace(path)
 
 
+# JVM system properties that cut every Reference Instance off from all networks except
+# loopback, so its behaviour cannot depend on the host's network. Offline vanilla still
+# calls Mojang's services. Verified with strace: with these, its only non-UNIX connect is
+# a refused one to 127.0.0.1:0, and it never reads the resolver's files
+# (docs/research/2026-09-25-domain.md, "Vanilla 26.3 makes no outbound connection").
+NO_NETWORK: Mapping[str, str] = MappingProxyType(
+    {
+        # authlib takes every Mojang service URL (keys, name lookups, ...) from one
+        # discovery document, fetched from this URL. (minecraft.api.env would win over it,
+        # so it is never set.) Nothing can listen on port 0, so the fetch is refused at once
+        # and authlib runs "Services are unavailable", as it does with no network at all.
+        "minecraft.api.discovery.host": "http://127.0.0.1:0/",
+        # The JDK resolves host names from this (empty) file only, never the OS resolver:
+        # no DNS query, whatever the host. log4j looks up the local host name at startup.
+        "jdk.net.hosts.file": "/dev/null",
+    }
+)
+
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
 # the ServerSpec says. They are applied last, so nothing overrides them. Offline mode
-# also means no encryption request. Vanilla has no telemetry setting, but it still calls
-# Mojang's services in offline mode (docs/research/2026-09-25-domain.md); nothing here
-# cuts that off yet.
+# also means no encryption request. Vanilla has no telemetry setting; NO_NETWORK stops
+# its calls to Mojang's services.
 INVARIANTS: Mapping[str, str] = MappingProxyType(
     {
         "online-mode": "false",  # offline login; vanilla then sends no encryption request
@@ -360,8 +377,10 @@ class VanillaAdapter:
             java_properties(server_properties(spec)), encoding="ascii"
         )
         (workdir / "ops.json").write_text(ops_json(spec.operators), encoding="utf-8")
+        jar = installation.root.absolute() / JAR
+        no_network = tuple(f"-D{name}={value}" for name, value in NO_NETWORK.items())
         return LaunchPlan(
-            argv=("java", HEAP, "-jar", str(installation.root.absolute() / JAR), "nogui"),
+            argv=("java", HEAP, *no_network, "-jar", str(jar), "nogui"),
             cwd=workdir,
             # Only PATH, so `java` resolves to the Target's JVM that mise put on it.
             # Nothing else leaks from the harness: no JAVA_TOOL_OPTIONS (here it injects
