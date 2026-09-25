@@ -4,6 +4,7 @@ import struct
 from typing import Self
 
 _USHORT_STRUCT = struct.Struct(">H")
+_LONG_STRUCT = struct.Struct(">q")
 
 _SEGMENT = 0x7F
 _CONTINUE = 0x80
@@ -78,6 +79,15 @@ class Writer:
             self._buffer.extend(_USHORT_STRUCT.pack(value))
         except struct.error as exc:
             msg = f"ushort {value!r} out of range"
+            raise WireError(msg) from exc
+        return self
+
+    def long(self, value: int) -> Self:
+        """Append a signed 64-bit integer, big-endian, two's complement."""
+        try:
+            self._buffer.extend(_LONG_STRUCT.pack(value))
+        except struct.error as exc:
+            msg = f"long {value!r} out of range"
             raise WireError(msg) from exc
         return self
 
@@ -158,5 +168,15 @@ class Reader:
             msg = "ushort truncated"
             raise WireError(msg)
         (value,) = _USHORT_STRUCT.unpack(self._data[self._offset : end])
+        self._offset = end
+        return int(value)
+
+    def long(self) -> int:
+        """Consume a signed 64-bit integer, big-endian, two's complement."""
+        end = self._offset + _LONG_STRUCT.size
+        if end > len(self._data):
+            msg = "long truncated"
+            raise WireError(msg)
+        (value,) = _LONG_STRUCT.unpack(self._data[self._offset : end])
         self._offset = end
         return int(value)

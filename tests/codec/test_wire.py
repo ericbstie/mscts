@@ -195,3 +195,34 @@ def test_ushort_writer_raises_when_out_of_range() -> None:
 def test_ushort_reader_raises_on_truncated_input() -> None:
     with pytest.raises(WireError):
         Reader(bytes.fromhex("00")).ushort()
+
+
+# Long: signed 64-bit, big-endian, two's complement.
+
+LONG_SAMPLES = [
+    (0, "0000000000000000"),
+    (1, "0000000000000001"),
+    (-1, "ffffffffffffffff"),
+    (9223372036854775807, "7fffffffffffffff"),
+    (-9223372036854775808, "8000000000000000"),
+]
+
+
+@pytest.mark.parametrize(("value", "encoded"), LONG_SAMPLES)
+def test_long_encodes_big_endian(value: int, encoded: str) -> None:
+    assert Writer().long(value).to_bytes() == bytes.fromhex(encoded)
+
+
+@pytest.mark.parametrize(("value", "encoded"), LONG_SAMPLES)
+def test_long_decodes_big_endian(value: int, encoded: str) -> None:
+    assert Reader(bytes.fromhex(encoded)).long() == value
+
+
+def test_long_writer_raises_when_out_of_range() -> None:
+    with pytest.raises(WireError):
+        Writer().long(9223372036854775808)
+
+
+def test_long_reader_raises_on_truncated_input() -> None:
+    with pytest.raises(WireError):
+        Reader(bytes.fromhex("00000000000000")).long()
