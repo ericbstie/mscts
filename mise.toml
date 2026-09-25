@@ -1,0 +1,44 @@
+# Tool versions and dev tasks. `mise install` then `mise run check`.
+[tools]
+python = "3.13.15"
+uv = "0.12.19"
+java = "temurin-25" # runs the vanilla Reference server (Target 26.3 needs Java 25)
+
+[env]
+UV_PYTHON_DOWNLOADS = "never" # use the mise-pinned interpreter
+
+[tasks.sync]
+description = "Install locked dependencies into .venv"
+run = "uv sync --locked"
+
+[tasks.fix]
+description = "Apply formatter and autofixable lint"
+run = ["uv run ruff format", "uv run ruff check --fix"]
+
+[tasks.lint]
+description = "Format check + ruff (ALL rules)"
+run = ["uv run ruff format --check", "uv run ruff check"]
+
+[tasks.types]
+description = "ty, every diagnostic an error"
+run = "uv run ty check"
+
+[tasks.sec]
+description = "bandit over src/"
+run = "uv run bandit -q -c pyproject.toml -r src"
+
+[tasks.test]
+description = "unit tier"
+run = "uv run pytest -m 'not reference and not candidate'"
+
+[tasks.check]
+description = "Everything a commit must pass"
+depends = ["lint", "types", "sec", "test"]
+
+[tasks."test:reference"]
+description = "reference tier (live vanilla Instance)"
+run = "uv run pytest -m reference"
+
+[tasks."test:candidate"]
+description = "candidate tier (live Candidate Instance)"
+run = "uv run pytest -m candidate"

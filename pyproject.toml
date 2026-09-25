@@ -1,0 +1,65 @@
+[project]
+name = "mscts"
+version = "0.0.0"
+description = "Minecraft Server Compliancy Test Suite: differential parity and timing of custom servers against vanilla"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "bandit>=1.9.4",
+    "pytest>=9.1.1",
+    "ruff>=0.16.9",
+    "ty>=0.0.84",
+]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.format]
+exclude = ["*.md"] # docs hold signature sketches, not runnable code
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # conflicts with the formatter
+    "CPY001", # licensing is repo-level, not per-file headers
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",    # pytest asserts
+    "D1",      # test names are the documentation
+    "PLR2004", # expected values are literals by design
+    "INP001",  # tests are collected with --import-mode=importlib, not as a package
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ty.rules]
+all = "error"
+
+[tool.ty.analysis]
+respect-type-ignore-comments = false
+strict-equality-semantics = true
+strict-generic-narrowing = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[tool.pytest.ini_options]
+addopts = ["--strict-markers", "--strict-config", "-ra", "-q", "--import-mode=importlib"]
+testpaths = ["tests"]
+xfail_strict = true
+filterwarnings = ["error"]
+markers = [
+    "reference: needs a live vanilla Reference Instance",
+    "candidate: needs a live Candidate Instance",
+]
