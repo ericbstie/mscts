@@ -2,7 +2,12 @@
 
 import zlib
 
-from mscts.codec.wire import Writer
+from mscts.codec.wire import Reader, WireError, Writer
+
+_SEGMENT = 0x7F
+_CONTINUE = 0x80
+_FRAME_LENGTH_MAX_BYTES = 3
+_FRAME_LENGTH_MAX_VALUE = 2_097_151
 
 
 def encode_frame(data: bytes, *, compression_threshold: int | None) -> bytes:
@@ -24,3 +29,81 @@ def encode_frame(data: bytes, *, compression_threshold: int | None) -> bytes:
     else:
         inner = Writer().var_int(0).to_bytes() + data
     return Writer().var_int(len(inner)).to_bytes() + inner
+
+
+def _try_read_frame_length(buffer: bytearray) -> tuple[int, int] | None:
+    """Try to read the frame-length VarInt prefix from the front of `buffer`.
+
+    Returns `(value, bytes_consumed)`, or None if `buffer` does not yet hold a
+    complete VarInt. Raises WireError if the VarInt is more than 3 bytes, or
+    decodes to a value over 2 097 151 — the limits a frame length must obey.
+    """
+    result = 0
+    for index in range(_FRAME_LENGTH_MAX_BYTES):
+        if index >= len(buffer):
+            return None
+        byte = buffer[index]
+        result |= (byte & _SEGMENT) << (7 * index)
+        if not byte & _CONTINUE:
+            if result > _FRAME_LENGTH_MAX_VALUE:
+                msg = f"frame length {result} exceeds max {_FRAME_LENGTH_MAX_VALUE}"
+                raise WireError(msg)
+            return result, index + 1
+    msg = "frame length VarInt longer than 3 bytes"
+    raise WireError(msg)
+
+
+class FrameDecoder:
+    """Reassembles complete frames from a byte stream, decompressing as needed.
+
+    `compression_threshold` is a plain attribute, settable at any time, since
+    a connection switches from uncompressed to compressed framing mid-stream
+    when `login_compression` arrives.
+    """
+
+    def __init__(self, *, compression_threshold: int | None = None) -> None:
+        """Start with an empty buffer and the given compression threshold."""
+        self._buffer = bytearray()
+        self.compression_threshold = compression_threshold
+
+    def feed(self, chunk: bytes) -> list[bytes]:
+        """Add `chunk` to the buffer and return every frame it completes.
+
+        Each returned item is one frame's `data`, decompressed if needed.
+        Bytes that do not yet form a complete frame are kept for the next call.
+        """
+        self._buffer.extend(chunk)
+        frames = []
+        while True:
+            prefix = _try_read_frame_length(self._buffer)
+            if prefix is None:
+                break
+            frame_length, prefix_length = prefix
+            end = prefix_length + frame_length
+            if end > len(self._buffer):
+                break
+            body = bytes(self._buffer[prefix_length:end])
+            del self._buffer[:end]
+            frames.append(self._decode_body(body))
+        return frames
+
+    def _decode_body(self, body: bytes) -> bytes:
+        if self.compression_threshold is None:
+            return body
+        reader = Reader(body)
+        data_length = reader.var_int()
+        payload = body[len(body) - reader.remaining :]
+        if data_length == 0:
+            return payload
+        try:
+            decompressed = zlib.decompress(payload)
+        except zlib.error as exc:
+            msg = "frame payload is not valid zlib data"
+            raise WireError(msg) from exc
+        if len(decompressed) != data_length:
+            msg = (
+                f"declared data-length {data_length} does not match "
+                f"decompressed length {len(decompressed)}"
+            )
+            raise WireError(msg)
+        return decompressed
