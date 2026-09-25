@@ -1,6 +1,9 @@
 """Primitive wire types of the Java Edition protocol."""
 
+import struct
 from typing import Self
+
+_USHORT_STRUCT = struct.Struct(">H")
 
 _SEGMENT = 0x7F
 _CONTINUE = 0x80
@@ -67,6 +70,15 @@ class Writer:
             raise WireError(msg)
         self.var_int(len(encoded))
         self._buffer.extend(encoded)
+        return self
+
+    def ushort(self, value: int) -> Self:
+        """Append an unsigned 16-bit integer, big-endian."""
+        try:
+            self._buffer.extend(_USHORT_STRUCT.pack(value))
+        except struct.error as exc:
+            msg = f"ushort {value!r} out of range"
+            raise WireError(msg) from exc
         return self
 
     def to_bytes(self) -> bytes:
@@ -138,3 +150,13 @@ class Reader:
             msg = f"string exceeds max length {max_length} UTF-16 code units"
             raise WireError(msg)
         return text
+
+    def ushort(self) -> int:
+        """Consume an unsigned 16-bit integer, big-endian."""
+        end = self._offset + _USHORT_STRUCT.size
+        if end > len(self._data):
+            msg = "ushort truncated"
+            raise WireError(msg)
+        (value,) = _USHORT_STRUCT.unpack(self._data[self._offset : end])
+        self._offset = end
+        return int(value)

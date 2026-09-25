@@ -157,3 +157,41 @@ def test_string_reader_raises_when_decoded_code_units_exceed_max_length() -> Non
     data = bytes([2]) + b"ab"
     with pytest.raises(WireError):
         Reader(data).string(max_length=1)
+
+
+# UShort: unsigned 16-bit, big-endian. Source: minecraft.wiki
+# "Java Edition protocol/Data types" ("All data sent over the network
+# (except for VarInt and VarLong) is big-endian").
+
+USHORT_SAMPLES = [
+    (0, "0000"),
+    (1, "0001"),
+    (256, "0100"),
+    (25565, "63dd"),
+    (65535, "ffff"),
+]
+
+
+@pytest.mark.parametrize(("value", "encoded"), USHORT_SAMPLES)
+def test_ushort_encodes_big_endian(value: int, encoded: str) -> None:
+    assert Writer().ushort(value).to_bytes() == bytes.fromhex(encoded)
+
+
+@pytest.mark.parametrize(("value", "encoded"), USHORT_SAMPLES)
+def test_ushort_decodes_big_endian(value: int, encoded: str) -> None:
+    assert Reader(bytes.fromhex(encoded)).ushort() == value
+
+
+def test_ushort_writer_raises_when_negative() -> None:
+    with pytest.raises(WireError):
+        Writer().ushort(-1)
+
+
+def test_ushort_writer_raises_when_out_of_range() -> None:
+    with pytest.raises(WireError):
+        Writer().ushort(65536)
+
+
+def test_ushort_reader_raises_on_truncated_input() -> None:
+    with pytest.raises(WireError):
+        Reader(bytes.fromhex("00")).ushort()
