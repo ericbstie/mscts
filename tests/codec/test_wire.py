@@ -1,3 +1,5 @@
+import uuid
+
 import pytest
 
 from mscts.codec.wire import Reader, WireError, Writer
@@ -249,3 +251,24 @@ def test_bool_reader_raises_on_invalid_byte() -> None:
 def test_bool_reader_raises_on_truncated_input() -> None:
     with pytest.raises(WireError):
         Reader(b"").bool_()
+
+
+# UUID: 128-bit, big-endian, i.e. `uuid.UUID.bytes`.
+
+NIL_UUID = uuid.UUID(int=0)
+SAMPLE_UUID = uuid.UUID("12345678-1234-5678-1234-567812345678")
+
+
+@pytest.mark.parametrize("value", [NIL_UUID, SAMPLE_UUID])
+def test_uuid_encodes_as_big_endian_bytes(value: uuid.UUID) -> None:
+    assert Writer().uuid(value).to_bytes() == value.bytes
+
+
+@pytest.mark.parametrize("value", [NIL_UUID, SAMPLE_UUID])
+def test_uuid_decodes_big_endian_bytes(value: uuid.UUID) -> None:
+    assert Reader(value.bytes).uuid() == value
+
+
+def test_uuid_reader_raises_on_truncated_input() -> None:
+    with pytest.raises(WireError):
+        Reader(SAMPLE_UUID.bytes[:-1]).uuid()

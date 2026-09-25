@@ -1,10 +1,12 @@
 """Primitive wire types of the Java Edition protocol."""
 
 import struct
+import uuid
 from typing import Self
 
 _USHORT_STRUCT = struct.Struct(">H")
 _LONG_STRUCT = struct.Struct(">q")
+_UUID_BYTE_LENGTH = 16
 
 _SEGMENT = 0x7F
 _CONTINUE = 0x80
@@ -94,6 +96,11 @@ class Writer:
     def bool_(self, *, value: bool) -> Self:
         """Append a Bool: 0x01 for true, 0x00 for false."""
         self._buffer.append(0x01 if value else 0x00)
+        return self
+
+    def uuid(self, value: uuid.UUID) -> Self:
+        """Append a UUID as its 128-bit big-endian byte form."""
+        self._buffer.extend(value.bytes)
         return self
 
     def to_bytes(self) -> bytes:
@@ -199,3 +206,13 @@ class Reader:
             return False
         msg = f"invalid bool byte {byte:#04x}"
         raise WireError(msg)
+
+    def uuid(self) -> uuid.UUID:
+        """Consume a UUID from its 128-bit big-endian byte form."""
+        end = self._offset + _UUID_BYTE_LENGTH
+        if end > len(self._data):
+            msg = "uuid truncated"
+            raise WireError(msg)
+        value = uuid.UUID(bytes=self._data[self._offset : end])
+        self._offset = end
+        return value
