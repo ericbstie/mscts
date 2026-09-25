@@ -8,7 +8,7 @@ from importlib import resources
 from typing import Self
 
 from mscts.codec.schema import Schema
-from mscts.codec.schemas import handshake
+from mscts.codec.schemas import handshake, status
 from mscts.codec.wire import Reader, WireError, Writer
 
 
@@ -67,6 +67,8 @@ type Schemas = Mapping[tuple[State, Direction], Mapping[str, Schema]]
 _SCHEMAS: Mapping[str, Schemas] = {
     "26.3": {
         (State.HANDSHAKE, Direction.SERVERBOUND): handshake.SERVERBOUND,
+        (State.STATUS, Direction.SERVERBOUND): status.SERVERBOUND,
+        (State.STATUS, Direction.CLIENTBOUND): status.CLIENTBOUND,
     },
 }
 """The schemas `Codec.load` attaches, by Minecraft version."""
