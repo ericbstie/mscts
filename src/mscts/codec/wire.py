@@ -21,7 +21,7 @@ _BYTES_PER_CODE_UNIT = 3
 
 
 class WireError(ValueError):
-    """Bytes that do not form a valid value of the expected wire type."""
+    """Bytes to read, or a value to write, that are not valid for the expected wire type."""
 
 
 def _utf16_length(text: str) -> int:
@@ -38,6 +38,9 @@ class Writer:
 
     def var_int(self, value: int) -> Self:
         """Append a signed 32-bit integer as a VarInt (two's complement, 7 bits per byte)."""
+        if not -_INT_SIGN <= value < _INT_SIGN:
+            msg = f"VarInt {value!r} out of range"
+            raise WireError(msg)
         remaining = value & _INT_MASK
         while True:
             segment = remaining & _SEGMENT
@@ -49,6 +52,9 @@ class Writer:
 
     def var_long(self, value: int) -> Self:
         """Append a signed 64-bit integer as a VarLong (two's complement, 7 bits per byte)."""
+        if not -_LONG_SIGN <= value < _LONG_SIGN:
+            msg = f"VarLong {value!r} out of range"
+            raise WireError(msg)
         remaining = value & _LONG_MASK
         while True:
             segment = remaining & _SEGMENT

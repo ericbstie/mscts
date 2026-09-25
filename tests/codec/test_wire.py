@@ -89,6 +89,20 @@ def test_var_long_raises_when_longer_than_ten_bytes() -> None:
         Reader(bytes.fromhex("80" * 10 + "00")).var_long()
 
 
+# A VarInt is a signed 32-bit integer and a VarLong a signed 64-bit one;
+# anything outside must not be silently wrapped into range.
+@pytest.mark.parametrize("value", [2**31, -(2**31) - 1])
+def test_var_int_writer_raises_when_out_of_range(value: int) -> None:
+    with pytest.raises(WireError, match="out of range"):
+        Writer().var_int(value)
+
+
+@pytest.mark.parametrize("value", [2**63, -(2**63) - 1])
+def test_var_long_writer_raises_when_out_of_range(value: int) -> None:
+    with pytest.raises(WireError, match="out of range"):
+        Writer().var_long(value)
+
+
 # String: VarInt byte-length prefix ‖ UTF-8 bytes. The length limit `n` counts
 # UTF-16 code units (a scalar value above U+FFFF counts as two), and the byte
 # length must be <= n * 3. Source: minecraft.wiki
