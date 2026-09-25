@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from types import MappingProxyType
@@ -39,6 +40,34 @@ def alive(pid: int) -> bool:
     return True
 
 
+def _state(pid: int) -> str | None:
+    """The process state from /proc (R, S, Z, ...), or None if there is no such process."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except FileNotFoundError:
+        return None
+    return stat.rpartition(")")[2].split()[0]
+
+
+def runs(pid: int) -> bool:
+    """Whether `pid` is still running: it exists and has not exited (is no zombie)."""
+    return _state(pid) not in {None, "Z", "X"}
+
+
+async def dies(pid: int, within: float = 1.0) -> bool:
+    """Whether `pid` stops running within `within` seconds.
+
+    For a process that is not our child: it may linger as a zombie until PID 1 (lazy in
+    this container) reaps it, and a killed process takes a moment to exit.
+    """
+    deadline = time.monotonic() + within
+    while runs(pid):
+        if time.monotonic() > deadline:
+            return False
+        await asyncio.sleep(0.01)
+    return True
+
+
 @pytest.fixture
 def tcp_probe() -> Probe:
     return accepts_tcp
@@ -47,6 +76,16 @@ def tcp_probe() -> Probe:
 @pytest.fixture
 def is_alive() -> Callable[[int], bool]:
     return alive
+
+
+@pytest.fixture
+def is_running() -> Callable[[int], bool]:
+    return runs
+
+
+@pytest.fixture
+def stops_running() -> Callable[[int], Awaitable[bool]]:
+    return dies
 
 
 @pytest.fixture

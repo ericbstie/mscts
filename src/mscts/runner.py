@@ -138,17 +138,25 @@ async def running(
 
 
 async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_timeout: float) -> int:
-    """Stop the process if it still runs, reap it, and return its exit code."""
+    """Stop the process if it still runs, reap it, and return its exit code.
+
+    Then SIGKILL whatever is left of its process group, so none of its children outlives
+    it. That cannot hit an unrelated process: while any member is left, the kernel keeps
+    the group id allocated, and once none is, the id is only reused after the pid space
+    wraps around, which cannot happen between the reap and the kill.
+    """
     if process.returncode is not None:
-        return process.returncode
-    how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
-    exit_code = await process.wait()  # at once: it has exited
-    graceful = how == ("stdin" if plan.stop_stdin is not None else "SIGTERM")
-    _log.log(
-        logging.INFO if graceful else logging.WARNING,
-        "%s (pid %d) stopped by %s with exit code %d",
-        *(plan.argv[0], process.pid, how, exit_code),
-    )
+        exit_code = process.returncode
+    else:
+        how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
+        exit_code = await process.wait()  # at once: it has exited
+        graceful = how == ("stdin" if plan.stop_stdin is not None else "SIGTERM")
+        _log.log(
+            logging.INFO if graceful else logging.WARNING,
+            "%s (pid %d) stopped by %s with exit code %d",
+            *(plan.argv[0], process.pid, how, exit_code),
+        )
+    _signal_group(process, signal.SIGKILL)
     return exit_code
 
 

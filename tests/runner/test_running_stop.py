@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -84,3 +85,27 @@ async def test_the_stop_escalates_to_sigterm_then_sigkill_of_the_process_group(
     console = instance.log_path.read_text().splitlines()
     assert ("ignoring stop" in console) == ("--ignore-stop" in case.flags)
     assert ("ignoring SIGTERM" in console) == ("--ignore-sigterm" in case.flags)  # got SIGTERM
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "stop_stdin",
+    [None, b"stop\n"],
+    ids=["sigterm-reaches-the-child", "the-child-outlives-a-graceful-exit"],
+)
+async def test_no_process_of_the_instance_s_group_outlives_the_stop(
+    fake_plan: FakePlan,
+    tcp_probe: Probe,
+    is_running: Callable[[int], bool],
+    stops_running: Callable[[int], Awaitable[bool]],
+    stop_stdin: bytes | None,
+) -> None:
+    plan = fake_plan("--child", stop_stdin=stop_stdin)
+    async with running(
+        plan, ready=tcp_probe, ready_timeout=5, stop_timeout=STOP_TIMEOUT
+    ) as instance:
+        console = instance.log_path.read_text().splitlines()
+        (child,) = (int(line.removeprefix("child=")) for line in console if "child=" in line)
+        assert is_running(child)
+        assert os.getpgid(child) == instance.pid
+    assert await stops_running(child)
