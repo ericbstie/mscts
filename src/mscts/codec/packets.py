@@ -7,7 +7,8 @@ from enum import StrEnum
 from importlib import resources
 from typing import Self
 
-from mscts.codec.wire import Reader, WireError
+from mscts.codec.schema import Schema
+from mscts.codec.wire import Reader, WireError, Writer
 
 
 class State(StrEnum):
@@ -59,12 +60,15 @@ class UnknownPacketError(CodecError):
 type PacketIds = Mapping[tuple[State, Direction], Mapping[str, int]]
 """Packet ids by name, for each (state, direction) the Target defines."""
 
+type Schemas = Mapping[tuple[State, Direction], Mapping[str, Schema]]
+"""Schemas by packet name, for each (state, direction) that has any."""
+
 
 class Codec:
     """Packet names, ids and schemas of one Target."""
 
-    def __init__(self, packet_ids: PacketIds) -> None:
-        """Index `packet_ids` both ways.
+    def __init__(self, packet_ids: PacketIds, schemas: Schemas | None = None) -> None:
+        """Index `packet_ids` both ways, and attach `schemas` to their packets.
 
         Raises:
             CodecError: Two names share an id in the same state and direction.
@@ -78,6 +82,11 @@ class Codec:
                     msg = f"{state} {direction}: {other} and {name} share id {packet_id:#04x}"
                     raise CodecError(msg)
                 self._ids[state, direction, name] = packet_id
+        self._schemas = {
+            (state, direction, name): schema
+            for (state, direction), by_name in (schemas or {}).items()
+            for name, schema in by_name.items()
+        }
 
     @classmethod
     def load(cls, minecraft_version: str) -> Self:
@@ -121,12 +130,33 @@ class Codec:
             msg = f"no packet {state} {direction} {packet_id:#04x}"
             raise UnknownPacketError(msg) from None
 
+    def encode(
+        self, state: State, direction: Direction, name: str, fields: Mapping[str, object]
+    ) -> bytes:
+        """Encode packet `name` with `fields` as `VarInt packet id ‖ payload`.
+
+        Raises:
+            UnknownPacketError: The Target has no such packet there.
+            CodecError: `fields` do not fit the packet's schema.
+        """
+        writer = Writer().var_int(self.packet_id(state, direction, name))
+        schema = self._schemas[state, direction, name]
+        try:
+            schema.write(writer, fields)
+        except WireError as exc:
+            msg = f"{state} {direction} {name}: {exc}"
+            raise CodecError(msg) from exc
+        return writer.to_bytes()
+
     def decode(self, state: State, direction: Direction, data: bytes) -> Packet:
         """Decode one frame's data, `VarInt packet id ‖ payload`, seen in `state`.
 
+        The Packet has decoded fields if the packet has a schema, else None.
+
         Raises:
             UnknownPacketError: The Target has no packet with that id there.
-            CodecError: `data` does not start with a complete packet id.
+            CodecError: `data` does not start with a complete packet id, or the
+                payload does not fit the packet's schema.
         """
         reader = Reader(data)
         try:
@@ -134,13 +164,23 @@ class Codec:
         except WireError as exc:
             msg = f"{state} {direction} packet id: {exc}"
             raise CodecError(msg) from exc
+        name = self.packet_name(state, direction, packet_id)
+        payload = data[len(data) - reader.remaining :]
+        fields = None
+        schema = self._schemas.get((state, direction, name))
+        if schema is not None:
+            try:
+                fields = schema.read(reader)
+            except WireError as exc:
+                msg = f"{state} {direction} {name}: {exc}"
+                raise CodecError(msg) from exc
         return Packet(
             state=state,
             direction=direction,
-            name=self.packet_name(state, direction, packet_id),
+            name=name,
             packet_id=packet_id,
-            payload=data[len(data) - reader.remaining :],
-            fields=None,
+            payload=payload,
+            fields=fields,
         )
 
 
