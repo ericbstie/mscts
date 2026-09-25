@@ -1,6 +1,8 @@
 import asyncio
+import dataclasses
 import time
 from collections.abc import Awaitable, Callable
+from pathlib import Path
 
 import pytest
 
@@ -26,6 +28,24 @@ async def test_a_process_that_exits_before_it_is_ready_raises_its_exit_code_and_
     assert error.log_tail == tuple(f"line {number}" for number in range(11, 51))  # last 40
     assert "exited with code 3 before it was ready" in str(error)
     assert str(error).endswith("line 49\nline 50")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing", ["argv0", "cwd"])
+async def test_a_plan_that_cannot_be_launched_raises_runner_error_without_an_exit_code(
+    fake_plan: FakePlan, tcp_probe: Probe, tmp_path: Path, missing: str
+) -> None:
+    plan = fake_plan()
+    nowhere = tmp_path / "nowhere"
+    if missing == "argv0":
+        plan = dataclasses.replace(plan, argv=(str(nowhere), *plan.argv[1:]))
+    else:
+        plan = dataclasses.replace(plan, cwd=nowhere)
+    with pytest.raises(RunnerError, match="could not launch") as caught:
+        async with running(plan, ready=tcp_probe, ready_timeout=5):
+            pytest.fail("the Instance was never ready")
+    assert caught.value.exit_code is None
+    assert isinstance(caught.value.__cause__, FileNotFoundError)
 
 
 def _pid(error: RunnerError) -> int:

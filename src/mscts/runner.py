@@ -28,9 +28,10 @@ _LOG_TAIL_BYTES = 64 * 1024  # read at most this much, however big the log grew
 
 
 class RunnerError(RuntimeError):
-    """An Instance could not be started: it exited before it was ready, or never was.
+    """An Instance could not be launched, exited before it was ready, or was not ready in time.
 
-    `exit_code` follows asyncio: negative means killed by that signal.
+    `exit_code` is None if nothing was launched. It follows asyncio: negative means killed
+    by that signal.
     """
 
     def __init__(
@@ -88,17 +89,21 @@ async def running(
     """
     log_path = plan.cwd / CONSOLE_LOG
     deadline = asyncio.get_running_loop().time() + ready_timeout
-    with log_path.open("wb") as console:
-        launched_ns = time.monotonic_ns()
-        process = await asyncio.create_subprocess_exec(
-            *plan.argv,
-            cwd=plan.cwd,
-            env=dict(plan.env),
-            stdin=asyncio.subprocess.PIPE,
-            stdout=console,
-            stderr=asyncio.subprocess.STDOUT,
-            start_new_session=True,
-        )
+    try:
+        with log_path.open("wb") as console:
+            launched_ns = time.monotonic_ns()
+            process = await asyncio.create_subprocess_exec(
+                *plan.argv,
+                cwd=plan.cwd,
+                env=dict(plan.env),
+                stdin=asyncio.subprocess.PIPE,
+                stdout=console,
+                stderr=asyncio.subprocess.STDOUT,
+                start_new_session=True,
+            )
+    except OSError as error:
+        reason = f"could not launch {plan.argv[0]}: {error}"
+        raise _failure(reason, None, log_path) from error
     try:
         readiness = asyncio.timeout_at(deadline)
         try:
