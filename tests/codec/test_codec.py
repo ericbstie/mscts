@@ -87,3 +87,8 @@ def test_packet_name_of_negative_id_raises() -> None:
 
 def test_unknown_packet_error_is_a_codec_error() -> None:
     assert issubclass(UnknownPacketError, CodecError)
+
+
+def test_load_of_a_version_without_packet_data_raises() -> None:
+    with pytest.raises(CodecError, match=r"no packet data for Minecraft 0\.0"):
+        Codec.load("0.0")

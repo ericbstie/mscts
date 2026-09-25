@@ -75,11 +75,20 @@ class Codec:
 
     @classmethod
     def load(cls, minecraft_version: str) -> Self:
-        """Load the Codec for a Minecraft version from `codec/data/<minecraft_version>/`."""
+        """Load the Codec for a Minecraft version from `codec/data/<minecraft_version>/`.
+
+        Raises:
+            CodecError: There is no packet data for that version.
+        """
         resource = resources.files("mscts.codec").joinpath(
             "data", minecraft_version, "packets.json"
         )
-        report: object = json.loads(resource.read_text(encoding="utf-8"))
+        try:
+            text = resource.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            msg = f"no packet data for Minecraft {minecraft_version}"
+            raise CodecError(msg) from None
+        report: object = json.loads(text)
         return cls(_parse_packet_report(report))
 
     def packet_id(self, state: State, direction: Direction, name: str) -> int:
