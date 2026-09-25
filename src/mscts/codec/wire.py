@@ -217,12 +217,16 @@ class Reader:
         self._offset = end
         return value
 
+    @property
+    def remaining(self) -> int:
+        """The number of bytes not yet consumed."""
+        return len(self._data) - self._offset
+
     def expect_end(self) -> None:
         """Raise WireError unless every byte has been consumed.
 
         Lets a strict decoder assert it consumed its payload exactly.
         """
-        remaining = len(self._data) - self._offset
-        if remaining:
-            msg = f"{remaining} unconsumed byte(s) remain"
+        if self.remaining:
+            msg = f"{self.remaining} unconsumed byte(s) remain"
             raise WireError(msg)

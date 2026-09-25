@@ -293,3 +293,22 @@ def test_expect_end_raises_when_bytes_remain() -> None:
 
 def test_expect_end_passes_on_empty_reader() -> None:
     Reader(b"").expect_end()  # must not raise
+
+
+# Reader.remaining: the count of unconsumed bytes.
+
+
+def test_remaining_is_full_length_before_reading() -> None:
+    assert Reader(bytes([1, 2, 3])).remaining == 3
+
+
+def test_remaining_shrinks_as_values_are_read() -> None:
+    reader = Reader(bytes([1, 2, 3]))
+    reader.var_int()
+    assert reader.remaining == 2
+
+
+def test_remaining_is_zero_when_fully_consumed() -> None:
+    reader = Reader(bytes([1]))
+    reader.var_int()
+    assert reader.remaining == 0
