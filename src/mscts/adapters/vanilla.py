@@ -1,6 +1,9 @@
 """The Reference Adapter: vanilla Minecraft server for the Target."""
 
+import hashlib
+import json
 import os
+import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
@@ -17,6 +20,8 @@ JAR = "server.jar"
 # A fixed max heap, so the Reference's memory (and GC timing) does not depend on the
 # host: the JVM default is a quarter of physical RAM.
 HEAP = "-Xmx1G"
+# ops.json level for ServerSpec.operators: all commands, as op-permission-level.
+OPERATOR_LEVEL = 4
 
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
 # the ServerSpec says. They are applied last, so nothing overrides them. Offline mode
@@ -185,6 +190,34 @@ def java_properties(entries: Mapping[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def offline_uuid(name: str) -> uuid.UUID:
+    """The UUID vanilla gives player `name` in offline mode.
+
+    Java's `UUID.nameUUIDFromBytes(("OfflinePlayer:" + name).getBytes(UTF_8))`: an MD5,
+    version 3 UUID of the exact, case-sensitive name.
+    """
+    digest = hashlib.md5(f"OfflinePlayer:{name}".encode(), usedforsecurity=False).digest()
+    return uuid.UUID(bytes=digest, version=3)
+
+
+def ops_json(operators: tuple[str, ...]) -> str:
+    """Vanilla's ops.json for `operators`, formatted exactly as vanilla writes it.
+
+    Written directly because the console `op` command, with Mojang's services
+    unreachable, ops the lower-cased name, whose UUID no Bot logs in with.
+    """
+    entries = [
+        {
+            "uuid": str(offline_uuid(name)),
+            "name": name,
+            "level": OPERATOR_LEVEL,
+            "bypassesPlayerLimit": False,
+        }
+        for name in operators
+    ]
+    return json.dumps(entries, indent=2)
+
+
 class VanillaAdapter:
     """Provisions the vanilla server jar and prepares it for a ServerSpec."""
 
@@ -197,6 +230,7 @@ class VanillaAdapter:
         (workdir / "server.properties").write_text(
             java_properties(server_properties(spec)), encoding="ascii"
         )
+        (workdir / "ops.json").write_text(ops_json(spec.operators), encoding="utf-8")
         return LaunchPlan(
             argv=("java", HEAP, "-jar", str(installation.root.absolute() / JAR), "nogui"),
             cwd=workdir,
