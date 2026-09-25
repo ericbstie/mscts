@@ -9,15 +9,18 @@ Milestone **M0 (Harness)** is done. **M1 (Talk to vanilla)** has started:
 VarInt encode/decode is green. Work now runs under the tech-lead/worker
 model (`docs/PROCESS.md`).
 
-Done (batch 1):
+Done:
 - **A** (sonnet): `codec` wire types and framing.
 - **B** (opus): `Target`, `ServerSpec`, `Endpoint`, the adapter base
   types, and a complete `VanillaAdapter` (golden-file `server.properties`,
   offline-UUID `ops.json`, hash-verified provision, reference-tier test).
 
+- **C** (opus): `Codec` (`packets.json` 26.3, name ↔ id, strict schema
+  mechanism, handshake/status schemas), plus the lead's `Codec.for_target`.
+
 In flight (batch 2):
-- **C** (opus): `Codec` (`packets.json` 26.3, name ↔ id, schema
-  mechanism, handshake/status schemas).
+- **F** (opus): `Transcript`/`Event`/`Mark`, `Connection` (framing, State,
+  recording), `Bot.status`/`ping`, and `status_probe`, all hermetic.
 - **D** (opus): `runner.running` (injected readiness probe, stop
   escalation, cleanup on cancel).
 - **E** (opus): vanilla hardening (no outbound network, absolute
@@ -27,21 +30,19 @@ In flight (batch 2):
 
 Take the first item. Split it if it is more than one failing test.
 
-1. `codec`: a packets.json regen script built on `VanillaAdapter.provision`,
-   plus `Codec.for_target(TARGET)` (after C lands; sonnet).
-2. `net` + `bot`: `Connection` (framing, compression switch, State
-   transitions, Transcript hook) and `Bot.status` against the live
-   Reference returning protocol 777.
-3. A status-ping readiness probe wired into `runner.running` (after C
-   and D).
-4. `adapter/pumpkin`: provision nightly (record sha256 + version), and a
+1. `codec`: a packets.json regen script built on `VanillaAdapter.provision`
+   that diffs against the committed copy (after E lands; sonnet).
+2. Reference tier: the runner plus `status_probe` launch vanilla, and
+   `Bot.status`/`ping` decode strictly against it, verifying the
+   handshake/status layouts per ADR-0003 (after D and F).
+3. `adapter/pumpkin`: provision nightly (record sha256 + version), and a
    complete `pumpkin.toml` enforcing the invariants (offline,
    `encryption = false`, Bedrock off, telemetry off, no favicon, flat
    world if supported).
-5. Determinism check: join vanilla twice with the same seed and compare
+4. Determinism check: join vanilla twice with the same seed and compare
    spawn and join order, before any M4 Masks (from worker B's
    retrospective).
-6. Then **M2** in `docs/PLAN.md`.
+5. Then **M2** in `docs/PLAN.md`.
 
 ## Log
 
