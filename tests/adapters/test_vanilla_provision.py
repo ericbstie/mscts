@@ -95,6 +95,22 @@ def test_provision_downloads_the_jar_into_the_cache(tmp_path: Path) -> None:
     assert mojang.fetched == [MANIFEST_URL, VERSION_URL, JAR_URL]
 
 
+def test_provision_rejects_a_download_whose_sha1_differs(tmp_path: Path) -> None:
+    files = serve()
+    tampered = bytearray(files[JAR_URL])
+    tampered[-1] ^= 0xFF  # same size, different bytes from those the published sha1 names
+    files[JAR_URL] = bytes(tampered)
+    with pytest.raises(ProvisionError, match="sha1"):
+        VanillaAdapter(fetch=FakeMojang(files)).provision(TARGET, tmp_path)
+    assert not (tmp_path / "vanilla/26.3/server.jar").exists()
+
+
+def test_provision_rejects_a_download_whose_size_differs(tmp_path: Path) -> None:
+    with pytest.raises(ProvisionError, match="size"):
+        VanillaAdapter(fetch=FakeMojang(serve(size=12))).provision(TARGET, tmp_path)
+    assert not (tmp_path / "vanilla/26.3/server.jar").exists()
+
+
 def test_installation_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     installation = VanillaAdapter(fetch=FakeMojang(serve())).provision(TARGET, Path("cache"))

@@ -65,6 +65,21 @@ def https_get(url: str) -> bytes:
 type Fetch = Callable[[str], bytes]
 
 
+def _sha1(data: bytes) -> str:
+    # Mojang publishes SHA-1; it is an integrity check here, not a security boundary.
+    return hashlib.sha1(data, usedforsecurity=False).hexdigest()
+
+
+def _verify(data: bytes, *, sha1: str, size: int | None = None, what: str) -> None:
+    """Raise ProvisionError unless `data` has the published sha1 (and size)."""
+    if size is not None and len(data) != size:
+        msg = f"{what}: size {len(data)} does not match the published {size}"
+        raise ProvisionError(msg)
+    if _sha1(data) != sha1:
+        msg = f"{what}: sha1 {_sha1(data)} does not match the published {sha1}"
+        raise ProvisionError(msg)
+
+
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
 # the ServerSpec says. They are applied last, so nothing overrides them. Offline mode
 # also means no encryption request, and vanilla has no server telemetry to turn off.
@@ -275,8 +290,10 @@ class VanillaAdapter:
         entry = next(v for v in manifest["versions"] if v["id"] == target.minecraft_version)
         server = json.loads(self._fetch(entry["url"]))["downloads"]["server"]
         root = cache_dir.absolute() / self.name / target.minecraft_version
+        jar = self._fetch(server["url"])
+        _verify(jar, sha1=server["sha1"], size=server["size"], what=server["url"])
         root.mkdir(parents=True, exist_ok=True)
-        (root / JAR).write_bytes(self._fetch(server["url"]))
+        (root / JAR).write_bytes(jar)
         return Installation(adapter=self.name, target=target, root=root)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
