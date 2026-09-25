@@ -1,18 +1,33 @@
 # mscts
 
-Minecraft Server Compliancy Test Suite — compares and times custom Minecraft
-Server implementations against a vanilla Minecraft Server.
+Minecraft Server Compliancy Test Suite. It runs the same scripted client
+behaviour against vanilla (the Reference) and a custom server (a
+Candidate), diffs what comes back over the wire, and times both.
+Server-agnostic by design: see `docs/adr/0001-black-box-differential-testing.md`.
 
-## Agent skills
+## Start here
 
-### Issue tracker
+- `docs/PROGRESS.md`: where things stand, and the **Next** queue.
+- `docs/PLAN.md`: goals, the exact interfaces, tiers and milestones.
+- `CONTEXT.md`: the vocabulary. Use its terms exactly.
+- `docs/adr/`: decisions. Flag any change that contradicts one.
+- `docs/research/`: verified protocol and server facts.
 
-Issues live as GitHub issues in `ericbstie/mscts`, driven via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+## How to work
 
-### Triage labels
+Use the `red-green` skill for every change: one failing test, the minimum
+code, `mise run check`, one commit, repeat. Use the `protocol-research`
+skill before encoding any protocol or server fact.
 
-The five canonical triage roles, using their default label strings. See `docs/agents/triage-labels.md`.
+Work on `main`. Never commit red: every commit passes `mise run check`.
 
-### Domain docs
+## Commands
 
-Single-context: `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+```sh
+mise install && mise run sync   # toolchain + deps (the SessionStart hook does this on the web)
+mise run check                  # lint, format check, ty, bandit, unit tier (must be green to commit)
+mise run fix                    # ruff format + autofix
+mise run test:reference         # tests against a live vanilla 26.3 Instance (Java 25)
+mise run test:candidate         # tests against a live Candidate Instance
+uv run pytest path::test_name   # a single test
+```
