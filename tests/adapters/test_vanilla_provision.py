@@ -146,6 +146,19 @@ def test_provision_rejects_a_version_json_whose_sha1_differs(tmp_path: Path) -> 
     assert JAR_URL not in mojang.fetched
 
 
+def test_provision_rejects_a_version_that_needs_another_java(tmp_path: Path) -> None:
+    mojang = FakeMojang(serve(java_major=21))
+    with pytest.raises(ProvisionError, match="Java 21"):
+        VanillaAdapter(fetch=mojang).provision(TARGET, tmp_path)
+    assert JAR_URL not in mojang.fetched
+
+
+def test_provision_rejects_a_jar_that_speaks_another_protocol(tmp_path: Path) -> None:
+    files = serve(jar=fake_jar(protocol_version=778))
+    with pytest.raises(ProvisionError, match="protocol 778"):
+        VanillaAdapter(fetch=FakeMojang(files)).provision(TARGET, tmp_path)
+
+
 def test_installation_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     installation = VanillaAdapter(fetch=FakeMojang(serve())).provision(TARGET, Path("cache"))

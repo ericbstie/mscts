@@ -8,7 +8,9 @@ import ssl
 import tempfile
 import urllib.request
 import uuid
+import zipfile
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
@@ -79,6 +81,21 @@ def _verify(data: bytes, *, sha1: str, size: int | None = None, what: str) -> No
     if _sha1(data) != sha1:
         msg = f"{what}: sha1 {_sha1(data)} does not match the published {sha1}"
         raise ProvisionError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _Download:
+    """A download as the version JSON publishes it."""
+
+    url: str
+    sha1: str
+    size: int
+
+
+def _protocol_version(jar: Path) -> int:
+    """The protocol_version from the version.json inside a server jar."""
+    with zipfile.ZipFile(jar) as archive:
+        return int(json.loads(archive.read("version.json"))["protocol_version"])
 
 
 def _replace_atomically(path: Path, data: bytes) -> None:
@@ -294,7 +311,26 @@ class VanillaAdapter:
         self._fetch = fetch
 
     def provision(self, target: Target, cache_dir: Path) -> Installation:
-        """Download the server jar for `target` into `cache_dir/vanilla/<version>/`."""
+        """Download the server jar for `target` into `cache_dir/vanilla/<version>/`.
+
+        Idempotent: a cached jar whose sha1 matches the manifest is not downloaded again.
+        """
+        server = self._server_download(target)
+        root = cache_dir.absolute() / self.name / target.minecraft_version
+        jar = root / JAR
+        if not (jar.is_file() and _sha1(jar.read_bytes()) == server.sha1):
+            data = self._fetch(server.url)
+            _verify(data, sha1=server.sha1, size=server.size, what=server.url)
+            root.mkdir(parents=True, exist_ok=True)
+            _replace_atomically(jar, data)
+        protocol = _protocol_version(jar)
+        if protocol != target.protocol_version:
+            msg = f"{jar} speaks protocol {protocol}, but the Target is {target.protocol_version}"
+            raise ProvisionError(msg)
+        return Installation(adapter=self.name, target=target, root=root)
+
+    def _server_download(self, target: Target) -> _Download:
+        """The verified manifest -> version JSON -> `downloads.server` chain for `target`."""
         manifest = json.loads(self._fetch(MANIFEST_URL))
         entries = [v for v in manifest["versions"] if v["id"] == target.minecraft_version]
         if len(entries) != 1:
@@ -302,15 +338,16 @@ class VanillaAdapter:
             raise ProvisionError(msg)
         document = self._fetch(entries[0]["url"])
         _verify(document, sha1=entries[0]["sha1"], what=entries[0]["url"])
-        server = json.loads(document)["downloads"]["server"]
-        root = cache_dir.absolute() / self.name / target.minecraft_version
-        cached = root / JAR
-        if not (cached.is_file() and _sha1(cached.read_bytes()) == server["sha1"]):
-            jar = self._fetch(server["url"])
-            _verify(jar, sha1=server["sha1"], size=server["size"], what=server["url"])
-            root.mkdir(parents=True, exist_ok=True)
-            _replace_atomically(cached, jar)
-        return Installation(adapter=self.name, target=target, root=root)
+        version = json.loads(document)
+        java = version["javaVersion"]["majorVersion"]
+        if java != target.java_major:
+            msg = (
+                f"{target.minecraft_version} needs Java {java}, "
+                f"but the Target says Java {target.java_major}"
+            )
+            raise ProvisionError(msg)
+        server = version["downloads"]["server"]
+        return _Download(url=str(server["url"]), sha1=str(server["sha1"]), size=int(server["size"]))
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete vanilla config for `spec` into `workdir`."""
