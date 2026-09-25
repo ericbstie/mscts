@@ -108,7 +108,9 @@ def _replace_atomically(path: Path, data: bytes) -> None:
 
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
 # the ServerSpec says. They are applied last, so nothing overrides them. Offline mode
-# also means no encryption request, and vanilla has no server telemetry to turn off.
+# also means no encryption request. Vanilla has no telemetry setting, but it still calls
+# Mojang's services in offline mode (docs/research/2026-09-25-domain.md); nothing here
+# cuts that off yet.
 INVARIANTS: Mapping[str, str] = MappingProxyType(
     {
         "online-mode": "false",  # offline login; vanilla then sends no encryption request
@@ -199,7 +201,8 @@ _DIFFICULTIES: Mapping[Difficulty, str] = MappingProxyType(
 )
 _WORLDS: Mapping[WorldPreset, Mapping[str, str]] = MappingProxyType(
     {
-        # Vanilla's classic flat layers (bedrock, 2 dirt, grass); spawn is at y = -60.
+        # Vanilla's own default generator-settings. For flat it logs "No key layers in
+        # MapLike[{}]" and uses the classic flat preset (bedrock, 2 dirt, grass): y = -60.
         WorldPreset.FLAT: {"level-type": "minecraft:flat", "generator-settings": "{}"},
     }
 )
