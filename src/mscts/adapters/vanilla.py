@@ -1,6 +1,22 @@
 """The Reference Adapter: vanilla Minecraft server for the Target."""
 
+import os
 from collections.abc import Mapping
+from pathlib import Path
+from types import MappingProxyType
+
+from mscts.adapters.base import Installation, LaunchPlan
+from mscts.net import Endpoint
+from mscts.spec import ServerSpec
+
+# The server binds loopback only: in offline mode anyone who can reach the port can log
+# in under an operator's name. The Endpoint uses the same address, so it is exactly
+# what the server bound (IPv4; never a `localhost` that might resolve to ::1).
+HOST = "127.0.0.1"
+JAR = "server.jar"
+# A fixed max heap, so the Reference's memory (and GC timing) does not depend on the
+# host: the JVM default is a quarter of physical RAM.
+HEAP = "-Xmx1G"
 
 _PRINTABLE_ASCII = range(0x20, 0x7F)
 _ESCAPES = {
@@ -50,3 +66,24 @@ def java_properties(entries: Mapping[str, str]) -> str:
         for key, value in sorted(entries.items())
     )
     return "\n".join(lines) + "\n"
+
+
+class VanillaAdapter:
+    """Provisions the vanilla server jar and prepares it for a ServerSpec."""
+
+    name = "vanilla"
+
+    def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
+        """Write the complete vanilla config for `spec` into `workdir`."""
+        workdir.mkdir(parents=True, exist_ok=True)
+        (workdir / "eula.txt").write_bytes(b"eula=true\n")
+        return LaunchPlan(
+            argv=("java", HEAP, "-jar", str(installation.root.absolute() / JAR), "nogui"),
+            cwd=workdir,
+            # Only PATH, so `java` resolves to the Target's JVM that mise put on it.
+            # Nothing else leaks from the harness: no JAVA_TOOL_OPTIONS (here it injects
+            # proxy settings), no locale, no JAVA_HOME.
+            env=MappingProxyType({"PATH": os.environ.get("PATH", os.defpath)}),
+            endpoint=Endpoint(host=HOST, port=spec.port),
+            stop_stdin=b"stop\n",
+        )
