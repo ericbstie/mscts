@@ -10,6 +10,10 @@ from mscts.spec import ServerSpec
 from mscts.target import Target
 
 
+class ProvisionError(RuntimeError):
+    """An Installation could not be obtained or failed verification."""
+
+
 @dataclass(frozen=True, slots=True)
 class Installation:
     """The binaries an Adapter has provisioned for a Target, cached on disk."""

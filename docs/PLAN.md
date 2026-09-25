@@ -155,6 +155,8 @@ class LaunchPlan:
     endpoint: Endpoint
     stop_stdin: bytes | None        # graceful stop via stdin (b"stop\n"); None → SIGTERM
 
+class ProvisionError(RuntimeError): ...   # provision could not obtain or verify an Installation
+
 class Adapter(Protocol):
     name: str
     def provision(self, target: Target, cache_dir: Path) -> Installation: ...    # idempotent, hash-verified

@@ -1,14 +1,18 @@
 """The Reference Adapter: vanilla Minecraft server for the Target."""
 
 import hashlib
+import http.client
 import json
 import os
+import ssl
+import urllib.request
 import uuid
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
+from urllib.parse import urlsplit
 
-from mscts.adapters.base import Installation, LaunchPlan
+from mscts.adapters.base import Installation, LaunchPlan, ProvisionError
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 
@@ -22,6 +26,38 @@ JAR = "server.jar"
 HEAP = "-Xmx1G"
 # ops.json level for ServerSpec.operators: all commands, as op-permission-level.
 OPERATOR_LEVEL = 4
+_FETCH_TIMEOUT_S = 60
+
+
+def _https_only_opener() -> urllib.request.OpenerDirector:
+    """An opener that can speak nothing but HTTPS: no file:, ftp:, data: or http: handler.
+
+    It honours HTTPS_PROXY and follows no redirects (a 3xx raises), so no URL other than
+    the one `https_get` checked is ever opened.
+    """
+    opener = urllib.request.OpenerDirector()
+    for handler in (
+        urllib.request.ProxyHandler(),
+        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
+        urllib.request.HTTPDefaultErrorHandler(),
+        urllib.request.HTTPErrorProcessor(),
+        urllib.request.UnknownHandler(),
+    ):
+        opener.add_handler(handler)
+    return opener
+
+
+def https_get(url: str) -> bytes:
+    """Return the body of an HTTPS GET of `url`. Any other scheme is refused up front."""
+    if urlsplit(url).scheme != "https":
+        msg = f"refusing to fetch a non-HTTPS URL: {url}"
+        raise ProvisionError(msg)
+    with _https_only_opener().open(url, timeout=_FETCH_TIMEOUT_S) as response:
+        if not isinstance(response, http.client.HTTPResponse):  # urllib types it as Any
+            msg = f"unexpected response {type(response).__name__} from {url}"
+            raise TypeError(msg)
+        return response.read()
+
 
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
 # the ServerSpec says. They are applied last, so nothing overrides them. Offline mode
