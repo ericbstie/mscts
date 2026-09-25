@@ -10,6 +10,7 @@ dependencies = []
 dev = [
     "bandit>=1.9.4",
     "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
     "ruff>=0.16.9",
     "ty>=0.0.84",
 ]
@@ -60,6 +61,10 @@ addopts = ["--strict-markers", "--strict-config", "-ra", "-q", "--import-mode=im
 testpaths = ["tests"]
 xfail_strict = true
 filterwarnings = ["error"]
+# Async tests opt in with @pytest.mark.asyncio; every test gets its own event loop.
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
 markers = [
     "reference: needs a live vanilla Reference Instance",
     "candidate: needs a live Candidate Instance",
