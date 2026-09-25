@@ -17,6 +17,12 @@ from typing import Protocol
 
 from mscts.codec.wire import Reader, WireError, Writer
 
+_STRING_MAX_LENGTH = 32767
+
+
+class SchemaError(ValueError):
+    """A schema declaration that can never be valid, raised when it is defined."""
+
 
 class WireType[T](Protocol):
     """How one field's value is read from and written to the wire."""
@@ -85,10 +91,20 @@ class String:
     """String (n): UTF-8 behind a VarInt byte-length prefix.
 
     Attributes:
-        max_length: The protocol's `n`, in UTF-16 code units.
+        max_length: The protocol's `n`, in UTF-16 code units, from 1 to 32767.
     """
 
     max_length: int
+
+    def __post_init__(self) -> None:
+        """Reject a `max_length` the protocol does not allow.
+
+        Raises:
+            SchemaError: `max_length` is not in 1..32767.
+        """
+        if not 1 <= self.max_length <= _STRING_MAX_LENGTH:
+            msg = f"String max_length {self.max_length} is not in 1..{_STRING_MAX_LENGTH}"
+            raise SchemaError(msg)
 
     def read(self, reader: Reader) -> str:
         """Consume a String of at most `max_length` UTF-16 code units."""
