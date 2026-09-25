@@ -91,6 +91,11 @@ class Writer:
             raise WireError(msg) from exc
         return self
 
+    def bool_(self, *, value: bool) -> Self:
+        """Append a Bool: 0x01 for true, 0x00 for false."""
+        self._buffer.append(0x01 if value else 0x00)
+        return self
+
     def to_bytes(self) -> bytes:
         """Return everything written so far."""
         return bytes(self._buffer)
@@ -180,3 +185,17 @@ class Reader:
         (value,) = _LONG_STRUCT.unpack(self._data[self._offset : end])
         self._offset = end
         return int(value)
+
+    def bool_(self) -> bool:
+        """Consume a Bool: 0x01 is true, 0x00 is false, any other byte is invalid."""
+        if self._offset >= len(self._data):
+            msg = "bool truncated"
+            raise WireError(msg)
+        byte = self._data[self._offset]
+        self._offset += 1
+        if byte == 0x01:
+            return True
+        if byte == 0x00:
+            return False
+        msg = f"invalid bool byte {byte:#04x}"
+        raise WireError(msg)

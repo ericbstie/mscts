@@ -226,3 +226,26 @@ def test_long_writer_raises_when_out_of_range() -> None:
 def test_long_reader_raises_on_truncated_input() -> None:
     with pytest.raises(WireError):
         Reader(bytes.fromhex("00000000000000")).long()
+
+
+# Bool: true is 0x01, false is 0x00; any other byte is invalid.
+
+
+def test_bool_encodes_true_and_false() -> None:
+    assert Writer().bool_(value=True).to_bytes() == bytes([0x01])
+    assert Writer().bool_(value=False).to_bytes() == bytes([0x00])
+
+
+def test_bool_decodes_true_and_false() -> None:
+    assert Reader(bytes([0x01])).bool_() is True
+    assert Reader(bytes([0x00])).bool_() is False
+
+
+def test_bool_reader_raises_on_invalid_byte() -> None:
+    with pytest.raises(WireError):
+        Reader(bytes([0x02])).bool_()
+
+
+def test_bool_reader_raises_on_truncated_input() -> None:
+    with pytest.raises(WireError):
+        Reader(b"").bool_()
