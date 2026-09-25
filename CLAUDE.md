@@ -8,10 +8,18 @@ Server-agnostic by design: see `docs/adr/0001-black-box-differential-testing.md`
 ## Start here
 
 - `docs/PROGRESS.md`: where things stand, and the **Next** queue.
+- `docs/PROCESS.md`: the tech-lead/worker operating model, retrospective log and process changelog.
 - `docs/PLAN.md`: goals, the exact interfaces, tiers and milestones.
 - `CONTEXT.md`: the vocabulary. Use its terms exactly.
 - `docs/adr/`: decisions. Flag any change that contradicts one.
 - `docs/research/`: verified protocol and server facts.
+
+## Operating model
+
+The main session is the **tech lead**. Load the `tech-lead` skill and
+follow `docs/PROCESS.md`: brief opus/sonnet worker subagents, integrate
+their green commits into `main`, and turn their retrospectives into
+process changes. Workers follow the Worker contract in `docs/PROCESS.md`.
 
 ## How to work
 

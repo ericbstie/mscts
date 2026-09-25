@@ -37,9 +37,11 @@ then one commit.
    `compare`, `measure`, `report`, `cli`, `docs` or `tooling`. Add a body
    only when the why is not obvious. End every message with the
    attribution trailer the session provides.
-7. Repeat. Every 3–5 commits, and always before stopping, update
-   `docs/PROGRESS.md` (Log and Next) in its own `docs:` commit, then
-   `git push -u origin main`.
+7. Repeat. **Workers** (subagents) stop here. They never push or edit
+   `docs/PROGRESS.md`; they end with the Worker report in
+   `docs/PROCESS.md`. **The tech lead**, every 3–5 commits and always
+   before stopping, updates `docs/PROGRESS.md` (Log and Next) in its own
+   `docs:` commit, then runs `git push -u origin main`.
 
 ## Rules
 

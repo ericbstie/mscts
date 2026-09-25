@@ -6,7 +6,13 @@ before stopping (see the `red-green` skill).
 ## Now
 
 Milestone **M0 (Harness)** is done. **M1 (Talk to vanilla)** has started:
-VarInt encode/decode is green.
+VarInt encode/decode is green. Work now runs under the tech-lead/worker
+model (`docs/PROCESS.md`).
+
+Batch 1 in flight:
+- **A** (sonnet): `codec` wire types and framing (Next 1–4).
+- **B** (opus): `Target`, `ServerSpec` and `VanillaAdapter` (`prepare` +
+  `provision`), from the M1 list.
 
 ## Next
 
