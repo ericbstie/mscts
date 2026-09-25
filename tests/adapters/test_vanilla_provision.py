@@ -1,3 +1,4 @@
+import dataclasses
 import hashlib
 import io
 import json
@@ -128,6 +129,21 @@ def test_provision_rejects_a_download_whose_size_differs(tmp_path: Path) -> None
     with pytest.raises(ProvisionError, match="size"):
         VanillaAdapter(fetch=FakeMojang(serve(size=12))).provision(TARGET, tmp_path)
     assert not (tmp_path / "vanilla/26.3/server.jar").exists()
+
+
+def test_provision_rejects_a_version_missing_from_the_manifest(tmp_path: Path) -> None:
+    target = dataclasses.replace(TARGET, minecraft_version="99.9")
+    with pytest.raises(ProvisionError, match=r"99\.9 is not in the version manifest"):
+        VanillaAdapter(fetch=FakeMojang(serve())).provision(target, tmp_path)
+
+
+def test_provision_rejects_a_version_json_whose_sha1_differs(tmp_path: Path) -> None:
+    files = serve()
+    files[VERSION_URL] += b"\n"  # still valid JSON, but not the published bytes
+    mojang = FakeMojang(files)
+    with pytest.raises(ProvisionError, match="sha1"):
+        VanillaAdapter(fetch=mojang).provision(TARGET, tmp_path)
+    assert JAR_URL not in mojang.fetched
 
 
 def test_installation_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

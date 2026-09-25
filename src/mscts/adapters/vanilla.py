@@ -296,8 +296,13 @@ class VanillaAdapter:
     def provision(self, target: Target, cache_dir: Path) -> Installation:
         """Download the server jar for `target` into `cache_dir/vanilla/<version>/`."""
         manifest = json.loads(self._fetch(MANIFEST_URL))
-        entry = next(v for v in manifest["versions"] if v["id"] == target.minecraft_version)
-        server = json.loads(self._fetch(entry["url"]))["downloads"]["server"]
+        entries = [v for v in manifest["versions"] if v["id"] == target.minecraft_version]
+        if len(entries) != 1:
+            msg = f"{target.minecraft_version} is not in the version manifest exactly once"
+            raise ProvisionError(msg)
+        document = self._fetch(entries[0]["url"])
+        _verify(document, sha1=entries[0]["sha1"], what=entries[0]["url"])
+        server = json.loads(document)["downloads"]["server"]
         root = cache_dir.absolute() / self.name / target.minecraft_version
         cached = root / JAR
         if not (cached.is_file() and _sha1(cached.read_bytes()) == server["sha1"]):
