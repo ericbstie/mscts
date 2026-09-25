@@ -73,7 +73,8 @@ Increments (in order, one commit each): <numbered list, each a single failing te
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
 Out of scope: <what not to touch>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist>
-Context: <facts, file paths, gotchas the tech lead already knows>
+Context: <facts, file paths, gotchas the tech lead already knows; list reusable
+         scratchpad artifacts (jars, generated reports, probe scripts) by path>
 ```
 
 ## Worker contract
@@ -93,6 +94,13 @@ Context: <facts, file paths, gotchas the tech lead already knows>
   run servers at the same time.
 - Downloads go to the git-ignored cache (`.cache/mscts/`) and are
   hash-verified wherever the source publishes a hash.
+- **Shell in worktrees.** The sandbox refuses Bash it cannot verify: `rm -rf`
+  with globs, `env -i` in compound commands, heredocs (`cat >> f <<EOF`,
+  `python3 - <<EOF`), and `find` on variable paths. Put multi-step
+  research in a script file in the scratchpad and run it with
+  `sh`/`python3`. Use Edit/Write for code.
+- Known tool and type-checker traps are listed in the `red-green` skill.
+  Read them first.
 - Stay inside the brief. If you are blocked, or the brief is wrong, stop
   and say so in the report rather than widening scope.
 
@@ -126,6 +134,22 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-25 | worker B (vanilla) | **Offline vanilla calls Mojang services** (authlib discovery, public keys, name lookups). It only fails fast here by accident | **adopt**: opus hardening brief to research `-Dminecraft.api.*` and enforce the invariant "an Instance makes no outbound network calls" |
+| 2026-09-25 | worker B | Write/Edit tools turn `\uXXXX` into literal characters | **adopt**: red-green Known traps |
+| 2026-09-25 | worker B | The worktree sandbox refuses complex Bash (rm -rf, env -i, heredocs, variable paths) | **adopt**: Worker contract "Shell in worktrees" |
+| 2026-09-25 | worker B | Console `op` lower-cases names when services are unreachable | **adopt**: protocol-research Known traps |
+| 2026-09-25 | worker B | Flat `generator-settings={}` logs an error and falls back to the classic preset | **defer**: explicit flat JSON only once chunk Comparison proves identity |
+| 2026-09-25 | worker B | Spawn was (4.5,-60,-1.5) with seed 0 vs (6.5,-60,7.5) with a random seed | **defer**: Next item, a join-twice determinism check before M4 Masks |
+| 2026-09-25 | worker B | argv `"java"` resolves by PATH; the hook's shims pick a version by cwd, and the cwd is the workdir | **adopt**: Adapter contract "argv[0] absolute"; the hardening brief resolves and version-checks Java |
+| 2026-09-25 | worker B | Key-set and invariant tests passed an `allow-flight=true` mutation | **adopt**: Adapter contract "golden file from pristine first-run output" |
+| 2026-09-25 | worker B | Pin tests cannot start red | **adopt**: red-green "prove it bites with a throwaway mutation" |
+| 2026-09-25 | worker B | ty rejects returning `Any`; `type: ignore` is inert | **adopt**: red-green Known traps |
+| 2026-09-25 | worker B | ruff SIM300/SIM905 friction | **reject**: trivial |
+| 2026-09-25 | worker B | No commit area for `target.py` | **adopt**: added `target` |
+| 2026-09-25 | worker B | `.cache/mscts/` is per worktree, so each worker re-downloads | **adopt**: hardening brief resolves the cache via `MSCTS_CACHE` or the main checkout |
+| 2026-09-25 | worker B | `prepare` does not clear a reused workdir | **adopt**: Adapter contract "refuse non-empty workdir" |
+| 2026-09-25 | worker B | Scratchpad artifacts saved a lot of time | **adopt**: brief template lists them; **defer** a committed `scripts/` research harness |
+| 2026-09-25 | lead | The "unit = no processes" rule blocks cheap, hermetic runner tests against a fake server | **adopt**: unit tier is hermetic (no external network, Java or Candidate); localhost helpers allowed |
 | 2026-09-25 | lead (integration) | Worktrees share one git stash stack; the red-green skill told workers to `git stash` | **adopt**: the skill now says `git reset --hard HEAD` in your own worktree, never stash |
 | 2026-09-25 | lead | Pumpkin ignores `--version` and boots a server in the cwd, writing world/config files | **adopt**: recorded in the research note; never run a Candidate binary outside a scratch workdir |
 | 2026-09-25 | worker A (codec) | Increment 1 (VarInt errors) was already implemented, so it only needed tests | **reject**: harmless; pinning existing behaviour with tests is valid |

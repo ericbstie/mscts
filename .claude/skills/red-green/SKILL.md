@@ -24,6 +24,10 @@ then one commit.
 2. **Red.** Write the test. Run only that test (`uv run pytest path::name`)
    and confirm it fails for the expected reason: an assertion, or the
    missing name. A test that errors for some other reason is not red yet.
+   A *pin* test (one that locks down behaviour that already exists, such
+   as a golden file or an idempotence check) may be green at once. Prove
+   it bites with a throwaway mutation of the code, and say so in the
+   report.
 3. **Green.** Write the minimum code. Do not add code for a later
    increment, and do not add options nobody asked for.
 4. **Refactor** while green, if the code now reads worse than the code
@@ -33,7 +37,7 @@ then one commit.
    `mise run test:reference`.
 6. **Commit** the test and the code together:
    `git commit -m "<area>: <imperative summary>"`, where area is one of
-   `codec`, `net`, `bot`, `spec`, `adapter/<name>`, `runner`, `scenario`,
+   `codec`, `net`, `bot`, `target`, `spec`, `adapter/<name>`, `runner`, `scenario`,
    `compare`, `measure`, `report`, `cli`, `docs` or `tooling`. Add a body
    only when the why is not obvious. End every message with the
    attribution trailer the session provides.
@@ -55,8 +59,23 @@ then one commit.
 - Never loosen ruff, ty or bandit to get green. Fix the code. If a rule
   is truly wrong for this repo, add a targeted per-file ignore with a
   justification comment, in its own `tooling:` commit.
-- Unit tests must not touch the network or spawn processes. Put those
-  tests in a tier: `@pytest.mark.reference` or `@pytest.mark.candidate`.
+- Unit tests are **hermetic**: no external network, no Java, no Candidate
+  binary. Localhost sockets and short helper processes (well under 1 s,
+  always cleaned up) are allowed. Anything needing vanilla or a Candidate
+  goes in a tier: `@pytest.mark.reference` or `@pytest.mark.candidate`.
+
+## Known traps
+
+- The Write/Edit tools turn `\uXXXX` in file content into the literal
+  character. For a literal backslash-u in Python source, write `"\\u00E9"`
+  (non-raw) and check it with `grep … | cat -A`. For test inputs, prefer
+  `\xNN` or `\U0001….`.
+- ty's `unsound-return-statement` rejects returning an `Any` (e.g. urllib's
+  `response.read()`). Narrow it with `isinstance` and raise, since S101
+  forbids `assert` in `src/`.
+- `respect-type-ignore-comments = false` means `# type: ignore` does
+  nothing. A frozen-dataclass test must use `setattr(obj, name, v)` with a
+  non-literal name.
 
 ## When stuck
 

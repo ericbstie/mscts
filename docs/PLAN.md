@@ -163,6 +163,14 @@ class Adapter(Protocol):
     def prepare(self, installation: Installation, spec: ServerSpec,
                 workdir: Path) -> LaunchPlan: ...                             # writes COMPLETE native config
 
+# Adapter contract, checked by each Adapter's unit tests:
+# - prepare writes into an empty or new workdir and refuses a non-empty one, so no stale
+#   world/ban/icon state leaks between Instances;
+# - the complete-config test is a golden file derived from the server's own pristine
+#   first-run output, with every substitution documented;
+# - argv[0] is an absolute path to the exact runtime (e.g. Java 25), never a bare name;
+# - invariants live in one visibly named table, applied last.
+
 @frozen
 class Instance:
     endpoint: Endpoint
@@ -298,7 +306,7 @@ mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
 
 | Tier | Marker | Needs | Command |
 | --- | --- | --- | --- |
-| unit | (default) | nothing | `mise run check` (lint, format, types, bandit, unit tests) |
+| unit | (default) | nothing external: localhost sockets and short helper processes only | `mise run check` (lint, format, types, bandit, unit tests) |
 | reference | `@pytest.mark.reference` | Java 25, network on first run | `mise run test:reference` |
 | candidate | `@pytest.mark.candidate` | a Candidate binary | `mise run test:candidate` |
 

@@ -74,6 +74,7 @@ need is missing, add it here in the same commit that introduces it.
 
 - **Tier**: a class of dev tests, chosen by how much real infrastructure
   the tests need:
-  - `unit`: no processes, no network.
+  - `unit`: hermetic. No external network, no Java, no Candidate.
+    Localhost sockets and short helper processes are allowed.
   - `reference`: needs a live vanilla Instance.
   - `candidate`: needs a live Candidate Instance.

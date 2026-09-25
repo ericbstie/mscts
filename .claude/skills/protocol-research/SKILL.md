@@ -51,6 +51,13 @@ instead.
 - `accept_teleportation` echoes the pose: `VarInt id, 3×Double, 2×Float`.
 - After `login_compression`, every frame is `VarInt data-length ‖ data`,
   where data-length 0 means uncompressed.
+- Never op a player through the vanilla console. With Mojang services
+  unreachable, `op Steve` ops the lower-cased `steve` (a different offline
+  UUID). Write `ops.json` directly, with
+  `UUID.nameUUIDFromBytes("OfflinePlayer:" + name)`.
+- Offline vanilla still calls Mojang services (authlib discovery,
+  public keys, name lookups). See the research note. Whether and how
+  this is blocked is being settled.
 - Pumpkin sends an encryption request in offline mode unless
   `encryption = false`. Its Bedrock listener and telemetry are on by
   default.
