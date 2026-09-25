@@ -65,3 +65,48 @@ def test_decode_rejects_a_payload_that_ends_inside_a_field() -> None:
 def test_decode_error_in_a_nested_field_names_its_path() -> None:
     with pytest.raises(CodecError, match="test:nested: inner: port: ushort truncated"):
         CODEC.decode(STATE, DIRECTION, bytes.fromhex("2b 01 63"))
+
+
+def test_encode_rejects_missing_fields() -> None:
+    fields = {name: value for name, value in FIELDS.items() if name not in {"number", "port"}}
+    with pytest.raises(CodecError, match=r"test:fields: missing field\(s\) number, port$"):
+        CODEC.encode(STATE, DIRECTION, "test:fields", fields)
+
+
+def test_encode_rejects_unexpected_fields() -> None:
+    fields = {**FIELDS, "zeta": 1, "alpha": 2}
+    with pytest.raises(CodecError, match=r"test:fields: unexpected field\(s\) alpha, zeta$"):
+        CODEC.encode(STATE, DIRECTION, "test:fields", fields)
+
+
+def test_encode_reports_missing_and_unexpected_fields_together() -> None:
+    fields = {"outer": 1, "inner": {"prot": 25565}}
+    with pytest.raises(
+        CodecError,
+        match=r"test:nested: inner: missing field\(s\) port; unexpected field\(s\) prot$",
+    ):
+        CODEC.encode(STATE, DIRECTION, "test:nested", fields)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        ("number", "777", "number: expected an int, got str"),
+        ("number", True, "number: expected an int, got bool"),
+        ("number", 2**31, "number: VarInt 2147483648 out of range"),
+        ("port", -1, "port: ushort -1 out of range"),
+        ("stamp", 2**63, "stamp: long 9223372036854775808 out of range"),
+        ("text", 7, "text: expected a str, got int"),
+        ("text", "x" * 17, "text: string exceeds max length 16"),
+    ],
+)
+def test_encode_rejects_a_value_its_field_type_cannot_encode(
+    field: str, value: object, error: str
+) -> None:
+    with pytest.raises(CodecError, match=f"test:fields: {error}"):
+        CODEC.encode(STATE, DIRECTION, "test:fields", {**FIELDS, field: value})
+
+
+def test_encode_rejects_a_non_mapping_for_a_compound_field() -> None:
+    with pytest.raises(CodecError, match="test:nested: inner: expected a mapping"):
+        CODEC.encode(STATE, DIRECTION, "test:nested", {"outer": 1, "inner": 25565})

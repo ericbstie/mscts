@@ -135,12 +135,24 @@ class Schema:
         """Append every field of `value`, a mapping of field name to value, in order.
 
         Raises:
-            WireError: A field's value cannot be encoded; the message names the field.
+            WireError: `value` does not have exactly the declared field names, or a
+                field's value cannot be encoded; the message names the fields.
         """
         if not isinstance(value, Mapping):
             msg = f"expected a mapping of field names to values, got {type(value).__name__}"
             raise WireError(msg)
         given = dict(value.items())
+        declared = {name for name, _ in self._fields}
+        missing = [name for name, _ in self._fields if name not in given]
+        unexpected = sorted(str(name) for name in given if name not in declared)
+        problems = []
+        if missing:
+            problems.append(f"missing field(s) {', '.join(missing)}")
+        if unexpected:
+            problems.append(f"unexpected field(s) {', '.join(unexpected)}")
+        if problems:
+            msg = "; ".join(problems)
+            raise WireError(msg)
         for name, wire_type in self._fields:
             try:
                 wire_type.write(writer, given[name])
