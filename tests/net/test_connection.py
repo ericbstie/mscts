@@ -15,7 +15,7 @@ import pytest
 
 from mscts import net
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State, UnknownPacketError
-from mscts.net import Connection, ConnectionClosedError, Endpoint
+from mscts.net import Connection, ConnectionClosedError, Endpoint, ProtocolError
 from mscts.transcript import Event, Transcript
 from tests.net.fakes import HOST, Peer, connected, serve
 
@@ -558,6 +558,106 @@ def test_an_unexpected_error_in_the_reader_is_raised_by_recv(
 
     asyncio.run(client())
     assert transcript.events == []
+
+
+async def echo_replies(connection: Connection, packet: Packet) -> None:
+    """An answer: each test:reply is echoed back as a test:request with the same value."""
+    if packet.name == "test:reply":
+        assert packet.fields is not None
+        await connection.send("test:request", value=packet.fields["value"])
+
+
+def test_the_answer_runs_as_each_packet_arrives_without_a_recv(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # What keeps a Bot connected (keep-alives, teleports) must not wait for a Scenario to
+    # take the packet: vanilla kicks a client that does not answer a keep_alive in time.
+    echoed: list[Packet] = []
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1) + peer.frame("test:reply", value=2))
+        echoed.extend([await peer.recv(), await peer.recv()])
+        await peer.send("test:empty")
+        await peer.eof()
+
+    async def client() -> list[str]:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript, answer=echo_replies
+            )
+            try:
+                return [(await connection.recv(timeout_s=1)).name for _ in range(3)]
+            finally:
+                await connection.close()
+
+    assert asyncio.run(client()) == ["test:reply", "test:reply", "test:empty"]
+    assert [packet.fields for packet in echoed] == [{"value": 1}, {"value": 2}]
+    # Each answer is recorded after the packet it answers: that arrived first.
+    assert [(event.packet.name, event.packet.fields) for event in transcript.events] == [
+        ("test:reply", {"value": 1}),
+        ("test:reply", {"value": 2}),
+        ("test:request", {"value": 1}),
+        ("test:request", {"value": 2}),
+        ("test:empty", {}),
+    ]
+
+
+def test_an_answer_that_fails_stops_the_reader_after_the_packet_it_answered(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    async def refuse(connection: Connection, packet: Packet) -> None:
+        del connection
+        msg = f"cannot answer {packet.name}"
+        raise ProtocolError(msg)
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1) + peer.frame("test:empty"))
+        await peer.eof()
+
+    async def client() -> None:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript, answer=refuse
+            )
+            try:
+                assert (await connection.recv(timeout_s=1)).name == "test:reply"
+                for _ in range(2):
+                    with pytest.raises(ProtocolError, match="cannot answer test:reply"):
+                        await connection.recv(timeout_s=1)
+            finally:
+                await connection.close()
+
+    asyncio.run(client())
+    assert [event.packet.name for event in transcript.events] == ["test:reply"]
+
+
+def test_an_answer_that_finds_the_connection_lost_lets_the_reader_read_on(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # The server may have closed right after its last packets (a disconnect reason, say):
+    # those must still reach recv, even though answering the first one failed.
+    async def lost(connection: Connection, packet: Packet) -> None:
+        del connection, packet
+        msg = "the connection was lost"
+        raise ConnectionClosedError(msg)
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1) + peer.frame("test:empty"))
+
+    async def client() -> list[str]:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript, answer=lost
+            )
+            try:
+                names = [(await connection.recv(timeout_s=1)).name for _ in range(2)]
+                with pytest.raises(ConnectionClosedError, match="the server closed"):
+                    await connection.recv(timeout_s=1)
+                return names
+            finally:
+                await connection.close()
+
+    assert asyncio.run(client()) == ["test:reply", "test:empty"]
 
 
 def test_close_wakes_a_pending_recv(toy_codec: Codec, transcript: Transcript) -> None:

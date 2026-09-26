@@ -2,7 +2,7 @@
 
 import asyncio
 import contextlib
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Self
 
@@ -52,6 +52,10 @@ class ConnectionClosedError(ConnectionError):
 
 class ProtocolError(Exception):
     """A packet that breaks the protocol's sequence, e.g. an intention with an unknown intent."""
+
+
+type Answer = Callable[[Connection, Packet], Awaitable[None]]
+"""What a Connection's reader does with each Packet as it arrives (e.g. a Bot's replies)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,24 +126,41 @@ class Connection:
         self._arrivals: asyncio.Queue[_Arrival | _End] = asyncio.Queue()
         self._end: _End | None = None
         self._closed = False
+        self._answer: Answer | None = None
         self._reading = asyncio.get_running_loop().create_task(
             self._read_forever(), name=f"mscts Connection reader ({bot})"
         )
 
     @classmethod
     async def open(
-        cls, endpoint: Endpoint, codec: Codec, *, bot: str, transcript: Transcript
+        cls,
+        endpoint: Endpoint,
+        codec: Codec,
+        *,
+        bot: str,
+        transcript: Transcript,
+        answer: Answer | None = None,
     ) -> Self:
         """Connect to `endpoint`, in the handshake State, recording as `bot`.
 
         asyncio turns Nagle's algorithm off (TCP_NODELAY), so small frames are
         written at once rather than held back for coalescing.
 
+        `answer`, if given, is awaited by the background reader for each Packet it
+        decodes, in wire order, as the packet arrives (the Packet is already queued for
+        `recv`), before the next frame is taken: the vanilla client answers keep-alives,
+        teleports and acks the same way, whether or not anyone is reading. If the
+        connection is lost, the answer's send fails and the reader reads on to the end
+        of the stream. Anything else an answer raises stops the reader, and `recv`
+        raises it after the packets before it.
+
         Raises:
             OSError: The connection failed, e.g. ConnectionRefusedError.
         """
         reader, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
-        return cls(reader, writer, codec, bot=bot, transcript=transcript)
+        connection = cls(reader, writer, codec, bot=bot, transcript=transcript)
+        connection._answer = answer  # nothing has awaited since: the reader has not run yet
+        return connection
 
     @property
     def state(self) -> State:
@@ -254,6 +275,9 @@ class Connection:
                     self._arrivals.put_nowait(arrival)
                     if arrival.error is not None:
                         return  # like vanilla's client, which disconnects on a bad frame
+                    if self._answer is not None:
+                        with contextlib.suppress(ConnectionClosedError):
+                            await self._answer(self, arrival.packet)
         except Exception as exc:  # noqa: BLE001 - not swallowed: recv raises it
             # Whatever else stopped the reader (the server, or a harness bug) is raised
             # by recv, rather than lost in a task nobody awaits.
