@@ -105,6 +105,33 @@ class Peer:
 type Handler = Callable[[Peer], Awaitable[None]]
 """What the fake server does with one connection."""
 
+VANILLA_STATUS = {
+    "description": "mscts",
+    "players": {"max": 20, "online": 0},
+    "version": {"name": "26.3", "protocol": 777},
+}
+"""What vanilla 26.3 answered for the default ServerSpec (docs/research, verified)."""
+
+
+def status_server(json_response: str, seen: list[Packet]) -> Handler:
+    """Answer like vanilla's status listener, putting every serverbound Packet in `seen`.
+
+    A status_request gets `json_response`. A ping_request gets its pong, and then the
+    server closes the connection.
+    """
+
+    async def handler(peer: Peer) -> None:
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name == "minecraft:status_request":
+                await peer.send("minecraft:status_response", json_response=json_response)
+            elif packet.name == "minecraft:ping_request":
+                assert packet.fields is not None
+                await peer.send("minecraft:pong_response", timestamp=packet.fields["timestamp"])
+                return
+
+    return handler
+
 
 @asynccontextmanager
 async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:

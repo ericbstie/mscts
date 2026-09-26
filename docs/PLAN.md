@@ -189,13 +189,22 @@ class Connection:                   # one TCP connection; owns framing, compress
 
 class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
     name: str
+    @classmethod
+    async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
+                      transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
     async def expect(self, name: str, *, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
-    async def send(self, name: str, **fields: object) -> None: ...
+    async def send(self, name: str, /, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
+    async def close(self) -> None: ...                                 # idempotent
+    # Every operation (connect included) is bounded by timeout_s → TimeoutError.
+    # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
+    # unless already sent. status: status_request → status_response, whose json_response must be
+    # a JSON object. ping: ping_request → pong_response echoing the payload. Any other answer →
+    # ProtocolError, with the answer still recorded.
 ```
 
 ### Servers
