@@ -145,9 +145,10 @@ async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_time
     """Stop the process if it still runs, reap it, and return its exit code.
 
     Then SIGKILL whatever is left of its process group, so none of its children outlives
-    it. That cannot hit an unrelated process: while any member is left, the kernel keeps
-    the group id allocated, and once none is, the id is only reused after the pid space
-    wraps around, which cannot happen between the reap and the kill.
+    it. While any member is left, the kernel keeps the group id allocated, so the kill
+    reaches only them. Once none is, the kill finds no group, unless the pid space
+    wrapped around and a new group leader took that id in the moment since the reap (at
+    most one readiness probe long). That is negligible even with a small pid_max.
     """
     if process.returncode is not None:
         exit_code = process.returncode
