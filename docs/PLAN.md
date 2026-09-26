@@ -40,6 +40,7 @@ test needs it:
 | --- | --- |
 | `target.py` | `Target`, `TARGET` (the pinned 26.3 / 777) |
 | `cache.py` | `cache_dir()`: the download cache shared by every worktree and session |
+| `registry.py`, `data/registry.toml` | the Registry: `Entry`, `Registry`, `parse`, `official()` (ADR-0008) |
 | `codec/wire.py` | primitive wire types: `Reader`, `Writer` |
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
@@ -324,6 +325,31 @@ def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
 ### Servers
 
 ```python
+# registry.py: the Registry (ADR-0008), committed as src/mscts/data/registry.toml
+@frozen
+class Entry:
+    adapter: str                    # "pumpkin"
+    version: str                    # the --version label: "26.3", "nightly-48cba7ee"
+    target: str                     # the Target's Minecraft version it speaks
+    url: str                        # HTTPS only
+    sha256: str | None = None       # at least one of sha256 / sha1
+    sha1: str | None = None         # the publisher's hash (Mojang's)
+    size: int | None = None
+    note: str = ""                  # a pinned nightly says here that its URL moves
+    def matches(self, body: bytes) -> bool: ...  # every pinned hash (and size) agrees
+    # str(entry) == "pumpkin nightly-48cba7ee"
+
+@frozen
+class Registry:
+    entries: tuple[Entry, ...]
+    def resolve(self, adapter: str, target: Target, version: str | None = None) -> Entry: ...
+    # `version`, else the adapter's only entry for target; RegistryError naming the choices
+
+class RegistryError(ValueError): ...
+def parse(text: str) -> Registry: ...  # strict: unknown key, missing key or hash, bad hex,
+                                       # non-HTTPS url, duplicate (adapter, version) → RegistryError
+def official() -> Registry: ...        # the committed data/registry.toml
+
 class WorldPreset(StrEnum): FLAT                                # VOID only once verified on the Reference
 class GameMode(StrEnum):    SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR
 class Difficulty(StrEnum):  PEACEFUL, EASY, NORMAL, HARD

@@ -1,0 +1,28 @@
+# The Registry (ADR-0008): every server build `mscts adapter install` downloads, pinned
+# by checksum and approved by the mscts maintainer. A name or URL alone is never trusted.
+#
+# Keys (read strictly by mscts.registry; any other key is an error):
+#   adapter, version (the --version label), target (the Minecraft version it speaks),
+#   url (HTTPS), sha256 and/or sha1 (the publisher's hash; at least one), size, note.
+
+[[entry]]
+adapter = "vanilla"
+version = "26.3"
+target = "26.3"
+# downloads.server of 26.3 in https://piston-meta.mojang.com/mc/game/version_manifest_v2.json
+# (version JSON sha1 bc098d111a72e9f6178801544a42099bdfbb0cf2), checked 2026-09-26.
+url = "https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar"
+sha1 = "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c"
+size = 62294556
+note = "the vanilla 26.3 server jar, by the sha1 and size Mojang publishes"
+
+[[entry]]
+adapter = "pumpkin"
+version = "nightly-48cba7ee"
+target = "26.3"
+url = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
+sha256 = "48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b"
+note = """\
+one build of Pumpkin's rolling nightly (Linux x86-64), pinned 2026-09-26. The nightly \
+URL moves with every new build, so a sha256 mismatch on download means the nightly has \
+moved on: install that build with --from, or ask the maintainer to pin it."""
