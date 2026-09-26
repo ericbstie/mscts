@@ -5,6 +5,7 @@ from importlib import resources
 import pytest
 
 from mscts.codec.packets import Codec, CodecError, Direction, State, UnknownPacketError
+from mscts.codec.packets import _parse_packet_report as parse_packet_report
 from mscts.target import TARGET
 
 CODEC = Codec.load("26.3")
@@ -93,6 +94,24 @@ def test_unknown_packet_error_is_a_codec_error() -> None:
 def test_load_of_a_version_without_packet_data_raises() -> None:
     with pytest.raises(CodecError, match=r"no packet data for Minecraft 0\.0"):
         Codec.load("0.0")
+
+
+# Audit MD7 survivors P5 and P6: a malformed packet report is a CodecError, never a
+# bool read as id 1 or an AttributeError.
+@pytest.mark.parametrize(
+    "report",
+    [
+        {"status": {"clientbound": {"minecraft:status_response": {"protocol_id": True}}}},
+        {"status": {"clientbound": {"minecraft:status_response": {"protocol_id": "0"}}}},
+        [],
+        {"status": []},
+        {"status": {"clientbound": []}},
+        {"status": {"clientbound": {"minecraft:status_response": 0}}},
+    ],
+)
+def test_a_malformed_packet_report_raises_codec_error(report: object) -> None:
+    with pytest.raises(CodecError, match="packet report: expected"):
+        parse_packet_report(report)
 
 
 def test_codec_rejects_two_names_sharing_an_id() -> None:
