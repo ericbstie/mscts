@@ -159,12 +159,19 @@ class Endpoint:
     port: int
 
 class ConnectionClosedError(ConnectionError): ...   # closed by the server, or by close()
+class ProtocolError(Exception): ...  # breaks the protocol sequence: unknown intent, unexpected answer
 
 class Connection:                   # one TCP connection; owns framing, compression, State
     @classmethod
     async def open(cls, endpoint: Endpoint, codec: Codec, *, bot: str,
                    transcript: Transcript) -> "Connection": ...   # TCP_NODELAY (asyncio's default)
-    state: State                    # advances on intention / login_acknowledged / finish_configuration
+    state: State                    # read-only; advances when the Connection *sends*: intention
+                                    # (intent 1 → STATUS, 2 or 3 (transfer) → LOGIN, else
+                                    # ProtocolError), login_acknowledged → CONFIGURATION,
+                                    # finish_configuration → PLAY. Both directions switch together.
+    # Not yet: login_compression (the join brief sets FrameDecoder.compression_threshold when
+    # recv takes it; frames are taken one at a time, so it applies from the very next frame),
+    # and play → configuration (start_configuration / configuration_acknowledged).
     async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
     async def recv(self, *, timeout_s: float) -> Packet: ...           # records an Event
     async def close(self) -> None: ...                                 # idempotent; aborts after 1 s

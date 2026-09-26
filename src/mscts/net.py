@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Self
 
@@ -16,6 +17,15 @@ _READ_SIZE = 65_536
 _CLOSE_TIMEOUT_S = 1.0
 """How long close() waits for the socket to finish closing before aborting it."""
 
+_STATE_BY_INTENT: Mapping[int, State] = {1: State.STATUS, 2: State.LOGIN, 3: State.LOGIN}
+"""Where the handshake `intention` leads: 1 = status, 2 = login, 3 = transfer (a login)."""
+
+_STATE_AFTER: Mapping[tuple[State, str], State] = {
+    (State.LOGIN, "minecraft:login_acknowledged"): State.CONFIGURATION,
+    (State.CONFIGURATION, "minecraft:finish_configuration"): State.PLAY,
+}
+"""The other serverbound packets that move a connection to a new State."""
+
 
 @dataclass(frozen=True, slots=True)
 class Endpoint:
@@ -29,8 +39,17 @@ class ConnectionClosedError(ConnectionError):
     """The Connection is closed: the server closed it, or `close()` was called."""
 
 
+class ProtocolError(Exception):
+    """A packet that breaks the protocol's sequence, e.g. an intention with an unknown intent."""
+
+
 class Connection:
     """One TCP connection to a server. It owns the framing and the State.
+
+    The State starts at handshake and moves on when the Connection sends an
+    `intention` (to status or login, by its intent), `login_acknowledged` (to
+    configuration) or `finish_configuration` (to play). Both directions change
+    together: every later frame is encoded, and decoded when taken, in the new State.
 
     Every Packet it sends or receives is recorded to its Transcript as an Event of
     its Bot:
@@ -89,13 +108,15 @@ class Connection:
 
         Raises:
             CodecError: The packet is unknown here, or `fields` do not fit its schema.
-                Nothing is written or recorded.
-            ConnectionClosedError: The Connection is closed, or the connection was lost
-                (nothing is written or recorded).
+            ProtocolError: It is an intention with an unknown intent.
+            ConnectionClosedError: The Connection is closed, or the connection was lost.
+
+            In each case nothing is written or recorded, and the State stays.
         """
         self._check_open()
         data = self._codec.encode(self._state, Direction.SERVERBOUND, name, fields)
         packet = self._codec.decode(self._state, Direction.SERVERBOUND, data)
+        state_after = _state_after(packet)
         frame = encode_frame(data, compression_threshold=self._frames.compression_threshold)
         if self._writer.transport.is_closing():
             # asyncio's write() would silently discard the frame.
@@ -104,6 +125,7 @@ class Connection:
         t_ns = self._transcript.now_ns()
         self._writer.write(frame)
         self._transcript.record(self._bot, packet, t_ns=t_ns)
+        self._state = state_after
         await self._writer.drain()
 
     async def recv(self, *, timeout_s: float) -> Packet:
@@ -168,3 +190,18 @@ class Connection:
         if self._closed:
             msg = "the connection is closed"
             raise ConnectionClosedError(msg)
+
+
+def _state_after(packet: Packet) -> State:
+    """Return the State a connection is in once it has sent `packet`.
+
+    Raises:
+        ProtocolError: `packet` is an intention with an unknown intent.
+    """
+    if packet.state is State.HANDSHAKE and packet.name == "minecraft:intention":
+        intent = (packet.fields or {}).get("intent")
+        if not isinstance(intent, int) or intent not in _STATE_BY_INTENT:
+            msg = f"unknown intent {intent!r} (1 = status, 2 = login, 3 = transfer)"
+            raise ProtocolError(msg)
+        return _STATE_BY_INTENT[intent]
+    return _STATE_AFTER.get((packet.state, packet.name), packet.state)
