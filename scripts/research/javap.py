@@ -1,6 +1,7 @@
 """Inspect the Target's vanilla client or server with javap, using verified cached jars."""
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -42,6 +43,8 @@ def _entry(side: str, metadata: bytes) -> Entry:
     if re.fullmatch(r"[0-9a-f]{40}", sha1) is None or type(size) is not int or size <= 0:
         msg = "Mojang download metadata needs a sha1 and positive size"
         raise ProvisionError(msg)
+    # Entry's shape is borrowed for its hash check only: this is not a Registry entry,
+    # and `adapter` holds the jar side ("client" or "server"), not an Adapter's name.
     return Entry(
         adapter=side,
         version=TARGET.minecraft_version,
@@ -61,7 +64,13 @@ def _metadata(side: str, fetch: Fetch) -> bytes:
     for version in versions:
         fields = _object(version)
         if fields.get("id") == TARGET.minecraft_version:
-            document = _object(json.loads(fetch(_string(fields, "url")).body))
+            # The version document supplies the jar hashes, so it is verified by the sha1
+            # the manifest lists for it before anything in it is trusted.
+            body = fetch(_string(fields, "url")).body
+            if hashlib.sha1(body, usedforsecurity=False).hexdigest() != _string(fields, "sha1"):
+                msg = f"the {TARGET.minecraft_version} version JSON differs from its manifest sha1"
+                raise ProvisionError(msg)
+            document = _object(json.loads(body))
             downloads = _object(document.get("downloads"))
             return json.dumps(_object(downloads.get(side))).encode()
     msg = f"Mojang manifest has no {TARGET.minecraft_version}"
