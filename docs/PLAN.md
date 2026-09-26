@@ -293,7 +293,15 @@ class Instance:
     endpoint: Endpoint
     pid: int
     launched_ns: int
-    ready_ns: int                   # first probe answering True that the Instance owned
+    ready_ns: int                   # monotonic ns just before the probe that made it ready started
+    # instance.startup = ready_ns - launched_ns. ready_ns is taken just before the runner starts
+    # the first probe that answers True with ownership, so none of that probe's own round trip
+    # (connect, handshake, status) counts as startup (audit L6). The Instance was not ready when
+    # the previous probe ran, so it became ready at most one poll (the previous probe plus
+    # 20 ms) before ready_ns. Vanilla 26.3 never holds a status request while booting: it
+    # fails the probe within a few ms, and the successful probe took 7 ms (worker L, measured).
+    # A server that held its answer until ready would be credited up to that probe's
+    # timeout_s early, the same rule for Reference and Candidate.
     log_path: Path
 
 @asynccontextmanager

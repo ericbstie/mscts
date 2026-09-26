@@ -94,7 +94,9 @@ class Instance:
     endpoint: Endpoint
     pid: int  # also its session and process-group id
     launched_ns: int  # time.monotonic_ns() just before the process was spawned
-    ready_ns: int  # time.monotonic_ns() once a probe returned True and the Instance owned it
+    # time.monotonic_ns() just before the first probe that made it ready (answered True, and
+    # the Instance owned the socket) was started: that probe's round trip is not startup.
+    ready_ns: int
     log_path: Path  # its console: stdout and stderr, in the plan's cwd
 
 
@@ -274,15 +276,19 @@ async def _ready_ns(
     endpoint: Endpoint,
     others: _OtherListeners,
 ) -> int | None:
-    """Poll `ready` until the Instance itself answers True; return when; None if it exits.
+    """Poll `ready` until the Instance itself answers True; None if it exits first.
 
     An answer is the Instance's only if there were sockets listening at the Endpoint,
     the same ones before and after the probe (so the one that answered is among them),
     and every one of them is open in the Instance's process group. Otherwise `others`
     records who did listen there.
+
+    Returns the monotonic time just before that probe was started, so its own round
+    trip (connect, handshake, status) never counts as startup.
     """
     while True:
         before = _listeners(endpoint)
+        started_ns = time.monotonic_ns()
         answer = await ready(endpoint)
         if process.returncode is not None:
             return None
@@ -290,7 +296,7 @@ async def _ready_ns(
             after = _listeners(endpoint)
             ours = _group_sockets(process.pid)
             if after and after == before and after <= ours:
-                return time.monotonic_ns()
+                return started_ns
             others.listeners = before | after
             others.not_ours = others.listeners - ours
         await asyncio.sleep(_POLL_INTERVAL_S)

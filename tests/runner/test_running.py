@@ -19,18 +19,18 @@ async def test_running_yields_the_instance_once_the_probe_first_answers_true(
     fake_plan: FakePlan, tcp_probe: Probe, is_alive: Callable[[int], bool]
 ) -> None:
     plan = fake_plan("--listen-after", "0.2")
-    probes: list[tuple[int, bool]] = []
+    probes: list[tuple[int, int, bool]] = []  # started_ns, ended_ns, answer
 
     async def ready(endpoint: Endpoint) -> bool:
         assert endpoint == plan.endpoint
         started_ns = time.monotonic_ns()
         answer = await tcp_probe(endpoint)
-        probes.append((started_ns, answer))
+        probes.append((started_ns, time.monotonic_ns(), answer))
         return answer
 
     before_ns = time.monotonic_ns()
     async with running(plan, ready=ready, ready_timeout=5) as instance:
-        answers = [answer for _, answer in probes]
+        answers = [answer for _, _, answer in probes]
         first_true = answers.index(True)
         assert first_true > 0  # it polled
         # The first True counts unless the server bound its socket during that very probe
@@ -38,7 +38,10 @@ async def test_running_yields_the_instance_once_the_probe_first_answers_true(
         # whose answer is provably the Instance's own.
         assert answers[first_true:] in ([True], [True, True])
         assert before_ns <= instance.launched_ns <= probes[0][0]
-        assert probes[-1][0] <= instance.ready_ns <= time.monotonic_ns()
+        # ready_ns: just before the probe that made it ready started, and after the one
+        # before it ended. So none of that probe's own round trip (connect, handshake,
+        # status) counts as startup (audit L6).
+        assert probes[-2][1] <= instance.ready_ns <= probes[-1][0]
         assert instance.ready_ns - instance.launched_ns >= 200_000_000  # --listen-after 0.2
         assert instance.endpoint == plan.endpoint
         assert instance.log_path == plan.cwd / CONSOLE_LOG
