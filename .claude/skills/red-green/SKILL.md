@@ -74,6 +74,16 @@ then one commit.
   `response.read()`, an `re.Match` group). Narrow it with `isinstance` and
   raise, or wrap it (`str(match["x"])`), since S101 forbids `assert` in
   `src/`.
+- Mutate with a line-addressed edit (`sed -i 'NNs/…/…/'`) or a script that
+  asserts exactly one match, and run mutated tests under `timeout 60`. A
+  loose `sed` pattern once hit two lines and hung pytest.
+- Lint shapes that pass: parametrize many arguments with one frozen case
+  dataclass (PLR0913/PLR0917); call a single local coroutine or function
+  inside `pytest.raises` (PT012); collect values into a list inside the
+  block, rather than using an `as` name after a raising block (ty
+  possibly-unresolved); write polling as
+  `while True: if await probe(): return …; await asyncio.sleep(…)`
+  (ASYNC110).
 - Run throwaway mutation checks only **after committing**. Undoing a
   mutation with `git checkout <file>` also wipes uncommitted work in that
   file.

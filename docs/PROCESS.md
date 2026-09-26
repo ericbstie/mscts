@@ -112,6 +112,16 @@ new classes of defect:
 - Tests that start servers must pick a free ephemeral port, never 25565,
   and must clean up their processes, even on failure. Other workers may
   run servers at the same time.
+- **Leak guard for process-starting tests.** Tag each spawned process's
+  environment with a per-test token. At teardown, scan `/proc` for the
+  token, SIGKILL any survivor, and fail the test (see
+  `tests/runner/conftest.py`). Do not verify with `pgrep -af`: it matches
+  the harness's own shell wrapper. In this container PID 1 reaps orphans
+  only after 1–3 s, and `pid_max` is 32768.
+- Never write a brief stand-in that contradicts an ADR. If the real
+  thing is not built yet, the worker builds the smallest faithful version
+  or stops and reports. (Lead lesson from worker D: a TCP-connect
+  "readiness" stand-in cost 25 minutes.)
 - Downloads go to the shared cache (`mscts.cache.cache_dir()`, outside
   every checkout) and are hash-verified wherever the source publishes a
   hash.
@@ -119,7 +129,8 @@ new classes of defect:
   includes `rm -rf` with globs, `env -i` in compound commands, heredocs
   (`cat >> f <<EOF`, `python3 - <<EOF`) mixed with other commands, `find`
   or `sed` on `$VAR` paths, variables in command position, process
-  substitution `<(…)`, and `strace … python3 -c`.
+  substitution `<(…)`, `$(…)` containing git, `python -c` or
+  `uv run python -c` inside compound commands, and `strace … python3 -c`.
   **Default to this:** write any multi-step or scripted shell work to a
   file in the scratchpad (literal absolute paths, no variables), and run
   it as one plain command (`sh /abs/path.sh`, `python3 /abs/path.py`).
@@ -159,6 +170,19 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker D (runner) | **The lead's brief** prescribed a TCP-connect stand-in probe. Vanilla accepts TCP before its world exists and loses a `stop` read then | **adopt**: ADR-0004 consequence, protocol-research trap, and a Worker contract rule: never brief a stand-in that contradicts an ADR |
+| 2026-09-26 | worker D | A loose mutation `sed` hit two lines and hung pytest | **adopt**: red-green trap (line-addressed, single match, `timeout 60`) |
+| 2026-09-26 | worker D | Process-starting tests leak by design when red or mutated | **adopt**: Worker contract leak-guard pattern (per-test env token + `/proc` sweep) |
+| 2026-09-26 | worker D | PID 1 reaps lazily (1–3 s); `pid_max` 32768 | **adopt**: Worker contract note |
+| 2026-09-26 | worker D | More refused shell forms (`$(git …)`, `python -c` in compound commands). **Fourth** occurrence | **adopt**: list extended. If a fifth worker reports it, make a tiny `scripts/` runner the only allowed pattern |
+| 2026-09-26 | worker D | `pgrep -af` matches the harness wrapper | **adopt**: `scripts/strays.py` goes in the research-harness brief |
+| 2026-09-26 | worker D | The stop outcome has no typed home (logged only) | **defer**: a typed stop record for M7's `instance.stop` Measurement |
+| 2026-09-26 | worker D | Unit tier went 0.4 s → 4.1 s (real stop timeouts) | **accept**: G5 holds; watch it, pytest-xdist if it passes about 7 s |
+| 2026-09-26 | worker D | A vanilla boot takes about 10 s, so G5 allows about 8 boots in the reference tier | **adopt**: Next item, a session-scoped Reference Instance fixture; **defer** AppCDS (it would distort the G4 startup Measurement) |
+| 2026-09-26 | worker D | Lint/type friction: PLR0913, PT012, ty possibly-unresolved, ASYNC110 | **adopt**: red-green trap with the passing shapes |
+| 2026-09-26 | worker D | Test helpers cannot be imported under importlib mode | **adopt**: `pythonpath = ["tests"]` + a `tests/support/` package, in the next tooling brief |
+| 2026-09-26 | worker D | A SIGKILLed harness orphans server groups | **defer**: Next item, a parent-death guard or a pgid file swept at session start |
+| 2026-09-26 | worker D | Through `free_port`'s race, a probe can reach another worker's vanilla, which also answers 777 | **adopt**: Next item, a distinct loopback host per Instance (`ServerSpec.host` in 127/8). This is a Verdict-integrity risk under parallel workers |
 | 2026-09-26 | worker E (vanilla) | Java version is read from the runtime image's `release` file in `prepare` (hermetic), not by running java in `provision` | **adopt** the deviation; the SessionStart hook now exports `MSCTS_JAVA`, because the mise shims on PATH are refused as non-runtime launchers |
 | 2026-09-26 | worker E | authlib discovery property is a URL; log4j is a second outbound path (OS resolver) | **adopt**: `NO_NETWORK` argv table; **defer** a reference test running the Instance under strace and asserting loopback-only connects (after the runner) |
 | 2026-09-26 | worker E | `git checkout <file>` to undo a mutation wiped uncommitted work | **adopt**: red-green Known traps "mutate only after committing" |

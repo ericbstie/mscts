@@ -27,3 +27,8 @@ would need custom code for every server.
   asserts on the files written.
 - Invariants such as offline mode and no whitelist are tested once per
   Adapter in the `unit` tier.
+- A TCP connect is **not** readiness, not even as a stand-in. Vanilla
+  26.3 accepts TCP about 0.3–0.8 s before its world exists, and a console
+  line it reads in that window is lost to an NPE (worker D, 2026-09-26,
+  `docs/research/2026-09-26-runner.md`). Console input, including the
+  graceful `stop`, is only reliable after the status ping answers.

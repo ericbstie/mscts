@@ -21,35 +21,40 @@ Done:
   absolute, release-file-verified Java 25, workdir refusal, and a shared
   `cache_dir()`.
 
-In flight (batch 2):
+- **D** (opus): `runner.running`, with an injected readiness probe,
+  stdin → SIGTERM → SIGKILL of the process group, cleanup on
+  error/cancel, a leak guard, and a reference boot of vanilla (about 10 s
+  to ready).
+
+In flight:
 - **F** (opus): `Transcript`/`Event`/`Mark`, `Connection` (framing, State,
   recording), `Bot.status`/`ping`, and `status_probe`, all hermetic.
-- **D** (opus): `runner.running` (injected readiness probe, stop
-  escalation, cleanup on cancel).
+- **G** (sonnet): packets.json regen check, and a host-independent
+  vanilla launch (env, TZ, IPv4).
+- **H** (opus): `PumpkinAdapter`.
 
 ## Next
 
 Take the first item. Split it if it is more than one failing test.
 
-1. Reference tier: the runner plus `status_probe` launch vanilla, and
-   `Bot.status`/`ping` decode strictly against it, verifying the
-   handshake/status layouts per ADR-0003 (after D and F).
-2. `codec`: a packets.json regen script built on `VanillaAdapter.provision`
-   that diffs against the committed copy (sonnet).
-3. `adapter/vanilla`: fixed launch-env PATH, `-Duser.timezone=UTC`,
-   `-Djava.net.preferIPv4Stack=true` in a named table, golden-tested
-   (sonnet).
-4. `scripts/`: a committed research harness that provisions, prepares and
-   launches any Adapter's LaunchPlan (optionally under strace), then runs
-   a status probe; plus a reference test asserting that the Reference
-   makes loopback-only connects (after D and F; sonnet).
-5. `adapter/pumpkin`: provision nightly (record sha256 + version), and a
-   complete golden-file `pumpkin.toml` enforcing the invariants (offline,
-   `encryption = false`, Bedrock off, telemetry off, no favicon, no
-   outbound network, flat world if supported) (opus).
-6. Spawn: vanilla's join position varies on every fresh run even with
+1. Reference tier: `running` + `status_probe` launch vanilla, and
+   `Bot.status`/`ping` decode strictly against it (ADR-0003). Replace the
+   runner test's inline probe with `status_probe`. Add a session-scoped
+   Reference Instance fixture so reference tests share one boot (after
+   F).
+2. `spec`/`adapter`: a distinct loopback host per Instance
+   (`ServerSpec.host` in 127/8), so a probe can never reach another
+   worker's server.
+3. `scripts/` research harness: launch any Adapter's LaunchPlan
+   (optionally under strace) and probe it; `scripts/strays.py`; a
+   reference test asserting that the Reference's connects are
+   loopback-only. Also tooling: `pythonpath = ["tests"]` +
+   `tests/support/` (sonnet).
+4. `runner`: a parent-death guard, so a SIGKILLed harness never orphans
+   servers.
+5. Spawn: vanilla's join position varies on every fresh run even with
    seed 0. Pin it (spawn radius) or Mask `player_position` before M4.
-7. Then **M2** in `docs/PLAN.md`.
+6. Then **M2** in `docs/PLAN.md`.
 
 ## Log
 

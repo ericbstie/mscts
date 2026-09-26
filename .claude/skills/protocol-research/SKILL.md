@@ -59,6 +59,9 @@ instead.
 - `accept_teleportation` echoes the pose: `VarInt id, 3×Double, 2×Float`.
 - After `login_compression`, every frame is `VarInt data-length ‖ data`,
   where data-length 0 means uncompressed.
+- Vanilla accepts TCP before its world exists. Console lines read before
+  then are lost to an NPE. Readiness is always a status ping (never a
+  TCP connect), and console commands are sent only after it answers.
 - Never op a player through the vanilla console. With Mojang services
   unreachable, `op Steve` ops the lower-cased `steve` (a different offline
   UUID). Write `ops.json` directly, with
