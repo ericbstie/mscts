@@ -98,7 +98,7 @@ class Packet:
     # Packet, not a separate Event variant, so a Comparison needs no new case: its fields are
     # None, so it is compared by payload, and an unknown or corrupt name never aligns with a
     # Reference packet. (M2: a decode_error on the Candidate side is a `mismatch`, and must
-    # survive a `*` Mask on its name.)
+    # survive a `*` Mask on its name: `run.judge` leads with a `failed` Divergence.)
 
 class CodecError(ValueError): ...   # bad packet data, an unknown packet, or fields that do not fit
 class UnknownPacketError(CodecError): ...   # packet_id / packet_name / decode: no such name or id
@@ -597,8 +597,8 @@ class Divergence:
     index: int                      # position in the Bot's normalized stream, from 0: the
                                     # reference stream for missing and field, the candidate
                                     # stream for unexpected; 0 for bot
-    kind: Literal["bot", "missing", "unexpected", "field"]
-    packet: str                     # the packet name ("" for bot)
+    kind: Literal["bot", "missing", "unexpected", "field", "failed"]
+    packet: str                     # the packet name ("" for bot and failed)
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT
     candidate: object
@@ -607,7 +607,9 @@ class Divergence:
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
     # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
-    # field: a difference between two matched packets.
+    # field: a difference between two matched packets;
+    # failed: the Scenario failed on the Candidate (made by run.judge, never by compare):
+    #   bot "", index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
 
 @frozen
 class Verdict:
@@ -645,10 +647,14 @@ class Server:                       # one side of a Run
 async def run_scenario(scenario: Scenario, endpoint: Endpoint, *, server: str,
                        timeout_s: float = SCENARIO_TIMEOUT_S) -> Transcript: ...
     # one Instance; closes every Bot however it ends; ScenarioError if the Scenario raised
+CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError)
 def judge(scenario: Scenario, reference: Transcript | ScenarioError,
           candidate: Transcript | ScenarioError) -> Verdict: ...
-    # error: the Reference failed, the harness failed on the Candidate, or compare raised;
-    # else compare(reference, candidate, scenario.masks)
+    # The Verdict rule (audit H3): a Candidate failure (its ScenarioError's cause is one of
+    # CANDIDATE_FAILURES) is `mismatch`: a `failed` Divergence first, then what compare
+    # finds in the Transcripts so far (e.g. the undecodable frame, by payload), whatever the
+    # Masks. `error` only if the Reference failed, the Scenario raised anything else on the
+    # Candidate (a harness bug), or compare raised. Else compare(reference, candidate, masks).
 def blocked(scenario: Scenario, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
 async def run(scenarios: Sequence[Scenario], reference: Server, candidate: Server, *,

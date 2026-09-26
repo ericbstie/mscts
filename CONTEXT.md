@@ -100,7 +100,12 @@ need is missing, add it here in the same commit that introduces it.
   (ADR-0007).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Scenario did not match), or `error` (the harness failed, or
-  the Reference itself could not run the Scenario).
+  the Reference itself could not run the Scenario). A failure the
+  Candidate caused (a frame that does not decode, an answer that breaks
+  the protocol, no answer in time, a connection closed, reset or refused)
+  is a `mismatch`, led by a `failed` Divergence that says what happened,
+  never an `error`: compliance scores leave `error` out, so a Candidate
+  must never score better by failing.
 - **Self-check**: a Comparison of Reference against Reference. It must
   always be `match`. Anything else is a missing Mask or a flaky Scenario,
   never a Reference bug.

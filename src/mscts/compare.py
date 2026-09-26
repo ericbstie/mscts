@@ -96,7 +96,7 @@ class Mask:
             _mask_steps(self)
 
 
-type DivergenceKind = Literal["bot", "missing", "unexpected", "field"]
+type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,9 +117,12 @@ class Divergence:
             `missing`: a reference Packet the alignment left unmatched.
             `unexpected`: a candidate Packet the alignment left unmatched.
             `field`: a difference between two matched Packets.
-        packet: The packet name; "" for `bot`.
+            `failed`: the Scenario failed on the Candidate, as `candidate` says (a
+            Candidate failure, `run.judge`; never made by `compare`). `bot` and `packet`
+            are "", `index` 0, `reference` ABSENT.
+        packet: The packet name; "" for `bot` and `failed`.
         path: Where in the matched Packets they differ, or None for their whole
-            payload. Always None for `bot`, `missing` and `unexpected`.
+            payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
         reference: The value in the reference, or ABSENT. For `bot`, the number of
             the Bot's Events.
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of

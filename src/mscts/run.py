@@ -8,8 +8,9 @@ from pathlib import Path
 
 from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
-from mscts.compare import Outcome, Verdict, compare
-from mscts.net import Endpoint
+from mscts.codec.packets import CodecError
+from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
+from mscts.net import Endpoint, ProtocolError
 from mscts.runner import free_endpoint, running
 from mscts.scenario import Scenario, ScenarioContext, ScenarioKind
 from mscts.spec import ServerSpec
@@ -24,6 +25,14 @@ READY_TIMEOUT_S = 120.0
 
 STOP_TIMEOUT_S = 30.0
 """How long each step of stopping an Instance may take (runner.running's `stop_timeout`)."""
+
+CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
+    CodecError,  # a frame that did not decode (recorded first, with its decode_error)
+    ProtocolError,  # an answer that breaks the protocol's sequence or content
+    TimeoutError,  # no answer in time
+    ConnectionError,  # the connection was closed, reset or refused
+)
+"""What a Scenario raises when the Candidate caused it: a `mismatch`, never `error`."""
 
 _SPEC_KEY_ENDPOINT = Endpoint(host="127.0.0.1", port=1)
 """The Endpoint a Scenario's `spec` is applied to only to tell which specs are equal."""
@@ -83,17 +92,44 @@ def judge(
 ) -> Verdict:
     """The Verdict on `scenario`, from what it gave on the Reference and on the Candidate.
 
-    `error` if either side failed, or if the Comparison itself fails (a harness bug);
-    otherwise what `compare` finds, with the Scenario's Masks.
+    What `compare` finds, with the Scenario's Masks, except:
+
+    - The Candidate failed in a way it caused (`CANDIDATE_FAILURES`: its output did not
+      decode, broke the protocol, never came, or its connection closed or was refused):
+      `mismatch`, led by a `failed` Divergence that says what happened, then whatever
+      the Comparison of the Transcripts so far finds. Never `error`, which a
+      compliance score leaves out (audit H3).
+    - The Reference failed, the Scenario raised anything else on the Candidate, or the
+      Comparison itself raised: `error`, the harness or the Reference having failed.
     """
     if isinstance(reference, ScenarioError):
         return _error(scenario, f"the Reference failed: {reference}")
-    if isinstance(candidate, ScenarioError):
+    if isinstance(candidate, ScenarioError) and not isinstance(
+        candidate.__cause__, CANDIDATE_FAILURES
+    ):
         return _error(scenario, f"the harness failed on the Candidate: {candidate}")
+    transcript = candidate.transcript if isinstance(candidate, ScenarioError) else candidate
     try:
-        return compare(reference, candidate, scenario.masks)
+        verdict = compare(reference, transcript, scenario.masks)
     except (TypeError, ValueError) as exc:
         return _error(scenario, f"the Comparison failed: {type(exc).__name__}: {exc}")
+    if not isinstance(candidate, ScenarioError):
+        return verdict
+    failed = Divergence(
+        bot="",
+        index=0,
+        kind="failed",
+        packet="",
+        path=None,
+        reference=ABSENT,
+        candidate=str(candidate),
+    )
+    return Verdict(
+        scenario_id=scenario.id,
+        outcome=Outcome.MISMATCH,
+        divergences=(failed, *verdict.divergences),
+        detail=f"the Candidate failed: {candidate}",
+    )
 
 
 def blocked(scenario: Scenario, verdicts: Mapping[str, Verdict]) -> Verdict | None:
