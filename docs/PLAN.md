@@ -286,7 +286,7 @@ class Instance:
     endpoint: Endpoint
     pid: int
     launched_ns: int
-    ready_ns: int                   # first status ping answering Target.protocol_version
+    ready_ns: int                   # first probe answering True that the Instance owned
     log_path: Path
 
 @asynccontextmanager
@@ -294,6 +294,15 @@ async def running(plan: LaunchPlan, *, ready: Callable[[Endpoint], Awaitable[boo
                   ready_timeout: float, stop_timeout: float = 10.0) -> AsyncIterator[Instance]: ...
 # Readiness is an injected probe, polled until it returns True. In a Run it is the status
 # ping answering Target.protocol_version (ADR-0004); tests inject simpler probes.
+# An answer counts only if the Instance provably gave it (ownership): there are IPv4
+# sockets listening at exactly the Endpoint, the same ones before and after that probe,
+# and each is open in a process of the Instance's process group (any member, not just
+# the leader). Otherwise polling goes on, and a RunnerError at ready_timeout names who held
+# the socket ("held by pid N (name)") or says nothing listened at exactly the Endpoint.
+# Read from /proc/net/tcp and /proc/<pid>/fd, so Linux only: elsewhere running raises
+# RunnerError before launching; a non-IPv4 Endpoint host raises ValueError before launching.
+# Not counted as the Instance's: wildcard (0.0.0.0) and IPv6 listeners (no /proc/net/tcp6
+# here), and a socket shared through SO_REUSEPORT with any process outside the group.
 # Stop, however the body ends (normally, exception, cancellation): stop_stdin + close stdin
 # → SIGTERM → SIGKILL to the process group, each after stop_timeout (no stop_stdin: SIGTERM
 # at once); then SIGKILL whatever is left of the group. A second cancellation while

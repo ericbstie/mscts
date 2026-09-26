@@ -30,7 +30,13 @@ async def test_running_yields_the_instance_once_the_probe_first_answers_true(
 
     before_ns = time.monotonic_ns()
     async with running(plan, ready=ready, ready_timeout=5) as instance:
-        assert [answer for _, answer in probes][-2:] == [False, True]  # it polled
+        answers = [answer for _, answer in probes]
+        first_true = answers.index(True)
+        assert first_true > 0  # it polled
+        # The first True counts unless the server bound its socket during that very probe
+        # (it was not listening yet just before it): then the next probe is the first
+        # whose answer is provably the Instance's own.
+        assert answers[first_true:] in ([True], [True, True])
         assert before_ns <= instance.launched_ns <= probes[0][0]
         assert probes[-1][0] <= instance.ready_ns <= time.monotonic_ns()
         assert instance.ready_ns - instance.launched_ns >= 200_000_000  # --listen-after 0.2

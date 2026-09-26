@@ -1,18 +1,24 @@
 """The one generic runner: launch any LaunchPlan, wait until it is ready, always stop it.
 
 Server-agnostic by design (ADR-0004): it never parses logs, and readiness is decided by
-an injected probe (in a Run, the status ping).
+an injected probe (in a Run, the status ping), plus proof that the socket answering at
+the Endpoint is the Instance's own.
+
+Linux only: that proof is read from /proc (see `_listeners` and `_group_sockets`).
 """
 
 import asyncio
 import contextlib
+import ipaddress
 import logging
 import os
+import re
 import signal
 import socket
+import sys
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mscts.adapters.base import LaunchPlan
@@ -26,6 +32,10 @@ _POLL_INTERVAL_S = 0.02
 # How much of the console a RunnerError quotes.
 LOG_TAIL_LINES = 40
 _LOG_TAIL_BYTES = 64 * 1024  # read at most this much, however big the log grew
+# Where the kernel shows who owns which socket. Linux's procfs; nothing else has it.
+PROC = Path("/proc")
+_TCP_LISTEN = 0x0A  # the `st` column of /proc/net/tcp for a listening socket
+_SOCKET_LINK = re.compile(r"socket:\[(\d+)\]")  # what /proc/<pid>/fd/<n> points to
 
 _log = logging.getLogger(__name__)
 
@@ -73,7 +83,7 @@ class Instance:
     endpoint: Endpoint
     pid: int  # also its session and process-group id
     launched_ns: int  # time.monotonic_ns() just before the process was spawned
-    ready_ns: int  # time.monotonic_ns() when the readiness probe first returned True
+    ready_ns: int  # time.monotonic_ns() once a probe returned True and the Instance owned it
     log_path: Path  # its console: stdout and stderr, in the plan's cwd
 
 
@@ -88,8 +98,13 @@ async def running(
     """Launch `plan`, yield its Instance once `ready(endpoint)` is True, then stop it.
 
     `ready` is polled until it returns True; it returns False while the server is not
-    ready yet. The process runs in its own session with exactly `plan.env`, stdin piped,
-    and stdout and stderr in `log_path` (overwritten by each launch).
+    ready yet. An answer counts only if the Instance provably gave it: the IPv4 sockets
+    listening at exactly the Endpoint were the same before and after that probe, and
+    each of them is open in a process of the Instance's process group (see
+    `_listeners`). Otherwise another process answered, and polling goes on; if that
+    lasts until `ready_timeout`, the RunnerError names who holds the socket. The
+    process runs in its own session with exactly `plan.env`, stdin piped, and stdout
+    and stderr in `log_path` (overwritten by each launch).
 
     On leaving the context, however the body ends (normally, by an exception, by
     cancellation), the process is stopped and reaped: `plan.stop_stdin` is written to
@@ -99,6 +114,7 @@ async def running(
     stopped is logged.
     """
     log_path = plan.cwd / CONSOLE_LOG
+    _check_ownership_is_provable(plan.endpoint, log_path)
     deadline = asyncio.get_running_loop().time() + ready_timeout
     try:
         with log_path.open("wb") as console:
@@ -117,19 +133,20 @@ async def running(
         raise _failure(reason, None, log_path) from error
     try:
         readiness = asyncio.timeout_at(deadline)
+        others = _OtherListeners(plan.endpoint)
         try:
             async with readiness:
-                ready_ns = await _ready_ns(process, ready, plan.endpoint)
+                ready_ns = await _ready_ns(process, ready, plan.endpoint, others)
         except TimeoutError:
             if not readiness.expired():  # the probe's own TimeoutError: a probe bug
                 raise
             exit_code = await _stop(process, plan, stop_timeout)
             host, port = plan.endpoint.host, plan.endpoint.port
             reason = f"{plan.argv[0]} was not ready at {host}:{port} within {ready_timeout} s"
-            raise _failure(reason, exit_code, log_path) from None
+            raise _failure(reason + others.explain(), exit_code, log_path) from None
         if ready_ns is None:
             reason = f"{plan.argv[0]} exited with code {process.returncode} before it was ready"
-            raise _failure(reason, process.returncode, log_path)
+            raise _failure(reason + others.explain(), process.returncode, log_path)
         yield Instance(
             endpoint=plan.endpoint,
             pid=process.pid,
@@ -212,19 +229,155 @@ async def _within(seconds: float, work: Awaitable[object]) -> bool:
     return True
 
 
+@dataclass
+class _OtherListeners:
+    """The last time a probe answered True but the Instance was not proven to answer it.
+
+    Kept for the RunnerError, to say who listened at the Endpoint instead.
+    """
+
+    endpoint: Endpoint
+    listeners: frozenset[int] | None = None  # None: no probe has answered True yet
+    not_ours: frozenset[int] = field(default_factory=frozenset)
+
+    def explain(self) -> str:
+        """Why a probe that answered did not make the Instance ready ("" if none did)."""
+        where = f"{self.endpoint.host}:{self.endpoint.port}"
+        if self.listeners is None:
+            return ""
+        if not self.listeners:
+            return f"; a probe was answered, but no IPv4 socket listens at exactly {where}"
+        if not self.not_ours:
+            return f"; a probe was answered, but the sockets listening at {where} changed"
+        owners = ", ".join(_owners(self.not_ours)) or "a process this user cannot see"
+        return f"; a probe was answered, but a socket listening at {where} is held by {owners}"
+
+
 async def _ready_ns(
     process: asyncio.subprocess.Process,
     ready: Callable[[Endpoint], Awaitable[bool]],
     endpoint: Endpoint,
+    others: _OtherListeners,
 ) -> int | None:
-    """Poll `ready` until it returns True and return when it did; None if the process exits."""
+    """Poll `ready` until the Instance itself answers True; return when; None if it exits.
+
+    An answer is the Instance's only if there were sockets listening at the Endpoint,
+    the same ones before and after the probe (so the one that answered is among them),
+    and every one of them is open in the Instance's process group. Otherwise `others`
+    records who did listen there.
+    """
     while True:
+        before = _listeners(endpoint)
         answer = await ready(endpoint)
         if process.returncode is not None:
             return None
         if answer:
-            return time.monotonic_ns()
+            after = _listeners(endpoint)
+            ours = _group_sockets(process.pid)
+            if after and after == before and after <= ours:
+                return time.monotonic_ns()
+            others.listeners = before | after
+            others.not_ours = others.listeners - ours
         await asyncio.sleep(_POLL_INTERVAL_S)
+
+
+def _check_ownership_is_provable(endpoint: Endpoint, log_path: Path) -> None:
+    """Raise unless `_listeners` can tell who listens at `endpoint`, before launching.
+
+    RunnerError off Linux (no /proc/net/tcp); ValueError if the host is no IPv4 address.
+    """
+    _tcp_address(endpoint)
+    if not (PROC / "net" / "tcp").is_file():
+        reason = (
+            f"cannot prove who listens at {endpoint.host}:{endpoint.port}: readiness reads "
+            f"socket owners from Linux's {PROC}/net/tcp, which {sys.platform} does not have"
+        )
+        raise RunnerError(reason, exit_code=None, log_path=log_path, log_tail=())
+
+
+def _tcp_address(endpoint: Endpoint) -> str:
+    """`endpoint` as /proc/net/tcp writes a local address: `%08X:%04X`.
+
+    The first word is the address in network byte order, printed as a native-endian
+    integer (127.0.0.1 is 0100007F on x86); the second is the port.
+    """
+    word = int.from_bytes(ipaddress.IPv4Address(endpoint.host).packed, sys.byteorder)
+    return f"{word:08X}:{endpoint.port:04X}"
+
+
+def _listeners(endpoint: Endpoint) -> frozenset[int]:
+    """The inodes of the IPv4 TCP sockets listening at exactly `endpoint`.
+
+    From /proc/net/tcp, which lists this network namespace's sockets. Whenever there is
+    such a socket, a connection to the Endpoint reaches one of them, because the kernel
+    prefers a listener bound to the exact address to a wildcard (0.0.0.0) one. There
+    are several only with SO_REUSEPORT, and then the kernel spreads connections over
+    all of them. A wildcard or IPv6 listener is never counted: a server must bind its
+    loopback Endpoint exactly (an IPv6 one would need /proc/net/tcp6, which this
+    container's kernel lacks).
+    """
+    address = _tcp_address(endpoint)
+    inodes: set[int] = set()
+    for line in (PROC / "net" / "tcp").read_text().splitlines()[1:]:
+        # sl local_address rem_address st tx:rx tr:when retrnsmt uid timeout inode ...
+        columns = line.split()
+        if columns[1] == address and int(columns[3], 16) == _TCP_LISTEN:
+            inodes.add(int(columns[9]))
+    return frozenset(inodes)
+
+
+def _processes() -> list[Path]:
+    """The /proc/<pid> directory of every process visible here."""
+    return [entry for entry in PROC.iterdir() if entry.name.isdigit()]
+
+
+def _process_group(process: Path) -> int | None:
+    """The process group id of the process at `process` (/proc/<pid>), None if it is gone."""
+    try:
+        stat = (process / "stat").read_text()
+    except OSError:
+        return None
+    # "pid (comm) state ppid pgrp ...": comm may hold spaces and parentheses.
+    return int(stat.rpartition(")")[2].split()[2])
+
+
+def _sockets(process: Path) -> frozenset[int]:
+    """The inodes of the sockets open in the process at `process` (/proc/<pid>)."""
+    inodes: set[int] = set()
+    try:
+        descriptors = list((process / "fd").iterdir())
+    except OSError:  # gone, or not ours to read
+        descriptors = []
+    for descriptor in descriptors:
+        try:
+            link = descriptor.readlink()
+        except OSError:  # closed meanwhile
+            continue
+        if match := _SOCKET_LINK.fullmatch(str(link)):
+            inodes.add(int(match[1]))
+    return frozenset(inodes)
+
+
+def _group_sockets(pgid: int) -> frozenset[int]:
+    """The inodes of the sockets open in any process of process group `pgid`.
+
+    Every member counts, not just its leader: a server may listen from a child.
+    """
+    inodes: set[int] = set()
+    for process in _processes():
+        if _process_group(process) == pgid:
+            inodes |= _sockets(process)
+    return frozenset(inodes)
+
+
+def _owners(inodes: frozenset[int]) -> list[str]:
+    """Who holds any of `inodes`, as "pid N (name)", among the processes visible here."""
+    owners = []
+    for process in _processes():
+        if _sockets(process) & inodes:
+            with contextlib.suppress(OSError):  # gone meanwhile
+                owners.append(f"pid {process.name} ({(process / 'comm').read_text().strip()})")
+    return owners
 
 
 def _failure(reason: str, exit_code: int | None, log_path: Path) -> RunnerError:

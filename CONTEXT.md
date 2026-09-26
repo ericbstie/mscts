@@ -35,7 +35,10 @@ need is missing, add it here in the same commit that introduces it.
   It contains no process handling.
 - **Instance**: one running server process started from a LaunchPlan and
   reachable at an **Endpoint** (host, port). It is **ready** when a status
-  ping answers with the Target protocol.
+  ping answers with the Target protocol **and** the socket listening at the
+  Endpoint is provably the Instance's own (**ownership**: held by its process
+  group, the same socket before and after the ping). An answer from any other
+  process at the same Endpoint never makes an Instance ready.
 
 ## Talking to a server
 

@@ -5,7 +5,10 @@ line `stop` arrives on stdin, like vanilla. Flags make it misbehave:
 
     --listen-after S   listen only after S seconds
     --never-listen     never listen
+    --listen-in-child  fork a child into its process group that listens (this process does not)
+    --reuseport        listen with SO_REUSEPORT, so another socket may listen there too
     --exit-early CODE  write 50 numbered lines, then exit with CODE before listening
+                       (after forking the --child or --listen-in-child child, if any)
     --ignore-stop      answer `stop` with "ignoring stop" and keep running
     --ignore-sigterm   answer SIGTERM with "ignoring SIGTERM" and keep running
     --child            fork a sleeping child into its process group, and never wait for it
@@ -38,9 +41,22 @@ def fork_sleeper() -> int:
     return child
 
 
-def listen(port: int, after: float) -> None:
+def fork_listener(port: int, *, reuse_port: bool) -> int:
+    """Fork a child that listens and does nothing else; return its pid. Call before any thread."""
+    child = os.fork()
+    if child == 0:
+        try:
+            server = socket.create_server(("127.0.0.1", port), reuse_port=reuse_port)
+            say("listening")
+            accept_forever(server)
+        finally:
+            os._exit(1)
+    return child
+
+
+def listen(port: int, after: float, *, reuse_port: bool) -> None:
     time.sleep(after)
-    server = socket.create_server(("127.0.0.1", port))
+    server = socket.create_server(("127.0.0.1", port), reuse_port=reuse_port)
     threading.Thread(target=accept_forever, args=(server,), daemon=True).start()
     say("listening")
 
@@ -69,6 +85,8 @@ def main() -> int:
     parser.add_argument("port", type=int)
     parser.add_argument("--listen-after", type=float, default=0.0)
     parser.add_argument("--never-listen", action="store_true")
+    parser.add_argument("--listen-in-child", action="store_true")
+    parser.add_argument("--reuseport", action="store_true")
     parser.add_argument("--exit-early", type=int)
     parser.add_argument("--ignore-stop", action="store_true")
     parser.add_argument("--ignore-sigterm", action="store_true")
@@ -79,16 +97,18 @@ def main() -> int:
     say(f"cwd={Path.cwd()}")
     say(f"env={json.dumps(dict(os.environ), sort_keys=True)}")
     say("hello from stderr", fd=2)
+    if args.child:
+        say(f"child={fork_sleeper()}")
+    if args.listen_in_child:
+        say(f"listener={fork_listener(args.port, reuse_port=args.reuseport)}")
     if args.exit_early is not None:
         for number in range(1, 51):
             say(f"line {number}")
         return int(args.exit_early)
-    if args.child:
-        say(f"child={fork_sleeper()}")
     if args.ignore_sigterm:
         signal.signal(signal.SIGTERM, lambda _signum, _frame: say("ignoring SIGTERM"))
-    if not args.never_listen:
-        listen(args.port, after=args.listen_after)
+    if not (args.never_listen or args.listen_in_child):
+        listen(args.port, after=args.listen_after, reuse_port=args.reuseport)
     console(ignore_stop=args.ignore_stop)
     return 0
 
