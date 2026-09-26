@@ -6,8 +6,12 @@ from dataclasses import dataclass
 from typing import Self
 
 from mscts.codec.framing import FrameDecoder, encode_frame
-from mscts.codec.packets import Codec, Direction, State
+from mscts.codec.packets import Codec, CodecError, Direction, Packet, State
+from mscts.codec.wire import WireError
 from mscts.transcript import Transcript
+
+_READ_SIZE = 65_536
+"""The most bytes one read takes from the socket."""
 
 _CLOSE_TIMEOUT_S = 1.0
 """How long close() waits for the socket to finish closing before aborting it."""
@@ -29,8 +33,13 @@ class Connection:
     """One TCP connection to a server. It owns the framing and the State.
 
     Every Packet it sends or receives is recorded to its Transcript as an Event of
-    its Bot. A sent Packet is stamped immediately before its frame is written to the
-    socket, and it is recorded as decoded from the exact bytes written.
+    its Bot:
+
+    - A sent Packet is stamped immediately before its frame is written to the
+      socket, and it is recorded as decoded from the exact bytes written.
+    - A received Packet is stamped when the socket read that completed its frame
+      returned, and it is recorded when `recv` returns it. Frames that arrive
+      together keep the time they arrived, however late they are taken.
     """
 
     def __init__(
@@ -50,6 +59,9 @@ class Connection:
         self._transcript = transcript
         self._state = State.HANDSHAKE
         self._frames = FrameDecoder()
+        # When the latest socket read returned. recv reads only while no complete frame
+        # is buffered, so every frame it takes was completed by that read.
+        self._last_read_ns = 0
         self._closed = False
 
     @classmethod
@@ -89,6 +101,25 @@ class Connection:
         self._transcript.record(self._bot, packet, t_ns=t_ns)
         await self._writer.drain()
 
+    async def recv(self, *, timeout_s: float) -> Packet:
+        """Receive the next clientbound Packet, decoded in the current State.
+
+        Raises:
+            TimeoutError: No complete frame arrived within `timeout_s` seconds. The
+                Connection stays usable.
+            CodecError: The frame is corrupt, or its packet is unknown here or does not
+                fit its schema exactly. Nothing is recorded.
+            ConnectionClosedError: The Connection is closed, or the server closed it
+                (the message says if that was mid-frame).
+        """
+        self._check_open()
+        async with asyncio.timeout(timeout_s):
+            while (frame := self._take_frame()) is None:
+                await self._read()
+        packet = self._codec.decode(self._state, Direction.CLIENTBOUND, frame)
+        self._transcript.record(self._bot, packet, t_ns=self._last_read_ns)
+        return packet
+
     async def close(self) -> None:
         """Close the connection. Calling it again does nothing.
 
@@ -105,6 +136,28 @@ class Connection:
                     await self._writer.wait_closed()
             except TimeoutError:
                 self._writer.transport.abort()
+
+    async def _read(self) -> None:
+        chunk = await self._reader.read(_READ_SIZE)
+        t_ns = self._transcript.now_ns()
+        if not chunk:
+            if self._frames.buffered:
+                msg = (
+                    "the server closed the connection mid-frame, "
+                    f"{self._frames.buffered} byte(s) into it"
+                )
+            else:
+                msg = "the server closed the connection"
+            raise ConnectionClosedError(msg)
+        self._frames.extend(chunk)
+        self._last_read_ns = t_ns
+
+    def _take_frame(self) -> bytes | None:
+        try:
+            return self._frames.next_frame()
+        except WireError as exc:
+            msg = f"{self._state} {Direction.CLIENTBOUND} frame: {exc}"
+            raise CodecError(msg) from exc
 
     def _check_open(self) -> None:
         if self._closed:

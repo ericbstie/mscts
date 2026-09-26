@@ -166,18 +166,25 @@ class Connection:                   # one TCP connection; owns framing, compress
                    transcript: Transcript) -> "Connection": ...   # TCP_NODELAY (asyncio's default)
     state: State                    # advances on intention / login_acknowledged / finish_configuration
     async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
-    async def recv(self, *, timeout: float) -> Packet: ...             # records an Event
+    async def recv(self, *, timeout_s: float) -> Packet: ...           # records an Event
     async def close(self) -> None: ...                                 # idempotent; aborts after 1 s
     # `name` is positional-only, so a packet field called `name` (login `hello`) fits in **fields.
+    # Timeouts are named `timeout_s`: ruff's ASYNC109 flags a parameter named `timeout`, and its
+    # docs endorse renaming it for functions that wrap asyncio.timeout.
     # send: CodecError (nothing written or recorded) if the fields do not fit. The Event holds
     # the Packet decoded from the exact bytes written, stamped immediately before the write.
+    # recv: stamped when the socket read that completed the frame returned (frames that arrive
+    # together share that time, however late they are taken); decoded in the State current when
+    # taken, and recorded then. TimeoutError leaves the Connection usable. CodecError for a
+    # corrupt frame (after the frames before it) or a strict-decode failure (nothing recorded).
+    # ConnectionClosedError when the server closes; the message says if that was mid-frame.
 
 class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
     name: str
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
-    async def expect(self, name: str, *, timeout: float,
+    async def expect(self, name: str, *, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def send(self, name: str, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
