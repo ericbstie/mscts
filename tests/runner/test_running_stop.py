@@ -97,7 +97,7 @@ async def test_no_process_of_the_instance_s_group_outlives_the_stop(
     fake_plan: FakePlan,
     tcp_probe: Probe,
     is_running: Callable[[int], bool],
-    stops_running: Callable[[int], Awaitable[bool]],
+    eventually: Callable[[Callable[[], bool]], Awaitable[bool]],
     stop_stdin: bytes | None,
 ) -> None:
     plan = fake_plan("--child", stop_stdin=stop_stdin)
@@ -108,4 +108,4 @@ async def test_no_process_of_the_instance_s_group_outlives_the_stop(
         (child,) = (int(line.removeprefix("child=")) for line in console if "child=" in line)
         assert is_running(child)
         assert os.getpgid(child) == instance.pid
-    assert await stops_running(child)
+    assert await eventually(lambda: not is_running(child))

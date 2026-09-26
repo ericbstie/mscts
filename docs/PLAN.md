@@ -249,7 +249,10 @@ async def running(plan: LaunchPlan, *, ready: Callable[[Endpoint], Awaitable[boo
                   ready_timeout: float, stop_timeout: float = 10.0) -> AsyncIterator[Instance]: ...
 # Readiness is an injected probe, polled until it returns True. In a Run it is the status
 # ping answering Target.protocol_version (ADR-0004); tests inject simpler probes.
-# Stop: stdin → SIGTERM → SIGKILL.
+# Stop, however the body ends (normally, exception, cancellation): stop_stdin + close stdin
+# → SIGTERM → SIGKILL to the process group, each after stop_timeout (no stop_stdin: SIGTERM
+# at once); then SIGKILL whatever is left of the group. A second cancellation while
+# stopping SIGKILLs at once. How it stopped is logged on `mscts.runner`.
 
 class RunnerError(RuntimeError):    # could not launch, exited before ready, or not ready in time
     reason: str

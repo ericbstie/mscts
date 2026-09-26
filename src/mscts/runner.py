@@ -91,8 +91,12 @@ async def running(
     ready yet. The process runs in its own session with exactly `plan.env`, stdin piped,
     and stdout and stderr in `log_path` (overwritten by each launch).
 
-    On leaving the context, `plan.stop_stdin` is written to stdin, which is then closed,
-    and the process gets `stop_timeout` seconds to exit. How it stopped is logged.
+    On leaving the context, however the body ends (normally, by an exception, by
+    cancellation), the process is stopped and reaped: `plan.stop_stdin` is written to
+    stdin, which is then closed; after `stop_timeout` seconds the process group gets
+    SIGTERM, and after another `stop_timeout`, SIGKILL. A plan without a stop line gets
+    SIGTERM at once. Being cancelled again while stopping SIGKILLs it at once. How it
+    stopped is logged.
     """
     log_path = plan.cwd / CONSOLE_LOG
     deadline = asyncio.get_running_loop().time() + ready_timeout
@@ -148,7 +152,14 @@ async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_time
     if process.returncode is not None:
         exit_code = process.returncode
     else:
-        how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
+        try:
+            how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
+        except BaseException:
+            # Cancelled again (a second Ctrl-C, a TaskGroup or loop shutting down) or
+            # interrupted mid-stop: kill it now rather than leak it. asyncio's child
+            # watcher reaps it as soon as the event loop runs again.
+            _signal_group(process, signal.SIGKILL)
+            raise
         exit_code = await process.wait()  # at once: it has exited
         graceful = how == ("stdin" if plan.stop_stdin is not None else "SIGTERM")
         _log.log(

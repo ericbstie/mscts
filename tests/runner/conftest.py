@@ -56,14 +56,15 @@ def runs(pid: int) -> bool:
     return _state(pid) not in {None, "Z", "X"}
 
 
-async def dies(pid: int, within: float = 1.0) -> bool:
-    """Whether `pid` stops running within `within` seconds.
+async def becomes_true(predicate: Callable[[], bool], within: float = 1.0) -> bool:
+    """Whether `predicate` holds within `within` seconds, while the event loop runs.
 
-    For a process that is not our child: it may linger as a zombie until PID 1 (lazy in
-    this container) reaps it, and a killed process takes a moment to exit.
+    For what settles a moment later: a killed process takes a moment to exit, asyncio's
+    child watcher reaps our child on a later loop iteration, and PID 1 (lazy in this
+    container) reaps a grandchild whenever it gets round to it.
     """
     deadline = time.monotonic() + within
-    while runs(pid):
+    while not predicate():
         if time.monotonic() > deadline:
             return False
         await asyncio.sleep(0.01)
@@ -86,8 +87,8 @@ def is_running() -> Callable[[int], bool]:
 
 
 @pytest.fixture
-def stops_running() -> Callable[[int], Awaitable[bool]]:
-    return dies
+def eventually() -> Callable[[Callable[[], bool]], Awaitable[bool]]:
+    return becomes_true
 
 
 def _running_with(variable: bytes) -> list[int]:
