@@ -602,6 +602,34 @@ def test_the_answer_runs_as_each_packet_arrives_without_a_recv(
     ]
 
 
+def test_a_packet_is_taken_only_once_its_answer_has_been_sent(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # So a Bot that takes a packet knows its answer is on the wire (and in the Transcript),
+    # even when sending it has to wait (here: a slow answer).
+    async def slow_echo(connection: Connection, packet: Packet) -> None:
+        await asyncio.sleep(0.05)
+        await echo_replies(connection, packet)
+
+    async def server(peer: Peer) -> None:
+        await peer.send("test:reply", value=5)
+        await peer.recv()
+        await peer.eof()
+
+    async def client() -> list[str]:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript, answer=slow_echo
+            )
+            try:
+                await connection.recv(timeout_s=1)
+                return [event.packet.name for event in transcript.events]
+            finally:
+                await connection.close()
+
+    assert asyncio.run(client()) == ["test:reply", "test:request"]
+
+
 def test_an_answer_that_fails_stops_the_reader_after_the_packet_it_answered(
     toy_codec: Codec, transcript: Transcript
 ) -> None:

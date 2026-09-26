@@ -147,12 +147,13 @@ class Connection:
         written at once rather than held back for coalescing.
 
         `answer`, if given, is awaited by the background reader for each Packet it
-        decodes, in wire order, as the packet arrives (the Packet is already queued for
-        `recv`), before the next frame is taken: the vanilla client answers keep-alives,
-        teleports and acks the same way, whether or not anyone is reading. If the
-        connection is lost, the answer's send fails and the reader reads on to the end
-        of the stream. Anything else an answer raises stops the reader, and `recv`
-        raises it after the packets before it.
+        decodes, in wire order, as the packet arrives, before the next frame is taken;
+        the vanilla client answers keep-alives, teleports and acks the same way, whether
+        or not anyone is reading. The Packet is queued for `recv` once its answer has
+        returned, so whoever takes it knows the answer was sent. If the connection is
+        lost, the answer's send fails and the reader reads on to the end of the stream.
+        Anything else an answer raises stops the reader, and `recv` raises it right
+        after the Packet it was answering.
 
         Raises:
             OSError: The connection failed, e.g. ConnectionRefusedError.
@@ -272,16 +273,32 @@ class Connection:
                     return
                 self._frames.extend(chunk)
                 while (arrival := self._next_arrival(t_ns)) is not None:
+                    failure = await self._answered(arrival)
                     self._arrivals.put_nowait(arrival)
+                    if failure is not None:
+                        self._arrivals.put_nowait(_End(failure))
+                        return
                     if arrival.error is not None:
                         return  # like vanilla's client, which disconnects on a bad frame
-                    if self._answer is not None:
-                        with contextlib.suppress(ConnectionClosedError):
-                            await self._answer(self, arrival.packet)
         except Exception as exc:  # noqa: BLE001 - not swallowed: recv raises it
             # Whatever else stopped the reader (the server, or a harness bug) is raised
             # by recv, rather than lost in a task nobody awaits.
             self._arrivals.put_nowait(_End(exc))
+
+    async def _answered(self, arrival: _Arrival) -> Exception | None:
+        """Run the answer for a decoded arrival; return what it raised, if that must stop us.
+
+        A send that found the connection lost is not a failure: the reader reads on.
+        """
+        if self._answer is None or arrival.error is not None:
+            return None
+        try:
+            await self._answer(self, arrival.packet)
+        except ConnectionClosedError:
+            return None
+        except Exception as exc:  # noqa: BLE001 - not swallowed: recv raises it
+            return exc
+        return None
 
     def _next_arrival(self, t_ns: int) -> _Arrival | None:
         """Take and decode the next complete frame, or None if there is none yet.

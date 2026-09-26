@@ -228,11 +228,12 @@ class Connection:                   # one TCP connection; owns framing, compress
     async def open(cls, endpoint: Endpoint, codec: Codec, *, bot: str, transcript: Transcript,
                    answer: Answer | None = None) -> "Connection": ...   # TCP_NODELAY (asyncio's default)
     # answer: awaited by the background reader for each Packet it decodes, in wire order, as
-    # it arrives (already queued for recv), before the next frame is taken; it may send. So a
-    # Bot answers keep-alives and teleports whether or not a Scenario is reading, as the
-    # vanilla client does. A send that fails because the connection is lost is ignored (the
-    # reader reads on to the end of the stream); anything else it raises stops the reader and
-    # recv raises it.
+    # it arrives, before the next frame is taken; it may send. So a Bot answers keep-alives
+    # and teleports whether or not a Scenario is reading, as the vanilla client does. The
+    # Packet is queued for recv once its answer has returned (whoever takes it knows the
+    # answer was sent). A send that fails because the connection is lost is ignored (the
+    # reader reads on to the end of the stream); anything else it raises stops the reader,
+    # and recv raises it right after the Packet it was answering.
     state: State                    # read-only: the State send encodes in
     # The directions switch as the vanilla client switches them (26.3 javap: the terminal
     # packets, whose isTerminal() is true). Sending the intention moves both (intent 1 →
