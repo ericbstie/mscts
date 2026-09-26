@@ -14,35 +14,42 @@ Done:
 - **B** (opus): `Target`, `ServerSpec`, `Endpoint`, the adapter base
   types, and a complete `VanillaAdapter` (golden-file `server.properties`,
   offline-UUID `ops.json`, hash-verified provision, reference-tier test).
-
 - **C** (opus): `Codec` (`packets.json` 26.3, name ↔ id, strict schema
   mechanism, handshake/status schemas), plus the lead's `Codec.for_target`.
+- **E** (opus): vanilla hardening. The `NO_NETWORK` argv (authlib
+  discovery → `127.0.0.1:0`, empty hosts file) is strace-verified; plus an
+  absolute, release-file-verified Java 25, workdir refusal, and a shared
+  `cache_dir()`.
 
 In flight (batch 2):
 - **F** (opus): `Transcript`/`Event`/`Mark`, `Connection` (framing, State,
   recording), `Bot.status`/`ping`, and `status_probe`, all hermetic.
 - **D** (opus): `runner.running` (injected readiness probe, stop
   escalation, cleanup on cancel).
-- **E** (opus): vanilla hardening (no outbound network, absolute
-  verified Java 25, fresh workdir, shared cache).
 
 ## Next
 
 Take the first item. Split it if it is more than one failing test.
 
-1. `codec`: a packets.json regen script built on `VanillaAdapter.provision`
-   that diffs against the committed copy (after E lands; sonnet).
-2. Reference tier: the runner plus `status_probe` launch vanilla, and
+1. Reference tier: the runner plus `status_probe` launch vanilla, and
    `Bot.status`/`ping` decode strictly against it, verifying the
    handshake/status layouts per ADR-0003 (after D and F).
-3. `adapter/pumpkin`: provision nightly (record sha256 + version), and a
-   complete `pumpkin.toml` enforcing the invariants (offline,
-   `encryption = false`, Bedrock off, telemetry off, no favicon, flat
-   world if supported).
-4. Determinism check: join vanilla twice with the same seed and compare
-   spawn and join order, before any M4 Masks (from worker B's
-   retrospective).
-5. Then **M2** in `docs/PLAN.md`.
+2. `codec`: a packets.json regen script built on `VanillaAdapter.provision`
+   that diffs against the committed copy (sonnet).
+3. `adapter/vanilla`: fixed launch-env PATH, `-Duser.timezone=UTC`,
+   `-Djava.net.preferIPv4Stack=true` in a named table, golden-tested
+   (sonnet).
+4. `scripts/`: a committed research harness that provisions, prepares and
+   launches any Adapter's LaunchPlan (optionally under strace), then runs
+   a status probe; plus a reference test asserting that the Reference
+   makes loopback-only connects (after D and F; sonnet).
+5. `adapter/pumpkin`: provision nightly (record sha256 + version), and a
+   complete golden-file `pumpkin.toml` enforcing the invariants (offline,
+   `encryption = false`, Bedrock off, telemetry off, no favicon, no
+   outbound network, flat world if supported) (opus).
+6. Spawn: vanilla's join position varies on every fresh run even with
+   seed 0. Pin it (spawn radius) or Mask `player_position` before M4.
+7. Then **M2** in `docs/PLAN.md`.
 
 ## Log
 

@@ -112,13 +112,18 @@ new classes of defect:
 - Tests that start servers must pick a free ephemeral port, never 25565,
   and must clean up their processes, even on failure. Other workers may
   run servers at the same time.
-- Downloads go to the git-ignored cache (`.cache/mscts/`) and are
-  hash-verified wherever the source publishes a hash.
-- **Shell in worktrees.** The sandbox refuses Bash it cannot verify: `rm -rf`
-  with globs, `env -i` in compound commands, heredocs (`cat >> f <<EOF`,
-  `python3 - <<EOF`), and `find` on variable paths. Put multi-step
-  research in a script file in the scratchpad and run it with
-  `sh`/`python3`. Use Edit/Write for code.
+- Downloads go to the shared cache (`mscts.cache.cache_dir()`, outside
+  every checkout) and are hash-verified wherever the source publishes a
+  hash.
+- **Shell in worktrees.** The sandbox refuses Bash it cannot verify. That
+  includes `rm -rf` with globs, `env -i` in compound commands, heredocs
+  (`cat >> f <<EOF`, `python3 - <<EOF`) mixed with other commands, `find`
+  or `sed` on `$VAR` paths, variables in command position, process
+  substitution `<(…)`, and `strace … python3 -c`.
+  **Default to this:** write any multi-step or scripted shell work to a
+  file in the scratchpad (literal absolute paths, no variables), and run
+  it as one plain command (`sh /abs/path.sh`, `python3 /abs/path.py`).
+  Use Edit/Write for code. `git commit -F - <<'EOF'` on its own works.
 - Known tool and type-checker traps are listed in the `red-green` skill.
   Read them first.
 - Stay inside the brief. If you are blocked, or the brief is wrong, stop
@@ -154,6 +159,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker E (vanilla) | Java version is read from the runtime image's `release` file in `prepare` (hermetic), not by running java in `provision` | **adopt** the deviation; the SessionStart hook now exports `MSCTS_JAVA`, because the mise shims on PATH are refused as non-runtime launchers |
+| 2026-09-26 | worker E | authlib discovery property is a URL; log4j is a second outbound path (OS resolver) | **adopt**: `NO_NETWORK` argv table; **defer** a reference test running the Instance under strace and asserting loopback-only connects (after the runner) |
+| 2026-09-26 | worker E | `git checkout <file>` to undo a mutation wiped uncommitted work | **adopt**: red-green Known traps "mutate only after committing" |
+| 2026-09-26 | worker E | More refused shell forms (the **third** worker to hit this) | **adopt**: Worker contract now makes script files in the scratchpad the default, not a workaround |
+| 2026-09-26 | worker E | S603 flags every subprocess call; tests got a per-file ignore | **adopt** for tests (justified); the S603 policy for `src/runner.py` is settled at D's integration |
+| 2026-09-26 | worker E | ty rejects returning an `re.Match` group (`Any`) | **adopt**: Known trap extended ("wrap in `str()`") |
+| 2026-09-26 | worker E | The launch env passes the harness PATH; timezone, IPv6 and JVM ergonomics come from the host | **adopt**: fixed PATH, `-Duser.timezone=UTC`, `-Djava.net.preferIPv4Stack=true` go in a small vanilla brief; **defer** CPU/GC/memory budgets to an M7 fairness ADR (they must apply to Reference and Candidate equally, so they belong in the runner, not one Adapter) |
+| 2026-09-26 | worker E | Stale `.cache/mscts/` in the Worker contract | **adopt**: fixed |
+| 2026-09-26 | worker E | Spawn position differs on every fresh run with seed 0, so the join-twice check is moot | **adopt**: Next item replaced with "pin spawn (spawn radius) or Mask `player_position`" |
+| 2026-09-26 | workers B, E | A committed research harness (launch a LaunchPlan, optionally under strace, then probe) would have saved the most time. Two workers asked for it | **adopt**: a sonnet brief for `scripts/` once the runner and Bot land |
 | 2026-09-25 | worker C (codec) | The worktree guard refuses complex Bash (a repeat of B's finding; C started before that fix landed) | **adopt** (already): Worker contract "Shell in worktrees"; watch for a third occurrence |
 | 2026-09-25 | worker C | ty cannot index an `isinstance`-narrowed JSON dict | **adopt**: red-green Known traps recipe |
 | 2026-09-25 | worker C | `Writer.var_int`/`var_long` masked out-of-range values; the done-criteria tested only wiki samples | **adopt**: Audit checklist "strict at the boundaries" |
