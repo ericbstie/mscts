@@ -41,7 +41,7 @@ def test_packet_holds_what_it_was_built_with() -> None:
 
 
 @pytest.mark.parametrize(
-    "attribute", ["state", "direction", "name", "packet_id", "payload", "fields"]
+    "attribute", ["state", "direction", "name", "packet_id", "payload", "fields", "decode_error"]
 )
 def test_packet_is_frozen(attribute: str) -> None:
     packet = _status_response()

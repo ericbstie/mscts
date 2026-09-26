@@ -86,7 +86,16 @@ class Packet:
     name: str                       # "minecraft:status_response"
     packet_id: int
     payload: bytes                  # bytes after the packet id
-    fields: Mapping[str, object] | None   # None ⇔ no schema yet for this packet
+    fields: Mapping[str, object] | None   # None ⇔ no schema yet for this packet, or undecodable
+    decode_error: str | None = None # why the Codec rejected this received frame; None if it did not
+    # An undecodable frame keeps its bytes as evidence (audit H3). Its name is the packet's
+    # name if its id is known, "unknown:<state>:0x2a" if not, and "corrupt:<state>" (packet_id
+    # -1, payload = the frame's bytes as far as they could be delimited) if not even a packet
+    # id could be read: a corrupt frame length or compressed payload, or empty data. It is one
+    # Packet, not a separate Event variant, so a Comparison needs no new case: its fields are
+    # None, so it is compared by payload, and an unknown or corrupt name never aligns with a
+    # Reference packet. (M2: a decode_error on the Candidate side is a `mismatch`, and must
+    # survive a `*` Mask on its name.)
 
 class CodecError(ValueError): ...   # bad packet data, an unknown packet, or fields that do not fit
 class UnknownPacketError(CodecError): ...   # packet_id / packet_name / decode: no such name or id
@@ -106,6 +115,11 @@ class Codec:                        # one per Target; loaded from codec/data/<ve
                fields: Mapping[str, object]) -> bytes: ...          # VarInt id ‖ payload
     def decode(self, state: State, direction: Direction, data: bytes) -> Packet: ...
     # decode is strict: if a schema exists it must consume the payload exactly, else CodecError.
+    def undecodable(self, state: State, direction: Direction, data: bytes,
+                    error: str) -> Packet: ...  # the Packet (decode_error=error) for data decode rejected
+
+def undecodable_frame(state: State, direction: Direction, raw: bytes,
+                      error: str) -> Packet: ...  # "corrupt:<state>" for bytes that were no frame data
 ```
 
 The schema mechanism (`codec/schema.py`) is how every packet's fields are

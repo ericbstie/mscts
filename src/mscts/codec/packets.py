@@ -39,10 +39,14 @@ class Packet:
     Attributes:
         state: The connection state the frame was sent in.
         direction: Which way the frame travelled.
-        name: The packet name, e.g. `minecraft:status_response`.
-        packet_id: The packet id the frame started with.
-        payload: The bytes after the packet id.
-        fields: The decoded fields, or None if the packet has no schema yet.
+        name: The packet name, e.g. `minecraft:status_response`. A frame the Codec could
+            not decode has the packet's name if its id is known, `unknown:<state>:0x2a`
+            if not, and `corrupt:<state>` if not even a packet id could be read.
+        packet_id: The packet id the frame started with, or -1 if it had none.
+        payload: The bytes after the packet id (all of them if it had none).
+        fields: The decoded fields, or None if the packet has no schema yet, or could not
+            be decoded.
+        decode_error: Why the Codec could not decode the frame, or None if it could.
     """
 
     state: State
@@ -51,6 +55,7 @@ class Packet:
     packet_id: int
     payload: bytes
     fields: Mapping[str, object] | None
+    decode_error: str | None = None
 
 
 class CodecError(ValueError):
@@ -208,6 +213,49 @@ class Codec:
             payload=payload,
             fields=fields,
         )
+
+    def undecodable(self, state: State, direction: Direction, data: bytes, error: str) -> Packet:
+        """The Packet that records frame data `decode` rejected, and why (`error`).
+
+        It keeps the packet's name and id if the id is known in `state` and `direction`,
+        names it `unknown:<state>:0x2a` if the id is not, and `corrupt:<state>` (id -1,
+        every byte kept as the payload) if not even a packet id can be read.
+        """
+        reader = Reader(data)
+        try:
+            packet_id = reader.var_int()
+        except WireError:
+            return undecodable_frame(state, direction, data, error)
+        try:
+            name = self.packet_name(state, direction, packet_id)
+        except UnknownPacketError:
+            name = f"unknown:{state}:{packet_id:#04x}"
+        return Packet(
+            state=state,
+            direction=direction,
+            name=name,
+            packet_id=packet_id,
+            payload=data[len(data) - reader.remaining :],
+            fields=None,
+            decode_error=error,
+        )
+
+
+def undecodable_frame(state: State, direction: Direction, raw: bytes, error: str) -> Packet:
+    """The Packet that records bytes that did not even hold a packet id, and why (`error`).
+
+    E.g. a corrupt frame length or compressed payload: named `corrupt:<state>`, with id -1
+    and `raw` as the payload.
+    """
+    return Packet(
+        state=state,
+        direction=direction,
+        name=f"corrupt:{state}",
+        packet_id=-1,
+        payload=raw,
+        fields=None,
+        decode_error=error,
+    )
 
 
 def _parse_packet_report(report: object) -> dict[tuple[State, Direction], dict[str, int]]:
