@@ -452,10 +452,12 @@ proves it necessary:
    see Open questions): the list form `["a", "b"]` ≡
    `{"text": "a", "extra": ["b"]}`; an explicit `"type": "text"`; style
    values equal to the defaults (`"bold": false`); the declared defaults
-   of `ServerStatus.CODEC`; and the client's lenient parsing (Gson
-   lenient mode accepts unquoted keys and single quotes, and DFU reads
-   `20.0` or `true` as the int 20 or 1). JSON numbers, booleans and
-   `null` keep their types. `favicon` presence is significant: the
+   of `ServerStatus.CODEC`; and the client's lenient parsing (the status
+   JSON is read by Gson's `JsonParser.parseString`, in lenient mode,
+   which accepts unquoted keys and single quotes; and DFU's
+   `JsonOps.getNumberValue` accepts any JSON number, so `20.0` where an
+   int is expected; both verified with `javap`). JSON numbers, booleans
+   and `null` keep their types. `favicon` presence is significant: the
    client shows the icon when there is one, and ServerSpec's invariant
    is "no server icon".
 3. Apply **Masks**, which remove declared-nondeterministic fields or
@@ -466,8 +468,9 @@ proves it necessary:
    Divergence) counts its Events before any Mask. A field Mask removes
    its path from every packet of that name (in any State), on both
    sides, wherever the path is present: presence is ignored, so a field
-   one side lacks is not a Divergence. A path ending in a list index removes that element, and
-   the list closes up. Paths apply to the canonical form (step 2). A
+   one side lacks is not a Divergence. A path ending in a list index
+   removes that element, and the list closes up. Paths apply to the
+   canonical form (step 2). A
    Mask that matches nothing is not an error, since a Mask may name
    packets a Scenario never sees; a field Mask on a packet with no
    fields does nothing, so its payload still differs and the Self-check

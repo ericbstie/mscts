@@ -27,9 +27,17 @@ obfuscated, so class and method names are the real ones.
   required `Codec.STRING`, `protocol` a required `Codec.INT`. So only
   `description` holds a text component; `version.name` and the sample
   names are plain strings.
-- DFU's `optionalFieldOf(name, default)` omits a value equal to its
-  default when encoding, which is why vanilla's own answer has no
-  `sample` (with no players) and no `enforcesSecureChat`.
+- DFU 10.0.21 (the bundled datafixerupper): `OptionalFieldCodec.decode`
+  reads a missing field as empty and, when lenient, a field that fails to
+  parse as empty too. `Codec.optionalFieldOf(name, default)` encodes
+  `Objects.equals(a, default) ? Optional.empty() : Optional.of(a)`, so a
+  value equal to its default is omitted. That is why vanilla's own answer
+  has no `sample` (with no players) and no `enforcesSecureChat`.
+- DFU 10.0.21's `JsonOps.getNumberValue` accepts any JSON number
+  (Gson's `getAsNumber`), so `20.0` where `Codec.INT` is expected. It
+  rejects a boolean, and takes a string only in compressed mode (never
+  for `JsonOps.INSTANCE`). A rejected value in a `lenientOptionalFieldOf`
+  field reads as absent (above).
 - Gson 2.14.0 is the bundled Gson. Its `JsonReader` has
   `DEFAULT_NESTING_LIMIT = 255` and sets it in the constructor.
   `push()` throws `MalformedJsonException("Nesting limit 255 reached")`
