@@ -102,11 +102,13 @@ Out of scope: <what not to touch>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist>
 Base: <main commit the brief was written against; the worker first runs
       `git merge --ff-only main` in its worktree>
-Context: <facts, file paths, gotchas the tech lead already knows; list reusable
-         scratchpad artifacts; ALWAYS repeat: "one plain command per Bash call; scripts in
-         the scratchpad; commit messages via git commit -F /abs/file">
-         <more context
-         scratchpad artifacts (jars, generated reports, probe scripts) by path>
+Context: <facts, file paths, gotchas the tech lead already knows; reusable scratchpad
+         artifacts (jars, generated reports, probe scripts) by path>
+         ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
+         a script in the scratchpad; commit messages via `git commit -F /abs/file`; never
+         `git stash`; never pipe `mise run check` into a commit chain."
+End with: the Worker report exactly as specified in docs/PROCESS.md, including a thorough
+          Retrospective; state your worktree path and branch name.
 ```
 
 ## Audit checklist
