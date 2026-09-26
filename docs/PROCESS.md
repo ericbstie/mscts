@@ -246,6 +246,11 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | lead (incident) | A second API rate limit killed Z (audit, skeleton only), Y (had finished) and AA (after increment 1). Y and AA's first increment were integrated; Z's skeleton was dropped | **adopt**: Z and AA's remaining increments are re-briefed next session; the "commit early" rule saved AA's first increment |
+| 2026-09-26 | worker Y (research harness) | Scripts reusing sibling scripts needed a load-by-path pattern (15 min) | **adopt**: red-green Known trap |
+| 2026-09-26 | worker Y | Ctrl-C under `asyncio.run()` arrives as task cancellation | **adopt**: red-green Known trap |
+| 2026-09-26 | worker Y | PLR0913 keeps recurring | **adopt**: red-green hint, bundle co-passed values into a small dataclass |
+| 2026-09-26 | worker Y | `join.py` also shows vanilla vs Pumpkin differences in `dimension_names` order and `enforces_secure_chat` (true on Pumpkin) | **adopt**: added to the known Pumpkin Divergences for the first Report |
 | 2026-09-26 | worker W (Run over Endpoints) | A timing baseline taken while editing measures a moving tree, and main moved mid-measurement | **adopt**: brief template, "measure timings on a committed tree and do not edit during a run"; **defer** a snapshot-based `scripts/time_tier.py` |
 | 2026-09-26 | worker W | Load from parallel workers (loadavg 3–4 on 4 CPUs) moved tier totals by more than the saving | **adopt**: G5 claims report the touched tests' `--durations` and the load average alongside the tier total |
 | 2026-09-26 | worker W | The reference tier is 79–83 s after the fix: under G5, with a thin margin. The join keep-alive test idles about 30 s | **adopt**: Next item, run the reference tier with `-n 2 --dist loadgroup`, the keep-alive test in its own `xdist_group` |

@@ -256,6 +256,15 @@ then one commit.
   `mise run --cd /abs/worktree …` instead of `cd … && …`, and Write/Edit
   instead of a heredoc append (`cat >> f <<EOF` was refused on its own).
 
+- Ctrl-C during `asyncio.run()` cancels the running task; it is not a
+  `KeyboardInterrupt` at the awaited line. Put must-run cleanup in
+  `try/finally`, and catch `KeyboardInterrupt` only around `asyncio.run()`.
+- A script reusing a sibling script (`scripts/research/`) loads it by path
+  relative to `__file__` (`importlib.util.spec_from_file_location`), as
+  `join.py` does; never mutate `sys.path` or assume a package layout.
+- PLR0913 recurring: bundle what is always passed together into one small
+  dataclass.
+
 ## When stuck
 
 - If a test fails in a way you don't understand, shrink the reproduction

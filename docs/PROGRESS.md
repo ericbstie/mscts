@@ -5,8 +5,8 @@ before stopping (see the `red-green` skill).
 
 ## Now
 
-main: `mise run check` passes (1200 unit tests under
-pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
+main: `mise run check` passes (1496 unit tests under
+pytest-xdist, about 6 s) and `mise run test:reference` passes (11 tests, about
 75 s).
 
 - **M1 (talk to vanilla): done.** Provision, hardening (no outbound
@@ -74,20 +74,8 @@ Environment notes:
 
 ## In flight
 
-Batch 2, briefed against `a64a2b5`:
-
-
-
-- **Y** (sonnet, `tooling`, against `45a084f`): `scripts/research/
-  boot.py` and `join.py`, the research harness (Next 6, first half).
-
-- **Z** (opus, audit, against `941f3e7`): read-only audit of the path
-  from a Scenario to a Verdict (compare, run, scenario, install, Pumpkin
-  world save), report in `docs/audits/` (Next 12).
-- **AA** (sonnet, `tooling`, against `941f3e7`): reference tier under
-  xdist, `scripts/time_tier.py` (Next 3c).
-
-Feature work on the audited modules waits for Z's findings.
+Nothing. Every worktree is integrated or removed (session 2 ended at a
+rate limit; see Next 0 and 1 for the interrupted briefs).
 
 ## Delegated to the helper agent
 
@@ -102,6 +90,22 @@ like a worker branch.
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
+0. **Audit (opus, read-only), re-brief worker Z.** The path from a
+   Scenario to a Verdict: `compare.py` (observable vs wire-only, the
+   canonical table, Masks), `scenario.py`, `scenarios/status.py`,
+   `run.py` (Server/Attached sides, spec refusal, judge/blocked, H3b,
+   Bot-named `failed`), the Bot/Connection failure paths, `install.py`,
+   `registry.py`, `cli.py` (ADR-0008), `adapters/{pumpkin,nbt}.py`; plus
+   an audit K re-check, a mutation sweep and one live run of each tier.
+   Report in `docs/audits/2026-09-26-verdict-path.md` (format of audit
+   K). The first Z was killed with only a skeleton. Hold feature work on
+   these modules until its findings are in.
+1. **`tooling` (sonnet), finish AA.** `scripts/time_tier.py` has landed
+   (9d38c40). Left: the reference tier under `-n 2 --dist loadgroup`,
+   the 30 s join keep-alive test in its own `xdist_group`, each xdist
+   worker's session Reference on its own `free_endpoint()`; before/after
+   tables from `time_tier.py`, target 55–65 s; a 5× repeat for flakes.
+
 3a. `cli` (sonnet): `mscts selfcheck` over R's library `selfcheck`
     (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
@@ -109,14 +113,13 @@ briefs at 3–6 increments and about 1500 lines at most.
 4. **M3's first Report** (opus, after V and 3a): `mscts run --candidate
    pumpkin` over the status Scenarios (then join), `report.py` with
    observable and wire-only sections (ADR-0007), grouped by mechanic
-   (ADR-0006). Known Pumpkin Divergences to expect: `is_flat=false`,
-   `sea_level` 63 in play `login`.
-6. Research tooling (sonnet): `scripts/research/javap.py` is done (#5;
-   libraries on the classpath delegated as #6), then the
-   `scripts/` research harness: netns sandbox, strace summary, live
-   launch/probe, a loopback-only reference test, and `scripts/research/
-   boot.py` (boot an Adapter's Instance, join, dump packets and chunks);
-   start from worker U's scratch `U/boot.py`, `U/nbtdump.py`, `U/chunk.py`.
+   (ADR-0006). Known Pumpkin Divergences to expect in play `login`:
+   `is_flat=false`, `sea_level` 63 (vanilla -63), `enforces_secure_chat`
+   true, `dimension_names` order. Decide grouping of per-leaf wire-only
+   Divergences (a reordered `update_tags` gives one per leaf).
+6. Research tooling (sonnet): `javap.py` (#5; libraries delegated as
+   #6), `boot.py` and `join.py` are done. Left: netns sandbox, strace
+   summary, a loopback-only reference test.
 7. `join/basic` Scenario + Self-check 20/20, first checking that
    vanilla's `update_tags` order is stable across runs, with a spawn
    Fixture (`/setworldspawn`) per ADR-0006. The statistical
@@ -135,12 +138,18 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ### 2026-09-26 — session 2: new tech lead
 
+Workers Q–Y and AA ran (V twice), one helper PR (#5) was merged, and two
+API rate limits killed in-flight workers (T, U, V; then Z, Y, AA).
+
 - Local `main` held a stale pre-rewrite history; saved as the local
   branch `backup/stale-local-main` and reset to `origin/main`.
 - Worker Q: the unit tier runs under pytest-xdist (`-n auto`), 11.5 s →
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker Y: `scripts/research/boot.py` and `join.py` (research
+  harness); the chunk decoder moved to `scripts/research/chunkformat.py`.
+- Worker AA (interrupted): `scripts/time_tier.py` only.
 - Worker W: a Run side can be an `Attached` Instance; the Self-check
   reuses the session Reference (G5 back under 90 s); a `failed`
   Divergence names its Bot (G3).
