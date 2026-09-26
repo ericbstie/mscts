@@ -75,6 +75,14 @@ def test_no_divergences_is_said_plainly() -> None:
     assert WIRE_ONLY not in text
 
 
+def test_only_wire_only_divergences_say_plainly_a_player_would_notice_none() -> None:
+    wire = _field("json_response.favicon", ABSENT, None, wire=True)
+    text = render_text(_report(_result(_verdict("status/basic", wire))))
+
+    assert "No difference a player would notice was found" in text
+    assert OBSERVABLE not in text
+
+
 def test_the_sections_come_in_order() -> None:
     basic = _verdict(
         "status/basic",

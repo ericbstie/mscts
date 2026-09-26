@@ -124,6 +124,8 @@ def _summary(report: Report) -> str:
         return f"No differences from vanilla were found in the {count} scenarios run."
     order = ("identical", "different", "different on the wire only", "blocked", "could not be run")
     counts = ", ".join(f"{states.count(state)} {state}" for state in order if state in states)
+    if set(states) <= {"identical", "different on the wire only"}:
+        return f"{count} scenarios: {counts}. No difference a player would notice was found."
     return f"{count} scenarios: {counts}."
 
 
