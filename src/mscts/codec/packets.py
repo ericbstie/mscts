@@ -8,7 +8,7 @@ from importlib import resources
 from typing import TYPE_CHECKING, Self
 
 from mscts.codec.schema import Schema
-from mscts.codec.schemas import configuration, handshake, login, status
+from mscts.codec.schemas import configuration, handshake, login, play, status
 from mscts.codec.wire import Reader, WireError, Writer
 
 if TYPE_CHECKING:
@@ -81,6 +81,8 @@ _SCHEMAS: Mapping[str, Schemas] = {
         (State.LOGIN, Direction.CLIENTBOUND): login.CLIENTBOUND,
         (State.CONFIGURATION, Direction.SERVERBOUND): configuration.SERVERBOUND,
         (State.CONFIGURATION, Direction.CLIENTBOUND): configuration.CLIENTBOUND,
+        (State.PLAY, Direction.SERVERBOUND): play.SERVERBOUND,
+        (State.PLAY, Direction.CLIENTBOUND): play.CLIENTBOUND,
     },
 }
 """The schemas `Codec.load` attaches, by Minecraft version."""

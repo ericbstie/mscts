@@ -15,6 +15,7 @@ from contextlib import asynccontextmanager, suppress
 
 from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.packets import Codec, Direction, Packet, State
+from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint
 from mscts.transcript import Transcript
 
@@ -27,7 +28,12 @@ _STATE_BY_INTENT = {1: State.STATUS, 2: State.LOGIN, 3: State.LOGIN}
 
 
 class Peer:
-    """The fake server's end of one connection."""
+    """The fake server's end of one connection.
+
+    `state` is the State it reads and writes in: an intention it receives moves it on,
+    and a handler moves it on by hand for the later transitions. Frames are compressed
+    both ways once `compress` has been called, as vanilla does after login_compression.
+    """
 
     def __init__(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, codec: Codec
@@ -37,6 +43,10 @@ class Peer:
         self._writer = writer
         self._codec = codec
         self._frames = FrameDecoder()
+
+    def compress(self, threshold: int) -> None:
+        """Use `threshold` from now on, both ways (negative: uncompressed again)."""
+        self._frames.compression_threshold = threshold
 
     async def recv(self) -> Packet:
         """Read the next serverbound Packet, in `state`. An intention moves `state` on.
@@ -69,7 +79,13 @@ class Peer:
     def frame(self, name: str, /, **fields: object) -> bytes:
         """Encode clientbound packet `name`, in `state`, as one complete frame."""
         data = self._codec.encode(self.state, Direction.CLIENTBOUND, name, fields)
-        return encode_frame(data, compression_threshold=None)
+        return encode_frame(data, compression_threshold=self._frames.compression_threshold)
+
+    def raw_frame(self, name: str, payload: bytes = b"") -> bytes:
+        """Frame clientbound packet `name`, in `state`, with `payload` as is (no schema)."""
+        packet_id = self._codec.packet_id(self.state, Direction.CLIENTBOUND, name)
+        data = Writer().var_int(packet_id).to_bytes() + payload
+        return encode_frame(data, compression_threshold=self._frames.compression_threshold)
 
     async def send(self, name: str, /, **fields: object) -> None:
         """Write clientbound packet `name`, in `state`, as one frame."""

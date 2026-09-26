@@ -19,11 +19,23 @@ _CLOSE_TIMEOUT_S = 1.0
 _STATE_BY_INTENT: Mapping[int, State] = {1: State.STATUS, 2: State.LOGIN, 3: State.LOGIN}
 """Where the handshake `intention` leads: 1 = status, 2 = login, 3 = transfer (a login)."""
 
-_STATE_AFTER: Mapping[tuple[State, str], State] = {
+_STATE_AFTER_SENDING: Mapping[tuple[State, str], State] = {
     (State.LOGIN, "minecraft:login_acknowledged"): State.CONFIGURATION,
     (State.CONFIGURATION, "minecraft:finish_configuration"): State.PLAY,
+    (State.PLAY, "minecraft:configuration_acknowledged"): State.CONFIGURATION,
 }
-"""The other serverbound packets that move a connection to a new State."""
+"""The acks after which what the Connection *sends* is in a new State."""
+
+_STATE_AFTER_RECEIVING: Mapping[tuple[State, str], State] = {
+    (State.LOGIN, "minecraft:login_finished"): State.CONFIGURATION,
+    (State.CONFIGURATION, "minecraft:finish_configuration"): State.PLAY,
+    (State.PLAY, "minecraft:start_configuration"): State.CONFIGURATION,
+}
+"""The clientbound packets after which what the Connection *receives* is in a new State.
+
+The vanilla client's terminal packets (their `isTerminal()` is true, 26.3 javap): it
+decodes every later frame in the new State, whether or not it has acked yet.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,13 +75,16 @@ class _End:
 
 
 class Connection:
-    """One TCP connection to a server. It owns the framing and the State.
+    """One TCP connection to a server. It owns the framing, compression and State.
 
-    The State starts at handshake and moves on when the Connection sends an
-    `intention` (to status or login, by its intent), `login_acknowledged` (to
-    configuration) or `finish_configuration` (to play). Both directions change
-    together: every later frame is encoded, and decoded when it arrives, in the new
-    State.
+    Both directions start in handshake, and switch as the vanilla client switches them.
+    Sending an `intention` moves both (to status or login, by its intent). After that,
+    what it receives switches as each terminal packet arrives (`login_finished` to
+    configuration, `finish_configuration` to play, `start_configuration` back to
+    configuration), so the very next frame is decoded in the new State; what it sends
+    switches once the matching ack has been sent (`login_acknowledged`,
+    `finish_configuration`, `configuration_acknowledged`). A `login_compression` that
+    arrives sets the compression threshold both ways from the next frame (negative: off).
 
     A background reader reads the socket continuously from `open` until `close`. It
     stamps each frame when the read that completed it returns, decodes it, and queues
@@ -101,7 +116,8 @@ class Connection:
         self._codec = codec
         self._bot = bot
         self._transcript = transcript
-        self._state = State.HANDSHAKE
+        self._state = State.HANDSHAKE  # what send encodes in
+        self._receiving = State.HANDSHAKE  # what the reader decodes in
         self._frames = FrameDecoder()
         self._arrivals: asyncio.Queue[_Arrival | _End] = asyncio.Queue()
         self._end: _End | None = None
@@ -127,7 +143,7 @@ class Connection:
 
     @property
     def state(self) -> State:
-        """The connection State both directions are currently in."""
+        """The State `send` encodes in: what the Connection sends is in this State."""
         return self._state
 
     async def send(self, name: str, /, **fields: object) -> None:
@@ -157,6 +173,8 @@ class Connection:
             raise ConnectionClosedError(msg)
         t_ns = self._transcript.now_ns()
         self._writer.write(frame)
+        if packet.name == "minecraft:intention":
+            self._receiving = state_after  # the server's answer may arrive while draining
         try:
             await self._writer.drain()
         except ConnectionError as exc:
@@ -246,7 +264,7 @@ class Connection:
 
         A frame that cannot be decoded still arrives: as the Packet that records it.
         """
-        state = self._state
+        state = self._receiving
         try:
             frame = self._frames.next_frame()
         except FrameError as exc:
@@ -261,7 +279,16 @@ class Connection:
         except CodecError as exc:
             packet = self._codec.undecodable(state, Direction.CLIENTBOUND, frame, str(exc))
             return _Arrival(t_ns=t_ns, packet=packet, error=exc)
+        self._received(packet)
         return _Arrival(t_ns=t_ns, packet=packet)
+
+    def _received(self, packet: Packet) -> None:
+        """Apply what `packet` changes for every later frame: compression, or the State."""
+        if packet.state is State.LOGIN and packet.name == "minecraft:login_compression":
+            threshold = (packet.fields or {}).get("threshold")
+            if isinstance(threshold, int):
+                self._frames.compression_threshold = threshold
+        self._receiving = _STATE_AFTER_RECEIVING.get((packet.state, packet.name), packet.state)
 
     def _end_of_stream(self) -> _End:
         if self._frames.buffered:
@@ -280,7 +307,7 @@ class Connection:
 
 
 def _state_after(packet: Packet) -> State:
-    """Return the State a connection is in once it has sent `packet`.
+    """Return the State a connection sends in once it has sent `packet`.
 
     Raises:
         ProtocolError: `packet` is an intention with an unknown intent.
@@ -291,4 +318,4 @@ def _state_after(packet: Packet) -> State:
             msg = f"unknown intent {intent!r} (1 = status, 2 = login, 3 = transfer)"
             raise ProtocolError(msg)
         return _STATE_BY_INTENT[intent]
-    return _STATE_AFTER.get((packet.state, packet.name), packet.state)
+    return _STATE_AFTER_SENDING.get((packet.state, packet.name), packet.state)

@@ -226,13 +226,17 @@ class Connection:                   # one TCP connection; owns framing, compress
     @classmethod
     async def open(cls, endpoint: Endpoint, codec: Codec, *, bot: str,
                    transcript: Transcript) -> "Connection": ...   # TCP_NODELAY (asyncio's default)
-    state: State                    # read-only; advances when the Connection *sends*: intention
-                                    # (intent 1 → STATUS, 2 or 3 (transfer) → LOGIN, else
-                                    # ProtocolError), login_acknowledged → CONFIGURATION,
-                                    # finish_configuration → PLAY. Both directions switch together.
-    # Not yet: login_compression (the join brief sets FrameDecoder.compression_threshold when
-    # the reader decodes it; frames are split one at a time, so it applies from the very next
-    # frame), and play → configuration (start_configuration / configuration_acknowledged).
+    state: State                    # read-only: the State send encodes in
+    # The directions switch as the vanilla client switches them (26.3 javap: the terminal
+    # packets, whose isTerminal() is true). Sending the intention moves both (intent 1 →
+    # STATUS, 2 or 3 (transfer) → LOGIN, else ProtocolError). After that, what is *received*
+    # switches as the terminal packet arrives, so the very next frame is decoded in the new
+    # State even before the ack: login_finished → CONFIGURATION, finish_configuration → PLAY,
+    # start_configuration → CONFIGURATION. What is *sent* (`state`) switches once the ack has
+    # been sent: login_acknowledged → CONFIGURATION, finish_configuration → PLAY,
+    # configuration_acknowledged → CONFIGURATION. Each received Packet carries the State it
+    # was decoded in. A login_compression that arrives sets the threshold both ways from the
+    # next frame (frames are split one at a time); a negative threshold means uncompressed.
     async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
     async def recv(self, *, timeout_s: float) -> Packet: ...           # records an Event
     async def close(self) -> None: ...                                 # idempotent; aborts after 1 s
