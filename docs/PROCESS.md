@@ -223,6 +223,10 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker Q (xdist) | `free_endpoint`, the leak guard and `strays.py` were already safe under xdist; checking cost 15 min | **reject** (no change): the brief pointed at the right files; verifying beat assuming |
+| 2026-09-26 | worker Q | `ty` cannot resolve `tests/support/leak_guard.py` from `scripts/`, so `repeat.py` carries a second copy of the pattern | **defer**: promote it to a module `scripts/` can import when a third copy is needed |
+| 2026-09-26 | worker Q | Failing ids come from the `-ra` summary lines on stdout | **reject**: simple and sufficient |
+| 2026-09-26 | lead | Unit tier under xdist: 4.3–5.6 s (was 11.5 s); 20 xdist + 5 serial runs under CPU stress, 0 failures | **adopt**: G5 restored; the temporary integration retry (`\|\| mise run check`) is removed. A red check on integration is now a real failure, re-proved with `scripts/repeat.py` |
 | 2026-09-26 | worker P (join) | The brief was too big: 6 large increments, 29 commits, and the context compacted mid-brief | **adopt**: briefs stay at 3–6 increments **and** roughly 1500 changed lines. Split protocol fixes from features |
 | 2026-09-26 | worker P | Nearly every join fact needed client-side javap; P rebuilt the tooling (`fetch_client.py`, `javap_classes.py`) | **adopt**: Next item, a committed `scripts/research/javap.py <client\|server> <Class>…` that fetches and caches both jars |
 | 2026-09-26 | worker P | `/proc`-scanning tests raced the helper's exec | **adopt**: fixed (P's commit); Known trap "wait for the helper to exec; ignore processes you did not start" |

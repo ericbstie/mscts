@@ -5,8 +5,8 @@ before stopping (see the `red-green` skill).
 
 ## Now
 
-main is at the commit after `33749f1`; `mise run check` passes (1187 unit
-tests, 11.5 s) and `mise run test:reference` passes (11 tests, about
+main: `mise run check` passes (1200 unit tests under
+pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
 75 s).
 
 - **M1 (talk to vanilla): done.** Provision, hardening (no outbound
@@ -57,8 +57,6 @@ Environment notes:
 ## In flight
 
 Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
-- **Q** (sonnet, `tooling`): pytest-xdist for the unit tier, a committed
-  `scripts/repeat.py`, and a flake hunt under CPU stress (Next 1).
 - **R** (opus, M2 wiring): `scenario.py` (registry, Scenario kind),
   `status/basic` + `status/ping`, `run.py` (a Run over two Instances),
   the H3b Verdict rule, and a library `selfcheck` (Next 2, without the
@@ -72,10 +70,6 @@ Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
-1. `tooling` (sonnet): pytest-xdist for the unit tier (G5 is breached at
-   11.5 s; keep process tests safe under parallelism); a flake hunt of the
-   unit tier under CPU stress (N runs); then remove the integration retry
-   (`|| mise run check`).
 2. M2 wiring (opus):
    - the `@scenario` registry with a Scenario kind (ADR-0006);
    - `status/basic` + `status/ping`;
@@ -121,6 +115,15 @@ briefs at 3–6 increments and about 1500 lines at most.
     logic.
 
 ## Log
+
+### 2026-09-26 — session 2: new tech lead
+
+- Local `main` held a stale pre-rewrite history; saved as the local
+  branch `backup/stale-local-main` and reset to `origin/main`.
+- Worker Q: the unit tier runs under pytest-xdist (`-n auto`), 11.5 s →
+  about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
+  stress; 25 stressed runs found no flakes, so the integration retry is
+  gone.
 
 ### 2026-09-26 — session 1, continued: tech-lead operation
 
