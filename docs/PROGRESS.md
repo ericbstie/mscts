@@ -16,17 +16,20 @@ pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
   the first chunk batch against vanilla, with a background reader,
   arrival stamps, recorded undecodable frames, and automatic
   keep-alive/teleport/chunk-batch answers. It joins in about 1.25 s.
-- **M2 (first Comparison and Self-check): half done.** The Comparison
-  engine is built. The `@scenario` registry, Run, `selfcheck` and
-  Measurements are not.
+- **M2 (first Comparison and Self-check): mostly done.** `scenario.py`
+  (`SCENARIOS`, `ScenarioKind`), `status/basic` + `status/ping`, `run.py`
+  (a Run over two Instances, `selfcheck`), and the H3b rule (a Candidate
+  failure is `mismatch` with a `failed` Divergence). The status Self-check
+  is `match` 20/20 on the live Reference, with no Mask. Left: the
+  `mscts selfcheck` command and Measurements (3a).
+- **G5 is red for the reference tier** (about 91 s against 90 s): 2a.
 - **M3a (installs): mostly done.** A Registry pinned by checksum
   (`src/mscts/data/registry.toml`), `mscts adapter install/list/status`
   with `--from`, sources recorded in SOURCE.json. Pumpkin nightly-48cba7ee
   is installed in this container's shared cache via `--from`, and
   `mise run test:candidate` passes. The honest prompt is left (3b).
 - **M3 (first Candidate):** needs the Pumpkin world-save work (Next 4).
-- Audit K's high findings H1, H2 and H3a are fixed. H3b, the Verdict
-  rule, lands with M2 wiring.
+- Audit K's high findings H1, H2 and H3 are all fixed.
 
 Product direction (maintainer, 2026-09-26):
 - **ADR-0006:** a catalogue of differences grouped by mechanic, with no
@@ -58,12 +61,6 @@ Environment notes:
 
 ## In flight
 
-Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
-- **R** (opus, M2 wiring): `scenario.py` (registry, Scenario kind),
-  `status/basic` + `status/ping`, `run.py` (a Run over two Instances),
-  the H3b Verdict rule, and a library `selfcheck` (Next 2, without the
-  CLI and Measurements, which are split out below).
-
 Batch 2, briefed against `a64a2b5`:
 - **T** (opus, `install`): the honest prompt, `provision` stops
   downloading silently, explicit `install:reference` in the hook (Next 3b).
@@ -83,14 +80,10 @@ like a worker branch.
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
-2. M2 wiring (opus):
-   - the `@scenario` registry with a Scenario kind (ADR-0006);
-   - `status/basic` + `status/ping`;
-   - a Run over two Instances;
-   - Candidate-caused failures → `mismatch` (H3b; undecodable frames
-     are already recorded with `decode_error`);
-   - `mscts selfcheck` → `match`;
-   - the first Measurements (`status.rtt`, `instance.startup`).
+2a. `run` (opus): a Run over existing Endpoints, so `selfcheck` uses the
+    session-scoped Reference as one side and boots one Instance, not two
+    (G5: reference tier ≤ 90 s). Then Bot errors carry the Bot name, so a
+    `failed` Divergence names its Bot (G3).
 3b. `install` (opus): the honest prompt (ADR-0008 §2) as a library
     function: TTY asks "download <entry> (Y) or provision it yourself
     (N)?", N prints the exact `--from` command, non-TTY fails at once
@@ -124,7 +117,8 @@ briefs at 3–6 increments and about 1500 lines at most.
 9. ~~`runner`: a parent-death guard~~ (delegated: issue #3).
 10. Tick research (opus, M6a) and statistical tier design (opus, M6b),
     per ADR-0006.
-11. Tooling: ~~a check that every public name in `src/` appears in
+11. Tooling: `mutate.py --batch` includes untracked non-ignored files
+    (reported twice); ~~a check that every public name in `src/` appears in
     PLAN.md~~ (delegated: issue #4); a `scripts/` save/restore helper (no
     stash).
 12. Next audit (opus): due after the next 2–3 batches. Focus on
@@ -141,6 +135,10 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker R (M2 wiring): Scenarios, a Run, H3b, `selfcheck`; status
+  Self-check 20/20. The lead fixed two integration reds: nondeterministic
+  xdist ids from S's fake jars (bd6d44f), and R's Adapter fakes missing
+  S's new Protocol members.
 - Worker S (M3a): the Registry, `install.py`, `mscts adapter
   install/list/status`, both Adapters on one provision path; Pumpkin
   installed here with `--from`. Stopped before the prompt at the line

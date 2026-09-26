@@ -234,6 +234,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | lead (integration of R) | R's test fakes implemented `Adapter` without S's new `binary`/`check` members: ty red only after the rebase | **adopt**: when one brief changes a Protocol, the lead names every in-flight implementer in the other briefs, and messages running workers when it lands (done for T) |
+| 2026-09-26 | lead (incident) | Intermittent unit-tier red on main: S's parametrize ids embedded fake-jar bytes with wall-clock zip mtimes, so xdist workers collected different tests. Q's 25 stress runs predate S | **adopt**: fixed (bd6d44f); red-green Known trap "deterministic parametrize ids"; in-flight workers told |
+| 2026-09-26 | worker R (M2) | The reference tier went 83 s → 91.4 s (G5 red): the Self-check boots two more Instances | **adopt**: Next item 2a, a Run over existing Endpoints so the Self-check reuses the session Reference |
+| 2026-09-26 | worker R | `mutate.py --batch` ignores untracked test files (**second** report, after S) | **adopt**: repeated, so fix the tool: Next item, batch mode includes untracked non-ignored files |
+| 2026-09-26 | worker R | The "Registry" rename arrived after four commits; fixups needed a scripted autosquash and filter-branch | **adopt**: the template now names taken terms (S's row); red-green Known trap for fixup + autosquash without an editor |
+| 2026-09-26 | worker R | The run fakes' `serve` overwrites `__cause__` | **adopt**: red-green Known trap |
+| 2026-09-26 | worker R | `tests/run/status_fake.py` (a subprocess status fake that passes readiness and ownership) was needed | **reject** (no change): it is reusable; later briefs will be pointed at it |
+| 2026-09-26 | worker R | Tests isolate `SCENARIOS` through the private `_REGISTERED` | **defer**: a public test-support context manager when a second test module needs it |
+| 2026-09-26 | worker R | A `failed` Divergence has `bot=""`: the exceptions do not carry the Bot (a G3 gap) | **defer**: Next item, Bot errors carry the Bot name |
+| 2026-09-26 | worker R | Went to about 1666 lines, over the budget, to finish a small increment 5 | **accept** once: the last increment was small and fully tested; the budget stands |
 | 2026-09-26 | worker S (install) | "Registry" (the server list, CONTEXT) was about to be reused by R for the Scenario set | **adopt**: R told to use `SCENARIOS` / "registered Scenarios"; the brief template's Context names terms a parallel brief introduces |
 | 2026-09-26 | worker S | The scratchpad is shared; another worker overwrote S's commit-message file | **adopt**: brief template gives each worker `<scratchpad>/<letter>/` |
 | 2026-09-26 | worker S | "+ vanilla if it shares the path" grew increment 2 to about 800 lines, and the prompt increment was dropped | **adopt**: optional co-changes count as their own increment in the line budget; the prompt is Next item 3b |

@@ -198,6 +198,17 @@ then one commit.
   argparse `set_defaults(run=…)` yields `Any`, so dispatch through a typed
   table.
 
+- Parametrize ids must be deterministic: pytest-xdist workers collect
+  separately and refuse to run if their ids differ. Pass explicit `ids=`
+  for bytes or generated values, and never let fixture bytes depend on the
+  clock (zip entries: `zipfile.ZipInfo(name, FIXED_DATE)`).
+- The run fakes' `serve` re-raises `from None`, which overwrites
+  `__cause__`: catch inside the `serve` body when a test inspects the
+  cause.
+- Reword or fix up your own unpushed commits without an editor:
+  `git commit --fixup=<sha>`, then `GIT_SEQUENCE_EDITOR=true git rebase -i
+  --autosquash <base>`.
+
 ## When stuck
 
 - If a test fails in a way you don't understand, shrink the reproduction
