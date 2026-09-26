@@ -422,6 +422,42 @@ proves it necessary:
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask.
+   It lives in one small registry in `compare.py`, keyed by (State,
+   packet name) of a clientbound packet. An entry is admitted only when
+   the Reference's own decoder reads both encodings into equal values
+   *by definition of the format*, never merely through lenient error
+   handling, and it cites its evidence. Anything else stays strict: a
+   false mismatch is visible, a false match is not. Entries:
+   - `status` / `minecraft:status_response`: `json_response` is parsed
+     into its JSON value, so JSON key order, whitespace and string
+     escapes no longer matter (RFC 8259: objects are unordered). Only
+     strict JSON is parsed: invalid JSON, a repeated key, `NaN` or
+     `Infinity`, or nesting deeper than 255 (the default nesting limit
+     of the client's Gson 2.14.0 `JsonReader`, verified with `javap`)
+     leaves the raw string, compared as a string. Then the text
+     components in it are canonical: a plain string `"x"` is written
+     `{"text": "x"}`. Evidence: minecraft.wiki *Text component format*
+     (raw wikitext, oldid 3749600: "`"A"` and `{text: "A"}` are
+     equivalent"), and the 26.3 jar, where
+     `ComponentSerialization.createCodec` decodes a string with
+     `Component.literal` and an object with only `text` into the same
+     literal with an empty style and no siblings. The text components
+     are exactly: `json_response.description` (a text component in
+     `ServerStatus.CODEC`, verified with `javap`), each element of a
+     text component in list form, and each element of a text
+     component's `extra`, recursively. `version.name` and
+     `players.sample[].name` are plain strings, not text components.
+
+   Considered and **not** encoded (strict until evidence says otherwise;
+   see Open questions): the list form `["a", "b"]` ≡
+   `{"text": "a", "extra": ["b"]}`; an explicit `"type": "text"`; style
+   values equal to the defaults (`"bold": false`); the declared defaults
+   of `ServerStatus.CODEC`; and the client's lenient parsing (Gson
+   lenient mode accepts unquoted keys and single quotes, and DFU reads
+   `20.0` or `true` as the int 20 or 1). JSON numbers, booleans and
+   `null` keep their types. `favicon` presence is significant: the
+   client shows the icon when there is one, and ServerSpec's invariant
+   is "no server icon".
 3. Apply **Masks**, which remove declared-nondeterministic fields or
    ambient packets. A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream
@@ -593,4 +629,35 @@ then record the answer in an ADR:
   a background reader (keep-alives, teleports). Should Comparisons then be
   scoped to windows between Marks, with a drain at each window end?
 - Should `Packet.fields` be deeply immutable (MappingProxyType, tuples) so
-  Packets are hashable in Transcripts and Comparisons?
+  Packets are hashable in Transcripts and Comparisons? **Not needed for
+  Comparison** (decided with the Comparison engine): alignment keys are
+  (State, name) string pairs, and the field diff works on copies that
+  `compare` makes of the fields (and checks against the value model), so
+  it never hashes or mutates a Packet. Still open for Transcripts.
+- Should the Comparison fill in the **declared defaults** of
+  `ServerStatus.CODEC`? In the 26.3 jar (`javap`), `players.sample` is
+  `lenientOptionalFieldOf("sample", List.of())`, `enforcesSecureChat`
+  defaults to `false`, and `description` to `CommonComponents.EMPTY`
+  (`""`). So a Candidate's `"sample": []` decodes exactly like vanilla's
+  omitted sample, and the wiki's Server List Ping page (oldid 3789989)
+  says an empty or missing sample shows no tooltip. Vanilla's encoder
+  omits a value equal to its default. Filling in defaults is a new class
+  of canonicalization that would hide Pumpkin's `sample: []`; it is not
+  encoded until the lead decides the class.
+- Should the text component **list form** (`["a", "b"]` ≡
+  `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
+  `createFromList` is `first.copy().append(rest)`) be canonical? No
+  Candidate has shown it yet. Likewise an explicit `"type": "text"`
+  (optional by the wiki), and the text components nested in `with`,
+  `separator` and hover events, which are not canonicalized yet.
+- Alignment matches on (State, name) only, so two same-named packets in a
+  different order are matched pairwise and report `field` Divergences,
+  not a move. A content-aware alignment (e.g. matching on masked field
+  equality) could read better; decide once a Self-check or Candidate
+  shows a case.
+- Masks have no wildcard index (`players.sample[*].id`): a Mask on every
+  element of a list needs one per index, or a Mask on the whole list.
+  Add one when a Scenario needs it (M4 player info likely will).
+- A Divergence names the packet but not its State; `index` locates it,
+  but a report might want the State shown for same-named packets
+  (`custom_payload` in configuration and play).

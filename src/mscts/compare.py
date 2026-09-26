@@ -17,13 +17,14 @@ import json
 import re
 import struct
 from array import array
-from collections.abc import Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from typing import Literal, Self, override
+from types import MappingProxyType
+from typing import Literal, NoReturn, Self, override
 from uuid import UUID
 
-from mscts.codec.packets import Direction, Packet
+from mscts.codec.packets import Direction, Packet, State
 from mscts.transcript import Transcript
 
 type _Value = bool | int | float | str | bytes | UUID | list[_Value] | dict[str, _Value] | None
@@ -156,9 +157,11 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     """Diff the Candidate's Transcript of a Scenario against the Reference's.
 
     Each Bot's stream is normalized first: the Packets a `*` Mask names are dropped,
-    and every field a Mask names is removed from the Packets of that name, on both
-    sides and wherever present. Indices count the normalized stream, so they do not
-    shift when a re-run has more or fewer dropped Packets.
+    the rest are put in canonical form (`_CANONICAL`: e.g. a status response's JSON is
+    parsed, and its text components written one way), and every field a Mask names
+    is removed from the Packets of that name, on both sides and wherever present.
+    Indices count the normalized stream, so they do not shift when a re-run has more
+    or fewer dropped Packets; paths and values are those of the canonical form.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -279,9 +282,13 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
 
 
 def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
+    """Copy `packet`'s fields, put them in canonical form, then apply the Masks."""
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
     fields = _plain_mapping(packet.fields.items(), packet.name, ())
+    canonical = _CANONICAL.get((packet.state, packet.name))
+    if canonical is not None:
+        fields = canonical(fields)
     for path in masks.paths.get(packet.name, ()):
         _remove(fields, path)
     return _Normalized(packet=packet, fields=fields)
@@ -342,6 +349,102 @@ def _child(node: _Value, step: _Step) -> _Value | Absent:
     if isinstance(node, list) and isinstance(step, int) and step < len(node):
         return node[step]
     return ABSENT
+
+
+# Canonicalization: protocol equivalences, applied before the Masks. It is not masking:
+# a Mask says a value is nondeterministic, a canonical form says two encodings mean the
+# same thing to the vanilla client. PLAN (Comparison semantics) gives the evidence for
+# each entry, and the equivalences considered and not encoded.
+
+
+_JSON_NESTING_LIMIT = 255
+"""The deepest JSON the vanilla client reads: its Gson 2.14.0 JsonReader's default."""
+
+
+def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Parse `json_response` into its JSON value, with a canonical `description`.
+
+    It stays the raw string, and is compared as one, unless it is strict JSON (no
+    repeated key in an object, no NaN or Infinity) nested at most 255 deep.
+    """
+    text = fields.get("json_response")
+    if not isinstance(text, str):
+        return fields
+    status = _strict_json(text)
+    if isinstance(status, Absent):
+        return fields
+    if isinstance(status, dict) and "description" in status:
+        status = {**status, "description": _text_component(status["description"])}
+    return {**fields, "json_response": status}
+
+
+def _text_component(component: _Value) -> _Value:
+    """Write each plain-string text component as `{"text": string}`.
+
+    The components are `component` itself, each element of its list form, and each
+    element of its `extra`, recursively. Nothing else in it changes.
+    """
+    if isinstance(component, str):
+        return {"text": component}
+    if isinstance(component, list):
+        return [_text_component(element) for element in component]
+    if isinstance(component, dict) and isinstance(extra := component.get("extra"), list):
+        return {**component, "extra": [_text_component(element) for element in extra]}
+    return component
+
+
+def _strict_json(text: str) -> _Value | Absent:
+    """Parse `text`, or return ABSENT if it is not strict JSON nested at most 255 deep."""
+    try:
+        value: object = json.loads(
+            text, object_pairs_hook=_unique_keys, parse_constant=_not_a_json_number
+        )
+    except (ValueError, RecursionError):
+        return ABSENT
+    if _nesting(value) > _JSON_NESTING_LIMIT:
+        return ABSENT
+    return _plain(value, "json_response", ())
+
+
+def _unique_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    unique = dict(pairs)
+    if len(unique) != len(pairs):
+        msg = "a JSON object repeats a key"
+        raise ValueError(msg)
+    return unique
+
+
+def _not_a_json_number(name: str) -> NoReturn:
+    msg = f"{name} is not a JSON number"
+    raise ValueError(msg)
+
+
+def _nesting(value: object) -> int:
+    """How deep `value` nests lists and dicts: 0 for a scalar, 1 for `[]`. Iterative."""
+    deepest = 0
+    pending: list[tuple[object, int]] = [(value, 1)]
+    while pending:
+        node, depth = pending.pop()
+        children: Iterable[object]
+        if isinstance(node, dict):
+            children = node.values()
+        elif isinstance(node, list):
+            children = node
+        else:
+            continue
+        deepest = max(deepest, depth)
+        pending.extend((child, depth + 1) for child in children)
+    return deepest
+
+
+_CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
+    MappingProxyType(
+        {
+            (State.STATUS, "minecraft:status_response"): _canonical_status_response,
+        }
+    )
+)
+"""The canonical form of each clientbound packet that has one, by (State, name)."""
 
 
 # Alignment.

@@ -59,8 +59,13 @@ need is missing, add it here in the same commit that introduces it.
 - **Mask**: a normalization rule that declares a field nondeterministic
   (entity ids, UUIDs, keep-alive ids, timestamps, seeds). Masked fields are
   excluded from Comparison.
+- **Canonicalization**: rewrites a value into one canonical form when the
+  protocol defines two encodings as meaning the same thing to the vanilla
+  client (a text component `"x"` is `{"text": "x"}`). It is not a Mask: a
+  Mask declares a value nondeterministic, Canonicalization declares two
+  values equal.
 - **Comparison**: normalizes the Reference and Candidate Transcripts of one
-  Scenario and diffs them into a Verdict.
+  Scenario (Canonicalization, then Masks) and diffs them into a Verdict.
 - **Divergence**: one difference found by a Comparison.
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Scenario did not match), or `error` (the harness failed, or
