@@ -39,6 +39,14 @@ def test_spans_are_paired_in_order_and_listed_by_start() -> None:
     ]
 
 
+def test_overlapping_spans_of_one_name_pair_first_start_with_first_end() -> None:
+    transcript = _transcript(
+        (0, "a:start"), (1_000_000, "a:start"), (3_000_000, "a:end"), (4_000_000, "a:end")
+    )
+
+    assert [m.value for m in measurements(transcript)] == [3.0, 3.0]
+
+
 def test_a_mark_that_is_not_a_span_end_is_ignored() -> None:
     transcript = _transcript((0, "joined"), (1, "x:end"), (2, "x:start"), (2_000_002, "x:end"))
 
