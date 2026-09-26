@@ -78,7 +78,11 @@ Batch 2, briefed against `a64a2b5`:
   so the Self-check reuses the session Reference (G5); Bot-named `failed`
   Divergences (G3) (Next 2a).
 
-After U, V and W: the opus audit (Next 12).
+- **X** (sonnet, `tooling`, against `d939909`): `mise run commit`,
+  `strays.py --token/--cwd`, `mutate.py --batch` with untracked files
+  (Next 11, first half).
+
+After V and W: the opus audit (Next 12).
 
 ## Delegated to the helper agent
 
@@ -121,10 +125,7 @@ briefs at 3–6 increments and about 1500 lines at most.
 9. ~~`runner`: a parent-death guard~~ (delegated: issue #3).
 10. Tick research (opus, M6a) and statistical tier design (opus, M6b),
     per ADR-0006.
-11. Tooling: `mise run commit -- -F <msg>` (check, commit only on exit
-    0; the piped-check slip happened twice); `strays.py --token/--cwd`;
-    `mutate.py --batch` includes untracked non-ignored files
-    (reported twice); ~~a check that every public name in `src/` appears in
+11. Tooling: ~~a check that every public name in `src/` appears in
     PLAN.md~~ (delegated: issue #4); a `scripts/` save/restore helper (no
     stash).
 12. Next audit (opus): due after the next 2–3 batches. Focus on
