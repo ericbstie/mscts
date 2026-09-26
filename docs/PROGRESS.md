@@ -86,6 +86,28 @@ Take the first item. Split it if it is more than one failing test.
 
 ## Log
 
+### 2026-09-26 — session 1, continued: tech-lead operation
+
+- The main session became tech lead (`docs/PROCESS.md`). 16 worker
+  briefs (A–P) ran, 11 of them opus, all ending in retrospectives. More
+  than 100 retrospective items are logged with decisions.
+- Built: codec, vanilla and Pumpkin Adapters, runner, Connection/Bot,
+  Transcript, the Comparison engine, tooling (`mutate.py`, `strays.py`,
+  `regen:packets`), and the foundation audit K
+  (`docs/audits/2026-09-26-foundation.md`).
+- The maintainer set the product direction in ADR-0006 (a catalogue of
+  differences, statistical and tick-exact Scenarios, commands-only
+  Fixtures, no declared deviations), ADR-0007 (wire-only Divergences
+  reported separately) and ADR-0008 (explicit idempotent installs, a
+  pinned registry, Adapter DX as goal G6).
+- Incident: a test's `git` calls under `git rebase -x` wrote into the
+  shared repo config (`user.name=Test`, `core.bare=true`). Fixed, pinned
+  by a test, and covered by new integration-safety rules in the
+  tech-lead skill.
+- Environment: this container's HTTPS proxy breaks Python 3.13 downloads
+  from GitHub (strict X.509). Pumpkin is provisioned by hand with curl,
+  sha256 pinned, until `mscts adapter install --from` exists.
+
 ### 2026-09-25 — session 1: research and harness
 
 - Researched the domain against live servers in the container. Findings

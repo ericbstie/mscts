@@ -26,6 +26,31 @@ This file is owned by the tech lead. It changes only through the
 `red-green` skill, in an isolated git worktree. It commits each increment
 green, does not push, and ends with the [report](#worker-report).
 
+## Working with the maintainer
+
+The maintainer (the user) sets direction. The tech lead turns it into
+ADRs and briefs. What the maintainer has asked for:
+
+- **Decisions are theirs when they shape the product.** Ask with
+  concrete options and a recommended one first (the AskUserQuestion
+  tool), then record the answer as an ADR or a PROGRESS entry in the same
+  turn. Never let a decision live only in chat.
+- **Explain before asking.** When the maintainer says they don't follow,
+  explain the mechanism plainly (see the TLS-proxy discussion behind
+  ADR-0008) before offering options again.
+- **Status reports:** a short bullet summary of what was done, the
+  architecture, process changes from worker feedback, what's left, and the
+  decisions that need them.
+- **Product intent** (ADR-0006–0008):
+  - surface every difference from vanilla, with no excuses and no hidden
+    randomness;
+  - an elegant, honest developer experience;
+  - installs are never hidden inside runs;
+  - Adapters are easy for third parties to write and verify.
+- **Autonomy:** within those decisions, the lead steers without asking,
+  including batches, audits, refactors and process changes, and keeps
+  the maintainer informed.
+
 ## Choosing the model
 
 | Model | Use for |
