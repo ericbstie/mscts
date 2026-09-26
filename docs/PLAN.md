@@ -763,10 +763,16 @@ proves it necessary:
    and it is a classifier, not an eraser (ADR-0007): the raw fields are
    diffed too, and a raw difference whose canonical values (before the
    Masks) are equal at its path is reported as a **wire-only** `field`
-   Divergence, with the raw path and values. Where the canonical values
-   at that path differ, the observable Divergences under it (or a Mask)
-   stand for it, so a re-spelling inside a field that also has an
-   observable or masked difference is not reported separately. Masks
+   Divergence, with the raw path and values. A raw field holding JSON
+   text (`_PARSED`: the status `json_response`) is diffed as its parsed,
+   not yet canonical JSON value, so such a Divergence has its JSON path
+   and values (`json_response.enforceSecureChat`, absent vs `true`);
+   only when the two parsed values are equal (a pure JSON spelling: key
+   order, whitespace, escapes) is it the whole text. Where the canonical
+   values at a path differ, the observable Divergences under it (or a
+   Mask) stand for it, so a re-spelling inside a field that also has an
+   observable or masked difference is not reported separately (nor is a
+   JSON spelling beside a difference of JSON value). Masks
    apply to the raw fields too, where their paths reach. Every other
    Divergence is **observable**. The canonical table lives in
    `compare.py` (`_CANONICAL`), keyed by (State, packet name) of a

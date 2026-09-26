@@ -147,29 +147,40 @@ def test_strings_outside_the_description_are_not_text_components() -> None:
     ]
 
 
+ABSENT_DEFAULTS = '{"players":{"max":20,"online":0}}'
+
 DECLARED_DEFAULTS = [
-    '{"players":{"max":20,"online":0,"sample":[]}}',
-    '{"players":{"max":20,"online":0},"enforcesSecureChat":false}',
-    '{"players":{"max":20,"online":0},"description":""}',
-    '{"players":{"max":20,"online":0},"description":{"text":""}}',
+    ('{"players":{"max":20,"online":0,"sample":[]}}', "players.sample", []),
+    ('{"players":{"max":20,"online":0},"enforcesSecureChat":false}', "enforcesSecureChat", False),
+    ('{"players":{"max":20,"online":0},"description":""}', "description", ""),
+    ('{"players":{"max":20,"online":0},"description":{"text":""}}', "description", {"text": ""}),
 ]
 
 
+def _wire_only(reference: str, candidate: str) -> list[tuple[str | None, object, object]]:
+    verdict = compare(
+        transcript(("alice", status(reference))), transcript(("alice", status(candidate))), []
+    )
+    return [
+        (d.path, d.reference, d.candidate)
+        for d in verdict.divergences
+        if d not in verdict.observable
+    ]
+
+
 @pytest.mark.parametrize(
-    "candidate",
+    ("candidate", "path", "sent"),
     DECLARED_DEFAULTS,
     ids=["sample", "enforcesSecureChat", "description", "description-object"],
 )
-def test_a_declared_default_is_the_same_as_its_absence(candidate: str) -> None:
+def test_a_declared_default_is_the_same_as_its_absence(
+    candidate: str, path: str, sent: object
+) -> None:
     # ServerStatus.CODEC reads each absent field as its default (PLAN, Comparison
-    # semantics), so sending the default is a wire-only difference.
-    absent = '{"players":{"max":20,"online":0}}'
-    assert _diff(absent, candidate) == []
-    assert _diff(candidate, absent) == []
-    wire_only = compare(
-        transcript(("alice", status(absent))), transcript(("alice", status(candidate))), []
-    ).divergences
-    assert [(d.path, d.observability.value) for d in wire_only] == [("json_response", "wire-only")]
+    # semantics), so sending the default is a wire-only difference, at its JSON path.
+    assert _diff(ABSENT_DEFAULTS, candidate) == []
+    assert _diff(candidate, ABSENT_DEFAULTS) == []
+    assert _wire_only(ABSENT_DEFAULTS, candidate) == [(f"json_response.{path}", ABSENT, sent)]
 
 
 @pytest.mark.parametrize(
@@ -226,37 +237,45 @@ PUMPKIN_NIGHTLY = (
 `enforceSecureChat` the client's codec never reads (docs/research)."""
 
 
+def test_pumpkin_nightlys_status_differs_from_vanillas_on_the_wire_only() -> None:
+    assert _diff(VANILLA, PUMPKIN_NIGHTLY) == []
+    assert _wire_only(VANILLA, PUMPKIN_NIGHTLY) == [
+        ("json_response.description", "mscts", {"text": "mscts"}),
+        ("json_response.enforceSecureChat", ABSENT, True),
+        ("json_response.favicon", ABSENT, None),
+        ("json_response.players.sample", ABSENT, []),
+    ]
+
+
 @pytest.mark.parametrize(
-    "candidate",
+    ("candidate", "path", "sent"),
     [
-        PUMPKIN_NIGHTLY,
-        '{"players":{"max":20,"online":0},"enforceSecureChat":true}',
-        '{"players":{"max":20,"online":0},"favicon":null}',
-        '{"players":{"max":20,"online":0},"description":null,"version":null}',
-        '{"players":{"max":20,"online":0,"sample":null}}',
-        '{"players":{"max":20,"online":0,"MAX":1000}}',
-        '{"players":{"max":20,"online":0},"sample":[{"name":"a"}]}',
+        ('{"players":{"max":20,"online":0},"enforceSecureChat":true}', "enforceSecureChat", True),
+        ('{"players":{"max":20,"online":0},"favicon":null}', "favicon", None),
+        ('{"players":{"max":20,"online":0},"description":null}', "description", None),
+        ('{"players":{"max":20,"online":0},"version":null}', "version", None),
+        ('{"players":{"max":20,"online":0,"sample":null}}', "players.sample", None),
+        ('{"players":{"max":20,"online":0,"MAX":1000}}', "players.MAX", 1000),
+        ('{"players":{"max":20,"online":0},"sample":[]}', "sample", []),
     ],
     ids=[
-        "pumpkin-nightly",
         "misspelled-secure-chat",
         "null-favicon",
-        "null-description-and-version",
+        "null-description",
+        "null-version",
         "null-sample",
         "unknown-players-key",
         "sample-outside-players",
     ],
 )
-def test_a_member_the_client_never_reads_is_wire_only(candidate: str) -> None:
+def test_a_member_the_client_never_reads_is_wire_only(
+    candidate: str, path: str, sent: object
+) -> None:
     # ServerStatus's record codecs look fields up by name, and JsonOps reads a JSON null
     # member as a missing one (docs/research/2026-09-26-comparison.md).
-    reference = VANILLA if candidate == PUMPKIN_NIGHTLY else '{"players":{"max":20,"online":0}}'
-    assert _diff(reference, candidate) == []
-    assert _diff(candidate, reference) == []
-    wire_only = compare(
-        transcript(("alice", status(reference))), transcript(("alice", status(candidate))), []
-    ).divergences
-    assert [(d.path, d.observability.value) for d in wire_only] == [("json_response", "wire-only")]
+    assert _diff(ABSENT_DEFAULTS, candidate) == []
+    assert _diff(candidate, ABSENT_DEFAULTS) == []
+    assert _wire_only(ABSENT_DEFAULTS, candidate) == [(f"json_response.{path}", ABSENT, sent)]
 
 
 def test_the_version_ignores_a_key_it_does_not_name() -> None:

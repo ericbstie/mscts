@@ -61,23 +61,17 @@ def test_a_divergence_is_observable_unless_classified_otherwise() -> None:
     assert failed.observability is OBSERVABLE
 
 
-# Every canonicalization in the canonical table: raw spellings the client reads alike.
+# Every canonicalization of the JSON text alone: spellings of the same JSON value.
 EQUIVALENT_SPELLINGS = [
     ('{"a":1,"b":2}', '{"b":2,"a":1}'),
     ('{"a":1}', '{ "a" : 1 }\n'),
     ('{"a":"3"}', '{"a":"\\u0033"}'),
-    ('{"description":"x"}', '{"description":{"text":"x"}}'),
-    ('{"description":["a","b"]}', '{"description":[{"text":"a"},{"text":"b"}]}'),
-    (
-        '{"description":{"text":"a","extra":["b"]}}',
-        '{"description":{"text":"a","extra":[{"text":"b"}]}}',
-    ),
 ]
-SPELLING_IDS = ["key-order", "whitespace", "escape", "bare-text", "list-elements", "extra"]
+SPELLING_IDS = ["key-order", "whitespace", "escape"]
 
 
 @pytest.mark.parametrize(("reference", "candidate"), EQUIVALENT_SPELLINGS, ids=SPELLING_IDS)
-def test_each_canonicalization_is_a_wire_only_divergence_at_the_raw_path(
+def test_a_json_spelling_is_a_wire_only_divergence_of_the_whole_text(
     reference: str, candidate: str
 ) -> None:
     verdict = _verdict(reference, candidate)
@@ -88,6 +82,58 @@ def test_each_canonicalization_is_a_wire_only_divergence_at_the_raw_path(
 @pytest.mark.parametrize(("reference", "candidate"), EQUIVALENT_SPELLINGS, ids=SPELLING_IDS)
 def test_swapping_the_sides_swaps_a_wire_only_divergence(reference: str, candidate: str) -> None:
     assert _verdict(candidate, reference).divergences == (_wire_only(candidate, reference),)
+
+
+# Canonicalizations of JSON values: each is reported where the JSON values differ.
+EQUIVALENT_VALUES = [
+    ('{"description":"x"}', '{"description":{"text":"x"}}', [("description", "x", {"text": "x"})]),
+    (
+        '{"description":["a","b"]}',
+        '{"description":[{"text":"a"},{"text":"b"}]}',
+        [("description[0]", "a", {"text": "a"}), ("description[1]", "b", {"text": "b"})],
+    ),
+    (
+        '{"description":{"text":"a","extra":["b"]}}',
+        '{"description":{"text":"a","extra":[{"text":"b"}]}}',
+        [("description.extra[0]", "b", {"text": "b"})],
+    ),
+    (
+        '{"favicon":"x"}',
+        '{"favicon":"x","enforceSecureChat":true}',
+        [("enforceSecureChat", ABSENT, True)],
+    ),
+    ("{}", '{"favicon":null}', [("favicon", ABSENT, None)]),
+    ("{}", '{"enforcesSecureChat":false}', [("enforcesSecureChat", ABSENT, False)]),
+    # Key order is not reported beside a difference of value (PLAN, Comparison semantics).
+    ('{"a":1,"favicon":null}', '{"favicon":2,"a":1}', []),
+]
+VALUE_IDS = [
+    "bare-text",
+    "list-elements",
+    "extra",
+    "unread-key",
+    "null-member",
+    "declared-default",
+    "reordered-and-different",
+]
+
+
+@pytest.mark.parametrize(("reference", "candidate", "found"), EQUIVALENT_VALUES, ids=VALUE_IDS)
+def test_a_canonical_value_is_a_wire_only_divergence_at_its_json_path(
+    reference: str, candidate: str, found: list[tuple[str, object, object]]
+) -> None:
+    wire_only = [
+        (d.path, d.reference, d.candidate)
+        for d in _verdict(reference, candidate).divergences
+        if d.observability is WIRE_ONLY
+    ]
+    assert wire_only == [(f"json_response.{path}", ref, cand) for path, ref, cand in found]
+    swapped = [
+        (d.path, d.candidate, d.reference)
+        for d in _verdict(candidate, reference).divergences
+        if d.observability is WIRE_ONLY
+    ]
+    assert swapped == wire_only
 
 
 def test_only_wire_only_divergences_is_still_a_mismatch() -> None:

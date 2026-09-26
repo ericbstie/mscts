@@ -46,7 +46,8 @@ def test_a_rerun_that_differs_only_where_it_may_has_only_wire_only_divergences()
         second = render(runs, seeded(2 * seed + 1), server="vanilla")
         verdict = compare(first, second, MASKS)
         assert verdict.observable == (), f"seed {seed}"
-        assert {d.path for d in verdict.divergences} <= {"json_response"}, f"seed {seed}"
+        paths = {str(d.path).split(".", 1)[0] for d in verdict.divergences}
+        assert paths <= {"json_response"}, f"seed {seed}"
         wire_only += bool(verdict.divergences)
     assert wire_only >= 0.2 * len(SEEDS)  # not vacuous: 35 of 120 when written
 

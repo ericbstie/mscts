@@ -197,7 +197,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a wire-only Divergence, with the raw path and
     values, when the unmasked canonical values at that path are equal; otherwise the
-    observable Divergences under it (or a Mask) account for it. A packet's wire-only
+    observable Divergences under it (or a Mask) account for it. JSON text in a raw field
+    (`_PARSED`) is diffed as its parsed value, at JSON paths, and as the whole text only
+    when the parsed values are equal. A packet's wire-only
     Divergences follow its observable ones. A path joins identifier keys
     with dots and puts list indices in brackets (`players.sample[0].name`); any other
     key is a JSON string in brackets (`m["a.b"]`). If either Packet has no fields, the
@@ -242,6 +244,9 @@ class _Normalized:
             masked paths removed; None if it has none, and is then compared by payload.
         raw: For a Packet with a canonical form, a copy of its fields as they came,
             with the masked paths removed where they reach; else None.
+        parsed: For a Packet with a canonical form, `raw` with any JSON text in it
+            parsed but not canonical (`_PARSED`), with the masked paths removed where
+            they reach; else None.
         unmasked: For a Packet with a canonical form, its canonical form before the
             Masks; else None.
     """
@@ -249,6 +254,7 @@ class _Normalized:
     packet: Packet
     fields: dict[str, _Value] | None
     raw: dict[str, _Value] | None = None
+    parsed: dict[str, _Value] | None = None
     unmasked: dict[str, _Value] | None = None
 
     @property
@@ -328,11 +334,13 @@ def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
         _remove_all(fields, paths)
         return _Normalized(packet=packet, fields=fields)
     raw = _plain_mapping(packet.fields.items(), packet.name, ())
+    parse = _PARSED.get((packet.state, packet.name), dict)
+    parsed = parse(_plain_mapping(packet.fields.items(), packet.name, ()))
     unmasked = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
     fields = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
-    _remove_all(raw, paths)
-    _remove_all(fields, paths)
-    return _Normalized(packet=packet, fields=fields, raw=raw, unmasked=unmasked)
+    for copy in (raw, parsed, fields):
+        _remove_all(copy, paths)
+    return _Normalized(packet=packet, fields=fields, raw=raw, parsed=parsed, unmasked=unmasked)
 
 
 def _remove_all(fields: dict[str, _Value], paths: Iterable[_Path]) -> None:
@@ -409,11 +417,11 @@ _JSON_NESTING_LIMIT = 255
 """The deepest JSON the vanilla client reads: its Gson 2.14.0 JsonReader's default."""
 
 
-def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
-    """Parse `json_response` into its JSON value: the members the client reads, canonical.
+def _parsed_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Parse `json_response` into its JSON value, as it came.
 
-    It stays the raw string, and is compared as one, unless it is strict JSON (no
-    repeated key in an object, no NaN or Infinity) nested at most 255 deep.
+    It stays the raw string unless it is strict JSON (no repeated key in an object, no
+    NaN or Infinity) nested at most 255 deep.
     """
     text = fields.get("json_response")
     if not isinstance(text, str):
@@ -421,6 +429,16 @@ def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
     status = _strict_json(text)
     if isinstance(status, Absent):
         return fields
+    return {**fields, "json_response": status}
+
+
+def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Parse `json_response` into its JSON value: the members the client reads, canonical.
+
+    It stays the raw string, and is compared as one, unless it is strict JSON.
+    """
+    fields = _parsed_status_response(fields)
+    status = fields.get("json_response")
     if isinstance(status, dict):
         status = _as_read(status)
         if "description" in status:
@@ -578,6 +596,12 @@ _CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _
 )
 """The canonical form of each clientbound packet that has one, by (State, name)."""
 
+_PARSED: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
+    MappingProxyType({(State.STATUS, "minecraft:status_response"): _parsed_status_response})
+)
+"""The fields of a packet in `_CANONICAL` that hold JSON text, parsed but not canonical,
+so a wire-only Divergence inside the JSON is reported at its JSON path."""
+
 
 # Alignment.
 
@@ -725,18 +749,27 @@ def _diff_matched(
 def _wire_only(
     reference: _Normalized, candidate: _Normalized
 ) -> Iterator[tuple[_Path, _Value | Absent, _Value | Absent]]:
-    """Yield the raw differences whose unmasked canonical values are equal, in path order."""
+    """Yield the raw differences whose unmasked canonical values are equal, in path order.
+
+    A raw difference inside JSON text is taken at each JSON path where the parsed values
+    differ; only when they are equal (a JSON spelling) is it the whole text.
+    """
     if (
         reference.raw is None
         or candidate.raw is None
+        or reference.parsed is None
+        or candidate.parsed is None
         or reference.unmasked is None
         or candidate.unmasked is None
     ):
         return
-    for path, ref_value, cand_value in _diff(reference.raw, candidate.raw, ()):
-        canonical = (_at(reference.unmasked, path), _at(candidate.unmasked, path))
-        if next(_diff(*canonical, path), None) is None:
-            yield path, ref_value, cand_value
+    for raw_path, raw_ref, raw_cand in _diff(reference.raw, candidate.raw, ()):
+        parsed = (_at(reference.parsed, raw_path), _at(candidate.parsed, raw_path))
+        found = list(_diff(*parsed, raw_path)) or [(raw_path, raw_ref, raw_cand)]
+        for path, ref_value, cand_value in found:
+            canonical = (_at(reference.unmasked, path), _at(candidate.unmasked, path))
+            if next(_diff(*canonical, path), None) is None:
+                yield path, ref_value, cand_value
 
 
 def _at(fields: dict[str, _Value], path: _Path) -> _Value | Absent:
