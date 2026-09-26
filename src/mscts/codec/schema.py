@@ -131,8 +131,11 @@ class String:
         """Reject a `max_length` the protocol does not allow.
 
         Raises:
-            SchemaError: `max_length` is not in 1..32767.
+            SchemaError: `max_length` is not an int in 1..32767.
         """
+        if isinstance(self.max_length, bool) or not isinstance(self.max_length, int):
+            msg = f"String max_length must be an int, got {type(self.max_length).__name__}"
+            raise SchemaError(msg)
         if not 1 <= self.max_length <= _STRING_MAX_LENGTH:
             msg = f"String max_length {self.max_length} is not in 1..{_STRING_MAX_LENGTH}"
             raise SchemaError(msg)
