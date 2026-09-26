@@ -158,14 +158,19 @@ class Endpoint:
     host: str
     port: int
 
+class ConnectionClosedError(ConnectionError): ...   # closed by the server, or by close()
+
 class Connection:                   # one TCP connection; owns framing, compression, State
     @classmethod
     async def open(cls, endpoint: Endpoint, codec: Codec, *, bot: str,
-                   transcript: Transcript) -> "Connection": ...
+                   transcript: Transcript) -> "Connection": ...   # TCP_NODELAY (asyncio's default)
     state: State                    # advances on intention / login_acknowledged / finish_configuration
-    async def send(self, name: str, **fields: object) -> None: ...     # records an Event
+    async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
     async def recv(self, *, timeout: float) -> Packet: ...             # records an Event
-    async def close(self) -> None: ...
+    async def close(self) -> None: ...                                 # idempotent; aborts after 1 s
+    # `name` is positional-only, so a packet field called `name` (login `hello`) fits in **fields.
+    # send: CodecError (nothing written or recorded) if the fields do not fit. The Event holds
+    # the Packet decoded from the exact bytes written, stamped immediately before the write.
 
 class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
     name: str
