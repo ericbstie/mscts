@@ -419,6 +419,20 @@ proves it necessary:
    compared by raw payload. A Self-check failure on such a packet is the
    signal to write its schema and a Mask.
 
+   The alignment is a **longest common subsequence** of the packet keys,
+   so as few packets as possible are reported `missing` or `unexpected`.
+   Of the longest ones, the choice is fixed so that swapping the sides
+   mirrors it: match the common prefix and suffix; between them, trace
+   from the front, matching equal keys, otherwise skipping the key whose
+   skipping keeps the longer subsequence, and on a tie the smaller key,
+   whichever side it is on. Between two matched pairs, `missing` comes
+   before `unexpected`. Not `difflib.SequenceMatcher`: it matches the
+   longest *contiguous* block first, so it can leave more packets
+   unmatched than necessary, and its tie-breaking depends on which side
+   is `a`, so a swap does not mirror it. The cost is O(n·m) time and
+   memory between the common prefix and suffix, about 0.15 s for 1000
+   against 1000 unrelated packets.
+
 ### Measurements and Report
 
 ```python

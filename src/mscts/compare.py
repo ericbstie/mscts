@@ -13,6 +13,7 @@ received. Everything else is left out on purpose:
   on its own.
 """
 
+from array import array
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum
@@ -125,9 +126,10 @@ def compare(
 ) -> Verdict:
     """Diff the Candidate's Transcript of a Scenario against the Reference's.
 
-    A Packet's value is its payload as hex. The alignment matches the longest common
-    prefix of the two streams' packet keys (State and name) and leaves the rest
-    unmatched.
+    A Packet's value is its payload as hex. Each Bot's two streams are aligned on
+    their packet keys (State and name), leaving as few Packets unmatched as possible;
+    swapping the sides mirrors the alignment. Between two matched pairs, `missing`
+    Divergences come before `unexpected` ones.
 
     Raises:
         ValueError: The Transcripts are of different Scenarios.
@@ -185,11 +187,64 @@ def _key(packet: Packet) -> _Key:
 
 
 def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[int, int]]:
-    """Return the matched (reference index, candidate index) pairs, in order."""
+    """Return the matched (reference index, candidate index) pairs, in order.
+
+    The pairs are a longest common subsequence of the two key sequences: as few
+    Packets as possible are left unmatched. Of the longest ones, the choice is fixed
+    so that swapping the two sides mirrors it:
+
+    1. The common prefix and the common suffix are matched.
+    2. In between, a longest common subsequence is traced from the front. Equal keys
+       are matched. Otherwise one key is skipped: the one whose skipping keeps the
+       longer subsequence, or, if both keep as long a one, the smaller key, whichever
+       side it is on.
+
+    Between the prefix and the suffix this takes O(n·m) time and memory, and that
+    part is short when the streams mostly agree.
+    """
+    shorter = min(len(reference), len(candidate))
     prefix = 0
-    while prefix < min(len(reference), len(candidate)) and reference[prefix] == candidate[prefix]:
+    while prefix < shorter and reference[prefix] == candidate[prefix]:
         prefix += 1
-    return [(index, index) for index in range(prefix)]
+    suffix = 0
+    while suffix < shorter - prefix and reference[-1 - suffix] == candidate[-1 - suffix]:
+        suffix += 1
+    ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
+    middle = _longest_common_subsequence(reference[prefix:ref_stop], candidate[prefix:cand_stop])
+    return [
+        *((index, index) for index in range(prefix)),
+        *((prefix + ref_index, prefix + cand_index) for ref_index, cand_index in middle),
+        *((ref_stop + offset, cand_stop + offset) for offset in range(suffix)),
+    ]
+
+
+def _longest_common_subsequence(
+    reference: Sequence[_Key], candidate: Sequence[_Key]
+) -> list[tuple[int, int]]:
+    """Trace step 2 of `_align`, returning its matched pairs."""
+    rows, columns = len(reference), len(candidate)
+    # keeps[i][j]: the length of a longest common subsequence of reference[i:] and
+    # candidate[j:].
+    keeps = [array("L", [0]) * (columns + 1) for _ in range(rows + 1)]
+    for i in range(rows - 1, -1, -1):
+        row, below, key = keeps[i], keeps[i + 1], reference[i]
+        for j in range(columns - 1, -1, -1):
+            row[j] = below[j + 1] + 1 if key == candidate[j] else max(below[j], row[j + 1])
+    pairs: list[tuple[int, int]] = []
+    i = j = 0
+    while i < rows and j < columns:
+        if reference[i] == candidate[j]:
+            pairs.append((i, j))
+            i, j = i + 1, j + 1
+        elif keeps[i + 1][j] > keeps[i][j + 1]:
+            i += 1
+        elif keeps[i][j + 1] > keeps[i + 1][j]:
+            j += 1
+        elif reference[i] < candidate[j]:
+            i += 1
+        else:
+            j += 1
+    return pairs
 
 
 def _compare_streams(
