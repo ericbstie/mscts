@@ -423,7 +423,15 @@ proves it necessary:
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask.
 3. Apply **Masks**, which remove declared-nondeterministic fields or
-   ambient packets.
+   ambient packets. A field Mask removes its path from every packet of
+   that name (in any State), on both sides, wherever the path is
+   present: presence is ignored, so a field one side lacks is not a
+   Divergence. A path ending in a list index removes that element, and
+   the list closes up. Paths apply to the canonical form (step 2). A
+   Mask that matches nothing is not an error, since a Mask may name
+   packets a Scenario never sees; a field Mask on a packet with no
+   fields does nothing, so its payload still differs and the Self-check
+   says a schema is needed.
 4. Align the two streams with a sequence diff and report `missing`,
    `unexpected` and `field` Divergences. A packet with no schema is
    compared by raw payload. A Self-check failure on such a packet is the

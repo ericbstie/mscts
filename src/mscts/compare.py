@@ -26,6 +26,14 @@ from uuid import UUID
 from mscts.codec.packets import Direction, Packet
 from mscts.transcript import Transcript
 
+type _Value = bool | int | float | str | bytes | UUID | list[_Value] | dict[str, _Value] | None
+"""A value of the codec value model: what decoded fields are made of."""
+
+type _Step = str | int
+"""One step of a field path: a mapping key, or a list index."""
+
+type _Path = tuple[_Step, ...]
+
 
 class Outcome(StrEnum):
     """What a Verdict says about a Scenario."""
@@ -83,18 +91,8 @@ class Mask:
         if not self.reason.strip():
             msg = f"{self.packet} {self.path}: a Mask needs a reason"
             raise ValueError(msg)
-        if self.path == WHOLE_PACKET:
-            return
-        steps = _parse_path(self.path)
-        if steps is None:
-            msg = f"{self.packet}: malformed Mask path {self.path!r}"
-            raise ValueError(msg)
-        if (spelling := _render(steps)) != self.path:
-            msg = (
-                f"{self.packet}: Mask path {self.path!r} is spelled unlike a Divergence path;"
-                f" write {spelling!r}"
-            )
-            raise ValueError(msg)
+        if self.path != WHOLE_PACKET:
+            _mask_steps(self)
 
 
 type DivergenceKind = Literal["bot", "missing", "unexpected", "field"]
@@ -154,12 +152,11 @@ class Verdict:
     detail: str = ""
 
 
-def compare(
-    reference: Transcript,
-    candidate: Transcript,
-    masks: Sequence[Mask],  # noqa: ARG001  # the PLAN signature; used once Masks land
-) -> Verdict:
+def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
     """Diff the Candidate's Transcript of a Scenario against the Reference's.
+
+    Each Bot's stream is normalized first: every field a Mask names is removed from
+    the Packets of that name, on both sides and wherever present.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -170,7 +167,7 @@ def compare(
     with dots and puts list indices in brackets (`players.sample[0].name`); any other
     key is a JSON string in brackets (`m["a.b"]`). If either Packet has no fields, the
     two are compared by payload, with path None and hex values. A `missing` or
-    `unexpected` Packet's value is its fields, or its payload as hex.
+    `unexpected` Packet's value is its normalized fields, or its payload as hex.
 
     Raises:
         ValueError: The Transcripts are of different Scenarios.
@@ -183,9 +180,10 @@ def compare(
             f"{reference.scenario_id!r} and {candidate.scenario_id!r}"
         )
         raise ValueError(msg)
+    masked = _masked_paths(masks)
     bots = sorted(_bots(reference) | _bots(candidate))
     divergences = tuple(
-        divergence for bot in bots for divergence in _compare_bot(bot, reference, candidate)
+        divergence for bot in bots for divergence in _compare_bot(bot, reference, candidate, masked)
     )
     return Verdict(
         scenario_id=reference.scenario_id,
@@ -194,11 +192,20 @@ def compare(
     )
 
 
+# Bots and their streams.
+
+
+type _MaskedPaths = Mapping[str, Sequence[_Path]]
+"""The field paths Masks remove, by packet name."""
+
+
 def _bots(transcript: Transcript) -> set[str]:
     return {event.bot for event in transcript.events}
 
 
-def _compare_bot(bot: str, reference: Transcript, candidate: Transcript) -> Iterator[Divergence]:
+def _compare_bot(
+    bot: str, reference: Transcript, candidate: Transcript, masked: _MaskedPaths
+) -> Iterator[Divergence]:
     in_reference = sum(event.bot == bot for event in reference.events)
     in_candidate = sum(event.bot == bot for event in candidate.events)
     if not (in_reference and in_candidate):
@@ -211,7 +218,9 @@ def _compare_bot(bot: str, reference: Transcript, candidate: Transcript) -> Iter
             reference=in_reference or ABSENT,
             candidate=in_candidate or ABSENT,
         )
-    yield from _compare_streams(bot, _stream(reference, bot), _stream(candidate, bot))
+    ref_stream = [_normalize(packet, masked) for packet in _stream(reference, bot)]
+    cand_stream = [_normalize(packet, masked) for packet in _stream(candidate, bot)]
+    yield from _compare_streams(bot, ref_stream, cand_stream)
 
 
 def _stream(transcript: Transcript, bot: str) -> list[Packet]:
@@ -222,11 +231,111 @@ def _stream(transcript: Transcript, bot: str) -> list[Packet]:
     ]
 
 
+# Normalization: copies of the fields, in the value model, with Masks applied.
+
+
+@dataclass(frozen=True, slots=True)
+class _Normalized:
+    """A Packet of a normalized stream, with its fields as the Comparison sees them.
+
+    Attributes:
+        packet: The Packet.
+        fields: A copy of its fields, in the value model, with the masked paths
+            removed; None if it has none, and is then compared by payload.
+    """
+
+    packet: Packet
+    fields: dict[str, _Value] | None
+
+    @property
+    def value(self) -> object:
+        """What a `missing` or `unexpected` Divergence shows: fields, else payload hex."""
+        return self.packet.payload.hex() if self.fields is None else self.fields
+
+
+def _masked_paths(masks: Sequence[Mask]) -> _MaskedPaths:
+    paths: dict[str, list[_Path]] = {}
+    for mask in masks:
+        if mask.path != WHOLE_PACKET:
+            paths.setdefault(mask.packet, []).append(_mask_steps(mask))
+    return paths
+
+
+def _normalize(packet: Packet, masked: _MaskedPaths) -> _Normalized:
+    if packet.fields is None:
+        return _Normalized(packet=packet, fields=None)
+    fields = _plain_mapping(packet.fields.items(), packet.name, ())
+    for path in masked.get(packet.name, ()):
+        _remove(fields, path)
+    return _Normalized(packet=packet, fields=fields)
+
+
+_LEAF_TYPES: frozenset[type] = frozenset({bool, int, float, str, bytes, UUID})
+"""The exact types of the model's leaves besides None; no subclasses (not an IntEnum)."""
+
+
+def _plain_mapping(
+    items: Iterable[tuple[object, object]], packet: str, path: _Path
+) -> dict[str, _Value]:
+    """Copy a mapping's `items`, checking that they are made of the value model.
+
+    Raises:
+        TypeError: A key is not a str, or a value is not in the value model.
+    """
+    copy: dict[str, _Value] = {}
+    for key, item in items:
+        if not isinstance(key, str):
+            msg = f"{packet}: {_where(path)}: {type(key).__name__} key {key!r} is not a field name"
+            raise TypeError(msg)
+        copy[key] = _plain(item, packet, (*path, key))
+    return copy
+
+
+def _plain(value: object, packet: str, path: _Path) -> _Value:
+    if isinstance(value, Mapping):
+        return _plain_mapping(value.items(), packet, path)
+    if isinstance(value, list):
+        return [_plain(item, packet, (*path, index)) for index, item in enumerate(value)]
+    if value is None:
+        return None
+    if isinstance(value, (bool, int, float, str, bytes, UUID)) and type(value) in _LEAF_TYPES:
+        return value
+    msg = f"{packet}: {_where(path)}: {type(value).__name__} is not a codec value"
+    raise TypeError(msg)
+
+
+def _remove(fields: dict[str, _Value], path: _Path) -> None:
+    """Remove the value at `path` from `fields`, if there is one; a list closes up."""
+    node: _Value = fields
+    for step in path[:-1]:
+        child = _child(node, step)
+        if isinstance(child, Absent):
+            return
+        node = child
+    last = path[-1]
+    if isinstance(node, dict) and isinstance(last, str):
+        node.pop(last, None)
+    elif isinstance(node, list) and isinstance(last, int) and last < len(node):
+        del node[last]
+
+
+def _child(node: _Value, step: _Step) -> _Value | Absent:
+    if isinstance(node, dict) and isinstance(step, str):
+        return node.get(step, ABSENT)
+    if isinstance(node, list) and isinstance(step, int) and step < len(node):
+        return node[step]
+    return ABSENT
+
+
+# Alignment.
+
+
 type _Key = tuple[str, str]
+"""What a Packet is aligned on: its State and name."""
 
 
-def _key(packet: Packet) -> _Key:
-    return (packet.state.value, packet.name)
+def _key(entry: _Normalized) -> _Key:
+    return (entry.packet.state.value, entry.packet.name)
 
 
 def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[int, int]]:
@@ -290,46 +399,21 @@ def _longest_common_subsequence(
     return pairs
 
 
-@dataclass(frozen=True, slots=True)
-class _Normalized:
-    """A Packet of a normalized stream, with its fields as the Comparison sees them.
-
-    Attributes:
-        packet: The Packet.
-        fields: A copy of its fields, in the value model; None if it has none, and is
-            then compared by payload.
-    """
-
-    packet: Packet
-    fields: dict[str, object] | None
-
-    @property
-    def value(self) -> object:
-        """What a `missing` or `unexpected` Divergence shows: fields, else payload hex."""
-        return self.packet.payload.hex() if self.fields is None else self.fields
-
-
-def _normalize(packet: Packet) -> _Normalized:
-    fields = (
-        None if packet.fields is None else _plain_mapping(packet.fields.items(), packet.name, ())
-    )
-    return _Normalized(packet=packet, fields=fields)
+# Diffing.
 
 
 def _compare_streams(
-    bot: str, reference: Sequence[Packet], candidate: Sequence[Packet]
+    bot: str, reference: Sequence[_Normalized], candidate: Sequence[_Normalized]
 ) -> Iterator[Divergence]:
-    ref_stream = [_normalize(packet) for packet in reference]
-    cand_stream = [_normalize(packet) for packet in candidate]
-    pairs = _align([_key(p) for p in reference], [_key(p) for p in candidate])
+    pairs = _align([_key(entry) for entry in reference], [_key(entry) for entry in candidate])
     next_reference = next_candidate = 0
-    for ref_index, cand_index in [*pairs, (len(ref_stream), len(cand_stream))]:
+    for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):
-            yield _unmatched(bot, index, "missing", ref_stream[index])
+            yield _unmatched(bot, index, "missing", reference[index])
         for index in range(next_candidate, cand_index):
-            yield _unmatched(bot, index, "unexpected", cand_stream[index])
-        if ref_index < len(ref_stream):
-            yield from _diff_matched(bot, ref_index, ref_stream[ref_index], cand_stream[cand_index])
+            yield _unmatched(bot, index, "unexpected", candidate[index])
+        if ref_index < len(reference):
+            yield from _diff_matched(bot, ref_index, reference[ref_index], candidate[cand_index])
         next_reference, next_candidate = ref_index + 1, cand_index + 1
 
 
@@ -373,47 +457,9 @@ def _diff_matched(
         )
 
 
-# The value model: what decoded fields are made of. Leaves are compared by exact type,
-# so True is not 1 and 1 is not 1.0.
-_LEAF_TYPES: frozenset[type] = frozenset({type(None), bool, int, float, str, bytes, UUID})
-
-type _Step = str | int
-"""One step of a field path: a mapping key, or a list index."""
-
-type _Path = tuple[_Step, ...]
-
-
-def _plain_mapping(
-    items: Iterable[tuple[object, object]], packet: str, path: _Path
-) -> dict[str, object]:
-    """Copy a mapping's `items`, checking that they are made of the value model.
-
-    Raises:
-        TypeError: A key is not a str, or a value is not in the value model.
-    """
-    copy: dict[str, object] = {}
-    for key, item in items:
-        if not isinstance(key, str):
-            msg = f"{packet}: {_where(path)}: {type(key).__name__} key {key!r} is not a field name"
-            raise TypeError(msg)
-        copy[key] = _plain(item, packet, (*path, key))
-    return copy
-
-
-def _plain(value: object, packet: str, path: _Path) -> object:
-    if isinstance(value, Mapping):
-        return _plain_mapping(value.items(), packet, path)
-    if isinstance(value, list):
-        return [_plain(item, packet, (*path, index)) for index, item in enumerate(value)]
-    if type(value) in _LEAF_TYPES:
-        return value
-    msg = f"{packet}: {_where(path)}: {type(value).__name__} is not a codec value"
-    raise TypeError(msg)
-
-
 def _diff(
-    reference: object, candidate: object, path: _Path
-) -> Iterator[tuple[_Path, object, object]]:
+    reference: _Value | Absent, candidate: _Value | Absent, path: _Path
+) -> Iterator[tuple[_Path, _Value | Absent, _Value | Absent]]:
     """Yield (path, reference value, candidate value) for each difference, in path order.
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
@@ -421,9 +467,8 @@ def _diff(
     end of the shorter one are ABSENT. Anything else is a leaf.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
-        ref_map, cand_map = _keyed(reference.items()), _keyed(candidate.items())
-        for key in sorted(ref_map.keys() | cand_map.keys()):
-            yield from _diff(ref_map.get(key, ABSENT), cand_map.get(key, ABSENT), (*path, key))
+        for key in sorted(reference.keys() | candidate.keys()):
+            yield from _diff(reference.get(key, ABSENT), candidate.get(key, ABSENT), (*path, key))
     elif isinstance(reference, list) and isinstance(candidate, list):
         for index in range(max(len(reference), len(candidate))):
             yield from _diff(_element(reference, index), _element(candidate, index), (*path, index))
@@ -431,16 +476,11 @@ def _diff(
         yield path, reference, candidate
 
 
-def _keyed(items: Iterable[tuple[object, object]]) -> dict[str, object]:
-    """Retype a normalized mapping's items (whose keys are all str) for indexing."""
-    return {str(key): item for key, item in items}
-
-
-def _element(items: Sequence[object], index: int) -> object:
+def _element(items: Sequence[_Value], index: int) -> _Value | Absent:
     return items[index] if index < len(items) else ABSENT
 
 
-def _same(reference: object, candidate: object) -> bool:
+def _same(reference: _Value | Absent, candidate: _Value | Absent) -> bool:
     """Whether two leaves are equal: same exact type, and floats bit for bit."""
     if type(reference) is not type(candidate):
         return False
@@ -449,7 +489,13 @@ def _same(reference: object, candidate: object) -> bool:
     return reference == candidate
 
 
+# Field paths.
+
+
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_DOTTED_KEY = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
+_INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
+_JSON = json.JSONDecoder()
 
 
 def _render(path: _Path) -> str:
@@ -473,9 +519,23 @@ def _where(path: _Path) -> str:
     return _render(path) or "fields"
 
 
-_DOTTED_KEY = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
-_INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
-_JSON = json.JSONDecoder()
+def _mask_steps(mask: Mask) -> _Path:
+    """Return the steps of `mask`'s field path.
+
+    Raises:
+        ValueError: The path is malformed, or not spelled as a Divergence path would be.
+    """
+    steps = _parse_path(mask.path)
+    if steps is None:
+        msg = f"{mask.packet}: malformed Mask path {mask.path!r}"
+        raise ValueError(msg)
+    if (spelling := _render(steps)) != mask.path:
+        msg = (
+            f"{mask.packet}: Mask path {mask.path!r} is spelled unlike a Divergence path;"
+            f" write {spelling!r}"
+        )
+        raise ValueError(msg)
+    return steps
 
 
 def _parse_path(text: str) -> _Path | None:

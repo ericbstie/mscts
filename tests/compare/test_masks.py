@@ -1,10 +1,11 @@
 """Masks: what a valid one is, and what it removes from a Comparison."""
 
 import re
+from collections.abc import Mapping
 
 import pytest
 
-from mscts.compare import Mask, compare
+from mscts.compare import ABSENT, Mask, compare
 from tests.compare.build import packet, transcript
 
 REASON = "nondeterministic in vanilla"
@@ -95,3 +96,87 @@ def test_a_mask_path_must_be_spelled_as_divergences_spell_it(path: str, canonica
     # One spelling per path, so a path copied from a Divergence is the Mask's path.
     with pytest.raises(ValueError, match=re.escape(f"write {canonical!r}")):
         Mask(packet="minecraft:login", path=path, reason=REASON)
+
+
+def _fields_diff(
+    reference: Mapping[str, object], candidate: Mapping[str, object], *masks: Mask
+) -> list[tuple[str | None, object, object]]:
+    verdict = compare(
+        transcript(("alice", packet("test:p", fields=reference))),
+        transcript(("alice", packet("test:p", fields=candidate))),
+        masks,
+    )
+    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+
+
+def _mask(path: str, name: str = "test:p") -> Mask:
+    return Mask(packet=name, path=path, reason=REASON)
+
+
+def test_a_field_mask_removes_the_field_from_both_sides() -> None:
+    reference = {"entity_id": 1, "name": "a"}
+    candidate = {"entity_id": 2, "name": "b"}
+    assert _fields_diff(reference, candidate, _mask("entity_id")) == [("name", "a", "b")]
+
+
+def test_a_field_mask_ignores_whether_the_field_is_present() -> None:
+    assert _fields_diff({"a": 1}, {"a": 1, "seed": 7}, _mask("seed")) == []
+    assert _fields_diff({"a": 1, "seed": 7}, {"a": 1}, _mask("seed")) == []
+
+
+def test_a_field_mask_reaches_into_mappings_and_lists() -> None:
+    reference = {"players": {"sample": [{"id": 1, "name": "a"}]}}
+    candidate = {"players": {"sample": [{"id": 2, "name": "a"}]}}
+    assert _fields_diff(reference, candidate, _mask("players.sample[0].id")) == []
+
+
+def test_a_field_mask_on_a_list_element_removes_it_from_the_list() -> None:
+    assert _fields_diff({"l": [9, 1, 2]}, {"l": [8, 1, 2]}, _mask("l[0]")) == []
+
+
+def test_a_field_mask_on_a_path_one_side_lacks_leaves_the_other_side_masked() -> None:
+    reference = {"players": {"sample": [{"id": 1}]}}
+    candidate = {"players": 5}
+    assert _fields_diff(reference, candidate, _mask("players.sample")) == [("players", {}, 5)]
+
+
+def test_a_field_mask_applies_only_to_its_packet() -> None:
+    reference = {"entity_id": 1}
+    candidate = {"entity_id": 2}
+    assert _fields_diff(reference, candidate, _mask("entity_id", "test:other")) == [
+        ("entity_id", 1, 2)
+    ]
+
+
+def test_a_mask_that_matches_nothing_is_not_an_error() -> None:
+    masks = (_mask("no.such[3].path"), _mask("x", "test:q"))
+    assert _fields_diff({"a": 1}, {"a": 1}, *masks) == []
+
+
+def test_a_field_mask_leaves_a_packet_without_fields_compared_by_payload() -> None:
+    verdict = compare(
+        transcript(("alice", packet("test:p", b"\x01"))),
+        transcript(("alice", packet("test:p", b"\x02"))),
+        [_mask("entity_id")],
+    )
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [(None, "01", "02")]
+
+
+def test_a_missing_packet_shows_its_fields_with_the_masked_ones_removed() -> None:
+    verdict = compare(
+        transcript(("alice", packet("test:p", fields={"entity_id": 1, "name": "a"}))),
+        transcript(("alice", packet("test:other"))),
+        [_mask("entity_id")],
+    )
+    assert [(d.kind, d.reference) for d in verdict.divergences] == [
+        ("missing", {"name": "a"}),
+        ("unexpected", ABSENT),
+    ]
+
+
+def test_masks_leave_the_transcripts_untouched() -> None:
+    fields = {"entity_id": 1, "sample": [{"id": 1}]}
+    reference = transcript(("alice", packet("test:p", fields=fields)))
+    compare(reference, reference, [_mask("entity_id"), _mask("sample[0].id")])
+    assert fields == {"entity_id": 1, "sample": [{"id": 1}]}
+    assert reference.events[0].packet.fields == fields
