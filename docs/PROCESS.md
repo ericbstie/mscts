@@ -111,7 +111,9 @@ Out of scope: <what not to touch>
 Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), never
               a wire field a Candidate may legitimately get wrong: that is a Divergence
               for the Comparison to report, not a harness assertion.
-Done when: <observable condition, e.g. `mise run check` green + named tests exist>
+Done when: <observable condition, e.g. `mise run check` green + named tests exist;
+           timings are measured on a committed tree, with `--durations` of the touched
+           tests and the load average>
 Base: <main commit the brief was written against; the worker first runs
       `git merge --ff-only main` in its worktree>
 Context: <facts, file paths, gotchas the tech lead already knows; reusable scratchpad
@@ -244,6 +246,12 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker W (Run over Endpoints) | A timing baseline taken while editing measures a moving tree, and main moved mid-measurement | **adopt**: brief template, "measure timings on a committed tree and do not edit during a run"; **defer** a snapshot-based `scripts/time_tier.py` |
+| 2026-09-26 | worker W | Load from parallel workers (loadavg 3–4 on 4 CPUs) moved tier totals by more than the saving | **adopt**: G5 claims report the touched tests' `--durations` and the load average alongside the tier total |
+| 2026-09-26 | worker W | The reference tier is 79–83 s after the fix: under G5, with a thin margin. The join keep-alive test idles about 30 s | **adopt**: Next item, run the reference tier with `-n 2 --dist loadgroup`, the keep-alive test in its own `xdist_group` |
+| 2026-09-26 | worker W | "Commit only with `mise run commit`" landed mid-brief and W learned it only at rebase | **adopt**: the lead messages in-flight workers whenever the Worker contract changes |
+| 2026-09-26 | worker W | Two-Bot tests needed a tolerant `_mute` fake handler | **defer**: move it to `tests/net/fakes.py` when a second test needs it |
+| 2026-09-26 | worker W | A re-indent by string replacement mangled a file | **reject** (no change): use Edit for structural changes |
 | 2026-09-26 | worker X (tooling) | `mise run commit`, `strays.py --token/--cwd`, `mutate.py --batch` with untracked files landed; PLR0913 forced a cleaner shape twice | **adopt**: the brief template's verbatim line and the Worker contract now require `mise run commit`; the helper split is the pattern for synthetic-/proc tests |
 | 2026-09-26 | helper (Astra, PR #5 javap) | Its sandbox's PID namespace broke the process tests, so it could not run the full check; a sonnet review found the version JSON was trusted without its manifest sha1 | **adopt**: the lead runs the full check and a live smoke test on every helper PR, and fixes small findings in a commit on top of the PR branch (never rewriting it), then rebase-merges. Helper issues spell out the trust chain to verify |
 | 2026-09-26 | worker V (wire-only) | A committed javap with DFU and Gson on the classpath would have saved a third of the brief | **adopt**: delegated as issue #6 (extends #5) |

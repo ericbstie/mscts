@@ -22,7 +22,9 @@ pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
   failure is `mismatch` with a `failed` Divergence). The status Self-check
   is `match` 20/20 on the live Reference, with no Mask. Left: the
   `mscts selfcheck` command and Measurements (3a).
-- **G5 is red for the reference tier** (about 91 s against 90 s): 2a.
+- **G5 holds again** (reference tier 79–83 s under load): the Self-check
+  reuses the session Reference as an Attached side. The margin is thin;
+  Next item 3c parallelizes the tier.
 - **M3a (installs): mostly done.** A Registry pinned by checksum
   (`src/mscts/data/registry.toml`), `mscts adapter install/list/status`
   with `--from`, sources recorded in SOURCE.json. Pumpkin nightly-48cba7ee
@@ -74,9 +76,6 @@ Environment notes:
 
 Batch 2, briefed against `a64a2b5`:
 
-- **W** (opus, `run`, against `277dc11`): a Run over existing Endpoints
-  so the Self-check reuses the session Reference (G5); Bot-named `failed`
-  Divergences (G3) (Next 2a).
 
 
 - **Y** (sonnet, `tooling`, against `45a084f`): `scripts/research/
@@ -97,6 +96,10 @@ like a worker branch.
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
+3c. `tooling` (sonnet): reference tier under `-n 2 --dist loadgroup`,
+    the 30 s keep-alive test in its own `xdist_group` (target 55–60 s);
+    a snapshot-based `scripts/time_tier.py` (tier total, per-test
+    durations, load average).
 3a. `cli` (sonnet): `mscts selfcheck` over R's library `selfcheck`
     (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
@@ -139,6 +142,9 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker W: a Run side can be an `Attached` Instance; the Self-check
+  reuses the session Reference (G5 back under 90 s); a `failed`
+  Divergence names its Bot (G3).
 - Worker X: `mise run commit` (the only way to commit), `strays.py
   --token/--cwd`, `mutate.py --batch` with untracked files.
 - Worker V: observable vs wire-only Divergences; status declared
