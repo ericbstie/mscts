@@ -150,10 +150,14 @@ def _check_readable(spec: ServerSpec) -> None:
             lowest = "" if low is None else f"{low}.."
             msg = f"ServerSpec.{field}={value!r}: Pumpkin reads only integers {lowest}{high}"
             raise PrepareError(msg)
+    motd: object = spec.motd
+    if not isinstance(motd, str):
+        msg = f"ServerSpec.motd={motd!r} is not a string"
+        raise PrepareError(msg)
     try:
-        spec.motd.encode()
+        motd.encode()
     except UnicodeEncodeError as error:
-        msg = f"ServerSpec.motd={spec.motd!r} is not valid Unicode: {error}"
+        msg = f"ServerSpec.motd={motd!r} is not valid Unicode: {error}"
         raise PrepareError(msg) from error
 
 

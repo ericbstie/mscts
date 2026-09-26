@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 
 from mscts.adapters.base import PrepareError
-from mscts.adapters.pumpkin import pumpkin_defaults, pumpkin_toml, toml_document
+from mscts.adapters.pumpkin import INVARIANTS as PUMPKIN_INVARIANTS
+from mscts.adapters.pumpkin import (
+    VANILLA_EQUIVALENTS,
+    _put,
+    pumpkin_defaults,
+    pumpkin_toml,
+    toml_document,
+)
 from mscts.spec import Difficulty, GameMode, ServerSpec
 
 GOLDEN = Path(__file__).with_name("data") / "pumpkin-26.3-default-spec.toml"
@@ -192,6 +199,8 @@ def test_motd_reads_back_exactly(motd: str) -> None:
         ("seed", -(2**63) - 1),
         ("compression_threshold", 2**32),
         ("motd", "\ud800"),
+        ("motd", 5),
+        ("port", True),
     ],
 )
 def test_a_value_pumpkin_cannot_read_is_refused(field: str, value: object) -> None:
@@ -220,3 +229,24 @@ def test_a_value_pumpkin_cannot_read_is_refused(field: str, value: object) -> No
 )
 def test_the_edges_of_what_pumpkin_can_read_are_accepted(field: str, value: object) -> None:
     pumpkin_toml(dataclasses.replace(ServerSpec(port=25599), **{field: value}))
+
+
+@pytest.mark.parametrize(
+    ("path", "value"), [*VANILLA_EQUIVALENTS.items(), *PUMPKIN_INVARIANTS.items()]
+)
+def test_every_table_entry_is_a_key_pumpkin_writes_with_a_value_of_its_type(
+    path: str, value: object
+) -> None:
+    # Pumpkin keeps an unknown key but ignores it, and falls back to its default config on
+    # a value of the wrong type.
+    assert type(value) is type(at(pumpkin_defaults(), path))
+
+
+def test_setting_a_key_pumpkin_does_not_write_is_a_bug() -> None:
+    with pytest.raises(KeyError, match="encrypt"):
+        _put({"networking": {"java": {"encryption": True}}}, "networking.java.encrypt", value=False)
+
+
+def test_setting_a_value_of_another_type_is_a_bug() -> None:
+    with pytest.raises(TypeError, match="view_distance"):
+        _put({"view_distance": 16}, "view_distance", value=True)
