@@ -2,6 +2,7 @@
 
 import importlib.util
 import types
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -85,14 +86,116 @@ def test_mutate_text_replaces_only_the_first_occurrence(mutate: types.ModuleType
     assert mutate.mutate_text("a-b-a", "a", "X") == "X-b-a"
 
 
-# -- verdict ------------------------------------------------------------------------
+# -- classify -------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("returncode", "expected"), [(1, 0), (2, 0), (None, 0), (0, 1)], ids=str)
-def test_verdict_is_0_iff_the_tests_failed_or_timed_out(
-    mutate: types.ModuleType, returncode: int | None, expected: int
+def test_classify_kills_only_on_pytest_exit_code_1(mutate: types.ModuleType) -> None:
+    assert mutate.classify(1).kind == "KILLED"
+
+
+def test_classify_survives_only_on_pytest_exit_code_0(mutate: types.ModuleType) -> None:
+    assert mutate.classify(0).kind == "SURVIVED"
+
+
+@pytest.mark.parametrize(
+    "returncode",
+    [2, 3, 4, 5, 42, None],
+    ids=[
+        "interrupted",
+        "internal-error",
+        "usage-error",
+        "no-tests-collected",
+        "unknown",
+        "timeout",
+    ],
+)
+def test_classify_is_invalid_for_every_other_exit_code_and_a_timeout(
+    mutate: types.ModuleType, returncode: int | None
 ) -> None:
-    assert mutate.verdict(returncode) == expected
+    # MD6 (docs/audits/2026-09-26-foundation.md): none of these prove a test failed, so
+    # none may be counted as KILLED -- and none proves every test passed either.
+    assert mutate.classify(returncode).kind == "INVALID"
+
+
+@pytest.mark.parametrize(
+    ("returncode", "phrase"),
+    [
+        (2, "interrupted"),
+        (3, "internal error"),
+        (4, "usage error"),
+        (5, "no tests were collected"),
+        (None, "timeout"),
+    ],
+)
+def test_classify_invalid_detail_names_the_reason(
+    mutate: types.ModuleType, returncode: int | None, phrase: str
+) -> None:
+    assert phrase in mutate.classify(returncode).detail
+
+
+# -- run_mutation (hermetic: a fake pytest runner, no subprocess) ---------------------
+
+
+def test_run_mutation_kills_and_restores_when_the_fake_run_fails(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("value = 1\n")
+    calls: list[tuple[tuple[str, ...], float]] = []
+
+    def fake_run(pytest_args: Sequence[str], timeout_s: float) -> int:
+        calls.append((tuple(pytest_args), timeout_s))
+        return 1
+
+    mutation = mutate.Mutation(target, "1", "2")
+    outcome = mutate.run_mutation(mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run)
+
+    assert outcome.kind == "KILLED"
+    assert target.read_text() == "value = 1\n"  # restored even though it killed
+    assert calls == [(("tests/x.py",), 5.0)]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "kind"),
+    [
+        (0, "SURVIVED"),
+        (2, "INVALID"),
+        (3, "INVALID"),
+        (4, "INVALID"),
+        (5, "INVALID"),
+        (None, "INVALID"),
+    ],
+    ids=["passed", "interrupted", "internal-error", "usage-error", "no-tests-collected", "timeout"],
+)
+def test_run_mutation_classifies_every_other_fake_exit_code_and_restores(
+    mutate: types.ModuleType, tmp_path: Path, returncode: int | None, kind: str
+) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("value = 1\n")
+    mutation = mutate.Mutation(target, "1", "2")
+
+    outcome = mutate.run_mutation(
+        mutation, ["tests/x.py"], timeout_s=5.0, run=lambda *_: returncode
+    )
+
+    assert outcome.kind == kind
+    assert target.read_text() == "value = 1\n"  # restored on every outcome
+
+
+def test_run_mutation_raises_and_touches_nothing_when_old_is_not_exactly_one(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("value = 1\n")
+    mutation = mutate.Mutation(target, "missing", "2")
+
+    def fake_run(*_args: object) -> int:
+        pytest.fail("run_mutation must not run pytest when the mutation could not be applied")
+
+    with pytest.raises(mutate.MutateError, match="occurs 0 time"):
+        mutate.run_mutation(mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run)
+
+    assert target.read_text() == "value = 1\n"
 
 
 # -- apply_mutation / restore (real files, no subprocess) --------------------------
