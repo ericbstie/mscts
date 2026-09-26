@@ -194,6 +194,15 @@ def test_timings_show_each_measurement_for_both_servers_and_the_startup() -> Non
     assert "400" in timings
 
 
+def test_timings_name_the_scenarios_that_were_not_played() -> None:
+    blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was error")
+    text = render_text(_report(_result(_verdict("status/basic")), _result(blocked)))
+
+    timings = text[text.index(TIMINGS) :]
+    assert "status/ping" in timings
+    assert "status/basic" not in timings
+
+
 def test_the_notes_are_shown() -> None:
     text = render_text(_report(_result(_verdict("status/basic"))))
 

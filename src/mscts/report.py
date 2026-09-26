@@ -25,6 +25,14 @@ WIRE_EXAMPLES = 3
 """How many examples each packet's wire-only differences show."""
 
 _MINECRAFT = "minecraft:"
+
+_NOT_PLAYED: Mapping[Outcome, str] = MappingProxyType(
+    {
+        Outcome.BLOCKED: "was not played (blocked)",
+        Outcome.ERROR: "could not be judged (error)",
+    }
+)
+"""How a Verdict that is no Comparison of the two servers reads, by its outcome."""
 _INTO = chr(0x203A)
 """Between a packet and a field path: a single right-pointing angle quotation mark."""
 
@@ -203,8 +211,8 @@ def _unsettled(report: Report) -> str:
         runs = len(result.verdicts)
         details: dict[str, int] = {}
         for verdict in result.verdicts:
-            if verdict.outcome in {Outcome.ERROR, Outcome.BLOCKED}:
-                line = f"{verdict.outcome}: {verdict.detail}"
+            if verdict.outcome in _NOT_PLAYED:
+                line = f"{_NOT_PLAYED[verdict.outcome]}: {verdict.detail}"
                 details[line] = details.get(line, 0) + 1
         for line, count in details.items():
             seen_in = "" if count == runs else f" (in {count} of {runs} runs)"
@@ -235,10 +243,15 @@ def _timings(report: Report) -> str:
     for name in names:
         ours, theirs = reference.get(name, []), candidate.get(name, [])
         rows.append((name, *_median_p95(ours), *_median_p95(theirs), _counts(ours, theirs)))
-    if not names:
-        return _heading("Timings (ms)") + "\n  nothing was measured"
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
-    lines = [_aligned(row, widths) for row in rows]
+    lines = [_aligned(row, widths) for row in rows] if names else ["  nothing was measured"]
+    unplayed = [
+        result.scenario_id
+        for result in report.results
+        if any(verdict.outcome in _NOT_PLAYED for verdict in result.verdicts)
+    ]
+    if unplayed:
+        lines.append(f"  Not measured where it was not played (see above): {', '.join(unplayed)}")
     return _heading("Timings (ms)") + "\n" + "\n".join(lines)
 
 
