@@ -213,6 +213,12 @@ then one commit.
   never put an implicit concatenation inside `[...]` (ruff format joins it,
   then ISC004 fires).
 
+- A deliberately wrong type in a test: ty 0.0.84 rejects `cast("int", 1.0)`
+  (disjoint types), even through an `object`-typed constant. Use
+  `cast("T", _untyped(v))` with `def _untyped(v: object) -> object`.
+- Writing a server's file format: pin the writer byte for byte against a
+  file the Reference itself wrote.
+
 ## When stuck
 
 - If a test fails in a way you don't understand, shrink the reproduction

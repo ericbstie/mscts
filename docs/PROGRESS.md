@@ -32,7 +32,10 @@ pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
   the Adapter contract. The SessionStart hook runs `mise run
   install:reference` (explicit, loud). **M3a done** except the registry
   review flow and M9's `adapter check`.
-- **M3 (first Candidate):** needs the Pumpkin world-save work (Next 4).
+- **M3 (first Candidate): unblocked.** `PumpkinAdapter.prepare` writes a
+  native flat world save (DataVersion 4903) with the spec's seed and
+  difficulty; a Bot joining Pumpkin lands in the Reference's flat world at
+  y = -60 (candidate tier). Left: `mscts run` and the first Report (4).
 - Audit K's high findings H1, H2 and H3 are all fixed.
 
 Product direction (maintainer, 2026-09-26):
@@ -66,8 +69,6 @@ Environment notes:
 ## In flight
 
 Batch 2, briefed against `a64a2b5`:
-- **U** (opus, `adapter/pumpkin`): a flat world save + difficulty in
-  Pumpkin's own format, with a strict minimal NBT writer (Next 4).
 - **V** (opus, `compare`, relaunched against `1822a5f` after a rate-limit
   kill): observable vs wire-only
   Divergences, declared defaults from the client decoder, `update_tags`
@@ -96,10 +97,11 @@ briefs at 3–6 increments and about 1500 lines at most.
     (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
     and off S's `cli.py`.
-4. `adapter/pumpkin` (opus, after 3): write a flat world save and the
-   difficulty in Pumpkin's own format (level.dat at its DataVersion plus a
-   flat `world_gen_settings.dat`), lift `LIMITS` for them, and verify with
-   a join (spawn y = -60, chunk contents). Then M3's first Report.
+4. **M3's first Report** (opus, after V and 3a): `mscts run --candidate
+   pumpkin` over the status Scenarios (then join), `report.py` with
+   observable and wire-only sections (ADR-0007), grouped by mechanic
+   (ADR-0006). Known Pumpkin Divergences to expect: `is_flat=false`,
+   `sea_level` 63 in play `login`.
 5. `compare` (opus, ADR-0007): classify Divergences as observable or
    wire-only; add declared-default canonicalizations (cited from the
    client decoder); canonicalize the `update_tags` order (a server
@@ -107,8 +109,9 @@ briefs at 3–6 increments and about 1500 lines at most.
 6. Research tooling (sonnet): ~~`scripts/research/javap.py`~~
    (delegated: issue #2), then the
    `scripts/` research harness: netns sandbox, strace summary, live
-   launch/probe, a loopback-only reference test (adopt workers H, L and P
-   scratch tools).
+   launch/probe, a loopback-only reference test, and `scripts/research/
+   boot.py` (boot an Adapter's Instance, join, dump packets and chunks);
+   start from worker U's scratch `U/boot.py`, `U/nbtdump.py`, `U/chunk.py`.
 7. `join/basic` Scenario + Self-check 20/20 (after 2 and 5), with a spawn
    Fixture (`/setworldspawn`) per ADR-0006. The statistical
    `spawn/join-position` comes later (M6b).
@@ -118,7 +121,9 @@ briefs at 3–6 increments and about 1500 lines at most.
 9. ~~`runner`: a parent-death guard~~ (delegated: issue #3).
 10. Tick research (opus, M6a) and statistical tier design (opus, M6b),
     per ADR-0006.
-11. Tooling: `mutate.py --batch` includes untracked non-ignored files
+11. Tooling: `mise run commit -- -F <msg>` (check, commit only on exit
+    0; the piped-check slip happened twice); `strays.py --token/--cwd`;
+    `mutate.py --batch` includes untracked non-ignored files
     (reported twice); ~~a check that every public name in `src/` appears in
     PLAN.md~~ (delegated: issue #4); a `scripts/` save/restore helper (no
     stash).
@@ -136,6 +141,8 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker U: a strict NBT writer; Pumpkin writes a native flat world save
+  with the spec's difficulty; the first chunks match the Reference's.
 - Worker T: `install.require` and the honest prompt; `provision` left
   the Adapter contract; live tiers fail fast naming the install command.
 - Worker R (M2 wiring): Scenarios, a Run, H3b, `selfcheck`; status

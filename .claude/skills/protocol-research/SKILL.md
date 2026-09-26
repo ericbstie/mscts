@@ -51,6 +51,10 @@ instead.
 
 ## Pinning a fact
 
+- A live test may read `Packet.payload` (the raw bytes) for a one-off
+  fact without adding a schema; a schema is only for what the Bot or a
+  Comparison needs.
+
 - A layout or ID becomes a codec schema plus a `unit` test built from the
   wiki's sample bytes, and a `reference`-tier test that round-trips it
   against a live vanilla Instance.

@@ -108,6 +108,9 @@ Increments (in order, one commit each; say whether a new dataclass field may def
               e.g. `src/mscts/bot.py`, not just an area label>
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
 Out of scope: <what not to touch>
+Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), never
+              a wire field a Candidate may legitimately get wrong: that is a Divergence
+              for the Comparison to report, not a harness assertion.
 Done when: <observable condition, e.g. `mise run check` green + named tests exist>
 Base: <main commit the brief was written against; the worker first runs
       `git merge --ff-only main` in its worktree>
@@ -240,6 +243,14 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker U (Pumpkin world) | `is_flat=false` and `sea_level` 63 are hard-coded in Pumpkin; the brief suggested asserting `is_flat` in an Adapter test | **adopt**: brief template, Adapter/Candidate tests assert observable outcomes, never a wire field a Candidate may get wrong; both are known Pumpkin Divergences for the join Report (research note) |
+| 2026-09-26 | worker U | Committed once through `mise run check \| tail && git commit` (the check was green on re-run). The **second** slip of this rule (H before) | **adopt**: repeated, so make it impossible: Next tooling item `mise run commit -- -F <msg>` (check, then commit only on exit 0) |
+| 2026-09-26 | worker U | A long `python3 - <<EOF` was refused by the sandbox, shorter ones passed | **adopt**: Worker contract, heredocs and inline scripts always go into a scratch file, no exceptions |
+| 2026-09-26 | worker U | Live tests can read `Packet.payload` without a schema | **adopt**: protocol-research line |
+| 2026-09-26 | worker U | Pinning the NBT writer against a file the Reference wrote was the strongest test | **adopt**: red-green hint |
+| 2026-09-26 | worker U | ty rejects `cast` to a disjoint type | **adopt**: red-green Known trap |
+| 2026-09-26 | worker U | `strays.py server.jar` matched another worker's live vanilla | **defer**: Next tooling, `strays.py --token/--cwd` to scope the check |
+| 2026-09-26 | worker U | A committed `scripts/research/boot.py` (boot an Adapter's Instance, join, dump packets and chunks, keep the workdir) would have saved the most | **adopt**: Next item 6 takes U's scratch `U/boot.py`, `U/nbtdump.py`, `U/chunk.py` as its starting point |
 | 2026-09-26 | worker T (install) | R landed two more Adapter implementers and callers mid-brief | **adopt**: the lead messaged T when R landed; Worker contract "grep for implementers again before committing a Protocol change" |
 | 2026-09-26 | worker T | `test_repeat`'s stress test flaked: it read `/proc` before the children exec'd (a known trap, missed in Q's test) | **adopt**: fixed by the lead (poll until tagged), 20/20 under stress |
 | 2026-09-26 | worker T | The brief suggested an 8-parameter signature (PLR0913 allows 5) | **adopt**: brief template, suggested signatures keep ≤ 5 parameters or say "shape it" |
