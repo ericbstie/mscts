@@ -76,6 +76,30 @@ def test_the_configuration_switch_packets_have_no_fields() -> None:
     round_trip(SERVERBOUND, "minecraft:configuration_acknowledged", {}, bytes([0x10]))
 
 
+def test_update_tags_in_play_is_registries_of_tags_of_ids() -> None:
+    # The same ClientboundUpdateTagsPacket as in configuration, under play id 137.
+    data = (
+        bytes.fromhex("8901 01")  # id 137 as a VarInt; one registry
+        + bytes([14])
+        + b"minecraft:item"
+        + bytes([0x01, 14])
+        + b"minecraft:logs"
+        + bytes.fromhex("03 00 7f 8001")  # entries 0, 127 and 128
+    )
+    fields = {
+        "tagged_registries": [
+            {
+                "registry": "minecraft:item",
+                "tags": [{"tag_name": "minecraft:logs", "entries": [0, 127, 128]}],
+            }
+        ]
+    }
+    assert CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:update_tags") == 137
+    assert CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:update_tags", fields) == data
+    packet = CODEC.decode(State.PLAY, CLIENTBOUND, data)
+    assert (packet.name, packet.fields) == ("minecraft:update_tags", fields)
+
+
 LOGIN = {
     "entity_id": 42,
     "is_hardcore": False,

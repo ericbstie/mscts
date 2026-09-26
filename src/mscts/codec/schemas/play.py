@@ -7,7 +7,10 @@ Field layouts: minecraft.wiki `Java_Edition_protocol/Packets`, revision 3790659
 and keep-alive packets).
 
 Only what the Bot's own handling needs has a schema, plus `login`, whose entity id a
-Comparison will need to Mask; every other play packet stays raw, compared by payload.
+Comparison will need to Mask, and `update_tags`, the configuration packet's layout (one
+wiki table for both states; one `ClientboundUpdateTagsPacket.STREAM_CODEC` in the jar),
+decoded so that its order can be canonical; every other play packet stays raw, compared
+by payload.
 """
 
 from collections.abc import Mapping
@@ -26,6 +29,7 @@ from mscts.codec.schema import (
     PrefixedOptional,
     Schema,
 )
+from mscts.codec.schemas import configuration
 
 _KEEP_ALIVE = Schema(keep_alive_id=LONG)
 
@@ -85,4 +89,7 @@ CLIENTBOUND: Mapping[str, Schema] = {
         flags=INT,
     ),
     "minecraft:start_configuration": Schema(),  # the next frame is in configuration
+    # One Update Tags table on the wiki, for both states; in the jar, both states use
+    # ClientboundUpdateTagsPacket.STREAM_CODEC.
+    "minecraft:update_tags": configuration.CLIENTBOUND["minecraft:update_tags"],
 }
