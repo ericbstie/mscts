@@ -1,12 +1,13 @@
 """Bots: the client connections Scenarios drive."""
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import math
 import struct
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Self
 
@@ -158,6 +159,8 @@ class Bot:
 
     Attributes:
         name: The Bot's name, as its Events record it.
+        failure: What its last failed operation raised, or None: so whoever gets an
+            exception out of a Scenario can tell which Bot it came from.
     """
 
     def __init__(
@@ -171,6 +174,7 @@ class Bot:
     ) -> None:
         """Drive an open Connection to `endpoint`. Use `connect` to make one."""
         self.name = name
+        self.failure: Exception | None = None
         self._connection = connection
         self._endpoint = endpoint
         self._target = target
@@ -210,12 +214,12 @@ class Bot:
             ProtocolError: The answer is not a `status_response` holding a JSON object.
             TimeoutError: There was no answer within `timeout_s`.
         """
-        async with asyncio.timeout(self._timeout_s):
+        async with self._operation(self._timeout_s):
             await self._handshake_for_status()
             await self._connection.send("minecraft:status_request")
             packet = await self._connection.recv(timeout_s=self._timeout_s)
-        _expect(packet, "minecraft:status_response")
-        return _json_object(packet, (packet.fields or {}).get("json_response"))
+            _expect(packet, "minecraft:status_response")
+            return _json_object(packet, (packet.fields or {}).get("json_response"))
 
     async def ping(self, payload: int) -> None:
         """Ping the server with `payload`, a Long, and check the pong echoes it.
@@ -226,15 +230,15 @@ class Bot:
             ProtocolError: The answer is not a `pong_response` echoing `payload`.
             TimeoutError: There was no answer within `timeout_s`.
         """
-        async with asyncio.timeout(self._timeout_s):
+        async with self._operation(self._timeout_s):
             await self._handshake_for_status()
             await self._connection.send("minecraft:ping_request", timestamp=payload)
             packet = await self._connection.recv(timeout_s=self._timeout_s)
-        _expect(packet, "minecraft:pong_response")
-        echoed = (packet.fields or {}).get("timestamp")
-        if echoed != payload:
-            msg = f"pong_response echoed {echoed!r}, not the ping payload {payload!r}"
-            raise ProtocolError(msg)
+            _expect(packet, "minecraft:pong_response")
+            echoed = (packet.fields or {}).get("timestamp")
+            if echoed != payload:
+                msg = f"pong_response echoed {echoed!r}, not the ping payload {payload!r}"
+                raise ProtocolError(msg)
 
     async def join(self) -> None:
         """Join the server offline, and return once play's first chunk batch has finished.
@@ -253,7 +257,7 @@ class Bot:
         if self._connection.state is not State.HANDSHAKE:
             msg = f"join needs a fresh Connection, not one in {self._connection.state}"
             raise ProtocolError(msg)
-        async with asyncio.timeout(self._timeout_s):
+        async with self._operation(self._timeout_s):
             await self._handshake(_LOGIN_INTENT)
             await self._connection.send(
                 "minecraft:hello", name=self.name, player_uuid=offline_uuid(self.name)
@@ -273,7 +277,7 @@ class Bot:
                 before such a packet arrived.
             TimeoutError: None arrived within `timeout_s`.
         """
-        async with asyncio.timeout(timeout_s):
+        async with self._operation(timeout_s):
             while True:
                 packet = await self._connection.recv(timeout_s=timeout_s)
                 if packet.name == name and (where is None or where(packet)):
@@ -283,6 +287,16 @@ class Bot:
     async def close(self) -> None:
         """Close the Bot's Connection. Calling it again does nothing."""
         await self._connection.close()
+
+    @contextlib.asynccontextmanager
+    async def _operation(self, timeout_s: float) -> AsyncIterator[None]:
+        """Bound an operation by `timeout_s`, and keep what it raises as `failure`."""
+        try:
+            async with asyncio.timeout(timeout_s):
+                yield
+        except Exception as error:
+            self.failure = error
+            raise
 
     async def _handshake_for_status(self) -> None:
         if self._connection.state is State.HANDSHAKE:

@@ -5,6 +5,7 @@ Candidate; the Reference side is a well-behaved fake. `error` stays for the harn
 and for the Reference itself failing.
 """
 
+import contextlib
 import json
 from dataclasses import dataclass
 
@@ -13,9 +14,9 @@ import pytest
 from mscts.codec.packets import Codec
 from mscts.codec.wire import Writer
 from mscts.compare import ABSENT, Divergence, Mask, Outcome, Verdict
-from mscts.net import Endpoint
+from mscts.net import Endpoint, ProtocolError
 from mscts.run import ScenarioError, judge, run_scenario
-from mscts.scenario import Scenario
+from mscts.scenario import Scenario, ScenarioContext
 from mscts.scenarios import status
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -90,9 +91,9 @@ MODES = {
 }
 
 
-def _failed(description: str) -> Divergence:
+def _failed(description: str, bot: str = "status") -> Divergence:
     return Divergence(
-        bot="",
+        bot=bot,
         index=0,
         kind="failed",
         packet="",
@@ -166,3 +167,51 @@ async def test_the_same_failure_on_the_reference_is_an_error(mode: Mode) -> None
     assert verdict == Verdict(
         "status/basic", Outcome.ERROR, detail=f"the Reference failed: {reference}"
     )
+
+
+async def _two_bots(context: ScenarioContext) -> None:
+    """A Bot that only connects, then one that asks for the status."""
+    await context.bot("idle")
+    asker = await context.bot("asker")
+    await asker.status()
+
+
+async def _not_a_bot(context: ScenarioContext) -> None:
+    """The script itself raises a Candidate failure, out of no Bot."""
+    await context.bot("status")
+    msg = "raised by the script"
+    raise ProtocolError(msg)
+
+
+@dataclass(frozen=True)
+class Raiser:
+    script: Scenario
+    bot: str
+
+
+RAISERS = {
+    "the bot that raised, not the first": Raiser(
+        Scenario(id="test/two-bots", run=_two_bots), "asker"
+    ),
+    "no bot: the script raised": Raiser(Scenario(id="test/not-a-bot", run=_not_a_bot), ""),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("raiser", RAISERS.values(), ids=RAISERS.keys())
+async def test_the_failed_divergence_names_the_bot_the_failure_came_out_of(raiser: Raiser) -> None:
+    scenario = raiser.script
+    candidate = await _play(scenario, _mute)
+    assert isinstance(candidate, ScenarioError)
+
+    verdict = judge(scenario, Transcript(scenario.id, "vanilla"), candidate)
+
+    assert verdict.outcome is Outcome.MISMATCH
+    assert verdict.divergences[0] == _failed(str(candidate), raiser.bot)
+
+
+async def _mute(peer: Peer) -> None:
+    """Take whatever each connection sends, answer nothing, until it closes."""
+    with contextlib.suppress(EOFError):
+        while True:
+            await peer.recv()

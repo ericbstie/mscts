@@ -52,6 +52,7 @@ class ScenarioContext:
         self._transcript = transcript
         self._timeout_s = timeout_s
         self._bots: dict[str, Bot] = {}
+        self._unconnected: tuple[str, Exception] | None = None
 
     @property
     def control(self) -> Control:
@@ -74,15 +75,28 @@ class ScenarioContext:
         if name in self._bots:
             msg = f"the Scenario already has a Bot called {name!r}"
             raise ValueError(msg)
-        bot = await Bot.connect(
-            self.endpoint,
-            TARGET,
-            name=name,
-            transcript=self._transcript,
-            timeout_s=self._timeout_s,
-        )
+        try:
+            bot = await Bot.connect(
+                self.endpoint,
+                TARGET,
+                name=name,
+                transcript=self._transcript,
+                timeout_s=self._timeout_s,
+            )
+        except Exception as error:
+            self._unconnected = (name, error)
+            raise
         self._bots[name] = bot
         return bot
+
+    def raised_by(self, error: BaseException) -> str:
+        """The name of the Bot `error` came out of (connecting, or an operation), else ""."""
+        if self._unconnected is not None and self._unconnected[1] is error:
+            return self._unconnected[0]
+        for name, bot in self._bots.items():
+            if bot.failure is error:
+                return name
+        return ""
 
     @contextlib.asynccontextmanager
     async def span(self, name: str) -> AsyncIterator[None]:

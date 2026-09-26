@@ -44,12 +44,14 @@ class ScenarioError(Exception):
 
     Attributes:
         transcript: Everything recorded until it raised.
+        bot: The name of the Bot it came out of, or "" if none raised it.
     """
 
-    def __init__(self, transcript: Transcript, description: str) -> None:
+    def __init__(self, transcript: Transcript, description: str, *, bot: str = "") -> None:
         """Record that the Scenario of `transcript` failed, as `description` says."""
         super().__init__(description)
         self.transcript = transcript
+        self.bot = bot
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -105,7 +107,8 @@ async def run_scenario(
     try:
         await scenario.run(context)
     except Exception as exc:
-        raise ScenarioError(transcript, _describe(exc, timeout_s)) from exc
+        description = _describe(exc, timeout_s)
+        raise ScenarioError(transcript, description, bot=context.raised_by(exc)) from exc
     finally:
         await context.close()
     return transcript
@@ -122,7 +125,8 @@ def judge(
 
     - The Candidate failed in a way it caused (`CANDIDATE_FAILURES`: its output did not
       decode, broke the protocol, never came, or its connection closed or was refused):
-      `mismatch`, led by a `failed` Divergence that says what happened, then whatever
+      `mismatch`, led by a `failed` Divergence that says what happened and names the
+      Bot it came out of (`ScenarioError.bot`), then whatever
       the Comparison of the Transcripts so far finds. Never `error`, which a
       compliance score leaves out (audit H3).
     - The Reference failed, the Scenario raised anything else on the Candidate, or the
@@ -142,7 +146,7 @@ def judge(
     if not isinstance(candidate, ScenarioError):
         return verdict
     failed = Divergence(
-        bot="",
+        bot=candidate.bot,
         index=0,
         kind="failed",
         packet="",

@@ -278,6 +278,8 @@ class Connection:                   # one TCP connection; owns framing, compress
 
 class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
     name: str
+    failure: Exception | None       # what its last failed operation (status, ping, join,
+                                    # expect) raised: which Bot a Scenario's failure came from
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -584,6 +586,9 @@ class ScenarioContext:
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
     async def close(self) -> None: ...   # closes every Bot; idempotent
+    def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
+                                    # one whose bot() connect raised it, or whose `failure`
+                                    # it is; "" if none (the script itself raised it)
 
 class Control(Protocol):
     async def run(self, command: str) -> None: ...
@@ -654,7 +659,8 @@ class Divergence:
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
     # field: a difference between two matched packets;
     # failed: the Scenario failed on the Candidate (made by run.judge, never by compare):
-    #   bot "", index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
+    #   bot the Bot the failure came out of (ScenarioError.bot; "" only if the script
+    #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
 
 @frozen
 class Verdict:
@@ -687,6 +693,7 @@ STOP_TIMEOUT_S = 30.0               # each stop step
 
 class ScenarioError(Exception):     # the Scenario raised against one Instance; __cause__ is
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
+    bot: str = ""                   # the Bot it came out of (ScenarioContext.raised_by)
 
 @frozen
 class Server:                       # one side of a Run
