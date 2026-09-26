@@ -62,6 +62,31 @@ def test_encode_frame_above_threshold_is_compressed() -> None:
     assert len(payload) < len(data)
 
 
+# Vanilla's Connection.setupCompression (26.3, javap) starts `iload_1; iflt`: a negative
+# threshold removes the compress/decompress handlers, so frames are uncompressed again.
+@pytest.mark.parametrize("threshold", [-1, -256, -(2**31)])
+def test_a_negative_threshold_encodes_uncompressed_frames(threshold: int) -> None:
+    data = b"\x01" + b"h" * 300
+    uncompressed = encode_frame(data, compression_threshold=None)
+    assert encode_frame(data, compression_threshold=threshold) == uncompressed
+
+
+@pytest.mark.parametrize("threshold", [-1, -256, -(2**31)])
+def test_a_negative_threshold_decodes_uncompressed_frames(threshold: int) -> None:
+    decoder = FrameDecoder(compression_threshold=256)
+    data = b"\x01" + b"h" * 300
+    assert take_all(decoder, encode_frame(data, compression_threshold=256)) == [data]
+    decoder.compression_threshold = threshold
+    assert take_all(decoder, encode_frame(data, compression_threshold=None)) == [data]
+
+
+def test_a_threshold_of_zero_compresses_every_frame() -> None:
+    frame = encode_frame(b"\x01", compression_threshold=0)
+    inner = Writer().var_int(1).to_bytes() + zlib.compress(b"\x01")
+    assert frame == Writer().var_int(len(inner)).to_bytes() + inner
+    assert take_all(FrameDecoder(compression_threshold=0), frame) == [b"\x01"]
+
+
 def test_frame_decoder_returns_one_frame_from_a_single_chunk() -> None:
     decoder = FrameDecoder()
     frame = encode_frame(b"hello", compression_threshold=None)

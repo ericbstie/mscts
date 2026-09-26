@@ -10,21 +10,34 @@ _FRAME_LENGTH_MAX_BYTES = 3
 _FRAME_LENGTH_MAX_VALUE = 2_097_151
 
 
+def _in_effect(compression_threshold: int | None) -> int | None:
+    """The threshold that applies, or None if frames are uncompressed.
+
+    None (never set) and a negative threshold both mean uncompressed, as in vanilla's
+    `Connection.setupCompression`, which removes the compression handlers for a
+    negative threshold.
+    """
+    if compression_threshold is None or compression_threshold < 0:
+        return None
+    return compression_threshold
+
+
 def encode_frame(data: bytes, *, compression_threshold: int | None) -> bytes:
     """Wrap `data` in a protocol frame.
 
-    With no compression threshold, a frame is `VarInt length` followed by
-    `data` itself.
+    Uncompressed (no threshold, or a negative one), a frame is `VarInt length`
+    followed by `data` itself.
 
-    With a threshold set, a frame is
+    With a threshold of 0 or more, a frame is
     `VarInt length ‖ VarInt data-length ‖ payload`. `payload` is `data`
     zlib-compressed, with `data-length` set to `len(data)`, unless `data` is
     shorter than the threshold, in which case `data-length` is 0 and
     `payload` is `data` unmodified.
     """
-    if compression_threshold is None:
+    threshold = _in_effect(compression_threshold)
+    if threshold is None:
         return Writer().var_int(len(data)).to_bytes() + data
-    if len(data) >= compression_threshold:
+    if len(data) >= threshold:
         inner = Writer().var_int(len(data)).to_bytes() + zlib.compress(data)
     else:
         inner = Writer().var_int(0).to_bytes() + data
@@ -58,7 +71,7 @@ class FrameDecoder:
 
     `compression_threshold` is a plain attribute, settable at any time, since
     a connection switches from uncompressed to compressed framing mid-stream
-    when `login_compression` arrives.
+    when `login_compression` arrives. None or a negative value means uncompressed.
     """
 
     def __init__(self, *, compression_threshold: int | None = None) -> None:
@@ -98,7 +111,7 @@ class FrameDecoder:
         return len(self._buffer)
 
     def _decode_body(self, body: bytes) -> bytes:
-        if self.compression_threshold is None:
+        if _in_effect(self.compression_threshold) is None:
             return body
         reader = Reader(body)
         data_length = reader.var_int()
