@@ -98,6 +98,7 @@ def test_encode_reports_missing_and_unexpected_fields_together() -> None:
         ("stamp", 2**63, "stamp: long 9223372036854775808 out of range"),
         ("text", 7, "text: expected a str, got int"),
         ("text", "x" * 17, "text: string exceeds max length 16"),
+        ("text", chr(0xD800), "text: string is not valid Unicode"),
     ],
 )
 def test_encode_rejects_a_value_its_field_type_cannot_encode(

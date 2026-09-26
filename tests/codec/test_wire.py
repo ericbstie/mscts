@@ -172,6 +172,13 @@ def test_string_writer_raises_when_code_units_exceed_max_length() -> None:
         Writer().string(emoji, max_length=1)
 
 
+@pytest.mark.parametrize("text", [chr(0xD800), "a" + chr(0xDFFF) + "b"])
+def test_string_writer_raises_on_a_lone_surrogate(text: str) -> None:
+    # Audit L1: str.encode raised UnicodeEncodeError, escaping the CodecError contract.
+    with pytest.raises(WireError, match="string is not valid Unicode"):
+        Writer().string(text, max_length=5)
+
+
 def test_string_writer_allows_exactly_max_length() -> None:
     Writer().string("abcde", max_length=5)  # must not raise
 

@@ -68,12 +68,17 @@ class Writer:
         """Append a String: a VarInt UTF-8 byte-length prefix, then the UTF-8 bytes.
 
         `max_length` (the protocol's `n`) bounds the number of UTF-16 code units
-        `value` represents (a scalar value above U+FFFF counts as two).
+        `value` represents (a scalar value above U+FFFF counts as two). A lone
+        surrogate is not a Unicode scalar value, so it has no UTF-8 form and is refused.
         """
         if _utf16_length(value) > max_length:
             msg = f"string exceeds max length {max_length} UTF-16 code units"
             raise WireError(msg)
-        encoded = value.encode("utf-8")
+        try:
+            encoded = value.encode("utf-8")
+        except UnicodeEncodeError as exc:
+            msg = f"string is not valid Unicode: {exc.reason} at index {exc.start}"
+            raise WireError(msg) from exc
         if len(encoded) > max_length * _BYTES_PER_CODE_UNIT:
             msg = f"string exceeds max byte length {max_length * _BYTES_PER_CODE_UNIT}"
             raise WireError(msg)
