@@ -30,22 +30,28 @@ def javap() -> types.ModuleType:
     return module
 
 
+def _sha1(body: bytes) -> str:
+    return hashlib.sha1(body, usedforsecurity=False).hexdigest()
+
+
 class Downloads:
     def __init__(self, body: bytes = b"client jar", side: str = "client") -> None:
         self.calls: list[str] = []
-        self.responses = {
-            _MANIFEST: json.dumps({"versions": [{"id": "26.3", "url": _VERSION}]}).encode(),
-            _VERSION: json.dumps(
-                {
-                    "downloads": {
-                        side: {
-                            "url": _JAR,
-                            "sha1": hashlib.sha1(body, usedforsecurity=False).hexdigest(),
-                            "size": len(body),
-                        }
+        version = json.dumps(
+            {
+                "downloads": {
+                    side: {
+                        "url": _JAR,
+                        "sha1": hashlib.sha1(body, usedforsecurity=False).hexdigest(),
+                        "size": len(body),
                     }
                 }
-            ).encode(),
+            }
+        ).encode()
+        manifest = {"versions": [{"id": "26.3", "url": _VERSION, "sha1": _sha1(version)}]}
+        self.responses = {
+            _MANIFEST: json.dumps(manifest).encode(),
+            _VERSION: version,
             _JAR: body,
         }
 
@@ -68,6 +74,18 @@ def test_client_jar_is_verified_and_reused_offline(
     downloads.responses.clear()
     assert javap.cached_jar("client", downloads) == jar
     assert downloads.calls == [_MANIFEST, _VERSION, _JAR]
+
+
+def test_a_version_json_that_differs_from_its_manifest_sha1_is_refused(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    downloads = Downloads()
+    downloads.responses[_VERSION] += b" "
+
+    with pytest.raises(ProvisionError, match="differs from its manifest sha1"):
+        javap.cached_jar("client", downloads)
+    assert _JAR not in downloads.calls
 
 
 @pytest.mark.parametrize("verbose", [False, True])
@@ -116,7 +134,11 @@ def test_main_uses_the_selected_jdk_and_passes_through_javap_status(
     ]
 
 
-@pytest.mark.parametrize("args", [[], ["client"], ["other", "SomeClass"], ["client", "-x"]])
+@pytest.mark.parametrize(
+    "args",
+    [[], ["client"], ["other", "SomeClass"], ["client", "-x"], ["client", "--", "-Weird"]],
+    ids=["no-args", "no-class", "bad-side", "unknown-option", "class-like-option"],
+)
 def test_main_rejects_argument_errors_before_downloads(
     javap: types.ModuleType, args: list[str]
 ) -> None:
