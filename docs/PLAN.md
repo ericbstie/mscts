@@ -57,7 +57,8 @@ test needs it:
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
 | `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, registry |
-| `scenarios/*.py` | the Scenarios themselves |
+| `scenarios/*.py` | the Scenarios themselves (`import mscts.scenarios` registers them) |
+| `run.py` | `run_scenario` → `Transcript`; `judge` → `Verdict`; `run`: Scenarios against a Reference and a Candidate `Server`, on Instances it launches |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict` |
 | `measure.py` | `Measurement`, span extraction, stats |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
@@ -623,6 +624,42 @@ def compare(reference: Transcript, candidate: Transcript,
     # A packet's value (for missing / unexpected) is its fields, or its payload as hex.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
+```
+
+Running Scenarios (`run.py`):
+
+```python
+SCENARIO_TIMEOUT_S = 10.0           # each Bot operation (Bot timeout_s)
+READY_TIMEOUT_S = 120.0             # an Instance's readiness (a cold vanilla boot)
+STOP_TIMEOUT_S = 30.0               # each stop step
+
+class ScenarioError(Exception):     # the Scenario raised against one Instance; __cause__ is
+    transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
+
+@frozen
+class Server:                       # one side of a Run
+    adapter: Adapter
+    installation: Installation
+    name: str                       # property: adapter.name, as Transcripts record it
+
+async def run_scenario(scenario: Scenario, endpoint: Endpoint, *, server: str,
+                       timeout_s: float = SCENARIO_TIMEOUT_S) -> Transcript: ...
+    # one Instance; closes every Bot however it ends; ScenarioError if the Scenario raised
+def judge(scenario: Scenario, reference: Transcript | ScenarioError,
+          candidate: Transcript | ScenarioError) -> Verdict: ...
+    # error: the Reference failed, the harness failed on the Candidate, or compare raised;
+    # else compare(reference, candidate, scenario.masks)
+def blocked(scenario: Scenario, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
+    # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
+async def run(scenarios: Sequence[Scenario], reference: Server, candidate: Server, *,
+              workdir: Path, repeat: int = 1) -> list[Verdict]: ...
+    # one Verdict per Scenario per repetition, repetition after repetition, in the order
+    # given; a Scenario is blocked (not played) unless its prerequisites matched earlier in
+    # the same repetition. One Instance pair per distinct ServerSpec the Scenarios' `spec`
+    # make, each side at its own free_endpoint(), launched together when first needed,
+    # readiness by status_probe, kept for every repetition, stopped however the Run ends.
+    # NotImplementedError for a Scenario that is not exact (M6a/M6b), ValueError for one
+    # listed twice, RunnerError if an Instance cannot start.
 ```
 
 Comparison semantics. Start strict and relax only when a Self-check
