@@ -9,6 +9,12 @@ _CONTINUE = 0x80
 _FRAME_LENGTH_MAX_BYTES = 3
 _FRAME_LENGTH_MAX_VALUE = 2_097_151
 
+MAX_DATA_LENGTH = 8_388_608
+"""The most (uncompressed) data one frame may carry once compression is on.
+
+Vanilla's `CompressionEncoder` and `CompressionDecoder.MAXIMUM_UNCOMPRESSED_LENGTH`.
+"""
+
 
 def _in_effect(compression_threshold: int | None) -> int | None:
     """The threshold that applies, or None if frames are uncompressed.
@@ -35,19 +41,31 @@ def encode_frame(data: bytes, *, compression_threshold: int | None) -> bytes:
     `payload` is `data` unmodified.
 
     Raises:
-        WireError: `data` is empty: every frame holds at least a packet id.
+        WireError: `data` is empty (every frame holds at least a packet id), `data` is
+            over 8 388 608 bytes with compression on, or the frame length would not
+            fit in 3 VarInt bytes (2 097 151): the limits vanilla's encoders enforce.
     """
     if not data:
         msg = "a frame needs at least one byte of data (a packet id)"
         raise WireError(msg)
     threshold = _in_effect(compression_threshold)
     if threshold is None:
-        return Writer().var_int(len(data)).to_bytes() + data
+        return _length_prefixed(data)
+    if len(data) > MAX_DATA_LENGTH:
+        msg = f"data length {len(data)} exceeds max {MAX_DATA_LENGTH}"
+        raise WireError(msg)
     if len(data) >= threshold:
         inner = Writer().var_int(len(data)).to_bytes() + zlib.compress(data)
     else:
         inner = Writer().var_int(0).to_bytes() + data
-    return Writer().var_int(len(inner)).to_bytes() + inner
+    return _length_prefixed(inner)
+
+
+def _length_prefixed(body: bytes) -> bytes:
+    if len(body) > _FRAME_LENGTH_MAX_VALUE:
+        msg = f"frame length {len(body)} exceeds max {_FRAME_LENGTH_MAX_VALUE}"
+        raise WireError(msg)
+    return Writer().var_int(len(body)).to_bytes() + body
 
 
 def _try_read_frame_length(buffer: bytearray) -> tuple[int, int] | None:

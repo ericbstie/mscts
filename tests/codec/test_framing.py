@@ -87,6 +87,34 @@ def test_a_threshold_of_zero_compresses_every_frame() -> None:
     assert take_all(FrameDecoder(compression_threshold=0), frame) == [b"\x01"]
 
 
+# Vanilla's Varint21LengthFieldPrepender (26.3, javap) refuses a frame length wider than
+# 3 VarInt bytes (2 097 151), and its CompressionEncoder refuses more than 8 388 608 bytes
+# of data once compression is on.
+def test_encode_frame_accepts_the_largest_frame_length() -> None:
+    frame = encode_frame(b"x" * 2_097_151, compression_threshold=None)
+    assert frame[:3] == bytes.fromhex("ffff7f")
+
+
+def test_encode_frame_refuses_a_frame_length_over_three_bytes() -> None:
+    with pytest.raises(WireError, match="frame length 2097152 exceeds max 2097151"):
+        encode_frame(b"x" * 2_097_152, compression_threshold=None)
+
+
+def test_encode_frame_refuses_an_uncompressed_body_over_three_bytes_of_length() -> None:
+    never = 2**31 - 1  # compression on, but no packet is ever big enough to compress
+    assert encode_frame(b"x" * 2_097_150, compression_threshold=never)[:3] == bytes.fromhex(
+        "ffff7f"
+    )
+    with pytest.raises(WireError, match="frame length 2097152 exceeds max 2097151"):
+        encode_frame(b"x" * 2_097_151, compression_threshold=never)
+
+
+def test_encode_frame_refuses_more_than_8_mib_of_data_when_compressing() -> None:
+    assert encode_frame(bytes(8_388_608), compression_threshold=256)  # compresses to ~8 KiB
+    with pytest.raises(WireError, match="data length 8388609 exceeds max 8388608"):
+        encode_frame(bytes(8_388_609), compression_threshold=256)
+
+
 def test_frame_decoder_returns_one_frame_from_a_single_chunk() -> None:
     decoder = FrameDecoder()
     frame = encode_frame(b"hello", compression_threshold=None)
