@@ -13,6 +13,7 @@ import ipaddress
 import logging
 import os
 import re
+import secrets
 import signal
 import socket
 import sys
@@ -74,6 +75,32 @@ def free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as placeholder:
         placeholder.bind((LOOPBACK, 0))
         return int(placeholder.getsockname()[1])
+
+
+def free_endpoint() -> Endpoint:
+    """An Endpoint for one Instance: a random loopback host of its own, and a port free on it.
+
+    The host is 127.A.B.C with A in 1..254, B in 0..255 and C in 1..254: about 16.5
+    million hosts, none in 127.0.0.0/16 (127.0.0.1, systemd's 127.0.0.53 and Debian's
+    127.0.1.1 are everybody else's), and never the network or broadcast address. The
+    port is one the kernel had free on that host a moment ago, from its ephemeral range.
+
+    Collision odds: two Instances share a host with odds of 1 in 16.5 million (with 100
+    alive at once, any two of them with about 3 in 10 000). Even then, both would also
+    need the same port: the kernel hands a port out only while it is free on that host,
+    so that takes the time-of-check race below, on top. And if it happened anyway, the
+    Instance that did not bind would never be ready (the readiness ownership check), so
+    a collision can fail a run but never make one Instance answer for another.
+
+    Racy by nature (time of check to time of use): the port is released before this
+    returns, and the Instance binds it only when it gets that far (vanilla: ~7 s after
+    launch). Take it right before `prepare`, and launch at once.
+    """
+    a, b, c = 1 + secrets.randbelow(254), secrets.randbelow(256), 1 + secrets.randbelow(254)
+    host = f"127.{a}.{b}.{c}"
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as placeholder:
+        placeholder.bind((host, 0))
+        return Endpoint(host=host, port=int(placeholder.getsockname()[1]))
 
 
 @dataclass(frozen=True, slots=True)

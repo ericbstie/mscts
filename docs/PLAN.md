@@ -315,6 +315,11 @@ class RunnerError(RuntimeError):    # could not launch, exited before ready, or 
     log_tail: tuple[str, ...]       # the last 40 console lines
 
 def free_port() -> int: ...         # a 127.0.0.1 port free a moment ago; racy by nature (TOCTOU)
+def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random host 127.A.B.C
+    # (A 1..254, B 0..255, C 1..254: ~16.5 million, none in 127.0.0.0/16) and a port free on
+    # it a moment ago. Racy too, but two Instances share a host with odds of 1 in 16.5 million
+    # (then they need the same port too), and ownership keeps a collision from ever making one
+    # Instance answer for another.
 ```
 
 ### Scenarios, Transcripts, Comparison
