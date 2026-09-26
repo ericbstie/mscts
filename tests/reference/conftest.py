@@ -1,8 +1,9 @@
 """One shared, stateless vanilla Reference Instance for the whole reference-tier session.
 
 Booting vanilla takes ~10 s (docs/research/2026-09-26-runner.md), so tests that only
-need a plain, unmodified Reference (no join, no Fixture, nothing that could leave
-state another test would see) share one Instance instead of each booting their own.
+need a plain, unmodified Reference (no Fixture, nothing that could leave state another
+test would see; a join only by a Bot with a name no other test uses) share one Instance
+instead of each booting their own.
 A test that needs a *different* ServerSpec, or that changes world or player state,
 boots its own Instance instead (see tests/runner/test_running_reference.py).
 """
