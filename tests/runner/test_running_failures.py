@@ -31,6 +31,19 @@ async def test_a_process_that_exits_before_it_is_ready_raises_its_exit_code_and_
 
 
 @pytest.mark.asyncio
+async def test_the_log_tail_is_read_from_the_last_64_kib_of_the_console_only(
+    fake_plan: FakePlan, tcp_probe: Probe
+) -> None:
+    # A 10 MiB console that ends in one long line with no line break: reading all of it
+    # would quote the numbered lines before that line too.
+    plan = fake_plan("--exit-early", "3", "--flood", str(10 * 2**20))
+    with pytest.raises(RunnerError) as caught:
+        async with running(plan, ready=tcp_probe, ready_timeout=2):
+            pytest.fail("the Instance was never ready")
+    assert caught.value.log_tail == ("x" * 64 * 1024,)
+
+
+@pytest.mark.asyncio
 async def test_a_probe_answering_true_after_the_process_exited_is_not_ready(
     fake_plan: FakePlan, tcp_probe: Probe, is_running: Callable[[int], bool]
 ) -> None:

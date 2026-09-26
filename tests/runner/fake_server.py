@@ -11,6 +11,7 @@ line `stop` arrives on stdin, like vanilla. Flags make it misbehave:
     --reuseport        listen with SO_REUSEPORT, so another socket may listen there too
     --exit-early CODE  write 50 numbered lines, then exit with CODE before listening
                        (after forking the --child or --listen-in-child child, if any)
+    --flood BYTES      with --exit-early: after those lines, write BYTES of "x" and no newline
     --ignore-stop      answer `stop` with "ignoring stop" and keep running
     --stop-on-eof      exit (code 0) when stdin closes, as some servers do; vanilla does not
     --ignore-sigterm   answer SIGTERM with "ignoring SIGTERM" and keep running
@@ -94,6 +95,7 @@ def main() -> int:
     parser.add_argument("--listen-in-child", action="store_true")
     parser.add_argument("--reuseport", action="store_true")
     parser.add_argument("--exit-early", type=int)
+    parser.add_argument("--flood", type=int, default=0)
     parser.add_argument("--ignore-stop", action="store_true")
     parser.add_argument("--stop-on-eof", action="store_true")
     parser.add_argument("--ignore-sigterm", action="store_true")
@@ -111,6 +113,7 @@ def main() -> int:
     if args.exit_early is not None:
         for number in range(1, 51):
             say(f"line {number}")
+        os.write(1, b"x" * args.flood)
         return int(args.exit_early)
     if args.ignore_sigterm:
         signal.signal(signal.SIGTERM, lambda _signum, _frame: say("ignoring SIGTERM"))
