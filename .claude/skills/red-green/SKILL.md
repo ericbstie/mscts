@@ -77,6 +77,10 @@ then one commit.
 - Mutate with a line-addressed edit (`sed -i 'NNs/…/…/'`) or a script that
   asserts exactly one match, and run mutated tests under `timeout 60`. A
   loose `sed` pattern once hit two lines and hung pytest.
+- To silence one line for both ruff and bandit, write
+  `# noqa: S603  # nosec B603`: two separate `#` tokens, noqa first. A
+  combined comment satisfies only one tool. Keep a nosec to its rule ids,
+  since bandit warns about every other word after it.
 - Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
 - At most 5 parameters, keyword-only included (PLR0913). Derive values
   rather than passing them. Never add a `noqa` before ruff has actually

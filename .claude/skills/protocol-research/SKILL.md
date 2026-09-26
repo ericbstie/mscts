@@ -59,6 +59,9 @@ instead.
 - `accept_teleportation` echoes the pose: `VarInt id, 3×Double, 2×Float`.
 - After `login_compression`, every frame is `VarInt data-length ‖ data`,
   where data-length 0 means uncompressed.
+- A throwaway raw-socket probe's retry loop must catch
+  `(OSError, EOFError)`. An early close raises `EOFError`, which is not an
+  `OSError`, and looks exactly like "the server never answers".
 - Vanilla accepts TCP before its world exists. Console lines read before
   then are lost to an NPE. Readiness is always a status ping (never a
   TCP connect), and console commands are sent only after it answers.

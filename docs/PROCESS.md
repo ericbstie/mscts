@@ -134,6 +134,9 @@ new classes of defect:
   variables. For anything longer, Write a script file into the
   scratchpad and run it as a single plain command (`sh /abs/x.sh`,
   `python3 /abs/x.py`). Use Edit/Write for code.
+- **Run tiers through mise**: `mise run test:reference -- <pytest args>`.
+  A plain `uv run pytest` uses the host toolchain (Java 21 here), which
+  the Reference Adapter correctly refuses unless `MSCTS_JAVA` is set.
 - Known tool and type-checker traps are listed in the `red-green` skill.
   Read them first.
 - Stay inside the brief. If you are blocked, or the brief is wrong, stop
@@ -169,6 +172,11 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker G (regen/env) | A plain `uv run pytest` picks up the host Java 21 | **adopt**: Worker contract "run tiers through mise" |
+| 2026-09-26 | worker G | The noqa + nosec same-line syntax took trial and error | **adopt**: red-green Known trap |
+| 2026-09-26 | worker G | A probe retry catching only `OSError` missed `EOFError` | **adopt**: protocol-research trap |
+| 2026-09-26 | worker G | Judgment call: `LAUNCH_ENV = {"PATH": "/usr/bin:/bin"}` rather than `{}` | **accept**: conservative and verified live |
+| 2026-09-26 | lead (review of G) | A per-file ruff ignore rode along in a feature commit rather than its own `tooling:` commit | **accept** this once (narrow, justified); the rule stands |
 | 2026-09-26 | worker F (net/bot) | Lost uncommitted work undoing a mutation with `git checkout`. This is the **second** occurrence (E); F started before the trap was written | **adopt**: a committed `scripts/mutate.py` (single-match replace, run pytest under timeout, restore from backup) in the harness brief; red-green will point to it |
 | 2026-09-26 | worker F | ASYNC109 forbids `timeout` parameters | **adopt**: convention `timeout_s`, in Known traps |
 | 2026-09-26 | worker F | PLR0913 on 6 parameters; a pre-emptive `noqa` | **adopt**: Known traps (≤5 params, never pre-emptive noqa) |

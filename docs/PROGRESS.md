@@ -30,6 +30,9 @@ Done:
   (strict framing, State machine, record-on-take), `Bot.status`/`ping`,
   and `status_probe`. Verified live against vanilla (status about 20 ms,
   ping about 2 ms).
+- **G** (sonnet): `mise run regen:packets` (byte-identical check, reference
+  test), `resolve_java` seam, and a host-independent vanilla launch
+  (fixed env, UTC, IPv4), verified live.
 
 In flight:
 - **I** (sonnet): pytest-timeout, `tests/support`, `scripts/mutate.py` and
@@ -37,8 +40,6 @@ In flight:
   strict status/ping.
 - **J** (opus): the Comparison engine (`compare.py`: alignment, field
   diffs, Masks, canonicalization).
-- **G** (sonnet): packets.json regen check, and a host-independent
-  vanilla launch (env, TZ, IPv4).
 - **H** (opus): `PumpkinAdapter`.
 
 ## Next
