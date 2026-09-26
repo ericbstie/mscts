@@ -152,6 +152,31 @@ Array of X, NBT, text components, BitSet, Position, …):
 - Decoded values are plain Python values: `int`, `str`, `bool`, `bytes`,
   `UUID`, `list`, `dict`, or `None`.
 
+**Where the Codec is stricter than the vanilla client.** The Codec reads the
+protocol as the wiki defines it and vanilla's own encoders write it. In a few
+places the vanilla client tolerates bytes outside that definition, and the
+Codec deliberately does not: the vanilla server never sends them, so a
+Candidate that does differs on the wire, and ADR-0006 catalogues every
+difference. Strictness can only produce a visible false `mismatch` (with the
+frame recorded as evidence), never a false `match`. The cases (verified
+with `javap` on the 26.3 jars, docs/research/2026-09-26-join.md):
+
+- **Bool**: only `0x00` and `0x01`. The client's `readBoolean` is
+  `readByte() != 0`, so it reads `0x02` as true.
+- **String**: malformed UTF-8 is an error. The client's `Utf8String.read`
+  decodes with `ByteBuf.toString(UTF_8)`, which replaces it with U+FFFD.
+- **Compressed frame**: the zlib stream must be complete and inflate to
+  exactly the declared data-length, which must be in 1‥8 388 608. The
+  client inflates into a buffer of exactly the declared size, so it keeps
+  the first bytes of a longer stream and never reads a missing trailer, and
+  it only fails a data-length above 8 388 608 if it cannot allocate it.
+
+Where the client's reading is the protocol's own definition, the Codec reads
+the same way: a VarInt's unused 5th-byte bits (VarLong: 10th) are dropped
+(the wiki allows over-long encodings), bytes after a zlib stream are ignored,
+and a compressed frame whose data-length is below the threshold is accepted
+(only vanilla's *server* checks that).
+
 ### Network and Bot
 
 ```python

@@ -1,3 +1,4 @@
+import tracemalloc
 import zlib
 
 import pytest
@@ -194,6 +195,77 @@ def test_frame_decoder_raises_when_declared_data_length_mismatches() -> None:
     frame = Writer().var_int(len(inner)).to_bytes() + inner
     with pytest.raises(WireError):
         take_all(decoder, frame)
+
+
+def compressed_frame(data_length: int, payload: bytes) -> bytes:
+    """A compressed-format frame declaring `data_length`, carrying `payload` as is."""
+    inner = Writer().var_int(data_length).to_bytes() + payload
+    return Writer().var_int(len(inner)).to_bytes() + inner
+
+
+@pytest.mark.parametrize("data_length", [-1, -(2**31), 8_388_609])
+def test_frame_decoder_refuses_a_data_length_outside_the_protocol_range(
+    data_length: int,
+) -> None:
+    # Vanilla's client allocates a buffer of the declared size, so a negative one fails
+    # there too; 8 388 608 is the protocol maximum (CompressionDecoder, javap).
+    frame = compressed_frame(data_length, zlib.compress(b"hello"))
+    with pytest.raises(WireError, match=rf"data-length {data_length} is not in 1\.\.8388608"):
+        take_all(FrameDecoder(compression_threshold=1), frame)
+
+
+def test_frame_decoder_accepts_the_largest_data_length() -> None:
+    data = bytes(8_388_608)
+    frame = compressed_frame(len(data), zlib.compress(data))
+    assert take_all(FrameDecoder(compression_threshold=1), frame) == [data]
+
+
+def test_frame_decoder_refuses_a_stream_that_inflates_to_more_than_declared() -> None:
+    # Vanilla inflates into a buffer of exactly the declared size, so it would keep the
+    # first 200 bytes; the Codec is stricter (docs/PLAN.md, "stricter than the client").
+    frame = compressed_frame(200, zlib.compress(b"x" * 300))
+    with pytest.raises(WireError, match="declared data-length 200, but it inflates to more"):
+        take_all(FrameDecoder(compression_threshold=1), frame)
+
+
+def test_frame_decoder_inflates_at_most_one_byte_more_than_declared() -> None:
+    # A ~50 KB frame that claims 10 bytes but inflates to 50 MB must not cost 50 MB.
+    frame = compressed_frame(10, zlib.compress(bytes(50_000_000)))
+    decoder = FrameDecoder(compression_threshold=1)
+    tracemalloc.start()
+    try:
+        with pytest.raises(WireError, match="inflates to more"):
+            take_all(decoder, frame)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 5_000_000
+
+
+def test_frame_decoder_refuses_a_stream_that_inflates_to_less_than_declared() -> None:
+    frame = compressed_frame(300, zlib.compress(b"x" * 200))
+    with pytest.raises(WireError, match="declared data-length 300, but it inflates to 200"):
+        take_all(FrameDecoder(compression_threshold=1), frame)
+
+
+def test_frame_decoder_refuses_a_truncated_stream() -> None:
+    data = b"x" * 300
+    frame = compressed_frame(len(data), zlib.compress(data)[:-4])  # no Adler-32 trailer
+    with pytest.raises(WireError, match="truncated zlib stream"):
+        take_all(FrameDecoder(compression_threshold=1), frame)
+
+
+def test_frame_decoder_ignores_bytes_after_the_zlib_stream_as_vanilla_does() -> None:
+    data = b"x" * 300
+    frame = compressed_frame(len(data), zlib.compress(data) + b"trailing")
+    assert take_all(FrameDecoder(compression_threshold=1), frame) == [data]
+
+
+def test_frame_decoder_accepts_compressed_data_below_the_threshold() -> None:
+    # Only vanilla's server checks that (validateDecompressed); its client passes false
+    # (ClientHandshakePacketListenerImpl.handleCompression, javap).
+    frame = compressed_frame(5, zlib.compress(b"hello"))
+    assert take_all(FrameDecoder(compression_threshold=256), frame) == [b"hello"]
 
 
 def test_frame_decoder_raises_on_corrupt_compressed_payload() -> None:

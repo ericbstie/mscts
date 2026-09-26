@@ -144,15 +144,33 @@ class FrameDecoder:
         payload = body[len(body) - reader.remaining :]
         if data_length == 0:
             return payload
-        try:
-            decompressed = zlib.decompress(payload)
-        except zlib.error as exc:
-            msg = "frame payload is not valid zlib data"
-            raise WireError(msg) from exc
-        if len(decompressed) != data_length:
-            msg = (
-                f"declared data-length {data_length} does not match "
-                f"decompressed length {len(decompressed)}"
-            )
+        # A data-length below the threshold is accepted, as vanilla's client does.
+        if not 0 < data_length <= MAX_DATA_LENGTH:
+            msg = f"declared data-length {data_length} is not in 1..{MAX_DATA_LENGTH}"
             raise WireError(msg)
-        return decompressed
+        return _inflate(payload, data_length)
+
+
+def _inflate(payload: bytes, data_length: int) -> bytes:
+    """Inflate `payload`, one complete zlib stream of exactly `data_length` bytes.
+
+    Inflates at most one byte more than declared, so a stream that claims a little and
+    inflates to a lot costs no more than the claim. Bytes after the end of the stream
+    are ignored, as vanilla's `CompressionDecoder` ignores them.
+    """
+    inflater = zlib.decompressobj()
+    try:
+        data = inflater.decompress(payload, data_length + 1)
+    except zlib.error as exc:
+        msg = "frame payload is not valid zlib data"
+        raise WireError(msg) from exc
+    if len(data) > data_length:
+        msg = f"declared data-length {data_length}, but it inflates to more"
+        raise WireError(msg)
+    if not inflater.eof:
+        msg = "frame payload is a truncated zlib stream"
+        raise WireError(msg)
+    if len(data) < data_length:
+        msg = f"declared data-length {data_length}, but it inflates to {len(data)}"
+        raise WireError(msg)
+    return data
