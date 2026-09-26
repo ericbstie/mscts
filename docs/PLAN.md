@@ -942,11 +942,29 @@ class Stats:
 
 def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 
+# run.py: run_results(scenarios, reference, candidate, *, workdir, repeat=1) -> RunResult
+# plays exactly as run() does (run() returns its .verdicts); a blocked repetition measures
+# nothing on either side.
 @frozen
 class ScenarioResult:
-    verdict: Verdict
+    scenario_id: str
+    verdicts: tuple[Verdict, ...]                    # one per repetition
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
+
+@frozen
+class SideSummary:
+    name: str                       # adapter name
+    version: str | None             # version.name of its first status_response (lenient)
+    startup: tuple[Measurement, ...]  # instance.startup (ms, ready_ns - launched_ns) per
+                                      # launched Instance; none for an Attached side
+
+@frozen
+class RunResult:
+    results: tuple[ScenarioResult, ...]
+    reference: SideSummary
+    candidate: SideSummary
+    verdicts: tuple[Verdict, ...]   # property: repetition after repetition
 
 @frozen
 class Report:

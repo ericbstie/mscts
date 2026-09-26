@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import dataclasses
+import json
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
 from mscts.codec.packets import CodecError
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
+from mscts.measure import Measurement, measurements
 from mscts.net import Endpoint, ProtocolError
 from mscts.runner import free_endpoint, running
 from mscts.scenario import Scenario, ScenarioContext, ScenarioKind, resolve
@@ -34,6 +36,10 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
     ConnectionError,  # the connection was closed, reset or refused
 )
 """What a Scenario raises when the Candidate caused it: a `mismatch`, never `error`."""
+
+_STATUS_RESPONSE = "minecraft:status_response"
+
+_NS_PER_MS = 1_000_000
 
 _SPEC_KEY_ENDPOINT = Endpoint(host="127.0.0.1", port=1)
 """The Endpoint a Scenario's `spec` is applied to only to tell which specs are equal."""
@@ -90,6 +96,90 @@ class Attached:
 
 type Side = Server | Attached
 """One side of a Run: Instances it launches (Server), or one it is given (Attached)."""
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ScenarioResult:
+    """What one Scenario gave in a Run, one entry per repetition, in order.
+
+    Attributes:
+        scenario_id: The Scenario, e.g. `status/ping`.
+        verdicts: Its Verdict in each repetition.
+        reference: The Reference's Measurements in each repetition (none if the
+            Scenario was blocked there).
+        candidate: The Candidate's Measurements in each repetition, likewise.
+    """
+
+    scenario_id: str
+    verdicts: tuple[Verdict, ...]
+    reference: tuple[tuple[Measurement, ...], ...]
+    candidate: tuple[tuple[Measurement, ...], ...]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class SideSummary:
+    """What a Run learned about one of its sides.
+
+    Attributes:
+        name: Its Adapter's name.
+        version: The `version.name` of the first status_response it sent, or None if
+            none was a status JSON naming a version.
+        startup: One `instance.startup` Measurement per Instance the Run launched for
+            it, launch to ready; none for an Attached side.
+    """
+
+    name: str
+    version: str | None
+    startup: tuple[Measurement, ...]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class RunResult:
+    """What a Run gave: a ScenarioResult per Scenario, in the order played, and each side."""
+
+    results: tuple[ScenarioResult, ...]
+    reference: SideSummary
+    candidate: SideSummary
+
+    @property
+    def verdicts(self) -> tuple[Verdict, ...]:
+        """Every Verdict, repetition after repetition, each in the order played."""
+        repeat = len(self.results[0].verdicts) if self.results else 0
+        return tuple(
+            result.verdicts[repetition] for repetition in range(repeat) for result in self.results
+        )
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class _Play:
+    """One Scenario played once: its Verdict, and each side's Measurements."""
+
+    verdict: Verdict
+    reference: tuple[Measurement, ...] = ()
+    candidate: tuple[Measurement, ...] = ()
+
+
+def status_version(transcript: Transcript) -> str | None:
+    """The `version.name` of the first status_response in `transcript`, if it names one.
+
+    Read leniently: anything that is not a status JSON object with a string
+    `version.name` (the Candidate's output, which must never crash the harness) is None.
+    """
+    for event in transcript.events:
+        packet = event.packet
+        if packet.name != _STATUS_RESPONSE or packet.fields is None:
+            continue
+        text = packet.fields.get("json_response")
+        if not isinstance(text, str):
+            return None
+        try:
+            status: object = json.loads(text)
+        except (ValueError, RecursionError):
+            return None
+        version = status.get("version") if isinstance(status, dict) else None
+        name = version.get("name") if isinstance(version, dict) else None
+        return name if isinstance(name, str) else None
+    return None
 
 
 async def run_scenario(
@@ -187,8 +277,27 @@ async def run(
     """Play each Scenario against the Reference and the Candidate, `repeat` times.
 
     Returns one Verdict per Scenario per repetition, repetition after repetition, each
-    in the order given. A Scenario is `blocked`, and not played, unless each of its
-    prerequisites matched earlier in the same repetition (so list them first).
+    in the order given: `run_results(...).verdicts`, which says how it is played.
+    """
+    result = await run_results(scenarios, reference, candidate, workdir=workdir, repeat=repeat)
+    return list(result.verdicts)
+
+
+async def run_results(
+    scenarios: Sequence[Scenario],
+    reference: Side,
+    candidate: Side,
+    *,
+    workdir: Path,
+    repeat: int = 1,
+) -> RunResult:
+    """Play each Scenario against the Reference and the Candidate, `repeat` times.
+
+    Returns, for each Scenario in the order given, its Verdict and each side's
+    Measurements for every repetition; and for each side its `instance.startup`
+    Measurements and the version its status_response named. A Scenario is `blocked`,
+    and not played (so it measures nothing), unless each of its prerequisites matched
+    earlier in the same repetition (so list them first).
 
     A Server side gets one Instance per distinct ServerSpec the Scenarios' `spec` make,
     launched in its own directory under `workdir` at an Endpoint of its own
@@ -204,18 +313,30 @@ async def run(
         RunnerError: An Instance could not be launched or did not become ready.
     """
     _check(scenarios, (reference, candidate))
+    plays: dict[str, list[_Play]] = {scenario.id: [] for scenario in scenarios}
     async with contextlib.AsyncExitStack() as stack:
         instances = _Instances(stack, reference, candidate, workdir)
-        verdicts: list[Verdict] = []
         for _ in range(repeat):
             done: dict[str, Verdict] = {}
             for scenario in scenarios:
                 verdict = blocked(scenario, done)
-                if verdict is None:
-                    verdict = await instances.play(scenario)
-                done[scenario.id] = verdict
-            verdicts.extend(done.values())
-        return verdicts
+                play = _Play(verdict) if verdict is not None else await instances.play(scenario)
+                done[scenario.id] = play.verdict
+                plays[scenario.id].append(play)
+        summaries = instances.summaries()
+    return RunResult(
+        results=tuple(
+            ScenarioResult(
+                scenario_id=scenario_id,
+                verdicts=tuple(play.verdict for play in played),
+                reference=tuple(play.reference for play in played),
+                candidate=tuple(play.candidate for play in played),
+            )
+            for scenario_id, played in plays.items()
+        ),
+        reference=summaries[0],
+        candidate=summaries[1],
+    )
 
 
 async def selfcheck(
@@ -282,25 +403,52 @@ def _spec_key(spec: ServerSpec | Callable[[ServerSpec], ServerSpec]) -> ServerSp
 
 
 class _Instances:
-    """The Instance pairs of one Run, one per distinct ServerSpec, started on demand."""
+    """The Instance pairs of one Run, one per distinct ServerSpec, started on demand.
+
+    It also keeps what the Run learns about each side: the startup Measurement of each
+    Instance it launched, and the version the side's first status_response named.
+    """
 
     def __init__(
         self, stack: contextlib.AsyncExitStack, reference: Side, candidate: Side, workdir: Path
     ) -> None:
         self._stack = stack
-        self._reference = reference
-        self._candidate = candidate
+        self._sides = (reference, candidate)
         self._workdir = workdir
         self._pairs: dict[ServerSpec, tuple[Endpoint, Endpoint]] = {}
+        self._startup: tuple[list[Measurement], list[Measurement]] = ([], [])
+        self._versions: list[str | None] = [None, None]
 
-    async def play(self, scenario: Scenario) -> Verdict:
+    async def play(self, scenario: Scenario) -> _Play:
         """Play `scenario` on the Reference, then on the Candidate, and judge it."""
-        reference, candidate = await self._pair(scenario.spec)
-        return judge(
-            scenario,
-            await _attempt(scenario, reference, server=self._reference.name),
-            await _attempt(scenario, candidate, server=self._candidate.name),
+        endpoints = await self._pair(scenario.spec)
+        attempts = [
+            await _attempt(scenario, endpoint, server=side.name)
+            for side, endpoint in zip(self._sides, endpoints, strict=True)
+        ]
+        transcripts = [
+            attempt.transcript if isinstance(attempt, ScenarioError) else attempt
+            for attempt in attempts
+        ]
+        for role, transcript in enumerate(transcripts):
+            if self._versions[role] is None:
+                self._versions[role] = status_version(transcript)
+        reference, candidate = transcripts
+        return _Play(
+            judge(scenario, *attempts),
+            reference=tuple(measurements(reference)),
+            candidate=tuple(measurements(candidate)),
         )
+
+    def summaries(self) -> tuple[SideSummary, SideSummary]:
+        """What the Run learned about the Reference and the Candidate, in that order."""
+        reference, candidate = (
+            SideSummary(
+                name=side.name, version=self._versions[role], startup=tuple(self._startup[role])
+            )
+            for role, side in enumerate(self._sides)
+        )
+        return reference, candidate
 
     async def _pair(self, spec: Callable[[ServerSpec], ServerSpec]) -> tuple[Endpoint, Endpoint]:
         key = _spec_key(spec)
@@ -308,20 +456,17 @@ class _Instances:
             where = self._workdir / str(len(self._pairs))
             try:
                 async with asyncio.TaskGroup() as group:
-                    reference = group.create_task(
-                        self._start(self._reference, spec, where / "reference")
-                    )
-                    candidate = group.create_task(
-                        self._start(self._candidate, spec, where / "candidate")
-                    )
+                    reference = group.create_task(self._start(0, spec, where / "reference"))
+                    candidate = group.create_task(self._start(1, spec, where / "candidate"))
             except ExceptionGroup as failures:
                 raise failures.exceptions[0] from None
             self._pairs[key] = (reference.result(), candidate.result())
         return self._pairs[key]
 
     async def _start(
-        self, server: Side, spec: Callable[[ServerSpec], ServerSpec], workdir: Path
+        self, role: int, spec: Callable[[ServerSpec], ServerSpec], workdir: Path
     ) -> Endpoint:
+        server = self._sides[role]
         if isinstance(server, Attached):
             return server.endpoint  # `_check` made sure it is of `spec`
         endpoint = free_endpoint()
@@ -335,6 +480,10 @@ class _Instances:
                 ready_timeout=READY_TIMEOUT_S,
                 stop_timeout=STOP_TIMEOUT_S,
             )
+        )
+        startup_ms = (instance.ready_ns - instance.launched_ns) / _NS_PER_MS
+        self._startup[role].append(
+            Measurement(name="instance.startup", unit="ms", value=startup_ms)
         )
         return instance.endpoint
 
