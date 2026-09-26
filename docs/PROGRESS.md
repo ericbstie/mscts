@@ -56,7 +56,16 @@ Environment notes:
 
 ## In flight
 
-Nothing. Every worktree is integrated and removed.
+Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
+- **Q** (sonnet, `tooling`): pytest-xdist for the unit tier, a committed
+  `scripts/repeat.py`, and a flake hunt under CPU stress (Next 1).
+- **R** (opus, M2 wiring): `scenario.py` (registry, Scenario kind),
+  `status/basic` + `status/ping`, `run.py` (a Run over two Instances),
+  the H3b Verdict rule, and a library `selfcheck` (Next 2, without the
+  CLI and Measurements, which are split out below).
+- **S** (opus, M3a / ADR-0008): Registry, provision split, `cli.py`
+  (`mscts adapter install/list/status`, `--from`), the honest prompt,
+  then the pinned Pumpkin installed here with `--from` (Next 3).
 
 ## Next
 
@@ -79,6 +88,10 @@ briefs at 3–6 increments and about 1500 lines at most.
    with `--from`, idempotence, the honest TTY prompt, non-TTY failure,
    and a registry file pinned by checksum. Then install the pinned
    Pumpkin here with `--from`.
+3a. `cli` (sonnet, after R and S): `mscts selfcheck` over R's library
+    `selfcheck`, and the first Measurements (`measure.py`: `status.rtt`,
+    `instance.startup`). Split out of item 2 to keep R under 1500 lines
+    and off S's `cli.py`.
 4. `adapter/pumpkin` (opus, after 3): write a flat world save and the
    difficulty in Pumpkin's own format (level.dat at its DataVersion plus a
    flat `world_gen_settings.dat`), lift `LIMITS` for them, and verify with
