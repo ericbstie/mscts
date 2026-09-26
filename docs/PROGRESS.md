@@ -73,7 +73,11 @@ Batch 2, briefed against `a64a2b5`:
   Divergences, declared defaults from the client decoder, `update_tags`
   order (Next 5).
 
-After batch 2: the opus audit (Next 12).
+- **W** (opus, `run`, against `277dc11`): a Run over existing Endpoints
+  so the Self-check reuses the session Reference (G5); Bot-named `failed`
+  Divergences (G3) (Next 2a).
+
+After U, V and W: the opus audit (Next 12).
 
 ## Delegated to the helper agent
 
@@ -88,10 +92,6 @@ like a worker branch.
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
-2a. `run` (opus): a Run over existing Endpoints, so `selfcheck` uses the
-    session-scoped Reference as one side and boots one Instance, not two
-    (G5: reference tier ≤ 90 s). Then Bot errors carry the Bot name, so a
-    `failed` Divergence names its Bot (G3).
 3a. `cli` (sonnet): `mscts selfcheck` over R's library `selfcheck`
     (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
