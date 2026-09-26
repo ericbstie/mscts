@@ -90,12 +90,17 @@ class Connection:
         Raises:
             CodecError: The packet is unknown here, or `fields` do not fit its schema.
                 Nothing is written or recorded.
-            ConnectionClosedError: The Connection is closed.
+            ConnectionClosedError: The Connection is closed, or the connection was lost
+                (nothing is written or recorded).
         """
         self._check_open()
         data = self._codec.encode(self._state, Direction.SERVERBOUND, name, fields)
         packet = self._codec.decode(self._state, Direction.SERVERBOUND, data)
         frame = encode_frame(data, compression_threshold=self._frames.compression_threshold)
+        if self._writer.transport.is_closing():
+            # asyncio's write() would silently discard the frame.
+            msg = "the connection was lost"
+            raise ConnectionClosedError(msg)
         t_ns = self._transcript.now_ns()
         self._writer.write(frame)
         self._transcript.record(self._bot, packet, t_ns=t_ns)

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Mapping
 
 import pytest
@@ -43,3 +44,20 @@ def toy_codec() -> Codec:
 def transcript() -> Transcript:
     """A fresh Transcript."""
     return Transcript(scenario_id="net/test", server="fake")
+
+
+@pytest.fixture
+def stream_writers(monkeypatch: pytest.MonkeyPatch) -> list[asyncio.StreamWriter]:
+    """The StreamWriter of every connection `asyncio.open_connection` opens in the test."""
+    writers: list[asyncio.StreamWriter] = []
+    open_connection = asyncio.open_connection
+
+    async def recording_open_connection(
+        host: str, port: int
+    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+        reader, writer = await open_connection(host, port)
+        writers.append(writer)
+        return reader, writer
+
+    monkeypatch.setattr(asyncio, "open_connection", recording_open_connection)
+    return writers

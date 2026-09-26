@@ -8,6 +8,7 @@ import socket
 
 import pytest
 
+from mscts import net
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State
 from mscts.net import Connection, ConnectionClosedError
 from mscts.transcript import Event, Transcript
@@ -32,26 +33,14 @@ def test_open_connects_and_close_ends_the_connection(
 
 
 def test_open_turns_off_nagle_so_small_writes_are_not_delayed(
-    toy_codec: Codec, transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+    toy_codec: Codec, transcript: Transcript, stream_writers: list[asyncio.StreamWriter]
 ) -> None:
-    writers: list[asyncio.StreamWriter] = []
-    open_connection = asyncio.open_connection
-
-    async def recording_open_connection(
-        host: str, port: int
-    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        reader, writer = await open_connection(host, port)
-        writers.append(writer)
-        return reader, writer
-
-    monkeypatch.setattr(asyncio, "open_connection", recording_open_connection)
-
     async def server(peer: Peer) -> None:
         await peer.eof()
 
     async def client() -> None:
         async with serve(toy_codec, server) as endpoint, connected(endpoint, toy_codec, transcript):
-            sock = writers[0].get_extra_info("socket")
+            sock = stream_writers[0].get_extra_info("socket")
             assert sock.getsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY)
 
     asyncio.run(client())
@@ -209,6 +198,63 @@ def test_send_after_close_raises(toy_codec: Codec, transcript: Transcript) -> No
 
     asyncio.run(client())
     assert transcript.events == []
+
+
+def test_send_after_the_server_reset_the_connection_raises_and_records_nothing(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # asyncio's write() silently discards data once the connection is lost, so the
+    # Connection must refuse rather than record a Packet that never left.
+    async def server(peer: Peer) -> None:
+        await peer.reset()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            with pytest.raises(ConnectionResetError):
+                await connection.recv(timeout_s=1)
+            with pytest.raises(ConnectionClosedError, match="the connection was lost"):
+                await connection.send("test:request", value=7)
+
+    asyncio.run(client())
+    assert transcript.events == []
+
+
+def test_close_aborts_a_socket_that_does_not_finish_closing(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A server that stops reading can hold unsent bytes back, so wait_closed() never
+    # returns. Simulate that on the client's writer only, with close()'s grace period
+    # shortened.
+    aborted: list[bool] = []
+
+    async def never() -> None:
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(net, "_CLOSE_TIMEOUT_S", 0.05)
+
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript
+            )
+            [writer] = stream_writers
+            abort = writer.transport.abort
+            monkeypatch.setattr(writer, "wait_closed", never)
+            monkeypatch.setattr(writer.transport, "abort", lambda: (aborted.append(True), abort()))
+            async with asyncio.timeout(1):
+                await connection.close()
+
+    asyncio.run(client())
+    assert aborted == [True]
 
 
 def test_recv_returns_and_records_a_clientbound_packet(

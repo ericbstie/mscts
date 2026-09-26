@@ -171,7 +171,8 @@ class Connection:                   # one TCP connection; owns framing, compress
     # `name` is positional-only, so a packet field called `name` (login `hello`) fits in **fields.
     # Timeouts are named `timeout_s`: ruff's ASYNC109 flags a parameter named `timeout`, and its
     # docs endorse renaming it for functions that wrap asyncio.timeout.
-    # send: CodecError (nothing written or recorded) if the fields do not fit. The Event holds
+    # send: CodecError if the fields do not fit, ConnectionClosedError if the connection was lost
+    # (asyncio would silently discard the write); neither writes nor records. The Event holds
     # the Packet decoded from the exact bytes written, stamped immediately before the write.
     # recv: stamped when the socket read that completed the frame returned (frames that arrive
     # together share that time, however late they are taken); decoded in the State current when
