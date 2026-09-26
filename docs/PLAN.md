@@ -150,6 +150,17 @@ class Schema:                      # WireType[dict[str, object]]: ordered, named
     # declared names (WireError lists missing / unexpected ones). Errors are prefixed with
     # the field name, so a nested failure reads "entries: 3: name: ...".
 
+IDENTIFIER: WireType[str]          # String (32767), the Identifier's wire form (not validated)
+
+@frozen
+class PrefixedArray[T]:            # WireType[list[T]]: VarInt length, then the elements
+    element: WireType[T]
+    max_length: int | None = None  # WireError past it; a length over the bytes left is refused
+                                   # too (no element takes under a byte); writes a list or tuple
+@frozen
+class PrefixedOptional[T]:         # WireType[T | None]: Boolean (strict), then T if present
+    element: WireType[T]
+
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 
 # codec/schemas/<state>.py: the Target's schemas, keyed by packet name. Each module records
@@ -158,8 +169,8 @@ SERVERBOUND: Mapping[str, Schema]
 CLIENTBOUND: Mapping[str, Schema]
 ```
 
-Rules for the field types still to come (Prefixed Optional X, Prefixed
-Array of X, NBT, text components, BitSet, Position, …):
+Rules for the field types still to come (NBT, text components, BitSet,
+Position, …), which the composites above follow:
 
 - Each one is a `WireType`. A composite takes its element type as an
   argument, for example `PrefixedArray(Schema(...))`, and a `Schema` nests

@@ -279,3 +279,98 @@ class Schema:
             except WireError as exc:
                 msg = f"{name}: {exc}"
                 raise WireError(msg) from exc
+
+
+IDENTIFIER: WireType[str] = String(_STRING_MAX_LENGTH)
+"""Identifier (`minecraft:thing`): on the wire, a String (32767)."""
+
+
+@dataclass(frozen=True, slots=True)
+class PrefixedArray[T]:
+    """Prefixed Array of X: a VarInt length, then that many elements.
+
+    Its value is a list. Errors are prefixed with the element's index, so a nested
+    failure reads `entries: 3: name: ...`. A length greater than the bytes left is
+    refused before reading any element: no element type takes less than a byte.
+
+    Attributes:
+        element: Each element's wire type.
+        max_length: The most elements allowed, or None for no bound beyond the above.
+    """
+
+    element: WireType[T]
+    max_length: int | None = None
+
+    def __post_init__(self) -> None:
+        """Reject a `max_length` that is not a non-negative int.
+
+        Raises:
+            SchemaError: `max_length` is negative, or not an int.
+        """
+        if self.max_length is None:
+            return
+        if isinstance(self.max_length, bool) or not isinstance(self.max_length, int):
+            msg = f"PrefixedArray max_length must be an int, got {type(self.max_length).__name__}"
+            raise SchemaError(msg)
+        if self.max_length < 0:
+            msg = f"PrefixedArray max_length {self.max_length} is negative"
+            raise SchemaError(msg)
+
+    def read(self, reader: Reader) -> list[T]:
+        """Consume the length, then each element."""
+        length = reader.var_int()
+        if length < 0:
+            msg = f"array length {length} is negative"
+            raise WireError(msg)
+        self._check_length(length)
+        if length > reader.remaining:
+            msg = f"array length {length} exceeds the {reader.remaining} byte(s) left"
+            raise WireError(msg)
+        values = []
+        for index in range(length):
+            try:
+                values.append(self.element.read(reader))
+            except WireError as exc:
+                msg = f"{index}: {exc}"
+                raise WireError(msg) from exc
+        return values
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`, a list or tuple of elements, behind its length."""
+        if not isinstance(value, list | tuple):
+            msg = f"expected a list or tuple, got {type(value).__name__}"
+            raise WireError(msg)
+        self._check_length(len(value))
+        writer.var_int(len(value))
+        for index, item in enumerate(value):
+            try:
+                self.element.write(writer, item)
+            except WireError as exc:
+                msg = f"{index}: {exc}"
+                raise WireError(msg) from exc
+
+    def _check_length(self, length: int) -> None:
+        if self.max_length is not None and length > self.max_length:
+            msg = f"array length {length} exceeds max {self.max_length}"
+            raise WireError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class PrefixedOptional[T]:
+    """Prefixed Optional X: a Boolean, then X if it is true. Its value is X's, or None.
+
+    Attributes:
+        element: The wire type of the value when present.
+    """
+
+    element: WireType[T]
+
+    def read(self, reader: Reader) -> T | None:
+        """Consume the presence flag (strictly 0x00 or 0x01), then the value if present."""
+        return self.element.read(reader) if reader.bool_() else None
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`: None as absent, anything else as present."""
+        writer.bool_(value=value is not None)
+        if value is not None:
+            self.element.write(writer, value)
