@@ -1,5 +1,8 @@
 """Canonicalization: protocol equivalences compare() applies before Masks and the diff.
 
+These tests look at the observable Divergences; a difference Canonicalization makes
+equal is still reported, as wire-only (test_observability.py).
+
 Status packets are built through the Target's real Codec.
 """
 
@@ -41,7 +44,8 @@ def _diff(reference: str, candidate: str, *masks: Mask) -> list[tuple[str | None
     assert {(d.index, d.kind, d.packet) for d in verdict.divergences} <= {
         (0, "field", "minecraft:status_response")
     }
-    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+    # What a raw spelling changes is wire-only (test_observability.py); this is the rest.
+    return [(d.path, d.reference, d.candidate) for d in verdict.observable]
 
 
 def test_vanilla_against_itself_matches() -> None:

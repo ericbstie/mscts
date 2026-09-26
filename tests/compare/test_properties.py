@@ -36,14 +36,19 @@ def test_a_transcript_matches_itself() -> None:
             assert verdict == Verdict(SCENARIO, Outcome.MATCH), f"seed {seed}"
 
 
-def test_a_rerun_that_differs_only_where_it_may_matches() -> None:
-    # The Self-check (G2): the same Script, with every masked or ignored detail re-rolled.
+def test_a_rerun_that_differs_only_where_it_may_has_only_wire_only_divergences() -> None:
+    # The same Script, with every masked or ignored detail re-rolled, and the status JSON
+    # re-spelled: the spelling is wire-only (ADR-0007), everything else is Masked.
+    wire_only = 0
     for seed in SEEDS:
         runs = script(seeded(seed))
         first = render(runs, seeded(2 * seed), server="vanilla")
         second = render(runs, seeded(2 * seed + 1), server="vanilla")
         verdict = compare(first, second, MASKS)
-        assert verdict == Verdict(SCENARIO, Outcome.MATCH), f"seed {seed}"
+        assert verdict.observable == (), f"seed {seed}"
+        assert {d.path for d in verdict.divergences} <= {"json_response"}, f"seed {seed}"
+        wire_only += bool(verdict.divergences)
+    assert wire_only >= 0.2 * len(SEEDS)  # not vacuous: 35 of 120 when written
 
 
 def test_those_reruns_do_differ_without_the_masks() -> None:
@@ -146,6 +151,7 @@ def _mirror(
                 path=d.path,
                 reference=d.candidate,
                 candidate=d.reference,
+                observability=d.observability,
             )
             for d in own
         )
@@ -173,4 +179,6 @@ def _length(transcript: Transcript, bot: str, masks: Sequence[Mask]) -> int:
 
 def _canonical_order(divergences: Sequence[Divergence]) -> list[Divergence]:
     """Sort by what makes a Divergence unique, so two lists compare as multisets."""
-    return sorted(divergences, key=lambda d: (d.bot, d.kind, d.index, d.path or ""))
+    return sorted(
+        divergences, key=lambda d: (d.bot, d.kind, d.index, d.path or "", d.observability)
+    )

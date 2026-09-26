@@ -627,6 +627,9 @@ class Mask:
 
 class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
+class Observability(StrEnum):       # ADR-0007; values "observable", "wire-only"
+    OBSERVABLE, WIRE_ONLY
+
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
 
 @frozen
@@ -640,6 +643,10 @@ class Divergence:
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT
     candidate: object
+    observability: Observability = Observability.OBSERVABLE
+    # wire-only: a `field` Divergence between raw values whose canonical forms are equal
+    #   (path and values are the raw ones); observable: every other Divergence, so every
+    #   bot, missing, unexpected and failed one (run.judge's `failed` keeps the default).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
     #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
@@ -655,12 +662,17 @@ class Verdict:
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
+    @property
+    def observable(self) -> tuple[Divergence, ...]: ...   # the observable Divergences, in
+                                    # order: what compliance scores count. A Verdict whose
+                                    # Divergences are all wire-only is still `mismatch`
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
     # ValueError if the Transcripts are of different Scenarios; TypeError if fields hold
     # a value outside the codec value model. Divergences are grouped by Bot in name order,
-    # then in stream order, and within a packet in path order.
+    # then in stream order, and within a packet in path order: its observable Divergences
+    # first, then its wire-only ones.
     # A packet's value (for missing / unexpected) is its fields, or its payload as hex.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
@@ -726,9 +738,18 @@ proves it necessary:
    - the interleaving of different Bots' packets, which is timing too.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
-   Canonicalization encodes a protocol equivalence. It is not a Mask.
-   It lives in one small registry in `compare.py`, keyed by (State,
-   packet name) of a clientbound packet. An entry is admitted only when
+   Canonicalization encodes a protocol equivalence. It is not a Mask,
+   and it is a classifier, not an eraser (ADR-0007): the raw fields are
+   diffed too, and a raw difference whose canonical values (before the
+   Masks) are equal at its path is reported as a **wire-only** `field`
+   Divergence, with the raw path and values. Where the canonical values
+   at that path differ, the observable Divergences under it (or a Mask)
+   stand for it, so a re-spelling inside a field that also has an
+   observable or masked difference is not reported separately. Masks
+   apply to the raw fields too, where their paths reach. Every other
+   Divergence is **observable**. The canonical table lives in
+   `compare.py` (`_CANONICAL`), keyed by (State, packet name) of a
+   clientbound packet. An entry is admitted only when
    the Reference's own decoder reads both encodings into equal values
    *by definition of the format*, never merely through lenient error
    handling, and it cites its evidence. Anything else stays strict: a

@@ -91,14 +91,17 @@ need is missing, add it here in the same commit that introduces it.
   protocol defines two encodings as meaning the same thing to the vanilla
   client (a text component `"x"` is `{"text": "x"}`). It is not a Mask: a
   Mask declares a value nondeterministic, Canonicalization declares two
-  values equal.
+  values equal. It classifies rather than erases: a difference it makes
+  equal is still reported, as wire-only (ADR-0007). Its entries form
+  **the canonical table** (never called a registry).
 - **Comparison**: normalizes the Reference and Candidate Transcripts of one
   Scenario (Canonicalization, then Masks) and diffs them into a Verdict.
 - **Divergence**: one difference found by a Comparison. It is
   **observable** (a vanilla client could tell the two values apart) or
-  **wire-only** (the bytes differ but they decode identically). Wire-only
-  Divergences are reported separately and excluded from compliance scores
-  (ADR-0007).
+  **wire-only** (the bytes differ but they decode identically): its
+  `observability`. Wire-only Divergences are reported separately and
+  excluded from compliance scores (ADR-0007); `Verdict.observable` is
+  what scores count.
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Scenario did not match), or `error` (the harness failed, or
   the Reference itself could not run the Scenario). A failure the

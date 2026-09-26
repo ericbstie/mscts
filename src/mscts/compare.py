@@ -99,6 +99,13 @@ class Mask:
 type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
 
 
+class Observability(StrEnum):
+    """Whether a vanilla client could tell a Divergence's two values apart (ADR-0007)."""
+
+    OBSERVABLE = "observable"
+    WIRE_ONLY = "wire-only"
+
+
 @dataclass(frozen=True, slots=True)
 class Divergence:
     """One difference a Comparison found for one Bot.
@@ -127,6 +134,10 @@ class Divergence:
             the Bot's Events.
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of
             the Bot's Events.
+        observability: `wire-only`: a `field` Divergence between raw values whose
+            canonical forms are equal, so the vanilla client reads both alike; its path
+            and values are the raw ones. `observable`: every other Divergence, including
+            every `bot`, `missing`, `unexpected` and `failed` one.
     """
 
     bot: str
@@ -136,6 +147,7 @@ class Divergence:
     path: str | None
     reference: object
     candidate: object
+    observability: Observability = Observability.OBSERVABLE
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +156,8 @@ class Verdict:
 
     Attributes:
         scenario_id: The Scenario, e.g. `status/basic`.
-        outcome: `match` exactly when there are no divergences, from `compare`.
+        outcome: `match` exactly when there are no divergences, from `compare`; so
+            wire-only Divergences alone are still a `mismatch` (ADR-0007).
         divergences: Every difference, grouped by Bot in name order, then in stream
             order.
         detail: A human-readable note, e.g. why the Scenario is blocked.
@@ -154,6 +167,15 @@ class Verdict:
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
+
+    @property
+    def observable(self) -> tuple[Divergence, ...]:
+        """The observable Divergences, in order: what compliance scores count."""
+        return tuple(
+            divergence
+            for divergence in self.divergences
+            if divergence.observability is Observability.OBSERVABLE
+        )
 
 
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
@@ -171,7 +193,12 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Between two matched pairs, `missing` Divergences come before `unexpected` ones.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
-    `field` Divergence per differing leaf, in path order. A path joins identifier keys
+    observable `field` Divergence per differing leaf, in path order. If they have a
+    canonical form, their raw fields (with the Masks applied where the paths reach)
+    are diffed too: a raw difference is a wire-only Divergence, with the raw path and
+    values, when the unmasked canonical values at that path are equal; otherwise the
+    observable Divergences under it (or a Mask) account for it. A packet's wire-only
+    Divergences follow its observable ones. A path joins identifier keys
     with dots and puts list indices in brackets (`players.sample[0].name`); any other
     key is a JSON string in brackets (`m["a.b"]`). If either Packet has no fields, the
     two are compared by payload, with path None and hex values. A `missing` or
@@ -211,12 +238,18 @@ class _Normalized:
 
     Attributes:
         packet: The Packet.
-        fields: A copy of its fields, in the value model, with the masked paths
-            removed; None if it has none, and is then compared by payload.
+        fields: A copy of its fields, in the value model, in canonical form, with the
+            masked paths removed; None if it has none, and is then compared by payload.
+        raw: For a Packet with a canonical form, a copy of its fields as they came,
+            with the masked paths removed where they reach; else None.
+        unmasked: For a Packet with a canonical form, its canonical form before the
+            Masks; else None.
     """
 
     packet: Packet
     fields: dict[str, _Value] | None
+    raw: dict[str, _Value] | None = None
+    unmasked: dict[str, _Value] | None = None
 
     @property
     def value(self) -> object:
@@ -288,13 +321,23 @@ def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
     """Copy `packet`'s fields, put them in canonical form, then apply the Masks."""
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
-    fields = _plain_mapping(packet.fields.items(), packet.name, ())
+    paths = masks.paths.get(packet.name, ())
     canonical = _CANONICAL.get((packet.state, packet.name))
-    if canonical is not None:
-        fields = canonical(fields)
-    for path in masks.paths.get(packet.name, ()):
+    if canonical is None:
+        fields = _plain_mapping(packet.fields.items(), packet.name, ())
+        _remove_all(fields, paths)
+        return _Normalized(packet=packet, fields=fields)
+    raw = _plain_mapping(packet.fields.items(), packet.name, ())
+    unmasked = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
+    fields = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
+    _remove_all(raw, paths)
+    _remove_all(fields, paths)
+    return _Normalized(packet=packet, fields=fields, raw=raw, unmasked=unmasked)
+
+
+def _remove_all(fields: dict[str, _Value], paths: Iterable[_Path]) -> None:
+    for path in paths:
         _remove(fields, path)
-    return _Normalized(packet=packet, fields=fields)
 
 
 _LEAF_TYPES: frozenset[type] = frozenset({bool, int, float, str, bytes, UUID})
@@ -356,8 +399,10 @@ def _child(node: _Value, step: _Step) -> _Value | Absent:
 
 # Canonicalization: protocol equivalences, applied before the Masks. It is not masking:
 # a Mask says a value is nondeterministic, a canonical form says two encodings mean the
-# same thing to the vanilla client. PLAN (Comparison semantics) gives the evidence for
-# each entry, and the equivalences considered and not encoded.
+# same thing to the vanilla client. It classifies, never erases: a raw difference it
+# makes equal is a wire-only Divergence (ADR-0007). PLAN (Comparison semantics) gives
+# the evidence for each entry of the canonical table, and the equivalences considered
+# and not encoded.
 
 
 _JSON_NESTING_LIMIT = 255
@@ -580,6 +625,44 @@ def _diff_matched(
             reference=ref_value,
             candidate=cand_value,
         )
+    for path, ref_value, cand_value in _wire_only(reference, candidate):
+        yield Divergence(
+            bot=bot,
+            index=index,
+            kind="field",
+            packet=reference.packet.name,
+            path=_render(path),
+            reference=ref_value,
+            candidate=cand_value,
+            observability=Observability.WIRE_ONLY,
+        )
+
+
+def _wire_only(
+    reference: _Normalized, candidate: _Normalized
+) -> Iterator[tuple[_Path, _Value | Absent, _Value | Absent]]:
+    """Yield the raw differences whose unmasked canonical values are equal, in path order."""
+    if (
+        reference.raw is None
+        or candidate.raw is None
+        or reference.unmasked is None
+        or candidate.unmasked is None
+    ):
+        return
+    for path, ref_value, cand_value in _diff(reference.raw, candidate.raw, ()):
+        canonical = (_at(reference.unmasked, path), _at(candidate.unmasked, path))
+        if next(_diff(*canonical, path), None) is None:
+            yield path, ref_value, cand_value
+
+
+def _at(fields: dict[str, _Value], path: _Path) -> _Value | Absent:
+    """The value at `path` in `fields`, or ABSENT if there is none."""
+    node: _Value | Absent = fields
+    for step in path:
+        if isinstance(node, Absent):
+            return ABSENT
+        node = _child(node, step)
+    return node
 
 
 def _diff(
