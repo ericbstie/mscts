@@ -275,7 +275,7 @@ class Adapter(Protocol):
 # - invariants live in one visibly named table, applied last;
 # - a ServerSpec value the server cannot honour is refused with PrepareError naming the
 #   field, before anything is written, never approximated. The fields a server honours
-#   only for some values live in one named table (PumpkinAdapter.LIMITS), and so does
+#   only for some values live in one named table (adapters/pumpkin.py LIMITS), and so does
 #   every range its config types can hold: a value it cannot read back is refused too.
 #   PumpkinAdapter(fetch=https_get) takes the nightly unhashed, so provision records its
 #   sha256 in SOURCE.json and checks the cached binary against it; it never refreshes.
