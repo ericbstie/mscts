@@ -228,8 +228,11 @@ class Connection:                   # one TCP connection; owns framing, compress
     # Timeouts are named `timeout_s`: ruff's ASYNC109 flags a parameter named `timeout`, and its
     # docs endorse renaming it for functions that wrap asyncio.timeout.
     # send: CodecError if the fields do not fit, ConnectionClosedError if the connection was lost
-    # (asyncio would silently discard the write); neither writes nor records. The Event holds
-    # the Packet decoded from the exact bytes written, stamped immediately before the write.
+    # (asyncio would silently discard the write) before the write or while draining it; none
+    # of these records or moves the State. The Event holds the Packet decoded from the exact
+    # bytes written, stamped immediately before the write, and is recorded (and the State moved
+    # on) only once the write has drained, or when send is cancelled while draining (the frame
+    # is queued and will go out).
     # recv: TimeoutError leaves the Connection usable. Whatever stopped the reader is raised
     # once the frames before it are taken, and again by every later recv: CodecError for a
     # corrupt frame, an unknown packet id or a strict-decode failure, ConnectionClosedError

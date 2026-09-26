@@ -133,12 +133,18 @@ class Connection:
     async def send(self, name: str, /, **fields: object) -> None:
         """Encode serverbound packet `name` with `fields` in the current State, and send it.
 
+        It returns once the write has drained (the socket buffer is below its high-water
+        mark), and only then records the Packet, stamped immediately before the write,
+        and moves the State on. Cancelled while draining, it still records the Packet
+        and moves the State on, since the frame is queued and will go out.
+
         Raises:
             CodecError: The packet is unknown here, or `fields` do not fit its schema.
             ProtocolError: It is an intention with an unknown intent.
-            ConnectionClosedError: The Connection is closed, or the connection was lost.
+            ConnectionClosedError: The Connection is closed, or the connection was lost
+                (before the write, or while draining it).
 
-            In each case nothing is written or recorded, and the State stays.
+            In each case nothing is recorded, and the State stays.
         """
         self._check_open()
         data = self._codec.encode(self._state, Direction.SERVERBOUND, name, fields)
@@ -151,9 +157,19 @@ class Connection:
             raise ConnectionClosedError(msg)
         t_ns = self._transcript.now_ns()
         self._writer.write(frame)
+        try:
+            await self._writer.drain()
+        except ConnectionError as exc:
+            msg = "the connection was lost"
+            raise ConnectionClosedError(msg) from exc
+        except asyncio.CancelledError:
+            self._sent(packet, t_ns=t_ns, state_after=state_after)  # the frame is queued
+            raise
+        self._sent(packet, t_ns=t_ns, state_after=state_after)
+
+    def _sent(self, packet: Packet, *, t_ns: int, state_after: State) -> None:
         self._transcript.record(self._bot, packet, t_ns=t_ns)
         self._state = state_after
-        await self._writer.drain()
 
     async def recv(self, *, timeout_s: float) -> Packet:
         """Take the next clientbound Packet the background reader decoded, and record it.

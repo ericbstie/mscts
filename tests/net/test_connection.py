@@ -4,15 +4,20 @@ These use the handshake-only `toy_codec`, so no State changes are involved.
 """
 
 import asyncio
+import contextlib
 import socket
+import struct
+import threading
+import time
+from collections.abc import Callable, Iterator
 
 import pytest
 
 from mscts import net
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State, UnknownPacketError
-from mscts.net import Connection, ConnectionClosedError
+from mscts.net import Connection, ConnectionClosedError, Endpoint
 from mscts.transcript import Event, Transcript
-from tests.net.fakes import Peer, connected, serve
+from tests.net.fakes import HOST, Peer, connected, serve
 
 
 def test_open_connects_and_close_ends_the_connection(
@@ -220,6 +225,133 @@ def test_send_after_the_server_reset_the_connection_raises_and_records_nothing(
 
     asyncio.run(client())
     assert transcript.events == []
+
+
+@contextlib.contextmanager
+def resetting_server() -> Iterator[tuple[Endpoint, Callable[[], None]]]:
+    """A plain-socket server, off the event loop, that resets its first connection on cue.
+
+    Yields its Endpoint and `reset`: once the client has connected, `reset()` makes the
+    server reset (SO_LINGER 0, then close) and blocks the caller's thread, and so its
+    event loop, until the RST has reached the client, which has therefore not seen it.
+    """
+    listener = socket.create_server((HOST, 0))
+    cue, done = threading.Event(), threading.Event()
+
+    def accept_and_reset() -> None:
+        sock, _ = listener.accept()
+        cue.wait(timeout=5)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+        sock.close()
+        done.set()
+
+    def reset() -> None:
+        cue.set()
+        assert done.wait(timeout=5)
+        time.sleep(0.05)  # loopback delivers the RST at once; the loop stays blocked
+
+    thread = threading.Thread(target=accept_and_reset, daemon=True)
+    thread.start()
+    try:
+        yield Endpoint(host=HOST, port=listener.getsockname()[1]), reset
+    finally:
+        cue.set()
+        listener.close()
+        thread.join(timeout=5)
+
+
+def test_a_send_whose_write_fails_raises_records_nothing_and_keeps_the_state(
+    codec: Codec, transcript: Transcript
+) -> None:
+    # Audit MD2: the reset was only seen once the write failed, after the Packet was
+    # recorded and the State advanced, and it raised ConnectionResetError.
+    async def client() -> State:
+        with resetting_server() as (endpoint, reset):
+            async with connected(endpoint, codec, transcript) as connection:
+                reset()
+                with pytest.raises(ConnectionClosedError, match="the connection was lost"):
+                    await connection.send(
+                        "minecraft:intention",
+                        protocol_version=777,
+                        server_address=HOST,
+                        server_port=endpoint.port,
+                        intent=1,
+                    )
+                return connection.state
+
+    assert asyncio.run(client()) is State.HANDSHAKE
+    assert transcript.events == []
+
+
+def test_send_records_and_returns_only_once_the_write_has_drained(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Audit N13: a server that stops reading must hold send back (backpressure), and a
+    # Packet is recorded only once its write has drained.
+    drained = asyncio.Event()
+
+    async def server(peer: Peer) -> None:
+        await peer.recv()
+        await peer.eof()
+
+    async def client() -> list[bool]:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            [writer] = stream_writers
+            drain = writer.drain
+
+            async def slow_drain() -> None:
+                await drained.wait()
+                await drain()
+
+            monkeypatch.setattr(writer, "drain", slow_drain)
+            sending = asyncio.create_task(connection.send("test:request", value=1))
+            await asyncio.sleep(0.05)
+            seen = [sending.done(), bool(transcript.events)]
+            drained.set()
+            await sending
+            return [*seen, sending.done(), bool(transcript.events)]
+
+    assert asyncio.run(client()) == [False, False, True, True]
+
+
+def test_a_send_cancelled_while_draining_still_records_its_queued_frame(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The frame is already in the transport's buffer, so it goes out once the server reads:
+    # leaving it out of the Transcript (or the State behind) would misreport the wire.
+    received: list[Packet] = []
+
+    async def server(peer: Peer) -> None:
+        received.append(await peer.recv())
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            [writer] = stream_writers
+
+            async def never_drains() -> None:
+                await asyncio.Event().wait()
+
+            monkeypatch.setattr(writer, "drain", never_drains)
+            with pytest.raises(TimeoutError):
+                async with asyncio.timeout(0.05):
+                    await connection.send("test:request", value=1)
+
+    asyncio.run(client())
+    assert [event.packet.fields for event in transcript.events] == [{"value": 1}]
+    assert [packet.fields for packet in received] == [{"value": 1}]
 
 
 def test_close_aborts_a_socket_that_does_not_finish_closing(
