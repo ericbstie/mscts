@@ -79,9 +79,8 @@ class Writer:
         except UnicodeEncodeError as exc:
             msg = f"string is not valid Unicode: {exc.reason} at index {exc.start}"
             raise WireError(msg) from exc
-        if len(encoded) > max_length * _BYTES_PER_CODE_UNIT:
-            msg = f"string exceeds max byte length {max_length * _BYTES_PER_CODE_UNIT}"
-            raise WireError(msg)
+        # No separate byte bound: UTF-8 never takes more than 3 bytes per UTF-16 code
+        # unit, so the protocol's 3n-byte limit already holds (audit W9: dead code).
         self.var_int(len(encoded))
         self._buffer.extend(encoded)
         return self

@@ -179,6 +179,25 @@ def test_string_writer_raises_on_a_lone_surrogate(text: str) -> None:
         Writer().string(text, max_length=5)
 
 
+def test_string_reader_raises_on_a_negative_byte_length() -> None:
+    # Audit W7: without the guard, a negative length moves the offset backwards and
+    # later fields re-read old bytes. Vanilla: "less than zero! Weird string!".
+    data = bytes.fromhex("ffffffff0f") + b"abc"
+    with pytest.raises(WireError, match="string byte length -1"):
+        Reader(data).string(max_length=5)
+
+
+def test_string_limit_counts_utf16_code_units_not_characters_or_bytes() -> None:
+    # Audit W10: two U+1F600 are 2 characters and 8 UTF-8 bytes (within 3 x 3 = 9), but
+    # 4 UTF-16 code units, one over max_length 3.
+    two_emoji = chr(0x1F600) * 2
+    with pytest.raises(WireError, match="exceeds max length 3 UTF-16 code units"):
+        Writer().string(two_emoji, max_length=3)
+    data = Writer().string(two_emoji, max_length=4).to_bytes()
+    with pytest.raises(WireError, match="exceeds max length 3 UTF-16 code units"):
+        Reader(data).string(max_length=3)
+
+
 def test_string_writer_allows_exactly_max_length() -> None:
     Writer().string("abcde", max_length=5)  # must not raise
 
