@@ -506,10 +506,43 @@ def _nesting(value: object) -> int:
     return deepest
 
 
+def _canonical_update_tags(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `tagged_registries` by registry, and each one's `tags` by tag name.
+
+    The sorts are stable, so a name sent twice keeps the order of its values: the client
+    keeps the last one. A tag's `entries` keep their order.
+    """
+    registries = fields.get("tagged_registries")
+    if not isinstance(registries, list):
+        return fields
+    canonical = [_with_sorted_tags(registry) for registry in registries]
+    return {**fields, "tagged_registries": _sorted_by(canonical, "registry")}
+
+
+def _with_sorted_tags(registry: _Value) -> _Value:
+    if isinstance(registry, dict) and isinstance(tags := registry.get("tags"), list):
+        return {**registry, "tags": _sorted_by(tags, "tag_name")}
+    return registry
+
+
+def _sorted_by(items: _Value, key: str) -> _Value:
+    """`items` stably sorted by each one's `key`, if it is a list of mappings with str keys."""
+    if not isinstance(items, list):
+        return items
+    names: list[tuple[str, _Value]] = []
+    for item in items:
+        if not (isinstance(item, dict) and isinstance(name := item.get(key), str)):
+            return items
+        names.append((name, item))
+    return [item for _, item in sorted(names, key=lambda pair: pair[0])]
+
+
 _CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
     MappingProxyType(
         {
             (State.STATUS, "minecraft:status_response"): _canonical_status_response,
+            (State.CONFIGURATION, "minecraft:update_tags"): _canonical_update_tags,
+            (State.PLAY, "minecraft:update_tags"): _canonical_update_tags,
         }
     )
 )

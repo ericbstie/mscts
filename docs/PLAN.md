@@ -813,6 +813,27 @@ proves it necessary:
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
+   - `configuration` and `play` / `minecraft:update_tags`:
+     `tagged_registries` is sorted by `registry`, and each registry's
+     `tags` by `tag_name`, both stably; each tag's `entries` keep their
+     order. Evidence, with `javap -c -p -constants -v` on the same client
+     jar: `ClientboundUpdateTagsPacket.STREAM_CODEC` is
+     `ByteBufCodecs.map(IdentityHashMap::new,
+     ResourceKey.REGISTRY_STREAM_CODEC, NetworkPayload.STREAM_CODEC)`,
+     and `TagNetworkSerialization$NetworkPayload.STREAM_CODEC` is
+     `ByteBufCodecs.map(HashMap::new, Identifier.STREAM_CODEC,
+     ID_LIST_STREAM_CODEC)` with `ID_LIST_STREAM_CODEC` =
+     `VAR_INT.apply(collection(IntArrayList::new))`. `ByteBufCodecs.map`'s
+     decoder (`ByteBufCodecs$28.decode`) reads the count, then `Map.put`s
+     each key and value in turn, so a repeated name keeps its last value.
+     Registry keys come from `ResourceKey.createRegistryKey`, which
+     interns them (`ResourceKey.create` through a `computeIfAbsent`
+     cache), so the `IdentityHashMap` is keyed by name. Both maps compare
+     by `Map.equals`, order-free, while an `IntArrayList` compares in
+     order. A stable sort keeps each name's values in their order, so two
+     encodings with equal sorted forms give each name the same last
+     value, and decode to equal maps. (Not every equal pair is caught: a
+     name repeated on one side only stays a Divergence.)
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡
@@ -1056,6 +1077,15 @@ then record the answer in an ADR:
   (State, name) string pairs, and the field diff works on copies that
   `compare` makes of the fields (and checks against the value model), so
   it never hashes or mutates a Packet. Still open for Transcripts.
+- Wire-only Divergences are reported per differing raw leaf, so a
+  reordered `update_tags` (≈59 KB) yields one for every shifted leaf.
+  Should the Report group them per packet, or should `compare` report
+  the shallowest canonically equal path instead? Decide with the Report.
+- ADR-0007 requires a Self-check with no wire-only Divergences, on the
+  premise that vanilla sends identical bytes each run. The server writes
+  `update_tags` from hash maps (worker P); if its order varies between
+  runs, the join Self-check will show wire-only Divergences. Check it
+  when the join Scenario's Self-check runs, before relaxing anything.
 - Should the text component **list form** (`["a", "b"]` ≡
   `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
   `createFromList` is `first.copy().append(rest)`) be canonical? No
