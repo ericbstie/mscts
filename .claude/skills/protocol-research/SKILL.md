@@ -56,6 +56,45 @@ Do **not** rely on a summarizer (WebFetch or similar) for field layouts.
 One summary got a 26.3 field order wrong. Grep the raw wikitext table
 instead.
 
+## Research harness
+
+Two committed scripts boot any Adapter's Instance, join a Bot, and dump
+what you ask for, so establishing a fact never means rebuilding scratch
+tools:
+
+```sh
+# Boot vanilla (or pumpkin) at a ServerSpec, print its Endpoint and startup
+# timing, wait for Ctrl-C (or --seconds N), then stop it and remove the workdir.
+mise exec -- uv run python scripts/research/boot.py vanilla /tmp/v \
+    --spec difficulty=hard --spec seed=1
+mise exec -- uv run python scripts/research/boot.py vanilla /tmp/v --keep --seconds 30
+
+# Join a Bot, print the named packets decoded (or as hex with no schema),
+# decode the first N level_chunk_with_light packets' sections, and/or save
+# the whole Transcript as JSONL.
+mise exec -- uv run python scripts/research/join.py vanilla \
+    --packets minecraft:login,minecraft:player_position --chunks 1
+mise exec -- uv run python scripts/research/join.py pumpkin --out /tmp/pumpkin.jsonl
+```
+
+Use `boot.py` to read a server's **own files**: `--keep` leaves the
+workdir (its `level.dat`, `server.properties`/`pumpkin.toml`, logs, ...)
+for you to open by hand once the Instance has stopped — e.g. dumping the
+world save's NBT, or diffing two Adapters' first-run config files. Use
+`join.py` for anything the **wire** shows: comparing two Adapters'
+decoded fields for the same packet (its `login` fields showed Pumpkin's
+`is_flat=false` and `sea_level` 63 against vanilla's), or piping `--out`
+JSONL into a one-off script. Both get an Adapter's Installation through
+`mscts.install.require` (never installing it themselves: run
+`mise run install:reference` or `mscts adapter install <name>` first if
+it is missing), and both build the ServerSpec from the defaults plus any
+`--spec key=value` overrides, typed and validated by ServerSpec's own
+constructor.
+
+Neither script is a public interface: their JSONL row shape and printed
+format may change freely, and Adapter/Candidate test assertions must
+never depend on them.
+
 ## Pinning a fact
 
 - A list the client decodes into a map is last-write-wins on a repeated
