@@ -191,13 +191,32 @@ def test_next_frame_takes_one_frame_at_a_time_in_order() -> None:
     decoder = FrameDecoder()
     decoder.extend(
         encode_frame(b"first", compression_threshold=None)
-        + encode_frame(b"", compression_threshold=None)
+        + encode_frame(b"2", compression_threshold=None)
         + encode_frame(b"third", compression_threshold=None)
     )
     assert decoder.next_frame() == b"first"
-    assert decoder.next_frame() == b""
+    assert decoder.next_frame() == b"2"
     assert decoder.next_frame() == b"third"
     assert decoder.next_frame() is None
+
+
+# Vanilla's Varint21FrameDecoder (26.3, javap) throws "Frame length cannot be zero".
+def test_a_zero_frame_length_is_corrupt_and_stays_corrupt() -> None:
+    decoder = FrameDecoder()
+    decoder.extend(encode_frame(b"good", compression_threshold=None) + b"\x00\x01\x00")
+    assert decoder.next_frame() == b"good"
+    for _ in range(2):
+        with pytest.raises(WireError, match="frame length cannot be zero"):
+            decoder.next_frame()
+    assert decoder.buffered == 3
+
+
+# Every frame carries at least a packet id, so empty data is never a valid frame: vanilla
+# rejects it uncompressed (zero length) and compressed (no packet id to read).
+@pytest.mark.parametrize("threshold", [None, 0, 256])
+def test_encode_frame_refuses_empty_data(threshold: int | None) -> None:
+    with pytest.raises(WireError, match="a frame needs at least one byte of data"):
+        encode_frame(b"", compression_threshold=threshold)
 
 
 def test_buffered_counts_the_bytes_not_yet_taken_as_frames() -> None:

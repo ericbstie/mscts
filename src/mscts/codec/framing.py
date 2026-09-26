@@ -33,7 +33,13 @@ def encode_frame(data: bytes, *, compression_threshold: int | None) -> bytes:
     zlib-compressed, with `data-length` set to `len(data)`, unless `data` is
     shorter than the threshold, in which case `data-length` is 0 and
     `payload` is `data` unmodified.
+
+    Raises:
+        WireError: `data` is empty: every frame holds at least a packet id.
     """
+    if not data:
+        msg = "a frame needs at least one byte of data (a packet id)"
+        raise WireError(msg)
     threshold = _in_effect(compression_threshold)
     if threshold is None:
         return Writer().var_int(len(data)).to_bytes() + data
@@ -48,8 +54,10 @@ def _try_read_frame_length(buffer: bytearray) -> tuple[int, int] | None:
     """Try to read the frame-length VarInt prefix from the front of `buffer`.
 
     Returns `(value, bytes_consumed)`, or None if `buffer` does not yet hold a
-    complete VarInt. Raises WireError if the VarInt is more than 3 bytes, or
-    decodes to a value over 2 097 151 — the limits a frame length must obey.
+    complete VarInt. Raises WireError if the VarInt is more than 3 bytes or is 0,
+    the rules vanilla's `Varint21FrameDecoder` applies ("length wider than 21-bit",
+    "Frame length cannot be zero"). Three bytes hold at most 2 097 151, so there is
+    no separate upper bound.
     """
     result = 0
     for index in range(_FRAME_LENGTH_MAX_BYTES):
@@ -58,8 +66,8 @@ def _try_read_frame_length(buffer: bytearray) -> tuple[int, int] | None:
         byte = buffer[index]
         result |= (byte & _SEGMENT) << (7 * index)
         if not byte & _CONTINUE:
-            if result > _FRAME_LENGTH_MAX_VALUE:
-                msg = f"frame length {result} exceeds max {_FRAME_LENGTH_MAX_VALUE}"
+            if result == 0:
+                msg = "frame length cannot be zero"
                 raise WireError(msg)
             return result, index + 1
     msg = "frame length VarInt longer than 3 bytes"
