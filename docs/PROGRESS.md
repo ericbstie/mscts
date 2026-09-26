@@ -29,34 +29,38 @@ Awaiting user decisions:
    rejected by Python 3.13 strict X.509.
 3. Canonicalize "declared defaults" (missing `players.sample` ≡ `[]`)?
 
+## In flight
+
+- **N** (sonnet): `scripts/mutate.py` trustworthy verdicts (MD6),
+  baseline check, `.pyc`-safe restore, and a copy-based parallel batch
+  mode; S311 ignore in tests.
+- **M** (opus): readiness proves socket ownership (H1); `ServerSpec.host`
+  in 127/8 per Instance; MD8, R5, R9, R11, L6.
+- **P** (opus): the join flow (login → configuration → play → first chunk
+  batch) with a background reader, arrival stamping (H2), recorded decode
+  failures (H3a), MD1/MD2/MD4/MD5/L1–L5/L8.
+
 ## Next
 
 Take the first item. Split it if it is more than one failing test.
 
-1. Tooling (sonnet): fix `scripts/mutate.py` (MD6 false KILLED, no-op
-   sanity run, `PYTHONDONTWRITEBYTECODE=1`, a parallel copy-based batch
-   mode); S311 ignore in `tests/**`; then re-verify earlier "bites" claims
-   for the critical modules.
-2. Audit fix batch (opus), from `docs/audits/2026-09-26-foundation.md`:
-   - H1: readiness must prove the Instance owns the socket, plus a
-     distinct loopback host per Instance;
-   - H2: stamp receive time at arrival (background reader);
-   - H3: record undecodable frames and make Candidate-caused failures
-     `mismatch`;
-   - MD1–MD5 and MD8; delete `FrameDecoder.feed`.
-3. M2 wiring (opus): the `@scenario` registry, `status/basic` +
-   `status/ping`, a Run over two Instances, `mscts selfcheck` → `match`,
-   and the first Measurements.
-4. Join brief (opus): compression, login → configuration → play up to the
-   first chunk batch, keep-alive/teleport answering.
-5. `scripts/` research harness (sonnet): netns sandbox, strace summary,
+1. M2 wiring (opus): the `@scenario` registry (with a Scenario kind per
+   ADR-0006), `status/basic` + `status/ping`, a Run over two Instances,
+   Candidate-caused failures → `mismatch` (H3b), `mscts selfcheck` →
+   `match`, and the first Measurements (after M and P).
+2. `scripts/` research harness (sonnet): netns sandbox, strace summary,
    join probe (adopt worker H's scratch tools), and a loopback-only
    reference test.
-6. `runner`: a parent-death guard.
-7. Spawn (ADR-0006): exact Scenarios pin the position with a Fixture
-   (`/setworldspawn`, `/tp`); a statistical `spawn/join-position` Scenario
-   comes in M6b. Never Mask it.
-8. Flake hunt: the unit tier under CPU stress, N times.
+3. `runner`: a parent-death guard.
+4. Tick research (opus, ADR-0006): is `/tick freeze`/`/tick step`
+   observable over the protocol (`ticking_state`, `ticking_step`,
+   `set_time`)? Design tick-indexed observation anchored on world age.
+5. Statistical tier design (opus, ADR-0006): the distribution test,
+   confidence, N, and a per-kind Self-check; first Scenario
+   `spawn/join-position`.
+6. Flake hunt: the unit tier under CPU stress, N times.
+7. Pumpkin: once decisions 1 and 2 are made, finish the Candidate so M3's
+   first Report can run.
 
 ## Log
 
