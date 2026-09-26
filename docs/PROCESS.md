@@ -69,7 +69,8 @@ Read CLAUDE.md, docs/PROCESS.md (Worker contract + Worker report), and the
 red-green and protocol-research skills before starting.
 
 Goal: <one sentence, in CONTEXT.md vocabulary>
-Increments (in order, one commit each): <numbered list, each a single failing test>
+Increments (in order, one commit each): <numbered list; name the target module explicitly,
+              e.g. `src/mscts/bot.py`, not just an area label>
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
 Out of scope: <what not to touch>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist>
@@ -125,16 +126,14 @@ new classes of defect:
 - Downloads go to the shared cache (`mscts.cache.cache_dir()`, outside
   every checkout) and are hash-verified wherever the source publishes a
   hash.
-- **Shell in worktrees.** The sandbox refuses Bash it cannot verify. That
-  includes `rm -rf` with globs, `env -i` in compound commands, heredocs
-  (`cat >> f <<EOF`, `python3 - <<EOF`) mixed with other commands, `find`
-  or `sed` on `$VAR` paths, variables in command position, process
-  substitution `<(…)`, `$(…)` containing git, `python -c` or
-  `uv run python -c` inside compound commands, and `strace … python3 -c`.
-  **Default to this:** write any multi-step or scripted shell work to a
-  file in the scratchpad (literal absolute paths, no variables), and run
-  it as one plain command (`sh /abs/path.sh`, `python3 /abs/path.py`).
-  Use Edit/Write for code. `git commit -F - <<'EOF'` on its own works.
+- **Shell in worktrees.** The sandbox refuses any Bash it cannot verify,
+  and it is inconsistent at the edges (five workers have hit it). The
+  rule that always works: **one plain command per Bash call**. Do not
+  chain with `&&`, `;` or `|` when the command also has a heredoc, a
+  `$VAR`, `$(…)` or `python -c`. Use literal absolute paths, not
+  variables. For anything longer, Write a script file into the
+  scratchpad and run it as a single plain command (`sh /abs/x.sh`,
+  `python3 /abs/x.py`). Use Edit/Write for code.
 - Known tool and type-checker traps are listed in the `red-green` skill.
   Read them first.
 - Stay inside the brief. If you are blocked, or the brief is wrong, stop
@@ -170,6 +169,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker F (net/bot) | Lost uncommitted work undoing a mutation with `git checkout`. This is the **second** occurrence (E); F started before the trap was written | **adopt**: a committed `scripts/mutate.py` (single-match replace, run pytest under timeout, restore from backup) in the harness brief; red-green will point to it |
+| 2026-09-26 | worker F | ASYNC109 forbids `timeout` parameters | **adopt**: convention `timeout_s`, in Known traps |
+| 2026-09-26 | worker F | PLR0913 on 6 parameters; a pre-emptive `noqa` | **adopt**: Known traps (≤5 params, never pre-emptive noqa) |
+| 2026-09-26 | worker F | The Bash guard is inconsistent (**fifth** report) | **adopt**: the Worker contract rule is now "one plain command per Bash call", with scripts for everything else |
+| 2026-09-26 | worker F | A leaked socket failed a later test | **adopt**: Known trap (closing context managers in tests) |
+| 2026-09-26 | worker F | A global monkeypatch of an asyncio class hung the suite | **adopt**: Known trap; pytest-timeout goes in the next tooling brief |
+| 2026-09-26 | worker F | "`net`: status_probe" was impossible without a circular import | **adopt**: brief template names modules explicitly; `transcript` added to the areas |
+| 2026-09-26 | worker F | Recording when a frame is *taken* (not read) keeps Transcripts independent of TCP segmentation, but untaken trailing packets are absent | **adopt** as the policy; added to PLAN open questions with the background reader and windows |
+| 2026-09-26 | worker F | `FrameDecoder.feed` still loses frames before a corrupt one; a non-zero data-length below the threshold is accepted | **defer**: join brief (fix or remove `feed`; verify vanilla's rule) |
+| 2026-09-26 | worker F | TaskGroup wraps exceptions; frozen clock needed to pin a bound | **reject**: handled in code |
 | 2026-09-26 | worker D (runner) | **The lead's brief** prescribed a TCP-connect stand-in probe. Vanilla accepts TCP before its world exists and loses a `stop` read then | **adopt**: ADR-0004 consequence, protocol-research trap, and a Worker contract rule: never brief a stand-in that contradicts an ADR |
 | 2026-09-26 | worker D | A loose mutation `sed` hit two lines and hung pytest | **adopt**: red-green trap (line-addressed, single match, `timeout 60`) |
 | 2026-09-26 | worker D | Process-starting tests leak by design when red or mutated | **adopt**: Worker contract leak-guard pattern (per-test env token + `/proc` sweep) |

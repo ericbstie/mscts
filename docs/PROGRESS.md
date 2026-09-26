@@ -26,9 +26,17 @@ Done:
   error/cancel, a leak guard, and a reference boot of vanilla (about 10 s
   to ready).
 
+- **F** (opus): `Transcript` (time-ordered, monotonic), `Connection`
+  (strict framing, State machine, record-on-take), `Bot.status`/`ping`,
+  and `status_probe`. Verified live against vanilla (status about 20 ms,
+  ping about 2 ms).
+
 In flight:
-- **F** (opus): `Transcript`/`Event`/`Mark`, `Connection` (framing, State,
-  recording), `Bot.status`/`ping`, and `status_probe`, all hermetic.
+- **I** (sonnet): pytest-timeout, `tests/support`, `scripts/mutate.py` and
+  `scripts/strays.py`, plus a shared Reference fixture and reference-tier
+  strict status/ping.
+- **J** (opus): the Comparison engine (`compare.py`: alignment, field
+  diffs, Masks, canonicalization).
 - **G** (sonnet): packets.json regen check, and a host-independent
   vanilla launch (env, TZ, IPv4).
 - **H** (opus): `PumpkinAdapter`.
@@ -37,24 +45,25 @@ In flight:
 
 Take the first item. Split it if it is more than one failing test.
 
-1. Reference tier: `running` + `status_probe` launch vanilla, and
-   `Bot.status`/`ping` decode strictly against it (ADR-0003). Replace the
-   runner test's inline probe with `status_probe`. Add a session-scoped
-   Reference Instance fixture so reference tests share one boot (after
-   F).
-2. `spec`/`adapter`: a distinct loopback host per Instance
+1. M2 wiring: the `@scenario` registry, a `status/basic` +
+   `status/ping` Scenario, a Run that executes a Scenario against two
+   Instances, and `mscts selfcheck` → `match` (after I and J).
+2. Join brief (opus): compression on `login_compression`, login →
+   configuration (known packs) → play up to the first chunk batch, and a
+   background reader answering keep-alive/teleports; fix or remove the
+   lossy `FrameDecoder.feed`; verify vanilla's rule for a non-zero
+   data-length below the threshold.
+3. `spec`/`adapter`: a distinct loopback host per Instance
    (`ServerSpec.host` in 127/8), so a probe can never reach another
    worker's server.
-3. `scripts/` research harness: launch any Adapter's LaunchPlan
-   (optionally under strace) and probe it; `scripts/strays.py`; a
-   reference test asserting that the Reference's connects are
-   loopback-only. Also tooling: `pythonpath = ["tests"]` +
-   `tests/support/` (sonnet).
-4. `runner`: a parent-death guard, so a SIGKILLed harness never orphans
+4. `scripts/` research harness: launch any Adapter's LaunchPlan
+   (optionally under strace) and probe it, plus a reference test
+   asserting that the Reference's connects are loopback-only (sonnet).
+5. `runner`: a parent-death guard, so a SIGKILLed harness never orphans
    servers.
-5. Spawn: vanilla's join position varies on every fresh run even with
+6. Spawn: vanilla's join position varies on every fresh run even with
    seed 0. Pin it (spawn radius) or Mask `player_position` before M4.
-6. Then **M2** in `docs/PLAN.md`.
+7. Then **M3** (the first Candidate Report) and **M4** in `docs/PLAN.md`.
 
 ## Log
 

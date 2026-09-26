@@ -511,5 +511,9 @@ then record the answer in an ADR:
   need Masks, and should Comparisons be scoped to windows between Marks?
 - How should chunk data be compared: decode the palette into block states,
   or compare raw?
+- Transcripts record a frame when the Bot *takes* it, so they do not depend
+  on TCP segmentation, but packets never taken are absent. Play will need
+  a background reader (keep-alives, teleports). Should Comparisons then be
+  scoped to windows between Marks, with a drain at each window end?
 - Should `Packet.fields` be deeply immutable (MappingProxyType, tuples) so
   Packets are hashable in Transcripts and Comparisons?

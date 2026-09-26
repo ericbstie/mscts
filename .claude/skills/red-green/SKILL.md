@@ -37,7 +37,7 @@ then one commit.
    `mise run test:reference`.
 6. **Commit** the test and the code together:
    `git commit -m "<area>: <imperative summary>"`, where area is one of
-   `codec`, `net`, `bot`, `target`, `spec`, `adapter/<name>`, `runner`, `scenario`,
+   `codec`, `net`, `bot`, `transcript`, `target`, `spec`, `adapter/<name>`, `runner`, `scenario`,
    `compare`, `measure`, `report`, `cli`, `docs` or `tooling`. Add a body
    only when the why is not obvious. End every message with the
    attribution trailer the session provides.
@@ -77,6 +77,15 @@ then one commit.
 - Mutate with a line-addressed edit (`sed -i 'NNs/…/…/'`) or a script that
   asserts exactly one match, and run mutated tests under `timeout 60`. A
   loose `sed` pattern once hit two lines and hung pytest.
+- Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
+- At most 5 parameters, keyword-only included (PLR0913). Derive values
+  rather than passing them. Never add a `noqa` before ruff has actually
+  flagged the line.
+- In tests, always open Connections and Bots through a closing context
+  manager. A leaked socket is garbage-collected during a *later* test, and
+  `filterwarnings=error` then fails the wrong test.
+- Monkeypatch instances, not library classes. Patching an asyncio class
+  also hit the fake server and hung the suite.
 - Lint shapes that pass: parametrize many arguments with one frozen case
   dataclass (PLR0913/PLR0917); call a single local coroutine or function
   inside `pytest.raises` (PT012); collect values into a list inside the
