@@ -20,7 +20,7 @@ from array import array
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum
-from typing import Literal, override
+from typing import Literal, Self, override
 from uuid import UUID
 
 from mscts.codec.packets import Direction, Packet
@@ -155,8 +155,10 @@ class Verdict:
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
     """Diff the Candidate's Transcript of a Scenario against the Reference's.
 
-    Each Bot's stream is normalized first: every field a Mask names is removed from
-    the Packets of that name, on both sides and wherever present.
+    Each Bot's stream is normalized first: the Packets a `*` Mask names are dropped,
+    and every field a Mask names is removed from the Packets of that name, on both
+    sides and wherever present. Indices count the normalized stream, so they do not
+    shift when a re-run has more or fewer dropped Packets.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -180,10 +182,12 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
             f"{reference.scenario_id!r} and {candidate.scenario_id!r}"
         )
         raise ValueError(msg)
-    masked = _masked_paths(masks)
+    indexed = _Masks.of(masks)
     bots = sorted(_bots(reference) | _bots(candidate))
     divergences = tuple(
-        divergence for bot in bots for divergence in _compare_bot(bot, reference, candidate, masked)
+        divergence
+        for bot in bots
+        for divergence in _compare_bot(bot, reference, candidate, indexed)
     )
     return Verdict(
         scenario_id=reference.scenario_id,
@@ -193,45 +197,6 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
 
 # Bots and their streams.
-
-
-type _MaskedPaths = Mapping[str, Sequence[_Path]]
-"""The field paths Masks remove, by packet name."""
-
-
-def _bots(transcript: Transcript) -> set[str]:
-    return {event.bot for event in transcript.events}
-
-
-def _compare_bot(
-    bot: str, reference: Transcript, candidate: Transcript, masked: _MaskedPaths
-) -> Iterator[Divergence]:
-    in_reference = sum(event.bot == bot for event in reference.events)
-    in_candidate = sum(event.bot == bot for event in candidate.events)
-    if not (in_reference and in_candidate):
-        yield Divergence(
-            bot=bot,
-            index=0,
-            kind="bot",
-            packet="",
-            path=None,
-            reference=in_reference or ABSENT,
-            candidate=in_candidate or ABSENT,
-        )
-    ref_stream = [_normalize(packet, masked) for packet in _stream(reference, bot)]
-    cand_stream = [_normalize(packet, masked) for packet in _stream(candidate, bot)]
-    yield from _compare_streams(bot, ref_stream, cand_stream)
-
-
-def _stream(transcript: Transcript, bot: str) -> list[Packet]:
-    return [
-        event.packet
-        for event in transcript.events
-        if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
-    ]
-
-
-# Normalization: copies of the fields, in the value model, with Masks applied.
 
 
 @dataclass(frozen=True, slots=True)
@@ -253,19 +218,71 @@ class _Normalized:
         return self.packet.payload.hex() if self.fields is None else self.fields
 
 
-def _masked_paths(masks: Sequence[Mask]) -> _MaskedPaths:
-    paths: dict[str, list[_Path]] = {}
-    for mask in masks:
-        if mask.path != WHOLE_PACKET:
-            paths.setdefault(mask.packet, []).append(_mask_steps(mask))
-    return paths
+@dataclass(frozen=True, slots=True)
+class _Masks:
+    """A Comparison's Masks, by packet name.
+
+    Attributes:
+        dropped: The names of the packets dropped whole.
+        paths: The field paths removed, by packet name.
+    """
+
+    dropped: frozenset[str]
+    paths: Mapping[str, Sequence[_Path]]
+
+    @classmethod
+    def of(cls, masks: Sequence[Mask]) -> Self:
+        """Index `masks`."""
+        paths: dict[str, list[_Path]] = {}
+        for mask in masks:
+            if mask.path != WHOLE_PACKET:
+                paths.setdefault(mask.packet, []).append(_mask_steps(mask))
+        dropped = frozenset(mask.packet for mask in masks if mask.path == WHOLE_PACKET)
+        return cls(dropped=dropped, paths=paths)
 
 
-def _normalize(packet: Packet, masked: _MaskedPaths) -> _Normalized:
+def _bots(transcript: Transcript) -> set[str]:
+    return {event.bot for event in transcript.events}
+
+
+def _compare_bot(
+    bot: str, reference: Transcript, candidate: Transcript, masks: _Masks
+) -> Iterator[Divergence]:
+    """Compare one Bot's streams; its presence counts Events of any kind, even dropped ones."""
+    in_reference = sum(event.bot == bot for event in reference.events)
+    in_candidate = sum(event.bot == bot for event in candidate.events)
+    if not (in_reference and in_candidate):
+        yield Divergence(
+            bot=bot,
+            index=0,
+            kind="bot",
+            packet="",
+            path=None,
+            reference=in_reference or ABSENT,
+            candidate=in_candidate or ABSENT,
+        )
+    yield from _compare_streams(bot, _stream(reference, bot, masks), _stream(candidate, bot, masks))
+
+
+def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized]:
+    """Return `bot`'s normalized stream: its clientbound Packets, less the dropped ones."""
+    return [
+        _normalize(event.packet, masks)
+        for event in transcript.events
+        if event.bot == bot
+        and event.packet.direction is Direction.CLIENTBOUND
+        and event.packet.name not in masks.dropped
+    ]
+
+
+# Normalization: copies of the fields, in the value model, with Masks applied.
+
+
+def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
     fields = _plain_mapping(packet.fields.items(), packet.name, ())
-    for path in masked.get(packet.name, ()):
+    for path in masks.paths.get(packet.name, ()):
         _remove(fields, path)
     return _Normalized(packet=packet, fields=fields)
 

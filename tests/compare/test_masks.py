@@ -5,6 +5,7 @@ from collections.abc import Mapping
 
 import pytest
 
+from mscts.codec.packets import Packet, State
 from mscts.compare import ABSENT, Mask, compare
 from tests.compare.build import packet, transcript
 
@@ -180,3 +181,52 @@ def test_masks_leave_the_transcripts_untouched() -> None:
     compare(reference, reference, [_mask("entity_id"), _mask("sample[0].id")])
     assert fields == {"entity_id": 1, "sample": [{"id": 1}]}
     assert reference.events[0].packet.fields == fields
+
+
+def _stream_kinds(
+    reference: list[Packet], candidate: list[Packet], *masks: Mask
+) -> list[tuple[str, int, str]]:
+    verdict = compare(
+        transcript(*(("alice", p) for p in reference)),
+        transcript(*(("alice", p) for p in candidate)),
+        masks,
+    )
+    return [(d.kind, d.index, d.packet) for d in verdict.divergences]
+
+
+KEEP_ALIVE = packet("minecraft:keep_alive", b"\x01")
+A, B, X = packet("test:a"), packet("test:b"), packet("test:x")
+
+
+def test_a_whole_packet_mask_drops_that_packet_from_both_streams() -> None:
+    reference = [A, KEEP_ALIVE, B]
+    candidate = [A, B, KEEP_ALIVE, KEEP_ALIVE]
+    assert _stream_kinds(reference, candidate) == [
+        ("missing", 1, "minecraft:keep_alive"),
+        ("unexpected", 2, "minecraft:keep_alive"),
+        ("unexpected", 3, "minecraft:keep_alive"),
+    ]
+    assert _stream_kinds(reference, candidate, _mask("*", "minecraft:keep_alive")) == []
+
+
+def test_indices_count_the_stream_after_dropped_packets() -> None:
+    reference = [KEEP_ALIVE, A, X]
+    candidate = [A]
+    assert _stream_kinds(reference, candidate, _mask("*", "minecraft:keep_alive")) == [
+        ("missing", 1, "test:x")
+    ]
+
+
+def test_a_whole_packet_mask_drops_the_packet_in_every_state() -> None:
+    reference = [packet("minecraft:keep_alive", state=State.CONFIGURATION), A]
+    candidate = [A, packet("minecraft:keep_alive", state=State.PLAY)]
+    assert _stream_kinds(reference, candidate, _mask("*", "minecraft:keep_alive")) == []
+
+
+def test_a_bot_whose_packets_are_all_dropped_is_still_present() -> None:
+    verdict = compare(
+        transcript(("alice", A), ("bob", KEEP_ALIVE)),
+        transcript(("alice", A)),
+        [_mask("*", "minecraft:keep_alive")],
+    )
+    assert [(d.bot, d.kind) for d in verdict.divergences] == [("bob", "bot")]
