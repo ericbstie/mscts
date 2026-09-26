@@ -8,6 +8,7 @@ import re
 import shutil
 import tempfile
 import tomllib
+import uuid
 from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
@@ -277,6 +278,44 @@ def toml_document(document: Toml) -> str:
 def pumpkin_toml(spec: ServerSpec) -> str:
     """The complete pumpkin.toml for `spec`."""
     return toml_document(pumpkin_config(spec))
+
+
+# data/ops.json level for ServerSpec.operators: all commands, as vanilla's.
+OPERATOR_LEVEL = 4
+
+
+def offline_uuid(name: str) -> uuid.UUID:
+    """The UUID Pumpkin gives player `name` in offline mode (not vanilla's).
+
+    The first 16 bytes of the SHA-256 of the bare UTF-8 name, taken as they are: no
+    version or variant bits. Vanilla uses an MD5, version 3 UUID of "OfflinePlayer:<name>".
+    """
+    return uuid.UUID(bytes=hashlib.sha256(name.encode()).digest()[:16])
+
+
+def ops_json(operators: tuple[str, ...]) -> str:
+    """Pumpkin's data/ops.json for `operators`, formatted exactly as Pumpkin writes it.
+
+    Pumpkin matches an operator to a player by UUID, so each entry carries Pumpkin's own
+    offline UUID for the name.
+    """
+    for name in operators:
+        try:
+            name.encode()
+        except UnicodeEncodeError as error:
+            # Pumpkin would fail to parse the file and load no operators, logging it only.
+            msg = f"ServerSpec.operators: {name!r} is not valid Unicode: {error}"
+            raise PrepareError(msg) from error
+    entries = [
+        {
+            "uuid": str(offline_uuid(name)),
+            "name": name,
+            "level": OPERATOR_LEVEL,
+            "bypasses_player_limit": False,
+        }
+        for name in operators
+    ]
+    return json.dumps(entries, indent=2, ensure_ascii=False)  # as serde_json's pretty printer
 
 
 def _sha256_of(path: Path) -> str:
