@@ -32,6 +32,8 @@ _POLL_INTERVAL_S = 0.02
 # How much of the console a RunnerError quotes.
 LOG_TAIL_LINES = 40
 _LOG_TAIL_BYTES = 64 * 1024  # read at most this much, however big the log grew
+# How long a stop that was interrupted waits, after its SIGKILL, for the exit to be seen.
+_KILLED_EXIT_S = 1.0
 # Where the kernel shows who owns which socket. Linux's procfs; nothing else has it.
 PROC = Path("/proc")
 _TCP_LISTEN = 0x0A  # the `st` column of /proc/net/tcp for a listening socket
@@ -183,9 +185,13 @@ async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_time
             how = await _stop_steps(process, plan.stop_stdin, stop_timeout)
         except BaseException:
             # Cancelled again (a second Ctrl-C, a TaskGroup or loop shutting down) or
-            # interrupted mid-stop: kill it now rather than leak it. asyncio's child
-            # watcher reaps it as soon as the event loop runs again.
+            # interrupted mid-stop: kill it now rather than leak it, and let the event loop
+            # see it exit (at once, once killed), which closes its transport. The loop may
+            # end right after this; an unclosed transport would then warn when collected,
+            # failing some later test. A further cancellation gives up the wait.
             _signal_group(process, signal.SIGKILL)
+            with contextlib.suppress(BaseException):
+                await asyncio.wait_for(asyncio.shield(process.wait()), _KILLED_EXIT_S)
             raise
         exit_code = await process.wait()  # at once: it has exited
         graceful = how == ("stdin" if plan.stop_stdin is not None else "SIGTERM")

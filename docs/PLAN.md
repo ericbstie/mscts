@@ -313,7 +313,9 @@ async def running(plan: LaunchPlan, *, ready: Callable[[Endpoint], Awaitable[boo
 # Stop, however the body ends (normally, exception, cancellation): stop_stdin + close stdin
 # → SIGTERM → SIGKILL to the process group, each after stop_timeout (no stop_stdin: SIGTERM
 # at once); then SIGKILL whatever is left of the group. A second cancellation while
-# stopping SIGKILLs at once. How it stopped is logged on `mscts.runner`.
+# stopping SIGKILLs at once, and waits (at most 1 s) for the exit to be seen, so nothing,
+# not even an unclosed transport, outlives running() when the event loop ends right after.
+# How it stopped is logged on `mscts.runner`.
 
 class RunnerError(RuntimeError):    # could not launch, exited before ready, or not ready in time
     reason: str

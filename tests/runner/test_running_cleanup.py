@@ -1,6 +1,8 @@
 """Whatever ends the body, the Instance is stopped and reaped: no orphan is left behind."""
 
 import asyncio
+import gc
+import warnings
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -115,8 +117,7 @@ async def test_cancelling_the_task_while_it_waits_for_readiness_stops_the_proces
     assert not is_alive(pid)
 
 
-@pytest.mark.asyncio
-async def test_cancelling_again_during_the_stop_kills_the_process_at_once(
+def test_cancelling_again_during_the_stop_kills_the_process_at_once_leaving_nothing_behind(
     fake_plan: FakePlan,
     tcp_probe: Probe,
     is_alive: Callable[[int], bool],
@@ -126,21 +127,33 @@ async def test_cancelling_again_during_the_stop_kills_the_process_at_once(
     # second cancellation, stopping it would take two stop_timeouts.
     plan = fake_plan("--ignore-stop", "--ignore-sigterm")
     console = plan.cwd / CONSOLE_LOG
-    instances: asyncio.Queue[int] = asyncio.Queue()
+    pids: list[int] = []
 
-    async def use() -> None:
-        async with running(
-            plan, ready=tcp_probe, ready_timeout=5, stop_timeout=GUARD_S
-        ) as instance:
-            instances.put_nowait(instance.pid)
-            await asyncio.sleep(3600)
+    async def cancelled_twice() -> None:
+        instances: asyncio.Queue[int] = asyncio.Queue()
 
-    async with asyncio.timeout(GUARD_S):
-        task = asyncio.create_task(use())
-        pid = await instances.get()
-        task.cancel()  # starts the stop
-        assert await eventually(lambda: "ignoring stop" in console.read_text())
-        task.cancel()  # interrupts it
-        with pytest.raises(asyncio.CancelledError):
-            await task
-    assert await eventually(lambda: not is_alive(pid))  # killed, and reaped by the loop
+        async def use() -> None:
+            async with running(
+                plan, ready=tcp_probe, ready_timeout=5, stop_timeout=GUARD_S
+            ) as instance:
+                instances.put_nowait(instance.pid)
+                await asyncio.sleep(3600)
+
+        async with asyncio.timeout(GUARD_S):
+            task = asyncio.create_task(use())
+            pids.append(await instances.get())
+            task.cancel()  # starts the stop
+            assert await eventually(lambda: "ignoring stop" in console.read_text())
+            task.cancel()  # interrupts it
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    # The event loop ends as soon as the task is done, as a harness's does after a second
+    # Ctrl-C. Nothing may be left for it to finish: no process, no unclosed transport
+    # (whose ResourceWarning would otherwise fail some later test, at garbage collection).
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        asyncio.run(cancelled_twice())
+        gc.collect()
+    assert not is_alive(pids[0])  # killed, and reaped too
+    assert [str(w.message) for w in caught if issubclass(w.category, ResourceWarning)] == []
