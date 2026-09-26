@@ -195,3 +195,25 @@ def test_main_finds_a_real_stray_process_by_its_argv(
     found = [int(line.split("\t")[0]) for line in capsys.readouterr().out.splitlines()]
     assert found == [helper.pid]
     assert exit_code == 1
+
+
+def test_main_prints_one_line_per_process_even_when_an_argv_holds_a_newline(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Another process's argv may hold control characters (a newline, a tab);
+    # each stray must still be exactly one "<pid>\t<cmd>" line.
+    token = f"mscts-strays-test-{uuid.uuid4().hex}"
+    helper = subprocess.Popen(
+        [sys.executable, "-I", "-S", "-c", "import sys; sys.stdin.read()", token, "a\nb\tc"],
+        stdin=subprocess.PIPE,
+    )
+    try:
+        strays.main([re.escape(token)])
+    finally:
+        assert helper.stdin is not None
+        helper.stdin.close()
+        helper.wait()
+    lines = capsys.readouterr().out.splitlines()
+    assert len(lines) == 1
+    assert lines[0].split("\t", 1)[0] == str(helper.pid)
+    assert "a\\nb\\tc" in lines[0]

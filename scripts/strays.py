@@ -119,6 +119,11 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _printable(text: str) -> str:
+    """Escape control characters, so one process is always exactly one output line."""
+    return "".join(char if char.isprintable() else repr(char)[1:-1] for char in text)
+
+
 def main(argv: list[str] | None = None) -> int:
     """List the strays matching `argv[0]` (`sys.argv[1:]` if None); return the exit code."""
     args = _build_parser().parse_args(sys.argv[1:] if argv is None else argv)
@@ -127,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     exclude = {own_pid, *ancestors(own_pid, ppid_of=read_ppid)}
     strays = find_strays(all_pids(), pattern, exclude=exclude, cmdline_of=read_cmdline)
     for pid, cmd in strays:
-        print(f"{pid}\t{' '.join(cmd)}")
+        print(f"{pid}\t{_printable(' '.join(cmd))}")
     if strays:
         print(f"{len(strays)} stray process(es) matching {args.pattern!r}", file=sys.stderr)
         return 1
