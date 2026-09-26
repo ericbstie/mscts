@@ -4,6 +4,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import shutil
 import ssl
 import tempfile
@@ -324,6 +325,36 @@ def ops_json(operators: tuple[str, ...]) -> str:
     return json.dumps(entries, indent=2)
 
 
+_JAVA_VERSION = re.compile(r'^JAVA_VERSION="(?P<version>[^"]*)"', re.MULTILINE)
+
+
+def java_version(java: Path) -> str:
+    """The JAVA_VERSION (e.g. "25.0.4.1") of the Java runtime image whose launcher is `java`.
+
+    Every Java 9+ runtime image, JDK or JRE, has its launcher at `<home>/bin/java` and a
+    `<home>/release` file naming its JAVA_VERSION. Reading it runs nothing, so prepare
+    stays hermetic. A launcher outside a runtime image (a version-manager shim, a
+    wrapper script) could run any JVM, so it is refused, not trusted.
+    """
+    if not java.is_file():
+        msg = f"java launcher {java} does not exist"
+        raise PrepareError(msg)
+    release = java.parent.parent / "release"
+    try:
+        text = release.read_text(encoding="utf-8", errors="replace")
+    except OSError as error:
+        msg = (
+            f"{java} is not the launcher of a Java runtime image ({release} is missing); "
+            f"name the real launcher with java= or {JAVA_ENV}"
+        )
+        raise PrepareError(msg) from error
+    match = _JAVA_VERSION.search(text)
+    if match is None:
+        msg = f"{release} has no JAVA_VERSION line"
+        raise PrepareError(msg)
+    return str(match["version"])  # re types a group as Any
+
+
 class VanillaAdapter:
     """Provisions the vanilla server jar and prepares it for a ServerSpec."""
 
@@ -378,21 +409,32 @@ class VanillaAdapter:
         server = version["downloads"]["server"]
         return _Download(url=str(server["url"]), sha1=str(server["sha1"]), size=int(server["size"]))
 
-    def _java_launcher(self) -> Path:
-        """The real, absolute path of the java launcher: constructor, MSCTS_JAVA, then PATH.
+    def _java_launcher(self, target: Target) -> Path:
+        """The real, absolute path of a java launcher of `target`'s Java major version.
 
-        Symlinks are resolved, so the LaunchPlan names the exact runtime even if a
-        versionless link (mise's temurin-25, /etc/alternatives) is repointed later.
+        Named by the constructor, else MSCTS_JAVA, else PATH. Symlinks are resolved, so
+        the LaunchPlan names the exact runtime even if a versionless link (mise's
+        temurin-25, /etc/alternatives) is repointed later.
         """
         named = self._java or os.environ.get(JAVA_ENV) or shutil.which("java")
         if not named:
             msg = f"no java launcher: pass java=, set {JAVA_ENV}, or put java on PATH"
             raise PrepareError(msg)
-        return Path(named).resolve()
+        java = Path(named).resolve()
+        version = java_version(java)
+        major = re.match(r"\d+", version)
+        if major is None or int(major[0]) != target.java_major:
+            msg = (
+                f"{java} is Java {version}, but {target.minecraft_version} needs Java "
+                f"{target.java_major}: pass java= or set {JAVA_ENV} to a Java "
+                f"{target.java_major} launcher"
+            )
+            raise PrepareError(msg)
+        return java
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete vanilla config for `spec` into `workdir`."""
-        java = self._java_launcher()
+        java = self._java_launcher(installation.target)
         workdir.mkdir(parents=True, exist_ok=True)
         (workdir / "eula.txt").write_bytes(b"eula=true\n")
         (workdir / "server.properties").write_text(

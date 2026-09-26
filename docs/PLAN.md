@@ -228,7 +228,9 @@ class Adapter(Protocol):
 #   first-run output, with every substitution documented;
 # - argv[0] is an absolute path to the exact runtime (e.g. Java 25), never a bare name.
 #   VanillaAdapter(fetch=https_get, *, java=None) takes the java launcher from `java`, else
-#   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved;
+#   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved. Its runtime image's
+#   `release` file must name Target.java_major (read, not run: prepare stays hermetic), or
+#   prepare raises PrepareError and writes nothing;
 # - invariants live in one visibly named table, applied last.
 
 @frozen

@@ -8,7 +8,7 @@ from mscts.adapters.vanilla import VanillaAdapter
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
-type MakeJava = Callable[[str], Path]
+type MakeJava = Callable[..., Path]
 
 
 def launched_java(tmp_path: Path, adapter: VanillaAdapter | None = None) -> str:
@@ -82,3 +82,50 @@ def test_relative_java_is_made_absolute(
 def test_no_java_anywhere_is_a_clear_error(tmp_path: Path) -> None:
     with pytest.raises(PrepareError, match="MSCTS_JAVA"):
         launched_java(tmp_path)
+
+
+@pytest.mark.parametrize("version", ["25", "25.0.4.1", "25-ea"])
+def test_a_java_of_the_targets_major_version_is_accepted(
+    make_java: MakeJava, tmp_path: Path, version: str
+) -> None:
+    java = make_java("jdk", version)
+    assert launched_java(tmp_path, VanillaAdapter(java=java)) == str(java)
+
+
+@pytest.mark.parametrize("version", ["21.0.8", "26", "1.8.0_392", "250"])
+def test_a_java_of_another_major_version_is_refused(
+    make_java: MakeJava, tmp_path: Path, version: str
+) -> None:
+    adapter = VanillaAdapter(java=make_java("jdk", version))
+    with pytest.raises(PrepareError, match=rf"is Java {version}, but .* needs Java 25"):
+        launched_java(tmp_path, adapter)
+
+
+def test_a_launcher_outside_a_java_runtime_image_is_refused(tmp_path: Path) -> None:
+    # A version-manager shim picks its JVM at run time (e.g. by cwd); it cannot be vouched for.
+    shim = tmp_path / "shims/java"
+    shim.parent.mkdir()
+    shim.write_bytes(b"#!/bin/sh\n")
+    with pytest.raises(PrepareError, match="not the launcher of a Java runtime"):
+        launched_java(tmp_path, VanillaAdapter(java=shim))
+
+
+def test_a_release_file_without_java_version_is_refused(
+    make_java: MakeJava, tmp_path: Path
+) -> None:
+    java = make_java("jdk")
+    (tmp_path / "jdk/release").write_text('IMPLEMENTOR="mscts"\n', encoding="utf-8")
+    with pytest.raises(PrepareError, match="JAVA_VERSION"):
+        launched_java(tmp_path, VanillaAdapter(java=java))
+
+
+def test_a_missing_launcher_is_refused(make_java: MakeJava, tmp_path: Path) -> None:
+    make_java("jdk")
+    with pytest.raises(PrepareError, match="does not exist"):
+        launched_java(tmp_path, VanillaAdapter(java=tmp_path / "jdk/bin/javaa"))
+
+
+def test_a_refused_java_writes_nothing(make_java: MakeJava, tmp_path: Path) -> None:
+    with pytest.raises(PrepareError):
+        launched_java(tmp_path, VanillaAdapter(java=make_java("jdk", "21")))
+    assert not (tmp_path / "w").exists()

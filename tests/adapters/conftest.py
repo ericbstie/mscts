@@ -3,18 +3,23 @@ from pathlib import Path
 
 import pytest
 
-type MakeJava = Callable[[str], Path]
+type MakeJava = Callable[..., Path]
 
 
 @pytest.fixture
 def make_java(tmp_path: Path) -> MakeJava:
-    """Make a fake Java runtime image under tmp_path and return its `bin/java` (never run)."""
+    """Make a fake Java runtime image under tmp_path; return its `bin/java` (never run).
 
-    def make(name: str) -> Path:
+    Like every Java 9+ runtime image, it has a `release` file naming its JAVA_VERSION.
+    """
+
+    def make(name: str, version: str = "25.0.4.1") -> Path:
         java = tmp_path / name / "bin" / "java"
         java.parent.mkdir(parents=True)
         java.write_bytes(b"")
         java.chmod(0o755)
+        release = f'IMPLEMENTOR="mscts"\nJAVA_VERSION="{version}"\nOS_NAME="Linux"\n'
+        (tmp_path / name / "release").write_text(release, encoding="utf-8")
         return java
 
     return make

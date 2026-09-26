@@ -1,5 +1,6 @@
 import hashlib
 import json
+import subprocess
 import zipfile
 from pathlib import Path
 
@@ -7,6 +8,7 @@ import pytest
 
 from mscts.adapters.base import Installation
 from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter, https_get
+from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
 pytestmark = pytest.mark.reference
@@ -49,3 +51,21 @@ def test_provision_does_not_download_a_cached_jar_again(cache_dir: Path) -> None
     assert fetched[0] == MANIFEST_URL
     after = jar.stat()
     assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+
+
+def test_prepare_launches_the_targets_java_as_the_jvm_itself_reports(tmp_path: Path) -> None:
+    # prepare trusts the runtime image's release file; here the named JVM confirms it.
+    installation = Installation(adapter="vanilla", target=TARGET, root=tmp_path / "cache")
+    plan = VanillaAdapter().prepare(installation, ServerSpec(port=25599), tmp_path / "work")
+    shown = subprocess.run(
+        [plan.argv[0], "-XshowSettings:properties", "-version"],
+        env=dict(plan.env),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    lines = [line.partition(" = ") for line in shown.stderr.splitlines() if " = " in line]
+    settings = {key.strip(): value.strip() for key, _, value in lines}
+    assert settings["java.specification.version"] == str(TARGET.java_major)
+    assert Path(settings["java.home"]) == Path(plan.argv[0]).parent.parent
