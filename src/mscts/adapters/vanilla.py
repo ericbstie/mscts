@@ -355,6 +355,35 @@ def java_version(java: Path) -> str:
     return str(match["version"])  # re types a group as Any
 
 
+def resolve_java(target: Target, java: Path | str | None = None) -> Path:
+    """The real, absolute path of a java launcher of `target`'s Java major version.
+
+    Named by `java`, else MSCTS_JAVA, else PATH. Symlinks are resolved, so the LaunchPlan
+    names the exact runtime even if a versionless link (mise's temurin-25,
+    /etc/alternatives) is repointed later.
+
+    This is the resolution `VanillaAdapter.prepare` uses; it is exposed here (rather than
+    kept private on the Adapter) so other callers that need the same java without an
+    Installation or a workdir — the codec regen module — reuse it instead of
+    re-implementing it.
+    """
+    named = java or os.environ.get(JAVA_ENV) or shutil.which("java")
+    if not named:
+        msg = f"no java launcher: pass java=, set {JAVA_ENV}, or put java on PATH"
+        raise PrepareError(msg)
+    resolved = Path(named).resolve()
+    version = java_version(resolved)
+    major = re.match(r"\d+", version)
+    if major is None or int(major[0]) != target.java_major:
+        msg = (
+            f"{resolved} is Java {version}, but {target.minecraft_version} needs Java "
+            f"{target.java_major}: pass java= or set {JAVA_ENV} to a Java "
+            f"{target.java_major} launcher"
+        )
+        raise PrepareError(msg)
+    return resolved
+
+
 class VanillaAdapter:
     """Provisions the vanilla server jar and prepares it for a ServerSpec."""
 
@@ -410,27 +439,8 @@ class VanillaAdapter:
         return _Download(url=str(server["url"]), sha1=str(server["sha1"]), size=int(server["size"]))
 
     def _java_launcher(self, target: Target) -> Path:
-        """The real, absolute path of a java launcher of `target`'s Java major version.
-
-        Named by the constructor, else MSCTS_JAVA, else PATH. Symlinks are resolved, so
-        the LaunchPlan names the exact runtime even if a versionless link (mise's
-        temurin-25, /etc/alternatives) is repointed later.
-        """
-        named = self._java or os.environ.get(JAVA_ENV) or shutil.which("java")
-        if not named:
-            msg = f"no java launcher: pass java=, set {JAVA_ENV}, or put java on PATH"
-            raise PrepareError(msg)
-        java = Path(named).resolve()
-        version = java_version(java)
-        major = re.match(r"\d+", version)
-        if major is None or int(major[0]) != target.java_major:
-            msg = (
-                f"{java} is Java {version}, but {target.minecraft_version} needs Java "
-                f"{target.java_major}: pass java= or set {JAVA_ENV} to a Java "
-                f"{target.java_major} launcher"
-            )
-            raise PrepareError(msg)
-        return java
+        """The real, absolute path of a java launcher of `target`'s Java major version."""
+        return resolve_java(target, self._java)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete vanilla config for `spec` into `workdir`, new or empty."""

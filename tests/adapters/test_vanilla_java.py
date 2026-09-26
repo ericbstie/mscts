@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from mscts.adapters.base import Installation, PrepareError
-from mscts.adapters.vanilla import VanillaAdapter
+from mscts.adapters.vanilla import VanillaAdapter, resolve_java
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
@@ -129,3 +129,27 @@ def test_a_refused_java_writes_nothing(make_java: MakeJava, tmp_path: Path) -> N
     with pytest.raises(PrepareError):
         launched_java(tmp_path, VanillaAdapter(java=make_java("jdk", "21")))
     assert not (tmp_path / "w").exists()
+
+
+def test_resolve_java_is_the_public_seam_prepare_uses(
+    make_java: MakeJava, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Other callers (the codec regen module) need the exact same resolution prepare uses,
+    # without an Installation or a workdir. `resolve_java` is that seam.
+    on_path = make_java("on-path")
+    monkeypatch.setenv("PATH", str(on_path.parent))
+    assert resolve_java(TARGET) == on_path.resolve()
+
+
+def test_resolve_java_takes_an_explicit_launcher_over_the_environment(
+    make_java: MakeJava, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    explicit = make_java("explicit")
+    monkeypatch.setenv("MSCTS_JAVA", str(make_java("from-env")))
+    assert resolve_java(TARGET, explicit) == explicit
+
+
+def test_resolve_java_rejects_the_wrong_major_version(make_java: MakeJava) -> None:
+    java = make_java("jdk", "21.0.8")
+    with pytest.raises(PrepareError, match=r"is Java 21\.0\.8, but .* needs Java 25"):
+        resolve_java(TARGET, java)
