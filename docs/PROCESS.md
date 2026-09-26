@@ -120,8 +120,8 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          the migration rule if this brief changes anything persisted (cache, files)>
          Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared).
          ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
-         a script in the scratchpad; commit messages via `git commit -F /abs/file`; never
-         `git stash`; never pipe `mise run check` into a commit chain."
+         a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
+         (it runs the check and commits only if green); never `git stash`.""
 End with: the Worker report exactly as specified in docs/PROCESS.md, including a thorough
           Retrospective; state your worktree path and branch name.
 ```
@@ -173,8 +173,9 @@ new classes of defect:
   `git rebase -x`, `GIT_DIR` points at the real repository.
 - Git commands against the main checkout are refused from a worktree.
   Read its files directly instead.
-- Never pipe `mise run check` into a commit chain (`check | grep && git
-  commit`): the pipe's exit status is grep's, not the check's.
+- Commit only with `mise run commit -- -F /abs/msg.txt`: it runs the
+  check unpiped and commits only on exit 0. Never pipe `mise run check`
+  into a commit chain (the pipe's status is the last command's).
 - **Leak guard for process-starting tests.** Tag each spawned process's
   environment with a per-test token. At teardown, scan `/proc` for the
   token, SIGKILL any survivor, and fail the test (see
@@ -243,6 +244,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker X (tooling) | `mise run commit`, `strays.py --token/--cwd`, `mutate.py --batch` with untracked files landed; PLR0913 forced a cleaner shape twice | **adopt**: the brief template's verbatim line and the Worker contract now require `mise run commit`; the helper split is the pattern for synthetic-/proc tests |
 | 2026-09-26 | helper (Astra, PR #5 javap) | Its sandbox's PID namespace broke the process tests, so it could not run the full check; a sonnet review found the version JSON was trusted without its manifest sha1 | **adopt**: the lead runs the full check and a live smoke test on every helper PR, and fixes small findings in a commit on top of the PR branch (never rewriting it), then rebase-merges. Helper issues spell out the trust chain to verify |
 | 2026-09-26 | worker V (wire-only) | A committed javap with DFU and Gson on the classpath would have saved a third of the brief | **adopt**: delegated as issue #6 (extends #5) |
 | 2026-09-26 | worker V | `ServerStatus.CODEC` uses `lenientOptionalFieldOf`; only the absent case meets the evidence standard | **reject** (no change): the evidence standard held; protocol-research note added |
@@ -412,6 +414,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-09-26 | Commits go through `mise run commit` (check, then commit only if green) | The piped-check slip happened twice |
 | 2026-09-26 | Independent Next items may be delegated to the maintainer's helper agent via `helper-ready` GitHub issues | Maintainer: an optional helping hand; Claude stays primary |
 | 2026-09-26 | ADR-0008: explicit idempotent installs (`mscts adapter install`, `--from`), an honest prompt, a checksum-pinned registry, Adapter authoring guide + conformance kit, DX goal G6 | User direction: an elegant, honest DX; installs never hidden in test runs |
 | 2026-09-26 | ADR-0007: wire-only Divergences are reported separately and excluded from scores; the Pumpkin Adapter writes native world saves | User decisions |

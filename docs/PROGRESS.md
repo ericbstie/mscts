@@ -78,9 +78,6 @@ Batch 2, briefed against `a64a2b5`:
   so the Self-check reuses the session Reference (G5); Bot-named `failed`
   Divergences (G3) (Next 2a).
 
-- **X** (sonnet, `tooling`, against `d939909`): `mise run commit`,
-  `strays.py --token/--cwd`, `mutate.py --batch` with untracked files
-  (Next 11, first half).
 
 After W: the opus audit (Next 12).
 
@@ -139,6 +136,8 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker X: `mise run commit` (the only way to commit), `strays.py
+  --token/--cwd`, `mutate.py --batch` with untracked files.
 - Worker V: observable vs wire-only Divergences; status declared
   defaults and `update_tags` order in the canonical table.
 - Helper PR #5 (Astra): `scripts/research/javap.py`; the lead added the
