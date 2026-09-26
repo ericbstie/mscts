@@ -1,28 +1,22 @@
 """The Reference Adapter: vanilla Minecraft server for the Target."""
 
 import hashlib
-import http.client
 import json
 import os
 import re
 import shutil
-import ssl
-import tempfile
-import urllib.request
 import uuid
 import zipfile
-from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from urllib.parse import urlsplit
 
+from mscts import install, registry
 from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.fetch import Fetch, https_get
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
-
-MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 
 JAR = "server.jar"
 # A fixed max heap, so the Reference's memory (and GC timing) does not depend on the
@@ -32,78 +26,12 @@ HEAP = "-Xmx1G"
 OPERATOR_LEVEL = 4
 # The java launcher to run the Reference with, if the constructor names none.
 JAVA_ENV = "MSCTS_JAVA"
-_FETCH_TIMEOUT_S = 60
-
-
-def _https_only_opener() -> urllib.request.OpenerDirector:
-    """An opener that can speak nothing but HTTPS: no file:, ftp:, data: or http: handler.
-
-    It honours HTTPS_PROXY and follows no redirects (a 3xx raises), so no URL other than
-    the one `https_get` checked is ever opened.
-    """
-    opener = urllib.request.OpenerDirector()
-    for handler in (
-        urllib.request.ProxyHandler(),
-        urllib.request.HTTPSHandler(context=ssl.create_default_context()),
-        urllib.request.HTTPDefaultErrorHandler(),
-        urllib.request.HTTPErrorProcessor(),
-        urllib.request.UnknownHandler(),
-    ):
-        opener.add_handler(handler)
-    return opener
-
-
-def https_get(url: str) -> bytes:
-    """Return the body of an HTTPS GET of `url`. Any other scheme is refused up front."""
-    if urlsplit(url).scheme != "https":
-        msg = f"refusing to fetch a non-HTTPS URL: {url}"
-        raise ProvisionError(msg)
-    with _https_only_opener().open(url, timeout=_FETCH_TIMEOUT_S) as response:
-        if not isinstance(response, http.client.HTTPResponse):  # urllib types it as Any
-            msg = f"unexpected response {type(response).__name__} from {url}"
-            raise TypeError(msg)
-        return response.read()
-
-
-type Fetch = Callable[[str], bytes]
-
-
-def _sha1(data: bytes) -> str:
-    # Mojang publishes SHA-1; it is an integrity check here, not a security boundary.
-    return hashlib.sha1(data, usedforsecurity=False).hexdigest()
-
-
-def _verify(data: bytes, *, sha1: str, size: int | None = None, what: str) -> None:
-    """Raise ProvisionError unless `data` has the published sha1 (and size)."""
-    if size is not None and len(data) != size:
-        msg = f"{what}: size {len(data)} does not match the published {size}"
-        raise ProvisionError(msg)
-    if _sha1(data) != sha1:
-        msg = f"{what}: sha1 {_sha1(data)} does not match the published {sha1}"
-        raise ProvisionError(msg)
-
-
-@dataclass(frozen=True, slots=True)
-class _Download:
-    """A download as the version JSON publishes it."""
-
-    url: str
-    sha1: str
-    size: int
 
 
 def _protocol_version(jar: Path) -> int:
     """The protocol_version from the version.json inside a server jar."""
     with zipfile.ZipFile(jar) as archive:
         return int(json.loads(archive.read("version.json"))["protocol_version"])
-
-
-def _replace_atomically(path: Path, data: bytes) -> None:
-    """Put `data` at `path` with one rename, so nobody ever sees a partial file there."""
-    descriptor, part = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".part")
-    with os.fdopen(descriptor, "wb") as file:
-        file.write(data)
-    Path(part).replace(path)
 
 
 # JVM system properties that cut every Reference Instance off from all networks except
@@ -407,9 +335,10 @@ def resolve_java(target: Target, java: Path | str | None = None) -> Path:
 
 
 class VanillaAdapter:
-    """Provisions the vanilla server jar and prepares it for a ServerSpec."""
+    """Installs the vanilla server jar from the Registry and prepares it for a ServerSpec."""
 
     name = "vanilla"
+    binary = JAR
 
     def __init__(self, fetch: Fetch = https_get, *, java: Path | None = None) -> None:
         """Download with `fetch`, and launch with the `java` launcher.
@@ -422,43 +351,28 @@ class VanillaAdapter:
         self._java = java
 
     def provision(self, target: Target, cache_dir: Path) -> Installation:
-        """Download the server jar for `target` into `cache_dir/vanilla/<version>/`.
+        """The Installation for `target`, verified; if there is none, install its Registry entry.
 
-        Idempotent: a cached jar whose sha1 matches the manifest is not downloaded again.
+        The entry pins the jar by the sha1 and size Mojang publishes (data/registry.toml).
         """
-        server = self._server_download(target)
-        root = cache_dir.absolute() / self.name / target.minecraft_version
-        jar = root / JAR
-        if not (jar.is_file() and _sha1(jar.read_bytes()) == server.sha1):
-            data = self._fetch(server.url)
-            _verify(data, sha1=server.sha1, size=server.size, what=server.url)
-            root.mkdir(parents=True, exist_ok=True)
-            _replace_atomically(jar, data)
-        protocol = _protocol_version(jar)
-        if protocol != target.protocol_version:
-            msg = f"{jar} speaks protocol {protocol}, but the Target is {target.protocol_version}"
-            raise ProvisionError(msg)
-        return Installation(adapter=self.name, target=target, root=root)
+        existing = install.installed(self, target, cache_dir)
+        if existing is not None:
+            return existing
+        entry = registry.official().resolve(self.name, target)
+        return install.install_entry(self, target, cache_dir, entry, self._fetch).installation
 
-    def _server_download(self, target: Target) -> _Download:
-        """The verified manifest -> version JSON -> `downloads.server` chain for `target`."""
-        manifest = json.loads(self._fetch(MANIFEST_URL))
-        entries = [v for v in manifest["versions"] if v["id"] == target.minecraft_version]
-        if len(entries) != 1:
-            msg = f"{target.minecraft_version} is not in the version manifest exactly once"
-            raise ProvisionError(msg)
-        document = self._fetch(entries[0]["url"])
-        _verify(document, sha1=entries[0]["sha1"], what=entries[0]["url"])
-        version = json.loads(document)
-        java = version["javaVersion"]["majorVersion"]
-        if java != target.java_major:
+    def check(self, binary: Path, target: Target) -> None:
+        """Raise ProvisionError unless `binary` is a server jar that speaks `target`'s protocol."""
+        try:
+            protocol = _protocol_version(binary)
+        except (zipfile.BadZipFile, KeyError, ValueError) as error:
+            msg = f"{binary} is not a vanilla server jar: {error!r}"
+            raise ProvisionError(msg) from error
+        if protocol != target.protocol_version:
             msg = (
-                f"{target.minecraft_version} needs Java {java}, "
-                f"but the Target says Java {target.java_major}"
+                f"{binary} speaks protocol {protocol}, but the Target is {target.protocol_version}"
             )
             raise ProvisionError(msg)
-        server = version["downloads"]["server"]
-        return _Download(url=str(server["url"]), sha1=str(server["sha1"]), size=int(server["size"]))
 
     def _java_launcher(self, target: Target) -> Path:
         """The real, absolute path of a java launcher of `target`'s Java major version."""

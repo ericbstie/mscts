@@ -41,6 +41,7 @@ test needs it:
 | `target.py` | `Target`, `TARGET` (the pinned 26.3 / 777) |
 | `cache.py` | `cache_dir()`: the download cache shared by every worktree and session |
 | `registry.py`, `data/registry.toml` | the Registry: `Entry`, `Registry`, `parse`, `official()` (ADR-0008) |
+| `install.py` | Installations: `installed`, `install_entry`, `install_from` (ADR-0008) |
 | `codec/wire.py` | primitive wire types: `Reader`, `Writer` |
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
@@ -375,10 +376,21 @@ class ServerSpec:                   # invariants (not fields): offline, no encry
     compression_threshold: int = 256
 
 @frozen
+class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
+    sha256: str                     # of the binary; every use verifies the binary by it
+    size: int
+    entry: str | None = None        # the Registry entry it hash-matches, "pumpkin nightly-48cba7ee"
+    url: str | None = None          # downloaded from (the entry's URL) ...
+    final_url: str | None = None    # ... which redirected here
+    from_path: str | None = None    # or copied from this `--from` file (absolute)
+    installed_at: str | None = None # ISO 8601, UTC
+
+@frozen
 class Installation:
     adapter: str                    # "vanilla"
     target: Target
-    root: Path                      # immutable, inside the cache dir
+    root: Path                      # <cache>/<adapter>/<minecraft_version>, absolute, immutable
+    source: Source | None = None    # None only for one built by hand (tests)
 
 @frozen
 class LaunchPlan:
@@ -393,7 +405,12 @@ class PrepareError(RuntimeError): ...     # prepare cannot produce a LaunchPlan 
 
 class Adapter(Protocol):
     name: str
-    def provision(self, target: Target, cache_dir: Path) -> Installation: ...    # idempotent, hash-verified
+    binary: str                     # the one file an Installation holds: "server.jar", "pumpkin"
+    def provision(self, target: Target, cache_dir: Path) -> Installation: ...
+        # install.installed(...), else install.install_entry(its Registry entry); verified by sha256
+    def check(self, binary: Path, target: Target) -> None: ...
+        # ProvisionError unless `binary` is a server it can run (vanilla: a jar speaking
+        # target.protocol_version; Pumpkin: an ELF executable). Runs before any install lands.
     def prepare(self, installation: Installation, spec: ServerSpec,
                 workdir: Path) -> LaunchPlan: ...                             # writes COMPLETE native config
 
@@ -417,8 +434,26 @@ class Adapter(Protocol):
 #   field, before anything is written, never approximated. The fields a server honours
 #   only for some values live in one named table (adapters/pumpkin.py LIMITS), and so does
 #   every range its config types can hold: a value it cannot read back is refused too.
-#   PumpkinAdapter(fetch=https_get) takes the nightly unhashed, so provision records its
-#   sha256 in SOURCE.json and checks the cached binary against it; it never refreshes.
+# - an Installation is written only by install.py (one rename, complete or not at all), is
+#   never refreshed, and records its Source; provision fetches only through the Adapter's
+#   `fetch` (VanillaAdapter/PumpkinAdapter(fetch=https_get)), so unit tests stay hermetic.
+
+# install.py: Installations (ADR-0008)
+@frozen
+class Installed:
+    installation: Installation
+    changed: bool                   # False: installed and verified already; nothing was done
+    message: str                    # exactly what it did, or why it did nothing
+def installed(adapter, target, cache_dir) -> Installation | None: ...
+    # verified by the recorded sha256; None if absent; ProvisionError naming the fix
+    # ("delete <root> and run `mscts adapter install <adapter>` again") if unrecorded or changed
+def install_entry(adapter, target, cache_dir, entry: Entry, fetch: Fetch) -> Installed: ...
+    # downloads entry.url; entry.matches(body) or ProvisionError with the actual sha256, the
+    # entry's note ("the nightly moved") and the `--from` command. Another build installed
+    # already → ProvisionError naming the delete + install command; never replaced silently
+def install_from(adapter, target, cache_dir, path: Path, registry: Registry) -> Installed: ...
+    # records the file's sha256 and path, and an entry only if the file hash-matches it
+def install_command(adapter: str, *, version=None, path=None) -> str: ...  # the exact command line
 
 @frozen
 class Instance:

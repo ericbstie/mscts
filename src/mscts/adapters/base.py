@@ -19,12 +19,26 @@ class PrepareError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class Source:
+    """Where an Installation's binary came from, as its SOURCE.json records it (ADR-0008)."""
+
+    sha256: str  # of the installed binary; every later use verifies the binary by it
+    size: int
+    entry: str | None = None  # the Registry entry it hash-matches ("pumpkin nightly-48cba7ee")
+    url: str | None = None  # the URL it was downloaded from (the entry's)
+    final_url: str | None = None  # where that URL finally redirected to
+    from_path: str | None = None  # the `--from` file it was copied from
+    installed_at: str | None = None  # ISO 8601, UTC
+
+
+@dataclass(frozen=True, slots=True)
 class Installation:
     """The binaries an Adapter has provisioned for a Target, cached on disk."""
 
     adapter: str
     target: Target
     root: Path  # immutable, inside the cache dir
+    source: Source | None = None  # None only for an Installation built by hand (tests)
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,9 +56,14 @@ class Adapter(Protocol):
     """Translates a ServerSpec into one server's native config. Never runs a process."""
 
     name: str
+    binary: str  # the one file an Installation holds besides SOURCE.json ("server.jar")
 
     def provision(self, target: Target, cache_dir: Path) -> Installation:
-        """Obtain the binaries for `target` into `cache_dir`. Idempotent and hash-verified."""
+        """The verified Installation for `target`, installing its Registry entry if missing."""
+        ...
+
+    def check(self, binary: Path, target: Target) -> None:
+        """Raise ProvisionError unless `binary` is a server this Adapter can run for `target`."""
         ...
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:

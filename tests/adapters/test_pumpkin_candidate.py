@@ -1,37 +1,34 @@
 import hashlib
-import json
 from pathlib import Path
-from urllib.parse import urlsplit
 
 import pytest
 
-from mscts.adapters.base import Installation
 from mscts.adapters.fetch import Download, https_get
-from mscts.adapters.pumpkin import NIGHTLY_URL, PumpkinAdapter
+from mscts.adapters.pumpkin import PumpkinAdapter
+from mscts.registry import official
 from mscts.target import TARGET
 
 pytestmark = pytest.mark.candidate
 
 
-def test_provision_fetches_the_nightly_and_records_it(cache_dir: Path) -> None:
+def test_provision_gives_the_installed_build_verified_and_recorded(cache_dir: Path) -> None:
     installation = PumpkinAdapter().provision(TARGET, cache_dir)
-    assert installation == Installation(
-        adapter="pumpkin", target=TARGET, root=cache_dir / "pumpkin/26.3"
-    )
+    assert installation.root == cache_dir / "pumpkin/26.3"
+    assert installation.source is not None
     binary = (installation.root / "pumpkin").read_bytes()
-    source = json.loads((installation.root / "SOURCE.json").read_text(encoding="utf-8"))
     assert binary.startswith(b"\x7fELF")
-    assert (source["url"], source["size"], source["sha256"]) == (
-        NIGHTLY_URL,
-        len(binary),
+    assert (installation.source.sha256, installation.source.size) == (
         hashlib.sha256(binary).hexdigest(),
+        len(binary),
     )
-    # GitHub redirects the release URL to its asset host; every hop stayed on HTTPS.
-    final = urlsplit(source["final_url"])
-    assert (final.scheme, final.hostname) == ("https", "release-assets.githubusercontent.com")
+    # It names a Registry entry only if it is that entry's build.
+    if installation.source.entry is not None:
+        entry = official().resolve("pumpkin", TARGET)
+        assert installation.source.entry == str(entry)
+        assert entry.matches(binary)
 
 
-def test_provision_does_not_download_a_cached_nightly_again(cache_dir: Path) -> None:
+def test_provision_does_not_download_an_installed_build_again(cache_dir: Path) -> None:
     binary = PumpkinAdapter().provision(TARGET, cache_dir).root / "pumpkin"
     before = binary.stat()
     fetched: list[str] = []
