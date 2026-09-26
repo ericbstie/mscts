@@ -52,6 +52,7 @@ class Args:
     new: str
     pytest_args: tuple[str, ...]
     timeout_s: float
+    skip_baseline: bool
 
 
 def split_argv(argv: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -75,6 +76,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("old")
     parser.add_argument("new")
     parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S, dest="timeout_s")
+    parser.add_argument(
+        "--skip-baseline",
+        action="store_true",
+        dest="skip_baseline",
+        help="skip the no-op sanity run (the caller already knows the selection is green)",
+    )
     return parser
 
 
@@ -83,8 +90,9 @@ def parse_args(argv: Sequence[str]) -> Args:
 
     Raises:
         MutateError: There is no "--", or nothing follows it.
-        SystemExit: The part before "--" is not `[--timeout SECONDS] <file> <old> <new>`
-            (argparse prints the usage message and exits with code 2).
+        SystemExit: The part before "--" is not
+            `[--timeout SECONDS] [--skip-baseline] <file> <old> <new>` (argparse prints
+            the usage message and exits with code 2).
     """
     own, pytest_args = split_argv(argv)
     if not pytest_args:
@@ -97,6 +105,7 @@ def parse_args(argv: Sequence[str]) -> Args:
         new=parsed.new,
         pytest_args=tuple(pytest_args),
         timeout_s=parsed.timeout_s,
+        skip_baseline=parsed.skip_baseline,
     )
 
 
@@ -205,12 +214,18 @@ class Mutation:
     new: str
 
 
+def _format_exit(returncode: int | None) -> str:
+    """`returncode` for a message: "timeout" if it is None, else the number."""
+    return "timeout" if returncode is None else str(returncode)
+
+
 def run_mutation(
     mutation: Mutation,
     pytest_args: Sequence[str],
     *,
     timeout_s: float,
     run: Callable[[Sequence[str], float], int | None],
+    skip_baseline: bool = False,
 ) -> Outcome:
     """Apply `mutation`, run it, always restore, and classify the result.
 
@@ -218,11 +233,26 @@ def run_mutation(
     (None on a timeout). Real use passes a `uv run pytest` subprocess call; tests inject a
     fake, so every exit code `classify` distinguishes is pinned without spawning pytest.
 
+    Unless `skip_baseline`, first runs `pytest_args` against `mutation.file` as it stands:
+    a mutation can only be judged against a green baseline. If that run does not pass
+    (exit code 0), returns INVALID ("the selection is not green before mutating") without
+    ever touching `mutation.file`. Pass `skip_baseline=True` only when the baseline was
+    already checked once elsewhere for this exact selection (batch mode does, over the
+    whole batch, rather than once per mutation).
+
     Raises:
         MutateError: `mutation.old` does not occur in `mutation.file` exactly once, or a
             backup from a previous, uncleaned run already exists. Neither case runs `run`
             or touches `mutation.file`.
     """
+    if not skip_baseline:
+        baseline_returncode = run(pytest_args, timeout_s)
+        if baseline_returncode != 0:
+            detail = (
+                "the selection is not green before mutating "
+                f"(pytest exit code {_format_exit(baseline_returncode)})"
+            )
+            return Outcome("INVALID", detail)
     backup = backup_path(mutation.file)
     apply_mutation(mutation.file, backup, mutation.old, mutation.new)
     try:
@@ -249,7 +279,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     mutation = Mutation(args.file, args.old, args.new)
     try:
-        outcome = run_mutation(mutation, args.pytest_args, timeout_s=args.timeout_s, run=run)
+        outcome = run_mutation(
+            mutation,
+            args.pytest_args,
+            timeout_s=args.timeout_s,
+            run=run,
+            skip_baseline=args.skip_baseline,
+        )
     except MutateError as exc:
         print(f"mutate.py: {exc}", file=sys.stderr)
         return _EXIT_BAD_ARGS

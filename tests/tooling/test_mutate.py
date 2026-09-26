@@ -52,6 +52,16 @@ def test_parse_args_reads_an_explicit_timeout(mutate: types.ModuleType) -> None:
     assert args.timeout_s == 5.0
 
 
+def test_parse_args_skip_baseline_defaults_to_false(mutate: types.ModuleType) -> None:
+    args = mutate.parse_args(["a.py", "old", "new", "--", "t.py"])
+    assert args.skip_baseline is False
+
+
+def test_parse_args_reads_skip_baseline(mutate: types.ModuleType) -> None:
+    args = mutate.parse_args(["--skip-baseline", "a.py", "old", "new", "--", "t.py"])
+    assert args.skip_baseline is True
+
+
 def test_parse_args_raises_when_no_pytest_args_follow_the_double_dash(
     mutate: types.ModuleType,
 ) -> None:
@@ -148,7 +158,9 @@ def test_run_mutation_kills_and_restores_when_the_fake_run_fails(
         return 1
 
     mutation = mutate.Mutation(target, "1", "2")
-    outcome = mutate.run_mutation(mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run)
+    outcome = mutate.run_mutation(
+        mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run, skip_baseline=True
+    )
 
     assert outcome.kind == "KILLED"
     assert target.read_text() == "value = 1\n"  # restored even though it killed
@@ -175,7 +187,7 @@ def test_run_mutation_classifies_every_other_fake_exit_code_and_restores(
     mutation = mutate.Mutation(target, "1", "2")
 
     outcome = mutate.run_mutation(
-        mutation, ["tests/x.py"], timeout_s=5.0, run=lambda *_: returncode
+        mutation, ["tests/x.py"], timeout_s=5.0, run=lambda *_: returncode, skip_baseline=True
     )
 
     assert outcome.kind == kind
@@ -193,9 +205,73 @@ def test_run_mutation_raises_and_touches_nothing_when_old_is_not_exactly_one(
         pytest.fail("run_mutation must not run pytest when the mutation could not be applied")
 
     with pytest.raises(mutate.MutateError, match="occurs 0 time"):
-        mutate.run_mutation(mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run)
+        mutate.run_mutation(
+            mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run, skip_baseline=True
+        )
 
     assert target.read_text() == "value = 1\n"
+
+
+# -- run_mutation's baseline check (increment 2) ---------------------------------------
+
+
+def test_run_mutation_checks_a_green_baseline_before_mutating(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("value = 1\n")
+    mutation = mutate.Mutation(target, "1", "2")
+    returncodes = iter([0, 1])  # baseline green, then the mutated run fails
+
+    def fake_run(*_args: object) -> int:
+        return next(returncodes)
+
+    outcome = mutate.run_mutation(mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run)
+
+    assert outcome.kind == "KILLED"
+    assert target.read_text() == "value = 1\n"
+
+
+def test_run_mutation_is_invalid_and_never_mutates_when_the_baseline_is_not_green(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    target = tmp_path / "code.py"
+    original = "value = 1\n"
+    target.write_text(original)
+    mutation = mutate.Mutation(target, "1", "2")
+    calls: list[tuple[Sequence[str], float]] = []
+
+    def fake_run(pytest_args: Sequence[str], timeout_s: float) -> int:
+        calls.append((pytest_args, timeout_s))
+        return 4  # a mistyped path: not green
+
+    outcome = mutate.run_mutation(mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run)
+
+    assert outcome.kind == "INVALID"
+    assert "not green before mutating" in outcome.detail
+    assert target.read_text() == original  # never touched
+    assert not mutate.backup_path(target).exists()  # never even backed up
+    assert len(calls) == 1  # only the baseline ran; the mutation itself was never tried
+
+
+def test_run_mutation_skip_baseline_runs_pytest_only_once(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("value = 1\n")
+    mutation = mutate.Mutation(target, "1", "2")
+    calls: list[tuple[Sequence[str], float]] = []
+
+    def fake_run(pytest_args: Sequence[str], timeout_s: float) -> int:
+        calls.append((pytest_args, timeout_s))
+        return 1
+
+    outcome = mutate.run_mutation(
+        mutation, ["tests/x.py"], timeout_s=5.0, run=fake_run, skip_baseline=True
+    )
+
+    assert outcome.kind == "KILLED"
+    assert len(calls) == 1
 
 
 # -- apply_mutation / restore (real files, no subprocess) --------------------------
