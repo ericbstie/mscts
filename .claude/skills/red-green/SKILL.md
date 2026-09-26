@@ -134,6 +134,18 @@ then one commit.
 - A branch that looks like an optimization (a prefix/suffix trim, a fast
   path) must be proven equivalent by an exhaustive small-domain check, or
   pinned by a test. One silently changed results.
+- `uv run` from a copy of the repo ignores `VIRTUAL_ENV`. Use
+  `UV_PROJECT_ENVIRONMENT=<venv>` with `--no-sync`. The editable install's
+  `.pth` names the original checkout, so a copy needs
+  `PYTHONPATH=<copy>/src` ahead of it. `tempfile.mkdtemp` already creates
+  its directory.
+- `-k` does not match hyphenated parametrize ids. Check with
+  `--collect-only -q` first.
+- Readiness, timing or process changes: run the touched test files 20
+  times before committing.
+- ty: `return frozenset()` infers `frozenset[Unknown]`, so annotate the
+  empty value. Pass a deliberately wrong type in a test with
+  `cast("str", x)`.
 - Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
 - At most 5 parameters, keyword-only included (PLR0913). Derive values
   rather than passing them. Never add a `noqa` before ruff has actually

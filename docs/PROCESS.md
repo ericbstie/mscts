@@ -69,7 +69,8 @@ Read CLAUDE.md, docs/PROCESS.md (Worker contract + Worker report), and the
 red-green and protocol-research skills before starting.
 
 Goal: <one sentence, in CONTEXT.md vocabulary>
-Increments (in order, one commit each): <numbered list; name the target module explicitly,
+Increments (in order, one commit each; say whether a new dataclass field may default):
+              <numbered list; name the target module explicitly,
               e.g. `src/mscts/bot.py`, not just an area label>
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
 Out of scope: <what not to touch>
@@ -96,6 +97,8 @@ new classes of defect:
   test red.
 - **Cleanup.** Processes, sockets and temp dirs are released on success,
   error, timeout and cancellation.
+- **Identity by ownership.** A check that a server is *the* server proves
+  it by ownership (process, socket), never by the server's own answer.
 - **No Mask hides gameplay.** Every Mask's reason shows the field has no
   player-observable meaning (ADR-0006).
 - **Candidate output never crashes the harness.** Malformed or
@@ -119,6 +122,10 @@ new classes of defect:
 - Tests that start servers must pick a free ephemeral port, never 25565,
   and must clean up their processes, even on failure. Other workers may
   run servers at the same time.
+- On an unrelated red (a test you did not touch), first run
+  `git merge --ff-only main`: the lead may have fixed it already.
+- Tests and tools that run git must drop every `GIT_*` env var. Under
+  `git rebase -x`, `GIT_DIR` points at the real repository.
 - Git commands against the main checkout are refused from a worktree.
   Read its files directly instead.
 - Never pipe `mise run check` into a commit chain (`check | grep && git
@@ -186,6 +193,20 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | lead (incident) | A worker N test ran `git init/config/commit` in a tmp dir during `git rebase -x`. The inherited `GIT_DIR` pointed it at the real repo: it wrote `user.name=Test` and `core.bare=true` into the shared config and committed onto the rebase. Three of worker P's in-flight commits were authored "Test". The lead's own `merge \| tail && worktree remove && branch -D` then hid the merge failure and deleted N's branch (recovered from the reflog) | **adopt**: (1) every test and tool that runs git scrubs `GIT_*` env vars (fixed in `tests/tooling/test_mutate.py` and `scripts/mutate.py`, with a pin test); (2) the lead never pipes a git command in an `&&` chain and checks `$?` explicitly (tech-lead skill); (3) after every integration, check that `git config --local --list` has no `user.*` and `core.bare=false` |
+| 2026-09-26 | lead | Integration re-checks retry `mise run check` once (`\|\| mise run check`) while other workers load the machine | **temporary**: it hides flakes, so each retry that was needed is logged. Remove it once the flake hunt is done |
+| 2026-09-26 | worker N (mutate) | `uv run` ignores `VIRTUAL_ENV` from an unrelated cwd (use `UV_PROJECT_ENVIRONMENT` + `--no-sync`); the editable `.pth` names the original checkout, so a copy needs `PYTHONPATH=<copy>/src` first; `mkdtemp` already creates its dir | **adopt**: red-green Known traps |
+| 2026-09-26 | worker N | New mutate.py exit codes: 0 KILLED, 1 SURVIVED, 2 setup error, 3 INVALID; batch mode baselines once for the whole batch | **adopt**: documented in red-green |
+| 2026-09-26 | worker N, M | `test_strays` flaked on other processes' multi-line argvs | **adopt**: fixed on main (91bd6c1) |
+| 2026-09-26 | worker M (runner) | The lead's environment fix landed while M fixed the same thing in parallel (a duplicate commit) | **adopt**: after landing a fix for a shared red, the lead messages in-flight workers (done for P); Worker contract: "on an unrelated red, `git merge --ff-only main` before fixing it yourself" |
+| 2026-09-26 | worker M | A readiness change nearly shipped a flaky test | **adopt**: red-green rule, run touched readiness/timing/process test files 20× before committing; **defer** a committed `scripts/repeat.py` (M's scratch `l-repeat.py`) |
+| 2026-09-26 | worker M | `-k` does not match hyphenated parametrize ids; mutate.py's old false KILLED bit again | **adopt**: fixed by N's exit-code rules; Known trap for `-k` |
+| 2026-09-26 | worker M | G5 at its limit (check 9.4–9.8 s) | **adopt**: Next item, pytest-xdist |
+| 2026-09-26 | worker M | A required new dataclass field forces every construction site to change at once | **adopt**: brief template, say whether a new field may have a default |
+| 2026-09-26 | worker M | No IPv6 in this container; ownership is IPv4-only, and it fails loudly | **adopt**: Adapter contract "Java Candidates bind IPv4 (`preferIPv4Stack`)"; tcp6 support needs a host with IPv6 |
+| 2026-09-26 | worker M | The candidate tier runs here with a scratch `MSCTS_CACHE` holding the pinned binary plus `SOURCE.json` | **adopt**: noted for briefs until `mscts adapter install --from` exists |
+| 2026-09-26 | worker M | ty: `return frozenset()` infers `frozenset[Unknown]`; `cast("str", x)` for deliberately wrong test types; PTH115 | **adopt**: Known traps |
+| 2026-09-26 | worker M | Identity checks must prove ownership, not trust an answer | **adopt**: Audit checklist item |
 | 2026-09-26 | worker K (audit) | `scripts/mutate.py` counts any non-zero pytest exit as KILLED, so a mistyped path "bites" (MD6). This weakens every earlier "proven to bite" claim | **adopt**: top-priority tooling fix (verdict needs failed tests, a no-op sanity run, `PYTHONDONTWRITEBYTECODE=1`, a parallel copy-based batch mode) |
 | 2026-09-26 | worker K | High findings: H1 readiness accepts any server at the Endpoint; H2 receive time is take time, not arrival; H3 an undecodable Candidate packet is unrecorded and would become `error` (excluded from compliance) | **adopt**: an opus fix batch before M2 wiring. Policy: **a failure caused by Candidate output is `mismatch`, never `error`** |
 | 2026-09-26 | worker K | `FrameDecoder.feed` also misdecodes a valid frame after `login_compression` | **adopt**: delete it. New lead default: a lossy API a worker reports is deleted, not deferred |

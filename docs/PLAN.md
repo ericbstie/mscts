@@ -274,6 +274,8 @@ class Adapter(Protocol):
 # - the complete-config test is a golden file derived from the server's own pristine
 #   first-run output, with every substitution documented;
 # - argv[0] is an absolute path to the exact runtime (e.g. Java 25), never a bare name.
+# - the server binds IPv4 only (Java Candidates: -Djava.net.preferIPv4Stack=true), because
+#   readiness ownership reads /proc/net/tcp.
 #   VanillaAdapter(fetch=https_get, *, java=None) takes the java launcher from `java`, else
 #   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved. Its runtime image's
 #   `release` file must name Target.java_major (read, not run: prepare stays hermetic), or

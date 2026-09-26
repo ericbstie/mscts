@@ -11,6 +11,10 @@ Bot. The **M2** Comparison engine is built; wiring (Scenario registry,
 Run, `selfcheck`) is next. The first Candidate (Pumpkin) has an Adapter,
 but it is blocked on user decisions (see below).
 
+Integrated since: N (trustworthy `scripts/mutate.py`: verdicts,
+baseline, batch mode) and M (readiness by socket ownership,
+`ServerSpec.host` + `runner.free_endpoint()`, MD8/R5/R9/R11/L6).
+
 Integrated workers: A (wire+framing), B (vanilla adapter), C (Codec),
 D (runner), E (vanilla network isolation), F (Transcript, Connection,
 Bot), G (regen + host-independent launch), H (Pumpkin adapter), I
@@ -38,14 +42,12 @@ User decisions (2026-09-26):
 
 ## In flight
 
-- **N** (sonnet): `scripts/mutate.py` trustworthy verdicts (MD6),
-  baseline check, `.pyc`-safe restore, and a copy-based parallel batch
-  mode; S311 ignore in tests.
-- **M** (opus): readiness proves socket ownership (H1); `ServerSpec.host`
-  in 127/8 per Instance; MD8, R5, R9, R11, L6.
 - **P** (opus): the join flow (login → configuration → play → first chunk
   batch) with a background reader, arrival stamping (H2), recorded decode
-  failures (H3a), MD1/MD2/MD4/MD5/L1–L5/L8.
+  failures (H3a), MD1/MD2/MD4/MD5/L1–L5/L8. **At integration**: reset the
+  author of its commits made while `user.name=Test` leaked (3+ commits
+  authored "Test <test@example.com>"), and reconcile its strays-helper
+  commit with main's 91bd6c1.
 
 ## Next
 
@@ -65,7 +67,11 @@ Take the first item. Split it if it is more than one failing test.
 5. Statistical tier design (opus, ADR-0006): the distribution test,
    confidence, N, and a per-kind Self-check; first Scenario
    `spawn/join-position`.
-6. Flake hunt: the unit tier under CPU stress, N times.
+6. Flake hunt: the unit tier under CPU stress, N times, then remove the
+   integration retry. Known suspect:
+   `tests/tooling/test_strays.py::test_main_finds_a_real_stray_process_by_its_argv`
+   (intermittent under concurrent load; P may have fixed a helper-exec
+   race). Also adopt pytest-xdist (G5 is at 9.4–9.8 s).
 7. `cli` (opus, M3a / ADR-0008): `mscts adapter install/list/status`, with
    `--from`, idempotence, the honest TTY prompt and non-TTY failure, and
    a registry file pinned by checksum. Then install the pinned Pumpkin

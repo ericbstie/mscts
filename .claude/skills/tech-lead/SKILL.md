@@ -34,6 +34,27 @@ first.
 6. Keep `docs/PROGRESS.md` current (Now, Next, Log) and push after each
    integration.
 
+## Integration safety (learned the hard way)
+
+- Never put a piped git command in an `&&` chain
+  (`git merge … | tail && git branch -D …`): the pipe's status is
+  `tail`'s. Redirect output to a file, then check `$?` explicitly before
+  any destructive step (worktree remove, branch delete).
+- After every integration, verify the shared config:
+  `git config --local --list` must show no `user.*` and `core.bare=false`.
+  A leaky test once rewrote both.
+- Rebase with `git rebase main -x "mise run check …"`. If a commit fails
+  only under `rebase -x`, suspect inherited `GIT_*` env vars before
+  suspecting the code.
+- Correct a worker's wrong commit author with `--exec 'git commit --amend
+  --no-edit --reset-author'`, scoped to the affected commits.
+- If a worker's hand-back message is lost (for example after a container
+  restart), extract its final report from the task output JSONL with a
+  small script: the SubagentHandback tool input holds it. Never read the
+  whole file.
+- When you land a fix for a red that blocks everyone, message the
+  in-flight workers (SendMessage).
+
 ## Steering heuristics
 
 - If a retrospective repeats a complaint, that is a process bug. Fix the
