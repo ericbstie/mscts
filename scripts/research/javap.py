@@ -1,15 +1,19 @@
 """Inspect the Target's vanilla client or server with javap, using verified cached jars."""
 
+import argparse
 import json
 import os
 import re
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
+from subprocess import run as _run
 
 from mscts import cache
-from mscts.adapters.base import ProvisionError
+from mscts.adapters.base import PrepareError, ProvisionError
 from mscts.adapters.fetch import Fetch, https_get
+from mscts.adapters.vanilla import resolve_java
 from mscts.registry import Entry
 from mscts.target import TARGET
 
@@ -114,3 +118,38 @@ def classpath(side: str, fetch: Fetch = https_get) -> Path:
     if not inner.exists() or inner.read_bytes() != body:
         _write(inner, body)
     return inner
+
+
+def _executable() -> Path:
+    executable = resolve_java(TARGET).with_name("javap")
+    if not executable.is_file():
+        msg = f"{executable} is missing; set MSCTS_JAVA to a Java {TARGET.java_major} JDK"
+        raise PrepareError(msg)
+    return executable
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Print javap output for the requested classes and return its exit status."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("side", choices=("client", "server"))
+    parser.add_argument("classes", nargs="+", metavar="Class")
+    parser.add_argument("-v", action="store_true", help="include the verbose constant pool")
+    args = parser.parse_args(argv)
+    if any(name.startswith("-") for name in args.classes):
+        parser.error("class names cannot start with '-'")
+    try:
+        executable = _executable()
+        jar = classpath(args.side)
+        command = [str(executable), "-c", "-p", "-constants"]
+        if args.v:
+            command.append("-v")
+        command.extend(["-classpath", str(jar), *args.classes])
+        # The selected JDK's absolute executable, with separate arguments and no shell.
+        return _run(command, check=False).returncode  # noqa: S603
+    except (OSError, ValueError, PrepareError, ProvisionError) as error:
+        print(f"javap.py: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())
