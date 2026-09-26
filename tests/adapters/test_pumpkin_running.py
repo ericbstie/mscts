@@ -10,13 +10,11 @@ import time
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
-from types import MappingProxyType
 
 import pytest
 from support.leak_guard import kill_survivors
 
 from mscts import install
-from mscts.adapters import pumpkin
 from mscts.adapters.base import Installation
 from mscts.adapters.pumpkin import PumpkinAdapter, pumpkin_toml
 from mscts.codec.framing import FrameDecoder, encode_frame
@@ -108,19 +106,7 @@ def installation(cache_dir: Path) -> Installation:
     return install.require(PumpkinAdapter(), TARGET, cache_dir)
 
 
-@pytest.fixture
-def world_and_difficulty_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Lift pumpkin.LIMITS: every ServerSpec asks for a flat world, which Pumpkin cannot make.
-
-    prepare refuses them (and any difficulty but normal), so no ServerSpec gets a
-    LaunchPlan yet. This test checks only what does not depend on the world or the
-    difficulty: readiness, the status, that Pumpkin read the whole config, and the stop.
-    """
-    monkeypatch.setattr(pumpkin, "LIMITS", MappingProxyType({}))
-
-
 @pytest.mark.asyncio
-@pytest.mark.usefixtures("world_and_difficulty_ignored")
 async def test_pumpkin_becomes_ready_reads_its_config_and_stops_on_its_stop_line(
     installation: Installation,
     tmp_path: Path,

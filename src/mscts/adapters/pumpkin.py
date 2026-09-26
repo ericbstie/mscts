@@ -12,9 +12,10 @@ from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
 
+from mscts.adapters import nbt
 from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
 from mscts.net import Endpoint
-from mscts.spec import Difficulty, GameMode, ServerSpec
+from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
 
 # The Linux x86-64 binary. Which build, from where, is the Registry's (data/registry.toml).
@@ -131,6 +132,13 @@ _DIFFICULTIES: Mapping[Difficulty, str] = MappingProxyType(
     }
 )
 
+# level.dat's Difficulty byte (Pumpkin writes it, and reads it only without
+# difficulty_settings).
+_DIFFICULTY_IDS: Mapping[Difficulty, int] = MappingProxyType(
+    {Difficulty.PEACEFUL: 0, Difficulty.EASY: 1, Difficulty.NORMAL: 2, Difficulty.HARD: 3}
+)
+
+
 # The ServerSpec numbers Pumpkin's config types can hold (inclusive; None: unbounded).
 # When one value does not fit its type, Pumpkin replaces its WHOLE config with its
 # defaults (online mode, encryption, telemetry and Bedrock on) and only logs it, so any
@@ -170,6 +178,7 @@ def _spec_values(spec: ServerSpec) -> dict[str, TomlValue]:
     """The pumpkin.toml values that translate `spec` (the world has no key in it)."""
     values: dict[str, TomlValue] = {
         "seed": str(spec.seed),
+        # Never read by Pumpkin (level.dat's difficulty is), but written to agree with it.
         "default_difficulty": _DIFFICULTIES[spec.difficulty],
         "default_gamemode": _GAME_MODES[spec.game_mode],
         # The one address it binds: the spec's loopback host, as the Reference's (offline,
@@ -294,24 +303,160 @@ class Limit:
     why: str
 
 
+# The world save prepare writes (ADR-0007): pumpkin.toml has no world type and Pumpkin
+# never reads default_difficulty, so a WorldPreset and a Difficulty reach Pumpkin only as
+# an existing world, in Pumpkin's own format. What Pumpkin reads from it, and what vanilla
+# writes for the same ServerSpec: docs/research/2026-09-26-pumpkin.md, "A native world
+# save".
+
+# The newest world Pumpkin reads (26.2), as it stamps its own saves: it exits on a
+# level.dat outside DataVersion 4435..=4903 or version 19132..=19133, so vanilla 26.3's own
+# save (DataVersion 5023) cannot be used.
+WORLD_DATA_VERSION = 4903
+WORLD_LEVEL_VERSION = 19133
+# Where Pumpkin reads them, under its cwd (pumpkin.toml keeps the default world path).
+LEVEL_DAT = "world/level.dat"
+WORLD_GEN_SETTINGS = "world/data/minecraft/world_gen_settings.dat"
+
+# Each WorldPreset's overworld generator, exactly as vanilla 26.3 writes it into
+# world_gen_settings.dat for the same ServerSpec (VanillaAdapter's level-type and
+# generator-settings), which Pumpkin reads as it is.
+_OVERWORLD_GENERATORS: Mapping[WorldPreset, nbt.Compound] = MappingProxyType(
+    {
+        # Vanilla's classic flat preset: bedrock, 2 dirt, grass block, so the surface is
+        # y = -60. Pumpkin's FlatGenerator ignores features, lakes and structure_overrides
+        # (it places none of them); vanilla places none either, with generate-structures
+        # off.
+        WorldPreset.FLAT: {
+            "settings": {
+                "features": nbt.Byte(0),
+                "biome": "minecraft:plains",
+                "layers": nbt.List(
+                    tuple(
+                        {"block": f"minecraft:{block}", "height": nbt.Int(height)}
+                        for block, height in (("bedrock", 1), ("dirt", 2), ("grass_block", 1))
+                    )
+                ),
+                "structure_overrides": nbt.List(("minecraft:strongholds", "minecraft:villages")),
+                "lakes": nbt.Byte(0),
+            },
+            "type": "minecraft:flat",
+        },
+    }
+)
+# The nether and the end, as vanilla writes them for every WorldPreset.
+_NETHER_GENERATOR: nbt.Compound = {
+    "settings": "minecraft:nether",
+    "biome_source": {"preset": "minecraft:nether", "type": "minecraft:multi_noise"},
+    "type": "minecraft:noise",
+}
+_END_GENERATOR: nbt.Compound = {
+    "settings": "minecraft:end",
+    "biome_source": {"type": "minecraft:the_end"},
+    "type": "minecraft:noise",
+}
+# The world spawn vanilla 26.3 sets in a flat world (level.dat spawn.pos). Pumpkin puts a
+# first-time player at (x + 0.5, the top block + 1, z + 0.5): it has no spawn radius.
+_SPAWN = (0, -60, 0)
+
+
+def world_gen_settings(spec: ServerSpec) -> nbt.Compound:
+    """Pumpkin's world/data/minecraft/world_gen_settings.dat for `spec`, in Pumpkin's layout.
+
+    The seed and dimensions are what vanilla writes for `spec`. generate_structures and
+    bonus_chest (never read by Pumpkin) are vanilla's values too.
+    """
+    return {
+        "data": {
+            "DataVersion": nbt.Int(WORLD_DATA_VERSION),
+            "seed": nbt.Long(spec.seed),
+            "generate_structures": nbt.Byte(0),  # vanilla's generate-structures=false
+            "bonus_chest": nbt.Byte(0),
+            "dimensions": {
+                "minecraft:overworld": {
+                    "type": "minecraft:overworld",
+                    "generator": _OVERWORLD_GENERATORS[spec.world],
+                },
+                "minecraft:the_nether": {
+                    "type": "minecraft:the_nether",
+                    "generator": _NETHER_GENERATOR,
+                },
+                "minecraft:the_end": {"type": "minecraft:the_end", "generator": _END_GENERATOR},
+            },
+        }
+    }
+
+
+def level_dat(spec: ServerSpec) -> nbt.Compound:
+    """Pumpkin's world/level.dat for `spec`: every key Pumpkin writes, in its write order.
+
+    Each value is the one Pumpkin writes into its own new world (`LevelData::default`),
+    except these substitutions: the difficulty is the spec's; the spawn is vanilla's
+    (Pumpkin searches noise terrain for one); allowCommands is vanilla's false (Pumpkin
+    uses it only for Bedrock); LastPlayed is 0 rather than the time, so the file depends
+    on the spec alone (Pumpkin never reads it); and the seed is the spec's.
+    """
+    difficulty = str(spec.difficulty)  # "peaceful": the name Pumpkin reads
+    x, y, z = _SPAWN
+    return {
+        "Data": {
+            "allowCommands": nbt.Byte(0),
+            "BorderCenterX": nbt.Double(0.0),
+            "BorderCenterZ": nbt.Double(0.0),
+            "BorderDamagePerBlock": nbt.Double(0.2),
+            "BorderSize": nbt.Double(60_000_000.0),
+            "BorderSafeZone": nbt.Double(5.0),
+            "BorderSizeLerpTarget": nbt.Double(60_000_000.0),
+            "BorderSizeLerpTime": nbt.Long(0),
+            "BorderWarningBlocks": nbt.Double(5.0),
+            "BorderWarningTime": nbt.Double(15.0),
+            "DataPacks": {"Disabled": nbt.List(()), "Enabled": nbt.List(("vanilla",))},
+            "DataVersion": nbt.Int(WORLD_DATA_VERSION),
+            # Pumpkin reads this compound, and Difficulty only if it is absent.
+            "difficulty_settings": {
+                "difficulty": difficulty,
+                "hardcore": nbt.Byte(0),
+                "locked": nbt.Byte(0),
+            },
+            "Difficulty": nbt.Byte(_DIFFICULTY_IDS[spec.difficulty]),
+            "DifficultyLocked": nbt.Byte(0),
+            "LastPlayed": nbt.Long(0),
+            "LevelName": "world",
+            "spawn": {
+                "dimension": "minecraft:overworld",
+                "pos": nbt.IntArray((x, y, z)),
+                "pitch": nbt.Float(0.0),
+                "yaw": nbt.Float(0.0),
+            },
+            "SpawnX": nbt.Int(x),
+            "SpawnY": nbt.Int(y),
+            "SpawnZ": nbt.Int(z),
+            "SpawnAngle": nbt.Float(0.0),
+            "SpawnPitch": nbt.Float(0.0),
+            "Version": {
+                "Name": "26.3",  # Pumpkin's label for its 26.2-format saves
+                "Id": nbt.Int(WORLD_DATA_VERSION),
+                "Snapshot": nbt.Byte(0),
+                "Series": "main",
+            },
+            "version": nbt.Int(WORLD_LEVEL_VERSION),
+            "map_id": nbt.Int(0),
+            "WorldGenSettings": {"seed": nbt.Long(spec.seed)},
+        }
+    }
+
+
 # The ServerSpec fields Pumpkin can honour only for some values, found in its source and
-# confirmed live (docs/research/2026-09-26-pumpkin.md, "World and difficulty"). prepare
-# refuses any other value: a Candidate that cannot honour a spec is reported, never
-# silently approximated.
+# confirmed live (docs/research/2026-09-26-pumpkin.md). prepare refuses any other value: a
+# Candidate that cannot honour a spec is reported, never silently approximated.
 LIMITS: Mapping[str, Limit] = MappingProxyType(
     {
         "world": Limit(
-            honoured=frozenset(),
+            honoured=frozenset(_OVERWORLD_GENERATORS),
             why=(
-                "pumpkin.toml has no world type: a new Pumpkin world is always "
-                "minecraft:noise (with structures). Pumpkin generates a flat one only "
-                "for an existing world whose world_gen_settings.dat says so, and it "
-                "reads worlds only up to DataVersion 4903 (26.2)"
+                "pumpkin.toml has no world type, so prepare writes the world save, and "
+                "it can write one only for these WorldPresets"
             ),
-        ),
-        "difficulty": Limit(
-            honoured=frozenset({Difficulty.NORMAL}),
-            why="Pumpkin never reads default_difficulty: a new world is always normal",
         ),
     }
 )
@@ -382,13 +527,13 @@ class PumpkinAdapter:
             raise ProvisionError(msg)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
-        """Write the complete Pumpkin config for `spec` into `workdir`, new or empty.
+        """Write the complete Pumpkin config and world save for `spec` into `workdir`.
 
-        Refuses, before writing anything, a spec Pumpkin cannot honour (LIMITS) or read
-        back (its config types), and a non-empty workdir.
+        `workdir` must be new or empty. Refuses, before writing anything, a spec Pumpkin
+        cannot honour (LIMITS) or read back (its config types), and a non-empty workdir.
         """
         _refuse_what_pumpkin_cannot_honour(spec)
-        files = {
+        texts = {
             "pumpkin.toml": pumpkin_toml(spec),
             "data/ops.json": ops_json(spec.operators),
             # Pumpkin's own first-run content of each, written so none is left to it.
@@ -396,15 +541,19 @@ class PumpkinAdapter:
             "data/banned-players.json": "[]",
             "data/banned-ips.json": "[]",
         }
+        files = {name: text.encode() for name, text in texts.items()}
+        # The world save, which alone carries the world type and the difficulty.
+        files[LEVEL_DAT] = nbt.gzipped(level_dat(spec))
+        files[WORLD_GEN_SETTINGS] = nbt.gzipped(world_gen_settings(spec))
         workdir.mkdir(parents=True, exist_ok=True)
         if any(workdir.iterdir()):
             # Pumpkin keeps its world, player data, bans and operators there: a reused
             # workdir would carry one Instance's state into the next.
             msg = f"workdir {workdir} is not empty; each Instance needs a new or empty one"
             raise PrepareError(msg)
-        (workdir / "data").mkdir()
-        for name, text in files.items():
-            (workdir / name).write_text(text, encoding="utf-8")
+        for name, content in files.items():
+            (workdir / name).parent.mkdir(parents=True, exist_ok=True)
+            (workdir / name).write_bytes(content)
         return LaunchPlan(
             # It takes no arguments: pumpkin.toml and data/ are read from the cwd.
             argv=(str(installation.root.absolute() / BINARY),),

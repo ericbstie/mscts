@@ -438,6 +438,14 @@ class Adapter(Protocol):
 #   field, before anything is written, never approximated. The fields a server honours
 #   only for some values live in one named table (adapters/pumpkin.py LIMITS), and so does
 #   every range its config types can hold: a value it cannot read back is refused too.
+#   (Pumpkin's LIMITS today: `world` honoured for the WorldPresets it can write a save for,
+#   FLAT; every Difficulty is honoured.)
+# - a setting the server's config cannot express is written as the server's own native
+#   files instead (ADR-0007): PumpkinAdapter.prepare writes world/level.dat and
+#   world/data/minecraft/world_gen_settings.dat (adapters/nbt.py) in Pumpkin's 26.2 format
+#   (DataVersion 4903), carrying the spec's world, seed and difficulty; golden-tested, each
+#   value Pumpkin's own new-world value or vanilla's for the spec, every substitution
+#   documented in level_dat().
 # - an Installation is written only by install.py (one rename, complete or not at all), is
 #   never refreshed, and records its Source; install.py fetches only through the `fetch` it
 #   is given (https_get by default), so unit tests stay hermetic.

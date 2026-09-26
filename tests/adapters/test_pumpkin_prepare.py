@@ -1,3 +1,4 @@
+import gzip
 from pathlib import Path
 from types import MappingProxyType
 
@@ -5,13 +6,14 @@ import pytest
 
 from mscts.adapters import pumpkin
 from mscts.adapters.base import Adapter, Installation, LaunchPlan, PrepareError
-from mscts.adapters.pumpkin import PumpkinAdapter, ops_json, pumpkin_toml
+from mscts.adapters.pumpkin import Limit, PumpkinAdapter, ops_json, pumpkin_toml
 from mscts.net import Endpoint
-from mscts.spec import Difficulty, ServerSpec
+from mscts.spec import Difficulty, ServerSpec, WorldPreset
 from mscts.target import TARGET
 
 # Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
 HOST = "127.1.2.3"
+DATA = Path(__file__).parent / "data"
 
 
 @pytest.fixture
@@ -24,80 +26,124 @@ def workdir(tmp_path: Path) -> Path:
     return tmp_path / "work"
 
 
-@pytest.fixture
-def if_pumpkin_honoured_every_spec(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Lift pumpkin.LIMITS, to test the rest of prepare: no ServerSpec gets past it yet."""
-    monkeypatch.setattr(pumpkin, "LIMITS", MappingProxyType({}))
-
-
 def nothing_in(workdir: Path) -> bool:
     return not workdir.exists() or not any(workdir.iterdir())
 
 
-# The limits of the nightly (docs/research/2026-09-26-pumpkin.md, "World and difficulty").
+# What Pumpkin cannot honour (LIMITS). Every ServerSpec value today is honoured, so these
+# tests narrow LIMITS to check that it is enforced.
 
 
-def test_prepare_refuses_a_flat_world_and_writes_nothing(
-    installation: Installation, workdir: Path
+def test_every_worldpreset_and_difficulty_is_honoured() -> None:
+    assert set(pumpkin.LIMITS) == {"world"}
+    assert pumpkin.LIMITS["world"].honoured == frozenset(WorldPreset)
+
+
+def test_prepare_refuses_a_value_outside_its_limit_and_writes_nothing(
+    installation: Installation, workdir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    spec = ServerSpec(host=HOST, port=25599, difficulty=Difficulty.NORMAL)
-    with pytest.raises(PrepareError, match=r"ServerSpec\.world=flat") as refusal:
-        PumpkinAdapter().prepare(installation, spec, workdir)
-    assert "ServerSpec.difficulty" not in str(refusal.value)
-    assert nothing_in(workdir)
-
-
-@pytest.mark.parametrize("level", [Difficulty.PEACEFUL, Difficulty.EASY, Difficulty.HARD])
-def test_prepare_refuses_a_difficulty_other_than_normal(
-    installation: Installation, workdir: Path, level: Difficulty
-) -> None:
-    spec = ServerSpec(host=HOST, port=25599, difficulty=level)
-    with pytest.raises(PrepareError, match=rf"ServerSpec\.difficulty={level}"):
-        PumpkinAdapter().prepare(installation, spec, workdir)
-    assert nothing_in(workdir)
-
-
-def test_every_field_pumpkin_cannot_honour_is_named_at_once(
-    installation: Installation, workdir: Path
-) -> None:
+    limits = {"world": Limit(frozenset(), "no world"), "motd": Limit(frozenset(), "no motd")}
+    monkeypatch.setattr(pumpkin, "LIMITS", MappingProxyType(limits))
     with pytest.raises(PrepareError) as refusal:
         PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
-    assert "ServerSpec.world=flat" in str(refusal.value)
-    assert "ServerSpec.difficulty=peaceful" in str(refusal.value)
+    # Every field it cannot honour is named at once.
+    assert "ServerSpec.world=flat: no world" in str(refusal.value)
+    assert "ServerSpec.motd=mscts: no motd" in str(refusal.value)
+    assert nothing_in(workdir)
 
 
-# The rest of prepare, as it would run if Pumpkin could honour every ServerSpec.
-
-if_honoured = pytest.mark.usefixtures("if_pumpkin_honoured_every_spec")
-
-
-@if_honoured
 def test_pumpkin_is_an_adapter(installation: Installation, workdir: Path) -> None:
     adapter: Adapter = PumpkinAdapter()
     assert adapter.name == "pumpkin"
     adapter.prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
 
 
-@if_honoured
-def test_prepare_writes_the_complete_config(installation: Installation, workdir: Path) -> None:
-    spec = ServerSpec(host=HOST, port=25599, operators=("Notch",))
-    PumpkinAdapter().prepare(installation, spec, workdir)
-    written = {
-        path.relative_to(workdir).as_posix(): path.read_text(encoding="utf-8")
+def _written(workdir: Path) -> dict[str, bytes]:
+    """Every file in `workdir`, the world save's gunzipped."""
+    return {
+        path.relative_to(workdir).as_posix(): (
+            gzip.decompress(path.read_bytes()) if path.suffix == ".dat" else path.read_bytes()
+        )
         for path in workdir.rglob("*")
         if path.is_file()
     }
-    assert written == {
-        "pumpkin.toml": pumpkin_toml(spec),
-        "data/ops.json": ops_json(("Notch",)),
+
+
+# The world save for the default ServerSpec (flat, seed 0, peaceful), uncompressed. Pumpkin's
+# own new-world level.dat with the substitutions level_dat() documents, and the
+# world_gen_settings.dat vanilla writes, in Pumpkin's layout. A Pumpkin booted on them read
+# them back unchanged but for those (docs/research/2026-09-26-pumpkin.md).
+GOLDEN_LEVEL = (DATA / "pumpkin-26.3-default-spec.level.nbt").read_bytes()
+GOLDEN_WORLD_GEN = (DATA / "pumpkin-26.3-default-spec.world_gen_settings.nbt").read_bytes()
+
+
+def test_prepare_writes_the_complete_config_and_world_save(
+    installation: Installation, workdir: Path
+) -> None:
+    spec = ServerSpec(host=HOST, port=25599, operators=("Notch",))
+    PumpkinAdapter().prepare(installation, spec, workdir)
+    assert _written(workdir) == {
+        "pumpkin.toml": pumpkin_toml(spec).encode(),
+        "data/ops.json": ops_json(("Notch",)).encode(),
         # Pumpkin's own first-run content of each; no ServerSpec field changes them.
-        "data/whitelist.json": "[]",
-        "data/banned-players.json": "[]",
-        "data/banned-ips.json": "[]",
+        "data/whitelist.json": b"[]",
+        "data/banned-players.json": b"[]",
+        "data/banned-ips.json": b"[]",
+        "world/level.dat": GOLDEN_LEVEL,
+        "world/data/minecraft/world_gen_settings.dat": GOLDEN_WORLD_GEN,
     }
 
 
-@if_honoured
+def _nbt_string(text: str) -> bytes:
+    return len(text).to_bytes(2) + text.encode()
+
+
+def test_each_value_the_tests_substitute_is_in_the_golden_files_once() -> None:
+    long_seed = b"\x04" + _nbt_string("seed") + bytes(8)
+    assert GOLDEN_LEVEL.count(b"\x08" + _nbt_string("difficulty") + _nbt_string("peaceful")) == 1
+    assert GOLDEN_LEVEL.count(b"\x01" + _nbt_string("Difficulty") + b"\x00") == 1
+    assert (GOLDEN_LEVEL.count(long_seed), GOLDEN_WORLD_GEN.count(long_seed)) == (1, 1)
+
+
+DIFFICULTY_IDS = {
+    Difficulty.PEACEFUL: 0,
+    Difficulty.EASY: 1,
+    Difficulty.NORMAL: 2,
+    Difficulty.HARD: 3,
+}
+
+
+@pytest.mark.parametrize("difficulty", list(Difficulty), ids=[str(d) for d in Difficulty])
+def test_the_level_dat_carries_the_difficulty(
+    installation: Installation, workdir: Path, difficulty: Difficulty
+) -> None:
+    spec = ServerSpec(host=HOST, port=25599, difficulty=difficulty)
+    PumpkinAdapter().prepare(installation, spec, workdir)
+    # difficulty_settings.difficulty (the one Pumpkin reads) and the Difficulty byte.
+    named = b"\x08" + _nbt_string("difficulty")
+    difficulty_byte = b"\x01" + _nbt_string("Difficulty")
+    expected = GOLDEN_LEVEL.replace(
+        named + _nbt_string("peaceful"), named + _nbt_string(str(difficulty))
+    ).replace(difficulty_byte + b"\x00", difficulty_byte + bytes([DIFFICULTY_IDS[difficulty]]))
+    written = _written(workdir)
+    assert written["world/level.dat"] == expected
+    assert written["world/data/minecraft/world_gen_settings.dat"] == GOLDEN_WORLD_GEN
+
+
+@pytest.mark.parametrize("seed", [-(2**63), -1, 2**63 - 1])
+def test_the_world_save_carries_the_seed(
+    installation: Installation, workdir: Path, seed: int
+) -> None:
+    PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599, seed=seed), workdir)
+    long_seed = b"\x04" + _nbt_string("seed")
+    zero, spec_seed = long_seed + bytes(8), long_seed + seed.to_bytes(8, signed=True)
+    written = _written(workdir)
+    assert written["world/level.dat"] == GOLDEN_LEVEL.replace(zero, spec_seed)
+    assert written["world/data/minecraft/world_gen_settings.dat"] == GOLDEN_WORLD_GEN.replace(
+        zero, spec_seed
+    )
+
+
 def test_prepare_returns_the_launch_plan(installation: Installation, workdir: Path) -> None:
     plan = PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert plan == LaunchPlan(
@@ -109,7 +155,6 @@ def test_prepare_returns_the_launch_plan(installation: Installation, workdir: Pa
     )
 
 
-@if_honoured
 def test_nothing_from_the_harness_environment_reaches_pumpkin(
     installation: Installation, workdir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -120,7 +165,6 @@ def test_nothing_from_the_harness_environment_reaches_pumpkin(
     assert dict(plan.env) == {}
 
 
-@if_honoured
 def test_the_binary_path_is_absolute_so_it_survives_the_cwd_change(
     workdir: Path, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -130,21 +174,18 @@ def test_the_binary_path_is_absolute_so_it_survives_the_cwd_change(
     assert plan.argv[0] == str(tmp_path / "cache/pumpkin/26.3/pumpkin")
 
 
-@if_honoured
 def test_prepare_creates_a_missing_workdir(installation: Installation, tmp_path: Path) -> None:
     workdir = tmp_path / "runs/1/work"
     PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert (workdir / "pumpkin.toml").is_file()
 
 
-@if_honoured
 def test_prepare_accepts_an_empty_workdir(installation: Installation, workdir: Path) -> None:
     workdir.mkdir()
     PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert (workdir / "pumpkin.toml").is_file()
 
 
-@if_honoured
 @pytest.mark.parametrize("stale", ["world/level.dat", "data/ops.json", "pumpkin.toml", ".lock"])
 def test_prepare_refuses_a_non_empty_workdir_and_leaves_it_alone(
     installation: Installation, workdir: Path, stale: str
@@ -159,7 +200,6 @@ def test_prepare_refuses_a_non_empty_workdir_and_leaves_it_alone(
     assert (files, (workdir / stale).read_bytes()) == ([stale], b"stale")
 
 
-@if_honoured
 @pytest.mark.parametrize(
     "spec",
     [
