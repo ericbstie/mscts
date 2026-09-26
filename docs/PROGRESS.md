@@ -25,9 +25,14 @@ glitches are tick-exact; Fixtures use commands only for now.
 User decisions (2026-09-26):
 1. **Decided.** The Pumpkin Adapter writes a flat world save (and the
    difficulty) in Pumpkin's own format, verified by a join.
-2. **Open.** The user wants to discuss this further: Pumpkin provision
-   fails here because the proxy's CA for GitHub hosts is rejected by
-   Python 3.13's strict X.509 check.
+2. **Decided (ADR-0008).** Installs are explicit and idempotent:
+   `mscts adapter install <adapter>` and `--from <path>`, an honest TTY
+   prompt, and a pinned registry. In this container Pumpkin is
+   provisioned by hand: a curl-fetched nightly (2026-09-26, sha256
+   `48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b`) at
+   `/tmp/claude-0/-home-user-mscts/b64e3998-dc60-5d76-a344-246fbb2e8295/scratchpad/pumpkin-pin/pumpkin-X64-Linux`.
+   The scratchpad does not survive container resets, so re-fetch it and
+   check the sha256.
 3. **Decided (ADR-0007).** Wire-only Divergences are reported in their own
    section and excluded from compliance scores.
 
@@ -61,11 +66,15 @@ Take the first item. Split it if it is more than one failing test.
    confidence, N, and a per-kind Self-check; first Scenario
    `spawn/join-position`.
 6. Flake hunt: the unit tier under CPU stress, N times.
-7. `adapter/pumpkin` (opus, after M): write a flat world save and the
+7. `cli` (opus, M3a / ADR-0008): `mscts adapter install/list/status`, with
+   `--from`, idempotence, the honest TTY prompt and non-TTY failure, and
+   a registry file pinned by checksum. Then install the pinned Pumpkin
+   here with `--from`.
+8. `adapter/pumpkin` (opus, after M and the install command): write a flat world save and the
    difficulty in Pumpkin's own format (level.dat at its DataVersion plus
    flat `world_gen_settings.dat`), lift `LIMITS` for them, and verify with
    a join (spawn y = -60, chunk contents).
-8. `compare` (opus, ADR-0007): classify Divergences as observable or
+9. `compare` (opus, ADR-0007): classify Divergences as observable or
    wire-only; add declared-default canonicalizations, each cited from
    the client decoder.
 

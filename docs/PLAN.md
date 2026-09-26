@@ -15,6 +15,7 @@ Each goal is a check we can run, not an aspiration.
 | G2 | **Trustworthy** | Every Scenario's Self-check is `match` in 20 out of 20 repeated runs. |
 | G3 | **Actionable** | Every Divergence names the Scenario, the Bot, the packet, the field path, and both values, and it reproduces on re-run. |
 | G4 | **Timed** | Every Scenario reports Measurements for the Reference and the Candidate over N repetitions (median, p95), plus Instance startup time. |
+| G6 | **Smooth DX** (ADR-0008) | Every command is idempotent and honest about what it did; every error names its fix. A server developer can write an Adapter from the authoring guide and prove it with `mscts adapter check` without reading mscts internals. |
 | G5 | **Fast loop** | `mise run check` takes under 10 s. `mise run test:reference` takes under 90 s on a warm cache. |
 
 Non-goals for now: Bedrock, online-mode auth and encryption, more than one
@@ -634,6 +635,16 @@ Divergences grouped by mechanic, each linked to its reproducible
 Scenario, with no declared deviations (ADR-0006). Also a compliance
 score, `blocked` counts per missing command, and history across Candidate
 versions.
+
+**M3a — Installs and the registry (ADR-0008).**
+- `mscts adapter install <adapter> [--version]` / `--from <path>`, plus
+  `list` and `status`, all idempotent;
+- the honest TTY prompt, and a non-TTY failure naming the command;
+- a committed registry pinned by checksum.
+
+**M9 — Adapter DX (ADR-0008).** An Adapter authoring guide with a
+template, and `mscts adapter check <adapter>`, a conformance kit that
+runs the Adapter contract against a live Instance.
 
 **Later.** A second Target, and more Candidates (Minestom launcher,
 FerrumC).

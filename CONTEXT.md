@@ -26,7 +26,11 @@ need is missing, add it here in the same commit that introduces it.
   empty, no telemetry, and no outbound (non-loopback) network connections
   are invariants, not options.
 - **Installation**: the binaries an Adapter has provisioned for a Target,
-  cached on disk.
+  cached on disk, with a recorded source (a registry entry or `--from`
+  file) and sha256. It is created only by `mscts adapter install`, or
+  after an explicit prompt (ADR-0008).
+- **Registry**: the maintainer-approved list of installable servers, each
+  pinned by version and checksum. It never trusts a name alone.
 - **LaunchPlan**: the argv, cwd, env and stop method an Adapter produces.
   It contains no process handling.
 - **Instance**: one running server process started from a LaunchPlan and
