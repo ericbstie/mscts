@@ -77,13 +77,40 @@ then one commit.
 - Mutate with `python3 scripts/mutate.py <file> <old> <new> -- <pytest args>`:
   it asserts `<old>` occurs exactly once, applies it, runs `uv run pytest
   <pytest args>` under a timeout (default 60 s), and always restores
-  `<file>` from its own backup (not git) — on a pass, a fail, a timeout or
-  Ctrl-C, so it is safe to run with uncommitted work in that file. Exit 0
-  means the mutation was killed (the tests bite); exit 1 means it
-  survived. Never hand-edit a mutation with `sed` or an editor, and never
+  `<file>` from its own backup (not git), verified by sha256 — on a pass, a
+  fail, a timeout or Ctrl-C, so it is safe to run with uncommitted work in
+  that file. Never hand-edit a mutation with `sed` or an editor, and never
   undo one with `git checkout <file>`: a loose `sed` pattern once hit two
   lines and hung pytest with no restore, and `git checkout` wipes
   uncommitted work in the file too.
+  - **Verdicts, not just an exit code.** KILLED (tool exit 0) means pytest
+    actually ran the selection and at least one test FAILED (pytest exit
+    1) — the only outcome that proves the tests bite. SURVIVED (tool exit
+    1) means pytest ran and every test passed (pytest exit 0): strengthen
+    the tests. INVALID (tool exit 3) covers everything else — a timeout,
+    or pytest exit 2 (interrupted), 3 (internal error), 4 (usage error,
+    e.g. a mistyped path) or 5 (no tests collected) — and is never a
+    kill, however the pytest process happened to exit: MD6
+    (docs/audits/2026-09-26-foundation.md) found a mistyped test path
+    counted as KILLED, which made "the tests bite" claims vacuous. Read
+    the printed detail, not just the verdict word.
+  - **A green baseline first.** Before mutating, `mutate.py` runs the same
+    pytest selection once, unmutated; if that is not green it reports
+    INVALID ("the selection is not green before mutating") and never
+    touches the file — a mutation can only be judged against tests that
+    were passing already. Pass `--skip-baseline` only when you already
+    know the selection is green (batch mode uses this to check once for
+    the whole batch instead of once per mutation).
+  - **Batch mode** runs many mutations without touching this worktree:
+    `python3 scripts/mutate.py --batch <spec.json> [--jobs N] --
+    <pytest args>`, where `<spec.json>` is a JSON list of `{file, old,
+    new, [id]}` objects. Each mutation runs in its own throwaway copy of
+    the tracked working tree (so the whole batch's baseline runs once,
+    not once per mutation), optionally `--jobs N` at a time. Prints one
+    `<id> <VERDICT>: <detail>` line per mutation and a summary, and exits
+    non-zero if any mutation SURVIVED or was INVALID. Use it for an
+    audit's mutation sweep instead of a hand-rolled loop over
+    `mutate.py`.
 - To silence one line for both ruff and bandit, write
   `# noqa: S603  # nosec B603`: two separate `#` tokens, noqa first. A
   combined comment satisfies only one tool. Keep a nosec to its rule ids,
