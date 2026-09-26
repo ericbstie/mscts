@@ -35,6 +35,10 @@ run = "uv run pytest -m 'not reference and not candidate and not statistical' -n
 description = "Everything a commit must pass"
 depends = ["lint", "types", "sec", "test"]
 
+[tasks.commit]
+description = "THE way to commit: mise run check, and `git commit` only if it exited 0"
+run = "uv run python3 scripts/commit_green.py --"
+
 [tasks."install:reference"]
 description = "Install the Reference (vanilla) into the shared cache; a no-op that says so if installed"
 run = "uv run mscts adapter install vanilla"

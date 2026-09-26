@@ -35,9 +35,20 @@ then one commit.
 5. **Check.** `mise run check`. If you touched anything server-facing
    (codec schemas, adapters, runner, Bot, Scenarios), also run
    `mise run test:reference`.
-6. **Commit** the test and the code together:
-   `git commit -m "<area>: <imperative summary>"`, where area is one of
-   `codec`, `net`, `bot`, `transcript`, `target`, `spec`, `adapter/<name>`, `runner`, `scenario`,
+6. **Commit** the test and the code together. Write the message to a file
+   (`git commit -F /abs/msg.txt`, never a heredoc), then commit through
+   **`mise run commit -- -F /abs/msg.txt`: THE way to commit in this
+   repo.** It runs `mise run check` itself, never through a pipe (it
+   captures the check's own combined output to a temp file and reads the
+   check subprocess's own exit code directly, then prints the tail), and
+   runs `git commit -F /abs/msg.txt` only when that exit code is 0; on a
+   red check it prints the failing part and exits with the check's own
+   code without ever calling `git commit`
+   (`scripts/commit_green.py`, `tests/tooling/test_commit_green.py`).
+   Never run `mise run check` yourself and separately pipe or chain its
+   result into a `git commit` call. Use `<area>: <imperative summary>`
+   for the subject line, where area is one of `codec`, `net`, `bot`,
+   `transcript`, `target`, `spec`, `adapter/<name>`, `runner`, `scenario`,
    `compare`, `measure`, `report`, `cli`, `docs` or `tooling`. Add a body
    only when the why is not obvious. End every message with the
    attribution trailer the session provides.
