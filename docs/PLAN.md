@@ -967,12 +967,26 @@ class RunResult:
     verdicts: tuple[Verdict, ...]   # property: repetition after repetition
 
 @frozen
-class Report:
+class Report:                       # report.py
     target: Target
-    candidate: str                  # adapter name
-    candidate_version: str          # status JSON version.name
+    reference: SideSummary          # name, status version.name, startup Measurements
+    candidate: SideSummary
     results: tuple[ScenarioResult, ...]
-    # compliance = matches / (scenarios − errors); to_json(), to_markdown()
+    notes: tuple[str, ...]          # plain remarks, e.g. what the Report leaves out
+    # Report.of(run_result, *, target, notes); repeat (property)
+    # later: compliance = matches / (scenarios − errors); to_json(), to_markdown()
+
+def render_text(report: Report) -> str: ...
+# Sections, in order: header (Reference, Candidate with versions, Target, repetitions);
+# a one-line summary (or "No differences from vanilla were found in the N scenarios run.");
+# "Differences a player would notice": observable Divergences by mechanic (the Scenario id's
+# first segment, titled from report.MECHANICS), then Scenario, each distinct one once with
+# "(in k of N runs)" when not in all, values over 80 chars cut with their full length;
+# "Wire-only differences": by mechanic, then **per packet** (the count of distinct differing
+# leaves and at most WIRE_EXAMPLES examples; this settles the per-leaf open question for the
+# Report, compare keeps reporting leaves); error/blocked Scenarios with their detail, and
+# "different in k of N runs"; "Timings (ms)": median and nearest-rank p95 per Measurement
+# name for both sides, instance.startup included; notes; a two-line legend.
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
@@ -1129,7 +1143,9 @@ then record the answer in an ADR:
 - Wire-only Divergences are reported per differing raw leaf, so a
   reordered `update_tags` (≈59 KB) yields one for every shifted leaf.
   Should the Report group them per packet, or should `compare` report
-  the shallowest canonically equal path instead? Decide with the Report.
+  the shallowest canonically equal path instead? **Decided with the
+  Report:** the Report groups them per packet (a count of differing
+  leaves and a few examples); `compare` keeps reporting every leaf.
 - ADR-0007 requires a Self-check with no wire-only Divergences, on the
   premise that vanilla sends identical bytes each run. The server writes
   `update_tags` from hash maps (worker P); if its order varies between
