@@ -2,8 +2,10 @@
 
 import hashlib
 import importlib.util
+import io
 import json
 import types
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -65,6 +67,43 @@ def test_client_jar_is_verified_and_reused_offline(
     downloads.responses.clear()
     assert javap.cached_jar("client", downloads) == jar
     assert downloads.calls == [_MANIFEST, _VERSION, _JAR]
+
+
+def test_server_classpath_extracts_only_the_inner_jar_and_reuses_it(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("META-INF/versions/26.3/server-26.3.jar", b"inner jar")
+        archive.writestr("../outside.txt", b"never extract this")
+    downloads = Downloads(stream.getvalue(), "server")
+
+    jar = javap.classpath("server", downloads)
+
+    assert jar.is_relative_to(tmp_path)
+    assert jar.name == "server-26.3.jar"
+    assert jar.read_bytes() == b"inner jar"
+    assert not list(tmp_path.rglob("outside.txt"))
+    modified = jar.stat().st_mtime_ns
+    downloads.responses.clear()
+    assert javap.classpath("server", downloads) == jar
+    assert jar.stat().st_mtime_ns == modified
+    jar.write_bytes(b"corrupt inner jar")
+    assert javap.classpath("server", downloads).read_bytes() == b"inner jar"
+    assert downloads.calls == [_MANIFEST, _VERSION, _JAR]
+
+
+def test_server_requires_the_target_inner_jar(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("META-INF/versions/old/server-old.jar", b"wrong version")
+
+    with pytest.raises(ProvisionError, match=r"server-26\.3\.jar"):
+        javap.classpath("server", Downloads(stream.getvalue(), "server"))
 
 
 def test_sha1_mismatch_is_not_cached(
