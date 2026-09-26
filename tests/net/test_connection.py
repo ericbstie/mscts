@@ -357,6 +357,96 @@ def test_recv_takes_two_frames_of_one_write_in_order_both_stamped_on_arrival(
     assert first.t_ns == second.t_ns < before_second
 
 
+def test_a_reply_that_arrives_while_the_caller_is_busy_is_stamped_when_it_arrived(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # Audit H2: the stamp was the time recv got round to reading, 300 ms late here.
+    written: list[int] = []
+
+    async def server(peer: Peer) -> None:
+        await peer.recv()
+        written.append(await peer.write(peer.frame("test:reply", value=1)))
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            await connection.send("test:request", value=1)
+            await asyncio.sleep(0.3)  # busy elsewhere, e.g. another Bot or a Control command
+            await connection.recv(timeout_s=1)
+
+    asyncio.run(client())
+    request, reply = transcript.events
+    assert reply.packet.name == "test:reply"
+    assert written[0] - transcript.start_ns <= reply.t_ns < request.t_ns + 50_000_000
+
+
+def test_close_ends_the_background_reader(toy_codec: Codec, transcript: Transcript) -> None:
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> list[tuple[bool, bool]]:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript
+            )
+            readers = [task for task in asyncio.all_tasks() if "reader" in task.get_name()]
+            await connection.close()
+            return [(task.done(), task.cancelled()) for task in readers]
+
+    # One reader, and close() leaves it finished (not merely asked to stop).
+    assert asyncio.run(client()) == [(True, True)]
+
+
+def test_an_unexpected_error_in_the_reader_is_raised_by_recv(
+    toy_codec: Codec, transcript: Transcript, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A harness bug must surface at the next recv, not vanish in a task nobody awaits.
+
+    def broken_decode(*args: object) -> Packet:
+        del args
+        msg = "a bug in a wire type"
+        raise RuntimeError(msg)
+
+    async def server(peer: Peer) -> None:
+        await peer.send("test:empty")
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            monkeypatch.setattr(toy_codec, "decode", broken_decode)  # before the reader runs
+            for _ in range(2):
+                with pytest.raises(RuntimeError, match="a bug in a wire type"):
+                    await connection.recv(timeout_s=1)
+
+    asyncio.run(client())
+    assert transcript.events == []
+
+
+def test_close_wakes_a_pending_recv(toy_codec: Codec, transcript: Transcript) -> None:
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            pending = asyncio.create_task(connection.recv(timeout_s=5))
+            await asyncio.sleep(0.01)
+            await connection.close()
+            with pytest.raises(ConnectionClosedError, match="the connection is closed"):
+                await pending
+
+    asyncio.run(client())
+    assert transcript.events == []
+
+
 def test_recv_records_a_packet_that_arrived_before_a_send_ahead_of_that_send(
     toy_codec: Codec, transcript: Transcript
 ) -> None:

@@ -66,9 +66,10 @@ need is missing, add it here in the same commit that introduces it.
   - **statistical**: random mechanics (spawning, loot) run N times per
     server and compared as distributions.
 - **Transcript**: the ordered, timestamped record of every Packet each Bot
-  sent and received, plus Marks.
+  sent and every Packet it took from what it received, plus Marks.
 - **Event**: one entry of a Transcript: a Packet one Bot sent or received,
-  and when.
+  and when: a sent Packet when it was written, a received one when it
+  arrived (not when the Bot took it).
 - **Mark**: a named timestamp a Scenario records so a Measurement can be
   computed.
 - **Mask**: a normalization rule that excludes an identifier with no

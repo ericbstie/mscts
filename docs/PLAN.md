@@ -199,22 +199,28 @@ class Connection:                   # one TCP connection; owns framing, compress
                                     # ProtocolError), login_acknowledged → CONFIGURATION,
                                     # finish_configuration → PLAY. Both directions switch together.
     # Not yet: login_compression (the join brief sets FrameDecoder.compression_threshold when
-    # recv takes it; frames are taken one at a time, so it applies from the very next frame),
-    # and play → configuration (start_configuration / configuration_acknowledged).
+    # the reader decodes it; frames are split one at a time, so it applies from the very next
+    # frame), and play → configuration (start_configuration / configuration_acknowledged).
     async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
     async def recv(self, *, timeout_s: float) -> Packet: ...           # records an Event
     async def close(self) -> None: ...                                 # idempotent; aborts after 1 s
+    # A background reader task reads the socket continuously from open until close: it stamps
+    # each complete frame when the read that completed it returned, decodes it in the State
+    # current then, and queues it. recv takes the next queued Packet and records it with that
+    # arrival stamp, so the Transcript holds the frames the Bot took, independent of TCP
+    # segmentation, each stamped when it arrived however late it is taken. close cancels the
+    # reader and waits for it to finish, and a recv still waiting raises ConnectionClosedError.
     # `name` is positional-only, so a packet field called `name` (login `hello`) fits in **fields.
     # Timeouts are named `timeout_s`: ruff's ASYNC109 flags a parameter named `timeout`, and its
     # docs endorse renaming it for functions that wrap asyncio.timeout.
     # send: CodecError if the fields do not fit, ConnectionClosedError if the connection was lost
     # (asyncio would silently discard the write); neither writes nor records. The Event holds
     # the Packet decoded from the exact bytes written, stamped immediately before the write.
-    # recv: stamped when the socket read that completed the frame returned (frames that arrive
-    # together share that time, however late they are taken); decoded in the State current when
-    # taken, and recorded then. TimeoutError leaves the Connection usable. CodecError for a
-    # corrupt frame (after the frames before it) or a strict-decode failure (nothing recorded).
-    # ConnectionClosedError when the server closes; the message says if that was mid-frame.
+    # recv: TimeoutError leaves the Connection usable. Whatever stopped the reader is raised
+    # once the frames before it are taken, and again by every later recv: CodecError for a
+    # corrupt frame or a strict-decode failure (nothing recorded), ConnectionClosedError when
+    # the server closes (the message says if that was mid-frame), ConnectionResetError on a
+    # reset, or the exception itself if the harness has a bug.
 
 class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
     name: str
@@ -719,10 +725,11 @@ then record the answer in an ADR:
   need Masks, and should Comparisons be scoped to windows between Marks?
 - How should chunk data be compared: decode the palette into block states,
   or compare raw?
-- Transcripts record a frame when the Bot *takes* it, so they do not depend
-  on TCP segmentation, but packets never taken are absent. Play will need
-  a background reader (keep-alives, teleports). Should Comparisons then be
-  scoped to windows between Marks, with a drain at each window end?
+- Transcripts record a frame when the Bot *takes* it (stamped when it
+  arrived, by the Connection's background reader), so they do not depend
+  on TCP segmentation, but packets never taken are absent. Should
+  Comparisons be scoped to windows between Marks, with a drain at each
+  window end?
 - Should `Packet.fields` be deeply immutable (MappingProxyType, tuples) so
   Packets are hashable in Transcripts and Comparisons? **Not needed for
   Comparison** (decided with the Comparison engine): alignment keys are
