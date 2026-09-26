@@ -2,6 +2,7 @@
 
 import contextlib
 import importlib.util
+import os
 import re
 import subprocess
 import sys
@@ -38,6 +39,18 @@ def _write_proc_entry(proc_dir: Path, pid: int, *, argv: list[str], ppid: int, c
     # "pid (comm) state ppid pgrp session tty_nr tpgid flags ...": only state and ppid matter
     # here, but a comm holding a space or ")" is exactly why ppid is parsed after the last ")".
     (entry / "stat").write_text(f"{pid} ({comm}) S {ppid} {pid} {pid} 0 -1 0\n")
+
+
+def _write_proc_environ(proc_dir: Path, pid: int, environ: dict[str, str]) -> None:
+    """A synthetic /proc/<pid>/environ (NUL-separated `NAME=value` entries)."""
+    (proc_dir / str(pid) / "environ").write_bytes(
+        b"\0".join(f"{key}={value}".encode() for key, value in environ.items()) + b"\0"
+    )
+
+
+def _write_proc_cwd(proc_dir: Path, pid: int, cwd: Path) -> None:
+    """A synthetic /proc/<pid>/cwd, a symlink to `cwd` (as the kernel's really is)."""
+    (proc_dir / str(pid) / "cwd").symlink_to(cwd)
 
 
 @pytest.fixture
@@ -93,6 +106,79 @@ def test_read_ppid_returns_none_for_a_gone_process(
 ) -> None:
     proc_dir.mkdir()
     assert strays.read_ppid(99999, proc_dir) is None
+
+
+# -- read_environ / has_token ---------------------------------------------------------
+
+
+def test_read_environ_returns_a_dict(strays: types.ModuleType, proc_dir: Path) -> None:
+    proc_dir.mkdir()
+    _write_proc_entry(proc_dir, 7, argv=["x"], ppid=1, comm="x")
+    _write_proc_environ(proc_dir, 7, {"A": "1", "MSCTS_TOKEN": "abc"})
+
+    assert strays.read_environ(7, proc_dir) == {"A": "1", "MSCTS_TOKEN": "abc"}
+
+
+def test_read_environ_returns_none_for_a_gone_process(
+    strays: types.ModuleType, proc_dir: Path
+) -> None:
+    proc_dir.mkdir()
+    assert strays.read_environ(99999, proc_dir) is None
+
+
+def test_has_token_matches_an_exact_name_and_value(strays: types.ModuleType) -> None:
+    assert strays.has_token({"A": "1", "B": "2"}, "A", "1") is True
+
+
+@pytest.mark.parametrize(
+    ("environ", "name", "value"),
+    [
+        ({"A": "1"}, "A", "2"),  # wrong value
+        ({"A": "1"}, "B", "1"),  # name absent
+        ({}, "A", "1"),
+        (None, "A", "1"),  # unreadable process
+    ],
+)
+def test_has_token_is_false_unless_the_entry_matches_exactly(
+    strays: types.ModuleType, environ: dict[str, str] | None, name: str, value: str
+) -> None:
+    assert strays.has_token(environ, name, value) is False
+
+
+# -- read_cwd / is_under ----------------------------------------------------------------
+
+
+def test_read_cwd_returns_the_resolved_path(
+    strays: types.ModuleType, proc_dir: Path, tmp_path: Path
+) -> None:
+    proc_dir.mkdir()
+    workdir = tmp_path / "work"
+    workdir.mkdir()
+    _write_proc_entry(proc_dir, 7, argv=["x"], ppid=1, comm="x")
+    _write_proc_cwd(proc_dir, 7, workdir)
+
+    assert strays.read_cwd(7, proc_dir) == workdir
+
+
+def test_read_cwd_returns_none_for_a_gone_process(strays: types.ModuleType, proc_dir: Path) -> None:
+    proc_dir.mkdir()
+    assert strays.read_cwd(99999, proc_dir) is None
+
+
+def test_is_under_matches_the_prefix_itself_and_anything_inside_it(
+    strays: types.ModuleType, tmp_path: Path
+) -> None:
+    prefix = tmp_path / "worker"
+    assert strays.is_under(prefix, prefix) is True
+    assert strays.is_under(prefix / "sub" / "dir", prefix) is True
+
+
+def test_is_under_is_false_outside_the_prefix_or_when_the_path_is_none(
+    strays: types.ModuleType, tmp_path: Path
+) -> None:
+    prefix = tmp_path / "worker"
+    assert strays.is_under(tmp_path / "other", prefix) is False
+    assert strays.is_under(None, prefix) is False
 
 
 # -- ancestors -----------------------------------------------------------------------
@@ -152,6 +238,30 @@ def test_find_strays_skips_a_pid_that_has_already_gone(strays: types.ModuleType)
     assert found == []
 
 
+def test_find_strays_applies_extra_ok_as_a_further_and_filter(strays: types.ModuleType) -> None:
+    cmdlines = {10: ["java", "-jar", "server.jar"], 11: ["java", "-jar", "server.jar"]}
+
+    found = strays.find_strays(
+        [10, 11],
+        re.compile("server.jar"),
+        exclude=set(),
+        cmdline_of=cmdlines.get,
+        extra_ok=lambda pid: pid == 11,
+    )
+
+    assert found == [(11, ["java", "-jar", "server.jar"])]
+
+
+def test_find_strays_with_no_extra_ok_matches_purely_on_pattern(strays: types.ModuleType) -> None:
+    cmdlines = {10: ["java", "-jar", "server.jar"]}
+
+    found = strays.find_strays(
+        [10], re.compile("server.jar"), exclude=set(), cmdline_of=cmdlines.get
+    )
+
+    assert found == [(10, ["java", "-jar", "server.jar"])]
+
+
 def test_find_strays_is_a_regex_not_a_plain_substring(strays: types.ModuleType) -> None:
     cmdlines = {10: ["java", "-jar", "vanilla-26.3.jar"]}
 
@@ -169,12 +279,17 @@ _HELPER = "import sys; print(flush=True); sys.stdin.read()"
 
 
 @contextlib.contextmanager
-def running_helper(argv: list[str]) -> Iterator[subprocess.Popen[bytes]]:
+def running_helper(
+    argv: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    cwd: Path | None = None,
+) -> Iterator[subprocess.Popen[bytes]]:
     """Run `argv` for the body, entered once it runs: until its exec, /proc shows pytest's argv.
 
     On exit it closes the helper's stdin (so it ends), waits for it, and closes its stdout.
     """
-    helper = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    helper = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, env=env, cwd=cwd)
     assert helper.stdin is not None
     assert helper.stdout is not None
     try:
@@ -210,6 +325,94 @@ def test_main_finds_a_real_stray_process_by_its_argv(
     found = [int(line.split("\t")[0]) for line in capsys.readouterr().out.splitlines()]
     assert found == [helper.pid]
     assert exit_code == 1
+
+
+def test_main_token_matches_only_the_process_with_that_exact_env_entry(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = f"mscts-strays-test-{uuid.uuid4().hex}"
+    env_token = f"MSCTS_STRAYS_TEST_{uuid.uuid4().hex}"
+    env = {**os.environ, env_token: "the-right-value"}
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token], env=env) as helper:
+        exit_code = strays.main([re.escape(token), "--token", f"{env_token}=the-right-value"])
+
+    found = [int(line.split("\t")[0]) for line in capsys.readouterr().out.splitlines()]
+    assert found == [helper.pid]
+    assert exit_code == 1
+
+
+def test_main_token_with_the_wrong_value_matches_nothing(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = f"mscts-strays-test-{uuid.uuid4().hex}"
+    env_token = f"MSCTS_STRAYS_TEST_{uuid.uuid4().hex}"
+    env = {**os.environ, env_token: "the-right-value"}
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token], env=env):
+        exit_code = strays.main([re.escape(token), "--token", f"{env_token}=the-wrong-value"])
+
+    assert capsys.readouterr().out == ""
+    assert exit_code == 0
+
+
+def test_main_cwd_matches_only_the_process_running_under_that_prefix(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    token = f"mscts-strays-test-{uuid.uuid4().hex}"
+    workdir = tmp_path / "worker-x"
+    workdir.mkdir()
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token], cwd=workdir) as helper:
+        exit_code = strays.main([re.escape(token), "--cwd", str(workdir)])
+
+    found = [int(line.split("\t")[0]) for line in capsys.readouterr().out.splitlines()]
+    assert found == [helper.pid]
+    assert exit_code == 1
+
+
+def test_main_cwd_with_a_different_prefix_matches_nothing(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    token = f"mscts-strays-test-{uuid.uuid4().hex}"
+    workdir = tmp_path / "worker-x"
+    workdir.mkdir()
+    other = tmp_path / "worker-y"
+    other.mkdir()
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token], cwd=workdir):
+        exit_code = strays.main([re.escape(token), "--cwd", str(other)])
+
+    assert capsys.readouterr().out == ""
+    assert exit_code == 0
+
+
+def test_main_token_and_cwd_combine_by_and(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    token = f"mscts-strays-test-{uuid.uuid4().hex}"
+    env_token = f"MSCTS_STRAYS_TEST_{uuid.uuid4().hex}"
+    env = {**os.environ, env_token: "yes"}
+    workdir = tmp_path / "worker-x"
+    workdir.mkdir()
+    other = tmp_path / "worker-y"
+    other.mkdir()
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token], env=env, cwd=workdir):
+        matching = strays.main(
+            [re.escape(token), "--token", f"{env_token}=yes", "--cwd", str(workdir)]
+        )
+        capsys.readouterr()
+        wrong_cwd = strays.main(
+            [re.escape(token), "--token", f"{env_token}=yes", "--cwd", str(other)]
+        )
+
+    assert matching == 1  # right token, right cwd: a match
+    assert wrong_cwd == 0  # right token, wrong cwd: the AND excludes it
+
+
+def test_main_exits_2_on_a_malformed_token(
+    strays: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    exit_code = strays.main([".*", "--token", "no-equals-sign"])
+
+    assert exit_code == 2
+    assert "NAME=value" in capsys.readouterr().err
 
 
 def test_main_prints_one_line_per_process_even_when_an_argv_holds_a_newline(

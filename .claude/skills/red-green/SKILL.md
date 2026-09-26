@@ -174,6 +174,14 @@ then one commit.
   "client connected" cue before acting. Poll through an `asyncio.Event`
   the fake sets, not a sleep loop. Split a long fake handler into step
   methods early (PLR0915).
+- `scripts/strays.py <pattern>` alone can match another worker's own live
+  process running the same argv (e.g. two workers' vanilla Instances both
+  named `server.jar`). Narrow it: `--token NAME=value` only matches a
+  process whose `/proc/<pid>/environ` holds that exact entry (the leak
+  guard's per-test token is one), and `--cwd PREFIX` only one whose
+  `/proc/<pid>/cwd` resolves under `PREFIX` (your worktree or a test's
+  tmp workdir). Both combine with `<pattern>`, and with each other, by
+  AND.
 - Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
 - At most 5 parameters, keyword-only included (PLR0913). Derive values
   rather than passing them. Never add a `noqa` before ruff has actually
