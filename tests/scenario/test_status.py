@@ -35,10 +35,11 @@ def test_both_status_scenarios_are_registered_as_exact_with_no_masks() -> None:
     assert basic.masks == ping.masks == ()
 
 
-def test_status_ping_needs_status_basic_to_match_first() -> None:
-    assert SCENARIOS["status/ping"].requires == ("status/basic",)
+def test_status_ping_runs_even_when_the_status_differs() -> None:
+    # A Candidate whose status differs must still get a status.rtt: no prerequisite.
+    assert SCENARIOS["status/ping"].requires == ()
     assert SCENARIOS["status/basic"].requires == ()
-    assert [each.id for each in resolve(["status/ping"])] == ["status/basic", "status/ping"]
+    assert [each.id for each in resolve(["status/ping"])] == ["status/ping"]
 
 
 @pytest.mark.asyncio

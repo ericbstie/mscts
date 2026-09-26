@@ -22,9 +22,12 @@ async def basic(context: ScenarioContext) -> None:
     await bot.status()
 
 
-@scenario("status/ping", requires=("status/basic",))
+@scenario("status/ping")
 async def ping(context: ScenarioContext) -> None:
-    """Ask for the status, then ping; the `status.rtt` span covers the ping and its pong."""
+    """Ask for the status, then ping; the `status.rtt` span covers the ping and its pong.
+
+    It requires nothing: a Candidate whose status differs still gets its round trip timed.
+    """
     bot = await context.bot("status")
     await bot.status()
     async with context.span("status.rtt"):

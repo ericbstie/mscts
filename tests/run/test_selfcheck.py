@@ -9,13 +9,16 @@ from tests.run.fakes import FakeAdapter
 
 
 @pytest.mark.asyncio
-async def test_a_selfcheck_plays_the_scenarios_and_their_prerequisites_reference_against_reference(
+async def test_a_selfcheck_plays_the_scenarios_reference_against_reference(
     fake_server: Callable[..., Server], tmp_path: Path
 ) -> None:
     reference = fake_server("vanilla")
 
     verdicts = await selfcheck(
-        ["status/ping"], reference=reference, workdir=tmp_path / "selfcheck", repeat=2
+        ["status/basic", "status/ping"],
+        reference=reference,
+        workdir=tmp_path / "selfcheck",
+        repeat=2,
     )
 
     assert [(v.scenario_id, v.outcome) for v in verdicts] == [

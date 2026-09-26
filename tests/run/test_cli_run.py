@@ -76,7 +76,7 @@ def test_a_run_with_divergences_still_exits_0(
     assert '"not vanilla"' in out
 
 
-def test_the_scenario_glob_picks_scenarios_and_their_prerequisites(
+def test_the_scenario_glob_picks_the_scenarios(
     fakes: Fakes, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fakes()
@@ -86,7 +86,8 @@ def test_the_scenario_glob_picks_scenarios_and_their_prerequisites(
     )
 
     assert code == 0
-    assert err.index("running status/basic") < err.index("running status/ping")
+    assert "running status/ping" in err
+    assert "running status/basic" not in err
 
 
 def test_a_glob_that_matches_nothing_fails_naming_the_scenarios(

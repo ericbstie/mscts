@@ -115,7 +115,7 @@ async def test_a_selfcheck_against_an_attached_reference_launches_one_instance(
     reference = fake_server("vanilla")
     async with attached(FakeAdapter("vanilla", run_token), tmp_path / "attached") as running:
         verdicts = await selfcheck(
-            ["status/ping"],
+            ["status/basic", "status/ping"],
             reference=reference,
             workdir=tmp_path / "selfcheck",
             repeat=2,
