@@ -16,13 +16,22 @@ from mscts.target import TARGET
 JAR_URL = "https://piston-data.example/v1/objects/def/server.jar"
 
 
+ZIP_DATE = (2026, 1, 1, 0, 0, 0)
+
+
 def fake_jar(protocol_version: int = 777) -> bytes:
-    """A tiny stand-in for the server jar: a zip whose version.json names the protocol."""
+    """A tiny stand-in for the server jar: a zip whose version.json names the protocol.
+
+    Its entries carry a fixed date, so the bytes never depend on the clock: pytest-xdist
+    workers collecting at different seconds must see the same parametrized tests.
+    """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as jar:
         version = {"id": "26.3", "protocol_version": protocol_version, "java_version": 25}
-        jar.writestr("version.json", json.dumps(version))
-        jar.writestr("net/minecraft/bundler/Main.class", b"\xca\xfe\xba\xbe")
+        jar.writestr(zipfile.ZipInfo("version.json", ZIP_DATE), json.dumps(version))
+        jar.writestr(
+            zipfile.ZipInfo("net/minecraft/bundler/Main.class", ZIP_DATE), b"\xca\xfe\xba\xbe"
+        )
     return buffer.getvalue()
 
 
@@ -84,6 +93,7 @@ def test_provision_reuses_an_installed_jar(tmp_path: Path, pinned: bytes) -> Non
         fake_jar()[:-1] + bytes([fake_jar()[-1] ^ 0xFF]),
         fake_jar() + b"\0",
     ],
+    ids=["same-size-other-bytes", "one-byte-longer"],
 )
 def test_provision_rejects_a_download_that_is_not_the_pinned_jar(
     tmp_path: Path, pinned: bytes, served: bytes
@@ -97,6 +107,7 @@ def test_provision_rejects_a_download_that_is_not_the_pinned_jar(
 @pytest.mark.parametrize(
     ("jar", "error"),
     [(fake_jar(protocol_version=778), "speaks protocol 778"), (b"PK not a zip", "not a vanilla")],
+    ids=["protocol-778", "not-a-zip"],
 )
 def test_check_refuses_a_jar_that_is_not_a_server_for_the_target(
     tmp_path: Path, jar: bytes, error: str
