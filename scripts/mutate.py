@@ -25,6 +25,8 @@ Exit code:
 """
 
 import argparse
+import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -184,17 +186,43 @@ def apply_mutation(file: Path, backup: Path, old: str, new: str) -> None:
     file.write_text(mutate_text(original, old, new))
 
 
+def sha256_of(data: bytes) -> str:
+    """The hex sha256 digest of `data`."""
+    return hashlib.sha256(data).hexdigest()
+
+
 def restore(file: Path, backup: Path) -> None:
-    """Put `backup`'s content back at `file`, and remove `backup`."""
-    file.write_bytes(backup.read_bytes())
+    """Put `backup`'s content back at `file`, verify it by sha256, and remove `backup`.
+
+    Raises:
+        MutateError: the bytes written to `file` do not sha256-match `backup` (the write
+            silently failed, or something else changed `file` in between). `backup` is
+            kept, deliberately, so the mismatch can be inspected; nothing is unlinked.
+    """
+    original = backup.read_bytes()
+    file.write_bytes(original)
+    restored = file.read_bytes()
+    if sha256_of(restored) != sha256_of(original):
+        msg = (
+            f"{file}: restored content does not match {backup} by sha256; "
+            "the backup was kept -- restore it by hand before trusting this file again"
+        )
+        raise MutateError(msg)
     backup.unlink()
 
 
 def run_pytest(uv: str, pytest_args: Sequence[str], *, timeout_s: float) -> int | None:
-    """Run `uv run pytest <pytest_args>`; return its exit code, or None if it timed out."""
+    """Run `uv run pytest <pytest_args>`; return its exit code, or None if it timed out.
+
+    `PYTHONDONTWRITEBYTECODE=1` stops pytest from writing a `.pyc` for the mutated file:
+    without it, a same-size, same-second restore can leave a stale cached bytecode behind
+    that a later, unmutated run then imports instead of the restored source.
+    """
+    env = dict(os.environ)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
     try:
         result = subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
-            [uv, "run", "pytest", *pytest_args], timeout=timeout_s, check=False
+            [uv, "run", "pytest", *pytest_args], env=env, timeout=timeout_s, check=False
         )
     except subprocess.TimeoutExpired:
         return None

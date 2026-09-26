@@ -346,3 +346,64 @@ def test_apply_mutation_then_restore_round_trips_the_original_content(
 
     mutate.restore(target, backup)
     assert target.read_text() == original
+
+
+# -- restore's sha256 verification (increment 3) ---------------------------------------
+
+
+def test_restore_raises_and_keeps_the_backup_when_the_write_does_not_verify(
+    mutate: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "code.py"
+    target.write_text("mutated\n")
+    backup = mutate.backup_path(target)
+    backup.write_text("original\n")
+    digests = iter(["expected-digest", "different-digest"])
+    monkeypatch.setattr(mutate, "sha256_of", lambda data: next(digests))  # noqa: ARG005
+
+    with pytest.raises(mutate.MutateError, match="sha256"):
+        mutate.restore(target, backup)
+
+    assert backup.exists()  # kept, deliberately, for inspection
+    assert target.read_text() == "original\n"  # the write itself still happened
+
+
+def test_sha256_of_matches_for_equal_bytes_and_differs_for_different_bytes(
+    mutate: types.ModuleType,
+) -> None:
+    assert mutate.sha256_of(b"same") == mutate.sha256_of(b"same")
+    assert mutate.sha256_of(b"same") != mutate.sha256_of(b"different")
+
+
+# -- run_pytest's environment (increment 3) ---------------------------------------------
+
+
+def test_run_pytest_sets_pythondontwritebytecode(
+    mutate: types.ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured_argv: list[str] = []
+    captured_env: dict[str, str] = {}
+
+    def fake_subprocess_run(
+        argv: list[str],
+        *,
+        env: dict[str, str],
+        timeout: object,  # noqa: ARG001
+        check: object,  # noqa: ARG001
+    ) -> object:
+        captured_argv[:] = argv
+        captured_env.update(env)
+
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(mutate.subprocess, "run", fake_subprocess_run)
+    monkeypatch.delenv("PYTHONDONTWRITEBYTECODE", raising=False)
+
+    returncode = mutate.run_pytest("uv", ["tests/x.py"], timeout_s=5.0)
+
+    assert returncode == 0
+    assert captured_env["PYTHONDONTWRITEBYTECODE"] == "1"
+    assert captured_argv == ["uv", "run", "pytest", "tests/x.py"]
