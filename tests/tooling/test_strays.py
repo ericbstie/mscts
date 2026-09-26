@@ -1,11 +1,13 @@
 """scripts/strays.py's pure and /proc-reading parts, hermetic (a synthetic /proc tree)."""
 
+import contextlib
 import importlib.util
 import re
 import subprocess
 import sys
 import types
 import uuid
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -162,6 +164,27 @@ def test_find_strays_is_a_regex_not_a_plain_substring(strays: types.ModuleType) 
 
 # -- main, against a real /proc, never matches its own harness's shell wrapper -----
 
+_HELPER = "import sys; print(flush=True); sys.stdin.read()"
+"""A helper that says it is running (its argv is then final), and waits for stdin to close."""
+
+
+@contextlib.contextmanager
+def running_helper(argv: list[str]) -> Iterator[subprocess.Popen[bytes]]:
+    """Run `argv` for the body, entered once it runs: until its exec, /proc shows pytest's argv.
+
+    On exit it closes the helper's stdin (so it ends), waits for it, and closes its stdout.
+    """
+    helper = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    assert helper.stdin is not None
+    assert helper.stdout is not None
+    try:
+        helper.stdout.readline()
+        yield helper
+    finally:
+        helper.stdin.close()
+        helper.wait(timeout=5)
+        helper.stdout.close()
+
 
 def test_main_excludes_itself_and_its_whole_ancestor_chain(
     strays: types.ModuleType, capsys: pytest.CaptureFixture[str]
@@ -181,16 +204,8 @@ def test_main_finds_a_real_stray_process_by_its_argv(
     strays: types.ModuleType, capsys: pytest.CaptureFixture[str]
 ) -> None:
     token = f"mscts-strays-test-{uuid.uuid4().hex}"
-    helper = subprocess.Popen(
-        [sys.executable, "-I", "-S", "-c", "import sys; sys.stdin.read()", token],
-        stdin=subprocess.PIPE,
-    )
-    try:
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token]) as helper:
         exit_code = strays.main([re.escape(token)])
-    finally:
-        assert helper.stdin is not None
-        helper.stdin.close()
-        helper.wait(timeout=5)
 
     found = [int(line.split("\t")[0]) for line in capsys.readouterr().out.splitlines()]
     assert found == [helper.pid]
@@ -203,16 +218,8 @@ def test_main_prints_one_line_per_process_even_when_an_argv_holds_a_newline(
     # Another process's argv may hold control characters (a newline, a tab);
     # each stray must still be exactly one "<pid>\t<cmd>" line.
     token = f"mscts-strays-test-{uuid.uuid4().hex}"
-    helper = subprocess.Popen(
-        [sys.executable, "-I", "-S", "-c", "import sys; sys.stdin.read()", token, "a\nb\tc"],
-        stdin=subprocess.PIPE,
-    )
-    try:
+    with running_helper([sys.executable, "-I", "-S", "-c", _HELPER, token, "a\nb\tc"]) as helper:
         strays.main([re.escape(token)])
-    finally:
-        assert helper.stdin is not None
-        helper.stdin.close()
-        helper.wait()
     lines = capsys.readouterr().out.splitlines()
     assert len(lines) == 1
     assert lines[0].split("\t", 1)[0] == str(helper.pid)
