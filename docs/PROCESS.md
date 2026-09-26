@@ -118,7 +118,11 @@ new classes of defect:
   token, SIGKILL any survivor, and fail the test (see
   `tests/runner/conftest.py`). Do not verify with `pgrep -af`: it matches
   the harness's own shell wrapper. In this container PID 1 reaps orphans
-  only after 1–3 s, and `pid_max` is 32768.
+  only after 1–3 s, and `pid_max` is 32768. To check by hand (e.g. before
+  ending a session), `python3 scripts/strays.py <pattern>` reads `/proc`
+  directly and excludes itself and its whole ancestor chain, so it never
+  matches its own invocation or the wrapper that ran it; it exits
+  non-zero if it finds anything.
 - Never write a brief stand-in that contradicts an ADR. If the real
   thing is not built yet, the worker builds the smallest faithful version
   or stops and reports. (Lead lesson from worker D: a TCP-connect
