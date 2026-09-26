@@ -54,6 +54,7 @@ test needs it:
 | `adapters/base.py` | `Adapter`, `Installation`, `LaunchPlan` |
 | `adapters/fetch.py` | `https_get` → `Download(url, body)`: HTTPS on every hop, redirects followed |
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
+| `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
 | `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, `SCENARIOS` (the registered Scenarios), `resolve` |
@@ -440,6 +441,14 @@ class Adapter(Protocol):
 # - an Installation is written only by install.py (one rename, complete or not at all), is
 #   never refreshed, and records its Source; install.py fetches only through the `fetch` it
 #   is given (https_get by default), so unit tests stay hermetic.
+
+# adapters/nbt.py: writes Java NBT files (never reads them). A Tag is Byte | Int | Long | Float |
+# Double (frozen wrappers of one value) | str | List(items: tuple[Tag, ...]) | IntArray(values) |
+# Mapping[str, Tag] (a Compound, in its key order). NbtError (a ValueError) for a value its tag
+# cannot hold: out of range, a bool, a float not exactly a binary32, a mixed List, a string
+# with U+0000 or outside the BMP or over 65535 bytes.
+def encode(root: Compound) -> bytes: ...   # the root compound, named ""
+def gzipped(root: Compound) -> bytes: ...  # one gzip member, mtime 0: the bytes depend on root alone
 
 # install.py: Installations (ADR-0008)
 @frozen
