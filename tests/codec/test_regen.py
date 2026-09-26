@@ -120,6 +120,21 @@ def test_run_data_generator_raises_when_the_report_is_missing(tmp_path: Path) ->
         regen.run_data_generator(java, tmp_path / "server.jar", tmp_path / "out")
 
 
+def test_run_data_generator_runs_in_the_output_directory(tmp_path: Path) -> None:
+    # Audit MD7 survivor G3: the bundler unpacks libraries/ and versions/ into its cwd,
+    # so the generator must run in the (scratch) output dir, never the caller's cwd.
+    java = tmp_path / "java"
+    java.write_text(
+        '#!/bin/sh\nmkdir -p reports\npwd > cwd.txt\necho "{}" > reports/packets.json\n',
+        encoding="utf-8",
+    )
+    java.chmod(0o755)
+    output = tmp_path / "out"
+    report = regen.run_data_generator(java, tmp_path / "server.jar", output)
+    assert report == output / "reports" / "packets.json"
+    assert (output / "cwd.txt").read_text(encoding="utf-8").strip() == str(output)
+
+
 def test_run_data_generator_raises_on_a_nonzero_exit(tmp_path: Path) -> None:
     java = tmp_path / "java"
     java.write_text("#!/bin/sh\necho boom >&2\nexit 1\n", encoding="utf-8")
