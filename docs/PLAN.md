@@ -450,6 +450,10 @@ class Installed:
 def installed(adapter, target, cache_dir) -> Installation | None: ...
     # verified by the recorded sha256; None if absent; ProvisionError naming the fix
     # ("delete <root> and run `mscts adapter install <adapter>` again") if unrecorded or changed
+    # A legacy Installation (binary, no SOURCE.json) whose binary hash-matches a Registry entry
+    # gets a SOURCE.json naming that entry only, and says so: a WARNING on the `mscts.install`
+    # logger ("recorded <root>/SOURCE.json: <binary> predates recorded sources and
+    # hash-matches the Registry entry <entry>"); the CLI prints it as its own output.
 def install_entry(adapter, target, cache_dir, entry: Entry, fetch: Fetch) -> Installed: ...
     # downloads entry.url; entry.matches(body) or ProvisionError with the actual sha256, the
     # entry's note ("the nightly moved") and the `--from` command. Another build installed

@@ -197,6 +197,22 @@ def test_status_of_a_changed_binary_fails_naming_the_fix(
     assert "unusable: see `mscts adapter status pumpkin`" in run(capsys, "adapter", "list")[1]
 
 
+def test_status_says_when_it_records_a_legacy_installation(
+    cache: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = cache / "pumpkin/26.3"
+    root.mkdir(parents=True)
+    (root / "pumpkin").write_bytes(BUILD)  # installed before SOURCE.json existed
+    code, out, _ = run(capsys, "adapter", "status", "pumpkin")
+    assert code == 0
+    assert out.startswith(
+        f"recorded {root / 'SOURCE.json'}: {root / 'pumpkin'} predates recorded sources "
+        f"and hash-matches the Registry entry pumpkin nightly-test\n"
+    )
+    run(capsys, "adapter", "status", "pumpkin")
+    assert "recorded" not in capsys.readouterr().out  # once only
+
+
 def test_the_mscts_script_is_the_cli() -> None:
     pyproject = tomllib.loads(Path(__file__).parent.parent.joinpath("pyproject.toml").read_text())
     assert pyproject["project"]["scripts"] == {"mscts": "mscts.cli:main"}

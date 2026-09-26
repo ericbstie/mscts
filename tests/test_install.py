@@ -2,6 +2,7 @@ import dataclasses
 import datetime
 import hashlib
 import json
+import logging
 from pathlib import Path
 
 import pytest
@@ -178,13 +179,20 @@ def test_an_unrecorded_installation_is_refused_naming_the_fix(tmp_path: Path) ->
 
 
 def test_an_unrecorded_installation_of_a_registry_build_is_recorded_as_that_entry_only(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     # Installations made before SOURCE.json existed hold the binary alone.
     monkeypatch.setattr(registry, "official", lambda: REGISTRY)
     root_of(tmp_path).mkdir(parents=True)
     (root_of(tmp_path) / "pumpkin").write_bytes(FAKE_BINARY)
-    found = installed(ADAPTER, TARGET, tmp_path)
+    with caplog.at_level(logging.WARNING, logger="mscts.install"):
+        found = installed(ADAPTER, TARGET, tmp_path)
+    root = root_of(tmp_path)
+    said = (
+        f"recorded {root / 'SOURCE.json'}: {root / 'pumpkin'} predates recorded sources "
+        "and hash-matches the Registry entry pumpkin nightly-test"
+    )
+    assert [r.getMessage() for r in caplog.records] == [said]
     assert found is not None
     assert found.source is not None
     assert found.source == Source(

@@ -10,6 +10,7 @@ import dataclasses
 import datetime
 import hashlib
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -24,6 +25,8 @@ from mscts.registry import Entry, Registry, RegistryError
 from mscts.target import Target
 
 SOURCE = "SOURCE.json"
+# Says what an install did on its own: recording a legacy Installation. The CLI prints it.
+LOG = logging.getLogger("mscts.install")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +69,7 @@ def _record_unrecorded(root: Path, adapter: Adapter, target: Target) -> None:
 
     Only when its binary hash-matches a Registry entry, which is then all it records: it
     claims no URL or file it cannot prove. Anything else stays unrecorded (and refused).
+    It says so, as a warning on `mscts.install`: nothing is written without saying so.
     """
     binary = root / adapter.binary
     if (root / SOURCE).exists() or not binary.is_file():
@@ -82,6 +86,12 @@ def _record_unrecorded(root: Path, adapter: Adapter, target: Target) -> None:
             with os.fdopen(descriptor, "w", encoding="utf-8") as file:
                 file.write(json.dumps(dataclasses.asdict(source), indent=2) + "\n")
             Path(part).replace(root / SOURCE)
+            LOG.warning(
+                "recorded %s: %s predates recorded sources and hash-matches the Registry entry %s",
+                root / SOURCE,
+                binary,
+                entry,
+            )
             return
 
 

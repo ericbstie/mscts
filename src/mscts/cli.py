@@ -1,10 +1,12 @@
 """The `mscts` command (ADR-0008): every command says what it did, and every error its fix."""
 
 import argparse
+import logging
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
+from typing import override
 
 from mscts import install, registry
 from mscts.adapters.base import Adapter, Installation, ProvisionError
@@ -23,6 +25,14 @@ ADAPTERS: Mapping[str, Callable[[], Adapter]] = MappingProxyType(
 
 def _say(text: str) -> None:
     sys.stdout.write(text + "\n")
+
+
+class _SayingHandler(logging.Handler):
+    """Says each record, as the command's own output."""
+
+    @override
+    def emit(self, record: logging.LogRecord) -> None:
+        _say(record.getMessage())
 
 
 def _saying(fetch: Fetch) -> Fetch:
@@ -134,8 +144,12 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None, *, fetch: Fetch = https_get) -> int:
     """Run the `mscts` command; return its exit code (1: a failure, whose message says why)."""
     arguments = _parser().parse_args(argv)
+    said = _SayingHandler()
+    install.LOG.addHandler(said)  # what an install did on its own, e.g. recording SOURCE.json
     try:
         return _ACTIONS[str(arguments.action)](arguments, fetch)
     except (ProvisionError, RegistryError) as error:
         sys.stderr.write(f"mscts: {error}\n")
         return 1
+    finally:
+        install.LOG.removeHandler(said)
