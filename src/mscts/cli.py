@@ -1,20 +1,28 @@
 """The `mscts` command (ADR-0008): every command says what it did, and every error its fix."""
 
 import argparse
+import asyncio
+import contextlib
+import fnmatch
 import logging
+import shutil
 import sys
-from collections.abc import Callable, Mapping, Sequence
+import tempfile
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import override
 
-from mscts import install, registry
-from mscts.adapters.base import Adapter, Installation, ProvisionError
+from mscts import install, registry, run
+from mscts.adapters.base import Adapter, Installation, PrepareError, ProvisionError
 from mscts.adapters.fetch import Download, Fetch, https_get
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
 from mscts.registry import RegistryError
+from mscts.report import Report, render_text
+from mscts.runner import RunnerError
+from mscts.scenario import SCENARIOS, Scenario, ScenarioKind, resolve
 from mscts.target import TARGET
 
 # Every Adapter the command knows, by name.
@@ -23,8 +31,49 @@ ADAPTERS: Mapping[str, Callable[[], Adapter]] = MappingProxyType(
 )
 
 
+REFERENCE = "vanilla"
+"""The Reference's Adapter: every Run compares a Candidate with it."""
+
+DEFAULT_SCENARIOS = "status/*"
+"""The Scenarios `mscts run` plays unless `--scenario` says otherwise."""
+
+DEFAULT_REPEAT = 5
+"""How many times `mscts run` plays each Scenario unless `--repeat` says otherwise."""
+
+_NO_OUT = "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
+RUN_NOTES = (_NO_OUT,)
+"""What every `mscts run` Report says it leaves out."""
+
+
+class _UsageError(Exception):
+    """A command line the command cannot act on; its message names the fix."""
+
+
 def _say(text: str) -> None:
     sys.stdout.write(text + "\n")
+
+
+class _ProgressHandler(logging.Handler):
+    """Shows each record on stderr: progress, kept apart from the Report on stdout."""
+
+    @override
+    def emit(self, record: logging.LogRecord) -> None:
+        sys.stderr.write(record.getMessage() + "\n")
+        sys.stderr.flush()
+
+
+@contextlib.contextmanager
+def _progress() -> Iterator[None]:
+    """Show what the Run does (its INFO records) on stderr while the block runs."""
+    handler = _ProgressHandler()
+    level = run.LOG.level
+    run.LOG.addHandler(handler)
+    run.LOG.setLevel(logging.INFO)
+    try:
+        yield
+    finally:
+        run.LOG.removeHandler(handler)
+        run.LOG.setLevel(level)
 
 
 class _SayingHandler(logging.Handler):
@@ -120,8 +169,55 @@ def _status(arguments: argparse.Namespace, _fetch: Fetch) -> int:
     return 0
 
 
+def _scenarios(pattern: str) -> tuple[Scenario, ...]:
+    """The registered exact Scenarios whose id matches `pattern`, with their prerequisites."""
+    exact = sorted(
+        scenario_id
+        for scenario_id, scenario in SCENARIOS.items()
+        if scenario.kind is ScenarioKind.EXACT
+    )
+    chosen = [scenario_id for scenario_id in exact if fnmatch.fnmatchcase(scenario_id, pattern)]
+    if not chosen:
+        msg = (
+            f"no registered exact Scenario matches --scenario {pattern!r}; "
+            f"the registered ones are {', '.join(exact)}"
+        )
+        raise _UsageError(msg)
+    return resolve(chosen)
+
+
+def _server(name: str) -> run.Server:
+    adapter = ADAPTERS[name]()
+    terminal = install.Terminal(sys.stdin, sys.stdout)
+    return run.Server(adapter, install.require(adapter, TARGET, cache_dir(), terminal=terminal))
+
+
+def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
+    scenarios = _scenarios(str(arguments.scenario))
+    repeat = int(arguments.repeat)
+    if repeat < 1:
+        msg = f"--repeat must be at least 1, not {repeat}"
+        raise _UsageError(msg)
+    reference, candidate = _server(REFERENCE), _server(str(arguments.candidate))
+    workdir = Path(tempfile.mkdtemp(prefix="mscts-run-"))
+    try:
+        with _progress():
+            result = asyncio.run(
+                run.run_results(scenarios, reference, candidate, workdir=workdir, repeat=repeat)
+            )
+    except RunnerError as error:  # the workdir stays: its console log is the evidence
+        msg = f"{error.reason}; its console log is kept at {error.log_path}"
+        raise _UsageError(msg) from error
+    except BaseException:
+        shutil.rmtree(workdir)
+        raise
+    shutil.rmtree(workdir)
+    sys.stdout.write(render_text(Report.of(result, target=TARGET, notes=RUN_NOTES)))
+    return 0
+
+
 _ACTIONS: Mapping[str, Callable[[argparse.Namespace, Fetch], int]] = MappingProxyType(
-    {"install": _install, "list": _list, "status": _status}
+    {"install": _install, "list": _list, "status": _status, "run": _run}
 )
 
 
@@ -138,6 +234,25 @@ def _parser() -> argparse.ArgumentParser:
     actions.add_parser("list", help="Adapters, Registry entries, and what is installed")
     status = actions.add_parser("status", help="what is installed, its sha256 and its source")
     status.add_argument("adapter", choices=ADAPTERS)
+    running = commands.add_parser(
+        "run", help="play Scenarios against vanilla and a Candidate, and print the Report"
+    )
+    running.add_argument(
+        "--candidate", required=True, choices=ADAPTERS, help="the Candidate's Adapter"
+    )
+    running.add_argument(
+        "--scenario",
+        default=DEFAULT_SCENARIOS,
+        metavar="GLOB",
+        help=f"the Scenario ids to play, prerequisites added (default: {DEFAULT_SCENARIOS})",
+    )
+    running.add_argument(
+        "--repeat",
+        type=int,
+        default=DEFAULT_REPEAT,
+        metavar="N",
+        help=f"how many times to play each Scenario (default: {DEFAULT_REPEAT})",
+    )
     return parser
 
 
@@ -147,8 +262,10 @@ def main(argv: Sequence[str] | None = None, *, fetch: Fetch = https_get) -> int:
     said = _SayingHandler()
     install.LOG.addHandler(said)  # what an install did on its own, e.g. recording SOURCE.json
     try:
-        return _ACTIONS[str(arguments.action)](arguments, fetch)
-    except (ProvisionError, RegistryError) as error:
+        command = str(arguments.command)
+        action = str(arguments.action) if command == "adapter" else command
+        return _ACTIONS[action](arguments, fetch)
+    except (ProvisionError, RegistryError, PrepareError, _UsageError) as error:
         sys.stderr.write(f"mscts: {error}\n")
         return 1
     finally:

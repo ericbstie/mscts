@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import dataclasses
 import json
+import logging
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
@@ -36,6 +37,9 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
     ConnectionError,  # the connection was closed, reset or refused
 )
 """What a Scenario raises when the Candidate caused it: a `mismatch`, never `error`."""
+
+LOG = logging.getLogger("mscts.run")
+"""Where a Run says what it is doing (INFO): the Instances it starts, the Scenario it plays."""
 
 _STATUS_RESPONSE = "minecraft:status_response"
 
@@ -316,11 +320,22 @@ async def run_results(
     plays: dict[str, list[_Play]] = {scenario.id: [] for scenario in scenarios}
     async with contextlib.AsyncExitStack() as stack:
         instances = _Instances(stack, reference, candidate, workdir)
-        for _ in range(repeat):
+        for repetition in range(1, repeat + 1):
             done: dict[str, Verdict] = {}
             for scenario in scenarios:
                 verdict = blocked(scenario, done)
-                play = _Play(verdict) if verdict is not None else await instances.play(scenario)
+                if verdict is None:
+                    LOG.info("running %s (%d of %d) ...", scenario.id, repetition, repeat)
+                    play = await instances.play(scenario)
+                else:
+                    LOG.info(
+                        "skipping %s (%d of %d): %s",
+                        scenario.id,
+                        repetition,
+                        repeat,
+                        verdict.detail,
+                    )
+                    play = _Play(verdict)
                 done[scenario.id] = play.verdict
                 plays[scenario.id].append(play)
         summaries = instances.summaries()
@@ -454,6 +469,9 @@ class _Instances:
         key = _spec_key(spec)
         if key not in self._pairs:
             where = self._workdir / str(len(self._pairs))
+            launched = [side.name for side in self._sides if isinstance(side, Server)]
+            if launched:
+                LOG.info("starting %s ...", " and ".join(launched))
             try:
                 async with asyncio.TaskGroup() as group:
                     reference = group.create_task(self._start(0, spec, where / "reference"))

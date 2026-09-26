@@ -1007,6 +1007,12 @@ mscts adapter status <adapter>      # root, entry, sha256, size, from, installed
                                     # the install command when nothing is installed
 mscts selfcheck [--scenario GLOB] [--repeat N]
 mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
+    # --scenario: fnmatch over the registered exact Scenario ids, prerequisites added
+    # (default status/*); --repeat default 5; --out not implemented yet (the Report says so).
+    # Plays in a fresh temp dir, removed afterwards (kept, and named, when an Instance could
+    # not start). Progress ("starting vanilla and pumpkin ...", "running status/basic (1 of
+    # 5) ...", run.LOG at INFO) on stderr; the Report (render_text) on stdout; exit 0 when
+    # the Run completed, Divergences or not.
     # selfcheck and run get each Installation with install.require(adapter, TARGET,
     # cache_dir(), terminal=Terminal(sys.stdin, sys.stdout)): the prompt on a TTY, else a
     # failure naming the install commands. Never a silent download.
