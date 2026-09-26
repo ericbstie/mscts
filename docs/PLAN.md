@@ -277,6 +277,7 @@ class Bot:                          # what Scenarios use; answers keep_alive / t
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
+    # connect opens the Connection with answer=Replies(): from then on the Bot answers by itself.
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
@@ -290,6 +291,14 @@ class Bot:                          # what Scenarios use; answers keep_alive / t
     # unless already sent. status: status_request → status_response, whose json_response must be
     # a JSON object. ping: ping_request → pong_response echoing the payload. Any other answer →
     # ProtocolError, with the answer still recorded.
+    # join (offline only): on a fresh Connection (else ProtocolError, nothing sent), the handshake
+    # (intent 2) and hello(name, offline_uuid(name)), then expect(play chunk_batch_finished): it
+    # returns once the server's first chunk batch has finished, Replies having answered the rest.
+    # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
+    # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
+    # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
+
+def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives

@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
 
 import pytest
 
@@ -11,30 +10,7 @@ from mscts.codec.packets import Codec, Direction, Packet
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.net.fakes import VANILLA_STATUS, Handler, Peer, serve, status_server
-
-
-def with_bot[T](
-    codec: Codec,
-    transcript: Transcript,
-    handler: Handler,
-    use: Callable[[Bot], Awaitable[T]],
-    *,
-    timeout_s: float = 1.0,
-) -> tuple[T, Endpoint]:
-    """Run `use` on a Bot named alice connected to a fake server running `handler`."""
-
-    async def client() -> tuple[T, Endpoint]:
-        async with serve(codec, handler) as endpoint:
-            bot = await Bot.connect(
-                endpoint, TARGET, name="alice", transcript=transcript, timeout_s=timeout_s
-            )
-            try:
-                return await use(bot), endpoint
-            finally:
-                await bot.close()
-
-    return asyncio.run(client())
+from tests.net.fakes import VANILLA_STATUS, Peer, status_server, with_bot
 
 
 async def status(bot: Bot) -> object:

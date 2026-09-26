@@ -10,13 +10,17 @@ import asyncio
 import socket
 import struct
 import time
+import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
+from dataclasses import dataclass
 
+from mscts.bot import Bot
 from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint
+from mscts.target import TARGET
 from mscts.transcript import Transcript
 
 HOST = "127.0.0.1"
@@ -149,6 +153,137 @@ def status_server(json_response: str, seen: list[Packet]) -> Handler:
     return handler
 
 
+CORE_PACK = {"namespace": "minecraft", "id": "core", "version": "26.3"}
+"""The one known pack vanilla 26.3 offers in configuration (docs/research, verified)."""
+
+SPAWN = {"x": 6.5, "y": -60.0, "z": 7.5, "yaw": -90.0, "pitch": 0.0}
+"""A join teleport's pose (vanilla's is random per fresh world: never assert on it live)."""
+
+
+@dataclass
+class JoinScript:
+    """How `join_server` behaves; the defaults follow vanilla 26.3's join (research, verified).
+
+    Attributes:
+        compression_threshold: Sent in login_compression, or None to send none.
+        code_of_conduct: Sent (and its acceptance awaited) in configuration, or None.
+        keep_alive_id: Sent (and its echo awaited) once the first chunk batch is
+            acknowledged, or None.
+        disconnect_in: The State in which to disconnect the client instead of going on.
+        then: Run last, before waiting for the client to close, or None.
+    """
+
+    compression_threshold: int | None = 256
+    code_of_conduct: str | None = None
+    keep_alive_id: int | None = None
+    disconnect_in: State | None = None
+    then: Handler | None = None
+
+
+_DISCONNECT_REASON = bytes.fromhex("08 0004") + b"kick"  # an NBT String text component
+
+
+def join_server(seen: list[Packet], script: JoinScript | None = None) -> Handler:
+    """Answer like vanilla's login, configuration and play listeners, up to one chunk batch.
+
+    Every serverbound Packet goes into `seen`. Each step waits for the answer vanilla's
+    server waits for (or, like it, simply goes on), so a client that does not answer
+    stalls here as it would against vanilla.
+    """
+    join = _Join(seen, script or JoinScript())
+
+    async def handler(peer: Peer) -> None:
+        if await join.login(peer) and await join.configure(peer) and await join.play(peer):
+            if join.script.then is not None:
+                await join.script.then(peer)
+            await peer.eof()
+
+    return handler
+
+
+class _Join:
+    """`join_server`'s steps: each returns False if it disconnected the client instead."""
+
+    def __init__(self, seen: list[Packet], script: JoinScript) -> None:
+        self.seen = seen
+        self.script = script
+
+    async def expect(self, peer: Peer, name: str) -> Packet:
+        packet = await peer.recv()
+        self.seen.append(packet)
+        assert packet.name == name, f"expected {name}, got {packet.name}"
+        return packet
+
+    async def login(self, peer: Peer) -> bool:
+        await self.expect(peer, "minecraft:intention")
+        hello = await self.expect(peer, "minecraft:hello")
+        assert hello.fields is not None
+        if self.script.disconnect_in is State.LOGIN:
+            await peer.write(peer.raw_frame("minecraft:login_disconnect", b'\x06"kick"'))
+            return False
+        threshold = self.script.compression_threshold
+        if threshold is not None:
+            await peer.write(peer.frame("minecraft:login_compression", threshold=threshold))
+            peer.compress(threshold)
+        profile = {"uuid": hello.fields["player_uuid"], "username": hello.fields["name"]}
+        await peer.send(
+            "minecraft:login_finished",
+            profile={**profile, "properties": []},
+            session_id=uuid.UUID(int=1),
+        )
+        await self.expect(peer, "minecraft:login_acknowledged")
+        peer.state = State.CONFIGURATION
+        return True
+
+    async def configure(self, peer: Peer) -> bool:
+        if self.script.disconnect_in is State.CONFIGURATION:
+            await peer.send("minecraft:disconnect", reason=_DISCONNECT_REASON)
+            return False
+        await peer.send("minecraft:custom_payload", channel="minecraft:brand", data=b"\x07vanilla")
+        await peer.send("minecraft:update_enabled_features", feature_flags=["minecraft:vanilla"])
+        await peer.send("minecraft:select_known_packs", known_packs=[CORE_PACK])
+        echoed = await self.expect(peer, "minecraft:select_known_packs")
+        assert echoed.fields == {"known_packs": [CORE_PACK]}
+        entries = [{"entry_id": "minecraft:overworld", "data": None}]
+        await peer.send(
+            "minecraft:registry_data", registry_id="minecraft:dimension_type", entries=entries
+        )
+        await peer.send("minecraft:update_tags", tagged_registries=[])
+        if self.script.code_of_conduct is not None:
+            await peer.send(
+                "minecraft:code_of_conduct", code_of_conduct=self.script.code_of_conduct
+            )
+            await self.expect(peer, "minecraft:accept_code_of_conduct")
+        await peer.send("minecraft:finish_configuration")
+        await self.expect(peer, "minecraft:finish_configuration")
+        peer.state = State.PLAY
+        return True
+
+    async def play(self, peer: Peer) -> bool:
+        if self.script.disconnect_in is State.PLAY:
+            await peer.send("minecraft:disconnect", reason=_DISCONNECT_REASON)
+            return False
+        await peer.write(peer.raw_frame("minecraft:change_difficulty", b"\x00\x01"))
+        await peer.send(
+            "minecraft:player_position",
+            teleport_id=1,
+            velocity_x=0.0,
+            velocity_y=0.0,
+            velocity_z=0.0,
+            flags=0,
+            **SPAWN,
+        )
+        await self.expect(peer, "minecraft:accept_teleportation")
+        await peer.send("minecraft:chunk_batch_start")
+        await peer.write(peer.raw_frame("minecraft:level_chunk_with_light", bytes(300)))
+        await peer.send("minecraft:chunk_batch_finished", batch_size=1)
+        await self.expect(peer, "minecraft:chunk_batch_received")
+        if self.script.keep_alive_id is not None:
+            await peer.send("minecraft:keep_alive", keep_alive_id=self.script.keep_alive_id)
+            await self.expect(peer, "minecraft:keep_alive")
+        return True
+
+
 @asynccontextmanager
 async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
     """Listen on a free localhost port, running `handler` for each connection.
@@ -190,6 +325,29 @@ async def connected(
         yield connection
     finally:
         await connection.close()
+
+
+def with_bot[T](
+    codec: Codec,
+    transcript: Transcript,
+    handler: Handler,
+    use: Callable[[Bot], Awaitable[T]],
+    *,
+    timeout_s: float = 1.0,
+) -> tuple[T, Endpoint]:
+    """Run `use` on a Bot named alice connected to a fake server running `handler`."""
+
+    async def client() -> tuple[T, Endpoint]:
+        async with serve(codec, handler) as endpoint:
+            bot = await Bot.connect(
+                endpoint, TARGET, name="alice", transcript=transcript, timeout_s=timeout_s
+            )
+            try:
+                return await use(bot), endpoint
+            finally:
+                await bot.close()
+
+    return asyncio.run(client())
 
 
 def free_port() -> int:

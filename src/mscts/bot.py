@@ -1,9 +1,11 @@
 """Bots: the client connections Scenarios drive."""
 
 import asyncio
+import hashlib
 import json
 import math
 import struct
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Self
@@ -31,6 +33,18 @@ _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
 """Teleport Flags bits (wiki Data types; vanilla's `Relative`): which parts add to the pose."""
 
 _PITCH_LIMIT = 90.0
+
+_STATUS_INTENT, _LOGIN_INTENT = 1, 2
+
+
+def offline_uuid(name: str) -> uuid.UUID:
+    """The UUID an offline-mode server gives the player called `name`.
+
+    Vanilla's `UUIDUtil.createOfflinePlayerUUID` (26.3 javap): Java's
+    `UUID.nameUUIDFromBytes`, a version 3 (MD5) UUID, of `"OfflinePlayer:" + name` in UTF-8.
+    """
+    digest = hashlib.md5(f"OfflinePlayer:{name}".encode(), usedforsecurity=False).digest()
+    return uuid.UUID(bytes=digest, version=3)
 
 
 def _binary32(value: float) -> float:
@@ -174,13 +188,17 @@ class Bot:
     ) -> Self:
         """Open a Connection to `endpoint` for a Bot called `name`, speaking `target`.
 
+        From then on, the Bot's `Replies` answer each packet as it arrives.
+
         Raises:
             OSError: The connection failed, e.g. ConnectionRefusedError.
             TimeoutError: It did not connect within `timeout_s`.
         """
         codec = Codec.for_target(target)
         async with asyncio.timeout(timeout_s):
-            connection = await Connection.open(endpoint, codec, bot=name, transcript=transcript)
+            connection = await Connection.open(
+                endpoint, codec, bot=name, transcript=transcript, answer=Replies()
+            )
         return cls(connection, endpoint, target, name=name, timeout_s=timeout_s)
 
     async def status(self) -> Mapping[str, object]:
@@ -218,19 +236,81 @@ class Bot:
             msg = f"pong_response echoed {echoed!r}, not the ping payload {payload!r}"
             raise ProtocolError(msg)
 
+    async def join(self) -> None:
+        """Join the server offline, and return once play's first chunk batch has finished.
+
+        Sends the login handshake (intent 2) and a `hello` with the Bot's name and its
+        `offline_uuid`, then takes each packet until play's first `chunk_batch_finished`.
+        On the way, the Bot's Replies answer as the vanilla client does: they ack login
+        and configuration, echo the known packs and any keep-alive, accept a code of
+        conduct, confirm the join teleport, and acknowledge the chunk batch.
+
+        Raises:
+            ProtocolError: The Connection is not fresh (a handshake was sent), or the server
+                asked for encryption (online mode) or disconnected the Bot.
+            TimeoutError: The first chunk batch had not finished within `timeout_s`.
+        """
+        if self._connection.state is not State.HANDSHAKE:
+            msg = f"join needs a fresh Connection, not one in {self._connection.state}"
+            raise ProtocolError(msg)
+        async with asyncio.timeout(self._timeout_s):
+            await self._handshake(_LOGIN_INTENT)
+            await self._connection.send(
+                "minecraft:hello", name=self.name, player_uuid=offline_uuid(self.name)
+            )
+            await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
+
+    async def expect(
+        self, name: str, *, timeout_s: float, where: Callable[[Packet], bool] | None = None
+    ) -> Packet:
+        """Take packets until one is called `name` and `where` holds for it; return it.
+
+        Every packet taken is recorded, the ones before it included, and the Bot's
+        Replies have already answered each of them.
+
+        Raises:
+            ProtocolError: The server disconnected the Bot, or asked for encryption,
+                before such a packet arrived.
+            TimeoutError: None arrived within `timeout_s`.
+        """
+        async with asyncio.timeout(timeout_s):
+            while True:
+                packet = await self._connection.recv(timeout_s=timeout_s)
+                if packet.name == name and (where is None or where(packet)):
+                    return packet
+                self._refuse(packet)
+
     async def close(self) -> None:
         """Close the Bot's Connection. Calling it again does nothing."""
         await self._connection.close()
 
     async def _handshake_for_status(self) -> None:
         if self._connection.state is State.HANDSHAKE:
-            await self._connection.send(
-                "minecraft:intention",
-                protocol_version=self._target.protocol_version,
-                server_address=self._endpoint.host,
-                server_port=self._endpoint.port,
-                intent=1,
-            )
+            await self._handshake(_STATUS_INTENT)
+
+    async def _handshake(self, intent: int) -> None:
+        await self._connection.send(
+            "minecraft:intention",
+            protocol_version=self._target.protocol_version,
+            server_address=self._endpoint.host,
+            server_port=self._endpoint.port,
+            intent=intent,
+        )
+
+    def _refuse(self, packet: Packet) -> None:
+        """Raise ProtocolError if `packet` ends the Bot's session: a disconnect, or encryption."""
+        match packet.state, packet.name:
+            case State.LOGIN, "minecraft:login_disconnect":
+                reason: object = packet.payload
+            case State.CONFIGURATION | State.PLAY, "minecraft:disconnect":
+                reason = (packet.fields or {}).get("reason")
+            case State.LOGIN, "minecraft:hello":
+                msg = f"the server asks for encryption (online mode), and {self.name} is offline"
+                raise ProtocolError(msg)
+            case _:
+                return
+        msg = f"the server disconnected {self.name} in {packet.state}: {reason!r}"
+        raise ProtocolError(msg)
 
 
 def status_probe(

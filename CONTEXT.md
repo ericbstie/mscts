@@ -48,7 +48,12 @@ need is missing, add it here in the same commit that introduces it.
   the Target. Packet IDs come from the vanilla-generated `packets.json`.
 - **Packet**: one decoded frame: state, direction, name
   (`minecraft:login`), raw bytes, and fields if a schema exists.
-- **Bot**: one client connection driven by a Scenario.
+- **Bot**: one client connection driven by a Scenario. It answers by itself
+  what the vanilla client answers by itself (keep-alives, teleports, chunk
+  batches, the configuration acks), whether or not its Scenario is reading.
+- **Join**: a Bot's way into the game, offline: handshake, login,
+  configuration, then play until the server's first chunk batch has
+  finished.
 - **Control**: the channel used to set up Fixtures. By default it is an
   **Operator Bot** that sends vanilla command syntax.
 - **Fixture**: world or player state established before the observed part
