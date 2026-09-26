@@ -61,12 +61,12 @@ class Mask:
     reason: str
 
 
-type DivergenceKind = Literal["missing", "unexpected", "field"]
+type DivergenceKind = Literal["bot", "missing", "unexpected", "field"]
 
 
 @dataclass(frozen=True, slots=True)
 class Divergence:
-    """One difference a Comparison found in one Bot's stream.
+    """One difference a Comparison found for one Bot.
 
     A Bot's stream is the clientbound Packets it received, in order. The two streams
     are aligned: a Packet is matched with one of the same State and name on the other
@@ -76,15 +76,19 @@ class Divergence:
         bot: The Bot's name.
         index: The position of the Packet in its stream, counting from 0: in the
             reference stream for `missing` and `field`, in the candidate stream for
-            `unexpected`.
-        kind: `missing`: a reference Packet the alignment left unmatched.
+            `unexpected`. Always 0 for `bot`.
+        kind: `bot`: the Bot has Events (sent or received) in only one Transcript.
+            Its stream's Divergences follow, the other side's stream being empty.
+            `missing`: a reference Packet the alignment left unmatched.
             `unexpected`: a candidate Packet the alignment left unmatched.
             `field`: a difference between two matched Packets.
-        packet: The packet name.
+        packet: The packet name; "" for `bot`.
         path: Where in the matched Packets they differ, or None for their whole
-            payload. Always None for `missing` and `unexpected`.
-        reference: The value in the reference, or ABSENT.
-        candidate: The value in the candidate, or ABSENT.
+            payload. Always None for `bot`, `missing` and `unexpected`.
+        reference: The value in the reference, or ABSENT. For `bot`, the number of
+            the Bot's Events.
+        candidate: The value in the candidate, or ABSENT. For `bot`, the number of
+            the Bot's Events.
     """
 
     bot: str
@@ -136,9 +140,7 @@ def compare(
         raise ValueError(msg)
     bots = sorted(_bots(reference) | _bots(candidate))
     divergences = tuple(
-        divergence
-        for bot in bots
-        for divergence in _compare_streams(bot, _stream(reference, bot), _stream(candidate, bot))
+        divergence for bot in bots for divergence in _compare_bot(bot, reference, candidate)
     )
     return Verdict(
         scenario_id=reference.scenario_id,
@@ -149,6 +151,22 @@ def compare(
 
 def _bots(transcript: Transcript) -> set[str]:
     return {event.bot for event in transcript.events}
+
+
+def _compare_bot(bot: str, reference: Transcript, candidate: Transcript) -> Iterator[Divergence]:
+    in_reference = sum(event.bot == bot for event in reference.events)
+    in_candidate = sum(event.bot == bot for event in candidate.events)
+    if not (in_reference and in_candidate):
+        yield Divergence(
+            bot=bot,
+            index=0,
+            kind="bot",
+            packet="",
+            path=None,
+            reference=in_reference or ABSENT,
+            candidate=in_candidate or ABSENT,
+        )
+    yield from _compare_streams(bot, _stream(reference, bot), _stream(candidate, bot))
 
 
 def _stream(transcript: Transcript, bot: str) -> list[Packet]:

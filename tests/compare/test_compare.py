@@ -127,6 +127,65 @@ def test_divergences_are_grouped_by_bot_in_name_order() -> None:
     ]
 
 
+def test_a_bot_only_the_reference_has_is_a_bot_divergence() -> None:
+    # bob only sent: comparing received streams alone would find nothing.
+    sent = packet("test:hello", b"\x07", direction=SERVERBOUND)
+    reference = transcript(("alice", A), ("bob", sent), ("bob", sent))
+    candidate = transcript(("alice", A))
+    assert compare(reference, candidate, []).divergences == (
+        Divergence(
+            bot="bob",
+            index=0,
+            kind="bot",
+            packet="",
+            path=None,
+            reference=2,
+            candidate=ABSENT,
+        ),
+    )
+
+
+def test_a_bot_only_the_candidate_has_is_a_bot_divergence_then_its_packets() -> None:
+    reference = transcript(("alice", A))
+    candidate = transcript(("alice", A), ("bob", B), ("bob", C))
+    assert compare(reference, candidate, []).divergences == (
+        Divergence(
+            bot="bob",
+            index=0,
+            kind="bot",
+            packet="",
+            path=None,
+            reference=ABSENT,
+            candidate=2,
+        ),
+        Divergence(
+            bot="bob",
+            index=0,
+            kind="unexpected",
+            packet="test:b",
+            path=None,
+            reference=ABSENT,
+            candidate="02",
+        ),
+        Divergence(
+            bot="bob",
+            index=1,
+            kind="unexpected",
+            packet="test:c",
+            path=None,
+            reference=ABSENT,
+            candidate="03",
+        ),
+    )
+
+
+def test_a_bot_that_received_nothing_is_still_present() -> None:
+    sent = packet("test:hello", b"\x07", direction=SERVERBOUND)
+    reference = transcript(("alice", A))
+    candidate = transcript(("alice", sent))
+    assert [d.kind for d in compare(reference, candidate, []).divergences] == ["missing"]
+
+
 def test_transcripts_of_different_scenarios_are_not_compared() -> None:
     other = transcript(scenario_id="status/ping")
     with pytest.raises(ValueError, match="'test/scenario' and 'status/ping'"):

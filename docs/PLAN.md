@@ -370,12 +370,15 @@ class Divergence:
     bot: str
     index: int                      # position in the Bot's normalized stream, from 0: the
                                     # reference stream for missing and field, the candidate
-                                    # stream for unexpected
-    kind: Literal["missing", "unexpected", "field"]
-    packet: str                     # the packet name
-    path: str | None                # None: the whole payload (and always for missing/unexpected)
+                                    # stream for unexpected; 0 for bot
+    kind: Literal["bot", "missing", "unexpected", "field"]
+    packet: str                     # the packet name ("" for bot)
+    path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT
     candidate: object
+    # bot: the Bot has Events (sent or received) in only one Transcript; reference and
+    #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
+    #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
     # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
     # field: a difference between two matched packets.
