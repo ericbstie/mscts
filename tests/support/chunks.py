@@ -31,11 +31,11 @@ decode_chunk = _chunkformat.decode_chunk
 SECTION_ENTRIES = _chunkformat.SECTION_ENTRIES
 BIOME_ENTRIES = _chunkformat.BIOME_ENTRIES
 LAYER = _chunkformat.LAYER
+OVERWORLD_SECTIONS = _chunkformat.OVERWORLD_SECTIONS
 
 # What the Reference sends for the default ServerSpec's flat world (docs/research/
 # 2026-09-26-pumpkin.md, "A native world save"; pinned by
-# tests/reference/test_flat_world_reference.py). The overworld is 24 sections high.
-OVERWORLD_SECTIONS = 24
+# tests/reference/test_flat_world_reference.py).
 FLAT_BOTTOM_LAYERS = (88, 10, 10, 9)  # block state ids of y = -64 .. -61: then air (0)
 FLAT_BIOME = 41  # every biome cell: the plains, by the registry order the join sent
 FLAT_SPAWN_Y = -60.0  # standing on the top layer

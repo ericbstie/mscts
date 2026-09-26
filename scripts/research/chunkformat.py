@@ -20,6 +20,11 @@ SECTION_ENTRIES = 4096  # 16 x 16 x 16 block states, y slowest, then z, then x
 BIOME_ENTRIES = 64  # 4 x 4 x 4 biome cells
 LAYER = 256  # one y level of a section
 
+# The overworld dimension type's height (-64..320, the vanilla dimension registry, not any
+# Adapter's own choice) is 384 blocks, i.e. 24 sections: how many `decode_chunk` needs for
+# an overworld `level_chunk_with_light` (docs/research/2026-09-26-pumpkin.md).
+OVERWORLD_SECTIONS = 24
+
 
 @dataclass(frozen=True, slots=True)
 class Section:
