@@ -465,7 +465,9 @@ def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[i
     Packets as possible are left unmatched. Of the longest ones, the choice is fixed
     so that swapping the two sides mirrors it:
 
-    1. The common prefix and the common suffix are matched.
+    1. The common prefix and the common suffix are matched as they stand. So of
+       repeated packets, the prefix matches the earliest and the suffix the latest:
+       [a] against [b, a, a] matches the last a.
     2. In between, a longest common subsequence is traced from the front. Equal keys
        are matched. Otherwise one key is skipped: the one whose skipping keeps the
        longer subsequence, or, if both keep as long a one, the smaller key, whichever

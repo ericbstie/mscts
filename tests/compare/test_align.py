@@ -1,7 +1,10 @@
 """How compare() aligns two Bot streams, and what its Divergences' indices mean."""
 
+import itertools
+from collections.abc import Sequence
+
 from mscts.codec.packets import Packet
-from mscts.compare import ABSENT, Divergence, compare
+from mscts.compare import ABSENT, Divergence, _align, compare
 from tests.compare.build import packet, transcript
 
 
@@ -53,9 +56,48 @@ def test_a_field_divergence_indexes_the_reference_stream() -> None:
     )
 
 
-def test_a_repeated_packet_matches_the_earliest_one() -> None:
+def test_a_repeated_packet_after_a_common_prefix_is_the_extra_one() -> None:
     assert _kinds(_named("a", "a"), _named("a")) == [("missing", 1, "a")]
     assert _kinds(_named("a"), _named("a", "a")) == [("unexpected", 1, "a")]
+
+
+def test_the_common_suffix_is_matched_as_it_stands() -> None:
+    # So of repeated packets, the prefix matches the earliest and the suffix the latest:
+    # [a] against [b, a, a] matches the last a.
+    assert _kinds(_named("a"), _named("b", "a", "a")) == [
+        ("unexpected", 0, "b"),
+        ("unexpected", 1, "a"),
+    ]
+
+
+def _longest_common_subsequence_length(
+    first: Sequence[tuple[str, str]], second: Sequence[tuple[str, str]]
+) -> int:
+    """The textbook dynamic programme, as an oracle."""
+    table = [[0] * (len(second) + 1) for _ in range(len(first) + 1)]
+    for i in reversed(range(len(first))):
+        for j in reversed(range(len(second))):
+            table[i][j] = (
+                table[i + 1][j + 1] + 1
+                if first[i] == second[j]
+                else max(table[i + 1][j], table[i][j + 1])
+            )
+    return table[0][0]
+
+
+def test_every_small_alignment_is_ordered_longest_and_mirrored_by_a_swap() -> None:
+    sequences = [
+        [("play", name) for name in names]
+        for length in range(5)
+        for names in itertools.product("abc", repeat=length)
+    ]
+    for reference in sequences:
+        for candidate in sequences:
+            pairs = _align(reference, candidate)
+            assert all(reference[i] == candidate[j] for i, j in pairs)
+            assert all(i < k and j < m for (i, j), (k, m) in itertools.pairwise(pairs))
+            assert len(pairs) == _longest_common_subsequence_length(reference, candidate)
+            assert _align(candidate, reference) == [(j, i) for i, j in pairs]
 
 
 def test_the_alignment_keeps_the_most_packets_matched() -> None:

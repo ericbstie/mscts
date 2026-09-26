@@ -212,6 +212,13 @@ def test_json_nested_deeper_than_255_is_compared_as_the_raw_string() -> None:
     assert _diff(nested(5000), nested(5000)) == []
 
 
+def test_json_too_deep_for_the_json_module_is_compared_as_the_raw_string() -> None:
+    # The deepest a String (32767) holds; json.loads itself raises RecursionError on it.
+    deepest = "[" * 16383 + "]" * 16383
+    assert _diff(deepest, deepest) == []
+    assert _diff('{"a":1}', deepest) == [("json_response", {"a": 1}, deepest)]
+
+
 def test_masks_apply_to_the_canonical_form() -> None:
     mask = Mask(
         packet="minecraft:status_response",

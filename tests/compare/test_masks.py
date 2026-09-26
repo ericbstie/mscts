@@ -154,6 +154,11 @@ def test_a_mask_that_matches_nothing_is_not_an_error() -> None:
     assert _fields_diff({"a": 1}, {"a": 1}, *masks) == []
 
 
+def test_a_field_mask_whose_parent_is_absent_removes_nothing_else() -> None:
+    assert _fields_diff({"a": 1}, {"a": 2}, _mask("absent.a")) == [("a", 1, 2)]
+    assert _fields_diff({"l": [1]}, {"l": [2]}, _mask("l[5][0]")) == [("l[0]", 1, 2)]
+
+
 def test_a_field_mask_leaves_a_packet_without_fields_compared_by_payload() -> None:
     verdict = compare(
         transcript(("alice", packet("test:p", b"\x01"))),

@@ -480,11 +480,16 @@ proves it necessary:
    The alignment is a **longest common subsequence** of the packet keys,
    so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
-   mirrors it: match the common prefix and suffix; between them, trace
-   from the front, matching equal keys, otherwise skipping the key whose
-   skipping keeps the longer subsequence, and on a tie the smaller key,
-   whichever side it is on. Between two matched pairs, `missing` comes
-   before `unexpected`. Not `difflib.SequenceMatcher`: it matches the
+   mirrors it: match the common prefix and suffix as they stand (so of
+   repeated packets the prefix matches the earliest and the suffix the
+   latest: `[a]` against `[b, a, a]` matches the last `a`); between
+   them, trace from the front, matching equal keys, otherwise skipping
+   the key whose skipping keeps the longer subsequence, and on a tie
+   the smaller key, whichever side it is on. Between two matched pairs,
+   `missing` comes before `unexpected`. A unit test checks every pair of
+   key sequences up to length 4 over 3 keys: ordered, longest, and
+   mirrored by a swap (an exhaustive run up to length 5 found no
+   exception either). Not `difflib.SequenceMatcher`: it matches the
    longest *contiguous* block first, so it can leave more packets
    unmatched than necessary, and its tie-breaking depends on which side
    is `a`, so a swap does not mirror it. The cost is O(n·m) time and

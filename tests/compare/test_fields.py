@@ -6,6 +6,7 @@ from collections.abc import Mapping
 
 import pytest
 
+from mscts.codec.packets import State
 from mscts.compare import ABSENT, Divergence, compare
 from tests.compare.build import packet, transcript
 
@@ -141,6 +142,8 @@ def test_divergence_values_are_copies_of_the_fields() -> None:
     ("fields", "error"),
     [
         ({"v": (1, 2)}, r"test:p: v: tuple is not a codec value"),
+        # A subclass of a leaf type is not one: an enum would compare equal to its value.
+        ({"v": State.PLAY}, r"test:p: v: State is not a codec value"),
         ({"v": {1: "a"}}, r"test:p: v: int key 1 is not a field name"),
         ({"v": [{"w": {1.5}}]}, r"test:p: v\[0\].w: set is not a codec value"),
     ],
