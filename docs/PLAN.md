@@ -460,8 +460,8 @@ proves it necessary:
    and `null` keep their types. `favicon` presence is significant: the
    client shows the icon when there is one, and ServerSpec's invariant
    is "no server icon".
-3. Apply **Masks**, which remove declared-nondeterministic fields or
-   ambient packets. A `*` Mask drops every packet of that name (in any
+3. Apply **Masks**, which remove identifiers with no gameplay meaning, or
+   ambient packets (ADR-0006: never player-observable behaviour). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream
    after dropping, so they stay the same across re-runs that differ in
    how many ambient packets arrived. A Bot's presence (the `bot`
@@ -553,6 +553,7 @@ mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
 | unit | (default) | nothing external: localhost sockets and short helper processes only | `mise run check` (lint, format, types, bandit, unit tests) |
 | reference | `@pytest.mark.reference` | Java 25, network on first run | `mise run test:reference` |
 | candidate | `@pytest.mark.candidate` | a Candidate binary | `mise run test:candidate` |
+| statistical | `@pytest.mark.statistical` | live servers, many repetitions (slow) | `mise run test:statistical` (opt-in; ADR-0006) |
 
 Cache: there is one per user, outside any checkout, and every worktree and
 session shares it, so each download happens once. `mscts.cache.cache_dir()`
@@ -601,22 +602,38 @@ Divergences are readable. Add **Paper** as a high-parity sanity Candidate:
 false mismatches against a vanilla fork point at harness bugs.
 
 **M4 — Join.** Compression, login, configuration (known packs), play up to
-the first chunk batch. `join/basic` Scenario. Masks for UUIDs, entity ids,
-keep-alive ids and time, until the Self-check passes 20/20. Measurements:
+the first chunk batch. `join/basic` Scenario. Masks for entity ids and
+keep-alive ids only; spawn position is pinned by a Fixture here and
+measured statistically in M6b (ADR-0006). The Self-check must pass 20/20. Measurements:
 `join.to_play`, `join.to_first_chunk`.
 
 **M5 — Control and Fixtures.** Operator Bot, `command()`, `system_chat`
 feedback, and `blocked` Verdicts through `requires`.
 
-**M6 — Gameplay breadth.** One Scenario per observable mechanic: block
-place and break, movement correction, chat, inventory, entities, commands.
-Each one only after its prerequisites match on the Reference.
+**M6 — Gameplay breadth.** One exact Scenario per observable mechanic:
+block place and break, movement correction, chat, inventory, entities,
+commands. Each one only after its prerequisites match on the Reference.
+
+**M6a — Tick-exact mechanics (ADR-0006).** Research `/tick freeze` and
+`/tick step` observability over the protocol, then add tick-indexed
+observation anchored on world age. Then redstone Scenarios (repeaters,
+comparators, observers, piston timing, quasi-connectivity) and vanilla
+glitch Scenarios (headless-piston bedrock breaking, pearl phasing through
+the nether roof, …).
+
+**M6b — Statistical mechanics (ADR-0006).** The `statistical` tier and Run
+profile, a distribution test with a stated confidence level, and a
+per-kind Self-check. Then join spawn position, mob spawn rates, loot
+tables and random ticks.
 
 **M7 — Performance.** Repetitions with statistics, multi-Bot load (N
 concurrent joins, chunk throughput), and process metrics (RSS, CPU).
 
-**M8 — Reports.** JSON plus a Markdown/HTML summary, compliance score, and
-history across Candidate versions.
+**M8 — Reports.** JSON plus a Markdown/HTML summary: a catalogue of
+Divergences grouped by mechanic, each linked to its reproducible
+Scenario, with no declared deviations (ADR-0006). Also a compliance
+score, `blocked` counts per missing command, and history across Candidate
+versions.
 
 **Later.** A second Target, and more Candidates (Minestom launcher,
 FerrumC).

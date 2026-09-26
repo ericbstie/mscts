@@ -96,6 +96,8 @@ new classes of defect:
   test red.
 - **Cleanup.** Processes, sockets and temp dirs are released on success,
   error, timeout and cancellation.
+- **No Mask hides gameplay.** Every Mask's reason shows the field has no
+  player-observable meaning (ADR-0006).
 - **Candidate output never crashes the harness.** Malformed or
   undecodable Candidate output is recorded and becomes a `mismatch`,
   never an `error` (which the compliance score excludes).
@@ -284,4 +286,5 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-09-26 | ADR-0006: catalogue of differences; exact/tick-exact/statistical Scenarios; Masks only for non-gameplay ids; commands-only Fixtures | User direction: surface every difference (randomness, redstone, glitches) without hiding any |
 | 2026-09-25 | Adopted the tech-lead/worker model with mandatory retrospectives | User direction: the lead steers, workers execute, and the process optimises itself |

@@ -17,6 +17,11 @@ Bot), G (regen + host-independent launch), H (Pumpkin adapter), I
 (tooling + shared Reference), J (Comparison engine), K (foundation audit,
 `docs/audits/2026-09-26-foundation.md`).
 
+Direction set by the user (ADR-0006): the Report is a raw catalogue of
+differences grouped by mechanic, with no declared deviations. Random
+mechanics are judged statistically in an opt-in tier; redstone and
+glitches are tick-exact; Fixtures use commands only for now.
+
 Awaiting user decisions:
 1. A Candidate that cannot honour a ServerSpec field (Pumpkin: no flat
    world, difficulty ignored).
@@ -48,8 +53,9 @@ Take the first item. Split it if it is more than one failing test.
    join probe (adopt worker H's scratch tools), and a loopback-only
    reference test.
 6. `runner`: a parent-death guard.
-7. Spawn: vanilla's join position varies on every fresh run; pin it or
-   Mask it before M4.
+7. Spawn (ADR-0006): exact Scenarios pin the position with a Fixture
+   (`/setworldspawn`, `/tp`); a statistical `spawn/join-position` Scenario
+   comes in M6b. Never Mask it.
 8. Flake hunt: the unit tier under CPU stress, N times.
 
 ## Log

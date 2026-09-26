@@ -83,4 +83,5 @@ timeout = 120
 markers = [
     "reference: needs a live vanilla Reference Instance",
     "candidate: needs a live Candidate Instance",
+    "statistical: opt-in, slow; statistical Scenarios run N times (ADR-0006)",
 ]

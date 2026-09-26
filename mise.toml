@@ -29,7 +29,7 @@ run = "uv run bandit -q -c pyproject.toml -r src"
 
 [tasks.test]
 description = "unit tier"
-run = "uv run pytest -m 'not reference and not candidate'"
+run = "uv run pytest -m 'not reference and not candidate and not statistical'"
 
 [tasks.check]
 description = "Everything a commit must pass"
@@ -42,6 +42,10 @@ run = "uv run pytest -m reference"
 [tasks."test:candidate"]
 description = "candidate tier (live Candidate Instance)"
 run = "uv run pytest -m candidate"
+
+[tasks."test:statistical"]
+description = "statistical tier (opt-in, slow; ADR-0006)"
+run = "uv run pytest -m statistical"
 
 [tasks."regen:packets"]
 description = "Regenerate and verify the committed packets.json (--write to update it)"

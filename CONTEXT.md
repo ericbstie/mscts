@@ -50,15 +50,22 @@ need is missing, add it here in the same commit that introduces it.
 - **Scenario**: a deterministic, named script (`status/basic`) that runs
   against one Instance and produces a Transcript. It declares ServerSpec
   overrides and prerequisites.
+- **Scenario kinds** (ADR-0006):
+  - **exact**: deterministic, diffed packet by packet;
+  - **tick-exact**: deterministic mechanics (redstone, glitches) observed
+    tick by tick under a frozen and stepped world;
+  - **statistical**: random mechanics (spawning, loot) run N times per
+    server and compared as distributions.
 - **Transcript**: the ordered, timestamped record of every Packet each Bot
   sent and received, plus Marks.
 - **Event**: one entry of a Transcript: a Packet one Bot sent or received,
   and when.
 - **Mark**: a named timestamp a Scenario records so a Measurement can be
   computed.
-- **Mask**: a normalization rule that declares a field nondeterministic
-  (entity ids, UUIDs, keep-alive ids, timestamps, seeds). Masked fields are
-  excluded from Comparison.
+- **Mask**: a normalization rule that excludes an identifier with no
+  gameplay meaning (entity ids, keep-alive ids, teleport ids) from
+  Comparison. Player-observable behaviour is never masked, even when it is
+  random; that is judged statistically instead (ADR-0006).
 - **Canonicalization**: rewrites a value into one canonical form when the
   protocol defines two encodings as meaning the same thing to the vanilla
   client (a text component `"x"` is `{"text": "x"}`). It is not a Mask: a
@@ -86,3 +93,5 @@ need is missing, add it here in the same commit that introduces it.
     Localhost sockets and short helper processes are allowed.
   - `reference`: needs a live vanilla Instance.
   - `candidate`: needs a live Candidate Instance.
+  - `statistical`: opt-in, slow. Runs statistical Scenarios N times;
+    never part of `check` or the default Run.
