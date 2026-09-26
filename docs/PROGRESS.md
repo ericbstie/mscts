@@ -74,8 +74,16 @@ Environment notes:
 
 ## In flight
 
-Nothing. Every worktree is integrated or removed (session 2 ended at a
-rate limit; see Next 0 and 1 for the interrupted briefs).
+- **Worker AB (opus): M3's first Report.** `measure.py`, Measurements in
+  `run.py`, `report.py` (text), `mscts run --candidate pumpkin` over the
+  status Scenarios, proven live against Pumpkin nightly-48cba7ee.
+
+Session 3 direction (maintainer, 2026-09-26): one working end-to-end
+command is the only goal. Next 4 (with the minimum of 3a it needs) is the
+only feature work; Next 0 is shrunk to an audit of the code the Report
+touches, afterwards; Next 1, 6, 11 and process work are parked. Lead
+decisions for the Report: a mechanic is a Scenario id's first segment,
+and wire-only Divergences are grouped per packet with a leaf count.
 
 ## Delegated to the helper agent
 
