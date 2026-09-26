@@ -176,6 +176,13 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker I (tooling) | The session-scoped async fixture pairing (`loop_scope`) is undocumented in the repo and cost 30–40 min | **adopt**: red-green Known trap |
+| 2026-09-26 | worker I | importlib mode already synthesizes `tests.*` packages; `pythonpath` is for plain helpers | **adopt**: Known trap |
+| 2026-09-26 | worker I | Script lint friction: EXE001, D301, PYI025, S105 on names | **adopt**: Known trap |
+| 2026-09-26 | worker I | The two-boot runner test can exceed the global 120 s timeout | **adopt**: the lead added `@pytest.mark.timeout(300)` |
+| 2026-09-26 | worker I | Habitual `git stash` for a throwaway experiment (refused by the sandbox) | **adopt**: the skill now names this case |
+| 2026-09-26 | worker I | Hermetic tests for `strays.py` caught two real bugs early | **reject** (no change): red-green working as intended |
+| 2026-09-26 | lead | Audit cadence reached (4 batches). The foundation (codec, net, bot, transcript, runner) is about to carry join and Comparison | **adopt**: opus audit brief K, read-only, report in `docs/audits/` |
 | 2026-09-26 | worker G (regen/env) | A plain `uv run pytest` picks up the host Java 21 | **adopt**: Worker contract "run tiers through mise" |
 | 2026-09-26 | worker G | The noqa + nosec same-line syntax took trial and error | **adopt**: red-green Known trap |
 | 2026-09-26 | worker G | A probe retry catching only `OSError` missed `EOFError` | **adopt**: protocol-research trap |

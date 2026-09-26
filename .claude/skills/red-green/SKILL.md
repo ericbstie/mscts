@@ -88,6 +88,18 @@ then one commit.
   `# noqa: S603  # nosec B603`: two separate `#` tokens, noqa first. A
   combined comment satisfies only one tool. Keep a nosec to its rule ids,
   since bandit warns about every other word after it.
+- A session-scoped async fixture (such as the shared Reference) needs
+  `@pytest_asyncio.fixture(scope="session", loop_scope="session")`, and
+  every test using it needs `@pytest.mark.asyncio(loop_scope="session")`.
+  Both sides must agree. Asyncio objects are bound to the loop that made
+  them.
+- Helpers: `from tests.net.fakes import …` works under importlib mode,
+  because pytest synthesizes the namespace packages. `tests/support/`
+  (`import support`) is for plain helpers that need no collection order.
+- Lint on new scripts: a shebang needs `chmod +x` (EXE001); a `\t` in a
+  docstring needs `r"""` (D301); alias `collections.abc.Set` as
+  `AbstractSet` (PYI025); bandit S105 fires on a constant *named* like
+  `_TOKEN`, even when it holds an env-var name.
 - Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
 - At most 5 parameters, keyword-only included (PLR0913). Derive values
   rather than passing them. Never add a `noqa` before ruff has actually
@@ -121,5 +133,6 @@ then one commit.
   `git bisect run uv run pytest <test>`.
 - If you are going in circles, go back to the last green commit
   (`git reset --hard HEAD` in your own worktree) and take a smaller step.
-  Never use `git stash`: all worktrees share one stash stack, so you could
-  pop another worker's changes.
+  Never use `git stash`, not even for a quick throwaway experiment: all
+  worktrees share one stash stack, so you could pop another worker's
+  changes. Flip the line with Edit, then flip it back.

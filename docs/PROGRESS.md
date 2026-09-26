@@ -33,11 +33,14 @@ Done:
 - **G** (sonnet): `mise run regen:packets` (byte-identical check, reference
   test), `resolve_java` seam, and a host-independent vanilla launch
   (fixed env, UTC, IPv4), verified live.
+- **I** (sonnet): pytest-timeout, `tests/support`, `scripts/mutate.py`,
+  `scripts/strays.py`, and a shared session Reference (status tests
+  38 s → 12.5 s), with strict status/ping verified live (ADR-0003).
 
 In flight:
-- **I** (sonnet): pytest-timeout, `tests/support`, `scripts/mutate.py` and
-  `scripts/strays.py`, plus a shared Reference fixture and reference-tier
-  strict status/ping.
+- **K** (opus): an audit of the foundation (codec, net, bot, transcript,
+  runner) against the Audit checklist. Read-only; the report goes in
+  `docs/audits/`.
 - **J** (opus): the Comparison engine (`compare.py`: alignment, field
   diffs, Masks, canonicalization).
 - **H** (opus): `PumpkinAdapter`.
