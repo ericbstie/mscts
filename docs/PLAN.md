@@ -535,23 +535,44 @@ class Transcript:                   # a plain data holder: no I/O
     # to_jsonl() / from_jsonl() — payload as hex, fields as JSON
 
 class ScenarioContext:
+    def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None: ...
     endpoint: Endpoint
-    control: Control                # Operator Bot by default (ADR-0001)
-    async def bot(self, name: str) -> Bot: ...
+    control: Control                # Operator Bot by default (ADR-0001). Until M5 builds it,
+                                    # reading it raises NotImplementedError naming M5
+    async def bot(self, name: str) -> Bot: ...   # Bot.connect(endpoint, TARGET, timeout_s=...),
+                                                 # recording to the transcript; ValueError on a
+                                                 # second Bot of the same name
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
+                                    # (no end Mark if the body raises: no Measurement)
+    async def close(self) -> None: ...   # closes every Bot; idempotent
 
 class Control(Protocol):
     async def run(self, command: str) -> None: ...
 
+class ScenarioKind(StrEnum):        # ADR-0006; values "exact", "tick-exact", "statistical"
+    EXACT, TICK_EXACT, STATISTICAL
+
+type Script = Callable[[ScenarioContext], Awaitable[None]]
+
 @frozen
 class Scenario:
     id: str                         # "status/basic"
-    run: Callable[[ScenarioContext], Awaitable[None]]
+    run: Script
     requires: tuple[str, ...] = ()  # Scenario ids that must `match` first, else `blocked`
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
+    kind: ScenarioKind = ScenarioKind.EXACT
 
-def scenario(id: str, *, requires=(), masks=(), spec=identity): ...        # decorator → registry
+SCENARIOS: Mapping[str, Scenario]   # the registered Scenarios, by id, in registration order:
+                                    # a read-only view; mscts.scenarios registers its own on import
+def scenario(id: str, *, requires=(), masks=(), spec=identity,
+             kind=ScenarioKind.EXACT) -> Callable[[Script], Script]: ...
+    # the decorator: registers Scenario(id, the function, ...) and returns the function;
+    # ValueError if `id` is registered already
+def resolve(scenario_ids: Iterable[str], scenarios: Mapping[str, Scenario] = SCENARIOS
+            ) -> tuple[Scenario, ...]: ...
+    # the named Scenarios plus their prerequisites, each once, every one after its
+    # prerequisites, else in the order given; KeyError (unknown id), ValueError (a cycle)
 
 WHOLE_PACKET = "*"
 

@@ -68,7 +68,8 @@ need is missing, add it here in the same commit that introduces it.
 - **Scenario**: a deterministic, named script (`status/basic`) that runs
   against one Instance and produces a Transcript. It declares ServerSpec
   overrides and prerequisites.
-- **Scenario kinds** (ADR-0006):
+- **Scenario kinds** (ADR-0006; `ScenarioKind` in code, a Scenario's `kind`,
+  exact unless it says otherwise):
   - **exact**: deterministic, diffed packet by packet;
   - **tick-exact**: deterministic mechanics (redstone, glitches) observed
     tick by tick under a frozen and stepped world;
