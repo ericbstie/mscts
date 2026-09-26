@@ -374,3 +374,146 @@ class PrefixedOptional[T]:
         writer.bool_(value=value is not None)
         if value is not None:
             self.element.write(writer, value)
+
+
+_NBT_END, _NBT_BYTE_ARRAY, _NBT_STRING, _NBT_LIST, _NBT_COMPOUND = 0, 7, 8, 9, 10
+_NBT_INT_ARRAY, _NBT_LONG_ARRAY = 11, 12
+_NBT_FIXED_SIZES = {1: 1, 2: 2, 3: 4, 4: 8, 5: 4, 6: 8}
+"""Payload sizes of Byte, Short, Int, Long, Float and Double tags."""
+_NBT_ARRAY_ELEMENT_SIZES = {_NBT_BYTE_ARRAY: 1, _NBT_INT_ARRAY: 4, _NBT_LONG_ARRAY: 8}
+_NBT_MAX_DEPTH = 512
+"""How deep lists and compounds may nest: vanilla's `NbtAccounter` MAX_STACK_DEPTH."""
+
+
+def _skip_nbt_tag(reader: Reader) -> None:
+    """Consume one network NBT tag (a type byte, then its unnamed payload), checking it.
+
+    Iterative, with an explicit stack, so a deeply nested tag cannot exhaust Python's.
+    """
+    pending: int | None = reader.raw(1)[0]
+    stack: list[list[int]] = []  # [tag type, list element type, list elements left]
+    while True:
+        if pending is not None:
+            _skip_nbt_payload(reader, pending, stack)
+            pending = None
+        if not stack:
+            return
+        frame = stack[-1]
+        if frame[0] == _NBT_LIST:
+            if frame[2] == 0:
+                stack.pop()
+            else:
+                frame[2] -= 1
+                pending = frame[1]
+        else:  # a compound: named entries until TAG_End
+            entry_type = reader.raw(1)[0]
+            if entry_type == _NBT_END:
+                stack.pop()
+            else:
+                reader.raw(reader.ushort())  # the entry's name (modified UTF-8, unchecked)
+                pending = entry_type
+
+
+def _skip_nbt_payload(reader: Reader, tag_type: int, stack: list[list[int]]) -> None:
+    """Consume the payload of a `tag_type` tag, pushing a list or compound onto `stack`."""
+    if tag_type == _NBT_END:
+        return
+    if tag_type in _NBT_FIXED_SIZES:
+        reader.raw(_NBT_FIXED_SIZES[tag_type])
+    elif tag_type in _NBT_ARRAY_ELEMENT_SIZES:
+        reader.raw(_nbt_length(reader) * _NBT_ARRAY_ELEMENT_SIZES[tag_type])
+    elif tag_type == _NBT_STRING:
+        reader.raw(reader.ushort())  # modified UTF-8, kept as bytes, unchecked
+    elif tag_type in {_NBT_LIST, _NBT_COMPOUND}:
+        if len(stack) >= _NBT_MAX_DEPTH:
+            msg = f"nested deeper than {_NBT_MAX_DEPTH}"
+            raise WireError(msg)
+        if tag_type == _NBT_COMPOUND:
+            stack.append([_NBT_COMPOUND, 0, 0])
+            return
+        element_type = reader.raw(1)[0]
+        length = _nbt_length(reader)
+        if element_type == _NBT_END and length > 0:
+            msg = f"a list of {length} element(s) has no element type"
+            raise WireError(msg)
+        stack.append([_NBT_LIST, element_type, length])
+    else:
+        msg = f"invalid tag type {tag_type}"
+        raise WireError(msg)
+
+
+def _nbt_length(reader: Reader) -> int:
+    length = reader.int_()
+    if length < 0:
+        msg = f"negative length {length}"
+        raise WireError(msg)
+    return length
+
+
+@dataclass(frozen=True, slots=True)
+class _Nbt:
+    def read(self, reader: Reader) -> bytes:
+        start = reader.remaining
+        view = Reader(reader.peek_rest())
+        try:
+            _skip_nbt_tag(view)
+        except WireError as exc:
+            msg = f"NBT: {exc}"
+            raise WireError(msg) from exc
+        return reader.raw(start - view.remaining)
+
+    def write(self, writer: Writer, value: object) -> None:
+        if not isinstance(value, bytes):
+            msg = f"expected bytes, got {type(value).__name__}"
+            raise WireError(msg)
+        reader = Reader(value)
+        try:
+            _skip_nbt_tag(reader)
+            reader.expect_end()
+        except WireError as exc:
+            msg = f"NBT: {exc}"
+            raise WireError(msg) from exc
+        writer.raw(value)
+
+
+NBT: WireType[bytes] = _Nbt()
+"""NBT in network form (an unnamed root tag), kept as its exact bytes.
+
+Checked structurally as vanilla's `NbtIo` reads it: known tag types, non-negative lengths,
+no untyped non-empty list, at most 512 levels of lists and compounds. String contents
+(modified UTF-8) are not decoded; being bytes, they are still compared exactly. Unlike
+vanilla, no byte quota is enforced beyond the frame's own limits.
+"""
+
+_POSITION_FIELDS = (("x", 26, 38), ("z", 26, 12), ("y", 12, 0))
+"""Each coordinate's name, width in bits, and shift within the Long."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Position:
+    def read(self, reader: Reader) -> dict[str, int]:
+        packed = reader.long() & 0xFFFF_FFFF_FFFF_FFFF
+        position = {}
+        for name, width, shift in _POSITION_FIELDS:
+            value = (packed >> shift) & ((1 << width) - 1)
+            position[name] = value - (1 << width) if value >> (width - 1) else value
+        return {name: position[name] for name in ("x", "y", "z")}
+
+    def write(self, writer: Writer, value: object) -> None:
+        # Exactly the names x, y and z, each an int: the Schema says what is wrong if not.
+        Schema(x=_Int(), y=_Int(), z=_Int()).write(Writer(), value)
+        given = (
+            {str(key): item for key, item in value.items()} if isinstance(value, Mapping) else {}
+        )
+        packed = 0
+        for name, width, shift in _POSITION_FIELDS:
+            coordinate = _integer(given.get(name))
+            if not -(1 << (width - 1)) <= coordinate < 1 << (width - 1):
+                msg = f"{name}: {coordinate} out of range for {width} signed bits"
+                raise WireError(msg)
+            packed |= (coordinate & ((1 << width) - 1)) << shift
+        writer.long(packed - (1 << 64) if packed >> 63 else packed)
+
+
+POSITION: WireType[dict[str, int]] = _Position()
+"""Position: x, z (26 bits each) and y (12 bits), signed, packed into a Long: {x, y, z}."""

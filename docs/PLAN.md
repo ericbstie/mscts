@@ -160,6 +160,9 @@ class PrefixedArray[T]:            # WireType[list[T]]: VarInt length, then the 
 @frozen
 class PrefixedOptional[T]:         # WireType[T | None]: Boolean (strict), then T if present
     element: WireType[T]
+NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
+                                   # (tag types, lengths, 512 deep); not decoded into values yet
+POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 

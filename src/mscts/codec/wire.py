@@ -308,6 +308,10 @@ class Reader:
         """Consume every remaining byte, as they are."""
         return self.raw(self.remaining)
 
+    def peek_rest(self) -> bytes:
+        """Return every remaining byte without consuming any."""
+        return self._data[self._offset :]
+
     def _take(self, layout: struct.Struct, name: str) -> bytes:
         """Consume the bytes of one value of `layout`, or raise `<name> truncated`."""
         end = self._offset + layout.size
