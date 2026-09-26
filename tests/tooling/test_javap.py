@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import subprocess
 import types
 import zipfile
 from pathlib import Path
@@ -67,6 +68,77 @@ def test_client_jar_is_verified_and_reused_offline(
     downloads.responses.clear()
     assert javap.cached_jar("client", downloads) == jar
     assert downloads.calls == [_MANIFEST, _VERSION, _JAR]
+
+
+@pytest.mark.parametrize("verbose", [False, True])
+def test_main_uses_the_selected_jdk_and_passes_through_javap_status(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, verbose: bool
+) -> None:
+    jdk = tmp_path / "jdk with spaces"
+    (jdk / "bin").mkdir(parents=True)
+    (jdk / "release").write_text('JAVA_VERSION="25.0.4.1"\n')
+    java = jdk / "bin" / "java"
+    java.touch()
+    executable = jdk / "bin" / "javap"
+    executable.touch()
+    monkeypatch.setenv("MSCTS_JAVA", str(java))
+    jar = tmp_path / "client.jar"
+    sides: list[str] = []
+
+    def fake_classpath(side: str) -> Path:
+        sides.append(side)
+        return jar
+
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], *, check: bool) -> subprocess.CompletedProcess[bytes]:
+        assert check is False
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 7)
+
+    monkeypatch.setattr(javap, "classpath", fake_classpath)
+    monkeypatch.setattr(javap, "_run", fake_run)
+    classes = ["net.minecraft.client.Minecraft", "net.minecraft.Example$Inner"]
+
+    assert javap.main(["client", *classes, *(["-v"] if verbose else [])]) == 7
+    assert sides == ["client"]
+    assert calls == [
+        [
+            str(executable),
+            "-c",
+            "-p",
+            "-constants",
+            *(["-v"] if verbose else []),
+            "-classpath",
+            str(jar),
+            *classes,
+        ]
+    ]
+
+
+@pytest.mark.parametrize("args", [[], ["client"], ["other", "SomeClass"], ["client", "-x"]])
+def test_main_rejects_argument_errors_before_downloads(
+    javap: types.ModuleType, args: list[str]
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        javap.main(args)
+    assert error.value.code == 2
+
+
+def test_main_reports_missing_javap_before_downloading(
+    javap: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    (tmp_path / "bin").mkdir()
+    java = tmp_path / "bin" / "java"
+    java.touch()
+    (tmp_path / "release").write_text('JAVA_VERSION="25"\n')
+    monkeypatch.setenv("MSCTS_JAVA", str(java))
+
+    assert javap.main(["client", "SomeClass"]) == 1
+    assert "javap" in capsys.readouterr().err
 
 
 def test_server_classpath_extracts_only_the_inner_jar_and_reuses_it(

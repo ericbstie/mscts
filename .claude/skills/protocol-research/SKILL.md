@@ -36,12 +36,19 @@ by a test.
    `https://minecraft.wiki/index.php?title=Java_Edition_protocol/Packets&action=raw&oldid=<revid>`.
    Also useful: `Java_Edition_protocol/Data_types`,
    `Java_Edition_protocol/VarInt_and_VarLong`, `Java_Edition_protocol/FAQ`.
-4. **`javap` on the vanilla jar**, which settles server-side behaviour the
-   wiki leaves open. 26.x is unobfuscated. Extract
-   `META-INF/versions/26.3/server-26.3.jar` from `server.jar` (libraries
-   are listed in `META-INF/libraries.list`), then run
-   `javap -c -p -constants` (add `-v` to resolve lambdas). It cannot answer
-   client-side questions.
+4. **`javap` on the vanilla client or server jar**, which settles behaviour
+   the wiki leaves open. 26.x is unobfuscated. From the checkout, run:
+   ```sh
+   mise exec -- uv run python scripts/research/javap.py server net.minecraft.server.Main
+   mise exec -- uv run python scripts/research/javap.py -v client net.minecraft.client.Minecraft
+   ```
+   Pass one or more fully qualified class names; quote names containing `$`.
+   The tool fetches the Target's jars from Mojang's version manifest,
+   verifies their published sha1 and size, and caches them and their metadata
+   under `mscts.cache.cache_dir()/research/26.3/`. Later runs need no network.
+   It extracts `META-INF/versions/26.3/server-26.3.jar` for the server and
+   runs the selected JDK's `javap -c -p -constants`; add `-v` to resolve lambdas.
+   Set `MSCTS_JAVA` to the real Java 25 JDK's `bin/java` to select that JDK.
 5. Candidate source code, only to understand a Candidate. Never use it to
    decide what is correct.
 
