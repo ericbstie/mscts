@@ -363,15 +363,22 @@ class Mask:
 
 class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
+ABSENT: Absent                      # the value on the side that has no such packet (or field)
+
 @frozen
 class Divergence:
     bot: str
-    index: int                      # position in the normalized packet stream
+    index: int                      # position in the Bot's normalized stream, from 0: the
+                                    # reference stream for missing and field, the candidate
+                                    # stream for unexpected
     kind: Literal["missing", "unexpected", "field"]
-    packet: str
-    path: str | None
-    reference: object
+    packet: str                     # the packet name
+    path: str | None                # None: the whole payload (and always for missing/unexpected)
+    reference: object               # the packet's value, or ABSENT
     candidate: object
+    # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
+    # unexpected: a candidate packet it left unmatched (reference is ABSENT);
+    # field: a difference between two matched packets.
 
 @frozen
 class Verdict:
@@ -382,12 +389,23 @@ class Verdict:
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
+    # ValueError if the Transcripts are of different Scenarios. Divergences are grouped
+    # by Bot in name order, then in stream order.
 ```
 
 Comparison semantics. Start strict and relax only when a Self-check
 proves it necessary:
 
-1. Take clientbound packets per Bot, in order.
+1. Take clientbound packets per Bot, in order. A packet's key is its
+   (State, name): same-named packets of different States (`disconnect`,
+   `custom_payload`) are different packets. Not compared, on purpose:
+   - serverbound packets. They are the Scenario's own actions and the
+     Bot's automatic answers. They differ between Instances by design
+     (the handshake names each Instance's own Endpoint), and any
+     difference a server caused in them shows up first in what that
+     server sent;
+   - timestamps and Marks, which are timing data for Measurements;
+   - the interleaving of different Bots' packets, which is timing too.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask.
