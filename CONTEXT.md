@@ -73,7 +73,11 @@ need is missing, add it here in the same commit that introduces it.
   values equal.
 - **Comparison**: normalizes the Reference and Candidate Transcripts of one
   Scenario (Canonicalization, then Masks) and diffs them into a Verdict.
-- **Divergence**: one difference found by a Comparison.
+- **Divergence**: one difference found by a Comparison. It is
+  **observable** (a vanilla client could tell the two values apart) or
+  **wire-only** (the bytes differ but they decode identically). Wire-only
+  Divergences are reported separately and excluded from compliance scores
+  (ADR-0007).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Scenario did not match), or `error` (the harness failed, or
   the Reference itself could not run the Scenario).

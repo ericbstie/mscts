@@ -22,12 +22,14 @@ differences grouped by mechanic, with no declared deviations. Random
 mechanics are judged statistically in an opt-in tier; redstone and
 glitches are tick-exact; Fixtures use commands only for now.
 
-Awaiting user decisions:
-1. A Candidate that cannot honour a ServerSpec field (Pumpkin: no flat
-   world, difficulty ignored).
-2. Pumpkin provision fails here: the proxy's CA for GitHub hosts is
-   rejected by Python 3.13 strict X.509.
-3. Canonicalize "declared defaults" (missing `players.sample` ≡ `[]`)?
+User decisions (2026-09-26):
+1. **Decided.** The Pumpkin Adapter writes a flat world save (and the
+   difficulty) in Pumpkin's own format, verified by a join.
+2. **Open.** The user wants to discuss this further: Pumpkin provision
+   fails here because the proxy's CA for GitHub hosts is rejected by
+   Python 3.13's strict X.509 check.
+3. **Decided (ADR-0007).** Wire-only Divergences are reported in their own
+   section and excluded from compliance scores.
 
 ## In flight
 
@@ -59,8 +61,13 @@ Take the first item. Split it if it is more than one failing test.
    confidence, N, and a per-kind Self-check; first Scenario
    `spawn/join-position`.
 6. Flake hunt: the unit tier under CPU stress, N times.
-7. Pumpkin: once decisions 1 and 2 are made, finish the Candidate so M3's
-   first Report can run.
+7. `adapter/pumpkin` (opus, after M): write a flat world save and the
+   difficulty in Pumpkin's own format (level.dat at its DataVersion plus
+   flat `world_gen_settings.dat`), lift `LIMITS` for them, and verify with
+   a join (spawn y = -60, chunk contents).
+8. `compare` (opus, ADR-0007): classify Divergences as observable or
+   wire-only; add declared-default canonicalizations, each cited from
+   the client decoder.
 
 ## Log
 
