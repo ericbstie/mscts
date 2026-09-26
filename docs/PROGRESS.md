@@ -5,84 +5,107 @@ before stopping (see the `red-green` skill).
 
 ## Now
 
-**M1** is done in substance: vanilla is provisioned, hardened and launched,
-and it answers strict status/ping through our own Codec, Connection and
-Bot. The **M2** Comparison engine is built; wiring (Scenario registry,
-Run, `selfcheck`) is next. The first Candidate (Pumpkin) has an Adapter,
-but it is blocked on user decisions (see below).
+main is at the commit after `33749f1`; `mise run check` passes (1187 unit
+tests, 11.5 s) and `mise run test:reference` passes (11 tests, about
+75 s).
 
-Integrated since: N (trustworthy `scripts/mutate.py`: verdicts,
-baseline, batch mode) and M (readiness by socket ownership,
-`ServerSpec.host` + `runner.free_endpoint()`, MD8/R5/R9/R11/L6).
+- **M1 (talk to vanilla): done.** Provision, hardening (no outbound
+  network, fixed env), and a runner with readiness by socket ownership
+  and a loopback host per Instance. Status and ping decode strictly.
+- **Join (the protocol half of M4): done.** `Bot.join()` reaches play and
+  the first chunk batch against vanilla, with a background reader,
+  arrival stamps, recorded undecodable frames, and automatic
+  keep-alive/teleport/chunk-batch answers. It joins in about 1.25 s.
+- **M2 (first Comparison and Self-check): half done.** The Comparison
+  engine is built. The `@scenario` registry, Run, `selfcheck` and
+  Measurements are not.
+- **M3 (first Candidate): blocked on work, not decisions.** The Pumpkin
+  Adapter exists, but it needs the world-save work and
+  `mscts adapter install --from` (ADR-0008).
+- Audit K's high findings H1, H2 and H3a are fixed. H3b, the Verdict
+  rule, lands with M2 wiring.
 
-Integrated workers: A (wire+framing), B (vanilla adapter), C (Codec),
-D (runner), E (vanilla network isolation), F (Transcript, Connection,
-Bot), G (regen + host-independent launch), H (Pumpkin adapter), I
-(tooling + shared Reference), J (Comparison engine), K (foundation audit,
-`docs/audits/2026-09-26-foundation.md`).
+Product direction (maintainer, 2026-09-26):
+- **ADR-0006:** a catalogue of differences grouped by mechanic, with no
+  declared deviations. Exact, tick-exact (redstone, glitches) and
+  statistical (spawning, loot; an opt-in tier) Scenarios. Masks only for
+  non-gameplay ids. Commands-only Fixtures, with a Bot fallback if
+  blocks become common.
+- **ADR-0007:** wire-only Divergences get their own section and are
+  excluded from scores.
+- **ADR-0008:** explicit idempotent installs (`mscts adapter install`,
+  `--from`), an honest TTY prompt, a checksum-pinned maintainer-approved
+  registry, and an Adapter authoring guide plus `mscts adapter check`.
+  DX is goal G6.
+- The Pumpkin Adapter writes a flat world save and the difficulty in
+  Pumpkin's own format.
 
-Direction set by the user (ADR-0006): the Report is a raw catalogue of
-differences grouped by mechanic, with no declared deviations. Random
-mechanics are judged statistically in an opt-in tier; redstone and
-glitches are tick-exact; Fixtures use commands only for now.
-
-User decisions (2026-09-26):
-1. **Decided.** The Pumpkin Adapter writes a flat world save (and the
-   difficulty) in Pumpkin's own format, verified by a join.
-2. **Decided (ADR-0008).** Installs are explicit and idempotent:
-   `mscts adapter install <adapter>` and `--from <path>`, an honest TTY
-   prompt, and a pinned registry. In this container Pumpkin is
-   provisioned by hand: a curl-fetched nightly (2026-09-26, sha256
-   `48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b`) at
-   `/tmp/claude-0/-home-user-mscts/b64e3998-dc60-5d76-a344-246fbb2e8295/scratchpad/pumpkin-pin/pumpkin-X64-Linux`.
-   The scratchpad does not survive container resets, so re-fetch it and
-   check the sha256.
-3. **Decided (ADR-0007).** Wire-only Divergences are reported in their own
-   section and excluded from compliance scores.
+Environment notes:
+- In this container, Python 3.13 cannot download from GitHub (the
+  proxy's CA fails strict X.509). Pumpkin is provisioned by hand: `curl
+  -sSfL -o pumpkin-X64-Linux
+  https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux`,
+  pinned 2026-09-26 at sha256
+  `48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b`.
+  The nightly moves, so if a re-fetch hashes differently, record the new
+  pin. Until `--from` exists, the candidate tier runs with a scratch
+  `MSCTS_CACHE` holding the binary plus a `SOURCE.json` (worker M's
+  method).
+- The SessionStart hook exports `MSCTS_JAVA` (the real Java 25). Run
+  tiers through `mise run`.
 
 ## In flight
 
-- **P** (opus): the join flow (login → configuration → play → first chunk
-  batch) with a background reader, arrival stamping (H2), recorded decode
-  failures (H3a), MD1/MD2/MD4/MD5/L1–L5/L8. **At integration**: reset the
-  author of its commits made while `user.name=Test` leaked (3+ commits
-  authored "Test <test@example.com>"), and reconcile its strays-helper
-  commit with main's 91bd6c1.
+Nothing. Every worktree is integrated and removed.
 
 ## Next
 
-Take the first item. Split it if it is more than one failing test.
+Take the first item. Split it if it is more than one failing test. Keep
+briefs at 3–6 increments and about 1500 lines at most.
 
-1. M2 wiring (opus): the `@scenario` registry (with a Scenario kind per
-   ADR-0006), `status/basic` + `status/ping`, a Run over two Instances,
-   Candidate-caused failures → `mismatch` (H3b), `mscts selfcheck` →
-   `match`, and the first Measurements (after M and P).
-2. `scripts/` research harness (sonnet): netns sandbox, strace summary,
-   join probe (adopt worker H's scratch tools), and a loopback-only
-   reference test.
-3. `runner`: a parent-death guard.
-4. Tick research (opus, ADR-0006): is `/tick freeze`/`/tick step`
-   observable over the protocol (`ticking_state`, `ticking_step`,
-   `set_time`)? Design tick-indexed observation anchored on world age.
-5. Statistical tier design (opus, ADR-0006): the distribution test,
-   confidence, N, and a per-kind Self-check; first Scenario
-   `spawn/join-position`.
-6. Flake hunt: the unit tier under CPU stress, N times, then remove the
-   integration retry. Known suspect:
-   `tests/tooling/test_strays.py::test_main_finds_a_real_stray_process_by_its_argv`
-   (intermittent under concurrent load; P may have fixed a helper-exec
-   race). Also adopt pytest-xdist (G5 is at 9.4–9.8 s).
-7. `cli` (opus, M3a / ADR-0008): `mscts adapter install/list/status`, with
-   `--from`, idempotence, the honest TTY prompt and non-TTY failure, and
-   a registry file pinned by checksum. Then install the pinned Pumpkin
-   here with `--from`.
-8. `adapter/pumpkin` (opus, after M and the install command): write a flat world save and the
-   difficulty in Pumpkin's own format (level.dat at its DataVersion plus
+1. `tooling` (sonnet): pytest-xdist for the unit tier (G5 is breached at
+   11.5 s; keep process tests safe under parallelism); a flake hunt of the
+   unit tier under CPU stress (N runs); then remove the integration retry
+   (`|| mise run check`).
+2. M2 wiring (opus):
+   - the `@scenario` registry with a Scenario kind (ADR-0006);
+   - `status/basic` + `status/ping`;
+   - a Run over two Instances;
+   - Candidate-caused failures → `mismatch` (H3b; undecodable frames
+     are already recorded with `decode_error`);
+   - `mscts selfcheck` → `match`;
+   - the first Measurements (`status.rtt`, `instance.startup`).
+3. `cli` (opus, M3a / ADR-0008): `mscts adapter install/list/status`,
+   with `--from`, idempotence, the honest TTY prompt, non-TTY failure,
+   and a registry file pinned by checksum. Then install the pinned
+   Pumpkin here with `--from`.
+4. `adapter/pumpkin` (opus, after 3): write a flat world save and the
+   difficulty in Pumpkin's own format (level.dat at its DataVersion plus a
    flat `world_gen_settings.dat`), lift `LIMITS` for them, and verify with
-   a join (spawn y = -60, chunk contents).
-9. `compare` (opus, ADR-0007): classify Divergences as observable or
-   wire-only; add declared-default canonicalizations, each cited from
-   the client decoder.
+   a join (spawn y = -60, chunk contents). Then M3's first Report.
+5. `compare` (opus, ADR-0007): classify Divergences as observable or
+   wire-only; add declared-default canonicalizations (cited from the
+   client decoder); canonicalize the `update_tags` order (a server
+   HashMap) before the join Scenario's Self-check.
+6. Research tooling (sonnet): `scripts/research/javap.py <client|server>
+   <Class>…` (fetch and cache both jars, sha1-checked), plus the
+   `scripts/` research harness: netns sandbox, strace summary, live
+   launch/probe, a loopback-only reference test (adopt workers H, L and P
+   scratch tools).
+7. `join/basic` Scenario + Self-check 20/20 (after 2 and 5), with a spawn
+   Fixture (`/setworldspawn`) per ADR-0006. The statistical
+   `spawn/join-position` comes later (M6b).
+8. Bot fidelity: send brand `custom_payload`, `client_information` and
+   `player_loaded` as the vanilla client does; unique Bot names per
+   Transcript (L11); dedupe the runner test helpers (L10).
+9. `runner`: a parent-death guard.
+10. Tick research (opus, M6a) and statistical tier design (opus, M6b),
+    per ADR-0006.
+11. Tooling: a check that every new public name in `src/` appears in
+    PLAN.md; a `scripts/` save/restore helper (no stash).
+12. Next audit (opus): due after the next 2–3 batches. Focus on
+    `compare.py`, the new net/bot join code and the runner ownership
+    logic.
 
 ## Log
 

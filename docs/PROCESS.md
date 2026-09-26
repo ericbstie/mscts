@@ -103,6 +103,9 @@ Done when: <observable condition, e.g. `mise run check` green + named tests exis
 Base: <main commit the brief was written against; the worker first runs
       `git merge --ff-only main` in its worktree>
 Context: <facts, file paths, gotchas the tech lead already knows; list reusable
+         scratchpad artifacts; ALWAYS repeat: "one plain command per Bash call; scripts in
+         the scratchpad; commit messages via git commit -F /abs/file">
+         <more context
          scratchpad artifacts (jars, generated reports, probe scripts) by path>
 ```
 
@@ -218,6 +221,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker P (join) | The brief was too big: 6 large increments, 29 commits, and the context compacted mid-brief | **adopt**: briefs stay at 3–6 increments **and** roughly 1500 changed lines. Split protocol fixes from features |
+| 2026-09-26 | worker P | Nearly every join fact needed client-side javap; P rebuilt the tooling (`fetch_client.py`, `javap_classes.py`) | **adopt**: Next item, a committed `scripts/research/javap.py <client\|server> <Class>…` that fetches and caches both jars |
+| 2026-09-26 | worker P | `/proc`-scanning tests raced the helper's exec | **adopt**: fixed (P's commit); Known trap "wait for the helper to exec; ignore processes you did not start" |
+| 2026-09-26 | worker P | Threaded fakes acted before the client had connected (a flaky MD2 test) | **adopt**: Known trap, fakes wait for a "client connected" cue; poll via an `asyncio.Event` set by the fake; split long fake handlers early (PLR0915) |
+| 2026-09-26 | worker P | A public name landed without its PLAN entry | **defer**: Next item, a check that every new public name in `src/` appears in PLAN.md |
+| 2026-09-26 | worker P | Setting work aside without stash needed a save/restore script | **defer**: a `scripts/` split helper |
+| 2026-09-26 | worker P | `update_tags` order comes from a server HashMap | **adopt**: Canonicalization item for the join Scenario's Self-check |
+| 2026-09-26 | worker P | The Bot does not yet send brand/`client_information`/`player_loaded` as the vanilla client does | **defer**: Next item (Bot fidelity) |
+| 2026-09-26 | worker P | The sandbox refused compound commands again (**sixth** report) | **adopt**: the brief template's Context now repeats the one-command rule verbatim |
+| 2026-09-26 | lead | The unit tier is 11.5 s after the join landed, breaching G5 | **adopt**: Next item 1, pytest-xdist plus the flake hunt |
 | 2026-09-26 | lead (incident) | A worker N test ran `git init/config/commit` in a tmp dir during `git rebase -x`. The inherited `GIT_DIR` pointed it at the real repo: it wrote `user.name=Test` and `core.bare=true` into the shared config and committed onto the rebase. Three of worker P's in-flight commits were authored "Test". The lead's own `merge \| tail && worktree remove && branch -D` then hid the merge failure and deleted N's branch (recovered from the reflog) | **adopt**: (1) every test and tool that runs git scrubs `GIT_*` env vars (fixed in `tests/tooling/test_mutate.py` and `scripts/mutate.py`, with a pin test); (2) the lead never pipes a git command in an `&&` chain and checks `$?` explicitly (tech-lead skill); (3) after every integration, check that `git config --local --list` has no `user.*` and `core.bare=false` |
 | 2026-09-26 | lead | Integration re-checks retry `mise run check` once (`\|\| mise run check`) while other workers load the machine | **temporary**: it hides flakes, so each retry that was needed is logged. Remove it once the flake hunt is done |
 | 2026-09-26 | worker N (mutate) | `uv run` ignores `VIRTUAL_ENV` from an unrelated cwd (use `UV_PROJECT_ENVIRONMENT` + `--no-sync`); the editable `.pth` names the original checkout, so a copy needs `PYTHONPATH=<copy>/src` first; `mkdtemp` already creates its dir | **adopt**: red-green Known traps |

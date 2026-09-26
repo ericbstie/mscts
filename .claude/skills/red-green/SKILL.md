@@ -146,6 +146,11 @@ then one commit.
 - ty: `return frozenset()` infers `frozenset[Unknown]`, so annotate the
   empty value. Pass a deliberately wrong type in a test with
   `cast("str", x)`.
+- Tests that scan `/proc` must wait for their helper to exec, and ignore
+  processes they did not start. Threaded or async fakes must wait for a
+  "client connected" cue before acting. Poll through an `asyncio.Event`
+  the fake sets, not a sleep loop. Split a long fake handler into step
+  methods early (PLR0915).
 - Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
 - At most 5 parameters, keyword-only included (PLR0913). Derive values
   rather than passing them. Never add a `noqa` before ruff has actually
