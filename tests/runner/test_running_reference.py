@@ -20,6 +20,9 @@ READY_TIMEOUT_S = 120  # a cold first boot unpacks the bundled libraries and mak
 STOP_TIMEOUT_S = 30
 
 
+# Two full boot/stop cycles: worst case 2 x (ready_timeout + 2 x stop_timeout), above the
+# global 120 s pytest-timeout.
+@pytest.mark.timeout(300)
 @pytest.mark.asyncio
 async def test_vanilla_becomes_ready_and_stops_gracefully_on_its_stop_line(
     cache_dir: Path,
