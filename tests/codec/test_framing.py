@@ -3,7 +3,7 @@ import zlib
 
 import pytest
 
-from mscts.codec.framing import FrameDecoder, encode_frame
+from mscts.codec.framing import FrameDecoder, FrameError, encode_frame
 from mscts.codec.wire import WireError, Writer
 
 
@@ -339,6 +339,24 @@ def test_next_frame_returns_the_frames_before_a_corrupt_one_then_keeps_raising()
         with pytest.raises(WireError, match="longer than 3 bytes"):
             decoder.next_frame()
     assert decoder.buffered == len(corrupt)
+
+
+# A corrupt frame keeps the bytes it could delimit, so the Connection can record them.
+@pytest.mark.parametrize(
+    ("threshold", "wire", "raw"),
+    [
+        (None, "808080 00", "808080"),  # a frame length longer than 3 bytes: the 3 read
+        (None, "00 0102", "00"),  # a zero frame length
+        (1, "04 05 616263", "04 05 616263"),  # not zlib: the whole frame, prefix included
+        (1, "05 ffffffff0f", "05 ffffffff0f"),  # a negative data-length
+    ],
+)
+def test_a_corrupt_frame_keeps_its_bytes(threshold: int | None, wire: str, raw: str) -> None:
+    decoder = FrameDecoder(compression_threshold=threshold)
+    decoder.extend(bytes.fromhex(wire))
+    with pytest.raises(FrameError) as raised:
+        decoder.next_frame()
+    assert raised.value.raw == bytes.fromhex(raw)
 
 
 def test_a_threshold_set_between_frames_applies_to_the_next_frame_of_the_same_chunk() -> None:

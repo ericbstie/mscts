@@ -6,9 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Self
 
-from mscts.codec.framing import FrameDecoder, encode_frame
-from mscts.codec.packets import Codec, CodecError, Direction, Packet, State
-from mscts.codec.wire import WireError
+from mscts.codec.framing import FrameDecoder, FrameError, encode_frame
+from mscts.codec.packets import Codec, CodecError, Direction, Packet, State, undecodable_frame
 from mscts.transcript import Transcript
 
 _READ_SIZE = 65_536
@@ -45,10 +44,15 @@ class ProtocolError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class _Arrival:
-    """A frame the background reader decoded, and when the read that completed it returned."""
+    """A frame the background reader took, and when the read that completed it returned.
+
+    If the frame could not be decoded, `packet` records it (its `decode_error` set) and
+    `error` is what `recv` raises once it has recorded it.
+    """
 
     t_ns: int
     packet: Packet
+    error: Exception | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +162,9 @@ class Connection:
             TimeoutError: No complete frame arrived within `timeout_s` seconds. The
                 Connection stays usable.
             CodecError: The frame is corrupt, or its packet is unknown or does not fit
-                its schema exactly. Nothing is recorded, and the reader has stopped.
+                its schema exactly. The frame is recorded first (a Packet with its bytes
+                and `decode_error`), and the reader has stopped, as vanilla's client
+                disconnects.
             ConnectionClosedError: The Connection is closed, or the server closed it
                 (the message says if that was mid-frame).
             ConnectionResetError: The server reset the connection.
@@ -174,6 +180,9 @@ class Connection:
             self._end = item
             raise item.error
         self._transcript.record(self._bot, item.packet, t_ns=item.t_ns)
+        if item.error is not None:
+            self._end = _End(item.error)
+            raise item.error
         return item.packet
 
     async def close(self) -> None:
@@ -207,13 +216,36 @@ class Connection:
                     self._arrivals.put_nowait(self._end_of_stream())
                     return
                 self._frames.extend(chunk)
-                while (frame := self._take_frame()) is not None:
-                    packet = self._codec.decode(self._state, Direction.CLIENTBOUND, frame)
-                    self._arrivals.put_nowait(_Arrival(t_ns=t_ns, packet=packet))
+                while (arrival := self._next_arrival(t_ns)) is not None:
+                    self._arrivals.put_nowait(arrival)
+                    if arrival.error is not None:
+                        return  # like vanilla's client, which disconnects on a bad frame
         except Exception as exc:  # noqa: BLE001 - not swallowed: recv raises it
-            # Whatever stopped the reader (the server, a corrupt frame, or a harness bug)
-            # is raised by recv, rather than lost in a task nobody awaits.
+            # Whatever else stopped the reader (the server, or a harness bug) is raised
+            # by recv, rather than lost in a task nobody awaits.
             self._arrivals.put_nowait(_End(exc))
+
+    def _next_arrival(self, t_ns: int) -> _Arrival | None:
+        """Take and decode the next complete frame, or None if there is none yet.
+
+        A frame that cannot be decoded still arrives: as the Packet that records it.
+        """
+        state = self._state
+        try:
+            frame = self._frames.next_frame()
+        except FrameError as exc:
+            error = CodecError(f"{state} {Direction.CLIENTBOUND} frame: {exc}")
+            error.__cause__ = exc
+            packet = undecodable_frame(state, Direction.CLIENTBOUND, exc.raw, str(error))
+            return _Arrival(t_ns=t_ns, packet=packet, error=error)
+        if frame is None:
+            return None
+        try:
+            packet = self._codec.decode(state, Direction.CLIENTBOUND, frame)
+        except CodecError as exc:
+            packet = self._codec.undecodable(state, Direction.CLIENTBOUND, frame, str(exc))
+            return _Arrival(t_ns=t_ns, packet=packet, error=exc)
+        return _Arrival(t_ns=t_ns, packet=packet)
 
     def _end_of_stream(self) -> _End:
         if self._frames.buffered:
@@ -224,13 +256,6 @@ class Connection:
         else:
             msg = "the server closed the connection"
         return _End(ConnectionClosedError(msg))
-
-    def _take_frame(self) -> bytes | None:
-        try:
-            return self._frames.next_frame()
-        except WireError as exc:
-            msg = f"{self._state} {Direction.CLIENTBOUND} frame: {exc}"
-            raise CodecError(msg) from exc
 
     def _check_open(self) -> None:
         if self._closed:

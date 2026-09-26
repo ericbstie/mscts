@@ -232,9 +232,12 @@ class Connection:                   # one TCP connection; owns framing, compress
     # the Packet decoded from the exact bytes written, stamped immediately before the write.
     # recv: TimeoutError leaves the Connection usable. Whatever stopped the reader is raised
     # once the frames before it are taken, and again by every later recv: CodecError for a
-    # corrupt frame or a strict-decode failure (nothing recorded), ConnectionClosedError when
-    # the server closes (the message says if that was mid-frame), ConnectionResetError on a
-    # reset, or the exception itself if the harness has a bug.
+    # corrupt frame, an unknown packet id or a strict-decode failure, ConnectionClosedError
+    # when the server closes (the message says if that was mid-frame), ConnectionResetError on
+    # a reset, or the exception itself if the harness has a bug. A frame that fails to decode
+    # is recorded before recv raises, as the Packet Codec.undecodable / undecodable_frame
+    # builds (its bytes and decode_error), stamped on arrival like any frame; the reader then
+    # stops, as the vanilla client disconnects on a frame it cannot decode.
 
 class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
     name: str

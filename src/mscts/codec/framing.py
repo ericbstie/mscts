@@ -68,11 +68,25 @@ def _length_prefixed(body: bytes) -> bytes:
     return Writer().var_int(len(body)).to_bytes() + body
 
 
+class FrameError(WireError):
+    """A corrupt frame. `raw` holds its bytes as far as they could be delimited.
+
+    That is the whole frame as it came off the wire (length prefix included) when the
+    length was sound but the body is not, or the length prefix bytes read when the
+    length itself is corrupt.
+    """
+
+    def __init__(self, message: str, *, raw: bytes) -> None:
+        """Say what is wrong with the frame whose bytes are `raw`."""
+        super().__init__(message)
+        self.raw = raw
+
+
 def _try_read_frame_length(buffer: bytearray) -> tuple[int, int] | None:
     """Try to read the frame-length VarInt prefix from the front of `buffer`.
 
     Returns `(value, bytes_consumed)`, or None if `buffer` does not yet hold a
-    complete VarInt. Raises WireError if the VarInt is more than 3 bytes or is 0,
+    complete VarInt. Raises FrameError if the VarInt is more than 3 bytes or is 0,
     the rules vanilla's `Varint21FrameDecoder` applies ("length wider than 21-bit",
     "Frame length cannot be zero"). Three bytes hold at most 2 097 151, so there is
     no separate upper bound.
@@ -86,10 +100,10 @@ def _try_read_frame_length(buffer: bytearray) -> tuple[int, int] | None:
         if not byte & _CONTINUE:
             if result == 0:
                 msg = "frame length cannot be zero"
-                raise WireError(msg)
+                raise FrameError(msg, raw=bytes(buffer[: index + 1]))
             return result, index + 1
     msg = "frame length VarInt longer than 3 bytes"
-    raise WireError(msg)
+    raise FrameError(msg, raw=bytes(buffer[:_FRAME_LENGTH_MAX_BYTES]))
 
 
 class FrameDecoder:
@@ -117,8 +131,8 @@ class FrameDecoder:
         frame, and lets the frames before a corrupt one through.
 
         Raises:
-            WireError: The next frame is corrupt. A bad frame length stays in the
-                buffer, so every later call raises too.
+            FrameError: The next frame is corrupt; it holds the frame's bytes. A bad
+                frame length stays in the buffer, so every later call raises too.
         """
         prefix = _try_read_frame_length(self._buffer)
         if prefix is None:
@@ -127,9 +141,12 @@ class FrameDecoder:
         end = prefix_length + frame_length
         if end > len(self._buffer):
             return None
-        body = bytes(self._buffer[prefix_length:end])
+        frame = bytes(self._buffer[:end])
         del self._buffer[:end]
-        return self._decode_body(body)
+        try:
+            return self._decode_body(frame[prefix_length:])
+        except WireError as exc:
+            raise FrameError(str(exc), raw=frame) from exc
 
     @property
     def buffered(self) -> int:

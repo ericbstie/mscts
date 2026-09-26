@@ -9,7 +9,7 @@ import socket
 import pytest
 
 from mscts import net
-from mscts.codec.packets import Codec, CodecError, Direction, Packet, State
+from mscts.codec.packets import Codec, CodecError, Direction, Packet, State, UnknownPacketError
 from mscts.net import Connection, ConnectionClosedError
 from mscts.transcript import Event, Transcript
 from tests.net.fakes import Peer, connected, serve
@@ -534,12 +534,14 @@ def test_recv_times_out_and_the_connection_stays_usable(
     assert asyncio.run(client()).fields == {"value": 3}
 
 
-def test_recv_of_a_packet_that_does_not_fit_its_schema_raises_at_once(
+def test_a_packet_that_does_not_fit_its_schema_is_recorded_before_recv_raises(
     toy_codec: Codec, transcript: Transcript
 ) -> None:
+    # Audit H3: a Candidate's malformed packet must become evidence, not a silent gap.
     async def server(peer: Peer) -> None:
         data = toy_codec.encode(State.HANDSHAKE, Direction.CLIENTBOUND, "test:reply", {"value": 1})
         await peer.write(bytes([len(data) + 1]) + data + b"\x00")  # one byte too many
+        await peer.send("test:empty")  # never delivered: the reader stopped, as vanilla does
         await peer.eof()
 
     async def client() -> None:
@@ -547,19 +549,56 @@ def test_recv_of_a_packet_that_does_not_fit_its_schema_raises_at_once(
             serve(toy_codec, server) as endpoint,
             connected(endpoint, toy_codec, transcript) as connection,
         ):
-            with pytest.raises(CodecError, match=r"test:reply: 1 unconsumed byte\(s\) remain"):
-                await connection.recv(timeout_s=1)
+            for _ in range(2):
+                with pytest.raises(CodecError, match=r"test:reply: 1 unconsumed byte\(s\) remain"):
+                    await connection.recv(timeout_s=1)
 
     asyncio.run(client())
-    assert transcript.events == []
+    [event] = transcript.events
+    assert event.packet == Packet(
+        state=State.HANDSHAKE,
+        direction=Direction.CLIENTBOUND,
+        name="test:reply",
+        packet_id=0x00,
+        payload=(1).to_bytes(8, "big") + b"\x00",
+        fields=None,
+        decode_error="handshake clientbound test:reply: 1 unconsumed byte(s) remain",
+    )
 
 
-def test_recv_of_a_corrupt_frame_raises_after_the_frames_before_it(
+def test_a_packet_with_an_unknown_id_is_recorded_before_recv_raises(
     toy_codec: Codec, transcript: Transcript
 ) -> None:
     async def server(peer: Peer) -> None:
+        await peer.write(bytes.fromhex("03 2a 0102"))  # id 0x2a, then 2 payload bytes
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            with pytest.raises(UnknownPacketError, match="no packet handshake clientbound 0x2a"):
+                await connection.recv(timeout_s=1)
+
+    asyncio.run(client())
+    [event] = transcript.events
+    assert (event.packet.name, event.packet.packet_id, event.packet.payload) == (
+        "unknown:handshake:0x2a",
+        0x2A,
+        bytes.fromhex("0102"),
+    )
+    assert event.packet.decode_error == "no packet handshake clientbound 0x2a"
+
+
+def test_a_corrupt_frame_is_recorded_after_the_frames_before_it(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    written: list[int] = []
+
+    async def server(peer: Peer) -> None:
         corrupt = bytes.fromhex("80808000")  # a frame length longer than 3 bytes
-        await peer.write(peer.frame("test:empty") + corrupt)
+        written.append(await peer.write(peer.frame("test:empty") + corrupt))
         await peer.eof()
 
     async def client() -> None:
@@ -573,7 +612,13 @@ def test_recv_of_a_corrupt_frame_raises_after_the_frames_before_it(
                     await connection.recv(timeout_s=1)
 
     asyncio.run(client())
-    assert [event.packet.name for event in transcript.events] == ["test:empty"]
+    assert [event.packet.name for event in transcript.events] == ["test:empty", "corrupt:handshake"]
+    corrupt = transcript.events[1]
+    assert (corrupt.packet.packet_id, corrupt.packet.payload) == (-1, bytes.fromhex("808080"))
+    assert corrupt.packet.decode_error == (
+        "handshake clientbound frame: frame length VarInt longer than 3 bytes"
+    )
+    assert corrupt.t_ns >= written[0] - transcript.start_ns  # stamped on arrival too
 
 
 def test_recv_after_close_raises(toy_codec: Codec, transcript: Transcript) -> None:
