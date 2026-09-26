@@ -17,6 +17,9 @@ from mscts.adapters.pumpkin import (
 )
 from mscts.spec import Difficulty, GameMode, ServerSpec
 
+# Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
+HOST = "127.1.2.3"
+
 GOLDEN = Path(__file__).with_name("data") / "pumpkin-26.3-default-spec.toml"
 
 # What every Pumpkin Instance must be, whatever the ServerSpec says (dotted TOML paths).
@@ -50,6 +53,7 @@ INVARIANTS = {
 }
 
 UNUSUAL_SPEC = ServerSpec(
+    host="127.45.67.89",
     port=41234,
     motd='\xa76a=b: c "q" \\ #',
     max_players=3,
@@ -99,7 +103,8 @@ def test_default_spec_file_is_pumpkins_own_defaults_plus_documented_substitution
     # The golden file is Pumpkin's pristine first-run pumpkin.toml with only these lines
     # substituted (every other line is byte-identical):
     # - ServerSpec: seed (random) "0"; default_difficulty "Peaceful"; [networking.java]
-    #   address "127.0.0.1:25599", max_players 20, view_distance 2, simulation_distance 2,
+    #   address "127.1.2.3:25599" (the spec's host and port; pristine: "0.0.0.0:25565"),
+    #   max_players 20, view_distance 2, simulation_distance 2,
     #   motd "mscts" (compression threshold 256 is Pumpkin's default too).
     # - Invariants: use_favicon, spawn_protection 0; [networking.java] online_mode and
     #   encryption false; [networking.bedrock] enabled false; [plugins] and [telemetry]
@@ -113,17 +118,17 @@ def test_default_spec_file_is_pumpkins_own_defaults_plus_documented_substitution
     #   Deflater() default); [networking.java.packet_limiter] enabled false (rate-limit=0);
     #   [server_links] enabled false, bug_report "" (bug-report-link= is empty, so vanilla
     #   sends no server_links packet); [fun] april_fools false (no date-dependent chat).
-    assert pumpkin_toml(ServerSpec(port=25599)) == GOLDEN.read_text(encoding="utf-8")
+    assert pumpkin_toml(ServerSpec(host=HOST, port=25599)) == GOLDEN.read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("spec", [ServerSpec(port=25599), UNUSUAL_SPEC])
+@pytest.mark.parametrize("spec", [ServerSpec(host=HOST, port=25599), UNUSUAL_SPEC])
 def test_writes_exactly_the_keys_pumpkin_writes(spec: ServerSpec) -> None:
     # A key Pumpkin does not know is kept but ignored; a key it misses gets its default.
     golden = table(tomllib.loads(GOLDEN.read_text(encoding="utf-8")))
     assert sorted(key_paths(parsed(spec))) == sorted(key_paths(golden))
 
 
-@pytest.mark.parametrize("spec", [ServerSpec(port=25599), UNUSUAL_SPEC])
+@pytest.mark.parametrize("spec", [ServerSpec(host=HOST, port=25599), UNUSUAL_SPEC])
 @pytest.mark.parametrize(("path", "value"), INVARIANTS.items())
 def test_invariant_holds_whatever_the_spec(spec: ServerSpec, path: str, value: object) -> None:
     written = at(parsed(spec), path)
@@ -136,7 +141,7 @@ def test_spec_fields_are_translated() -> None:
 
 
 TRANSLATED = {
-    "networking.java.address": "127.0.0.1:41234",
+    "networking.java.address": "127.45.67.89:41234",  # the only address it binds
     "networking.java.motd": '\xa76a=b: c "q" \\ #',
     "networking.java.max_players": 3,
     "networking.java.view_distance": 5,
@@ -158,7 +163,7 @@ TRANSLATED = {
     ],
 )
 def test_game_mode_is_translated(mode: GameMode, value: str) -> None:
-    assert parsed(ServerSpec(port=25599, game_mode=mode))["default_gamemode"] == value
+    assert parsed(ServerSpec(host=HOST, port=25599, game_mode=mode))["default_gamemode"] == value
 
 
 @pytest.mark.parametrize(
@@ -171,7 +176,9 @@ def test_game_mode_is_translated(mode: GameMode, value: str) -> None:
     ],
 )
 def test_difficulty_is_translated(level: Difficulty, value: str) -> None:
-    assert parsed(ServerSpec(port=25599, difficulty=level))["default_difficulty"] == value
+    assert (
+        parsed(ServerSpec(host=HOST, port=25599, difficulty=level))["default_difficulty"] == value
+    )
 
 
 @pytest.mark.parametrize(
@@ -181,7 +188,7 @@ def test_difficulty_is_translated(level: Difficulty, value: str) -> None:
 def test_compression_threshold_is_translated(threshold: int, enabled: bool, written: int) -> None:  # noqa: FBT001
     # Vanilla disables compression for any negative threshold. Pumpkin has a switch for it,
     # and its (then unused) threshold stays at its default.
-    document = parsed(ServerSpec(port=25599, compression_threshold=threshold))
+    document = parsed(ServerSpec(host=HOST, port=25599, compression_threshold=threshold))
     compression = at(document, "networking.java.compression")
     assert compression == {"enabled": enabled, "threshold": written, "level": 6}
 
@@ -191,7 +198,7 @@ def test_compression_threshold_is_translated(threshold: int, enabled: bool, writ
     ['"quoted"', "back\\slash", "line\nbreak", "tab\there", "\x00\x01\x1f\x7f", "\xa76\U0001f383"],
 )
 def test_motd_reads_back_exactly(motd: str) -> None:
-    assert at(parsed(ServerSpec(port=25599, motd=motd)), "networking.java.motd") == motd
+    assert at(parsed(ServerSpec(host=HOST, port=25599, motd=motd)), "networking.java.motd") == motd
 
 
 @pytest.mark.parametrize(
@@ -216,7 +223,7 @@ def test_motd_reads_back_exactly(motd: str) -> None:
 def test_a_value_pumpkin_cannot_read_is_refused(field: str, value: object) -> None:
     # Pumpkin replaces its WHOLE config with its defaults (online mode, encryption,
     # telemetry and Bedrock on) when one value does not fit its type, and only logs it.
-    spec = dataclasses.replace(ServerSpec(port=25599), **{field: value})
+    spec = dataclasses.replace(ServerSpec(host=HOST, port=25599), **{field: value})
     with pytest.raises(PrepareError, match=rf"ServerSpec\.{field}"):
         pumpkin_toml(spec)
 
@@ -238,7 +245,7 @@ def test_a_value_pumpkin_cannot_read_is_refused(field: str, value: object) -> No
     ],
 )
 def test_the_edges_of_what_pumpkin_can_read_are_accepted(field: str, value: object) -> None:
-    pumpkin_toml(dataclasses.replace(ServerSpec(port=25599), **{field: value}))
+    pumpkin_toml(dataclasses.replace(ServerSpec(host=HOST, port=25599), **{field: value}))
 
 
 @pytest.mark.parametrize(

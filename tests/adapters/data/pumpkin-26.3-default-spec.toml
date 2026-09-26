@@ -88,7 +88,7 @@ enabled = false
 
 [networking.java]
 enabled = true
-address = "127.0.0.1:25599"
+address = "127.1.2.3:25599"
 encryption = false
 online_mode = false
 max_players = 20

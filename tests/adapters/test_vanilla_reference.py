@@ -11,6 +11,9 @@ from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter, https_get
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
+# Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
+HOST = "127.1.2.3"
+
 pytestmark = pytest.mark.reference
 
 # What Mojang's manifest publishes for the 26.3 server jar (checked 2026-09-25).
@@ -56,7 +59,9 @@ def test_provision_does_not_download_a_cached_jar_again(cache_dir: Path) -> None
 def test_prepare_launches_the_targets_java_as_the_jvm_itself_reports(tmp_path: Path) -> None:
     # prepare trusts the runtime image's release file; here the named JVM confirms it.
     installation = Installation(adapter="vanilla", target=TARGET, root=tmp_path / "cache")
-    plan = VanillaAdapter().prepare(installation, ServerSpec(port=25599), tmp_path / "work")
+    plan = VanillaAdapter().prepare(
+        installation, ServerSpec(host=HOST, port=25599), tmp_path / "work"
+    )
     shown = subprocess.run(
         [plan.argv[0], "-XshowSettings:properties", "-version"],
         env=dict(plan.env),

@@ -18,7 +18,7 @@ from support.leak_guard import kill_survivors
 
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
-from mscts.runner import Instance, free_port, running
+from mscts.runner import Instance, free_endpoint, running
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
@@ -41,7 +41,10 @@ async def reference(
     adapter = VanillaAdapter()
     installation = adapter.provision(TARGET, cache_dir)
     workdir = tmp_path_factory.mktemp("reference")
-    plan = adapter.prepare(installation, ServerSpec(port=free_port()), workdir)
+    endpoint = free_endpoint()  # a loopback host of its own: no other Instance shares it
+    plan = adapter.prepare(
+        installation, ServerSpec(host=endpoint.host, port=endpoint.port), workdir
+    )
     token = f"{_TOKEN_VAR}={uuid.uuid4().hex}"
     plan = dataclasses.replace(plan, env={**plan.env, _TOKEN_VAR: token.partition("=")[2]})
     async with running(

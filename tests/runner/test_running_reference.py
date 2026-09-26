@@ -10,7 +10,7 @@ import pytest
 
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
-from mscts.runner import free_port, running
+from mscts.runner import free_endpoint, running
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
@@ -34,8 +34,11 @@ async def test_vanilla_becomes_ready_and_stops_gracefully_on_its_stop_line(
     caplog.set_level(logging.INFO, logger="mscts.runner")
     adapter = VanillaAdapter()
     installation = adapter.provision(TARGET, cache_dir)
-    plan = adapter.prepare(installation, ServerSpec(port=free_port()), tmp_path / "vanilla")
+    endpoint = free_endpoint()  # a loopback host of its own, never 127.0.0.1
+    spec = ServerSpec(host=endpoint.host, port=endpoint.port)
+    plan = adapter.prepare(installation, spec, tmp_path / "vanilla")
     assert plan.stop_stdin == b"stop\n"
+    assert plan.endpoint == endpoint  # and vanilla binds exactly it (else never ready)
     # Cold: the first boot of a fresh workdir. Warm: the same workdir again, world made.
     for boot in ("cold", "warm"):
         async with running(

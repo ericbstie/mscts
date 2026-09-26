@@ -22,7 +22,7 @@ from mscts.adapters.pumpkin import PumpkinAdapter, pumpkin_toml
 from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.packets import Codec, Direction, State
 from mscts.net import Endpoint
-from mscts.runner import free_port, running
+from mscts.runner import free_endpoint, running
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
@@ -150,7 +150,8 @@ async def test_pumpkin_becomes_ready_reads_its_config_and_stops_on_its_stop_line
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     caplog.set_level(logging.INFO, logger="mscts.runner")
-    spec = ServerSpec(port=free_port())
+    endpoint = free_endpoint()  # a loopback host of its own, never 127.0.0.1
+    spec = ServerSpec(host=endpoint.host, port=endpoint.port)
     workdir = tmp_path / "pumpkin"
     plan = PumpkinAdapter().prepare(installation, spec, workdir)
     assert plan.stop_stdin == b"stop\n"

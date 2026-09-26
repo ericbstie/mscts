@@ -10,6 +10,9 @@ from mscts.net import Endpoint
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 
+# Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
+HOST = "127.1.2.3"
+
 
 @pytest.fixture
 def installation(tmp_path: Path) -> Installation:
@@ -37,7 +40,7 @@ def nothing_in(workdir: Path) -> bool:
 def test_prepare_refuses_a_flat_world_and_writes_nothing(
     installation: Installation, workdir: Path
 ) -> None:
-    spec = ServerSpec(port=25599, difficulty=Difficulty.NORMAL)
+    spec = ServerSpec(host=HOST, port=25599, difficulty=Difficulty.NORMAL)
     with pytest.raises(PrepareError, match=r"ServerSpec\.world=flat") as refusal:
         PumpkinAdapter().prepare(installation, spec, workdir)
     assert "ServerSpec.difficulty" not in str(refusal.value)
@@ -48,7 +51,7 @@ def test_prepare_refuses_a_flat_world_and_writes_nothing(
 def test_prepare_refuses_a_difficulty_other_than_normal(
     installation: Installation, workdir: Path, level: Difficulty
 ) -> None:
-    spec = ServerSpec(port=25599, difficulty=level)
+    spec = ServerSpec(host=HOST, port=25599, difficulty=level)
     with pytest.raises(PrepareError, match=rf"ServerSpec\.difficulty={level}"):
         PumpkinAdapter().prepare(installation, spec, workdir)
     assert nothing_in(workdir)
@@ -58,7 +61,7 @@ def test_every_field_pumpkin_cannot_honour_is_named_at_once(
     installation: Installation, workdir: Path
 ) -> None:
     with pytest.raises(PrepareError) as refusal:
-        PumpkinAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+        PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert "ServerSpec.world=flat" in str(refusal.value)
     assert "ServerSpec.difficulty=peaceful" in str(refusal.value)
 
@@ -72,12 +75,12 @@ if_honoured = pytest.mark.usefixtures("if_pumpkin_honoured_every_spec")
 def test_pumpkin_is_an_adapter(installation: Installation, workdir: Path) -> None:
     adapter: Adapter = PumpkinAdapter()
     assert adapter.name == "pumpkin"
-    adapter.prepare(installation, ServerSpec(port=25599), workdir)
+    adapter.prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
 
 
 @if_honoured
 def test_prepare_writes_the_complete_config(installation: Installation, workdir: Path) -> None:
-    spec = ServerSpec(port=25599, operators=("Notch",))
+    spec = ServerSpec(host=HOST, port=25599, operators=("Notch",))
     PumpkinAdapter().prepare(installation, spec, workdir)
     written = {
         path.relative_to(workdir).as_posix(): path.read_text(encoding="utf-8")
@@ -96,12 +99,12 @@ def test_prepare_writes_the_complete_config(installation: Installation, workdir:
 
 @if_honoured
 def test_prepare_returns_the_launch_plan(installation: Installation, workdir: Path) -> None:
-    plan = PumpkinAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    plan = PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert plan == LaunchPlan(
         argv=(str(installation.root / "pumpkin"),),  # it takes no arguments
         cwd=workdir,
         env={},
-        endpoint=Endpoint(host="127.0.0.1", port=25599),
+        endpoint=Endpoint(host=HOST, port=25599),  # exactly what it binds
         stop_stdin=b"stop\n",
     )
 
@@ -113,7 +116,7 @@ def test_nothing_from_the_harness_environment_reaches_pumpkin(
     # Pumpkin reads RUST_LOG (its log filter) and, through reqwest, the proxy variables.
     monkeypatch.setenv("RUST_LOG", "trace")
     monkeypatch.setenv("HTTPS_PROXY", "http://127.0.0.1:3128")
-    plan = PumpkinAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    plan = PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert dict(plan.env) == {}
 
 
@@ -123,21 +126,21 @@ def test_the_binary_path_is_absolute_so_it_survives_the_cwd_change(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     relative = Installation(adapter="pumpkin", target=TARGET, root=Path("cache/pumpkin/26.3"))
-    plan = PumpkinAdapter().prepare(relative, ServerSpec(port=25599), workdir)
+    plan = PumpkinAdapter().prepare(relative, ServerSpec(host=HOST, port=25599), workdir)
     assert plan.argv[0] == str(tmp_path / "cache/pumpkin/26.3/pumpkin")
 
 
 @if_honoured
 def test_prepare_creates_a_missing_workdir(installation: Installation, tmp_path: Path) -> None:
     workdir = tmp_path / "runs/1/work"
-    PumpkinAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert (workdir / "pumpkin.toml").is_file()
 
 
 @if_honoured
 def test_prepare_accepts_an_empty_workdir(installation: Installation, workdir: Path) -> None:
     workdir.mkdir()
-    PumpkinAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert (workdir / "pumpkin.toml").is_file()
 
 
@@ -151,14 +154,18 @@ def test_prepare_refuses_a_non_empty_workdir_and_leaves_it_alone(
     (workdir / stale).parent.mkdir(parents=True)
     (workdir / stale).write_bytes(b"stale")
     with pytest.raises(PrepareError, match="not empty"):
-        PumpkinAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+        PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     files = [p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()]
     assert (files, (workdir / stale).read_bytes()) == ([stale], b"stale")
 
 
 @if_honoured
 @pytest.mark.parametrize(
-    "spec", [ServerSpec(port=25599, view_distance=1), ServerSpec(port=25599, operators=("\ud800",))]
+    "spec",
+    [
+        ServerSpec(host=HOST, port=25599, view_distance=1),
+        ServerSpec(host=HOST, port=25599, operators=("\ud800",)),
+    ],
 )
 def test_a_spec_pumpkin_cannot_read_writes_nothing(
     installation: Installation, workdir: Path, spec: ServerSpec

@@ -24,10 +24,6 @@ from mscts.target import Target
 
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 
-# The server binds loopback only: in offline mode anyone who can reach the port can log
-# in under an operator's name. The Endpoint uses the same address, so it is exactly
-# what the server bound (IPv4; never a `localhost` that might resolve to ::1).
-HOST = "127.0.0.1"
 JAR = "server.jar"
 # A fixed max heap, so the Reference's memory (and GC timing) does not depend on the
 # host: the JVM default is a quarter of physical RAM.
@@ -171,7 +167,6 @@ INVARIANTS: Mapping[str, str] = MappingProxyType(
         "enable-rcon": "false",  # no listener besides the game port
         "enable-query": "false",
         "management-server-enabled": "false",
-        "server-ip": HOST,
     }
 )
 
@@ -257,6 +252,9 @@ def server_properties(spec: ServerSpec) -> dict[str, str]:
     """Every server.properties entry for `spec`: defaults, then the spec, then invariants."""
     return {
         **VANILLA_DEFAULTS,
+        # The one address it binds: the spec's loopback host (offline, anyone who could
+        # reach the port could log in as an operator), which is also the Endpoint's.
+        "server-ip": spec.host,
         "server-port": str(spec.port),
         "motd": spec.motd,
         "max-players": str(spec.max_players),
@@ -491,6 +489,6 @@ class VanillaAdapter:
             argv=(str(java), HEAP, *no_network, *host_independence, "-jar", str(jar), "nogui"),
             cwd=workdir,
             env=LAUNCH_ENV,
-            endpoint=Endpoint(host=HOST, port=spec.port),
+            endpoint=Endpoint(host=spec.host, port=spec.port),  # exactly what it binds
             stop_stdin=b"stop\n",
         )

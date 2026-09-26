@@ -21,10 +21,12 @@ need is missing, add it here in the same commit that introduces it.
   Installation and turns a ServerSpec into a LaunchPlan. Reference and
   every Candidate each have one.
 - **ServerSpec**: a server-agnostic, declarative description of how a
-  server must be configured (port, view distance, world preset,
-  operators, …). Offline mode, no encryption, no whitelist, no pause when
-  empty, no telemetry, and no outbound (non-loopback) network connections
-  are invariants, not options.
+  server must be configured (the host and port of its Endpoint, view
+  distance, world preset, operators, …). Offline mode, no encryption, no
+  whitelist, no pause when empty, no telemetry, and no outbound
+  (non-loopback) network connections are invariants, not options. The host
+  is always a loopback address (127.0.0.0/8), and each Instance gets one of
+  its own.
 - **Installation**: the binaries an Adapter has provisioned for a Target,
   cached on disk, with a recorded source (a registry entry or `--from`
   file) and sha256. It is created only by `mscts adapter install`, or

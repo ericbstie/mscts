@@ -8,6 +8,9 @@ from mscts.adapters.vanilla import VanillaAdapter, offline_uuid
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
+# Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
+HOST = "127.1.2.3"
+
 # prepare looks up a Java launcher; a fake Java 25 keeps the unit tier off the host's.
 pytestmark = pytest.mark.usefixtures("java_25")
 
@@ -33,7 +36,7 @@ def ops_json(tmp_path: Path, spec: ServerSpec) -> str:
 
 def test_ops_json_lists_operators_exactly_as_vanilla_formats_it(tmp_path: Path) -> None:
     # Vanilla's own format (Gson, 2-space indent, no trailing newline), as written by `op`.
-    assert ops_json(tmp_path, ServerSpec(port=25599, operators=("Notch", "Steve"))) == (
+    assert ops_json(tmp_path, ServerSpec(host=HOST, port=25599, operators=("Notch", "Steve"))) == (
         "[\n"
         "  {\n"
         '    "uuid": "b50ad385-829d-3141-a216-7e7d7539ba7f",\n'
@@ -52,4 +55,4 @@ def test_ops_json_lists_operators_exactly_as_vanilla_formats_it(tmp_path: Path) 
 
 
 def test_ops_json_is_empty_without_operators(tmp_path: Path) -> None:
-    assert ops_json(tmp_path, ServerSpec(port=25599)) == "[]"
+    assert ops_json(tmp_path, ServerSpec(host=HOST, port=25599)) == "[]"

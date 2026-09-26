@@ -30,10 +30,6 @@ BINARY = "pumpkin"
 SOURCE = "SOURCE.json"
 _ELF_MAGIC = b"\x7fELF"
 
-# Pumpkin binds loopback only, as the Reference does: offline, anyone who can reach the
-# port can log in under an operator's name. The Endpoint uses the same address.
-HOST = "127.0.0.1"
-
 type TomlValue = bool | int | float | str | list[TomlValue] | Toml
 type Toml = dict[str, TomlValue]  # a TOML table, in Pumpkin's own key order
 
@@ -185,7 +181,9 @@ def _spec_values(spec: ServerSpec) -> dict[str, TomlValue]:
         "seed": str(spec.seed),
         "default_difficulty": _DIFFICULTIES[spec.difficulty],
         "default_gamemode": _GAME_MODES[spec.game_mode],
-        "networking.java.address": f"{HOST}:{spec.port}",
+        # The one address it binds: the spec's loopback host, as the Reference's (offline,
+        # anyone who could reach the port could log in as an operator), and the Endpoint's.
+        "networking.java.address": f"{spec.host}:{spec.port}",
         "networking.java.max_players": spec.max_players,
         "networking.java.view_distance": spec.view_distance,
         "networking.java.simulation_distance": spec.simulation_distance,
@@ -492,6 +490,6 @@ class PumpkinAdapter:
             # Nothing leaks from the harness: Pumpkin reads RUST_LOG (its log filter) and,
             # through reqwest, the proxy variables, and needs nothing from its environment.
             env=MappingProxyType({}),
-            endpoint=Endpoint(host=HOST, port=spec.port),
+            endpoint=Endpoint(host=spec.host, port=spec.port),  # exactly what it binds
             stop_stdin=b"stop\n",  # the console `stop`: saves the worlds, exit code 0
         )

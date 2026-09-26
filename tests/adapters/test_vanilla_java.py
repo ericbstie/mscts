@@ -8,13 +8,16 @@ from mscts.adapters.vanilla import VanillaAdapter, resolve_java
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
+# Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
+HOST = "127.1.2.3"
+
 type MakeJava = Callable[..., Path]
 
 
 def launched_java(tmp_path: Path, adapter: VanillaAdapter | None = None) -> str:
     installation = Installation(adapter="vanilla", target=TARGET, root=tmp_path / "cache")
     plan = (adapter or VanillaAdapter()).prepare(
-        installation, ServerSpec(port=25599), tmp_path / "w"
+        installation, ServerSpec(host=HOST, port=25599), tmp_path / "w"
     )
     return plan.argv[0]
 

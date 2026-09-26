@@ -7,6 +7,9 @@ from mscts.adapters.vanilla import VanillaAdapter
 from mscts.spec import Difficulty, GameMode, ServerSpec
 from mscts.target import TARGET
 
+# Any host address of 127.0.0.0/8 will do: prepare only writes it into the config.
+HOST = "127.1.2.3"
+
 # prepare looks up a Java launcher; a fake Java 25 keeps the unit tier off the host's.
 pytestmark = pytest.mark.usefixtures("java_25")
 
@@ -101,10 +104,10 @@ INVARIANTS = {
     "enable-rcon": "false",
     "enable-query": "false",
     "management-server-enabled": "false",
-    "server-ip": "127.0.0.1",
 }
 
 UNUSUAL_SPEC = ServerSpec(
+    host="127.45.67.89",
     port=41234,
     motd="\xa76a=b: c",
     max_players=3,
@@ -137,19 +140,21 @@ def test_default_spec_file_is_vanillas_own_defaults_plus_documented_overrides(
     # dropped) with only the ServerSpec keys, the invariants and the random management
     # secret substituted. Vanilla rewrote prepare's output byte-identically (apart from
     # its date line), so every value and escape here is what vanilla itself reads back.
+    # Among the ServerSpec keys: server-ip (pristine: empty, every interface) is the
+    # spec's host, 127.1.2.3 here, and server-port its port, 25599.
     golden = Path(__file__).with_name("data") / "server-26.3-default-spec.properties"
     installation = Installation(adapter="vanilla", target=TARGET, root=tmp_path / "cache")
-    VanillaAdapter().prepare(installation, ServerSpec(port=25599), tmp_path / "work")
+    VanillaAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), tmp_path / "work")
     written = (tmp_path / "work/server.properties").read_text(encoding="ascii")
     assert written == golden.read_text(encoding="ascii")
 
 
-@pytest.mark.parametrize("spec", [ServerSpec(port=25599), UNUSUAL_SPEC])
+@pytest.mark.parametrize("spec", [ServerSpec(host=HOST, port=25599), UNUSUAL_SPEC])
 def test_writes_exactly_the_keys_vanilla_26_3_writes(tmp_path: Path, spec: ServerSpec) -> None:
     assert set(properties(tmp_path, spec)) == VANILLA_26_3_KEYS
 
 
-@pytest.mark.parametrize("spec", [ServerSpec(port=25599), UNUSUAL_SPEC])
+@pytest.mark.parametrize("spec", [ServerSpec(host=HOST, port=25599), UNUSUAL_SPEC])
 @pytest.mark.parametrize(("key", "value"), INVARIANTS.items())
 def test_invariant_holds_whatever_the_spec(
     tmp_path: Path, spec: ServerSpec, key: str, value: str
@@ -163,6 +168,7 @@ def test_spec_fields_are_translated(tmp_path: Path) -> None:
 
 
 TRANSLATED = {
+    "server-ip": "127.45.67.89",  # the only address it binds: loopback, and its own
     "server-port": "41234",
     "motd": "\\u00A76a\\=b\\: c",
     "max-players": "3",
@@ -187,7 +193,9 @@ TRANSLATED = {
     ],
 )
 def test_game_mode_is_translated(tmp_path: Path, mode: GameMode, value: str) -> None:
-    assert properties(tmp_path, ServerSpec(port=25599, game_mode=mode))["gamemode"] == value
+    assert (
+        properties(tmp_path, ServerSpec(host=HOST, port=25599, game_mode=mode))["gamemode"] == value
+    )
 
 
 @pytest.mark.parametrize(
@@ -200,4 +208,7 @@ def test_game_mode_is_translated(tmp_path: Path, mode: GameMode, value: str) -> 
     ],
 )
 def test_difficulty_is_translated(tmp_path: Path, level: Difficulty, value: str) -> None:
-    assert properties(tmp_path, ServerSpec(port=25599, difficulty=level))["difficulty"] == value
+    assert (
+        properties(tmp_path, ServerSpec(host=HOST, port=25599, difficulty=level))["difficulty"]
+        == value
+    )

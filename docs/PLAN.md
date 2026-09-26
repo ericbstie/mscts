@@ -226,8 +226,13 @@ class Difficulty(StrEnum):  PEACEFUL, EASY, NORMAL, HARD
 
 @frozen
 class ServerSpec:                   # invariants (not fields): offline, no encryption, no whitelist,
-    port: int                       # no pause-when-empty, no telemetry, no server icon, spawn protection 0,
+                                    # no pause-when-empty, no telemetry, no server icon, spawn protection 0,
                                     # no outbound (non-loopback) network connection
+    host: str                       # (host, port) is the Endpoint, and the server binds exactly it.
+    port: int                       # host: a host address of spec.LOOPBACK (127.0.0.0/8, not its network
+                                    # or broadcast address) as a dotted quad, else ValueError at
+                                    # construction (and on dataclasses.replace). No default: a Run takes
+                                    # both from runner.free_endpoint(), one per Instance
     motd: str = "mscts"
     max_players: int = 20
     view_distance: int = 2
@@ -273,6 +278,8 @@ class Adapter(Protocol):
 #   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved. Its runtime image's
 #   `release` file must name Target.java_major (read, not run: prepare stays hermetic), or
 #   prepare raises PrepareError and writes nothing;
+# - the server binds exactly (spec.host, spec.port), its only listener, and the LaunchPlan's
+#   endpoint is Endpoint(spec.host, spec.port) (readiness proves the Instance owns it);
 # - invariants live in one visibly named table, applied last;
 # - a ServerSpec value the server cannot honour is refused with PrepareError naming the
 #   field, before anything is written, never approximated. The fields a server honours
