@@ -12,6 +12,7 @@ line `stop` arrives on stdin, like vanilla. Flags make it misbehave:
     --exit-early CODE  write 50 numbered lines, then exit with CODE before listening
                        (after forking the --child or --listen-in-child child, if any)
     --ignore-stop      answer `stop` with "ignoring stop" and keep running
+    --stop-on-eof      exit (code 0) when stdin closes, as some servers do; vanilla does not
     --ignore-sigterm   answer SIGTERM with "ignoring SIGTERM" and keep running
     --child            fork a sleeping child into its process group, and never wait for it
 
@@ -69,16 +70,18 @@ def accept_forever(server: socket.socket) -> None:
         connection.close()
 
 
-def console(*, ignore_stop: bool) -> None:
-    """Read stdin until a `stop` it obeys, or until stdin closes; then return."""
+def console(*, ignore_stop: bool, stop_on_eof: bool) -> None:
+    """Read stdin until a `stop` it obeys, or until stdin closes (then return if told to)."""
     for line in sys.stdin:
         if line.strip() == "stop":
             if not ignore_stop:
                 say("stopping")
                 return
             say("ignoring stop")
-    say("stdin closed")  # like vanilla, the end of the console does not stop the server
-    while True:
+    say("stdin closed")
+    if stop_on_eof:
+        return
+    while True:  # like vanilla, the end of the console does not stop the server
         time.sleep(60)
 
 
@@ -92,6 +95,7 @@ def main() -> int:
     parser.add_argument("--reuseport", action="store_true")
     parser.add_argument("--exit-early", type=int)
     parser.add_argument("--ignore-stop", action="store_true")
+    parser.add_argument("--stop-on-eof", action="store_true")
     parser.add_argument("--ignore-sigterm", action="store_true")
     parser.add_argument("--child", action="store_true")
     args = parser.parse_args()
@@ -112,7 +116,7 @@ def main() -> int:
         signal.signal(signal.SIGTERM, lambda _signum, _frame: say("ignoring SIGTERM"))
     if not (args.never_listen or args.listen_in_child):
         listen((args.host, args.port), after=args.listen_after, reuse_port=args.reuseport)
-    console(ignore_stop=args.ignore_stop)
+    console(ignore_stop=args.ignore_stop, stop_on_eof=args.stop_on_eof)
     return 0
 
 

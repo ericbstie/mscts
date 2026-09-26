@@ -50,6 +50,11 @@ ESCALATIONS = {
     "ignores-stop-and-sigterm": Escalation(
         ("--ignore-stop", "--ignore-sigterm"), b"stop\n", "SIGKILL", -9, 2, logging.WARNING
     ),
+    # The stdin step closes stdin too, after the stop line: a server that ignores the line
+    # but stops at the end of its console is stopped by stdin, gracefully, at once.
+    "ignores-stop-stops-on-eof": Escalation(
+        ("--ignore-stop", "--stop-on-eof"), b"stop\n", "stdin", 0, 0, logging.INFO
+    ),
     # No stop line: SIGTERM is the graceful stop, so it comes at once.
     "no-stop-line": Escalation((), None, "SIGTERM", -15, 0, logging.INFO),
     "no-stop-line-ignores-sigterm": Escalation(
