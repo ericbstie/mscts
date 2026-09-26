@@ -21,7 +21,7 @@ MECHANICS: Mapping[str, str] = MappingProxyType(
 VALUE_LIMIT = 80
 """The longest value shown in full; a longer one is cut, with its full length."""
 
-WIRE_EXAMPLES = 3
+WIRE_EXAMPLES = 5
 """How many examples each packet's wire-only differences show."""
 
 _MINECRAFT = "minecraft:"
@@ -197,6 +197,8 @@ def _wire_only(report: Report) -> str:
             lines += [
                 f"      - {_change(divergence, report)}" for divergence in examples[:WIRE_EXAMPLES]
             ]
+            if len(examples) > WIRE_EXAMPLES:
+                lines.append(f"      - and {len(examples) - WIRE_EXAMPLES} more")
     if not lines:
         return ""
     heading = _heading(

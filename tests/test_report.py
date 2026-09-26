@@ -162,6 +162,7 @@ def test_wire_only_divergences_are_counted_per_packet_with_a_few_examples() -> N
     assert "status_response" in section
     assert "json_response.v0" in section
     assert "json_response.v9" not in section
+    assert "and 5 more" in section  # never hides that some were left out
     assert OBSERVABLE not in text
 
 
