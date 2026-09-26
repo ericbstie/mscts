@@ -35,6 +35,10 @@ run = "uv run pytest -m 'not reference and not candidate and not statistical' -n
 description = "Everything a commit must pass"
 depends = ["lint", "types", "sec", "test"]
 
+[tasks."install:reference"]
+description = "Install the Reference (vanilla) into the shared cache; a no-op that says so if installed"
+run = "uv run mscts adapter install vanilla"
+
 [tasks."test:reference"]
 description = "reference tier (live vanilla Instance)"
 run = "uv run pytest -m reference"
@@ -48,5 +52,5 @@ description = "statistical tier (opt-in, slow; ADR-0006)"
 run = "uv run pytest -m statistical"
 
 [tasks."regen:packets"]
-description = "Regenerate and verify the committed packets.json (--write to update it)"
+description = "Regenerate and verify the committed packets.json (--write to update it); needs install:reference"
 run = "uv run python -m mscts.codec.regen"

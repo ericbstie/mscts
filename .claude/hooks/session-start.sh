@@ -18,6 +18,12 @@ mise trust --yes --quiet .
 mise install --yes
 mise run sync
 
+# The Reference: installed explicitly and loudly (ADR-0008), never inside a test run.
+# Idempotent: an installed, verified jar is a no-op that says so. A failure is reported
+# (with its fix) but does not stop the session from starting.
+echo "mscts: installing the Reference (vanilla) for the reference tier ..."
+mise run install:reference || echo "mscts: installing vanilla failed; the reference tier will fail until it is installed" >&2
+
 # Make mise-pinned tools (java 25, uv, python) win over system ones for the session.
 # MSCTS_JAVA names the real Java 25 launcher: the Reference Adapter refuses shims.
 if [ -n "${CLAUDE_ENV_FILE:-}" ]; then

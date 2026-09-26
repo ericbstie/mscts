@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 from mscts import install
+from mscts.adapters.base import ProvisionError
 from mscts.adapters.vanilla import VanillaAdapter, resolve_java
 from mscts.cache import cache_dir
 from mscts.target import TARGET, Target
@@ -122,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     committed_path = packets_json_path(TARGET)
     try:
         generated = regenerate(TARGET, cache_dir())
-    except RegenError as error:
+    except (RegenError, ProvisionError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
     message = compare_or_write(generated, committed_path, write=args.write)

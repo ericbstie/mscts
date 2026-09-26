@@ -110,6 +110,17 @@ def test_main_returns_nonzero_when_regeneration_fails(
     assert message in capsys.readouterr().err
 
 
+def test_main_without_an_installed_jar_fails_at_once_naming_the_install_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    assert regen.main([]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: vanilla 26.3 is not installed")
+    assert "`mscts adapter install vanilla`" in err
+    assert list(tmp_path.iterdir()) == []  # nothing downloaded
+
+
 def test_run_data_generator_raises_when_the_report_is_missing(tmp_path: Path) -> None:
     # A java that exits 0 without writing reports/packets.json (e.g. a stub in a test) is
     # still an error: regen must not silently compare against an empty or stale file.

@@ -35,6 +35,7 @@ Work on `main`. Never commit red: every commit passes `mise run check`.
 mise install && mise run sync   # toolchain + deps (the SessionStart hook does this on the web)
 mise run check                  # lint, format check, ty, bandit, unit tier (must be green to commit)
 mise run fix                    # ruff format + autofix
+mise run install:reference      # install vanilla 26.3 into the shared cache (explicit; a no-op if there)
 mise run test:reference         # tests against a live vanilla 26.3 Instance (Java 25)
 mise run test:candidate         # tests against a live Candidate Instance
 uv run pytest path::test_name   # a single test

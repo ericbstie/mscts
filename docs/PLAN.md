@@ -850,8 +850,8 @@ mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
 | Tier | Marker | Needs | Command |
 | --- | --- | --- | --- |
 | unit | (default) | nothing external: localhost sockets and short helper processes only | `mise run check` (lint, format, types, bandit, unit tests) |
-| reference | `@pytest.mark.reference` | Java 25, network on first run | `mise run test:reference` |
-| candidate | `@pytest.mark.candidate` | a Candidate binary | `mise run test:candidate` |
+| reference | `@pytest.mark.reference` | Java 25; vanilla installed (`mise run install:reference`, which the web SessionStart hook runs) | `mise run test:reference` |
+| candidate | `@pytest.mark.candidate` | a Candidate installed (`mscts adapter install pumpkin [--from PATH]`) | `mise run test:candidate` |
 | statistical | `@pytest.mark.statistical` | live servers, many repetitions (slow) | `mise run test:statistical` (opt-in; ADR-0006) |
 
 Cache: there is one per user, outside any checkout, and every worktree and
@@ -860,6 +860,10 @@ is `$MSCTS_CACHE` (absolute) if set, else `$XDG_CACHE_HOME/mscts`, else
 `~/.cache/mscts`. It holds jars, binaries and generated reports, keyed by
 adapter and Target (`vanilla/26.3/server.jar`). Writes into it are atomic
 renames, because sessions share it concurrently.
+
+No tier and no tool installs anything (ADR-0008): tests, `regen:packets` and Runs get
+their Installation through `install.require`, which, without a TTY, fails at once naming
+`mscts adapter install <adapter>` and its `--from` form.
 
 ## Milestones
 
