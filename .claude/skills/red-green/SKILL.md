@@ -186,6 +186,17 @@ then one commit.
 - `respect-type-ignore-comments = false` means `# type: ignore` does
   nothing. A frozen-dataclass test must use `setattr(obj, name, v)` with a
   non-literal name.
+- A new member on a `Protocol` (e.g. `Adapter`) makes ty reject every
+  implementer at once, so change all implementers in the same commit, and
+  count them in the brief's line budget.
+- `mutate.py` batch mode copies tracked files only: `git add` a new test
+  file before a batch run, or it reports INVALID "file not found".
+- More lint/type shapes: RUF043 wants a raw, escaped `match=` pattern
+  (`r"…26\.3"`); a `match=` containing `[[` warns (FutureWarning, an error
+  here), so escape it; ty wants `@override` on `__str__`; ty rejects
+  `**dict[str, object]` into a dataclass, so use `dataclasses.replace`;
+  argparse `set_defaults(run=…)` yields `Any`, so dispatch through a typed
+  table.
 
 ## When stuck
 

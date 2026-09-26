@@ -19,9 +19,12 @@ pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
 - **M2 (first Comparison and Self-check): half done.** The Comparison
   engine is built. The `@scenario` registry, Run, `selfcheck` and
   Measurements are not.
-- **M3 (first Candidate): blocked on work, not decisions.** The Pumpkin
-  Adapter exists, but it needs the world-save work and
-  `mscts adapter install --from` (ADR-0008).
+- **M3a (installs): mostly done.** A Registry pinned by checksum
+  (`src/mscts/data/registry.toml`), `mscts adapter install/list/status`
+  with `--from`, sources recorded in SOURCE.json. Pumpkin nightly-48cba7ee
+  is installed in this container's shared cache via `--from`, and
+  `mise run test:candidate` passes. The honest prompt is left (3b).
+- **M3 (first Candidate):** needs the Pumpkin world-save work (Next 4).
 - Audit K's high findings H1, H2 and H3a are fixed. H3b, the Verdict
   rule, lands with M2 wiring.
 
@@ -48,9 +51,8 @@ Environment notes:
   pinned 2026-09-26 at sha256
   `48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b`.
   The nightly moves, so if a re-fetch hashes differently, record the new
-  pin. Until `--from` exists, the candidate tier runs with a scratch
-  `MSCTS_CACHE` holding the binary plus a `SOURCE.json` (worker M's
-  method).
+  pin. Install it with `uv run mscts adapter install pumpkin --from
+  <file>` (idempotent; `mscts adapter status pumpkin` shows the source).
 - The SessionStart hook exports `MSCTS_JAVA` (the real Java 25). Run
   tiers through `mise run`.
 
@@ -61,9 +63,6 @@ Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
   `status/basic` + `status/ping`, `run.py` (a Run over two Instances),
   the H3b Verdict rule, and a library `selfcheck` (Next 2, without the
   CLI and Measurements, which are split out below).
-- **S** (opus, M3a / ADR-0008): Registry, provision split, `cli.py`
-  (`mscts adapter install/list/status`, `--from`), the honest prompt,
-  then the pinned Pumpkin installed here with `--from` (Next 3).
 
 ## Delegated to the helper agent
 
@@ -86,10 +85,13 @@ briefs at 3–6 increments and about 1500 lines at most.
      are already recorded with `decode_error`);
    - `mscts selfcheck` → `match`;
    - the first Measurements (`status.rtt`, `instance.startup`).
-3. `cli` (opus, M3a / ADR-0008): `mscts adapter install/list/status`,
-   with `--from`, idempotence, the honest TTY prompt, non-TTY failure,
-   and a registry file pinned by checksum. Then install the pinned
-   Pumpkin here with `--from`.
+3b. `install` (opus): the honest prompt (ADR-0008 §2) as a library
+    function: TTY asks "download <entry> (Y) or provision it yourself
+    (N)?", N prints the exact `--from` command, non-TTY fails at once
+    naming it. `provision` stops downloading silently: callers use
+    `installed()` + the prompt. The legacy-cache migration in
+    `installed()` says what it recorded. Pieces exist in `install.py`
+    (`installed`, `install_command`) and `registry.official().resolve`.
 3a. `cli` (sonnet, after R and S): `mscts selfcheck` over R's library
     `selfcheck`, and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
@@ -133,6 +135,10 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker S (M3a): the Registry, `install.py`, `mscts adapter
+  install/list/status`, both Adapters on one provision path; Pumpkin
+  installed here with `--from`. Stopped before the prompt at the line
+  budget (now Next 3b).
 
 ### 2026-09-26 — session 1, continued: tech-lead operation
 

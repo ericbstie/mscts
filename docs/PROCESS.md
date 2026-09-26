@@ -111,7 +111,10 @@ Done when: <observable condition, e.g. `mise run check` green + named tests exis
 Base: <main commit the brief was written against; the worker first runs
       `git merge --ff-only main` in its worktree>
 Context: <facts, file paths, gotchas the tech lead already knows; reusable scratchpad
-         artifacts (jars, generated reports, probe scripts) by path>
+         artifacts (jars, generated reports, probe scripts) by path; names a parallel
+         brief is introducing that this one must not reuse (check CONTEXT.md);
+         the migration rule if this brief changes anything persisted (cache, files)>
+         Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared).
          ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
          a script in the scratchpad; commit messages via `git commit -F /abs/file`; never
          `git stash`; never pipe `mise run check` into a commit chain."
@@ -231,6 +234,14 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker S (install) | "Registry" (the server list, CONTEXT) was about to be reused by R for the Scenario set | **adopt**: R told to use `SCENARIOS` / "registered Scenarios"; the brief template's Context names terms a parallel brief introduces |
+| 2026-09-26 | worker S | The scratchpad is shared; another worker overwrote S's commit-message file | **adopt**: brief template gives each worker `<scratchpad>/<letter>/` |
+| 2026-09-26 | worker S | "+ vanilla if it shares the path" grew increment 2 to about 800 lines, and the prompt increment was dropped | **adopt**: optional co-changes count as their own increment in the line budget; the prompt is Next item 3b |
+| 2026-09-26 | worker S | A legacy cache (vanilla jar, no SOURCE.json) appeared mid-brief and broke the strict `installed()` | **adopt**: briefs that change a persisted format state the migration rule up front. S's rule (record only on a Registry hash match) is accepted |
+| 2026-09-26 | worker S | A new Protocol member breaks every implementer under ty | **adopt**: red-green Known trap |
+| 2026-09-26 | worker S | RUF043, a `[[` `match=` FutureWarning, ty `@override`, `**dict` into a dataclass, argparse `set_defaults` Any | **adopt**: red-green Known traps |
+| 2026-09-26 | worker S | `mutate.py` batch mode ignores untracked test files | **adopt**: red-green Known trap (`git add` first) |
+| 2026-09-26 | lead (review of S) | `provision` still downloads when nothing is installed, and `installed()` silently writes SOURCE.json for a legacy cache: both break ADR-0008's "nothing installs without saying so" | **adopt**: Next item 3b, the honest prompt; Runs use `installed()` + prompt, never a silent download; the legacy migration says what it recorded |
 | 2026-09-26 | worker Q (xdist) | `free_endpoint`, the leak guard and `strays.py` were already safe under xdist; checking cost 15 min | **reject** (no change): the brief pointed at the right files; verifying beat assuming |
 | 2026-09-26 | worker Q | `ty` cannot resolve `tests/support/leak_guard.py` from `scripts/`, so `repeat.py` carries a second copy of the pattern | **defer**: promote it to a module `scripts/` can import when a third copy is needed |
 | 2026-09-26 | worker Q | Failing ids come from the `-ra` summary lines on stdout | **reject**: simple and sufficient |
