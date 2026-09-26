@@ -455,6 +455,21 @@ def install_entry(adapter, target, cache_dir, entry: Entry, fetch: Fetch) -> Ins
 def install_from(adapter, target, cache_dir, path: Path, registry: Registry) -> Installed: ...
     # records the file's sha256 and path, and an entry only if the file hash-matches it
 def install_command(adapter: str, *, version=None, path=None) -> str: ...  # the exact command line
+@frozen
+class Terminal:
+    stdin: TextIO                   # asked only if stdin.isatty()
+    stdout: TextIO
+def require(adapter, target, cache_dir, *, terminal: Terminal | None = None,
+            fetch: Fetch = https_get) -> Installation: ...
+    # The one way a Run or a test gets an Installation (ADR-0008 §2): installed(...) if there;
+    # else, only with a terminal whose stdin is a TTY, asks "<adapter> <version> is not
+    # installed. Download <entry> (Y) or provision it yourself (N)?" (entry: registry.official()
+    # .resolve). Y: install_entry, announcing "downloading <url> ..." and printing its message.
+    # N: prints and raises ProvisionError naming `mscts adapter install <a> --from <file>`.
+    # Anything else re-asks ("Please answer y or n."); end of input refuses, naming both
+    # commands. No terminal (the default) or no TTY: ProvisionError at once naming
+    # `mscts adapter install <a>` and the --from form; stdin is never read. No registry entry:
+    # ProvisionError naming the --from form only.
 
 @frozen
 class Instance:

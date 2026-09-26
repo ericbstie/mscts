@@ -15,11 +15,12 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TextIO
 
 from mscts import registry
 from mscts.adapters.base import Adapter, Installation, ProvisionError, Source
-from mscts.adapters.fetch import Fetch
-from mscts.registry import Entry, Registry
+from mscts.adapters.fetch import Download, Fetch, https_get
+from mscts.registry import Entry, Registry, RegistryError
 from mscts.target import Target
 
 SOURCE = "SOURCE.json"
@@ -260,3 +261,88 @@ def _done(adapter: Adapter, target: Target, cache_dir: Path, what: str) -> Insta
         msg = f"{root_of(adapter, target, cache_dir)} vanished while installing it"
         raise ProvisionError(msg)
     return Installed(installation, changed=True, message=f"{what} into {installation.root}")
+
+
+@dataclass(frozen=True, slots=True)
+class Terminal:
+    """Where require may ask its question: only if `stdin` is a TTY is anyone there to answer."""
+
+    stdin: TextIO
+    stdout: TextIO
+
+    def say(self, text: str, end: str = "\n") -> None:
+        """Show `text` at once (a question must be visible before its answer is read)."""
+        self.stdout.write(text + end)
+        self.stdout.flush()
+
+
+def _answer(terminal: Terminal) -> bool | None:
+    """True for yes, False for no, None at the end of input; re-asks anything else."""
+    while True:
+        line = terminal.stdin.readline()
+        if not line:
+            return None
+        answer = line.strip().lower()
+        if answer in {"y", "yes"}:
+            return True
+        if answer in {"n", "no"}:
+            return False
+        terminal.say("Please answer y or n. ", end="")
+
+
+def require(
+    adapter: Adapter,
+    target: Target,
+    cache_dir: Path,
+    *,
+    terminal: Terminal | None = None,
+    fetch: Fetch = https_get,
+) -> Installation:
+    """`adapter`'s verified Installation for `target`; never installs one without saying so.
+
+    If it is missing: with a `terminal` whose stdin is a TTY, asks whether to download its
+    Registry entry (Y, announced and reported) or provision it yourself (N: prints the
+    `--from` command, then ProvisionError naming it). Otherwise (no terminal, or stdin is
+    no TTY; the default) ProvisionError at once, naming both commands; stdin is never read.
+    """
+    existing = installed(adapter, target, cache_dir)
+    if existing is not None:
+        return existing
+    what = f"{adapter.name} {target.minecraft_version}"
+    yourself = f"`{install_command(adapter.name, path='<file>')}`"
+    try:
+        entry = registry.official().resolve(adapter.name, target)
+    except RegistryError as error:
+        msg = f"{what} is not installed, and no registry entry can install it ({error}): "
+        msg += f"provision it yourself with {yourself}"
+        raise ProvisionError(msg) from error
+    if terminal is None or not terminal.stdin.isatty():
+        msg = (
+            f"{what} is not installed, and without a terminal nothing is installed unasked. "
+            f"Install {entry} with `{install_command(adapter.name)}`, "
+            f"or provision it yourself with {yourself}"
+        )
+        raise ProvisionError(msg)
+    terminal.say(
+        f"{what} is not installed. Download {entry} (Y) or provision it yourself (N)? ", end=""
+    )
+    answer = _answer(terminal)
+    if answer is None:
+        terminal.say("")
+        msg = (
+            f"{what} is not installed and no answer came. Install {entry} with "
+            f"`{install_command(adapter.name)}`, or provision it yourself with {yourself}"
+        )
+        raise ProvisionError(msg)
+    if not answer:
+        terminal.say(f"Provision it yourself, then run {yourself}")
+        msg = f"{what} is not installed: provision it yourself, then run {yourself}"
+        raise ProvisionError(msg)
+
+    def announced(url: str) -> Download:
+        terminal.say(f"downloading {url} ...")
+        return fetch(url)
+
+    done = install_entry(adapter, target, cache_dir, entry, announced)
+    terminal.say(done.message)
+    return done.installation
