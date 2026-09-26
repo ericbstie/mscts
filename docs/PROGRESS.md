@@ -66,7 +66,8 @@ Batch 2, briefed against `a64a2b5`:
   downloading silently, explicit `install:reference` in the hook (Next 3b).
 - **U** (opus, `adapter/pumpkin`): a flat world save + difficulty in
   Pumpkin's own format, with a strict minimal NBT writer (Next 4).
-- **V** (opus, `compare`, against `acb2129`): observable vs wire-only
+- **V** (opus, `compare`, relaunched against `1822a5f` after a rate-limit
+  kill): observable vs wire-only
   Divergences, declared defaults from the client decoder, `update_tags`
   order (Next 5).
 

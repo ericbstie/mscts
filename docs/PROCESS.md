@@ -201,6 +201,9 @@ new classes of defect:
   the Reference Adapter correctly refuses unless `MSCTS_JAVA` is set.
 - Known tool and type-checker traps are listed in the `red-green` skill.
   Read them first.
+- **Commit early.** An interrupted agent (API rate limit, container
+  restart) loses a worktree that has no commits. Keep research artifacts
+  in your scratch dir, where the next worker can reuse them.
 - Stay inside the brief. If you are blocked, or the brief is wrong, stop
   and say so in the report rather than widening scope.
 
@@ -234,6 +237,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | lead (incident) | An API rate limit killed T, U and V at once. T and U were resumed by message with their worktrees intact; V had no commits, so its worktree was auto-removed and it was relaunched, reusing its scratch research | **adopt**: Worker contract "commit early: a worktree with no commits does not survive an interrupted agent; keep research in your scratch dir"; the lead resumes interrupted workers by message when their worktree survives |
 | 2026-09-26 | lead (integration of R) | R's test fakes implemented `Adapter` without S's new `binary`/`check` members: ty red only after the rebase | **adopt**: when one brief changes a Protocol, the lead names every in-flight implementer in the other briefs, and messages running workers when it lands (done for T) |
 | 2026-09-26 | lead (incident) | Intermittent unit-tier red on main: S's parametrize ids embedded fake-jar bytes with wall-clock zip mtimes, so xdist workers collected different tests. Q's 25 stress runs predate S | **adopt**: fixed (bd6d44f); red-green Known trap "deterministic parametrize ids"; in-flight workers told |
 | 2026-09-26 | worker R (M2) | The reference tier went 83 s → 91.4 s (G5 red): the Self-check boots two more Instances | **adopt**: Next item 2a, a Run over existing Endpoints so the Self-check reuses the session Reference |
