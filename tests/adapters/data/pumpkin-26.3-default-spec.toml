@@ -103,7 +103,7 @@ threshold = 256
 level = 6
 
 [networking.java.authentication]
-enabled = true
+enabled = false
 fallbacks = []
 profile_by_name_fallbacks = []
 profile_by_uuid_fallbacks = []
@@ -133,7 +133,7 @@ kick_message = "Kicked for spamming packets"
 
 [networking.bedrock]
 enabled = false
-online_mode = true
+online_mode = false
 max_players = 1000
 view_distance = 16
 simulation_distance = 10
@@ -148,12 +148,12 @@ threshold = 256
 level = 4
 
 [networking.bedrock.authentication]
-enabled = true
+enabled = false
 connect_timeout = 5000
 read_timeout = 5000
 
 [networking.bedrock.nethernet]
-enabled = true
+enabled = false
 address = "0.0.0.0:19132"
 external_ip = ""
 identity_key = "nethernet-key.der"
@@ -233,6 +233,6 @@ save_advancements = true
 
 [telemetry]
 enabled = false
-endpoint = "https://market.pumpkinmc.org/api/v1/rest/telemetry/heartbeat"
+endpoint = "http://127.0.0.1:0/"
 interval_secs = 300
 public = false

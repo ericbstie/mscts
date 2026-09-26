@@ -109,6 +109,21 @@ INVARIANTS: Mapping[str, TomlValue] = MappingProxyType(
         "spawn_protection": 0,  # the default (16) stops non-operators building at spawn
         "use_favicon": False,  # no server icon (the default is Pumpkin's)
         "commands.use_console": True,  # the LaunchPlan stops Pumpkin with `stop` on stdin
+        # No outbound (non-loopback) connection. Verified with strace: with these, Pumpkin
+        # connects nowhere but its own loopback listener and never opens the resolver's
+        # files (docs/research/2026-09-26-pumpkin.md, "Network").
+        # Bedrock off is not enough: at startup Pumpkin fetches Xbox Live's OIDC keys
+        # (DNS, then HTTPS to client.discovery.minecraft-services.net) whenever these two
+        # are on, whether or not Bedrock is enabled.
+        "networking.bedrock.online_mode": False,
+        "networking.bedrock.authentication.enabled": False,
+        "networking.bedrock.nethernet.enabled": False,  # its UDP and TCP listeners
+        # Offline, the session server is never asked; this keeps it so if that changes.
+        "networking.java.authentication.enabled": False,
+        # telemetry.enabled already stops the heartbeat before a client exists. This keeps
+        # a heartbeat off the internet should a nightly ever send one regardless: nothing
+        # can listen on port 0, so it would be refused at once.
+        "telemetry.endpoint": "http://127.0.0.1:0/",
     }
 )
 

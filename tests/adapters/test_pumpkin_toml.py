@@ -40,6 +40,13 @@ INVARIANTS = {
     "spawn_protection": 0,
     "use_favicon": False,
     "commands.use_console": True,  # the LaunchPlan stops Pumpkin with `stop` on stdin
+    # No outbound connection (strace-verified, docs/research/2026-09-26-pumpkin.md):
+    # Bedrock off is not enough, the OIDC key fetch at startup has its own switches.
+    "networking.bedrock.online_mode": False,
+    "networking.bedrock.authentication.enabled": False,
+    "networking.bedrock.nethernet.enabled": False,
+    "networking.java.authentication.enabled": False,
+    "telemetry.endpoint": "http://127.0.0.1:0/",
 }
 
 UNUSUAL_SPEC = ServerSpec(
@@ -97,6 +104,9 @@ def test_default_spec_file_is_pumpkins_own_defaults_plus_documented_substitution
     # - Invariants: use_favicon, spawn_protection 0; [networking.java] online_mode and
     #   encryption false; [networking.bedrock] enabled false; [plugins] and [telemetry]
     #   enabled false.
+    # - No outbound connection: [networking.bedrock] online_mode, and enabled false in
+    #   [networking.bedrock.authentication], [networking.bedrock.nethernet] and
+    #   [networking.java.authentication]; [telemetry] endpoint "http://127.0.0.1:0/".
     # - Vanilla 26.3's values: accepts_transfers false (accepts-transfers=false);
     #   scrub_ips false (log-ips=true); [world.chunk.compression] algorithm "ZLib"
     #   (region-file-compression=deflate); [networking.java.compression] level 6 (vanilla's
