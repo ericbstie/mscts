@@ -113,8 +113,9 @@ need is missing, add it here in the same commit that introduces it.
 - **Self-check**: a Comparison of Reference against Reference. It must
   always be `match`. Anything else is a missing Mask or a flaky Scenario,
   never a Reference bug.
-- **Measurement**: a named timing value derived from a Transcript, e.g.
-  `status.rtt_ms`.
+- **Measurement**: a named value with a unit, derived from a Transcript's
+  span Marks (`status.rtt`, ms) or from the Run itself
+  (`instance.startup`, ms: launch to ready).
 - **Run**: a set of Scenarios executed against the Reference and one
   Candidate, repeated N times. It produces a **Report**. Each side of a
   Run either launches its own Instances (a Server) or is **Attached**: an

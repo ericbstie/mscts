@@ -931,6 +931,16 @@ class Measurement:
     value: float
 
 def measurements(transcript: Transcript) -> list[Measurement]: ...        # from span Marks
+# measure.py. A span is `<name>:start` and the next `<name>:end` (ms); an unmatched start
+# (its body raised) or end yields nothing; listed in start order.
+
+@frozen
+class Stats:
+    n: int
+    median: float
+    p95: float                      # nearest rank
+
+def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 
 @frozen
 class ScenarioResult:
