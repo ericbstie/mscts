@@ -123,7 +123,11 @@ class Reader:
         self._offset = 0
 
     def var_int(self) -> int:
-        """Consume a VarInt and return it as a signed 32-bit integer."""
+        """Consume a VarInt and return it as a signed 32-bit integer.
+
+        Like vanilla's `VarInt.read`, only the low 32 bits count: the unused high bits of
+        a 5th byte are dropped, not rejected.
+        """
         result = 0
         for index in range(_VAR_INT_MAX_BYTES):
             if self._offset >= len(self._data):
@@ -133,12 +137,17 @@ class Reader:
             self._offset += 1
             result |= (byte & _SEGMENT) << (7 * index)
             if not byte & _CONTINUE:
+                result &= _INT_MASK
                 return result - (1 << 32) if result & _INT_SIGN else result
         msg = "VarInt longer than 5 bytes"
         raise WireError(msg)
 
     def var_long(self) -> int:
-        """Consume a VarLong and return it as a signed 64-bit integer."""
+        """Consume a VarLong and return it as a signed 64-bit integer.
+
+        Like vanilla's `VarLong.read`, only the low 64 bits count: the unused high bits of
+        a 10th byte are dropped, not rejected.
+        """
         result = 0
         for index in range(_VAR_LONG_MAX_BYTES):
             if self._offset >= len(self._data):
@@ -148,6 +157,7 @@ class Reader:
             self._offset += 1
             result |= (byte & _SEGMENT) << (7 * index)
             if not byte & _CONTINUE:
+                result &= _LONG_MASK
                 return result - (1 << 64) if result & _LONG_SIGN else result
         msg = "VarLong longer than 10 bytes"
         raise WireError(msg)

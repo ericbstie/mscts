@@ -89,6 +89,38 @@ def test_var_long_raises_when_longer_than_ten_bytes() -> None:
         Reader(bytes.fromhex("80" * 10 + "00")).var_long()
 
 
+# Vanilla's VarInt.read / VarLong.read (26.3, javap -c) do `out |= (b & 127) << (n++ * 7)`
+# in 32-bit (`ishl`) / 64-bit (`lshl`) arithmetic, so the high bits of the last byte fall
+# off: a non-canonical 5th (10th) byte still decodes to an in-range value.
+@pytest.mark.parametrize(
+    ("encoded", "value"),
+    [
+        ("ffffffff7f", -1),  # canonical -1 is ffffffff0f
+        ("ffffffff1f", -1),
+        ("8080808010", 0),  # bit 32 falls off
+        ("8080808078", -(2**31)),  # 0x78 << 28: only bit 3 (value 8) is kept, as bit 31
+    ],
+)
+def test_var_int_keeps_only_32_bits_as_vanilla_does(encoded: str, value: int) -> None:
+    reader = Reader(bytes.fromhex(encoded))
+    assert reader.var_int() == value
+    assert reader.remaining == 0
+
+
+@pytest.mark.parametrize(
+    ("encoded", "value"),
+    [
+        ("ff" * 9 + "7f", -1),  # canonical -1 is ff*9 01
+        ("80" * 9 + "02", 0),  # bit 64 falls off
+        ("80" * 9 + "03", -(2**63)),
+    ],
+)
+def test_var_long_keeps_only_64_bits_as_vanilla_does(encoded: str, value: int) -> None:
+    reader = Reader(bytes.fromhex(encoded))
+    assert reader.var_long() == value
+    assert reader.remaining == 0
+
+
 # A VarInt is a signed 32-bit integer and a VarLong a signed 64-bit one;
 # anything outside must not be silently wrapped into range.
 @pytest.mark.parametrize("value", [2**31, -(2**31) - 1])
