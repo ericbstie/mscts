@@ -6,8 +6,8 @@ before stopping (see the `red-green` skill).
 ## Now
 
 main: `mise run check` passes (1496 unit tests under
-pytest-xdist, about 6 s) and `mise run test:reference` passes (11 tests, about
-75 s).
+pytest-xdist, about 6 s); `mise run test:reference` passes (about 14
+tests, 79–83 s under load) and `mise run test:candidate` passes.
 
 - **M1 (talk to vanilla): done.** Provision, hardening (no outbound
   network, fixed env), and a runner with readiness by socket ownership
@@ -24,7 +24,7 @@ pytest-xdist, about 6 s) and `mise run test:reference` passes (11 tests, about
   `mscts selfcheck` command and Measurements (3a).
 - **G5 holds again** (reference tier 79–83 s under load): the Self-check
   reuses the session Reference as an Attached side. The margin is thin;
-  Next item 3c parallelizes the tier.
+  Next item 1 parallelizes the tier.
 - **M3a (installs): mostly done.** A Registry pinned by checksum
   (`src/mscts/data/registry.toml`), `mscts adapter install/list/status`
   with `--from`, sources recorded in SOURCE.json. Pumpkin nightly-48cba7ee
