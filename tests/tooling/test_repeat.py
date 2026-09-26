@@ -6,6 +6,7 @@ gone, using the leak-guard pattern (tests/support/leak_guard.py).
 """
 
 import importlib.util
+import time
 import types
 import uuid
 from pathlib import Path
@@ -138,9 +139,14 @@ def test_failing_ids_in_reads_pytest_s_failed_summary_lines(repeat: types.Module
 
 def test_stress_load_starts_and_always_cleans_up_its_processes(repeat: types.ModuleType) -> None:
     token = uuid.uuid4().hex
+    tag = f"MSCTS_REPEAT_STRESS={token}"
     with repeat.stress_load(2, token) as processes:
         assert len(processes) == 2
-        assert len(repeat.tagged_pids(f"MSCTS_REPEAT_STRESS={token}")) == 2
+        # A child's /proc environ shows the tag only once it has exec'd: wait for both.
+        deadline = time.monotonic() + 10
+        while len(repeat.tagged_pids(tag)) < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert len(repeat.tagged_pids(tag)) == 2
     assert repeat.tagged_pids(f"MSCTS_REPEAT_STRESS={token}") == []
 
 
