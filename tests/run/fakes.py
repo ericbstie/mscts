@@ -1,13 +1,18 @@
 """A fake Adapter for Run tests: its Instances are status_fake.py processes."""
 
+import contextlib
 import sys
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from mscts.adapters.base import Installation, LaunchPlan
+from mscts.bot import status_probe
 from mscts.net import Endpoint
+from mscts.run import Attached
+from mscts.runner import free_endpoint, running
 from mscts.spec import ServerSpec
-from mscts.target import Target
+from mscts.target import TARGET, Target
 
 STATUS_FAKE = Path(__file__).with_name("status_fake.py")
 TOKEN_VAR = "MSCTS_RUN_TOKEN"  # noqa: S105 - an env var name, not a secret
@@ -51,3 +56,17 @@ class FakeAdapter:
             endpoint=Endpoint(spec.host, spec.port),
             stop_stdin=b"stop\n",
         )
+
+
+@contextlib.asynccontextmanager
+async def attached(adapter: FakeAdapter, workdir: Path) -> AsyncIterator[Attached]:
+    """A fake Instance of `adapter`, launched at the default ServerSpec, as a Run's Attached side.
+
+    The test owns it: it is stopped when the block ends, not by the Run.
+    """
+    endpoint = free_endpoint()
+    spec = ServerSpec(host=endpoint.host, port=endpoint.port)
+    installation = Installation(adapter=adapter.name, target=TARGET, root=workdir)
+    plan = adapter.prepare(installation, spec, workdir / "attached")
+    async with running(plan, ready=status_probe(TARGET), ready_timeout=10.0):
+        yield Attached(name=adapter.name, spec=spec)

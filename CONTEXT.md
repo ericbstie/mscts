@@ -116,7 +116,10 @@ need is missing, add it here in the same commit that introduces it.
 - **Measurement**: a named timing value derived from a Transcript, e.g.
   `status.rtt_ms`.
 - **Run**: a set of Scenarios executed against the Reference and one
-  Candidate, repeated N times. It produces a **Report**.
+  Candidate, repeated N times. It produces a **Report**. Each side of a
+  Run either launches its own Instances (a Server) or is **Attached**: an
+  Instance someone else launched and stops, which the Run only plays
+  against, and only for Scenarios of the ServerSpec it was launched from.
 
 ## Development
 

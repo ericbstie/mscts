@@ -694,6 +694,14 @@ class Server:                       # one side of a Run
     installation: Installation
     name: str                       # property: adapter.name, as Transcripts record it
 
+@frozen
+class Attached:                     # one side of a Run: an Instance someone else launched,
+    name: str                       # owns and stops (e.g. a test session's shared Reference);
+    spec: ServerSpec                # the ServerSpec it was launched from
+    endpoint: Endpoint              # property: spec's host and port
+
+type Side = Server | Attached
+
 async def run_scenario(scenario: Scenario, endpoint: Endpoint, *, server: str,
                        timeout_s: float = SCENARIO_TIMEOUT_S) -> Transcript: ...
     # one Instance; closes every Bot however it ends; ScenarioError if the Scenario raised
@@ -707,19 +715,25 @@ def judge(scenario: Scenario, reference: Transcript | ScenarioError,
     # Candidate (a harness bug), or compare raised. Else compare(reference, candidate, masks).
 def blocked(scenario: Scenario, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
-async def run(scenarios: Sequence[Scenario], reference: Server, candidate: Server, *,
+async def run(scenarios: Sequence[Scenario], reference: Side, candidate: Side, *,
               workdir: Path, repeat: int = 1) -> list[Verdict]: ...
     # one Verdict per Scenario per repetition, repetition after repetition, in the order
     # given; a Scenario is blocked (not played) unless its prerequisites matched earlier in
     # the same repetition. One Instance pair per distinct ServerSpec the Scenarios' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
-    # NotImplementedError for a Scenario that is not exact (M6a/M6b), ValueError for one
-    # listed twice, RunnerError if an Instance cannot start.
+    # An Attached side is played at its endpoint for every Scenario, never started or
+    # stopped; the same code path otherwise (judge, blocked, repetitions).
+    # NotImplementedError for a Scenario that is not exact (M6a/M6b); ValueError for one
+    # listed twice, or whose `spec` does not give an Attached side's spec (host and port
+    # aside: it would run against the wrong config), before anything starts; RunnerError
+    # if an Instance cannot start.
 async def selfcheck(scenario_ids: Sequence[str], *, reference: Server, workdir: Path,
-                    repeat: int = 20) -> list[Verdict]: ...
-    # run(resolve(scenario_ids), reference, reference, ...): two Reference Instances, the
-    # prerequisites included; KeyError (unknown id) before anything starts. G2: all `match`.
+                    repeat: int = 20, attached: Attached | None = None) -> list[Verdict]: ...
+    # run(resolve(scenario_ids), attached or reference, reference, ...): two Reference
+    # Instances (one of them `attached`, if given, which must be of reference's Adapter:
+    # ValueError), the prerequisites included; KeyError (unknown id) before anything
+    # starts. G2: all `match`.
     # (The `mscts selfcheck` command wraps it; the caller gets `reference`'s Installation with install.require.)
 ```
 
