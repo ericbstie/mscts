@@ -219,6 +219,10 @@ then one commit.
 - Writing a server's file format: pin the writer byte for byte against a
   file the Reference itself wrote.
 
+- Shell from a worktree: use `uv run --directory /abs/worktree …` and
+  `mise run --cd /abs/worktree …` instead of `cd … && …`, and Write/Edit
+  instead of a heredoc append (`cat >> f <<EOF` was refused on its own).
+
 ## When stuck
 
 - If a test fails in a way you don't understand, shrink the reproduction

@@ -58,6 +58,11 @@ instead.
 
 ## Pinning a fact
 
+- A list the client decodes into a map is last-write-wins on a repeated
+  key. Canonicalize its order only with a **stable** sort, never a plain
+  one. `lenientOptionalFieldOf` also defaults a present-but-invalid value:
+  only the absent case is a declared default.
+
 - A live test may read `Packet.payload` (the raw bytes) for a one-off
   fact without adding a schema; a schema is only for what the Bot or a
   Comparison needs.

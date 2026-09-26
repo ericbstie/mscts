@@ -36,6 +36,10 @@ pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
   native flat world save (DataVersion 4903) with the spec's seed and
   difficulty; a Bot joining Pumpkin lands in the Reference's flat world at
   y = -60 (candidate tier). Left: `mscts run` and the first Report (4).
+- **ADR-0007 in code:** every Divergence is `observable` or `wire-only`
+  (`Verdict.observable` for scores); the canonical table has the status
+  declared defaults and the `update_tags` order, each cited from the
+  client decoder.
 - Audit K's high findings H1, H2 and H3 are all fixed.
 
 Product direction (maintainer, 2026-09-26):
@@ -69,10 +73,6 @@ Environment notes:
 ## In flight
 
 Batch 2, briefed against `a64a2b5`:
-- **V** (opus, `compare`, relaunched against `1822a5f` after a rate-limit
-  kill): observable vs wire-only
-  Divergences, declared defaults from the client decoder, `update_tags`
-  order (Next 5).
 
 - **W** (opus, `run`, against `277dc11`): a Run over existing Endpoints
   so the Self-check reuses the session Reference (G5); Bot-named `failed`
@@ -82,14 +82,14 @@ Batch 2, briefed against `a64a2b5`:
   `strays.py --token/--cwd`, `mutate.py --batch` with untracked files
   (Next 11, first half).
 
-After V and W: the opus audit (Next 12).
+After W: the opus audit (Next 12).
 
 ## Delegated to the helper agent
 
 The maintainer's second agent (Astra) takes GitHub issues labelled
 `helper-ready`. Claude stays the primary worker; do not brief a Claude
-worker on a delegated item. Open: #2 javap tool, #3 runner parent-death
-guard, #4 PLAN public-name check. Their PRs are reviewed and integrated
+worker on a delegated item. Open: #3 runner parent-death guard, #4 PLAN
+public-name check, #6 javap libraries. Merged: #5 (javap, closes #2). Their PRs are reviewed and integrated
 like a worker branch.
 
 ## Next
@@ -106,17 +106,14 @@ briefs at 3–6 increments and about 1500 lines at most.
    observable and wire-only sections (ADR-0007), grouped by mechanic
    (ADR-0006). Known Pumpkin Divergences to expect: `is_flat=false`,
    `sea_level` 63 in play `login`.
-5. `compare` (opus, ADR-0007): classify Divergences as observable or
-   wire-only; add declared-default canonicalizations (cited from the
-   client decoder); canonicalize the `update_tags` order (a server
-   HashMap) before the join Scenario's Self-check.
-6. Research tooling (sonnet): ~~`scripts/research/javap.py`~~
-   (delegated: issue #2), then the
+6. Research tooling (sonnet): `scripts/research/javap.py` is done (#5;
+   libraries on the classpath delegated as #6), then the
    `scripts/` research harness: netns sandbox, strace summary, live
    launch/probe, a loopback-only reference test, and `scripts/research/
    boot.py` (boot an Adapter's Instance, join, dump packets and chunks);
    start from worker U's scratch `U/boot.py`, `U/nbtdump.py`, `U/chunk.py`.
-7. `join/basic` Scenario + Self-check 20/20 (after 2 and 5), with a spawn
+7. `join/basic` Scenario + Self-check 20/20, first checking that
+   vanilla's `update_tags` order is stable across runs, with a spawn
    Fixture (`/setworldspawn`) per ADR-0006. The statistical
    `spawn/join-position` comes later (M6b).
 8. Bot fidelity: send brand `custom_payload`, `client_information` and
@@ -142,6 +139,10 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker V: observable vs wire-only Divergences; status declared
+  defaults and `update_tags` order in the canonical table.
+- Helper PR #5 (Astra): `scripts/research/javap.py`; the lead added the
+  version-JSON sha1 check and rebase-merged it.
 - Worker U: a strict NBT writer; Pumpkin writes a native flat world save
   with the spec's difficulty; the first chunks match the Reference's.
 - Worker T: `install.require` and the honest prompt; `provision` left

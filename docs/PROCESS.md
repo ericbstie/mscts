@@ -243,6 +243,14 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | helper (Astra, PR #5 javap) | Its sandbox's PID namespace broke the process tests, so it could not run the full check; a sonnet review found the version JSON was trusted without its manifest sha1 | **adopt**: the lead runs the full check and a live smoke test on every helper PR, and fixes small findings in a commit on top of the PR branch (never rewriting it), then rebase-merges. Helper issues spell out the trust chain to verify |
+| 2026-09-26 | worker V (wire-only) | A committed javap with DFU and Gson on the classpath would have saved a third of the brief | **adopt**: delegated as issue #6 (extends #5) |
+| 2026-09-26 | worker V | `ServerStatus.CODEC` uses `lenientOptionalFieldOf`; only the absent case meets the evidence standard | **reject** (no change): the evidence standard held; protocol-research note added |
+| 2026-09-26 | worker V | Canonical values are compared before Masks, so a re-spelling inside a field that also has an observable or masked difference is not reported separately | **accept**: a deliberate, documented limit (PLAN) |
+| 2026-09-26 | worker V | Tag lists decode last-write-wins: only a stable sort is sound | **adopt**: protocol-research Known trap |
+| 2026-09-26 | worker V | Whether vanilla's `update_tags` order is stable across runs is unverified; if not, the join Self-check fails its exact `match` | **adopt**: the join Scenario brief (Next 7) checks it first |
+| 2026-09-26 | worker V | A reordered `update_tags` yields one wire-only Divergence per shifted leaf | **defer**: the Report brief (Next 4) decides grouping |
+| 2026-09-26 | worker V | Two more shell refusals (`cd … &&` heredoc; a plain `cat >> f <<EOF`) | **adopt**: red-green Known trap, `uv run --directory` / `mise run --cd` and Write/Edit |
 | 2026-09-26 | worker U (Pumpkin world) | `is_flat=false` and `sea_level` 63 are hard-coded in Pumpkin; the brief suggested asserting `is_flat` in an Adapter test | **adopt**: brief template, Adapter/Candidate tests assert observable outcomes, never a wire field a Candidate may get wrong; both are known Pumpkin Divergences for the join Report (research note) |
 | 2026-09-26 | worker U | Committed once through `mise run check \| tail && git commit` (the check was green on re-run). The **second** slip of this rule (H before) | **adopt**: repeated, so make it impossible: Next tooling item `mise run commit -- -F <msg>` (check, then commit only on exit 0) |
 | 2026-09-26 | worker U | A long `python3 - <<EOF` was refused by the sandbox, shorter ones passed | **adopt**: Worker contract, heredocs and inline scripts always go into a scratch file, no exceptions |
