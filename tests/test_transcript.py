@@ -70,6 +70,64 @@ def test_now_ns_counts_monotonic_nanoseconds_since_the_start() -> None:
     assert 5_000_000 <= before <= now <= after
 
 
+def a_transcript() -> Transcript:
+    """A Transcript whose clock has been running for a second."""
+    return Transcript(
+        scenario_id="status/basic", server="vanilla", start_ns=time.monotonic_ns() - 1_000_000_000
+    )
+
+
+def test_record_appends_and_returns_the_event() -> None:
+    transcript = a_transcript()
+    event = transcript.record("alice", PACKET, t_ns=10)
+    assert event == Event(t_ns=10, bot="alice", packet=PACKET)
+    assert transcript.events == [event]
+
+
+def test_record_keeps_events_in_time_order() -> None:
+    # A received frame is stamped when it arrives but recorded when a Bot takes it,
+    # so it can be recorded after a later-stamped Event.
+    transcript = a_transcript()
+    later = transcript.record("alice", PACKET, t_ns=20)
+    earlier = transcript.record("bob", PACKET, t_ns=10)
+    assert transcript.events == [earlier, later]
+
+
+def test_record_keeps_events_with_equal_times_in_recording_order() -> None:
+    transcript = a_transcript()
+    first = transcript.record("alice", PACKET, t_ns=10)
+    second = transcript.record("bob", PACKET, t_ns=10)
+    third = transcript.record("alice", PACKET, t_ns=5)
+    fourth = transcript.record("carol", PACKET, t_ns=10)
+    assert transcript.events == [third, first, second, fourth]
+
+
+def test_record_accepts_the_start_of_the_transcript() -> None:
+    transcript = a_transcript()
+    assert transcript.record("alice", PACKET, t_ns=0).t_ns == 0
+
+
+def test_record_rejects_a_time_before_the_start() -> None:
+    transcript = a_transcript()
+    with pytest.raises(ValueError, match="t_ns -1 is before the Transcript started"):
+        transcript.record("alice", PACKET, t_ns=-1)
+    assert transcript.events == []
+
+
+def test_record_rejects_a_time_in_the_future(monkeypatch: pytest.MonkeyPatch) -> None:
+    transcript = Transcript(scenario_id="status/basic", server="vanilla", start_ns=1_000)
+    monkeypatch.setattr(time, "monotonic_ns", lambda: 5_000)
+    with pytest.raises(ValueError, match="t_ns 4001 is in the future"):
+        transcript.record("alice", PACKET, t_ns=4_001)
+    assert transcript.events == []
+
+
+def test_record_accepts_the_present(monkeypatch: pytest.MonkeyPatch) -> None:
+    transcript = Transcript(scenario_id="status/basic", server="vanilla", start_ns=1_000)
+    monkeypatch.setattr(time, "monotonic_ns", lambda: 5_000)
+    assert transcript.record("alice", PACKET, t_ns=4_000).t_ns == 4_000
+
+
 def test_transcripts_with_equal_contents_are_equal_whatever_their_start() -> None:
     first = Transcript(scenario_id="status/basic", server="vanilla", start_ns=1)
     second = Transcript(scenario_id="status/basic", server="vanilla", start_ns=2)

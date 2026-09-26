@@ -286,6 +286,10 @@ class Transcript:                   # a plain data holder: no I/O
     start_ns: int = time.monotonic_ns()   # (default_factory) the origin of every t_ns;
                                           # compare=False, it only anchors this process's clock
     def now_ns(self) -> int: ...    # monotonic ns since start_ns
+    def record(self, bot: str, packet: Packet, *, t_ns: int) -> Event: ...
+    # record keeps events ordered by t_ns, equal times in recording order (a received
+    # frame is stamped on arrival but recorded when the Bot takes it); ValueError unless
+    # 0 <= t_ns <= now_ns(). Connection is the only writer of events.
     # to_jsonl() / from_jsonl() — payload as hex, fields as JSON
 
 class ScenarioContext:
