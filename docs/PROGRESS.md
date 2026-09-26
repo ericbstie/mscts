@@ -79,6 +79,9 @@ Batch 2, briefed against `a64a2b5`:
   Divergences (G3) (Next 2a).
 
 
+- **Y** (sonnet, `tooling`, against `45a084f`): `scripts/research/
+  boot.py` and `join.py`, the research harness (Next 6, first half).
+
 After W: the opus audit (Next 12).
 
 ## Delegated to the helper agent
