@@ -53,10 +53,10 @@ def test_vanilla_against_itself_matches() -> None:
 
 
 def test_a_pumpkin_style_status_differs_from_vanilla_only_where_a_client_could_tell() -> None:
+    # Its "sample": [] is the declared default of an absent sample (ADR-0007's example).
     assert _diff(VANILLA, PUMPKIN_STYLE) == [
         ("json_response.favicon", ABSENT, "data:image/png;base64,iVBORw0KGgo="),
         ("json_response.players.max", 20, 1000),
-        ("json_response.players.sample", ABSENT, []),
     ]
 
 
@@ -64,7 +64,6 @@ def test_swapping_the_sides_swaps_the_values() -> None:
     assert _diff(PUMPKIN_STYLE, VANILLA) == [
         ("json_response.favicon", "data:image/png;base64,iVBORw0KGgo=", ABSENT),
         ("json_response.players.max", 1000, 20),
-        ("json_response.players.sample", [], ABSENT),
     ]
 
 
@@ -148,27 +147,80 @@ def test_strings_outside_the_description_are_not_text_components() -> None:
     ]
 
 
+DECLARED_DEFAULTS = [
+    '{"players":{"max":20,"online":0,"sample":[]}}',
+    '{"players":{"max":20,"online":0},"enforcesSecureChat":false}',
+    '{"players":{"max":20,"online":0},"description":""}',
+    '{"players":{"max":20,"online":0},"description":{"text":""}}',
+]
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    DECLARED_DEFAULTS,
+    ids=["sample", "enforcesSecureChat", "description", "description-object"],
+)
+def test_a_declared_default_is_the_same_as_its_absence(candidate: str) -> None:
+    # ServerStatus.CODEC reads each absent field as its default (PLAN, Comparison
+    # semantics), so sending the default is a wire-only difference.
+    absent = '{"players":{"max":20,"online":0}}'
+    assert _diff(absent, candidate) == []
+    assert _diff(candidate, absent) == []
+    wire_only = compare(
+        transcript(("alice", status(absent))), transcript(("alice", status(candidate))), []
+    ).divergences
+    assert [(d.path, d.observability.value) for d in wire_only] == [("json_response", "wire-only")]
+
+
 @pytest.mark.parametrize(
     ("candidate", "divergence"),
     [
         (
-            '{"players":{"max":20,"online":0,"sample":[]}}',
-            ("json_response.players.sample", ABSENT, []),
+            '{"players":{"max":20,"online":0,"sample":[{"name":"a","id":"x"}]}}',
+            ("json_response.players.sample", ABSENT, [{"name": "a", "id": "x"}]),
         ),
         (
-            '{"players":{"max":20,"online":0},"enforcesSecureChat":false}',
-            ("json_response.enforcesSecureChat", ABSENT, False),
+            '{"players":{"max":20,"online":0,"sample":null}}',
+            ("json_response.players.sample", ABSENT, None),
         ),
         (
-            '{"players":{"max":20,"online":0},"description":""}',
-            ("json_response.description", ABSENT, {"text": ""}),
+            '{"players":{"max":20,"online":0},"enforcesSecureChat":true}',
+            ("json_response.enforcesSecureChat", ABSENT, True),
         ),
+        (
+            '{"players":{"max":20,"online":0},"enforcesSecureChat":0}',
+            ("json_response.enforcesSecureChat", ABSENT, 0),
+        ),
+        (
+            '{"players":{"max":20,"online":0},"description":" "}',
+            ("json_response.description", ABSENT, {"text": " "}),
+        ),
+        (
+            '{"players":{"max":20,"online":0},"description":[""]}',
+            ("json_response.description", ABSENT, [{"text": ""}]),
+        ),
+        (
+            '{"players":{"max":20,"online":0},"description":{"text":"","bold":false}}',
+            ("json_response.description", ABSENT, {"text": "", "bold": False}),
+        ),
+        ('{"players":{"max":20,"online":0},"favicon":""}', ("json_response.favicon", ABSENT, "")),
+        ('{"players":{"max":20,"online":0},"sample":[]}', ("json_response.sample", ABSENT, [])),
+    ],
+    ids=[
+        "sample-element",
+        "sample-null",
+        "secure-chat-true",
+        "secure-chat-number",
+        "description-space",
+        "description-list",
+        "description-style",
+        "favicon-has-no-default",
+        "sample-outside-players",
     ],
 )
-def test_declared_defaults_are_not_filled_in(
+def test_only_the_exact_declared_default_is_its_absence(
     candidate: str, divergence: tuple[str, object, object]
 ) -> None:
-    # The Reference's decoder reads each pair alike, but that class is an open question.
     assert _diff('{"players":{"max":20,"online":0}}', candidate) == [divergence]
 
 

@@ -421,9 +421,30 @@ def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
     status = _strict_json(text)
     if isinstance(status, Absent):
         return fields
-    if isinstance(status, dict) and "description" in status:
-        status = {**status, "description": _text_component(status["description"])}
+    if isinstance(status, dict):
+        if "description" in status:
+            status = {**status, "description": _text_component(status["description"])}
+        status = _without_declared_defaults(status)
     return {**fields, "json_response": status}
+
+
+def _without_declared_defaults(status: dict[str, _Value]) -> dict[str, _Value]:
+    """Drop each field of a status that holds exactly the default the client reads for it.
+
+    `ServerStatus.CODEC` reads an absent `description` as an empty text component,
+    `enforcesSecureChat` as false, and `players.sample` as an empty list (PLAN, Comparison
+    semantics). `description` is already canonical here.
+    """
+    result = {
+        key: value
+        for key, value in status.items()
+        if not (key == "description" and value == {"text": ""})
+        and not (key == "enforcesSecureChat" and value is False)
+    }
+    players = result.get("players")
+    if isinstance(players, dict) and players.get("sample", ABSENT) == []:
+        result["players"] = {key: value for key, value in players.items() if key != "sample"}
+    return result
 
 
 def _text_component(component: _Value) -> _Value:

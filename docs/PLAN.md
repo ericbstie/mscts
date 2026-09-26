@@ -773,12 +773,53 @@ proves it necessary:
      text component in list form, and each element of a text
      component's `extra`, recursively. `version.name` and
      `players.sample[].name` are plain strings, not text components.
+     Last, the **declared defaults** are dropped: a field holding exactly
+     the value the client reads when it is absent is the same as its
+     absence. They are `json_response.description` equal to `{"text":
+     ""}` (after the step above, so `""` too), `json_response.
+     enforcesSecureChat` equal to `false` (a JSON boolean, not `0`), and
+     `json_response.players.sample` equal to `[]` (only inside a
+     `players` object). Evidence, with `javap -c -p -constants` on the
+     26.3 **client** jar (sha1 e877b6a07acd633fb3bb475002175cec036e7b87,
+     from Mojang's manifest) and its DataFixerUpper 10.0.21 (sha1
+     b6b2ae770c02e0c1eb90f9985b151e9085a38d0b, the version JSON's
+     library; byte-identical to the server bundle's):
+     `ClientboundStatusResponsePacket`'s stream codec is
+     `ByteBufCodecs.lenientJson(32767)` then `fromCodec(ServerStatus.
+     CODEC)`; `ServerStatus.CODEC` reads `description` with
+     `ComponentSerialization.CODEC.lenientOptionalFieldOf("description",
+     CommonComponents.EMPTY)`, `enforcesSecureChat` with
+     `Codec.BOOL.lenientOptionalFieldOf("enforcesSecureChat",
+     Boolean.valueOf(false))`, and `ServerStatus$Players.CODEC` reads
+     `sample` with `NameAndId.CODEC.listOf().lenientOptionalFieldOf(
+     "sample", List.of())`. DFU's `lenientOptionalFieldOf(name, default)`
+     is `optionalFieldOf(name, default, true)`: an `OptionalFieldCodec`
+     whose `decode` returns `Optional.empty()` when `MapLike.get(name)`
+     is null (the key is absent), `xmap`ped through
+     `Optional.orElse(default)`. The defaults equal what the explicit
+     values decode to: `CommonComponents.EMPTY` is `Component.empty()`,
+     `MutableComponent.create(PlainTextContents.EMPTY)`, and
+     `Component.literal("")` and the object `{"text": ""}` both go
+     through `PlainTextContents.create("")`, which returns
+     `PlainTextContents.EMPTY` for an empty string, into a
+     `MutableComponent` with an empty sibling list and `Style.EMPTY`
+     (`MutableComponent.equals` compares exactly contents, style and
+     siblings); an empty JSON list decodes to an empty list, equal to
+     `List.of()` by `List.equals`; `false` decodes to `Boolean.FALSE`.
+     The same `lenientOptionalFieldOf` also turns a present but
+     undecodable value into the default; that is lenient error handling,
+     so it is not encoded (`"sample": null`, `"enforcesSecureChat": 0`
+     stay strict). `players`, `version` and `favicon` are optional with
+     no default, so their absence is significant; `players.max`,
+     `players.online`, `version.name` and `version.protocol` are
+     required (`fieldOf`).
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡
    `{"text": "a", "extra": ["b"]}`; an explicit `"type": "text"`; style
-   values equal to the defaults (`"bold": false`); the declared defaults
-   of `ServerStatus.CODEC`; and the client's lenient parsing (the status
+   values equal to the defaults (`"bold": false`); a present but
+   undecodable value that `lenientOptionalFieldOf` replaces by its
+   default; and the client's lenient parsing (the status
    JSON is read by Gson's `JsonParser.parseString`, in lenient mode,
    which accepts unquoted keys and single quotes; and DFU's
    `JsonOps.getNumberValue` accepts any JSON number, so `20.0` where an
@@ -1015,16 +1056,6 @@ then record the answer in an ADR:
   (State, name) string pairs, and the field diff works on copies that
   `compare` makes of the fields (and checks against the value model), so
   it never hashes or mutates a Packet. Still open for Transcripts.
-- Should the Comparison fill in the **declared defaults** of
-  `ServerStatus.CODEC`? In the 26.3 jar (`javap`), `players.sample` is
-  `lenientOptionalFieldOf("sample", List.of())`, `enforcesSecureChat`
-  defaults to `false`, and `description` to `CommonComponents.EMPTY`
-  (`""`). So a Candidate's `"sample": []` decodes exactly like vanilla's
-  omitted sample, and the wiki's Server List Ping page (oldid 3789989)
-  says an empty or missing sample shows no tooltip. Vanilla's encoder
-  omits a value equal to its default. Filling in defaults is a new class
-  of canonicalization that would hide Pumpkin's `sample: []`; it is not
-  encoded until the lead decides the class.
 - Should the text component **list form** (`["a", "b"]` ≡
   `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
   `createFromList` is `first.copy().append(rest)`) be canonical? No
