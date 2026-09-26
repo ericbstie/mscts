@@ -222,7 +222,8 @@ class Adapter(Protocol):
                 workdir: Path) -> LaunchPlan: ...                             # writes COMPLETE native config
 
 # Adapter contract, checked by each Adapter's unit tests:
-# - prepare writes into an empty or new workdir and refuses a non-empty one, so no stale
+# - prepare writes into an empty or new workdir (creating it) and refuses a non-empty one
+#   with PrepareError, before writing anything, so no stale
 #   world/ban/icon state leaks between Instances;
 # - the complete-config test is a golden file derived from the server's own pristine
 #   first-run output, with every substitution documented;

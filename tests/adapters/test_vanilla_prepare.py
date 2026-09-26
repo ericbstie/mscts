@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from mscts.adapters.base import Installation, LaunchPlan
+from mscts.adapters.base import Installation, LaunchPlan, PrepareError
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec
@@ -84,3 +84,28 @@ def test_jar_path_is_absolute_so_it_survives_the_cwd_change(
     relative = Installation(adapter="vanilla", target=TARGET, root=Path("cache/vanilla/26.3"))
     plan = VanillaAdapter().prepare(relative, ServerSpec(port=25599), workdir)
     assert plan.argv[plan.argv.index("-jar") + 1] == str(tmp_path / "cache/vanilla/26.3/server.jar")
+
+
+def test_prepare_creates_a_missing_workdir(installation: Installation, tmp_path: Path) -> None:
+    workdir = tmp_path / "runs/1/work"
+    VanillaAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    assert (workdir / "server.properties").is_file()
+
+
+def test_prepare_accepts_an_empty_workdir(installation: Installation, workdir: Path) -> None:
+    workdir.mkdir()
+    VanillaAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    assert (workdir / "server.properties").is_file()
+
+
+@pytest.mark.parametrize("stale", ["world/level.dat", "banned-players.json", ".lock"])
+def test_prepare_refuses_a_non_empty_workdir_and_leaves_it_alone(
+    installation: Installation, workdir: Path, stale: str
+) -> None:
+    # A reused workdir would carry world, ban or icon state into the next Instance.
+    (workdir / stale).parent.mkdir(parents=True)
+    (workdir / stale).write_bytes(b"stale")
+    with pytest.raises(PrepareError, match="not empty"):
+        VanillaAdapter().prepare(installation, ServerSpec(port=25599), workdir)
+    files = [p.relative_to(workdir).as_posix() for p in workdir.rglob("*") if p.is_file()]
+    assert (files, (workdir / stale).read_bytes()) == ([stale], b"stale")

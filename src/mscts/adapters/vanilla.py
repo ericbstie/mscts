@@ -433,9 +433,14 @@ class VanillaAdapter:
         return java
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
-        """Write the complete vanilla config for `spec` into `workdir`."""
+        """Write the complete vanilla config for `spec` into `workdir`, new or empty."""
         java = self._java_launcher(installation.target)
         workdir.mkdir(parents=True, exist_ok=True)
+        if any(workdir.iterdir()):
+            # Vanilla keeps its world, bans, user cache and icon there: a reused workdir
+            # would carry one Instance's state into the next.
+            msg = f"workdir {workdir} is not empty; each Instance needs a new or empty one"
+            raise PrepareError(msg)
         (workdir / "eula.txt").write_bytes(b"eula=true\n")
         (workdir / "server.properties").write_text(
             java_properties(server_properties(spec)), encoding="ascii"
