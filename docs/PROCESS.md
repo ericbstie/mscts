@@ -246,6 +246,13 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker AB (first Report) | status/ping required status/basic to match, so any Candidate with a status difference lost every status.rtt timing | **adopt**: the lead dropped the prerequisite (status/ping asks for the status itself); briefing rule, a Scenario that exists to measure never requires another's exact match |
+| 2026-09-26 | worker AB | A ~130-line heredoc to a file was refused by the sandbox | **reject** (no change): the Worker contract already says to Write the script |
+| 2026-09-26 | worker AB | RUF001 on `›`; ty misses a flag set in `except` (redundant-condition); ty rejects `zip(*generator)`; ISC004 again | **defer**: red-green Known traps (session 3 parks process work) |
+| 2026-09-26 | worker AB | The live-proof increment caught out-of-order progress lines and unplayed Scenarios being silent | **adopt** (no change): keep a live-proof increment in every user-facing brief |
+| 2026-09-26 | worker AB | A batch mutation sweep found an untested span-pairing rule | **defer**: require one sweep per new module in the brief template |
+| 2026-09-26 | worker AB | `"favicon": null` is reported observable; unverified whether the client reads it as absent | **adopt**: worker AC verifies it (and Pumpkin's `enforceSecureChat` spelling) from the jar |
+| 2026-09-26 | worker AB | The side that plays first shows a higher status.rtt median (warm-up bias) | **defer**: M7 fairness, alternate the order per repetition |
 | 2026-09-26 | lead (incident) | A second API rate limit killed Z (audit, skeleton only), Y (had finished) and AA (after increment 1). Y and AA's first increment were integrated; Z's skeleton was dropped | **adopt**: Z and AA's remaining increments are re-briefed next session; the "commit early" rule saved AA's first increment |
 | 2026-09-26 | worker Y (research harness) | Scripts reusing sibling scripts needed a load-by-path pattern (15 min) | **adopt**: red-green Known trap |
 | 2026-09-26 | worker Y | Ctrl-C under `asyncio.run()` arrives as task cancellation | **adopt**: red-green Known trap |

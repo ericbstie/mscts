@@ -74,9 +74,11 @@ Environment notes:
 
 ## In flight
 
-- **Worker AB (opus): M3's first Report.** `measure.py`, Measurements in
-  `run.py`, `report.py` (text), `mscts run --candidate pumpkin` over the
-  status Scenarios, proven live against Pumpkin nightly-48cba7ee.
+- **Worker AC (opus): status Divergence classification + Report-path
+  audit.** Verifies from the jar whether Pumpkin's `enforceSecureChat`
+  (misspelt) and `"favicon": null` are really observable, fixes the
+  canonicalization if not, and audits measure/report/run/cli
+  (`docs/audits/2026-09-26-report-path.md`).
 
 Session 3 direction (maintainer, 2026-09-26): one working end-to-end
 command is the only goal. Next 4 (with the minimum of 3a it needs) is the
