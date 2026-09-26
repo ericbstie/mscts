@@ -66,18 +66,6 @@ class FrameDecoder:
         self._buffer = bytearray()
         self.compression_threshold = compression_threshold
 
-    def feed(self, chunk: bytes) -> list[bytes]:
-        """Add `chunk` to the buffer and return every frame it completes.
-
-        Each returned item is one frame's `data`, decompressed if needed.
-        Bytes that do not yet form a complete frame are kept for the next call.
-        """
-        self.extend(chunk)
-        frames = []
-        while (frame := self.next_frame()) is not None:
-            frames.append(frame)
-        return frames
-
     def extend(self, chunk: bytes) -> None:
         """Add `chunk` to the buffer without taking any frame out."""
         self._buffer.extend(chunk)

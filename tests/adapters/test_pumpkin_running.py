@@ -59,14 +59,13 @@ async def status_of(endpoint: Endpoint) -> dict[str, object] | None:
             writer.write(encode_frame(packet, compression_threshold=None))
         await writer.drain()
         decoder = FrameDecoder()
-        frames: list[bytes] = []
         async with asyncio.timeout(_PROBE_TIMEOUT_S):
-            while not frames:
+            while (frame := decoder.next_frame()) is None:
                 chunk = await reader.read(65536)
                 if not chunk:
                     return None
-                frames = decoder.feed(chunk)
-        response = _CODEC.decode(State.STATUS, Direction.CLIENTBOUND, frames[0])
+                decoder.extend(chunk)
+        response = _CODEC.decode(State.STATUS, Direction.CLIENTBOUND, frame)
         if response.name != "minecraft:status_response" or response.fields is None:
             return None
         status: object = json.loads(str(response.fields["json_response"]))

@@ -6,6 +6,22 @@ from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.wire import WireError, Writer
 
 
+def take_all(decoder: FrameDecoder, chunk: bytes) -> list[bytes]:
+    """Add `chunk`, then take every complete frame, one at a time."""
+    decoder.extend(chunk)
+    frames = []
+    while (frame := decoder.next_frame()) is not None:
+        frames.append(frame)
+    return frames
+
+
+def test_frame_decoder_has_no_batch_feed() -> None:
+    # Audit MD4: `feed` decoded every frame of a chunk with the threshold in effect when
+    # it was called, so the frame right after login_compression was silently misdecoded.
+    # Frames are taken one at a time instead, so a new threshold applies to the next one.
+    assert not hasattr(FrameDecoder, "feed")
+
+
 def test_encode_frame_uncompressed_is_length_prefixed_data() -> None:
     data = b"hello"
     assert encode_frame(data, compression_threshold=None) == bytes([5]) + data
@@ -49,7 +65,7 @@ def test_encode_frame_above_threshold_is_compressed() -> None:
 def test_frame_decoder_returns_one_frame_from_a_single_chunk() -> None:
     decoder = FrameDecoder()
     frame = encode_frame(b"hello", compression_threshold=None)
-    assert decoder.feed(frame) == [b"hello"]
+    assert take_all(decoder, frame) == [b"hello"]
 
 
 def test_frame_decoder_returns_multiple_frames_from_one_chunk() -> None:
@@ -57,7 +73,7 @@ def test_frame_decoder_returns_multiple_frames_from_one_chunk() -> None:
     chunk = encode_frame(b"first", compression_threshold=None) + encode_frame(
         b"second", compression_threshold=None
     )
-    assert decoder.feed(chunk) == [b"first", b"second"]
+    assert take_all(decoder, chunk) == [b"first", b"second"]
 
 
 def test_frame_decoder_reassembles_a_frame_fed_byte_by_byte() -> None:
@@ -65,7 +81,7 @@ def test_frame_decoder_reassembles_a_frame_fed_byte_by_byte() -> None:
     frame = encode_frame(b"hello", compression_threshold=None)
     collected = []
     for i in range(len(frame)):
-        collected.extend(decoder.feed(frame[i : i + 1]))
+        collected.extend(take_all(decoder, frame[i : i + 1]))
     assert collected == [b"hello"]
 
 
@@ -73,40 +89,40 @@ def test_frame_decoder_buffers_a_partial_frame_across_calls() -> None:
     decoder = FrameDecoder()
     frame = encode_frame(b"hello", compression_threshold=None)
     split = len(frame) - 1
-    assert decoder.feed(frame[:split]) == []
-    assert decoder.feed(frame[split:]) == [b"hello"]
+    assert take_all(decoder, frame[:split]) == []
+    assert take_all(decoder, frame[split:]) == [b"hello"]
 
 
 def test_frame_decoder_passes_through_data_below_threshold() -> None:
     decoder = FrameDecoder(compression_threshold=10)
     frame = encode_frame(b"hi", compression_threshold=10)
-    assert decoder.feed(frame) == [b"hi"]
+    assert take_all(decoder, frame) == [b"hi"]
 
 
 def test_frame_decoder_decompresses_data_at_or_above_threshold() -> None:
     decoder = FrameDecoder(compression_threshold=100)
     data = b"a" * 300
     frame = encode_frame(data, compression_threshold=100)
-    assert decoder.feed(frame) == [data]
+    assert take_all(decoder, frame) == [data]
 
 
 def test_frame_decoder_compression_threshold_is_settable_after_construction() -> None:
     decoder = FrameDecoder()  # starts uncompressed
     first = encode_frame(b"pre-compression", compression_threshold=None)
-    assert decoder.feed(first) == [b"pre-compression"]
+    assert take_all(decoder, first) == [b"pre-compression"]
 
     # login_compression arrives mid-connection.
     decoder.compression_threshold = 50
     data = b"b" * 200
     second = encode_frame(data, compression_threshold=50)
-    assert decoder.feed(second) == [data]
+    assert take_all(decoder, second) == [data]
 
 
 def test_frame_decoder_accepts_frame_length_at_the_three_byte_boundary() -> None:
     decoder = FrameDecoder()
     # VarInt 2097151 (0x1FFFFF), the largest value a 3-byte VarInt can hold.
     # No body follows yet, so this must wait rather than raise.
-    assert decoder.feed(bytes.fromhex("ffff7f")) == []
+    assert take_all(decoder, bytes.fromhex("ffff7f")) == []
 
 
 def test_frame_decoder_raises_when_frame_length_is_more_than_three_bytes() -> None:
@@ -114,7 +130,7 @@ def test_frame_decoder_raises_when_frame_length_is_more_than_three_bytes() -> No
     # A non-minimal 4-byte encoding of 0: continuation bits all set until the
     # 4th byte, one more than the frame-length prefix is allowed to use.
     with pytest.raises(WireError):
-        decoder.feed(bytes.fromhex("80808000"))
+        take_all(decoder, bytes.fromhex("80808000"))
 
 
 def test_frame_decoder_raises_when_declared_data_length_mismatches() -> None:
@@ -124,7 +140,7 @@ def test_frame_decoder_raises_when_declared_data_length_mismatches() -> None:
     inner = Writer().var_int(999).to_bytes() + payload
     frame = Writer().var_int(len(inner)).to_bytes() + inner
     with pytest.raises(WireError):
-        decoder.feed(frame)
+        take_all(decoder, frame)
 
 
 def test_frame_decoder_raises_on_corrupt_compressed_payload() -> None:
@@ -132,7 +148,7 @@ def test_frame_decoder_raises_on_corrupt_compressed_payload() -> None:
     inner = Writer().var_int(5).to_bytes() + b"not zlib data at all"
     frame = Writer().var_int(len(inner)).to_bytes() + inner
     with pytest.raises(WireError):
-        decoder.feed(frame)
+        take_all(decoder, frame)
 
 
 def test_next_frame_returns_none_until_a_frame_is_complete() -> None:
