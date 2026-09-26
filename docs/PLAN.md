@@ -49,6 +49,7 @@ test needs it:
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Installation`, `LaunchPlan` |
+| `adapters/fetch.py` | `https_get` → `Download(url, body)`: HTTPS on every hop, redirects followed |
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness, stop, process stats; `free_port` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
@@ -271,7 +272,13 @@ class Adapter(Protocol):
 #   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved. Its runtime image's
 #   `release` file must name Target.java_major (read, not run: prepare stays hermetic), or
 #   prepare raises PrepareError and writes nothing;
-# - invariants live in one visibly named table, applied last.
+# - invariants live in one visibly named table, applied last;
+# - a ServerSpec value the server cannot honour is refused with PrepareError naming the
+#   field, before anything is written, never approximated. The fields a server honours
+#   only for some values live in one named table (PumpkinAdapter.LIMITS), and so does
+#   every range its config types can hold: a value it cannot read back is refused too.
+#   PumpkinAdapter(fetch=https_get) takes the nightly unhashed, so provision records its
+#   sha256 in SOURCE.json and checks the cached binary against it; it never refreshes.
 
 @frozen
 class Instance:

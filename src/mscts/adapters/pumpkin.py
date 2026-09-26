@@ -10,12 +10,14 @@ import tempfile
 import tomllib
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
 
-from mscts.adapters.base import Installation, PrepareError, ProvisionError
+from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
 from mscts.adapters.fetch import Fetch, https_get
+from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec
 from mscts.target import Target
 
@@ -280,6 +282,49 @@ def pumpkin_toml(spec: ServerSpec) -> str:
     return toml_document(pumpkin_config(spec))
 
 
+@dataclass(frozen=True, slots=True)
+class Limit:
+    """The values of one ServerSpec field Pumpkin can honour, and why it cannot the rest."""
+
+    honoured: frozenset[object]
+    why: str
+
+
+# The ServerSpec fields Pumpkin can honour only for some values, found in its source and
+# confirmed live (docs/research/2026-09-26-pumpkin.md, "World and difficulty"). prepare
+# refuses any other value: a Candidate that cannot honour a spec is reported, never
+# silently approximated.
+LIMITS: Mapping[str, Limit] = MappingProxyType(
+    {
+        "world": Limit(
+            honoured=frozenset(),
+            why=(
+                "pumpkin.toml has no world type: a new Pumpkin world is always "
+                "minecraft:noise (with structures). Pumpkin generates a flat one only "
+                "for an existing world whose world_gen_settings.dat says so, and it "
+                "reads worlds only up to DataVersion 4903 (26.2)"
+            ),
+        ),
+        "difficulty": Limit(
+            honoured=frozenset({Difficulty.NORMAL}),
+            why="Pumpkin never reads default_difficulty: a new world is always normal",
+        ),
+    }
+)
+
+
+def _refuse_what_pumpkin_cannot_honour(spec: ServerSpec) -> None:
+    """Raise PrepareError naming every field of `spec` Pumpkin cannot honour."""
+    refusals = [
+        f"ServerSpec.{field}={getattr(spec, field)}: {limit.why}"
+        for field, limit in LIMITS.items()
+        if getattr(spec, field) not in limit.honoured
+    ]
+    if refusals:
+        msg = "Pumpkin cannot honour this ServerSpec:\n- " + "\n- ".join(refusals)
+        raise PrepareError(msg)
+
+
 # data/ops.json level for ServerSpec.operators: all commands, as vanilla's.
 OPERATOR_LEVEL = 4
 
@@ -351,7 +396,7 @@ def _verify(root: Path) -> None:
 
 
 class PumpkinAdapter:
-    """Provisions the Pumpkin nightly binary."""
+    """Provisions the Pumpkin nightly binary and prepares it for a ServerSpec."""
 
     name = "pumpkin"
 
@@ -400,3 +445,38 @@ class PumpkinAdapter:
                 # Another provision (another session) installed it first: use theirs.
         finally:
             shutil.rmtree(staging, ignore_errors=True)  # gone already if the rename worked
+
+    def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
+        """Write the complete Pumpkin config for `spec` into `workdir`, new or empty.
+
+        Refuses, before writing anything, a spec Pumpkin cannot honour (LIMITS) or read
+        back (its config types), and a non-empty workdir.
+        """
+        _refuse_what_pumpkin_cannot_honour(spec)
+        files = {
+            "pumpkin.toml": pumpkin_toml(spec),
+            "data/ops.json": ops_json(spec.operators),
+            # Pumpkin's own first-run content of each, written so none is left to it.
+            "data/whitelist.json": "[]",
+            "data/banned-players.json": "[]",
+            "data/banned-ips.json": "[]",
+        }
+        workdir.mkdir(parents=True, exist_ok=True)
+        if any(workdir.iterdir()):
+            # Pumpkin keeps its world, player data, bans and operators there: a reused
+            # workdir would carry one Instance's state into the next.
+            msg = f"workdir {workdir} is not empty; each Instance needs a new or empty one"
+            raise PrepareError(msg)
+        (workdir / "data").mkdir()
+        for name, text in files.items():
+            (workdir / name).write_text(text, encoding="utf-8")
+        return LaunchPlan(
+            # It takes no arguments: pumpkin.toml and data/ are read from the cwd.
+            argv=(str(installation.root.absolute() / BINARY),),
+            cwd=workdir,
+            # Nothing leaks from the harness: Pumpkin reads RUST_LOG (its log filter) and,
+            # through reqwest, the proxy variables, and needs nothing from its environment.
+            env=MappingProxyType({}),
+            endpoint=Endpoint(host=HOST, port=spec.port),
+            stop_stdin=b"stop\n",  # the console `stop`: saves the worlds, exit code 0
+        )
