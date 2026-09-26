@@ -816,7 +816,7 @@ def test_run_batch_runs_every_mutation_and_returns_results_in_spec_order(
 # -- print_batch_report ------------------------------------------------------------------
 
 
-def testprint_batch_report_prints_one_line_per_mutation_and_a_summary(
+def test_print_batch_report_prints_one_line_per_mutation_and_a_summary(
     mutate: types.ModuleType, capsys: pytest.CaptureFixture[str]
 ) -> None:
     results = [
@@ -833,6 +833,36 @@ def testprint_batch_report_prints_one_line_per_mutation_and_a_summary(
     assert exit_code == 1
 
 
-def testprint_batch_report_exits_0_when_everything_was_killed(mutate: types.ModuleType) -> None:
+def test_print_batch_report_exits_0_when_everything_was_killed(mutate: types.ModuleType) -> None:
     results = [mutate.MutationResult("a", mutate.Outcome("KILLED", "x"))]
     assert mutate.print_batch_report(results) == 0
+
+
+# -- _run_batch's own error handling ------------------------------------------------------
+
+
+def test_run_batch_dispatch_reports_a_mutate_error_from_run_batch_cleanly(
+    mutate: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    # run_batch itself is well-behaved (see the fakes above); this pins that _run_batch
+    # still reports a MutateError cleanly if some future change in the real make_copy or
+    # run_in_copy (e.g. `git` vanishing mid-run) lets one escape run_batch.
+    spec = tmp_path / "spec.json"
+    spec.write_text(json.dumps([{"file": "a.py", "old": "1", "new": "2"}]))
+
+    def fake_run_batch(*_args: object, **_kwargs: object) -> None:
+        msg = "boom"
+        raise mutate.MutateError(msg)
+
+    monkeypatch.setattr(mutate, "run_batch", fake_run_batch)
+    args = mutate.BatchArgs(
+        spec=spec, pytest_args=("t.py",), timeout_s=5.0, jobs=1, skip_baseline=True
+    )
+
+    exit_code = mutate._run_batch(args)  # noqa: SLF001 - testing this module's own dispatch
+
+    assert exit_code == 2
+    assert "boom" in capsys.readouterr().err

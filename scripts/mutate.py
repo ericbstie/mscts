@@ -681,9 +681,16 @@ def _run_batch(args: BatchArgs) -> int:
         jobs=args.jobs,
         skip_baseline=args.skip_baseline,
     )
-    outcome_or_results = run_batch(
-        repo_root, specs, options, make_copy=make_copy, run_in_copy=run_in_copy
-    )
+    try:
+        outcome_or_results = run_batch(
+            repo_root, specs, options, make_copy=make_copy, run_in_copy=run_in_copy
+        )
+    except MutateError as exc:
+        # A per-mutation copy can fail for a reason `run_one_batch_mutation` does not
+        # turn into an INVALID Outcome (e.g. `git` vanishing from PATH mid-run); report it
+        # like any other setup error instead of letting a bare traceback end the batch.
+        print(f"mutate.py: {exc}", file=sys.stderr)
+        return _EXIT_BAD_ARGS
     if isinstance(outcome_or_results, Outcome):
         print(f"{outcome_or_results.kind}: {outcome_or_results.detail}")
         return _EXIT_BY_KIND[outcome_or_results.kind]
