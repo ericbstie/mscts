@@ -31,6 +31,34 @@ async def test_a_process_that_exits_before_it_is_ready_raises_its_exit_code_and_
 
 
 @pytest.mark.asyncio
+async def test_a_probe_answering_true_after_the_process_exited_is_not_ready(
+    fake_plan: FakePlan, tcp_probe: Probe, is_running: Callable[[int], bool]
+) -> None:
+    # Its child still listens, in the Instance's process group, so the answer is the
+    # Instance's own: only the exit itself says that the Instance is gone.
+    plan = fake_plan("--listen-in-child", "--exit-early", "3")
+    console = plan.cwd / CONSOLE_LOG
+
+    async def once_it_exited(endpoint: Endpoint) -> bool:
+        lines = console.read_text().splitlines() if console.exists() else []
+        if not lines or "listening" not in lines or is_running(_pid_in(lines)):
+            return False
+        await asyncio.sleep(0.1)  # meanwhile asyncio's child watcher reaps it
+        return await tcp_probe(endpoint)
+
+    with pytest.raises(RunnerError) as caught:
+        async with running(plan, ready=once_it_exited, ready_timeout=5):
+            pytest.fail("ready, although the Instance's process had exited")
+    assert caught.value.exit_code == 3
+    assert "exited with code 3 before it was ready" in caught.value.reason
+
+
+def _pid_in(console: list[str]) -> int:
+    """The fake server's pid, from the first line of its console."""
+    return int(console[0].removeprefix("pid="))
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("missing", ["argv0", "cwd"])
 async def test_a_plan_that_cannot_be_launched_raises_runner_error_without_an_exit_code(
     fake_plan: FakePlan, tcp_probe: Probe, tmp_path: Path, missing: str
