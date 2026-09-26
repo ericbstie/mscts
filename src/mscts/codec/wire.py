@@ -100,12 +100,18 @@ class Writer:
         return self
 
     def bool_(self, *, value: bool) -> Self:
-        """Append a Bool: 0x01 for true, 0x00 for false."""
+        """Append a Bool: 0x01 for true, 0x00 for false. Anything but a bool is refused."""
+        if not isinstance(value, bool):
+            msg = f"expected a bool, got {type(value).__name__}"
+            raise WireError(msg)
         self._buffer.append(0x01 if value else 0x00)
         return self
 
     def uuid(self, value: uuid.UUID) -> Self:
-        """Append a UUID as its 128-bit big-endian byte form."""
+        """Append a UUID as its 128-bit big-endian byte form. Anything but a UUID is refused."""
+        if not isinstance(value, uuid.UUID):
+            msg = f"expected a UUID, got {type(value).__name__}"
+            raise WireError(msg)
         self._buffer.extend(value.bytes)
         return self
 

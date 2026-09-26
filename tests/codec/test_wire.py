@@ -1,4 +1,5 @@
 import uuid
+from typing import cast
 
 import pytest
 
@@ -289,6 +290,12 @@ def test_bool_decodes_true_and_false() -> None:
     assert Reader(bytes([0x00])).bool_() is False
 
 
+@pytest.mark.parametrize("value", [1, 0, 2, "", None])
+def test_bool_writer_raises_unless_given_a_bool(value: object) -> None:
+    with pytest.raises(WireError, match="expected a bool"):
+        Writer().bool_(value=cast("bool", value))
+
+
 def test_bool_reader_raises_on_invalid_byte() -> None:
     with pytest.raises(WireError):
         Reader(bytes([0x02])).bool_()
@@ -313,6 +320,12 @@ def test_uuid_encodes_as_big_endian_bytes(value: uuid.UUID) -> None:
 @pytest.mark.parametrize("value", [NIL_UUID, SAMPLE_UUID])
 def test_uuid_decodes_big_endian_bytes(value: uuid.UUID) -> None:
     assert Reader(value.bytes).uuid() == value
+
+
+@pytest.mark.parametrize("value", [str(SAMPLE_UUID), SAMPLE_UUID.bytes, SAMPLE_UUID.int, None])
+def test_uuid_writer_raises_unless_given_a_uuid(value: object) -> None:
+    with pytest.raises(WireError, match="expected a UUID"):
+        Writer().uuid(cast("uuid.UUID", value))
 
 
 def test_uuid_reader_raises_on_truncated_input() -> None:

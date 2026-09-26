@@ -119,6 +119,8 @@ class WireType[T](Protocol):       # how one value is read from / written to the
                                                                 # encode (wrong Python type, range)
 VAR_INT: WireType[int]             # also USHORT, LONG; more primitives as packets need them
                                    # (ints reject bool)
+BOOL: WireType[bool]               # writes only a bool (not 1 or "")
+UUID: WireType[uuid.UUID]          # writes only a UUID (not its str, bytes or int)
 @frozen
 class String:                      # WireType[str]: String (n) on the wiki
     max_length: int                # n in UTF-16 code units; SchemaError unless 1 <= n <= 32767

@@ -11,6 +11,7 @@ field's presence, length or shape depends on another field, a single
 composite wire type owns both the field it depends on and the dependent part.
 """
 
+import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Protocol
@@ -75,6 +76,36 @@ class _Long:
     def write(self, writer: Writer, value: object) -> None:
         writer.long(_integer(value))
 
+
+@dataclass(frozen=True, slots=True)
+class _Bool:
+    def read(self, reader: Reader) -> bool:
+        return reader.bool_()
+
+    def write(self, writer: Writer, value: object) -> None:
+        if not isinstance(value, bool):
+            msg = f"expected a bool, got {type(value).__name__}"
+            raise WireError(msg)
+        writer.bool_(value=value)
+
+
+@dataclass(frozen=True, slots=True)
+class _Uuid:
+    def read(self, reader: Reader) -> uuid.UUID:
+        return reader.uuid()
+
+    def write(self, writer: Writer, value: object) -> None:
+        if not isinstance(value, uuid.UUID):
+            msg = f"expected a UUID, got {type(value).__name__}"
+            raise WireError(msg)
+        writer.uuid(value)
+
+
+BOOL: WireType[bool] = _Bool()
+"""Boolean: 0x00 or 0x01 (anything else is invalid; docs/PLAN.md, stricter than the client)."""
+
+UUID: WireType[uuid.UUID] = _Uuid()
+"""UUID: 128 bits, big-endian."""
 
 VAR_INT: WireType[int] = _VarInt()
 """VarInt: a signed 32-bit integer, 1 to 5 bytes."""
