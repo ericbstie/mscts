@@ -128,6 +128,30 @@ NO_NETWORK: Mapping[str, str] = MappingProxyType(
     }
 )
 
+# JVM system properties that keep an Instance's launch independent of the host, beyond the
+# exact JVM (java_version already pins that). -Duser.timezone=UTC makes every timestamp
+# and daylight-savings computation the same on every host; the JVM otherwise defaults to
+# the host's zone. -Djava.net.preferIPv4Stack=true makes wildcard/loopback resolution and
+# the game socket always use IPv4, so a host without IPv6, or one where it is preferred,
+# cannot change what the Reference binds or how a numeric 127.0.0.1 connects. Verified live
+# (docs/research/2026-09-25-domain.md, "Host independence of the launch").
+HOST_INDEPENDENCE: Mapping[str, str] = MappingProxyType(
+    {
+        "user.timezone": "UTC",
+        "java.net.preferIPv4Stack": "true",
+    }
+)
+
+# The env every Reference Instance launches with: fixed and explicit, so its behaviour
+# cannot depend on who launches it or from where. argv[0] is already the resolved,
+# absolute java launcher (see resolve_java), so PATH is no longer needed to find java; a
+# small, fixed PATH is kept only in case the JVM or a bundled library ever shells out (a
+# crash handler, a native library probe), never the harness's own PATH (this session's mise
+# shims, or a worktree-specific directory). Nothing else passes through: no
+# JAVA_TOOL_OPTIONS (this container injects proxy settings through it), no LANG, no
+# JAVA_HOME.
+LAUNCH_ENV: Mapping[str, str] = MappingProxyType({"PATH": "/usr/bin:/bin"})
+
 # The invariants (CONTEXT.md, "ServerSpec"): what every Reference Instance is, whatever
 # the ServerSpec says. They are applied last, so nothing overrides them. Offline mode
 # also means no encryption request. Vanilla has no telemetry setting; NO_NETWORK stops
@@ -457,14 +481,16 @@ class VanillaAdapter:
         )
         (workdir / "ops.json").write_text(ops_json(spec.operators), encoding="utf-8")
         jar = installation.root.absolute() / JAR
+        # Documented order: HEAP, then NO_NETWORK (established first), then
+        # HOST_INDEPENDENCE, then -jar. The two tables are independent of each other, but a
+        # fixed order keeps the LaunchPlan's argv reproducible and the golden-argv test
+        # meaningful.
         no_network = tuple(f"-D{name}={value}" for name, value in NO_NETWORK.items())
+        host_independence = tuple(f"-D{name}={value}" for name, value in HOST_INDEPENDENCE.items())
         return LaunchPlan(
-            argv=(str(java), HEAP, *no_network, "-jar", str(jar), "nogui"),
+            argv=(str(java), HEAP, *no_network, *host_independence, "-jar", str(jar), "nogui"),
             cwd=workdir,
-            # Only PATH passes through (argv[0] is absolute, so it no longer picks the JVM).
-            # Nothing else leaks from the harness: no JAVA_TOOL_OPTIONS (here it injects
-            # proxy settings), no locale, no JAVA_HOME.
-            env=MappingProxyType({"PATH": os.environ.get("PATH", os.defpath)}),
+            env=LAUNCH_ENV,
             endpoint=Endpoint(host=HOST, port=spec.port),
             stop_stdin=b"stop\n",
         )
