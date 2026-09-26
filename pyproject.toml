@@ -11,6 +11,7 @@ dev = [
     "bandit>=1.9.4",
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
+    "pytest-timeout>=2.4.0",
     "ruff>=0.16.9",
     "ty>=0.0.84",
 ]
@@ -62,12 +63,20 @@ exclude_dirs = ["tests"]
 [tool.pytest.ini_options]
 addopts = ["--strict-markers", "--strict-config", "-ra", "-q", "--import-mode=importlib"]
 testpaths = ["tests"]
+# `tests/` itself, so plain helpers (tests/support/) import as top-level packages
+# ("import support"), independent of pytest's own importlib-mode package synthesis.
+pythonpath = ["tests"]
 xfail_strict = true
 filterwarnings = ["error"]
 # Async tests opt in with @pytest.mark.asyncio; every test gets its own event loop.
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"
 asyncio_default_test_loop_scope = "function"
+# A hang (a stuck probe, a server that never answers) fails the test instead of stalling
+# the run. 120 s is generous for the reference tier: a vanilla boot is ~10 s, so this
+# covers a slow boot under concurrent load with headroom. A test that legitimately needs
+# more (e.g. two full boot/stop cycles) overrides it with @pytest.mark.timeout(...).
+timeout = 120
 markers = [
     "reference: needs a live vanilla Reference Instance",
     "candidate: needs a live Candidate Instance",
