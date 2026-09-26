@@ -111,6 +111,18 @@ then one commit.
     non-zero if any mutation SURVIVED or was INVALID. Use it for an
     audit's mutation sweep instead of a hand-rolled loop over
     `mutate.py`.
+- Flake-hunt with `python3 scripts/repeat.py [--times N] [--stress]
+  [--stress-workers N] -- <pytest args>`: runs `uv run pytest <pytest
+  args>` `N` times (default 1) and reports how many runs passed, how many
+  failed, and the union of failing test ids across every run. `--stress`
+  spawns `--stress-workers` busy-loop processes (default `os.cpu_count()`,
+  i.e. `nproc`) to load every CPU for the duration, and always kills them
+  afterwards — on a normal return, an exception, or Ctrl-C — with the
+  leak-guard pattern (a per-invocation token, swept from `/proc`). Exits
+  non-zero if any run failed. Run the whole unit tier through it before
+  trusting a readiness, timing or process change beyond the "run it 20
+  times" rule (below): `python3 scripts/repeat.py --times 20 --stress --
+  -m 'not reference and not candidate and not statistical' -n auto`.
 - To silence one line for both ruff and bandit, write
   `# noqa: S603  # nosec B603`: two separate `#` tokens, noqa first. A
   combined comment satisfies only one tool. Keep a nosec to its rule ids,
