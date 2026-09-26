@@ -133,3 +133,62 @@ def test_frame_decoder_raises_on_corrupt_compressed_payload() -> None:
     frame = Writer().var_int(len(inner)).to_bytes() + inner
     with pytest.raises(WireError):
         decoder.feed(frame)
+
+
+def test_next_frame_returns_none_until_a_frame_is_complete() -> None:
+    decoder = FrameDecoder()
+    assert decoder.next_frame() is None
+    frame = encode_frame(b"hello", compression_threshold=None)
+    decoder.extend(frame[:-1])
+    assert decoder.next_frame() is None
+    decoder.extend(frame[-1:])
+    assert decoder.next_frame() == b"hello"
+    assert decoder.next_frame() is None
+
+
+def test_next_frame_takes_one_frame_at_a_time_in_order() -> None:
+    decoder = FrameDecoder()
+    decoder.extend(
+        encode_frame(b"first", compression_threshold=None)
+        + encode_frame(b"", compression_threshold=None)
+        + encode_frame(b"third", compression_threshold=None)
+    )
+    assert decoder.next_frame() == b"first"
+    assert decoder.next_frame() == b""
+    assert decoder.next_frame() == b"third"
+    assert decoder.next_frame() is None
+
+
+def test_buffered_counts_the_bytes_not_yet_taken_as_frames() -> None:
+    decoder = FrameDecoder()
+    assert decoder.buffered == 0
+    first = encode_frame(b"first", compression_threshold=None)
+    partial = encode_frame(b"second", compression_threshold=None)[:3]
+    decoder.extend(first + partial)
+    assert decoder.buffered == len(first) + len(partial)
+    decoder.next_frame()
+    assert decoder.buffered == len(partial)
+
+
+def test_next_frame_returns_the_frames_before_a_corrupt_one_then_keeps_raising() -> None:
+    decoder = FrameDecoder()
+    corrupt = bytes.fromhex("80808000")  # a frame length longer than 3 bytes
+    decoder.extend(encode_frame(b"good", compression_threshold=None) + corrupt)
+    assert decoder.next_frame() == b"good"
+    for _ in range(2):
+        with pytest.raises(WireError, match="longer than 3 bytes"):
+            decoder.next_frame()
+    assert decoder.buffered == len(corrupt)
+
+
+def test_a_threshold_set_between_frames_applies_to_the_next_frame_of_the_same_chunk() -> None:
+    # login_compression and the first compressed frame can arrive in one read.
+    decoder = FrameDecoder()
+    data = b"c" * 64
+    decoder.extend(
+        encode_frame(b"login_compression", compression_threshold=None)
+        + encode_frame(data, compression_threshold=16)
+    )
+    assert decoder.next_frame() == b"login_compression"
+    decoder.compression_threshold = 16
+    assert decoder.next_frame() == data

@@ -72,20 +72,42 @@ class FrameDecoder:
         Each returned item is one frame's `data`, decompressed if needed.
         Bytes that do not yet form a complete frame are kept for the next call.
         """
-        self._buffer.extend(chunk)
+        self.extend(chunk)
         frames = []
-        while True:
-            prefix = _try_read_frame_length(self._buffer)
-            if prefix is None:
-                break
-            frame_length, prefix_length = prefix
-            end = prefix_length + frame_length
-            if end > len(self._buffer):
-                break
-            body = bytes(self._buffer[prefix_length:end])
-            del self._buffer[:end]
-            frames.append(self._decode_body(body))
+        while (frame := self.next_frame()) is not None:
+            frames.append(frame)
         return frames
+
+    def extend(self, chunk: bytes) -> None:
+        """Add `chunk` to the buffer without taking any frame out."""
+        self._buffer.extend(chunk)
+
+    def next_frame(self) -> bytes | None:
+        """Take the next complete frame out of the buffer and return its `data`.
+
+        Returns None if the buffer does not hold a complete frame yet. Taking frames
+        one at a time lets a new `compression_threshold` apply from the very next
+        frame, and lets the frames before a corrupt one through.
+
+        Raises:
+            WireError: The next frame is corrupt. A bad frame length stays in the
+                buffer, so every later call raises too.
+        """
+        prefix = _try_read_frame_length(self._buffer)
+        if prefix is None:
+            return None
+        frame_length, prefix_length = prefix
+        end = prefix_length + frame_length
+        if end > len(self._buffer):
+            return None
+        body = bytes(self._buffer[prefix_length:end])
+        del self._buffer[:end]
+        return self._decode_body(body)
+
+    @property
+    def buffered(self) -> int:
+        """The number of bytes held that have not been taken out as frames."""
+        return len(self._buffer)
 
     def _decode_body(self, body: bytes) -> bytes:
         if self.compression_threshold is None:
