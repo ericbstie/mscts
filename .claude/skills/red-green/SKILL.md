@@ -135,6 +135,21 @@ then one commit.
   trusting a readiness, timing or process change beyond the "run it 20
   times" rule (below): `python3 scripts/repeat.py --times 20 --stress --
   -m 'not reference and not candidate and not statistical' -n auto`.
+- Time a mise task without editing this worktree: `python3
+  scripts/time_tier.py <mise task> [--times N]` (e.g. `test:reference`)
+  copies the tracked tree (plus untracked, non-ignored files, exactly what
+  `mutate.py --batch` copies) into a throwaway dir, looks up that task's
+  `run` command(s) in `mise.toml`, and runs them there `--times` times
+  (default 1) with the same uv/venv setup `mutate.py --batch` uses for its
+  copies (below): `UV_PROJECT_ENVIRONMENT` at this worktree's synced
+  `.venv` plus `uv run --no-sync` (never syncs the shared venv), and
+  `PYTHONPATH=<copy>/src` ahead of it (so the copy's own code is what
+  runs). Each pytest command gets `--durations=10` appended. Prints, per
+  run: the tier's total wall time, the 10 slowest tests, and the
+  1-minute load average (`os.getloadavg()[0]`) before and after — so a
+  timing claim always carries the load the machine was under. Use it
+  instead of timing `mise run <task>` by hand in this worktree, which
+  would be measured on a tree you are simultaneously editing.
 - To silence one line for both ruff and bandit, write
   `# noqa: S603  # nosec B603`: two separate `#` tokens, noqa first. A
   combined comment satisfies only one tool. Keep a nosec to its rule ids,
