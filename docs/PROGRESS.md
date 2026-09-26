@@ -65,6 +65,14 @@ Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
   (`mscts adapter install/list/status`, `--from`), the honest prompt,
   then the pinned Pumpkin installed here with `--from` (Next 3).
 
+## Delegated to the helper agent
+
+The maintainer's second agent (Astra) takes GitHub issues labelled
+`helper-ready`. Claude stays the primary worker; do not brief a Claude
+worker on a delegated item. Open: #2 javap tool, #3 runner parent-death
+guard, #4 PLAN public-name check. Their PRs are reviewed and integrated
+like a worker branch.
+
 ## Next
 
 Take the first item. Split it if it is more than one failing test. Keep
@@ -94,8 +102,8 @@ briefs at 3–6 increments and about 1500 lines at most.
    wire-only; add declared-default canonicalizations (cited from the
    client decoder); canonicalize the `update_tags` order (a server
    HashMap) before the join Scenario's Self-check.
-6. Research tooling (sonnet): `scripts/research/javap.py <client|server>
-   <Class>…` (fetch and cache both jars, sha1-checked), plus the
+6. Research tooling (sonnet): ~~`scripts/research/javap.py`~~
+   (delegated: issue #2), then the
    `scripts/` research harness: netns sandbox, strace summary, live
    launch/probe, a loopback-only reference test (adopt workers H, L and P
    scratch tools).
@@ -105,11 +113,12 @@ briefs at 3–6 increments and about 1500 lines at most.
 8. Bot fidelity: send brand `custom_payload`, `client_information` and
    `player_loaded` as the vanilla client does; unique Bot names per
    Transcript (L11); dedupe the runner test helpers (L10).
-9. `runner`: a parent-death guard.
+9. ~~`runner`: a parent-death guard~~ (delegated: issue #3).
 10. Tick research (opus, M6a) and statistical tier design (opus, M6b),
     per ADR-0006.
-11. Tooling: a check that every new public name in `src/` appears in
-    PLAN.md; a `scripts/` save/restore helper (no stash).
+11. Tooling: ~~a check that every public name in `src/` appears in
+    PLAN.md~~ (delegated: issue #4); a `scripts/` save/restore helper (no
+    stash).
 12. Next audit (opus): due after the next 2–3 batches. Focus on
     `compare.py`, the new net/bot join code and the runner ownership
     logic.

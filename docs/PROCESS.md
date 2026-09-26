@@ -47,6 +47,14 @@ ADRs and briefs. What the maintainer has asked for:
   - an elegant, honest developer experience;
   - installs are never hidden inside runs;
   - Adapters are easy for third parties to write and verify.
+- **Helper agent.** The maintainer also runs a non-Claude agent that
+  takes GitHub issues labelled `helper-ready`. The lead may delegate a
+  small, independent Next item there as a self-contained issue (the
+  brief's rules, a PR as hand-back) and marks it delegated in PROGRESS.
+  Claude remains the primary worker; the process is not shaped around
+  the helper. Its PRs get the same review and rebase-with-check
+  integration, and the surprises in its PR description are logged as a
+  retrospective.
 - **Autonomy:** within those decisions, the lead steers without asking,
   including batches, audits, refactors and process changes, and keeps
   the maintainer informed.
@@ -351,6 +359,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-09-26 | Independent Next items may be delegated to the maintainer's helper agent via `helper-ready` GitHub issues | Maintainer: an optional helping hand; Claude stays primary |
 | 2026-09-26 | ADR-0008: explicit idempotent installs (`mscts adapter install`, `--from`), an honest prompt, a checksum-pinned registry, Adapter authoring guide + conformance kit, DX goal G6 | User direction: an elegant, honest DX; installs never hidden in test runs |
 | 2026-09-26 | ADR-0007: wire-only Divergences are reported separately and excluded from scores; the Pumpkin Adapter writes native world saves | User decisions |
 | 2026-09-26 | ADR-0006: catalogue of differences; exact/tick-exact/statistical Scenarios; Masks only for non-gameplay ids; commands-only Fixtures | User direction: surface every difference (randomness, redstone, glitches) without hiding any |
