@@ -23,7 +23,8 @@ need is missing, add it here in the same commit that introduces it.
 - **ServerSpec**: a server-agnostic, declarative description of how a
   server must be configured (port, view distance, world preset,
   operators, …). Offline mode, no encryption, no whitelist, no pause when
-  empty, and no telemetry are invariants, not options.
+  empty, no telemetry, and no outbound (non-loopback) network connections
+  are invariants, not options.
 - **Installation**: the binaries an Adapter has provisioned for a Target,
   cached on disk.
 - **LaunchPlan**: the argv, cwd, env and stop method an Adapter produces.

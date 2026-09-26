@@ -187,7 +187,8 @@ class Difficulty(StrEnum):  PEACEFUL, EASY, NORMAL, HARD
 
 @frozen
 class ServerSpec:                   # invariants (not fields): offline, no encryption, no whitelist,
-    port: int                       # no pause-when-empty, no telemetry, no server icon, spawn protection 0
+    port: int                       # no pause-when-empty, no telemetry, no server icon, spawn protection 0,
+                                    # no outbound (non-loopback) network connection
     motd: str = "mscts"
     max_players: int = 20
     view_distance: int = 2
