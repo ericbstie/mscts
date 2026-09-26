@@ -781,7 +781,27 @@ proves it necessary:
      strict JSON is parsed: invalid JSON, a repeated key, `NaN` or
      `Infinity`, or nesting deeper than 255 (the default nesting limit
      of the client's Gson 2.14.0 `JsonReader`, verified with `javap`)
-     leaves the raw string, compared as a string. Then the text
+     leaves the raw string, compared as a string. If it is an object,
+     only the **members the client reads** are kept: in the status
+     object, `description`, `players`, `version`, `favicon` and
+     `enforcesSecureChat`; in its `players` object, `max`, `online` and
+     `sample`; in its `version` object, `name` and `protocol`; and in
+     those three objects a member whose value is JSON `null` is dropped.
+     So Pumpkin's misspelled `"enforceSecureChat": true` and its
+     `"favicon": null` read as vanilla's absent ones. Evidence
+     (`docs/research/2026-09-26-comparison.md`, *Unknown keys and JSON
+     null*, `javap` on the client jar and its DFU 10.0.21 and Gson
+     2.14.0): `ServerStatus.CODEC`, `ServerStatus$Players.CODEC` and
+     `ServerStatus$Version.CODEC` are `RecordCodecBuilder` codecs naming
+     exactly those fields; the status is decoded through `RegistryOps`
+     over `JsonOps.INSTANCE` (uncompressed), so `MapDecoder.
+     compressedDecode` is `getMap` then the record's fields, each of
+     which reads only `MapLike.get(name)` (`FieldDecoder`,
+     `OptionalFieldCodec`); and `JsonOps$1.get` returns null for a
+     `JsonNull` member, which `OptionalFieldCodec.decode` turns into
+     `Optional.empty()` exactly as for a missing key. Text components
+     (`description`) and `players.sample` entries keep every member:
+     their codecs are not shown to read by name only. Then the text
      components in it are canonical: a plain string `"x"` is written
      `{"text": "x"}`. Evidence: minecraft.wiki *Text component format*
      (raw wikitext, oldid 3749600: "`"A"` and `{text: "A"}` are
@@ -829,8 +849,9 @@ proves it necessary:
      `List.of()` by `List.equals`; `false` decodes to `Boolean.FALSE`.
      The same `lenientOptionalFieldOf` also turns a present but
      undecodable value into the default; that is lenient error handling,
-     so it is not encoded (`"sample": null`, `"enforcesSecureChat": 0`
-     stay strict). `players`, `version` and `favicon` are optional with
+     so it is not encoded (`"enforcesSecureChat": 0` stays strict;
+     `"sample": null` is dropped as a null member above, which is not
+     error handling: `JsonOps` reads it as missing). `players`, `version` and `favicon` are optional with
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
@@ -866,7 +887,9 @@ proves it necessary:
    which accepts unquoted keys and single quotes; and DFU's
    `JsonOps.getNumberValue` accepts any JSON number, so `20.0` where an
    int is expected; both verified with `javap`). JSON numbers, booleans
-   and `null` keep their types. `favicon` presence is significant: the
+   and `null` keep their types (except a `null` member of the status,
+   `players` or `version` object, dropped above). `favicon` presence
+   (a non-null value) is significant: the
    client shows the icon when there is one, and ServerSpec's invariant
    is "no server icon".
 3. Apply **Masks**, which remove identifiers with no gameplay meaning, or

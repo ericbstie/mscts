@@ -410,7 +410,7 @@ _JSON_NESTING_LIMIT = 255
 
 
 def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
-    """Parse `json_response` into its JSON value, with a canonical `description`.
+    """Parse `json_response` into its JSON value: the members the client reads, canonical.
 
     It stays the raw string, and is compared as one, unless it is strict JSON (no
     repeated key in an object, no NaN or Infinity) nested at most 255 deep.
@@ -422,10 +422,40 @@ def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
     if isinstance(status, Absent):
         return fields
     if isinstance(status, dict):
+        status = _as_read(status)
         if "description" in status:
             status = {**status, "description": _text_component(status["description"])}
         status = _without_declared_defaults(status)
     return {**fields, "json_response": status}
+
+
+_STATUS_FIELDS: Mapping[str, frozenset[str]] = MappingProxyType(
+    {
+        "": frozenset({"description", "players", "version", "favicon", "enforcesSecureChat"}),
+        "players": frozenset({"max", "online", "sample"}),
+        "version": frozenset({"name", "protocol"}),
+    }
+)
+"""The keys the client's record codecs read: of the status object (""), and of the
+`players` and `version` objects in it (docs/research/2026-09-26-comparison.md)."""
+
+
+def _as_read(status: dict[str, _Value]) -> dict[str, _Value]:
+    """Keep only the members of the status (and its `players`, `version`) the client reads.
+
+    Its record codecs look each field up by name, so a key they do not name is never
+    read, and `JsonOps` reads a JSON `null` member as a missing one (PLAN, Comparison
+    semantics).
+    """
+    result = _read_members(status, _STATUS_FIELDS[""])
+    for key in ("players", "version"):
+        if isinstance(inner := result.get(key), dict):
+            result[key] = _read_members(inner, _STATUS_FIELDS[key])
+    return result
+
+
+def _read_members(value: dict[str, _Value], fields: frozenset[str]) -> dict[str, _Value]:
+    return {key: item for key, item in value.items() if key in fields and item is not None}
 
 
 def _without_declared_defaults(status: dict[str, _Value]) -> dict[str, _Value]:

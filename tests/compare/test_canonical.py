@@ -180,10 +180,6 @@ def test_a_declared_default_is_the_same_as_its_absence(candidate: str) -> None:
             ("json_response.players.sample", ABSENT, [{"name": "a", "id": "x"}]),
         ),
         (
-            '{"players":{"max":20,"online":0,"sample":null}}',
-            ("json_response.players.sample", ABSENT, None),
-        ),
-        (
             '{"players":{"max":20,"online":0},"enforcesSecureChat":true}',
             ("json_response.enforcesSecureChat", ABSENT, True),
         ),
@@ -204,18 +200,15 @@ def test_a_declared_default_is_the_same_as_its_absence(candidate: str) -> None:
             ("json_response.description", ABSENT, {"text": "", "bold": False}),
         ),
         ('{"players":{"max":20,"online":0},"favicon":""}', ("json_response.favicon", ABSENT, "")),
-        ('{"players":{"max":20,"online":0},"sample":[]}', ("json_response.sample", ABSENT, [])),
     ],
     ids=[
         "sample-element",
-        "sample-null",
         "secure-chat-true",
         "secure-chat-number",
         "description-space",
         "description-list",
         "description-style",
         "favicon-has-no-default",
-        "sample-outside-players",
     ],
 )
 def test_only_the_exact_declared_default_is_its_absence(
@@ -224,19 +217,90 @@ def test_only_the_exact_declared_default_is_its_absence(
     assert _diff('{"players":{"max":20,"online":0}}', candidate) == [divergence]
 
 
+PUMPKIN_NIGHTLY = (
+    '{"version":{"name":"26.3","protocol":777},'
+    '"players":{"max":20,"online":0,"sample":[]},'
+    '"description":{"text":"mscts"},"favicon":null,"enforceSecureChat":true}'
+)
+"""Shaped like Pumpkin nightly-48cba7ee's live status: a null favicon, and a misspelled
+`enforceSecureChat` the client's codec never reads (docs/research)."""
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        PUMPKIN_NIGHTLY,
+        '{"players":{"max":20,"online":0},"enforceSecureChat":true}',
+        '{"players":{"max":20,"online":0},"favicon":null}',
+        '{"players":{"max":20,"online":0},"description":null,"version":null}',
+        '{"players":{"max":20,"online":0,"sample":null}}',
+        '{"players":{"max":20,"online":0,"MAX":1000}}',
+        '{"players":{"max":20,"online":0},"sample":[{"name":"a"}]}',
+    ],
+    ids=[
+        "pumpkin-nightly",
+        "misspelled-secure-chat",
+        "null-favicon",
+        "null-description-and-version",
+        "null-sample",
+        "unknown-players-key",
+        "sample-outside-players",
+    ],
+)
+def test_a_member_the_client_never_reads_is_wire_only(candidate: str) -> None:
+    # ServerStatus's record codecs look fields up by name, and JsonOps reads a JSON null
+    # member as a missing one (docs/research/2026-09-26-comparison.md).
+    reference = VANILLA if candidate == PUMPKIN_NIGHTLY else '{"players":{"max":20,"online":0}}'
+    assert _diff(reference, candidate) == []
+    assert _diff(candidate, reference) == []
+    wire_only = compare(
+        transcript(("alice", status(reference))), transcript(("alice", status(candidate))), []
+    ).divergences
+    assert [(d.path, d.observability.value) for d in wire_only] == [("json_response", "wire-only")]
+
+
+def test_the_version_ignores_a_key_it_does_not_name() -> None:
+    reference = '{"version":{"name":"26.3","protocol":777}}'
+    assert _diff(reference, '{"version":{"name":"26.3","protocol":777,"brand":"x"}}') == []
+
+
 @pytest.mark.parametrize(
     ("candidate", "divergence"),
     [
-        ('{"v":20.0}', ("json_response.v", 20, 20.0)),
-        ('{"v":true}', ("json_response.v", 20, True)),
-        ('{"v":null}', ("json_response.v", 20, None)),
-        ('{"v":"20"}', ("json_response.v", 20, "20")),
+        # Inside a text component, or a sample entry, keys and nulls stay significant: their
+        # codecs are not shown to read them by name only.
+        ('{"description":{"text":"a","x":1}}', ("json_response.description.x", ABSENT, 1)),
+        ('{"description":{"text":"a","x":null}}', ("json_response.description.x", ABSENT, None)),
+        (
+            '{"description":{"text":"a"},"players":{"sample":[{"name":"a","x":null}]}}',
+            ("json_response.players.sample[0].x", ABSENT, None),
+        ),
+    ],
+    ids=["description-key", "description-null", "sample-entry-null"],
+)
+def test_unknown_keys_and_nulls_elsewhere_stay_significant(
+    candidate: str, divergence: tuple[str, object, object]
+) -> None:
+    reference = '{"description":{"text":"a"},"players":{"sample":[{"name":"a"}]}}'
+    if "sample" not in candidate:
+        reference = '{"description":{"text":"a"}}'
+    assert _diff(reference, candidate) == [divergence]
+
+
+@pytest.mark.parametrize(
+    ("candidate", "divergence"),
+    [
+        ('{"players":{"max":20.0}}', ("json_response.players.max", 20, 20.0)),
+        ('{"players":{"max":true}}', ("json_response.players.max", 20, True)),
+        ('{"players":{"max":"20"}}', ("json_response.players.max", 20, "20")),
+        # A null member reads as missing (docs/research): a required one stays a difference.
+        ('{"players":{"max":null}}', ("json_response.players.max", 20, ABSENT)),
     ],
 )
 def test_json_numbers_booleans_and_null_keep_their_types(
     candidate: str, divergence: tuple[str, object, object]
 ) -> None:
-    assert _diff('{"v":20}', candidate) == [divergence]
+    assert _diff('{"players":{"max":20}}', candidate) == [divergence]
 
 
 @pytest.mark.parametrize(
@@ -253,7 +317,9 @@ def test_json_numbers_booleans_and_null_keep_their_types(
 )
 def test_anything_but_strict_json_is_compared_as_the_raw_string(not_strict_json: str) -> None:
     assert _diff(not_strict_json, not_strict_json) == []
-    assert _diff('{"a":1}', not_strict_json) == [("json_response", {"a": 1}, not_strict_json)]
+    assert _diff('{"favicon":"x"}', not_strict_json) == [
+        ("json_response", {"favicon": "x"}, not_strict_json)
+    ]
 
 
 def test_json_nested_deeper_than_255_is_compared_as_the_raw_string() -> None:
@@ -272,7 +338,7 @@ def test_json_too_deep_for_the_json_module_is_compared_as_the_raw_string() -> No
     # The deepest a String (32767) holds; json.loads itself raises RecursionError on it.
     deepest = "[" * 16383 + "]" * 16383
     assert _diff(deepest, deepest) == []
-    assert _diff('{"a":1}', deepest) == [("json_response", {"a": 1}, deepest)]
+    assert _diff('{"favicon":"x"}', deepest) == [("json_response", {"favicon": "x"}, deepest)]
 
 
 def test_masks_apply_to_the_canonical_form() -> None:

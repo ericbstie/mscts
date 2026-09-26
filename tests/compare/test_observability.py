@@ -100,14 +100,14 @@ def test_identical_bytes_match_exactly() -> None:
 
 
 def test_a_canonical_difference_is_observable_and_not_also_wire_only() -> None:
-    verdict = _verdict('{"a":1,"b":2}', '{"b":3,"a":1}')
+    verdict = _verdict('{"favicon":"a","players":2}', '{"players":3,"favicon":"a"}')
     assert verdict.divergences == (
         Divergence(
             bot="alice",
             index=0,
             kind="field",
             packet="minecraft:status_response",
-            path="json_response.b",
+            path="json_response.players",
             reference=2,
             candidate=3,
         ),
