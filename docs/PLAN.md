@@ -56,9 +56,9 @@ test needs it:
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
-| `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, registry |
+| `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, `SCENARIOS` (the registered Scenarios), `resolve` |
 | `scenarios/*.py` | the Scenarios themselves (`import mscts.scenarios` registers them) |
-| `run.py` | `run_scenario` → `Transcript`; `judge` → `Verdict`; `run`: Scenarios against a Reference and a Candidate `Server`, on Instances it launches |
+| `run.py` | `run_scenario` → `Transcript`; `judge` → `Verdict`; `run`: Scenarios against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict` |
 | `measure.py` | `Measurement`, span extraction, stats |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
@@ -666,6 +666,11 @@ async def run(scenarios: Sequence[Scenario], reference: Server, candidate: Serve
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
     # NotImplementedError for a Scenario that is not exact (M6a/M6b), ValueError for one
     # listed twice, RunnerError if an Instance cannot start.
+async def selfcheck(scenario_ids: Sequence[str], *, reference: Server, workdir: Path,
+                    repeat: int = 20) -> list[Verdict]: ...
+    # run(resolve(scenario_ids), reference, reference, ...): two Reference Instances, the
+    # prerequisites included; KeyError (unknown id) before anything starts. G2: all `match`.
+    # (The `mscts selfcheck` command wraps it; the caller provisions `reference` itself.)
 ```
 
 Comparison semantics. Start strict and relax only when a Self-check
@@ -866,7 +871,7 @@ a single failing test.
     (reference tier).
 
 **M2 — First Comparison and Self-check.** `Transcript` recording,
-`@scenario` registry, `status/basic` and `status/ping` Scenarios, `compare`
+`@scenario` registration, `status/basic` and `status/ping` Scenarios, `compare`
 with canonicalization, `mscts selfcheck` → `match`. First Measurements
 (`status.rtt`, `instance.startup`).
 

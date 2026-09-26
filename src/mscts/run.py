@@ -6,13 +6,14 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import mscts.scenarios  # noqa: F401 - importing it registers the shipped Scenarios
 from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
 from mscts.codec.packets import CodecError
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.net import Endpoint, ProtocolError
 from mscts.runner import free_endpoint, running
-from mscts.scenario import Scenario, ScenarioContext, ScenarioKind
+from mscts.scenario import Scenario, ScenarioContext, ScenarioKind, resolve
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -184,6 +185,23 @@ async def run(
                 done[scenario.id] = verdict
             verdicts.extend(done.values())
         return verdicts
+
+
+async def selfcheck(
+    scenario_ids: Sequence[str], *, reference: Server, workdir: Path, repeat: int = 20
+) -> list[Verdict]:
+    """Self-check the registered Scenarios `scenario_ids`: the Reference against itself.
+
+    A `run` with `reference` on both sides, so two Instances of the Reference, each at
+    an Endpoint of its own. The Scenarios' prerequisites are played too, first
+    (`scenario.resolve`). Every Verdict must be `match` (G2: 20 out of 20); anything
+    else is a missing Mask or a flaky Scenario, never a Reference bug.
+
+    Raises:
+        KeyError: A Scenario id is not registered; nothing was started.
+    """
+    scenarios = resolve(scenario_ids)
+    return await run(scenarios, reference, reference, workdir=workdir, repeat=repeat)
 
 
 def _check(scenarios: Sequence[Scenario]) -> None:
