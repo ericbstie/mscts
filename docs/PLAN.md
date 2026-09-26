@@ -736,10 +736,22 @@ class Report:
     # compliance = matches / (scenarios − errors); to_json(), to_markdown()
 ```
 
-CLI (arrives in M2/M3):
+CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
+`main(argv=None, *, fetch=https_get) -> int`). Every command says exactly what it did or
+would do; an error is one `mscts: <message>` line on stderr naming its fix, exit 1:
 
 ```
-mscts provision <adapter>
+mscts adapter install <adapter> [--version V | --from PATH]
+    # the Target's Registry entry (or --version V): "downloading <url> ...", then
+    # "installed <entry> from <url> into <root>", or "<entry> is already installed at <root>
+    # (sha256 …): nothing to do". --from: "installed <path> (sha256 …; the Registry entry
+    # <entry> | no Registry entry, …) into <root>". Another build installed: refused, naming
+    # the delete-and-install command. A download that is not the entry: its sha256, the
+    # entry's note ("the nightly moved") and the --from command.
+mscts adapter list                  # ADAPTER VERSION TARGET STATE, one row per Registry entry,
+                                    # plus a row for an installed build that is no entry
+mscts adapter status <adapter>      # root, entry, sha256, size, from, installed; exit 1 and
+                                    # the install command when nothing is installed
 mscts selfcheck [--scenario GLOB] [--repeat N]
 mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
 ```

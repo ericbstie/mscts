@@ -142,7 +142,7 @@ def test_a_failed_download_leaves_no_installation_behind(tmp_path: Path) -> None
         msg = f"connection reset fetching {url}"
         raise OSError(msg)
 
-    with pytest.raises(OSError, match="connection reset"):
+    with pytest.raises(ProvisionError, match=r"connection reset(.|\n)*--from <file>"):
         install_entry(ADAPTER, TARGET, tmp_path, ENTRY, failing)
     assert not root_of(tmp_path).exists()
 

@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = []
 
+[project.scripts]
+mscts = "mscts.cli:main"
+
 [dependency-groups]
 dev = [
     "bandit>=1.9.4",

@@ -180,7 +180,14 @@ def install_entry(
             f"`{install_command(adapter.name, version=entry.version)}`"
         )
         raise ProvisionError(msg)
-    download = fetch(entry.url)
+    try:
+        download = fetch(entry.url)
+    except OSError as error:  # urllib's URLError and TLS failures are OSErrors
+        msg = (
+            f"downloading {entry.url} failed: {error}\nDownload it another way (e.g. curl), "
+            f"then run `{install_command(adapter.name, path='<file>')}`"
+        )
+        raise ProvisionError(msg) from error
     if not entry.matches(download.body):
         msg = (
             f"{entry.url} is not {entry}: sha256 {hashlib.sha256(download.body).hexdigest()}, "
