@@ -246,6 +246,13 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker AC (status classification, Report audit) | `javap.py` has only the client jar; DFU and Gson had to be extracted from the bundle by hand | **defer**: already issue #6 (helper) |
+| 2026-09-26 | worker AC | Reclassifying to wire-only turned the Report's wire-only line into two truncated 100+ char JSON strings; fixed by comparing status JSON at JSON paths | **adopt**: a brief that changes a classification also checks the live Report text |
+| 2026-09-26 | worker AC | Tests used unknown status keys (`{"a":1}`) as stand-ins, which the new canonical form drops | **reject** (no change): the tests now use real field names |
+| 2026-09-26 | worker AC | Wrote code before the test once; covered by a mutation batch | **reject** (no change): the rule stands |
+| 2026-09-26 | worker AC audit | Wire-only examples hid the rest silently (4 differ, 3 shown) | **adopt**: the lead shows 5 and says "and N more" (f755d8b) |
+| 2026-09-26 | worker AC audit | MD1: `blocked` treats a prerequisite with only wire-only Divergences as failed | **defer**: decide with the first Scenario that has `requires` (join) |
+| 2026-09-26 | worker AC audit | Low findings: error-repetition spans in Timings, summary under an error, p95 = max below 20 values, unsettled wire-only not flagged, exit code always 0, a late RunnerError loses the Report, `failed` line lacks the Bot | **defer**: listed in `docs/audits/2026-09-26-report-path.md` |
 | 2026-09-26 | worker AB (first Report) | status/ping required status/basic to match, so any Candidate with a status difference lost every status.rtt timing | **adopt**: the lead dropped the prerequisite (status/ping asks for the status itself); briefing rule, a Scenario that exists to measure never requires another's exact match |
 | 2026-09-26 | worker AB | A ~130-line heredoc to a file was refused by the sandbox | **reject** (no change): the Worker contract already says to Write the script |
 | 2026-09-26 | worker AB | RUF001 on `›`; ty misses a flag set in `except` (redundant-condition); ty rejects `zip(*generator)`; ISC004 again | **defer**: red-green Known traps (session 3 parks process work) |

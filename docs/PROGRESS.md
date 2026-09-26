@@ -34,7 +34,17 @@ tests, 79–83 s under load) and `mise run test:candidate` passes.
   the Adapter contract. The SessionStart hook runs `mise run
   install:reference` (explicit, loud). **M3a done** except the registry
   review flow and M9's `adapter check`.
-- **M3 (first Candidate): unblocked.** `PumpkinAdapter.prepare` writes a
+- **M3's first Report: done (session 3).** `uv run mscts run --candidate
+  pumpkin [--scenario GLOB] [--repeat N]` plays the status Scenarios on
+  vanilla and Pumpkin (about 10 s) and prints a text Report: observable
+  Divergences by mechanic, wire-only per packet, Timings (`status.rtt`,
+  `instance.startup`, median/p95), a legend. Live result: Pumpkin has no
+  observable status Divergence; 4 wire-only (`description` as a
+  component, a misspelt `enforceSecureChat`, `favicon: null`, `sample:
+  []`), each pinned from the client jar
+  (`docs/research/2026-09-26-comparison.md`). Report-path audit:
+  `docs/audits/2026-09-26-report-path.md` (no high findings).
+- **M3 (first Candidate):** `PumpkinAdapter.prepare` writes a
   native flat world save (DataVersion 4903) with the spec's seed and
   difficulty; a Bot joining Pumpkin lands in the Reference's flat world at
   y = -60 (candidate tier). Left: `mscts run` and the first Report (4).
@@ -74,11 +84,7 @@ Environment notes:
 
 ## In flight
 
-- **Worker AC (opus): status Divergence classification + Report-path
-  audit.** Verifies from the jar whether Pumpkin's `enforceSecureChat`
-  (misspelt) and `"favicon": null` are really observable, fixes the
-  canonicalization if not, and audits measure/report/run/cli
-  (`docs/audits/2026-09-26-report-path.md`).
+Nothing. Every worktree is integrated or removed.
 
 Session 3 direction (maintainer, 2026-09-26): one working end-to-end
 command is the only goal. Next 4 (with the minimum of 3a it needs) is the
@@ -116,11 +122,16 @@ briefs at 3–6 increments and about 1500 lines at most.
    worker's session Reference on its own `free_endpoint()`; before/after
    tables from `time_tier.py`, target 55–65 s; a 5× repeat for flakes.
 
-3a. `cli` (sonnet): `mscts selfcheck` over R's library `selfcheck`
+2. **Report follow-ups** (from audit AC): MD1 (`blocked` on a wire-only
+   prerequisite), `--out DIR` (JSON/Markdown), a non-zero exit option,
+   run order alternation for fair timings (M7), then `join/basic` (7) in
+   the Report.
+
+3a. `cli` (sonnet): Measurements are done (AB); left: `mscts selfcheck` over R's library `selfcheck`
     (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
     and off S's `cli.py`.
-4. **M3's first Report** (opus, after V and 3a): `mscts run --candidate
+4. ~~**M3's first Report**~~ (done, session 3; see Now) (opus, after V and 3a): `mscts run --candidate
    pumpkin` over the status Scenarios (then join), `report.py` with
    observable and wire-only sections (ADR-0007), grouped by mechanic
    (ADR-0006). Known Pumpkin Divergences to expect in play `login`:
@@ -145,6 +156,24 @@ briefs at 3–6 increments and about 1500 lines at most.
     stash).
 
 ## Log
+
+### 2026-09-26 — session 3: the first end-to-end Report
+
+Maintainer goal: one working command. Two workers (AB, AC), both opus.
+
+- Local `main` was stale again; saved as `backup/stale-local-main-2`.
+  Pumpkin re-curl'd (same sha256 pin) and installed with `--from`.
+- Worker AB: `measure.py`, `run.run_results` (Measurements per
+  repetition, `instance.startup`, status versions), `report.py`, `mscts
+  run`, a candidate-tier CLI test.
+- Lead: `status/ping` requires nothing (it was blocked on Pumpkin, so no
+  rtt); wire-only examples say "and N more"; the summary says plainly
+  when no difference is one a player would notice.
+- Worker AC: from the client jar, the status codec reads only its five
+  named keys and DFU's JsonOps reads a JSON `null` as absent, so both
+  Pumpkin "observable" status Divergences were wire-only; status JSON is
+  now compared at JSON paths. Report-path audit, no high findings.
+- Parked by the maintainer: Next 0 (full audit), 1, 6, 11, process work.
 
 ### 2026-09-26 — session 2: new tech lead
 
