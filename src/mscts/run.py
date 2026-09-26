@@ -325,6 +325,7 @@ async def run_results(
             for scenario in scenarios:
                 verdict = blocked(scenario, done)
                 if verdict is None:
+                    await instances.start(scenario)  # first, so progress reads in order
                     LOG.info("running %s (%d of %d) ...", scenario.id, repetition, repeat)
                     play = await instances.play(scenario)
                 else:
@@ -433,6 +434,10 @@ class _Instances:
         self._pairs: dict[ServerSpec, tuple[Endpoint, Endpoint]] = {}
         self._startup: tuple[list[Measurement], list[Measurement]] = ([], [])
         self._versions: list[str | None] = [None, None]
+
+    async def start(self, scenario: Scenario) -> None:
+        """Make sure the Instances `scenario` plays against are up."""
+        await self._pair(scenario.spec)
 
     async def play(self, scenario: Scenario) -> _Play:
         """Play `scenario` on the Reference, then on the Candidate, and judge it."""

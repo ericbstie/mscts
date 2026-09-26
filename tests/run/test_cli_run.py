@@ -59,8 +59,7 @@ def test_a_run_prints_the_report_and_says_what_it_does(
     assert "No differences from vanilla were found in the 2 scenarios run." in out
     assert "Timings" in out
     assert "--out" in out  # the Report says what it leaves out
-    assert "starting vanilla and pumpkin ..." in err
-    assert "running status/basic" in err
+    assert err.index("starting vanilla and pumpkin ...") < err.index("running status/basic")
     assert "running status/ping" in err
     assert "mscts Report" not in err
 
