@@ -1,11 +1,16 @@
 """Primitive wire types of the Java Edition protocol."""
 
+import math
 import struct
 import uuid
 from typing import Self
 
+_BYTE_STRUCT = struct.Struct(">b")
 _USHORT_STRUCT = struct.Struct(">H")
+_INT_STRUCT = struct.Struct(">i")
 _LONG_STRUCT = struct.Struct(">q")
+_FLOAT_STRUCT = struct.Struct(">f")
+_DOUBLE_STRUCT = struct.Struct(">d")
 _UUID_BYTE_LENGTH = 16
 
 _SEGMENT = 0x7F
@@ -27,6 +32,18 @@ class WireError(ValueError):
 def _utf16_length(text: str) -> int:
     """Count UTF-16 code units `text` would take (a scalar > U+FFFF counts as two)."""
     return sum(2 if ord(char) > _NON_BMP_THRESHOLD else 1 for char in text)
+
+
+def _encode_float(packer: struct.Struct, value: float) -> bytes:
+    """Pack `value`, a float (not an int or bool), with `packer`."""
+    if not isinstance(value, float):
+        msg = f"expected a float, got {type(value).__name__}"
+        raise WireError(msg)
+    try:
+        return packer.pack(value)
+    except OverflowError as exc:
+        msg = f"{value!r} is not exactly a Float (beyond its range)"
+        raise WireError(msg) from exc
 
 
 class Writer:
@@ -100,6 +117,46 @@ class Writer:
             self._buffer.extend(_LONG_STRUCT.pack(value))
         except struct.error as exc:
             msg = f"long {value!r} out of range"
+            raise WireError(msg) from exc
+        return self
+
+    def byte(self, value: int) -> Self:
+        """Append a signed 8-bit integer."""
+        return self._pack(_BYTE_STRUCT, value, "byte")
+
+    def int_(self, value: int) -> Self:
+        """Append a signed 32-bit integer, big-endian, two's complement."""
+        return self._pack(_INT_STRUCT, value, "int")
+
+    def float_(self, value: float) -> Self:
+        """Append an IEEE 754 binary32, big-endian. It must hold `value` exactly.
+
+        A value binary32 would round (0.1, or one beyond its range) is refused, so the
+        bytes written always mean what the caller asked for. NaN and infinities pass.
+        """
+        encoded = _encode_float(_FLOAT_STRUCT, value)
+        (back,) = _FLOAT_STRUCT.unpack(encoded)
+        if back != value and not math.isnan(value):
+            msg = f"{value!r} is not exactly a Float (binary32 holds {back!r})"
+            raise WireError(msg)
+        self._buffer.extend(encoded)
+        return self
+
+    def double(self, value: float) -> Self:
+        """Append an IEEE 754 binary64, big-endian."""
+        self._buffer.extend(_encode_float(_DOUBLE_STRUCT, value))
+        return self
+
+    def raw(self, data: bytes) -> Self:
+        """Append `data` as it is."""
+        self._buffer.extend(data)
+        return self
+
+    def _pack(self, packer: struct.Struct, value: int, name: str) -> Self:
+        try:
+            self._buffer.extend(packer.pack(value))
+        except struct.error as exc:
+            msg = f"{name} {value!r} out of range"
             raise WireError(msg) from exc
         return self
 
@@ -218,6 +275,48 @@ class Reader:
         (value,) = _LONG_STRUCT.unpack(self._data[self._offset : end])
         self._offset = end
         return int(value)
+
+    def byte(self) -> int:
+        """Consume a signed 8-bit integer."""
+        return int.from_bytes(self._take(_BYTE_STRUCT, "byte"), "big", signed=True)
+
+    def int_(self) -> int:
+        """Consume a signed 32-bit integer, big-endian, two's complement."""
+        return int.from_bytes(self._take(_INT_STRUCT, "int"), "big", signed=True)
+
+    def float_(self) -> float:
+        """Consume an IEEE 754 binary32, big-endian."""
+        (value,) = _FLOAT_STRUCT.unpack(self._take(_FLOAT_STRUCT, "float"))
+        return float(value)
+
+    def double(self) -> float:
+        """Consume an IEEE 754 binary64, big-endian."""
+        (value,) = _DOUBLE_STRUCT.unpack(self._take(_DOUBLE_STRUCT, "double"))
+        return float(value)
+
+    def raw(self, count: int) -> bytes:
+        """Consume exactly `count` bytes, as they are."""
+        end = self._offset + count
+        if count < 0 or end > len(self._data):
+            msg = f"{count} byte(s) truncated"
+            raise WireError(msg)
+        data = self._data[self._offset : end]
+        self._offset = end
+        return data
+
+    def rest(self) -> bytes:
+        """Consume every remaining byte, as they are."""
+        return self.raw(self.remaining)
+
+    def _take(self, layout: struct.Struct, name: str) -> bytes:
+        """Consume the bytes of one value of `layout`, or raise `<name> truncated`."""
+        end = self._offset + layout.size
+        if end > len(self._data):
+            msg = f"{name} truncated"
+            raise WireError(msg)
+        data = self._data[self._offset : end]
+        self._offset = end
+        return data
 
     def bool_(self) -> bool:
         """Consume a Bool: 0x01 is true, 0x00 is false, any other byte is invalid."""

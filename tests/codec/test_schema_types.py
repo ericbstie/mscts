@@ -4,7 +4,7 @@ import uuid
 
 import pytest
 
-from mscts.codec.schema import BOOL, UUID, WireType
+from mscts.codec.schema import BOOL, BYTE, DOUBLE, FLOAT, INT, REST, UUID, WireType
 from mscts.codec.wire import Reader, WireError, Writer
 
 SAMPLE_UUID = uuid.UUID("12345678-1234-5678-1234-567812345678")
@@ -34,6 +34,44 @@ def test_bool_round_trips(*, value: bool, encoded: str) -> None:
 def test_bool_refuses_a_value_that_is_not_a_bool(value: object) -> None:
     with pytest.raises(WireError, match="expected a bool"):
         written(BOOL, value)
+
+
+@pytest.mark.parametrize(
+    ("wire_type", "value", "encoded"),
+    [
+        (BYTE, -1, "ff"),
+        (INT, -2, "fffffffe"),
+        (FLOAT, -90.5, "c2b50000"),
+        (DOUBLE, 6.5, "401a000000000000"),
+        (REST, b"\x00\x01", "0001"),
+        (REST, b"", ""),
+    ],
+)
+def test_fixed_size_types_round_trip(
+    wire_type: WireType[object], value: object, encoded: str
+) -> None:
+    assert written(wire_type, value) == bytes.fromhex(encoded)
+    assert read_all(wire_type, bytes.fromhex(encoded)) == value
+
+
+@pytest.mark.parametrize(
+    ("wire_type", "value", "error"),
+    [
+        (BYTE, True, "expected an int"),
+        (INT, 1.0, "expected an int"),
+        (INT, 2**31, "out of range"),
+        (FLOAT, 1, "expected a float"),
+        (FLOAT, 0.1, "is not exactly a Float"),
+        (DOUBLE, True, "expected a float"),
+        (REST, bytearray(b"x"), "expected bytes"),
+        (REST, "x", "expected bytes"),
+    ],
+)
+def test_fixed_size_types_refuse_what_they_cannot_encode(
+    wire_type: WireType[object], value: object, error: str
+) -> None:
+    with pytest.raises(WireError, match=error):
+        written(wire_type, value)
 
 
 def test_uuid_round_trips() -> None:

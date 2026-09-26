@@ -1,3 +1,5 @@
+import math
+import struct
 import uuid
 from typing import cast
 
@@ -301,6 +303,119 @@ def test_long_writer_raises_when_out_of_range() -> None:
 def test_long_reader_raises_on_truncated_input() -> None:
     with pytest.raises(WireError):
         Reader(bytes.fromhex("00000000000000")).long()
+
+
+# Byte, Int: signed 8- and 32-bit, big-endian, two's complement (wiki Data types).
+
+BYTE_SAMPLES = [(0, "00"), (1, "01"), (-1, "ff"), (127, "7f"), (-128, "80")]
+INT_SAMPLES = [
+    (0, "00000000"),
+    (1, "00000001"),
+    (-1, "ffffffff"),
+    (2147483647, "7fffffff"),
+    (-2147483648, "80000000"),
+]
+
+
+@pytest.mark.parametrize(("value", "encoded"), BYTE_SAMPLES)
+def test_byte_round_trips(value: int, encoded: str) -> None:
+    assert Writer().byte(value).to_bytes() == bytes.fromhex(encoded)
+    assert Reader(bytes.fromhex(encoded)).byte() == value
+
+
+@pytest.mark.parametrize(("value", "encoded"), INT_SAMPLES)
+def test_int_round_trips(value: int, encoded: str) -> None:
+    assert Writer().int_(value).to_bytes() == bytes.fromhex(encoded)
+    assert Reader(bytes.fromhex(encoded)).int_() == value
+
+
+@pytest.mark.parametrize(
+    ("write", "value"),
+    [("byte", 128), ("byte", -129), ("int_", 2**31), ("int_", -(2**31) - 1)],
+)
+def test_byte_and_int_writers_raise_when_out_of_range(write: str, value: int) -> None:
+    with pytest.raises(WireError, match="out of range"):
+        getattr(Writer(), write)(value)
+
+
+@pytest.mark.parametrize(("read", "data"), [("byte", ""), ("int_", "000000")])
+def test_byte_and_int_readers_raise_on_truncated_input(read: str, data: str) -> None:
+    with pytest.raises(WireError, match="truncated"):
+        getattr(Reader(bytes.fromhex(data)), read)()
+
+
+# Float, Double: IEEE 754 binary32 / binary64, big-endian (wiki Data types).
+
+FLOAT_SAMPLES = [(0.0, "00000000"), (-0.0, "80000000"), (1.0, "3f800000"), (-90.5, "c2b50000")]
+DOUBLE_SAMPLES = [(0.0, "0000000000000000"), (-0.0, "8000000000000000"), (6.5, "401a000000000000")]
+
+
+def bits(value: float) -> bytes:
+    """`value` as binary64, so -0.0 and 0.0 (equal as floats) compare unequal."""
+    return struct.pack(">d", value)
+
+
+@pytest.mark.parametrize(("value", "encoded"), FLOAT_SAMPLES)
+def test_float_round_trips_bit_for_bit(value: float, encoded: str) -> None:
+    assert Writer().float_(value).to_bytes() == bytes.fromhex(encoded)
+    assert bits(Reader(bytes.fromhex(encoded)).float_()) == bits(value)
+
+
+@pytest.mark.parametrize(("value", "encoded"), DOUBLE_SAMPLES)
+def test_double_round_trips_bit_for_bit(value: float, encoded: str) -> None:
+    assert Writer().double(value).to_bytes() == bytes.fromhex(encoded)
+    assert bits(Reader(bytes.fromhex(encoded)).double()) == bits(value)
+
+
+@pytest.mark.parametrize("value", [math.inf, -math.inf])
+def test_float_and_double_carry_infinities(value: float) -> None:
+    assert Reader(Writer().float_(value).to_bytes()).float_() == value
+    assert Reader(Writer().double(value).to_bytes()).double() == value
+
+
+def test_float_and_double_carry_nan() -> None:
+    assert math.isnan(Reader(Writer().float_(math.nan).to_bytes()).float_())
+    assert math.isnan(Reader(Writer().double(math.nan).to_bytes()).double())
+
+
+def test_float_writer_refuses_a_value_binary32_cannot_hold_exactly() -> None:
+    # 0.1 would be rounded; the Transcript would then hold a value nobody asked for.
+    with pytest.raises(WireError, match=r"0\.1 is not exactly a Float"):
+        Writer().float_(0.1)
+    with pytest.raises(WireError, match="is not exactly a Float"):
+        Writer().float_(1e39)  # beyond binary32's range
+
+
+@pytest.mark.parametrize("write", ["float_", "double"])
+@pytest.mark.parametrize("value", [1, True, "1.0", None])
+def test_float_and_double_writers_refuse_a_value_that_is_not_a_float(
+    write: str, value: object
+) -> None:
+    with pytest.raises(WireError, match="expected a float"):
+        getattr(Writer(), write)(value)
+
+
+@pytest.mark.parametrize(("read", "data"), [("float_", "000000"), ("double", "00" * 7)])
+def test_float_and_double_readers_raise_on_truncated_input(read: str, data: str) -> None:
+    with pytest.raises(WireError, match="truncated"):
+        getattr(Reader(bytes.fromhex(data)), read)()
+
+
+# Raw bytes: a known count, or the rest of the data (a Byte Array whose length is known
+# from its context, e.g. the end of the packet).
+
+
+def test_raw_and_rest_read_bytes_as_they_are() -> None:
+    reader = Reader(bytes.fromhex("0102 030405"))
+    assert reader.raw(2) == bytes.fromhex("0102")
+    assert reader.rest() == bytes.fromhex("030405")
+    assert reader.rest() == b""
+    assert Writer().raw(b"\x00\xff").to_bytes() == b"\x00\xff"
+
+
+def test_raw_raises_when_truncated() -> None:
+    with pytest.raises(WireError, match="3 byte\\(s\\) truncated"):
+        Reader(b"\x01\x02").raw(3)
 
 
 # Bool: true is 0x01, false is 0x00; any other byte is invalid.

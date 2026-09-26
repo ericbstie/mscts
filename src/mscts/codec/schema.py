@@ -101,6 +101,76 @@ class _Uuid:
         writer.uuid(value)
 
 
+@dataclass(frozen=True, slots=True)
+class _Byte:
+    def read(self, reader: Reader) -> int:
+        return reader.byte()
+
+    def write(self, writer: Writer, value: object) -> None:
+        writer.byte(_integer(value))
+
+
+@dataclass(frozen=True, slots=True)
+class _Int:
+    def read(self, reader: Reader) -> int:
+        return reader.int_()
+
+    def write(self, writer: Writer, value: object) -> None:
+        writer.int_(_integer(value))
+
+
+def _real(value: object) -> float:
+    if not isinstance(value, float):
+        msg = f"expected a float, got {type(value).__name__}"
+        raise WireError(msg)
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class _Float:
+    def read(self, reader: Reader) -> float:
+        return reader.float_()
+
+    def write(self, writer: Writer, value: object) -> None:
+        writer.float_(_real(value))
+
+
+@dataclass(frozen=True, slots=True)
+class _Double:
+    def read(self, reader: Reader) -> float:
+        return reader.double()
+
+    def write(self, writer: Writer, value: object) -> None:
+        writer.double(_real(value))
+
+
+@dataclass(frozen=True, slots=True)
+class _Rest:
+    def read(self, reader: Reader) -> bytes:
+        return reader.rest()
+
+    def write(self, writer: Writer, value: object) -> None:
+        if not isinstance(value, bytes):
+            msg = f"expected bytes, got {type(value).__name__}"
+            raise WireError(msg)
+        writer.raw(value)
+
+
+BYTE: WireType[int] = _Byte()
+"""Byte: a signed 8-bit integer."""
+
+INT: WireType[int] = _Int()
+"""Int: a signed 32-bit integer, big-endian."""
+
+FLOAT: WireType[float] = _Float()
+"""Float: IEEE 754 binary32. Writes only a float that binary32 holds exactly."""
+
+DOUBLE: WireType[float] = _Double()
+"""Double: IEEE 754 binary64. Writes only a float."""
+
+REST: WireType[bytes] = _Rest()
+"""Byte Array running to the end of the packet (e.g. a plugin message's data); last field only."""
+
 BOOL: WireType[bool] = _Bool()
 """Boolean: 0x00 or 0x01 (anything else is invalid; docs/PLAN.md, stricter than the client)."""
 

@@ -135,6 +135,10 @@ VAR_INT: WireType[int]             # also USHORT, LONG; more primitives as packe
                                    # (ints reject bool)
 BOOL: WireType[bool]               # writes only a bool (not 1 or "")
 UUID: WireType[uuid.UUID]          # writes only a UUID (not its str, bytes or int)
+BYTE: WireType[int]; INT: WireType[int]   # signed 8 / 32 bits
+FLOAT: WireType[float]             # binary32; writes only a float it holds exactly (not 0.1, not 1)
+DOUBLE: WireType[float]            # binary64; writes only a float
+REST: WireType[bytes]              # the rest of the packet as bytes (a plugin message's data)
 @frozen
 class String:                      # WireType[str]: String (n) on the wiki
     max_length: int                # n in UTF-16 code units; SchemaError unless 1 <= n <= 32767
