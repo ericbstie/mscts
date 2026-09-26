@@ -355,11 +355,17 @@ class Scenario:
 
 def scenario(id: str, *, requires=(), masks=(), spec=identity): ...        # decorator → registry
 
+WHOLE_PACKET = "*"
+
 @frozen
 class Mask:
-    packet: str                     # "minecraft:login"
-    path: str                       # "entity_id", "players.sample", "*" (drop the packet)
+    packet: str                     # "minecraft:login", in whatever State
+    path: str                       # "entity_id", "json_response.players.sample", or
+                                    # WHOLE_PACKET (drop the packet)
     reason: str
+    # ValueError at construction: an empty packet or reason (blank counts as empty), a
+    # malformed path, or a path not spelled exactly as a Divergence path would be (the
+    # message gives the spelling), so a path copied from a Divergence is always valid.
 
 class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 

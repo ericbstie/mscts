@@ -51,19 +51,50 @@ ABSENT = Absent.ABSENT
 """A Divergence's value on the side that has no such packet (or field)."""
 
 
+WHOLE_PACKET = "*"
+"""The Mask path that drops the whole packet."""
+
+
 @dataclass(frozen=True, slots=True)
 class Mask:
     """A normalization rule: a field, or a whole packet, is excluded from Comparison.
 
     Attributes:
-        packet: The packet name, e.g. `minecraft:login`.
-        path: The field path, e.g. `entity_id`, or `*` for the whole packet.
+        packet: The packet name, e.g. `minecraft:login`, in whatever State.
+        path: The field path, spelled as Divergence paths are (e.g. `entity_id`,
+            `players.sample[0].name`), or `*` (WHOLE_PACKET) for the whole packet.
         reason: Why it is nondeterministic.
     """
 
     packet: str
     path: str
     reason: str
+
+    def __post_init__(self) -> None:
+        """Reject a Mask that could never be right.
+
+        Raises:
+            ValueError: The packet name or the reason is empty, or the path is
+                malformed or not spelled as a Divergence path would be.
+        """
+        if not self.packet:
+            msg = "a Mask needs a packet name"
+            raise ValueError(msg)
+        if not self.reason.strip():
+            msg = f"{self.packet} {self.path}: a Mask needs a reason"
+            raise ValueError(msg)
+        if self.path == WHOLE_PACKET:
+            return
+        steps = _parse_path(self.path)
+        if steps is None:
+            msg = f"{self.packet}: malformed Mask path {self.path!r}"
+            raise ValueError(msg)
+        if (spelling := _render(steps)) != self.path:
+            msg = (
+                f"{self.packet}: Mask path {self.path!r} is spelled unlike a Divergence path;"
+                f" write {spelling!r}"
+            )
+            raise ValueError(msg)
 
 
 type DivergenceKind = Literal["bot", "missing", "unexpected", "field"]
@@ -440,3 +471,49 @@ def _render(path: _Path) -> str:
 
 def _where(path: _Path) -> str:
     return _render(path) or "fields"
+
+
+_DOTTED_KEY = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
+_INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
+_JSON = json.JSONDecoder()
+
+
+def _parse_path(text: str) -> _Path | None:
+    """Read a field path in the syntax `_render` writes, or return None if malformed.
+
+    A path starts with a key, bare or quoted, never with an index.
+    """
+    steps: list[_Step] = []
+    position = 0
+    while position < len(text) or not steps:
+        step = _next_step(text, position, start=not steps)
+        if step is None:
+            return None
+        steps.append(step[0])
+        position = step[1]
+    return tuple(steps)
+
+
+def _next_step(text: str, position: int, *, start: bool) -> tuple[_Step, int] | None:
+    """Read the step at `position`: return it and where the next one starts, or None."""
+    if text.startswith('["', position):
+        return _quoted_key(text, position)
+    if start:
+        match = _IDENTIFIER.match(text, position)
+        return None if match is None else (str(match[0]), match.end())
+    if match := _DOTTED_KEY.match(text, position):
+        return str(match[1]), match.end()
+    if match := _INDEX.match(text, position):
+        return int(match[1]), match.end()
+    return None
+
+
+def _quoted_key(text: str, position: int) -> tuple[_Step, int] | None:
+    """Read `["<JSON string>"]` at `position`, as `_next_step` does."""
+    try:
+        key, end = _JSON.raw_decode(text, position + 1)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(key, str) and text.startswith("]", end):
+        return key, end + 1
+    return None
