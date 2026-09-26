@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+import zipfile
 from pathlib import Path
 
 from mscts import cache
@@ -94,3 +95,22 @@ def cached_jar(side: str, fetch: Fetch = https_get) -> Path:
     if not metadata_path.exists():
         _write(metadata_path, metadata)
     return jar
+
+
+def classpath(side: str, fetch: Fetch = https_get) -> Path:
+    """The client jar or the server's inner jar, extracted from the verified bundle."""
+    jar = cached_jar(side, fetch)
+    if side == "client":
+        return jar
+    version = TARGET.minecraft_version
+    member = f"META-INF/versions/{version}/server-{version}.jar"
+    try:
+        with zipfile.ZipFile(jar) as archive:
+            body = archive.read(member)
+    except (zipfile.BadZipFile, KeyError) as error:
+        msg = f"{jar} has no readable {member}: {error}"
+        raise ProvisionError(msg) from error
+    inner = jar.with_name(f"server-{version}.jar")
+    if not inner.exists() or inner.read_bytes() != body:
+        _write(inner, body)
+    return inner
