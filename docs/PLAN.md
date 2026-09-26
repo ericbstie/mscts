@@ -52,7 +52,7 @@ test needs it:
 | `adapters/base.py` | `Adapter`, `Installation`, `LaunchPlan` |
 | `adapters/fetch.py` | `https_get` → `Download(url, body)`: HTTPS on every hop, redirects followed |
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
-| `runner.py` | `running(plan)` → `Instance`: launch, readiness, stop, process stats; `free_port` |
+| `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
 | `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, registry |
 | `scenarios/*.py` | the Scenarios themselves |
@@ -321,7 +321,6 @@ class RunnerError(RuntimeError):    # could not launch, exited before ready, or 
     log_path: Path
     log_tail: tuple[str, ...]       # the last 40 console lines
 
-def free_port() -> int: ...         # a 127.0.0.1 port free a moment ago; racy by nature (TOCTOU)
 def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random host 127.A.B.C
     # (A 1..254, B 0..255, C 1..254: ~16.5 million, none in 127.0.0.0/16) and a port free on
     # it a moment ago. Racy too, but two Instances share a host with odds of 1 in 16.5 million

@@ -1,7 +1,6 @@
 import asyncio
 import contextlib
 import os
-import signal
 import sys
 import time
 import uuid
@@ -10,10 +9,11 @@ from pathlib import Path
 from types import MappingProxyType
 
 import pytest
+from support.leak_guard import kill_survivors
 
 from mscts.adapters.base import LaunchPlan
 from mscts.net import Endpoint
-from mscts.runner import free_port
+from mscts.runner import free_endpoint
 
 FAKE_SERVER = Path(__file__).with_name("fake_server.py")
 FAKE_ENV = MappingProxyType({"FAKE_ENV": "from-the-plan"})
@@ -91,54 +91,37 @@ def eventually() -> Callable[[Callable[[], bool]], Awaitable[bool]]:
     return becomes_true
 
 
-def _running_with(variable: bytes) -> list[int]:
-    """The running processes whose environment holds `variable` (NAME=value)."""
-    pids = []
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            environ = (entry / "environ").read_bytes()  # empty for a zombie
-        except OSError:  # gone meanwhile
-            continue
-        if variable in environ.split(b"\0"):
-            pids.append(int(entry.name))
-    return pids
-
-
 @pytest.fixture
 def fake_env() -> Iterator[Mapping[str, str]]:
     """FAKE_ENV plus a token for this test; fails the test if a tagged process outlives it.
 
     Every process a fake server starts inherits the token, so this catches leaks the
-    runner under test (red, or regressed) would otherwise leave behind, and kills them.
+    runner under test (red, or regressed) would otherwise leave behind, and kills them
+    (the leak guard, tests/support/leak_guard.py).
     """
     token = f"MSCTS_FAKE_TOKEN={uuid.uuid4().hex}"
     yield MappingProxyType({**FAKE_ENV, "MSCTS_FAKE_TOKEN": token.partition("=")[2]})
-    deadline = time.monotonic() + 1  # a process just killed takes a moment to exit
-    while (leaked := _running_with(token.encode())) and time.monotonic() < deadline:
-        time.sleep(0.01)
-    for pid in leaked:
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
+    leaked = kill_survivors(token)  # a process just killed takes a moment to exit
     assert not leaked, f"fake server processes outlived the test: {leaked}"
 
 
 @pytest.fixture
 def fake_plan(tmp_path: Path, fake_env: Mapping[str, str]) -> Callable[..., LaunchPlan]:
-    """Build a LaunchPlan for tests/runner/fake_server.py on a free port, run in tmp_path.
+    """Build a LaunchPlan for tests/runner/fake_server.py at a free Endpoint, run in tmp_path.
 
+    Each plan gets an Endpoint of its own from free_endpoint(), as a Run's Instances do.
     Positional arguments are fake_server flags; `stop_stdin` overrides the stop line.
     """
 
     def make(*flags: str, stop_stdin: bytes | None = b"stop\n") -> LaunchPlan:
-        port = free_port()
+        endpoint = free_endpoint()
+        where = (endpoint.host, str(endpoint.port))
         return LaunchPlan(
             # -I -S: isolated and without site, so it starts fast and sees only fake_env.
-            argv=(sys.executable, "-I", "-S", str(FAKE_SERVER), str(port), *flags),
+            argv=(sys.executable, "-I", "-S", str(FAKE_SERVER), *where, *flags),
             cwd=tmp_path,
             env=fake_env,
-            endpoint=Endpoint(host="127.0.0.1", port=port),
+            endpoint=endpoint,
             stop_stdin=stop_stdin,
         )
 

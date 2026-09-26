@@ -1,6 +1,8 @@
 """A stand-in server for the runner's unit tests. Standard library only; starts in ~20 ms.
 
-It listens on 127.0.0.1:PORT (accepting and closing every connection) and stops when a
+Usage: fake_server.py HOST PORT [flags]
+
+It listens on HOST:PORT (accepting and closing every connection) and stops when a
 line `stop` arrives on stdin, like vanilla. Flags make it misbehave:
 
     --listen-after S   listen only after S seconds
@@ -41,12 +43,12 @@ def fork_sleeper() -> int:
     return child
 
 
-def fork_listener(port: int, *, reuse_port: bool) -> int:
+def fork_listener(address: tuple[str, int], *, reuse_port: bool) -> int:
     """Fork a child that listens and does nothing else; return its pid. Call before any thread."""
     child = os.fork()
     if child == 0:
         try:
-            server = socket.create_server(("127.0.0.1", port), reuse_port=reuse_port)
+            server = socket.create_server(address, reuse_port=reuse_port)
             say("listening")
             accept_forever(server)
         finally:
@@ -54,9 +56,9 @@ def fork_listener(port: int, *, reuse_port: bool) -> int:
     return child
 
 
-def listen(port: int, after: float, *, reuse_port: bool) -> None:
+def listen(address: tuple[str, int], after: float, *, reuse_port: bool) -> None:
     time.sleep(after)
-    server = socket.create_server(("127.0.0.1", port), reuse_port=reuse_port)
+    server = socket.create_server(address, reuse_port=reuse_port)
     threading.Thread(target=accept_forever, args=(server,), daemon=True).start()
     say("listening")
 
@@ -82,6 +84,7 @@ def console(*, ignore_stop: bool) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
+    parser.add_argument("host")
     parser.add_argument("port", type=int)
     parser.add_argument("--listen-after", type=float, default=0.0)
     parser.add_argument("--never-listen", action="store_true")
@@ -100,7 +103,7 @@ def main() -> int:
     if args.child:
         say(f"child={fork_sleeper()}")
     if args.listen_in_child:
-        say(f"listener={fork_listener(args.port, reuse_port=args.reuseport)}")
+        say(f"listener={fork_listener((args.host, args.port), reuse_port=args.reuseport)}")
     if args.exit_early is not None:
         for number in range(1, 51):
             say(f"line {number}")
@@ -108,7 +111,7 @@ def main() -> int:
     if args.ignore_sigterm:
         signal.signal(signal.SIGTERM, lambda _signum, _frame: say("ignoring SIGTERM"))
     if not (args.never_listen or args.listen_in_child):
-        listen(args.port, after=args.listen_after, reuse_port=args.reuseport)
+        listen((args.host, args.port), after=args.listen_after, reuse_port=args.reuseport)
     console(ignore_stop=args.ignore_stop)
     return 0
 

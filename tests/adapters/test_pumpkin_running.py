@@ -5,8 +5,6 @@ import contextlib
 import dataclasses
 import json
 import logging
-import os
-import signal
 import sys
 import time
 import uuid
@@ -15,6 +13,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 import pytest
+from support.leak_guard import kill_survivors
 
 from mscts.adapters import pumpkin
 from mscts.adapters.base import Installation
@@ -90,37 +89,17 @@ async def answers_status(endpoint: Endpoint) -> bool:
     return protocol_of(await status_of(endpoint)) == TARGET.protocol_version
 
 
-def _running_with(variable: bytes) -> list[int]:
-    """The processes whose environment holds `variable` (NAME=value); none for a zombie."""
-    pids = []
-    for entry in Path("/proc").iterdir():
-        if not entry.name.isdigit():
-            continue
-        try:
-            environ = (entry / "environ").read_bytes()
-        except OSError:  # gone meanwhile
-            continue
-        if variable in environ.split(b"\0"):
-            pids.append(int(entry.name))
-    return pids
-
-
 @pytest.fixture
 def leak_token() -> Iterator[str]:
     """A token for this test's Instances; fails the test if a tagged process outlives it.
 
     The Instance's env carries it, so a Pumpkin (or a child of it) that the runner failed
-    to stop is found in /proc, killed, and reported.
+    to stop is found in /proc, killed, and reported (tests/support/leak_guard.py).
     """
     token = uuid.uuid4().hex
     yield token
-    variable = f"{_GUARD}={token}".encode()
-    deadline = time.monotonic() + 3  # a stopped process takes a moment; PID 1 reaps lazily
-    while (leaked := _running_with(variable)) and time.monotonic() < deadline:
-        time.sleep(0.05)
-    for pid in leaked:
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
+    # A stopped process takes a moment to exit, and PID 1 reaps lazily.
+    leaked = kill_survivors(f"{_GUARD}={token}", within=3.0)
     assert not leaked, f"Pumpkin processes outlived the test: {leaked}"
 
 
