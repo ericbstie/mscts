@@ -588,15 +588,49 @@ def test_make_copy_copies_tracked_files_including_uncommitted_edits(
     _git("add", "a.py", "sub/b.py", cwd=repo)
     _git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "a.py").write_text("edited\n")  # uncommitted
-    (repo / "untracked.py").write_text("never added\n")
 
     dest = tmp_path / "copy"
     mutate.make_copy(repo, dest)
 
     assert (dest / "a.py").read_text() == "edited\n"  # the uncommitted edit was copied
     assert (dest / "sub" / "b.py").read_text() == "nested\n"
-    assert not (dest / "untracked.py").exists()  # never git add-ed: not copied
+
+
+def test_make_copy_also_copies_an_untracked_non_ignored_file(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    # The second worker to report it: a new test file never `git add`ed used to be
+    # silently left out of a batch mutation's throwaway copy.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "a.py").write_text("original\n")
+    _git("add", "a.py", cwd=repo)
+    _git("commit", "-q", "-m", "initial", cwd=repo)
+    (repo / "untracked.py").write_text("never added\n")
+
+    dest = tmp_path / "copy"
+    mutate.make_copy(repo, dest)
+
+    assert (dest / "untracked.py").read_text() == "never added\n"
     assert (repo / "untracked.py").exists()  # the original repo itself is untouched
+
+
+def test_make_copy_does_not_copy_a_gitignored_file(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / ".gitignore").write_text("ignored.py\n")
+    _git("add", ".gitignore", cwd=repo)
+    _git("commit", "-q", "-m", "initial", cwd=repo)
+    (repo / "ignored.py").write_text("should stay out\n")
+
+    dest = tmp_path / "copy"
+    mutate.make_copy(repo, dest)
+
+    assert not (dest / "ignored.py").exists()
 
 
 def test_make_copy_ignores_a_git_dir_inherited_from_the_environment(
@@ -640,6 +674,37 @@ def test_make_copy_skips_a_tracked_file_deleted_in_the_working_tree(
     mutate.make_copy(repo, dest)
 
     assert not (dest / "a.py").exists()
+
+
+def test_run_one_batch_mutation_finds_a_new_untracked_test_file(
+    mutate: types.ModuleType, tmp_path: Path
+) -> None:
+    # End-to-end with the real make_copy (a real throwaway git repo, GIT_* scrubbed for
+    # its own setup): a batch mutation targeting a file never `git add`ed must be found,
+    # not reported INVALID "not a file in the tracked tree".
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    (repo / "a.py").write_text("committed\n")
+    _git("add", "a.py", cwd=repo)
+    _git("commit", "-q", "-m", "initial", cwd=repo)
+    (repo / "test_new.py").write_text("value = 1\n")  # a new test file, never git add-ed
+
+    seen: list[str] = []
+
+    def fake_run_in_copy(copy_root: Path, _pytest_args: Sequence[str], _timeout_s: float) -> int:
+        seen.append((copy_root / "test_new.py").read_text())
+        return 1
+
+    spec = mutate.MutationSpec(id="m1", file="test_new.py", old="1", new="2")
+    options = mutate.BatchOptions(pytest_args=("t.py",), timeout_s=5.0, jobs=1, skip_baseline=True)
+
+    result = mutate.run_one_batch_mutation(
+        repo, spec, options, make_copy=mutate.make_copy, run_in_copy=fake_run_in_copy
+    )
+
+    assert result.outcome.kind == "KILLED"
+    assert seen == ["value = 2\n"]  # the untracked file was found and mutated
 
 
 # -- run_pytest_in_copy's environment ----------------------------------------------------

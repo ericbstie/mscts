@@ -377,25 +377,34 @@ def _git_executable() -> str:
 
 
 def _tracked_files(repo_root: Path) -> list[Path]:
-    """Every file `git ls-files` reports for `repo_root`, as paths relative to it."""
+    """Every tracked or untracked-but-not-ignored file for `repo_root`, relative to it.
+
+    `git ls-files -z --cached --others --exclude-standard`: `--cached` (git ls-files'
+    default) lists tracked files, `--others --exclude-standard` adds untracked files git
+    itself would not ignore -- so a new test file added to the working tree but never
+    `git add`ed is still found (a batch mutation run used to report it "not found", MD-era
+    retrospective; see docs/PROCESS.md).
+    """
     git = _git_executable()
     # Drop GIT_DIR, GIT_WORK_TREE, GIT_INDEX_FILE, ...: under `git rebase -x` they point at
     # whichever repository runs the rebase, and would override `-C repo_root`.
     env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
     result = subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
-        [git, "-C", str(repo_root), "ls-files", "-z"], capture_output=True, check=True, env=env
+        [git, "-C", str(repo_root), "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+        capture_output=True,
+        check=True,
+        env=env,
     )
     return [Path(name.decode()) for name in result.stdout.split(b"\0") if name]
 
 
 def make_copy(repo_root: Path, dest: Path) -> None:
-    """Copy every tracked file's current content from `repo_root` into `dest`.
+    """Copy every tracked or untracked-but-not-ignored file's content from `repo_root` into `dest`.
 
     Content is read from the working tree, not git's index, so this reflects uncommitted
-    edits; a file that is tracked but was deleted in the working tree is skipped, and a
-    file that was never `git add`ed is not copied at all (a documented limitation, not a
-    concern for a worker's own green worktree). `dest` must not already exist. Never
-    writes to `repo_root` itself.
+    edits, and a new file need not be `git add`ed first (`_tracked_files` includes
+    untracked, non-ignored files). A file that is tracked but was deleted in the working
+    tree is skipped. `dest` must not already exist. Never writes to `repo_root` itself.
     """
     dest.mkdir(parents=True)
     for relative in _tracked_files(repo_root):

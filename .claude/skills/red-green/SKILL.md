@@ -116,12 +116,13 @@ then one commit.
     `python3 scripts/mutate.py --batch <spec.json> [--jobs N] --
     <pytest args>`, where `<spec.json>` is a JSON list of `{file, old,
     new, [id]}` objects. Each mutation runs in its own throwaway copy of
-    the tracked working tree (so the whole batch's baseline runs once,
-    not once per mutation), optionally `--jobs N` at a time. Prints one
-    `<id> <VERDICT>: <detail>` line per mutation and a summary, and exits
-    non-zero if any mutation SURVIVED or was INVALID. Use it for an
-    audit's mutation sweep instead of a hand-rolled loop over
-    `mutate.py`.
+    the working tree (tracked files, plus any untracked file `git` would
+    not ignore -- a brand-new test file need not be `git add`ed first;
+    so the whole batch's baseline runs once, not once per mutation),
+    optionally `--jobs N` at a time. Prints one `<id> <VERDICT>: <detail>`
+    line per mutation and a summary, and exits non-zero if any mutation
+    SURVIVED or was INVALID. Use it for an audit's mutation sweep instead
+    of a hand-rolled loop over `mutate.py`.
 - Flake-hunt with `python3 scripts/repeat.py [--times N] [--stress]
   [--stress-workers N] -- <pytest args>`: runs `uv run pytest <pytest
   args>` `N` times (default 1) and reports how many runs passed, how many
@@ -208,8 +209,6 @@ then one commit.
 - A new member on a `Protocol` (e.g. `Adapter`) makes ty reject every
   implementer at once, so change all implementers in the same commit, and
   count them in the brief's line budget.
-- `mutate.py` batch mode copies tracked files only: `git add` a new test
-  file before a batch run, or it reports INVALID "file not found".
 - More lint/type shapes: RUF043 wants a raw, escaped `match=` pattern
   (`r"…26\.3"`); a `match=` containing `[[` warns (FutureWarning, an error
   here), so escape it; ty wants `@override` on `__str__`; ty rejects
