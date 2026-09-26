@@ -44,6 +44,7 @@ ignore = [
     "PLR2004", # expected values are literals by design
     "INP001",  # tests are collected with --import-mode=importlib, not as a package
     "S603",    # reference-tier tests run the argv the code under test built; no untrusted input
+    "S311",    # a seeded random.Random builds reproducible test data; it never signs or secures anything
 ]
 "src/mscts/codec/regen.py" = [
     "T201", # the first CLI-shaped module in src/: print is its user-facing check/--write output

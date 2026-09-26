@@ -71,7 +71,7 @@ _BOTS = ("alice", "bob", "carol")
 
 def seeded(seed: int) -> random.Random:
     """A generator of reproducible test data for `seed`."""
-    return random.Random(seed)  # noqa: S311  # seeded to reproduce test data, not for secrets
+    return random.Random(seed)  # seeded to reproduce test data, not for secrets
 
 
 def script(rng: random.Random, *, most: int = 10) -> Script:
