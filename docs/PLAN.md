@@ -38,6 +38,7 @@ test needs it:
 | Module | Owns |
 | --- | --- |
 | `target.py` | `Target`, `TARGET` (the pinned 26.3 / 777) |
+| `cache.py` | `cache_dir()`: the download cache shared by every worktree and session |
 | `codec/wire.py` | primitive wire types: `Reader`, `Writer` |
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
@@ -373,8 +374,12 @@ mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
 | reference | `@pytest.mark.reference` | Java 25, network on first run | `mise run test:reference` |
 | candidate | `@pytest.mark.candidate` | a Candidate binary | `mise run test:candidate` |
 
-Caches (git-ignored): `.cache/mscts/` holds jars, binaries and generated
-reports, keyed by adapter and Target.
+Cache: there is one per user, outside any checkout, and every worktree and
+session shares it, so each download happens once. `mscts.cache.cache_dir()`
+is `$MSCTS_CACHE` (absolute) if set, else `$XDG_CACHE_HOME/mscts`, else
+`~/.cache/mscts`. It holds jars, binaries and generated reports, keyed by
+adapter and Target (`vanilla/26.3/server.jar`). Writes into it are atomic
+renames, because sessions share it concurrently.
 
 ## Milestones
 
