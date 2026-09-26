@@ -205,6 +205,14 @@ class Bot:                          # what Scenarios use; answers keep_alive / t
     # unless already sent. status: status_request → status_response, whose json_response must be
     # a JSON object. ping: ping_request → pong_response echoing the payload. Any other answer →
     # ProtocolError, with the answer still recorded.
+
+PROBE_TIMEOUT_S = 1.0               # bot.py, since it reuses Bot.status (net cannot import bot)
+def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
+                 ) -> Callable[[Endpoint], Awaitable[bool]]: ...   # readiness, for runner.running
+    # One short status exchange per call. True: the status names Target.protocol_version.
+    # False, not ready yet: refused / reset / closed, or no answer within timeout_s.
+    # Raises, a wrong server: ProtocolError (another protocol, or none), CodecError (garbled).
+    # Closes its connection on every path, cancellation included.
 ```
 
 ### Servers

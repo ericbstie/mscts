@@ -139,17 +139,24 @@ async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
 
     A handler that raises fails the test from inside the `async with` body. Leaving
     the body waits for every handler to finish, so a handler's last checks always run.
+    A single error, from the body or a handler, comes out as itself rather than
+    inside an ExceptionGroup, so `pytest.raises` around `serve` works.
     """
-    async with asyncio.TaskGroup() as handlers:
+    try:
+        async with asyncio.TaskGroup() as handlers:
 
-        def on_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-            handlers.create_task(_run(handler, Peer(reader, writer, codec)))
+            def on_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+                handlers.create_task(_run(handler, Peer(reader, writer, codec)))
 
-        server = await asyncio.start_server(on_connect, HOST, 0)
-        try:
-            yield Endpoint(host=HOST, port=server.sockets[0].getsockname()[1])
-        finally:
-            server.close()
+            server = await asyncio.start_server(on_connect, HOST, 0)
+            try:
+                yield Endpoint(host=HOST, port=server.sockets[0].getsockname()[1])
+            finally:
+                server.close()
+    except ExceptionGroup as group:
+        if len(group.exceptions) == 1:
+            raise group.exceptions[0] from None
+        raise
     await server.wait_closed()
 
 
@@ -167,6 +174,15 @@ async def connected(
         yield connection
     finally:
         await connection.close()
+
+
+def free_port() -> int:
+    """Return a localhost port nothing listens on (it was free a moment ago)."""
+    with socket.socket() as sock:
+        sock.bind((HOST, 0))
+        port = sock.getsockname()[1]
+    assert isinstance(port, int)
+    return port
 
 
 async def _run(handler: Handler, peer: Peer) -> None:

@@ -2,13 +2,16 @@
 
 import asyncio
 import json
-from collections.abc import Mapping
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Self
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
 from mscts.transcript import Transcript
+
+PROBE_TIMEOUT_S = 1.0
+"""How long one readiness probe attempt waits, from connecting to the status answer."""
 
 
 class Bot:
@@ -107,6 +110,59 @@ class Bot:
                 server_port=self._endpoint.port,
                 intent=1,
             )
+
+
+def status_probe(
+    target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
+) -> Callable[[Endpoint], Awaitable[bool]]:
+    """Return a readiness probe for an Instance of `target`, for `runner.running`.
+
+    Each call makes one short status exchange with the Endpoint. It returns True if
+    the server answers with the Target's protocol version. It returns False if the
+    Instance is not ready yet: the connection is refused, reset or closed, or there is
+    no answer within `timeout_s` seconds. Anything else raises, because a server that
+    answers wrongly is the wrong server, not a server still starting.
+
+    The probe raises:
+        ProtocolError: The status names another protocol version, or none.
+        CodecError: The answer cannot be decoded.
+    """
+
+    async def probe(endpoint: Endpoint) -> bool:
+        transcript = Transcript(scenario_id="readiness", server="")  # discarded
+        try:
+            bot = await Bot.connect(
+                endpoint, target, name="probe", transcript=transcript, timeout_s=timeout_s
+            )
+        except (ConnectionError, TimeoutError):
+            return False
+        try:
+            status = await bot.status()
+        except (ConnectionError, TimeoutError):
+            return False
+        finally:
+            await bot.close()
+        version = _json_field(status, "version")
+        protocol = _json_field(version, "protocol")
+        if isinstance(protocol, bool) or not isinstance(protocol, int):
+            msg = f"status has no integer version.protocol: {status!r}"
+            raise ProtocolError(msg)
+        if protocol != target.protocol_version:
+            msg = (
+                f"the server at {endpoint.host}:{endpoint.port} speaks protocol {protocol} "
+                f"({_json_field(version, 'name')!r}), not the Target's {target.protocol_version}"
+            )
+            raise ProtocolError(msg)
+        return True
+
+    return probe
+
+
+def _json_field(value: object, key: str) -> object:
+    """Return `value[key]` if `value` is a JSON object holding `key`, else None."""
+    if not isinstance(value, Mapping):
+        return None
+    return {str(name): item for name, item in value.items()}.get(key)
 
 
 def _expect(packet: Packet, name: str) -> None:
