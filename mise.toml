@@ -42,3 +42,7 @@ run = "uv run pytest -m reference"
 [tasks."test:candidate"]
 description = "candidate tier (live Candidate Instance)"
 run = "uv run pytest -m candidate"
+
+[tasks."regen:packets"]
+description = "Regenerate and verify the committed packets.json (--write to update it)"
+run = "uv run python -m mscts.codec.regen"

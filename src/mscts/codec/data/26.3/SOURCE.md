@@ -20,5 +20,9 @@ java -DbundlerMainClass=net.minecraft.data.Main -jar server.jar --reports --outp
 The report was generated twice from the same jar, independently, and the two
 outputs were byte-identical.
 
-A regen script is not written yet. It will reuse `VanillaAdapter.provision`
-to fetch and verify the jar.
+Regenerate and verify this file with `mise run regen:packets` (or
+`python -m mscts.codec.regen`); add `--write` to update it after a real
+protocol change. It provisions the jar with `VanillaAdapter().provision`,
+runs the generator with the same Java resolution `VanillaAdapter.prepare`
+uses (`resolve_java`), and compares the result byte-for-byte with this
+file (`src/mscts/codec/regen.py`).

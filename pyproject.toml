@@ -41,6 +41,9 @@ ignore = [
     "INP001",  # tests are collected with --import-mode=importlib, not as a package
     "S603",    # reference-tier tests run the argv the code under test built; no untrusted input
 ]
+"src/mscts/codec/regen.py" = [
+    "T201", # the first CLI-shaped module in src/: print is its user-facing check/--write output
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
