@@ -1,7 +1,15 @@
 """G2 for the status Scenarios: their Self-check is `match` in 20 out of 20 runs.
 
-Two Reference Instances of their own (a Self-check compares two, each at its own
-Endpoint), booted once and reused for all 20 repetitions.
+One side is the session's shared Reference (an Attached side: the `reference` fixture
+owns it); the other is one more Reference Instance of the test's own, booted once and
+reused for all 20 repetitions.
+
+It is two distinct Instances, never the shared one against itself, on purpose: a
+Self-check is how a Scenario proves it needs no further Mask, i.e. that whatever two
+independently booted servers may legitimately differ in (per-boot identifiers and
+state, anything drawn at random at startup) is already masked. One Instance compared with
+itself shares all of that, so a missing Mask would pass here and only show up as a
+false `mismatch` against every Candidate.
 """
 
 import dataclasses
@@ -15,7 +23,7 @@ from mscts import install
 from mscts.adapters.base import Installation, LaunchPlan
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.compare import Outcome
-from mscts.run import Server, selfcheck
+from mscts.run import Attached, Server, selfcheck
 from mscts.spec import ServerSpec
 from mscts.target import TARGET, Target
 
@@ -41,10 +49,10 @@ class _Tagged:
 
 
 @pytest.mark.reference
-@pytest.mark.asyncio
-@pytest.mark.timeout(300)  # two boots, and 40 status exchanges
+@pytest.mark.asyncio(loop_scope="session")
+@pytest.mark.timeout(300)  # one boot (the shared Reference may boot first), 40 status exchanges
 async def test_selfcheck_of_the_status_scenarios_matches_20_of_20(
-    cache_dir: Path, tmp_path: Path
+    reference_attached: Attached, cache_dir: Path, tmp_path: Path
 ) -> None:
     adapter = _Tagged(token=uuid.uuid4().hex)
     reference = Server(adapter, install.require(adapter, TARGET, cache_dir))
@@ -54,6 +62,7 @@ async def test_selfcheck_of_the_status_scenarios_matches_20_of_20(
             reference=reference,
             workdir=tmp_path / "selfcheck",
             repeat=_REPEAT,
+            attached=reference_attached,
         )
     finally:
         leaked = kill_survivors(f"{_TOKEN_VAR}={adapter.token}")

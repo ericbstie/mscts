@@ -20,6 +20,8 @@ from support.leak_guard import kill_survivors
 from mscts import install
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
+from mscts.net import Endpoint
+from mscts.run import Attached
 from mscts.runner import Instance, free_endpoint, running
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
@@ -44,9 +46,7 @@ async def reference(
     installation = install.require(adapter, TARGET, cache_dir)
     workdir = tmp_path_factory.mktemp("reference")
     endpoint = free_endpoint()  # a loopback host of its own: no other Instance shares it
-    plan = adapter.prepare(
-        installation, ServerSpec(host=endpoint.host, port=endpoint.port), workdir
-    )
+    plan = adapter.prepare(installation, _spec(endpoint), workdir)
     token = f"{_TOKEN_VAR}={uuid.uuid4().hex}"
     plan = dataclasses.replace(plan, env={**plan.env, _TOKEN_VAR: token.partition("=")[2]})
     async with running(
@@ -58,3 +58,14 @@ async def reference(
         yield instance
     leaked = kill_survivors(token)
     assert not leaked, f"the reference Instance's process group outlived it: {leaked}"
+
+
+@pytest.fixture(scope="session")
+def reference_attached(reference: Instance) -> Attached:
+    """The session's Reference Instance as a Run's Attached side (the fixture owns it)."""
+    return Attached(name=VanillaAdapter.name, spec=_spec(reference.endpoint))
+
+
+def _spec(endpoint: Endpoint) -> ServerSpec:
+    """The ServerSpec the session's Reference is launched from: the default, at `endpoint`."""
+    return ServerSpec(host=endpoint.host, port=endpoint.port)
