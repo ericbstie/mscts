@@ -81,7 +81,13 @@ Batch 2, briefed against `a64a2b5`:
 - **Y** (sonnet, `tooling`, against `45a084f`): `scripts/research/
   boot.py` and `join.py`, the research harness (Next 6, first half).
 
-After W: the opus audit (Next 12).
+- **Z** (opus, audit, against `941f3e7`): read-only audit of the path
+  from a Scenario to a Verdict (compare, run, scenario, install, Pumpkin
+  world save), report in `docs/audits/` (Next 12).
+- **AA** (sonnet, `tooling`, against `941f3e7`): reference tier under
+  xdist, `scripts/time_tier.py` (Next 3c).
+
+Feature work on the audited modules waits for Z's findings.
 
 ## Delegated to the helper agent
 
@@ -96,10 +102,6 @@ like a worker branch.
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
-3c. `tooling` (sonnet): reference tier under `-n 2 --dist loadgroup`,
-    the 30 s keep-alive test in its own `xdist_group` (target 55–60 s);
-    a snapshot-based `scripts/time_tier.py` (tier total, per-test
-    durations, load average).
 3a. `cli` (sonnet): `mscts selfcheck` over R's library `selfcheck`
     (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
@@ -128,9 +130,6 @@ briefs at 3–6 increments and about 1500 lines at most.
 11. Tooling: ~~a check that every public name in `src/` appears in
     PLAN.md~~ (delegated: issue #4); a `scripts/` save/restore helper (no
     stash).
-12. Next audit (opus): due after the next 2–3 batches. Focus on
-    `compare.py`, the new net/bot join code and the runner ownership
-    logic.
 
 ## Log
 
