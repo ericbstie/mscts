@@ -30,7 +30,7 @@ Scenario ──►│ ScenarioContext → Bot(s) ──────┼──► 
             │   Control (Operator Bot)       │                                          ├─► Comparison ─► Verdict
             │   spans → Marks                ├──► Instance (Candidate)  ─► Transcript C ─┘        │
             └────────────────────────────────┘                                    Measurements ─► Report
-Adapter.provision → Installation;  Adapter.prepare(ServerSpec) → LaunchPlan;  runner(LaunchPlan) → Instance
+install.require → Installation;  Adapter.prepare(ServerSpec) → LaunchPlan;  runner(LaunchPlan) → Instance
 ```
 
 Package layout (`src/mscts/`). Each module is created only when the first
@@ -401,14 +401,16 @@ class LaunchPlan:
     endpoint: Endpoint
     stop_stdin: bytes | None        # graceful stop via stdin (b"stop\n"); None → SIGTERM
 
-class ProvisionError(RuntimeError): ...   # provision could not obtain or verify an Installation
+class ProvisionError(RuntimeError): ...   # an Installation is missing, unverifiable, or not installable
 class PrepareError(RuntimeError): ...     # prepare cannot produce a LaunchPlan that meets the contract
 
 class Adapter(Protocol):
     name: str
     binary: str                     # the one file an Installation holds: "server.jar", "pumpkin"
-    def provision(self, target: Target, cache_dir: Path) -> Installation: ...
-        # install.installed(...), else install.install_entry(its Registry entry); verified by sha256
+    # No provision: an Adapter never downloads (ADR-0008). install.py owns Installations, so
+    # a third-party Adapter is name + binary + check + prepare, and gets `mscts adapter
+    # install`, --from, the prompt and verification for free. Runs and tests call
+    # install.require(adapter, target, cache_dir).
     def check(self, binary: Path, target: Target) -> None: ...
         # ProvisionError unless `binary` is a server it can run (vanilla: a jar speaking
         # target.protocol_version; Pumpkin: an ELF executable). Runs before any install lands.
@@ -424,7 +426,7 @@ class Adapter(Protocol):
 # - argv[0] is an absolute path to the exact runtime (e.g. Java 25), never a bare name.
 # - the server binds IPv4 only (Java Candidates: -Djava.net.preferIPv4Stack=true), because
 #   readiness ownership reads /proc/net/tcp.
-#   VanillaAdapter(fetch=https_get, *, java=None) takes the java launcher from `java`, else
+#   VanillaAdapter(*, java=None) takes the java launcher from `java`, else
 #   $MSCTS_JAVA, else `java` on the harness PATH, with symlinks resolved. Its runtime image's
 #   `release` file must name Target.java_major (read, not run: prepare stays hermetic), or
 #   prepare raises PrepareError and writes nothing;
@@ -436,8 +438,8 @@ class Adapter(Protocol):
 #   only for some values live in one named table (adapters/pumpkin.py LIMITS), and so does
 #   every range its config types can hold: a value it cannot read back is refused too.
 # - an Installation is written only by install.py (one rename, complete or not at all), is
-#   never refreshed, and records its Source; provision fetches only through the Adapter's
-#   `fetch` (VanillaAdapter/PumpkinAdapter(fetch=https_get)), so unit tests stay hermetic.
+#   never refreshed, and records its Source; install.py fetches only through the `fetch` it
+#   is given (https_get by default), so unit tests stay hermetic.
 
 # install.py: Installations (ADR-0008)
 @frozen
@@ -685,7 +687,7 @@ async def selfcheck(scenario_ids: Sequence[str], *, reference: Server, workdir: 
                     repeat: int = 20) -> list[Verdict]: ...
     # run(resolve(scenario_ids), reference, reference, ...): two Reference Instances, the
     # prerequisites included; KeyError (unknown id) before anything starts. G2: all `match`.
-    # (The `mscts selfcheck` command wraps it; the caller provisions `reference` itself.)
+    # (The `mscts selfcheck` command wraps it; the caller gets `reference`'s Installation with install.require.)
 ```
 
 Comparison semantics. Start strict and relax only when a Self-check
@@ -838,6 +840,9 @@ mscts adapter status <adapter>      # root, entry, sha256, size, from, installed
                                     # the install command when nothing is installed
 mscts selfcheck [--scenario GLOB] [--repeat N]
 mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
+    # selfcheck and run get each Installation with install.require(adapter, TARGET,
+    # cache_dir(), terminal=Terminal(sys.stdin, sys.stdout)): the prompt on a TTY, else a
+    # failure naming the install commands. Never a silent download.
 ```
 
 ## Development tiers

@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from support.leak_guard import kill_survivors
 
+from mscts import install
 from mscts.adapters.base import Installation, LaunchPlan
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.compare import Outcome
@@ -34,9 +35,6 @@ class _Tagged:
     def check(self, binary: Path, target: Target) -> None:
         self.vanilla.check(binary, target)
 
-    def provision(self, target: Target, cache_dir: Path) -> Installation:
-        return self.vanilla.provision(target, cache_dir)
-
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         plan = self.vanilla.prepare(installation, spec, workdir)
         return dataclasses.replace(plan, env={**plan.env, _TOKEN_VAR: self.token})
@@ -49,7 +47,7 @@ async def test_selfcheck_of_the_status_scenarios_matches_20_of_20(
     cache_dir: Path, tmp_path: Path
 ) -> None:
     adapter = _Tagged(token=uuid.uuid4().hex)
-    reference = Server(adapter, adapter.provision(TARGET, cache_dir))
+    reference = Server(adapter, install.require(adapter, TARGET, cache_dir))
     try:
         verdicts = await selfcheck(
             ["status/basic", "status/ping"],

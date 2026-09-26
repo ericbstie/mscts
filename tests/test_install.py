@@ -284,25 +284,3 @@ def test_the_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.chdir(tmp_path)
     done = install_entry(ADAPTER, TARGET, Path("cache"), ENTRY, FakeGitHub())
     assert done.installation.root == tmp_path / "cache/pumpkin/26.3"
-
-
-def test_provision_installs_the_registry_entry_once_then_reuses_it(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(registry, "official", lambda: REGISTRY)
-    github = FakeGitHub()
-    first = PumpkinAdapter(fetch=github).provision(TARGET, tmp_path)
-    assert github.fetched == [URL]
-    assert first == PumpkinAdapter(fetch=github).provision(TARGET, tmp_path)
-    assert github.fetched == [URL]
-
-
-def test_provision_uses_a_from_installation_as_it_is(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(registry, "official", lambda: REGISTRY)
-    supplied = write(tmp_path / "pumpkin", b"\x7fELF my own build")
-    done = install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, REGISTRY)
-    github = FakeGitHub()
-    assert PumpkinAdapter(fetch=github).provision(TARGET, tmp_path / "cache") == done.installation
-    assert github.fetched == []

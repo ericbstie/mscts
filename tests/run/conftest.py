@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from support.leak_guard import kill_survivors
 
+from mscts.adapters.base import Installation
 from mscts.run import Server
 from mscts.target import TARGET
 from tests.run.fakes import TOKEN_VAR, FakeAdapter
@@ -25,6 +26,7 @@ def fake_server(run_token: str, tmp_path: Path) -> Callable[..., Server]:
 
     def make(name: str, description: str | None = None) -> Server:
         adapter = FakeAdapter(name=name, token=run_token, description=description)
-        return Server(adapter, adapter.provision(TARGET, tmp_path / "installations"))
+        installation = Installation(adapter=name, target=TARGET, root=tmp_path / "installations")
+        return Server(adapter, installation)
 
     return make

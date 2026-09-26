@@ -30,9 +30,6 @@ class FakeAdapter:
     def check(self, binary: Path, target: Target) -> None:
         """Every file is a fake server: nothing to check."""
 
-    def provision(self, target: Target, cache_dir: Path) -> Installation:
-        return Installation(adapter=self.name, target=target, root=cache_dir)
-
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         assert installation.adapter == self.name
         workdir.mkdir(parents=True)

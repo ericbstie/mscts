@@ -11,9 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 
-from mscts import install, registry
 from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
-from mscts.adapters.fetch import Fetch, https_get
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
@@ -335,31 +333,18 @@ def resolve_java(target: Target, java: Path | str | None = None) -> Path:
 
 
 class VanillaAdapter:
-    """Installs the vanilla server jar from the Registry and prepares it for a ServerSpec."""
+    """Checks a vanilla server jar and prepares it for a ServerSpec."""
 
     name = "vanilla"
     binary = JAR
 
-    def __init__(self, fetch: Fetch = https_get, *, java: Path | None = None) -> None:
-        """Download with `fetch`, and launch with the `java` launcher.
+    def __init__(self, *, java: Path | None = None) -> None:
+        """Launch with the `java` launcher.
 
-        Unit tests pass a fake `fetch` so they never touch the network. Without `java`,
-        the launcher is MSCTS_JAVA, else the `java` on the harness PATH, looked up at
-        prepare time.
+        Without `java`, the launcher is MSCTS_JAVA, else the `java` on the harness PATH,
+        looked up at prepare time.
         """
-        self._fetch = fetch
         self._java = java
-
-    def provision(self, target: Target, cache_dir: Path) -> Installation:
-        """The Installation for `target`, verified; if there is none, install its Registry entry.
-
-        The entry pins the jar by the sha1 and size Mojang publishes (data/registry.toml).
-        """
-        existing = install.installed(self, target, cache_dir)
-        if existing is not None:
-            return existing
-        entry = registry.official().resolve(self.name, target)
-        return install.install_entry(self, target, cache_dir, entry, self._fetch).installation
 
     def check(self, binary: Path, target: Target) -> None:
         """Raise ProvisionError unless `binary` is a server jar that speaks `target`'s protocol."""

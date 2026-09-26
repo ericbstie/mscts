@@ -22,7 +22,8 @@ outputs were byte-identical.
 
 Regenerate and verify this file with `mise run regen:packets` (or
 `python -m mscts.codec.regen`); add `--write` to update it after a real
-protocol change. It provisions the jar with `VanillaAdapter().provision`,
+protocol change. It uses the installed jar (`install.require`; install it with
+`mscts adapter install vanilla`),
 runs the generator with the same Java resolution `VanillaAdapter.prepare`
 uses (`resolve_java`), and compares the result byte-for-byte with this
 file (`src/mscts/codec/regen.py`).

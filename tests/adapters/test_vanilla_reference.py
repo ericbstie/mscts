@@ -6,8 +6,9 @@ from pathlib import Path
 
 import pytest
 
+from mscts import install
 from mscts.adapters.base import Installation
-from mscts.adapters.fetch import Download, https_get
+from mscts.adapters.fetch import https_get
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.registry import official
 from mscts.spec import ServerSpec
@@ -36,8 +37,8 @@ def test_the_registry_pins_the_jar_mojangs_manifest_publishes() -> None:
     assert (entry.url, entry.sha1, entry.size) == (server["url"], server["sha1"], server["size"])
 
 
-def test_provision_fetches_the_published_26_3_jar(cache_dir: Path) -> None:
-    installation = VanillaAdapter().provision(TARGET, cache_dir)
+def test_the_installed_jar_is_the_published_26_3_jar(cache_dir: Path) -> None:
+    installation = install.require(VanillaAdapter(), TARGET, cache_dir)
     assert (installation.adapter, installation.target, installation.root) == (
         "vanilla",
         TARGET,
@@ -55,21 +56,6 @@ def test_provision_fetches_the_published_26_3_jar(cache_dir: Path) -> None:
         TARGET.protocol_version,
         TARGET.java_major,
     )
-
-
-def test_provision_does_not_download_a_cached_jar_again(cache_dir: Path) -> None:
-    jar = VanillaAdapter().provision(TARGET, cache_dir).root / "server.jar"
-    before = jar.stat()
-    fetched: list[str] = []
-
-    def recording_get(url: str) -> Download:
-        fetched.append(url)
-        return https_get(url)
-
-    VanillaAdapter(fetch=recording_get).provision(TARGET, cache_dir)
-    assert fetched == []
-    after = jar.stat()
-    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
 
 
 def test_prepare_launches_the_targets_java_as_the_jvm_itself_reports(tmp_path: Path) -> None:

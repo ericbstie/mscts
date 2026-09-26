@@ -11,6 +11,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from mscts import install
 from mscts.adapters.vanilla import VanillaAdapter, resolve_java
 from mscts.cache import cache_dir
 from mscts.target import TARGET, Target
@@ -72,12 +73,15 @@ def run_data_generator(java: Path, jar: Path, output: Path) -> Path:
 
 
 def regenerate(target: Target, cache: Path) -> bytes:
-    """Provision `target`'s jar and return a freshly generated packets.json's bytes.
+    """A freshly generated packets.json's bytes, from `target`'s installed jar.
+
+    The jar must be installed already (`mscts adapter install vanilla`): install.require
+    raises ProvisionError naming that command, and never downloads it here.
 
     Uses the exact same Java resolution `VanillaAdapter.prepare` uses (`resolve_java`), and
     runs the generator in a temporary directory outside the repo.
     """
-    installation = VanillaAdapter().provision(target, cache)
+    installation = install.require(VanillaAdapter(), target, cache)
     java = resolve_java(target)
     jar = (installation.root / "server.jar").absolute()
     with tempfile.TemporaryDirectory(prefix="mscts-regen-") as tmp:

@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from mscts import registry
-from mscts.adapters.base import Adapter, ProvisionError
+from mscts.adapters.base import ProvisionError
 from mscts.adapters.fetch import Download
 from mscts.adapters.vanilla import VanillaAdapter
-from mscts.registry import Entry, Registry
+from mscts.install import install_entry
+from mscts.registry import Entry
 from mscts.target import TARGET
 
 JAR_URL = "https://piston-data.example/v1/objects/def/server.jar"
@@ -59,48 +59,37 @@ class FakeMojang:
         return Download(url=url, body=self.jar)
 
 
-@pytest.fixture
-def pinned(monkeypatch: pytest.MonkeyPatch) -> bytes:
-    """The Registry pins fake_jar(); return it."""
-    jar = fake_jar()
-    monkeypatch.setattr(registry, "official", lambda: Registry(entries=(entry_for(jar),)))
-    return jar
+PINNED = fake_jar()
+ENTRY = entry_for(PINNED)
 
 
-def test_provision_installs_the_registry_jar_into_the_cache(tmp_path: Path, pinned: bytes) -> None:
-    mojang = FakeMojang(pinned)
-    adapter: Adapter = VanillaAdapter(fetch=mojang)
-    installation = adapter.provision(TARGET, tmp_path)
+def test_install_entry_installs_the_pinned_jar_into_the_cache(tmp_path: Path) -> None:
+    mojang = FakeMojang(PINNED)
+    done = install_entry(VanillaAdapter(), TARGET, tmp_path, ENTRY, mojang)
+    installation = done.installation
     assert (installation.adapter, installation.target) == ("vanilla", TARGET)
     assert installation.root == tmp_path / "vanilla/26.3"
     assert installation.source is not None
     assert installation.source.entry == "vanilla 26.3"
-    assert (installation.root / "server.jar").read_bytes() == pinned
+    assert (installation.root / "server.jar").read_bytes() == PINNED
     assert mojang.fetched == [JAR_URL]
-
-
-def test_provision_reuses_an_installed_jar(tmp_path: Path, pinned: bytes) -> None:
-    VanillaAdapter(fetch=FakeMojang(pinned)).provision(TARGET, tmp_path)
-    again = FakeMojang(pinned)
-    VanillaAdapter(fetch=again).provision(TARGET, tmp_path)
-    assert again.fetched == []
 
 
 @pytest.mark.parametrize(
     "served",
     [
         # Same size, different bytes from those the published sha1 names.
-        fake_jar()[:-1] + bytes([fake_jar()[-1] ^ 0xFF]),
-        fake_jar() + b"\0",
+        PINNED[:-1] + bytes([PINNED[-1] ^ 0xFF]),
+        PINNED + b"\0",
     ],
     ids=["same-size-other-bytes", "one-byte-longer"],
 )
-def test_provision_rejects_a_download_that_is_not_the_pinned_jar(
-    tmp_path: Path, pinned: bytes, served: bytes
+def test_install_entry_rejects_a_download_that_is_not_the_pinned_jar(
+    tmp_path: Path, served: bytes
 ) -> None:
-    assert served != pinned
+    assert served != PINNED
     with pytest.raises(ProvisionError, match=r"is not vanilla 26\.3"):
-        VanillaAdapter(fetch=FakeMojang(served)).provision(TARGET, tmp_path)
+        install_entry(VanillaAdapter(), TARGET, tmp_path, ENTRY, FakeMojang(served))
     assert not (tmp_path / "vanilla/26.3").exists()
 
 

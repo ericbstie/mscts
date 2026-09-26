@@ -15,12 +15,9 @@ from mscts.cache import cache_dir
 from mscts.registry import RegistryError
 from mscts.target import TARGET
 
-# Every Adapter the command knows, by name, built with the fetch it downloads with.
-ADAPTERS: Mapping[str, Callable[[Fetch], Adapter]] = MappingProxyType(
-    {
-        "vanilla": lambda fetch: VanillaAdapter(fetch=fetch),
-        "pumpkin": lambda fetch: PumpkinAdapter(fetch=fetch),
-    }
+# Every Adapter the command knows, by name.
+ADAPTERS: Mapping[str, Callable[[], Adapter]] = MappingProxyType(
+    {"vanilla": VanillaAdapter, "pumpkin": PumpkinAdapter}
 )
 
 
@@ -39,7 +36,7 @@ def _saying(fetch: Fetch) -> Fetch:
 
 
 def _install(arguments: argparse.Namespace, fetch: Fetch) -> int:
-    adapter = ADAPTERS[arguments.adapter](fetch)
+    adapter = ADAPTERS[arguments.adapter]()
     if arguments.from_path is not None:
         done = install.install_from(
             adapter, TARGET, cache_dir(), Path(arguments.from_path), registry.official()
@@ -59,10 +56,10 @@ def _state(adapter: Adapter) -> tuple[Installation | None, str | None]:
         return None, str(error)
 
 
-def _list(_arguments: argparse.Namespace, fetch: Fetch) -> int:
+def _list(_arguments: argparse.Namespace, _fetch: Fetch) -> int:
     rows = [("ADAPTER", "VERSION", "TARGET", "STATE")]
     for name, make in ADAPTERS.items():
-        installation, broken = _state(make(fetch))
+        installation, broken = _state(make())
         source = installation.source if installation else None
         entries = [entry for entry in registry.official().entries if entry.adapter == name]
         for entry in entries:
@@ -90,8 +87,8 @@ def _list(_arguments: argparse.Namespace, fetch: Fetch) -> int:
     return 0
 
 
-def _status(arguments: argparse.Namespace, fetch: Fetch) -> int:
-    adapter = ADAPTERS[arguments.adapter](fetch)
+def _status(arguments: argparse.Namespace, _fetch: Fetch) -> int:
+    adapter = ADAPTERS[arguments.adapter]()
     what = f"{adapter.name} {TARGET.minecraft_version}"
     installation = install.installed(adapter, TARGET, cache_dir())
     if installation is None:

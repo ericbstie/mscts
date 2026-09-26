@@ -8,7 +8,7 @@ import pytest
 
 from mscts import install, registry
 from mscts.adapters.base import ProvisionError
-from mscts.install import Terminal, install_entry, require
+from mscts.install import Terminal, install_entry, install_from, require
 from mscts.registry import Registry
 from mscts.target import TARGET
 from tests.test_install import ADAPTER, ENTRY, REGISTRY, URL, FakeGitHub, root_of
@@ -61,6 +61,15 @@ def test_an_installed_installation_is_returned_without_asking(tmp_path: Path) ->
     assert (github.fetched, shown.getvalue()) == ([], "")
 
 
+def test_a_from_installation_is_used_as_it_is(tmp_path: Path) -> None:
+    supplied = tmp_path / "pumpkin"
+    supplied.write_bytes(b"\x7fELF my own build")
+    done = install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, REGISTRY)
+    github = FakeGitHub()
+    assert require(ADAPTER, TARGET, tmp_path / "cache", fetch=github) == done.installation
+    assert github.fetched == []
+
+
 def test_yes_downloads_the_entry_and_says_so(tmp_path: Path) -> None:
     terminal, shown = ask("y\n")
     github = FakeGitHub()
@@ -101,7 +110,11 @@ def test_end_of_input_refuses_and_names_both_commands(tmp_path: Path) -> None:
     assert github.fetched == []
 
 
-@pytest.mark.parametrize("terminal", [None, Terminal(stdin=Unreadable(), stdout=io.StringIO())])
+@pytest.mark.parametrize(
+    "terminal",
+    [None, Terminal(stdin=Unreadable(), stdout=io.StringIO())],
+    ids=["no-terminal", "not-a-tty"],
+)
 def test_without_a_tty_it_fails_at_once_naming_both_commands(
     tmp_path: Path, terminal: Terminal | None
 ) -> None:

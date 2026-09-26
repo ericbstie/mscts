@@ -15,6 +15,7 @@ from types import MappingProxyType
 import pytest
 from support.leak_guard import kill_survivors
 
+from mscts import install
 from mscts.adapters import pumpkin
 from mscts.adapters.base import Installation
 from mscts.adapters.pumpkin import PumpkinAdapter, pumpkin_toml
@@ -104,7 +105,7 @@ def leak_token() -> Iterator[str]:
 
 @pytest.fixture
 def installation(cache_dir: Path) -> Installation:
-    return PumpkinAdapter().provision(TARGET, cache_dir)
+    return install.require(PumpkinAdapter(), TARGET, cache_dir)
 
 
 @pytest.fixture

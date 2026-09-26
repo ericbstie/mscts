@@ -17,9 +17,10 @@ need is missing, add it here in the same commit that introduces it.
 - **Candidate**: the custom server implementation being measured
   (Pumpkin, Minestom, …). _Avoid_: SUT, implementation, custom server (in
   code).
-- **Adapter**: the only server-specific code. It provisions an
-  Installation and turns a ServerSpec into a LaunchPlan. Reference and
-  every Candidate each have one.
+- **Adapter**: the only server-specific code. It checks that a binary is
+  a server it can run and turns a ServerSpec into a LaunchPlan. It never
+  downloads or installs anything. Reference and every Candidate each have
+  one.
 - **ServerSpec**: a server-agnostic, declarative description of how a
   server must be configured (the host and port of its Endpoint, view
   distance, world preset, operators, …). Offline mode, no encryption, no
@@ -27,7 +28,7 @@ need is missing, add it here in the same commit that introduces it.
   (non-loopback) network connections are invariants, not options. The host
   is always a loopback address (127.0.0.0/8), and each Instance gets one of
   its own.
-- **Installation**: the binaries an Adapter has provisioned for a Target,
+- **Installation**: the binaries installed for an Adapter and a Target,
   cached on disk, with a recorded source (a registry entry or `--from`
   file) and sha256. It is created only by `mscts adapter install`, or
   after an explicit prompt (ADR-0008).

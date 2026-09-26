@@ -17,6 +17,7 @@ import pytest
 import pytest_asyncio
 from support.leak_guard import kill_survivors
 
+from mscts import install
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
 from mscts.runner import Instance, free_endpoint, running
@@ -40,7 +41,7 @@ async def reference(
     is killed and reported as a test failure.
     """
     adapter = VanillaAdapter()
-    installation = adapter.provision(TARGET, cache_dir)
+    installation = install.require(adapter, TARGET, cache_dir)
     workdir = tmp_path_factory.mktemp("reference")
     endpoint = free_endpoint()  # a loopback host of its own: no other Instance shares it
     plan = adapter.prepare(

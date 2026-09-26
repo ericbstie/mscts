@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from mscts import install
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
 from mscts.runner import free_endpoint, running
@@ -33,7 +34,7 @@ async def test_vanilla_becomes_ready_and_stops_gracefully_on_its_stop_line(
 ) -> None:
     caplog.set_level(logging.INFO, logger="mscts.runner")
     adapter = VanillaAdapter()
-    installation = adapter.provision(TARGET, cache_dir)
+    installation = install.require(adapter, TARGET, cache_dir)
     endpoint = free_endpoint()  # a loopback host of its own, never 127.0.0.1
     spec = ServerSpec(host=endpoint.host, port=endpoint.port)
     plan = adapter.prepare(installation, spec, tmp_path / "vanilla")

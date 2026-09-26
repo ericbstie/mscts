@@ -12,9 +12,7 @@ from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
 
-from mscts import install, registry
 from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
-from mscts.adapters.fetch import Fetch, https_get
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec
 from mscts.target import Target
@@ -370,26 +368,10 @@ def ops_json(operators: tuple[str, ...]) -> str:
 
 
 class PumpkinAdapter:
-    """Installs a Pumpkin build from the Registry and prepares it for a ServerSpec."""
+    """Checks a Pumpkin build and prepares it for a ServerSpec."""
 
     name = "pumpkin"
     binary = BINARY
-
-    def __init__(self, fetch: Fetch = https_get) -> None:
-        """Download with `fetch`. Unit tests pass a fake, so they never touch the network."""
-        self._fetch = fetch
-
-    def provision(self, target: Target, cache_dir: Path) -> Installation:
-        """The Installation for `target`, verified; if there is none, install its Registry entry.
-
-        An Installation is reused, never refreshed, so every Run measures the same build
-        until it is deleted by hand. It is checked against the sha256 it records.
-        """
-        existing = install.installed(self, target, cache_dir)
-        if existing is not None:
-            return existing
-        entry = registry.official().resolve(self.name, target)
-        return install.install_entry(self, target, cache_dir, entry, self._fetch).installation
 
     def check(self, binary: Path, target: Target) -> None:  # noqa: ARG002 (any Target)
         """Raise ProvisionError unless `binary` is an ELF executable, as every Pumpkin build is."""

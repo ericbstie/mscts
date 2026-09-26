@@ -1,4 +1,7 @@
-"""The Adapter contract: provision an Installation, prepare a LaunchPlan (ADR-0004)."""
+"""The Adapter contract: check a binary, prepare a LaunchPlan (ADR-0004).
+
+Installations are install.py's (ADR-0008): an Adapter never downloads anything.
+"""
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -33,7 +36,7 @@ class Source:
 
 @dataclass(frozen=True, slots=True)
 class Installation:
-    """The binaries an Adapter has provisioned for a Target, cached on disk."""
+    """The binaries installed for an Adapter and a Target, cached on disk (install.py)."""
 
     adapter: str
     target: Target
@@ -57,10 +60,6 @@ class Adapter(Protocol):
 
     name: str
     binary: str  # the one file an Installation holds besides SOURCE.json ("server.jar")
-
-    def provision(self, target: Target, cache_dir: Path) -> Installation:
-        """The verified Installation for `target`, installing its Registry entry if missing."""
-        ...
 
     def check(self, binary: Path, target: Target) -> None:
         """Raise ProvisionError unless `binary` is a server this Adapter can run for `target`."""
