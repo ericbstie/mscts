@@ -64,6 +64,12 @@ Session 2 (new tech lead), batch 1, briefed against `69ee15c`:
   the H3b Verdict rule, and a library `selfcheck` (Next 2, without the
   CLI and Measurements, which are split out below).
 
+Batch 2, briefed against `a64a2b5`:
+- **T** (opus, `install`): the honest prompt, `provision` stops
+  downloading silently, explicit `install:reference` in the hook (Next 3b).
+- **U** (opus, `adapter/pumpkin`): a flat world save + difficulty in
+  Pumpkin's own format, with a strict minimal NBT writer (Next 4).
+
 ## Delegated to the helper agent
 
 The maintainer's second agent (Astra) takes GitHub issues labelled
