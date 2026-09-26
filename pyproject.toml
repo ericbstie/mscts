@@ -35,6 +35,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+"scripts/**" = [
+    "T201", # CLI tools report to stdout/stderr; that is their interface
+]
 "tests/**" = [
     "S101",    # pytest asserts
     "D1",      # test names are the documentation

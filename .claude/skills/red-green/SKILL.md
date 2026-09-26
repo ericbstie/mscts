@@ -26,7 +26,7 @@ then one commit.
    missing name. A test that errors for some other reason is not red yet.
    A *pin* test (one that locks down behaviour that already exists, such
    as a golden file or an idempotence check) may be green at once. Prove
-   it bites with a throwaway mutation of the code, and say so in the
+   it bites with `scripts/mutate.py` (see Known traps), and say so in the
    report.
 3. **Green.** Write the minimum code. Do not add code for a later
    increment, and do not add options nobody asked for.
@@ -74,9 +74,16 @@ then one commit.
   `response.read()`, an `re.Match` group). Narrow it with `isinstance` and
   raise, or wrap it (`str(match["x"])`), since S101 forbids `assert` in
   `src/`.
-- Mutate with a line-addressed edit (`sed -i 'NNs/…/…/'`) or a script that
-  asserts exactly one match, and run mutated tests under `timeout 60`. A
-  loose `sed` pattern once hit two lines and hung pytest.
+- Mutate with `python3 scripts/mutate.py <file> <old> <new> -- <pytest args>`:
+  it asserts `<old>` occurs exactly once, applies it, runs `uv run pytest
+  <pytest args>` under a timeout (default 60 s), and always restores
+  `<file>` from its own backup (not git) — on a pass, a fail, a timeout or
+  Ctrl-C, so it is safe to run with uncommitted work in that file. Exit 0
+  means the mutation was killed (the tests bite); exit 1 means it
+  survived. Never hand-edit a mutation with `sed` or an editor, and never
+  undo one with `git checkout <file>`: a loose `sed` pattern once hit two
+  lines and hung pytest with no restore, and `git checkout` wipes
+  uncommitted work in the file too.
 - To silence one line for both ruff and bandit, write
   `# noqa: S603  # nosec B603`: two separate `#` tokens, noqa first. A
   combined comment satisfies only one tool. Keep a nosec to its rule ids,
@@ -97,9 +104,6 @@ then one commit.
   possibly-unresolved); write polling as
   `while True: if await probe(): return …; await asyncio.sleep(…)`
   (ASYNC110).
-- Run throwaway mutation checks only **after committing**. Undoing a
-  mutation with `git checkout <file>` also wipes uncommitted work in that
-  file.
 - JSON under ty: `json.loads` returns `Any`, and a value narrowed by
   `isinstance(x, dict)` is `Top[dict[Unknown, Unknown]]`, which cannot be
   indexed. Recipe: annotate as `object`, narrow with `isinstance`, iterate
