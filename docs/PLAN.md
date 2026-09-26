@@ -392,8 +392,12 @@ class Verdict:
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
-    # ValueError if the Transcripts are of different Scenarios. Divergences are grouped
-    # by Bot in name order, then in stream order.
+    # ValueError if the Transcripts are of different Scenarios; TypeError if fields hold
+    # a value outside the codec value model. Divergences are grouped by Bot in name order,
+    # then in stream order, and within a packet in path order.
+    # A packet's value (for missing / unexpected) is its fields, or its payload as hex.
+    # Field paths: identifier keys joined by dots, list indices in brackets, and any other
+    # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
 ```
 
 Comparison semantics. Start strict and relax only when a Self-check
@@ -432,6 +436,19 @@ proves it necessary:
    is `a`, so a swap does not mirror it. The cost is O(n·m) time and
    memory between the common prefix and suffix, about 0.15 s for 1000
    against 1000 unrelated packets.
+
+   Matched packets with fields are diffed recursively over the codec
+   value model. Mappings are compared key by key in sorted order (key
+   order is never significant: schema order is fixed, and JSON and NBT
+   objects are unordered), and a key on one side only is `ABSENT` on the
+   other. Lists are compared index by index, with `ABSENT` past the end
+   of the shorter one. Leaves are equal only with the same exact type
+   (`True` is not `1`, `1` is not `1.0`), and floats bit for bit (`-0.0`
+   is not `0.0`, and a NaN equals itself, so a Self-check never trips on
+   one). A value outside the model is a harness bug, so it raises
+   TypeError rather than becoming a Divergence. If either packet has no
+   fields, the pair is compared by payload. `compare` never mutates its
+   inputs: it diffs copies.
 
 ### Measurements and Report
 
