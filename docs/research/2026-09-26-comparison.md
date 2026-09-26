@@ -44,6 +44,68 @@ obfuscated, so class and method names are the real ones.
   when a 256th container opens, so at most 255 nested arrays or objects
   are read.
 
+## Unknown keys and JSON `null` in the status JSON — verified
+
+Read with `javap -c -p -constants` (Temurin 25.0.4) on the 26.3 **client**
+jar (sha1 e877b6a07acd633fb3bb475002175cec036e7b87, via
+`scripts/research/javap.py client`) and on the DataFixerUpper 10.0.21
+(sha1 b6b2ae770c02e0c1eb90f9985b151e9085a38d0b) and Gson 2.14.0 (sha1
+efc0e34ede4e3204eaefb84a00e55e8c86634382) jars bundled in the 26.3 server
+jar's `META-INF/libraries/`. Found while checking two Pumpkin status
+Divergences: `"enforceSecureChat": true` and `"favicon": null`.
+
+- **The ops.** `ClientboundStatusResponsePacket.<clinit>`:
+  `OPS = RegistryAccess.EMPTY.createSerializationContext(JsonOps.INSTANCE)`,
+  then `ByteBufCodecs.lenientJson(32767).apply(ByteBufCodecs.fromCodec(OPS,
+  ServerStatus.CODEC))`. `RegistryOps` extends `DelegatingOps` and does not
+  override `getMap`; `DelegatingOps.getMap(T)` is
+  `delegate.getMap(input)`, so maps are read by `JsonOps`.
+- **The field names.** `ServerStatus.lambda$static$0` (the
+  `RecordCodecBuilder.create` body of `ServerStatus.CODEC`) names exactly
+  five fields, each with `lenientOptionalFieldOf`: `ldc "description"`,
+  `"players"`, `"version"`, `"favicon"`, `"enforcesSecureChat"` (with an
+  `s`), then `Instance.group(5 apps)` and `Products$P5.apply`. The string
+  `enforceSecureChat` (no `s`) appears nowhere in
+  `net/minecraft/network/protocol/status/`. `ServerStatus$Players.CODEC`
+  names `max`, `online` (`fieldOf`) and `sample`
+  (`lenientOptionalFieldOf(…, List.of())`); `ServerStatus$Version.CODEC`
+  names `name` and `protocol` (`fieldOf`). All three are
+  `RecordCodecBuilder.create`.
+- **Unknown keys are never read.** `MapCodec$MapCodecCodec.decode` is
+  `codec.compressedDecode(ops, input)`; `MapDecoder.compressedDecode`, with
+  `compressMaps()` false (as for `JsonOps.INSTANCE`), is
+  `ops.getMap(input).flatMap(map -> decode(ops, map))`. A record's fields
+  read the map only by name: `FieldDecoder.decode` and
+  `OptionalFieldCodec.decode` both start `MapLike.get(name)`. No decoder
+  on the path calls `MapLike.entries()` (grep of the dumped classes: only
+  `JsonOps` itself does, in unrelated methods). So a key none of the
+  five (three, two) names spells is not read at all, **by definition of
+  the record codec**, not through error handling: the object decodes as
+  if the key were absent. So Pumpkin's `"enforceSecureChat": true` reads
+  exactly as vanilla's absent `enforcesSecureChat`: the default `false`.
+- **A JSON `null` member reads as absent.** `JsonOps.getMap(JsonElement)`
+  wraps a `JsonObject` in `JsonOps$1`, whose `get(String)` is
+  `JsonObject.get(key)`, then `instanceof JsonNull` → `aconst_null;
+  areturn`. `OptionalFieldCodec.decode` then falls through its `ifnonnull 22`
+  and returns `DataResult.success(Optional.empty())`: the same
+  instructions (0–21) as for a missing key, before any element codec or
+  lenient handling runs. (This corrects PLAN's earlier reading that
+  `"sample": null` becomes the default only through lenient error
+  handling.) Gson's parser produces a `JsonNull` for `null`
+  (`JsonParser.parseString` → `parseReader` → `Streams.parse` →
+  `JsonElementTypeAdapter.read`, whose `readTerminal` maps `NULL` to
+  `nextNull(); JsonNull.INSTANCE`), and `JsonObject.add(key, null)` stores
+  `JsonNull.INSTANCE`. So `"favicon": null` reads as no favicon, the same
+  as vanilla's absent `favicon`. The same holds for any member of these
+  three objects: `"sample": null` reads as the default `List.of()`, and a
+  null required field (`"max": null`) reads as missing (an error, which
+  `lenientOptionalFieldOf("players")` then turns into an absent
+  `players`: that second step *is* lenient error handling).
+- Not established (so not canonicalized): the text component codec
+  (`description`) and `NameAndId.CODEC` (the sample entries). Both may
+  read keys in other ways (the component codec infers its type from the
+  keys present), so their unknown keys and nulls stay significant.
+
 ## Text components — verified
 
 - `ComponentSerialization.createCodec` is
