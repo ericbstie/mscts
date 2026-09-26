@@ -27,7 +27,11 @@ pytest-xdist, about 5 s) and `mise run test:reference` passes (11 tests, about
   (`src/mscts/data/registry.toml`), `mscts adapter install/list/status`
   with `--from`, sources recorded in SOURCE.json. Pumpkin nightly-48cba7ee
   is installed in this container's shared cache via `--from`, and
-  `mise run test:candidate` passes. The honest prompt is left (3b).
+  `mise run test:candidate` passes. `install.require` asks on a TTY and otherwise fails naming the
+  command; nothing installs inside a Run or test. `provision` is gone from
+  the Adapter contract. The SessionStart hook runs `mise run
+  install:reference` (explicit, loud). **M3a done** except the registry
+  review flow and M9's `adapter check`.
 - **M3 (first Candidate):** needs the Pumpkin world-save work (Next 4).
 - Audit K's high findings H1, H2 and H3 are all fixed.
 
@@ -62,8 +66,6 @@ Environment notes:
 ## In flight
 
 Batch 2, briefed against `a64a2b5`:
-- **T** (opus, `install`): the honest prompt, `provision` stops
-  downloading silently, explicit `install:reference` in the hook (Next 3b).
 - **U** (opus, `adapter/pumpkin`): a flat world save + difficulty in
   Pumpkin's own format, with a strict minimal NBT writer (Next 4).
 - **V** (opus, `compare`, relaunched against `1822a5f` after a rate-limit
@@ -90,15 +92,8 @@ briefs at 3–6 increments and about 1500 lines at most.
     session-scoped Reference as one side and boots one Instance, not two
     (G5: reference tier ≤ 90 s). Then Bot errors carry the Bot name, so a
     `failed` Divergence names its Bot (G3).
-3b. `install` (opus): the honest prompt (ADR-0008 §2) as a library
-    function: TTY asks "download <entry> (Y) or provision it yourself
-    (N)?", N prints the exact `--from` command, non-TTY fails at once
-    naming it. `provision` stops downloading silently: callers use
-    `installed()` + the prompt. The legacy-cache migration in
-    `installed()` says what it recorded. Pieces exist in `install.py`
-    (`installed`, `install_command`) and `registry.official().resolve`.
-3a. `cli` (sonnet, after R and S): `mscts selfcheck` over R's library
-    `selfcheck`, and the first Measurements (`measure.py`: `status.rtt`,
+3a. `cli` (sonnet): `mscts selfcheck` over R's library `selfcheck`
+    (Installations via `install.require` with the process's Terminal), and the first Measurements (`measure.py`: `status.rtt`,
     `instance.startup`). Split out of item 2 to keep R under 1500 lines
     and off S's `cli.py`.
 4. `adapter/pumpkin` (opus, after 3): write a flat world save and the
@@ -141,6 +136,8 @@ briefs at 3–6 increments and about 1500 lines at most.
   about 5 s, so G5 holds again. `scripts/repeat.py` flake-hunts under CPU
   stress; 25 stressed runs found no flakes, so the integration retry is
   gone.
+- Worker T: `install.require` and the honest prompt; `provision` left
+  the Adapter contract; live tiers fail fast naming the install command.
 - Worker R (M2 wiring): Scenarios, a Run, H3b, `selfcheck`; status
   Self-check 20/20. The lead fixed two integration reds: nondeterministic
   xdist ids from S's fake jars (bd6d44f), and R's Adapter fakes missing

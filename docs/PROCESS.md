@@ -102,7 +102,8 @@ Read CLAUDE.md, docs/PROCESS.md (Worker contract + Worker report), and the
 red-green and protocol-research skills before starting.
 
 Goal: <one sentence, in CONTEXT.md vocabulary>
-Increments (in order, one commit each; say whether a new dataclass field may default):
+Increments (in order, one commit each; say whether a new dataclass field may default;
+              a suggested signature keeps ≤ 5 parameters (PLR0913) or says "shape it")
               <numbered list; name the target module explicitly,
               e.g. `src/mscts/bot.py`, not just an area label>
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
@@ -204,6 +205,8 @@ new classes of defect:
 - **Commit early.** An interrupted agent (API rate limit, container
   restart) loses a worktree that has no commits. Keep research artifacts
   in your scratch dir, where the next worker can reuse them.
+- Before committing a change to a `Protocol`, grep main for every
+  implementer and caller again: a parallel brief may have added one.
 - Stay inside the brief. If you are blocked, or the brief is wrong, stop
   and say so in the report rather than widening scope.
 
@@ -237,6 +240,12 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker T (install) | R landed two more Adapter implementers and callers mid-brief | **adopt**: the lead messaged T when R landed; Worker contract "grep for implementers again before committing a Protocol change" |
+| 2026-09-26 | worker T | `test_repeat`'s stress test flaked: it read `/proc` before the children exec'd (a known trap, missed in Q's test) | **adopt**: fixed by the lead (poll until tagged), 20/20 under stress |
+| 2026-09-26 | worker T | The brief suggested an 8-parameter signature (PLR0913 allows 5) | **adopt**: brief template, suggested signatures keep ≤ 5 parameters or say "shape it" |
+| 2026-09-26 | worker T | A clean one-line fail-fast needed a collection hook that xdist workers skip | **reject** (no change): hook plus per-test fallback, documented |
+| 2026-09-26 | worker T | ruff format joined a split string, then ISC004 fired inside `[...]` | **adopt**: red-green Known trap |
+| 2026-09-26 | worker T | `provision` removed from the Adapter Protocol; a third-party Adapter is `name`, `binary`, `check`, `prepare` | **accept**: the smallest contract (G6); installs live in `install.py` |
 | 2026-09-26 | lead (incident) | An API rate limit killed T, U and V at once. T and U were resumed by message with their worktrees intact; V had no commits, so its worktree was auto-removed and it was relaunched, reusing its scratch research | **adopt**: Worker contract "commit early: a worktree with no commits does not survive an interrupted agent; keep research in your scratch dir"; the lead resumes interrupted workers by message when their worktree survives |
 | 2026-09-26 | lead (integration of R) | R's test fakes implemented `Adapter` without S's new `binary`/`check` members: ty red only after the rebase | **adopt**: when one brief changes a Protocol, the lead names every in-flight implementer in the other briefs, and messages running workers when it lands (done for T) |
 | 2026-09-26 | lead (incident) | Intermittent unit-tier red on main: S's parametrize ids embedded fake-jar bytes with wall-clock zip mtimes, so xdist workers collected different tests. Q's 25 stress runs predate S | **adopt**: fixed (bd6d44f); red-green Known trap "deterministic parametrize ids"; in-flight workers told |

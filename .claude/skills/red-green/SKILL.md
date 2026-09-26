@@ -209,6 +209,10 @@ then one commit.
   `git commit --fixup=<sha>`, then `GIT_SEQUENCE_EDITOR=true git rebase -i
   --autosquash <base>`.
 
+- Long expected messages: bind a multi-line string to a name first, and
+  never put an implicit concatenation inside `[...]` (ruff format joins it,
+  then ISC004 fires).
+
 ## When stuck
 
 - If a test fails in a way you don't understand, shrink the reproduction
