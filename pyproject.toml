@@ -38,6 +38,7 @@ ignore = [
     "D1",      # test names are the documentation
     "PLR2004", # expected values are literals by design
     "INP001",  # tests are collected with --import-mode=importlib, not as a package
+    "S603",    # reference-tier tests run the argv the code under test built; no untrusted input
 ]
 
 [tool.ruff.lint.pydocstyle]
