@@ -5,69 +5,52 @@ before stopping (see the `red-green` skill).
 
 ## Now
 
-Milestone **M0 (Harness)** is done. **M1 (Talk to vanilla)** has started:
-VarInt encode/decode is green. Work now runs under the tech-lead/worker
-model (`docs/PROCESS.md`).
+**M1** is done in substance: vanilla is provisioned, hardened and launched,
+and it answers strict status/ping through our own Codec, Connection and
+Bot. The **M2** Comparison engine is built; wiring (Scenario registry,
+Run, `selfcheck`) is next. The first Candidate (Pumpkin) has an Adapter,
+but it is blocked on user decisions (see below).
 
-Done:
-- **A** (sonnet): `codec` wire types and framing.
-- **B** (opus): `Target`, `ServerSpec`, `Endpoint`, the adapter base
-  types, and a complete `VanillaAdapter` (golden-file `server.properties`,
-  offline-UUID `ops.json`, hash-verified provision, reference-tier test).
-- **C** (opus): `Codec` (`packets.json` 26.3, name ↔ id, strict schema
-  mechanism, handshake/status schemas), plus the lead's `Codec.for_target`.
-- **E** (opus): vanilla hardening. The `NO_NETWORK` argv (authlib
-  discovery → `127.0.0.1:0`, empty hosts file) is strace-verified; plus an
-  absolute, release-file-verified Java 25, workdir refusal, and a shared
-  `cache_dir()`.
+Integrated workers: A (wire+framing), B (vanilla adapter), C (Codec),
+D (runner), E (vanilla network isolation), F (Transcript, Connection,
+Bot), G (regen + host-independent launch), H (Pumpkin adapter), I
+(tooling + shared Reference), J (Comparison engine), K (foundation audit,
+`docs/audits/2026-09-26-foundation.md`).
 
-- **D** (opus): `runner.running`, with an injected readiness probe,
-  stdin → SIGTERM → SIGKILL of the process group, cleanup on
-  error/cancel, a leak guard, and a reference boot of vanilla (about 10 s
-  to ready).
-
-- **F** (opus): `Transcript` (time-ordered, monotonic), `Connection`
-  (strict framing, State machine, record-on-take), `Bot.status`/`ping`,
-  and `status_probe`. Verified live against vanilla (status about 20 ms,
-  ping about 2 ms).
-- **G** (sonnet): `mise run regen:packets` (byte-identical check, reference
-  test), `resolve_java` seam, and a host-independent vanilla launch
-  (fixed env, UTC, IPv4), verified live.
-- **I** (sonnet): pytest-timeout, `tests/support`, `scripts/mutate.py`,
-  `scripts/strays.py`, and a shared session Reference (status tests
-  38 s → 12.5 s), with strict status/ping verified live (ADR-0003).
-
-In flight:
-- **K** (opus): an audit of the foundation (codec, net, bot, transcript,
-  runner) against the Audit checklist. Read-only; the report goes in
-  `docs/audits/`.
-- **J** (opus): the Comparison engine (`compare.py`: alignment, field
-  diffs, Masks, canonicalization).
-- **H** (opus): `PumpkinAdapter`.
+Awaiting user decisions:
+1. A Candidate that cannot honour a ServerSpec field (Pumpkin: no flat
+   world, difficulty ignored).
+2. Pumpkin provision fails here: the proxy's CA for GitHub hosts is
+   rejected by Python 3.13 strict X.509.
+3. Canonicalize "declared defaults" (missing `players.sample` ≡ `[]`)?
 
 ## Next
 
 Take the first item. Split it if it is more than one failing test.
 
-1. M2 wiring: the `@scenario` registry, a `status/basic` +
-   `status/ping` Scenario, a Run that executes a Scenario against two
-   Instances, and `mscts selfcheck` → `match` (after I and J).
-2. Join brief (opus): compression on `login_compression`, login →
-   configuration (known packs) → play up to the first chunk batch, and a
-   background reader answering keep-alive/teleports; fix or remove the
-   lossy `FrameDecoder.feed`; verify vanilla's rule for a non-zero
-   data-length below the threshold.
-3. `spec`/`adapter`: a distinct loopback host per Instance
-   (`ServerSpec.host` in 127/8), so a probe can never reach another
-   worker's server.
-4. `scripts/` research harness: launch any Adapter's LaunchPlan
-   (optionally under strace) and probe it, plus a reference test
-   asserting that the Reference's connects are loopback-only (sonnet).
-5. `runner`: a parent-death guard, so a SIGKILLed harness never orphans
-   servers.
-6. Spawn: vanilla's join position varies on every fresh run even with
-   seed 0. Pin it (spawn radius) or Mask `player_position` before M4.
-7. Then **M3** (the first Candidate Report) and **M4** in `docs/PLAN.md`.
+1. Tooling (sonnet): fix `scripts/mutate.py` (MD6 false KILLED, no-op
+   sanity run, `PYTHONDONTWRITEBYTECODE=1`, a parallel copy-based batch
+   mode); S311 ignore in `tests/**`; then re-verify earlier "bites" claims
+   for the critical modules.
+2. Audit fix batch (opus), from `docs/audits/2026-09-26-foundation.md`:
+   - H1: readiness must prove the Instance owns the socket, plus a
+     distinct loopback host per Instance;
+   - H2: stamp receive time at arrival (background reader);
+   - H3: record undecodable frames and make Candidate-caused failures
+     `mismatch`;
+   - MD1–MD5 and MD8; delete `FrameDecoder.feed`.
+3. M2 wiring (opus): the `@scenario` registry, `status/basic` +
+   `status/ping`, a Run over two Instances, `mscts selfcheck` → `match`,
+   and the first Measurements.
+4. Join brief (opus): compression, login → configuration → play up to the
+   first chunk batch, keep-alive/teleport answering.
+5. `scripts/` research harness (sonnet): netns sandbox, strace summary,
+   join probe (adopt worker H's scratch tools), and a loopback-only
+   reference test.
+6. `runner`: a parent-death guard.
+7. Spawn: vanilla's join position varies on every fresh run; pin it or
+   Mask it before M4.
+8. Flake hunt: the unit tier under CPU stress, N times.
 
 ## Log
 

@@ -36,7 +36,13 @@ by a test.
    `https://minecraft.wiki/index.php?title=Java_Edition_protocol/Packets&action=raw&oldid=<revid>`.
    Also useful: `Java_Edition_protocol/Data_types`,
    `Java_Edition_protocol/VarInt_and_VarLong`, `Java_Edition_protocol/FAQ`.
-4. Candidate source code, only to understand a Candidate. Never use it to
+4. **`javap` on the vanilla jar**, which settles server-side behaviour the
+   wiki leaves open. 26.x is unobfuscated. Extract
+   `META-INF/versions/26.3/server-26.3.jar` from `server.jar` (libraries
+   are listed in `META-INF/libraries.list`), then run
+   `javap -c -p -constants` (add `-v` to resolve lambdas). It cannot answer
+   client-side questions.
+5. Candidate source code, only to understand a Candidate. Never use it to
    decide what is correct.
 
 Do **not** rely on a summarizer (WebFetch or similar) for field layouts.
@@ -76,6 +82,13 @@ instead.
   Never set `minecraft.api.env`, because it overrides the discovery URL.
   When checking a launch configuration for network use, run it under
   `strace -f -e trace=connect,sendto,sendmsg,sendmmsg,openat`.
+- Candidates may derive offline UUIDs differently (Pumpkin:
+  `sha256(name)[:16]`). Operators must be written with the Candidate's
+  own scheme.
+- Pumpkin loads its **entire default config** (online mode, encryption,
+  telemetry, Bedrock) if any value fails to parse, and only logs it.
+  Range-check every value before writing. Its Bedrock OIDC key fetch runs
+  even with Bedrock disabled unless Bedrock auth is off too.
 - Pumpkin sends an encryption request in offline mode unless
   `encryption = false`. Its Bedrock listener and telemetry are on by
   default.

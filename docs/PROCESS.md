@@ -74,7 +74,8 @@ Increments (in order, one commit each): <numbered list; name the target module e
 Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
 Out of scope: <what not to touch>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist>
-Base: <main commit the brief was written against>
+Base: <main commit the brief was written against; the worker first runs
+      `git merge --ff-only main` in its worktree>
 Context: <facts, file paths, gotchas the tech lead already knows; list reusable
          scratchpad artifacts (jars, generated reports, probe scripts) by path>
 ```
@@ -95,6 +96,9 @@ new classes of defect:
   test red.
 - **Cleanup.** Processes, sockets and temp dirs are released on success,
   error, timeout and cancellation.
+- **Candidate output never crashes the harness.** Malformed or
+  undecodable Candidate output is recorded and becomes a `mismatch`,
+  never an `error` (which the compliance score excludes).
 - **No drift.** The code matches the PLAN interfaces, CONTEXT vocabulary
   and ADRs, or the docs were updated in the same commit.
 
@@ -113,6 +117,10 @@ new classes of defect:
 - Tests that start servers must pick a free ephemeral port, never 25565,
   and must clean up their processes, even on failure. Other workers may
   run servers at the same time.
+- Git commands against the main checkout are refused from a worktree.
+  Read its files directly instead.
+- Never pipe `mise run check` into a commit chain (`check | grep && git
+  commit`): the pipe's exit status is grep's, not the check's.
 - **Leak guard for process-starting tests.** Tag each spawned process's
   environment with a per-test token. At teardown, scan `/proc` for the
   token, SIGKILL any survivor, and fail the test (see
@@ -176,6 +184,24 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-26 | worker K (audit) | `scripts/mutate.py` counts any non-zero pytest exit as KILLED, so a mistyped path "bites" (MD6). This weakens every earlier "proven to bite" claim | **adopt**: top-priority tooling fix (verdict needs failed tests, a no-op sanity run, `PYTHONDONTWRITEBYTECODE=1`, a parallel copy-based batch mode) |
+| 2026-09-26 | worker K | High findings: H1 readiness accepts any server at the Endpoint; H2 receive time is take time, not arrival; H3 an undecodable Candidate packet is unrecorded and would become `error` (excluded from compliance) | **adopt**: an opus fix batch before M2 wiring. Policy: **a failure caused by Candidate output is `mismatch`, never `error`** |
+| 2026-09-26 | worker K | `FrameDecoder.feed` also misdecodes a valid frame after `login_compression` | **adopt**: delete it. New lead default: a lossy API a worker reports is deleted, not deferred |
+| 2026-09-26 | worker K | Git on the main checkout is refused from a worktree; audit ids collided with milestone ids; "sound" was nearly claimed before the evidence | **adopt**: Worker contract line; audit ids H#/MD#/L#; audit claims need evidence first |
+| 2026-09-26 | workers J, K | `javap -c -p -constants` on the unobfuscated 26.3 jar (`META-INF/versions/26.3/server-26.3.jar`) settled facts the wiki can't | **adopt**: protocol-research recipe; **defer** caching the client jar |
+| 2026-09-26 | workers J, K | Subagents received a stale CLAUDE.md (gh issues, `docs/agents/`) from the session's start | **resolved**: the restarted session injects the current CLAUDE.md; on-disk docs win |
+| 2026-09-26 | worker J (compare) | Worktree spawned from a stale base | **adopt**: brief template says to run `git merge --ff-only main` first |
+| 2026-09-26 | worker J | A heredoc commit message was refused once | **adopt**: default is to Write the message to a scratchpad file, then `git commit -F /abs/msg.txt` |
+| 2026-09-26 | worker J | An "optimization" branch (suffix trim) changed results; a mutation survived | **adopt**: red-green rule, prove optimization branches by an exhaustive small-domain check |
+| 2026-09-26 | worker J | ty: use a recursive `type _Value = …` alias; aliases must be defined above first use (eager annotations) | **adopt**: Known traps |
+| 2026-09-26 | worker J | Deep JSON could make `compare` raise, turning a mismatch into an excluded `error` | **adopt**: Audit checklist item "no Candidate output can make the harness raise" |
+| 2026-09-26 | worker J | Declared defaults (missing `players.sample` ≡ `[]`) not canonicalized | **user decision pending** |
+| 2026-09-26 | worker H (pumpkin) | Pumpkin cannot honour FLAT or difficulty, so `prepare` refuses every ServerSpec | **user decision pending** (native flat world save vs. per-Scenario spec needs vs. refuse) |
+| 2026-09-26 | worker H | The proxy re-signs GitHub hosts with a CA that Python 3.13's strict X.509 rejects, so Candidate provision fails here | **user decision pending**; TLS is never weakened |
+| 2026-09-26 | worker H | Pumpkin's offline UUID is `sha256(name)[:16]`, not vanilla's; a bad config value silently loads Pumpkin's full defaults; the Bedrock OIDC fetch runs with Bedrock off | **adopt**: protocol-research traps (Candidates may derive offline UUIDs differently; range-check every value) |
+| 2026-09-26 | worker H | `check | grep && git commit` committed through a failing check; a stale `.pyc` survived a same-second restore | **adopt**: never pipe the check into a commit chain; `mutate.py` gets `PYTHONDONTWRITEBYTECODE=1` |
+| 2026-09-26 | worker H | Pristine Candidate runs need a network sandbox (`unshare -n` + loopback) | **adopt**: in the research-harness brief, with H's scratch tools |
+| 2026-09-26 | lead | One unreproduced unit-tier failure while rebasing H (6/6 clean reruns at low load) | **defer**: flake hunt under CPU stress |
 | 2026-09-26 | worker I (tooling) | The session-scoped async fixture pairing (`loop_scope`) is undocumented in the repo and cost 30–40 min | **adopt**: red-green Known trap |
 | 2026-09-26 | worker I | importlib mode already synthesizes `tests.*` packages; `pythonpath` is for plain helpers | **adopt**: Known trap |
 | 2026-09-26 | worker I | Script lint friction: EXE001, D301, PYI025, S105 on names | **adopt**: Known trap |

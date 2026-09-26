@@ -100,6 +100,13 @@ then one commit.
   docstring needs `r"""` (D301); alias `collections.abc.Set` as
   `AbstractSet` (PYI025); bandit S105 fires on a constant *named* like
   `_TOKEN`, even when it holds an env-var name.
+- ty and recursive JSON-like values: declare one recursive alias
+  (`type _Value = bool | int | … | list[_Value] | dict[str, _Value] | None`)
+  and narrow with `isinstance`. Python 3.13 evaluates annotations
+  eagerly, so define aliases above their first use.
+- A branch that looks like an optimization (a prefix/suffix trim, a fast
+  path) must be proven equivalent by an exhaustive small-domain check, or
+  pinned by a test. One silently changed results.
 - Async functions take `timeout_s`, never `timeout` (ruff ASYNC109).
 - At most 5 parameters, keyword-only included (PLR0913). Derive values
   rather than passing them. Never add a `noqa` before ruff has actually
