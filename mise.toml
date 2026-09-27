@@ -58,3 +58,25 @@ run = "uv run pytest -m statistical"
 [tasks."regen:packets"]
 description = "Regenerate and verify the committed packets.json (--write to update it); needs install:reference"
 run = "uv run python -m mscts.codec.regen"
+
+[tasks."docs:deps"]
+description = "Install the docs site's locked Node dependencies"
+dir = "docs"
+tools = { node = "24" }
+sources = ["package.json", "package-lock.json"]
+outputs = ["node_modules/.package-lock.json"]
+run = "npm ci --no-audit --no-fund"
+
+[tasks."docs:dev"]
+description = "Serve the docs site locally with live reload"
+dir = "docs"
+tools = { node = "24" }
+depends = ["docs:deps"]
+run = "npx vitepress dev"
+
+[tasks."docs:build"]
+description = "Build the docs site into docs/.vitepress/dist"
+dir = "docs"
+tools = { node = "24" }
+depends = ["docs:deps"]
+run = "npx vitepress build"

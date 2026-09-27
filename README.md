@@ -10,6 +10,9 @@ Scenario against each, and diffs the packets they send back. The only
 server-specific code is a small Adapter that knows how to install,
 configure and launch that server.
 
+Documentation is a VitePress site in [`docs/`](docs/getting-started.md):
+`mise run docs:dev` serves it locally.
+
 Status: early. Target is Minecraft 26.3 (protocol 777). See
 [`docs/PLAN.md`](docs/PLAN.md) and [`docs/PROGRESS.md`](docs/PROGRESS.md).
 

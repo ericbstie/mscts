@@ -8,3 +8,7 @@ dist/
 .cache/
 # agent worktrees (tech-lead/worker model)
 .claude/worktrees/
+# docs site (VitePress)
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
