@@ -11,8 +11,8 @@
           player could notice.
         </p>
         <div class="ms-actions">
-          <a class="ms-button primary" href="/getting-started">Get started</a>
-          <a class="ms-button" href="/guide/how-it-works">How it works</a>
+          <a class="ms-button primary" :href="withBase('/getting-started')">Get started</a>
+          <a class="ms-button" :href="withBase('/guide/how-it-works')">How it works</a>
           <a class="ms-button" href="https://github.com/ericbstie/mscts">GitHub</a>
         </div>
       </div>
@@ -157,8 +157,12 @@ a player would notice was found.
         can join the game; gameplay Scenarios are next.
       </p>
       <div class="ms-actions ms-cta">
-        <a class="ms-button" href="/status">See the project status</a>
+        <a class="ms-button" :href="withBase('/status')">See the project status</a>
       </div>
     </section>
   </div>
 </template>
+
+<script setup lang="ts">
+import { withBase } from "vitepress";
+</script>

@@ -1,9 +1,12 @@
 import { defineConfig } from "vitepress";
 
 const repo = "https://github.com/ericbstie/mscts";
+// Served as a GitHub Pages project site, at https://ericbstie.github.io/mscts/.
+const base = "/mscts/";
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base,
   title: "mscts",
   description:
     "Plays the same client script against vanilla Minecraft and a custom server, diffs the packets, and times both.",
@@ -21,7 +24,7 @@ export default defineConfig({
     "README.md",
   ],
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/logo.svg" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: `${base}logo.svg` }],
     ["meta", { name: "theme-color", content: "#5d9e3f" }],
   ],
   markdown: {
