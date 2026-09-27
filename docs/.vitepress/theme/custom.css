@@ -58,7 +58,7 @@
 .vp-doc li {
   line-height: 1.75;
 }
-.vp-doc > div > p:first-of-type {
+.vp-doc > div > h1 + p {
   color: var(--vp-c-text-2);
   font-size: 17px;
 }
@@ -67,6 +67,9 @@
 }
 .vp-doc th {
   background: var(--vp-c-bg-soft);
+}
+.vp-doc td:first-child code {
+  white-space: nowrap;
 }
 .vp-doc td,
 .vp-doc th {

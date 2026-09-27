@@ -1,3 +1,7 @@
+---
+outline: 2
+---
+
 # Glossary
 
 mscts uses these terms with one meaning each, in code, tests and docs. The
