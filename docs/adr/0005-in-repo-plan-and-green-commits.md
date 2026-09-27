@@ -1,6 +1,7 @@
 # ADR-0005: In-repo plan tracking; every commit is green
 
-Status: accepted (2026-09-25)
+Status: accepted (2026-09-25). The queue and "work on `main`" parts are
+superseded by ADR-0009; the green-commit rule stands.
 
 ## Context
 

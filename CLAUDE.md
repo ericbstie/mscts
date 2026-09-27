@@ -7,7 +7,8 @@ Server-agnostic by design: see `docs/adr/0001-black-box-differential-testing.md`
 
 ## Start here
 
-- `docs/PROGRESS.md`: where things stand, and the **Next** queue.
+- GitHub issues labelled `ready`: the queue. Each is a spec (ADR-0009).
+- `docs/PROGRESS.md`: where things stand, and the log.
 - `docs/PROCESS.md`: the tech-lead/worker operating model, retrospective log and process changelog.
 - `docs/PLAN.md`: goals, the exact interfaces, tiers and milestones.
 - `CONTEXT.md`: the vocabulary. Use its terms exactly.
@@ -27,7 +28,10 @@ Use the `red-green` skill for every change: one failing test, the minimum
 code, `mise run check`, one commit, repeat. Use the `protocol-research`
 skill before encoding any protocol or server fact.
 
-Work on `main`. Never commit red: every commit passes `mise run check`.
+The docs site is the spec for what users see, and always matches the
+code (ADR-0009). Each issue is worked on its own `issue-<n>-<slug>`
+branch and lands as one PR, rebase-merged into `main`. Never commit red:
+every commit passes `mise run check`.
 
 ## Commands
 

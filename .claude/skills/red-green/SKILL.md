@@ -1,6 +1,6 @@
 ---
 name: red-green
-description: The mscts development loop. Use for ANY code change in this repo (new feature, fix, refactor, new Scenario or Adapter) and when starting or ending a work session, to pick the next increment from docs/PROGRESS.md, drive it test-first, commit it green, and hand off.
+description: The mscts development loop. Use for ANY code change in this repo (new feature, fix, refactor, new Scenario or Adapter) and when starting or ending a work session, to take the next increment of a spec issue, drive it test-first, commit it green, and hand off.
 ---
 
 # red-green
@@ -11,7 +11,9 @@ then one commit.
 
 ## Orient (start of session or after a context reset)
 
-1. Read `docs/PROGRESS.md`. Its **Next** list is the queue.
+1. Read your issue and its comments: it is the spec (Docs delta,
+   Interface, Acceptance tests, Owns). `docs/PROGRESS.md` says where
+   things stand.
 2. Skim `CONTEXT.md`, the vocabulary. Read the `docs/PLAN.md` interface
    section for the module you will touch.
 3. Run `git log --oneline -15` and `mise run check`. If check is red on a
@@ -19,8 +21,9 @@ then one commit.
 
 ## Loop
 
-1. **Pick** the first item under Next. If you cannot state it as one
-   failing test, split it and write the split back into PROGRESS.md.
+1. **Pick** the next Acceptance test from the issue. If you cannot state
+   it as one failing test, split it (a note on the issue if it changes
+   scope).
 2. **Red.** Write the test. Run only that test (`uv run pytest path::name`)
    and confirm it fails for the expected reason: an assertion, or the
    missing name. A test that errors for some other reason is not red yet.
@@ -52,11 +55,12 @@ then one commit.
    `compare`, `measure`, `report`, `cli`, `docs` or `tooling`. Add a body
    only when the why is not obvious. End every message with the
    attribution trailer the session provides.
-7. Repeat. **Workers** (subagents) stop here. They never push or edit
-   `docs/PROGRESS.md`; they end with the Worker report in
-   `docs/PROCESS.md`. **The tech lead**, every 3–5 commits and always
-   before stopping, updates `docs/PROGRESS.md` (Log and Next) in its own
-   `docs:` commit, then runs `git push -u origin main`.
+7. Repeat. **Workers** (subagents) apply the issue's Docs delta, push
+   their `issue-<n>-<slug>` branch and open one PR closing the issue. They
+   never push `main` or edit `docs/PROGRESS.md`; they end with the Worker
+   report in `docs/PROCESS.md`. **The tech lead** merges PRs with a
+   rebase, and before stopping updates `docs/PROGRESS.md` (Now and Log)
+   in its own `docs:` commit.
 
 ## Rules
 

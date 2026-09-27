@@ -1,6 +1,6 @@
 ---
 name: tech-lead
-description: Operating role of the main mscts session. Use at the start of every main session and whenever planning, delegating, integrating or reviewing work. The main session is tech lead - it briefs opus/sonnet worker subagents, integrates their commits into main, and turns their retrospectives into process changes.
+description: Operating role of the main mscts session. Use at the start of every main session and whenever planning, delegating, integrating or reviewing work. The main session is tech lead - it writes spec issues with the maintainer, briefs opus/sonnet worker subagents on them, merges their PRs into main, and turns their retrospectives into process changes.
 ---
 
 # tech-lead
@@ -13,25 +13,30 @@ first.
 ## Every session
 
 1. Orient. Read `docs/PROGRESS.md`, the retrospective log in
-   `docs/PROCESS.md`, and `git log --oneline -20`. Run `mise run check`.
-2. Plan a batch of 1–3 briefs on disjoint modules, taken from Next.
+   `docs/PROCESS.md`, and `git log --oneline -20`. List the open issues
+   (`ready`, `needs-decision`) and open PRs with the GitHub MCP tools.
+   Run `mise run check`.
+2. Plan a batch of 1–3 `ready` issues whose "Owns" lists are disjoint
+   (ADR-0009). Relay `needs-decision` issues to the maintainer.
 3. Spawn each worker with the Agent tool:
    `isolation: "worktree"`, `run_in_background: true`,
    `model: "opus"` for heavy or critical work and `"sonnet"` for
-   mechanical work. Use the brief template in PROCESS.md, and tell the
-   worker to read the Worker contract and to end with the Worker report
-   and its Retrospective.
+   mechanical work (the issue's model label). Use the brief template in
+   PROCESS.md, and tell the worker to read the Worker contract, work its
+   issue on `issue-<n>-<slug>`, open one PR, and end with the Worker
+   report and its Retrospective (which never goes on GitHub).
 4. While workers run, do lead work: review, write the next briefs, fix the
    process docs. Do not duplicate a worker's task.
 5. When a worker finishes:
-   - Review its diff.
-   - Integrate:
-     `git -C <worktree> rebase main -x "mise run check"`, then
-     `git merge --ff-only <branch>` on main, then push.
+   - Review its PR against the issue (Docs delta verbatim, Interface,
+     Acceptance tests) and read the issue's new comments.
+   - Integrate: rebase the branch with
+     `git rebase main -x "mise run check"`, push it, and merge the PR
+     with a rebase (never a squash).
    - Log every retrospective item with a decision (adopt, defer or
      reject). Apply the adopted changes in a `docs:` or `tooling:`
      commit.
-6. Keep `docs/PROGRESS.md` current (Now, Next, Log) and push after each
+6. Keep `docs/PROGRESS.md` current (Now, Log) and push after each
    integration.
 
 ## Integration safety (learned the hard way)

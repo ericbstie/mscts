@@ -47,6 +47,9 @@ uv run pytest tests/path/test_file.py::test_name
   [`CONTEXT.md`](https://github.com/ericbstie/mscts/blob/main/CONTEXT.md)
   have one meaning each. Add a term there in the same commit that
   introduces it.
+- **One issue, one PR.** Changes start as a spec issue that quotes the
+  target wording of this site. The PR changes the code and the page
+  together, so the site always matches the code.
 - **Flag conflicts with an ADR.** A change that reverses a decision needs a
   new ADR. See [Design decisions](/design-decisions).
 

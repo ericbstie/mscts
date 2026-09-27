@@ -12,19 +12,22 @@ This file is owned by the tech lead. It changes only through the
 ## Roles
 
 **Tech lead (the main session).**
-- Owns the queue (`docs/PROGRESS.md`), `docs/PLAN.md`, the ADRs, this
-  file, and the skills.
-- Writes briefs, chooses the model, and spawns workers.
-- Reviews and integrates the workers' commits into `main`, then pushes.
+- Owns the queue (GitHub issues labelled `ready`, ADR-0009),
+  `docs/PROGRESS.md`, `docs/PLAN.md`, the ADRs, this file, and the skills.
+- Writes spec issues with the maintainer, briefs workers on them, chooses
+  the model, and spawns workers.
+- Reviews each worker's PR against its issue and merges it with a rebase,
+  so every commit on `main` passes `mise run check`.
 - Reads every retrospective and decides what to change.
 - Sends work to refactoring or auditing when retrospectives or reviews
   show drift.
 - Writes product code only for trivial integration fixes. Anything more
   goes in a brief.
 
-**Worker (a subagent).** Executes exactly one brief, following the
+**Worker (a subagent).** Owns exactly one issue and its PR, following the
 `red-green` skill, in an isolated git worktree. It commits each increment
-green, does not push, and ends with the [report](#worker-report).
+green, pushes its `issue-<n>-<slug>` branch, opens the PR, and ends with
+the [report](#worker-report) to the tech lead.
 
 ## Working with the maintainer
 
@@ -49,8 +52,7 @@ ADRs and briefs. What the maintainer has asked for:
   - Adapters are easy for third parties to write and verify.
 - **Helper agent.** The maintainer also runs a non-Claude agent that
   takes GitHub issues labelled `helper-ready`. The lead may delegate a
-  small, independent Next item there as a self-contained issue (the
-  brief's rules, a PR as hand-back) and marks it delegated in PROGRESS.
+  small, independent spec issue there by adding that label.
   Claude remains the primary worker; the process is not shaped around
   the helper. Its PRs get the same review and rebase-with-check
   integration, and the surprises in its PR description are logged as a
@@ -70,24 +72,29 @@ When unsure, use `opus`. A wrong Verdict costs more than a slower worker.
 
 ## Cycle
 
-1. **Plan a batch.** Choose 1–3 briefs from Next that touch disjoint
-   modules, so they can run in parallel without conflicts.
+1. **Plan a batch.** Choose 1–3 `ready` issues whose "Owns" lists
+   (files, modules and doc sections) are disjoint, so they can run in
+   parallel without conflicts. Skip any labelled `needs-decision`.
 2. **Brief and spawn** each one in the background with worktree
-   isolation, using the [template](#brief-template).
-3. **Integrate** each branch as it finishes:
-   - Review the diff against the PLAN interfaces. Check that the tests
-     would fail without the code, that no lint, type or security rule was
+   isolation, using the [template](#brief-template). The issue is the
+   spec; the brief adds only what the lead knows beyond it.
+3. **Integrate** each PR as it finishes:
+   - Review the diff against the issue: the Docs delta applied verbatim,
+     the Interface exact, the Acceptance tests present and failing
+     without the code. Check that no lint, type or security rule was
      loosened, and that the vocabulary matches `CONTEXT.md`.
    - Rebase onto `main` with every commit re-checked:
      `git rebase main -x "mise run check"`.
-   - Fast-forward `main` and push.
+   - Merge the PR with a rebase (never a squash), which closes the issue.
+   - Read the issue's comments: a scope change the worker recorded there
+     may need a follow-up issue.
 4. **Retrospective intake.** Log every item in the
    [retrospective log](#retrospective-log) and decide one of:
    - **adopt**: change the skill, PLAN, PROCESS or goal now, in a
      `docs:` or `tooling:` commit;
-   - **defer**: add it to Next;
+   - **defer**: open a spec issue for it;
    - **reject**: record why.
-5. **Update `docs/PROGRESS.md`** (Now, Next, Log) and push.
+5. **Update `docs/PROGRESS.md`** (Now, Log) and push.
 6. **Audit or refactor** after about every third batch, and sooner if
    retrospectives repeat a complaint or a review finds drift. An
    audit is an `opus` brief that reads a key feature end to end against
@@ -101,12 +108,14 @@ You are a worker on mscts (repo at your cwd, a git worktree of main).
 Read CLAUDE.md, docs/PROCESS.md (Worker contract + Worker report), and the
 red-green and protocol-research skills before starting.
 
+Issue: #<n> (the spec: Docs delta, Interface, Acceptance tests, Owns). Read it
+       and its comments first. Branch: issue-<n>-<slug>.
 Goal: <one sentence, in CONTEXT.md vocabulary>
 Increments (in order, one commit each; say whether a new dataclass field may default;
               a suggested signature keeps ≤ 5 parameters (PLR0913) or says "shape it")
               <numbered list; name the target module explicitly,
               e.g. `src/mscts/bot.py`, not just an area label>
-Interfaces: <PLAN.md section(s) to implement exactly; allowed deviations>
+Interfaces: <the issue's Interface; PLAN.md section(s) for internals; allowed deviations>
 Out of scope: <what not to touch>
 Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), never
               a wire field a Candidate may legitimately get wrong: that is a Divergence
@@ -161,8 +170,20 @@ new classes of defect:
   through `mise run …` or `mise exec -- …`.
 - Follow the `red-green` skill. One increment per commit, and every
   commit passes `mise run check`.
-- Do **not** push, merge, or edit `docs/PROGRESS.md` or `docs/PROCESS.md`.
-  The tech lead owns them.
+- **Your issue, your PR.** Push only your `issue-<n>-<slug>` branch and
+  open one PR for it, titled like a commit subject and closing the issue
+  (`Closes #<n>`). Never push `main`, merge, or edit `docs/PROGRESS.md`
+  or `docs/PROCESS.md`. The tech lead owns them.
+- **Apply the Docs delta verbatim** in the same PR as the code, and add
+  its examples to the docs check. The site must match the code at every
+  commit.
+- **Surprises go on the issue.** Anything unexpected that changes the
+  issue's scope is a comment on the issue. If the spec cannot be met as
+  written (vanilla behaves differently, a fact contradicts it, or it
+  conflicts with an ADR), label the issue `needs-decision`, comment what
+  you found and the options, and stop that part. Never bend the code or
+  the wording to fit. The Retrospective does **not** go on GitHub; it goes
+  only in your Worker report.
 - **Do** edit `CONTEXT.md` or the interface section of `docs/PLAN.md` in
   the same commit when your increment changes vocabulary or an interface,
   and list it under "Interface changes" in your report.
@@ -213,8 +234,9 @@ new classes of defect:
   in your scratch dir, where the next worker can reuse them.
 - Before committing a change to a `Protocol`, grep main for every
   implementer and caller again: a parallel brief may have added one.
-- Stay inside the brief. If you are blocked, or the brief is wrong, stop
-  and say so in the report rather than widening scope.
+- Stay inside the issue's "Owns" list. If you are blocked, or the issue
+  is wrong, stop and say so (on the issue, and in the report) rather than
+  widening scope.
 
 ## Worker report
 
@@ -441,6 +463,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-09-27 | ADR-0009: the docs site is the spec; GitHub spec issues are the queue; one PR per issue, owned by its worker; scope surprises as issue comments; retrospectives stay private to the lead; docs examples are checked by tests | Maintainer: define the interface and wording in the docs, have agents make the code match, and parallelize across issues |
 | 2026-09-26 | Commits go through `mise run commit` (check, then commit only if green) | The piped-check slip happened twice |
 | 2026-09-26 | Independent Next items may be delegated to the maintainer's helper agent via `helper-ready` GitHub issues | Maintainer: an optional helping hand; Claude stays primary |
 | 2026-09-26 | ADR-0008: explicit idempotent installs (`mscts adapter install`, `--from`), an honest prompt, a checksum-pinned registry, Adapter authoring guide + conformance kit, DX goal G6 | User direction: an elegant, honest DX; installs never hidden in test runs |

@@ -10,10 +10,11 @@ This page summarizes them. The ADR is the source when the two disagree.
 | [0002](https://github.com/ericbstie/mscts/blob/main/docs/adr/0002-python-astral-toolchain.md) | Python 3.13 with uv, ruff (every rule), ty and bandit. mise pins the tools and defines the tasks. |
 | [0003](https://github.com/ericbstie/mscts/blob/main/docs/adr/0003-single-pinned-target.md) | One Target at a time: Minecraft 26.3, protocol 777. Packet ids come from vanilla's data generator. |
 | [0004](https://github.com/ericbstie/mscts/blob/main/docs/adr/0004-adapters-are-translators.md) | An Adapter only translates a ServerSpec into config. One runner launches every server, and readiness is a status ping, never a log line. |
-| [0005](https://github.com/ericbstie/mscts/blob/main/docs/adr/0005-in-repo-plan-and-green-commits.md) | The plan and progress live in the repository, and every commit passes `mise run check`. |
+| [0005](https://github.com/ericbstie/mscts/blob/main/docs/adr/0005-in-repo-plan-and-green-commits.md) | Every commit passes `mise run check`. The plan lives in the repository; the queue moved to issues (0009). |
 | [0006](https://github.com/ericbstie/mscts/blob/main/docs/adr/0006-compliance-is-a-catalogue-of-differences.md) | The Report lists every difference, grouped by mechanic, with no accepted deviations. Masks cover only ids with no gameplay meaning. Random mechanics are tested statistically. |
 | [0007](https://github.com/ericbstie/mscts/blob/main/docs/adr/0007-wire-only-divergences.md) | Differences the vanilla client cannot see are reported separately and left out of scores. |
 | [0008](https://github.com/ericbstie/mscts/blob/main/docs/adr/0008-explicit-installs-pinned-registry-adapter-dx.md) | Installs are explicit and idempotent, the Registry pins every build by checksum, and Adapters get an authoring guide and a conformance check. |
+| [0009](https://github.com/ericbstie/mscts/blob/main/docs/adr/0009-docs-are-the-spec-issues-and-prs.md) | This site is the spec for what users see and always matches the code. Changes are GitHub issues, each landing as one PR. |
 
 ## Why a black box
 

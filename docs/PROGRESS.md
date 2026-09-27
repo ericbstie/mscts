@@ -103,6 +103,10 @@ like a worker branch.
 
 ## Next
 
+The queue is moving to GitHub spec issues labelled `ready` (ADR-0009).
+New work goes there. The items below are migrated to issues as they are
+picked up; until then, they are still the backlog.
+
 Take the first item. Split it if it is more than one failing test. Keep
 briefs at 3–6 increments and about 1500 lines at most.
 
