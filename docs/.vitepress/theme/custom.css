@@ -115,13 +115,6 @@
   align-items: center;
   padding: 88px 0 72px;
 }
-.ms-eyebrow {
-  font-family: var(--vp-font-family-mono);
-  font-size: 13px;
-  color: var(--ms-dirt);
-  letter-spacing: 0.02em;
-  margin-bottom: 18px;
-}
 .ms-hero h1 {
   font-size: clamp(40px, 4.8vw, 60px);
   line-height: 1.06;

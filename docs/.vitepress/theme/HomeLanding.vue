@@ -2,13 +2,10 @@
   <div class="ms-home">
     <section class="ms-hero">
       <div>
-        <p class="ms-eyebrow">Minecraft 26.3 · protocol 777</p>
         <h1>Measure how close your server is to <span>vanilla</span>.</h1>
         <p class="ms-intro">
-          mscts connects to vanilla Minecraft and to your server as an ordinary
-          client. It runs the same script against each, compares every packet
-          they send back, and times both. The result lists each difference a
-          player could notice.
+          mscts is a test suite to objectively measure how closely a custom
+          Minecraft server mimics the behavior of a vanilla Minecraft server.
         </p>
         <div class="ms-actions">
           <a class="ms-button primary" :href="withBase('/getting-started')">Get started</a>
@@ -46,6 +43,17 @@ a player would notice was found.
   status.rtt                  2.03            0.33  5
   instance.startup          15,499              31  1</pre>
       </div>
+    </section>
+
+    <section class="ms-section">
+      <h2>Why use this tool?</h2>
+      <p>
+        A custom server is only worth playing on if it behaves like vanilla.
+        mscts gives you an objective measure of that playability: it lists
+        every difference a player on the vanilla client could notice. With
+        that safety net, you can focus on performance and new features
+        without sacrificing core vanilla compliance.
+      </p>
     </section>
 
     <section class="ms-section">
@@ -152,9 +160,9 @@ a player would notice was found.
     <section class="ms-section">
       <h2>What works today</h2>
       <p>
-        mscts targets Minecraft 26.3 only. Today it plays the server list
-        Scenarios against vanilla and Pumpkin and prints a text Report. Bots
-        can join the game; gameplay Scenarios are next.
+        Today mscts plays the server list Scenarios against vanilla and
+        Pumpkin and prints a text Report. Bots can join the game; gameplay
+        Scenarios are next.
       </p>
       <div class="ms-actions ms-cta">
         <a class="ms-button" :href="withBase('/status')">See the project status</a>

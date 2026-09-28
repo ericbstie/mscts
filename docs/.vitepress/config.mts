@@ -9,7 +9,7 @@ export default defineConfig({
   base,
   title: "mscts",
   description:
-    "Plays the same client script against vanilla Minecraft and a custom server, diffs the packets, and times both.",
+    "A test suite to objectively measure how closely a custom Minecraft server mimics the behavior of a vanilla Minecraft server.",
   appearance: "dark",
   cleanUrls: true,
   lastUpdated: true,

@@ -1,5 +1,5 @@
 ---
 layout: home
 title: Differential compliance testing for Minecraft servers
-description: mscts plays the same client script against vanilla Minecraft and a custom server, diffs the packets each sends back, and times both.
+description: mscts is a test suite to objectively measure how closely a custom Minecraft server mimics the behavior of a vanilla Minecraft server.
 ---
