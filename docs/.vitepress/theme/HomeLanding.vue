@@ -48,11 +48,12 @@ a player would notice was found.
     <section class="ms-section">
       <h2>Why use this tool?</h2>
       <p>
-        A custom server is only worth playing on if it behaves like vanilla.
-        mscts gives you an objective measure of that playability: it lists
-        every difference a player on the vanilla client could notice. With
-        that safety net, you can focus on performance and new features
-        without sacrificing core vanilla compliance.
+        mscts is for people who want a custom server that keeps vanilla's
+        behavior. It gives an objective measure of that playability: it lists
+        every difference a player on the vanilla client could notice. As a
+        player, you can decide whether a server is close enough to vanilla
+        for your liking. As a developer, you can focus on performance and new
+        features without sacrificing core vanilla compliance.
       </p>
     </section>
 
