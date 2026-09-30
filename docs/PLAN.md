@@ -46,7 +46,7 @@ test needs it:
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
 | `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
-| `codec/entity_data.py` | the entity metadata value types (optional block state and unsigned int, painting variant, resolvable profile, global pos), then the serializer table and the entries list |
+| `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, painting variant, resolvable profile, global pos), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -216,6 +216,16 @@ OPTIONAL_UNSIGNED_INT: WireType[int | None]   # VarInt of value + 1, 0 = None
 OPTIONAL_GLOBAL_POS: WireType[dict | None]    # {dimension, pos: {x, y, z}} | None
 PAINTING_VARIANT: WireType[dict]              # {reference: id} | {direct: {width, height, asset_id, title, author}}
 RESOLVABLE_PROFILE: Schema                    # {profile: {game_profile: {...}} | {partial: {...}}, skin_patch: {...}}
+# All 44 serializers of `EntityDataSerializers`, in registration order (the position is the id),
+# named by their lower-case Java constants ("byte", "int", "float", "optional_component", ...).
+SERIALIZERS: Tagged                           # {serializer: "float", value: 10.0}
+# The entries of set_entity_data: a list of {index, serializer, value} in wire order. An entry
+# is a u8 index (0..254: 0xFF ends the list) and a serializer id with its value. The
+# item_stack serializer (and the item particle) refuse with "item stack: needs #19".
+ENTITY_DATA: WireType[list[dict[str, object]]]
+# Limit: an entity id inside a metadata value (a firework's shooter, an attached entity) or in
+# add_entity's `data` depends on the entity type, so it is a plain VarInt, not an `ENTITY_ID`.
+# Only a vibration source's target is one.
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 

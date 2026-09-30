@@ -8,6 +8,7 @@ each packet's `STREAM_CODEC`; where the two differ the jar is right. Every entit
 
 from collections.abc import Mapping
 
+from mscts.codec.entity_data import ENTITY_DATA
 from mscts.codec.movement import MOVE_DELTA, POSITION_PATH
 from mscts.codec.schema import (
     BOOL,
@@ -73,6 +74,8 @@ CLIENTBOUND: Mapping[str, Schema] = {
     ),
     "minecraft:remove_entities": Schema(entity_ids=PrefixedArray(ENTITY_ID)),  # Remove Entities
     "minecraft:rotate_head": Schema(entity_id=ENTITY_ID, head_yaw=BYTE),  # Set Head Rotation
+    # Set Entity Metadata: entries of index, serializer and value (see ENTITY_DATA).
+    "minecraft:set_entity_data": Schema(entity_id=ENTITY_ID, entries=ENTITY_DATA),
     # Set Entity Velocity
     "minecraft:set_entity_motion": Schema(entity_id=ENTITY_ID, velocity=LP_VEC3),
     # Teleport Entity. Flags is the Teleport Flags bit field, as in player_position.
