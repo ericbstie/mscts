@@ -571,3 +571,82 @@ class _Position:
 
 POSITION: WireType[dict[str, int]] = _Position()
 """Position: x, z (26 bits each) and y (12 bits), signed, packed into a Long: {x, y, z}."""
+
+_LP_VEC3_QUANTUM_BITS = 15
+_LP_VEC3_SCALE_MAX = (1 << 34) - 1
+"""The largest scale: the VarInt extension is an unsigned 32-bit value, shifted left by two."""
+_LP_VEC3_CONTINUATION = 4
+_LP_VEC3_LOW_SCALE_MAX = 3
+"""The two low bits of the first byte hold a scale of 0 to 3; a larger one needs the extension."""
+
+
+@dataclass(frozen=True, slots=True)
+class _LpVec3:
+    """A vector in net.minecraft.network.LpVec3's form: a scale and three 15-bit quanta."""
+
+    def read(self, reader: Reader) -> dict[str, int]:
+        lowest = reader.raw(1)[0]
+        if lowest == 0:
+            return {"scale": 0, "x": 0, "y": 0, "z": 0}
+        middle = reader.raw(1)[0]
+        high = int.from_bytes(reader.raw(4), "big")
+        packed = high << 16 | middle << 8 | lowest
+        scale = lowest & _LP_VEC3_LOW_SCALE_MAX
+        if lowest & _LP_VEC3_CONTINUATION:
+            extension = reader.var_int() & 0xFFFF_FFFF
+            if extension == 0:
+                msg = "LpVec3: continuation flag with no scale extension"
+                raise WireError(msg)
+            scale |= extension << 2
+        mask = (1 << _LP_VEC3_QUANTUM_BITS) - 1
+        return {
+            "scale": scale,
+            "x": (packed >> 3) & mask,
+            "y": (packed >> 18) & mask,
+            "z": (packed >> 33) & mask,
+        }
+
+    def write(self, writer: Writer, value: object) -> None:
+        # Exactly the names scale, x, y and z, each an int: the Schema says what is wrong if not.
+        Schema(scale=_Long(), x=_Long(), y=_Long(), z=_Long()).write(Writer(), value)
+        given = (
+            {str(key): item for key, item in value.items()} if isinstance(value, Mapping) else {}
+        )
+        scale = _integer(given.get("scale"))
+        if not 0 <= scale <= _LP_VEC3_SCALE_MAX:
+            msg = f"scale: {scale} out of range for 0..{_LP_VEC3_SCALE_MAX}"
+            raise WireError(msg)
+        quanta = {name: _integer(given.get(name)) for name in ("x", "y", "z")}
+        for name, quantum in quanta.items():
+            if not 0 <= quantum < 1 << _LP_VEC3_QUANTUM_BITS:
+                msg = f"{name}: {quantum} out of range for {_LP_VEC3_QUANTUM_BITS} bits"
+                raise WireError(msg)
+        continuation = scale > _LP_VEC3_LOW_SCALE_MAX
+        packed = (
+            quanta["z"] << 33
+            | quanta["y"] << 18
+            | quanta["x"] << 3
+            | (_LP_VEC3_CONTINUATION if continuation else 0)
+            | scale & _LP_VEC3_LOW_SCALE_MAX
+        )
+        if packed & 0xFF == 0:
+            if scale == 0 and not any(quanta.values()):
+                writer.raw(b"\x00")
+                return
+            msg = "LpVec3: a lowest byte of 0 would read back as the zero vector"
+            raise WireError(msg)
+        writer.raw(bytes([packed & 0xFF, packed >> 8 & 0xFF]))
+        writer.raw((packed >> 16).to_bytes(4, "big"))
+        if continuation:
+            extension = scale >> 2
+            writer.var_int(extension - (1 << 32) if extension >> 31 else extension)
+
+
+LP_VEC3: WireType[dict[str, int]] = _LpVec3()
+"""LpVec3 (velocity): {scale, x, y, z}, the scale and three 15-bit quanta exactly as on the wire.
+
+A quantum q stands for `(q * 2 / 32766 - 1) * scale` (32767 counts as 32766). The integers are
+kept, not that float, because two different encodings can give the same float (vanilla rounds
+the scale up and the quanta to nearest), and a Comparison must see a difference in bytes.
+A continuation flag with no scale extension is refused: it would read as a flagless scale.
+"""

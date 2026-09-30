@@ -169,6 +169,9 @@ class PrefixedOptional[T]:         # WireType[T | None]: Boolean (strict), then 
 NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
                                    # (tag types, lengths, 512 deep); not decoded into values yet
 POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long
+LP_VEC3: WireType[dict[str, int]]  # {scale, x, y, z}: an entity's velocity, as vanilla's LpVec3 packs it:
+                                   # a scale and three 15-bit quanta, kept as the integers (not the
+                                   # float they stand for), so every encoding reads back byte for byte
 
 @frozen
 class EntityId:                    # WireType[int | None]: an entity id, told apart by its type
@@ -224,6 +227,10 @@ with `javap` on the 26.3 jars, docs/research/2026-09-26-join.md):
   client inflates into a buffer of exactly the declared size, so it keeps
   the first bytes of a longer stream and never reads a missing trailer, and
   it only fails a data-length above 8 388 608 if it cannot allocate it.
+- **LpVec3**: a continuation flag (bit 2 of the first byte) followed by a zero
+  scale extension is an error. The client reads it as a scale of 0 to 3 with
+  the flag ignored, so the same vector has two spellings, and only the
+  flagless one is what vanilla writes.
 
 Where the client's reading is the protocol's own definition, the Codec reads
 the same way: a VarInt's unused 5th-byte bits (VarLong: 10th) are dropped
