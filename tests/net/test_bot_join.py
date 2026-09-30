@@ -24,12 +24,28 @@ JOIN_SENDS = [
     "minecraft:intention",
     "minecraft:hello",
     "minecraft:login_acknowledged",
+    "minecraft:custom_payload",
+    "minecraft:client_information",
     "minecraft:select_known_packs",
     "minecraft:finish_configuration",
     "minecraft:accept_teleportation",
     "minecraft:chunk_batch_received",
 ]
 """What the vanilla client sends on its way to play's first chunk batch (26.3 javap)."""
+
+FRESH_CLIENT_INFORMATION = {
+    "locale": "en_us",
+    "view_distance": 12,
+    "chat_mode": 0,  # full
+    "chat_colors": True,
+    "displayed_skin_parts": 0x7F,  # all seven
+    "main_hand": 1,  # right
+    "enable_text_filtering": False,
+    "allow_server_listings": True,
+    "particle_status": 0,  # all
+}
+"""What a fresh vanilla client sends: Options.buildPlayerInformation() on a new options.txt
+(docs/research/2026-09-26-join.md, "What the client sends by itself")."""
 
 
 async def join(bot: Bot) -> None:
@@ -67,6 +83,24 @@ def test_join_sends_what_the_vanilla_client_sends(codec: Codec, transcript: Tran
     assert chunk_batch.fields == {"chunks_per_tick": CHUNKS_PER_TICK}
 
 
+def test_join_sends_brand_and_client_information_after_login_finished(
+    codec: Codec, transcript: Transcript
+) -> None:
+    seen: list[Packet] = []
+    with_bot(codec, transcript, join_server(seen), join)
+    acknowledged, brand, information = seen[2:5]
+    assert (acknowledged.state, acknowledged.name) == (State.LOGIN, "minecraft:login_acknowledged")
+    # ClientHandshakePacketListenerImpl.handleLoginFinished (26.3 javap): the ack, then the
+    # brand and the client information, both already in configuration.
+    assert (brand.state, brand.name) == (State.CONFIGURATION, "minecraft:custom_payload")
+    assert brand.fields == {"channel": "minecraft:brand", "data": b"\x07vanilla"}  # a String
+    assert (information.state, information.name) == (
+        State.CONFIGURATION,
+        "minecraft:client_information",
+    )
+    assert information.fields == FRESH_CLIENT_INFORMATION
+
+
 def test_join_returns_once_the_first_chunk_batch_has_finished(
     codec: Codec, transcript: Transcript
 ) -> None:
@@ -92,7 +126,7 @@ def test_join_accepts_a_code_of_conduct(codec: Codec, transcript: Transcript) ->
     seen: list[Packet] = []
     script = JoinScript(code_of_conduct="Be kind.")
     with_bot(codec, transcript, join_server(seen, script), join)
-    assert [packet.name for packet in seen][3:6] == [
+    assert [packet.name for packet in seen][5:8] == [
         "minecraft:select_known_packs",
         "minecraft:accept_code_of_conduct",
         "minecraft:finish_configuration",

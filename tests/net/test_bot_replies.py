@@ -71,7 +71,6 @@ def test_a_keep_alive_is_echoed(state: State) -> None:
 @pytest.mark.parametrize(
     ("state", "received", "reply"),
     [
-        (State.LOGIN, "minecraft:login_finished", "minecraft:login_acknowledged"),
         (State.CONFIGURATION, "minecraft:finish_configuration", "minecraft:finish_configuration"),
         (State.CONFIGURATION, "minecraft:code_of_conduct", "minecraft:accept_code_of_conduct"),
         (State.PLAY, "minecraft:start_configuration", "minecraft:configuration_acknowledged"),
@@ -79,6 +78,19 @@ def test_a_keep_alive_is_echoed(state: State) -> None:
 )
 def test_the_acks_are_sent_as_the_packet_arrives(state: State, received: str, reply: str) -> None:
     assert answers(Replies(), arrived(state, received)) == [(reply, {})]
+
+
+def test_login_finished_gets_the_ack_then_the_brand_and_client_information() -> None:
+    # ClientHandshakePacketListenerImpl.handleLoginFinished (26.3 javap): all three at once.
+    sent = answers(Replies(), arrived(State.LOGIN, "minecraft:login_finished"))
+    assert [name for name, _ in sent] == [
+        "minecraft:login_acknowledged",
+        "minecraft:custom_payload",
+        "minecraft:client_information",
+    ]
+    assert sent[0][1] == {}
+    assert sent[1][1] == {"channel": "minecraft:brand", "data": b"\x07vanilla"}
+    assert sent[2][1]["view_distance"] == 12  # a fresh client's render distance
 
 
 def test_the_known_packs_offered_are_echoed() -> None:

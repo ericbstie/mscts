@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from typing import Self
 
 from mscts.codec.packets import Codec, Packet, State
+from mscts.codec.schemas.configuration import CLIENT_INFORMATION
+from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
 from mscts.transcript import Transcript
@@ -27,6 +29,16 @@ its answer depends on its timing; a Bot must not. It asks for 9 chunks per tick,
 vanilla's server starts at (`PlayerChunkSender.START_CHUNKS_PER_TICK`, 26.3 javap), so
 acknowledging never changes the pace the server chose.
 """
+
+BRAND = "vanilla"
+"""The brand a Bot sends after `login_finished`, as the vanilla client sends its own.
+
+`ClientBrandRetriever.getClientModName()` returns `VANILLA_NAME`, "vanilla" (26.3 javap),
+sent on channel `minecraft:brand` as a String.
+"""
+
+_BRAND_MAX = 32767
+"""`BrandPayload` writes the brand with `FriendlyByteBuf.writeUtf`, at most 32767."""
 
 _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
     1 << bit for bit in range(5)
@@ -94,7 +106,9 @@ class Replies:
     awaits it for every Packet, in wire order, whether or not a Group is reading. Per
     the 26.3 client (javap):
 
-    - login `login_finished` → `login_acknowledged`;
+    - login `login_finished` → `login_acknowledged`, then the brand (a configuration
+      `custom_payload` on `minecraft:brand` holding `BRAND`) and `client_information`
+      (`CLIENT_INFORMATION`, a fresh vanilla client's), all three at once;
     - configuration `select_known_packs` → the same packs back (the vanilla client sends
       those it knows, in the server's order: for vanilla's own offer, all of them);
     - configuration `code_of_conduct` → `accept_code_of_conduct`;
@@ -116,7 +130,15 @@ class Replies:
         fields = packet.fields or {}
         match packet.state, packet.name:
             case State.LOGIN, "minecraft:login_finished":
+                # The ack moves the outbound state on, so the brand and the client
+                # information go out in configuration, before the next frame is handled.
                 await connection.send("minecraft:login_acknowledged")
+                await connection.send(
+                    "minecraft:custom_payload",
+                    channel="minecraft:brand",
+                    data=Writer().string(BRAND, max_length=_BRAND_MAX).to_bytes(),
+                )
+                await connection.send("minecraft:client_information", **CLIENT_INFORMATION)
             case State.CONFIGURATION, "minecraft:select_known_packs":
                 await connection.send(
                     "minecraft:select_known_packs", known_packs=fields.get("known_packs")
@@ -246,8 +268,9 @@ class Bot:
         Sends the login handshake (intent 2) and a `hello` with the Bot's name and its
         `offline_uuid`, then takes each packet until play's first `chunk_batch_finished`.
         On the way, the Bot's Replies answer as the vanilla client does: they ack login
-        and configuration, echo the known packs and any keep-alive, accept a code of
-        conduct, confirm the join teleport, and acknowledge the chunk batch.
+        and send the brand and client information, ack configuration, echo the known
+        packs and any keep-alive, accept a code of conduct, confirm the join teleport,
+        and acknowledge the chunk batch.
 
         Raises:
             ProtocolError: The Connection is not fresh (a handshake was sent), or the server

@@ -113,6 +113,8 @@ async def test_every_join_packet_decodes_strictly_with_fields_where_a_schema_exi
         "minecraft:intention",
         "minecraft:hello",
         "minecraft:login_acknowledged",
+        "minecraft:custom_payload",
+        "minecraft:client_information",
         "minecraft:select_known_packs",
         "minecraft:finish_configuration",
     ]

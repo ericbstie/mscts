@@ -182,6 +182,14 @@ class JoinScript:
 
 _DISCONNECT_REASON = bytes.fromhex("08 0004") + b"kick"  # an NBT String text component
 
+_ANY_TIME = {
+    (State.CONFIGURATION, "minecraft:custom_payload"),
+    (State.CONFIGURATION, "minecraft:client_information"),
+}
+"""What vanilla's configuration listener takes whenever it comes, waiting for none of it
+(`ServerCommonPacketListenerImpl.handleCustomPayload`,
+`ServerConfigurationPacketListenerImpl.handleClientInformation`)."""
+
 
 def join_server(seen: list[Packet], script: JoinScript | None = None) -> Handler:
     """Answer like vanilla's login, configuration and play listeners, up to one chunk batch.
@@ -209,8 +217,12 @@ class _Join:
         self.script = script
 
     async def expect(self, peer: Peer, name: str) -> Packet:
-        packet = await peer.recv()
-        self.seen.append(packet)
+        """Take the next packet, which must be `name`, past any vanilla takes at any time."""
+        while True:
+            packet = await peer.recv()
+            self.seen.append(packet)
+            if packet.name == name or (packet.state, packet.name) not in _ANY_TIME:
+                break
         assert packet.name == name, f"expected {name}, got {packet.name}"
         return packet
 
