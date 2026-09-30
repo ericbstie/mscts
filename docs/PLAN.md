@@ -174,6 +174,9 @@ class SchemaError(ValueError): ... # a declaration that can never be valid, rais
 # the minecraft.wiki revision its layouts come from; packets.py maps them to (State, Direction).
 SERVERBOUND: Mapping[str, Schema]
 CLIENTBOUND: Mapping[str, Schema]
+# codec/schemas/configuration.py also holds the values a Bot sends, each with its source:
+CLIENT_INFORMATION: Mapping[str, object]  # a fresh vanilla client's client_information:
+                                          # Options.buildPlayerInformation() on a new options.txt
 ```
 
 Rules for the field types still to come (NBT, text components, BitSet,
@@ -307,16 +310,19 @@ class Bot:                          # what Groups use; answers keep_alive / tele
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
+BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...
-    # As the 26.3 client does (javap): login_finished → login_acknowledged; configuration
+    # As the 26.3 client does (javap): login_finished → login_acknowledged, then configuration
+    # custom_payload(minecraft:brand, the String BRAND) and client_information(CLIENT_INFORMATION),
+    # all three before the next packet is handled; configuration
     # select_known_packs → the same packs back; code_of_conduct → accept_code_of_conduct;
     # finish_configuration → finish_configuration; keep_alive (configuration and play) → the
     # same id; play player_position → accept_teleportation with the pose it results in (flagged
     # parts add to the tracked pose, rotation summed in binary32, pitch clamped to ±90, a
     # non-finite rotation ignored); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
-    # else is answered (not yet: the brand, client_information, custom_query, player_loaded).
+    # else is answered (not yet: custom_query, player_loaded).
 
 PROBE_TIMEOUT_S = 1.0               # bot.py, since it reuses Bot.status (net cannot import bot)
 def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S

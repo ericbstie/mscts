@@ -61,6 +61,21 @@ _PLUGIN_MESSAGE = Schema(channel=IDENTIFIER, data=REST)
 _LOCALE_MAX = 16
 """`ClientInformation` reads the language with `readUtf(16)` (26.3 javap)."""
 
+CLIENT_INFORMATION: Mapping[str, object] = {
+    "locale": "en_us",  # Options.<init>: languageCode = "en_us"
+    "view_distance": 12,  # renderDistance: OptionInstance(..., IntRange(2, 16 or 32), 12)
+    "chat_mode": 0,  # chatVisibility: ChatVisiblity.FULL
+    "chat_colors": True,  # chatColors: createBoolean("options.chat.color", true)
+    "displayed_skin_parts": 0x7F,  # modelParts: EnumSet.allOf(PlayerModelPart), bits 0-6
+    "main_hand": 1,  # mainHand: HumanoidArm.RIGHT
+    "enable_text_filtering": False,  # Minecraft.isTextFilteringEnabled: no account, so false
+    "allow_server_listings": True,  # allowServerListing: createBoolean(..., true, ...)
+    "particle_status": 0,  # particles: ParticleStatus.ALL
+}
+"""The `client_information` a fresh vanilla client sends: `Options.buildPlayerInformation()`
+on a new `options.txt` (26.3 javap; docs/research/2026-09-26-join.md, "What the client
+sends by itself"). A Bot sends it after `login_finished`, as the vanilla client does."""
+
 SERVERBOUND: Mapping[str, Schema] = {
     # Client Information. The enums are VarInt ids (`ByteBufCodecs.idMapper`, 26.3 javap).
     "minecraft:client_information": Schema(
