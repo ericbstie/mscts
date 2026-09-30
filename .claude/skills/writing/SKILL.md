@@ -32,9 +32,6 @@ record the example with "why: not given".
 - **Give insight; let the reader decide.** mscts shows the differences.
   The reader decides whether a server is close enough to vanilla for
   them.
-- **Lists, not prose, for results.** Show what differs as a plain bullet
-  list. No long-winded summary sentences around it. Detail lives in a
-  verbose mode and in the docs, not in the default output.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
