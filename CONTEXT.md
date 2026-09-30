@@ -82,7 +82,15 @@ need is missing, add it here in the same commit that introduces it.
   and when: a sent Packet when it was written, a received one when it
   arrived (not when the Bot took it).
 - **Mark**: a named timestamp a Group records so a Measurement can be
-  computed.
+  computed, or an Observation window found.
+- **Observation window**: the part of a Group whose play packets are
+  compared: what a Bot receives inside `async with context.observe():`,
+  found by when each packet arrived. It never compares the **heartbeat
+  packets** (`compare.HEARTBEAT`, each with its reason): packets a server
+  sends on a clock whatever a Group does (keep-alives, the time of day).
+  A window can be narrowed to named packets. Status, login and
+  configuration packets are compared whole, and so is every packet of a
+  Group with no window. _Avoid_: phase, section.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (entity ids, keep-alive ids, teleport ids) from
   Comparison. Anything a player could notice is never masked, even when
@@ -109,7 +117,8 @@ need is missing, add it here in the same commit that introduces it.
   several same-named packets it was, so it is the same in every run.
   Every compared field is one, so nobody lists them by hand. A packet
   compared as a whole (by payload, missing or unexpected) is the test
-  case of its packet name. Masked fields are not test cases. Each test
+  case of its packet name. Masked fields are not test cases, nor are
+  packets an Observation window leaves out. Each test
   case in a Verdict is the same, different in gameplay, or different in
   network traffic only: gameplay if any of its Divergences is. _Avoid_:
   check, test (for one compared field).
