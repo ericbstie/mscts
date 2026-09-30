@@ -93,7 +93,13 @@ async def test_equal_transcripts_are_a_match() -> None:
     reference = await _against(BASIC, _vanilla())
     candidate = await _against(BASIC, _vanilla())
 
-    assert judge(BASIC, reference, candidate) == Verdict("status/basic", Outcome.MATCH)
+    verdict = judge(BASIC, reference, candidate)
+    assert (verdict.group_id, verdict.outcome, verdict.divergences) == (
+        "status/basic",
+        Outcome.MATCH,
+        (),
+    )
+    assert "status_response.players.max" in verdict.test_cases
 
 
 @pytest.mark.asyncio

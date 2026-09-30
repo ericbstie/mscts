@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from mscts.codec.packets import Codec, Packet, State
-from mscts.compare import Divergence, Observability, compare
+from mscts.compare import Divergence, Mask, Observability, Outcome, Verdict, compare
 from mscts.compare import test_case as case_name
 from tests.compare.build import CLIENTBOUND, SERVERBOUND, packet, transcript
 
@@ -188,3 +188,141 @@ def test_a_bot_on_one_side_only_is_in_no_test_case() -> None:
     hello = packet("test:hello", b"\x07", direction=SERVERBOUND)
     verdict = compare(transcript(("bob", hello)), transcript(), [])
     assert [(d.kind, d.test_case) for d in verdict.divergences] == [("bot", "")]
+
+
+# A Verdict lists every test case it compared, matched or not.
+
+
+def _verdict(reference: list[Packet], candidate: list[Packet], *masks: Mask) -> Verdict:
+    return compare(
+        transcript(*(("alice", sent) for sent in reference)),
+        transcript(*(("alice", sent) for sent in candidate)),
+        masks,
+    )
+
+
+def test_a_verdict_lists_every_compared_field_whether_it_matched_or_not() -> None:
+    reference = _health(health=1.0, food=20, a=[1, 2])
+    candidate = _health(health=1.0, food=19, a=[1])
+    verdict = _verdict([reference], [candidate])
+    assert verdict.test_cases == ("set_health.a[]", "set_health.food", "set_health.health")
+
+
+def test_a_match_lists_its_test_cases_too() -> None:
+    status = _status('{"description":"mscts","players":{"max":20,"online":0}}')
+    verdict = _verdict([status], [status])
+    assert verdict.outcome is Outcome.MATCH
+    assert verdict.test_cases == (
+        "status_response.description.text",
+        "status_response.players.max",
+        "status_response.players.online",
+    )
+
+
+def test_test_cases_are_named_once_in_sorted_order_across_bots_and_packets() -> None:
+    reference = transcript(
+        ("bob", _health(z=1, a=2)), ("alice", _health(z=1)), ("alice", _health(a=3))
+    )
+    verdict = compare(reference, reference, [])
+    assert verdict.test_cases == ("set_health.a", "set_health.z")
+
+
+def test_a_field_one_side_leaves_out_is_compared_as_a_whole() -> None:
+    verdict = _verdict([_health(a={"b": 1, "c": 2})], [_health()])
+    assert verdict.test_cases == ("set_health.a",)
+
+
+def test_a_packet_compared_as_a_whole_is_a_test_case() -> None:
+    payload = packet("minecraft:hurt_animation", b"\x01")
+    missing = packet("minecraft:keep_alive", b"\x02", state=State.CONFIGURATION)
+    unexpected = packet("minecraft:set_time", b"\x03")
+    verdict = _verdict([payload, missing], [payload, unexpected])
+    assert verdict.test_cases == ("configuration:keep_alive", "hurt_animation", "set_time")
+
+
+def test_masked_fields_and_dropped_packets_are_no_test_cases() -> None:
+    masks = (
+        Mask(packet="minecraft:set_health", path="food", reason="a test"),
+        Mask(packet="minecraft:hurt_animation", path="*", reason="a test"),
+    )
+    sent = [_health(food=20, health=1.0), packet("minecraft:hurt_animation", b"\x01")]
+    assert _verdict(sent, sent, *masks).test_cases == ("set_health.health",)
+
+
+def test_a_network_traffic_difference_adds_the_test_case_of_its_raw_path() -> None:
+    reference = _status('{"description":"mscts"}')
+    candidate = _status('{"description":{"text":"mscts"}}')
+    verdict = _verdict([reference], [candidate])
+    assert verdict.test_cases == ("status_response.description", "status_response.description.text")
+
+
+def test_a_bot_on_one_side_only_adds_no_test_case_of_its_own() -> None:
+    hello = packet("test:hello", b"\x07", direction=SERVERBOUND)
+    assert compare(transcript(("bob", hello)), transcript(), []).test_cases == ()
+
+
+def test_a_verdict_made_without_a_comparison_has_no_test_cases() -> None:
+    assert (
+        Verdict("status/basic", Outcome.BLOCKED, detail="prerequisite x was error").test_cases == ()
+    )
+
+
+def test_two_runs_that_differ_only_where_they_may_give_the_same_names() -> None:
+    # The second run repeats the packet more often, has longer lists, other masked ids,
+    # more ambient packets, and its difference in another occurrence and element.
+    masks = (
+        Mask(packet="minecraft:set_health", path="id", reason="a test"),
+        Mask(packet="minecraft:set_time", path="*", reason="a test"),
+    )
+    tick = packet("minecraft:set_time", b"\x01")
+    first = _verdict(
+        [_health(id=1, a=[1], b={"c": 1}), tick, _health(id=2, a=[2], b={"c": 2})],
+        [_health(id=5, a=[0], b={"c": 1}), _health(id=6, a=[2], b={"c": 2}), tick],
+        *masks,
+    )
+    second = _verdict(
+        [_health(id=7, a=[1, 5], b={"c": 1}), tick, _health(id=8, a=[2, 3, 4], b={"c": 2})],
+        [_health(id=9, a=[1, 5], b={"c": 1}), tick, tick, _health(id=3, a=[2, 3, 0], b={"c": 2})],
+        *masks,
+    )
+    assert first.differing == second.differing == {"set_health.a[]": Observability.GAMEPLAY}
+    assert first.test_cases == second.test_cases == ("set_health.a[]", "set_health.b.c")
+
+
+# Each test case is the same, different in gameplay, or different in network traffic only.
+
+
+def test_the_differing_test_cases_say_how_they_differ() -> None:
+    reference = _status('{"description":"mscts","players":{"max":20,"online":0}}')
+    candidate = _status('{"description":{"text":"mscts"},"players":{"max":100,"online":0}}')
+    verdict = _verdict([reference], [candidate])
+    assert verdict.differing == {
+        "status_response.description": Observability.NETWORK_TRAFFIC,
+        "status_response.players.max": Observability.GAMEPLAY,
+    }
+    assert set(verdict.differing) < set(verdict.test_cases)  # the others are the same
+
+
+def _tags(*registries: str) -> Packet:
+    tagged = [{"registry": registry, "tags": []} for registry in registries]
+    return packet(
+        "minecraft:update_tags", state=State.CONFIGURATION, fields={"tagged_registries": tagged}
+    )
+
+
+def test_a_test_case_with_any_gameplay_difference_differs_in_gameplay() -> None:
+    # a and b swap places (network traffic: the client reads a map), c becomes d (gameplay).
+    verdict = _verdict([_tags("a", "b", "c")], [_tags("b", "a", "d")])
+    name = "configuration:update_tags.tagged_registries[].registry"
+    assert sorted((d.test_case, d.observability) for d in verdict.divergences) == [
+        (name, Observability.GAMEPLAY),
+        (name, Observability.NETWORK_TRAFFIC),
+        (name, Observability.NETWORK_TRAFFIC),
+    ]
+    assert verdict.differing == {name: Observability.GAMEPLAY}
+
+
+def test_a_test_case_with_only_network_traffic_differences_differs_in_network_traffic() -> None:
+    verdict = _verdict([_tags("a", "b")], [_tags("b", "a")])
+    name = "configuration:update_tags.tagged_registries[].registry"
+    assert verdict.differing == {name: Observability.NETWORK_TRAFFIC}

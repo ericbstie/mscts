@@ -67,6 +67,22 @@ type Script = Mapping[str, Sequence[Item]]
 
 _WORDS = ("hi", "yo", "mscts", "")
 _BOTS = ("alice", "bob", "carol")
+_KEYS = ("a", "id", "x_1", "a.b", "", "0", "two words", "é", '"')
+_LEAVES = (0, -5, 2**40, 1.5, -0.0, "", "s", True, False, None, b"", b"\x00")
+
+
+def random_fields(rng: random.Random, *, depth: int = 3) -> dict[str, object]:
+    """Fields no schema describes: mappings, lists and leaves under arbitrary keys."""
+    return {rng.choice(_KEYS): _random_value(rng, depth) for _ in range(rng.randint(0, 4))}
+
+
+def _random_value(rng: random.Random, depth: int) -> object:
+    kind = rng.choice(("leaf", "leaf", "mapping", "list")) if depth else "leaf"
+    if kind == "mapping":
+        return random_fields(rng, depth=depth - 1)
+    if kind == "list":
+        return [_random_value(rng, depth - 1) for _ in range(rng.randint(0, 3))]
+    return rng.choice(_LEAVES)
 
 
 def seeded(seed: int) -> random.Random:

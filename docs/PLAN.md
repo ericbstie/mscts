@@ -672,10 +672,17 @@ class Verdict:
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
+    test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, sorted
+                                    # and unique (Comparison semantics step 5); () when
+                                    # blocked or error. run.judge keeps compare's.
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
                                     # order: what compliance scores count. A Verdict whose
                                     # Divergences are all network traffic is still `mismatch`
+    @property
+    def differing(self) -> dict[str, Observability]: ... # each test case with a
+                                    # Divergence: GAMEPLAY if any of its Divergences is,
+                                    # else NETWORK_TRAFFIC. Every other one is the same.
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
@@ -988,6 +995,16 @@ proves it necessary:
    (`status_response.description` for Pumpkin's `{"text": "mscts"}`
    against vanilla's `"mscts"`). The `bot` and `failed` Divergences are
    about the Group, not one field, so they are in none ("").
+
+   A Verdict lists its test cases (`Verdict.test_cases`): the test case
+   of every pair of leaves compared in matched packets, after Masks and
+   canonicalization, whether the two were equal or not, and the test
+   case of every Divergence. A masked field or dropped packet is in
+   none. Each is the same, different in gameplay, or different in
+   network traffic only (`Verdict.differing`). A network traffic test
+   case appears only where the two formats differed: its raw path is
+   not a compared field otherwise, and listing it as the same would
+   claim a comparison that was never made.
 
 ### Measurements and Report
 

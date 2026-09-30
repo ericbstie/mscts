@@ -109,7 +109,9 @@ need is missing, add it here in the same commit that introduces it.
   several same-named packets it was, so it is the same in every run.
   Every compared field is one, so nobody lists them by hand. A packet
   compared as a whole (by payload, missing or unexpected) is the test
-  case of its packet name. Masked fields are not test cases. _Avoid_:
+  case of its packet name. Masked fields are not test cases. Each test
+  case in a Verdict is the same, different in gameplay, or different in
+  network traffic only: gameplay if any of its Divergences is. _Avoid_:
   check, test (for one compared field).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Group did not match), or `error` (the harness failed, or

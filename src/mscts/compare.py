@@ -176,12 +176,15 @@ class Verdict:
         divergences: Every difference, grouped by Bot in name order, then in stream
             order.
         detail: A human-readable note, e.g. why the Group is blocked.
+        test_cases: Every test case the Comparison compared, matched or not, sorted and
+            each once; none if the Verdict was made without one (`blocked`, `error`).
     """
 
     group_id: str
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
+    test_cases: tuple[str, ...] = ()
 
     @property
     def gameplay(self) -> tuple[Divergence, ...]:
@@ -191,6 +194,20 @@ class Verdict:
             for divergence in self.divergences
             if divergence.observability is Observability.GAMEPLAY
         )
+
+    @property
+    def differing(self) -> dict[str, Observability]:
+        """The test cases that differ, and how; every other one of `test_cases` is the same.
+
+        A test case differs in gameplay if any of its Divergences is gameplay, and else
+        in network traffic only.
+        """
+        found: dict[str, Observability] = {}
+        for divergence in self.divergences:
+            name = divergence.test_case
+            if name and found.get(name) is not Observability.GAMEPLAY:
+                found[name] = divergence.observability
+        return found
 
 
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
@@ -234,15 +251,19 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
         raise ValueError(msg)
     indexed = _Masks.of(masks)
     bots = sorted(_bots(reference) | _bots(candidate))
+    compared: set[str] = set()
     divergences = tuple(
         divergence
         for bot in bots
-        for divergence in _compare_bot(bot, reference, candidate, indexed)
+        for divergence in _compare_bot(bot, reference, candidate, indexed, compared)
     )
+    compared.update(divergence.test_case for divergence in divergences)
+    compared.discard("")
     return Verdict(
         group_id=reference.group_id,
         outcome=Outcome.MISMATCH if divergences else Outcome.MATCH,
         divergences=divergences,
+        test_cases=tuple(sorted(compared)),
     )
 
 
@@ -353,9 +374,13 @@ def _bots(transcript: Transcript) -> set[str]:
 
 
 def _compare_bot(
-    bot: str, reference: Transcript, candidate: Transcript, masks: _Masks
+    bot: str, reference: Transcript, candidate: Transcript, masks: _Masks, compared: set[str]
 ) -> Iterator[Divergence]:
-    """Compare one Bot's streams; its presence counts Events of any kind, even dropped ones."""
+    """Compare one Bot's streams; its presence counts Events of any kind, even dropped ones.
+
+    Adds the test case of every pair of values it compares in matched Packets to
+    `compared`; a Divergence names the test case of anything else it compares.
+    """
     in_reference = sum(event.bot == bot for event in reference.events)
     in_candidate = sum(event.bot == bot for event in candidate.events)
     if not (in_reference and in_candidate):
@@ -369,7 +394,9 @@ def _compare_bot(
             candidate=in_candidate or ABSENT,
             test_case="",
         )
-    yield from _compare_streams(bot, _stream(reference, bot, masks), _stream(candidate, bot, masks))
+    yield from _compare_streams(
+        bot, _stream(reference, bot, masks), _stream(candidate, bot, masks), compared
+    )
 
 
 def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized]:
@@ -747,7 +774,10 @@ def _longest_common_subsequence(
 
 
 def _compare_streams(
-    bot: str, reference: Sequence[_Normalized], candidate: Sequence[_Normalized]
+    bot: str,
+    reference: Sequence[_Normalized],
+    candidate: Sequence[_Normalized],
+    compared: set[str],
 ) -> Iterator[Divergence]:
     pairs = _align([_key(entry) for entry in reference], [_key(entry) for entry in candidate])
     next_reference = next_candidate = 0
@@ -757,7 +787,8 @@ def _compare_streams(
         for index in range(next_candidate, cand_index):
             yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):
-            yield from _diff_matched(bot, ref_index, reference[ref_index], candidate[cand_index])
+            matched = (reference[ref_index], candidate[cand_index])
+            yield from _diff_matched(bot, ref_index, *matched, compared)
         next_reference, next_candidate = ref_index + 1, cand_index + 1
 
 
@@ -777,19 +808,31 @@ def _unmatched(
 
 
 def _diff_matched(
-    bot: str, index: int, reference: _Normalized, candidate: _Normalized
+    bot: str, index: int, reference: _Normalized, candidate: _Normalized, compared: set[str]
 ) -> Iterator[Divergence]:
+    """Diff two matched Packets, adding the test case of each pair compared to `compared`.
+
+    Two Packets compared by payload are one test case, the packet's.
+    """
     state, name = reference.packet.state, reference.packet.name
-    differences: list[tuple[_Path | None, object, object]]
+    differences: list[tuple[_Path | None, str, object, object]] = []
     if reference.fields is None or candidate.fields is None:
-        differences = (
-            []
-            if reference.packet.payload == candidate.packet.payload
-            else [(None, reference.packet.payload.hex(), candidate.packet.payload.hex())]
-        )
+        whole = _test_case(state, name, ())
+        compared.add(whole)
+        if reference.packet.payload != candidate.packet.payload:
+            payloads = (reference.packet.payload.hex(), candidate.packet.payload.hex())
+            differences.append((None, whole, *payloads))
     else:
-        differences = list(_diff(reference.fields, candidate.fields, ()))
-    for path, ref_value, cand_value in differences:
+        # Name each shape once: a list of 10,000 entries is 10,000 pairs but one name.
+        names: dict[_Path, str] = {}
+        for path, ref_value, cand_value in _pairs(reference.fields, candidate.fields, ()):
+            shape = tuple(0 if isinstance(step, int) else step for step in path)
+            if shape not in names:
+                names[shape] = _test_case(state, name, shape)
+            if not _same(ref_value, cand_value):
+                differences.append((path, names[shape], ref_value, cand_value))
+        compared.update(names.values())
+    for path, case, ref_value, cand_value in differences:
         yield Divergence(
             bot=bot,
             index=index,
@@ -798,7 +841,7 @@ def _diff_matched(
             path=None if path is None else _render(path),
             reference=ref_value,
             candidate=cand_value,
-            test_case=_test_case(state, name, path or ()),
+            test_case=case,
         )
     for path, ref_value, cand_value in _network_traffic(reference, candidate):
         yield Divergence(
@@ -850,22 +893,31 @@ def _at(fields: dict[str, _Value], path: _Path) -> _Value | Absent:
     return node
 
 
-def _diff(
-    reference: _Value | Absent, candidate: _Value | Absent, path: _Path
-) -> Iterator[tuple[_Path, _Value | Absent, _Value | Absent]]:
-    """Yield (path, reference value, candidate value) for each difference, in path order.
+type _Pair = tuple[_Path, _Value | Absent, _Value | Absent]
+"""A path, and the reference and candidate values there."""
+
+
+def _diff(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -> Iterator[_Pair]:
+    """Yield each pair `_pairs` compares whose two values differ, in path order."""
+    return (pair for pair in _pairs(reference, candidate, path) if not _same(pair[1], pair[2]))
+
+
+def _pairs(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -> Iterator[_Pair]:
+    """Yield (path, reference value, candidate value) for each pair compared, in path order.
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
     is ABSENT on the other. Lists are compared index by index, and elements past the
-    end of the shorter one are ABSENT. Anything else is a leaf.
+    end of the shorter one are ABSENT. Anything else is a leaf, compared as a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
         for key in sorted(reference.keys() | candidate.keys()):
-            yield from _diff(reference.get(key, ABSENT), candidate.get(key, ABSENT), (*path, key))
+            yield from _pairs(reference.get(key, ABSENT), candidate.get(key, ABSENT), (*path, key))
     elif isinstance(reference, list) and isinstance(candidate, list):
         for index in range(max(len(reference), len(candidate))):
-            yield from _diff(_element(reference, index), _element(candidate, index), (*path, index))
-    elif not _same(reference, candidate):
+            yield from _pairs(
+                _element(reference, index), _element(candidate, index), (*path, index)
+            )
+    else:
         yield path, reference, candidate
 
 

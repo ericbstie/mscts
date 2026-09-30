@@ -254,6 +254,7 @@ def judge(
         outcome=Outcome.MISMATCH,
         divergences=(failed, *verdict.divergences),
         detail=f"the Candidate failed: {candidate}",
+        test_cases=verdict.test_cases,
     )
 
 
