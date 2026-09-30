@@ -129,6 +129,7 @@ async def test_the_undecodable_frame_is_a_divergence_showing_both_payloads() -> 
 
     verdict = judge(BASIC, reference, candidate)
 
+    assert verdict.test_cases == ("status_response",)  # kept from the Comparison
     [_, payload] = verdict.divergences
     reference_payload = reference.events[-1].packet.payload
     assert payload == Divergence(

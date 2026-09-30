@@ -3,21 +3,23 @@
 import os
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from mscts.codec.packets import Direction
+from mscts.codec.packets import Direction, Packet
 from mscts.compare import (
     WHOLE_PACKET,
     Divergence,
     DivergenceKind,
     Mask,
+    Observability,
     Outcome,
     Verdict,
     compare,
 )
 from mscts.transcript import Transcript
-from tests.compare.generate import GROUP, MASKS, render, script, seeded
+from tests.compare.build import packet, transcript
+from tests.compare.generate import MASKS, random_fields, render, script, seeded
 
 SEEDS = range(120)
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +35,7 @@ def test_a_transcript_matches_itself() -> None:
         transcript = render(script(rng), rng)
         for masks in (MASKS, ()):
             verdict = compare(transcript, transcript, masks)
-            assert verdict == Verdict(GROUP, Outcome.MATCH), f"seed {seed}"
+            assert (verdict.outcome, verdict.divergences) == (Outcome.MATCH, ()), f"seed {seed}"
 
 
 def test_a_rerun_that_differs_only_where_it_may_has_only_network_traffic_divergences() -> None:
@@ -120,6 +122,81 @@ def test_divergence_order_does_not_depend_on_the_hash_seed() -> None:
     assert [run.returncode for run in runs] == [0, 0], outputs
     assert outputs[0][0] == outputs[1][0]
     assert outputs[0][0].count("MISMATCH") >= 50
+
+
+_ANY_PACKET = ("test:p", "minecraft:set_health", "minecraft:keep_alive")
+
+
+def test_a_field_no_one_listed_by_hand_still_gets_a_test_case() -> None:
+    # Random fields under arbitrary keys. A match must list exactly the test cases that a
+    # change to every leaf reports: every compared field, whatever its name or depth.
+    named: set[str] = set()
+    for seed in SEEDS:
+        rng = seeded(seed)
+        drawn = [(rng.choice(_ANY_PACKET), random_fields(rng)) for _ in range(rng.randint(1, 4))]
+        sent = [packet(name, fields=fields) for name, fields in drawn]
+        changed = [
+            packet(name, fields={key: _every_leaf_changed(item) for key, item in fields.items()})
+            for name, fields in drawn
+        ]
+        same = compare(_alice(sent), _alice(sent), [])
+        different = compare(_alice(sent), _alice(changed), [])
+        found = {d.test_case for d in different.divergences}
+        assert same.outcome is Outcome.MATCH, f"seed {seed}"
+        assert same.test_cases == different.test_cases == tuple(sorted(found)), f"seed {seed}"
+        named |= found
+    assert len(named) >= 300  # not vacuous: 465 names when written
+    assert any("[]" in name for name in named)
+    assert any('["' in name for name in named)
+    assert any(name.startswith("play:keep_alive.") for name in named)
+
+
+def test_every_divergence_of_a_field_is_in_a_listed_test_case() -> None:
+    for seed in SEEDS:
+        rng = seeded(seed)
+        verdict = compare(render(script(rng), rng), render(script(rng), rng), MASKS)
+        assert list(verdict.test_cases) == sorted(set(verdict.test_cases)), f"seed {seed}"
+        for divergence in verdict.divergences:
+            assert (divergence.test_case == "") == (divergence.kind == "bot"), f"seed {seed}"
+            assert divergence.test_case in {"", *verdict.test_cases}, f"seed {seed}"
+
+
+def test_two_runs_give_the_same_test_cases_but_where_the_format_differed() -> None:
+    # Re-runs of one Script differ in masked values, ambient packets, interleaving and
+    # how the status JSON is spelled. A network traffic difference adds the test case of
+    # its raw path only in a run where the two formats differed; every other name stays.
+    varied = 0
+    for seed in SEEDS:
+        runs = script(seeded(seed))
+        first, second = (
+            compare(
+                render(runs, seeded(4 * seed + n)), render(runs, seeded(4 * seed + n + 1)), MASKS
+            )
+            for n in (0, 2)
+        )
+        assert _but_network_traffic(first) == _but_network_traffic(second), f"seed {seed}"
+        varied += first.test_cases != second.test_cases
+    assert varied >= 0.2 * len(SEEDS)  # not vacuous: 50 of 120 when written
+
+
+def _alice(sent: Sequence[Packet]) -> Transcript:
+    return transcript(*(("alice", each) for each in sent))
+
+
+def _every_leaf_changed(value: object) -> object:
+    """`value` with each leaf in a list of its own: a leaf of another type, at its path."""
+    if isinstance(value, Mapping):
+        return {key: _every_leaf_changed(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_every_leaf_changed(item) for item in value]
+    return [value]
+
+
+def _but_network_traffic(verdict: Verdict) -> set[str]:
+    traffic = {
+        d.test_case for d in verdict.divergences if d.observability is Observability.NETWORK_TRAFFIC
+    }
+    return set(verdict.test_cases) - traffic
 
 
 def _mirror(

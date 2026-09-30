@@ -15,7 +15,9 @@ C = packet("test:c", b"\x03")
 def test_identical_transcripts_match() -> None:
     events = [("alice", A), ("alice", B), ("bob", C)]
     verdict = compare(transcript(*events), transcript(*events, server="pumpkin"), [])
-    assert verdict == Verdict(group_id=GROUP, outcome=Outcome.MATCH)
+    assert verdict == Verdict(
+        group_id=GROUP, outcome=Outcome.MATCH, test_cases=("test:a", "test:b", "test:c")
+    )
 
 
 def test_empty_transcripts_match() -> None:
@@ -73,6 +75,7 @@ def test_a_differing_payload_is_a_field_divergence_with_hex_values() -> None:
                 test_case="test:b",
             ),
         ),
+        test_cases=("test:a", "test:b"),
     )
 
 
