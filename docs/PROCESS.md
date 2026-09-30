@@ -90,6 +90,8 @@ When unsure, use `opus`. A wrong Verdict costs more than a slower worker.
    - Merge the PR with a rebase (never a squash), which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
      may need a follow-up issue.
+   - If it was an `enabler` issue, add `ready` to every `test` issue whose
+     Needs have now all landed.
 4. **Retrospective intake.** Log every item in the
    [retrospective log](#retrospective-log) and decide one of:
    - **adopt**: change the skill, PLAN, PROCESS or goal now, in a
@@ -465,6 +467,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-09-30 | Test proposals: the `test` issue template (`.github/ISSUE_TEMPLATE/test.md`), "Proposing a test" in `docs/contributing.md`, and `test` / `enabler` labels. Infrastructure several tests need is one shared `enabler` issue; a `test` issue gets `ready` once its enablers land. Evidence lives in `docs/research/2026-09-30-gameplay-survey.md` | Maintainer: explore what to compare between servers (lighting, spawning, combat, mob simulation, chunk loading, …) and make adding a test a standard process that independent agents can pick up |
 | 2026-09-27 | ADR-0009: the docs site is the spec; GitHub spec issues are the queue; one PR per issue, owned by its worker; scope surprises as issue comments; retrospectives stay private to the lead; docs examples are checked by tests | Maintainer: define the interface and wording in the docs, have agents make the code match, and parallelize across issues |
 | 2026-09-26 | Commits go through `mise run commit` (check, then commit only if green) | The piped-check slip happened twice |
 | 2026-09-26 | Independent Next items may be delegated to the maintainer's helper agent via `helper-ready` GitHub issues | Maintainer: an optional helping hand; Claude stays primary |
