@@ -5,14 +5,14 @@ from pathlib import Path
 import pytest
 
 from mscts.compare import Outcome
+from mscts.group import Group, GroupKind
+from mscts.groups import status
 from mscts.run import Server, run
-from mscts.scenario import Scenario, ScenarioKind
-from mscts.scenarios import status
 from mscts.spec import ServerSpec
 from tests.run.fakes import FakeAdapter
 
-BASIC = Scenario(id="status/basic", run=status.basic)
-PING = Scenario(id="status/ping", run=status.ping, requires=("status/basic",))
+BASIC = Group(id="status/basic", run=status.basic)
+PING = Group(id="status/ping", run=status.ping, requires=("status/basic",))
 
 type MakeServer = Callable[..., Server]
 
@@ -30,7 +30,7 @@ async def test_a_run_against_two_equal_servers_matches(
         [BASIC, PING], fake_server("one"), fake_server("two"), workdir=tmp_path / "run"
     )
 
-    assert [(v.scenario_id, v.outcome) for v in verdicts] == [
+    assert [(v.group_id, v.outcome) for v in verdicts] == [
         ("status/basic", Outcome.MATCH),
         ("status/ping", Outcome.MATCH),
     ]
@@ -69,13 +69,13 @@ async def test_repetitions_reuse_the_instances(fake_server: MakeServer, tmp_path
 
     verdicts = await run([BASIC, PING], reference, candidate, workdir=tmp_path / "run", repeat=3)
 
-    assert [v.scenario_id for v in verdicts] == ["status/basic", "status/ping"] * 3
+    assert [v.group_id for v in verdicts] == ["status/basic", "status/ping"] * 3
     assert {v.outcome for v in verdicts} == {Outcome.MATCH}
     assert len(_adapter(reference).prepared) == len(_adapter(candidate).prepared) == 1
 
 
 @pytest.mark.asyncio
-async def test_a_scenario_with_its_own_spec_gets_instances_of_its_own(
+async def test_a_group_with_its_own_spec_gets_instances_of_its_own(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
     reference, candidate = fake_server("one"), fake_server("two")
@@ -83,7 +83,7 @@ async def test_a_scenario_with_its_own_spec_gets_instances_of_its_own(
     def other_motd(spec: ServerSpec) -> ServerSpec:
         return dataclasses.replace(spec, motd="other")
 
-    custom = Scenario(id="test/custom", run=status.basic, spec=other_motd)
+    custom = Group(id="test/custom", run=status.basic, spec=other_motd)
 
     verdicts = await run([BASIC, custom, PING], reference, candidate, workdir=tmp_path / "run")
 
@@ -93,20 +93,20 @@ async def test_a_scenario_with_its_own_spec_gets_instances_of_its_own(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("kind", [ScenarioKind.TICK_EXACT, ScenarioKind.STATISTICAL])
-async def test_only_exact_scenarios_can_run_yet(
-    kind: ScenarioKind, fake_server: MakeServer, tmp_path: Path
+@pytest.mark.parametrize("kind", [GroupKind.TICK_EXACT, GroupKind.STATISTICAL])
+async def test_only_exact_groups_can_run_yet(
+    kind: GroupKind, fake_server: MakeServer, tmp_path: Path
 ) -> None:
-    scenario = Scenario(id="test/kind", run=status.basic, kind=kind)
+    group = Group(id="test/kind", run=status.basic, kind=kind)
     reference = fake_server("one")
 
     with pytest.raises(NotImplementedError, match=str(kind)):
-        await run([scenario], reference, fake_server("two"), workdir=tmp_path / "run")
+        await run([group], reference, fake_server("two"), workdir=tmp_path / "run")
 
     assert _adapter(reference).prepared == []
 
 
 @pytest.mark.asyncio
-async def test_a_scenario_listed_twice_is_refused(fake_server: MakeServer, tmp_path: Path) -> None:
+async def test_a_group_listed_twice_is_refused(fake_server: MakeServer, tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="status/basic"):
         await run([BASIC, BASIC], fake_server("one"), fake_server("two"), workdir=tmp_path)

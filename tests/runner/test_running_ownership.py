@@ -1,7 +1,7 @@
 """Readiness needs ownership: the socket listening at the Endpoint is the Instance's own.
 
 Without it, a probe answered by another server at the same Endpoint (another worker's
-Instance, an orphan, anything) makes a Scenario run against the wrong server, and
+Instance, an orphan, anything) makes a Group run against the wrong server, and
 `instance.startup` read milliseconds (audit H1, docs/audits/2026-09-26-foundation.md).
 """
 

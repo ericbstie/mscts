@@ -47,22 +47,22 @@ def test_event_and_mark_have_slots() -> None:
 
 
 def test_transcript_starts_empty() -> None:
-    transcript = Transcript(scenario_id="status/basic", server="vanilla")
-    assert (transcript.scenario_id, transcript.server) == ("status/basic", "vanilla")
+    transcript = Transcript(group_id="status/basic", server="vanilla")
+    assert (transcript.group_id, transcript.server) == ("status/basic", "vanilla")
     assert transcript.events == []
     assert transcript.marks == []
 
 
 def test_transcript_starts_on_the_monotonic_clock() -> None:
     before = time.monotonic_ns()
-    transcript = Transcript(scenario_id="status/basic", server="vanilla")
+    transcript = Transcript(group_id="status/basic", server="vanilla")
     after = time.monotonic_ns()
     assert before <= transcript.start_ns <= after
 
 
 def test_now_ns_counts_monotonic_nanoseconds_since_the_start() -> None:
     transcript = Transcript(
-        scenario_id="status/basic", server="vanilla", start_ns=time.monotonic_ns() - 5_000_000
+        group_id="status/basic", server="vanilla", start_ns=time.monotonic_ns() - 5_000_000
     )
     before = time.monotonic_ns() - transcript.start_ns
     now = transcript.now_ns()
@@ -73,7 +73,7 @@ def test_now_ns_counts_monotonic_nanoseconds_since_the_start() -> None:
 def a_transcript() -> Transcript:
     """A Transcript whose clock has been running for a second."""
     return Transcript(
-        scenario_id="status/basic", server="vanilla", start_ns=time.monotonic_ns() - 1_000_000_000
+        group_id="status/basic", server="vanilla", start_ns=time.monotonic_ns() - 1_000_000_000
     )
 
 
@@ -115,7 +115,7 @@ def test_record_rejects_a_time_before_the_start() -> None:
 
 
 def test_record_rejects_a_time_in_the_future(monkeypatch: pytest.MonkeyPatch) -> None:
-    transcript = Transcript(scenario_id="status/basic", server="vanilla", start_ns=1_000)
+    transcript = Transcript(group_id="status/basic", server="vanilla", start_ns=1_000)
     monkeypatch.setattr(time, "monotonic_ns", lambda: 5_000)
     with pytest.raises(ValueError, match="t_ns 4001 is in the future"):
         transcript.record("alice", PACKET, t_ns=4_001)
@@ -123,12 +123,12 @@ def test_record_rejects_a_time_in_the_future(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_record_accepts_the_present(monkeypatch: pytest.MonkeyPatch) -> None:
-    transcript = Transcript(scenario_id="status/basic", server="vanilla", start_ns=1_000)
+    transcript = Transcript(group_id="status/basic", server="vanilla", start_ns=1_000)
     monkeypatch.setattr(time, "monotonic_ns", lambda: 5_000)
     assert transcript.record("alice", PACKET, t_ns=4_000).t_ns == 4_000
 
 
 def test_transcripts_with_equal_contents_are_equal_whatever_their_start() -> None:
-    first = Transcript(scenario_id="status/basic", server="vanilla", start_ns=1)
-    second = Transcript(scenario_id="status/basic", server="vanilla", start_ns=2)
+    first = Transcript(group_id="status/basic", server="vanilla", start_ns=1)
+    second = Transcript(group_id="status/basic", server="vanilla", start_ns=2)
     assert first == second

@@ -69,7 +69,7 @@ async def _join(
     """Boot Pumpkin prepared for `spec`, join a Bot until its first position, stop Pumpkin."""
     plan = PumpkinAdapter().prepare(installation, spec, workdir)
     plan = dataclasses.replace(plan, env={**plan.env, _GUARD: token})
-    transcript = Transcript(scenario_id="candidate/flat-world", server="pumpkin")
+    transcript = Transcript(group_id="candidate/flat-world", server="pumpkin")
     async with running(
         plan,
         ready=status_probe(TARGET),

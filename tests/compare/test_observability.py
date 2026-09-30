@@ -142,7 +142,7 @@ def test_only_wire_only_divergences_is_still_a_mismatch() -> None:
 
 def test_identical_bytes_match_exactly() -> None:
     # A Self-check: no Divergence of either kind.
-    assert _verdict('{"b":2,"a":1}', '{"b":2,"a":1}') == Verdict("test/scenario", Outcome.MATCH)
+    assert _verdict('{"b":2,"a":1}', '{"b":2,"a":1}') == Verdict("test/group", Outcome.MATCH)
 
 
 def test_a_canonical_difference_is_observable_and_not_also_wire_only() -> None:

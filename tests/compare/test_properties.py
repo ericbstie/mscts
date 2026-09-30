@@ -17,7 +17,7 @@ from mscts.compare import (
     compare,
 )
 from mscts.transcript import Transcript
-from tests.compare.generate import MASKS, SCENARIO, render, script, seeded
+from tests.compare.generate import GROUP, MASKS, render, script, seeded
 
 SEEDS = range(120)
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,7 +33,7 @@ def test_a_transcript_matches_itself() -> None:
         transcript = render(script(rng), rng)
         for masks in (MASKS, ()):
             verdict = compare(transcript, transcript, masks)
-            assert verdict == Verdict(SCENARIO, Outcome.MATCH), f"seed {seed}"
+            assert verdict == Verdict(GROUP, Outcome.MATCH), f"seed {seed}"
 
 
 def test_a_rerun_that_differs_only_where_it_may_has_only_wire_only_divergences() -> None:

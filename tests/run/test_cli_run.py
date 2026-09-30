@@ -76,9 +76,7 @@ def test_a_run_with_divergences_still_exits_0(
     assert '"not vanilla"' in out
 
 
-def test_the_scenario_glob_picks_the_scenarios(
-    fakes: Fakes, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_the_group_glob_picks_the_groups(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:
     fakes()
 
     code, _, err = _run(
@@ -90,7 +88,7 @@ def test_the_scenario_glob_picks_the_scenarios(
     assert "running status/basic" not in err
 
 
-def test_a_glob_that_matches_nothing_fails_naming_the_scenarios(
+def test_a_glob_that_matches_nothing_fails_naming_the_groups(
     fakes: Fakes, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fakes()

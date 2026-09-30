@@ -28,7 +28,7 @@ async def _connect(reference: Instance, transcript: Transcript, *, name: str) ->
 async def test_status_returns_protocol_777_and_the_exact_status_json(
     reference: Instance,
 ) -> None:
-    transcript = Transcript(scenario_id="reference/status", server="vanilla")
+    transcript = Transcript(group_id="reference/status", server="vanilla")
     bot = await _connect(reference, transcript, name="alice")
     try:
         status = await bot.status()
@@ -40,7 +40,7 @@ async def test_status_returns_protocol_777_and_the_exact_status_json(
 
 
 async def test_ping_echoes_its_payload(reference: Instance) -> None:
-    transcript = Transcript(scenario_id="reference/ping", server="vanilla")
+    transcript = Transcript(group_id="reference/ping", server="vanilla")
     bot = await _connect(reference, transcript, name="alice")
     payload = -123_456_789_012
     try:
@@ -53,7 +53,7 @@ async def test_ping_echoes_its_payload(reference: Instance) -> None:
 
 
 async def test_every_recorded_packet_decodes_strictly_with_fields(reference: Instance) -> None:
-    transcript = Transcript(scenario_id="reference/strict-decode", server="vanilla")
+    transcript = Transcript(group_id="reference/strict-decode", server="vanilla")
     bot = await _connect(reference, transcript, name="alice")
     try:
         await bot.status()

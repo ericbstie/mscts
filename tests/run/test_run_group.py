@@ -4,33 +4,33 @@ import pytest
 
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import Outcome, Verdict
-from mscts.run import ScenarioError, blocked, judge, run_scenario
-from mscts.scenario import Scenario, ScenarioContext
-from mscts.scenarios import status
+from mscts.group import Group, GroupContext
+from mscts.groups import status
+from mscts.run import GroupError, blocked, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import VANILLA_STATUS, Handler, Peer, serve, status_server
 
-BASIC = Scenario(id="status/basic", run=status.basic)
-PING = Scenario(id="status/ping", run=status.ping, requires=("status/basic",))
+BASIC = Group(id="status/basic", run=status.basic)
+PING = Group(id="status/ping", run=status.ping, requires=("status/basic",))
 
 
 async def _attempt(
-    scenario: Scenario, handler: Handler, *, server: str = "fake"
-) -> Transcript | ScenarioError:
-    """Run `scenario` against a fake server running `handler`; its Transcript, or its error.
+    group: Group, handler: Handler, *, server: str = "fake"
+) -> Transcript | GroupError:
+    """Run `group` against a fake server running `handler`; its Transcript, or its error.
 
     The error is caught inside `serve`, which would otherwise replace its cause.
     """
     async with serve(Codec.for_target(TARGET), handler) as endpoint:
         try:
-            return await run_scenario(scenario, endpoint, server=server, timeout_s=1.0)
-        except ScenarioError as error:
+            return await run_group(group, endpoint, server=server, timeout_s=1.0)
+        except GroupError as error:
             return error
 
 
-async def _against(scenario: Scenario, json_response: str, *, server: str = "fake") -> Transcript:
-    transcript = await _attempt(scenario, status_server(json_response, []), server=server)
+async def _against(group: Group, json_response: str, *, server: str = "fake") -> Transcript:
+    transcript = await _attempt(group, status_server(json_response, []), server=server)
     assert isinstance(transcript, Transcript)
     return transcript
 
@@ -40,49 +40,49 @@ def _vanilla() -> str:
 
 
 @pytest.mark.asyncio
-async def test_run_scenario_returns_the_transcript_of_one_instance() -> None:
+async def test_run_group_returns_the_transcript_of_one_instance() -> None:
     transcript = await _against(PING, _vanilla(), server="vanilla")
 
-    assert (transcript.scenario_id, transcript.server) == ("status/ping", "vanilla")
+    assert (transcript.group_id, transcript.server) == ("status/ping", "vanilla")
     assert [event.packet.name for event in transcript.events][-1] == "minecraft:pong_response"
     assert [mark.label for mark in transcript.marks] == ["status.rtt:start", "status.rtt:end"]
 
 
 @pytest.mark.asyncio
-async def test_a_scenario_that_raises_is_a_scenario_error_holding_what_was_recorded() -> None:
-    async def status_then_fail(context: ScenarioContext) -> None:
+async def test_a_group_that_raises_is_a_group_error_holding_what_was_recorded() -> None:
+    async def status_then_fail(context: GroupContext) -> None:
         await status.basic(context)
         msg = "the script broke"
         raise ProcessLookupError(msg)
 
     error = await _attempt(
-        Scenario(id="test/broken", run=status_then_fail), status_server(_vanilla(), [])
+        Group(id="test/broken", run=status_then_fail), status_server(_vanilla(), [])
     )
 
-    assert isinstance(error, ScenarioError)
+    assert isinstance(error, GroupError)
     assert isinstance(error.__cause__, ProcessLookupError)
     assert str(error) == "ProcessLookupError: the script broke"
-    assert error.transcript.scenario_id == "test/broken"
+    assert error.transcript.group_id == "test/broken"
     names = [event.packet.name for event in error.transcript.events]
     assert names[-1] == "minecraft:status_response"
 
 
 @pytest.mark.asyncio
-async def test_a_scenario_error_closes_the_bots_it_opened() -> None:
+async def test_a_group_error_closes_the_bots_it_opened() -> None:
     closed: list[bool] = []
 
     async def wait_for_eof(peer: Peer) -> None:
         await peer.eof()
         closed.append(True)
 
-    async def connect_then_fail(context: ScenarioContext) -> None:
+    async def connect_then_fail(context: GroupContext) -> None:
         await context.bot("status")
         raise ProcessLookupError
 
     async with serve(Codec.for_target(TARGET), wait_for_eof) as endpoint:
-        with pytest.raises(ScenarioError):
-            await run_scenario(
-                Scenario(id="test/x", run=connect_then_fail), endpoint, server="f", timeout_s=1.0
+        with pytest.raises(GroupError):
+            await run_group(
+                Group(id="test/x", run=connect_then_fail), endpoint, server="f", timeout_s=1.0
             )
 
     assert closed == [True]
@@ -111,7 +111,7 @@ async def test_different_transcripts_are_a_mismatch_with_their_divergences() -> 
 
 @pytest.mark.asyncio
 async def test_a_reference_that_fails_is_an_error_naming_it() -> None:
-    reference = ScenarioError(Transcript("status/basic", "vanilla"), "TimeoutError: no answer")
+    reference = GroupError(Transcript("status/basic", "vanilla"), "TimeoutError: no answer")
     candidate = await _against(BASIC, _vanilla())
 
     verdict = judge(BASIC, reference, candidate)
@@ -124,7 +124,7 @@ async def test_a_reference_that_fails_is_an_error_naming_it() -> None:
 @pytest.mark.asyncio
 async def test_a_harness_failure_on_the_candidate_is_an_error_naming_it() -> None:
     reference = await _against(BASIC, _vanilla())
-    candidate = ScenarioError(Transcript("status/basic", "fake"), "ProcessLookupError")
+    candidate = GroupError(Transcript("status/basic", "fake"), "ProcessLookupError")
     candidate.__cause__ = ProcessLookupError()  # not something the Candidate did
 
     verdict = judge(BASIC, reference, candidate)
@@ -152,12 +152,12 @@ def test_a_comparison_the_harness_cannot_make_is_an_error() -> None:
     assert verdict.detail.startswith("the Comparison failed: TypeError: ")
 
 
-def test_a_scenario_whose_prerequisite_matched_is_not_blocked() -> None:
+def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:
     assert blocked(PING, {"status/basic": Verdict("status/basic", Outcome.MATCH)}) is None
 
 
 @pytest.mark.parametrize("outcome", [Outcome.MISMATCH, Outcome.BLOCKED, Outcome.ERROR])
-def test_a_scenario_whose_prerequisite_did_not_match_is_blocked(outcome: Outcome) -> None:
+def test_a_group_whose_prerequisite_did_not_match_is_blocked(outcome: Outcome) -> None:
     verdict = blocked(PING, {"status/basic": Verdict("status/basic", outcome)})
 
     assert verdict == Verdict(
@@ -165,7 +165,7 @@ def test_a_scenario_whose_prerequisite_did_not_match_is_blocked(outcome: Outcome
     )
 
 
-def test_a_scenario_whose_prerequisite_did_not_run_is_blocked() -> None:
+def test_a_group_whose_prerequisite_did_not_run_is_blocked() -> None:
     verdict = blocked(PING, {})
 
     assert verdict == Verdict(

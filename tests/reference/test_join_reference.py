@@ -69,7 +69,7 @@ async def _joined(reference: Instance, transcript: Transcript, *, name: str) -> 
 
 
 async def test_join_reaches_play_and_the_first_chunk_batch(reference: Instance) -> None:
-    transcript = Transcript(scenario_id="reference/join", server="vanilla")
+    transcript = Transcript(group_id="reference/join", server="vanilla")
     connecting_ns = transcript.now_ns()
     bot = await _joined(reference, transcript, name="join_basic")
     await bot.close()
@@ -100,7 +100,7 @@ async def test_join_reaches_play_and_the_first_chunk_batch(reference: Instance) 
 async def test_every_join_packet_decodes_strictly_with_fields_where_a_schema_exists(
     reference: Instance,
 ) -> None:
-    transcript = Transcript(scenario_id="reference/join-strict-decode", server="vanilla")
+    transcript = Transcript(group_id="reference/join-strict-decode", server="vanilla")
     bot = await _joined(reference, transcript, name="join_strict")
     await bot.close()
     packets = [event.packet for event in transcript.events]
@@ -122,7 +122,7 @@ async def test_every_join_packet_decodes_strictly_with_fields_where_a_schema_exi
 async def test_a_joined_bot_stays_connected_through_a_keep_alive_cycle(
     reference: Instance,
 ) -> None:
-    transcript = Transcript(scenario_id="reference/join-keep-alive", server="vanilla")
+    transcript = Transcript(group_id="reference/join-keep-alive", server="vanilla")
     bot = await _joined(reference, transcript, name="join_keep_alive")
     try:
         first = await bot.expect("minecraft:keep_alive", timeout_s=_KEEP_ALIVE_TIMEOUT_S)

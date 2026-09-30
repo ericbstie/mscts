@@ -16,7 +16,7 @@ _NS_PER_MS = 1_000_000
 
 @dataclass(frozen=True, slots=True)
 class Measurement:
-    """One timing or size a Scenario (or the Run) measured on one Instance.
+    """One timing or size a Group (or the Run) measured on one Instance.
 
     Attributes:
         name: What was measured, e.g. `status.rtt` or `instance.startup`.

@@ -25,7 +25,7 @@ class Event:
 
 @dataclass(frozen=True, slots=True)
 class Mark:
-    """A named timestamp a Scenario records so a Measurement can be computed.
+    """A named timestamp a Group records so a Measurement can be computed.
 
     Attributes:
         t_ns: When it was recorded, in nanoseconds since the Transcript started.
@@ -44,7 +44,7 @@ class Transcript:
     monotonic clock from `start_ns`.
 
     Attributes:
-        scenario_id: The Scenario that produced it, e.g. `status/basic`.
+        group_id: The Group that produced it, e.g. `status/basic`.
         server: The name of the Adapter whose Instance it ran against.
         events: Every Packet sent and received.
         marks: Every Mark.
@@ -52,7 +52,7 @@ class Transcript:
             this process's clock, so equality ignores it.
     """
 
-    scenario_id: str
+    group_id: str
     server: str
     events: list[Event] = field(default_factory=list)
     marks: list[Mark] = field(default_factory=list)

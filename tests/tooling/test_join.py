@@ -87,7 +87,7 @@ def test_packet_names_splits_and_drops_empties(join: types.ModuleType) -> None:
 def test_report_prints_only_the_named_packets_decoded_or_as_hex(
     join: types.ModuleType, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    transcript = Transcript(scenario_id="t", server="vanilla")
+    transcript = Transcript(group_id="t", server="vanilla")
     transcript.record("bot", _packet("minecraft:login", {"is_flat": False}), t_ns=0)
     transcript.record("bot", _packet("minecraft:hello", None, payload=b"\x01\x02"), t_ns=0)
     transcript.record("bot", _packet("minecraft:ignored", {"x": 1}), t_ns=0)
@@ -105,7 +105,7 @@ def test_report_decodes_the_first_n_chunks(
 ) -> None:
     section = _section(_single(5), _single(41), block_count=1)
     payload = _payload(1, 2, [section] * join.chunkformat.OVERWORLD_SECTIONS)
-    transcript = Transcript(scenario_id="t", server="vanilla")
+    transcript = Transcript(group_id="t", server="vanilla")
     transcript.record(
         "bot", _packet("minecraft:level_chunk_with_light", None, payload=payload), t_ns=0
     )
@@ -131,7 +131,7 @@ def test_jsonable_converts_bytes_and_uuid_recursively(join: types.ModuleType) ->
 
 
 def test_write_jsonl_writes_one_object_per_event(join: types.ModuleType, tmp_path: Path) -> None:
-    transcript = Transcript(scenario_id="t", server="vanilla")
+    transcript = Transcript(group_id="t", server="vanilla")
     transcript.record("bot", _packet("minecraft:login", {"is_flat": False}), t_ns=0)
     transcript.record("bot", _packet("minecraft:hello", None, payload=b"\x01\x02"), t_ns=0)
     out = tmp_path / "t.jsonl"

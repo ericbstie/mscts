@@ -43,7 +43,7 @@ def toy_codec() -> Codec:
 @pytest.fixture
 def transcript() -> Transcript:
     """A fresh Transcript."""
-    return Transcript(scenario_id="net/test", server="fake")
+    return Transcript(group_id="net/test", server="fake")
 
 
 @pytest.fixture

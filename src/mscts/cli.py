@@ -19,10 +19,10 @@ from mscts.adapters.fetch import Download, Fetch, https_get
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
+from mscts.group import GROUPS, Group, GroupKind, resolve
 from mscts.registry import RegistryError
 from mscts.report import Report, render_text
 from mscts.runner import RunnerError
-from mscts.scenario import SCENARIOS, Scenario, ScenarioKind, resolve
 from mscts.target import TARGET
 
 # Every Adapter the command knows, by name.
@@ -34,11 +34,11 @@ ADAPTERS: Mapping[str, Callable[[], Adapter]] = MappingProxyType(
 REFERENCE = "vanilla"
 """The Reference's Adapter: every Run compares a Candidate with it."""
 
-DEFAULT_SCENARIOS = "status/*"
-"""The Scenarios `mscts run` plays unless `--scenario` says otherwise."""
+DEFAULT_GROUPS = "status/*"
+"""The Groups `mscts run` plays unless `--scenario` says otherwise."""
 
 DEFAULT_REPEAT = 5
-"""How many times `mscts run` plays each Scenario unless `--repeat` says otherwise."""
+"""How many times `mscts run` plays each Group unless `--repeat` says otherwise."""
 
 _NO_OUT = "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
 RUN_NOTES = (_NO_OUT,)
@@ -169,14 +169,10 @@ def _status(arguments: argparse.Namespace, _fetch: Fetch) -> int:
     return 0
 
 
-def _scenarios(pattern: str) -> tuple[Scenario, ...]:
-    """The registered exact Scenarios whose id matches `pattern`, with their prerequisites."""
-    exact = sorted(
-        scenario_id
-        for scenario_id, scenario in SCENARIOS.items()
-        if scenario.kind is ScenarioKind.EXACT
-    )
-    chosen = [scenario_id for scenario_id in exact if fnmatch.fnmatchcase(scenario_id, pattern)]
+def _groups(pattern: str) -> tuple[Group, ...]:
+    """The registered exact Groups whose id matches `pattern`, with their prerequisites."""
+    exact = sorted(group_id for group_id, group in GROUPS.items() if group.kind is GroupKind.EXACT)
+    chosen = [group_id for group_id in exact if fnmatch.fnmatchcase(group_id, pattern)]
     if not chosen:
         msg = (
             f"no registered exact Scenario matches --scenario {pattern!r}; "
@@ -193,7 +189,7 @@ def _server(name: str) -> run.Server:
 
 
 def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
-    scenarios = _scenarios(str(arguments.scenario))
+    groups = _groups(str(arguments.scenario))
     repeat = int(arguments.repeat)
     if repeat < 1:
         msg = f"--repeat must be at least 1, not {repeat}"
@@ -203,7 +199,7 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
     try:
         with _progress():
             result = asyncio.run(
-                run.run_results(scenarios, reference, candidate, workdir=workdir, repeat=repeat)
+                run.run_results(groups, reference, candidate, workdir=workdir, repeat=repeat)
             )
     except RunnerError as error:  # the workdir stays: its console log is the evidence
         msg = f"{error.reason}; its console log is kept at {error.log_path}"
@@ -242,9 +238,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     running.add_argument(
         "--scenario",
-        default=DEFAULT_SCENARIOS,
+        default=DEFAULT_GROUPS,
         metavar="GLOB",
-        help=f"the Scenario ids to play, prerequisites added (default: {DEFAULT_SCENARIOS})",
+        help=f"the Scenario ids to play, prerequisites added (default: {DEFAULT_GROUPS})",
     )
     running.add_argument(
         "--repeat",
