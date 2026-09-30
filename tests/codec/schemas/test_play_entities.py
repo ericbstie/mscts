@@ -675,3 +675,78 @@ def test_the_entity_id_of_an_entity_event_is_an_int_and_a_damage_event_source_is
     assert damage["entity_id"] is ENTITY_ID
     assert damage["source_cause_id"] is ENTITY_ID_OPTIONAL
     assert damage["source_direct_id"] is ENTITY_ID_OPTIONAL
+
+
+# Passengers and links, then the player's own state. The probe recorded none of these, so the
+# payloads are built by hand from each packet's javap layout.
+
+
+def test_set_passengers_decodes_and_re_encodes() -> None:
+    # The vehicle 300 carries the entities 2 and 301.
+    round_trip(
+        "minecraft:set_passengers", {"vehicle": 300, "passengers": [2, 301]}, "ac02 02 02 ad02"
+    )
+    round_trip("minecraft:set_passengers", {"vehicle": 7, "passengers": []}, "07 00")
+
+
+def test_set_entity_link_decodes_and_re_encodes() -> None:
+    # A lead from the entity 2 to the entity 15; the ids are Ints, and the holder 0 is none.
+    round_trip(
+        "minecraft:set_entity_link",
+        {"attached_entity_id": 2, "holding_entity_id": 15},
+        "00000002 0000000f",
+    )
+    round_trip(
+        "minecraft:set_entity_link",
+        {"attached_entity_id": 300, "holding_entity_id": 0},
+        "0000012c 00000000",
+    )
+
+
+def test_set_health_decodes_and_re_encodes() -> None:
+    # Full health and food, and saturation 5; then a dead, starving player with a food past 127.
+    round_trip(
+        "minecraft:set_health",
+        {"health": 20.0, "food": 20, "saturation": 5.0},
+        "41a00000 14 40a00000",
+    )
+    round_trip(
+        "minecraft:set_health",
+        {"health": 0.0, "food": 300, "saturation": 0.0},
+        "00000000 ac02 00000000",
+    )
+
+
+def test_set_experience_decodes_and_re_encodes() -> None:
+    # Half way to level 30, which took 1395 points in all (a two-byte VarInt).
+    round_trip(
+        "minecraft:set_experience",
+        {"experience_bar": 0.5, "level": 30, "total_experience": 1395},
+        "3f000000 1e f30a",
+    )
+    round_trip(
+        "minecraft:set_experience",
+        {"experience_bar": 0.0, "level": 300, "total_experience": 0},
+        "00000000 ac02 00",
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "paths"),
+    [
+        ("set_passengers", ["vehicle", "passengers[]"]),
+        ("set_entity_link", ["attached_entity_id", "holding_entity_id"]),
+        ("set_health", []),
+        ("set_experience", []),
+    ],
+)
+def test_passenger_link_and_state_packets_have_their_entity_ids_as_entity_ids(
+    name: str, paths: list[str]
+) -> None:
+    assert entity_id_paths(play_schema(f"minecraft:{name}")) == paths
+
+
+def test_the_entity_ids_of_a_link_are_ints() -> None:
+    fields = play_schema("minecraft:set_entity_link").fields
+    assert fields["attached_entity_id"] is ENTITY_ID_INT
+    assert fields["holding_entity_id"] is ENTITY_ID_INT
