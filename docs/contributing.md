@@ -17,7 +17,7 @@ It takes a few seconds.
 
 ## Test tiers
 
-Tests are grouped by the infrastructure they need.
+The development tests are split into tiers by the infrastructure they need.
 
 | Tier | Needs | Command |
 | --- | --- | --- |

@@ -63,8 +63,8 @@ No difference a player would notice was found.
       <h2>How it works</h2>
       <p>
         mscts starts two servers on your machine: vanilla Minecraft and the
-        custom server you want to test. Both run offline, each on its own
-        local address, and neither can reach the internet. For each kind of
+        custom server you want to compare with it. Both run offline, each on
+        its own local address, and neither can reach the internet. For each kind of
         server, a small module called an Adapter writes that server's own
         configuration, so both start with the same settings.
       </p>
@@ -73,7 +73,9 @@ No difference a player would notice was found.
         performs the same actions on both, and records every message each
         server sends back. It never reads either server's code, so it works
         the same for a server written in Rust, Java or anything else. Finally
-        it compares the two recordings field by field and lists every field
+        it compares the two recordings field by field. Each field is a test
+        case, named after its message and the field, such as
+        <code>status_response.description</code>, and mscts lists every one
         where the custom server differs from vanilla.
       </p>
     </section>
@@ -113,9 +115,9 @@ No difference a player would notice was found.
     <section class="ms-section">
       <h2>What works today</h2>
       <p>
-        Today mscts plays the server list tests against vanilla and Pumpkin
-        and prints a text Report. Bots can join the game; gameplay tests are
-        next.
+        Today mscts compares how vanilla and Pumpkin answer the server list,
+        and prints a text Report. Bots can join the game; comparing what
+        happens in it is next.
       </p>
       <div class="ms-actions ms-cta">
         <a class="ms-button" :href="withBase('/status')">See the project status</a>

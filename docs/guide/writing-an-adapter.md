@@ -1,7 +1,7 @@
 # Writing an Adapter
 
 An Adapter is the only code in mscts that knows about a particular server.
-To test a new server, you write one Adapter. You never change a Group.
+To compare a new server with vanilla, you write one Adapter. You never change a Group.
 
 An Adapter does not download, start or stop anything. It does two things:
 
@@ -15,7 +15,7 @@ waiting for readiness, and stopping it.
 ::: info Work in progress
 This page describes the contract in
 [`src/mscts/adapters/base.py`](https://github.com/ericbstie/mscts/blob/main/src/mscts/adapters/base.py)
-as it is today. A conformance command, `mscts adapter check`, will test an
+as it is today. A conformance command, `mscts adapter check`, will check an
 Adapter against a live server. Until it exists, the unit tests of the
 vanilla and Pumpkin Adapters are the best examples.
 :::
