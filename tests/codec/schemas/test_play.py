@@ -71,6 +71,11 @@ def test_the_chunk_batch_packets() -> None:
     )
 
 
+def test_player_loaded_has_no_fields() -> None:
+    # Player Loaded, wiki revision 3790659: "no fields" (26.3 javap: StreamCodec.unit).
+    round_trip(SERVERBOUND, "minecraft:player_loaded", {}, bytes([0x2C]))
+
+
 def test_the_configuration_switch_packets_have_no_fields() -> None:
     round_trip(CLIENTBOUND, "minecraft:start_configuration", {}, bytes([0x78]))
     round_trip(SERVERBOUND, "minecraft:configuration_acknowledged", {}, bytes([0x10]))
