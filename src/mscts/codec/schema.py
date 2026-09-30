@@ -60,6 +60,15 @@ class _VarInt:
 
 
 @dataclass(frozen=True, slots=True)
+class _VarLong:
+    def read(self, reader: Reader) -> int:
+        return reader.var_long()
+
+    def write(self, writer: Writer, value: object) -> None:
+        writer.var_long(_integer(value))
+
+
+@dataclass(frozen=True, slots=True)
 class _UShort:
     def read(self, reader: Reader) -> int:
         return reader.ushort()
@@ -191,6 +200,9 @@ UUID: WireType[uuid.UUID] = _Uuid()
 
 VAR_INT: WireType[int] = _VarInt()
 """VarInt: a signed 32-bit integer, 1 to 5 bytes."""
+
+VAR_LONG: WireType[int] = _VarLong()
+"""VarLong: a signed 64-bit integer, 1 to 10 bytes."""
 
 USHORT: WireType[int] = _UShort()
 """Unsigned Short: 0 to 65535, big-endian."""
