@@ -5,12 +5,12 @@ from mscts.run import GroupResult, SideSummary
 from mscts.target import TARGET
 
 STATUS = "minecraft:status_response"
-OBSERVABLE = "Differences a player would notice"
-WIRE_ONLY = "Wire-only differences"
+GAMEPLAY = "Differences a player would notice"
+NETWORK_TRAFFIC = "Wire-only differences"
 TIMINGS = "Timings"
 
 
-def _field(path: str, reference: object, candidate: object, *, wire: bool = False) -> Divergence:
+def _field(path: str, reference: object, candidate: object, *, traffic: bool = False) -> Divergence:
     return Divergence(
         bot="status",
         index=0,
@@ -19,7 +19,7 @@ def _field(path: str, reference: object, candidate: object, *, wire: bool = Fals
         path=path,
         reference=reference,
         candidate=candidate,
-        observability=Observability.WIRE_ONLY if wire else Observability.OBSERVABLE,
+        observability=Observability.NETWORK_TRAFFIC if traffic else Observability.GAMEPLAY,
     )
 
 
@@ -71,28 +71,28 @@ def test_no_divergences_is_said_plainly() -> None:
     text = render_text(_report(_result(_verdict("status/basic")), _result(_verdict("status/ping"))))
 
     assert "No differences from vanilla were found in the 2 groups run." in text
-    assert OBSERVABLE not in text
-    assert WIRE_ONLY not in text
+    assert GAMEPLAY not in text
+    assert NETWORK_TRAFFIC not in text
 
 
-def test_only_wire_only_divergences_say_plainly_a_player_would_notice_none() -> None:
-    wire = _field("json_response.favicon", ABSENT, None, wire=True)
-    text = render_text(_report(_result(_verdict("status/basic", wire))))
+def test_only_network_traffic_divergences_say_plainly_a_player_would_notice_none() -> None:
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    text = render_text(_report(_result(_verdict("status/basic", traffic))))
 
     assert "No difference a player would notice was found" in text
-    assert OBSERVABLE not in text
+    assert GAMEPLAY not in text
 
 
 def test_the_sections_come_in_order() -> None:
     basic = _verdict(
         "status/basic",
         _field("json_response.version.name", "26.3", "Pumpkin 26.2"),
-        _field("json_response.description", '{"text":"A"}', '"A"', wire=True),
+        _field("json_response.description", '{"text":"A"}', '"A"', traffic=True),
     )
     error = _verdict("join/basic", outcome=Outcome.ERROR)
     text = render_text(_report(_result(basic, rtt=1.0), _result(error)))
 
-    positions = _positions(text, "2 groups", OBSERVABLE, WIRE_ONLY, "join/basic", TIMINGS)
+    positions = _positions(text, "2 groups", GAMEPLAY, NETWORK_TRAFFIC, "join/basic", TIMINGS)
     assert positions == sorted(positions)
     assert text.rindex("wire-only") > text.index(TIMINGS)  # the legend comes last
 
@@ -105,23 +105,21 @@ def test_the_summary_counts_identical_and_different_groups() -> None:
 
 
 def test_the_report_never_says_scenario() -> None:
-    wire = _field("json_response.favicon", ABSENT, None, wire=True)
-    observable = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"), wire)
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    gameplay = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"), traffic)
     error = Verdict("join/basic", Outcome.ERROR, detail="the Reference failed: boom")
     blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite join/basic was error")
     flaky = _result(_verdict("status/basic", _field("a", 1, 2)), _verdict("status/basic"))
-    text = render_text(
-        _report(_result(observable, rtt=1.0), _result(error), _result(blocked), flaky)
-    )
+    text = render_text(_report(_result(gameplay, rtt=1.0), _result(error), _result(blocked), flaky))
 
     assert "scenario" not in text.lower()
 
 
-def test_an_observable_divergence_reads_as_both_values_under_its_mechanic() -> None:
+def test_a_gameplay_divergence_reads_as_both_values_under_its_mechanic() -> None:
     different = _verdict("status/basic", _field("json_response.version.name", "26.3", "Pumpkin"))
     text = render_text(_report(_result(different)))
 
-    section = text[text.index(OBSERVABLE) : text.index(TIMINGS)]
+    section = text[text.index(GAMEPLAY) : text.index(TIMINGS)]
     assert "Server list ping (status)" in section
     assert section.index("Server list ping") < section.index("status/basic")
     line = next(line for line in section.splitlines() if "version.name" in line)
@@ -137,7 +135,7 @@ def test_divergences_are_grouped_by_mechanic_then_group() -> None:
     ping = _verdict("status/ping", _field("c", 5, 6))
     text = render_text(_report(_result(status), _result(join), _result(ping)))
 
-    section = text[text.index(OBSERVABLE) : text.index(TIMINGS)]
+    section = text[text.index(GAMEPLAY) : text.index(TIMINGS)]
     status_title, basic, ping_at, join_title = _positions(
         section, "Server list ping (status)", "status/basic", "status/ping", "join"
     )
@@ -147,7 +145,7 @@ def test_divergences_are_grouped_by_mechanic_then_group() -> None:
 def test_an_unknown_mechanic_is_shown_by_its_prefix() -> None:
     text = render_text(_report(_result(_verdict("zzz/thing", _field("a", 1, 2)))))
 
-    assert "zzz" in text[text.index(OBSERVABLE) :]
+    assert "zzz" in text[text.index(GAMEPLAY) :]
 
 
 def test_a_failed_divergence_reads_as_the_candidate_failing() -> None:
@@ -174,17 +172,17 @@ def test_a_long_value_is_truncated_with_its_full_length() -> None:
     assert "502" in text  # the quoted value's full length
 
 
-def test_wire_only_divergences_are_counted_per_packet_with_a_few_examples() -> None:
-    wire = [_field(f"json_response.v{i}", i, f"{i}", wire=True) for i in range(10)]
-    text = render_text(_report(_result(_verdict("status/basic", *wire))))
+def test_network_traffic_divergences_are_counted_per_packet_with_a_few_examples() -> None:
+    traffic = [_field(f"json_response.v{i}", i, f"{i}", traffic=True) for i in range(10)]
+    text = render_text(_report(_result(_verdict("status/basic", *traffic))))
 
-    section = text[text.index(WIRE_ONLY) : text.index(TIMINGS)]
+    section = text[text.index(NETWORK_TRAFFIC) : text.index(TIMINGS)]
     assert "10" in section
     assert "status_response" in section
     assert "json_response.v0" in section
     assert "json_response.v9" not in section
     assert "and 5 more" in section  # never hides that some were left out
-    assert OBSERVABLE not in text
+    assert GAMEPLAY not in text
 
 
 def test_errors_and_blocked_groups_are_listed_with_their_detail() -> None:

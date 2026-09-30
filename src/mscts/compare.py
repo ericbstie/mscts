@@ -100,10 +100,15 @@ type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
 
 
 class Observability(StrEnum):
-    """Whether a vanilla client could tell a Divergence's two values apart (ADR-0007)."""
+    """Which kind of difference a Divergence is (ADR-0007).
 
-    OBSERVABLE = "observable"
-    WIRE_ONLY = "wire-only"
+    `GAMEPLAY`: a vanilla client could tell the two values apart, so a player could
+    notice it. `NETWORK_TRAFFIC`: the two servers send the same thing in different
+    formats, and a vanilla client ends up with the same result.
+    """
+
+    GAMEPLAY = "gameplay"
+    NETWORK_TRAFFIC = "network traffic"
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,9 +139,9 @@ class Divergence:
             the Bot's Events.
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of
             the Bot's Events.
-        observability: `wire-only`: a `field` Divergence between raw values whose
+        observability: `network traffic`: a `field` Divergence between raw values whose
             canonical forms are equal, so the vanilla client reads both alike; its path
-            and values are the raw ones. `observable`: every other Divergence, including
+            and values are the raw ones. `gameplay`: every other Divergence, including
             every `bot`, `missing`, `unexpected` and `failed` one.
     """
 
@@ -147,7 +152,7 @@ class Divergence:
     path: str | None
     reference: object
     candidate: object
-    observability: Observability = Observability.OBSERVABLE
+    observability: Observability = Observability.GAMEPLAY
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,7 +162,7 @@ class Verdict:
     Attributes:
         group_id: The Group, e.g. `status/basic`.
         outcome: `match` exactly when there are no divergences, from `compare`; so
-            wire-only Divergences alone are still a `mismatch` (ADR-0007).
+            network traffic Divergences alone are still a `mismatch` (ADR-0007).
         divergences: Every difference, grouped by Bot in name order, then in stream
             order.
         detail: A human-readable note, e.g. why the Group is blocked.
@@ -169,12 +174,12 @@ class Verdict:
     detail: str = ""
 
     @property
-    def observable(self) -> tuple[Divergence, ...]:
-        """The observable Divergences, in order: what compliance scores count."""
+    def gameplay(self) -> tuple[Divergence, ...]:
+        """The gameplay Divergences, in order: what compliance scores count."""
         return tuple(
             divergence
             for divergence in self.divergences
-            if divergence.observability is Observability.OBSERVABLE
+            if divergence.observability is Observability.GAMEPLAY
         )
 
 
@@ -193,14 +198,14 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Between two matched pairs, `missing` Divergences come before `unexpected` ones.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
-    observable `field` Divergence per differing leaf, in path order. If they have a
+    gameplay `field` Divergence per differing leaf, in path order. If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
-    are diffed too: a raw difference is a wire-only Divergence, with the raw path and
-    values, when the unmasked canonical values at that path are equal; otherwise the
-    observable Divergences under it (or a Mask) account for it. JSON text in a raw field
+    are diffed too: a raw difference is a network traffic Divergence, with the raw path
+    and values, when the unmasked canonical values at that path are equal; otherwise the
+    gameplay Divergences under it (or a Mask) account for it. JSON text in a raw field
     (`_PARSED`) is diffed as its parsed value, at JSON paths, and as the whole text only
-    when the parsed values are equal. A packet's wire-only
-    Divergences follow its observable ones. A path joins identifier keys
+    when the parsed values are equal. A packet's network traffic
+    Divergences follow its gameplay ones. A path joins identifier keys
     with dots and puts list indices in brackets (`players.sample[0].name`); any other
     key is a JSON string in brackets (`m["a.b"]`). If either Packet has no fields, the
     two are compared by payload, with path None and hex values. A `missing` or
@@ -408,7 +413,7 @@ def _child(node: _Value, step: _Step) -> _Value | Absent:
 # Canonicalization: protocol equivalences, applied before the Masks. It is not masking:
 # a Mask says a value is nondeterministic, a canonical form says two encodings mean the
 # same thing to the vanilla client. It classifies, never erases: a raw difference it
-# makes equal is a wire-only Divergence (ADR-0007). PLAN (Comparison semantics) gives
+# makes equal is a network traffic Divergence (ADR-0007). PLAN (Comparison semantics) gives
 # the evidence for each entry of the canonical table, and the equivalences considered
 # and not encoded.
 
@@ -600,7 +605,7 @@ _PARSED: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Val
     MappingProxyType({(State.STATUS, "minecraft:status_response"): _parsed_status_response})
 )
 """The fields of a packet in `_CANONICAL` that hold JSON text, parsed but not canonical,
-so a wire-only Divergence inside the JSON is reported at its JSON path."""
+so a network traffic Divergence inside the JSON is reported at its JSON path."""
 
 
 # Alignment.
@@ -733,7 +738,7 @@ def _diff_matched(
             reference=ref_value,
             candidate=cand_value,
         )
-    for path, ref_value, cand_value in _wire_only(reference, candidate):
+    for path, ref_value, cand_value in _network_traffic(reference, candidate):
         yield Divergence(
             bot=bot,
             index=index,
@@ -742,11 +747,11 @@ def _diff_matched(
             path=_render(path),
             reference=ref_value,
             candidate=cand_value,
-            observability=Observability.WIRE_ONLY,
+            observability=Observability.NETWORK_TRAFFIC,
         )
 
 
-def _wire_only(
+def _network_traffic(
     reference: _Normalized, candidate: _Normalized
 ) -> Iterator[tuple[_Path, _Value | Absent, _Value | Absent]]:
     """Yield the raw differences whose unmasked canonical values are equal, in path order.

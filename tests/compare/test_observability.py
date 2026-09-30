@@ -1,8 +1,8 @@
-"""Observability: a Divergence is observable, or wire-only (ADR-0007).
+"""Observability: a Divergence is gameplay, or network traffic (ADR-0007).
 
 compare() diffs both the raw values and their canonical form. A raw difference whose
-canonical values are equal is wire-only: the vanilla client reads both alike. Every
-other Divergence is observable.
+canonical values are equal is network traffic: the vanilla client reads both alike. Every
+other Divergence is gameplay.
 """
 
 import pytest
@@ -20,7 +20,7 @@ from mscts.compare import (
 from tests.compare.build import CLIENTBOUND, packet, transcript
 
 CODEC = Codec.load("26.3")
-WIRE_ONLY, OBSERVABLE = Observability.WIRE_ONLY, Observability.OBSERVABLE
+NETWORK_TRAFFIC, GAMEPLAY = Observability.NETWORK_TRAFFIC, Observability.GAMEPLAY
 
 
 def status(json_response: str) -> Packet:
@@ -36,7 +36,7 @@ def _verdict(reference: str, candidate: str, *masks: Mask) -> Verdict:
     )
 
 
-def _wire_only(reference: str, candidate: str) -> Divergence:
+def _network_traffic(reference: str, candidate: str) -> Divergence:
     return Divergence(
         bot="alice",
         index=0,
@@ -45,20 +45,20 @@ def _wire_only(reference: str, candidate: str) -> Divergence:
         path="json_response",
         reference=reference,
         candidate=candidate,
-        observability=WIRE_ONLY,
+        observability=NETWORK_TRAFFIC,
     )
 
 
 def test_observability_values_are_the_context_terms() -> None:
-    assert [member.value for member in Observability] == ["observable", "wire-only"]
+    assert [member.value for member in Observability] == ["gameplay", "network traffic"]
 
 
-def test_a_divergence_is_observable_unless_classified_otherwise() -> None:
-    # So a `failed` Divergence (made by run.judge) is observable.
+def test_a_divergence_is_gameplay_unless_classified_otherwise() -> None:
+    # So a `failed` Divergence (made by run.judge) is gameplay.
     failed = Divergence(
         bot="", index=0, kind="failed", packet="", path=None, reference=ABSENT, candidate="x"
     )
-    assert failed.observability is OBSERVABLE
+    assert failed.observability is GAMEPLAY
 
 
 # Every canonicalization of the JSON text alone: spellings of the same JSON value.
@@ -71,17 +71,19 @@ SPELLING_IDS = ["key-order", "whitespace", "escape"]
 
 
 @pytest.mark.parametrize(("reference", "candidate"), EQUIVALENT_SPELLINGS, ids=SPELLING_IDS)
-def test_a_json_spelling_is_a_wire_only_divergence_of_the_whole_text(
+def test_a_json_spelling_is_a_network_traffic_divergence_of_the_whole_text(
     reference: str, candidate: str
 ) -> None:
     verdict = _verdict(reference, candidate)
-    assert verdict.divergences == (_wire_only(reference, candidate),)
-    assert verdict.observable == ()
+    assert verdict.divergences == (_network_traffic(reference, candidate),)
+    assert verdict.gameplay == ()
 
 
 @pytest.mark.parametrize(("reference", "candidate"), EQUIVALENT_SPELLINGS, ids=SPELLING_IDS)
-def test_swapping_the_sides_swaps_a_wire_only_divergence(reference: str, candidate: str) -> None:
-    assert _verdict(candidate, reference).divergences == (_wire_only(candidate, reference),)
+def test_swapping_the_sides_swaps_a_network_traffic_divergence(
+    reference: str, candidate: str
+) -> None:
+    assert _verdict(candidate, reference).divergences == (_network_traffic(candidate, reference),)
 
 
 # Canonicalizations of JSON values: each is reported where the JSON values differ.
@@ -119,24 +121,24 @@ VALUE_IDS = [
 
 
 @pytest.mark.parametrize(("reference", "candidate", "found"), EQUIVALENT_VALUES, ids=VALUE_IDS)
-def test_a_canonical_value_is_a_wire_only_divergence_at_its_json_path(
+def test_a_canonical_value_is_a_network_traffic_divergence_at_its_json_path(
     reference: str, candidate: str, found: list[tuple[str, object, object]]
 ) -> None:
-    wire_only = [
+    network_traffic = [
         (d.path, d.reference, d.candidate)
         for d in _verdict(reference, candidate).divergences
-        if d.observability is WIRE_ONLY
+        if d.observability is NETWORK_TRAFFIC
     ]
-    assert wire_only == [(f"json_response.{path}", ref, cand) for path, ref, cand in found]
+    assert network_traffic == [(f"json_response.{path}", ref, cand) for path, ref, cand in found]
     swapped = [
         (d.path, d.candidate, d.reference)
         for d in _verdict(candidate, reference).divergences
-        if d.observability is WIRE_ONLY
+        if d.observability is NETWORK_TRAFFIC
     ]
-    assert swapped == wire_only
+    assert swapped == network_traffic
 
 
-def test_only_wire_only_divergences_is_still_a_mismatch() -> None:
+def test_only_network_traffic_divergences_is_still_a_mismatch() -> None:
     assert _verdict('{"a":1,"b":2}', '{"b":2,"a":1}').outcome is Outcome.MISMATCH
 
 
@@ -145,7 +147,7 @@ def test_identical_bytes_match_exactly() -> None:
     assert _verdict('{"b":2,"a":1}', '{"b":2,"a":1}') == Verdict("test/group", Outcome.MATCH)
 
 
-def test_a_canonical_difference_is_observable_and_not_also_wire_only() -> None:
+def test_a_canonical_difference_is_gameplay_and_not_also_network_traffic() -> None:
     verdict = _verdict('{"favicon":"a","players":2}', '{"players":3,"favicon":"a"}')
     assert verdict.divergences == (
         Divergence(
@@ -158,7 +160,7 @@ def test_a_canonical_difference_is_observable_and_not_also_wire_only() -> None:
             candidate=3,
         ),
     )
-    assert verdict.observable == verdict.divergences
+    assert verdict.gameplay == verdict.divergences
 
 
 def test_a_raw_difference_under_a_masked_canonical_difference_is_not_reported() -> None:
@@ -171,22 +173,22 @@ def test_a_raw_difference_under_a_masked_canonical_difference_is_not_reported() 
     assert verdict.divergences == ()
 
 
-def test_a_mask_on_the_raw_path_hides_its_wire_only_divergence() -> None:
+def test_a_mask_on_the_raw_path_hides_its_network_traffic_divergence() -> None:
     mask = Mask(packet="minecraft:status_response", path="json_response", reason="a test")
     assert _verdict('{"a":1,"b":2}', '{"b":2,"a":1}', mask).divergences == ()
 
 
-def test_a_packet_without_a_canonical_form_has_only_observable_divergences() -> None:
+def test_a_packet_without_a_canonical_form_has_only_gameplay_divergences() -> None:
     def play(text: str) -> Packet:
         return packet("minecraft:status_response", fields={"json_response": text})
 
     verdict = compare(
         transcript(("alice", play('{"a":1}'))), transcript(("alice", play('{ "a": 1 }'))), []
     )
-    assert [d.observability for d in verdict.divergences] == [OBSERVABLE]
+    assert [d.observability for d in verdict.divergences] == [GAMEPLAY]
 
 
-def test_observable_divergences_come_before_wire_only_ones_in_a_packet() -> None:
+def test_gameplay_divergences_come_before_network_traffic_ones_in_a_packet() -> None:
     # Raw fields beside json_response are compared as they stand.
     def with_extra(text: str, extra: int) -> Packet:
         return Packet(
@@ -204,6 +206,6 @@ def test_observable_divergences_come_before_wire_only_ones_in_a_packet() -> None
         [],
     )
     assert [(d.path, d.observability) for d in verdict.divergences] == [
-        ("z", OBSERVABLE),
-        ("json_response", WIRE_ONLY),
+        ("z", GAMEPLAY),
+        ("json_response", NETWORK_TRAFFIC),
     ]

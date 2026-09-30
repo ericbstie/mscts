@@ -85,23 +85,24 @@ need is missing, add it here in the same commit that introduces it.
   computed.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (entity ids, keep-alive ids, teleport ids) from
-  Comparison. Player-observable behaviour is never masked, even when it is
-  random; that is judged statistically instead (ADR-0006).
+  Comparison. Anything a player could notice is never masked, even when
+  it is random; that is judged statistically instead (ADR-0006).
 - **Canonicalization**: rewrites a value into one canonical form when the
   protocol defines two encodings as meaning the same thing to the vanilla
   client (a text component `"x"` is `{"text": "x"}`). It is not a Mask: a
   Mask declares a value nondeterministic, Canonicalization declares two
   values equal. It classifies rather than erases: a difference it makes
-  equal is still reported, as wire-only (ADR-0007). Its entries form
+  equal is still reported, as network traffic (ADR-0007). Its entries form
   **the canonical table** (never called a registry).
 - **Comparison**: normalizes the Reference and Candidate Transcripts of one
   Group (Canonicalization, then Masks) and diffs them into a Verdict.
 - **Divergence**: one difference found by a Comparison. It is
-  **observable** (a vanilla client could tell the two values apart) or
-  **wire-only** (the bytes differ but they decode identically): its
-  `observability`. Wire-only Divergences are reported separately and
-  excluded from compliance scores (ADR-0007); `Verdict.observable` is
-  what scores count.
+  **gameplay** (a vanilla client could tell the two values apart, so a
+  player could notice it) or **network traffic** (the servers send the
+  same thing in different formats, and a vanilla client ends up with the
+  same result): its `observability`. Network traffic Divergences are
+  reported separately and excluded from compliance scores (ADR-0007);
+  `Verdict.gameplay` is what scores count.
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Group did not match), or `error` (the harness failed, or
   the Reference itself could not run the Group). A failure the

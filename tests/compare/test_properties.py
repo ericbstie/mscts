@@ -36,20 +36,20 @@ def test_a_transcript_matches_itself() -> None:
             assert verdict == Verdict(GROUP, Outcome.MATCH), f"seed {seed}"
 
 
-def test_a_rerun_that_differs_only_where_it_may_has_only_wire_only_divergences() -> None:
+def test_a_rerun_that_differs_only_where_it_may_has_only_network_traffic_divergences() -> None:
     # The same Script, with every masked or ignored detail re-rolled, and the status JSON
-    # re-spelled: the spelling is wire-only (ADR-0007), everything else is Masked.
-    wire_only = 0
+    # re-spelled: the spelling is network traffic (ADR-0007), everything else is Masked.
+    network_traffic = 0
     for seed in SEEDS:
         runs = script(seeded(seed))
         first = render(runs, seeded(2 * seed), server="vanilla")
         second = render(runs, seeded(2 * seed + 1), server="vanilla")
         verdict = compare(first, second, MASKS)
-        assert verdict.observable == (), f"seed {seed}"
+        assert verdict.gameplay == (), f"seed {seed}"
         paths = {str(d.path).split(".", 1)[0] for d in verdict.divergences}
         assert paths <= {"json_response"}, f"seed {seed}"
-        wire_only += bool(verdict.divergences)
-    assert wire_only >= 0.2 * len(SEEDS)  # not vacuous: 35 of 120 when written
+        network_traffic += bool(verdict.divergences)
+    assert network_traffic >= 0.2 * len(SEEDS)  # not vacuous: 35 of 120 when written
 
 
 def test_those_reruns_do_differ_without_the_masks() -> None:

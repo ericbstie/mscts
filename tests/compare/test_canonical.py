@@ -1,7 +1,7 @@
 """Canonicalization: protocol equivalences compare() applies before Masks and the diff.
 
-These tests look at the observable Divergences; a difference Canonicalization makes
-equal is still reported, as wire-only (test_observability.py).
+These tests look at the gameplay Divergences; a difference Canonicalization makes
+equal is still reported, as network traffic (test_observability.py).
 
 Status packets are built through the Target's real Codec.
 """
@@ -44,8 +44,8 @@ def _diff(reference: str, candidate: str, *masks: Mask) -> list[tuple[str | None
     assert {(d.index, d.kind, d.packet) for d in verdict.divergences} <= {
         (0, "field", "minecraft:status_response")
     }
-    # What a raw spelling changes is wire-only (test_observability.py); this is the rest.
-    return [(d.path, d.reference, d.candidate) for d in verdict.observable]
+    # What a raw spelling changes is network traffic (test_observability.py); this is the rest.
+    return [(d.path, d.reference, d.candidate) for d in verdict.gameplay]
 
 
 def test_vanilla_against_itself_matches() -> None:
@@ -157,14 +157,12 @@ DECLARED_DEFAULTS = [
 ]
 
 
-def _wire_only(reference: str, candidate: str) -> list[tuple[str | None, object, object]]:
+def _network_traffic(reference: str, candidate: str) -> list[tuple[str | None, object, object]]:
     verdict = compare(
         transcript(("alice", status(reference))), transcript(("alice", status(candidate))), []
     )
     return [
-        (d.path, d.reference, d.candidate)
-        for d in verdict.divergences
-        if d not in verdict.observable
+        (d.path, d.reference, d.candidate) for d in verdict.divergences if d not in verdict.gameplay
     ]
 
 
@@ -177,10 +175,10 @@ def test_a_declared_default_is_the_same_as_its_absence(
     candidate: str, path: str, sent: object
 ) -> None:
     # ServerStatus.CODEC reads each absent field as its default (PLAN, Comparison
-    # semantics), so sending the default is a wire-only difference, at its JSON path.
+    # semantics), so sending the default is a network traffic difference, at its JSON path.
     assert _diff(ABSENT_DEFAULTS, candidate) == []
     assert _diff(candidate, ABSENT_DEFAULTS) == []
-    assert _wire_only(ABSENT_DEFAULTS, candidate) == [(f"json_response.{path}", ABSENT, sent)]
+    assert _network_traffic(ABSENT_DEFAULTS, candidate) == [(f"json_response.{path}", ABSENT, sent)]
 
 
 @pytest.mark.parametrize(
@@ -237,9 +235,9 @@ PUMPKIN_NIGHTLY = (
 `enforceSecureChat` the client's codec never reads (docs/research)."""
 
 
-def test_pumpkin_nightlys_status_differs_from_vanillas_on_the_wire_only() -> None:
+def test_pumpkin_nightlys_status_differs_from_vanillas_in_network_traffic_only() -> None:
     assert _diff(VANILLA, PUMPKIN_NIGHTLY) == []
-    assert _wire_only(VANILLA, PUMPKIN_NIGHTLY) == [
+    assert _network_traffic(VANILLA, PUMPKIN_NIGHTLY) == [
         ("json_response.description", "mscts", {"text": "mscts"}),
         ("json_response.enforceSecureChat", ABSENT, True),
         ("json_response.favicon", ABSENT, None),
@@ -268,14 +266,14 @@ def test_pumpkin_nightlys_status_differs_from_vanillas_on_the_wire_only() -> Non
         "sample-outside-players",
     ],
 )
-def test_a_member_the_client_never_reads_is_wire_only(
+def test_a_member_the_client_never_reads_is_a_network_traffic_difference(
     candidate: str, path: str, sent: object
 ) -> None:
     # ServerStatus's record codecs look fields up by name, and JsonOps reads a JSON null
     # member as a missing one (docs/research/2026-09-26-comparison.md).
     assert _diff(ABSENT_DEFAULTS, candidate) == []
     assert _diff(candidate, ABSENT_DEFAULTS) == []
-    assert _wire_only(ABSENT_DEFAULTS, candidate) == [(f"json_response.{path}", ABSENT, sent)]
+    assert _network_traffic(ABSENT_DEFAULTS, candidate) == [(f"json_response.{path}", ABSENT, sent)]
 
 
 def test_the_version_ignores_a_key_it_does_not_name() -> None:

@@ -632,8 +632,8 @@ class Mask:
 
 class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
-class Observability(StrEnum):       # ADR-0007; values "observable", "wire-only"
-    OBSERVABLE, WIRE_ONLY
+class Observability(StrEnum):       # ADR-0007; values "gameplay", "network traffic"
+    GAMEPLAY, NETWORK_TRAFFIC
 
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
 
@@ -648,9 +648,9 @@ class Divergence:
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT
     candidate: object
-    observability: Observability = Observability.OBSERVABLE
-    # wire-only: a `field` Divergence between raw values whose canonical forms are equal
-    #   (path and values are the raw ones); observable: every other Divergence, so every
+    observability: Observability = Observability.GAMEPLAY
+    # network traffic: a `field` Divergence between raw values whose canonical forms are
+    #   equal (path and values are the raw ones); gameplay: every other Divergence, so every
     #   bot, missing, unexpected and failed one (run.judge's `failed` keeps the default).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
     #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
@@ -669,16 +669,16 @@ class Verdict:
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
     @property
-    def observable(self) -> tuple[Divergence, ...]: ...   # the observable Divergences, in
+    def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
                                     # order: what compliance scores count. A Verdict whose
-                                    # Divergences are all wire-only is still `mismatch`
+                                    # Divergences are all network traffic is still `mismatch`
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
     # a value outside the codec value model. Divergences are grouped by Bot in name order,
-    # then in stream order, and within a packet in path order: its observable Divergences
-    # first, then its wire-only ones.
+    # then in stream order, and within a packet in path order: its gameplay Divergences
+    # first, then its network traffic ones.
     # A packet's value (for missing / unexpected) is its fields, or its payload as hex.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
