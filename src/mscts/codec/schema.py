@@ -111,6 +111,15 @@ class _Byte:
 
 
 @dataclass(frozen=True, slots=True)
+class _Short:
+    def read(self, reader: Reader) -> int:
+        return reader.short()
+
+    def write(self, writer: Writer, value: object) -> None:
+        writer.short(_integer(value))
+
+
+@dataclass(frozen=True, slots=True)
 class _Int:
     def read(self, reader: Reader) -> int:
         return reader.int_()
@@ -158,6 +167,9 @@ class _Rest:
 
 BYTE: WireType[int] = _Byte()
 """Byte: a signed 8-bit integer."""
+
+SHORT: WireType[int] = _Short()
+"""Short: a signed 16-bit integer, big-endian."""
 
 INT: WireType[int] = _Int()
 """Int: a signed 32-bit integer, big-endian."""

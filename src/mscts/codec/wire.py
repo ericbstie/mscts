@@ -6,6 +6,7 @@ import uuid
 from typing import Self
 
 _BYTE_STRUCT = struct.Struct(">b")
+_SHORT_STRUCT = struct.Struct(">h")
 _USHORT_STRUCT = struct.Struct(">H")
 _INT_STRUCT = struct.Struct(">i")
 _LONG_STRUCT = struct.Struct(">q")
@@ -110,6 +111,10 @@ class Writer:
             msg = f"ushort {value!r} out of range"
             raise WireError(msg) from exc
         return self
+
+    def short(self, value: int) -> Self:
+        """Append a signed 16-bit integer, big-endian, two's complement."""
+        return self._pack(_SHORT_STRUCT, value, "short")
 
     def long(self, value: int) -> Self:
         """Append a signed 64-bit integer, big-endian, two's complement."""
@@ -265,6 +270,10 @@ class Reader:
         (value,) = _USHORT_STRUCT.unpack(self._data[self._offset : end])
         self._offset = end
         return int(value)
+
+    def short(self) -> int:
+        """Consume a signed 16-bit integer, big-endian, two's complement."""
+        return int.from_bytes(self._take(_SHORT_STRUCT, "short"), "big", signed=True)
 
     def long(self) -> int:
         """Consume a signed 64-bit integer, big-endian, two's complement."""
