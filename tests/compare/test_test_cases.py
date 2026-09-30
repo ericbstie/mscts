@@ -258,7 +258,9 @@ def test_a_network_traffic_difference_adds_the_test_case_of_its_raw_path() -> No
 
 def test_a_bot_on_one_side_only_adds_no_test_case_of_its_own() -> None:
     hello = packet("test:hello", b"\x07", direction=SERVERBOUND)
-    assert compare(transcript(("bob", hello)), transcript(), []).test_cases == ()
+    verdict = compare(transcript(("bob", hello)), transcript(), [])
+    assert verdict.outcome is Outcome.MISMATCH
+    assert (verdict.test_cases, verdict.differing) == ((), {})
 
 
 def test_a_verdict_made_without_a_comparison_has_no_test_cases() -> None:

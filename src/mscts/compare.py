@@ -328,7 +328,7 @@ class _Normalized:
         raw: For a Packet with a canonical form, a copy of its fields as they came,
             with the masked paths removed where they reach; else None.
         parsed: For a Packet with a canonical form, `raw` with any JSON text in it
-            parsed but not canonical (`_PARSED`), with the masked paths removed where
+            parsed but not canonical (`_JSON_TEXT`), with the masked paths removed where
             they reach; else None.
         unmasked: For a Packet with a canonical form, its canonical form before the
             Masks; else None.
