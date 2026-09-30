@@ -16,6 +16,7 @@ from mscts.codec.schema import (
     DOUBLE,
     ENTITY_ID,
     FLOAT,
+    IDENTIFIER,
     INT,
     LP_VEC3,
     UUID,
@@ -73,6 +74,8 @@ CLIENTBOUND: Mapping[str, Schema] = {
         ),
     ),
     "minecraft:remove_entities": Schema(entity_ids=PrefixedArray(ENTITY_ID)),  # Remove Entities
+    # Remove Mob Effect: the effect is a registry id.
+    "minecraft:remove_mob_effect": Schema(entity_id=ENTITY_ID, effect=VAR_INT),
     "minecraft:rotate_head": Schema(entity_id=ENTITY_ID, head_yaw=BYTE),  # Set Head Rotation
     # Set Entity Metadata: entries of index, serializer and value (see ENTITY_DATA).
     "minecraft:set_entity_data": Schema(entity_id=ENTITY_ID, entries=ENTITY_DATA),
@@ -91,5 +94,26 @@ CLIENTBOUND: Mapping[str, Schema] = {
         pitch=FLOAT,
         flags=INT,
         on_ground=BOOL,
+    ),
+    # Update Attributes: at most 128 attributes, each a registry id, its base value and its
+    # modifiers. A modifier's operation is 0 (add), 1 (add a multiple of the base) or 2 (of the
+    # total); the client maps any other to 0, so it is not range checked.
+    "minecraft:update_attributes": Schema(
+        entity_id=ENTITY_ID,
+        attributes=PrefixedArray(
+            Schema(
+                attribute=VAR_INT,
+                base=DOUBLE,
+                modifiers=PrefixedArray(
+                    Schema(id=IDENTIFIER, amount=DOUBLE, operation=VAR_INT),
+                ),
+            ),
+            max_length=128,
+        ),
+    ),
+    # Entity Effect: the effect is a registry id, the duration is in ticks (-1 is infinite) and
+    # the flags are a bit field (1 ambient, 2 visible, 4 show icon, 8 has a blend).
+    "minecraft:update_mob_effect": Schema(
+        entity_id=ENTITY_ID, effect=VAR_INT, amplifier=VAR_INT, duration=VAR_INT, flags=BYTE
     ),
 }
