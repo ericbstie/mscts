@@ -247,6 +247,7 @@ def judge(
         path=None,
         reference=ABSENT,
         candidate=str(candidate),
+        test_case="",
     )
     return Verdict(
         group_id=group.id,

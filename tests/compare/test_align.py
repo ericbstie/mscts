@@ -53,6 +53,7 @@ def test_a_field_divergence_indexes_the_reference_stream() -> None:
         path=None,
         reference="01",
         candidate="02",
+        test_case="test:b",
     )
 
 
@@ -155,5 +156,6 @@ def test_a_long_stream_with_one_difference_aligns_around_it() -> None:
             path=None,
             reference="",
             candidate=ABSENT,
+            test_case="test:x",
         ),
     )

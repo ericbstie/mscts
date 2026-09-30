@@ -1,4 +1,6 @@
+from mscts.codec.packets import State
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
+from mscts.compare import test_case as case_name
 from mscts.measure import Measurement
 from mscts.report import Report, render_text
 from mscts.run import GroupResult, SideSummary
@@ -22,6 +24,7 @@ def _field(path: str, reference: object, candidate: object, *, traffic: bool = F
         path=path,
         reference=reference,
         candidate=candidate,
+        test_case=case_name(State.STATUS, STATUS, path),
         observability=Observability.NETWORK_TRAFFIC if traffic else Observability.GAMEPLAY,
     )
 
@@ -245,6 +248,7 @@ def test_a_failed_divergence_reads_as_the_candidate_failing() -> None:
         path=None,
         reference=ABSENT,
         candidate="TimeoutError: no answer within 10.0 s",
+        test_case="",
     )
     text = render_text(_report(_result(_verdict("status/basic", failed))))
 

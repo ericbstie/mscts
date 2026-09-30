@@ -152,6 +152,7 @@ def _mirror(
                 path=d.path,
                 reference=d.candidate,
                 candidate=d.reference,
+                test_case=d.test_case,
                 observability=d.observability,
             )
             for d in own

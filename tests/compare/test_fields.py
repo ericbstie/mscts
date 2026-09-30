@@ -125,6 +125,7 @@ def test_a_missing_packet_with_fields_carries_its_fields() -> None:
         path=None,
         reference={"v": [1]},
         candidate=ABSENT,
+        test_case="test:p",
     )
 
 
