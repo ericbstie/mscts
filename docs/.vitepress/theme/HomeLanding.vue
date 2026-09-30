@@ -26,12 +26,12 @@ running status/basic (1 of 5) ...
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
 
-2 groups: 2 different on the wire only. No difference
+2 groups: 2 different in network traffic only. No difference
 a player would notice was found.
 
-<span class="head">Wire-only differences</span>
+<span class="head">Network traffic differences</span>
   Server list ping (status)
-    status_response: 4 values differ on the wire, e.g.
+    status_response: 4 values are sent differently, e.g.
       - json_response.description: vanilla sends "mscts",
         pumpkin sends {"text": "mscts"}
       - json_response.favicon: vanilla leaves it out,
@@ -40,8 +40,8 @@ a player would notice was found.
 
 <span class="head">Timings (ms)</span>
   measurement       vanilla median  pumpkin median  n
-  status.rtt                  2.03            0.33  5
-  instance.startup          15,499              31  1</pre>
+  status.rtt                  1.41            0.27  5
+  instance.startup           9,987              39  1</pre>
       </div>
     </section>
 
@@ -88,7 +88,7 @@ a player would notice was found.
       </p>
       <div class="ms-split">
         <div class="ms-card">
-          <span class="ms-tag observable">gameplay</span>
+          <span class="ms-tag gameplay">gameplay</span>
           <p>
             The vanilla client ends up with something different, so a player
             could notice it. A missing message, a different player limit in
@@ -97,7 +97,7 @@ a player would notice was found.
           </p>
         </div>
         <div class="ms-card">
-          <span class="ms-tag wire">network traffic</span>
+          <span class="ms-tag network-traffic">network traffic</span>
           <p>
             The servers send the same thing in different formats. Vanilla
             sends its server description as the text <code>"mscts"</code>, and

@@ -55,7 +55,7 @@ planned.
 | `2` | The command line was invalid. |
 
 A Run that finds differences still exits 0. An option to exit non-zero on
-observable differences is planned.
+gameplay differences is planned.
 
 ## When a server fails to start
 

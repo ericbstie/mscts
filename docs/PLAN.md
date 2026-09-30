@@ -194,9 +194,9 @@ Position, …), which the composites above follow:
 protocol as the wiki defines it and vanilla's own encoders write it. In a few
 places the vanilla client tolerates bytes outside that definition, and the
 Codec deliberately does not: the vanilla server never sends them, so a
-Candidate that does differs on the wire, and ADR-0006 catalogues every
-difference. Strictness can only produce a visible false `mismatch` (with the
-frame recorded as evidence), never a false `match`. The cases (verified
+Candidate that does differs from vanilla in the bytes it sends, and ADR-0006
+catalogues every difference. Strictness can only produce a visible false
+`mismatch` (with the frame recorded as evidence), never a false `match`. The cases (verified
 with `javap` on the 26.3 jars, docs/research/2026-09-26-join.md):
 
 - **Bool**: only `0x00` and `0x01`. The client's `readBoolean` is
@@ -762,19 +762,19 @@ proves it necessary:
    Canonicalization encodes a protocol equivalence. It is not a Mask,
    and it is a classifier, not an eraser (ADR-0007): the raw fields are
    diffed too, and a raw difference whose canonical values (before the
-   Masks) are equal at its path is reported as a **wire-only** `field`
+   Masks) are equal at its path is reported as a **network traffic** `field`
    Divergence, with the raw path and values. A raw field holding JSON
    text (`_PARSED`: the status `json_response`) is diffed as its parsed,
    not yet canonical JSON value, so such a Divergence has its JSON path
    and values (`json_response.enforceSecureChat`, absent vs `true`);
    only when the two parsed values are equal (a pure JSON spelling: key
    order, whitespace, escapes) is it the whole text. Where the canonical
-   values at a path differ, the observable Divergences under it (or a
-   Mask) stand for it, so a re-spelling inside a field that also has an
-   observable or masked difference is not reported separately (nor is a
+   values at a path differ, the gameplay Divergences under it (or a
+   Mask) stand for it, so a re-spelling inside a field that also has a
+   gameplay or masked difference is not reported separately (nor is a
    JSON spelling beside a difference of JSON value). Masks
    apply to the raw fields too, where their paths reach. Every other
-   Divergence is **observable**. The canonical table lives in
+   Divergence is **gameplay**. The canonical table lives in
    `compare.py` (`_CANONICAL`), keyed by (State, packet name) of a
    clientbound packet. An entry is admitted only when
    the Reference's own decoder reads both encodings into equal values
@@ -899,7 +899,7 @@ proves it necessary:
    client shows the icon when there is one, and ServerSpec's invariant
    is "no server icon".
 3. Apply **Masks**, which remove identifiers with no gameplay meaning, or
-   ambient packets (ADR-0006: never player-observable behaviour). A `*` Mask drops every packet of that name (in any
+   ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream
    after dropping, so they stay the same across re-runs that differ in
    how many ambient packets arrived. A Bot's presence (the `bot`
@@ -1008,14 +1008,16 @@ class Report:                       # report.py
 def render_text(report: Report) -> str: ...
 # Sections, in order: header (Reference, Candidate with versions, Target, repetitions);
 # a one-line summary (or "No differences from vanilla were found in the N groups run.");
-# "Differences a player would notice": observable Divergences by mechanic (the Group id's
+# "Differences a player would notice": gameplay Divergences by mechanic (the Group id's
 # first segment, titled from report.MECHANICS), then Group, each distinct one once with
 # "(in k of N runs)" when not in all, values over 80 chars cut with their full length;
-# "Wire-only differences": by mechanic, then **per packet** (the count of distinct differing
-# leaves and at most WIRE_EXAMPLES examples; this settles the per-leaf open question for the
-# Report, compare keeps reporting leaves); error/blocked Groups with their detail, and
-# "different in k of N runs"; "Timings (ms)": median and nearest-rank p95 per Measurement
-# name for both sides, instance.startup included; notes; a two-line legend.
+# "Network traffic differences": by mechanic, then **per packet** (the count of distinct
+# differing leaves and at most NETWORK_TRAFFIC_EXAMPLES examples; this settles the per-leaf
+# open question for the Report, compare keeps reporting leaves); error/blocked Groups with
+# their detail, and "different in k of N runs"; "Timings (ms)": median and nearest-rank p95
+# per Measurement name for both sides, instance.startup included; notes; a two-line legend
+# (gameplay, network traffic). A Group whose Divergences are all network traffic reads
+# "different in network traffic only".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
@@ -1115,12 +1117,12 @@ measured statistically in M6b (ADR-0006). The Self-check must pass 20/20. Measur
 **M5 — Control and Fixtures.** Operator Bot, `command()`, `system_chat`
 feedback, and `blocked` Verdicts through `requires`.
 
-**M6 — Gameplay breadth.** One exact Group per observable mechanic:
+**M6 — Gameplay breadth.** One exact Group per gameplay mechanic:
 block place and break, movement correction, chat, inventory, entities,
 commands. Each one only after its prerequisites match on the Reference.
 
-**M6a — Tick-exact mechanics (ADR-0006).** Research `/tick freeze` and
-`/tick step` observability over the protocol, then add tick-indexed
+**M6a — Tick-exact mechanics (ADR-0006).** Research how `/tick freeze`
+and `/tick step` show up over the protocol, then add tick-indexed
 observation anchored on world age. Then redstone Groups (repeaters,
 comparators, observers, piston timing, quasi-connectivity) and vanilla
 glitch Groups (headless-piston bedrock breaking, pearl phasing through
@@ -1175,16 +1177,16 @@ then record the answer in an ADR:
   (State, name) string pairs, and the field diff works on copies that
   `compare` makes of the fields (and checks against the value model), so
   it never hashes or mutates a Packet. Still open for Transcripts.
-- Wire-only Divergences are reported per differing raw leaf, so a
+- Network traffic Divergences are reported per differing raw leaf, so a
   reordered `update_tags` (≈59 KB) yields one for every shifted leaf.
   Should the Report group them per packet, or should `compare` report
   the shallowest canonically equal path instead? **Decided with the
   Report:** the Report groups them per packet (a count of differing
   leaves and a few examples); `compare` keeps reporting every leaf.
-- ADR-0007 requires a Self-check with no wire-only Divergences, on the
+- ADR-0007 requires a Self-check with no network traffic Divergences, on the
   premise that vanilla sends identical bytes each run. The server writes
   `update_tags` from hash maps (worker P); if its order varies between
-  runs, the join Self-check will show wire-only Divergences. Check it
+  runs, the join Self-check will show network traffic Divergences. Check it
   when the join Group's Self-check runs, before relaxing anything.
 - Should the text component **list form** (`["a", "b"]` ≡
   `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
