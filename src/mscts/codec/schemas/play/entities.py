@@ -99,8 +99,20 @@ CLIENTBOUND: Mapping[str, Schema] = {
     "minecraft:rotate_head": Schema(entity_id=ENTITY_ID, head_yaw=BYTE),  # Set Head Rotation
     # Set Entity Metadata: entries of index, serializer and value (see ENTITY_DATA).
     "minecraft:set_entity_data": Schema(entity_id=ENTITY_ID, entries=ENTITY_DATA),
+    # Link Entities: both ids are Ints (not VarInts); a holder of 0 detaches the lead.
+    "minecraft:set_entity_link": Schema(
+        attached_entity_id=ENTITY_ID_INT, holding_entity_id=ENTITY_ID_INT
+    ),
     # Set Entity Velocity
     "minecraft:set_entity_motion": Schema(entity_id=ENTITY_ID, velocity=LP_VEC3),
+    # Set Experience: the bar is the progress to the next level, 0.0 to 1.0.
+    "minecraft:set_experience": Schema(
+        experience_bar=FLOAT, level=VAR_INT, total_experience=VAR_INT
+    ),
+    # Set Health
+    "minecraft:set_health": Schema(health=FLOAT, food=VAR_INT, saturation=FLOAT),
+    # Set Passengers: the vehicle, and every entity riding it.
+    "minecraft:set_passengers": Schema(vehicle=ENTITY_ID, passengers=PrefixedArray(ENTITY_ID)),
     # Pickup Item: the collector takes `pickup_item_count` of the collected item entity.
     "minecraft:take_item_entity": Schema(
         collected_entity_id=ENTITY_ID, collector_entity_id=ENTITY_ID, pickup_item_count=VAR_INT
