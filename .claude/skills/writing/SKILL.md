@@ -32,11 +32,19 @@ record the example with "why: not given".
 - **Give insight; let the reader decide.** mscts shows the differences.
   The reader decides whether a server is close enough to vanilla for
   them.
+- **Use normal names.** Don't coin a new name where an ordinary one
+  exists.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### "Scenario"
+
+- Before: "Scenario" for a set of checks, with no name for each check.
+- After: "Group" (for now) for the set, "test case" for each check.
+- Why: "an unnecessary new name. Stick to normal names."
 
 ### Home page terminal sample (the default Report)
 
