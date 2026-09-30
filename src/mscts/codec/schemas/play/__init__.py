@@ -4,7 +4,7 @@ Every submodule maps packet names to schemas in `SERVERBOUND` and/or `CLIENTBOUN
 the minecraft.wiki revision its field layouts were taken from. `SERVERBOUND` and `CLIENTBOUND`
 here are those mappings merged in submodule name order, so a new mechanic adds a module and
 never edits this file. Two submodules defining the same packet in the same direction is a
-`SchemaError` at import.
+`SchemaError` at import, and so is a submodule defining neither mapping.
 """
 
 import importlib
@@ -41,9 +41,14 @@ def merge_submodules(
         The merged serverbound mapping, then the merged clientbound mapping.
 
     Raises:
-        SchemaError: Two modules define the same packet name in the same direction.
+        SchemaError: Two modules define the same packet name in the same direction, or a
+            module defines neither mapping (a misspelt name would be silently ignored).
     """
     loaded = tuple(modules)
+    for module_name, module in loaded:
+        if not (hasattr(module, "SERVERBOUND") or hasattr(module, "CLIENTBOUND")):
+            msg = f"{module_name} defines neither SERVERBOUND nor CLIENTBOUND"
+            raise SchemaError(msg)
     return _merge(loaded, "SERVERBOUND"), _merge(loaded, "CLIENTBOUND")
 
 
