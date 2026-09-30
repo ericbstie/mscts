@@ -48,7 +48,8 @@ test needs it:
 | `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
 | `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, painting variant, resolvable profile, global pos), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
-| `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted |
+| `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
+| `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
@@ -194,7 +195,9 @@ ENTITY_ID_INT: EntityId            # Int: login, entity_event, set_entity_link
 ENTITY_ID_OPTIONAL: EntityId       # VarInt, id + 1: a damage event's source ids
 # Every field that holds an entity id is one of these, so a Comparison finds them all by
 # walking a packet's `Schema.fields` for `isinstance(type, EntityId)` (the renumbering,
-# which needs no list of packets). Nothing else in a schema is an EntityId.
+# which needs no list of packets). Nothing else in a schema is an EntityId. One caveat: a
+# set_entity_link `holding_entity_id` of 0 means "no entity" (it detaches the lead), yet it is an
+# ENTITY_ID_INT like any other, so the renumbering must leave a 0 there alone.
 
 # codec/movement.py: each owns its discriminator (the number of steps, the path type); a
 # value names its variant by its key, exactly one of `linear` and `stepped`.
@@ -226,6 +229,14 @@ ENTITY_DATA: WireType[list[dict[str, object]]]
 # Limit: an entity id inside a metadata value (a firework's shooter, an attached entity) or in
 # add_entity's `data` depends on the entity type, so it is a plain VarInt, not an `ENTITY_ID`.
 # Only a vibration source's target is one.
+
+# codec/equipment.py: set_equipment's slots. A value is [{slot: "mainhand", item: ...}], never
+# empty; each slot is a byte of its id, plus 0x80 on every one but the last.
+SLOTS: tuple[str, ...]             # the 8 EquipmentSlot constants in ordinal order (id = position)
+@frozen
+class EquipmentList:               # WireType[list[dict[str, object]]]
+    item: WireType[object]         # how each slot's item is carried
+EQUIPMENT: WireType[list[dict[str, object]]]  # EquipmentList(PENDING_ITEM_STACK): refuses until #19
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 

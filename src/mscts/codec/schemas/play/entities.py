@@ -9,6 +9,7 @@ each packet's `STREAM_CODEC`; where the two differ the jar is right. Every entit
 from collections.abc import Mapping
 
 from mscts.codec.entity_data import ENTITY_DATA
+from mscts.codec.equipment import EQUIPMENT
 from mscts.codec.movement import MOVE_DELTA, POSITION_PATH
 from mscts.codec.schema import (
     BOOL,
@@ -105,6 +106,8 @@ CLIENTBOUND: Mapping[str, Schema] = {
     ),
     # Set Entity Velocity
     "minecraft:set_entity_motion": Schema(entity_id=ENTITY_ID, velocity=LP_VEC3),
+    # Set Equipment: the slots that change, each with its item stack (an optional one).
+    "minecraft:set_equipment": Schema(entity_id=ENTITY_ID, equipment=EQUIPMENT),
     # Set Experience: the bar is the progress to the next level, 0.0 to 1.0.
     "minecraft:set_experience": Schema(
         experience_bar=FLOAT, level=VAR_INT, total_experience=VAR_INT
