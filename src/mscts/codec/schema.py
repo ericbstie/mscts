@@ -12,7 +12,7 @@ composite wire type owns both the field it depends on and the dependent part.
 """
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -452,6 +452,93 @@ class PrefixedOptional[T]:
         writer.bool_(value=value is not None)
         if value is not None:
             self.element.write(writer, value)
+
+
+class Tagged:
+    """A VarInt that picks one of several named variants, each with its own payload or none.
+
+    Its value is a dict of exactly two keys: `tag_key` holds the variant's name and
+    `value_key` its payload (None for a variant with no wire type). A variant's id is its
+    position in `variants`. An id no variant has is a `WireError`, as is a name no variant
+    has when writing. Errors inside a payload are prefixed with the variant's name.
+    """
+
+    __slots__ = ("_ids", "_tag_key", "_value_key", "_variants")
+
+    def __init__(
+        self,
+        tag_key: str,
+        value_key: str,
+        variants: Sequence[tuple[str, WireType[object] | None]],
+    ) -> None:
+        """Declare the variants, in id order.
+
+        Raises:
+            SchemaError: The keys are equal, there is no variant, or two variants share a name.
+        """
+        if tag_key == value_key:
+            msg = f"Tagged tag_key and value_key are both {tag_key!r}"
+            raise SchemaError(msg)
+        if not variants:
+            msg = "Tagged needs at least one variant"
+            raise SchemaError(msg)
+        ids = {name: number for number, (name, _) in enumerate(variants)}
+        if len(ids) != len(variants):
+            msg = "Tagged has a variant name twice"
+            raise SchemaError(msg)
+        self._tag_key = tag_key
+        self._value_key = value_key
+        self._variants = tuple(variants)
+        self._ids = ids
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """The variant names, in id order."""
+        return tuple(name for name, _ in self._variants)
+
+    def read(self, reader: Reader) -> dict[str, object]:
+        """Consume the id, then the payload of the variant it names."""
+        tag = reader.var_int()
+        if not 0 <= tag < len(self._variants):
+            msg = f"unknown {self._tag_key} id {tag}"
+            raise WireError(msg)
+        name, wire_type = self._variants[tag]
+        payload = None
+        if wire_type is not None:
+            try:
+                payload = wire_type.read(reader)
+            except WireError as exc:
+                msg = f"{name}: {exc}"
+                raise WireError(msg) from exc
+        return {self._tag_key: name, self._value_key: payload}
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`, a dict of the tag key and the value key, as the id then the payload."""
+        keys = (self._tag_key, self._value_key)
+        if not isinstance(value, Mapping):
+            msg = f"expected a mapping of {keys[0]} and {keys[1]}, got {type(value).__name__}"
+            raise WireError(msg)
+        given = {str(key): item for key, item in value.items()}
+        problems = [f"missing key {key}" for key in keys if key not in given]
+        problems += [f"unexpected key {key}" for key in sorted(given) if key not in keys]
+        if problems:
+            raise WireError("; ".join(problems))
+        name = given[self._tag_key]
+        if not isinstance(name, str) or name not in self._ids:
+            msg = f"unknown {self._tag_key} {name!r}"
+            raise WireError(msg)
+        wire_type = self._variants[self._ids[name]][1]
+        payload = given[self._value_key]
+        if wire_type is None and payload is not None:
+            msg = f"{name}: takes no {self._value_key}"
+            raise WireError(msg)
+        writer.var_int(self._ids[name])
+        if wire_type is not None:
+            try:
+                wire_type.write(writer, payload)
+            except WireError as exc:
+                msg = f"{name}: {exc}"
+                raise WireError(msg) from exc
 
 
 _NBT_END, _NBT_BYTE_ARRAY, _NBT_STRING, _NBT_LIST, _NBT_COMPOUND = 0, 7, 8, 9, 10
