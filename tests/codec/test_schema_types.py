@@ -18,6 +18,7 @@ from mscts.codec.schema import (
     NBT,
     POSITION,
     REST,
+    SHORT,
     UUID,
     VAR_INT,
     EntityId,
@@ -63,6 +64,7 @@ def test_bool_refuses_a_value_that_is_not_a_bool(value: object) -> None:
     ("wire_type", "value", "encoded"),
     [
         (BYTE, -1, "ff"),
+        (SHORT, -2, "fffe"),
         (INT, -2, "fffffffe"),
         (FLOAT, -90.5, "c2b50000"),
         (DOUBLE, 6.5, "401a000000000000"),
@@ -81,6 +83,8 @@ def test_fixed_size_types_round_trip(
     ("wire_type", "value", "error"),
     [
         (BYTE, True, "expected an int"),
+        (SHORT, True, "expected an int"),
+        (SHORT, 2**15, "short 32768 out of range"),
         (INT, 1.0, "expected an int"),
         (INT, 2**31, "out of range"),
         (FLOAT, 1, "expected a float"),

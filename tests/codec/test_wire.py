@@ -274,6 +274,40 @@ def test_ushort_reader_raises_on_truncated_input() -> None:
         Reader(bytes.fromhex("00")).ushort()
 
 
+# Short: signed 16-bit, big-endian, two's complement (an entity's movement delta).
+
+SHORT_SAMPLES = [
+    (0, "0000"),
+    (1, "0001"),
+    (256, "0100"),
+    (32767, "7fff"),
+    (-1, "ffff"),
+    (-2, "fffe"),
+    (-32768, "8000"),
+]
+
+
+@pytest.mark.parametrize(("value", "encoded"), SHORT_SAMPLES)
+def test_short_encodes_big_endian(value: int, encoded: str) -> None:
+    assert Writer().short(value).to_bytes() == bytes.fromhex(encoded)
+
+
+@pytest.mark.parametrize(("value", "encoded"), SHORT_SAMPLES)
+def test_short_decodes_big_endian(value: int, encoded: str) -> None:
+    assert Reader(bytes.fromhex(encoded)).short() == value
+
+
+@pytest.mark.parametrize("value", [32768, -32769])
+def test_short_writer_raises_when_out_of_range(value: int) -> None:
+    with pytest.raises(WireError, match=r"^short .* out of range"):
+        Writer().short(value)
+
+
+def test_short_reader_raises_on_truncated_input() -> None:
+    with pytest.raises(WireError, match=r"^short truncated"):
+        Reader(bytes.fromhex("00")).short()
+
+
 # Long: signed 64-bit, big-endian, two's complement.
 
 LONG_SAMPLES = [
