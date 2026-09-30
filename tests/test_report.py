@@ -7,6 +7,7 @@ from mscts.measure import Measurement
 from mscts.report import Report, render_text
 from mscts.run import GroupResult, SideSummary
 from mscts.target import TARGET
+from tests.compare.build import divergence
 
 STATUS = "minecraft:status_response"
 GAMEPLAY = "Differences a player would notice"
@@ -18,10 +19,9 @@ TIMINGS = "Timings"
 
 
 def _field(path: str, reference: object, candidate: object, *, traffic: bool = False) -> Divergence:
-    return Divergence(
+    return divergence(
+        "field",
         bot="status",
-        index=0,
-        kind="field",
         packet=STATUS,
         path=path,
         reference=reference,
@@ -50,12 +50,9 @@ def _verdict(
 
 
 def _unmatched(kind: Literal["missing", "unexpected"], state: State, packet: str) -> Divergence:
-    return Divergence(
-        bot="alice",
-        index=0,
-        kind=kind,
+    return divergence(
+        kind,
         packet=packet,
-        path=None,
         reference={} if kind == "missing" else ABSENT,
         candidate={} if kind == "unexpected" else ABSENT,
         test_case=case_name(state, packet, None),
@@ -308,12 +305,9 @@ def test_a_difference_in_a_list_element_says_which_element() -> None:
 
 
 def test_a_packet_compared_as_a_whole_says_so() -> None:
-    whole = Divergence(
-        bot="alice",
-        index=0,
-        kind="field",
+    whole = divergence(
+        "field",
         packet="minecraft:bundle_delimiter",
-        path=None,
         reference="00",
         candidate="01",
         test_case=case_name(State.PLAY, "minecraft:bundle_delimiter", None),
@@ -363,16 +357,7 @@ def test_an_unknown_mechanic_is_shown_by_its_prefix() -> None:
 
 
 def test_a_failed_divergence_reads_as_the_candidate_failing() -> None:
-    failed = Divergence(
-        bot="",
-        index=0,
-        kind="failed",
-        packet="",
-        path=None,
-        reference=ABSENT,
-        candidate="TimeoutError: no answer within 10.0 s",
-        test_case="",
-    )
+    failed = divergence("failed", bot="", candidate="TimeoutError: no answer within 10.0 s")
     text = render_text(_report(_result(_verdict("status/basic", failed))))
 
     assert "the Candidate failed: TimeoutError: no answer within 10.0 s" in text

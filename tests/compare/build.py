@@ -1,14 +1,36 @@
-"""Synthetic Packets and Transcripts for Comparison tests."""
+"""Synthetic Packets, Transcripts and Divergences for Comparison tests."""
 
 import time
 from collections.abc import Mapping
+from dataclasses import replace
 
 from mscts.codec.packets import Direction, Packet, State
+from mscts.compare import ABSENT, Divergence, DivergenceKind
 from mscts.transcript import Transcript
 
 CLIENTBOUND, SERVERBOUND = Direction.CLIENTBOUND, Direction.SERVERBOUND
 GROUP = "test/group"
 _MS = 1_000_000
+
+_BLANK = Divergence(
+    bot="alice",
+    index=0,
+    kind="field",
+    packet="",
+    path=None,
+    reference=ABSENT,
+    candidate=ABSENT,
+    test_case="",
+)
+"""What `divergence` fills in for every field it is not given."""
+
+
+def divergence(kind: DivergenceKind, /, **fields: object) -> Divergence:
+    """A Divergence of `kind` with `fields`, and every other field as `_BLANK` has it.
+
+    Every test builds its Divergences here, so a new Divergence field is one edit.
+    """
+    return replace(_BLANK, kind=kind, **fields)
 
 
 def packet(

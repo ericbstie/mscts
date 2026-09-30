@@ -13,13 +13,14 @@ import pytest
 
 from mscts.codec.packets import Codec
 from mscts.codec.wire import Writer
-from mscts.compare import ABSENT, Divergence, Mask, Outcome, Verdict
+from mscts.compare import Divergence, Mask, Outcome, Verdict
 from mscts.group import Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
+from tests.compare.build import divergence
 from tests.net.fakes import VANILLA_STATUS, Handler, Peer, free_port, serve, status_server
 
 BASIC = Group(id="status/basic", run=status.basic)
@@ -92,16 +93,7 @@ MODES = {
 
 
 def _failed(description: str, bot: str = "status") -> Divergence:
-    return Divergence(
-        bot=bot,
-        index=0,
-        kind="failed",
-        packet="",
-        path=None,
-        reference=ABSENT,
-        candidate=description,
-        test_case="",
-    )
+    return divergence("failed", bot=bot, candidate=description)
 
 
 @pytest.mark.asyncio
@@ -132,12 +124,10 @@ async def test_the_undecodable_frame_is_a_divergence_showing_both_payloads() -> 
     assert verdict.test_cases == ("status_response",)  # kept from the Comparison
     [_, payload] = verdict.divergences
     reference_payload = reference.events[-1].packet.payload
-    assert payload == Divergence(
+    assert payload == divergence(
+        "field",
         bot="status",
-        index=0,
-        kind="field",
         packet="minecraft:status_response",
-        path=None,
         reference=reference_payload.hex(),
         candidate=(reference_payload + b"\x00").hex(),
         test_case="status_response",

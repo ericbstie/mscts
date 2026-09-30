@@ -7,8 +7,8 @@ from collections.abc import Mapping
 import pytest
 
 from mscts.codec.packets import State
-from mscts.compare import ABSENT, Divergence, compare
-from tests.compare.build import packet, transcript
+from mscts.compare import ABSENT, compare
+from tests.compare.build import divergence, packet, transcript
 
 
 def _diff(
@@ -117,15 +117,8 @@ def test_a_missing_packet_with_fields_carries_its_fields() -> None:
     verdict = compare(
         transcript(("alice", packet("test:p", b"\x01", fields={"v": [1]}))), transcript(), []
     )
-    assert verdict.divergences[-1] == Divergence(
-        bot="alice",
-        index=0,
-        kind="missing",
-        packet="test:p",
-        path=None,
-        reference={"v": [1]},
-        candidate=ABSENT,
-        test_case="test:p",
+    assert verdict.divergences[-1] == divergence(
+        "missing", packet="test:p", reference={"v": [1]}, test_case="test:p"
     )
 
 

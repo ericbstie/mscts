@@ -3,9 +3,9 @@
 import pytest
 
 from mscts.codec.packets import State
-from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
+from mscts.compare import ABSENT, Outcome, Verdict, compare
 from mscts.transcript import Mark
-from tests.compare.build import GROUP, SERVERBOUND, packet, transcript
+from tests.compare.build import GROUP, SERVERBOUND, divergence, packet, transcript
 
 A = packet("test:a", b"\x01")
 B = packet("test:b", b"\x02")
@@ -64,12 +64,10 @@ def test_a_differing_payload_is_a_field_divergence_with_hex_values() -> None:
         group_id=GROUP,
         outcome=Outcome.MISMATCH,
         divergences=(
-            Divergence(
-                bot="alice",
+            divergence(
+                "field",
                 index=1,
-                kind="field",
                 packet="test:b",
-                path=None,
                 reference="0102",
                 candidate="01ff",
                 test_case="test:b",
@@ -83,16 +81,7 @@ def test_a_packet_only_the_reference_received_is_missing() -> None:
     reference = transcript(("alice", A), ("alice", B))
     candidate = transcript(("alice", A))
     assert compare(reference, candidate, []).divergences == (
-        Divergence(
-            bot="alice",
-            index=1,
-            kind="missing",
-            packet="test:b",
-            path=None,
-            reference="02",
-            candidate=ABSENT,
-            test_case="test:b",
-        ),
+        divergence("missing", index=1, packet="test:b", reference="02", test_case="test:b"),
     )
 
 
@@ -100,16 +89,7 @@ def test_a_packet_only_the_candidate_received_is_unexpected() -> None:
     reference = transcript(("alice", A))
     candidate = transcript(("alice", A), ("alice", B))
     assert compare(reference, candidate, []).divergences == (
-        Divergence(
-            bot="alice",
-            index=1,
-            kind="unexpected",
-            packet="test:b",
-            path=None,
-            reference=ABSENT,
-            candidate="02",
-            test_case="test:b",
-        ),
+        divergence("unexpected", index=1, packet="test:b", candidate="02", test_case="test:b"),
     )
 
 
@@ -139,16 +119,7 @@ def test_a_bot_only_the_reference_has_is_a_bot_divergence() -> None:
     reference = transcript(("alice", A), ("bob", sent), ("bob", sent))
     candidate = transcript(("alice", A))
     assert compare(reference, candidate, []).divergences == (
-        Divergence(
-            bot="bob",
-            index=0,
-            kind="bot",
-            packet="",
-            path=None,
-            reference=2,
-            candidate=ABSENT,
-            test_case="",
-        ),
+        divergence("bot", bot="bob", reference=2),
     )
 
 
@@ -156,35 +127,10 @@ def test_a_bot_only_the_candidate_has_is_a_bot_divergence_then_its_packets() -> 
     reference = transcript(("alice", A))
     candidate = transcript(("alice", A), ("bob", B), ("bob", C))
     assert compare(reference, candidate, []).divergences == (
-        Divergence(
-            bot="bob",
-            index=0,
-            kind="bot",
-            packet="",
-            path=None,
-            reference=ABSENT,
-            candidate=2,
-            test_case="",
-        ),
-        Divergence(
-            bot="bob",
-            index=0,
-            kind="unexpected",
-            packet="test:b",
-            path=None,
-            reference=ABSENT,
-            candidate="02",
-            test_case="test:b",
-        ),
-        Divergence(
-            bot="bob",
-            index=1,
-            kind="unexpected",
-            packet="test:c",
-            path=None,
-            reference=ABSENT,
-            candidate="03",
-            test_case="test:c",
+        divergence("bot", bot="bob", candidate=2),
+        divergence("unexpected", bot="bob", packet="test:b", candidate="02", test_case="test:b"),
+        divergence(
+            "unexpected", bot="bob", index=1, packet="test:c", candidate="03", test_case="test:c"
         ),
     )
 
