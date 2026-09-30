@@ -119,8 +119,11 @@ and wire-only Divergences are grouped per packet with a leaf count.
 
 The maintainer's second agent (Astra) takes GitHub issues labelled
 `helper-ready`. Claude stays the primary worker; do not brief a Claude
-worker on a delegated item. Open: #3 runner parent-death guard, #4 PLAN
-public-name check, #6 javap libraries. Merged: #5 (javap, closes #2). Their PRs are reviewed and integrated
+worker on a delegated item. Open: the output lane, in order #14 docs checks →
+#12 test case titles and reference → #9 short output → #10 verbose → #13 home
+page sample (lead decisions posted on #9, #10, #12 and #14); then #4 PLAN
+public-name check, #6 javap libraries, #3 runner parent-death guard. A helper
+comments on an issue to claim it before starting. Merged: #5 (javap, closes #2). Their PRs are reviewed and integrated
 like a worker branch.
 
 ## Next
