@@ -29,6 +29,54 @@ def test_custom_payload_is_a_channel_and_the_rest_of_the_packet() -> None:
     round_trip(CLIENTBOUND, "minecraft:custom_payload", fields, data)
 
 
+def test_the_client_sends_its_brand_in_a_plugin_message() -> None:
+    # Plugin Message (serverbound), wiki revision 3790659: Channel Identifier, then Data,
+    # the rest of the packet. minecraft:brand's data is a String.
+    brand = string("vanilla")
+    data = bytes([0x02]) + string("minecraft:brand") + brand
+    fields = {"channel": "minecraft:brand", "data": brand}
+    round_trip(SERVERBOUND, "minecraft:custom_payload", fields, data)
+
+
+CLIENT_INFORMATION = {
+    "locale": "en_us",
+    "view_distance": 12,
+    "chat_mode": 0,
+    "chat_colors": True,
+    "displayed_skin_parts": 0x7F,
+    "main_hand": 1,
+    "enable_text_filtering": False,
+    "allow_server_listings": True,
+    "particle_status": 0,
+}
+
+
+def test_client_information_is_the_wiki_layout() -> None:
+    # Client Information (configuration), wiki revision 3790659: Locale String (16), View
+    # Distance Byte, Chat Mode VarInt Enum, Chat Colors Boolean, Displayed Skin Parts
+    # Unsigned Byte, Main Hand VarInt Enum, Enable text filtering Boolean, Allow server
+    # listings Boolean, Particle Status VarInt Enum.
+    data = bytes([0x00]) + string("en_us") + bytes.fromhex("0c 00 01 7f 01 00 01 00")
+    round_trip(SERVERBOUND, "minecraft:client_information", CLIENT_INFORMATION, data)
+
+
+def test_displayed_skin_parts_is_an_unsigned_byte() -> None:
+    data = bytes([0x00]) + string("en_us") + bytes.fromhex("0c 00 01 ff 01 00 01 00")
+    packet = CODEC.decode(State.CONFIGURATION, SERVERBOUND, data)
+    assert (packet.fields or {}).get("displayed_skin_parts") == 0xFF
+    for parts in (-1, 0x100):
+        fields = {**CLIENT_INFORMATION, "displayed_skin_parts": parts}
+        with pytest.raises(CodecError, match="displayed_skin_parts: "):
+            CODEC.encode(State.CONFIGURATION, SERVERBOUND, "minecraft:client_information", fields)
+
+
+def test_the_locale_is_at_most_16_characters() -> None:
+    # ClientInformation reads the language with readUtf(16) (26.3 javap).
+    fields = {**CLIENT_INFORMATION, "locale": "x" * 17}
+    with pytest.raises(CodecError, match="locale: "):
+        CODEC.encode(State.CONFIGURATION, SERVERBOUND, "minecraft:client_information", fields)
+
+
 def test_update_enabled_features_is_a_list_of_identifiers() -> None:
     data = bytes([0x0D, 0x01]) + string("minecraft:vanilla")
     fields = {"feature_flags": ["minecraft:vanilla"]}
