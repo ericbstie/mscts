@@ -26,15 +26,17 @@ running status/basic (1 of 5) ...
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
 
-2 groups: 2 different in network traffic only. No difference
-a player would notice was found.
+2 groups: 2 different in network traffic only.
+10 test cases: 6 identical, 4 different in network
+traffic only.
+No difference a player would notice was found.
 
 <span class="head">Network traffic differences</span>
   Server list ping (status)
     status_response: 4 values are sent differently, e.g.
-      - json_response.description: vanilla sends "mscts",
+      - status_response.description: vanilla sends "mscts",
         pumpkin sends {"text": "mscts"}
-      - json_response.favicon: vanilla leaves it out,
+      - status_response.favicon: vanilla leaves it out,
         pumpkin sends null
       <span class="muted">...</span>
 

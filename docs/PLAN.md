@@ -1063,7 +1063,13 @@ class Report:                       # report.py
 
 def render_text(report: Report) -> str: ...
 # Sections, in order: header (Reference, Candidate with versions, Target, repetitions);
-# a one-line summary (or "No differences from vanilla were found in the N groups run.");
+# a summary: the Groups counted by state, then the test cases counted the same way (one
+# test case is one name across the Run: different in gameplay in any Verdict is
+# "different", else in network traffic in any is "different in network traffic only"),
+# then "No difference a player would notice was found." if none was gameplay (or, all
+# identical, "No differences from vanilla were found in the N test cases of the M groups
+# run."); each difference line leads with its test case, with "(at <path>)" when the
+# path has a list index and "(the whole packet)" for a payload;
 # "Differences a player would notice": gameplay Divergences by mechanic (the Group id's
 # first segment, titled from report.MECHANICS), then Group, each distinct one once with
 # "(in k of N runs)" when not in all, values over 80 chars cut with their full length;
@@ -1071,9 +1077,9 @@ def render_text(report: Report) -> str: ...
 # differing leaves and at most NETWORK_TRAFFIC_EXAMPLES examples; this settles the per-leaf
 # open question for the Report, compare keeps reporting leaves); error/blocked Groups with
 # their detail, and "different in k of N runs"; "Timings (ms)": median and nearest-rank p95
-# per Measurement name for both sides, instance.startup included; notes; a two-line legend
-# (gameplay, network traffic). A Group whose Divergences are all network traffic reads
-# "different in network traffic only".
+# per Measurement name for both sides, instance.startup included; notes; a three-line
+# legend (gameplay, network traffic, test case). A Group whose Divergences are all
+# network traffic reads "different in network traffic only".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;

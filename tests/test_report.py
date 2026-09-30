@@ -1,3 +1,5 @@
+from typing import Literal
+
 from mscts.codec.packets import State
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
 from mscts.compare import test_case as case_name
@@ -29,10 +31,35 @@ def _field(path: str, reference: object, candidate: object, *, traffic: bool = F
     )
 
 
-def _verdict(group_id: str, *divergences: Divergence, outcome: Outcome | None = None) -> Verdict:
+def _verdict(
+    group_id: str,
+    *divergences: Divergence,
+    outcome: Outcome | None = None,
+    same: tuple[str, ...] = (),
+) -> Verdict:
+    """A Verdict whose test cases are its Divergences' and the `same` ones."""
     if outcome is None:
         outcome = Outcome.MISMATCH if divergences else Outcome.MATCH
-    return Verdict(group_id=group_id, outcome=outcome, divergences=divergences)
+    test_cases = {d.test_case for d in divergences if d.test_case} | set(same)
+    return Verdict(
+        group_id=group_id,
+        outcome=outcome,
+        divergences=divergences,
+        test_cases=tuple(sorted(test_cases)),
+    )
+
+
+def _unmatched(kind: Literal["missing", "unexpected"], state: State, packet: str) -> Divergence:
+    return Divergence(
+        bot="alice",
+        index=0,
+        kind=kind,
+        packet=packet,
+        path=None,
+        reference={} if kind == "missing" else ABSENT,
+        candidate={} if kind == "unexpected" else ABSENT,
+        test_case=case_name(state, packet, None),
+    )
 
 
 def _result(*verdicts: Verdict, rtt: float | None = None) -> GroupResult:
@@ -89,11 +116,53 @@ def test_the_header_names_both_servers_their_versions_the_target_and_the_repetit
 
 
 def test_no_divergences_is_said_plainly() -> None:
-    text = render_text(_report(_result(_verdict("status/basic")), _result(_verdict("status/ping"))))
+    basic = _verdict("status/basic", same=("status_response.players.max", "status_response.x"))
+    ping = _verdict("status/ping", same=("status_response.players.max", "pong_response.time"))
+    text = render_text(_report(_result(basic), _result(ping)))
 
-    assert "No differences from vanilla were found in the 2 groups run." in text
+    assert "No differences from vanilla were found in the 3 test cases of the 2 groups run." in text
     assert GAMEPLAY not in text
     assert NETWORK_TRAFFIC not in text
+
+
+def test_one_test_case_and_one_group_are_counted_in_the_singular() -> None:
+    text = render_text(_report(_result(_verdict("status/basic", same=("status_response.x",)))))
+
+    assert "No differences from vanilla were found in the 1 test case of the 1 group run." in text
+
+
+def test_the_summary_counts_test_cases_by_how_they_differ() -> None:
+    basic = _verdict(
+        "status/basic",
+        _field("json_response.version.name", "26.3", "x"),
+        _field("json_response.description", '"A"', '{"text":"A"}', traffic=True),
+        same=("status_response.players.max",),
+    )
+    ping = _verdict("status/ping", same=("status_response.players.max", "pong_response.time"))
+    text = render_text(_report(_result(basic), _result(ping)))
+
+    assert (
+        "2 groups: 1 identical, 1 different.\n"
+        "4 test cases: 2 identical, 1 different, 1 different in network traffic only.\n"
+    ) in text
+
+
+def test_a_test_case_different_anywhere_is_different() -> None:
+    # In gameplay in one Group or run, in network traffic only in another: different.
+    gameplay = _field("json_response.description", "A", "B")
+    traffic = _field("json_response.description", '"A"', '{"text":"A"}', traffic=True)
+    basic = _result(_verdict("status/basic", traffic), _verdict("status/basic", gameplay))
+    ping = _result(_verdict("status/ping", traffic))
+    text = render_text(_report(basic, ping))
+
+    assert "\n1 test case: 1 different.\n" in text
+
+
+def test_no_test_case_compared_is_said_plainly() -> None:
+    error = Verdict("status/basic", Outcome.ERROR, detail="the Reference failed: boom")
+    text = render_text(_report(_result(error)))
+
+    assert "1 group: 1 could not be run.\nNo test case was compared.\n" in text
 
 
 def test_only_network_traffic_divergences_say_plainly_a_player_would_notice_none() -> None:
@@ -110,8 +179,9 @@ def test_a_group_different_in_network_traffic_only_is_counted_as_that() -> None:
     text = render_text(_report(different, _result(_verdict("status/ping"))))
 
     assert (
-        "2 groups: 1 identical, 1 different in network traffic only."
-        " No difference a player would notice was found."
+        "2 groups: 1 identical, 1 different in network traffic only.\n"
+        "1 test case: 1 different in network traffic only.\n"
+        "No difference a player would notice was found."
     ) in text
 
 
@@ -220,6 +290,59 @@ def test_a_gameplay_divergence_reads_as_both_values_under_its_mechanic() -> None
     assert "pumpkin" in line
 
 
+def test_a_gameplay_difference_is_named_after_its_test_case() -> None:
+    different = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"))
+    text = render_text(_report(_result(different)))
+
+    assert '      - status_response.version.name: vanilla sends "26.3", pumpkin sends "x"\n' in text
+
+
+def test_a_difference_in_a_list_element_says_which_element() -> None:
+    path = "json_response.players.sample[3].name"
+    text = render_text(_report(_result(_verdict("status/basic", _field(path, "a", "b")))))
+
+    assert (
+        "      - status_response.players.sample[].name (at json_response.players.sample[3].name):"
+        ' vanilla sends "a", pumpkin sends "b"\n'
+    ) in text
+
+
+def test_a_packet_compared_as_a_whole_says_so() -> None:
+    whole = Divergence(
+        bot="alice",
+        index=0,
+        kind="field",
+        packet="minecraft:bundle_delimiter",
+        path=None,
+        reference="00",
+        candidate="01",
+        test_case=case_name(State.PLAY, "minecraft:bundle_delimiter", None),
+    )
+    text = render_text(_report(_result(_verdict("join/basic", whole))))
+
+    line = '      - bundle_delimiter (the whole packet): vanilla sends "00", pumpkin sends "01"\n'
+    assert line in text
+
+
+def test_a_missing_or_unexpected_packet_is_named_after_its_test_case() -> None:
+    missing = _unmatched("missing", State.PLAY, "minecraft:keep_alive")
+    unexpected = _unmatched("unexpected", State.PLAY, "minecraft:hurt_animation")
+    text = render_text(_report(_result(_verdict("join/basic", missing, unexpected))))
+
+    assert "      - play:keep_alive: vanilla sends this packet, pumpkin does not\n" in text
+    assert "      - hurt_animation: pumpkin sends this packet, vanilla does not\n" in text
+
+
+def test_the_legend_says_what_a_test_case_is() -> None:
+    text = render_text(_report(_result(_verdict("status/basic"))))
+
+    legend = text[text.index("How to read this") :]
+    assert (
+        "  test case: one value mscts compares, named after its packet and where it is in it"
+        " (status_response.description); [] stands for any element of a list."
+    ) in legend
+
+
 def test_divergences_are_grouped_by_mechanic_then_group() -> None:
     status = _verdict("status/basic", _field("a", 1, 2))
     join = _verdict("join/basic", _field("b", 3, 4))
@@ -271,8 +394,8 @@ def test_network_traffic_divergences_are_counted_per_packet_with_a_few_examples(
     section = text[text.index(NETWORK_TRAFFIC) : text.index(TIMINGS)]
     assert "10" in section
     assert "status_response" in section
-    assert "json_response.v0" in section
-    assert "json_response.v9" not in section
+    assert "      - status_response.v0: vanilla sends 0, pumpkin sends " in section
+    assert "status_response.v9" not in section
     assert "10 values are sent differently, e.g." in section
     assert "and 5 more" in section  # never hides that some were left out
     assert GAMEPLAY not in text

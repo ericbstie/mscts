@@ -1,6 +1,7 @@
 """Reports: what a Run found, rendered for a reader who does not know the codebase."""
 
 import json
+import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -36,8 +37,8 @@ _NOT_PLAYED: Mapping[Outcome, str] = MappingProxyType(
     }
 )
 """How a Verdict that is no Comparison of the two servers reads, by its outcome."""
-_INTO = chr(0x203A)
-"""Between a packet and a field path: a single right-pointing angle quotation mark."""
+_ELEMENT = re.compile(r"\[[0-9]+\]")
+"""A list index in a field path, which a test case name leaves out."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,15 +122,44 @@ def _state(result: GroupResult) -> str:
 
 
 def _summary(report: Report) -> str:
-    count = len(report.results)
+    groups = _counted(len(report.results), "group")
     states = [_state(result) for result in report.results]
+    cases = list(_test_cases(report).values())
     if set(states) <= {"identical"}:
-        return f"No differences from vanilla were found in the {count} groups run."
+        tested = _counted(len(cases), "test case")
+        return f"No differences from vanilla were found in the {tested} of the {groups} run."
     order = ("identical", "different", _NETWORK_TRAFFIC_ONLY, "blocked", "could not be run")
-    counts = ", ".join(f"{states.count(state)} {state}" for state in order if state in states)
+    lines = [f"{groups}: {_by_state(states, order)}."]
+    if cases:
+        lines.append(f"{_counted(len(cases), 'test case')}: {_by_state(cases, order)}.")
+    else:
+        lines.append("No test case was compared.")
     if set(states) <= {"identical", _NETWORK_TRAFFIC_ONLY}:
-        return f"{count} groups: {counts}. No difference a player would notice was found."
-    return f"{count} groups: {counts}."
+        lines.append("No difference a player would notice was found.")
+    return "\n".join(lines)
+
+
+def _test_cases(report: Report) -> dict[str, str]:
+    """Each test case in `report`, and how it went: different anywhere is different."""
+    found: dict[str, str] = {}
+    for result in report.results:
+        for verdict in result.verdicts:
+            for name in verdict.test_cases:
+                found.setdefault(name, "identical")
+            for name, observability in verdict.differing.items():
+                if observability is Observability.GAMEPLAY:
+                    found[name] = "different"
+                elif found.get(name) != "different":
+                    found[name] = _NETWORK_TRAFFIC_ONLY
+    return found
+
+
+def _by_state(states: Sequence[str], order: Sequence[str]) -> str:
+    return ", ".join(f"{states.count(state)} {state}" for state in order if state in states)
+
+
+def _counted(count: int, noun: str) -> str:
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def _mechanic(group_id: str) -> str:
@@ -318,7 +348,9 @@ def _legend(report: Report) -> str:
         + f"  gameplay: a vanilla client would read {candidate}'s value differently from"
         " vanilla's, so a player could notice it.\n"
         + "  network traffic: the bytes differ, but a vanilla client decodes both to the same"
-        " thing, so no player could notice it."
+        " thing, so no player could notice it.\n"
+        + "  test case: one value mscts compares, named after its packet and where it is in it"
+        " (status_response.description); [] stands for any element of a list."
     )
 
 
@@ -333,29 +365,29 @@ def _packet(name: str) -> str:
 def _describe(divergence: Divergence, report: Report) -> str:
     """One gameplay Divergence, in plain words."""
     reference, candidate = report.reference.name, report.candidate.name
-    packet = _packet(divergence.packet)
     match divergence.kind:
         case "failed":
             return f"the Candidate failed: {divergence.candidate}"
         case "missing":
-            return f"{packet}: {reference} sends this packet, {candidate} does not"
+            return f"{divergence.test_case}: {reference} sends this packet, {candidate} does not"
         case "unexpected":
-            return f"{packet}: {candidate} sends this packet, {reference} does not"
+            return f"{divergence.test_case}: {candidate} sends this packet, {reference} does not"
         case "bot":
             return (
                 f"bot {divergence.bot!r} exchanged {divergence.reference} packets with"
                 f" {reference}, {divergence.candidate} with {candidate}"
             )
         case _:
-            return _field(divergence, report)
-
-
-def _field(divergence: Divergence, report: Report) -> str:
-    return f"{_packet(divergence.packet)} {_INTO} {_change(divergence, report)}"
+            return _change(divergence, report)
 
 
 def _change(divergence: Divergence, report: Report) -> str:
-    where = divergence.path if divergence.path is not None else "the whole packet"
+    """A field Divergence: its test case, which list element if any, and both values."""
+    where = divergence.test_case
+    if divergence.path is None:
+        where += " (the whole packet)"
+    elif _ELEMENT.search(divergence.path):
+        where += f" (at {divergence.path})"
     return (
         f"{where}: {_sends(report.reference.name, divergence.reference)}, "
         f"{_sends(report.candidate.name, divergence.candidate)}"
