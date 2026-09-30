@@ -168,6 +168,12 @@ class PrefixedArray[T]:            # WireType[list[T]]: VarInt length, then the 
 @frozen
 class PrefixedOptional[T]:         # WireType[T | None]: Boolean (strict), then T if present
     element: WireType[T]
+class Tagged:                      # WireType[dict[str, object]]: a VarInt that picks a named variant
+    def __init__(self, tag_key: str, value_key: str,
+                 variants: Sequence[tuple[str, WireType[object] | None]]) -> None: ...
+    # The value is {tag_key: variant name, value_key: payload}; a variant's id is its position,
+    # a variant with no wire type has the payload None. An id no variant has is a WireError,
+    # and so is a name no variant has when writing. `names` lists them in id order.
 NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
                                    # (tag types, lengths, 512 deep); not decoded into values yet
 POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long
