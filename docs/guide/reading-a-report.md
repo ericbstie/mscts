@@ -21,13 +21,18 @@ Each server's line quotes the version name its own status response gave.
 
 ## Summary
 
-One line that counts the Groups by outcome:
+The first line counts the Groups by outcome, and the second counts the
+test cases the same way. When no difference is one a player would notice, a
+third line says so:
 
 ```
-2 groups: 2 different in network traffic only. No difference a player would notice was found.
+2 groups: 2 different in network traffic only.
+10 test cases: 6 identical, 4 different in network traffic only.
+No difference a player would notice was found.
 ```
 
-If nothing differed at all, it says `No differences from vanilla were found`.
+If nothing differed at all, the summary is one sentence:
+`No differences from vanilla were found in the 10 test cases of the 2 groups run.`
 
 ## Differences a player would notice
 
@@ -40,17 +45,21 @@ Differences a player would notice
 ---------------------------------
   Server list ping (status)
     status/basic
-      - status_response › json_response.players.max: vanilla sends 20, pumpkin sends 100
+      - status_response.players.max: vanilla sends 20, pumpkin sends 100
 ```
 
-Each entry names the packet, the path to the field inside it, and both
-values. Values longer than 80 characters are cut and show their full length.
-Other entry shapes:
+Each entry names its test case, then both values. Values longer than 80
+characters are cut and show their full length. When the field is in a list,
+the entry also says which element differed:
+`status_response.players.sample[].name (at json_response.players.sample[2].name)`.
+A packet compared byte for byte ends in `(the whole packet)`. Other entry
+shapes:
 
 - `the Candidate failed: ...` when the Candidate broke the protocol, sent a
   frame that did not decode, closed the connection, or did not answer in
   time.
 - `<packet>: vanilla sends this packet, pumpkin does not`, and the reverse.
+  The packet name is the test case.
 - `bot 'status' exchanged 4 packets with vanilla, 3 with pumpkin` when the
   two conversations have different lengths.
 
@@ -63,10 +72,10 @@ Network traffic differences (a vanilla client reads both alike; not counted in s
 --------------------------------------------------------------------------------------
   Server list ping (status)
     status_response: 4 values are sent differently, e.g.
-      - json_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-      - json_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
-      - json_response.favicon: vanilla leaves it out, pumpkin sends null
-      - json_response.players.sample: vanilla leaves it out, pumpkin sends []
+      - status_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
+      - status_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
+      - status_response.favicon: vanilla leaves it out, pumpkin sends null
+      - status_response.players.sample: vanilla leaves it out, pumpkin sends []
 ```
 
 These values differ in bytes but decode to the same thing in the vanilla
@@ -131,11 +140,12 @@ those were.
 
 **Notes** lists what this Report leaves out, such as file output that is not
 built yet. **How to read this** defines gameplay and network traffic in the
-Candidate's name:
+Candidate's name, and says what a test case is:
 
 ```
 How to read this
 ----------------
   gameplay: a vanilla client would read pumpkin's value differently from vanilla's, so a player could notice it.
   network traffic: the bytes differ, but a vanilla client decodes both to the same thing, so no player could notice it.
+  test case: one value mscts compares, named after its packet and where it is in it (status_response.description); [] stands for any element of a list.
 ```

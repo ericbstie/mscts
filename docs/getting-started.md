@@ -92,16 +92,18 @@ mscts Report
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
 
-2 groups: 2 different in network traffic only. No difference a player would notice was found.
+2 groups: 2 different in network traffic only.
+10 test cases: 6 identical, 4 different in network traffic only.
+No difference a player would notice was found.
 
 Network traffic differences (a vanilla client reads both alike; not counted in scores)
 --------------------------------------------------------------------------------------
   Server list ping (status)
     status_response: 4 values are sent differently, e.g.
-      - json_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-      - json_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
-      - json_response.favicon: vanilla leaves it out, pumpkin sends null
-      - json_response.players.sample: vanilla leaves it out, pumpkin sends []
+      - status_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
+      - status_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
+      - status_response.favicon: vanilla leaves it out, pumpkin sends null
+      - status_response.players.sample: vanilla leaves it out, pumpkin sends []
 
 Timings (ms)
 ------------

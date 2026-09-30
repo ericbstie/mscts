@@ -56,7 +56,8 @@ def test_a_run_prints_the_report_and_says_what_it_does(
     code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "2")
 
     assert code == 0
-    assert "No differences from vanilla were found in the 2 groups run." in out
+    summary = "No differences from vanilla were found in the 6 test cases of the 2 groups run."
+    assert summary in out, out
     assert "Timings" in out
     assert "--out" in out  # the Report says what it leaves out
     assert err.index("starting vanilla and pumpkin ...") < err.index("running status/basic")
@@ -73,7 +74,8 @@ def test_a_run_with_divergences_still_exits_0(
 
     assert code == 0
     assert "Differences a player would notice" in out
-    assert '"not vanilla"' in out
+    line = next(line for line in out.splitlines() if '"not vanilla"' in line)
+    assert line.startswith("      - status_response.description"), out
 
 
 def test_the_group_glob_picks_the_groups(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:
