@@ -244,13 +244,33 @@ def test_a_packet_that_arrives_as_the_window_closes_is_outside_it() -> None:
 
 
 def test_other_marks_neither_open_nor_close_a_window() -> None:
+    others = ("status:start", "observe:opened", "observe:open:x", "observe:closed")
     verdict = compare(
-        transcript(
-            "status:start", ("alice", chat("x")), OPEN, ("alice", block(1)), CLOSE, "observe:opened"
-        ),
-        transcript(
-            "status:start", OPEN, ("alice", block(1)), CLOSE, "observe:opened", ("alice", chat("y"))
-        ),
+        transcript(("alice", chat("x")), *others, OPEN, *others, ("alice", block(1)), CLOSE),
+        transcript(("alice", chat("y")), *others, OPEN, *others, ("alice", block(2)), CLOSE),
         [],
     )
+    assert [(d.packet, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("minecraft:block_update", "01", "02")
+    ], verdict
+
+
+def test_the_heartbeat_packets_are_the_clocked_ones_and_the_barrier_answer() -> None:
+    assert set(HEARTBEAT) == {
+        "minecraft:keep_alive",
+        "minecraft:set_time",
+        "minecraft:award_stats",
+    }
+
+
+def test_marks_are_read_in_time_order_whatever_order_they_were_recorded_in() -> None:
+    reference = transcript(
+        ("alice", chat("a")), OPEN, ("alice", block(1)), CLOSE, ("alice", chat("b"))
+    )
+    candidate = transcript(
+        ("alice", chat("c")), OPEN, ("alice", block(1)), CLOSE, ("alice", chat("d"))
+    )
+    for side in (reference, candidate):
+        side.marks.reverse()
+    verdict = compare(reference, candidate, [])
     assert verdict.outcome is Outcome.MATCH, verdict
