@@ -420,10 +420,69 @@ RECORDED_METADATA = [
         2,
         [metadata(6, "pose", 7), metadata(9, "float", 0.0)],
     ),
+    # A player with the speed effect: its particles, an entity_effect with the effect's colour.
+    (
+        "01 0a 11 01 1c ff33ebff ff",
+        1,
+        [
+            metadata(
+                10,
+                "particles",
+                [{"type": "minecraft:entity_effect", "options": {"color": -13374465}}],
+            )
+        ],
+    ),
+    # Entries of a byte and of an int.
+    ("05 12 00 10 ff", 5, [metadata(18, "byte", 16)]),
+    ("01 12 01 05 ff", 1, [metadata(18, "int", 5)]),
+    # A pig's health, a byte and its sound variant.
+    (
+        "09 09 03 41200000 0f 00 02 14 1d 00 ff",
+        9,
+        [
+            metadata(9, "float", 10.0),
+            metadata(15, "byte", 2),
+            metadata(20, "pig_sound_variant", 0),
+        ],
+    ),
+]
+
+# Recorded from Pumpkin, the Candidate of the probe: they decode strictly too. Some of its
+# entries are not in index order.
+RECORDED_PUMPKIN_METADATA = [
+    # A player: the main arm (humanoid_arm), the air (an int) and the skin parts (a byte).
+    (
+        "01 0f 2a 01 01 01 ac02 10 00 7f ff",
+        1,
+        [
+            metadata(15, "humanoid_arm", 1),
+            metadata(1, "int", 300),
+            metadata(16, "byte", 127),
+        ],
+    ),
+    # A pig's sound variant, then its variant.
+    (
+        "02 14 1d 01 13 1c 01 ff",
+        2,
+        [metadata(20, "pig_sound_variant", 1), metadata(19, "pig_variant", 1)],
+    ),
+    # An arrow's entries, in the order 8, 10, 9, 11.
+    (
+        "03 08 00 00 0a 08 00 09 00 00 0b 01 ffffffff0f ff",
+        3,
+        [
+            metadata(8, "byte", 0),
+            metadata(10, "boolean", value=False),
+            metadata(9, "byte", 0),
+            metadata(11, "int", -1),
+        ],
+    ),
 ]
 
 
-@pytest.mark.parametrize(("payload", "entity_id", "entries"), RECORDED_METADATA)
+@pytest.mark.parametrize(
+    ("payload", "entity_id", "entries"), RECORDED_METADATA + RECORDED_PUMPKIN_METADATA
+)
 def test_set_entity_data_decodes_and_re_encodes(
     payload: str, entity_id: int, entries: list[dict[str, object]]
 ) -> None:
@@ -548,6 +607,13 @@ def test_update_attributes_holds_at_most_128_attributes() -> None:
 
 
 def test_update_mob_effect_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3, `effect give @s minecraft:speed 30 1`: the effect 0 at
+    # amplifier 1 for 600 ticks, with the flags 14 (visible, icon, blend).
+    round_trip(
+        "minecraft:update_mob_effect",
+        {"entity_id": 1, "effect": 0, "amplifier": 1, "duration": 600, "flags": 14},
+        "01 00 01 d804 0e",
+    )
     # Built by hand: the entity 300 has effect 1 at amplifier 1 for 600 ticks, with the flags
     # for a visible effect and its icon; then an infinite effect (duration -1) of amplifier 200.
     round_trip(
@@ -563,6 +629,8 @@ def test_update_mob_effect_decodes_and_re_encodes() -> None:
 
 
 def test_remove_mob_effect_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3, `effect clear @s`.
+    round_trip("minecraft:remove_mob_effect", {"entity_id": 1, "effect": 0}, "01 00")
     round_trip("minecraft:remove_mob_effect", {"entity_id": 2, "effect": 16}, "02 10")
     round_trip("minecraft:remove_mob_effect", {"entity_id": 300, "effect": 300}, "ac02 ac02")
 
@@ -678,8 +746,8 @@ def test_the_entity_id_of_an_entity_event_is_an_int_and_a_damage_event_source_is
     assert damage["source_direct_id"] is ENTITY_ID_OPTIONAL
 
 
-# Passengers and links, then the player's own state. The probe recorded none of these, so the
-# payloads are built by hand from each packet's javap layout.
+# Passengers and links, then the player's own state. The probe recorded no passengers or links,
+# so those payloads are built by hand from each packet's javap layout.
 
 
 def test_set_passengers_decodes_and_re_encodes() -> None:
@@ -705,7 +773,14 @@ def test_set_entity_link_decodes_and_re_encodes() -> None:
 
 
 def test_set_health_decodes_and_re_encodes() -> None:
-    # Full health and food, and saturation 5; then a dead, starving player with a food past 127.
+    # Recorded from vanilla 26.3, after `damage @s 2`: 18 health, 20 food, 19 saturation.
+    round_trip(
+        "minecraft:set_health",
+        {"health": 18.0, "food": 20, "saturation": 19.0},
+        "41900000 14 41980000",
+    )
+    # Built by hand: full health and food, and saturation 5; then a dead, starving player with a
+    # food past 127.
     round_trip(
         "minecraft:set_health",
         {"health": 20.0, "food": 20, "saturation": 5.0},
@@ -719,7 +794,18 @@ def test_set_health_decodes_and_re_encodes() -> None:
 
 
 def test_set_experience_decodes_and_re_encodes() -> None:
-    # Half way to level 30, which took 1395 points in all (a two-byte VarInt).
+    # Recorded from vanilla 26.3, `xp add @s 5 points`, then `xp set @s 30 levels`.
+    round_trip(
+        "minecraft:set_experience",
+        {"experience_bar": 0.7142857313156128, "level": 0, "total_experience": 5},
+        "3f36db6e 00 05",
+    )
+    round_trip(
+        "minecraft:set_experience",
+        {"experience_bar": 0.7142857313156128, "level": 30, "total_experience": 5},
+        "3f36db6e 1e 05",
+    )
+    # Built by hand: half way to level 30, which took 1395 points in all (a two-byte VarInt).
     round_trip(
         "minecraft:set_experience",
         {"experience_bar": 0.5, "level": 30, "total_experience": 1395},
