@@ -21,8 +21,8 @@ MECHANICS: Mapping[str, str] = MappingProxyType(
 VALUE_LIMIT = 80
 """The longest value shown in full; a longer one is cut, with its full length."""
 
-WIRE_EXAMPLES = 5
-"""How many examples each packet's wire-only differences show."""
+NETWORK_TRAFFIC_EXAMPLES = 5
+"""How many examples each packet's network traffic differences show."""
 
 _MINECRAFT = "minecraft:"
 
@@ -77,8 +77,8 @@ def render_text(report: Report) -> str:
     sections = [
         _header(report),
         _summary(report),
-        _observable(report),
-        _wire_only(report),
+        _gameplay(report),
+        _network_traffic(report),
         _unsettled(report),
         _timings(report),
         _notes(report),
@@ -108,7 +108,7 @@ def _state(result: GroupResult) -> str:
     verdicts = result.verdicts
     if any(verdict.outcome is Outcome.ERROR for verdict in verdicts):
         return "could not be run"
-    if any(verdict.observable for verdict in verdicts):
+    if any(verdict.gameplay for verdict in verdicts):
         return "different"
     if any(verdict.divergences for verdict in verdicts):
         return "different on the wire only"
@@ -153,20 +153,20 @@ def _distinct(
     return list(seen.values())
 
 
-def _observable_of(verdict: Verdict) -> tuple[Divergence, ...]:
-    return verdict.observable
+def _gameplay_of(verdict: Verdict) -> tuple[Divergence, ...]:
+    return verdict.gameplay
 
 
-def _wire_only_of(verdict: Verdict) -> list[Divergence]:
-    return [d for d in verdict.divergences if d.observability is Observability.WIRE_ONLY]
+def _network_traffic_of(verdict: Verdict) -> list[Divergence]:
+    return [d for d in verdict.divergences if d.observability is Observability.NETWORK_TRAFFIC]
 
 
-def _observable(report: Report) -> str:
+def _gameplay(report: Report) -> str:
     lines: list[str] = []
     for title, results in _by_mechanic(report.results).items():
         block: list[str] = []
         for result in results:
-            found = _distinct(result.verdicts, _observable_of)
+            found = _distinct(result.verdicts, _gameplay_of)
             if not found:
                 continue
             block.append(f"    {result.group_id}")
@@ -181,12 +181,12 @@ def _observable(report: Report) -> str:
     return _heading("Differences a player would notice") + "\n" + "\n".join(lines)
 
 
-def _wire_only(report: Report) -> str:
+def _network_traffic(report: Report) -> str:
     lines: list[str] = []
     for title, results in _by_mechanic(report.results).items():
         packets: dict[str, dict[str, Divergence]] = {}
         for result in results:
-            for divergence, _ in _distinct(result.verdicts, _wire_only_of):
+            for divergence, _ in _distinct(result.verdicts, _network_traffic_of):
                 key = repr((divergence.path, divergence.reference, divergence.candidate))
                 packets.setdefault(divergence.packet, {})[key] = divergence
         if not packets:
@@ -197,10 +197,11 @@ def _wire_only(report: Report) -> str:
             plural = "value differs" if len(examples) == 1 else "values differ"
             lines.append(f"    {_packet(packet)}: {len(examples)} {plural} on the wire, e.g.")
             lines += [
-                f"      - {_change(divergence, report)}" for divergence in examples[:WIRE_EXAMPLES]
+                f"      - {_change(divergence, report)}"
+                for divergence in examples[:NETWORK_TRAFFIC_EXAMPLES]
             ]
-            if len(examples) > WIRE_EXAMPLES:
-                lines.append(f"      - and {len(examples) - WIRE_EXAMPLES} more")
+            if len(examples) > NETWORK_TRAFFIC_EXAMPLES:
+                lines.append(f"      - and {len(examples) - NETWORK_TRAFFIC_EXAMPLES} more")
     if not lines:
         return ""
     heading = _heading(
@@ -221,7 +222,7 @@ def _unsettled(report: Report) -> str:
         for line, count in details.items():
             seen_in = "" if count == runs else f" (in {count} of {runs} runs)"
             lines.append(f"  {result.group_id} {line}{seen_in}")
-        different = sum(1 for verdict in result.verdicts if verdict.observable)
+        different = sum(1 for verdict in result.verdicts if verdict.gameplay)
         if 0 < different < runs:
             lines.append(f"  {result.group_id} was different in {different} of {runs} runs")
     if not lines:
@@ -327,7 +328,7 @@ def _packet(name: str) -> str:
 
 
 def _describe(divergence: Divergence, report: Report) -> str:
-    """One observable Divergence, in plain words."""
+    """One gameplay Divergence, in plain words."""
     reference, candidate = report.reference.name, report.candidate.name
     packet = _packet(divergence.packet)
     match divergence.kind:
