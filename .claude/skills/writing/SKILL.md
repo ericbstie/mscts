@@ -40,6 +40,12 @@ record the example with "why: not given".
 
 ## Examples
 
+### Command output header
+
+- Before: a four-line block (Reference, Candidate, Target, Repetitions).
+- After: `Running tests against <server name>`.
+- Why: "It's not easily scannable."
+
 ### "Scenario"
 
 - Before: "Scenario" for a set of checks, with no name for each check.
