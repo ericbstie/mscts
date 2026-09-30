@@ -385,6 +385,7 @@ def test_canonicalization_is_keyed_by_state_as_well_as_name() -> None:
             path="json_response",
             reference='{"a":1}',
             candidate='{ "a": 1 }',
+            test_case="status_response.json_response",
         ),
     )
 

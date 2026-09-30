@@ -144,6 +144,10 @@ class Divergence:
             the Bot's Events.
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of
             the Bot's Events.
+        test_case: The test case it was found in (`test_case`): its packet's, for
+            `missing`, `unexpected` and a `field` Divergence of the whole payload; its
+            path's for any other `field` one, the raw path for network traffic. "" for
+            `bot` and `failed`, which are about the Group, not one field.
         observability: `network traffic`: a `field` Divergence between raw values whose
             canonical forms are equal, so the vanilla client reads both alike; its path
             and values are the raw ones. `gameplay`: every other Divergence, including
@@ -157,6 +161,7 @@ class Divergence:
     path: str | None
     reference: object
     candidate: object
+    test_case: str
     observability: Observability = Observability.GAMEPLAY
 
 
@@ -362,6 +367,7 @@ def _compare_bot(
             path=None,
             reference=in_reference or ABSENT,
             candidate=in_candidate or ABSENT,
+            test_case="",
         )
     yield from _compare_streams(bot, _stream(reference, bot, masks), _stream(candidate, bot, masks))
 
@@ -766,12 +772,15 @@ def _unmatched(
         path=None,
         reference=entry.value if kind == "missing" else ABSENT,
         candidate=entry.value if kind == "unexpected" else ABSENT,
+        test_case=_test_case(entry.packet.state, entry.packet.name, ()),
     )
 
 
 def _diff_matched(
     bot: str, index: int, reference: _Normalized, candidate: _Normalized
 ) -> Iterator[Divergence]:
+    state, name = reference.packet.state, reference.packet.name
+    differences: list[tuple[_Path | None, object, object]]
     if reference.fields is None or candidate.fields is None:
         differences = (
             []
@@ -779,29 +788,28 @@ def _diff_matched(
             else [(None, reference.packet.payload.hex(), candidate.packet.payload.hex())]
         )
     else:
-        differences = [
-            (_render(path), ref_value, cand_value)
-            for path, ref_value, cand_value in _diff(reference.fields, candidate.fields, ())
-        ]
+        differences = list(_diff(reference.fields, candidate.fields, ()))
     for path, ref_value, cand_value in differences:
         yield Divergence(
             bot=bot,
             index=index,
             kind="field",
-            packet=reference.packet.name,
-            path=path,
+            packet=name,
+            path=None if path is None else _render(path),
             reference=ref_value,
             candidate=cand_value,
+            test_case=_test_case(state, name, path or ()),
         )
     for path, ref_value, cand_value in _network_traffic(reference, candidate):
         yield Divergence(
             bot=bot,
             index=index,
             kind="field",
-            packet=reference.packet.name,
+            packet=name,
             path=_render(path),
             reference=ref_value,
             candidate=cand_value,
+            test_case=_test_case(state, name, path),
             observability=Observability.NETWORK_TRAFFIC,
         )
 

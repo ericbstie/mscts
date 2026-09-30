@@ -648,6 +648,10 @@ class Divergence:
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT
     candidate: object
+    test_case: str                  # the test case it was found in (test_case(): the
+                                    # packet's for missing, unexpected and a whole payload;
+                                    # the path's, the raw one for network traffic, for any
+                                    # other field one); "" for bot and failed (Group-level)
     observability: Observability = Observability.GAMEPLAY
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones); gameplay: every other Divergence, so every
@@ -978,6 +982,12 @@ proves it necessary:
      `configuration:keep_alive`, `play:keep_alive.id`,
      `status:pong_response.timestamp`. The Comparison asks the Codec,
      so the set is never listed by hand.
+
+   Every Divergence names its test case (`Divergence.test_case`). A
+   network traffic Divergence is in the test case of its raw path
+   (`status_response.description` for Pumpkin's `{"text": "mscts"}`
+   against vanilla's `"mscts"`). The `bot` and `failed` Divergences are
+   about the Group, not one field, so they are in none ("").
 
 ### Measurements and Report
 

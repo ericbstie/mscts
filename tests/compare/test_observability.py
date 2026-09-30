@@ -45,6 +45,7 @@ def _network_traffic(reference: str, candidate: str) -> Divergence:
         path="json_response",
         reference=reference,
         candidate=candidate,
+        test_case="status_response",
         observability=NETWORK_TRAFFIC,
     )
 
@@ -56,7 +57,14 @@ def test_observability_values_are_the_context_terms() -> None:
 def test_a_divergence_is_gameplay_unless_classified_otherwise() -> None:
     # So a `failed` Divergence (made by run.judge) is gameplay.
     failed = Divergence(
-        bot="", index=0, kind="failed", packet="", path=None, reference=ABSENT, candidate="x"
+        bot="",
+        index=0,
+        kind="failed",
+        packet="",
+        path=None,
+        reference=ABSENT,
+        candidate="x",
+        test_case="",
     )
     assert failed.observability is GAMEPLAY
 
@@ -158,6 +166,7 @@ def test_a_canonical_difference_is_gameplay_and_not_also_network_traffic() -> No
             path="json_response.players",
             reference=2,
             candidate=3,
+            test_case="status_response.players",
         ),
     )
     assert verdict.gameplay == verdict.divergences

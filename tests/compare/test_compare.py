@@ -70,6 +70,7 @@ def test_a_differing_payload_is_a_field_divergence_with_hex_values() -> None:
                 path=None,
                 reference="0102",
                 candidate="01ff",
+                test_case="test:b",
             ),
         ),
     )
@@ -87,6 +88,7 @@ def test_a_packet_only_the_reference_received_is_missing() -> None:
             path=None,
             reference="02",
             candidate=ABSENT,
+            test_case="test:b",
         ),
     )
 
@@ -103,6 +105,7 @@ def test_a_packet_only_the_candidate_received_is_unexpected() -> None:
             path=None,
             reference=ABSENT,
             candidate="02",
+            test_case="test:b",
         ),
     )
 
@@ -141,6 +144,7 @@ def test_a_bot_only_the_reference_has_is_a_bot_divergence() -> None:
             path=None,
             reference=2,
             candidate=ABSENT,
+            test_case="",
         ),
     )
 
@@ -157,6 +161,7 @@ def test_a_bot_only_the_candidate_has_is_a_bot_divergence_then_its_packets() -> 
             path=None,
             reference=ABSENT,
             candidate=2,
+            test_case="",
         ),
         Divergence(
             bot="bob",
@@ -166,6 +171,7 @@ def test_a_bot_only_the_candidate_has_is_a_bot_divergence_then_its_packets() -> 
             path=None,
             reference=ABSENT,
             candidate="02",
+            test_case="test:b",
         ),
         Divergence(
             bot="bob",
@@ -175,6 +181,7 @@ def test_a_bot_only_the_candidate_has_is_a_bot_divergence_then_its_packets() -> 
             path=None,
             reference=ABSENT,
             candidate="03",
+            test_case="test:c",
         ),
     )
 

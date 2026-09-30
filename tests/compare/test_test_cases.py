@@ -6,18 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from mscts.codec.packets import State
+from mscts.codec.packets import Codec, Packet, State
+from mscts.compare import Divergence, Observability, compare
 from mscts.compare import test_case as case_name
+from tests.compare.build import CLIENTBOUND, SERVERBOUND, packet, transcript
 
-PACKETS_JSON = (
-    Path(__file__).resolve().parents[2]
-    / "src"
-    / "mscts"
-    / "codec"
-    / "data"
-    / "26.3"
-    / "packets.json"
-)
+ROOT = Path(__file__).resolve().parents[2]
+PACKETS_JSON = ROOT / "src/mscts/codec/data/26.3/packets.json"
+CODEC = Codec.load("26.3")
 
 STATUS, LOGIN, CONFIGURATION, PLAY = State.STATUS, State.LOGIN, State.CONFIGURATION, State.PLAY
 STATUS_RESPONSE = "minecraft:status_response"
@@ -112,3 +108,83 @@ def test_exactly_the_packet_ids_of_more_than_one_state_start_with_the_state() ->
 def test_a_path_not_spelled_as_divergence_paths_are_is_refused(path: str) -> None:
     with pytest.raises(ValueError, match="minecraft:set_health"):
         case_name(PLAY, "minecraft:set_health", path)
+
+
+# Each Divergence names the test case it was found in.
+
+
+def _status(json_response: str) -> Packet:
+    fields = {"json_response": json_response}
+    return CODEC.decode(
+        State.STATUS, CLIENTBOUND, CODEC.encode(State.STATUS, CLIENTBOUND, STATUS_RESPONSE, fields)
+    )
+
+
+def _health(**fields: object) -> Packet:
+    return packet("minecraft:set_health", fields=fields)
+
+
+def _compared(reference: list[Packet], candidate: list[Packet]) -> list[Divergence]:
+    verdict = compare(
+        transcript(*(("alice", sent) for sent in reference)),
+        transcript(*(("alice", sent) for sent in candidate)),
+        [],
+    )
+    return list(verdict.divergences)
+
+
+def _cases(reference: list[Packet], candidate: list[Packet]) -> list[tuple[str, str]]:
+    return [(d.kind, d.test_case) for d in _compared(reference, candidate)]
+
+
+def test_a_field_divergence_is_in_the_test_case_of_its_field() -> None:
+    reference, candidate = _health(food=20, health=1.0), _health(food=19, health=1.0)
+    assert _cases([reference], [candidate]) == [("field", "set_health.food")]
+
+
+def test_every_list_element_and_every_repeated_packet_share_a_test_case() -> None:
+    reference = [_health(a=[1, 2]), _health(a=[3])]
+    candidate = [_health(a=[0, 0]), _health(a=[0, 4])]
+    assert _cases(reference, candidate) == [("field", "set_health.a[]")] * 4
+
+
+def test_a_missing_or_unexpected_packet_is_the_test_case_of_its_packet() -> None:
+    hurt = packet("minecraft:hurt_animation", b"\x01")
+    keep_alive = packet("minecraft:keep_alive", b"\x02", state=State.CONFIGURATION)
+    assert _cases([hurt], [keep_alive]) == [
+        ("missing", "hurt_animation"),
+        ("unexpected", "configuration:keep_alive"),
+    ]
+
+
+def test_a_packet_compared_by_payload_is_the_test_case_of_its_packet() -> None:
+    reference, candidate = (
+        packet("minecraft:keep_alive", b"\x01"),
+        packet("minecraft:keep_alive", b"\x02"),
+    )
+    assert _cases([reference], [candidate]) == [("field", "play:keep_alive")]
+
+
+def test_a_status_difference_is_in_the_test_case_of_its_json_path() -> None:
+    reference, candidate = _status('{"players":{"max":20}}'), _status('{"players":{"max":100}}')
+    assert _cases([reference], [candidate]) == [("field", "status_response.players.max")]
+
+
+def test_a_network_traffic_divergence_is_in_the_test_case_of_its_raw_path() -> None:
+    # Vanilla sends the description as a plain string, Pumpkin as a text component.
+    reference = _status('{"description":"mscts"}')
+    candidate = _status('{"description":{"text":"mscts"}}')
+    [divergence] = _compared([reference], [candidate])
+    assert divergence.observability is Observability.NETWORK_TRAFFIC
+    assert divergence.test_case == "status_response.description"
+
+
+def test_a_json_spelling_is_in_the_test_case_of_the_whole_text() -> None:
+    reference, candidate = _status('{"a":1,"b":2}'), _status('{"b":2,"a":1}')
+    assert _cases([reference], [candidate]) == [("field", "status_response")]
+
+
+def test_a_bot_on_one_side_only_is_in_no_test_case() -> None:
+    hello = packet("test:hello", b"\x07", direction=SERVERBOUND)
+    verdict = compare(transcript(("bob", hello)), transcript(), [])
+    assert [(d.kind, d.test_case) for d in verdict.divergences] == [("bot", "")]

@@ -100,6 +100,7 @@ def _failed(description: str, bot: str = "status") -> Divergence:
         path=None,
         reference=ABSENT,
         candidate=description,
+        test_case="",
     )
 
 
@@ -138,6 +139,7 @@ async def test_the_undecodable_frame_is_a_divergence_showing_both_payloads() -> 
         path=None,
         reference=reference_payload.hex(),
         candidate=(reference_payload + b"\x00").hex(),
+        test_case="status_response",
     )
 
 
