@@ -62,6 +62,10 @@ first.
 
 ## Steering heuristics
 
+- Before briefing, check each example in the spec (a name, a path, an
+  output line) against what the code emits today, for instance from a
+  unit test's Divergence. A spec example that contradicts its own rule
+  costs the worker a design detour (AH, #8).
 - If a retrospective repeats a complaint, that is a process bug. Fix the
   skill or the template, not just the instance.
 - If a worker widened scope or loosened a rule, reject the change and

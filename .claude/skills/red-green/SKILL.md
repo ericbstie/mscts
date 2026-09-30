@@ -222,6 +222,16 @@ then one commit.
   `isinstance(x, dict)` is `Top[dict[Unknown, Unknown]]`, which cannot be
   indexed. Recipe: annotate as `object`, narrow with `isinstance`, iterate
   `.items()`, and rebuild a typed `dict[str, object]`.
+- pytest collects any function named `test_*` that a test module
+  imports, so import a public `test_…` function under an alias
+  (`from mscts.compare import test_case as case_name`).
+- An assertion on rendered text (`assert line in out`) truncates `out`
+  when it fails; pass the text as the message: `assert line in out, out`.
+- Write and Edit turn a `é`-style escape into the literal
+  character. When the escape itself matters, build it with `chr()`.
+- `mutate.py --batch` interleaves pytest output with its verdicts, and
+  long output is cut off: redirect it to a log in your scratch dir and
+  grep the verdict lines.
 - A pytest path list that returns to a directory after another one
   (`tests/run/a.py tests/x.py tests/run/b.py`) can lose that directory's
   conftest fixtures ("fixture not found"). Run one directory at a time,

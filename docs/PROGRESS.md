@@ -87,7 +87,7 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AH (opus): #8 test cases, branch `issue-8-test-cases`.
+- AI (opus): #16 Bot fidelity, branch `issue-16-bot-fidelity`.
 - AF (sonnet): #20 entity schemas, branch `issue-20-entity-schemas`.
 
 Order: #7 → #11 → #8 → #12 / #9 → #10 for the output; enablers alongside where
@@ -188,9 +188,10 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #74 (the catalogue and the test proposal framework), #75 (#15: play
   schemas are a package, one module per mechanic) and #76 (#7: Scenario is now
   Group everywhere; the lead renamed it in the skills) and #77 (#11: the kinds of
-  difference are gameplay and network traffic).
-- A usage limit stopped AF (#20) mid-increment; it was resumed by message after
-  the reset, with its commits intact.
+  difference are gameplay and network traffic) and #78 (#8: every compared field
+  is a test case named `<packet>.<path>`, e.g. `status_response.description`).
+- A usage limit, then a container restart, stopped AF (#20) and AH (#8); both
+  were resumed by message with their worktrees intact.
 - Lead decisions under the maintainer's delegation, recorded on each issue and
   reversible by the maintainer: #11 the kinds are **gameplay** and **network
   traffic**; #18 observation windows (option 1); #22 compare chunks as the client

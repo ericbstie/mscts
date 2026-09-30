@@ -139,6 +139,9 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          commit, and the prose sweep is the docs commit; ASCII diagrams and aligned
          comment columns need realigning; it lists the leftover grep hits it expects
          (kept names, tests that pin a word's absence).
+         Docs that show changed output move in the same commit as the change; the last
+         increment only adds explanations. Name only test tools that are in
+         pyproject.toml.
          Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared).
          ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
          a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
@@ -239,9 +242,13 @@ new classes of defect:
   the Reference Adapter correctly refuses unless `MSCTS_JAVA` is set.
 - Known tool and type-checker traps are listed in the `red-green` skill.
   Read them first.
-- **Commit early.** An interrupted agent (API rate limit, container
-  restart) loses a worktree that has no commits. Keep research artifacts
-  in your scratch dir, where the next worker can reuse them.
+- **Commit early, push each commit.** An interrupted agent (API rate
+  limit, container restart) loses a worktree that has no commits; push
+  your branch after every green commit. The lead resumes an interrupted
+  worker by message. Keep research artifacts in your scratch dir, where
+  the next worker can reuse them.
+- GitHub goes through the GitHub MCP tools (load them with ToolSearch);
+  there is no `gh`.
 - Before committing a change to a `Protocol`, grep main for every
   implementer and caller again: a parallel brief may have added one.
 - Stay inside the issue's "Owns" list. If you are blocked, or the issue
@@ -278,6 +285,17 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-30 | worker AH (#8 test cases) | The spec's example name (`status_response.description`) disagreed with its own rule 1 (the compared path is `json_response.description`); the largest design cost | **adopt**: tech-lead skill, check a spec's examples against what the code emits today before briefing |
+| 2026-09-30 | worker AH | The brief named hypothesis, which is not a dependency | **adopt**: brief template, name only test tools in pyproject.toml |
+| 2026-09-30 | worker AH | Report output changed in increment 4, so docs samples had to move with it, not wait for the docs increment | **adopt**: brief template, docs that show changed output move with the change |
+| 2026-09-30 | worker AH | The container restarted after a commit but before its push | **adopt**: Worker contract, push after every green commit; GitHub via the MCP tools |
+| 2026-09-30 | worker AH | pytest collects an imported public `test_case` function as a test | **adopt**: red-green Known trap (import it under an alias) |
+| 2026-09-30 | worker AH | A failing `assert s in out` truncates `out`; Write/Edit turn `\u` escapes into literal characters; `mutate.py --batch` output interleaves pytest output | **adopt**: red-green Known traps |
+| 2026-09-30 | worker AH | A new required `Divergence` field meant editing ~20 constructions in 8 test files | **adopt**: #18's brief moves test Divergences behind one helper in `tests/compare/build.py` |
+| 2026-09-30 | worker AH | No Codec call lists packet names per State; `_in_more_than_one_state` probes `packet_id` | **adopt**: #29's brief adds `Codec.names(state, direction)` and simplifies it |
+| 2026-09-30 | worker AH | Listing every compared field cost +55% on a huge packet before tuning (now +10–23%) | **defer**: a compare benchmark with a budget when a Group compares chunks (#22) |
+| 2026-09-30 | worker AH | Report samples are copied by hand into three pages | **defer**: #14 (docs checks), as for AG |
+| 2026-09-30 | worker AH | "Proposing a test" says "A test is a Group", beside the term test case | **adopt**: the lead reworded it |
 | 2026-09-30 | lead (incident) | An account usage limit stopped AF (#20) mid-increment; its two commits and uncommitted edits survived in its worktree, and SendMessage resumed it after the reset | **adopt** (no change): "commit early" held; resume an interrupted worker by SendMessage rather than re-briefing |
 | 2026-09-30 | worker AG (#11 wording) | No docs check exists for Report examples, though the contract says to add examples to it | **defer**: maintainer issue #14 (docs checks), scheduled with the output issues #9 / #10 |
 | 2026-09-30 | worker AG | The brief paraphrased a Report line ("N changes on the wire") instead of pasting it | **adopt**: brief template, a rename brief pastes the exact current lines (`grep -n`) |

@@ -55,10 +55,10 @@ uv run pytest tests/path/test_file.py::test_name
 
 ## Proposing a test
 
-A test is a Group that plays one mechanic, such as lighting, mob
-spawning or redstone timing, against vanilla and the Candidate. Propose one
-as a GitHub issue from the **Test proposal** template, so that anyone can
-pick it up and build it.
+Each mechanic, such as lighting, mob spawning or redstone timing, is
+checked by a Group that plays it against vanilla and the Candidate. Propose
+a new one as a GitHub issue from the **Test proposal** template, so that
+anyone can pick it up and build it.
 
 A proposal:
 
