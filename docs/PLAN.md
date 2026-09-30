@@ -46,6 +46,7 @@ test needs it:
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
 | `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
+| `codec/entity_data.py` | the entity metadata value types (optional block state and unsigned int, painting variant, resolvable profile, global pos), then the serializer table and the entries list |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -206,6 +207,15 @@ POSITION_PATH: WireType[dict[str, object]]  # {linear: {x, y, z}} | {stepped: [{
 # {type: "minecraft:entity", value: {entity_id, y_offset}} (its entity_id is an ENTITY_ID).
 PARTICLE: Tagged
 POSITION_SOURCE: Tagged
+
+# codec/entity_data.py: value types of the entity metadata serializers. Ids of enums and
+# registries (a direction, a pose, a variant, a block state) stay VarInts, not range checked
+# (the client maps an out-of-range enum id to the first, wraps or clamps it).
+OPTIONAL_BLOCK_STATE: WireType[int | None]    # VarInt, 0 = None (so a present 0 is refused on write)
+OPTIONAL_UNSIGNED_INT: WireType[int | None]   # VarInt of value + 1, 0 = None
+OPTIONAL_GLOBAL_POS: WireType[dict | None]    # {dimension, pos: {x, y, z}} | None
+PAINTING_VARIANT: WireType[dict]              # {reference: id} | {direct: {width, height, asset_id, title, author}}
+RESOLVABLE_PROFILE: Schema                    # {profile: {game_profile: {...}} | {partial: {...}}, skin_patch: {...}}
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 
