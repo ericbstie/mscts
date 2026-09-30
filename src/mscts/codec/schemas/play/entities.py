@@ -15,6 +15,8 @@ from mscts.codec.schema import (
     BYTE,
     DOUBLE,
     ENTITY_ID,
+    ENTITY_ID_INT,
+    ENTITY_ID_OPTIONAL,
     FLOAT,
     IDENTIFIER,
     INT,
@@ -22,10 +24,15 @@ from mscts.codec.schema import (
     UUID,
     VAR_INT,
     PrefixedArray,
+    PrefixedOptional,
     Schema,
 )
 
 CLIENTBOUND: Mapping[str, Schema] = {
+    # Entity Animation. The action is an Unsigned Byte on the wire (0 swing main arm, 2 leave
+    # bed, 3 swing off hand, 4 critical hit, 5 magic critical hit); BYTE reads it signed and
+    # writes the same byte back.
+    "minecraft:animate": Schema(entity_id=ENTITY_ID, action=BYTE),
     # Spawn Entity. The velocity is an LpVec3; the angles are in 1/256 of a turn. `data` is
     # the object data (a projectile's owner, a block's state, ...): its meaning depends on
     # the entity type.
@@ -44,10 +51,23 @@ CLIENTBOUND: Mapping[str, Schema] = {
     ),
     # Bundle Delimiter: the packets between two of them apply in the same tick.
     "minecraft:bundle_delimiter": Schema(),
+    # Damage Event: the damage type is a registry id; the entities that caused and dealt the
+    # damage are written as their id plus one (0 for none), and the position is optional.
+    "minecraft:damage_event": Schema(
+        entity_id=ENTITY_ID,
+        source_type=VAR_INT,
+        source_cause_id=ENTITY_ID_OPTIONAL,
+        source_direct_id=ENTITY_ID_OPTIONAL,
+        source_position=PrefixedOptional(Schema(x=DOUBLE, y=DOUBLE, z=DOUBLE)),
+    ),
+    # Entity Event: unlike most entity packets, the entity id is an Int.
+    "minecraft:entity_event": Schema(entity_id=ENTITY_ID_INT, event_id=BYTE),
     # Entity Position Sync: the position is a path (PositionPath), the angles are Floats.
     "minecraft:entity_position_sync": Schema(
         entity_id=ENTITY_ID, position=POSITION_PATH, yaw=FLOAT, pitch=FLOAT, on_ground=BOOL
     ),
+    # Hurt Animation: the yaw is the direction the damage came from, in degrees.
+    "minecraft:hurt_animation": Schema(entity_id=ENTITY_ID, yaw=FLOAT),
     # Update Entity Position
     "minecraft:move_entity_pos": Schema(entity_id=ENTITY_ID, movement=MOVE_DELTA),
     # Update Entity Position and Rotation. The angles are 1/256 of a turn, the yaw first.
@@ -81,6 +101,10 @@ CLIENTBOUND: Mapping[str, Schema] = {
     "minecraft:set_entity_data": Schema(entity_id=ENTITY_ID, entries=ENTITY_DATA),
     # Set Entity Velocity
     "minecraft:set_entity_motion": Schema(entity_id=ENTITY_ID, velocity=LP_VEC3),
+    # Pickup Item: the collector takes `pickup_item_count` of the collected item entity.
+    "minecraft:take_item_entity": Schema(
+        collected_entity_id=ENTITY_ID, collector_entity_id=ENTITY_ID, pickup_item_count=VAR_INT
+    ),
     # Teleport Entity. Flags is the Teleport Flags bit field, as in player_position.
     "minecraft:teleport_entity": Schema(
         entity_id=ENTITY_ID,
