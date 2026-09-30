@@ -32,11 +32,22 @@ record the example with "why: not given".
 - **Give insight; let the reader decide.** mscts shows the differences.
   The reader decides whether a server is close enough to vanilla for
   them.
+- **Lists, not prose, for results.** Show what differs as a plain bullet
+  list. No long-winded summary sentences around it. Detail lives in a
+  verbose mode and in the docs, not in the default output.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Home page terminal sample (the default Report)
+
+- Before: "2 scenarios: 2 different on the wire only. No difference a
+  player would notice was found." followed by long sections per packet.
+- After: a simple bullet list of what is different (spec in progress).
+- Why: too verbose; "genuinely just show them as bullet lists, not as a
+  long-winded response".
 
 ### Home page hero label
 

@@ -38,6 +38,8 @@ ADRs and briefs. What the maintainer has asked for:
   concrete options and a recommended one first (the AskUserQuestion
   tool), then record the answer as an ADR or a PROGRESS entry in the same
   turn. Never let a decision live only in chat.
+- **One question at a time.** When pinning down an interface or a
+  wording, ask a single question, wait for the answer, then ask the next.
 - **Explain before asking.** When the maintainer says they don't follow,
   explain the mechanism plainly (see the TLS-proxy discussion behind
   ADR-0008) before offering options again.
