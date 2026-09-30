@@ -174,7 +174,8 @@ class Tagged:                      # WireType[dict[str, object]]: a VarInt that 
                  variants: Sequence[tuple[str, WireType[object] | None]]) -> None: ...
     # The value is {tag_key: variant name, value_key: payload}; a variant's id is its position,
     # a variant with no wire type has the payload None. An id no variant has is a WireError,
-    # and so is a name no variant has when writing. `names` lists them in id order.
+    # and so is a name no variant has when writing. `names` lists them in id order, and
+    # `variants` pairs each name with its wire type, so a walk of the fields can reach inside.
 NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
                                    # (tag types, lengths, 512 deep); not decoded into values yet
 POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long

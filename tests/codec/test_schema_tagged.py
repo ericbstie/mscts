@@ -92,6 +92,13 @@ def test_tagged_lists_its_variant_names_in_id_order() -> None:
     assert SHAPE.names == ("dot", "line", "box")
 
 
+def test_tagged_exposes_its_variants_so_a_walk_can_find_the_fields_inside() -> None:
+    assert SHAPE.variants == (("dot", None), ("line", FLOAT), ("box", SHAPE.variants[2][1]))
+    box = SHAPE.variants[2][1]
+    assert isinstance(box, Schema)
+    assert list(box.fields) == ["width", "height"]
+
+
 @pytest.mark.parametrize(
     ("tag_key", "value_key", "variants", "error"),
     [

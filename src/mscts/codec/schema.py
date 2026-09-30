@@ -496,6 +496,11 @@ class Tagged:
         """The variant names, in id order."""
         return tuple(name for name, _ in self._variants)
 
+    @property
+    def variants(self) -> tuple[tuple[str, WireType[object] | None], ...]:
+        """Each variant's name and wire type (None: no payload), in id order."""
+        return self._variants
+
     def read(self, reader: Reader) -> dict[str, object]:
         """Consume the id, then the payload of the variant it names."""
         tag = reader.var_int()
