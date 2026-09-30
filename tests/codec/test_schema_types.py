@@ -9,6 +9,9 @@ from mscts.codec.schema import (
     BOOL,
     BYTE,
     DOUBLE,
+    ENTITY_ID,
+    ENTITY_ID_INT,
+    ENTITY_ID_OPTIONAL,
     FLOAT,
     IDENTIFIER,
     INT,
@@ -17,6 +20,7 @@ from mscts.codec.schema import (
     REST,
     UUID,
     VAR_INT,
+    EntityId,
     PrefixedArray,
     PrefixedOptional,
     Schema,
@@ -309,3 +313,69 @@ def test_position_round_trips_its_extremes(position: dict[str, int]) -> None:
 def test_position_refuses_what_it_cannot_encode(position: object, error: str) -> None:
     with pytest.raises(WireError, match=error):
         written(POSITION, position)
+
+
+# Entity ids: a VarInt or an Int on the wire, but a type of their own, so that a Comparison can
+# find every field that holds one (the renumbering) without knowing the packet.
+
+
+def test_entity_id_is_a_var_int_on_the_wire() -> None:
+    assert written(ENTITY_ID, 300) == written(VAR_INT, 300) == bytes.fromhex("ac02")
+    assert read_all(ENTITY_ID, bytes.fromhex("ac02")) == 300
+
+
+def test_entity_id_int_is_an_int_on_the_wire() -> None:
+    assert written(ENTITY_ID_INT, -2) == written(INT, -2) == bytes.fromhex("fffffffe")
+    assert read_all(ENTITY_ID_INT, bytes.fromhex("fffffffe")) == -2
+
+
+def test_entity_ids_are_recognised_by_their_type_not_their_encoding() -> None:
+    for entity_id in (ENTITY_ID, ENTITY_ID_INT, ENTITY_ID_OPTIONAL):
+        assert isinstance(entity_id, EntityId)
+    assert ENTITY_ID is not VAR_INT
+    assert ENTITY_ID_INT is not INT
+    assert not isinstance(VAR_INT, EntityId)
+    assert not isinstance(INT, EntityId)
+    assert len({id(ENTITY_ID), id(ENTITY_ID_INT), id(ENTITY_ID_OPTIONAL)}) == 3
+
+
+@pytest.mark.parametrize(
+    ("wire_type", "value", "error"),
+    [
+        (ENTITY_ID, True, "expected an int"),
+        (ENTITY_ID, 2**31, "out of range"),
+        (ENTITY_ID_INT, 1.0, "expected an int"),
+        (ENTITY_ID_INT, 2**31, "out of range"),
+        (ENTITY_ID_OPTIONAL, True, "expected an int"),
+        (ENTITY_ID_OPTIONAL, 2**31 - 1, "out of range"),
+    ],
+)
+def test_entity_ids_refuse_what_their_encoding_refuses(
+    wire_type: WireType[object], value: object, error: str
+) -> None:
+    with pytest.raises(WireError, match=error):
+        written(wire_type, value)
+
+
+# An optional entity id is how vanilla writes "no entity" in a damage event: the id plus one,
+# with 0 for none (ClientboundDamageEventPacket.readOptionalEntityId).
+@pytest.mark.parametrize(("value", "encoded"), [(None, "00"), (0, "01"), (41, "2a"), (300, "ad02")])
+def test_optional_entity_id_is_the_id_plus_one_and_zero_for_none(
+    value: int | None, encoded: str
+) -> None:
+    assert written(ENTITY_ID_OPTIONAL, value) == bytes.fromhex(encoded)
+    assert read_all(ENTITY_ID_OPTIONAL, bytes.fromhex(encoded)) == value
+
+
+def test_optional_entity_id_refuses_minus_one_which_would_read_back_as_none() -> None:
+    with pytest.raises(WireError, match="-1 is not an entity id"):
+        written(ENTITY_ID_OPTIONAL, -1)
+
+
+# A Schema says which fields it has, so that they can be found by type.
+
+
+def test_a_schema_exposes_its_fields_in_wire_order() -> None:
+    schema = Schema(entity_id=ENTITY_ID, on_ground=BOOL)
+
+    assert list(schema.fields.items()) == [("entity_id", ENTITY_ID), ("on_ground", BOOL)]

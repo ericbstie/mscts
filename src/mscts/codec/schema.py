@@ -188,6 +188,55 @@ LONG: WireType[int] = _Long()
 
 
 @dataclass(frozen=True, slots=True)
+class EntityId:
+    """An entity id, carried as a VarInt or an Int: a type of its own so a field can be found.
+
+    A Comparison recognises every field that holds an entity id by `isinstance(type,
+    EntityId)`, whatever the packet (the renumbering needs no list of packets). Use the
+    constants `ENTITY_ID` (VarInt), `ENTITY_ID_INT` and `ENTITY_ID_OPTIONAL`.
+
+    Attributes:
+        wire: How the id is carried: `VAR_INT` or `INT`.
+        optional: The value is the id plus one on the wire, 0 meaning no entity, as vanilla
+            writes a damage event's source ids; it reads as the id, or None for none.
+    """
+
+    wire: WireType[int]
+    optional: bool = False
+
+    def read(self, reader: Reader) -> int | None:
+        """Consume the id, or (optional) None if the wire value is 0."""
+        value = self.wire.read(reader)
+        if not self.optional:
+            return value
+        return None if value == 0 else value - 1
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`, an int (optional: an int, or None for no entity)."""
+        if not self.optional:
+            self.wire.write(writer, value)
+            return
+        if value is None:
+            self.wire.write(writer, 0)
+            return
+        entity_id = _integer(value)
+        if entity_id == -1:
+            msg = "-1 is not an entity id (it would read back as no entity)"
+            raise WireError(msg)
+        self.wire.write(writer, entity_id + 1)
+
+
+ENTITY_ID = EntityId(VAR_INT)
+"""An entity id as a VarInt (spawn, movement, metadata, …)."""
+
+ENTITY_ID_INT = EntityId(INT)
+"""An entity id as an Int (`login`, `entity_event`, `set_entity_link`)."""
+
+ENTITY_ID_OPTIONAL = EntityId(VAR_INT, optional=True)
+"""An entity id or None, as a VarInt holding the id plus one (0 is none)."""
+
+
+@dataclass(frozen=True, slots=True)
 class String:
     """String (n): UTF-8 behind a VarInt byte-length prefix.
 
@@ -235,6 +284,11 @@ class Schema:
     def __init__(self, **fields: WireType[object]) -> None:
         """Declare the fields, in wire order."""
         self._fields = tuple(fields.items())
+
+    @property
+    def fields(self) -> dict[str, WireType[object]]:
+        """The declared fields by name, in wire order (a copy: changing it changes nothing)."""
+        return dict(self._fields)
 
     def read(self, reader: Reader) -> dict[str, object]:
         """Consume every field, in order.
