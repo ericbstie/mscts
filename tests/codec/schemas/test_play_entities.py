@@ -11,7 +11,16 @@ from collections.abc import Mapping
 import pytest
 
 from mscts.codec.packets import Codec, CodecError, Direction, State
-from mscts.codec.schema import EntityId, PrefixedArray, PrefixedOptional, Schema, WireType
+from mscts.codec.schema import (
+    ENTITY_ID,
+    ENTITY_ID_INT,
+    ENTITY_ID_OPTIONAL,
+    EntityId,
+    PrefixedArray,
+    PrefixedOptional,
+    Schema,
+    WireType,
+)
 from mscts.codec.schemas import play
 from mscts.codec.wire import Writer
 
@@ -560,3 +569,109 @@ def test_remove_mob_effect_decodes_and_re_encodes() -> None:
 @pytest.mark.parametrize("name", ["update_attributes", "update_mob_effect", "remove_mob_effect"])
 def test_attribute_and_effect_packets_have_their_entity_id_as_an_entity_id(name: str) -> None:
     assert entity_id_paths(play_schema(f"minecraft:{name}")) == ["entity_id"]
+
+
+# Events and animations.
+
+
+def test_entity_event_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: the entity 2 and the entity 15 die (event 3), and are then
+    # removed with smoke (event 60). The entity id is an Int, not a VarInt.
+    round_trip("minecraft:entity_event", {"entity_id": 2, "event_id": 3}, "00000002 03")
+    round_trip("minecraft:entity_event", {"entity_id": 15, "event_id": 3}, "0000000f 03")
+    round_trip("minecraft:entity_event", {"entity_id": 2, "event_id": 60}, "00000002 3c")
+    round_trip("minecraft:entity_event", {"entity_id": 15, "event_id": 60}, "0000000f 3c")
+    # Built by hand: an Int id that would be two VarInt bytes, and a negative event (a Byte).
+    round_trip("minecraft:entity_event", {"entity_id": 300, "event_id": -1}, "0000012c ff")
+
+
+def damaged(**changes: object) -> dict[str, object]:
+    """A damage_event's fields: the entity 2 damaged by type 10, from no entity or position."""
+    fields: dict[str, object] = {
+        "entity_id": 2,
+        "source_type": 10,
+        "source_cause_id": None,
+        "source_direct_id": None,
+        "source_position": None,
+    }
+    return fields | changes
+
+
+def test_damage_event_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: a pig takes damage of type 10, 18 and 19 (no causing or
+    # direct entity, no source position); the ids after the type are 0 for none.
+    round_trip("minecraft:damage_event", damaged(), "02 0a 00 00 00")
+    round_trip("minecraft:damage_event", damaged(source_type=18), "02 12 00 00 00")
+    round_trip("minecraft:damage_event", damaged(source_type=19), "02 13 00 00 00")
+    round_trip("minecraft:damage_event", damaged(entity_id=15, source_type=19), "0f 13 00 00 00")
+
+
+def test_damage_event_carries_the_entity_ids_plus_one_and_a_source_position() -> None:
+    # Built by hand: the entity 300, type 200, caused by the entity 0 (written as 1), directly
+    # by the entity 300 (ad02), from the position (1.5, 64, -2.5).
+    round_trip(
+        "minecraft:damage_event",
+        damaged(
+            entity_id=300,
+            source_type=200,
+            source_cause_id=0,
+            source_direct_id=300,
+            source_position={"x": 1.5, "y": 64.0, "z": -2.5},
+        ),
+        "ac02 c801 01 ad02 01 3ff8000000000000 4050000000000000 c004000000000000",
+    )
+
+
+def test_animate_decodes_and_re_encodes() -> None:
+    # Built by hand: the entity 300 swings its off hand (animation 3). The action is an
+    # Unsigned Byte on the wire; the Codec reads a Byte, so a value past 127 reads as negative
+    # and writes back the same byte.
+    round_trip("minecraft:animate", {"entity_id": 300, "action": 3}, "ac02 03")
+    round_trip("minecraft:animate", {"entity_id": 2, "action": -128}, "02 80")
+
+
+def test_hurt_animation_decodes_and_re_encodes() -> None:
+    # Built by hand: the entity 300 is hit from a yaw of 90 degrees.
+    round_trip("minecraft:hurt_animation", {"entity_id": 300, "yaw": 90.0}, "ac02 42b40000")
+
+
+def test_take_item_entity_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: the player (1) picks up 3 of the item entity 17, then 1 of 18.
+    round_trip(
+        "minecraft:take_item_entity",
+        {"collected_entity_id": 17, "collector_entity_id": 1, "pickup_item_count": 3},
+        "11 01 03",
+    )
+    round_trip(
+        "minecraft:take_item_entity",
+        {"collected_entity_id": 18, "collector_entity_id": 1, "pickup_item_count": 1},
+        "12 01 01",
+    )
+    # Built by hand: two-byte ids and a count.
+    round_trip(
+        "minecraft:take_item_entity",
+        {"collected_entity_id": 300, "collector_entity_id": 301, "pickup_item_count": 200},
+        "ac02 ad02 c801",
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "paths"),
+    [
+        ("entity_event", ["entity_id"]),
+        ("damage_event", ["entity_id", "source_cause_id", "source_direct_id"]),
+        ("animate", ["entity_id"]),
+        ("hurt_animation", ["entity_id"]),
+        ("take_item_entity", ["collected_entity_id", "collector_entity_id"]),
+    ],
+)
+def test_event_packets_have_their_entity_ids_as_entity_ids(name: str, paths: list[str]) -> None:
+    assert entity_id_paths(play_schema(f"minecraft:{name}")) == paths
+
+
+def test_the_entity_id_of_an_entity_event_is_an_int_and_a_damage_event_source_is_optional() -> None:
+    assert play_schema("minecraft:entity_event").fields["entity_id"] is ENTITY_ID_INT
+    damage = play_schema("minecraft:damage_event").fields
+    assert damage["entity_id"] is ENTITY_ID
+    assert damage["source_cause_id"] is ENTITY_ID_OPTIONAL
+    assert damage["source_direct_id"] is ENTITY_ID_OPTIONAL
