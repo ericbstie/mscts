@@ -301,8 +301,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # a JSON object. ping: ping_request → pong_response echoing the payload. Any other answer →
     # ProtocolError, with the answer still recorded.
     # join (offline only): on a fresh Connection (else ProtocolError, nothing sent), the handshake
-    # (intent 2) and hello(name, offline_uuid(name)), then expect(play chunk_batch_finished): it
-    # returns once the server's first chunk batch has finished, Replies having answered the rest.
+    # (intent 2) and hello(name, offline_uuid(name)), then expect(play chunk_batch_finished), then
+    # player_loaded: it returns once the server's first chunk batch has finished, Replies having
+    # answered the rest. player_loaded goes once, right after that batch's chunk_batch_received:
+    # the vanilla client's moment depends on its renderer, and none could be ready earlier.
     # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
@@ -322,7 +324,7 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # parts add to the tracked pose, rotation summed in binary32, pitch clamped to ±90, a
     # non-finite rotation ignored); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
-    # else is answered (not yet: custom_query, player_loaded).
+    # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
 
 PROBE_TIMEOUT_S = 1.0               # bot.py, since it reuses Bot.status (net cannot import bot)
 def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
