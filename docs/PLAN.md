@@ -137,7 +137,7 @@ class WireType[T](Protocol):       # how one value is read from / written to the
     def read(self, reader: Reader) -> T: ...                    # WireError on bad bytes
     def write(self, writer: Writer, value: object) -> None: ... # WireError on a value it cannot
                                                                 # encode (wrong Python type, range)
-VAR_INT: WireType[int]             # also USHORT, LONG; more primitives as packets need them
+VAR_INT: WireType[int]             # also VAR_LONG, USHORT, LONG; more primitives as packets need them
                                    # (ints reject bool)
 BOOL: WireType[bool]               # writes only a bool (not 1 or "")
 UUID: WireType[uuid.UUID]          # writes only a UUID (not its str, bytes or int)
