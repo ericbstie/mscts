@@ -26,6 +26,9 @@ NETWORK_TRAFFIC_EXAMPLES = 5
 
 _MINECRAFT = "minecraft:"
 
+_NETWORK_TRAFFIC_ONLY = "different in network traffic only"
+"""A Group's state when it has Divergences, all of them network traffic."""
+
 _NOT_PLAYED: Mapping[Outcome, str] = MappingProxyType(
     {
         Outcome.BLOCKED: "was not played (blocked)",
@@ -111,7 +114,7 @@ def _state(result: GroupResult) -> str:
     if any(verdict.gameplay for verdict in verdicts):
         return "different"
     if any(verdict.divergences for verdict in verdicts):
-        return "different on the wire only"
+        return _NETWORK_TRAFFIC_ONLY
     if any(verdict.outcome is Outcome.BLOCKED for verdict in verdicts):
         return "blocked"
     return "identical"
@@ -122,9 +125,9 @@ def _summary(report: Report) -> str:
     states = [_state(result) for result in report.results]
     if set(states) <= {"identical"}:
         return f"No differences from vanilla were found in the {count} groups run."
-    order = ("identical", "different", "different on the wire only", "blocked", "could not be run")
+    order = ("identical", "different", _NETWORK_TRAFFIC_ONLY, "blocked", "could not be run")
     counts = ", ".join(f"{states.count(state)} {state}" for state in order if state in states)
-    if set(states) <= {"identical", "different on the wire only"}:
+    if set(states) <= {"identical", _NETWORK_TRAFFIC_ONLY}:
         return f"{count} groups: {counts}. No difference a player would notice was found."
     return f"{count} groups: {counts}."
 
@@ -194,8 +197,8 @@ def _network_traffic(report: Report) -> str:
         lines.append(f"  {title}")
         for packet, divergences in packets.items():
             examples = list(divergences.values())
-            plural = "value differs" if len(examples) == 1 else "values differ"
-            lines.append(f"    {_packet(packet)}: {len(examples)} {plural} on the wire, e.g.")
+            plural = "value is" if len(examples) == 1 else "values are"
+            lines.append(f"    {_packet(packet)}: {len(examples)} {plural} sent differently, e.g.")
             lines += [
                 f"      - {_change(divergence, report)}"
                 for divergence in examples[:NETWORK_TRAFFIC_EXAMPLES]
@@ -205,7 +208,7 @@ def _network_traffic(report: Report) -> str:
     if not lines:
         return ""
     heading = _heading(
-        "Wire-only differences (a vanilla client reads both alike; not counted in scores)"
+        "Network traffic differences (a vanilla client reads both alike; not counted in scores)"
     )
     return heading + "\n" + "\n".join(lines)
 
@@ -312,9 +315,9 @@ def _legend(report: Report) -> str:
     return (
         _heading("How to read this")
         + "\n"
-        + f"  observable: a vanilla client would read {candidate}'s value differently from"
+        + f"  gameplay: a vanilla client would read {candidate}'s value differently from"
         " vanilla's, so a player could notice it.\n"
-        + "  wire-only: the bytes differ, but a vanilla client decodes both to the same"
+        + "  network traffic: the bytes differ, but a vanilla client decodes both to the same"
         " thing, so no player could notice it."
     )
 
