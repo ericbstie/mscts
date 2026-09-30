@@ -56,7 +56,7 @@ def test_a_run_prints_the_report_and_says_what_it_does(
     code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "2")
 
     assert code == 0
-    assert "No differences from vanilla were found in the 2 scenarios run." in out
+    assert "No differences from vanilla were found in the 2 groups run." in out
     assert "Timings" in out
     assert "--out" in out  # the Report says what it leaves out
     assert err.index("starting vanilla and pumpkin ...") < err.index("running status/basic")
@@ -118,8 +118,26 @@ def test_a_glob_that_matches_nothing_fails_naming_the_groups(
     assert (code, out) == (1, "")
     assert err.startswith("mscts: ")
     assert err.count("\n") == 1
-    assert "--group 'nothing/*'" in err
+    assert "no registered exact Group matches --group 'nothing/*'" in err
     assert "status/basic" in err
+
+
+def test_the_help_speaks_of_groups(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")  # argparse wraps its help to the terminal width
+
+    for argv in (["--help"], ["run", "--help"]):
+        with pytest.raises(SystemExit) as exited:
+            cli.main(argv)
+        assert exited.value.code == 0
+    out = capsys.readouterr().out
+
+    assert "play Groups against vanilla and a Candidate, and print the Report" in out
+    assert "--group GLOB" in out
+    assert "the Group ids to play, prerequisites added (default: status/*)" in out
+    assert "how many times to play each Group (default: 5)" in out
+    assert "scenario" not in out.lower()
 
 
 def test_a_missing_installation_fails_naming_the_install_command(

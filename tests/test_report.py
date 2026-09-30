@@ -63,14 +63,14 @@ def test_the_header_names_both_servers_their_versions_the_target_and_the_repetit
     text = render_text(_report(_result(_verdict("status/basic"), _verdict("status/basic"))))
 
     header = text[: text.index(TIMINGS)]
-    for expected in ("vanilla", "26.3", "pumpkin", "Pumpkin 26.2", "777", "2 "):
+    for expected in ("vanilla", "26.3", "pumpkin", "Pumpkin 26.2", "777", "2 of each group"):
         assert expected in header
 
 
 def test_no_divergences_is_said_plainly() -> None:
     text = render_text(_report(_result(_verdict("status/basic")), _result(_verdict("status/ping"))))
 
-    assert "No differences from vanilla were found in the 2 scenarios run." in text
+    assert "No differences from vanilla were found in the 2 groups run." in text
     assert OBSERVABLE not in text
     assert WIRE_ONLY not in text
 
@@ -92,7 +92,7 @@ def test_the_sections_come_in_order() -> None:
     error = _verdict("join/basic", outcome=Outcome.ERROR)
     text = render_text(_report(_result(basic, rtt=1.0), _result(error)))
 
-    positions = _positions(text, "2 scenarios", OBSERVABLE, WIRE_ONLY, "join/basic", TIMINGS)
+    positions = _positions(text, "2 groups", OBSERVABLE, WIRE_ONLY, "join/basic", TIMINGS)
     assert positions == sorted(positions)
     assert text.rindex("wire-only") > text.index(TIMINGS)  # the legend comes last
 
@@ -101,7 +101,20 @@ def test_the_summary_counts_identical_and_different_groups() -> None:
     different = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"))
     text = render_text(_report(_result(different), _result(_verdict("status/ping"))))
 
-    assert "2 scenarios: 1 identical, 1 different" in text
+    assert "2 groups: 1 identical, 1 different" in text
+
+
+def test_the_report_never_says_scenario() -> None:
+    wire = _field("json_response.favicon", ABSENT, None, wire=True)
+    observable = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"), wire)
+    error = Verdict("join/basic", Outcome.ERROR, detail="the Reference failed: boom")
+    blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite join/basic was error")
+    flaky = _result(_verdict("status/basic", _field("a", 1, 2)), _verdict("status/basic"))
+    text = render_text(
+        _report(_result(observable, rtt=1.0), _result(error), _result(blocked), flaky)
+    )
+
+    assert "scenario" not in text.lower()
 
 
 def test_an_observable_divergence_reads_as_both_values_under_its_mechanic() -> None:

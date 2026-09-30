@@ -93,7 +93,7 @@ def _header(report: Report) -> str:
         ("Reference", _side(report.reference)),
         ("Candidate", _side(report.candidate)),
         ("Target", f"Minecraft {target.minecraft_version} (protocol {target.protocol_version})"),
-        ("Repetitions", f"{report.repeat} of each scenario"),
+        ("Repetitions", f"{report.repeat} of each group"),
     )
     return "mscts Report\n" + "\n".join(f"  {label:<12} {value}" for label, value in rows)
 
@@ -121,12 +121,12 @@ def _summary(report: Report) -> str:
     count = len(report.results)
     states = [_state(result) for result in report.results]
     if set(states) <= {"identical"}:
-        return f"No differences from vanilla were found in the {count} scenarios run."
+        return f"No differences from vanilla were found in the {count} groups run."
     order = ("identical", "different", "different on the wire only", "blocked", "could not be run")
     counts = ", ".join(f"{states.count(state)} {state}" for state in order if state in states)
     if set(states) <= {"identical", "different on the wire only"}:
-        return f"{count} scenarios: {counts}. No difference a player would notice was found."
-    return f"{count} scenarios: {counts}."
+        return f"{count} groups: {counts}. No difference a player would notice was found."
+    return f"{count} groups: {counts}."
 
 
 def _mechanic(group_id: str) -> str:

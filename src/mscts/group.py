@@ -73,7 +73,7 @@ class GroupContext:
             TimeoutError: It did not connect in time.
         """
         if name in self._bots:
-            msg = f"the Scenario already has a Bot called {name!r}"
+            msg = f"the Group already has a Bot called {name!r}"
             raise ValueError(msg)
         try:
             bot = await Bot.connect(
@@ -168,7 +168,7 @@ def group(
 
     def register(run: Script) -> Script:
         if id in _REGISTERED:
-            msg = f"a Scenario called {id!r} is registered already"
+            msg = f"a Group called {id!r} is registered already"
             raise ValueError(msg)
         _REGISTERED[id] = Group(
             id=id, run=run, requires=requires, masks=masks, spec=spec, kind=kind
@@ -198,7 +198,7 @@ def resolve(group_ids: Iterable[str], groups: Mapping[str, Group] = GROUPS) -> t
             msg = f"the prerequisites form a cycle: {cycle}"
             raise ValueError(msg)
         if group_id not in groups:
-            msg = f"no Scenario is registered as {group_id!r}"
+            msg = f"no Group is registered as {group_id!r}"
             raise KeyError(msg)
         visiting.append(group_id)
         for prerequisite in groups[group_id].requires:

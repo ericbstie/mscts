@@ -188,7 +188,7 @@ def test_a_bot_that_received_nothing_is_still_present() -> None:
 
 def test_transcripts_of_different_groups_are_not_compared() -> None:
     other = transcript(group_id="status/ping")
-    with pytest.raises(ValueError, match="'test/group' and 'status/ping'"):
+    with pytest.raises(ValueError, match="different Groups: 'test/group' and 'status/ping'"):
         compare(transcript(), other, [])
 
 
