@@ -1,6 +1,6 @@
 # How mscts works
 
-mscts tests a Minecraft server by comparing it with vanilla. It never reads
+mscts measures a Minecraft server by comparing it with vanilla. It never reads
 either server's source or logs. It connects as a client, sends what the
 vanilla client would send, and records what comes back.
 
@@ -92,8 +92,8 @@ Comparison. A Mask must give a reason, and that reason must show the value
 has no gameplay meaning.
 
 mscts never masks anything a player could observe, even if it is random.
-Random mechanics, such as mob spawning and loot, will be tested
-statistically instead, by comparing distributions over many runs.
+Random mechanics, such as mob spawning and loot, will be compared
+statistically instead, as distributions over many runs.
 
 ## Self-checks
 
@@ -109,7 +109,7 @@ sending a ping to receiving the pong, and mscts records that as
 time from launch until the server is ready. The Report shows the median and
 p95 of each measurement for both servers.
 
-## What mscts does not test
+## What mscts does not cover
 
 - Anything only visible on the server, such as the on-disk world format.
 - Online-mode authentication and encryption. Every server runs offline.

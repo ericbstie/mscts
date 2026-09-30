@@ -34,6 +34,38 @@ No difference a player would notice was found.
 If nothing differed at all, the summary is one sentence:
 `No differences from vanilla were found in the 10 test cases of the 2 groups run.`
 
+## Test cases
+
+Every value mscts compares is a test case, named after its packet and
+where the value is in it. `status_response.players.max` is the `max` value
+inside `players` in the status response. Every difference in the Report
+starts with the name of its test case.
+
+- `[]` stands for any element of a list, so all the elements share one test
+  case: `status_response.players.sample[].name`. The entry says which
+  element differed.
+- Repeats of a packet share one test case too, so a name is the same in
+  every run.
+- A key that is not a plain word is written as a quoted string in
+  brackets, such as `["a.b"]`.
+- A packet compared as a whole is the test case of its name, such as
+  `hurt_animation`. That is a packet only one server sent, or one mscts
+  has no schema for, so it compares the bytes.
+- A packet name that vanilla uses in more than one protocol state starts
+  with the state: `configuration:keep_alive`, `play:keep_alive.id`.
+- The status response is one piece of JSON text, so its test cases are
+  named from inside the JSON: `status_response.description`.
+
+A value that a Mask excludes, such as an entity id, is not a test case.
+
+Each test case is identical, different, or different in network traffic
+only. One that is different in any Group or any run counts as different.
+A network traffic difference belongs to the test case of the value as it
+was sent. When Pumpkin sends the description `{"text": "mscts"}` for
+vanilla's `"mscts"`, `status_response.description` is different in
+network traffic only, and `status_response.description.text`, the text a
+player reads, is identical.
+
 ## Differences a player would notice
 
 This section lists gameplay Divergences under their mechanic, then under

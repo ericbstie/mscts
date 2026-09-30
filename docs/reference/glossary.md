@@ -4,7 +4,7 @@ outline: 2
 
 # Glossary
 
-mscts uses these terms with one meaning each, in code, tests and docs. The
+mscts uses these terms with one meaning each, in the code and the docs. The
 full definitions are in
 [`CONTEXT.md`](https://github.com/ericbstie/mscts/blob/main/CONTEXT.md).
 
@@ -88,7 +88,7 @@ vanilla commands. Not built yet.
 
 World or player state set up before the observed part of a Group.
 
-## Testing
+## Comparing
 
 ### Group
 
@@ -136,6 +136,17 @@ One difference a Comparison found. It is **gameplay** if a vanilla client
 could tell the two values apart, so a player could notice it, and **network
 traffic** if the servers send the same thing in different formats and the
 client ends up with the same result.
+
+### Test case
+
+One value a Comparison compares, named after its packet and where it is
+in it, such as `status_response.description`. All the elements of a list
+share one test case (`status_response.players.sample[].name`), and so do
+repeats of one packet, so a name is the same in every run. A packet
+compared as a whole, or sent by one server only, is the test case of its
+name. A Report counts each test case as identical, different (in
+gameplay), or different in network traffic only. See
+[Reading a Report](/guide/reading-a-report#test-cases).
 
 ### Verdict
 
