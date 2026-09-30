@@ -46,6 +46,7 @@ test needs it:
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
 | `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
+| `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
@@ -198,6 +199,13 @@ ENTITY_ID_OPTIONAL: EntityId       # VarInt, id + 1: a damage event's source ids
 # value names its variant by its key, exactly one of `linear` and `stepped`.
 MOVE_DELTA: WireType[dict[str, object]]     # {on_ground, linear: {x, y, z}} | {on_ground, stepped: [{ticks, x, y, z}]}
 POSITION_PATH: WireType[dict[str, object]]  # {linear: {x, y, z}} | {stepped: [{x, y, z, tick_offset}]}
+
+# codec/particles.py: both are Tagged. A particle is {type: "minecraft:dust", options: {...}},
+# options None for a type with none (22 of the 128 have them, the item particle's are a
+# stack, which needs #19); a position source is {type: "minecraft:block", value: {x, y, z}} or
+# {type: "minecraft:entity", value: {entity_id, y_offset}} (its entity_id is an ENTITY_ID).
+PARTICLE: Tagged
+POSITION_SOURCE: Tagged
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 
