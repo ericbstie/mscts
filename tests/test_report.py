@@ -6,7 +6,10 @@ from mscts.target import TARGET
 
 STATUS = "minecraft:status_response"
 GAMEPLAY = "Differences a player would notice"
-NETWORK_TRAFFIC = "Wire-only differences"
+NETWORK_TRAFFIC = "Network traffic differences"
+NETWORK_TRAFFIC_HEADING = (
+    "Network traffic differences (a vanilla client reads both alike; not counted in scores)"
+)
 TIMINGS = "Timings"
 
 
@@ -59,6 +62,21 @@ def _positions(text: str, *headings: str) -> list[int]:
     return [text.index(heading) for heading in headings]
 
 
+def _report_with_every_section() -> Report:
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    gameplay = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"), traffic)
+    error = Verdict("join/basic", Outcome.ERROR, detail="the Reference failed: boom")
+    blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite join/basic was error")
+    flaky = _result(_verdict("status/basic", _field("a", 1, 2)), _verdict("status/basic"))
+    return _report(
+        _result(gameplay, rtt=1.0),
+        _result(_verdict("status/favicon", traffic)),
+        _result(error),
+        _result(blocked),
+        flaky,
+    )
+
+
 def test_the_header_names_both_servers_their_versions_the_target_and_the_repetitions() -> None:
     text = render_text(_report(_result(_verdict("status/basic"), _verdict("status/basic"))))
 
@@ -83,6 +101,55 @@ def test_only_network_traffic_divergences_say_plainly_a_player_would_notice_none
     assert GAMEPLAY not in text
 
 
+def test_a_group_different_in_network_traffic_only_is_counted_as_that() -> None:
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    different = _result(_verdict("status/basic", traffic))
+    text = render_text(_report(different, _result(_verdict("status/ping"))))
+
+    assert (
+        "2 groups: 1 identical, 1 different in network traffic only."
+        " No difference a player would notice was found."
+    ) in text
+
+
+def test_a_group_different_in_gameplay_and_one_in_network_traffic_are_counted_apart() -> None:
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    gameplay = _field("json_response.version.name", "26.3", "x")
+    text = render_text(
+        _report(
+            _result(_verdict("status/basic", gameplay)), _result(_verdict("status/ping", traffic))
+        )
+    )
+
+    assert "2 groups: 1 different, 1 different in network traffic only." in text
+
+
+def test_the_network_traffic_section_says_what_it_holds_and_that_it_is_not_scored() -> None:
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    text = render_text(_report(_result(_verdict("status/basic", traffic))))
+
+    assert NETWORK_TRAFFIC_HEADING + "\n" + "-" * len(NETWORK_TRAFFIC_HEADING) in text
+
+
+def test_one_network_traffic_difference_reads_as_one_value_sent_differently() -> None:
+    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
+    text = render_text(_report(_result(_verdict("status/basic", traffic))))
+
+    assert "status_response: 1 value is sent differently, e.g." in text
+
+
+def test_the_legend_says_what_gameplay_and_network_traffic_mean() -> None:
+    text = render_text(_report(_result(_verdict("status/basic"))))
+
+    legend = text[text.index("How to read this") :]
+    assert (
+        "  gameplay: a vanilla client would read pumpkin's value differently from vanilla's,"
+        " so a player could notice it.\n"
+        "  network traffic: the bytes differ, but a vanilla client decodes both to the same"
+        " thing, so no player could notice it."
+    ) in legend
+
+
 def test_the_sections_come_in_order() -> None:
     basic = _verdict(
         "status/basic",
@@ -94,7 +161,7 @@ def test_the_sections_come_in_order() -> None:
 
     positions = _positions(text, "2 groups", GAMEPLAY, NETWORK_TRAFFIC, "join/basic", TIMINGS)
     assert positions == sorted(positions)
-    assert text.rindex("wire-only") > text.index(TIMINGS)  # the legend comes last
+    assert text.rindex("network traffic:") > text.index(TIMINGS)  # the legend comes last
 
 
 def test_the_summary_counts_identical_and_different_groups() -> None:
@@ -105,14 +172,35 @@ def test_the_summary_counts_identical_and_different_groups() -> None:
 
 
 def test_the_report_never_says_scenario() -> None:
-    traffic = _field("json_response.favicon", ABSENT, None, traffic=True)
-    gameplay = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"), traffic)
-    error = Verdict("join/basic", Outcome.ERROR, detail="the Reference failed: boom")
-    blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite join/basic was error")
-    flaky = _result(_verdict("status/basic", _field("a", 1, 2)), _verdict("status/basic"))
-    text = render_text(_report(_result(gameplay, rtt=1.0), _result(error), _result(blocked), flaky))
+    text = render_text(_report_with_every_section())
 
     assert "scenario" not in text.lower()
+
+
+def test_the_report_with_every_section_has_every_section() -> None:
+    text = render_text(_report_with_every_section())
+
+    for heading in (
+        GAMEPLAY,
+        NETWORK_TRAFFIC,
+        "Not judged, or not the same every run",
+        TIMINGS,
+        "Notes",
+        "How to read this",
+    ):
+        assert heading in text
+
+
+def test_the_report_never_says_wire() -> None:
+    text = render_text(_report_with_every_section())
+
+    assert "wire" not in text.lower()
+
+
+def test_the_report_never_says_observable() -> None:
+    text = render_text(_report_with_every_section())
+
+    assert "observable" not in text.lower()
 
 
 def test_a_gameplay_divergence_reads_as_both_values_under_its_mechanic() -> None:
@@ -181,6 +269,7 @@ def test_network_traffic_divergences_are_counted_per_packet_with_a_few_examples(
     assert "status_response" in section
     assert "json_response.v0" in section
     assert "json_response.v9" not in section
+    assert "10 values are sent differently, e.g." in section
     assert "and 5 more" in section  # never hides that some were left out
     assert GAMEPLAY not in text
 
