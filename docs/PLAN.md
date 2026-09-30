@@ -682,6 +682,12 @@ def compare(reference: Transcript, candidate: Transcript,
     # A packet's value (for missing / unexpected) is its fields, or its payload as hex.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
+
+def test_case(state: State, packet: str, path: str | None) -> str: ...
+    # The name of the test case that compares `path` (spelled as a Divergence path; None
+    # for the packet as a whole) of the clientbound `packet` in `state`, by the scheme in
+    # Comparison semantics: `status_response.players.sample[].name`, `play:keep_alive.id`.
+    # ValueError if `path` is malformed or not spelled as a Divergence path would be.
 ```
 
 Running Groups (`run.py`):
@@ -764,7 +770,7 @@ proves it necessary:
    diffed too, and a raw difference whose canonical values (before the
    Masks) are equal at its path is reported as a **network traffic** `field`
    Divergence, with the raw path and values. A raw field holding JSON
-   text (`_PARSED`: the status `json_response`) is diffed as its parsed,
+   text (`_JSON_TEXT`: the status `json_response`) is diffed as its parsed,
    not yet canonical JSON value, so such a Divergence has its JSON path
    and values (`json_response.enforceSecureChat`, absent vs `true`);
    only when the two parsed values are equal (a pure JSON spelling: key
@@ -949,6 +955,29 @@ proves it necessary:
    TypeError rather than becoming a Divergence. If either packet has no
    fields, the pair is compared by payload. `compare` never mutates its
    inputs: it diffs copies.
+5. **Test cases** (#8). Every field the Comparison compares is a test
+   case, named from vanilla's own packet id and the field's path
+   (`test_case`), so no one maintains a list of names:
+   - `<packet>.<path>`: the packet id without `minecraft:`, then the
+     path as a Divergence spells it (`set_health.food`). A key that is
+     not an identifier keeps its JSON string in brackets
+     (`set_health.m["a.b"]`).
+   - List elements share one test case: every index is written `[]`
+     (`status_response.players.sample[].name`). Repeated packets share
+     one too: the third `set_health` is still `set_health.health`.
+     Which element, which occurrence and which Bot differ is in the
+     Divergence.
+   - A packet compared as a whole (with no schema, so by payload;
+     missing; unexpected) is the test case `<packet>`.
+   - The status response's only field, `json_response`, is JSON text
+     (`_JSON_TEXT`), so its paths are named from inside the JSON
+     (`status_response.description`), and the text as a whole is
+     `status_response`.
+   - A packet id that the Target's `packets.json` has in more than one
+     State, clientbound, starts with the State in every State:
+     `configuration:keep_alive`, `play:keep_alive.id`,
+     `status:pong_response.timestamp`. The Comparison asks the Codec,
+     so the set is never listed by hand.
 
 ### Measurements and Report
 
