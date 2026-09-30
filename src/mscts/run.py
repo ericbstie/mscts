@@ -392,7 +392,7 @@ def _check(groups: Sequence[Group], sides: Sequence[Side]) -> None:
     seen: set[str] = set()
     for group in groups:
         if group.kind is not GroupKind.EXACT:
-            msg = f"{group.id} is {group.kind}: only exact Scenarios can run before M6a/M6b"
+            msg = f"{group.id} is {group.kind}: only exact Groups can run before M6a/M6b"
             raise NotImplementedError(msg)
         if group.id in seen:
             msg = f"{group.id} is listed twice"

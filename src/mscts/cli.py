@@ -175,7 +175,7 @@ def _groups(pattern: str) -> tuple[Group, ...]:
     chosen = [group_id for group_id in exact if fnmatch.fnmatchcase(group_id, pattern)]
     if not chosen:
         msg = (
-            f"no registered exact Scenario matches --group {pattern!r}; "
+            f"no registered exact Group matches --group {pattern!r}; "
             f"the registered ones are {', '.join(exact)}"
         )
         raise _UsageError(msg)
@@ -231,7 +231,7 @@ def _parser() -> argparse.ArgumentParser:
     status = actions.add_parser("status", help="what is installed, its sha256 and its source")
     status.add_argument("adapter", choices=ADAPTERS)
     running = commands.add_parser(
-        "run", help="play Scenarios against vanilla and a Candidate, and print the Report"
+        "run", help="play Groups against vanilla and a Candidate, and print the Report"
     )
     running.add_argument(
         "--candidate", required=True, choices=ADAPTERS, help="the Candidate's Adapter"
@@ -240,14 +240,14 @@ def _parser() -> argparse.ArgumentParser:
         "--group",
         default=DEFAULT_GROUPS,
         metavar="GLOB",
-        help=f"the Scenario ids to play, prerequisites added (default: {DEFAULT_GROUPS})",
+        help=f"the Group ids to play, prerequisites added (default: {DEFAULT_GROUPS})",
     )
     running.add_argument(
         "--repeat",
         type=int,
         default=DEFAULT_REPEAT,
         metavar="N",
-        help=f"how many times to play each Scenario (default: {DEFAULT_REPEAT})",
+        help=f"how many times to play each Group (default: {DEFAULT_REPEAT})",
     )
     return parser
 

@@ -213,7 +213,7 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     """
     if reference.group_id != candidate.group_id:
         msg = (
-            "cannot compare Transcripts of different Scenarios: "
+            "cannot compare Transcripts of different Groups: "
             f"{reference.group_id!r} and {candidate.group_id!r}"
         )
         raise ValueError(msg)

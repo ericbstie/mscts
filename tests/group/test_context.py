@@ -84,7 +84,7 @@ async def test_two_bots_of_one_name_are_refused() -> None:
         context = GroupContext(endpoint, transcript, timeout_s=1.0)
         try:
             await context.bot("alice")
-            with pytest.raises(ValueError, match="alice"):
+            with pytest.raises(ValueError, match="the Group already has a Bot called 'alice'"):
                 await context.bot("alice")
         finally:
             await context.close()

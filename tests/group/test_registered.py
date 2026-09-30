@@ -80,7 +80,7 @@ def test_a_duplicate_id_is_refused_and_the_first_stays() -> None:
     async def other(_: GroupContext) -> None:
         pass
 
-    with pytest.raises(ValueError, match="test/twice"):
+    with pytest.raises(ValueError, match="a Group called 'test/twice' is registered already"):
         group("test/twice")(other)
 
     assert GROUPS["test/twice"].run is _nothing
@@ -128,7 +128,7 @@ def test_resolve_refuses_a_prerequisite_cycle() -> None:
 def test_resolve_refuses_an_unknown_id_or_prerequisite_naming_it() -> None:
     groups = {"test/x": Group(id="test/x", run=_nothing, requires=("test/gone",))}
 
-    with pytest.raises(KeyError, match="test/nowhere"):
+    with pytest.raises(KeyError, match="no Group is registered as 'test/nowhere'"):
         resolve(["test/nowhere"], groups)
-    with pytest.raises(KeyError, match="test/gone"):
+    with pytest.raises(KeyError, match="no Group is registered as 'test/gone'"):
         resolve(["test/x"], groups)

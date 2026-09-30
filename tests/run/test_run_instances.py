@@ -100,7 +100,9 @@ async def test_only_exact_groups_can_run_yet(
     group = Group(id="test/kind", run=status.basic, kind=kind)
     reference = fake_server("one")
 
-    with pytest.raises(NotImplementedError, match=str(kind)):
+    with pytest.raises(
+        NotImplementedError, match=f"test/kind is {kind}: only exact Groups can run"
+    ):
         await run([group], reference, fake_server("two"), workdir=tmp_path / "run")
 
     assert _adapter(reference).prepared == []
