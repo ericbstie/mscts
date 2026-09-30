@@ -24,9 +24,9 @@ running status/basic (1 of 5) ...
   Reference    vanilla (its status says version "26.3")
   Candidate    pumpkin (its status says version "26.3")
   Target       Minecraft 26.3 (protocol 777)
-  Repetitions  5 of each scenario
+  Repetitions  5 of each group
 
-2 scenarios: 2 different on the wire only. No difference
+2 groups: 2 different on the wire only. No difference
 a player would notice was found.
 
 <span class="head">Wire-only differences</span>

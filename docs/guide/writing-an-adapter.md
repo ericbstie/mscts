@@ -1,7 +1,7 @@
 # Writing an Adapter
 
 An Adapter is the only code in mscts that knows about a particular server.
-To test a new server, you write one Adapter. You never change a Scenario.
+To test a new server, you write one Adapter. You never change a Group.
 
 An Adapter does not download, start or stop anything. It does two things:
 

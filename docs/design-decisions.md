@@ -6,7 +6,7 @@ This page summarizes them. The ADR is the source when the two disagree.
 
 | ADR | Decision |
 | --- | --- |
-| [0001](https://github.com/ericbstie/mscts/blob/main/docs/adr/0001-black-box-differential-testing.md) | mscts observes servers only as a protocol client, and vanilla is the oracle. Scenarios never hard-code expected values. |
+| [0001](https://github.com/ericbstie/mscts/blob/main/docs/adr/0001-black-box-differential-testing.md) | mscts observes servers only as a protocol client, and vanilla is the oracle. Groups never hard-code expected values. |
 | [0002](https://github.com/ericbstie/mscts/blob/main/docs/adr/0002-python-astral-toolchain.md) | Python 3.13 with uv, ruff (every rule), ty and bandit. mise pins the tools and defines the tasks. |
 | [0003](https://github.com/ericbstie/mscts/blob/main/docs/adr/0003-single-pinned-target.md) | One Target at a time: Minecraft 26.3, protocol 777. Packet ids come from vanilla's data generator. |
 | [0004](https://github.com/ericbstie/mscts/blob/main/docs/adr/0004-adapters-are-translators.md) | An Adapter only translates a ServerSpec into config. One runner launches every server, and readiness is a status ping, never a log line. |

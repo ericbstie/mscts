@@ -59,14 +59,14 @@ export default defineConfig({
         text: "Extend mscts",
         items: [
           { text: "Writing an Adapter", link: "/guide/writing-an-adapter" },
-          { text: "Writing a Scenario", link: "/guide/writing-a-scenario" },
+          { text: "Writing a Group", link: "/guide/writing-a-group" },
         ],
       },
       {
         text: "Reference",
         items: [
           { text: "CLI", link: "/reference/cli" },
-          { text: "Scenarios", link: "/reference/scenarios" },
+          { text: "Groups", link: "/reference/groups" },
           { text: "ServerSpec", link: "/reference/server-spec" },
           { text: "Environment variables", link: "/reference/environment" },
           { text: "Glossary", link: "/reference/glossary" },

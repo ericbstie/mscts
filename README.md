@@ -6,7 +6,7 @@ server. It gives MC server devs an objective measurement of their 1:1
 parity compliance and a non-biased, open source performance indicator.
 
 It connects to both servers as an ordinary protocol client, runs the same
-Scenario against each, and diffs the packets they send back. The only
+Groups against each, and diffs the packets they send back. The only
 server-specific code is a small Adapter that knows how to install,
 configure and launch that server.
 

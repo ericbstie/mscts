@@ -13,7 +13,7 @@ mscts Report
   Reference    vanilla (its status says version "26.3")
   Candidate    pumpkin (its status says version "26.3")
   Target       Minecraft 26.3 (protocol 777)
-  Repetitions  5 of each scenario
+  Repetitions  5 of each group
 ```
 
 Each server's line quotes the version name its own status response gave.
@@ -21,18 +21,18 @@ Each server's line quotes the version name its own status response gave.
 
 ## Summary
 
-One line that counts the Scenarios by outcome:
+One line that counts the Groups by outcome:
 
 ```
-2 scenarios: 2 different on the wire only. No difference a player would notice was found.
+2 groups: 2 different on the wire only. No difference a player would notice was found.
 ```
 
 If nothing differed at all, it says `No differences from vanilla were found`.
 
 ## Differences a player would notice
 
-This section lists observable Divergences, grouped by mechanic and then by
-Scenario. The mechanic is the first part of the Scenario id, so `status/ping`
+This section lists observable Divergences under their mechanic, then under
+their Group. The mechanic is the first part of the Group id, so `status/ping`
 falls under "Server list ping (status)". An illustrative entry:
 
 ```
@@ -68,8 +68,8 @@ Wire-only differences (a vanilla client reads both alike; not counted in scores)
 ```
 
 These values differ in bytes but decode to the same thing in the vanilla
-client. mscts groups them by packet and shows up to five examples per
-packet, then `and N more`. They do not count against the Candidate. They
+client. mscts collects them per packet and shows up to five examples for
+each packet, then `and N more`. They do not count against the Candidate. They
 are listed because a server developer may still want to match vanilla
 byte for byte.
 
@@ -87,10 +87,10 @@ Not judged, or not the same every run
   status/ping was different in 2 of 5 runs
 ```
 
-This section lists Scenarios that mscts skipped because a prerequisite did
-not match (`blocked`), Scenarios it could not judge because mscts or vanilla
-failed (`error`), and Scenarios whose observable result changed between
-runs. A Scenario that differs only some of the time often points to a race
+This section lists Groups that mscts skipped because a prerequisite did
+not match (`blocked`), Groups it could not judge because mscts or vanilla
+failed (`error`), and Groups whose observable result changed between
+runs. A Group that differs only some of the time often points to a race
 or a timing-dependent path in the Candidate.
 
 ## Timings
@@ -112,7 +112,7 @@ mscts measures on the client side, so the numbers include loopback latency
 and the Bot's own decoding. Both servers pay the same cost. Compare the two
 columns with each other, not with numbers from another machine.
 
-A Scenario that was not played measures nothing. The table says which ones
+A Group that was not played measures nothing. The table says which ones
 those were.
 
 ## Notes and legend

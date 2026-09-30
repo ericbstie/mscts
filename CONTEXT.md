@@ -53,23 +53,23 @@ need is missing, add it here in the same commit that introduces it.
   the Target. Packet IDs come from the vanilla-generated `packets.json`.
 - **Packet**: one decoded frame: state, direction, name
   (`minecraft:login`), raw bytes, and fields if a schema exists.
-- **Bot**: one client connection driven by a Scenario. It answers by itself
+- **Bot**: one client connection driven by a Group. It answers by itself
   what the vanilla client answers by itself (keep-alives, teleports, chunk
-  batches, the configuration acks), whether or not its Scenario is reading.
+  batches, the configuration acks), whether or not its Group is reading.
 - **Join**: a Bot's way into the game, offline: handshake, login,
   configuration, then play until the server's first chunk batch has
   finished.
 - **Control**: the channel used to set up Fixtures. By default it is an
   **Operator Bot** that sends vanilla command syntax.
 - **Fixture**: world or player state established before the observed part
-  of a Scenario.
+  of a Group.
 
 ## Testing
 
-- **Scenario**: a deterministic, named script (`status/basic`) that runs
-  against one Instance and produces a Transcript. It declares ServerSpec
-  overrides and prerequisites.
-- **Scenario kinds** (ADR-0006; `ScenarioKind` in code, a Scenario's `kind`,
+- **Group**: a set of actions played against both servers, named like
+  `status/basic`. Each Instance it plays against gives one Transcript. It
+  declares ServerSpec overrides and prerequisites.
+- **Group kinds** (ADR-0006; `GroupKind` in code, a Group's `kind`,
   exact unless it says otherwise):
   - **exact**: deterministic, diffed packet by packet;
   - **tick-exact**: deterministic mechanics (redstone, glitches) observed
@@ -81,7 +81,7 @@ need is missing, add it here in the same commit that introduces it.
 - **Event**: one entry of a Transcript: a Packet one Bot sent or received,
   and when: a sent Packet when it was written, a received one when it
   arrived (not when the Bot took it).
-- **Mark**: a named timestamp a Scenario records so a Measurement can be
+- **Mark**: a named timestamp a Group records so a Measurement can be
   computed.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (entity ids, keep-alive ids, teleport ids) from
@@ -95,7 +95,7 @@ need is missing, add it here in the same commit that introduces it.
   equal is still reported, as wire-only (ADR-0007). Its entries form
   **the canonical table** (never called a registry).
 - **Comparison**: normalizes the Reference and Candidate Transcripts of one
-  Scenario (Canonicalization, then Masks) and diffs them into a Verdict.
+  Group (Canonicalization, then Masks) and diffs them into a Verdict.
 - **Divergence**: one difference found by a Comparison. It is
   **observable** (a vanilla client could tell the two values apart) or
   **wire-only** (the bytes differ but they decode identically): its
@@ -103,24 +103,24 @@ need is missing, add it here in the same commit that introduces it.
   excluded from compliance scores (ADR-0007); `Verdict.observable` is
   what scores count.
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
-  prerequisite Scenario did not match), or `error` (the harness failed, or
-  the Reference itself could not run the Scenario). A failure the
+  prerequisite Group did not match), or `error` (the harness failed, or
+  the Reference itself could not run the Group). A failure the
   Candidate caused (a frame that does not decode, an answer that breaks
   the protocol, no answer in time, a connection closed, reset or refused)
   is a `mismatch`, led by a `failed` Divergence that says what happened,
   never an `error`: compliance scores leave `error` out, so a Candidate
   must never score better by failing.
 - **Self-check**: a Comparison of Reference against Reference. It must
-  always be `match`. Anything else is a missing Mask or a flaky Scenario,
+  always be `match`. Anything else is a missing Mask or a flaky Group,
   never a Reference bug.
 - **Measurement**: a named value with a unit, derived from a Transcript's
   span Marks (`status.rtt`, ms) or from the Run itself
   (`instance.startup`, ms: launch to ready).
-- **Run**: a set of Scenarios executed against the Reference and one
+- **Run**: a set of Groups executed against the Reference and one
   Candidate, repeated N times. It produces a **Report**. Each side of a
   Run either launches its own Instances (a Server) or is **Attached**: an
   Instance someone else launched and stops, which the Run only plays
-  against, and only for Scenarios of the ServerSpec it was launched from.
+  against, and only for Groups of the ServerSpec it was launched from.
 
 ## Development
 
@@ -130,5 +130,5 @@ need is missing, add it here in the same commit that introduces it.
     Localhost sockets and short helper processes are allowed.
   - `reference`: needs a live vanilla Instance.
   - `candidate`: needs a live Candidate Instance.
-  - `statistical`: opt-in, slow. Runs statistical Scenarios N times;
+  - `statistical`: opt-in, slow. Runs statistical Groups N times;
     never part of `check` or the default Run.

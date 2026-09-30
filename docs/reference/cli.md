@@ -50,17 +50,17 @@ with code 1 if nothing is installed, and prints the install command.
 ## `mscts run`
 
 ```
-mscts run --candidate <adapter> [--scenario GLOB] [--repeat N]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N]
 ```
 
-Starts vanilla and the Candidate, plays the chosen Scenarios against both,
+Starts vanilla and the Candidate, plays the chosen Groups against both,
 stops both and prints the Report to stdout. Progress goes to stderr.
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
-| `--scenario GLOB` | `status/*` | Scenario ids to play, matched as a shell glob. mscts adds their prerequisites. |
-| `--repeat N` | `5` | How many times to play each Scenario. Must be at least 1. |
+| `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. |
+| `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
 
 `--candidate vanilla` plays vanilla against a second vanilla server. That is
 a quick way to see a Self-check.

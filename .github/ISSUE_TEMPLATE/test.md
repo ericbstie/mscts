@@ -4,11 +4,10 @@ about: A new Group that plays one mechanic against vanilla and a Candidate
 labels: spec, test
 ---
 
-<!-- A test is a Group (a Scenario until #7 lands): actions played against both
-     servers. Its test cases are automatic: every field it compares is one (#8).
+<!-- A test is a Group: actions played against both servers. Its test cases are
+     automatic: every field it compares is one (#8).
      Title: `<mechanic>/<name>: <what a player would notice>`.
-     Read "Proposing a test" in docs/contributing.md first. File paths below are
-     the pre-#7 names (scenarios/ becomes the Groups package). -->
+     Read "Proposing a test" in docs/contributing.md first. -->
 
 ## What a player would notice
 
@@ -45,7 +44,7 @@ labels: spec, test
 
 ## Acceptance tests
 
-- [ ] `tests/scenario/test_<mechanic>.py`: the Group is registered with its
+- [ ] `tests/group/test_<mechanic>.py`: the Group is registered with its
       kind, Masks and prerequisites, and its script sends what it should
       against a fake server
 - [ ] reference tier: the Self-check matches in 20 runs out of 20
@@ -54,13 +53,13 @@ labels: spec, test
 
 ## Docs delta
 
-<!-- The row for the Groups reference page (docs/reference/scenarios.md until
-     #7 renames it) and the test case entries (#12), verbatim. -->
+<!-- The row for the Groups reference page (docs/reference/groups.md) and the
+     test case entries (#12), verbatim. -->
 
 ## Owns
 
-- `src/mscts/scenarios/<mechanic>.py` (new)
-- `tests/scenario/test_<mechanic>.py` (new)
+- `src/mscts/groups/<mechanic>.py` (new)
+- `tests/group/test_<mechanic>.py` (new)
 - the `<mechanic>` section of the Groups reference page
 
 ## Out of scope

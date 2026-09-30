@@ -2,7 +2,7 @@
 
 A ServerSpec describes how a server must be configured, without naming any
 server. Each Adapter translates it into its server's own config files. A
-Scenario can change it through its `spec` option.
+Group can change it through its `spec` option.
 
 ## Fields
 
@@ -26,7 +26,7 @@ A ServerSpec whose host is not a loopback host address raises `ValueError`.
 ## Invariants
 
 Every Adapter applies these on every launch. They are not fields, so no
-Scenario can turn them off.
+Group can turn them off.
 
 - Offline mode, with no encryption.
 - No whitelist.

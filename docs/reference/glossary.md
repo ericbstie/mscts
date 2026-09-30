@@ -71,7 +71,7 @@ if a schema exists.
 
 ### Bot
 
-One client connection driven by a Scenario. It answers what the vanilla
+One client connection driven by a Group. It answers what the vanilla
 client answers without the player, such as keep-alives.
 
 ### Join
@@ -81,23 +81,23 @@ in play has finished.
 
 ### Control
 
-How a Scenario sets up Fixtures. By default, an operator Bot that sends
+How a Group sets up Fixtures. By default, an operator Bot that sends
 vanilla commands. Not built yet.
 
 ### Fixture
 
-World or player state set up before the observed part of a Scenario.
+World or player state set up before the observed part of a Group.
 
 ## Testing
 
-### Scenario
+### Group
 
-A deterministic, named script, such as `status/basic`, that runs against
-one Instance and produces a Transcript.
+A set of actions played against both servers, such as `status/basic`.
+Each Instance it plays against gives one Transcript.
 
-### Scenario kind
+### Group kind
 
-How a Scenario is judged: `exact` (packet by packet), `tick-exact` (tick
+How a Group is judged: `exact` (packet by packet), `tick-exact` (tick
 by tick in a frozen world) or `statistical` (as distributions over many
 runs).
 
@@ -113,7 +113,7 @@ received one when it arrived.
 
 ### Mark
 
-A named timestamp a Scenario records, used to compute Measurements.
+A named timestamp a Group records, used to compute Measurements.
 
 ### Mask
 
@@ -127,7 +127,7 @@ two encodings as the same thing. Its rules form the canonical table.
 
 ### Comparison
 
-Canonicalizes and masks two Transcripts of one Scenario, then diffs them
+Canonicalizes and masks two Transcripts of one Group, then diffs them
 into a Verdict.
 
 ### Divergence
@@ -150,7 +150,7 @@ A named value with a unit, such as `status.rtt` in milliseconds.
 
 ### Run
 
-A set of Scenarios played against the Reference and one Candidate, N
+A set of Groups played against the Reference and one Candidate, N
 times. It produces a **Report**.
 
 ### Tier

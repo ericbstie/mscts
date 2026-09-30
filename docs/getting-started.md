@@ -81,7 +81,7 @@ pumpkin  -                 26.3    installed: no Registry entry, from pumpkin-X6
 uv run mscts run --candidate pumpkin
 ```
 
-mscts starts both servers, plays every `status/*` Scenario five times against
+mscts starts both servers, plays every `status/*` Group five times against
 each, stops them and prints the Report. Progress goes to stderr and the
 Report to stdout, so `> report.txt` captures only the Report.
 
@@ -90,9 +90,9 @@ mscts Report
   Reference    vanilla (its status says version "26.3")
   Candidate    pumpkin (its status says version "26.3")
   Target       Minecraft 26.3 (protocol 777)
-  Repetitions  5 of each scenario
+  Repetitions  5 of each group
 
-2 scenarios: 2 different on the wire only. No difference a player would notice was found.
+2 groups: 2 different on the wire only. No difference a player would notice was found.
 
 Wire-only differences (a vanilla client reads both alike; not counted in scores)
 --------------------------------------------------------------------------------
@@ -118,6 +118,6 @@ section.
 ## Next
 
 - [How mscts works](/guide/how-it-works) covers the model behind a Run.
-- [Running a comparison](/guide/running) covers `--scenario` and `--repeat`.
+- [Running a comparison](/guide/running) covers `--group` and `--repeat`.
 - [Writing an Adapter](/guide/writing-an-adapter) shows how to add your own
   server.

@@ -11,10 +11,10 @@ Each goal is a check we can run, not an aspiration.
 
 | # | Goal | Done when |
 | --- | --- | --- |
-| G1 | **Server-agnostic** | Adding a Candidate means adding one Adapter module and its unit tests. No Scenario changes. |
-| G2 | **Trustworthy** | Every Scenario's Self-check is `match` in 20 out of 20 repeated runs. |
-| G3 | **Actionable** | Every Divergence names the Scenario, the Bot, the packet, the field path, and both values, and it reproduces on re-run. |
-| G4 | **Timed** | Every Scenario reports Measurements for the Reference and the Candidate over N repetitions (median, p95), plus Instance startup time. |
+| G1 | **Server-agnostic** | Adding a Candidate means adding one Adapter module and its unit tests. No Group changes. |
+| G2 | **Trustworthy** | Every Group's Self-check is `match` in 20 out of 20 repeated runs. |
+| G3 | **Actionable** | Every Divergence names the Group, the Bot, the packet, the field path, and both values, and it reproduces on re-run. |
+| G4 | **Timed** | Every Group reports Measurements for the Reference and the Candidate over N repetitions (median, p95), plus Instance startup time. |
 | G6 | **Smooth DX** (ADR-0008) | Every command is idempotent and honest about what it did; every error names its fix. A server developer can write an Adapter from the authoring guide and prove it with `mscts adapter check` without reading mscts internals. |
 | G5 | **Fast loop** | `mise run check` takes under 10 s. `mise run test:reference` takes under 90 s on a warm cache. |
 
@@ -26,7 +26,7 @@ Target (ADR-0003), and server-side-only behaviour such as disk format
 
 ```
             ┌───────────── Run ──────────────┐
-Scenario ──►│ ScenarioContext → Bot(s) ──────┼──► Instance (Reference)  ─► Transcript R ─┐
+Group ─────►│ GroupContext → Bot(s) ─────────┼──► Instance (Reference)  ─► Transcript R ─┐
             │   Control (Operator Bot)       │                                          ├─► Comparison ─► Verdict
             │   spans → Marks                ├──► Instance (Candidate)  ─► Transcript C ─┘        │
             └────────────────────────────────┘                                    Measurements ─► Report
@@ -57,9 +57,9 @@ test needs it:
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
-| `scenario.py` | `@scenario`, `Scenario`, `ScenarioContext`, `SCENARIOS` (the registered Scenarios), `resolve` |
-| `scenarios/*.py` | the Scenarios themselves (`import mscts.scenarios` registers them) |
-| `run.py` | `run_scenario` → `Transcript`; `judge` → `Verdict`; `run`: Scenarios against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
+| `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve` |
+| `groups/*.py` | the Groups themselves (`import mscts.groups` registers them) |
+| `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict` |
 | `measure.py` | `Measurement`, span extraction, stats |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
@@ -233,7 +233,7 @@ class Connection:                   # one TCP connection; owns framing, compress
                    answer: Answer | None = None) -> "Connection": ...   # TCP_NODELAY (asyncio's default)
     # answer: awaited by the background reader for each Packet it decodes, in wire order, as
     # it arrives, before the next frame is taken; it may send. So a Bot answers keep-alives
-    # and teleports whether or not a Scenario is reading, as the vanilla client does. The
+    # and teleports whether or not a Group is reading, as the vanilla client does. The
     # Packet is queued for recv once its answer has returned (whoever takes it knows the
     # answer was sent). A send that fails because the connection is lost is ignored (the
     # reader reads on to the end of the stream); anything else it raises stops the reader,
@@ -276,10 +276,10 @@ class Connection:                   # one TCP connection; owns framing, compress
     # builds (its bytes and decode_error), stamped on arrival like any frame; the reader then
     # stops, as the vanilla client disconnects on a frame it cannot decode.
 
-class Bot:                          # what Scenarios use; answers keep_alive / teleports / chunk batches itself
+class Bot:                          # what Groups use; answers keep_alive / teleports / chunk batches itself
     name: str
     failure: Exception | None       # what its last failed operation (status, ping, join,
-                                    # expect) raised: which Bot a Scenario's failure came from
+                                    # expect) raised: which Bot a Group's failure came from
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -546,7 +546,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
     # Instance answer for another.
 ```
 
-### Scenarios, Transcripts, Comparison
+### Groups, Transcripts, Comparison
 
 ```python
 @frozen
@@ -562,7 +562,7 @@ class Mark:
 
 @dataclass
 class Transcript:                   # a plain data holder: no I/O
-    scenario_id: str
+    group_id: str
     server: str                     # adapter name
     events: list[Event] = []        # (default_factory=list)
     marks: list[Mark] = []
@@ -575,7 +575,7 @@ class Transcript:                   # a plain data holder: no I/O
     # 0 <= t_ns <= now_ns(). Connection is the only writer of events.
     # to_jsonl() / from_jsonl() — payload as hex, fields as JSON
 
-class ScenarioContext:
+class GroupContext:
     def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None: ...
     endpoint: Endpoint
     control: Control                # Operator Bot by default (ADR-0001). Until M5 builds it,
@@ -593,29 +593,29 @@ class ScenarioContext:
 class Control(Protocol):
     async def run(self, command: str) -> None: ...
 
-class ScenarioKind(StrEnum):        # ADR-0006; values "exact", "tick-exact", "statistical"
+class GroupKind(StrEnum):           # ADR-0006; values "exact", "tick-exact", "statistical"
     EXACT, TICK_EXACT, STATISTICAL
 
-type Script = Callable[[ScenarioContext], Awaitable[None]]
+type Script = Callable[[GroupContext], Awaitable[None]]
 
 @frozen
-class Scenario:
+class Group:
     id: str                         # "status/basic"
     run: Script
-    requires: tuple[str, ...] = ()  # Scenario ids that must `match` first, else `blocked`
+    requires: tuple[str, ...] = ()  # Group ids that must `match` first, else `blocked`
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
-    kind: ScenarioKind = ScenarioKind.EXACT
+    kind: GroupKind = GroupKind.EXACT
 
-SCENARIOS: Mapping[str, Scenario]   # the registered Scenarios, by id, in registration order:
-                                    # a read-only view; mscts.scenarios registers its own on import
-def scenario(id: str, *, requires=(), masks=(), spec=identity,
-             kind=ScenarioKind.EXACT) -> Callable[[Script], Script]: ...
-    # the decorator: registers Scenario(id, the function, ...) and returns the function;
+GROUPS: Mapping[str, Group]         # the registered Groups, by id, in registration order:
+                                    # a read-only view; mscts.groups registers its own on import
+def group(id: str, *, requires=(), masks=(), spec=identity,
+          kind=GroupKind.EXACT) -> Callable[[Script], Script]: ...
+    # the decorator: registers Group(id, the function, ...) and returns the function;
     # ValueError if `id` is registered already
-def resolve(scenario_ids: Iterable[str], scenarios: Mapping[str, Scenario] = SCENARIOS
-            ) -> tuple[Scenario, ...]: ...
-    # the named Scenarios plus their prerequisites, each once, every one after its
+def resolve(group_ids: Iterable[str], groups: Mapping[str, Group] = GROUPS
+            ) -> tuple[Group, ...]: ...
+    # the named Groups plus their prerequisites, each once, every one after its
     # prerequisites, else in the order given; KeyError (unknown id), ValueError (a cycle)
 
 WHOLE_PACKET = "*"
@@ -658,13 +658,13 @@ class Divergence:
     # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
     # field: a difference between two matched packets;
-    # failed: the Scenario failed on the Candidate (made by run.judge, never by compare):
-    #   bot the Bot the failure came out of (ScenarioError.bot; "" only if the script
+    # failed: the Group failed on the Candidate (made by run.judge, never by compare):
+    #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
 
 @frozen
 class Verdict:
-    scenario_id: str
+    group_id: str
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
@@ -675,7 +675,7 @@ class Verdict:
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
-    # ValueError if the Transcripts are of different Scenarios; TypeError if fields hold
+    # ValueError if the Transcripts are of different Groups; TypeError if fields hold
     # a value outside the codec value model. Divergences are grouped by Bot in name order,
     # then in stream order, and within a packet in path order: its observable Divergences
     # first, then its wire-only ones.
@@ -684,16 +684,16 @@ def compare(reference: Transcript, candidate: Transcript,
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
 ```
 
-Running Scenarios (`run.py`):
+Running Groups (`run.py`):
 
 ```python
-SCENARIO_TIMEOUT_S = 10.0           # each Bot operation (Bot timeout_s)
+GROUP_TIMEOUT_S = 10.0              # each Bot operation (Bot timeout_s)
 READY_TIMEOUT_S = 120.0             # an Instance's readiness (a cold vanilla boot)
 STOP_TIMEOUT_S = 30.0               # each stop step
 
-class ScenarioError(Exception):     # the Scenario raised against one Instance; __cause__ is
+class GroupError(Exception):        # the Group raised against one Instance; __cause__ is
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
-    bot: str = ""                   # the Bot it came out of (ScenarioContext.raised_by)
+    bot: str = ""                   # the Bot it came out of (GroupContext.raised_by)
 
 @frozen
 class Server:                       # one side of a Run
@@ -709,35 +709,35 @@ class Attached:                     # one side of a Run: an Instance someone els
 
 type Side = Server | Attached
 
-async def run_scenario(scenario: Scenario, endpoint: Endpoint, *, server: str,
-                       timeout_s: float = SCENARIO_TIMEOUT_S) -> Transcript: ...
-    # one Instance; closes every Bot however it ends; ScenarioError if the Scenario raised
+async def run_group(group: Group, endpoint: Endpoint, *, server: str,
+                    timeout_s: float = GROUP_TIMEOUT_S) -> Transcript: ...
+    # one Instance; closes every Bot however it ends; GroupError if the Group raised
 CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError)
-def judge(scenario: Scenario, reference: Transcript | ScenarioError,
-          candidate: Transcript | ScenarioError) -> Verdict: ...
-    # The Verdict rule (audit H3): a Candidate failure (its ScenarioError's cause is one of
+def judge(group: Group, reference: Transcript | GroupError,
+          candidate: Transcript | GroupError) -> Verdict: ...
+    # The Verdict rule (audit H3): a Candidate failure (its GroupError's cause is one of
     # CANDIDATE_FAILURES) is `mismatch`: a `failed` Divergence first, then what compare
     # finds in the Transcripts so far (e.g. the undecodable frame, by payload), whatever the
-    # Masks. `error` only if the Reference failed, the Scenario raised anything else on the
+    # Masks. `error` only if the Reference failed, the Group raised anything else on the
     # Candidate (a harness bug), or compare raised. Else compare(reference, candidate, masks).
-def blocked(scenario: Scenario, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
+def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
-async def run(scenarios: Sequence[Scenario], reference: Side, candidate: Side, *,
+async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
               workdir: Path, repeat: int = 1) -> list[Verdict]: ...
-    # one Verdict per Scenario per repetition, repetition after repetition, in the order
-    # given; a Scenario is blocked (not played) unless its prerequisites matched earlier in
-    # the same repetition. One Instance pair per distinct ServerSpec the Scenarios' `spec`
+    # one Verdict per Group per repetition, repetition after repetition, in the order
+    # given; a Group is blocked (not played) unless its prerequisites matched earlier in
+    # the same repetition. One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
-    # An Attached side is played at its endpoint for every Scenario, never started or
+    # An Attached side is played at its endpoint for every Group, never started or
     # stopped; the same code path otherwise (judge, blocked, repetitions).
-    # NotImplementedError for a Scenario that is not exact (M6a/M6b); ValueError for one
+    # NotImplementedError for a Group that is not exact (M6a/M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
     # if an Instance cannot start.
-async def selfcheck(scenario_ids: Sequence[str], *, reference: Server, workdir: Path,
+async def selfcheck(group_ids: Sequence[str], *, reference: Server, workdir: Path,
                     repeat: int = 20, attached: Attached | None = None) -> list[Verdict]: ...
-    # run(resolve(scenario_ids), attached or reference, reference, ...): two Reference
+    # run(resolve(group_ids), attached or reference, reference, ...): two Reference
     # Instances (one of them `attached`, if given, which must be of reference's Adapter:
     # ValueError), the prerequisites included; KeyError (unknown id) before anything
     # starts. G2: all `match`.
@@ -750,7 +750,7 @@ proves it necessary:
 1. Take clientbound packets per Bot, in order. A packet's key is its
    (State, name): same-named packets of different States (`disconnect`,
    `custom_payload`) are different packets. Not compared, on purpose:
-   - serverbound packets. They are the Scenario's own actions and the
+   - serverbound packets. They are the Group's own actions and the
      Bot's automatic answers. They differ between Instances by design
      (the handshake names each Instance's own Endpoint), and any
      difference a server caused in them shows up first in what that
@@ -910,7 +910,7 @@ proves it necessary:
    removes that element, and the list closes up. Paths apply to the
    canonical form (step 2). A
    Mask that matches nothing is not an error, since a Mask may name
-   packets a Scenario never sees; a field Mask on a packet with no
+   packets a Group never sees; a field Mask on a packet with no
    fields does nothing, so its payload still differs and the Self-check
    says a schema is needed.
 4. Align the two streams with a sequence diff and report `missing`,
@@ -971,12 +971,12 @@ class Stats:
 
 def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 
-# run.py: run_results(scenarios, reference, candidate, *, workdir, repeat=1) -> RunResult
+# run.py: run_results(groups, reference, candidate, *, workdir, repeat=1) -> RunResult
 # plays exactly as run() does (run() returns its .verdicts); a blocked repetition measures
 # nothing on either side.
 @frozen
-class ScenarioResult:
-    scenario_id: str
+class GroupResult:
+    group_id: str
     verdicts: tuple[Verdict, ...]                    # one per repetition
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
@@ -990,7 +990,7 @@ class SideSummary:
 
 @frozen
 class RunResult:
-    results: tuple[ScenarioResult, ...]
+    results: tuple[GroupResult, ...]
     reference: SideSummary
     candidate: SideSummary
     verdicts: tuple[Verdict, ...]   # property: repetition after repetition
@@ -1000,20 +1000,20 @@ class Report:                       # report.py
     target: Target
     reference: SideSummary          # name, status version.name, startup Measurements
     candidate: SideSummary
-    results: tuple[ScenarioResult, ...]
+    results: tuple[GroupResult, ...]
     notes: tuple[str, ...]          # plain remarks, e.g. what the Report leaves out
     # Report.of(run_result, *, target, notes); repeat (property)
-    # later: compliance = matches / (scenarios − errors); to_json(), to_markdown()
+    # later: compliance = matches / (groups − errors); to_json(), to_markdown()
 
 def render_text(report: Report) -> str: ...
 # Sections, in order: header (Reference, Candidate with versions, Target, repetitions);
-# a one-line summary (or "No differences from vanilla were found in the N scenarios run.");
-# "Differences a player would notice": observable Divergences by mechanic (the Scenario id's
-# first segment, titled from report.MECHANICS), then Scenario, each distinct one once with
+# a one-line summary (or "No differences from vanilla were found in the N groups run.");
+# "Differences a player would notice": observable Divergences by mechanic (the Group id's
+# first segment, titled from report.MECHANICS), then Group, each distinct one once with
 # "(in k of N runs)" when not in all, values over 80 chars cut with their full length;
 # "Wire-only differences": by mechanic, then **per packet** (the count of distinct differing
 # leaves and at most WIRE_EXAMPLES examples; this settles the per-leaf open question for the
-# Report, compare keeps reporting leaves); error/blocked Scenarios with their detail, and
+# Report, compare keeps reporting leaves); error/blocked Groups with their detail, and
 # "different in k of N runs"; "Timings (ms)": median and nearest-rank p95 per Measurement
 # name for both sides, instance.startup included; notes; a two-line legend.
 ```
@@ -1034,9 +1034,9 @@ mscts adapter list                  # ADAPTER VERSION TARGET STATE, one row per 
                                     # plus a row for an installed build that is no entry
 mscts adapter status <adapter>      # root, entry, sha256, size, from, installed; exit 1 and
                                     # the install command when nothing is installed
-mscts selfcheck [--scenario GLOB] [--repeat N]
-mscts run --candidate <adapter> [--scenario GLOB] [--repeat N] [--out DIR]
-    # --scenario: fnmatch over the registered exact Scenario ids, prerequisites added
+mscts selfcheck [--group GLOB] [--repeat N]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N] [--out DIR]
+    # --group: fnmatch over the registered exact Group ids, prerequisites added
     # (default status/*); --repeat default 5; --out not implemented yet (the Report says so).
     # Plays in a fresh temp dir, removed afterwards (kept, and named, when an Instance could
     # not start). Progress ("starting vanilla and pumpkin ...", "running status/basic (1 of
@@ -1097,7 +1097,7 @@ a single failing test.
     (reference tier).
 
 **M2 — First Comparison and Self-check.** `Transcript` recording,
-`@scenario` registration, `status/basic` and `status/ping` Scenarios, `compare`
+`@group` registration, `status/basic` and `status/ping` Groups, `compare`
 with canonicalization, `mscts selfcheck` → `match`. First Measurements
 (`status.rtt`, `instance.startup`).
 
@@ -1107,7 +1107,7 @@ Divergences are readable. Add **Paper** as a high-parity sanity Candidate:
 false mismatches against a vanilla fork point at harness bugs.
 
 **M4 — Join.** Compression, login, configuration (known packs), play up to
-the first chunk batch. `join/basic` Scenario. Masks for entity ids and
+the first chunk batch. `join/basic` Group. Masks for entity ids and
 keep-alive ids only; spawn position is pinned by a Fixture here and
 measured statistically in M6b (ADR-0006). The Self-check must pass 20/20. Measurements:
 `join.to_play`, `join.to_first_chunk`.
@@ -1115,15 +1115,15 @@ measured statistically in M6b (ADR-0006). The Self-check must pass 20/20. Measur
 **M5 — Control and Fixtures.** Operator Bot, `command()`, `system_chat`
 feedback, and `blocked` Verdicts through `requires`.
 
-**M6 — Gameplay breadth.** One exact Scenario per observable mechanic:
+**M6 — Gameplay breadth.** One exact Group per observable mechanic:
 block place and break, movement correction, chat, inventory, entities,
 commands. Each one only after its prerequisites match on the Reference.
 
 **M6a — Tick-exact mechanics (ADR-0006).** Research `/tick freeze` and
 `/tick step` observability over the protocol, then add tick-indexed
-observation anchored on world age. Then redstone Scenarios (repeaters,
+observation anchored on world age. Then redstone Groups (repeaters,
 comparators, observers, piston timing, quasi-connectivity) and vanilla
-glitch Scenarios (headless-piston bedrock breaking, pearl phasing through
+glitch Groups (headless-piston bedrock breaking, pearl phasing through
 the nether roof, …).
 
 **M6b — Statistical mechanics (ADR-0006).** The `statistical` tier and Run
@@ -1136,7 +1136,7 @@ concurrent joins, chunk throughput), and process metrics (RSS, CPU).
 
 **M8 — Reports.** JSON plus a Markdown/HTML summary: a catalogue of
 Divergences grouped by mechanic, each linked to its reproducible
-Scenario, with no declared deviations (ADR-0006). Also a compliance
+Group, with no declared deviations (ADR-0006). Also a compliance
 score, `blocked` counts per missing command, and history across Candidate
 versions.
 
@@ -1185,7 +1185,7 @@ then record the answer in an ADR:
   premise that vanilla sends identical bytes each run. The server writes
   `update_tags` from hash maps (worker P); if its order varies between
   runs, the join Self-check will show wire-only Divergences. Check it
-  when the join Scenario's Self-check runs, before relaxing anything.
+  when the join Group's Self-check runs, before relaxing anything.
 - Should the text component **list form** (`["a", "b"]` ≡
   `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
   `createFromList` is `first.copy().append(rest)`) be canonical? No
@@ -1199,7 +1199,7 @@ then record the answer in an ADR:
   shows a case.
 - Masks have no wildcard index (`players.sample[*].id`): a Mask on every
   element of a list needs one per index, or a Mask on the whole list.
-  Add one when a Scenario needs it (M4 player info likely will).
+  Add one when a Group needs it (M4 player info likely will).
 - A Divergence names the packet but not its State; `index` locates it,
   but a report might want the State shown for same-named packets
   (`custom_payload` in configuration and play).
