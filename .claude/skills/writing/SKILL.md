@@ -35,8 +35,12 @@ record the example with "why: not given".
 - **Use normal names.** Don't coin a new name where an ordinary one
   exists.
 - **Say "network traffic", never "wire".** "Wire" is vague jargon.
+- **Keep the terms for the terms.** "Group" and "test case" name things
+  in mscts, so don't use "group" or "test" as ordinary words next to them
+  ("the Report groups results by …", "tests are grouped by …"). Say
+  "sorts", "lists" or "splits" instead.
 - **Write for someone new.** No term or claim the reader cannot
-  understand without context they don't have (a Self-check, a Scenario,
+  understand without context they don't have (a Self-check, a Group,
   "vanilla against vanilla").
 - **Don't announce what the user will see anyway.** If running the
   command shows it, the page need not say it is shown.

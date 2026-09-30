@@ -133,6 +133,10 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          artifacts (jars, generated reports, probe scripts) by path; names a parallel
          brief is introducing that this one must not reuse (check CONTEXT.md);
          the migration rule if this brief changes anything persisted (cache, files)>
+         A rename brief lists the user-visible strings (flags, help, Report and error
+         text) that get red-first commits; the identifier rename itself is one atomic
+         commit; ASCII diagrams and aligned comment columns need realigning; tests that
+         pin a word's absence are expected hits of the final grep.
          Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared).
          ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
          a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
@@ -272,6 +276,12 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-30 | worker AD (#7 rename) | A pure identifier rename cannot be red-first; only the user-visible strings (flag, help, Report and error text) can, and the brief did not list them (15 min) | **adopt**: brief template, a rename brief lists the user-visible strings; the identifier rename is one atomic commit |
+| 2026-09-30 | worker AD | ASCII diagrams and comment-aligned signature blocks broke when names changed length (10 min) | **adopt**: brief template, a rename brief says to realign them |
+| 2026-09-30 | worker AD | The brief's "grep is clean" cannot hold: tests that pin a word's absence contain it | **adopt**: brief template, absence tests are expected hits |
+| 2026-09-30 | worker AD | A pytest path list that revisits a directory lost its conftest fixtures | **adopt**: red-green Known trap |
+| 2026-09-30 | worker AD | "group" is now a term and an ordinary verb in the same pages | **adopt**: writing skill, "Keep the terms for the terms"; #8's brief re-reads the docs for it |
+| 2026-09-30 | worker AD | Existing error-message tests matched only ids, so wording was unpinned | **reject** (no change): AD pinned them; briefs already require red-first user-visible text |
 | 2026-09-30 | worker AE (#15 play package) | ty rejects an annotated assignment from `getattr(…, default)` (unsound-assignment); one refused commit | **adopt**: red-green Known trap |
 | 2026-09-30 | worker AE | `Schema` compares by identity, so an equal-looking expected mapping never matches | **adopt**: red-green Known trap |
 | 2026-09-30 | worker AE | Mutations of import-time code break collection, so `mutate.py` says INVALID, not KILLED | **adopt**: red-green Known trap (select only the new test file; read INVALID's detail) |

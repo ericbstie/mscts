@@ -1,6 +1,6 @@
 ---
 name: red-green
-description: The mscts development loop. Use for ANY code change in this repo (new feature, fix, refactor, new Scenario or Adapter) and when starting or ending a work session, to take the next increment of a spec issue, drive it test-first, commit it green, and hand off.
+description: The mscts development loop. Use for ANY code change in this repo (new feature, fix, refactor, new Group or Adapter) and when starting or ending a work session, to take the next increment of a spec issue, drive it test-first, commit it green, and hand off.
 ---
 
 # red-green
@@ -36,7 +36,7 @@ then one commit.
 4. **Refactor** while green, if the code now reads worse than the code
    around it.
 5. **Check.** `mise run check`. If you touched anything server-facing
-   (codec schemas, adapters, runner, Bot, Scenarios), also run
+   (codec schemas, adapters, runner, Bot, Groups), also run
    `mise run test:reference`.
 6. **Commit** the test and the code together. Write the message to a file
    (`git commit -F /abs/msg.txt`, never a heredoc), then commit through
@@ -51,7 +51,7 @@ then one commit.
    Never run `mise run check` yourself and separately pipe or chain its
    result into a `git commit` call. Use `<area>: <imperative summary>`
    for the subject line, where area is one of `codec`, `net`, `bot`,
-   `transcript`, `target`, `spec`, `adapter/<name>`, `runner`, `scenario`,
+   `transcript`, `target`, `spec`, `adapter/<name>`, `runner`, `group`,
    `compare`, `measure`, `report`, `cli`, `docs` or `tooling`. Add a body
    only when the why is not obvious. End every message with the
    attribution trailer the session provides.
@@ -222,6 +222,10 @@ then one commit.
   `isinstance(x, dict)` is `Top[dict[Unknown, Unknown]]`, which cannot be
   indexed. Recipe: annotate as `object`, narrow with `isinstance`, iterate
   `.items()`, and rebuild a typed `dict[str, object]`.
+- A pytest path list that returns to a directory after another one
+  (`tests/run/a.py tests/x.py tests/run/b.py`) can lose that directory's
+  conftest fixtures ("fixture not found"). Run one directory at a time,
+  or the whole suite.
 - `getattr(obj, name, default)` under ty: an annotated assignment
   (`x: Mapping[str, Schema] = getattr(m, "X", {})`) is an
   unsound-assignment. Leave it unannotated, or narrow with `isinstance`.

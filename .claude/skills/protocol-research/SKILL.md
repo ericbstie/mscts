@@ -1,6 +1,6 @@
 ---
 name: protocol-research
-description: How to establish a Minecraft Java protocol or server-behaviour fact for mscts (packet IDs, field layouts, connection sequence, server config defaults) and pin it. Use before writing any codec schema, Scenario, Mask or Adapter config, and whenever vanilla or a Candidate behaves unexpectedly.
+description: How to establish a Minecraft Java protocol or server-behaviour fact for mscts (packet IDs, field layouts, connection sequence, server config defaults) and pin it. Use before writing any codec schema, Group, Mask or Adapter config, and whenever vanilla or a Candidate behaves unexpectedly.
 ---
 
 # protocol-research
