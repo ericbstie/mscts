@@ -133,10 +133,12 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          artifacts (jars, generated reports, probe scripts) by path; names a parallel
          brief is introducing that this one must not reuse (check CONTEXT.md);
          the migration rule if this brief changes anything persisted (cache, files)>
-         A rename brief lists the user-visible strings (flags, help, Report and error
-         text) that get red-first commits; the identifier rename itself is one atomic
-         commit; ASCII diagrams and aligned comment columns need realigning; tests that
-         pin a word's absence are expected hits of the final grep.
+         A rename brief pastes the exact current user-visible lines (`grep -n`: flags,
+         help, Report and error text), which get red-first commits; the identifier
+         rename, with the PLAN interface blocks and CONTEXT entries, is one atomic
+         commit, and the prose sweep is the docs commit; ASCII diagrams and aligned
+         comment columns need realigning; it lists the leftover grep hits it expects
+         (kept names, tests that pin a word's absence).
          Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared).
          ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
          a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
@@ -276,6 +278,12 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-30 | lead (incident) | An account usage limit stopped AF (#20) mid-increment; its two commits and uncommitted edits survived in its worktree, and SendMessage resumed it after the reset | **adopt** (no change): "commit early" held; resume an interrupted worker by SendMessage rather than re-briefing |
+| 2026-09-30 | worker AG (#11 wording) | No docs check exists for Report examples, though the contract says to add examples to it | **defer**: maintainer issue #14 (docs checks), scheduled with the output issues #9 / #10 |
+| 2026-09-30 | worker AG | The brief paraphrased a Report line ("N changes on the wire") instead of pasting it | **adopt**: brief template, a rename brief pastes the exact current lines (`grep -n`) |
+| 2026-09-30 | worker AG | Sorting each leftover grep hit into rename / keep / reword took most of the time | **adopt**: brief template, a rename brief lists the leftover hits it expects |
+| 2026-09-30 | worker AG | The contract puts interface edits in the same commit, the brief put docs last | **adopt**: brief template, PLAN interface blocks and CONTEXT entries go in the rename commit; the prose sweep in the docs commit |
+| 2026-09-30 | worker AG | ADR-0007's file name keeps "wire", so the site test exempts link targets | **reject**: ADR files are records and keep their names |
 | 2026-09-30 | worker AD (#7 rename) | A pure identifier rename cannot be red-first; only the user-visible strings (flag, help, Report and error text) can, and the brief did not list them (15 min) | **adopt**: brief template, a rename brief lists the user-visible strings; the identifier rename is one atomic commit |
 | 2026-09-30 | worker AD | ASCII diagrams and comment-aligned signature blocks broke when names changed length (10 min) | **adopt**: brief template, a rename brief says to realign them |
 | 2026-09-30 | worker AD | The brief's "grep is clean" cannot hold: tests that pin a word's absence contain it | **adopt**: brief template, absence tests are expected hits |

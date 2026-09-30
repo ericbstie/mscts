@@ -87,7 +87,7 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AG (sonnet): #11 "network traffic" and "gameplay", branch `issue-11-network-traffic`.
+- AH (opus): #8 test cases, branch `issue-8-test-cases`.
 - AF (sonnet): #20 entity schemas, branch `issue-20-entity-schemas`.
 
 Order: #7 → #11 → #8 → #12 / #9 → #10 for the output; enablers alongside where
@@ -187,7 +187,10 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 
 - Merged #74 (the catalogue and the test proposal framework), #75 (#15: play
   schemas are a package, one module per mechanic) and #76 (#7: Scenario is now
-  Group everywhere; the lead renamed it in the skills).
+  Group everywhere; the lead renamed it in the skills) and #77 (#11: the kinds of
+  difference are gameplay and network traffic).
+- A usage limit stopped AF (#20) mid-increment; it was resumed by message after
+  the reset, with its commits intact.
 - Lead decisions under the maintainer's delegation, recorded on each issue and
   reversible by the maintainer: #11 the kinds are **gameplay** and **network
   traffic**; #18 observation windows (option 1); #22 compare chunks as the client
