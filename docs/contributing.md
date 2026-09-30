@@ -95,7 +95,7 @@ landed. Game rules and commands are named as vanilla 26.3 names them:
 
 | Path | Contents |
 | --- | --- |
-| `src/mscts/codec/` | Wire types, framing, packet schemas and the generated `packets.json` |
+| `src/mscts/codec/` | Field types, framing, packet schemas and the generated `packets.json` |
 | `src/mscts/net.py`, `bot.py` | Connections and Bots |
 | `src/mscts/adapters/` | One module per server, plus the Adapter contract |
 | `src/mscts/runner.py` | Launching, readiness and stopping of Instances |

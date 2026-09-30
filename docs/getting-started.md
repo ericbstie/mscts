@@ -92,12 +92,12 @@ mscts Report
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
 
-2 groups: 2 different on the wire only. No difference a player would notice was found.
+2 groups: 2 different in network traffic only. No difference a player would notice was found.
 
-Wire-only differences (a vanilla client reads both alike; not counted in scores)
---------------------------------------------------------------------------------
+Network traffic differences (a vanilla client reads both alike; not counted in scores)
+--------------------------------------------------------------------------------------
   Server list ping (status)
-    status_response: 4 values differ on the wire, e.g.
+    status_response: 4 values are sent differently, e.g.
       - json_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
       - json_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
       - json_response.favicon: vanilla leaves it out, pumpkin sends null
@@ -105,15 +105,15 @@ Wire-only differences (a vanilla client reads both alike; not counted in scores)
 
 Timings (ms)
 ------------
-  measurement       vanilla median     p95  pumpkin median   p95  n
-  status.rtt                  2.03    3.06            0.33  0.40  5
-  instance.startup          15,499  15,499              31    31  1
+  measurement       vanilla median    p95  pumpkin median   p95  n
+  status.rtt                  1.41   3.18            0.27  0.48  5
+  instance.startup           9,987  9,987              39    39  1
 ```
 
-Pumpkin sends four status values in a different form from vanilla. The
-vanilla client decodes each pair to the same thing, so none of them count
-against Pumpkin. [Reading a Report](/guide/reading-a-report) explains each
-section.
+Pumpkin sends four status values in a different form from vanilla. These are
+network traffic differences: the vanilla client decodes each pair to the
+same thing, so none of them count against Pumpkin.
+[Reading a Report](/guide/reading-a-report) explains each section.
 
 ## Next
 

@@ -60,7 +60,7 @@ a `failed` Divergence that says what happened. It is never `error`.
 Compliance scores leave `error` out, so a Candidate must not be able to
 score better by crashing.
 
-## Observable and wire-only differences
+## Gameplay and network traffic differences
 
 Some differences are visible to a player and some are not. The vanilla client
 reads a server description sent as `"mscts"` and one sent as
@@ -69,14 +69,20 @@ punish a server for a choice the protocol allows.
 
 So every Divergence is one of two kinds:
 
-- **observable**: a vanilla client would read the two values differently.
-- **wire-only**: the bytes differ, but the client decodes both to the same
-  thing.
+- **gameplay**: a vanilla client would read the two values differently, so a
+  player could notice it.
+- **network traffic**: the bytes differ, but the client decodes both to the
+  same thing.
 
 The rules that decide this form the **canonical table**. Each rule rewrites
 a value into one canonical form, and each one cites the client code that
-proves the two forms are equal. mscts still reports wire-only differences,
-in their own section, but compliance scores count only observable ones.
+proves the two forms are equal. mscts still reports network traffic
+differences, in their own section, but compliance scores count only gameplay
+ones.
+
+A difference is only network traffic where such a rule says so. Today the
+canonical table covers the server list answer and the tag lists sent while
+joining. Any other difference counts as gameplay.
 
 ## Masks
 

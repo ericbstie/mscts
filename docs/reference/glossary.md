@@ -61,7 +61,7 @@ socket the process itself holds.
 
 ### Codec
 
-The wire types and packet schemas for the Target. Packet ids come from
+The field types and packet schemas for the Target. Packet ids come from
 vanilla's generated `packets.json`.
 
 ### Packet
@@ -132,8 +132,10 @@ into a Verdict.
 
 ### Divergence
 
-One difference a Comparison found. It is **observable** if a vanilla
-client could tell the two values apart, and **wire-only** if it could not.
+One difference a Comparison found. It is **gameplay** if a vanilla client
+could tell the two values apart, so a player could notice it, and **network
+traffic** if the servers send the same thing in different formats and the
+client ends up with the same result.
 
 ### Verdict
 

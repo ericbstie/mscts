@@ -263,14 +263,14 @@
   padding: 1px 7px;
   margin-bottom: 10px;
 }
-.ms-tag.observable {
+.ms-tag.gameplay {
   background: rgba(214, 93, 64, 0.14);
   color: #c4502f;
 }
-.dark .ms-tag.observable {
+.dark .ms-tag.gameplay {
   color: #f09a7f;
 }
-.ms-tag.wire {
+.ms-tag.network-traffic {
   background: var(--vp-c-bg-soft);
   color: var(--vp-c-text-2);
 }
