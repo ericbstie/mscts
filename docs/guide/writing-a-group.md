@@ -43,10 +43,11 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
 
-While it runs, each Bot answers the packets the vanilla client answers
-without asking the player: keep-alives, the join teleport, chunk batch
-acknowledgements, and the configuration steps. Your script does not need to
-handle them.
+While it runs, each Bot sends and answers what the vanilla client sends and
+answers without asking the player: its brand and client settings after
+logging in, keep-alives, the join teleport, chunk batch acknowledgements,
+the configuration steps, and a note that it has loaded the world once the
+first chunk batch has arrived. Your script does not need to handle them.
 
 Every Bot operation times out after 10 seconds. A timeout on the Candidate
 becomes a `failed` Divergence. A timeout on vanilla makes the Verdict
