@@ -439,3 +439,124 @@ def test_set_entity_data_with_an_item_stack_is_undecodable_until_the_item_codec_
 
 def test_set_entity_data_has_its_entity_id_as_an_entity_id() -> None:
     assert entity_id_paths(play_schema("minecraft:set_entity_data")) == ["entity_id"]
+
+
+# Attributes and effects. The attribute and effect are registry ids (VarInts, not range checked).
+
+
+def attribute(attribute_id: int, base: float, *modifiers: dict[str, object]) -> dict[str, object]:
+    return {"attribute": attribute_id, "base": base, "modifiers": list(modifiers)}
+
+
+def modifier(name: str, amount: float, operation: int) -> dict[str, object]:
+    return {"id": name, "amount": amount, "operation": operation}
+
+
+def test_update_attributes_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: a player's three attributes.
+    round_trip(
+        "minecraft:update_attributes",
+        {
+            "entity_id": 1,
+            "attributes": [
+                attribute(13, 3.0),
+                attribute(26, 0.10000000149011612),
+                attribute(8, 4.5),
+            ],
+        },
+        "01 03 0d 4008000000000000 00 1a 3fb99999a0000000 00 08 4012000000000000 00",
+    )
+    # Recorded: the same player in creative mode, where two attributes have a modifier.
+    round_trip(
+        "minecraft:update_attributes",
+        {
+            "entity_id": 1,
+            "attributes": [
+                attribute(13, 3.0, modifier("minecraft:creative_mode_entity_range", 2.0, 0)),
+                attribute(8, 4.5, modifier("minecraft:creative_mode_block_range", 0.5, 0)),
+            ],
+        },
+        "01 02 0d 4008000000000000 01 24 "
+        "6d696e6563726166743a63726561746976655f6d6f64655f656e746974795f72616e6765 "
+        "4000000000000000 00 "
+        "08 4012000000000000 01 23 "
+        "6d696e6563726166743a63726561746976655f6d6f64655f626c6f636b5f72616e6765 "
+        "3fe0000000000000 00",
+    )
+    # Recorded: a pig's movement speed, and an armor stand's.
+    round_trip(
+        "minecraft:update_attributes",
+        {"entity_id": 2, "attributes": [attribute(26, 0.25)]},
+        "02 01 1a 3fd0000000000000 00",
+    )
+    round_trip(
+        "minecraft:update_attributes",
+        {"entity_id": 4, "attributes": [attribute(26, 0.7)]},
+        "04 01 1a 3fe6666666666666 00",
+    )
+
+
+def test_update_attributes_decodes_modifiers_and_ids_of_two_bytes() -> None:
+    # Built by hand: the entity 300, the attribute 200, and three modifiers: one that adds a
+    # multiple of the base (operation 1), one of the total (2), and an operation past 127 (the
+    # client maps it to 0, so the Codec keeps it as a VarInt).
+    round_trip(
+        "minecraft:update_attributes",
+        {
+            "entity_id": 300,
+            "attributes": [
+                attribute(
+                    200,
+                    -1.5,
+                    modifier("a:b", 0.25, 1),
+                    modifier("c:d", -0.5, 2),
+                    modifier("e:f", 0.0, 300),
+                )
+            ],
+        },
+        "ac02 01 c801 bff8000000000000 03 "
+        "03 613a62 3fd0000000000000 01 "
+        "03 633a64 bfe0000000000000 02 "
+        "03 653a66 0000000000000000 ac02",
+    )
+    round_trip("minecraft:update_attributes", {"entity_id": 1, "attributes": []}, "01 00")
+
+
+def test_update_attributes_holds_at_most_128_attributes() -> None:
+    one = "00 0000000000000000 00"  # the attribute 0, base 0.0, no modifiers
+    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:update_attributes")
+    fields = {"entity_id": 1, "attributes": [attribute(0, 0.0)] * 128}
+    data = Writer().var_int(packet_id).to_bytes() + bytes.fromhex(f"01 80 01 {one * 128}")
+    assert CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:update_attributes", fields) == data
+    assert CODEC.decode(State.PLAY, CLIENTBOUND, data).fields == fields
+    too_many = {"entity_id": 1, "attributes": [attribute(0, 0.0)] * 129}
+    with pytest.raises(CodecError, match=r"attributes: array length 129 exceeds max 128"):
+        CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:update_attributes", too_many)
+    data = Writer().var_int(packet_id).to_bytes() + bytes.fromhex(f"01 81 01 {one * 129}")
+    with pytest.raises(CodecError, match=r"attributes: array length 129 exceeds max 128"):
+        CODEC.decode(State.PLAY, CLIENTBOUND, data)
+
+
+def test_update_mob_effect_decodes_and_re_encodes() -> None:
+    # Built by hand: the entity 300 has effect 1 at amplifier 1 for 600 ticks, with the flags
+    # for a visible effect and its icon; then an infinite effect (duration -1) of amplifier 200.
+    round_trip(
+        "minecraft:update_mob_effect",
+        {"entity_id": 300, "effect": 1, "amplifier": 1, "duration": 600, "flags": 6},
+        "ac02 01 01 d804 06",
+    )
+    round_trip(
+        "minecraft:update_mob_effect",
+        {"entity_id": 2, "effect": 300, "amplifier": 200, "duration": -1, "flags": -128},
+        "02 ac02 c801 ffffffff0f 80",
+    )
+
+
+def test_remove_mob_effect_decodes_and_re_encodes() -> None:
+    round_trip("minecraft:remove_mob_effect", {"entity_id": 2, "effect": 16}, "02 10")
+    round_trip("minecraft:remove_mob_effect", {"entity_id": 300, "effect": 300}, "ac02 ac02")
+
+
+@pytest.mark.parametrize("name", ["update_attributes", "update_mob_effect", "remove_mob_effect"])
+def test_attribute_and_effect_packets_have_their_entity_id_as_an_entity_id(name: str) -> None:
+    assert entity_id_paths(play_schema(f"minecraft:{name}")) == ["entity_id"]
