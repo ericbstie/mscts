@@ -290,6 +290,9 @@ class _Join:
         await peer.write(peer.raw_frame("minecraft:level_chunk_with_light", bytes(300)))
         await peer.send("minecraft:chunk_batch_finished", batch_size=1)
         await self.expect(peer, "minecraft:chunk_batch_received")
+        # Vanilla takes player_loaded whenever it comes; waiting for it here pins where
+        # the Bot sends it (docs/research/2026-09-26-join.md).
+        await self.expect(peer, "minecraft:player_loaded")
         if self.script.keep_alive_id is not None:
             await peer.send("minecraft:keep_alive", keep_alive_id=self.script.keep_alive_id)
             await self.expect(peer, "minecraft:keep_alive")

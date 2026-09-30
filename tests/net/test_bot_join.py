@@ -30,8 +30,10 @@ JOIN_SENDS = [
     "minecraft:finish_configuration",
     "minecraft:accept_teleportation",
     "minecraft:chunk_batch_received",
+    "minecraft:player_loaded",
 ]
-"""What the vanilla client sends on its way to play's first chunk batch (26.3 javap)."""
+"""What the vanilla client sends on its way to play's first chunk batch (26.3 javap), then
+player_loaded where a Bot sends it (docs/research/2026-09-26-join.md)."""
 
 FRESH_CLIENT_INFORMATION = {
     "locale": "en_us",
@@ -71,7 +73,7 @@ def test_join_sends_what_the_vanilla_client_sends(codec: Codec, transcript: Tran
     seen: list[Packet] = []
     _, endpoint = with_bot(codec, transcript, join_server(seen), join)
     assert [packet.name for packet in seen] == JOIN_SENDS
-    intention, hello, *_, teleport, chunk_batch = seen
+    intention, hello, *_, teleport, chunk_batch, loaded = seen
     assert intention.fields == {
         "protocol_version": 777,
         "server_address": endpoint.host,
@@ -81,6 +83,7 @@ def test_join_sends_what_the_vanilla_client_sends(codec: Codec, transcript: Tran
     assert hello.fields == {"name": "alice", "player_uuid": offline_uuid("alice")}
     assert teleport.fields == {"teleport_id": 1, **SPAWN}
     assert chunk_batch.fields == {"chunks_per_tick": CHUNKS_PER_TICK}
+    assert loaded.fields == {}
 
 
 def test_join_sends_brand_and_client_information_after_login_finished(
@@ -101,14 +104,40 @@ def test_join_sends_brand_and_client_information_after_login_finished(
     assert information.fields == FRESH_CLIENT_INFORMATION
 
 
+def test_join_sends_player_loaded_once(codec: Codec, transcript: Transcript) -> None:
+    seen: list[Packet] = []
+
+    async def another_chunk_batch(peer: Peer) -> None:
+        await peer.send("minecraft:chunk_batch_start")
+        await peer.send("minecraft:chunk_batch_finished", batch_size=0)
+        seen.extend([packet async for packet in peer.packets()])
+
+    async def join_then_take_it(bot: Bot) -> None:
+        await bot.join()
+        await bot.expect("minecraft:chunk_batch_finished", timeout_s=1)
+
+    script = JoinScript(then=another_chunk_batch)
+    with_bot(codec, transcript, join_server(seen, script), join_then_take_it)
+    # Once the first chunk batch has arrived, and not again for a later one.
+    assert [packet.name for packet in seen][-3:] == [
+        "minecraft:chunk_batch_received",
+        "minecraft:player_loaded",
+        "minecraft:chunk_batch_received",
+    ]
+    assert [packet.state for packet in seen if packet.name == "minecraft:player_loaded"] == [
+        State.PLAY
+    ]
+
+
 def test_join_returns_once_the_first_chunk_batch_has_finished(
     codec: Codec, transcript: Transcript
 ) -> None:
     with_bot(codec, transcript, join_server([]), join)
     assert taken(transcript)[-1] == (State.PLAY, "minecraft:chunk_batch_finished")
-    assert [event.packet.name for event in transcript.events if event.bot == "alice"][-2:] == [
+    assert [event.packet.name for event in transcript.events if event.bot == "alice"][-3:] == [
         "minecraft:chunk_batch_finished",
         "minecraft:chunk_batch_received",
+        "minecraft:player_loaded",
     ]
 
 

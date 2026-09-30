@@ -266,11 +266,12 @@ class Bot:
         """Join the server offline, and return once play's first chunk batch has finished.
 
         Sends the login handshake (intent 2) and a `hello` with the Bot's name and its
-        `offline_uuid`, then takes each packet until play's first `chunk_batch_finished`.
-        On the way, the Bot's Replies answer as the vanilla client does: they ack login
-        and send the brand and client information, ack configuration, echo the known
-        packs and any keep-alive, accept a code of conduct, confirm the join teleport,
-        and acknowledge the chunk batch.
+        `offline_uuid`, then takes each packet until play's first `chunk_batch_finished`,
+        and sends `player_loaded`, once, to say the Bot has loaded the world. On the way,
+        the Bot's Replies answer as the vanilla client does: they ack login and send the
+        brand and client information, ack configuration, echo the known packs and any
+        keep-alive, accept a code of conduct, confirm the join teleport, and acknowledge
+        the chunk batch.
 
         Raises:
             ProtocolError: The Connection is not fresh (a handshake was sent), or the server
@@ -286,6 +287,12 @@ class Bot:
                 "minecraft:hello", name=self.name, player_uuid=offline_uuid(self.name)
             )
             await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
+            # The vanilla client says it has loaded the world once its renderer has built
+            # the player's section, a moment that depends on its timing. A Bot says so as
+            # soon as the first batch has arrived and been acknowledged (Replies answered it
+            # before expect returned): the batch starts with the player's own chunk, so no
+            # client could be ready earlier (docs/research/2026-09-26-join.md).
+            await self._connection.send("minecraft:player_loaded")
 
     async def expect(
         self, name: str, *, timeout_s: float, where: Callable[[Packet], bool] | None = None
