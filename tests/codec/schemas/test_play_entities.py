@@ -10,6 +10,7 @@ from collections.abc import Mapping
 
 import pytest
 
+from mscts.codec.equipment import EQUIPMENT
 from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.codec.schema import (
     ENTITY_ID,
@@ -744,6 +745,22 @@ def test_passenger_link_and_state_packets_have_their_entity_ids_as_entity_ids(
     name: str, paths: list[str]
 ) -> None:
     assert entity_id_paths(play_schema(f"minecraft:{name}")) == paths
+
+
+def test_set_equipment_is_an_entity_id_and_equipment_whose_items_await_the_item_codec() -> None:
+    # The slots are pinned in test_equipment.py; the item stacks are #19's, so a packet with
+    # one refuses in both directions until then.
+    fields = play_schema("minecraft:set_equipment").fields
+    assert list(fields) == ["entity_id", "equipment"]
+    assert fields["equipment"] is EQUIPMENT
+    assert entity_id_paths(play_schema("minecraft:set_equipment")) == ["entity_id"]
+    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:set_equipment")
+    data = Writer().var_int(packet_id).to_bytes() + bytes.fromhex("ac02 05 00")
+    with pytest.raises(CodecError, match=r"equipment: 0: item: item stack: needs #19$"):
+        CODEC.decode(State.PLAY, CLIENTBOUND, data)
+    encoded = {"entity_id": 300, "equipment": [{"slot": "head", "item": None}]}
+    with pytest.raises(CodecError, match=r"equipment: 0: item: item stack: needs #19$"):
+        CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:set_equipment", encoded)
 
 
 def test_the_entity_ids_of_a_link_are_ints() -> None:
