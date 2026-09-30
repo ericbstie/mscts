@@ -5,7 +5,7 @@ from mscts.transcript import Mark, Transcript
 
 
 def _transcript(*marks: tuple[int, str]) -> Transcript:
-    transcript = Transcript(scenario_id="status/ping", server="vanilla")
+    transcript = Transcript(group_id="status/ping", server="vanilla")
     transcript.marks.extend(Mark(t_ns=t_ns, label=label) for t_ns, label in marks)
     return transcript
 

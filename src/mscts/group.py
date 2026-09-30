@@ -1,4 +1,4 @@
-"""Scenarios: named, deterministic scripts a Run plays against each Instance."""
+"""Groups: named, deterministic scripts a Run plays against each Instance."""
 
 import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
@@ -15,8 +15,8 @@ from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
 
 
-class ScenarioKind(StrEnum):
-    """How a Scenario is judged (ADR-0006)."""
+class GroupKind(StrEnum):
+    """How a Group is judged (ADR-0006)."""
 
     EXACT = "exact"
     """Deterministic, diffed packet by packet."""
@@ -35,12 +35,12 @@ class Control(Protocol):
 
 
 def identity(spec: ServerSpec) -> ServerSpec:
-    """Leave the ServerSpec as it is: a Scenario's default `spec`."""
+    """Leave the ServerSpec as it is: a Group's default `spec`."""
     return spec
 
 
-class ScenarioContext:
-    """What a Scenario's script works with, against one Instance.
+class GroupContext:
+    """What a Group's script works with, against one Instance.
 
     Attributes:
         endpoint: Where the Instance is reached.
@@ -56,7 +56,7 @@ class ScenarioContext:
 
     @property
     def control(self) -> Control:
-        """The Control channel. Not built yet: no Scenario needs Fixtures before M5.
+        """The Control channel. Not built yet: no Group needs Fixtures before M5.
 
         Raises:
             NotImplementedError: Always, until M5 builds the Operator Bot.
@@ -65,10 +65,10 @@ class ScenarioContext:
         raise NotImplementedError(msg)
 
     async def bot(self, name: str) -> Bot:
-        """Connect a Bot called `name`, recording to this Scenario's Transcript.
+        """Connect a Bot called `name`, recording to this Group's Transcript.
 
         Raises:
-            ValueError: This Scenario already has a Bot called `name`.
+            ValueError: This Group already has a Bot called `name`.
             OSError: The connection failed.
             TimeoutError: It did not connect in time.
         """
@@ -117,18 +117,18 @@ class ScenarioContext:
         self._transcript.marks.append(Mark(t_ns=self._transcript.now_ns(), label=label))
 
 
-type Script = Callable[[ScenarioContext], Awaitable[None]]
-"""A Scenario's script: what it does against one Instance."""
+type Script = Callable[[GroupContext], Awaitable[None]]
+"""A Group's script: what it does against one Instance."""
 
 
 @dataclass(frozen=True, slots=True)
-class Scenario:
+class Group:
     """A deterministic, named script that runs against one Instance.
 
     Attributes:
-        id: The Scenario's name, e.g. `status/basic`.
+        id: The Group's name, e.g. `status/basic`.
         run: The script.
-        requires: Scenario ids that must `match` first; otherwise this one is `blocked`.
+        requires: Group ids that must `match` first; otherwise this one is `blocked`.
         masks: What its Comparison excludes, each with a reason that shows it has no
             gameplay meaning (ADR-0006).
         spec: How it changes the Run's ServerSpec.
@@ -140,29 +140,29 @@ class Scenario:
     requires: tuple[str, ...] = ()
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
-    kind: ScenarioKind = ScenarioKind.EXACT
+    kind: GroupKind = GroupKind.EXACT
 
 
-_REGISTERED: dict[str, Scenario] = {}
+_REGISTERED: dict[str, Group] = {}
 
-SCENARIOS: Mapping[str, Scenario] = MappingProxyType(_REGISTERED)
-"""The registered Scenarios, by id, in registration order (a read-only view).
+GROUPS: Mapping[str, Group] = MappingProxyType(_REGISTERED)
+"""The registered Groups, by id, in registration order (a read-only view).
 
-`@scenario` registers each; mscts's own are registered as `mscts.scenarios` is imported.
+`@group` registers each; mscts's own are registered as `mscts.groups` is imported.
 """
 
 
-def scenario(
-    id: str,  # noqa: A002 - the Scenario's id, as PLAN names it
+def group(
+    id: str,  # noqa: A002 - the Group's id, as PLAN names it
     *,
     requires: tuple[str, ...] = (),
     masks: tuple[Mask, ...] = (),
     spec: Callable[[ServerSpec], ServerSpec] = identity,
-    kind: ScenarioKind = ScenarioKind.EXACT,
+    kind: GroupKind = GroupKind.EXACT,
 ) -> Callable[[Script], Script]:
-    """Return a decorator that registers its function as the script of Scenario `id`.
+    """Return a decorator that registers its function as the script of Group `id`.
 
-    The decorator returns the function itself, and raises ValueError if a Scenario
+    The decorator returns the function itself, and raises ValueError if a Group
     called `id` is registered already.
     """
 
@@ -170,7 +170,7 @@ def scenario(
         if id in _REGISTERED:
             msg = f"a Scenario called {id!r} is registered already"
             raise ValueError(msg)
-        _REGISTERED[id] = Scenario(
+        _REGISTERED[id] = Group(
             id=id, run=run, requires=requires, masks=masks, spec=spec, kind=kind
         )
         return run
@@ -178,36 +178,34 @@ def scenario(
     return register
 
 
-def resolve(
-    scenario_ids: Iterable[str], scenarios: Mapping[str, Scenario] = SCENARIOS
-) -> tuple[Scenario, ...]:
-    """The Scenarios `scenario_ids` name in `scenarios`, with their prerequisites, each once.
+def resolve(group_ids: Iterable[str], groups: Mapping[str, Group] = GROUPS) -> tuple[Group, ...]:
+    """The Groups `group_ids` name in `groups`, with their prerequisites, each once.
 
-    Every Scenario comes after its prerequisites; otherwise the order is as given.
+    Every Group comes after its prerequisites; otherwise the order is as given.
 
     Raises:
-        KeyError: An id, or a prerequisite, is not in `scenarios`.
+        KeyError: An id, or a prerequisite, is not in `groups`.
         ValueError: The prerequisites form a cycle.
     """
-    resolved: dict[str, Scenario] = {}
+    resolved: dict[str, Group] = {}
     visiting: list[str] = []
 
-    def visit(scenario_id: str) -> None:
-        if scenario_id in resolved:
+    def visit(group_id: str) -> None:
+        if group_id in resolved:
             return
-        if scenario_id in visiting:
-            cycle = " -> ".join([*visiting[visiting.index(scenario_id) :], scenario_id])
+        if group_id in visiting:
+            cycle = " -> ".join([*visiting[visiting.index(group_id) :], group_id])
             msg = f"the prerequisites form a cycle: {cycle}"
             raise ValueError(msg)
-        if scenario_id not in scenarios:
-            msg = f"no Scenario is registered as {scenario_id!r}"
+        if group_id not in groups:
+            msg = f"no Scenario is registered as {group_id!r}"
             raise KeyError(msg)
-        visiting.append(scenario_id)
-        for prerequisite in scenarios[scenario_id].requires:
+        visiting.append(group_id)
+        for prerequisite in groups[group_id].requires:
             visit(prerequisite)
         visiting.pop()
-        resolved[scenario_id] = scenarios[scenario_id]
+        resolved[group_id] = groups[group_id]
 
-    for scenario_id in scenario_ids:
-        visit(scenario_id)
+    for group_id in group_ids:
+        visit(group_id)
     return tuple(resolved.values())

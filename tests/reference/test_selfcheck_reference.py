@@ -1,11 +1,11 @@
-"""G2 for the status Scenarios: their Self-check is `match` in 20 out of 20 runs.
+"""G2 for the status Groups: their Self-check is `match` in 20 out of 20 runs.
 
 One side is the session's shared Reference (an Attached side: the `reference` fixture
 owns it); the other is one more Reference Instance of the test's own, booted once and
 reused for all 20 repetitions.
 
 It is two distinct Instances, never the shared one against itself, on purpose: a
-Self-check is how a Scenario proves it needs no further Mask, i.e. that whatever two
+Self-check is how a Group proves it needs no further Mask, i.e. that whatever two
 independently booted servers may legitimately differ in (per-boot identifiers and
 state, anything drawn at random at startup) is already masked. One Instance compared with
 itself shares all of that, so a missing Mask would pass here and only show up as a
@@ -51,7 +51,7 @@ class _Tagged:
 @pytest.mark.reference
 @pytest.mark.asyncio(loop_scope="session")
 @pytest.mark.timeout(300)  # one boot (the shared Reference may boot first), 40 status exchanges
-async def test_selfcheck_of_the_status_scenarios_matches_20_of_20(
+async def test_selfcheck_of_the_status_groups_matches_20_of_20(
     reference_attached: Attached, cache_dir: Path, tmp_path: Path
 ) -> None:
     adapter = _Tagged(token=uuid.uuid4().hex)
@@ -68,6 +68,6 @@ async def test_selfcheck_of_the_status_scenarios_matches_20_of_20(
         leaked = kill_survivors(f"{_TOKEN_VAR}={adapter.token}")
     assert not leaked, f"a Reference Instance outlived the Self-check: {leaked}"
 
-    assert [v.scenario_id for v in verdicts] == ["status/basic", "status/ping"] * _REPEAT
+    assert [v.group_id for v in verdicts] == ["status/basic", "status/ping"] * _REPEAT
     not_matching = [v for v in verdicts if v.outcome is not Outcome.MATCH]
     assert not_matching == []

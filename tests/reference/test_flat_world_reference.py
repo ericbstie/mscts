@@ -24,7 +24,7 @@ _TIMEOUT_S = 10.0
 
 
 async def test_a_bot_joins_a_flat_peaceful_world_at_y_minus_60(reference: Instance) -> None:
-    transcript = Transcript(scenario_id="reference/flat-world", server="vanilla")
+    transcript = Transcript(group_id="reference/flat-world", server="vanilla")
     bot = await Bot.connect(
         reference.endpoint, TARGET, name="flat_world", transcript=transcript, timeout_s=_TIMEOUT_S
     )

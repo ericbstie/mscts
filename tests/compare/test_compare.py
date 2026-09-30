@@ -5,7 +5,7 @@ import pytest
 from mscts.codec.packets import State
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.transcript import Mark
-from tests.compare.build import SCENARIO, SERVERBOUND, packet, transcript
+from tests.compare.build import GROUP, SERVERBOUND, packet, transcript
 
 A = packet("test:a", b"\x01")
 B = packet("test:b", b"\x02")
@@ -15,7 +15,7 @@ C = packet("test:c", b"\x03")
 def test_identical_transcripts_match() -> None:
     events = [("alice", A), ("alice", B), ("bob", C)]
     verdict = compare(transcript(*events), transcript(*events, server="pumpkin"), [])
-    assert verdict == Verdict(scenario_id=SCENARIO, outcome=Outcome.MATCH)
+    assert verdict == Verdict(group_id=GROUP, outcome=Outcome.MATCH)
 
 
 def test_empty_transcripts_match() -> None:
@@ -59,7 +59,7 @@ def test_a_differing_payload_is_a_field_divergence_with_hex_values() -> None:
     reference = transcript(("alice", A), ("alice", packet("test:b", b"\x01\x02")))
     candidate = transcript(("alice", A), ("alice", packet("test:b", b"\x01\xff")))
     assert compare(reference, candidate, []) == Verdict(
-        scenario_id=SCENARIO,
+        group_id=GROUP,
         outcome=Outcome.MISMATCH,
         divergences=(
             Divergence(
@@ -186,9 +186,9 @@ def test_a_bot_that_received_nothing_is_still_present() -> None:
     assert [d.kind for d in compare(reference, candidate, []).divergences] == ["missing"]
 
 
-def test_transcripts_of_different_scenarios_are_not_compared() -> None:
-    other = transcript(scenario_id="status/ping")
-    with pytest.raises(ValueError, match="'test/scenario' and 'status/ping'"):
+def test_transcripts_of_different_groups_are_not_compared() -> None:
+    other = transcript(group_id="status/ping")
+    with pytest.raises(ValueError, match="'test/group' and 'status/ping'"):
         compare(transcript(), other, [])
 
 

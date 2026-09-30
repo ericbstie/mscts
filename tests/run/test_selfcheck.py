@@ -9,7 +9,7 @@ from tests.run.fakes import FakeAdapter
 
 
 @pytest.mark.asyncio
-async def test_a_selfcheck_plays_the_scenarios_reference_against_reference(
+async def test_a_selfcheck_plays_the_groups_reference_against_reference(
     fake_server: Callable[..., Server], tmp_path: Path
 ) -> None:
     reference = fake_server("vanilla")
@@ -21,7 +21,7 @@ async def test_a_selfcheck_plays_the_scenarios_reference_against_reference(
         repeat=2,
     )
 
-    assert [(v.scenario_id, v.outcome) for v in verdicts] == [
+    assert [(v.group_id, v.outcome) for v in verdicts] == [
         ("status/basic", Outcome.MATCH),
         ("status/ping", Outcome.MATCH),
     ] * 2
@@ -32,7 +32,7 @@ async def test_a_selfcheck_plays_the_scenarios_reference_against_reference(
 
 
 @pytest.mark.asyncio
-async def test_a_selfcheck_of_an_unknown_scenario_starts_nothing(
+async def test_a_selfcheck_of_an_unknown_group_starts_nothing(
     fake_server: Callable[..., Server], tmp_path: Path
 ) -> None:
     reference = fake_server("vanilla")

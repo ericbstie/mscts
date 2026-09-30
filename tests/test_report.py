@@ -1,7 +1,7 @@
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
 from mscts.measure import Measurement
 from mscts.report import Report, render_text
-from mscts.run import ScenarioResult, SideSummary
+from mscts.run import GroupResult, SideSummary
 from mscts.target import TARGET
 
 STATUS = "minecraft:status_response"
@@ -23,23 +23,23 @@ def _field(path: str, reference: object, candidate: object, *, wire: bool = Fals
     )
 
 
-def _verdict(scenario_id: str, *divergences: Divergence, outcome: Outcome | None = None) -> Verdict:
+def _verdict(group_id: str, *divergences: Divergence, outcome: Outcome | None = None) -> Verdict:
     if outcome is None:
         outcome = Outcome.MISMATCH if divergences else Outcome.MATCH
-    return Verdict(scenario_id=scenario_id, outcome=outcome, divergences=divergences)
+    return Verdict(group_id=group_id, outcome=outcome, divergences=divergences)
 
 
-def _result(*verdicts: Verdict, rtt: float | None = None) -> ScenarioResult:
+def _result(*verdicts: Verdict, rtt: float | None = None) -> GroupResult:
     measured = (Measurement("status.rtt", "ms", rtt),) if rtt is not None else ()
-    return ScenarioResult(
-        scenario_id=verdicts[0].scenario_id,
+    return GroupResult(
+        group_id=verdicts[0].group_id,
         verdicts=verdicts,
         reference=tuple(measured for _ in verdicts),
         candidate=tuple(measured for _ in verdicts),
     )
 
 
-def _report(*results: ScenarioResult) -> Report:
+def _report(*results: GroupResult) -> Report:
     return Report(
         target=TARGET,
         reference=SideSummary(
@@ -97,7 +97,7 @@ def test_the_sections_come_in_order() -> None:
     assert text.rindex("wire-only") > text.index(TIMINGS)  # the legend comes last
 
 
-def test_the_summary_counts_identical_and_different_scenarios() -> None:
+def test_the_summary_counts_identical_and_different_groups() -> None:
     different = _verdict("status/basic", _field("json_response.version.name", "26.3", "x"))
     text = render_text(_report(_result(different), _result(_verdict("status/ping"))))
 
@@ -118,7 +118,7 @@ def test_an_observable_divergence_reads_as_both_values_under_its_mechanic() -> N
     assert "pumpkin" in line
 
 
-def test_divergences_are_grouped_by_mechanic_then_scenario() -> None:
+def test_divergences_are_grouped_by_mechanic_then_group() -> None:
     status = _verdict("status/basic", _field("a", 1, 2))
     join = _verdict("join/basic", _field("b", 3, 4))
     ping = _verdict("status/ping", _field("c", 5, 6))
@@ -174,7 +174,7 @@ def test_wire_only_divergences_are_counted_per_packet_with_a_few_examples() -> N
     assert OBSERVABLE not in text
 
 
-def test_errors_and_blocked_scenarios_are_listed_with_their_detail() -> None:
+def test_errors_and_blocked_groups_are_listed_with_their_detail() -> None:
     error = Verdict("status/basic", Outcome.ERROR, detail="the Reference failed: boom")
     blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was error")
     text = render_text(_report(_result(error), _result(blocked)))
@@ -203,7 +203,7 @@ def test_timings_show_each_measurement_for_both_servers_and_the_startup() -> Non
     assert "400" in timings
 
 
-def test_timings_name_the_scenarios_that_were_not_played() -> None:
+def test_timings_name_the_groups_that_were_not_played() -> None:
     blocked = Verdict("status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was error")
     text = render_text(_report(_result(_verdict("status/basic")), _result(blocked)))
 

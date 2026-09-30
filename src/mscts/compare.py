@@ -1,9 +1,9 @@
-"""Comparison: diff the Reference and Candidate Transcripts of one Scenario into a Verdict.
+"""Comparison: diff the Reference and Candidate Transcripts of one Group into a Verdict.
 
 What is compared is, for every Bot, the ordered stream of the clientbound Packets it
 received. Everything else is left out on purpose:
 
-- Serverbound Packets are the Scenario's own actions and the Bot's automatic answers.
+- Serverbound Packets are the Group's own actions and the Bot's automatic answers.
   They differ between Instances by design (the handshake names each Instance's own
   Endpoint), and any difference in them that a server caused shows up first in what
   that server sent.
@@ -37,7 +37,7 @@ type _Path = tuple[_Step, ...]
 
 
 class Outcome(StrEnum):
-    """What a Verdict says about a Scenario."""
+    """What a Verdict says about a Group."""
 
     MATCH = "match"
     MISMATCH = "mismatch"
@@ -124,7 +124,7 @@ class Divergence:
             `missing`: a reference Packet the alignment left unmatched.
             `unexpected`: a candidate Packet the alignment left unmatched.
             `field`: a difference between two matched Packets.
-            `failed`: the Scenario failed on the Candidate, as `candidate` says (a
+            `failed`: the Group failed on the Candidate, as `candidate` says (a
             Candidate failure, `run.judge`; never made by `compare`). `bot` and `packet`
             are "", `index` 0, `reference` ABSENT.
         packet: The packet name; "" for `bot` and `failed`.
@@ -152,18 +152,18 @@ class Divergence:
 
 @dataclass(frozen=True, slots=True)
 class Verdict:
-    """The result of one Scenario.
+    """The result of one Group.
 
     Attributes:
-        scenario_id: The Scenario, e.g. `status/basic`.
+        group_id: The Group, e.g. `status/basic`.
         outcome: `match` exactly when there are no divergences, from `compare`; so
             wire-only Divergences alone are still a `mismatch` (ADR-0007).
         divergences: Every difference, grouped by Bot in name order, then in stream
             order.
-        detail: A human-readable note, e.g. why the Scenario is blocked.
+        detail: A human-readable note, e.g. why the Group is blocked.
     """
 
-    scenario_id: str
+    group_id: str
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
@@ -179,7 +179,7 @@ class Verdict:
 
 
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
-    """Diff the Candidate's Transcript of a Scenario against the Reference's.
+    """Diff the Candidate's Transcript of a Group against the Reference's.
 
     Each Bot's stream is normalized first: the Packets a `*` Mask names are dropped,
     the rest are put in canonical form (`_CANONICAL`: e.g. a status response's JSON is
@@ -207,14 +207,14 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     `unexpected` Packet's value is its normalized fields, or its payload as hex.
 
     Raises:
-        ValueError: The Transcripts are of different Scenarios.
+        ValueError: The Transcripts are of different Groups.
         TypeError: A Packet's fields hold something outside the codec value model
             (int, str, bool, bytes, UUID, list, dict of str keys, None, and float).
     """
-    if reference.scenario_id != candidate.scenario_id:
+    if reference.group_id != candidate.group_id:
         msg = (
             "cannot compare Transcripts of different Scenarios: "
-            f"{reference.scenario_id!r} and {candidate.scenario_id!r}"
+            f"{reference.group_id!r} and {candidate.group_id!r}"
         )
         raise ValueError(msg)
     indexed = _Masks.of(masks)
@@ -225,7 +225,7 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
         for divergence in _compare_bot(bot, reference, candidate, indexed)
     )
     return Verdict(
-        scenario_id=reference.scenario_id,
+        group_id=reference.group_id,
         outcome=Outcome.MISMATCH if divergences else Outcome.MATCH,
         divergences=divergences,
     )

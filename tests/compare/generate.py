@@ -20,7 +20,7 @@ from mscts.codec.wire import Writer
 from mscts.compare import Mask
 from mscts.transcript import Transcript
 
-SCENARIO = "test/properties"
+GROUP = "test/properties"
 CLIENTBOUND, SERVERBOUND = Direction.CLIENTBOUND, Direction.SERVERBOUND
 
 STATUS_CODEC = Codec.load("26.3")
@@ -96,7 +96,7 @@ def _item(rng: random.Random) -> Item:
 
 
 def render(
-    script: Script, rng: random.Random, *, server: str = "vanilla", scenario_id: str = SCENARIO
+    script: Script, rng: random.Random, *, server: str = "vanilla", group_id: str = GROUP
 ) -> Transcript:
     """A Transcript of `script`, with every detail a re-run may change chosen by `rng`."""
     streams = []
@@ -108,9 +108,7 @@ def render(
             events.append((bot, _packet(item, rng)))
         events.extend((bot, packet) for packet in _ambient(rng))
         streams.append(events)
-    transcript = Transcript(
-        scenario_id=scenario_id, server=server, start_ns=time.monotonic_ns() - 10**12
-    )
+    transcript = Transcript(group_id=group_id, server=server, start_ns=time.monotonic_ns() - 10**12)
     t_ns = 0
     for bot, packet in _interleave(streams, rng):
         t_ns += rng.randrange(1, 10**6)

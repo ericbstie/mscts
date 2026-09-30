@@ -1,4 +1,4 @@
-"""Bots: the client connections Scenarios drive."""
+"""Bots: the client connections Groups drive."""
 
 import asyncio
 import contextlib
@@ -91,7 +91,7 @@ class Replies:
     """What a Bot answers by itself, as each packet arrives, the way the vanilla client does.
 
     A Connection's answer (`Connection.open(answer=...)`): the Bot's background reader
-    awaits it for every Packet, in wire order, whether or not a Scenario is reading. Per
+    awaits it for every Packet, in wire order, whether or not a Group is reading. Per
     the 26.3 client (javap):
 
     - login `login_finished` → `login_acknowledged`;
@@ -151,7 +151,7 @@ class Replies:
 
 
 class Bot:
-    """One client connection driven by a Scenario.
+    """One client connection driven by a Group.
 
     It speaks the Target's protocol version, and records everything it sends and
     receives to its Transcript under its name. Every operation, connecting included,
@@ -160,7 +160,7 @@ class Bot:
     Attributes:
         name: The Bot's name, as its Events record it.
         failure: What its last failed operation raised, or None: so whoever gets an
-            exception out of a Scenario can tell which Bot it came from.
+            exception out of a Group can tell which Bot it came from.
     """
 
     def __init__(
@@ -344,7 +344,7 @@ def status_probe(
     """
 
     async def probe(endpoint: Endpoint) -> bool:
-        transcript = Transcript(scenario_id="readiness", server="")  # discarded
+        transcript = Transcript(group_id="readiness", server="")  # discarded
         try:
             bot = await Bot.connect(
                 endpoint, target, name="probe", transcript=transcript, timeout_s=timeout_s

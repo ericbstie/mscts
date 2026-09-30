@@ -7,20 +7,20 @@ import pytest
 
 from mscts.codec.packets import Direction, Packet, State
 from mscts.compare import Outcome
+from mscts.group import Group
+from mscts.groups import status
 from mscts.run import Server, run_results, status_version
-from mscts.scenario import Scenario
-from mscts.scenarios import status
 from mscts.transcript import Transcript
 from tests.run.fakes import FakeAdapter, attached
 
-BASIC = Scenario(id="status/basic", run=status.basic)
-PING = Scenario(id="status/ping", run=status.ping, requires=("status/basic",))
+BASIC = Group(id="status/basic", run=status.basic)
+PING = Group(id="status/ping", run=status.ping, requires=("status/basic",))
 
 type MakeServer = Callable[..., Server]
 
 
 @pytest.mark.asyncio
-async def test_each_scenario_has_a_verdict_and_measurements_per_repetition(
+async def test_each_group_has_a_verdict_and_measurements_per_repetition(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
     result = await run_results(
@@ -28,7 +28,7 @@ async def test_each_scenario_has_a_verdict_and_measurements_per_repetition(
     )
 
     basic, ping = result.results
-    assert basic.scenario_id == "status/basic"
+    assert basic.group_id == "status/basic"
     assert [v.outcome for v in basic.verdicts] == [Outcome.MATCH] * 2
     assert basic.reference == basic.candidate == ((), ())
     for side in (ping.reference, ping.candidate):
@@ -47,7 +47,7 @@ async def test_the_verdicts_read_repetition_after_repetition(
         [BASIC, PING], fake_server("one"), fake_server("two"), workdir=tmp_path / "run", repeat=2
     )
 
-    assert [v.scenario_id for v in result.verdicts] == ["status/basic", "status/ping"] * 2
+    assert [v.group_id for v in result.verdicts] == ["status/basic", "status/ping"] * 2
 
 
 @pytest.mark.asyncio
@@ -79,9 +79,7 @@ async def test_an_attached_side_has_no_startup_measurement(
 
 
 @pytest.mark.asyncio
-async def test_a_blocked_scenario_has_no_measurements(
-    fake_server: MakeServer, tmp_path: Path
-) -> None:
+async def test_a_blocked_group_has_no_measurements(fake_server: MakeServer, tmp_path: Path) -> None:
     result = await run_results(
         [BASIC, PING],
         fake_server("one"),
@@ -95,7 +93,7 @@ async def test_a_blocked_scenario_has_no_measurements(
 
 
 def _status(json_response: object) -> Transcript:
-    transcript = Transcript(scenario_id="status/basic", server="x")
+    transcript = Transcript(group_id="status/basic", server="x")
     packet = Packet(
         state=State.STATUS,
         direction=Direction.CLIENTBOUND,
@@ -126,4 +124,4 @@ def test_the_status_version_is_read_leniently(json_response: object, expected: s
 
 
 def test_a_transcript_without_a_status_response_has_no_version() -> None:
-    assert status_version(Transcript(scenario_id="status/basic", server="x")) is None
+    assert status_version(Transcript(group_id="status/basic", server="x")) is None

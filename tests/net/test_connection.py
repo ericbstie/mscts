@@ -570,7 +570,7 @@ async def echo_replies(connection: Connection, packet: Packet) -> None:
 def test_the_answer_runs_as_each_packet_arrives_without_a_recv(
     toy_codec: Codec, transcript: Transcript
 ) -> None:
-    # What keeps a Bot connected (keep-alives, teleports) must not wait for a Scenario to
+    # What keeps a Bot connected (keep-alives, teleports) must not wait for a Group to
     # take the packet: vanilla kicks a client that does not answer a keep_alive in time.
     echoed: list[Packet] = []
 

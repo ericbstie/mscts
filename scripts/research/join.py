@@ -68,7 +68,7 @@ async def join(
     `workdir` is removed once the Instance has stopped, whatever happened.
     """
     plan = adapter.prepare(installation, spec, workdir)
-    transcript = Transcript(scenario_id="research/join", server=adapter.name)
+    transcript = Transcript(group_id="research/join", server=adapter.name)
     try:
         async with running(
             plan,

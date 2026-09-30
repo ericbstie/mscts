@@ -7,7 +7,7 @@ from mscts.codec.packets import Direction, Packet, State
 from mscts.transcript import Transcript
 
 CLIENTBOUND, SERVERBOUND = Direction.CLIENTBOUND, Direction.SERVERBOUND
-SCENARIO = "test/scenario"
+GROUP = "test/group"
 _MS = 1_000_000
 
 
@@ -26,11 +26,11 @@ def packet(
 
 
 def transcript(
-    *events: tuple[str, Packet], server: str = "vanilla", scenario_id: str = SCENARIO
+    *events: tuple[str, Packet], server: str = "vanilla", group_id: str = GROUP
 ) -> Transcript:
     """A Transcript of `events`, each a (bot, packet) pair, recorded 1 ms apart."""
     result = Transcript(
-        scenario_id=scenario_id, server=server, start_ns=time.monotonic_ns() - 1_000_000 * _MS
+        group_id=group_id, server=server, start_ns=time.monotonic_ns() - 1_000_000 * _MS
     )
     for position, (bot, recorded) in enumerate(events):
         result.record(bot, recorded, t_ns=position * _MS)

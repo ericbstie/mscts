@@ -7,7 +7,7 @@ from types import MappingProxyType
 
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
 from mscts.measure import Measurement, stats
-from mscts.run import RunResult, ScenarioResult, SideSummary
+from mscts.run import GroupResult, RunResult, SideSummary
 from mscts.target import Target
 
 MECHANICS: Mapping[str, str] = MappingProxyType(
@@ -16,7 +16,7 @@ MECHANICS: Mapping[str, str] = MappingProxyType(
         "join": "Joining a world (join)",
     }
 )
-"""A plain title for each mechanic: the first segment of a Scenario id."""
+"""A plain title for each mechanic: the first segment of a Group id."""
 
 VALUE_LIMIT = 80
 """The longest value shown in full; a longer one is cut, with its full length."""
@@ -45,14 +45,14 @@ class Report:
         target: The Target both servers were run at.
         reference: The Reference side: its name, version and startup Measurements.
         candidate: The Candidate side, likewise.
-        results: One ScenarioResult per Scenario, in the order played.
+        results: One GroupResult per Group, in the order played.
         notes: Plain remarks for the reader, e.g. what this Report leaves out.
     """
 
     target: Target
     reference: SideSummary
     candidate: SideSummary
-    results: tuple[ScenarioResult, ...]
+    results: tuple[GroupResult, ...]
     notes: tuple[str, ...]
 
     @classmethod
@@ -68,7 +68,7 @@ class Report:
 
     @property
     def repeat(self) -> int:
-        """How many times each Scenario was played."""
+        """How many times each Group was played."""
         return max((len(result.verdicts) for result in self.results), default=0)
 
 
@@ -104,7 +104,7 @@ def _side(side: SideSummary) -> str:
     return f"{side.name} (its status says version {json.dumps(side.version)})"
 
 
-def _state(result: ScenarioResult) -> str:
+def _state(result: GroupResult) -> str:
     verdicts = result.verdicts
     if any(verdict.outcome is Outcome.ERROR for verdict in verdicts):
         return "could not be run"
@@ -129,15 +129,15 @@ def _summary(report: Report) -> str:
     return f"{count} scenarios: {counts}."
 
 
-def _mechanic(scenario_id: str) -> str:
-    prefix = scenario_id.split("/", 1)[0]
+def _mechanic(group_id: str) -> str:
+    prefix = group_id.split("/", 1)[0]
     return MECHANICS.get(prefix, prefix)
 
 
-def _by_mechanic(results: Iterable[ScenarioResult]) -> dict[str, list[ScenarioResult]]:
-    grouped: dict[str, list[ScenarioResult]] = {}
+def _by_mechanic(results: Iterable[GroupResult]) -> dict[str, list[GroupResult]]:
+    grouped: dict[str, list[GroupResult]] = {}
     for result in results:
-        grouped.setdefault(_mechanic(result.scenario_id), []).append(result)
+        grouped.setdefault(_mechanic(result.group_id), []).append(result)
     return grouped
 
 
@@ -169,7 +169,7 @@ def _observable(report: Report) -> str:
             found = _distinct(result.verdicts, _observable_of)
             if not found:
                 continue
-            block.append(f"    {result.scenario_id}")
+            block.append(f"    {result.group_id}")
             runs = len(result.verdicts)
             for divergence, count in found:
                 seen_in = "" if count == runs else f" (in {count} of {runs} runs)"
@@ -220,10 +220,10 @@ def _unsettled(report: Report) -> str:
                 details[line] = details.get(line, 0) + 1
         for line, count in details.items():
             seen_in = "" if count == runs else f" (in {count} of {runs} runs)"
-            lines.append(f"  {result.scenario_id} {line}{seen_in}")
+            lines.append(f"  {result.group_id} {line}{seen_in}")
         different = sum(1 for verdict in result.verdicts if verdict.observable)
         if 0 < different < runs:
-            lines.append(f"  {result.scenario_id} was different in {different} of {runs} runs")
+            lines.append(f"  {result.group_id} was different in {different} of {runs} runs")
     if not lines:
         return ""
     return _heading("Not judged, or not the same every run") + "\n" + "\n".join(lines)
@@ -250,7 +250,7 @@ def _timings(report: Report) -> str:
     widths = [max(len(row[column]) for row in rows) for column in range(len(rows[0]))]
     lines = [_aligned(row, widths) for row in rows] if names else ["  nothing was measured"]
     unplayed = [
-        result.scenario_id
+        result.group_id
         for result in report.results
         if any(verdict.outcome in _NOT_PLAYED for verdict in result.verdicts)
     ]
