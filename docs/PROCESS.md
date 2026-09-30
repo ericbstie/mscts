@@ -142,8 +142,13 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          Docs that show changed output move in the same commit as the change; the last
          increment only adds explanations. Name only test tools that are in
          pyproject.toml.
-         Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared).
-         ALWAYS include verbatim: "One plain command per Bash call; multi-step work goes in
+         Name the behaviour to change; name a function only after reading it. Owns
+         lists the test fakes and conftests the change reaches. A tier budget states
+         the tier's time on main today.
+         Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared),
+         with a findings file there that the worker appends each verified fact to.
+         ALWAYS include verbatim: "One plain command per Bash call (no `&&`, heredocs,
+         `sed -i` or escaped spaces in `--format`); multi-step work goes in
          a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
          (it runs the check and commits only if green); never `git stash`.""
 End with: the Worker report exactly as specified in docs/PROCESS.md, including a thorough
@@ -246,7 +251,14 @@ new classes of defect:
   limit, container restart) loses a worktree that has no commits; push
   your branch after every green commit. The lead resumes an interrupted
   worker by message. Keep research artifacts in your scratch dir, where
-  the next worker can reuse them.
+  the next worker can reuse them, and a `findings.md` there: append each
+  verified fact (a javap line, a layout, a live observation) the moment
+  you have it. A resumed or compacted worker reads it first and never
+  redoes research.
+- Rebase onto main only before opening the PR (a rebase rewrites every
+  pushed hash), and give commit hashes only in the final report.
+- Run `mise run fix` before each test run. Ruff fires FBT003, D102,
+  ARG002 and E501 on most new code.
 - GitHub goes through the GitHub MCP tools (load them with ToolSearch);
   there is no `gh`.
 - Before committing a change to a `Protocol`, grep main for every
@@ -285,6 +297,21 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-30 | worker AF (#20 entity schemas) | Three restarts, a rate limit and a compaction cost the javap findings, so about a quarter of the session went on repeating research | **adopt**: Worker contract and brief template, a `findings.md` in the scratch dir that gets each verified fact and is read first on resume |
+| 2026-09-30 | worker AF | `scripts/mutate.py` floods the terminal with every mutant's failure; a new file seemed to need `git add` | **adopt**: red-green Known trap, redirect it to a log. The `git add` part is wrong: `mutate.py` copies untracked files too |
+| 2026-09-30 | worker AF | Ruff's FBT003, D102, ARG002 and E501, and pytest's refusal of `parametrize(enumerate(...))`, cost about 8 fix cycles | **adopt**: red-green Known trap and Worker contract, `mise run fix` before each test run |
+| 2026-09-30 | worker AF | The scratch probe broke when main moved (`group_id`), and `Connection.recv` stops on the first undecodable frame | **adopt**: #19 lands the item stacks that caused it; **defer** a committed research probe to after #17 (Control gives it a supported command path) |
+| 2026-09-30 | worker AF | Tests that pin recorded payloads or kill mutants were never red | **adopt**: red-green, these are pin tests (say so in the commit); any other new test file runs red before its module exists |
+| 2026-09-30 | worker AF | Rebasing 19 pushed commits onto a moved main forced a force-push and staled the reported hashes | **adopt**: Worker contract, rebase only before the PR; hashes only in the final report |
+| 2026-09-30 | worker AF | The worktree guard refused heredocs, `sed -i`, `&&` and an escaped space in `--format` | **adopt**: briefs list those shapes beside "one plain command per Bash call" |
+| 2026-09-30 | worker AF | The wiki was wrong in four layouts; javap was right every time | **adopt** (no change): protocol-research already says the jar wins |
+| 2026-09-30 | worker AF | A committed layout printer (`body.py`) would have saved the most time | **adopt**: increment 0 of #19's brief commits it as `scripts/research/layout.py` |
+| 2026-09-30 | worker AI (#16 Bot fidelity) | The brief put the brand in `join()`; only `Replies` keeps vanilla's order | **adopt**: brief template, name the behaviour, and a function only after reading it |
+| 2026-09-30 | worker AI | "The join tests pass unchanged" could not hold: they pin what the Bot sends | **adopt** (no change): the worker grew them; the template's new Owns rule covers it |
+| 2026-09-30 | worker AI | No Unsigned Byte in `schema.py`, so `configuration.py` has a local one | **adopt**: #19's brief moves it into `schema.py` as `UBYTE` (and `animate` uses it) |
+| 2026-09-30 | worker AI | The wiki's Player Loaded section is wrong for 26.3 (the 60 ticks are the server's timeout) | **adopt** (no change): recorded in the research note |
+| 2026-09-30 | worker AI | Edited `tests/net/fakes.py`, a Bot test and a conftest outside Owns | **adopt**: brief template, Owns lists the fakes and conftests the change reaches |
+| 2026-09-30 | worker AI | `scripts/time_tier.py` prints timings but not pass or fail; G5 was already broken on main | **defer**: a tooling chore with the parallel reference tier (G5); the brief template now states the tier's time on main |
 | 2026-09-30 | worker AH (#8 test cases) | The spec's example name (`status_response.description`) disagreed with its own rule 1 (the compared path is `json_response.description`); the largest design cost | **adopt**: tech-lead skill, check a spec's examples against what the code emits today before briefing |
 | 2026-09-30 | worker AH | The brief named hypothesis, which is not a dependency | **adopt**: brief template, name only test tools in pyproject.toml |
 | 2026-09-30 | worker AH | Report output changed in increment 4, so docs samples had to move with it, not wait for the docs increment | **adopt**: brief template, docs that show changed output move with the change |

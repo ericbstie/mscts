@@ -28,9 +28,11 @@ then one commit.
    and confirm it fails for the expected reason: an assertion, or the
    missing name. A test that errors for some other reason is not red yet.
    A *pin* test (one that locks down behaviour that already exists, such
-   as a golden file or an idempotence check) may be green at once. Prove
-   it bites with `scripts/mutate.py` (see Known traps), and say so in the
-   report.
+   as a golden file, an idempotence check, a recorded payload or a test
+   written to kill a surviving mutant) may be green at once. Prove it
+   bites with `scripts/mutate.py` (see Known traps), and say so in the
+   commit message and the report. Any other new test file runs red
+   before its module exists: an import error is not red.
 3. **Green.** Write the minimum code. Do not add code for a later
    increment, and do not add options nobody asked for.
 4. **Refactor** while green, if the code now reads worse than the code
@@ -291,6 +293,13 @@ then one commit.
   `join.py` does; never mutate `sys.path` or assume a package layout.
 - PLR0913 recurring: bundle what is always passed together into one small
   dataclass.
+- `scripts/mutate.py` prints every mutant's pytest failure: redirect it to
+  a log in your scratch dir and read the verdict lines.
+- Ruff on new code: FBT003 (pass a bool by keyword, even in test
+  helpers), D102 (every public method of a public class has a docstring),
+  ARG002 (an unused argument: `del` it), E501 (docstrings too). Run
+  `mise run fix` before each test run. pytest refuses
+  `parametrize(..., enumerate(...))`: build a list first.
 
 ## When stuck
 

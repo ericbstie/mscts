@@ -87,12 +87,16 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AI (opus): #16 Bot fidelity, branch `issue-16-bot-fidelity`.
-- AF (sonnet): #20 entity schemas, branch `issue-20-entity-schemas`.
+- AJ (opus): #18 observation windows and the barrier `Bot.sync()`, branch
+  `issue-18-windows`.
+- AK (sonnet): #19 item stacks, branch `issue-19-item-stacks`. Until it lands, an
+  item in entity metadata or `set_equipment` ends a Bot's session (#20 refuses an
+  item stack rather than misread it).
 
-Order: #7 → #11 → #8 → #12 / #9 → #10 for the output; enablers alongside where
-the Owns lists are disjoint; then a test-Group routine skill, and the tests by
-mechanic.
+Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
+distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
+#10, #14; #29, #21, #22, #24–#28; a text component enabler; the test-Group routine
+skill; the tests by mechanic.
 
 ## Gameplay test catalogue (session 4)
 
@@ -198,6 +202,13 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   ends up seeing them (option 1); #24 the recommended tests plus Holm–Bonferroni
   across a Group's sample names, and one Reference-vs-Reference Self-check that
   must not reject.
+- Merged #79 (#16: the Bot sends brand, client information and `player_loaded`
+  as the vanilla client does; decision: ServerSpec refuses a view distance over
+  12, landing with #17) and #80 (#20: 25 entity packet schemas; entity ids are an
+  `EntityId` wire type so #21 finds them by type; an item stack is refused until
+  #19, which runs next).
+- #18 runs before #17: both need a barrier (a round trip the server answers only
+  after everything caused before it), built once as `Bot.sync()`.
 
 ### 2026-09-30 — session 4: what to test between servers
 
