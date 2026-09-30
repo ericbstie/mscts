@@ -45,6 +45,7 @@ test needs it:
 | `codec/wire.py` | primitive wire types: `Reader`, `Writer` |
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
+| `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
@@ -185,6 +186,11 @@ ENTITY_ID_OPTIONAL: EntityId       # VarInt, id + 1: a damage event's source ids
 # walking a packet's `Schema.fields` for `isinstance(type, EntityId)` (the renumbering,
 # which needs no list of packets). Nothing else in a schema is an EntityId.
 
+# codec/movement.py: each owns its discriminator (the number of steps, the path type); a
+# value names its variant by its key, exactly one of `linear` and `stepped`.
+MOVE_DELTA: WireType[dict[str, object]]     # {on_ground, linear: {x, y, z}} | {on_ground, stepped: [{ticks, x, y, z}]}
+POSITION_PATH: WireType[dict[str, object]]  # {linear: {x, y, z}} | {stepped: [{x, y, z, tick_offset}]}
+
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 
 # codec/schemas/<state>.py: the Target's schemas, keyed by packet name. Each module records
@@ -232,6 +238,9 @@ with `javap` on the 26.3 jars, docs/research/2026-09-26-join.md):
   scale extension is an error. The client reads it as a scale of 0 to 3 with
   the flag ignored, so the same vector has two spellings, and only the
   flagless one is what vanilla writes.
+- **Position path**: an unknown type is an error. The client's `ByIdMap` reads
+  an id out of range as type 0 (linear), so a Candidate's packet with type 7
+  would read as a linear path there.
 
 Where the client's reading is the protocol's own definition, the Codec reads
 the same way: a VarInt's unused 5th-byte bits (VarLong: 10th) are dropped
