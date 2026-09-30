@@ -46,6 +46,7 @@ test needs it:
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
 | `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
+| `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
