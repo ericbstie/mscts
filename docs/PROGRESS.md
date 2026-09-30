@@ -86,6 +86,17 @@ Environment notes:
 
 Nothing. Every worktree is integrated or removed.
 
+## Gameplay test catalogue (session 4)
+
+58 issues from the 2026-09-30 survey (`docs/research/2026-09-30-gameplay-survey.md`):
+15 `enabler` issues (#15–#29: schema package, Bot fidelity, Control, observation
+windows, item stacks, entity schemas and renumbering, chunks and light, tick-exact,
+statistical, Bot movement / blocks / entities / inventory, block event schemas) and 43
+`test` issues (#30–#72). Build order and status: tracking issue #73. Ready now: #15,
+#16, #19. Maintainer decisions needed: #18 (what a Group compares), #22 (how chunks
+and light are compared), #24 (statistical test and runs). Most issues also wait on #7
+and #8.
+
 Session 3 direction (maintainer, 2026-09-26): one working end-to-end
 command is the only goal. Next 4 (with the minimum of 3a it needs) is the
 only feature work; Next 0 is shrunk to an audit of the code the Report
@@ -160,6 +171,27 @@ briefs at 3–6 increments and about 1500 lines at most.
     stash).
 
 ## Log
+
+### 2026-09-30 — session 4: what to test between servers
+
+Maintainer goal: explore what mscts should compare (lighting, spawning, combat, mob
+simulation, chunk loading, …), make adding a test a standard process, and file the
+tests as issues that independent agents can take. No worker was spawned.
+
+- Environment: `mise run check` (1549 tests), the reference tier (14 tests, 112 s)
+  and the candidate tier (8 tests) all pass. The Pumpkin nightly moved: sha256
+  `b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e` (126,447,960
+  bytes), installed with `--from`; it matches no Registry entry, so pinning it is
+  the maintainer's call.
+- Live probe, vanilla vs Pumpkin, as an operator Bot: both have `/tick`; the join
+  order, the first chunk batch (9 vs 1), the `commands` tree (265 vs 19,578 bytes
+  for a non-operator), chunk light, and the packets of `/damage`, `/give`,
+  `/effect`, `/gamemode`, `/summon` and weather under a frozen world all differ.
+- javap: 26.3 light masks are a byte-array BitSet (`ByteBufCodecs$15`), not the
+  wiki's longs. Game rules are snake_case (`advance_time`, `respawn_radius`, …).
+- Framework: the `test` issue template, "Proposing a test" in
+  `docs/contributing.md`, `test` / `enabler` labels (PROCESS changelog).
+- Filed #15–#72 and the tracking issue #73.
 
 ### 2026-09-26 — session 3: the first end-to-end Report
 
