@@ -13,14 +13,16 @@ import pytest
 from mscts.codec.packets import Codec, Direction, State
 from mscts.codec.schema import EntityId, PrefixedArray, PrefixedOptional, Schema, WireType
 from mscts.codec.schemas import play
+from mscts.codec.wire import Writer
 
 CODEC = Codec.load("26.3")
 CLIENTBOUND = Direction.CLIENTBOUND
 
 
-def round_trip(name: str, fields: Mapping[str, object], data: bytes) -> None:
-    """`data` (id ‖ payload) decodes to `fields` and `fields` encode to `data`."""
-    assert CODEC.packet_id(State.PLAY, CLIENTBOUND, name) == data[0]
+def round_trip(name: str, fields: Mapping[str, object], payload: str) -> None:
+    """The packet `name`'s payload (hex, after the packet id) decodes to `fields` and back."""
+    packet_id = Writer().var_int(CODEC.packet_id(State.PLAY, CLIENTBOUND, name)).to_bytes()
+    data = packet_id + bytes.fromhex(payload)
     assert CODEC.encode(State.PLAY, CLIENTBOUND, name, fields) == data
     packet = CODEC.decode(State.PLAY, CLIENTBOUND, data)
     assert (packet.name, packet.fields) == (name, fields)
@@ -149,7 +151,7 @@ ADD_ENTITY = [
     ("payload", "fields"), [case[1:] for case in ADD_ENTITY], ids=[case[0] for case in ADD_ENTITY]
 )
 def test_add_entity_decodes_and_re_encodes(payload: str, fields: dict[str, object]) -> None:
-    round_trip("minecraft:add_entity", fields, b"\x01" + bytes.fromhex(payload))
+    round_trip("minecraft:add_entity", fields, payload)
 
 
 def test_add_entity_has_its_entity_id_as_an_entity_id() -> None:
@@ -158,12 +160,10 @@ def test_add_entity_has_its_entity_id_as_an_entity_id() -> None:
 
 def test_remove_entities_decodes_and_re_encodes() -> None:
     # Recorded from vanilla: `kill` of the entity 17.
-    round_trip("minecraft:remove_entities", {"entity_ids": [17]}, bytes.fromhex("4e0111"))
+    round_trip("minecraft:remove_entities", {"entity_ids": [17]}, "01 11")
     # Built by hand: several ids (300 is a two-byte VarInt), and none.
-    round_trip(
-        "minecraft:remove_entities", {"entity_ids": [4, 300, 0]}, bytes.fromhex("4e0304ac0200")
-    )
-    round_trip("minecraft:remove_entities", {"entity_ids": []}, bytes.fromhex("4e00"))
+    round_trip("minecraft:remove_entities", {"entity_ids": [4, 300, 0]}, "03 04 ac02 00")
+    round_trip("minecraft:remove_entities", {"entity_ids": []}, "00")
 
 
 def test_remove_entities_has_its_entity_ids_as_entity_ids() -> None:
@@ -171,5 +171,196 @@ def test_remove_entities_has_its_entity_ids_as_entity_ids() -> None:
 
 
 def test_bundle_delimiter_has_no_fields() -> None:
-    round_trip("minecraft:bundle_delimiter", {}, b"\x00")
+    round_trip("minecraft:bundle_delimiter", {}, "")
     assert entity_id_paths(play_schema("minecraft:bundle_delimiter")) == []
+
+
+# Movement.
+
+ZERO_DELTA = {"x": 0, "y": 0, "z": 0}
+
+
+def test_move_entity_pos_decodes_and_re_encodes() -> None:
+    # Both recorded from vanilla 26.3: a linear delta, then a stepped one.
+    round_trip(
+        "minecraft:move_entity_pos",
+        {"entity_id": 2, "movement": {"on_ground": False, "linear": ZERO_DELTA}},
+        "02 00 0000 0000 0000",
+    )
+    round_trip(
+        "minecraft:move_entity_pos",
+        {
+            "entity_id": 2,
+            "movement": {"on_ground": True, "stepped": [{"ticks": 3, **ZERO_DELTA}]},
+        },
+        "02 03 03 0000 0000 0000",
+    )
+
+
+def test_move_entity_pos_rot_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3. The yaw comes before the pitch on the wire.
+    round_trip(
+        "minecraft:move_entity_pos_rot",
+        {
+            "entity_id": 3,
+            "movement": {"on_ground": False, "linear": {"x": 0, "y": -3891, "z": 0}},
+            "yaw": 122,
+            "pitch": -48,
+        },
+        "03 00 0000 f0cd 0000 7a d0",
+    )
+    round_trip(
+        "minecraft:move_entity_pos_rot",
+        {
+            "entity_id": 2,
+            "movement": {
+                "on_ground": True,
+                "stepped": [{"ticks": 3, "x": -914, "y": 0, "z": -479}],
+            },
+            "yaw": 98,
+            "pitch": 0,
+        },
+        "02 03 03 fc6e 0000 fe21 62 00",
+    )
+
+
+def test_move_entity_rot_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: on ground, yaw 96, pitch -29.
+    round_trip(
+        "minecraft:move_entity_rot",
+        {"entity_id": 2, "on_ground": True, "yaw": 96, "pitch": -29},
+        "02 01 60 e3",
+    )
+    round_trip(
+        "minecraft:move_entity_rot",
+        {"entity_id": 2, "on_ground": False, "yaw": 96, "pitch": 0},
+        "02 00 60 00",
+    )
+
+
+def test_entity_position_sync_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: a stepped path, and a linear one.
+    round_trip(
+        "minecraft:entity_position_sync",
+        {
+            "entity_id": 2,
+            "position": {
+                "stepped": [{"x": -5.5, "y": -60.0, "z": -5.5, "tick_offset": 3}],
+            },
+            "yaw": 0.0,
+            "pitch": 0.0,
+            "on_ground": True,
+        },
+        "02 01 01 c016000000000000 c04e000000000000 c016000000000000 03 00000000 00000000 01",
+    )
+    round_trip(
+        "minecraft:entity_position_sync",
+        {
+            "entity_id": 18,
+            "position": {"linear": {"x": -7.742291034212191, "y": -60.0, "z": -8.194195789661206}},
+            "yaw": 286.6270751953125,
+            "pitch": 0.0,
+            "on_ground": True,
+        },
+        "12 00 c01ef81b241038b5 c04e000000000000 c020636da16b3b47 438f5044 00000000 01",
+    )
+
+
+def test_teleport_entity_decodes_and_re_encodes() -> None:
+    # Built by hand from PositionMoveRotation: the entity 300, at (1.5, 64, -2.5) moving at
+    # (0, -0.5, 0.25), yaw 90, pitch -45, with two relative flags, on the ground.
+    round_trip(
+        "minecraft:teleport_entity",
+        {
+            "entity_id": 300,
+            "x": 1.5,
+            "y": 64.0,
+            "z": -2.5,
+            "velocity_x": 0.0,
+            "velocity_y": -0.5,
+            "velocity_z": 0.25,
+            "yaw": 90.0,
+            "pitch": -45.0,
+            "flags": 3,
+            "on_ground": True,
+        },
+        "ac02 3ff8000000000000 4050000000000000 c004000000000000 "
+        "0000000000000000 bfe0000000000000 3fd0000000000000 42b40000 c2340000 00000003 01",
+    )
+
+
+def test_set_entity_motion_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: a pig's velocity, then a stopped arrow's.
+    round_trip(
+        "minecraft:set_entity_motion",
+        {"entity_id": 2, "velocity": {"scale": 1, "x": 16383, "y": 15099, "z": 16383}},
+        "02 f9ff7ffeebed",
+    )
+    round_trip(
+        "minecraft:set_entity_motion",
+        {"entity_id": 3, "velocity": {"scale": 0, "x": 0, "y": 0, "z": 0}},
+        "03 00",
+    )
+
+
+def test_rotate_head_decodes_and_re_encodes() -> None:
+    round_trip("minecraft:rotate_head", {"entity_id": 2, "head_yaw": 10}, "02 0a")  # recorded
+    round_trip("minecraft:rotate_head", {"entity_id": 2, "head_yaw": -10}, "02 f6")
+
+
+def test_move_minecart_along_track_decodes_and_re_encodes() -> None:
+    # Built by hand from MinecartStep: the entity 7 and two steps, each a position, a velocity,
+    # a yaw and a pitch (one byte each) and a weight.
+    round_trip(
+        "minecraft:move_minecart_along_track",
+        {
+            "entity_id": 7,
+            "steps": [
+                {
+                    "x": 1.0,
+                    "y": 2.0,
+                    "z": 3.0,
+                    "velocity_x": 0.5,
+                    "velocity_y": 0.0,
+                    "velocity_z": -0.5,
+                    "yaw": 16,
+                    "pitch": -16,
+                    "weight": 1.0,
+                },
+                {
+                    "x": 1.25,
+                    "y": 2.0,
+                    "z": 3.5,
+                    "velocity_x": 0.0,
+                    "velocity_y": 0.0,
+                    "velocity_z": 0.0,
+                    "yaw": 0,
+                    "pitch": 0,
+                    "weight": 0.5,
+                },
+            ],
+        },
+        "07 02 "
+        "3ff0000000000000 4000000000000000 4008000000000000 "
+        "3fe0000000000000 0000000000000000 bfe0000000000000 10 f0 3f800000 "
+        "3ff4000000000000 4000000000000000 400c000000000000 "
+        "0000000000000000 0000000000000000 0000000000000000 00 00 3f000000",
+    )
+    round_trip("minecraft:move_minecart_along_track", {"entity_id": 7, "steps": []}, "07 00")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "move_entity_pos",
+        "move_entity_pos_rot",
+        "move_entity_rot",
+        "entity_position_sync",
+        "teleport_entity",
+        "set_entity_motion",
+        "rotate_head",
+        "move_minecart_along_track",
+    ],
+)
+def test_movement_packets_have_their_entity_id_as_an_entity_id(name: str) -> None:
+    assert entity_id_paths(play_schema(f"minecraft:{name}")) == ["entity_id"]
