@@ -272,6 +272,11 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-09-30 | worker AE (#15 play package) | ty rejects an annotated assignment from `getattr(…, default)` (unsound-assignment); one refused commit | **adopt**: red-green Known trap |
+| 2026-09-30 | worker AE | `Schema` compares by identity, so an equal-looking expected mapping never matches | **adopt**: red-green Known trap |
+| 2026-09-30 | worker AE | Mutations of import-time code break collection, so `mutate.py` says INVALID, not KILLED | **adopt**: red-green Known trap (select only the new test file; read INVALID's detail) |
+| 2026-09-30 | worker AE | A play submodule with neither mapping (or a misspelt one) is silently ignored | **adopt**: #20's brief makes it a `SchemaError` at import |
+| 2026-09-30 | worker AE | The brief's suggested test seam (merge an iterable of `(name, module)`) needed no deviation | **adopt** (no change): keep naming the test seam in briefs |
 | 2026-09-26 | worker AC (status classification, Report audit) | `javap.py` has only the client jar; DFU and Gson had to be extracted from the bundle by hand | **defer**: already issue #6 (helper) |
 | 2026-09-26 | worker AC | Reclassifying to wire-only turned the Report's wire-only line into two truncated 100+ char JSON strings; fixed by comparing status JSON at JSON paths | **adopt**: a brief that changes a classification also checks the live Report text |
 | 2026-09-26 | worker AC | Tests used unknown status keys (`{"a":1}`) as stand-ins, which the new canonical form drops | **reject** (no change): the tests now use real field names |

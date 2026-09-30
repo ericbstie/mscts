@@ -222,6 +222,15 @@ then one commit.
   `isinstance(x, dict)` is `Top[dict[Unknown, Unknown]]`, which cannot be
   indexed. Recipe: annotate as `object`, narrow with `isinstance`, iterate
   `.items()`, and rebuild a typed `dict[str, object]`.
+- `getattr(obj, name, default)` under ty: an annotated assignment
+  (`x: Mapping[str, Schema] = getattr(m, "X", {})`) is an
+  unsound-assignment. Leave it unannotated, or narrow with `isinstance`.
+- `Schema` compares by identity: assert on the instances you built, not
+  on an equal-looking new one.
+- Mutating import-time code (a package `__init__`, a module-level table):
+  a mutation that stops the package importing fails at collection, so
+  `mutate.py` says INVALID, not KILLED. Select only the new test file, and
+  read INVALID's detail before counting it as caught.
 - `respect-type-ignore-comments = false` means `# type: ignore` does
   nothing. A frozen-dataclass test must use `setattr(obj, name, v)` with a
   non-literal name.

@@ -84,7 +84,15 @@ Environment notes:
 
 ## In flight
 
-Nothing. Every worktree is integrated or removed.
+Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
+2 workers at a time):
+
+- AD (sonnet): #7 rename Scenario → Group, branch `issue-7-group`.
+- AF (sonnet): #20 entity schemas, branch `issue-20-entity-schemas`.
+
+Order: #7 → #11 → #8 → #12 / #9 → #10 for the output; enablers alongside where
+the Owns lists are disjoint; then a test-Group routine skill, and the tests by
+mechanic.
 
 ## Gameplay test catalogue (session 4)
 
@@ -92,10 +100,9 @@ Nothing. Every worktree is integrated or removed.
 15 `enabler` issues (#15–#29: schema package, Bot fidelity, Control, observation
 windows, item stacks, entity schemas and renumbering, chunks and light, tick-exact,
 statistical, Bot movement / blocks / entities / inventory, block event schemas) and 43
-`test` issues (#30–#72). Build order and status: tracking issue #73. Ready now: #15,
-#16, #19. Maintainer decisions needed: #18 (what a Group compares), #22 (how chunks
-and light are compared), #24 (statistical test and runs). Most issues also wait on #7
-and #8.
+`test` issues (#30–#72). Build order and status: tracking issue #73. The decisions
+on #18, #22 and #24 were taken in session 5 (see its log). Most issues also wait on
+#7 and #8.
 
 Session 3 direction (maintainer, 2026-09-26): one working end-to-end
 command is the only goal. Next 4 (with the minimum of 3a it needs) is the
@@ -171,6 +178,21 @@ briefs at 3–6 increments and about 1500 lines at most.
     stash).
 
 ## Log
+
+### 2026-09-30 — session 5: building the test catalogue
+
+Maintainer goal: implement every test issue from session 4, at most 2 parallel
+workers, about 1.5 opus sessions per issue on average, one consistent architecture
+(no hack on hack; a refactor only when failures repeat).
+
+- Merged #74 (the catalogue and the test proposal framework) and #75 (#15: play
+  schemas are a package, one module per mechanic).
+- Lead decisions under the maintainer's delegation, recorded on each issue and
+  reversible by the maintainer: #11 the kinds are **gameplay** and **network
+  traffic**; #18 observation windows (option 1); #22 compare chunks as the client
+  ends up seeing them (option 1); #24 the recommended tests plus Holm–Bonferroni
+  across a Group's sample names, and one Reference-vs-Reference Self-check that
+  must not reject.
 
 ### 2026-09-30 — session 4: what to test between servers
 
