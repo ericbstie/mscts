@@ -58,112 +58,62 @@ a player would notice was found.
     </section>
 
     <section class="ms-section">
-      <h2>A Run plays the same Scenario against both servers</h2>
+      <h2>How it works</h2>
       <p>
-        Vanilla is the Reference. Your server is the Candidate. mscts never
-        reads either server's code. It only sees what goes over the wire, so
-        it works the same for a server written in Rust, Java or anything else.
+        mscts starts two servers on your machine: vanilla Minecraft and the
+        custom server you want to test. Both run offline, each on its own
+        local address, and neither can reach the internet. For each kind of
+        server, a small module called an Adapter writes that server's own
+        configuration, so both start with the same settings.
       </p>
-      <div class="ms-steps">
-        <div class="ms-card">
-          <h3>Install</h3>
-          <p>
-            <code>mscts adapter install</code> downloads a server build that the
-            Registry pins by checksum, or copies one you pass with
-            <code>--from</code>.
-          </p>
-        </div>
-        <div class="ms-card">
-          <h3>Launch</h3>
-          <p>
-            An Adapter writes each server's native config from one ServerSpec.
-            Both start offline, each on its own loopback address.
-          </p>
-        </div>
-        <div class="ms-card">
-          <h3>Play</h3>
-          <p>
-            Bots speak the protocol the way the vanilla client does and record
-            every packet, with its arrival time, in a Transcript.
-          </p>
-        </div>
-        <div class="ms-card">
-          <h3>Compare</h3>
-          <p>
-            mscts diffs the two Transcripts field by field. Any difference from
-            vanilla is a Divergence, reported with the packet, the field path
-            and both values.
-          </p>
-        </div>
-      </div>
+      <p>
+        mscts then connects to each server the way the Minecraft client does,
+        performs the same actions on both, and records every message each
+        server sends back. It never reads either server's code, so it works
+        the same for a server written in Rust, Java or anything else. Finally
+        it compares the two recordings field by field and lists every field
+        where the custom server differs from vanilla.
+      </p>
     </section>
 
     <section class="ms-section">
-      <h2>What a player can see, and what only the wire can</h2>
+      <h2>Gameplay and network traffic test cases</h2>
       <p>
-        Two servers can send different bytes that the vanilla client decodes to
-        the same value. mscts checks each difference against how the client
-        reads it and files it in one of two groups. Only observable differences
-        count toward compliance.
+        Two servers can send the same information in different formats, and
+        the vanilla client can end up with exactly the same result from
+        both. mscts only treats two formats as equal where we have read
+        vanilla Minecraft's own decoding code and written down a rule for
+        that exact case. Anything without such a rule counts as a gameplay
+        difference.
       </p>
       <div class="ms-split">
         <div class="ms-card">
-          <span class="ms-tag observable">observable</span>
+          <span class="ms-tag observable">gameplay</span>
           <p>
-            The vanilla client reads the Candidate's value differently from
-            vanilla's, so a player could notice it. A missing packet, a
-            different player limit in the server list, or a server that closes
-            the connection all land here.
+            The vanilla client ends up with something different, so a player
+            could notice it. A missing message, a different player limit in
+            the server list, or a server that closes the connection all land
+            here.
           </p>
         </div>
         <div class="ms-card">
-          <span class="ms-tag wire">wire-only</span>
+          <span class="ms-tag wire">network traffic</span>
           <p>
-            The bytes differ but decode to the same thing. Vanilla 26.3 sends
-            its server description as the string <code>"mscts"</code>, and
-            Pumpkin sends <code>{"text": "mscts"}</code>. The client shows both
-            as the same text.
+            The servers send the same thing in different formats. Vanilla
+            sends its server description as the text <code>"mscts"</code>, and
+            Pumpkin sends <code>{"text": "mscts"}</code>. The vanilla client
+            reads both as the same text.
           </p>
         </div>
       </div>
-    </section>
-
-    <section class="ms-section">
-      <h2>Rules mscts follows</h2>
-      <ul class="ms-list">
-        <li>
-          <b>Vanilla is always right.</b> There is no list of accepted
-          deviations. If the Candidate differs, the Report says so.
-        </li>
-        <li>
-          <b>Every Scenario passes a Self-check.</b> It runs vanilla against
-          vanilla and must match in 20 runs out of 20.
-        </li>
-        <li>
-          <b>One Adapter per server.</b> Supporting a new server means one small
-          module that turns a ServerSpec into a launch command.
-        </li>
-        <li>
-          <b>Installs are explicit.</b> Nothing downloads during a Run. Every
-          download names its URL and checks a pinned hash.
-        </li>
-        <li>
-          <b>Timings are repeated.</b> Each measurement reports its median
-          and p95 over repeated runs, next to startup time.
-        </li>
-        <li>
-          <b>Servers stay local.</b> Each Instance runs in offline mode, bound
-          to 127.0.0.0/8, with outbound network access turned off.
-        </li>
-      </ul>
     </section>
 
     <section class="ms-section">
       <h2>What works today</h2>
       <p>
-        Today mscts plays the server list Scenarios against vanilla and
-        Pumpkin and prints a text Report. Bots can join the game; gameplay
-        Scenarios are next.
+        Today mscts plays the server list tests against vanilla and Pumpkin
+        and prints a text Report. Bots can join the game; gameplay tests are
+        next.
       </p>
       <div class="ms-actions ms-cta">
         <a class="ms-button" :href="withBase('/status')">See the project status</a>

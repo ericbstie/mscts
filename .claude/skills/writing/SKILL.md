@@ -34,11 +34,44 @@ record the example with "why: not given".
   them.
 - **Use normal names.** Don't coin a new name where an ordinary one
   exists.
+- **Say "network traffic", never "wire".** "Wire" is vague jargon.
+- **Write for someone new.** No term or claim the reader cannot
+  understand without context they don't have (a Self-check, a Scenario,
+  "vanilla against vanilla").
+- **Don't announce what the user will see anyway.** If running the
+  command shows it, the page need not say it is shown.
+- **Only what is useful to the user.** Internal rules and project
+  promises (explicit installs) are not selling points.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Home page, "Rules mscts follows"
+
+- Before: a section of six rules ("Vanilla is always right", "Every
+  Scenario passes a Self-check", "Timings are repeated", "Installs are
+  explicit", "One Adapter per server", "Servers stay local").
+- After: removed. The Adapter and the servers staying local are told
+  in passing in "How it works".
+- Why: "Vanilla is always right" makes no sense for a tool that tests
+  compliance. The Self-check point assumes the reader knows what a
+  Self-check, a Scenario and "vanilla against vanilla" are, and makes a
+  claim without that context. "Rules it follows" is not useful to the
+  user. Timings are visible when you run the command, so saying so is
+  useless. Explicit installs were an instruction to the agent, not a
+  selling feature.
+
+### Home page, "What a player can see, and what only the wire can"
+
+- Before: that title; "files it in one of two groups", "observable",
+  "wire-only", "Only observable differences count toward compliance."
+- After: "Gameplay and network traffic test cases", with a plain account
+  of how mscts decides two formats mean the same.
+- Why: it assumes the reader knows what "wire" is; say network traffic.
+  "Checks each difference against how the client reads it" is too
+  abstract: it doesn't say how. (Also, no compliance score exists yet.)
 
 ### Command output header
 
