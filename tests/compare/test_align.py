@@ -4,8 +4,8 @@ import itertools
 from collections.abc import Sequence
 
 from mscts.codec.packets import Packet
-from mscts.compare import ABSENT, Divergence, _align, compare
-from tests.compare.build import packet, transcript
+from mscts.compare import _align, compare
+from tests.compare.build import divergence, packet, transcript
 
 
 def _named(*names: str) -> list[Packet]:
@@ -45,15 +45,8 @@ def test_a_field_divergence_indexes_the_reference_stream() -> None:
         transcript(*(("alice", p) for p in candidate)),
         [],
     )
-    assert verdict.divergences[-1] == Divergence(
-        bot="alice",
-        index=3,
-        kind="field",
-        packet="test:b",
-        path=None,
-        reference="01",
-        candidate="02",
-        test_case="test:b",
+    assert verdict.divergences[-1] == divergence(
+        "field", index=3, packet="test:b", reference="01", candidate="02", test_case="test:b"
     )
 
 
@@ -148,14 +141,5 @@ def test_a_long_stream_with_one_difference_aligns_around_it() -> None:
         [],
     )
     assert verdict.divergences == (
-        Divergence(
-            bot="alice",
-            index=1500,
-            kind="missing",
-            packet="test:x",
-            path=None,
-            reference="",
-            candidate=ABSENT,
-            test_case="test:x",
-        ),
+        divergence("missing", index=1500, packet="test:x", reference="", test_case="test:x"),
     )

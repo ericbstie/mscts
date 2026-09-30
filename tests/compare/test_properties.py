@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 
 from mscts.codec.packets import Direction, Packet
@@ -221,16 +222,12 @@ def _mirror(
         assert len(ref_matched) == len(cand_matched)
         to_candidate = dict(zip(ref_matched, cand_matched, strict=True))
         mirrored.extend(
-            Divergence(
-                bot=d.bot,
+            replace(
+                d,
                 index=to_candidate[d.index] if d.kind == "field" else d.index,
                 kind=_MIRRORED_KIND[d.kind],
-                packet=d.packet,
-                path=d.path,
                 reference=d.candidate,
                 candidate=d.reference,
-                test_case=d.test_case,
-                observability=d.observability,
             )
             for d in own
         )

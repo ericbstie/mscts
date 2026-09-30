@@ -9,8 +9,8 @@ Status packets are built through the Target's real Codec.
 import pytest
 
 from mscts.codec.packets import Codec, Packet, State
-from mscts.compare import ABSENT, Divergence, Mask, compare
-from tests.compare.build import CLIENTBOUND, packet, transcript
+from mscts.compare import ABSENT, Mask, compare
+from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
 
@@ -377,10 +377,8 @@ def test_canonicalization_is_keyed_by_state_as_well_as_name() -> None:
         [],
     )
     assert verdict.divergences == (
-        Divergence(
-            bot="alice",
-            index=0,
-            kind="field",
+        divergence(
+            "field",
             packet="minecraft:status_response",
             path="json_response",
             reference='{"a":1}',

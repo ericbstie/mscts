@@ -17,7 +17,7 @@ from mscts.compare import (
     Verdict,
     compare,
 )
-from tests.compare.build import CLIENTBOUND, packet, transcript
+from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
 NETWORK_TRAFFIC, GAMEPLAY = Observability.NETWORK_TRAFFIC, Observability.GAMEPLAY
@@ -37,10 +37,8 @@ def _verdict(reference: str, candidate: str, *masks: Mask) -> Verdict:
 
 
 def _network_traffic(reference: str, candidate: str) -> Divergence:
-    return Divergence(
-        bot="alice",
-        index=0,
-        kind="field",
+    return divergence(
+        "field",
         packet="minecraft:status_response",
         path="json_response",
         reference=reference,
@@ -56,16 +54,7 @@ def test_observability_values_are_the_context_terms() -> None:
 
 def test_a_divergence_is_gameplay_unless_classified_otherwise() -> None:
     # So a `failed` Divergence (made by run.judge) is gameplay.
-    failed = Divergence(
-        bot="",
-        index=0,
-        kind="failed",
-        packet="",
-        path=None,
-        reference=ABSENT,
-        candidate="x",
-        test_case="",
-    )
+    failed = divergence("failed", bot="", candidate="x")
     assert failed.observability is GAMEPLAY
 
 
@@ -158,10 +147,8 @@ def test_identical_bytes_match_exactly() -> None:
 def test_a_canonical_difference_is_gameplay_and_not_also_network_traffic() -> None:
     verdict = _verdict('{"favicon":"a","players":2}', '{"players":3,"favicon":"a"}')
     assert verdict.divergences == (
-        Divergence(
-            bot="alice",
-            index=0,
-            kind="field",
+        divergence(
+            "field",
             packet="minecraft:status_response",
             path="json_response.players",
             reference=2,
