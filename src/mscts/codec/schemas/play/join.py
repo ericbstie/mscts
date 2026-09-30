@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from mscts.codec.schema import (
     BOOL,
     DOUBLE,
+    ENTITY_ID_INT,
     FLOAT,
     IDENTIFIER,
     INT,
@@ -49,7 +50,7 @@ CLIENTBOUND: Mapping[str, Schema] = {
     "minecraft:disconnect": Schema(reason=NBT),  # a text component, as NBT
     "minecraft:keep_alive": _KEEP_ALIVE,
     "minecraft:login": Schema(  # Login (play)
-        entity_id=INT,
+        entity_id=ENTITY_ID_INT,
         is_hardcore=BOOL,
         dimension_names=PrefixedArray(IDENTIFIER),
         max_players=VAR_INT,

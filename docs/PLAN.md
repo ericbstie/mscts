@@ -153,6 +153,8 @@ class Schema:                      # WireType[dict[str, object]]: ordered, named
     # Field names are the snake_case of the wiki field names. write() needs exactly the
     # declared names (WireError lists missing / unexpected ones). Errors are prefixed with
     # the field name, so a nested failure reads "entries: 3: name: ...".
+    @property
+    def fields(self) -> dict[str, WireType[object]]: ...          # name → type, in wire order (a copy)
 
 IDENTIFIER: WireType[str]          # String (32767), the Identifier's wire form (not validated)
 
@@ -167,6 +169,17 @@ class PrefixedOptional[T]:         # WireType[T | None]: Boolean (strict), then 
 NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
                                    # (tag types, lengths, 512 deep); not decoded into values yet
 POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long
+
+@frozen
+class EntityId:                    # WireType[int | None]: an entity id, told apart by its type
+    wire: WireType[int]            # VAR_INT or INT: how the id is carried
+    optional: bool = False         # the id + 1 on the wire, 0 = no entity (reads as None)
+ENTITY_ID: EntityId                # VarInt: spawn, movement, metadata, passengers, …
+ENTITY_ID_INT: EntityId            # Int: login, entity_event, set_entity_link
+ENTITY_ID_OPTIONAL: EntityId       # VarInt, id + 1: a damage event's source ids
+# Every field that holds an entity id is one of these, so a Comparison finds them all by
+# walking a packet's `Schema.fields` for `isinstance(type, EntityId)` (the renumbering,
+# which needs no list of packets). Nothing else in a schema is an EntityId.
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 
