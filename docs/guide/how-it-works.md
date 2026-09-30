@@ -12,18 +12,18 @@ The **Reference** is the vanilla server for the Target, which is Minecraft
 The **Candidate** is the server you want to measure, such as Pumpkin. A Run
 always has one Reference and one Candidate.
 
-mscts has no expected values of its own. A Scenario never asserts that a
+mscts has no expected values of its own. A Group never asserts that a
 packet holds some value. It only asserts that the Candidate sends what
 vanilla sent.
 
 ## A Run, step by step
 
 ```
-Scenario ──► Bot(s) ──► vanilla  ──► Transcript R ──┐
-                                                    ├──► Comparison ──► Verdict
-Scenario ──► Bot(s) ──► Candidate ──► Transcript C ──┘
-                             │
-                             └── span Marks ──► Measurements ──► Report
+Group ──► Bot(s) ──► vanilla  ──► Transcript R ──┐
+                                                 ├──► Comparison ──► Verdict
+Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
+                          │
+                          └── span Marks ──► Measurements ──► Report
 ```
 
 1. **Launch.** Each server has an **Adapter**, a small module that turns a
@@ -31,19 +31,19 @@ Scenario ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    and a launch command. mscts starts both servers at once, each on its own
    address in `127.0.0.0/8`, and waits until a status ping answers with
    protocol 777 from a socket the server's own process holds.
-2. **Play.** A **Scenario** is a short async script with a name like
+2. **Play.** A **Group** is a short async script with a name like
    `status/ping`. It opens one or more **Bots**. A Bot is a protocol client
    that answers what the vanilla client answers automatically, such as
    keep-alives and teleport confirmations.
 3. **Record.** Every packet a Bot sends or receives goes into a
-   **Transcript** with a timestamp. A Scenario can also record named
+   **Transcript** with a timestamp. A Group can also record named
    **Marks**, such as the start and end of a ping.
 4. **Compare.** mscts diffs the two Transcripts packet by packet and field by
    field. The result is a **Verdict**.
-5. **Repeat.** The Run plays every Scenario N times (five by default) against
+5. **Repeat.** The Run plays every Group N times (five by default) against
    the same pair of servers, then stops both.
-6. **Report.** mscts groups the differences by mechanic and prints them,
-   followed by timings.
+6. **Report.** mscts prints the differences under their mechanic, followed
+   by timings.
 
 ## Verdicts
 
@@ -51,8 +51,8 @@ Scenario ──► Bot(s) ──► Candidate ──► Transcript C ──┘
 | --- | --- |
 | `match` | The Candidate sent what vanilla sent. |
 | `mismatch` | At least one difference, called a **Divergence**. |
-| `blocked` | A Scenario this one requires did not match, so mscts did not play it. |
-| `error` | mscts itself failed, or vanilla could not run the Scenario. |
+| `blocked` | A Group this one requires did not match, so mscts did not play it. |
+| `error` | mscts itself failed, or vanilla could not run the Group. |
 
 When the Candidate breaks the protocol, sends a frame that does not decode,
 closes the connection or stops answering, the Verdict is `mismatch`, led by
@@ -91,13 +91,13 @@ statistically instead, by comparing distributions over many runs.
 
 ## Self-checks
 
-Before a Scenario counts, mscts runs it with vanilla on both sides. This
-Self-check must `match` in 20 runs out of 20. A failure means the Scenario
+Before a Group counts, mscts runs it with vanilla on both sides. This
+Self-check must `match` in 20 runs out of 20. A failure means the Group
 is flaky or is missing a Mask. It never means vanilla is wrong.
 
 ## Timings
 
-A Scenario marks spans in its script. `status/ping` marks the time from
+A Group marks spans in its script. `status/ping` marks the time from
 sending a ping to receiving the pong, and mscts records that as
 `status.rtt` in milliseconds. mscts also records `instance.startup`, the
 time from launch until the server is ready. The Report shows the median and

@@ -1,24 +1,24 @@
-# Writing a Scenario
+# Writing a Group
 
-A Scenario is an async Python function that drives one or more Bots against
+A Group is an async Python function that drives one or more Bots against
 a server. mscts runs it once against vanilla and once against the Candidate,
 then compares what each Bot recorded.
 
-A Scenario never states what the server should send. Vanilla's answer is the
+A Group never states what the server should send. Vanilla's answer is the
 expected value, so the script only has to do what a player's client would do.
 
-## The shape of a Scenario
+## The shape of a Group
 
-This is `status/ping`, one of the two Scenarios mscts ships:
+This is `status/ping`, one of the two Groups mscts ships:
 
 ```python
-from mscts.scenario import ScenarioContext, scenario
+from mscts.group import GroupContext, group
 
 PING_PAYLOAD = 20_260_926
 
 
-@scenario("status/ping")
-async def ping(context: ScenarioContext) -> None:
+@group("status/ping")
+async def ping(context: GroupContext) -> None:
     """Ask for the status, then ping; the `status.rtt` span covers the ping and its pong."""
     bot = await context.bot("status")
     await bot.status()
@@ -26,13 +26,13 @@ async def ping(context: ScenarioContext) -> None:
         await bot.ping(PING_PAYLOAD)
 ```
 
-`@scenario` registers the function under an id. The part before the slash is
-the mechanic, and the Report groups results by it. Put the module in
-`src/mscts/scenarios/` and import it from `src/mscts/scenarios/__init__.py`.
+`@group` registers the function under an id. The part before the slash is
+the mechanic, and the Report lists results under it. Put the module in
+`src/mscts/groups/` and import it from `src/mscts/groups/__init__.py`.
 
 ## What a script can do
 
-`context.bot(name)` connects a new Bot and returns it. Each Bot in a Scenario
+`context.bot(name)` connects a new Bot and returns it. Each Bot in a Group
 needs a unique name, and Divergences name the Bot they came from.
 
 | Bot method | What it does |
@@ -50,7 +50,7 @@ handle them.
 
 Every Bot operation times out after 10 seconds. A timeout on the Candidate
 becomes a `failed` Divergence. A timeout on vanilla makes the Verdict
-`error`, because the Scenario itself is broken.
+`error`, because the Group itself is broken.
 
 ## Timing a span
 
@@ -63,11 +63,11 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 
 ## Options
 
-`@scenario` takes options after the id. This example is illustrative.
+`@group` takes options after the id. This example is illustrative.
 `join/basic` is not registered yet.
 
 ```python
-@scenario(
+@group(
     "join/basic",
     requires=("status/basic",),
     masks=(Mask("minecraft:login", "entity_id", reason="an entity id, assigned per session"),),
@@ -75,29 +75,29 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 )
 ```
 
-- `requires` lists Scenarios that must `match` first. If one does not, this
-  Scenario is `blocked` and mscts does not play it.
+- `requires` lists Groups that must `match` first. If one does not, this
+  Group is `blocked` and mscts does not play it.
 - `masks` excludes fields that change between two runs of vanilla. Each
   `Mask` names a packet, a field path (or `*` for the whole packet) and a
   reason. The reason must show the field has no gameplay meaning. Reviews
   reject a Mask that hides something a player could see.
-- `spec` changes the ServerSpec for this Scenario. Scenarios with different
+- `spec` changes the ServerSpec for this Group. Groups with different
   specs get their own server Instances.
 
 ## Make it deterministic
 
-Both runs must send the same bytes, so a Scenario must not depend on the
+Both runs must send the same bytes, so a Group must not depend on the
 clock, randomness, or the order of unrelated events. `status/ping` sends a
 fixed payload for this reason, where the vanilla client sends its clock.
 
-Then prove it with a Self-check: run the Scenario with vanilla on both sides.
+Then prove it with a Self-check: run the Group with vanilla on both sides.
 It must `match` in 20 runs out of 20 before it counts. If it does not, find
 the field that varies. Add a Mask only if that field has no gameplay meaning.
-Otherwise the Scenario needs to control that value itself.
+Otherwise the Group needs to control that value itself.
 
-## Scenario kinds
+## Group kinds
 
-Every Scenario today is `exact`, compared packet by packet. Two more kinds
-are planned. `tick-exact` Scenarios will freeze the world and step it tick by
-tick, for mechanics such as redstone. `statistical` Scenarios will run many
+Every Group today is `exact`, compared packet by packet. Two more kinds
+are planned. `tick-exact` Groups will freeze the world and step it tick by
+tick, for mechanics such as redstone. `statistical` Groups will run many
 times and compare distributions, for random mechanics such as mob spawning.

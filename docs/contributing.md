@@ -55,7 +55,7 @@ uv run pytest tests/path/test_file.py::test_name
 
 ## Proposing a test
 
-A test is a Scenario that plays one mechanic, such as lighting, mob
+A test is a Group that plays one mechanic, such as lighting, mob
 spawning or redstone timing, against vanilla and the Candidate. Propose one
 as a GitHub issue from the **Test proposal** template, so that anyone can
 pick it up and build it.
@@ -77,7 +77,7 @@ A proposal:
   does not need (`advance_time`, `advance_weather`, `random_tick_speed 0`,
   `spawn_mobs false`). Pin the join position with `respawn_radius 0` and
   `/setworldspawn`. Give entities explicit positions and motion. Whatever
-  is still random needs a statistical Scenario, run many times on each
+  is still random needs a statistical Group, run many times on each
   server. It is never hidden with a Mask.
 - **Compares what the vanilla client receives**, and names the packets. A
   Mask may only hide an identifier that means nothing in the game, such as
@@ -99,7 +99,7 @@ landed. Game rules and commands are named as vanilla 26.3 names them:
 | `src/mscts/net.py`, `bot.py` | Connections and Bots |
 | `src/mscts/adapters/` | One module per server, plus the Adapter contract |
 | `src/mscts/runner.py` | Launching, readiness and stopping of Instances |
-| `src/mscts/scenario.py`, `scenarios/` | The Scenario API and the shipped Scenarios |
+| `src/mscts/group.py`, `groups/` | The Group API and the shipped Groups |
 | `src/mscts/compare.py` | Masks, the canonical table, and the diff into Verdicts |
 | `src/mscts/run.py`, `measure.py`, `report.py`, `cli.py` | Runs, Measurements, Reports and the `mscts` command |
 | `docs/` | This site, plus the working notes: `PLAN.md`, `PROGRESS.md`, `PROCESS.md`, `adr/`, `research/`, `audits/` |

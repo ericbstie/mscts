@@ -5,25 +5,25 @@ uv run mscts run --candidate pumpkin
 ```
 
 `mscts run` compares vanilla with one Candidate. It starts both servers,
-plays the chosen Scenarios against each, stops both, and prints a Report.
+plays the chosen Groups against each, stops both, and prints a Report.
 
-## Choose Scenarios
+## Choose Groups
 
-`--scenario` takes a glob over Scenario ids. The default is `status/*`.
+`--group` takes a glob over Group ids. The default is `status/*`.
 
 ```sh
-uv run mscts run --candidate pumpkin --scenario 'status/ping'
+uv run mscts run --candidate pumpkin --group 'status/ping'
 ```
 
-mscts adds each chosen Scenario's prerequisites and plays them first. If a
-prerequisite does not `match`, mscts skips the Scenario that needs it and
+mscts adds each chosen Group's prerequisites and plays them first. If a
+prerequisite does not `match`, mscts skips the Group that needs it and
 reports it as `blocked`. A glob that matches nothing fails and lists the
-Scenarios that exist. The [Scenario reference](/reference/scenarios) lists
+Groups that exist. The [Group reference](/reference/groups) lists
 them too.
 
 ## Choose how many repetitions
 
-`--repeat N` plays each Scenario N times against the same two servers. The
+`--repeat N` plays each Group N times against the same two servers. The
 default is 5.
 
 ```sh
