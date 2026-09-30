@@ -79,13 +79,33 @@ def test_a_run_with_divergences_still_exits_0(
 def test_the_group_glob_picks_the_groups(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:
     fakes()
 
-    code, _, err = _run(
-        capsys, "--candidate", "pumpkin", "--scenario", "status/p*", "--repeat", "1"
-    )
+    code, _, err = _run(capsys, "--candidate", "pumpkin", "--group", "status/p*", "--repeat", "1")
 
     assert code == 0
     assert "running status/ping" in err
     assert "running status/basic" not in err
+
+
+def test_the_group_flag_selects_the_status_groups(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fakes()
+
+    code, _, err = _run(capsys, "--candidate", "pumpkin", "--group", "status/*", "--repeat", "1")
+
+    assert code == 0
+    assert "running status/basic" in err
+    assert "running status/ping" in err
+
+
+def test_the_scenario_flag_is_gone(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:
+    fakes()
+
+    with pytest.raises(SystemExit) as exited:
+        cli.main(["run", "--candidate", "pumpkin", "--scenario", "status/*", "--repeat", "1"])
+
+    assert exited.value.code == 2
+    assert "unrecognized arguments: --scenario" in capsys.readouterr().err
 
 
 def test_a_glob_that_matches_nothing_fails_naming_the_groups(
@@ -93,11 +113,12 @@ def test_a_glob_that_matches_nothing_fails_naming_the_groups(
 ) -> None:
     fakes()
 
-    code, out, err = _run(capsys, "--candidate", "pumpkin", "--scenario", "nothing/*")
+    code, out, err = _run(capsys, "--candidate", "pumpkin", "--group", "nothing/*")
 
     assert (code, out) == (1, "")
     assert err.startswith("mscts: ")
     assert err.count("\n") == 1
+    assert "--group 'nothing/*'" in err
     assert "status/basic" in err
 
 
