@@ -35,7 +35,7 @@ REFERENCE = "vanilla"
 """The Reference's Adapter: every Run compares a Candidate with it."""
 
 DEFAULT_GROUPS = "status/*"
-"""The Groups `mscts run` plays unless `--scenario` says otherwise."""
+"""The Groups `mscts run` plays unless `--group` says otherwise."""
 
 DEFAULT_REPEAT = 5
 """How many times `mscts run` plays each Group unless `--repeat` says otherwise."""
@@ -175,7 +175,7 @@ def _groups(pattern: str) -> tuple[Group, ...]:
     chosen = [group_id for group_id in exact if fnmatch.fnmatchcase(group_id, pattern)]
     if not chosen:
         msg = (
-            f"no registered exact Scenario matches --scenario {pattern!r}; "
+            f"no registered exact Scenario matches --group {pattern!r}; "
             f"the registered ones are {', '.join(exact)}"
         )
         raise _UsageError(msg)
@@ -189,7 +189,7 @@ def _server(name: str) -> run.Server:
 
 
 def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
-    groups = _groups(str(arguments.scenario))
+    groups = _groups(str(arguments.group))
     repeat = int(arguments.repeat)
     if repeat < 1:
         msg = f"--repeat must be at least 1, not {repeat}"
@@ -237,7 +237,7 @@ def _parser() -> argparse.ArgumentParser:
         "--candidate", required=True, choices=ADAPTERS, help="the Candidate's Adapter"
     )
     running.add_argument(
-        "--scenario",
+        "--group",
         default=DEFAULT_GROUPS,
         metavar="GLOB",
         help=f"the Scenario ids to play, prerequisites added (default: {DEFAULT_GROUPS})",
