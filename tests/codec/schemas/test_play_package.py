@@ -42,6 +42,21 @@ def test_a_packet_defined_twice_is_refused() -> None:
         merge_submodules([("first", first), ("second", second)])
 
 
+def test_a_submodule_with_neither_mapping_is_refused() -> None:
+    # A misspelt mapping (CLIENTBOUNDS) must not be silently ignored.
+    misspelt = fake_module("entities", CLIENTBOUNDS={"minecraft:add_entity": Schema(x=INT)})
+
+    with pytest.raises(SchemaError, match=r"entities defines neither SERVERBOUND nor CLIENTBOUND"):
+        merge_submodules([("entities", misspelt)])
+
+
+def test_a_submodule_with_an_empty_mapping_is_accepted() -> None:
+    # Defining a mapping is what counts; a mechanic may have nothing in one direction yet.
+    empty = fake_module("chat", SERVERBOUND={})
+
+    assert merge_submodules([("chat", empty)]) == ({}, {})
+
+
 def test_a_packet_may_be_defined_once_in_each_direction() -> None:
     keep_alive = Schema(keep_alive_id=LONG)
     both = fake_module(
