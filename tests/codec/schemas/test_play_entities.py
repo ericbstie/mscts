@@ -10,7 +10,7 @@ from collections.abc import Mapping
 
 import pytest
 
-from mscts.codec.packets import Codec, Direction, State
+from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.codec.schema import EntityId, PrefixedArray, PrefixedOptional, Schema, WireType
 from mscts.codec.schemas import play
 from mscts.codec.wire import Writer
@@ -364,3 +364,78 @@ def test_move_minecart_along_track_decodes_and_re_encodes() -> None:
 )
 def test_movement_packets_have_their_entity_id_as_an_entity_id(name: str) -> None:
     assert entity_id_paths(play_schema(f"minecraft:{name}")) == ["entity_id"]
+
+
+# Metadata. The payloads are recorded from vanilla 26.3 (the probe's summons, data merges and
+# damage); the entry a serializer id selects is pinned by javap in test_entity_data_entries.py.
+
+
+def metadata(index: int, serializer: str, value: object) -> dict[str, object]:
+    """One decoded entry of `set_entity_data`."""
+    return {"index": index, "serializer": serializer, "value": value}
+
+
+RECORDED_METADATA = [
+    # A pig's health, 10.0.
+    ("02 09 03 41200000 ff", 2, [metadata(9, "float", 10.0)]),
+    ("04 09 03 41a00000 ff", 4, [metadata(9, "float", 20.0)]),
+    ("02 09 03 41000000 ff", 2, [metadata(9, "float", 8.0)]),
+    ("02 09 03 40c00000 ff", 2, [metadata(9, "float", 6.0)]),
+    # An arrow's flag.
+    ("03 0a 08 01 ff", 3, [metadata(10, "boolean", value=True)]),
+    # A custom name (a String tag holding the JSON text "Bob"), then a boolean.
+    (
+        "02 02 06 01 08 0005 22 426f62 22 03 08 01 ff",
+        2,
+        [
+            metadata(2, "optional_component", bytes.fromhex("08 0005 22 426f62 22")),
+            metadata(3, "boolean", value=True),
+        ],
+    ),
+    # A pig's health and sound variant.
+    (
+        "0f 09 03 41200000 14 1d 00 ff",
+        15,
+        [metadata(9, "float", 10.0), metadata(20, "pig_sound_variant", 0)],
+    ),
+    # An armor stand's head pose: three floats.
+    (
+        "04 10 09 41200000 41a00000 41f00000 ff",
+        4,
+        [metadata(16, "rotations", {"x": 10.0, "y": 20.0, "z": 30.0})],
+    ),
+    # A dying pig's pose (7) and health.
+    (
+        "02 06 14 07 09 03 00000000 ff",
+        2,
+        [metadata(6, "pose", 7), metadata(9, "float", 0.0)],
+    ),
+]
+
+
+@pytest.mark.parametrize(("payload", "entity_id", "entries"), RECORDED_METADATA)
+def test_set_entity_data_decodes_and_re_encodes(
+    payload: str, entity_id: int, entries: list[dict[str, object]]
+) -> None:
+    round_trip("minecraft:set_entity_data", {"entity_id": entity_id, "entries": entries}, payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        "11 08 07 03 37 00 00 ff",  # a dropped item: 3 of item 55
+        "12 08 07 01 c9 08 00 00 ff",  # a dropped item: 1 of item 1097
+        "1a 08 07 02 c9 08 00 00 ff",
+    ],
+)
+def test_set_entity_data_with_an_item_stack_is_undecodable_until_the_item_codec_lands(
+    payload: str,
+) -> None:
+    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:set_entity_data")
+    data = Writer().var_int(packet_id).to_bytes() + bytes.fromhex(payload)
+    with pytest.raises(CodecError, match=r"entries: 0: item_stack: item stack: needs #19$"):
+        CODEC.decode(State.PLAY, CLIENTBOUND, data)
+
+
+def test_set_entity_data_has_its_entity_id_as_an_entity_id() -> None:
+    assert entity_id_paths(play_schema("minecraft:set_entity_data")) == ["entity_id"]
