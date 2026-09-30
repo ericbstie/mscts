@@ -103,6 +103,14 @@ need is missing, add it here in the same commit that introduces it.
   same result): its `observability`. Network traffic Divergences are
   reported separately and excluded from compliance scores (ADR-0007);
   `Verdict.gameplay` is what scores count.
+- **Test case**: one field a Comparison compares, named after its
+  packet and its path in it (`status_response.players.max`,
+  `play:keep_alive.id`). The name leaves out list indices and which of
+  several same-named packets it was, so it is the same in every run.
+  Every compared field is one, so nobody lists them by hand. A packet
+  compared as a whole (by payload, missing or unexpected) is the test
+  case of its packet name. Masked fields are not test cases. _Avoid_:
+  check, test (for one compared field).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Group did not match), or `error` (the harness failed, or
   the Reference itself could not run the Group). A failure the

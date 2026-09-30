@@ -20,11 +20,13 @@ from array import array
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum, StrEnum
+from functools import cache
 from types import MappingProxyType
 from typing import Literal, NoReturn, Self, override
 from uuid import UUID
 
-from mscts.codec.packets import Direction, Packet, State
+from mscts.codec.packets import Codec, Direction, Packet, State, UnknownPacketError
+from mscts.target import TARGET
 from mscts.transcript import Transcript
 
 type _Value = bool | int | float | str | bytes | UUID | list[_Value] | dict[str, _Value] | None
@@ -62,6 +64,9 @@ ABSENT = Absent.ABSENT
 
 WHOLE_PACKET = "*"
 """The Mask path that drops the whole packet."""
+
+_MINECRAFT = "minecraft:"
+"""The namespace a test case name leaves out."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,7 +208,7 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
     and values, when the unmasked canonical values at that path are equal; otherwise the
     gameplay Divergences under it (or a Mask) account for it. JSON text in a raw field
-    (`_PARSED`) is diffed as its parsed value, at JSON paths, and as the whole text only
+    (`_JSON_TEXT`) is diffed as its parsed value, at JSON paths, and as the whole text only
     when the parsed values are equal. A packet's network traffic
     Divergences follow its gameplay ones. A path joins identifier keys
     with dots and puts list indices in brackets (`players.sample[0].name`); any other
@@ -234,6 +239,53 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
         outcome=Outcome.MISMATCH if divergences else Outcome.MATCH,
         divergences=divergences,
     )
+
+
+def test_case(state: State, packet: str, path: str | None) -> str:
+    """Name the test case that compares `path` of the clientbound `packet` in `state`.
+
+    The name is the packet name without `minecraft:`, then the path as a Divergence
+    spells it, with every list index left out: `status_response.players.sample[].name`.
+    So the elements of a list share one test case, and so do repeated packets. A path
+    of None, for a packet compared as a whole (by payload, missing or unexpected), gives
+    the packet name alone. The status response's only field, `json_response`, is JSON
+    text (`_JSON_TEXT`), so its paths are named from inside the JSON:
+    `status_response.description`, and `status_response` for the text as a whole. A
+    packet name that the Target's clientbound packets (`packets.json`) have in more than
+    one State starts with the State: `play:keep_alive.id`, `configuration:keep_alive`.
+
+    Raises:
+        ValueError: `path` is malformed, or not spelled as a Divergence path would be.
+    """
+    return _test_case(state, packet, () if path is None else _steps(packet, path, "field path"))
+
+
+def _test_case(state: State, packet: str, path: _Path) -> str:
+    json_text = _JSON_TEXT.get((state, packet))
+    if json_text is not None and path[:1] == (json_text,):
+        path = path[1:]
+    name = packet.removeprefix(_MINECRAFT)
+    if _in_more_than_one_state(packet):
+        name = f"{state}:{name}"
+    field = _render(path, index_free=True)
+    if not field or field.startswith("["):
+        return name + field
+    return f"{name}.{field}"
+
+
+@cache
+def _in_more_than_one_state(packet: str) -> bool:
+    """Whether the Target's `packets.json` has the clientbound `packet` in more than one State."""
+    codec = Codec.for_target(TARGET)
+    return sum(_defines(codec, state, packet) for state in State) > 1
+
+
+def _defines(codec: Codec, state: State, packet: str) -> bool:
+    try:
+        codec.packet_id(state, Direction.CLIENTBOUND, packet)
+    except UnknownPacketError:
+        return False
+    return True
 
 
 # Bots and their streams.
@@ -339,8 +391,9 @@ def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
         _remove_all(fields, paths)
         return _Normalized(packet=packet, fields=fields)
     raw = _plain_mapping(packet.fields.items(), packet.name, ())
-    parse = _PARSED.get((packet.state, packet.name), dict)
-    parsed = parse(_plain_mapping(packet.fields.items(), packet.name, ()))
+    parsed = _plain_mapping(packet.fields.items(), packet.name, ())
+    if (json_text := _JSON_TEXT.get((packet.state, packet.name))) is not None:
+        parsed = _parsed(parsed, json_text)
     unmasked = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
     fields = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
     for copy in (raw, parsed, fields):
@@ -422,19 +475,19 @@ _JSON_NESTING_LIMIT = 255
 """The deepest JSON the vanilla client reads: its Gson 2.14.0 JsonReader's default."""
 
 
-def _parsed_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
-    """Parse `json_response` into its JSON value, as it came.
+def _parsed(fields: dict[str, _Value], json_text: str) -> dict[str, _Value]:
+    """Parse the field `json_text` of `fields` into its JSON value, as it came.
 
     It stays the raw string unless it is strict JSON (no repeated key in an object, no
     NaN or Infinity) nested at most 255 deep.
     """
-    text = fields.get("json_response")
+    text = fields.get(json_text)
     if not isinstance(text, str):
         return fields
-    status = _strict_json(text)
-    if isinstance(status, Absent):
+    value = _strict_json(text)
+    if isinstance(value, Absent):
         return fields
-    return {**fields, "json_response": status}
+    return {**fields, json_text: value}
 
 
 def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
@@ -442,7 +495,7 @@ def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
 
     It stays the raw string, and is compared as one, unless it is strict JSON.
     """
-    fields = _parsed_status_response(fields)
+    fields = _parsed(fields, "json_response")
     status = fields.get("json_response")
     if isinstance(status, dict):
         status = _as_read(status)
@@ -601,11 +654,13 @@ _CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _
 )
 """The canonical form of each clientbound packet that has one, by (State, name)."""
 
-_PARSED: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
-    MappingProxyType({(State.STATUS, "minecraft:status_response"): _parsed_status_response})
+_JSON_TEXT: Mapping[tuple[State, str], str] = MappingProxyType(
+    {(State.STATUS, "minecraft:status_response"): "json_response"}
 )
-"""The fields of a packet in `_CANONICAL` that hold JSON text, parsed but not canonical,
-so a network traffic Divergence inside the JSON is reported at its JSON path."""
+"""The field of a packet in `_CANONICAL` that holds JSON text, and is its only field.
+
+Its raw value is diffed parsed but not canonical, so a network traffic Divergence inside
+the JSON is reported at its JSON path; and its test cases are named from inside the JSON."""
 
 
 # Alignment.
@@ -828,16 +883,17 @@ _INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
 _JSON = json.JSONDecoder()
 
 
-def _render(path: _Path) -> str:
+def _render(path: _Path, *, index_free: bool = False) -> str:
     """Write a field path: `players.sample[0].name`, or `m["not an identifier"]`.
 
     A key that is an identifier follows a dot (none at the start). Any other key is a
-    JSON string in brackets, and a list index is a number in brackets.
+    JSON string in brackets, and a list index is a number in brackets, or nothing in
+    them if `index_free` (`players.sample[].name`, as test cases are named).
     """
     parts: list[str] = []
     for step in path:
         if isinstance(step, int):
-            parts.append(f"[{step}]")
+            parts.append("[]" if index_free else f"[{step}]")
         elif _IDENTIFIER.fullmatch(step):
             parts.append(f".{step}" if parts else step)
         else:
@@ -850,20 +906,22 @@ def _where(path: _Path) -> str:
 
 
 def _mask_steps(mask: Mask) -> _Path:
-    """Return the steps of `mask`'s field path.
+    """Return the steps of `mask`'s field path (see `_steps`)."""
+    return _steps(mask.packet, mask.path, "Mask path")
+
+
+def _steps(packet: str, path: str, what: str) -> _Path:
+    """Return the steps of `path`, a `what` of `packet` (named in any error).
 
     Raises:
         ValueError: The path is malformed, or not spelled as a Divergence path would be.
     """
-    steps = _parse_path(mask.path)
+    steps = _parse_path(path)
     if steps is None:
-        msg = f"{mask.packet}: malformed Mask path {mask.path!r}"
+        msg = f"{packet}: malformed {what} {path!r}"
         raise ValueError(msg)
-    if (spelling := _render(steps)) != mask.path:
-        msg = (
-            f"{mask.packet}: Mask path {mask.path!r} is spelled unlike a Divergence path;"
-            f" write {spelling!r}"
-        )
+    if (spelling := _render(steps)) != path:
+        msg = f"{packet}: {what} {path!r} is spelled unlike a Divergence path; write {spelling!r}"
         raise ValueError(msg)
     return steps
 
