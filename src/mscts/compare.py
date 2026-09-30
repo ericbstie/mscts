@@ -1,18 +1,24 @@
 """Comparison: diff the Reference and Candidate Transcripts of one Group into a Verdict.
 
 What is compared is, for every Bot, the ordered stream of the clientbound Packets it
-received. Everything else is left out on purpose:
+received. If the Group has Observation windows (`GroupContext.observe`), a Bot's play
+Packets are compared only inside them, less the heartbeat packets (`HEARTBEAT`); its
+status, login and configuration Packets are still compared whole. Everything else is
+left out on purpose:
 
 - Serverbound Packets are the Group's own actions and the Bot's automatic answers.
   They differ between Instances by design (the handshake names each Instance's own
   Endpoint), and any difference in them that a server caused shows up first in what
   that server sent.
-- Timestamps and Marks are timing data, for Measurements. The order of a Bot's stream
-  is compared; when its Packets arrived is not.
+- Play Packets outside the windows of a Group that has some arrive while it sets the
+  world up or cleans up, or on the server's clock.
+- Timestamps and Marks are timing data, for Measurements, and say where the windows
+  are. The order of a Bot's stream is compared; when its Packets arrived is not.
 - The interleaving of different Bots' Packets is timing too, so each Bot is compared
   on its own.
 """
 
+import bisect
 import json
 import re
 import struct
@@ -27,7 +33,7 @@ from uuid import UUID
 
 from mscts.codec.packets import Codec, Direction, Packet, State, UnknownPacketError
 from mscts.target import TARGET
-from mscts.transcript import Transcript
+from mscts.transcript import Event, Transcript
 
 type _Value = bool | int | float | str | bytes | UUID | list[_Value] | dict[str, _Value] | None
 """A value of the codec value model: what decoded fields are made of."""
@@ -67,6 +73,38 @@ WHOLE_PACKET = "*"
 
 _MINECRAFT = "minecraft:"
 """The namespace a test case name leaves out."""
+
+OBSERVE_OPEN = "observe:open"
+"""The label of the Mark that opens an Observation window.
+
+A window narrowed to some packets has their names after it, each after a space:
+`observe:open minecraft:block_update minecraft:system_chat`.
+"""
+
+OBSERVE_CLOSE = "observe:close"
+"""The label of the Mark that closes an Observation window."""
+
+HEARTBEAT: Mapping[str, str] = MappingProxyType(
+    {
+        "minecraft:keep_alive": (
+            "The server sends it on a clock (every 15 s on vanilla) whatever a Group does, "
+            "and its id is random."
+        ),
+        "minecraft:set_time": (
+            "The server sends it on a clock (every 20 ticks on vanilla, even with the world "
+            "frozen), so how many arrive depends on how long a window lasts."
+        ),
+        "minecraft:award_stats": (
+            "The answer to the barrier (`Bot.sync`) that ends every window. It carries the "
+            "Bot's statistics, not an effect of the Group."
+        ),
+    }
+)
+"""The play packets an Observation window never compares, each with the reason.
+
+Evidence: docs/research/2026-09-30-observation-window.md. The barrier's request,
+`client_command`, is serverbound, and nothing serverbound is compared.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -213,12 +251,14 @@ class Verdict:
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
     """Diff the Candidate's Transcript of a Group against the Reference's.
 
-    Each Bot's stream is normalized first: the Packets a `*` Mask names are dropped,
-    the rest are put in canonical form (`_CANONICAL`: e.g. a status response's JSON is
-    parsed, and its text components written one way), and every field a Mask names
-    is removed from the Packets of that name, on both sides and wherever present.
-    Indices count the normalized stream, so they do not shift when a re-run has more
-    or fewer dropped Packets; paths and values are those of the canonical form.
+    Each Bot's stream is normalized first: if the Transcript has Observation windows,
+    the play Packets they do not observe are left out (`_Windows.observes`); the
+    Packets a `*` Mask names are dropped; the rest are put in canonical form
+    (`_CANONICAL`: e.g. a status response's JSON is parsed, and its text components
+    written one way), and every field a Mask names is removed from the Packets of that
+    name, on both sides and wherever present. Indices count the normalized stream, so
+    they do not shift when a re-run has more or fewer Packets left out or dropped;
+    paths and values are those of the canonical form.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -400,14 +440,65 @@ def _compare_bot(
 
 
 def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized]:
-    """Return `bot`'s normalized stream: its clientbound Packets, less the dropped ones."""
+    """Return `bot`'s normalized stream: its clientbound Packets, less the dropped ones.
+
+    If the Transcript has Observation windows, its play Packets are only those inside
+    one of them (`_Windows.observes`).
+    """
+    windows = _Windows.of(transcript)
     return [
         _normalize(event.packet, masks)
         for event in transcript.events
         if event.bot == bot
         and event.packet.direction is Direction.CLIENTBOUND
         and event.packet.name not in masks.dropped
+        and (windows is None or windows.observes(event))
     ]
+
+
+@dataclass(frozen=True, slots=True)
+class _Windows:
+    """A Transcript's Observation windows: its `observe:` Marks, in time order.
+
+    Attributes:
+        times: When each Mark was recorded, ascending.
+        names: For each Mark, None if it closes a window, else the names that narrow the
+            window it opens (empty for none).
+    """
+
+    times: Sequence[int]
+    names: Sequence[frozenset[str] | None]
+
+    @classmethod
+    def of(cls, transcript: Transcript) -> Self | None:
+        """Index the windows of `transcript`; None if it has none."""
+        times: list[int] = []
+        names: list[frozenset[str] | None] = []
+        for mark in sorted(transcript.marks, key=lambda mark: mark.t_ns):
+            label, *narrowed = mark.label.split(" ")
+            if label in {OBSERVE_OPEN, OBSERVE_CLOSE}:
+                times.append(mark.t_ns)
+                names.append(frozenset(narrowed) if label == OBSERVE_OPEN else None)
+        return cls(times=times, names=names) if times else None
+
+    def observes(self, event: Event) -> bool:
+        """Whether the Comparison takes `event`, a clientbound Packet of this Transcript.
+
+        A packet of any State but play is always taken. A play packet is taken if it
+        arrived at or after an open Mark and before the next Mark (a window that never
+        closed runs to the end), the window's names include it, if it has any, and it
+        is not a heartbeat packet (`HEARTBEAT`).
+        """
+        packet = event.packet
+        if packet.state is not State.PLAY:
+            return True
+        if packet.name in HEARTBEAT:
+            return False
+        latest = bisect.bisect_right(self.times, event.t_ns) - 1
+        if latest < 0:
+            return False
+        narrowed = self.names[latest]
+        return narrowed is not None and (not narrowed or packet.name in narrowed)
 
 
 # Normalization: copies of the fields, in the value model, with Masks applied.

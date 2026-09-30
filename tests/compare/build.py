@@ -6,7 +6,7 @@ from dataclasses import replace
 
 from mscts.codec.packets import Direction, Packet, State
 from mscts.compare import ABSENT, Divergence, DivergenceKind
-from mscts.transcript import Transcript
+from mscts.transcript import Mark, Transcript
 
 CLIENTBOUND, SERVERBOUND = Direction.CLIENTBOUND, Direction.SERVERBOUND
 GROUP = "test/group"
@@ -48,12 +48,19 @@ def packet(
 
 
 def transcript(
-    *events: tuple[str, Packet], server: str = "vanilla", group_id: str = GROUP
+    *items: tuple[str, Packet] | str, server: str = "vanilla", group_id: str = GROUP
 ) -> Transcript:
-    """A Transcript of `events`, each a (bot, packet) pair, recorded 1 ms apart."""
+    """A Transcript of `items`, recorded 1 ms apart.
+
+    A (bot, packet) pair is an Event, and a string is the label of a Mark.
+    """
     result = Transcript(
         group_id=group_id, server=server, start_ns=time.monotonic_ns() - 1_000_000 * _MS
     )
-    for position, (bot, recorded) in enumerate(events):
-        result.record(bot, recorded, t_ns=position * _MS)
+    for position, item in enumerate(items):
+        if isinstance(item, str):
+            result.marks.append(Mark(t_ns=position * _MS, label=item))
+        else:
+            bot, recorded = item
+            result.record(bot, recorded, t_ns=position * _MS)
     return result

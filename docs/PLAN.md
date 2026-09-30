@@ -643,7 +643,9 @@ class Event:
 @frozen
 class Mark:
     t_ns: int
-    label: str
+    label: str                      # a span's "<name>:start" / "<name>:end", or an
+                                    # Observation window's OBSERVE_OPEN (then its names,
+                                    # each after a space) / OBSERVE_CLOSE
 
 @dataclass
 class Transcript:                   # a plain data holder: no I/O
@@ -769,6 +771,14 @@ class Verdict:
                                     # Divergence: GAMEPLAY if any of its Divergences is,
                                     # else NETWORK_TRAFFIC. Every other one is the same.
 
+OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
+                                    # narrowed to packets has their names after it:
+                                    # "observe:open minecraft:block_update"
+OBSERVE_CLOSE = "observe:close"     # the Mark that closes it
+HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
+                                    # compares (keep_alive, set_time, award_stats; evidence in
+                                    # docs/research/2026-09-30-observation-window.md)
+
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
@@ -858,7 +868,18 @@ proves it necessary:
      difference a server caused in them shows up first in what that
      server sent;
    - timestamps and Marks, which are timing data for Measurements;
-   - the interleaving of different Bots' packets, which is timing too.
+   - the interleaving of different Bots' packets, which is timing too;
+   - in a Transcript with **Observation windows**, the play packets they
+     do not observe. A window opens at an `observe:open` Mark and ends at
+     the next `observe:open` or `observe:close` Mark, or at the end of the
+     Transcript if none follows (the Group raised inside it). It observes
+     every play packet that arrived (`t_ns`) at or after its open Mark and
+     before its end, except the heartbeat packets (`compare.HEARTBEAT`),
+     and only the packets it names if its open Mark names any. Status,
+     login and configuration packets are compared whole, and a Transcript
+     with no window is compared whole. Each side is windowed by its own
+     Marks. A packet a window leaves out is no test case, and a Bot with
+     Events only outside the windows still counts as present.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
@@ -1084,8 +1105,8 @@ proves it necessary:
    A Verdict lists its test cases (`Verdict.test_cases`): the test case
    of every pair of leaves compared in matched packets, after Masks and
    canonicalization, whether the two were equal or not, and the test
-   case of every Divergence. A masked field or dropped packet is in
-   none. Each is the same, different in gameplay, or different in
+   case of every Divergence. A masked field, a dropped packet, and a
+   packet an Observation window leaves out are in none. Each is the same, different in gameplay, or different in
    network traffic only (`Verdict.differing`). A network traffic test
    case appears only where the two formats differed: its raw path is
    not a compared field otherwise, and listing it as the same would

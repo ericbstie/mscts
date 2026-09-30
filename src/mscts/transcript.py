@@ -25,11 +25,11 @@ class Event:
 
 @dataclass(frozen=True, slots=True)
 class Mark:
-    """A named timestamp a Group records so a Measurement can be computed.
+    """A named timestamp: a Measurement's start or end, or an Observation window's.
 
     Attributes:
         t_ns: When it was recorded, in nanoseconds since the Transcript started.
-        label: The name, e.g. `status:start`.
+        label: The name, e.g. `status:start`, or `observe:open` (`compare.OBSERVE_OPEN`).
     """
 
     t_ns: int
