@@ -50,6 +50,25 @@ def test_the_first_player_position_is_teleport_id_1(teleport_id: int) -> None:
     ]
 
 
+@pytest.mark.parametrize("corrections", [1, 2, 14])
+def test_the_same_pose_again_with_the_next_ids_is_a_flat_join(corrections: int) -> None:
+    positions = [position(number) for number in range(1, corrections + 2)]
+    assert unlike_a_flat_join(positions) == []
+
+
+@pytest.mark.parametrize(
+    "later",
+    [position(3), position(2, x=0.5), position(2, yaw=90.0), position(2, flags=1)],
+    ids=["an id skipped", "another x", "another yaw", "relative flags"],
+)
+def test_a_later_player_position_that_is_not_the_first_again_is_a_difference(
+    later: Packet,
+) -> None:
+    assert unlike_a_flat_join([position(1), later]) == [
+        "player_position 2 is not the first one's pose with teleport id 2"
+    ]
+
+
 def test_the_first_player_position_stands_on_the_top_layer() -> None:
     assert unlike_a_flat_join([position(1, y=63.0)]) == [
         f"the first player_position is at y=63.0, not {FLAT_SPAWN_Y}"

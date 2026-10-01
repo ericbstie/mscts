@@ -61,7 +61,13 @@ def unlike_the_reference_flat_world(chunk: "_chunkformat.Chunk") -> list[str]:
 
 
 def unlike_a_flat_join(positions: list[Packet]) -> list[str]:
-    """How the `player_position`s of a join differ from the Reference's (empty: not at all)."""
+    """How the `player_position`s of a join differ from the Reference's (empty: not at all).
+
+    The first is teleport id 1 at the spawn. Any more are the server putting the player back
+    where it is, the first one's pose with the next ids: how many come is a race against the
+    server's first tick, so it is not a difference (docs/research/2026-09-26-join.md, "More
+    than one `player_position` at join").
+    """
     if not positions:
         return ["no player_position"]
     first = positions[0].fields or {}
@@ -74,6 +80,11 @@ def unlike_a_flat_join(positions: list[Packet]) -> list[str]:
         differences.append(
             f"the first player_position is at y={first.get('y')}, not {FLAT_SPAWN_Y}"
         )
+    for number, later in enumerate(positions[1:], start=2):
+        if (later.fields or {}) != {**first, "teleport_id": number}:
+            differences.append(
+                f"player_position {number} is not the first one's pose with teleport id {number}"
+            )
     return differences
 
 
