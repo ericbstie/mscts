@@ -19,6 +19,7 @@ from mscts.codec.schema import (
     PrefixedArray,
     PrefixedOptional,
     Schema,
+    SchemaError,
     String,
     WireType,
 )
@@ -106,6 +107,85 @@ TEXT_COMPONENT: WireType[bytes] = NBT_TAG
 
 Decoding the component (a string, a compound or a list of them) is out of scope.
 """
+
+_NBT_COMPOUND = 10
+
+
+def _require_compound(first: bytes) -> None:
+    if first and first[0] != _NBT_COMPOUND:
+        msg = f"NBT: the root tag must be a compound (type {_NBT_COMPOUND}), got type {first[0]}"
+        raise WireError(msg)
+
+
+@dataclass(frozen=True, slots=True)
+class _CompoundTag:
+    def read(self, reader: Reader) -> bytes:
+        _require_compound(reader.peek_rest()[:1])
+        return NBT.read(reader)
+
+    def write(self, writer: Writer, value: object) -> None:
+        if isinstance(value, bytes):
+            _require_compound(value[:1])
+        NBT.write(writer, value)
+
+
+COMPOUND_TAG: WireType[bytes] = _CompoundTag()
+"""An NBT root tag that must be a compound, as its exact bytes (`ByteBufCodecs.COMPOUND_TAG`).
+
+`FriendlyByteBuf.readNbt` accepts any root but END; this one then insists on type 10.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class FixedArray[T]:
+    """Exactly `size` elements and no count (`ByteBufCodecs.fixedSizeList`). Its value is a list.
+
+    Errors are prefixed with the element's index.
+
+    Attributes:
+        element: Each element's wire type.
+        size: How many elements there always are.
+    """
+
+    element: WireType[T]
+    size: int
+
+    def __post_init__(self) -> None:
+        """Reject a `size` that is not a non-negative int.
+
+        Raises:
+            SchemaError: `size` is negative, or not an int.
+        """
+        if isinstance(self.size, bool) or not isinstance(self.size, int):
+            msg = f"FixedArray size must be an int, got {type(self.size).__name__}"
+            raise SchemaError(msg)
+        if self.size < 0:
+            msg = f"FixedArray size {self.size} is negative"
+            raise SchemaError(msg)
+
+    def read(self, reader: Reader) -> list[T]:
+        """Consume `size` elements."""
+        values = []
+        for index in range(self.size):
+            try:
+                values.append(self.element.read(reader))
+            except WireError as exc:
+                msg = f"{index}: {exc}"
+                raise WireError(msg) from exc
+        return values
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`, a list or tuple of exactly `size` elements."""
+        if not isinstance(value, list | tuple) or len(value) != self.size:
+            got = f"{len(value)}" if isinstance(value, list | tuple) else type(value).__name__
+            msg = f"expected a list of {self.size} item(s), got {got}"
+            raise WireError(msg)
+        for index, item in enumerate(value):
+            try:
+                self.element.write(writer, item)
+            except WireError as exc:
+                msg = f"{index}: {exc}"
+                raise WireError(msg) from exc
 
 
 @dataclass(frozen=True, slots=True)

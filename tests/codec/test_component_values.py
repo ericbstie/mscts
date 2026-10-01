@@ -258,6 +258,112 @@ VALUES = [
         },
         id="profile",
     ),
+    # Compound tags (`ByteBufCodecs.COMPOUND_TAG`), alone and behind an entity or block entity type.
+    pytest.param(
+        61, "bucket_entity_data", "0a 00", bytes.fromhex("0a 00"), id="bucket_entity_data"
+    ),
+    pytest.param(
+        60,
+        "entity_data",
+        "c9 08 0a 00",
+        {"type": 1097, "tag": bytes.fromhex("0a 00")},
+        id="entity_data",
+    ),
+    pytest.param(
+        62,
+        "block_entity_data",
+        "05 0a 00",
+        {"type": 5, "tag": bytes.fromhex("0a 00")},
+        id="block_entity_data",
+    ),
+    pytest.param(
+        79,
+        "bees",
+        "01  02 0a 00  c8 01  64",
+        [
+            {
+                "entity_data": {"type": 2, "tag": bytes.fromhex("0a 00")},
+                "ticks_in_hive": 200,
+                "min_ticks_in_hive": 100,
+            }
+        ],
+        id="bees",
+    ),
+    # A lodestone's target is an optional global position: the dimension and a block position.
+    pytest.param(
+        69,
+        "lodestone_tracker",
+        "00 01",
+        {"target": None, "tracked": True},
+        id="lodestone_tracker without a target",
+    ),
+    pytest.param(
+        69,
+        "lodestone_tracker",
+        "01 136d696e6563726166743a6f766572776f726c64 0000004000003002 00",
+        {
+            "target": {"dimension": "minecraft:overworld", "pos": {"x": 1, "y": 2, "z": 3}},
+            "tracked": False,
+        },
+        id="lodestone_tracker with a target",
+    ),
+    # Fireworks: an explosion is its shape, two colour lists and two flags.
+    pytest.param(
+        70,
+        "firework_explosion",
+        "01  01 00 ff 00 00  00  01 00",
+        {
+            "shape": 1,
+            "colors": [0xFF0000],
+            "fade_colors": [],
+            "has_trail": True,
+            "has_twinkle": False,
+        },
+        id="firework_explosion",
+    ),
+    pytest.param(
+        71,
+        "fireworks",
+        "02  01  01 01 00 ff 00 00  00  01 00",
+        {
+            "flight_duration": 2,
+            "explosions": [
+                {
+                    "shape": 1,
+                    "colors": [0xFF0000],
+                    "fade_colors": [],
+                    "has_trail": True,
+                    "has_twinkle": False,
+                }
+            ],
+        },
+        id="fireworks",
+    ),
+    # A sign's text: four lines, optionally four filtered lines (no counts), a colour and glow.
+    pytest.param(
+        118,
+        "sign_text_front",
+        f"{TEXT_A} {TEXT_A} {TEXT_A} {TEXT_A}  00  0f 01",
+        {
+            "messages": [bytes.fromhex(TEXT_A)] * 4,
+            "filtered_messages": None,
+            "color": 15,
+            "has_glowing_text": True,
+        },
+        id="sign_text_front",
+    ),
+    pytest.param(
+        119,
+        "sign_text_back",
+        f"{TEXT_A} {TEXT_A} {TEXT_A} {TEXT_A}  01  {TEXT_B} {TEXT_B} {TEXT_B} {TEXT_B}  00 00",
+        {
+            "messages": [bytes.fromhex(TEXT_A)] * 4,
+            "filtered_messages": [bytes.fromhex(TEXT_B)] * 4,
+            "color": 0,
+            "has_glowing_text": False,
+        },
+        id="sign_text_back",
+    ),
 ]
 
 

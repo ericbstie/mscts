@@ -25,7 +25,9 @@ from mscts.codec.schema import (
     WireType,
 )
 from mscts.codec.shapes import (
+    COMPOUND_TAG,
     ENUM,
+    GLOBAL_POS,
     HOLDER_SET,
     NBT_TAG,
     PAINTING_VARIANT,
@@ -35,6 +37,7 @@ from mscts.codec.shapes import (
     TEXT_COMPONENT,
     UNIT,
     Either,
+    FixedArray,
     Holder,
 )
 from mscts.codec.wire import Reader, WireError, Writer
@@ -269,6 +272,23 @@ _JUKEBOX_SONG = Holder(
 )
 _BANNER_PATTERN = Holder(Schema(asset_id=IDENTIFIER, translation_key=String(32767)))
 
+# An entity or block entity of a registry type and its data (`entity_data`, `block_entity_data`).
+_TYPED_DATA = Schema(type=REGISTRY_ID, tag=COMPOUND_TAG)
+_FIREWORK_EXPLOSION = Schema(
+    shape=ENUM,
+    colors=PrefixedArray(INT),
+    fade_colors=PrefixedArray(INT),
+    has_trail=BOOL,
+    has_twinkle=BOOL,
+)
+_SIGN_LINES = FixedArray(TEXT_COMPONENT, 4)
+_SIGN_TEXT = Schema(
+    messages=_SIGN_LINES,
+    filtered_messages=PrefixedOptional(_SIGN_LINES),
+    color=ENUM,
+    has_glowing_text=BOOL,
+)
+
 # In registry order. Each entry cites the `DataComponents` field that registers the name, and the
 # layout is the one in docs/research/2026-09-30-item-stacks.md. A component with no network codec
 # of its own (custom_data, intangible_projectile, map_decorations, debug_stick_state, recipes,
@@ -347,12 +367,23 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
         material=_TRIM_MATERIAL, pattern=_TRIM_PATTERN
     ),
     "minecraft:debug_stick_state": NBT_TAG,  # DEBUG_STICK_STATE
+    "minecraft:entity_data": _TYPED_DATA,  # ENTITY_DATA
+    "minecraft:bucket_entity_data": COMPOUND_TAG,  # BUCKET_ENTITY_DATA
+    "minecraft:block_entity_data": _TYPED_DATA,  # BLOCK_ENTITY_DATA
     "minecraft:instrument": _INSTRUMENT,  # INSTRUMENT
     "minecraft:provides_trim_material": _TRIM_MATERIAL,  # PROVIDES_TRIM_MATERIAL
     "minecraft:ominous_bottle_amplifier": VAR_INT,  # OMINOUS_BOTTLE_AMPLIFIER
     "minecraft:jukebox_playable": _JUKEBOX_SONG,  # JUKEBOX_PLAYABLE
     "minecraft:provides_banner_patterns": HOLDER_SET,  # PROVIDES_BANNER_PATTERNS
     "minecraft:recipes": NBT_TAG,  # RECIPES
+    "minecraft:lodestone_tracker": Schema(  # LODESTONE_TRACKER
+        target=PrefixedOptional(GLOBAL_POS), tracked=BOOL
+    ),
+    "minecraft:firework_explosion": _FIREWORK_EXPLOSION,  # FIREWORK_EXPLOSION
+    "minecraft:fireworks": Schema(  # FIREWORKS
+        flight_duration=VAR_INT,
+        explosions=PrefixedArray(_FIREWORK_EXPLOSION, max_length=256),
+    ),
     "minecraft:profile": RESOLVABLE_PROFILE,  # PROFILE
     "minecraft:note_block_sound": IDENTIFIER,  # NOTE_BLOCK_SOUND
     "minecraft:banner_patterns": PrefixedArray(  # BANNER_PATTERNS
@@ -361,6 +392,9 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:base_color": ENUM,  # BASE_COLOR
     "minecraft:block_state": PrefixedArray(  # BLOCK_STATE
         Schema(name=String(32767), value=String(32767))
+    ),
+    "minecraft:bees": PrefixedArray(  # BEES
+        Schema(entity_data=_TYPED_DATA, ticks_in_hive=VAR_INT, min_ticks_in_hive=VAR_INT)
     ),
     "minecraft:lock": NBT_TAG,  # LOCK
     "minecraft:container_loot": NBT_TAG,  # CONTAINER_LOOT
@@ -405,6 +439,8 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:sheep/color": ENUM,  # SHEEP_COLOR
     "minecraft:shulker/color": ENUM,  # SHULKER_COLOR
     "minecraft:provides_pottery_pattern": REGISTRY_ID,  # PROVIDES_POTTERY_PATTERN
+    "minecraft:sign_text_front": _SIGN_TEXT,  # SIGN_TEXT_FRONT
+    "minecraft:sign_text_back": _SIGN_TEXT,  # SIGN_TEXT_BACK
     "minecraft:waxed": UNIT,  # WAXED
     "minecraft:cushion/color": ENUM,  # CUSHION_COLOR
 }
