@@ -10,9 +10,9 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 
 import pytest
-from support.commands import OPERATOR, allow_commands
 from support.gives import (
     GIVES,
+    OPERATOR,
     SET_SLOT,
     added_names,
     clear,
@@ -33,9 +33,8 @@ type BootReference = Callable[..., AbstractAsyncContextManager[Instance]]
 @pytest.mark.asyncio
 @pytest.mark.timeout(300)
 async def test_every_stack_a_command_gives_decodes_strictly_and_re_encodes_to_the_same_bytes(
-    boot_reference: BootReference, monkeypatch: pytest.MonkeyPatch
+    boot_reference: BootReference,
 ) -> None:
-    allow_commands(monkeypatch)
     failures: list[str] = []
     async with (
         boot_reference(operators=(OPERATOR,)) as instance,
@@ -68,9 +67,8 @@ async def test_every_stack_a_command_gives_decodes_strictly_and_re_encodes_to_th
 @pytest.mark.asyncio
 @pytest.mark.timeout(180)
 async def test_a_diamond_sword_with_sharpness_5_and_damage_3_decodes_to_those_values(
-    boot_reference: BootReference, monkeypatch: pytest.MonkeyPatch
+    boot_reference: BootReference,
 ) -> None:
-    allow_commands(monkeypatch)
     async with (
         boot_reference(operators=(OPERATOR,)) as instance,
         operator_bot(instance, "vanilla") as (bot, transcript),
