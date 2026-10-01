@@ -98,7 +98,7 @@ serverbound click packets:
 
 | Type | Bytes |
 |---|---|
-| `ConsumeEffect` | `Reg(consume_effect_type)` then by id: 0 `apply_effects` `List(MobEffectInstance)`, Float; 1 `remove_effects` `Set(mob_effect)`; 2 `clear_all_effects` `unit`; 3 `teleport_randomly` Float; 4 `play_sound` `Sound` |
+| `ConsumeEffect` | `Reg(consume_effect_type)` then by id: 0 `apply_effects` `List(MobEffectInstance)`, Float; 1 `remove_effects` `Set(mob_effect)`; 2 `clear_all_effects` `unit`; 3 `teleport_randomly` Float diameter, Bool directional_particles; 4 `play_sound` `Sound` |
 | `MobEffectInstance` | `Reg(mob_effect)`, `Details` |
 | `Details` | VarInt amplifier, VarInt duration, Bool ambient, Bool show_particles, Bool show_icon, `Opt(Details)` |
 | `BlockPredicate` | `Opt(Set(block))`, `Opt(List(PropertyMatcher))`, `Opt(Compound)`, `DataComponentMatchers` |
