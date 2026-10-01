@@ -50,7 +50,7 @@ test needs it:
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
-| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
+| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`) |
 | `codec/items.py` | `SLOT`, the item stack field |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -245,7 +245,11 @@ EQUIPMENT: WireType[list[dict[str, object]]]  # EquipmentList(PENDING_ITEM_STACK
 # codec/shapes.py: the shapes the data components are built from.
 UNIT: WireType[None]             # no bytes (StreamCodec.unit): reads None, writes only None
 NBT_TAG: WireType[bytes]         # an NBT root tag of any type but END, as its exact bytes
+COMPOUND_TAG: WireType[bytes]    # NBT_TAG whose root must be a compound (type 10), as its exact bytes
 TEXT_COMPONENT: WireType[bytes]  # NBT_TAG: a text component is kept as its NBT bytes, not decoded
+@frozen
+class FixedArray:                # exactly `size` elements, no count (fixedSizeList): a list
+    element: WireType[object]; size: int
 REGISTRY_ID: WireType[int]       # a registry entry by protocol id: a plain VarInt, not range checked
 ENUM: WireType[int]              # an enum by ordinal: a plain VarInt, not range checked
 @frozen
