@@ -9,8 +9,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from support.commands import SETBLOCK_OBSERVED, allow_commands
 from support.leak_guard import kill_survivors
+from support.probe import SETBLOCK_OBSERVED, WATCHER
 
 from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
@@ -28,10 +28,7 @@ _GUARD = "MSCTS_LEAK_GUARD"
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(180)
-async def test_the_probe_group_completes_against_pumpkin(
-    cache_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    allow_commands(monkeypatch)
+async def test_the_probe_group_completes_against_pumpkin(cache_dir: Path, tmp_path: Path) -> None:
     endpoint = free_endpoint()
     spec = SETBLOCK_OBSERVED.spec(ServerSpec(host=endpoint.host, port=endpoint.port))
     adapter = PumpkinAdapter()
@@ -48,9 +45,6 @@ async def test_the_probe_group_completes_against_pumpkin(
     assert not leaked, f"Pumpkin processes outlived the test: {leaked}"
 
     labels = [mark.label for mark in transcript.marks]
-    assert labels == [
-        f"{OBSERVE_OPEN} minecraft:block_update minecraft:system_chat",
-        OBSERVE_CLOSE,
-    ]
+    assert labels == [f"{OBSERVE_OPEN} minecraft:block_update", OBSERVE_CLOSE]
     answers = [e.bot for e in transcript.events if e.packet.name == "minecraft:award_stats"]
-    assert sorted(set(answers)) == ["mscts_op", "watcher"], answers
+    assert sorted(set(answers)) == ["control", WATCHER], answers
