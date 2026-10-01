@@ -68,7 +68,8 @@ async def test_a_group_that_sets_a_block_inside_a_window_self_checks_20_of_20(
     assert not_matching == [], not_matching
     # Of play, it compared what the command did, and nothing the server sent on a clock,
     # nor anything Control received (its feedback is a system_chat).
-    test_cases = set(verdicts[0].test_cases)
-    assert "block_update" in test_cases, test_cases
+    # A test case is `<packet>.<field path>` once the packet decodes, so look at the packets.
+    packets = {case.split(".")[0] for case in verdicts[0].test_cases}
+    assert "block_update" in packets, packets
     outside = {"set_time", "play:keep_alive", "award_stats", "login", "system_chat"}
-    assert not outside & test_cases, test_cases
+    assert not outside & packets, packets
