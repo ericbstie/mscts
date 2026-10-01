@@ -26,6 +26,7 @@ from mscts.codec.shapes import (
     SECTION_POSITION,
     SOUND_SOURCE,
     UNIT,
+    VEC3,
     Deferred,
     Either,
     FixedArray,
@@ -467,3 +468,22 @@ def test_a_section_position_round_trips_its_extremes(value: dict[str, int]) -> N
 def test_a_section_position_refuses_what_it_cannot_encode(value: object, message: str) -> None:
     with pytest.raises(WireError, match=message):
         written(SECTION_POSITION, value)
+
+
+# Vec3: `Vec3.STREAM_CODEC`, three Doubles in the order x y z (an explosion's centre and the
+# knockback it gives a player).
+
+
+def test_a_vec3_is_three_doubles_in_x_y_z_order() -> None:
+    encoded = bytes.fromhex("3ff8000000000000 c04d800000000000 4014000000000000")
+    assert read_all(VEC3, encoded) == {"x": 1.5, "y": -59.0, "z": 5.0}
+    assert written(VEC3, {"x": 1.5, "y": -59.0, "z": 5.0}) == encoded
+
+
+def test_a_vec3_names_the_field_that_is_bad() -> None:
+    with pytest.raises(WireError, match="y: expected a float"):
+        written(VEC3, {"x": 1.5, "y": -59, "z": 5.0})
+    with pytest.raises(WireError, match=r"missing field\(s\) z"):
+        written(VEC3, {"x": 1.5, "y": -59.0})
+    with pytest.raises(WireError, match=r"^z: "):
+        read_all(VEC3, bytes.fromhex("3ff8000000000000 c04d800000000000"))
