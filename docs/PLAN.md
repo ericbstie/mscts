@@ -1357,13 +1357,25 @@ then record the answer in an ADR:
   deterministic across runs?
 - Which ambient packets (such as `set_time` every 20 ticks, `keep_alive`)
   need Masks, and should Comparisons be scoped to windows between Marks?
+  **Decided (ADR-0010):** none need Masks. A Group compares play packets
+  inside Observation windows, and the heartbeat packets
+  (`compare.HEARTBEAT`: `keep_alive`, `set_time`, the barrier's
+  `award_stats`) are never compared inside one.
+- How do Groups for the time of day compare `set_time`, which no window
+  compares (ADR-0010)? And should a position resend that carries no
+  movement (vanilla's `move_entity_pos` for every tracked entity every 60
+  ticks) or a latency-only `player_info_update` (every 601 ticks) be
+  heartbeat packets? Telling them from a real move or player list change
+  needs those packets' schemas; until then a window that can catch them
+  names the packets it tests.
 - How should chunk data be compared: decode the palette into block states,
   or compare raw?
 - Transcripts record a frame when the Bot *takes* it (stamped when it
   arrived, by the Connection's background reader), so they do not depend
   on TCP segmentation, but packets never taken are absent. Should
   Comparisons be scoped to windows between Marks, with a drain at each
-  window end?
+  window end? **Decided (ADR-0010):** yes. A window ends with a barrier
+  (`Bot.sync`) on every Bot in play, then a drain (`Bot.drain`).
 - Should `Packet.fields` be deeply immutable (MappingProxyType, tuples) so
   Packets are hashable in Transcripts and Comparisons? **Not needed for
   Comparison** (decided with the Comparison engine): alignment keys are

@@ -113,7 +113,15 @@ received one when it arrived.
 
 ### Mark
 
-A named timestamp a Group records, used to compute Measurements.
+A named timestamp a Group records, used to compute Measurements and to
+find Observation windows.
+
+### Observation window
+
+The part of a Group whose packets in the world are compared: what a Bot
+receives inside `async with context.observe():`. It never compares the
+packets a server sends on a clock, such as keep-alives. See
+[Writing a Group](/guide/writing-a-group#choosing-what-is-compared).
 
 ### Mask
 
