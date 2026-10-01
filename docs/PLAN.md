@@ -1366,8 +1366,9 @@ then record the answer in an ADR:
   movement (vanilla's `move_entity_pos` for every tracked entity every 60
   ticks) or a latency-only `player_info_update` (every 601 ticks) be
   heartbeat packets? Telling them from a real move or player list change
-  needs those packets' schemas; until then a window that can catch them
-  names the packets it tests.
+  needs those packets' schemas: `move_entity_pos` has one since #20,
+  `player_info_update` none yet. Until this is decided, a window that can
+  catch them names the packets it tests.
 - How should chunk data be compared: decode the palette into block states,
   or compare raw?
 - Transcripts record a frame when the Bot *takes* it (stamped when it

@@ -117,4 +117,5 @@ running or frozen.
   so they stay compared. A window that could catch one narrows itself to
   the packets it tests, for example
   `context.observe("minecraft:block_update")`. Telling a resend from a
-  move needs a `move_entity_pos` schema; it is an open question.
+  move needs the packet's schema (`move_entity_pos` has one since #20);
+  whether to leave resends out is an open question in PLAN.md.
