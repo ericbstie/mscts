@@ -50,8 +50,8 @@ test needs it:
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
-| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
-| `codec/items.py` | `SLOT`, the item stack field |
+| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `ComponentType` and `COMPONENT_TYPE` (a type by name), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
+| `codec/items.py` | `SLOT`, the item stack field, and `HASHED_SLOT`, the hashed stack a client sends (the wire type only) |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
@@ -276,6 +276,10 @@ RESOLVABLE_PROFILE: Schema       # {profile: {game_profile: {...}} | {partial: {
 class ComponentTable:              # names, without_layout, type_id(name), type_name(id), layout(name)
 TABLE: ComponentTable
 @frozen
+class ComponentType:               # WireType[str]: a type's VarInt id on the wire, its name as a value
+    table: ComponentTable
+COMPONENT_TYPE: ComponentType      # ComponentType(TABLE)
+@frozen
 class TypedComponent:              # WireType[dict[str, object]]: a type id, then that type's value
     table: ComponentTable
 TYPED_COMPONENT: TypedComponent    # TypedComponent(TABLE): {type: "minecraft:damage", value: 5}. The exact
@@ -291,6 +295,10 @@ ITEM_STACK_TEMPLATE: Schema        # a stack inside a component or a particle: {
 
 # codec/items.py
 SLOT: WireType[dict[str, object] | None]  # None (a count of 0) | {count, item, components: <a patch>}
+# The stack a client sends (HashedStack): the wire type only. The hashes are Ints the caller gives
+# and are written as they are; computing a component's hash is #28's.
+HASHED_SLOT: WireType[dict[str, object] | None]
+                                          # None | {item, count, components: {added: [{type, hash}], removed: [type]}}
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 

@@ -171,6 +171,25 @@ def _list_of(value: object, what: str) -> list[object]:
 
 
 @dataclass(frozen=True, slots=True)
+class ComponentType:
+    """A data component type: its registry id on the wire (a VarInt), its name as a value.
+
+    Attributes:
+        table: The types, by id.
+    """
+
+    table: ComponentTable
+
+    def read(self, reader: Reader) -> str:
+        """Consume the VarInt id and return the type's name."""
+        return self.table.type_name(reader.var_int())
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append the id of the type named `value`."""
+        writer.var_int(self.table.type_id(_name_of(value)))
+
+
+@dataclass(frozen=True, slots=True)
 class TypedComponent:
     """One data component (`TypedDataComponent.STREAM_CODEC`): its type id, then its value.
 
@@ -229,6 +248,7 @@ class Patch:
         _check_count(reader, "added", added_count)
         _check_count(reader, "removed", removed_count)
         typed = TypedComponent(self.table)
+        component_type = ComponentType(self.table)
         added = []
         for index in range(added_count):
             try:
@@ -239,7 +259,7 @@ class Patch:
         removed = []
         for index in range(removed_count):
             try:
-                removed.append(self.table.type_name(reader.var_int()))
+                removed.append(component_type.read(reader))
             except WireError as exc:
                 msg = f"removed: {index}: {exc}"
                 raise WireError(msg) from exc
@@ -253,6 +273,7 @@ class Patch:
         writer.var_int(len(added))
         writer.var_int(len(removed))
         typed = TypedComponent(self.table)
+        component_type = ComponentType(self.table)
         for index, pair in enumerate(added):
             try:
                 typed.write(writer, pair)
@@ -261,7 +282,7 @@ class Patch:
                 raise WireError(msg) from exc
         for index, name in enumerate(removed):
             try:
-                writer.var_int(self.table.type_id(_name_of(name)))
+                component_type.write(writer, name)
             except WireError as exc:
                 msg = f"removed: {index}: {exc}"
                 raise WireError(msg) from exc
@@ -646,6 +667,9 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
 
 TABLE = ComponentTable(registry_names(TARGET.minecraft_version, _REGISTRY), _LAYOUTS)
 """The Target's data components and the wire type of each one's value."""
+
+COMPONENT_TYPE = ComponentType(TABLE)
+"""A data component type of the Target's table, by name."""
 
 TYPED_COMPONENT = TypedComponent(TABLE)
 """One data component of the Target's table: its type id, then its value."""
