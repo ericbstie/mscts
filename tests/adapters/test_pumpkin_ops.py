@@ -13,6 +13,7 @@ from mscts.adapters.pumpkin import offline_uuid, ops_json
     [
         ("Notch", "ff4af744-2839-cc96-4605-0dd2214a30c1"),
         ("mscts_op", "dea1d220-d66e-fced-c40c-300338c9236f"),
+        ("control", "0fcd568a-5cb9-bdb4-677b-69354b11ee41"),
     ],
 )
 def test_offline_uuid_is_the_one_pumpkin_gives_the_player(name: str, expected: str) -> None:

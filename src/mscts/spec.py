@@ -92,6 +92,15 @@ class ServerSpec:
             )
             raise SpecError(msg)
 
+    @property
+    def all_operators(self) -> tuple[str, ...]:
+        """Every player an Instance makes an operator: CONTROL_PLAYER, then `operators`.
+
+        Each name once. Control's Bot is an operator on every Instance (an invariant), so
+        that a Group can set the world up with any command.
+        """
+        return (CONTROL_PLAYER, *(name for name in self.operators if name != CONTROL_PLAYER))
+
 
 def _is_loopback_host(host: object) -> bool:
     if not isinstance(host, str):

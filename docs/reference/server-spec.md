@@ -18,7 +18,7 @@ Group can change it through its `spec` option.
 | `seed` | `int` | `0` | |
 | `game_mode` | `GameMode` | `SURVIVAL` | `SURVIVAL`, `CREATIVE`, `ADVENTURE` or `SPECTATOR`. |
 | `difficulty` | `Difficulty` | `PEACEFUL` | `PEACEFUL`, `EASY`, `NORMAL` or `HARD`. |
-| `operators` | `tuple[str, ...]` | `()` | Player names with operator status. |
+| `operators` | `tuple[str, ...]` | `()` | Player names with operator status, besides `control`, which always has it. |
 | `compression_threshold` | `int` | `256` | Packets at least this many bytes long are compressed. |
 
 A ServerSpec whose host is not a loopback host address raises `ValueError`,
@@ -36,6 +36,7 @@ Group can turn them off.
 - No server icon.
 - Spawn protection 0.
 - No outbound network connections beyond loopback.
+- A player called `control` is an operator.
 
 Offline mode lets anyone who can reach the port log in under any name,
 including an operator's. That is why every server listens on loopback only.

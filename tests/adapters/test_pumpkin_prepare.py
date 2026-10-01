@@ -84,7 +84,7 @@ def test_prepare_writes_the_complete_config_and_world_save(
     PumpkinAdapter().prepare(installation, spec, workdir)
     assert _written(workdir) == {
         "pumpkin.toml": pumpkin_toml(spec).encode(),
-        "data/ops.json": ops_json(("Notch",)).encode(),
+        "data/ops.json": ops_json(("control", "Notch")).encode(),
         # Pumpkin's own first-run content of each; no ServerSpec field changes them.
         "data/whitelist.json": b"[]",
         "data/banned-players.json": b"[]",
@@ -92,6 +92,22 @@ def test_prepare_writes_the_complete_config_and_world_save(
         "world/level.dat": GOLDEN_LEVEL,
         "world/data/minecraft/world_gen_settings.dat": GOLDEN_WORLD_GEN,
     }
+
+
+def test_control_is_an_operator_with_pumpkins_offline_uuid(
+    installation: Installation, workdir: Path
+) -> None:
+    PumpkinAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
+    assert (workdir / "data/ops.json").read_text(encoding="utf-8") == (
+        "[\n"
+        "  {\n"
+        '    "uuid": "0fcd568a-5cb9-bdb4-677b-69354b11ee41",\n'
+        '    "name": "control",\n'
+        '    "level": 4,\n'
+        '    "bypasses_player_limit": false\n'
+        "  }\n"
+        "]"
+    )
 
 
 def _nbt_string(text: str) -> bytes:

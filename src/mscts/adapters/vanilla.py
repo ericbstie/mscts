@@ -20,7 +20,7 @@ JAR = "server.jar"
 # A fixed max heap, so the Reference's memory (and GC timing) does not depend on the
 # host: the JVM default is a quarter of physical RAM.
 HEAP = "-Xmx1G"
-# ops.json level for ServerSpec.operators: all commands, as op-permission-level.
+# ops.json level for ServerSpec.all_operators: all commands, as op-permission-level.
 OPERATOR_LEVEL = 4
 # The java launcher to run the Reference with, if the constructor names none.
 JAVA_ENV = "MSCTS_JAVA"
@@ -376,7 +376,8 @@ class VanillaAdapter:
         (workdir / "server.properties").write_text(
             java_properties(server_properties(spec)), encoding="ascii"
         )
-        (workdir / "ops.json").write_text(ops_json(spec.operators), encoding="utf-8")
+        # Control's Bot first: an operator on every Instance (ServerSpec.all_operators).
+        (workdir / "ops.json").write_text(ops_json(spec.all_operators), encoding="utf-8")
         jar = installation.root.absolute() / JAR
         # Documented order: HEAP, then NO_NETWORK (established first), then
         # HOST_INDEPENDENCE, then -jar. The two tables are independent of each other, but a
