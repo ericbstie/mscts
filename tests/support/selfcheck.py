@@ -11,12 +11,17 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 import mscts.groups  # noqa: F401 - registers the shipped Groups
+from mscts.compare import Verdict
 from mscts.group import GROUPS, Group
 from mscts.spec import ServerSpec
 
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
 """How many times a Group is played by default; a Group's PR runs 20 once, by hand."""
+MAX_VERDICTS = 3
+"""How many Verdicts that are not `match` a failure message lists."""
+MAX_DIVERGENCES = 5
+"""How many of a Verdict's differences a failure message lists."""
 
 
 def repeat_from(environ: Mapping[str, str]) -> int:
@@ -36,6 +41,34 @@ def repeat_from(environ: Mapping[str, str]) -> int:
         msg = f"{REPEAT_VAR} is {text!r}: it must be a whole number of at least 1"
         raise ValueError(msg)
     return repeat
+
+
+def describe_unmatched(verdicts: Sequence[Verdict]) -> str:
+    """Each Verdict that is not `match`, with the differences it found, for a failure message.
+
+    Only the first `MAX_VERDICTS` Verdicts and their first `MAX_DIVERGENCES` differences are
+    listed, each with the Bot, the packet, the field path and both values; the rest are counted.
+    """
+    lines: list[str] = []
+    for verdict in verdicts[:MAX_VERDICTS]:
+        lines.extend(_describe(verdict))
+    if len(verdicts) > MAX_VERDICTS:
+        lines.append(f"... and {len(verdicts) - MAX_VERDICTS} more Verdicts that are not match")
+    return "\n".join(lines)
+
+
+def _describe(verdict: Verdict) -> list[str]:
+    head = f"{verdict.group_id}: {verdict.outcome}"
+    lines = [f"{head}: {verdict.detail}" if verdict.detail else head]
+    for divergence in verdict.divergences[:MAX_DIVERGENCES]:
+        where = " ".join(
+            part for part in (divergence.kind, divergence.packet, divergence.path) if part
+        )
+        values = f"{divergence.reference!r} vs {divergence.candidate!r}"
+        lines.append(f"  {divergence.bot}: {where}: {values}")
+    if len(verdict.divergences) > MAX_DIVERGENCES:
+        lines.append(f"  ... and {len(verdict.divergences) - MAX_DIVERGENCES} more differences")
+    return lines
 
 
 def needs_instances_of_their_own(groups: Sequence[Group], pair_spec: ServerSpec) -> bool:

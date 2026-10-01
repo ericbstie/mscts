@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 from support.reference import attached, own_reference
-from support.selfcheck import needs_instances_of_their_own
+from support.selfcheck import describe_unmatched, needs_instances_of_their_own
 
 from mscts.compare import Outcome, Verdict
 from mscts.group import Group, resolve
@@ -47,7 +47,8 @@ async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
     verdicts = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
     assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * repeat
     not_matching = [verdict for verdict in verdicts if verdict.outcome is not Outcome.MATCH]
-    assert not_matching == []
+    if not_matching:
+        pytest.fail(describe_unmatched(not_matching), pytrace=False)
 
 
 async def _play(
