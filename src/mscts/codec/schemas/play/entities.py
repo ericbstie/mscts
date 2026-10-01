@@ -22,6 +22,7 @@ from mscts.codec.schema import (
     IDENTIFIER,
     INT,
     LP_VEC3,
+    UBYTE,
     UUID,
     VAR_INT,
     PrefixedArray,
@@ -31,9 +32,8 @@ from mscts.codec.schema import (
 
 CLIENTBOUND: Mapping[str, Schema] = {
     # Entity Animation. The action is an Unsigned Byte on the wire (0 swing main arm, 2 leave
-    # bed, 3 swing off hand, 4 critical hit, 5 magic critical hit); BYTE reads it signed and
-    # writes the same byte back.
-    "minecraft:animate": Schema(entity_id=ENTITY_ID, action=BYTE),
+    # bed, 3 swing off hand, 4 critical hit, 5 magic critical hit).
+    "minecraft:animate": Schema(entity_id=ENTITY_ID, action=UBYTE),
     # Spawn Entity. The velocity is an LpVec3; the angles are in 1/256 of a turn. `data` is
     # the object data (a projectile's owner, a block's state, ...): its meaning depends on
     # the entity type.

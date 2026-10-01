@@ -119,6 +119,22 @@ class _Byte:
         writer.byte(_integer(value))
 
 
+_UBYTE_MAX = 0xFF
+
+
+@dataclass(frozen=True, slots=True)
+class _UByte:
+    def read(self, reader: Reader) -> int:
+        return reader.raw(1)[0]
+
+    def write(self, writer: Writer, value: object) -> None:
+        number = _integer(value)
+        if not 0 <= number <= _UBYTE_MAX:
+            msg = f"{number} out of range for an Unsigned Byte"
+            raise WireError(msg)
+        writer.raw(bytes([number]))
+
+
 @dataclass(frozen=True, slots=True)
 class _Short:
     def read(self, reader: Reader) -> int:
@@ -176,6 +192,9 @@ class _Rest:
 
 BYTE: WireType[int] = _Byte()
 """Byte: a signed 8-bit integer."""
+
+UBYTE: WireType[int] = _UByte()
+"""Unsigned Byte: 0 to 255 (`FriendlyByteBuf.readUnsignedByte`)."""
 
 SHORT: WireType[int] = _Short()
 """Short: a signed 16-bit integer, big-endian."""

@@ -149,6 +149,7 @@ VAR_INT: WireType[int]             # also VAR_LONG, USHORT, LONG; more primitive
 BOOL: WireType[bool]               # writes only a bool (not 1 or "")
 UUID: WireType[uuid.UUID]          # writes only a UUID (not its str, bytes or int)
 BYTE: WireType[int]; SHORT: WireType[int]; INT: WireType[int]   # signed 8 / 16 / 32 bits
+UBYTE: WireType[int]               # Unsigned Byte, 0 to 255 (writes nothing outside it)
 FLOAT: WireType[float]             # binary32; writes only a float it holds exactly (not 0.1, not 1)
 DOUBLE: WireType[float]            # binary64; writes only a float
 REST: WireType[bytes]              # the rest of the packet as bytes (a plugin message's data)

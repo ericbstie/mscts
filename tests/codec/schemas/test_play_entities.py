@@ -686,10 +686,9 @@ def test_damage_event_carries_the_entity_ids_plus_one_and_a_source_position() ->
 
 def test_animate_decodes_and_re_encodes() -> None:
     # Built by hand: the entity 300 swings its off hand (animation 3). The action is an
-    # Unsigned Byte on the wire; the Codec reads a Byte, so a value past 127 reads as negative
-    # and writes back the same byte.
+    # Unsigned Byte on the wire (`readUnsignedByte`), so it reads as 0 to 255.
     round_trip("minecraft:animate", {"entity_id": 300, "action": 3}, "ac02 03")
-    round_trip("minecraft:animate", {"entity_id": 2, "action": -128}, "02 80")
+    round_trip("minecraft:animate", {"entity_id": 2, "action": 255}, "02 ff")
 
 
 def test_hurt_animation_decodes_and_re_encodes() -> None:

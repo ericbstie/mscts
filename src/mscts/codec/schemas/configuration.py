@@ -10,7 +10,6 @@ links, report details, transfer, reset chat, ping) stays raw, compared by payloa
 """
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 
 from mscts.codec.schema import (
     BOOL,
@@ -19,33 +18,13 @@ from mscts.codec.schema import (
     LONG,
     NBT,
     REST,
+    UBYTE,
     VAR_INT,
     PrefixedArray,
     PrefixedOptional,
     Schema,
     String,
 )
-from mscts.codec.wire import Reader, WireError, Writer
-
-_UNSIGNED_BYTE_MAX = 0xFF
-
-
-@dataclass(frozen=True, slots=True)
-class _UnsignedByte:
-    """Unsigned Byte: 0 to 255 (the wiki's type; `FriendlyByteBuf.readUnsignedByte`)."""
-
-    def read(self, reader: Reader) -> int:
-        return reader.raw(1)[0]
-
-    def write(self, writer: Writer, value: object) -> None:
-        if isinstance(value, bool) or not isinstance(value, int):
-            msg = f"expected an int, got {type(value).__name__}"
-            raise WireError(msg)
-        if not 0 <= value <= _UNSIGNED_BYTE_MAX:
-            msg = f"{value} out of range for an Unsigned Byte"
-            raise WireError(msg)
-        writer.raw(bytes([value]))
-
 
 _KNOWN_PACK = Schema(namespace=String(32767), id=String(32767), version=String(32767))
 
@@ -83,7 +62,7 @@ SERVERBOUND: Mapping[str, Schema] = {
         view_distance=BYTE,
         chat_mode=VAR_INT,  # 0 full, 1 system (commands only), 2 hidden
         chat_colors=BOOL,
-        displayed_skin_parts=_UnsignedByte(),  # bit 0 cape, 1 jacket, 2-3 sleeves, 4-5 legs, 6 hat
+        displayed_skin_parts=UBYTE,  # bit 0 cape, 1 jacket, 2-3 sleeves, 4-5 legs, 6 hat
         main_hand=VAR_INT,  # 0 left, 1 right
         enable_text_filtering=BOOL,
         allow_server_listings=BOOL,
