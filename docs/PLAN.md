@@ -407,6 +407,9 @@ class Connection:                   # one TCP connection; owns framing, compress
     # reader reads on to the end of the stream); anything else it raises stops the reader,
     # and recv raises it right after the Packet it was answering.
     state: State                    # read-only: the State send encodes in
+    transcript: Transcript          # read-only: the Transcript it records to
+    last_arrival_ns: int | None     # read-only: when the Packet recv last returned arrived, as the
+                                    # Transcript stamps it (not when it was taken); None before the first
     # The directions switch as the vanilla client switches them (26.3 javap: the terminal
     # packets, whose isTerminal() is true). Sending the intention moves both (intent 1 →
     # STATUS, 2 or 3 (transfer) → LOGIN, else ProtocolError). After that, what is *received*

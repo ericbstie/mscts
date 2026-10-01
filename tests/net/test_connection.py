@@ -898,3 +898,48 @@ def test_recv_after_close_raises(toy_codec: Codec, transcript: Transcript) -> No
 
     asyncio.run(client())
     assert transcript.events == []
+
+
+def test_last_arrival_is_the_stamp_of_the_packet_recv_last_returned(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    async def server(peer: Peer) -> None:
+        await peer.send("test:reply", value=1)
+        await asyncio.sleep(0.02)
+        await peer.send("test:empty")
+        await peer.eof()
+
+    async def client() -> list[int | None]:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            seen = [connection.last_arrival_ns]
+            await connection.recv(timeout_s=1)
+            seen.append(connection.last_arrival_ns)
+            await connection.recv(timeout_s=1)
+            seen.append(connection.last_arrival_ns)
+            return seen
+
+    before, first, second = asyncio.run(client())
+    assert before is None
+    assert first is not None
+    assert second is not None
+    assert (first, second) == tuple(event.t_ns for event in transcript.events)
+    assert second - first >= 15_000_000  # the two frames came 20 ms apart
+
+
+def test_a_connection_gives_the_transcript_it_records_to(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> Transcript:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            return connection.transcript
+
+    assert asyncio.run(client()) is transcript
