@@ -17,6 +17,29 @@ def test_data_component_names_are_the_registry_in_protocol_id_order() -> None:
     assert len(set(names)) == len(names)
 
 
+def test_command_argument_type_names_are_the_registry_in_protocol_id_order() -> None:
+    # The Brigadier argument parsers of the `commands` packet (#17), by protocol id: 0 to 11
+    # are the parsers the wiki's command data page numbers the same way.
+    names = registry_names(TARGET.minecraft_version, "minecraft:command_argument_type")
+    assert len(names) == 62
+    assert names[:12] == (
+        "brigadier:bool",
+        "brigadier:float",
+        "brigadier:double",
+        "brigadier:integer",
+        "brigadier:long",
+        "brigadier:string",
+        "minecraft:entity",
+        "minecraft:game_profile",
+        "minecraft:block_pos",
+        "minecraft:column_pos",
+        "minecraft:vec3",
+        "minecraft:vec2",
+    )
+    assert names[61] == "minecraft:uuid"
+    assert len(set(names)) == len(names)
+
+
 def test_consume_effect_names_are_the_registry_in_protocol_id_order() -> None:
     assert registry_names(TARGET.minecraft_version, "minecraft:consume_effect_type") == (
         "minecraft:apply_effects",

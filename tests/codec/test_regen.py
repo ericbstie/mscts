@@ -18,6 +18,7 @@ from mscts.target import TARGET
 # Names in protocol id order that are neither alphabetical nor reverse-alphabetical, so a
 # sort by name (or by the report's key order, see _report) cannot pass for a sort by id.
 _WANTED = {
+    "minecraft:command_argument_type": ["minecraft:m", "minecraft:z", "minecraft:a"],
     "minecraft:consume_effect_type": ["minecraft:b", "minecraft:a"],
     "minecraft:data_component_type": ["minecraft:z", "minecraft:m", "minecraft:a"],
 }
@@ -63,10 +64,11 @@ def test_registry_names_json_is_two_space_indented_text_ending_in_a_newline() ->
     assert text == json.dumps(_WANTED, indent=2) + "\n"
 
 
-def test_registry_names_json_rejects_a_registry_missing_from_the_report() -> None:
-    report = _report({"minecraft:consume_effect_type": ["minecraft:a"]})
-    with pytest.raises(regen.RegenError, match="minecraft:data_component_type"):
-        registry_names_json(report)
+@pytest.mark.parametrize("missing", list(_WANTED))
+def test_registry_names_json_rejects_a_registry_missing_from_the_report(missing: str) -> None:
+    present = {registry: names for registry, names in _WANTED.items() if registry != missing}
+    with pytest.raises(regen.RegenError, match=missing):
+        registry_names_json(_report(present))
 
 
 @pytest.mark.parametrize("protocol_id", [5, 2], ids=["a gap", "a repeated id"])

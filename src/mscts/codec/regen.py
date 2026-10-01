@@ -25,9 +25,14 @@ _REPORT_RELATIVE = Path("reports") / "packets.json"
 _REGISTRIES_REPORT = "registries.json"
 _GENERATOR_TIMEOUT_S = 300
 
-REGISTRY_NAME_LISTS = ("minecraft:consume_effect_type", "minecraft:data_component_type")
+REGISTRY_NAME_LISTS = (
+    "minecraft:command_argument_type",
+    "minecraft:consume_effect_type",
+    "minecraft:data_component_type",
+)
 """The registries whose entry names are committed: the data component table and the consume
-effect dispatch (`codec/components.py`) take their ids from these lists, never from source."""
+effect dispatch (`codec/components.py`) and the command argument parsers (#17) take their ids
+from these lists, never from source."""
 
 
 class RegenError(RuntimeError):
