@@ -57,6 +57,21 @@ uv run pytest tests/path/test_file.py::test_name
 - **Flag conflicts with an ADR.** A change that reverses a decision needs a
   new ADR. See [Design decisions](/design-decisions).
 
+## Inspecting the Target's libraries
+
+The research tool can disassemble a class from a library the Target uses:
+
+```sh
+mise exec -- uv run python scripts/research/javap.py --lib datafixerupper server com.mojang.serialization.codecs.OptionalFieldCodec
+```
+
+Repeat `--lib` to add another library, such as `--lib gson`. Each substring
+must match exactly one artifact name in Mojang's version metadata. An
+ambiguous name lists its matches. Selected jars are cached under
+`research/26.3/libraries/` in the mscts cache, and their published sha1 and
+size are checked on every use. With no `--lib`, only the Target jar is on
+the classpath.
+
 ## Proposing a test
 
 Each mechanic, such as lighting, mob spawning or redstone timing, is
