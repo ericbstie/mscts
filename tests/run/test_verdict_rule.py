@@ -14,7 +14,7 @@ import pytest
 from mscts.codec.packets import Codec
 from mscts.codec.wire import Writer
 from mscts.compare import Divergence, Mask, Outcome, Verdict
-from mscts.group import Group, GroupContext
+from mscts.group import CommandMissing, Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
@@ -199,6 +199,36 @@ async def test_the_failed_divergence_names_the_bot_the_failure_came_out_of(raise
 
     assert verdict.outcome is Outcome.MISMATCH
     assert verdict.divergences[0] == _failed(str(candidate), raiser.bot)
+
+
+async def _needs_tick(context: GroupContext) -> None:  # noqa: ARG001 - a Script
+    """Control found no `tick` in the server's command tree."""
+    root = "tick"
+    raise CommandMissing(root)
+
+
+NEEDS_TICK = Group(id="test/needs-tick", run=_needs_tick)
+
+
+@pytest.mark.asyncio
+async def test_a_command_the_candidate_does_not_have_blocks_the_group() -> None:
+    candidate = await _play(NEEDS_TICK, None)
+    assert isinstance(candidate, GroupError)
+
+    verdict = judge(NEEDS_TICK, Transcript(NEEDS_TICK.id, "vanilla"), candidate)
+
+    assert verdict == Verdict("test/needs-tick", Outcome.BLOCKED, detail="needs /tick")
+
+
+@pytest.mark.asyncio
+async def test_a_command_the_reference_does_not_have_is_an_error() -> None:
+    reference = await _play(NEEDS_TICK, None)
+    assert isinstance(reference, GroupError)
+
+    verdict = judge(NEEDS_TICK, reference, Transcript(NEEDS_TICK.id, "pumpkin"))
+
+    detail = "the Reference failed: CommandMissing: the server has no /tick command"
+    assert verdict == Verdict("test/needs-tick", Outcome.ERROR, detail=detail)
 
 
 async def _mute(peer: Peer) -> None:

@@ -16,6 +16,8 @@ left out on purpose:
   are. The order of a Bot's stream is compared; when its Packets arrived is not.
 - The interleaving of different Bots' Packets is timing too, so each Bot is compared
   on its own.
+- Control's Bot (`CONTROL_PLAYER`) sets the world up, as an operator: what it receives
+  is the servers' answers to that, not what the Group tests.
 """
 
 import bisect
@@ -32,6 +34,7 @@ from typing import Literal, NoReturn, Self, override
 from uuid import UUID
 
 from mscts.codec.packets import Codec, Direction, Packet, State, UnknownPacketError
+from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
 
@@ -441,7 +444,8 @@ class _Masks:
 
 
 def _bots(transcript: Transcript) -> set[str]:
-    return {event.bot for event in transcript.events}
+    """The Bots whose streams are compared: every Bot but Control's."""
+    return {event.bot for event in transcript.events} - {CONTROL_PLAYER}
 
 
 def _compare_bot(
