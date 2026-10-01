@@ -19,6 +19,7 @@ from mscts.codec.schema import (
     POSITION,
     REST,
     SHORT,
+    UBYTE,
     UUID,
     VAR_INT,
     VAR_LONG,
@@ -65,6 +66,9 @@ def test_bool_refuses_a_value_that_is_not_a_bool(value: object) -> None:
     ("wire_type", "value", "encoded"),
     [
         (BYTE, -1, "ff"),
+        (UBYTE, 0, "00"),
+        (UBYTE, 127, "7f"),
+        (UBYTE, 255, "ff"),
         (SHORT, -2, "fffe"),
         (INT, -2, "fffffffe"),
         (FLOAT, -90.5, "c2b50000"),
@@ -87,6 +91,10 @@ def test_fixed_size_types_round_trip(
     ("wire_type", "value", "error"),
     [
         (BYTE, True, "expected an int"),
+        (UBYTE, True, "expected an int"),
+        (UBYTE, 1.0, "expected an int"),
+        (UBYTE, -1, "-1 out of range for an Unsigned Byte"),
+        (UBYTE, 256, "256 out of range for an Unsigned Byte"),
         (SHORT, True, "expected an int"),
         (SHORT, 2**15, "short 32768 out of range"),
         (INT, 1.0, "expected an int"),
@@ -105,6 +113,11 @@ def test_fixed_size_types_refuse_what_they_cannot_encode(
 ) -> None:
     with pytest.raises(WireError, match=error):
         written(wire_type, value)
+
+
+def test_an_unsigned_byte_needs_its_byte() -> None:
+    with pytest.raises(WireError, match="truncated"):
+        read_all(UBYTE, b"")
 
 
 def test_uuid_round_trips() -> None:
