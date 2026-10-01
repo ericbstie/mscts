@@ -2,7 +2,7 @@
 
 import json
 import struct
-from collections.abc import AsyncIterator, Callable, Mapping
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
 import pytest
@@ -63,42 +63,49 @@ def control_server(  # noqa: PLR0913 - each part of the fake is a test's knob
     seen: list[Packet],
     *,
     commands: Mapping[str, object] | None = TREE,
-    says: Callable[[str], list[str]] = feedback,
     answers_markers: bool = True,
+    out_of_order: bool = False,
     after_join: tuple[str, ...] = (),
-    after_stats: tuple[str, ...] = (),
+    after_answer: Mapping[int, str] | None = None,
 ) -> Handler:
     """Join like vanilla, sending `commands`, then answer like a vanilla operator's server.
 
     A marker (`tellraw @s "<token>"`) gets the token back as a system_chat, unless
-    `answers_markers` is False; any other command gets what `says` returns for it. Each
-    statistics request gets an award_stats, followed in the same write by `after_stats`.
-    `after_join` is said first, before anything is read. Every serverbound Packet goes
-    into `seen`.
+    `answers_markers` is False; any other command gets its `feedback`, or, if
+    `out_of_order`, gets it after the next marker's answer, as Pumpkin often does. The
+    n-th statistics request gets an award_stats, followed in the same write by
+    `after_answer[n]` if there is one. `after_join` is said first, before anything is
+    read. Every serverbound Packet goes into `seen`.
     """
+
+    def chat(peer: Peer, message: str) -> bytes:
+        return peer.frame(SYSTEM_CHAT, content=text(message), overlay=False)
 
     async def then(peer: Peer) -> None:
         for message in after_join:
-            await peer.send(SYSTEM_CHAT, content=text(message), overlay=False)
+            await peer.write(chat(peer, message))
+        requests = 0
+        held: list[str] = []
         async for packet in peer.packets():
             seen.append(packet)
             fields = packet.fields or {}
             if packet.name == "minecraft:client_command":
+                requests += 1
                 answer = peer.raw_frame(AWARD_STATS, NO_STATISTICS)
-                said = [
-                    peer.frame(SYSTEM_CHAT, content=text(message), overlay=False)
-                    for message in after_stats
-                ]
-                await peer.write(answer + b"".join(said))
+                straggler = (after_answer or {}).get(requests)
+                await peer.write(answer + (b"" if straggler is None else chat(peer, straggler)))
             elif packet.name == CHAT_COMMAND:
                 command = str(fields["command"])
-                if command.startswith(MARKER):
-                    if answers_markers:
-                        token = json.loads(command.removeprefix(MARKER))
-                        await peer.send(SYSTEM_CHAT, content=text(token), overlay=False)
+                if not command.startswith(MARKER):
+                    held += feedback(command)
+                    if out_of_order:
+                        continue
+                elif answers_markers:
+                    held.insert(0, json.loads(command.removeprefix(MARKER)))
+                else:
                     continue
-                for message in says(command):
-                    await peer.send(SYSTEM_CHAT, content=text(message), overlay=False)
+                await peer.write(b"".join(chat(peer, message) for message in held))
+                held.clear()
 
     return join_server(seen, JoinScript(commands=commands, then=then))
 
@@ -152,14 +159,29 @@ async def test_run_joins_once_and_sends_each_command_then_a_marker() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_returns_what_the_server_said_before_the_markers_answer() -> None:
+@pytest.mark.parametrize("out_of_order", [False, True], ids=["in order", "after the marker"])
+async def test_run_returns_what_the_server_said_but_the_markers_answer(
+    *, out_of_order: bool
+) -> None:
     transcript = Transcript(group_id="test/control", server="fake")
-    async with playing(control_server([]), transcript) as context:
+    handler = control_server([], out_of_order=out_of_order)
+    async with playing(handler, transcript) as context:
         said = await context.control.run(SETBLOCK)
         silent = await context.control.run("tick freeze")
 
     assert contents(said) == [text(FEEDBACK)]
     assert silent == ()
+
+
+@pytest.mark.asyncio
+async def test_run_returns_what_arrived_until_the_barrier_ended() -> None:
+    # Requests 1 and 2 are the barrier after the join; 3 is the first of the run's.
+    handler = control_server([], after_answer={3: "said during the barrier"})
+    transcript = Transcript(group_id="test/control", server="fake")
+    async with playing(handler, transcript) as context:
+        said = await context.control.run(SETBLOCK)
+
+    assert contents(said) == [text(FEEDBACK), text("said during the barrier")]
 
 
 @pytest.mark.asyncio
@@ -179,7 +201,9 @@ async def test_run_returns_after_the_barrier_that_follows_the_markers_answer() -
 async def test_what_arrived_before_the_command_is_not_its_answer() -> None:
     joined = "control joined the game"
     straggler = "said after a barrier"
-    handler = control_server([], after_join=(joined,), after_stats=(straggler,))
+    # Request 4 ends the first run's barrier: what comes with its answer is not taken
+    # before the second run.
+    handler = control_server([], after_join=(joined,), after_answer={4: straggler})
     transcript = Transcript(group_id="test/control", server="fake")
     async with playing(handler, transcript) as context:
         first = await context.control.run(SETBLOCK)

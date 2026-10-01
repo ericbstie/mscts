@@ -792,7 +792,10 @@ class OperatorBot:                  # Control through a Bot called CONTROL_PLAYE
     # 4. drain, then send the command, then the marker `tellraw @s "<MARKER_PREFIX><n>"`
     #    (n counts this OperatorBot's runs from 1), then expect the system_chat whose raw
     #    bytes hold the token (text components are not decoded yet), then sync. Returns
-    #    the system_chats taken before the marker's answer, () if none.
+    #    every system_chat that arrived from sending the command to the end of that sync,
+    #    but the marker's answer, () if none: evidence for the Group (it can hold others'
+    #    messages, such as a join message), never compared. Pumpkin often answers a
+    #    command after its marker, but before the sync ends.
     # Vanilla runs a player's commands in order on one queue, so the marker answers after
     # the command has run; Pumpkin runs each command as its own task, so a command that
     # takes more than about a tick longer than the marker can land after run returns
