@@ -127,6 +127,7 @@ class Connection:
         self._end: _End | None = None
         self._closed = False
         self._answer: Answer | None = None
+        self._last_arrival_ns: int | None = None
         self._reading = asyncio.get_running_loop().create_task(
             self._read_forever(), name=f"mscts Connection reader ({bot})"
         )
@@ -167,6 +168,20 @@ class Connection:
     def state(self) -> State:
         """The State `send` encodes in: what the Connection sends is in this State."""
         return self._state
+
+    @property
+    def transcript(self) -> Transcript:
+        """The Transcript this Connection records to."""
+        return self._transcript
+
+    @property
+    def last_arrival_ns(self) -> int | None:
+        """When the Packet `recv` last returned arrived, as the Transcript stamps it.
+
+        None until `recv` has returned a Packet. It is the arrival time, not the time
+        `recv` took the Packet, so it holds when the caller was busy meanwhile.
+        """
+        return self._last_arrival_ns
 
     async def send(self, name: str, /, **fields: object) -> None:
         """Encode serverbound packet `name` with `fields` in the current State, and send it.
@@ -236,6 +251,7 @@ class Connection:
             self._end = item
             raise item.error
         self._transcript.record(self._bot, item.packet, t_ns=item.t_ns)
+        self._last_arrival_ns = item.t_ns
         if item.error is not None:
             self._end = _End(item.error)
             raise item.error
