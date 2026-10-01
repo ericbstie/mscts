@@ -41,6 +41,8 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
+| `await bot.sync()` | Waits until the server has answered a request sent after everything else, so everything it sent because of what came before has arrived. Needs a Bot that has joined. |
+| `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
 
 While it runs, each Bot sends and answers what the vanilla client sends and
@@ -52,6 +54,21 @@ first chunk batch has arrived. Your script does not need to handle them.
 Every Bot operation times out after 10 seconds. A timeout on the Candidate
 becomes a `failed` Divergence. A timeout on vanilla makes the Verdict
 `error`, because the Group itself is broken.
+
+## Choosing what is compared
+
+Only what a Bot receives inside `async with context.observe():` is
+compared. Set the world up before it and clean up after it. When the block
+ends, each Bot first waits until the server has answered a request sent
+after everything else, then takes what has arrived. A few packets the
+server sends on a clock rather than because of anything a Group did
+(keep-alives and the time of day) are never compared inside a window.
+Groups of their own compare them. To compare only some packets, name them:
+`context.observe("minecraft:block_update")`.
+
+A Group with no window compares everything its Bots receive. With one,
+what a Bot receives before it is in the world (the status, logging in and
+configuration) is still compared whole.
 
 ## Timing a span
 
@@ -90,6 +107,12 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 Both runs must send the same bytes, so a Group must not depend on the
 clock, randomness, or the order of unrelated events. `status/ping` sends a
 fixed payload for this reason, where the vanilla client sends its clock.
+
+Vanilla also sends some packets on a clock that a window still compares,
+because the same packets carry real changes too: every player's latency,
+about every 30 seconds, and where each entity a Bot can see is, every 3
+seconds, even if it has not moved. If a window can catch one of these,
+name the packets the Group is about.
 
 Then prove it with a Self-check: run the Group with vanilla on both sides.
 It must `match` in 20 runs out of 20 before it counts. If it does not, find
