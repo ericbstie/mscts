@@ -1,4 +1,4 @@
-"""The Reference's flat world (`level_chunk_with_light`), pinned against the decoder.
+"""The Reference's flat world, its chunks and where a join puts the player, pinned.
 
 The decoder itself (position and sections, single valued and indirect palettes) lives in
 `scripts/research/chunkformat.py`, loaded here by path: both a plain research script and
@@ -58,6 +58,23 @@ def unlike_the_reference_flat_world(chunk: "_chunkformat.Chunk") -> list[str]:
     if biomes != {FLAT_BIOME}:
         differences.append(f"biomes {sorted(biomes)}")
     return [f"chunk ({chunk.x}, {chunk.z}) {difference}" for difference in differences]
+
+
+def unlike_a_flat_join(positions: list[Packet]) -> list[str]:
+    """How the `player_position`s of a join differ from the Reference's (empty: not at all)."""
+    if not positions:
+        return ["no player_position"]
+    first = positions[0].fields or {}
+    differences = []
+    if first.get("teleport_id") != 1:
+        differences.append(
+            f"the first player_position has teleport id {first.get('teleport_id')}, not 1"
+        )
+    if first.get("y") != FLAT_SPAWN_Y:
+        differences.append(
+            f"the first player_position is at y={first.get('y')}, not {FLAT_SPAWN_Y}"
+        )
+    return differences
 
 
 def play_packets(transcript: Transcript, name: str) -> list[Packet]:
