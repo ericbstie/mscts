@@ -29,6 +29,8 @@ from tests.net.fakes import (
 CODEC = Codec.for_target(TARGET)
 REQUEST, ANSWER = "minecraft:client_command", "minecraft:award_stats"
 BLOCK_UPDATE = "minecraft:block_update"
+BLOCK = bytes.fromhex("0000004000001fc4")
+"""A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
 _UNUSED = Endpoint(host="127.0.0.1", port=1)
 
 
@@ -173,7 +175,7 @@ async def test_what_the_server_sends_before_the_barriers_answer_is_in_the_window
     async def late(peer: Peer, request: int) -> None:
         if request == 2:
             await asyncio.sleep(0.2)
-            await peer.write(peer.raw_frame(BLOCK_UPDATE, b"\x01"))
+            await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
         await answer_at_once(peer, request)
 
     async with playing(play_server([], late), transcript) as context:
@@ -185,7 +187,7 @@ async def test_what_the_server_sends_before_the_barriers_answer_is_in_the_window
     (block,) = arrivals(transcript, BLOCK_UPDATE)
     assert opened <= block <= closed
     test_cases = compare(transcript, transcript, []).test_cases
-    assert "block_update" in test_cases
+    assert "block_update.block_state" in test_cases
     assert not {"award_stats", "chunk_batch_finished"} & set(test_cases), test_cases
 
 
@@ -195,7 +197,7 @@ async def test_the_drain_takes_what_arrived_after_the_barrier_without_waiting() 
 
     async def with_a_straggler(peer: Peer, request: int) -> None:
         answer = peer.raw_frame(ANSWER, NO_STATISTICS)
-        straggler = peer.raw_frame(BLOCK_UPDATE, bytes([request]))
+        straggler = peer.raw_frame(BLOCK_UPDATE, BLOCK + bytes([request]))
         await peer.write(answer + straggler)
 
     async with playing(play_server([], with_a_straggler), transcript, timeout_s=5.0) as context:
