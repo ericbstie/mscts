@@ -719,6 +719,12 @@ class RunnerError(RuntimeError):    # could not launch, exited before ready, or 
     log_path: Path
     log_tail: tuple[str, ...]       # the last 40 console lines
 
+CONSOLE_LOG = "mscts-console.log"   # the Instance's console, in the plan's cwd
+LOG_TAIL_LINES = 40
+def log_tail(log_path: Path) -> tuple[str, ...]: ...  # the last LOG_TAIL_LINES lines of a console
+    # (read from its last 64 KiB), or () if it cannot be read. RunnerError quotes it, and the
+    # reference and candidate tiers show it for every Instance a failing test used.
+
 def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random host 127.A.B.C
     # (A 1..254, B 0..255, C 1..254: ~16.5 million, none in 127.0.0.0/16) and a port free on
     # it a moment ago. Racy too, but two Instances share a host with odds of 1 in 16.5 million

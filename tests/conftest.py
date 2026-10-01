@@ -5,6 +5,9 @@ from support.tiers import missing_installations
 
 from mscts import cache
 
+# pytester runs pytest inside a test; support.console is the plugin it tests (see its docstring).
+pytest_plugins = ["pytester", "support.console"]
+
 
 @pytest.fixture(scope="session")
 def cache_dir() -> Path:
