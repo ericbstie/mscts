@@ -32,7 +32,7 @@ def pytest_runtest_makereport(
     report = yield
     if report.failed:
         for log, label in consoles(item).items():
-            report.sections.append((f"{SECTION} ({label})", "\n".join(log_tail(log))))
+            report.sections.append((f"{SECTION} ({label})", _quote(log)))
     return report
 
 
@@ -48,3 +48,8 @@ def consoles(item: pytest.Item) -> dict[Path, str]:
         for log in sorted(tmp_path.rglob(CONSOLE_LOG)):
             found.setdefault(log, log.parent.relative_to(tmp_path).as_posix())
     return found
+
+
+def _quote(log: Path) -> str:
+    lines = log_tail(log)
+    return "\n".join((f"last {len(lines)} lines of {log}", *lines))
