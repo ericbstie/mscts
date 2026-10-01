@@ -16,6 +16,53 @@ from mscts.codec.wire import WireError
 TEXT_A = "08 0001 61"  # a String tag "a": a text component
 TEXT_B = "08 0001 62"
 
+TAG = {"tag": "a:b"}
+EMPTY_COMPOUND = bytes.fromhex("0a 00")
+ANY_BLOCK = {
+    "blocks": None,
+    "properties": None,
+    "nbt": None,
+    "components": {"exact": [], "partial": []},
+}
+# Two block predicates. The first: two block ids, a property each way (exactly facing=north, and
+# age from "1" with no upper bound), an empty compound, no component matchers. The second: only
+# component matchers, exact (damage 3, and a can_break of its own, which is read with the same
+# table) and partial (a predicate type 5, then a component type 3, each with an empty compound).
+BLOCK_MATCHERS_HEX = (
+    "02"
+    "  01 03 07 09"
+    "  01 02  06 66 61 63 69 6e 67  01 05 6e 6f 72 74 68  03 61 67 65  00  01 01 31  00"
+    "  01 0a 00"
+    "  00 00"
+    "  00 00 00"
+    "  02  03 03  0f 00"
+    "  02  01 05 0a 00  00 03 0a 00"
+)
+BLOCK_MATCHERS = [
+    {
+        "blocks": {"ids": [7, 9]},
+        "properties": [
+            {"name": "facing", "value_matcher": {"exact": "north"}},
+            {"name": "age", "value_matcher": {"ranged": {"min": "1", "max": None}}},
+        ],
+        "nbt": EMPTY_COMPOUND,
+        "components": {"exact": [], "partial": []},
+    },
+    {
+        **ANY_BLOCK,
+        "components": {
+            "exact": [
+                {"type": "minecraft:damage", "value": 3},
+                {"type": "minecraft:can_break", "value": []},
+            ],
+            "partial": [
+                {"type": {"predicate": 5}, "value": EMPTY_COMPOUND},
+                {"type": {"component": 3}, "value": EMPTY_COMPOUND},
+            ],
+        },
+    },
+]
+
 
 # (type id, name, payload hex, value)
 VALUES = [
@@ -640,6 +687,16 @@ VALUES = [
         ],
         id="attribute_modifiers",
     ),
+    # Adventure mode predicates: a list of block predicates, the same for both components.
+    *[
+        pytest.param(type_id, name, payload, value, id=f"{name} {case}")
+        for type_id, name in ((14, "can_place_on"), (15, "can_break"))
+        for case, payload, value in (
+            ("empty", "00", []),
+            ("a block tag", "01  01 00 03 61 3a 62  00 00  00 00", [{**ANY_BLOCK, "blocks": TAG}]),
+            ("every matcher", BLOCK_MATCHERS_HEX, BLOCK_MATCHERS),
+        )
+    ],
 ]
 
 
@@ -663,8 +720,16 @@ def test_a_component_value_is_read_and_written_as_its_layout(
         (51, "", 1024),
         (77, "", 256),
         (71, "00", 256),
+        (14, "01  00 00 00  00", 64),
     ],
-    ids=["lore", "writable_book_content", "charged_projectiles", "container", "fireworks"],
+    ids=[
+        "lore",
+        "writable_book_content",
+        "charged_projectiles",
+        "container",
+        "fireworks",
+        "can_place_on partial matchers",
+    ],
 )
 def test_a_list_longer_than_its_maximum_is_refused(type_id: int, before: str, limit: int) -> None:
     over = limit + 1
@@ -736,3 +801,40 @@ def test_hidden_effects_nested_too_deeply_are_a_wire_error_not_a_crash() -> None
     payload = "00 00 01 00" + level * 2000 + "00 00 00 00 00 00" + "00"
     with pytest.raises(WireError, match="nested too deeply"):
         read_all(SLOT, stack_with_component(53, payload))
+
+
+def test_an_exact_matcher_of_an_unknown_component_type_is_a_wire_error_naming_it() -> None:
+    # can_break with one predicate whose exact matcher is a component of type 122; there are 122
+    # types (0 to 121).
+    message = (
+        r"^components: added: 0: minecraft:can_break: 0: components: exact: 0: "
+        r"unknown data component type id 122$"
+    )
+    with pytest.raises(WireError, match=message):
+        read_all(SLOT, stack_with_component(15, "01  00 00 00  01 7a"))
+
+
+def test_an_exact_matchers_value_error_names_the_component() -> None:
+    # An exact matcher of a damage component whose VarInt never ends.
+    message = (
+        r"^components: added: 0: minecraft:can_break: 0: components: exact: 0: "
+        r"minecraft:damage: "
+    )
+    with pytest.raises(WireError, match=message):
+        read_all(SLOT, stack_with_component(15, "01  00 00 00  01 03 80"))
+
+
+def test_an_exact_matcher_of_an_unknown_type_is_refused_when_written() -> None:
+    matchers = {"exact": [{"type": "minecraft:zzz", "value": 1}], "partial": []}
+    value = stack(1, 55, can_break=[{**ANY_BLOCK, "components": matchers}])
+    with pytest.raises(WireError, match=r"exact: 0: unknown data component type 'minecraft:zzz'"):
+        written(SLOT, value)
+
+
+def test_exact_matchers_nested_too_deeply_are_a_wire_error_not_a_crash() -> None:
+    # Each level is a can_break with one exact matcher that is a can_break (id 15) in turn. Python
+    # would run out of stack (RecursionError) long before the 12000 bytes do.
+    level = "01  00 00 00  01 0f"
+    payload = level * 2000 + "00" + "00" * 2000
+    with pytest.raises(WireError, match="nested too deeply"):
+        read_all(SLOT, stack_with_component(15, payload))
