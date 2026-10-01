@@ -90,9 +90,9 @@ class OperatorBot:
         """Run `command` as `control`, and return once the server has answered it.
 
         On first use, the Bot joins and passes the barrier (`Bot.sync`), so that nothing
-        the join caused is taken for an answer. Each run then takes what has already
-        arrived, sends `command`, then a marker, `tellraw @s "<token>"` with a token of
-        its own, and waits for the `system_chat` holding the token: vanilla runs a
+        the join caused is taken for an answer. Each run then sends `command`, then a
+        marker, `tellraw @s "<token>"` with a token of its own, and waits for the
+        `system_chat` holding the token: vanilla runs a
         player's commands one after another, so the command has run by then. Last, the
         Bot passes the barrier, so the server has also sent what the command changed.
 
@@ -121,7 +121,6 @@ class OperatorBot:
         for name in (root, "tellraw"):
             if name not in commands:
                 raise CommandMissing(name)
-        await bot.drain()
         self._markers += 1
         token = f"{MARKER_PREFIX}{self._markers}".encode()
         since = self._transcript.now_ns()

@@ -2,13 +2,13 @@
 
 import json
 import struct
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import pytest
 
-from mscts.codec.packets import Codec, Direction, Packet
+from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import Outcome
 from mscts.group import CommandMissing, Group, GroupContext
 from mscts.net import ProtocolError
@@ -75,7 +75,8 @@ class ControlServer:
     back as a system_chat, unless `answers_markers` is False; any other command gets its
     `feedback`, or, if `out_of_order`, gets it after the next marker's answer, as Pumpkin
     often does. The n-th statistics request gets an award_stats, followed in the same
-    write by `after_answer[n]` if there is one. Every serverbound Packet goes into `seen`.
+    write by `after_answer[n]` if there is one. `on_command` is called with each command
+    before it is answered. Every serverbound Packet goes into `seen`.
     """
 
     seen: list[Packet] = field(default_factory=list)
@@ -85,6 +86,7 @@ class ControlServer:
     after_join: tuple[str, ...] = ()
     after_answer: Mapping[int, str] = field(default_factory=dict)
     new_commands: Mapping[str, object] | None = None
+    on_command: Callable[[str], None] = lambda _: None
     _requests: int = field(default=0, init=False)
     _held: list[str] = field(default_factory=list, init=False)
 
@@ -109,6 +111,7 @@ class ControlServer:
 
     def _answer(self, peer: Peer, command: str) -> bytes:
         """What the server writes when `command` arrives: maybe nothing yet."""
+        self.on_command(command)
         if not command.startswith(MARKER):
             self._held += feedback(command)
             if self.out_of_order:
@@ -194,6 +197,26 @@ async def test_run_returns_what_arrived_until_the_barrier_ended() -> None:
         said = await context.control.run(SETBLOCK)
 
     assert contents(said) == [text(FEEDBACK), text("said during the barrier")]
+
+
+@pytest.mark.asyncio
+async def test_what_another_bot_receives_meanwhile_is_not_controls_answer() -> None:
+    transcript = Transcript(group_id="test/control", server="fake")
+    fields = {"content": text("to alice"), "overlay": False}
+    elsewhere = CODEC.decode(
+        State.PLAY,
+        Direction.CLIENTBOUND,
+        CODEC.encode(State.PLAY, Direction.CLIENTBOUND, SYSTEM_CHAT, fields),
+    )
+
+    def alice_hears(_: str) -> None:
+        transcript.record("alice", elsewhere, t_ns=transcript.now_ns())
+
+    async with playing(ControlServer(on_command=alice_hears), transcript) as context:
+        said = await context.control.run(SETBLOCK)
+
+    assert contents(said) == [text(FEEDBACK)]
+    assert {event.bot for event in transcript.events if event.packet is elsewhere} == {"alice"}
 
 
 @pytest.mark.asyncio
