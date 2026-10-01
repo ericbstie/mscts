@@ -67,6 +67,52 @@ VarInt is a valid read.
 
 
 @dataclass(frozen=True, slots=True)
+class OrdinalEnum:
+    """An enum by ordinal that fails past its last constant (`FriendlyByteBuf.readEnum`).
+
+    A VarInt that indexes `getEnumConstants()`: vanilla throws on an ordinal below 0 or from `count`
+    up, where `ENUM`'s `idMapper` answers a default. `writeEnum` writes `ordinal()`.
+
+    Attributes:
+        count: How many constants the enum has.
+    """
+
+    count: int
+
+    def __post_init__(self) -> None:
+        """Reject a `count` that is not a positive int.
+
+        Raises:
+            SchemaError: `count` is below 1, or not an int.
+        """
+        if isinstance(self.count, bool) or not isinstance(self.count, int):
+            msg = f"OrdinalEnum count must be an int, got {type(self.count).__name__}"
+            raise SchemaError(msg)
+        if self.count < 1:
+            msg = f"OrdinalEnum count {self.count} is below 1"
+            raise SchemaError(msg)
+
+    def _check(self, ordinal: int) -> int:
+        if not 0 <= ordinal < self.count:
+            msg = f"{ordinal} is not an ordinal of 0 to {self.count - 1}"
+            raise WireError(msg)
+        return ordinal
+
+    def read(self, reader: Reader) -> int:
+        """Consume one ordinal."""
+        return self._check(reader.var_int())
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`, an int that is an ordinal of the enum."""
+        writer.var_int(self._check(_integer(value)))
+
+
+SOUND_SOURCE: WireType[int] = OrdinalEnum(11)
+"""A `SoundSource` category, by ordinal: MASTER 0, MUSIC 1, RECORDS 2, WEATHER 3, BLOCKS 4,
+HOSTILE 5, NEUTRAL 6, PLAYERS 7, AMBIENT 8, VOICE 9, UI 10 (26.3 javap)."""
+
+
+@dataclass(frozen=True, slots=True)
 class _Unit:
     def read(self, reader: Reader) -> None:
         del reader

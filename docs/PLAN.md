@@ -49,7 +49,7 @@ test needs it:
 | `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, optional global pos; the painting variant and resolvable profile live in `codec/shapes.py`), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
-| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SECTION_POSITION`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
+| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `OrdinalEnum`, `SOUND_SOURCE`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SECTION_POSITION`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `ComponentType` and `COMPONENT_TYPE` (a type by name), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
 | `codec/items.py` | `SLOT`, the item stack field, and `HASHED_SLOT`, the hashed stack a client sends (the wire type only) |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -260,6 +260,10 @@ def registry_dispatch(names, layouts, tag_key="type", value_key="value") -> Tagg
                                  # a Tagged with a variant per registry entry, id = position in names
 REGISTRY_ID: WireType[int]       # a registry entry by protocol id: a plain VarInt, not range checked
 ENUM: WireType[int]              # an enum by ordinal: a plain VarInt, not range checked
+@frozen
+class OrdinalEnum:               # an enum by ordinal that fails past its last constant (readEnum): a VarInt in 0..count-1
+    count: int
+SOUND_SOURCE: WireType[int]      # OrdinalEnum(11): a sound category, MASTER 0 ... UI 10
 @frozen
 class Holder:                    # VarInt 0 + the value, else registry id + 1: {direct: v} | {reference: id}
     direct: WireType[object]
