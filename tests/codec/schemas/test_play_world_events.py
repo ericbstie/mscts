@@ -1,4 +1,4 @@
-"""The world event packets of Target 26.3: level event, sound, particles and game event.
+"""The world event packets of Target 26.3: level event, sound, particles, game event and explosion.
 
 Layouts come from the 26.3 jar (`javap` on each packet's `STREAM_CODEC`) and the wiki (revision
 3799543), which agree (docs/research/2026-10-01-block-world-events.md). The payloads are recorded
@@ -12,8 +12,9 @@ from support.play import decode_error, encode_error, round_trip
 from mscts.codec.particles import PARTICLE
 from mscts.codec.schema import ENTITY_ID
 from mscts.codec.schemas import play
-from mscts.codec.shapes import SOUND_EVENT, SOUND_SOURCE
+from mscts.codec.shapes import SOUND_EVENT, SOUND_SOURCE, VEC3
 
+EXPLODE = "minecraft:explode"
 LEVEL_EVENT = "minecraft:level_event"
 SOUND = "minecraft:sound"
 SOUND_ENTITY = "minecraft:sound_entity"
@@ -365,3 +366,105 @@ def test_a_game_event_vanilla_has_no_name_for_still_decodes() -> None:
 def test_a_game_event_writes_only_an_unsigned_byte_event() -> None:
     assert "event: 256 out of range" in encode_error(GAME_EVENT, {"event": 256, "value": 0.0})
     assert "event: -1 out of range" in encode_error(GAME_EVENT, {"event": -1, "value": 0.0})
+
+
+# Explode: the centre (three Doubles), the radius (a Float), how many blocks it destroyed (an
+# Int), the knockback it gives the player (optional, three Doubles), the particle and sound of the
+# blast, the particles of the blocks it destroyed (a weighted list: each particle with a scaling
+# and a speed, then its VarInt weight), and whether to play the sound. Recorded from a TNT at 10.5
+# -60 -5.5, with a Bot beside it.
+
+POOF = {"type": "minecraft:poof", "options": None}
+SMOKE = {"type": "minecraft:smoke", "options": None}
+TNT_EXPLOSION = {
+    "center": {"x": 10.5, "y": -59.93874999880791, "z": -5.5},
+    "radius": 4.0,
+    "block_count": 667,
+    "player_knockback": {"x": -0.5545357112409718, "y": 0.288127513960013, "z": 0.0},
+    "explosion_particle": {"type": "minecraft:explosion_emitter", "options": None},
+    "explosion_sound": {"reference": 703},
+    "block_particles": [
+        {"particle": POOF, "scaling": 0.5, "speed": 1.0, "weight": 1},
+        {"particle": SMOKE, "scaling": 1.0, "speed": 1.0, "weight": 1},
+    ],
+    "play_sound": True,
+}
+TNT_EXPLOSION_HEX = (
+    "4025000000000000 c04df828f5c00000 c016000000000000 40800000 0000029b"
+    " 01 bfe1bec1ad07cf73 3fd270ae62624e78 0000000000000000"
+    " 1d c005 02 45 3f000000 3f800000 01 48 3f800000 3f800000 01 01"
+)
+
+
+def test_a_tnt_explosion_decodes_its_centre_knockback_particles_and_sound() -> None:
+    round_trip(EXPLODE, TNT_EXPLOSION, TNT_EXPLOSION_HEX)
+
+
+def test_an_explosion_with_no_knockback_no_block_particles_and_no_sound_is_shorter() -> None:
+    # Built by hand from the TNT: the optional knockback is a Bool 0, the list a count of 0.
+    round_trip(
+        EXPLODE,
+        {
+            **TNT_EXPLOSION,
+            "player_knockback": None,
+            "block_particles": [],
+            "play_sound": False,
+        },
+        "4025000000000000 c04df828f5c00000 c016000000000000 40800000 0000029b 00 1d c005 00 00",
+    )
+
+
+def test_an_explosion_keeps_an_inline_sound_and_a_weight_that_takes_two_bytes() -> None:
+    # Built by hand: the sound is named in the packet, and the weight 300 is a two byte VarInt.
+    round_trip(
+        EXPLODE,
+        {
+            **TNT_EXPLOSION,
+            "player_knockback": None,
+            "explosion_sound": {"direct": {"location": "a:b", "fixed_range": 8.0}},
+            "block_particles": [{"particle": POOF, "scaling": 2.0, "speed": 0.0, "weight": 300}],
+        },
+        "4025000000000000 c04df828f5c00000 c016000000000000 40800000 0000029b"
+        " 00 1d 00 03 613a62 01 41000000 01 45 40000000 00000000 ac02 01",
+    )
+
+
+def test_an_explosion_keeps_a_negative_block_count_and_a_particle_with_options() -> None:
+    # Built by hand: the Int is signed, and a dust particle carries its colour and scale.
+    dust = {"type": "minecraft:dust", "options": {"color": -65536, "scale": 1.0}}
+    round_trip(
+        EXPLODE,
+        {
+            **TNT_EXPLOSION,
+            "block_count": -1,
+            "player_knockback": None,
+            "explosion_particle": dust,
+            "block_particles": [],
+        },
+        "4025000000000000 c04df828f5c00000 c016000000000000 40800000 ffffffff"
+        " 00 15 ffff0000 3f800000 c005 00 01",
+    )
+
+
+def test_an_explosion_names_the_block_particle_that_is_bad() -> None:
+    bad = {"particle": POOF, "scaling": 1, "speed": 1.0, "weight": 1}
+    error = encode_error(EXPLODE, {**TNT_EXPLOSION, "block_particles": [bad]})
+    assert "block_particles: 0: scaling: expected a float" in error
+
+
+def test_an_explosion_refuses_more_block_particles_than_there_are_bytes() -> None:
+    # The count of 5 in the list, with only the two particles of the TNT after it.
+    error = decode_error(EXPLODE, TNT_EXPLOSION_HEX.replace("c005 02", "c005 05"))
+    assert "block_particles: " in error
+
+
+def test_an_explosion_refuses_a_knockback_that_is_neither_present_nor_absent() -> None:
+    error = decode_error(EXPLODE, TNT_EXPLOSION_HEX.replace("0000029b 01", "0000029b 02"))
+    assert "player_knockback: " in error
+
+
+def test_an_explosion_uses_the_shared_shapes() -> None:
+    explode = play.CLIENTBOUND[EXPLODE]
+    assert explode.fields["center"] is VEC3
+    assert explode.fields["explosion_particle"] is PARTICLE
+    assert explode.fields["explosion_sound"] is SOUND_EVENT

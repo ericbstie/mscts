@@ -1,4 +1,4 @@
-"""World event packets: level events, sounds, particles and game events.
+"""World event packets: level events, sounds, particles, game events and explosions.
 
 Field layouts: minecraft.wiki `Java_Edition_protocol/Packets`, revision 3799543 (2026-09-27,
 "26.3, protocol 777"), raw wikitext, checked against the 26.3 jar with `javap` on each packet's
@@ -20,15 +20,32 @@ from mscts.codec.schema import (
     POSITION,
     UBYTE,
     VAR_INT,
+    PrefixedArray,
+    PrefixedOptional,
     Schema,
 )
-from mscts.codec.shapes import ENUM, SOUND_EVENT, SOUND_SOURCE
+from mscts.codec.shapes import ENUM, SOUND_EVENT, SOUND_SOURCE, VEC3
 
 CLIENTBOUND: Mapping[str, Schema] = {
     # Game Event: an Unsigned Byte id (0 to 13 in 26.3: begin raining, change game mode, ...) and
     # a Float whose meaning the id gives. Vanilla reads an id it has no name for into a null event
     # and ignores it, so any byte is a packet.
     "minecraft:game_event": Schema(event=UBYTE, value=FLOAT),
+    # Explosion (26.3 layout: it has no seed). `block_count` is how many blocks it destroyed, and
+    # `player_knockback` what it pushes the receiving player by, if at all. `block_particles` is a
+    # weighted list, each entry its particle, scaling and speed, then its weight.
+    "minecraft:explode": Schema(
+        center=VEC3,
+        radius=FLOAT,
+        block_count=INT,
+        player_knockback=PrefixedOptional(VEC3),
+        explosion_particle=PARTICLE,
+        explosion_sound=SOUND_EVENT,
+        block_particles=PrefixedArray(
+            Schema(particle=PARTICLE, scaling=FLOAT, speed=FLOAT, weight=VAR_INT)
+        ),
+        play_sound=BOOL,
+    ),
     # World Event: an Int event (a door's sound, a block breaking, a lava fizz), the position,
     # and an Int whose meaning the event gives (a block breaking: its block state). A global event
     # is heard by every player in the level, not only those near the position.
