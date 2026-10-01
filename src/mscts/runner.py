@@ -402,10 +402,10 @@ def _owners(inodes: frozenset[int]) -> list[str]:
 
 
 def _failure(reason: str, exit_code: int | None, log_path: Path) -> RunnerError:
-    return RunnerError(reason, exit_code=exit_code, log_path=log_path, log_tail=_log_tail(log_path))
+    return RunnerError(reason, exit_code=exit_code, log_path=log_path, log_tail=log_tail(log_path))
 
 
-def _log_tail(log_path: Path) -> tuple[str, ...]:
+def log_tail(log_path: Path) -> tuple[str, ...]:
     """The last LOG_TAIL_LINES lines of the console, or none if it cannot be read."""
     try:
         with log_path.open("rb") as log:

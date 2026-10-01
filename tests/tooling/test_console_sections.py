@@ -1,0 +1,45 @@
+"""A failing test shows the tail of each Instance's console, and a passing one shows nothing.
+
+`support.console` is a plugin the root conftest registers; each test here runs pytest on
+a small suite of its own, with that plugin, through `pytester`.
+"""
+
+import pytest
+
+SECTION = "Instance console"
+
+CONFTEST = """
+import pytest
+from mscts.net import Endpoint
+from mscts.runner import Instance
+
+pytest_plugins = ["support.console"]
+
+
+@pytest.fixture
+def reference(tmp_path):
+    log = tmp_path / "somewhere-else.log"
+    log.write_text("\\n".join(f"console line {n}" for n in range(1, 101)) + "\\n")
+    return Instance(
+        endpoint=Endpoint("127.1.2.3", 25565), pid=1, launched_ns=0, ready_ns=0, log_path=log
+    )
+"""
+
+
+@pytest.fixture
+def suite(pytester: pytest.Pytester) -> pytest.Pytester:
+    """A pytester directory with the conftest above, and an ini that keeps pytest-asyncio quiet."""
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function\n")
+    pytester.makeconftest(CONFTEST)
+    return pytester
+
+
+def test_a_failing_test_shows_the_tail_of_the_console_of_an_instance_it_was_given(
+    suite: pytest.Pytester,
+) -> None:
+    suite.makepyfile("def test_fails(reference):\n    assert False\n")
+
+    result = suite.runpytest()
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines([f"*{SECTION} (reference)*", "console line 100"])
