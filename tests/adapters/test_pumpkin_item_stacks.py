@@ -13,9 +13,9 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
-from support.commands import OPERATOR, allow_commands, command
 from support.gives import (
     GIVES,
+    OPERATOR,
     Give,
     added_names,
     clear,
@@ -132,9 +132,8 @@ def _classify(give: Give, payloads: list[bytes]) -> tuple[str, tuple[str, ...]]:
 @pytest.mark.asyncio
 @pytest.mark.timeout(300)
 async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
-    cache_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cache_dir: Path, tmp_path: Path
 ) -> None:
-    allow_commands(monkeypatch)
     outcomes: dict[str, tuple[str, tuple[str, ...]]] = {}
     async with (
         _pumpkin(cache_dir, tmp_path / "pumpkin") as instance,
@@ -157,17 +156,16 @@ async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_pumpkin_never_answers_a_give_of_a_component_with_a_slash_in_its_name(
-    cache_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cache_dir: Path, tmp_path: Path
 ) -> None:
     # Its parser spins a worker thread for good (one of as many as the machine has cores, so a
     # few such commands stop the server): the rows with a slash are not played with the others.
-    allow_commands(monkeypatch)
     (give,) = (give for give in GIVES if give.label == "cushion/color")
     async with (
         _pumpkin(cache_dir, tmp_path / "pumpkin") as instance,
         operator_bot(instance, "pumpkin") as (bot, _),
     ):
-        await command(bot, f"give {OPERATOR} minecraft:{give.argument}")
+        await bot.command(f"give {OPERATOR} minecraft:{give.argument}")
         with pytest.raises(TimeoutError):
             await bot.expect("minecraft:container_set_slot", timeout_s=3, where=_a_stack)
 

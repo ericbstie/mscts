@@ -1,7 +1,7 @@
 """The stacks a command can give, and how an operator Bot reads them back.
 
-Research and tests only, never src/: until Control (#17) sends commands, an operator Bot
-sends `give` through `support.commands`, and the stack arrives as a `container_set_slot`.
+Research and tests only, never src/: an operator Bot sends `give` with `Bot.command`, and
+the stack arrives as a `container_set_slot`.
 Each `Give` is one `/give` argument and the data components vanilla 26.3 sends for it,
 checked live on the Reference (tests/reference/test_item_stacks_reference.py). Every value
 differs from its item's default: a component equal to the prototype's is not sent.
@@ -20,8 +20,10 @@ from mscts.codec.wire import WireError
 from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from support.commands import OPERATOR, command
 from support.wire import read_all
+
+OPERATOR = "mscts_op"
+"""The Bot a test's ServerSpec makes an operator."""
 
 SET_SLOT = Schema(window_id=VAR_INT, state_id=VAR_INT, slot=SHORT, item=SLOT)
 """`ClientboundContainerSetSlotPacket`, as vanilla sends it: nothing follows the stack."""
@@ -85,7 +87,7 @@ async def given_slots(
     the Codec cannot decode is the caller's to report.
     """
     first = len(transcript.events)
-    await command(bot, f"give {OPERATOR} minecraft:{argument}")
+    await bot.command(f"give {OPERATOR} minecraft:{argument}")
     with contextlib.suppress(TimeoutError):
         await bot.expect("minecraft:container_set_slot", timeout_s=wait_s, where=_a_stack)
     await bot.sync()
@@ -106,7 +108,7 @@ def _a_stack(packet: Packet) -> bool:
 
 async def clear(bot: Bot) -> None:
     """Empty the operator's inventory, and wait for the server to be done with it."""
-    await command(bot, f"clear {OPERATOR}")
+    await bot.command(f"clear {OPERATOR}")
     await bot.sync()
 
 
