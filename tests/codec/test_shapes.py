@@ -24,11 +24,13 @@ from mscts.codec.shapes import (
     NBT_TAG,
     REGISTRY_ID,
     SECTION_POSITION,
+    SOUND_SOURCE,
     UNIT,
     Deferred,
     Either,
     FixedArray,
     Holder,
+    OrdinalEnum,
     registry_dispatch,
 )
 from mscts.codec.wire import Reader, WireError
@@ -41,6 +43,61 @@ def test_a_registry_id_and_an_enum_are_a_plain_varint(wire_type: WireType[int]) 
     assert read_all(wire_type, bytes.fromhex("c9 08")) == 1097
     assert written(wire_type, 1097) == bytes.fromhex("c9 08")
     assert read_all(wire_type, b"\x00") == 0
+
+
+# Ordinal enum: `FriendlyByteBuf.readEnum`, a VarInt that indexes the enum's constants, so an
+# ordinal past the last one throws (`ArrayIndexOutOfBoundsException`), where `ENUM`'s `idMapper`
+# falls back to a default. `writeEnum` writes `ordinal()`.
+
+THREE = OrdinalEnum(3)
+
+
+@pytest.mark.parametrize("ordinal", [0, 1, 2])
+def test_an_ordinal_enum_is_a_varint_below_its_count(ordinal: int) -> None:
+    assert read_all(THREE, bytes([ordinal])) == ordinal
+    assert written(THREE, ordinal) == bytes([ordinal])
+
+
+@pytest.mark.parametrize(
+    ("encoded", "ordinal"),
+    [("03", 3), ("c9 08", 1097), ("ff ff ff ff 0f", -1)],
+    ids=["one past", "far past", "negative"],
+)
+def test_an_ordinal_enum_refuses_an_ordinal_that_names_no_constant_on_read(
+    encoded: str, ordinal: int
+) -> None:
+    with pytest.raises(WireError, match=f"{ordinal} is not an ordinal of 0 to 2"):
+        read_all(THREE, bytes.fromhex(encoded))
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (3, "3 is not an ordinal of 0 to 2"),
+        (-1, "-1 is not an ordinal of 0 to 2"),
+        (True, "expected an int"),
+        ("1", "expected an int"),
+    ],
+)
+def test_an_ordinal_enum_writes_only_an_ordinal_that_names_a_constant(
+    value: object, message: str
+) -> None:
+    with pytest.raises(WireError, match=message):
+        written(THREE, value)
+
+
+@pytest.mark.parametrize("count", [0, -1, True, 1.5])
+def test_an_ordinal_enum_needs_a_count_that_is_a_positive_int(count: object) -> None:
+    with pytest.raises(SchemaError, match="count"):
+        OrdinalEnum(cast("int", count))
+
+
+def test_a_sound_source_is_one_of_the_eleven_in_the_game() -> None:
+    # MASTER 0 ... UI 10 (`SoundSource`, 26.3 javap).
+    assert read_all(SOUND_SOURCE, b"\x00") == 0
+    assert read_all(SOUND_SOURCE, b"\x0a") == 10
+    with pytest.raises(WireError, match="11 is not an ordinal of 0 to 10"):
+        read_all(SOUND_SOURCE, b"\x0b")
 
 
 # Unit: `StreamCodec.unit`, no bytes at all; its value is None.
