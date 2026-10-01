@@ -46,6 +46,20 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
 
+`context.control` is an operator Bot that sets up the world before the part
+of the Group that is compared.
+`await context.control.run("setblock 0 -60 0 minecraft:stone")` runs a
+command and waits until the server has answered it. What the server sends to
+it is recorded but never compared. If the Candidate does not have the
+command, the Group is reported as blocked, naming the command.
+
+`run` returns the messages the server answered with, as
+`minecraft:system_chat` packets. Keep setup commands small, and run them
+before the window. A Group that needs a large setup, such as a big `fill`,
+checks that it has finished with a command that answers, such as
+`execute if block …`, before it opens its window. Your own Bots are not
+operators, and none of them can be called `control`.
+
 While it runs, each Bot sends and answers what the vanilla client sends and
 answers without asking the player: its brand and client settings after
 logging in, keep-alives, the join teleport, chunk batch acknowledgements,

@@ -1,7 +1,8 @@
 # ADR-0010: Groups compare play packets inside Observation windows
 
 Status: accepted (2026-10-01). Refines ADR-0006's Masks rule (item 2) for
-heartbeat packets and the barrier's packets.
+heartbeat packets and the barrier's packets. Amended 2026-10-01 (#17):
+Control's barrier, below.
 
 ## Context
 
@@ -79,3 +80,33 @@ maintainer chose windows.
   command can, in principle, land after a window closed.
 - Control (#17) calls `Bot.sync` after each command, and tick-indexed
   windows for tick-exact Groups (#23) build on these windows.
+
+## Amendment (2026-10-01, #17): Control's barrier
+
+`Bot.sync` alone does not cover a command. Vanilla runs a chat command as
+a task on the server's queue, which a server behind schedule holds for up
+to three ticks while it still answers the barrier's request at the start
+of each tick. A probe Group with `setblock` inside a window lost the
+`block_update` from one side's window in 8 of 80 plays on vanilla
+(`docs/research/2026-10-01-control.md`, "The Control barrier").
+
+1. **Control ends each command with a marker, then the barrier.** After
+   the command, `control.run` sends `tellraw @s "<token>"`, with a token
+   of its own (a fixed prefix and a count), waits for the `system_chat`
+   holding the token, then calls `Bot.sync`. It returns the
+   `system_chat`s that arrived before the marker's answer.
+2. **On vanilla this is exact.** The marker is a task on the same queue,
+   behind the command, so its answer means the command has run: 0 of 80
+   plays lost the `block_update` with the marker.
+3. **On Pumpkin it is not, and that is a difference from vanilla.**
+   Pumpkin runs each command as its own task, at the same time as the
+   others, so a command that takes more than about a tick longer than the
+   marker can land after `run` returns (a `fill` of 28,830 blocks
+   answered after its marker 18 times in 18; `setblock`, never in 120).
+   That is a real difference, and it shows where it lands. Groups keep
+   their setup commands before their windows and small, and check that a
+   large one has finished with a command that answers, such as
+   `execute if block …`.
+
+This replaces the last consequence's "calls `Bot.sync` after each
+command", and answers the one before it for commands sent through Control.

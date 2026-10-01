@@ -42,14 +42,6 @@ async def test_a_span_whose_body_raises_has_no_end_mark() -> None:
 
 
 @pytest.mark.asyncio
-async def test_control_is_not_built_yet_and_says_when_it_will_be() -> None:
-    context = GroupContext(_UNUSED, Transcript(group_id="t", server="f"), timeout_s=1.0)
-
-    with pytest.raises(NotImplementedError, match="M5"):
-        _ = context.control
-
-
-@pytest.mark.asyncio
 async def test_a_bot_records_to_the_context_transcript_and_close_closes_it() -> None:
     codec = Codec.for_target(TARGET)
     transcript = Transcript(group_id="test/bot", server="fake")

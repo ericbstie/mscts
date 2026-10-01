@@ -60,7 +60,12 @@ need is missing, add it here in the same commit that introduces it.
   configuration, then play until the server's first chunk batch has
   finished.
 - **Control**: the channel used to set up Fixtures. By default it is an
-  **Operator Bot** that sends vanilla command syntax.
+  **Operator Bot** that sends vanilla command syntax: a Bot called
+  `control`, which every Adapter makes an operator. It runs each command,
+  then a marker command, and returns once the server has answered the
+  marker and passed the barrier. What it receives is recorded but never
+  compared, and a Candidate without one of its commands makes the Group
+  `blocked`.
 - **Fixture**: world or player state established before the observed part
   of a Group.
 
