@@ -125,8 +125,8 @@ key were absent, exactly like vanilla's.
 
 mscts calls a difference network traffic only where a hand-written rule says
 the two formats mean the same. Each rule comes from reading vanilla's own
-decoding code. Today there are rules only for the server list answer and the
-tag lists sent while joining. Every other difference counts as gameplay, even
+decoding code. Today there is a rule only for the server list answer. Every
+other difference counts as gameplay, even
 one that only changes how the same thing is sent, such as a compressed
 payload. A difference in the gameplay section can therefore turn out to be
 network traffic once a rule for it exists.
