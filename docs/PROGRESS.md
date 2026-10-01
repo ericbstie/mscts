@@ -120,9 +120,12 @@ and wire-only Divergences are grouped per packet with a leaf count.
 
 ## Delegated to the helper agent
 
-The maintainer's second agent (Astra) takes GitHub issues labelled
+The maintainer's outside agents (Astra, ChatGPT) take GitHub issues labelled
 `helper-ready`. Claude stays the primary worker; do not brief a Claude
-worker on a delegated item. Open: the output lane, in order #14 docs checks →
+worker on a delegated item. A helper PR has a `## Verify` section (the
+commands that prove it, with their expected output) and a `## Surprises`
+section; the lead reviews helper PRs in batches (tech-lead skill).
+Open: the output lane, in order #14 docs checks →
 #12 test case titles and reference → #9 short output → #10 verbose → #13 home
 page sample (lead decisions posted on #9, #10, #12 and #14); then #4 PLAN
 public-name check, #6 javap libraries, #3 runner parent-death guard. A helper
