@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import types
 import zipfile
@@ -58,6 +59,194 @@ class Downloads:
     def __call__(self, url: str) -> Download:
         self.calls.append(url)
         return Download(url, self.responses[url])
+
+
+def _libraries(names: tuple[str, ...] = ("com.mojang:datafixerupper:8.0.16",)) -> Downloads:
+    downloads = Downloads()
+    version = json.loads(downloads.responses[_VERSION])
+    version["libraries"] = [
+        {
+            "name": name,
+            "downloads": {
+                "artifact": {
+                    "url": f"https://example.test/lib-{index}.jar",
+                    "sha1": _sha1(name.encode()),
+                    "size": len(name.encode()),
+                }
+            },
+        }
+        for index, name in enumerate(names)
+    ]
+    downloads.responses[_VERSION] = json.dumps(version).encode()
+    downloads.responses[_MANIFEST] = json.dumps(
+        {
+            "versions": [
+                {"id": "26.3", "url": _VERSION, "sha1": _sha1(downloads.responses[_VERSION])}
+            ]
+        }
+    ).encode()
+    for index, name in enumerate(names):
+        downloads.responses[f"https://example.test/lib-{index}.jar"] = name.encode()
+    return downloads
+
+
+def test_library_selection_downloads_and_reuses_verified_artifacts(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    downloads = _libraries()
+    url = "https://example.test/lib-0.jar"
+
+    function = getattr(javap, "cached_libraries", None)
+    assert callable(function), "cached_libraries must resolve and verify --lib artifacts"
+    jars = function(["datafixerupper"], downloads)
+
+    assert len(jars) == 1
+    assert jars[0].parent == tmp_path / "research/26.3/libraries"
+    assert jars[0].read_bytes() == b"com.mojang:datafixerupper:8.0.16"
+    assert downloads.calls == [_MANIFEST, _VERSION, url]
+    downloads.responses.clear()
+    assert function(["datafixerupper"], downloads) == jars
+    assert downloads.calls == [_MANIFEST, _VERSION, url]
+
+
+@pytest.mark.parametrize("pattern", ["missing", "datafixerupper"], ids=["none", "several"])
+def test_library_selection_requires_exactly_one_match(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pattern: str
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    names = ("com.mojang:datafixerupper:8.0.16", "com.mojang:datafixerupper:9.0.0")
+    downloads = _libraries(names)
+
+    with pytest.raises(ProvisionError, match="needs one artifact match") as error:
+        javap.cached_libraries([pattern], downloads)
+
+    message = str(error.value)
+    if pattern == "missing":
+        assert "found none" in message
+    else:
+        assert all(name in message for name in names)
+    assert downloads.calls == [_MANIFEST, _VERSION]
+
+
+@pytest.mark.parametrize("cached", [False, True], ids=["download", "cache"])
+def test_library_sha1_mismatch_is_refused_on_every_use(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, cached: bool
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    downloads = _libraries()
+    if cached:
+        jar = javap.cached_libraries(["datafixerupper"], downloads)[0]
+        jar.write_bytes(b"x" * jar.stat().st_size)
+        downloads.responses.clear()
+    else:
+        url = "https://example.test/lib-0.jar"
+        downloads.responses[url] = b"x" * len(downloads.responses[url])
+
+    with pytest.raises(ProvisionError, match="sha1 or size"):
+        javap.cached_libraries(["datafixerupper"], downloads)
+
+    assert not list(tmp_path.rglob("*.part"))
+    if not cached:
+        assert not list(tmp_path.rglob("*.jar"))
+
+
+def test_library_size_mismatch_is_refused_even_when_sha1_matches(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    downloads = _libraries()
+    javap.cached_libraries(["datafixerupper"], downloads)
+    metadata = tmp_path / "research/26.3/libraries.json"
+    libraries = json.loads(metadata.read_bytes())
+    libraries[0]["downloads"]["artifact"]["size"] += 1
+    metadata.write_text(json.dumps(libraries))
+    downloads.responses.clear()
+
+    with pytest.raises(ProvisionError, match="sha1 or size"):
+        javap.cached_libraries(["datafixerupper"], downloads)
+
+
+def test_library_metadata_is_verified_against_the_manifest(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    downloads = _libraries()
+    downloads.responses[_VERSION] += b" "
+
+    with pytest.raises(ProvisionError, match="differs from its manifest sha1"):
+        javap.cached_libraries(["datafixerupper"], downloads)
+
+    assert downloads.calls == [_MANIFEST, _VERSION]
+    assert not list(tmp_path.rglob("libraries.json"))
+
+
+def test_repeated_library_selection_downloads_once_in_command_order(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    names = ("com.mojang:datafixerupper:8.0.16", "com.google.code.gson:gson:2.13.2")
+    downloads = _libraries(names)
+
+    jars = javap.cached_libraries(["gson", "datafixerupper", "gson"], downloads)
+
+    assert [jar.read_bytes() for jar in jars] == [names[1].encode(), names[0].encode()]
+    assert downloads.calls == [
+        _MANIFEST,
+        _VERSION,
+        "https://example.test/lib-1.jar",
+        "https://example.test/lib-0.jar",
+    ]
+
+
+def test_no_library_selection_needs_no_metadata_or_network(javap: types.ModuleType) -> None:
+    downloads = Downloads()
+    downloads.responses.clear()
+
+    assert javap.cached_libraries([], downloads) == []
+    assert downloads.calls == []
+
+
+def test_main_places_selected_libraries_after_the_target_jar_on_the_classpath(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    executable = tmp_path / "jdk/bin/javap"
+    jar = tmp_path / "server.jar"
+    libraries = [tmp_path / "libraries/dfu.jar", tmp_path / "libraries/gson.jar"]
+    monkeypatch.setattr(javap, "_executable", lambda: executable)
+    monkeypatch.setattr(javap, "classpath", lambda _side: jar)
+
+    def selected(patterns: list[str]) -> list[Path]:
+        assert patterns == ["datafixerupper", "gson"]
+        return libraries
+
+    monkeypatch.setattr(javap, "cached_libraries", selected)
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], *, check: bool) -> subprocess.CompletedProcess[bytes]:
+        assert check is False
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 7)
+
+    monkeypatch.setattr(javap, "_run", fake_run)
+    args = ["--lib", "datafixerupper", "--lib", "gson", "server", "com.mojang.Example$Inner"]
+    try:
+        status = javap.main(args)
+    except SystemExit as error:
+        status = error.code
+
+    assert status == 7
+    assert calls == [
+        [
+            str(executable),
+            "-c",
+            "-p",
+            "-constants",
+            "-classpath",
+            os.pathsep.join(str(path) for path in [jar, *libraries]),
+            "com.mojang.Example$Inner",
+        ]
+    ]
 
 
 def test_client_jar_is_verified_and_reused_offline(

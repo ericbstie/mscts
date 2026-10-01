@@ -55,7 +55,7 @@ def _entry(side: str, metadata: bytes) -> Entry:
     )
 
 
-def _metadata(side: str, fetch: Fetch) -> bytes:
+def _version(fetch: Fetch) -> dict[str, object]:
     manifest = _object(json.loads(fetch(_MANIFEST).body))
     versions = manifest.get("versions")
     if not isinstance(versions, list):
@@ -70,11 +70,14 @@ def _metadata(side: str, fetch: Fetch) -> bytes:
             if hashlib.sha1(body, usedforsecurity=False).hexdigest() != _string(fields, "sha1"):
                 msg = f"the {TARGET.minecraft_version} version JSON differs from its manifest sha1"
                 raise ProvisionError(msg)
-            document = _object(json.loads(body))
-            downloads = _object(document.get("downloads"))
-            return json.dumps(_object(downloads.get(side))).encode()
+            return _object(json.loads(body))
     msg = f"Mojang manifest has no {TARGET.minecraft_version}"
     raise ProvisionError(msg)
+
+
+def _metadata(side: str, fetch: Fetch) -> bytes:
+    downloads = _object(_version(fetch).get("downloads"))
+    return json.dumps(_object(downloads.get(side))).encode()
 
 
 def _write(path: Path, body: bytes) -> None:
@@ -110,6 +113,58 @@ def cached_jar(side: str, fetch: Fetch = https_get) -> Path:
     return jar
 
 
+def _library_entries(fetch: Fetch) -> dict[str, Entry]:
+    root = cache.cache_dir() / "research" / TARGET.minecraft_version
+    root.mkdir(parents=True, exist_ok=True)
+    metadata_path = root / "libraries.json"
+    if metadata_path.exists():
+        libraries: object = json.loads(metadata_path.read_bytes())
+    else:
+        libraries = _version(fetch).get("libraries")
+    if not isinstance(libraries, list):
+        msg = "Mojang version metadata has no libraries list"
+        raise ProvisionError(msg)
+    artifacts: dict[str, Entry] = {}
+    for library in libraries:
+        fields = _object(library)
+        downloads = _object(fields.get("downloads"))
+        if "artifact" in downloads:
+            name = _string(fields, "name")
+            artifacts[name] = _entry(name, json.dumps(downloads["artifact"]).encode())
+    if not metadata_path.exists():
+        _write(metadata_path, json.dumps(libraries).encode())
+    return artifacts
+
+
+def cached_libraries(patterns: list[str], fetch: Fetch = https_get) -> list[Path]:
+    """Resolve each artifact substring once; verify every selected jar on every use."""
+    if not patterns:
+        return []
+    artifacts = _library_entries(fetch)
+    selected: dict[str, Entry] = {}
+    for pattern in patterns:
+        matches = [name for name in artifacts if pattern in name]
+        if len(matches) != 1:
+            found = ", ".join(sorted(matches)) or "none"
+            msg = f"--lib {pattern!r} needs one artifact match; found {found}"
+            raise ProvisionError(msg)
+        name = matches[0]
+        selected[name] = artifacts[name]
+    directory = cache.cache_dir() / "research" / TARGET.minecraft_version / "libraries"
+    directory.mkdir(exist_ok=True)
+    jars: list[Path] = []
+    for entry in selected.values():
+        jar = directory / f"{entry.sha1}.jar"
+        body = jar.read_bytes() if jar.exists() else fetch(entry.url).body
+        if not entry.matches(body):
+            msg = f"{jar}: sha1 or size differs from Mojang metadata; delete {jar} and retry"
+            raise ProvisionError(msg)
+        if not jar.exists():
+            _write(jar, body)
+        jars.append(jar)
+    return jars
+
+
 def classpath(side: str, fetch: Fetch = https_get) -> Path:
     """The client jar or the server's inner jar, extracted from the verified bundle."""
     jar = cached_jar(side, fetch)
@@ -143,16 +198,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("side", choices=("client", "server"))
     parser.add_argument("classes", nargs="+", metavar="Class")
     parser.add_argument("-v", action="store_true", help="include the verbose constant pool")
+    parser.add_argument(
+        "--lib",
+        action="append",
+        default=[],
+        metavar="ARTIFACT",
+        help="add the one library matching this artifact substring; repeatable",
+    )
     args = parser.parse_args(argv)
     if any(name.startswith("-") for name in args.classes):
         parser.error("class names cannot start with '-'")
     try:
         executable = _executable()
         jar = classpath(args.side)
+        libraries = cached_libraries(args.lib)
         command = [str(executable), "-c", "-p", "-constants"]
         if args.v:
             command.append("-v")
-        command.extend(["-classpath", str(jar), *args.classes])
+        paths = os.pathsep.join(str(path) for path in [jar, *libraries])
+        command.extend(["-classpath", paths, *args.classes])
         # The selected JDK's absolute executable, with separate arguments and no shell.
         return _run(command, check=False).returncode  # noqa: S603
     except (OSError, ValueError, PrepareError, ProvisionError) as error:
