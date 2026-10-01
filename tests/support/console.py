@@ -5,6 +5,12 @@ gets one section per Instance the test used, `Instance console (<label>)`, holdi
 last lines of that console: the same lines a RunnerError quotes (`runner.log_tail`). A
 test that passes gets none.
 
+The test used an Instance when
+- a fixture it requested is one: the label is the fixture's name (the session's
+  `reference`); or
+- it started one in a directory below its own `tmp_path`, which is what the tests that boot
+  a server themselves do: the label is that directory, relative to `tmp_path`.
+
 The root conftest registers this plugin, so every tier has it.
 """
 
@@ -13,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from mscts.runner import Instance, log_tail
+from mscts.runner import CONSOLE_LOG, Instance, log_tail
 
 SECTION = "Instance console"
 
@@ -34,6 +40,11 @@ def consoles(item: pytest.Item) -> dict[Path, str]:
     """The console of every Instance `item` used, with the label that names it."""
     if not isinstance(item, pytest.Function):
         return {}
-    return {
+    found = {
         value.log_path: name for name, value in item.funcargs.items() if isinstance(value, Instance)
     }
+    tmp_path = item.funcargs.get("tmp_path")
+    if isinstance(tmp_path, Path):
+        for log in sorted(tmp_path.rglob(CONSOLE_LOG)):
+            found.setdefault(log, log.parent.relative_to(tmp_path).as_posix())
+    return found

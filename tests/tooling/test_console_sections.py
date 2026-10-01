@@ -43,3 +43,23 @@ def test_a_failing_test_shows_the_tail_of_the_console_of_an_instance_it_was_give
 
     result.assert_outcomes(failed=1)
     result.stdout.fnmatch_lines([f"*{SECTION} (reference)*", "console line 100"])
+
+
+def test_a_failing_test_shows_the_console_of_an_instance_it_started_below_its_tmp_path(
+    suite: pytest.Pytester,
+) -> None:
+    source = """
+def test_fails(tmp_path):
+    console = tmp_path / "selfcheck" / "0" / "candidate"
+    console.mkdir(parents=True)
+    (console / "mscts-console.log").write_text("the candidate said: boom\\n")
+    assert False
+"""
+    suite.makepyfile(source)
+
+    result = suite.runpytest()
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines(
+        [f"*{SECTION} (selfcheck/0/candidate)*", "the candidate said: boom"]
+    )
