@@ -107,7 +107,8 @@ def test_a_negative_count_is_refused(encoded: str) -> None:
         read_all(PATCH, bytes.fromhex(encoded))
 
 
-@pytest.mark.parametrize("encoded", ["05 00 00", "00 05 00"], ids=["added count", "removed count"])
+# One more than the bytes left, and every entry takes at least one.
+@pytest.mark.parametrize("encoded", ["02 00 00", "00 02 00"], ids=["added count", "removed count"])
 def test_a_count_larger_than_the_bytes_left_is_refused_before_reading_any_entry(
     encoded: str,
 ) -> None:
