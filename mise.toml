@@ -56,7 +56,7 @@ description = "statistical tier (opt-in, slow; ADR-0006)"
 run = "uv run pytest -m statistical"
 
 [tasks."regen:packets"]
-description = "Regenerate and verify the committed packets.json (--write to update it); needs install:reference"
+description = "Regenerate and verify the committed packets.json and registry_names.json (--write to update them); needs install:reference"
 run = "uv run python -m mscts.codec.regen"
 
 [tasks."docs:deps"]
