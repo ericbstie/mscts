@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from mscts.codec.schema import (
     BOOL,
+    DOUBLE,
     FLOAT,
     IDENTIFIER,
     LONG,
@@ -458,6 +459,9 @@ SECTION_POSITION: WireType[dict[str, int]] = _SectionPosition()
 x and z take 22 bits each and y 20, signed:
 `(x & 0x3FFFFF) << 42 | (y & 0xFFFFF) | (z & 0x3FFFFF) << 20`.
 """
+
+VEC3 = Schema(x=DOUBLE, y=DOUBLE, z=DOUBLE)
+"""A vector of three Doubles (`Vec3.STREAM_CODEC`): `{x, y, z}`, in blocks."""
 
 SOUND_EVENT = Holder(Schema(location=IDENTIFIER, fixed_range=PrefixedOptional(FLOAT)))
 """A sound event (`SoundEvent.STREAM_CODEC`): a registry id, or its Identifier and fixed range."""
