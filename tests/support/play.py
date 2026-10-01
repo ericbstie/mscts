@@ -2,7 +2,9 @@
 
 from collections.abc import Mapping
 
-from mscts.codec.packets import Codec, Direction, State
+import pytest
+
+from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.codec.wire import Writer
 
 CODEC = Codec.load("26.3")
@@ -21,3 +23,17 @@ def round_trip(name: str, fields: Mapping[str, object], payload: str) -> None:
     assert CODEC.encode(State.PLAY, CLIENTBOUND, name, fields) == data
     packet = CODEC.decode(State.PLAY, CLIENTBOUND, data)
     assert (packet.name, packet.fields) == (name, fields)
+
+
+def decode_error(name: str, payload: str) -> str:
+    """Why the Codec refuses `payload` (hex) as packet `name`."""
+    with pytest.raises(CodecError) as caught:
+        CODEC.decode(State.PLAY, CLIENTBOUND, frame(name, payload))
+    return str(caught.value)
+
+
+def encode_error(name: str, fields: Mapping[str, object]) -> str:
+    """Why the Codec refuses to encode `fields` as packet `name`."""
+    with pytest.raises(CodecError) as caught:
+        CODEC.encode(State.PLAY, CLIENTBOUND, name, fields)
+    return str(caught.value)

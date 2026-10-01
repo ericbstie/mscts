@@ -10,9 +10,9 @@ import re
 from typing import cast
 
 import pytest
-from support.play import CLIENTBOUND, CODEC, frame, round_trip
+from support.play import CLIENTBOUND, CODEC, decode_error, encode_error, frame, round_trip
 
-from mscts.codec.packets import CodecError, State
+from mscts.codec.packets import State
 from mscts.codec.schema import ENTITY_ID
 from mscts.codec.schemas import play
 
@@ -21,20 +21,6 @@ SECTION_BLOCKS_UPDATE = "minecraft:section_blocks_update"
 BLOCK_ENTITY_DATA = "minecraft:block_entity_data"
 BLOCK_EVENT = "minecraft:block_event"
 BLOCK_DESTRUCTION = "minecraft:block_destruction"
-
-
-def decode_error(name: str, payload: str) -> str:
-    """Why the Codec refuses `payload` as packet `name`."""
-    with pytest.raises(CodecError) as caught:
-        CODEC.decode(State.PLAY, CLIENTBOUND, frame(name, payload))
-    return str(caught.value)
-
-
-def encode_error(name: str, fields: dict[str, object]) -> str:
-    """Why the Codec refuses to encode `fields` as packet `name`."""
-    with pytest.raises(CodecError) as caught:
-        CODEC.encode(State.PLAY, CLIENTBOUND, name, fields)
-    return str(caught.value)
 
 
 # Block update: a position and a block state id. Recorded from `setblock 1 -60 1 minecraft:stone`
