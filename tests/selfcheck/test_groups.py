@@ -10,15 +10,20 @@ it needs no further Mask, i.e. that whatever two independently booted servers ma
 differ in (per-boot identifiers and state, anything drawn at random at startup) is already
 masked. One Instance compared with itself shares all of that, so a missing Mask would pass
 here and only show up as a false `mismatch` against every Candidate.
+
+A Group whose `spec` changes the ServerSpec cannot play on that pair, which was booted at the
+default one. Its Self-check launches two Instances of its own for that ServerSpec instead,
+which costs two boots.
 """
 
 from pathlib import Path
 
 import pytest
-from support.reference import attached
+from support.reference import attached, own_reference
+from support.selfcheck import needs_instances_of_their_own
 
-from mscts.compare import Outcome
-from mscts.group import resolve
+from mscts.compare import Outcome, Verdict
+from mscts.group import Group, resolve
 from mscts.run import run
 from mscts.runner import Instance
 
@@ -30,17 +35,31 @@ pytestmark = [
 ]
 
 
-async def test_selfcheck(
-    group_id: str, reference: Instance, second_reference: Instance, repeat: int, tmp_path: Path
+async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
+    group_id: str,
+    reference: Instance,
+    second_reference: Instance,
+    cache_dir: Path,
+    repeat: int,
+    tmp_path: Path,
 ) -> None:
     groups = resolve([group_id])
-    verdicts = await run(
-        groups,
-        attached(reference),
-        attached(second_reference),
-        workdir=tmp_path,
-        repeat=repeat,
-    )
+    verdicts = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
     assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * repeat
     not_matching = [verdict for verdict in verdicts if verdict.outcome is not Outcome.MATCH]
     assert not_matching == []
+
+
+async def _play(
+    groups: tuple[Group, ...],
+    pair: tuple[Instance, Instance],
+    cache_dir: Path,
+    workdir: Path,
+    repeat: int,
+) -> list[Verdict]:
+    """Play `groups` on the shared `pair`, or on Instances of the Run's own if they need to."""
+    first, second = (attached(instance) for instance in pair)
+    if not needs_instances_of_their_own(groups, first.spec):
+        return await run(groups, first, second, workdir=workdir, repeat=repeat)
+    with own_reference(cache_dir) as server:
+        return await run(groups, server, server, workdir=workdir, repeat=repeat)
