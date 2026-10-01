@@ -6,6 +6,8 @@ a small suite of its own, with that plugin, through `pytester`.
 
 import pytest
 
+from mscts.runner import LOG_TAIL_LINES
+
 SECTION = "Instance console"
 
 CONFTEST = """
@@ -43,6 +45,18 @@ def test_a_failing_test_shows_the_tail_of_the_console_of_an_instance_it_was_give
 
     result.assert_outcomes(failed=1)
     result.stdout.fnmatch_lines([f"*{SECTION} (reference)*", "console line 100"])
+
+
+def test_the_section_names_the_console_file_and_shows_only_its_last_lines(
+    suite: pytest.Pytester,
+) -> None:
+    suite.makepyfile("def test_fails(reference):\n    assert False\n")
+
+    out = suite.runpytest().stdout.str()
+
+    assert f"last {LOG_TAIL_LINES} lines of " in out, out
+    assert "somewhere-else.log\nconsole line 61\n" in out, out
+    assert "console line 60\n" not in out, out
 
 
 def test_a_failing_test_shows_the_console_of_an_instance_it_started_below_its_tmp_path(
