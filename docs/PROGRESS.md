@@ -89,9 +89,12 @@ Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at 
 
 - AL (opus): #17 Control, branch `issue-17-control`; it first makes the join
   packets that differ between two vanilla Instances a shared Comparison rule.
-- AK (sonnet): #19 item stacks, branch `issue-19-item-stacks`. Until it lands, an
-  item in entity metadata or `set_equipment` ends a Bot's session (#20 refuses an
-  item stack rather than misread it).
+- AM (sonnet): #29 block and world event schemas, branch `issue-29-block-events`.
+  Its seed rule and live tiers wait for #17's `RANDOM_FIELDS` and `Control`.
+
+Known flake on main until #17 lands: #18's 20-of-20 Self-check
+(`test_observe_reference.py`) fails about 1 run in 10, because a command's
+feedback can arrive after the barrier. #17's `tellraw` marker fixes it.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -218,6 +221,12 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   Instances (`session_id`, `update_tags` order), now a shared rule in #17.
 - The output lane (#14, #12, #9, #10, #13) went to the maintainer's helper agent,
   with lead decisions on #9, #10, #12 and #14.
+- Merged #82 (#19: every item stack vanilla sends decodes strictly; 122 data
+  components from a generated name list; `codec/shapes.py` holds the shapes they
+  share; hashing moved to #28). Pumpkin sends 18 of the giveable stacks in a form
+  that does not decode, and its `/give` parser hangs a thread for good on a
+  component name with a slash. Filed #83: a failing tier test shows each
+  Instance's console tail.
 
 ### 2026-09-30 — session 4: what to test between servers
 

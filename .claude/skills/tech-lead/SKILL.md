@@ -51,6 +51,9 @@ first.
 - Rebase with `git rebase main -x "mise run check …"`. If a commit fails
   only under `rebase -x`, suspect inherited `GIT_*` env vars before
   suspecting the code.
+- Leave the main checkout alone while a `rebase -x` runs in it: an
+  edited file stops the rebase at its next pick ("You have unstaged
+  changes"). Draft lead docs in the scratchpad and apply them after.
 - Correct a worker's wrong commit author with `--exec 'git commit --amend
   --no-edit --reset-author'`, scoped to the affected commits.
 - If a worker's hand-back message is lost (for example after a container
@@ -70,6 +73,10 @@ first.
   output line) against what the code emits today, for instance from a
   unit test's Divergence. A spec example that contradicts its own rule
   costs the worker a design detour (AH, #8).
+- A wide table (about 20 entries of one mechanism or more, like the 122
+  data components) gets its layouts derived before briefing: a `sonnet`
+  triage runs `scripts/research/layout.py` over each entry and posts the
+  table on the issue, so the worker starts on shapes (AK, #19).
 - If a retrospective repeats a complaint, that is a process bug. Fix the
   skill or the template, not just the instance.
 - If a worker widened scope or loosened a rule, reject the change and

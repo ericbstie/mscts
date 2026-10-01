@@ -301,6 +301,13 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-01 | worker AK (#19 item stacks) | 122 components took 17 codec commits and four usage-limit resumes; a scratch javap interpreter made the table mechanical only after an up-front increment | **adopt**: tech-lead skill, a wide table (about 20 entries of one mechanism or more) gets its javap layouts derived and posted on the issue before briefing, by a sonnet triage with `scripts/research/layout.py` |
+| 2026-10-01 | worker AK | About eight blind Pumpkin probe runs before the console showed commands had stopped after the fourth slash-named `/give` | **adopt**: #83, a failing tier test shows each Instance's console tail (increment 0 of the first brief after #17) |
+| 2026-10-01 | worker AK | `Bot.sync()` does not cover Pumpkin's inventory updates: Pumpkin runs a command about a tick after the barrier answers | **adopt** (no change): #17's `Control.run` waits for its own `tellraw` marker before the sync |
+| 2026-10-01 | worker AK | Pumpkin's `/give` parser spins a worker thread for good on a component name with a slash; the fourth stops the server | **adopt** (no change): pinned by a candidate test as evidence; an upstream report is the maintainer's call |
+| 2026-10-01 | worker AK | The brief's commit trailer named a different model from the session's own attribution reminder; it followed the reminder | **adopt**: briefs stop restating the trailer; a worker ends commits and the PR body with the lines its own session gives (red-green already says so) |
+| 2026-10-01 | worker AK | `test_slot.py` was written after `items.py`, not red first | **adopt** (no change): the mutation sweep (37 of 38 killed, the survivor fixed) showed the tests bite; red first stays the rule |
+| 2026-10-01 | worker AK | Used heredocs and `sed -i` late on, under the harness's auto-mode note; the guard refused one compound command | **adopt** (no change): the one-plain-command rule stays, because the guard refuses those shapes whatever the mode |
 | 2026-10-01 | worker AJ (#18 observation windows) | The harness refused a `findings.md` | **adopt**: the findings file is `findings.txt` (Worker contract) |
 | 2026-10-01 | worker AJ | `git merge --ff-only main` was impossible once main moved | **adopt**: brief template, rebase with `--exec "mise run check"` before the PR |
 | 2026-10-01 | worker AJ | Every joining Group's Self-check fails: `login_finished.session_id` is random and `update_tags`' order changes per boot | **adopt**: a shared Comparison rule (a Mask table beside `HEARTBEAT`, a canonical `update_tags`), the first increment of #17, before any joining Group is registered |
