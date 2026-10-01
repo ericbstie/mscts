@@ -359,7 +359,10 @@ class Connection:                   # one TCP connection; owns framing, compress
 class Bot:                          # what Groups use; answers keep_alive / teleports / chunk batches itself
     name: str
     failure: Exception | None       # what its last failed operation (status, ping, join,
-                                    # expect) raised: which Bot a Group's failure came from
+                                    # expect, sync, drain) raised: which Bot a Group's failure
+                                    # came from
+    closed: bool                    # (property) close was called
+    in_play: bool                   # (property) joined, and not closed: what sync needs
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -369,6 +372,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
     async def expect(self, name: str, *, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
+    async def sync(self) -> None: ...                                  # the barrier (below)
+    async def drain(self) -> None: ...                                 # take what has arrived
     async def send(self, name: str, /, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
     async def close(self) -> None: ...                                 # idempotent
@@ -385,6 +390,16 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
+    # sync, the barrier: returns once the server has sent everything caused by what it
+    # received before. On a Bot in play (else ProtocolError, nothing sent): client_command
+    # (REQUEST_STATS) then expect(award_stats), twice, the second request only after the
+    # first answer. Vanilla handles the request at the start of a tick, before that tick
+    # sends what changed, so one round trip is not enough; the second answer follows a whole
+    # tick (docs/research/2026-09-30-observation-window.md). Observation windows call it
+    # when they close, and Control will call it after each command.
+    # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
+    # until TimeoutError. A frame that does not decode, or a Connection that has ended with
+    # nothing left to take, raises as recv does.
 
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
 
@@ -672,6 +687,16 @@ class GroupContext:
                                                  # second Bot of the same name
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
+    def observe(self, *names: str) -> AbstractAsyncContextManager[None]: ...
+                                    # an Observation window: Marks OBSERVE_OPEN (then the
+                                    # names, each after a space) on entry; when the body
+                                    # completes, every Bot in play passes Bot.sync (all at
+                                    # once; the first error raises, as that Bot's failure),
+                                    # then the OBSERVE_CLOSE Mark, then every Bot not closed
+                                    # drains. A body that raises gets neither, so its window
+                                    # runs to the Transcript's end. ValueError, nothing
+                                    # marked: a window already open (no nesting), or a name
+                                    # that is not one word
     async def close(self) -> None: ...   # closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`

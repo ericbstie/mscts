@@ -1,5 +1,6 @@
 """Groups: named, deterministic scripts a Run plays against each Instance."""
 
+import asyncio
 import contextlib
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
@@ -8,7 +9,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from mscts.bot import Bot
-from mscts.compare import Mask
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
@@ -53,6 +54,7 @@ class GroupContext:
         self._timeout_s = timeout_s
         self._bots: dict[str, Bot] = {}
         self._unconnected: tuple[str, Exception] | None = None
+        self._observing = False
 
     @property
     def control(self) -> Control:
@@ -108,6 +110,45 @@ class GroupContext:
         yield
         self._mark(f"{name}:end")
 
+    @contextlib.asynccontextmanager
+    async def observe(self, *names: str) -> AsyncIterator[None]:
+        """Compare only what the Bots receive inside the block: an Observation window.
+
+        Marks `observe:open` on entry, followed by `names`, each after a space. When the
+        body completes, every Bot in play passes the barrier (`Bot.sync`), all at once;
+        then the window gets its `observe:close` Mark, and every Bot not closed takes
+        what has already arrived, without waiting (`Bot.drain`). A body that raises gets
+        neither: its window runs to the end of the Transcript.
+
+        Args:
+            names: The only packets the window compares, e.g. `minecraft:block_update`;
+                none for every packet.
+
+        Raises:
+            ValueError: A window is open already (windows do not nest), or a name is not
+                one word.
+            TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
+            ProtocolError: The server disconnected a Bot before its barrier's answer.
+        """
+        if self._observing:
+            msg = "the Group is in an Observation window already: windows do not nest"
+            raise ValueError(msg)
+        for name in names:
+            if name.split() != [name]:
+                msg = f"a packet name is one word, not {name!r}"
+                raise ValueError(msg)
+        self._observing = True
+        try:
+            self._mark(" ".join((OBSERVE_OPEN, *names)))
+            yield
+            await self._sync()
+            self._mark(OBSERVE_CLOSE)
+            for bot in self._bots.values():
+                if not bot.closed:
+                    await bot.drain()
+        finally:
+            self._observing = False
+
     async def close(self) -> None:
         """Close every Bot. Calling it again does nothing."""
         for bot in self._bots.values():
@@ -115,6 +156,16 @@ class GroupContext:
 
     def _mark(self, label: str) -> None:
         self._transcript.marks.append(Mark(t_ns=self._transcript.now_ns(), label=label))
+
+    async def _sync(self) -> None:
+        """Pass the barrier on every Bot in play at once; raise the first Bot's error."""
+        try:
+            async with asyncio.TaskGroup() as barriers:
+                for bot in self._bots.values():
+                    if bot.in_play:
+                        barriers.create_task(bot.sync())
+        except ExceptionGroup as errors:
+            raise errors.exceptions[0] from None
 
 
 type Script = Callable[[GroupContext], Awaitable[None]]
