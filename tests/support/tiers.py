@@ -13,7 +13,7 @@ from mscts.target import TARGET
 
 # The Adapter whose Installation each live tier's marker needs.
 NEEDS: Mapping[str, Callable[[], Adapter]] = MappingProxyType(
-    {"reference": VanillaAdapter, "candidate": PumpkinAdapter}
+    {"reference": VanillaAdapter, "selfcheck": VanillaAdapter, "candidate": PumpkinAdapter}
 )
 
 

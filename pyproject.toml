@@ -87,6 +87,7 @@ asyncio_default_test_loop_scope = "function"
 timeout = 120
 markers = [
     "reference: needs a live vanilla Reference Instance",
+    "selfcheck: a registered Group's Self-check, on two live vanilla Reference Instances",
     "candidate: needs a live Candidate Instance",
     "statistical: opt-in, slow; statistical Groups run N times (ADR-0006)",
 ]

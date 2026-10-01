@@ -29,7 +29,7 @@ run = "uv run bandit -q -c pyproject.toml -r src"
 
 [tasks.test]
 description = "unit tier, parallelized across CPUs (pytest-xdist)"
-run = "uv run pytest -m 'not reference and not candidate and not statistical' -n auto"
+run = "uv run pytest -m 'not reference and not selfcheck and not candidate and not statistical' -n auto"
 
 [tasks.check]
 description = "Everything a commit must pass"
@@ -46,6 +46,10 @@ run = "uv run mscts adapter install vanilla"
 [tasks."test:reference"]
 description = "reference tier (live vanilla Instance)"
 run = "uv run pytest -m reference"
+
+[tasks."test:selfcheck"]
+description = "Self-check tier: every registered Group against two live vanilla Instances"
+run = "uv run pytest -m selfcheck"
 
 [tasks."test:candidate"]
 description = "candidate tier (live Candidate Instance)"
