@@ -93,8 +93,10 @@ of each tick. A probe Group with `setblock` inside a window lost the
 1. **Control ends each command with a marker, then the barrier.** After
    the command, `control.run` sends `tellraw @s "<token>"`, with a token
    of its own (a fixed prefix and a count), waits for the `system_chat`
-   holding the token, then calls `Bot.sync`. It returns the
-   `system_chat`s that arrived before the marker's answer.
+   holding the token, then calls `Bot.sync`. It returns every
+   `system_chat` that arrived from the command to the end of the barrier,
+   except the marker's answer. They are evidence for the Group, never
+   compared.
 2. **On vanilla this is exact.** The marker is a task on the same queue,
    behind the command, so its answer means the command has run: 0 of 80
    plays lost the `block_update` with the marker.
@@ -102,11 +104,13 @@ of each tick. A probe Group with `setblock` inside a window lost the
    Pumpkin runs each command as its own task, at the same time as the
    others, so a command that takes more than about a tick longer than the
    marker can land after `run` returns (a `fill` of 28,830 blocks
-   answered after its marker 18 times in 18; `setblock`, never in 120).
-   That is a real difference, and it shows where it lands. Groups keep
-   their setup commands before their windows and small, and check that a
-   large one has finished with a command that answers, such as
-   `execute if block …`.
+   answered after its marker 18 times in 18; the `block_update` of a
+   `setblock`, never in 120). Even a `setblock`'s answer came after the
+   marker's in 71 runs of 100, though always before the barrier ended,
+   so `run` returns what arrived until the barrier ended, not only what
+   came before the marker's answer. That is a real difference, and it
+   shows where it lands.
+   Groups keep their setup commands before their windows, and small.
 
 This replaces the last consequence's "calls `Bot.sync` after each
 command", and answers the one before it for commands sent through Control.

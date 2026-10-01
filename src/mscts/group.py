@@ -97,8 +97,12 @@ class OperatorBot:
         Bot passes the barrier, so the server has also sent what the command changed.
 
         Returns:
-            The `system_chat`s that arrived before the marker's answer: what the server
-            said in answer to the command, an empty tuple if nothing.
+            Every `system_chat` that arrived from sending `command` to the end of the
+            barrier, but the marker's answer, in order of arrival; an empty tuple if none.
+            That is what the server said in answer, and it can include messages that are
+            not the command's, such as a join message. Pumpkin answers a player's
+            commands out of order, so its answer often comes after the marker's. It is
+            evidence for the Group, not a test case: no Comparison compares it.
 
         Raises:
             ValueError: `command` does not start with its name (it is empty, or starts
@@ -119,22 +123,25 @@ class OperatorBot:
                 raise CommandMissing(name)
         await bot.drain()
         self._markers += 1
-        token = f"{MARKER_PREFIX}{self._markers}"
+        token = f"{MARKER_PREFIX}{self._markers}".encode()
+        since = self._transcript.now_ns()
         await bot.command(command)
-        await bot.command(f'tellraw @s "{token}"')
-        said: list[Packet] = []
-
-        def answers_marker(packet: Packet) -> bool:
-            # Text components are not decoded yet, so the token is looked for in the raw
-            # bytes: a String tag, or a compound's text, holds it as it was sent.
-            if token.encode() in packet.payload:
-                return True
-            said.append(packet)
-            return False
-
-        await bot.expect(_SYSTEM_CHAT, timeout_s=self._timeout_s, where=answers_marker)
+        await bot.command(f'tellraw @s "{token.decode()}"')
+        # Text components are not decoded yet, so the token is looked for in the raw bytes:
+        # a String tag, or a compound's text, holds it as it was sent.
+        marker = await bot.expect(
+            _SYSTEM_CHAT, timeout_s=self._timeout_s, where=lambda packet: token in packet.payload
+        )
         await bot.sync()
-        return tuple(said)
+        return tuple(
+            event.packet
+            for event in self._transcript.events
+            if event.bot == bot.name
+            and event.t_ns >= since
+            and event.packet.direction is Direction.CLIENTBOUND
+            and event.packet.name == _SYSTEM_CHAT
+            and event.packet is not marker
+        )
 
     async def _joined(self) -> Bot:
         if self._bot is None:
