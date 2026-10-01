@@ -85,6 +85,24 @@ Limits:
   are the clocked packets below, not effects of the command.
 - `award_stats` is the barrier's answer, so a window cannot compare it.
 
+## Amendment, 2026-10-01 (#17): the barrier covers the packet phase
+
+In the 30 trials above, each command ran before the next tick, as it
+does when the server has time to spare. When it has none, a command sent
+just before `Bot.sync()` is not covered:
+
+- a chat command is a task in the server's task queue, and when the
+  server is behind schedule, that queue can hold it for up to three ticks
+  (`shouldRun`, above) while `REQUEST_STATS` is still answered at the
+  start of each tick;
+- live, the probe Group (`setblock` inside a window, vanilla on both
+  sides) lost the `block_update` from one side's window in 8 of 80 plays.
+
+So `Bot.sync()` covers what a Bot's own packets cause, handled in the
+packet phase at the start of a tick. A command needs Control's barrier:
+a marker command behind it in the same queue, then `Bot.sync()`
+(`docs/research/2026-10-01-control.md`, The Control barrier).
+
 ## What arrives on a clock — live and javap
 
 Two Bots, idle, 35 s with the world running and then 35 s frozen.
