@@ -135,3 +135,36 @@ layouts.
 
 The recorded payloads are in `tests/codec/schemas/test_play_blocks.py` and
 `test_play_world_events.py`, each named for the command that caused it.
+
+## What Pumpkin sends for the same commands
+
+**verified (live)**, the same Control commands against Pumpkin, through
+`tests/adapters/test_pumpkin_block_events.py` and two probe runs (the first one
+stalled, see `fill … destroy`). Every packet of #29 that Pumpkin sent decodes
+strictly and encodes back to its bytes, so the schemas hold for a Candidate as
+well as the Reference. What differs is behaviour, which is what the Groups
+compare, not codec work:
+
+| Command | Pumpkin sends (vanilla in brackets where it differs) |
+| --- | --- |
+| `setblock 1 -60 1 minecraft:stone` | two `block_update`s (one) |
+| `setblock … minecraft:spawner`, `minecraft:oak_sign` | `block_entity_data` three times (once), with the `block_update` between them |
+| a `redstone_block` next to a note block | `section_blocks_update`, `sound`, `block_event` (`section_blocks_update`, `block_event`, `sound`) |
+| a `redstone_block` next to a door | a `block_update` (a `sound` and a `section_blocks_update`) |
+| `playsound minecraft:block.note_block.harp …` | `sound` with a registry reference, 31 bytes (an inline sound name, 63 bytes) |
+| `summon tnt` with `fuse:1` | two `sound`s, then `explode` with no knockback and no block particles, then two `section_blocks_update`s (one `explode` and one `section_blocks_update`) |
+| `particle minecraft:flame …` | `block_update`, `level_particles` (`level_particles`) |
+| `data merge block … {front_text:…}`, an `oak_door` placed in two halves | no packet of #29 (`block_update`, `block_entity_data`; `section_blocks_update`) |
+| `particle` with `dust` or `block` options | no packet of #29 (`level_particles`) |
+
+`fill … air destroy` made Control time out against Pumpkin, and Pumpkin then
+disconnected it with `disconnect.timeout`, so no later step of that run
+finished. `setblock … air destroy` does work on Pumpkin (`level_event`, then
+`block_update`), so a Group that breaks blocks should use that.
+
+The Pumpkin test asserts only that each Scenario's expected packets arrived and
+prints the rest. It never asserts a field a Candidate may legitimately get
+wrong. A Candidate packet the Codec refuses fails the Bot that got it (a
+`CodecError` from `Control.run` or `observe`, not a `Packet` with `decode_error`
+in the window), so `tests/support/block_events.py` catches it and lists it as
+evidence.
