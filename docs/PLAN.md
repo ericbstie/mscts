@@ -46,11 +46,11 @@ test needs it:
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
 | `codec/movement.py` | the movement field types of the entity packets: `MOVE_DELTA`, `POSITION_PATH` |
-| `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, painting variant, resolvable profile, global pos), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
+| `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, optional global pos; the painting variant and resolvable profile live in `codec/shapes.py`), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
-| `codec/shapes.py` | the wire shapes the data components share: `UNIT`, `NBT_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM` |
+| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `Holder`, `Either`, `HOLDER_SET`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`) |
 | `codec/items.py` | `SLOT`, the item stack field |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -221,8 +221,8 @@ POSITION_SOURCE: Tagged
 OPTIONAL_BLOCK_STATE: WireType[int | None]    # VarInt, 0 = None (so a present 0 is refused on write)
 OPTIONAL_UNSIGNED_INT: WireType[int | None]   # VarInt of value + 1, 0 = None
 OPTIONAL_GLOBAL_POS: WireType[dict | None]    # {dimension, pos: {x, y, z}} | None
-PAINTING_VARIANT: WireType[dict]              # {reference: id} | {direct: {width, height, asset_id, title, author}}
-RESOLVABLE_PROFILE: Schema                    # {profile: {game_profile: {...}} | {partial: {...}}, skin_patch: {...}}
+# PAINTING_VARIANT and RESOLVABLE_PROFILE are in codec/shapes.py (the data components use them
+# too); entity_data imports them for SERIALIZERS.
 # All 44 serializers of `EntityDataSerializers`, in registration order (the position is the id),
 # named by their lower-case Java constants ("byte", "int", "float", "optional_component", ...).
 SERIALIZERS: Tagged                           # {serializer: "float", value: 10.0}
@@ -248,6 +248,16 @@ NBT_TAG: WireType[bytes]         # an NBT root tag of any type but END, as its e
 TEXT_COMPONENT: WireType[bytes]  # NBT_TAG: a text component is kept as its NBT bytes, not decoded
 REGISTRY_ID: WireType[int]       # a registry entry by protocol id: a plain VarInt, not range checked
 ENUM: WireType[int]              # an enum by ordinal: a plain VarInt, not range checked
+@frozen
+class Holder:                    # VarInt 0 + the value, else registry id + 1: {direct: v} | {reference: id}
+    direct: WireType[object]
+@frozen
+class Either:                    # a Bool, then the left (true) or right type: {left_key: v} | {right_key: v}
+    left_key: str; left: WireType[object]; right_key: str; right: WireType[object]
+HOLDER_SET: WireType[dict]       # VarInt 0 + a tag, else n + 1 and n ids: {tag: "minecraft:logs"} | {ids: [id, ...]}
+GLOBAL_POS: Schema               # {dimension, pos: {x, y, z}}
+PAINTING_VARIANT: WireType[dict] # Holder: {reference: id} | {direct: {width, height, asset_id, title, author}}
+RESOLVABLE_PROFILE: Schema       # {profile: {game_profile: {...}} | {partial: {...}}, skin_patch: {...}}
 
 # codec/components.py. A data component's value has no length on the wire, so each one's layout
 # must be known to read past it: a component with no layout, or an id past the registry, is a

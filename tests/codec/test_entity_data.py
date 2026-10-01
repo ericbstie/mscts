@@ -143,6 +143,12 @@ def test_painting_variant_names_what_is_wrong_in_the_variant_itself() -> None:
         written(PAINTING_VARIANT, {"direct": direct})
 
 
+def test_painting_variant_titles_are_text_components_so_a_tag_end_is_refused() -> None:
+    # A present title that is a lone TAG_End (width 4, height 2, asset "a:b").
+    with pytest.raises(WireError, match=r"^direct: title: .*END"):
+        read_all(PAINTING_VARIANT, bytes.fromhex("00 04 02 03 61 3a 62 01 00"))
+
+
 @pytest.mark.parametrize(
     ("value", "error"),
     [
