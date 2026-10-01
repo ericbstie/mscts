@@ -130,9 +130,12 @@ seconds, even if it has not moved. If a window can catch one of these,
 name the packets the Group is about.
 
 Then prove it with a Self-check: run the Group with vanilla on both sides.
-It must `match` in 20 runs out of 20 before it counts. If it does not, find
-the field that varies. Add a Mask only if that field has no gameplay meaning.
-Otherwise the Group needs to control that value itself.
+It must `match` in 20 runs out of 20 before it counts. The `selfcheck` tier
+does this for every registered Group, 3 runs each. For 20 runs of your own,
+run `MSCTS_SELFCHECK_REPEAT=20 uv run pytest -m selfcheck -k '<mechanic>/'`.
+If it does not match, find the field that varies. Add a Mask only if that
+field has no gameplay meaning. Otherwise the Group needs to control that
+value itself.
 
 ## Group kinds
 

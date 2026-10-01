@@ -1404,6 +1404,7 @@ mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--
 | --- | --- | --- | --- |
 | unit | (default) | nothing external: localhost sockets and short helper processes only | `mise run check` (lint, format, types, bandit, unit tests) |
 | reference | `@pytest.mark.reference` | Java 25; vanilla installed (`mise run install:reference`, which the web SessionStart hook runs) | `mise run test:reference` |
+| selfcheck | `@pytest.mark.selfcheck` | Java 25; vanilla installed. One test per registered Group (`tests/selfcheck/`, parametrised from `GROUPS`): its Self-check on two Reference Instances booted once for the tier, 3 times by default (`MSCTS_SELFCHECK_REPEAT`); `-k` picks Groups by id | `mise run test:selfcheck` |
 | candidate | `@pytest.mark.candidate` | a Candidate installed (`mscts adapter install pumpkin [--from PATH]`) | `mise run test:candidate` |
 | statistical | `@pytest.mark.statistical` | live servers, many repetitions (slow) | `mise run test:statistical` (opt-in; ADR-0006) |
 

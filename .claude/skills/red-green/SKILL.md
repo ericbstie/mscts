@@ -140,7 +140,8 @@ then one commit.
   non-zero if any run failed. Run the whole unit tier through it before
   trusting a readiness, timing or process change beyond the "run it 20
   times" rule (below): `python3 scripts/repeat.py --times 20 --stress --
-  -m 'not reference and not candidate and not statistical' -n auto`.
+  -m 'not reference and not selfcheck and not candidate and not statistical'
+  -n auto`.
 - Time a mise task without editing this worktree: `python3
   scripts/time_tier.py <mise task> [--times N]` (e.g. `test:reference`)
   copies the tracked tree (plus untracked, non-ignored files, exactly what
