@@ -12,7 +12,7 @@ Group can change it through its `spec` option.
 | `port` | `int` | set by mscts | The port the server binds. |
 | `motd` | `str` | `"mscts"` | The description shown in the server list. |
 | `max_players` | `int` | `20` | |
-| `view_distance` | `int` | `2` | In chunks. |
+| `view_distance` | `int` | `2` | In chunks, at most 12. A server sends each player the chunks within its own view distance or the player's, whichever is smaller, and every Bot asks for 12, as a new vanilla client does. |
 | `simulation_distance` | `int` | `2` | In chunks. |
 | `world` | `WorldPreset` | `FLAT` | Flat is the only preset so far. Void comes once it is verified on vanilla. |
 | `seed` | `int` | `0` | |
@@ -21,7 +21,8 @@ Group can change it through its `spec` option.
 | `operators` | `tuple[str, ...]` | `()` | Player names with operator status. |
 | `compression_threshold` | `int` | `256` | Packets at least this many bytes long are compressed. |
 
-A ServerSpec whose host is not a loopback host address raises `ValueError`.
+A ServerSpec whose host is not a loopback host address raises `ValueError`,
+and one whose view distance is over 12 raises `SpecError`.
 
 ## Invariants
 

@@ -3,7 +3,8 @@ from typing import cast
 
 import pytest
 
-from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
+from mscts.codec.schemas.configuration import CLIENT_INFORMATION
+from mscts.spec import MAX_VIEW_DISTANCE, Difficulty, GameMode, ServerSpec, SpecError, WorldPreset
 
 HOST = "127.1.2.3"
 
@@ -67,6 +68,27 @@ def test_server_spec_is_frozen(field: str) -> None:
 
 def test_server_spec_has_slots() -> None:
     assert not hasattr(ServerSpec(host=HOST, port=25599), "__dict__")
+
+
+def test_the_view_distance_goes_up_to_what_a_bot_asks_for() -> None:
+    assert MAX_VIEW_DISTANCE == CLIENT_INFORMATION["view_distance"] == 12
+    assert ServerSpec(host=HOST, port=25599, view_distance=12).view_distance == 12
+
+
+def test_server_spec_refuses_a_view_distance_over_what_a_bot_asks_for() -> None:
+    expected = (
+        "ServerSpec.view_distance=13 is over 12, the view distance a Bot asks for: the "
+        "server sends a player the smaller of the two, so every Bot would still see 12"
+    )
+    with pytest.raises(SpecError) as caught:
+        ServerSpec(host=HOST, port=25599, view_distance=13)
+    assert str(caught.value) == expected
+    assert isinstance(caught.value, ValueError)
+
+
+def test_server_spec_view_distance_is_checked_on_replace_too() -> None:
+    with pytest.raises(SpecError, match=r"ServerSpec\.view_distance=32 "):
+        dataclasses.replace(ServerSpec(host=HOST, port=25599), view_distance=32)
 
 
 def test_world_presets_are_only_flat_until_void_is_verified() -> None:

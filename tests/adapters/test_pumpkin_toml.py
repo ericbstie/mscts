@@ -208,8 +208,7 @@ def test_motd_reads_back_exactly(motd: str) -> None:
         ("port", 65536),
         ("max_players", -1),
         ("max_players", 2**32),
-        ("view_distance", 1),
-        ("view_distance", 65),
+        ("view_distance", 1),  # (ServerSpec refuses a view distance over 12 itself)
         ("simulation_distance", 0),
         ("simulation_distance", 256),
         ("seed", 2**63),
@@ -236,7 +235,7 @@ def test_a_value_pumpkin_cannot_read_is_refused(field: str, value: object) -> No
         ("max_players", 0),
         ("max_players", 2**32 - 1),
         ("view_distance", 2),
-        ("view_distance", 64),
+        ("view_distance", 12),  # ServerSpec's most (MAX_VIEW_DISTANCE); Pumpkin reads to 64
         ("simulation_distance", 1),
         ("simulation_distance", 255),
         ("seed", 2**63 - 1),
