@@ -6,18 +6,11 @@ are an independent check of the generated name list.
 """
 
 import pytest
+from support.items import NO_COMPONENTS, stack, stack_with_component
 from support.wire import read_all, written
 
 from mscts.codec.items import SLOT
 from mscts.codec.wire import Reader, WireError
-
-NO_COMPONENTS = {"added": [], "removed": []}
-
-
-def stack(count: int, item: int, **components: object) -> dict[str, object]:
-    """A stack of `count` of item id `item` with `components` added by (full) name."""
-    added = [{"type": f"minecraft:{name}", "value": value} for name, value in components.items()]
-    return {"count": count, "item": item, "components": {"added": added, "removed": []}}
 
 
 def test_the_empty_stack_is_a_zero_count_and_nothing_after_it() -> None:
@@ -108,7 +101,7 @@ SIMPLE_SHAPES = [
 def test_each_simple_component_shape_round_trips(
     type_id: int, name: str, payload: str, value: object
 ) -> None:
-    encoded = bytes.fromhex(f"01 37 01 00 {type_id:02x} {payload}")
+    encoded = stack_with_component(type_id, payload)
     assert read_all(SLOT, encoded) == stack(1, 55, **{name: value})
     assert written(SLOT, stack(1, 55, **{name: value})) == encoded
 

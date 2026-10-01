@@ -11,7 +11,19 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from mscts.codec.registry_names import registry_names
-from mscts.codec.schema import BOOL, FLOAT, IDENTIFIER, INT, VAR_INT, SchemaError, WireType
+from mscts.codec.schema import (
+    BOOL,
+    FLOAT,
+    IDENTIFIER,
+    INT,
+    VAR_INT,
+    PrefixedArray,
+    PrefixedOptional,
+    Schema,
+    SchemaError,
+    String,
+    WireType,
+)
 from mscts.codec.shapes import ENUM, NBT_TAG, REGISTRY_ID, TEXT_COMPONENT, UNIT
 from mscts.codec.wire import Reader, WireError, Writer
 from mscts.target import TARGET
@@ -210,6 +222,12 @@ class Patch:
         return value
 
 
+# A `Map` (`ByteBufCodecs.map`) is a list of its pairs, in wire order: a dict would lose a repeated
+# key and the order the server wrote them in.
+_ENCHANTMENTS = PrefixedArray(Schema(enchantment=REGISTRY_ID, level=VAR_INT))
+_SWING_ANIMATION = Schema(type=ENUM, duration=VAR_INT)  # `SwingAnimation`
+_BOOK_PAGE = Schema(raw=String(1024), filtered=PrefixedOptional(String(1024)))
+
 # In registry order. Each entry cites the `DataComponents` field that registers the name, and the
 # layout is the one in docs/research/2026-09-30-item-stacks.md. A component with no network codec
 # of its own (custom_data, intangible_projectile, map_decorations, debug_stick_state, recipes,
@@ -220,33 +238,76 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:max_damage": VAR_INT,  # MAX_DAMAGE
     "minecraft:damage": VAR_INT,  # DAMAGE
     "minecraft:unbreakable": UNIT,  # UNBREAKABLE
+    "minecraft:use_effects": Schema(  # USE_EFFECTS
+        can_sprint=BOOL, interact_vibrations=BOOL, speed_multiplier=FLOAT
+    ),
     "minecraft:custom_name": TEXT_COMPONENT,  # CUSTOM_NAME
     "minecraft:minimum_attack_charge": FLOAT,  # MINIMUM_ATTACK_CHARGE
     "minecraft:damage_type": REGISTRY_ID,  # DAMAGE_TYPE
     "minecraft:item_name": TEXT_COMPONENT,  # ITEM_NAME
     "minecraft:item_model": IDENTIFIER,  # ITEM_MODEL
+    "minecraft:lore": PrefixedArray(TEXT_COMPONENT, max_length=256),  # LORE
     "minecraft:rarity": ENUM,  # RARITY
+    "minecraft:enchantments": _ENCHANTMENTS,  # ENCHANTMENTS
+    "minecraft:custom_model_data": Schema(  # CUSTOM_MODEL_DATA
+        floats=PrefixedArray(FLOAT),
+        flags=PrefixedArray(BOOL),
+        strings=PrefixedArray(String(32767)),
+        colors=PrefixedArray(INT),
+    ),
+    "minecraft:tooltip_display": Schema(  # TOOLTIP_DISPLAY
+        hide_tooltip=BOOL, hidden_components=PrefixedArray(REGISTRY_ID)
+    ),
     "minecraft:repair_cost": VAR_INT,  # REPAIR_COST
     "minecraft:creative_slot_lock": UNIT,  # CREATIVE_SLOT_LOCK
     "minecraft:enchantment_glint_override": BOOL,  # ENCHANTMENT_GLINT_OVERRIDE
     "minecraft:intangible_projectile": NBT_TAG,  # INTANGIBLE_PROJECTILE
+    "minecraft:food": Schema(  # FOOD
+        nutrition=VAR_INT, saturation=FLOAT, can_always_eat=BOOL
+    ),
+    "minecraft:use_cooldown": Schema(  # USE_COOLDOWN
+        seconds=FLOAT, group=PrefixedOptional(IDENTIFIER)
+    ),
+    "minecraft:weapon": Schema(  # WEAPON
+        damage_per_attack=VAR_INT, disable_blocking_for=FLOAT
+    ),
+    "minecraft:attack_range": Schema(  # ATTACK_RANGE
+        min_reach=FLOAT,
+        max_reach=FLOAT,
+        min_creative_reach=FLOAT,
+        max_creative_reach=FLOAT,
+        hitbox_margin=FLOAT,
+        mob_factor=FLOAT,
+    ),
     "minecraft:enchantable": VAR_INT,  # ENCHANTABLE
     "minecraft:glider": UNIT,  # GLIDER
     "minecraft:tooltip_style": IDENTIFIER,  # TOOLTIP_STYLE
+    "minecraft:attack_animation": _SWING_ANIMATION,  # ATTACK_ANIMATION
+    "minecraft:interact_animation": _SWING_ANIMATION,  # INTERACT_ANIMATION
     "minecraft:additional_trade_cost": VAR_INT,  # ADDITIONAL_TRADE_COST
     "minecraft:block_transformer": REGISTRY_ID,  # BLOCK_TRANSFORMER
     "minecraft:villager_food": VAR_INT,  # VILLAGER_FOOD
+    "minecraft:stored_enchantments": _ENCHANTMENTS,  # STORED_ENCHANTMENTS
     "minecraft:dye": ENUM,  # DYE
     "minecraft:dyed_color": INT,  # DYED_COLOR
     "minecraft:map_id": VAR_INT,  # MAP_ID
     "minecraft:map_decorations": NBT_TAG,  # MAP_DECORATIONS
     "minecraft:map_post_processing": ENUM,  # MAP_POST_PROCESSING
     "minecraft:potion_duration_scale": FLOAT,  # POTION_DURATION_SCALE
+    "minecraft:suspicious_stew_effects": PrefixedArray(  # SUSPICIOUS_STEW_EFFECTS
+        Schema(effect=REGISTRY_ID, duration=VAR_INT)
+    ),
+    "minecraft:writable_book_content": PrefixedArray(  # WRITABLE_BOOK_CONTENT
+        _BOOK_PAGE, max_length=100
+    ),
     "minecraft:debug_stick_state": NBT_TAG,  # DEBUG_STICK_STATE
     "minecraft:ominous_bottle_amplifier": VAR_INT,  # OMINOUS_BOTTLE_AMPLIFIER
     "minecraft:recipes": NBT_TAG,  # RECIPES
     "minecraft:note_block_sound": IDENTIFIER,  # NOTE_BLOCK_SOUND
     "minecraft:base_color": ENUM,  # BASE_COLOR
+    "minecraft:block_state": PrefixedArray(  # BLOCK_STATE
+        Schema(name=String(32767), value=String(32767))
+    ),
     "minecraft:lock": NBT_TAG,  # LOCK
     "minecraft:container_loot": NBT_TAG,  # CONTAINER_LOOT
     "minecraft:villager/variant": REGISTRY_ID,  # VILLAGER_VARIANT
