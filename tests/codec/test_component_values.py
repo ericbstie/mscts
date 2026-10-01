@@ -583,6 +583,63 @@ VALUES = [
         },
         id="written_book_content",
     ),
+    # Stacks inside components are templates: the item, then the count, then the patch, and
+    # a template is never empty. The same patch layout, so their components are in the table.
+    pytest.param(25, "use_remainder", "05 01 00 00", stack(1, 5), id="use_remainder"),
+    pytest.param(80, "sulfur_cube_content", "05 01 00 00", stack(1, 5), id="sulfur_cube_content"),
+    pytest.param(51, "charged_projectiles", "01  05 02 00 00", [stack(2, 5)], id="charged"),
+    pytest.param(
+        52,
+        "bundle_contents",
+        "02  05 01 00 00  06 03 01 00 03 07",
+        [stack(1, 5), stack(3, 6, damage=7)],
+        id="bundle_contents",
+    ),
+    pytest.param(
+        52,
+        "bundle_contents",
+        "01  05 01 01 00 34 01 06 01 00 00",
+        [stack(1, 5, bundle_contents=[stack(1, 6)])],
+        id="bundle_contents in a bundle",
+    ),
+    pytest.param(
+        76,
+        "pot_decorations",
+        "01 05 01 00 00  00  01 06 01 00 00  00",
+        {"back": stack(1, 5), "left": None, "right": stack(1, 6), "front": None},
+        id="pot_decorations",
+    ),
+    pytest.param(77, "container", "02  01 05 01 00 00  00", [stack(1, 5), None], id="container"),
+    # Attribute modifiers: an attribute, the modifier (id, amount, operation), a slot group and
+    # how the tooltip shows it (default, hidden, or overridden by a text).
+    pytest.param(
+        16,
+        "attribute_modifiers",
+        "03  02 03 61 3a 62 3ff8000000000000 01 00 00"
+        f"  03 03 61 3a 62 3fe0000000000000 00 02 02 {TEXT_A}"
+        "  04 03 61 3a 62 0000000000000000 02 01 01",
+        [
+            {
+                "attribute": 2,
+                "modifier": {"id": "a:b", "amount": 1.5, "operation": 1},
+                "slot": 0,
+                "display": {"type": "default", "value": None},
+            },
+            {
+                "attribute": 3,
+                "modifier": {"id": "a:b", "amount": 0.5, "operation": 0},
+                "slot": 2,
+                "display": {"type": "override", "value": bytes.fromhex(TEXT_A)},
+            },
+            {
+                "attribute": 4,
+                "modifier": {"id": "a:b", "amount": 0.0, "operation": 2},
+                "slot": 1,
+                "display": {"type": "hidden", "value": None},
+            },
+        ],
+        id="attribute_modifiers",
+    ),
 ]
 
 
@@ -595,13 +652,21 @@ def test_a_component_value_is_read_and_written_as_its_layout(
     assert written(SLOT, stack(1, 55, **{name: value})) == encoded
 
 
-# Limits: `lore` is `List<=256`, `writable_book_content` `List<=100` (ByteBufCodecs.list(max)).
+# Limits (`ByteBufCodecs.list(max)`): the list's count comes after `before` (hex), if anything.
 
 
 @pytest.mark.parametrize(
-    ("type_id", "limit"), [(11, 256), (56, 100)], ids=["lore", "writable_book_content"]
+    ("type_id", "before", "limit"),
+    [
+        (11, "", 256),
+        (56, "", 100),
+        (51, "", 1024),
+        (77, "", 256),
+        (71, "00", 256),
+    ],
+    ids=["lore", "writable_book_content", "charged_projectiles", "container", "fireworks"],
 )
-def test_a_list_longer_than_its_maximum_is_refused(type_id: int, limit: int) -> None:
+def test_a_list_longer_than_its_maximum_is_refused(type_id: int, before: str, limit: int) -> None:
     over = limit + 1
     length = bytearray()
     while over > 0x7F:
@@ -609,7 +674,7 @@ def test_a_list_longer_than_its_maximum_is_refused(type_id: int, limit: int) -> 
         over >>= 7
     length.append(over)
     with pytest.raises(WireError, match=rf"exceeds max {limit}"):
-        read_all(SLOT, stack_with_component(type_id, length.hex()))
+        read_all(SLOT, stack_with_component(type_id, before + length.hex()))
 
 
 # A realistic stack: `/give @s minecraft:diamond_sword[enchantments={sharpness:5}, damage=3,
@@ -640,6 +705,14 @@ def test_a_diamond_sword_with_enchantments_damage_a_custom_name_and_lore() -> No
 
 
 # Limits and refusals inside the nested types.
+
+
+def test_an_attribute_modifier_display_type_past_the_three_is_a_wire_error_naming_it() -> None:
+    message = (
+        r"^components: added: 0: minecraft:attribute_modifiers: 0: display: unknown type id 3$"
+    )
+    with pytest.raises(WireError, match=message):
+        read_all(SLOT, stack_with_component(16, "01  02 03 61 3a 62 0000000000000000 00 00 03"))
 
 
 def test_a_consume_effect_type_id_past_the_registry_is_a_wire_error_naming_it() -> None:
