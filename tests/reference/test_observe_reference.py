@@ -1,9 +1,8 @@
-"""An Observation window around a command makes a gameplay Group's Self-check match.
+"""An Observation window around a Control command makes a gameplay Group's Self-check match.
 
-The probe Group (`support.commands.SETBLOCK_OBSERVED`) joins two Bots, has the operator
-set a block inside a window, and compares what both Bots see of it. Two Reference
-Instances of the test's own, both launched with the probe's ServerSpec (an operator),
-play it 20 times each.
+The probe Group (`support.probe.SETBLOCK_OBSERVED`) joins a Bot, has Control set a block
+inside a window, and compares what the Bot sees of it. Two Reference Instances of the
+test's own play it 20 times each.
 """
 
 import dataclasses
@@ -11,8 +10,8 @@ import uuid
 from pathlib import Path
 
 import pytest
-from support.commands import SETBLOCK_OBSERVED, allow_commands
 from support.leak_guard import kill_survivors
+from support.probe import SETBLOCK_OBSERVED
 
 from mscts import install
 from mscts.adapters.base import Installation, LaunchPlan
@@ -47,9 +46,8 @@ class _Tagged:
 @pytest.mark.asyncio
 @pytest.mark.timeout(600)  # two boots, then 20 plays of two joins and a window on each side
 async def test_a_group_that_sets_a_block_inside_a_window_self_checks_20_of_20(
-    cache_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cache_dir: Path, tmp_path: Path
 ) -> None:
-    allow_commands(monkeypatch)
     adapter = _Tagged(token=uuid.uuid4().hex)
     reference = Server(adapter, install.require(adapter, TARGET, cache_dir))
     try:
@@ -68,7 +66,9 @@ async def test_a_group_that_sets_a_block_inside_a_window_self_checks_20_of_20(
     assert len(verdicts) == _REPEAT
     not_matching = [v for v in verdicts if v.outcome is not Outcome.MATCH]
     assert not_matching == [], not_matching
-    # Of play, it compared what the command did, and nothing the server sent on a clock.
+    # Of play, it compared what the command did, and nothing the server sent on a clock,
+    # nor anything Control received (its feedback is a system_chat).
     test_cases = set(verdicts[0].test_cases)
-    assert {"block_update", "system_chat"} <= test_cases, test_cases
-    assert not {"set_time", "play:keep_alive", "award_stats", "login"} & test_cases, test_cases
+    assert "block_update" in test_cases, test_cases
+    outside = {"set_time", "play:keep_alive", "award_stats", "login", "system_chat"}
+    assert not outside & test_cases, test_cases
