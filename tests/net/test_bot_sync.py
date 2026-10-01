@@ -8,7 +8,7 @@ import pytest
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction
 from mscts.codec.schemas.play.stats import REQUEST_STATS
-from mscts.net import ProtocolError
+from mscts.net import ConnectionClosedError, ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import (
@@ -109,9 +109,9 @@ def test_a_bot_is_in_play_from_its_join_until_it_is_closed() -> None:
 def test_drain_takes_what_has_arrived_and_does_not_wait_for_more() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 
-    async def with_a_straggler(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
-        answer = peer.raw_frame(ANSWER, NO_STATISTICS)
-        await peer.write(answer + peer.raw_frame("minecraft:block_update", b"\x01"))
+    async def with_stragglers(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
+        straggler = peer.raw_frame("minecraft:block_update", b"\x01")
+        await peer.write(peer.raw_frame(ANSWER, NO_STATISTICS) + straggler + straggler)
 
     async def use(bot: Bot) -> tuple[int, int, float]:
         await bot.join()
@@ -123,7 +123,27 @@ def test_drain_takes_what_has_arrived_and_does_not_wait_for_more() -> None:
         return before, received(transcript).count("minecraft:block_update"), took
 
     (before, after, took), _ = with_bot(
-        CODEC, transcript, play_server([], with_a_straggler), use, timeout_s=5.0
+        CODEC, transcript, play_server([], with_stragglers), use, timeout_s=5.0
     )
-    assert (before, after) == (1, 2)
+    assert (before, after) == (2, 4)
     assert took < 1.0, f"drain took {took:.2f} s"
+
+
+def test_a_drain_that_finds_the_connection_closed_raises_as_the_bots_failure() -> None:
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def then_close(peer: Peer, request: int) -> None:
+        await answer_at_once(peer, request)
+        if request == 2:
+            await peer.close()
+
+    async def use(bot: Bot) -> bool:
+        await bot.join()
+        await bot.sync()
+        await asyncio.sleep(0.2)  # for the close to arrive
+        with pytest.raises(ConnectionClosedError) as caught:
+            await bot.drain()
+        return caught.value is bot.failure
+
+    failed_here, _ = with_bot(CODEC, transcript, play_server([], then_close), use)
+    assert failed_here
