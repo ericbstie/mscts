@@ -12,6 +12,7 @@ from mscts.codec.schema import (
     BOOL,
     FLOAT,
     IDENTIFIER,
+    LONG,
     NBT,
     POSITION,
     UUID,
@@ -373,6 +374,43 @@ HOLDER_SET: WireType[dict[str, object]] = _HolderSet()
 
 On the wire a VarInt: 0 and then a tag's Identifier, else the number of ids + 1 and the ids.
 Its value is `{"tag": "minecraft:logs"}` or `{"ids": [registry id, ...]}`.
+"""
+
+_SECTION_FIELDS = (("x", 22, 42), ("z", 22, 20), ("y", 20, 0))
+"""Each coordinate of a section position: its name, width in bits, and shift within the Long."""
+
+
+@dataclass(frozen=True, slots=True)
+class _SectionPosition:
+    def read(self, reader: Reader) -> dict[str, int]:
+        packed = reader.long() & 0xFFFF_FFFF_FFFF_FFFF
+        position = {}
+        for name, width, shift in _SECTION_FIELDS:
+            value = (packed >> shift) & ((1 << width) - 1)
+            position[name] = value - (1 << width) if value >> (width - 1) else value
+        return {name: position[name] for name in ("x", "y", "z")}
+
+    def write(self, writer: Writer, value: object) -> None:
+        # Exactly the names x, y and z, each an int: the Schema says what is wrong if not.
+        Schema(x=LONG, y=LONG, z=LONG).write(Writer(), value)
+        given = (
+            {str(key): item for key, item in value.items()} if isinstance(value, Mapping) else {}
+        )
+        packed = 0
+        for name, width, shift in _SECTION_FIELDS:
+            coordinate = _integer(given.get(name))
+            if not -(1 << (width - 1)) <= coordinate < 1 << (width - 1):
+                msg = f"{name}: {coordinate} out of range for {width} signed bits"
+                raise WireError(msg)
+            packed |= (coordinate & ((1 << width) - 1)) << shift
+        writer.long(packed - (1 << 64) if packed >> 63 else packed)
+
+
+SECTION_POSITION: WireType[dict[str, int]] = _SectionPosition()
+"""A chunk section's position (`SectionPos.STREAM_CODEC`): `{x, y, z}` in sections, in one Long.
+
+x and z take 22 bits each and y 20, signed:
+`(x & 0x3FFFFF) << 42 | (y & 0xFFFFF) | (z & 0x3FFFFF) << 20`.
 """
 
 SOUND_EVENT = Holder(Schema(location=IDENTIFIER, fixed_range=PrefixedOptional(FLOAT)))

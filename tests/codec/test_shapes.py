@@ -23,6 +23,7 @@ from mscts.codec.shapes import (
     HOLDER_SET,
     NBT_TAG,
     REGISTRY_ID,
+    SECTION_POSITION,
     UNIT,
     Deferred,
     Either,
@@ -355,3 +356,57 @@ def test_a_holder_set_names_the_part_that_is_bad() -> None:
 def test_a_holder_set_writes_only_a_tag_or_a_list_of_ids(value: object, message: str) -> None:
     with pytest.raises(WireError, match=message):
         written(HOLDER_SET, value)
+
+
+# Section position: `SectionPos.STREAM_CODEC`, a Long of x (22 bits, the top), z (22) and y (20,
+# the bottom), each signed: `(x & 0x3FFFFF) << 42 | (y & 0xFFFFF) | (z & 0x3FFFFF) << 20`
+# (docs/research/2026-10-01-block-world-events.md). The first two are the sections vanilla sent
+# for a block at y -60: section y -4, in the spawn chunk and in the chunk to its north.
+
+
+@pytest.mark.parametrize(
+    ("encoded", "value"),
+    [
+        ("00000000000ffffc", {"x": 0, "y": -4, "z": 0}),
+        ("000003fffffffffc", {"x": 0, "y": -4, "z": -1}),
+        ("fffffc0000000000", {"x": -1, "y": 0, "z": 0}),
+        ("0000000000100000", {"x": 0, "y": 0, "z": 1}),
+        ("0000000000000001", {"x": 0, "y": 1, "z": 0}),
+        ("8000000000000000", {"x": -(2**21), "y": 0, "z": 0}),
+        ("7ffffc0000000000", {"x": 2**21 - 1, "y": 0, "z": 0}),
+    ],
+    ids=["spawn", "north", "x -1", "z 1", "y 1", "lowest x", "highest x"],
+)
+def test_a_section_position_is_three_signed_fields_in_one_long(
+    encoded: str, value: dict[str, int]
+) -> None:
+    assert read_all(SECTION_POSITION, bytes.fromhex(encoded)) == value
+    assert written(SECTION_POSITION, value) == bytes.fromhex(encoded)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        {"x": -(2**21), "y": -(2**19), "z": -(2**21)},
+        {"x": 2**21 - 1, "y": 2**19 - 1, "z": 2**21 - 1},
+    ],
+    ids=["lowest", "highest"],
+)
+def test_a_section_position_round_trips_its_extremes(value: dict[str, int]) -> None:
+    assert read_all(SECTION_POSITION, written(SECTION_POSITION, value)) == value
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({"x": 2**21, "y": 0, "z": 0}, "x: 2097152 out of range for 22 signed bits"),
+        ({"x": 0, "y": -(2**19) - 1, "z": 0}, "y: -524289 out of range for 20 signed bits"),
+        ({"x": 0, "y": 0, "z": -(2**21) - 1}, "z: -2097153 out of range for 22 signed bits"),
+        ({"x": 0, "y": 0, "z": True}, "z: expected an int"),
+        ({"x": 0, "y": 0}, r"missing field\(s\) z"),
+        ([0, 0, 0], "expected a mapping"),
+    ],
+)
+def test_a_section_position_refuses_what_it_cannot_encode(value: object, message: str) -> None:
+    with pytest.raises(WireError, match=message):
+        written(SECTION_POSITION, value)
