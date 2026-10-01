@@ -105,7 +105,8 @@ need is missing, add it here in the same commit that introduces it.
   Comparison. Anything a player could notice is never masked, even when
   it is random; that is judged statistically instead (ADR-0006).
 - **Random field**: a field vanilla draws at random on every run, such as
-  the login's session id (`compare.RANDOM_FIELDS`, each with its reason).
+  the login's session id or a sound's seed (`compare.RANDOM_FIELDS`, each
+  with its reason).
   Every Comparison masks it, whatever the Group, because two vanilla runs
   would differ; how it is distributed is a statistical Group's job
   (ADR-0011).

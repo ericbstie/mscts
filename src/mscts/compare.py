@@ -33,7 +33,7 @@ from types import MappingProxyType
 from typing import Literal, NoReturn, Self, override
 from uuid import UUID
 
-from mscts.codec.packets import Codec, Direction, Packet, State, UnknownPacketError
+from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
@@ -162,6 +162,18 @@ RANDOM_FIELDS: Mapping[str, str] = MappingProxyType(
             "Vanilla draws it at random when its first connection opens "
             "(ServerConnectionListener.getSessionId), and the client only reports it in its "
             "telemetry."
+        ),
+        "minecraft:sound.seed": (
+            "Vanilla draws it at random for every sound: Level.playSound takes "
+            "soundSeedGenerator.nextLong(), which RandomSupport.generateUniqueSeed() seeds "
+            "with System.nanoTime(), not with the world seed. The client uses it to pick "
+            "the sound's variant."
+        ),
+        "minecraft:sound_entity.seed": (
+            "Vanilla draws it at random for every sound an entity makes: Level.playSound "
+            "takes soundSeedGenerator.nextLong(), which RandomSupport.generateUniqueSeed() "
+            "seeds with System.nanoTime(), not with the world seed. The client uses it to "
+            "pick the sound's variant."
         ),
     }
 )
@@ -377,15 +389,7 @@ def _test_case(state: State, packet: str, path: _Path) -> str:
 def _in_more_than_one_state(packet: str) -> bool:
     """Whether the Target's `packets.json` has the clientbound `packet` in more than one State."""
     codec = Codec.for_target(TARGET)
-    return sum(_defines(codec, state, packet) for state in State) > 1
-
-
-def _defines(codec: Codec, state: State, packet: str) -> bool:
-    try:
-        codec.packet_id(state, Direction.CLIENTBOUND, packet)
-    except UnknownPacketError:
-        return False
-    return True
+    return sum(packet in codec.names(state, Direction.CLIENTBOUND) for state in State) > 1
 
 
 # Bots and their streams.

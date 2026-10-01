@@ -86,17 +86,25 @@ seeds for the same sound:
 | door (powered by a redstone block) | -3210500971036782204 | -8370141963708639115 |
 | `playsound minecraft:block.note_block.harp` | -7325282947829501054 then 2423340108416094125 | 7725919872382189622 then -4600362933739800704 |
 
-So the seed is a field vanilla draws at random each run: an exact Group never
-compares it, and a statistical Group compares its distribution (ADR-0006 forbids
-masking what a player can hear; the seed picks a variant of the sound the player
-hears, and every seed is as valid as another).
+So the seed is a field vanilla draws at random each run. `sound.seed` and
+`sound_entity.seed` are in `compare.RANDOM_FIELDS`, each with this evidence as
+its reason (ADR-0011): an exact Group never compares them, and a statistical
+Group compares their distribution. The seed picks a variant of the sound the
+player hears (the wiki: "Seed used to pick sound variant"), and every seed is as
+valid as another.
 
 Also **verified (live)**: the pitch of a powered door's `sound` is random too
 (`DoorBlock` plays it at `nextFloat() * 0.1 + 0.9`): 0.9715679883956909 in run
 1 and 0.9713852405548096 in run 2. A note block's pitch (0.5 for the lowest
-note) and a command's are not random. That is a random value in a field that is
-fixed for other sounds, so it is not in the Comparison's table of random
-fields (a per-field table cannot say "random only for doors").
+note) and a command's are not random. The decision (the lead's) is that
+`sound.pitch` is **not** in `RANDOM_FIELDS`: most sounds have a fixed pitch, so a
+global entry would hide real differences. A Group that plays a sound with a
+random pitch (a door) masks `pitch` of `minecraft:sound` in its own `masks`, with
+`DoorBlock`'s `nextFloat() * 0.1 + 0.9` as the reason, and a statistical Group
+compares the distribution. `tests/compare/test_sound_seed.py` pins both: two
+vanilla door sounds differ in the pitch alone once the seed is hidden, and the
+Group's own Mask makes them match. The acceptance test for #29 plays a note
+block, not a door, inside its window.
 
 `sound_entity` comes from mob behaviour (`LongJumpMidJump`, `RamTarget`, the
 frog's tongue, the allay, shearing a sheep or a mooshroom), not from a command,

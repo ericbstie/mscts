@@ -78,13 +78,11 @@ def test_two_vanilla_joins_match_with_no_mask_of_the_groups_own() -> None:
 
 
 def test_the_session_id_is_a_random_field_with_its_reason() -> None:
-    assert dict(RANDOM_FIELDS) == {
-        "minecraft:login_finished.session_id": (
-            "Vanilla draws it at random when its first connection opens "
-            "(ServerConnectionListener.getSessionId), and the client only reports it in its "
-            "telemetry."
-        )
-    }
+    assert RANDOM_FIELDS["minecraft:login_finished.session_id"] == (
+        "Vanilla draws it at random when its first connection opens "
+        "(ServerConnectionListener.getSessionId), and the client only reports it in its "
+        "telemetry."
+    )
 
 
 def test_a_random_field_is_not_compared_by_any_group() -> None:
