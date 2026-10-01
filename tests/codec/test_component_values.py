@@ -122,6 +122,142 @@ VALUES = [
         [{"name": "level", "value": "1"}],
         id="block_state",
     ),
+    # Holder sets: a tag, or ids.
+    pytest.param(27, "damage_resistant", "00 03 61 3a 62", {"tag": "a:b"}, id="damage_resistant"),
+    pytest.param(33, "repairable", "03 05 06", {"ids": [5, 6]}, id="repairable"),
+    pytest.param(67, "provides_banner_patterns", "01", {"ids": []}, id="provides_banner_patterns"),
+    pytest.param(
+        87,
+        "mob_visibility",
+        "00 03 61 3a 62 3f000000",
+        {"targeting_entity_types": {"tag": "a:b"}, "visibility": 0.5},
+        id="mob_visibility",
+    ),
+    # A sound event: a holder of an Identifier and an optional fixed range.
+    pytest.param(83, "break_sound", "01", {"reference": 0}, id="break_sound reference"),
+    pytest.param(
+        83,
+        "break_sound",
+        "00 03 61 3a 62 01 3f800000",
+        {"direct": {"location": "a:b", "fixed_range": 1.0}},
+        id="break_sound inline with a range",
+    ),
+    pytest.param(
+        83,
+        "break_sound",
+        "00 03 61 3a 62 00",
+        {"direct": {"location": "a:b", "fixed_range": None}},
+        id="break_sound inline",
+    ),
+    # Resolvable ints and floats: a constant or the Identifier of a context value.
+    pytest.param(84, "compostable", "01 00 00 00 05", {"constant": 5}, id="compostable constant"),
+    pytest.param(
+        84, "compostable", "00 03 61 3a 62", {"reference": "a:b"}, id="compostable reference"
+    ),
+    pytest.param(
+        85,
+        "cooking_fuel",
+        "01 00 00 07 d0  01 3f800000",
+        {"burn_time": {"constant": 2000}, "speed_multiplier": {"constant": 1.0}},
+        id="cooking_fuel",
+    ),
+    pytest.param(
+        86,
+        "brewing_fuel",
+        "00 03 61 3a 62  01 40000000",
+        {"uses": {"reference": "a:b"}, "speed_multiplier": {"constant": 2.0}},
+        id="brewing_fuel",
+    ),
+    # Holders of a record: a registry id, or the record itself.
+    pytest.param(64, "provides_trim_material", "01", {"reference": 0}, id="trim material id"),
+    pytest.param(
+        64,
+        "provides_trim_material",
+        f"00 03 61 3a 62 {TEXT_A}",
+        {"direct": {"palette_id": "a:b", "description": bytes.fromhex(TEXT_A)}},
+        id="trim material inline",
+    ),
+    pytest.param(
+        58,
+        "trim",
+        f"01  00 03 61 3a 62 {TEXT_A} 01",
+        {
+            "material": {"reference": 0},
+            "pattern": {
+                "direct": {
+                    "asset_id": "a:b",
+                    "description": bytes.fromhex(TEXT_A),
+                    "decal": True,
+                }
+            },
+        },
+        id="trim",
+    ),
+    pytest.param(63, "instrument", "2b", {"reference": 42}, id="instrument id"),
+    pytest.param(
+        63,
+        "instrument",
+        f"00  01 3f800000 40000000 05 {TEXT_A}",
+        {
+            "direct": {
+                "sound_event": {"reference": 0},
+                "use_duration": 1.0,
+                "range": 2.0,
+                "durability_damage": 5,
+                "description": bytes.fromhex(TEXT_A),
+            }
+        },
+        id="instrument inline",
+    ),
+    pytest.param(
+        66,
+        "jukebox_playable",
+        f"00  01 {TEXT_A} 40a00000 0f",
+        {
+            "direct": {
+                "sound_event": {"reference": 0},
+                "description": bytes.fromhex(TEXT_A),
+                "length_in_seconds": 5.0,
+                "comparator_output": 15,
+            }
+        },
+        id="jukebox_playable inline",
+    ),
+    pytest.param(
+        74,
+        "banner_patterns",
+        "02  01 03  00 03 61 3a 62 01 7a 0e",
+        [
+            {"pattern": {"reference": 0}, "color": 3},
+            {"pattern": {"direct": {"asset_id": "a:b", "translation_key": "z"}}, "color": 14},
+        ],
+        id="banner_patterns",
+    ),
+    pytest.param(
+        109,
+        "painting/variant",
+        "00 04 02 03 61 3a 62 00 00",
+        {
+            "direct": {
+                "width": 4,
+                "height": 2,
+                "asset_id": "a:b",
+                "title": None,
+                "author": None,
+            }
+        },
+        id="painting/variant",
+    ),
+    pytest.param(
+        72,
+        "profile",
+        "00  00 00 00  00 00 00 00",
+        {
+            "profile": {"partial": {"name": None, "id": None, "properties": []}},
+            "skin_patch": {"body": None, "cape": None, "elytra": None, "slim": None},
+        },
+        id="profile",
+    ),
 ]
 
 

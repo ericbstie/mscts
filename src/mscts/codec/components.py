@@ -24,7 +24,19 @@ from mscts.codec.schema import (
     String,
     WireType,
 )
-from mscts.codec.shapes import ENUM, NBT_TAG, REGISTRY_ID, TEXT_COMPONENT, UNIT
+from mscts.codec.shapes import (
+    ENUM,
+    HOLDER_SET,
+    NBT_TAG,
+    PAINTING_VARIANT,
+    REGISTRY_ID,
+    RESOLVABLE_PROFILE,
+    SOUND_EVENT,
+    TEXT_COMPONENT,
+    UNIT,
+    Either,
+    Holder,
+)
 from mscts.codec.wire import Reader, WireError, Writer
 from mscts.target import TARGET
 
@@ -228,6 +240,35 @@ _ENCHANTMENTS = PrefixedArray(Schema(enchantment=REGISTRY_ID, level=VAR_INT))
 _SWING_ANIMATION = Schema(type=ENUM, duration=VAR_INT)  # `SwingAnimation`
 _BOOK_PAGE = Schema(raw=String(1024), filtered=PrefixedOptional(String(1024)))
 
+# A record of one field is that field's value, with no wrapper (`Enchantable`, `DyedItemColor`,
+# `DamageResistant`, `JukeboxPlayable`, ...).
+_RESOLVABLE_INT = Either("constant", INT, "reference", IDENTIFIER)  # `ResolvableInt`
+_RESOLVABLE_FLOAT = Either("constant", FLOAT, "reference", IDENTIFIER)  # `ResolvableFloat`
+
+# Holders of a record: a registry id, or the record itself.
+_TRIM_MATERIAL = Holder(Schema(palette_id=IDENTIFIER, description=TEXT_COMPONENT))
+_TRIM_PATTERN = Holder(
+    Schema(asset_id=IDENTIFIER, description=TEXT_COMPONENT, decal=BOOL),
+)
+_INSTRUMENT = Holder(
+    Schema(
+        sound_event=SOUND_EVENT,
+        use_duration=FLOAT,
+        range=FLOAT,
+        durability_damage=VAR_INT,
+        description=TEXT_COMPONENT,
+    )
+)
+_JUKEBOX_SONG = Holder(
+    Schema(
+        sound_event=SOUND_EVENT,
+        description=TEXT_COMPONENT,
+        length_in_seconds=FLOAT,
+        comparator_output=VAR_INT,
+    )
+)
+_BANNER_PATTERN = Holder(Schema(asset_id=IDENTIFIER, translation_key=String(32767)))
+
 # In registry order. Each entry cites the `DataComponents` field that registers the name, and the
 # layout is the one in docs/research/2026-09-30-item-stacks.md. A component with no network codec
 # of its own (custom_data, intangible_projectile, map_decorations, debug_stick_state, recipes,
@@ -268,6 +309,7 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:use_cooldown": Schema(  # USE_COOLDOWN
         seconds=FLOAT, group=PrefixedOptional(IDENTIFIER)
     ),
+    "minecraft:damage_resistant": HOLDER_SET,  # DAMAGE_RESISTANT
     "minecraft:weapon": Schema(  # WEAPON
         damage_per_attack=VAR_INT, disable_blocking_for=FLOAT
     ),
@@ -280,6 +322,7 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
         mob_factor=FLOAT,
     ),
     "minecraft:enchantable": VAR_INT,  # ENCHANTABLE
+    "minecraft:repairable": HOLDER_SET,  # REPAIRABLE
     "minecraft:glider": UNIT,  # GLIDER
     "minecraft:tooltip_style": IDENTIFIER,  # TOOLTIP_STYLE
     "minecraft:attack_animation": _SWING_ANIMATION,  # ATTACK_ANIMATION
@@ -300,16 +343,38 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:writable_book_content": PrefixedArray(  # WRITABLE_BOOK_CONTENT
         _BOOK_PAGE, max_length=100
     ),
+    "minecraft:trim": Schema(  # TRIM
+        material=_TRIM_MATERIAL, pattern=_TRIM_PATTERN
+    ),
     "minecraft:debug_stick_state": NBT_TAG,  # DEBUG_STICK_STATE
+    "minecraft:instrument": _INSTRUMENT,  # INSTRUMENT
+    "minecraft:provides_trim_material": _TRIM_MATERIAL,  # PROVIDES_TRIM_MATERIAL
     "minecraft:ominous_bottle_amplifier": VAR_INT,  # OMINOUS_BOTTLE_AMPLIFIER
+    "minecraft:jukebox_playable": _JUKEBOX_SONG,  # JUKEBOX_PLAYABLE
+    "minecraft:provides_banner_patterns": HOLDER_SET,  # PROVIDES_BANNER_PATTERNS
     "minecraft:recipes": NBT_TAG,  # RECIPES
+    "minecraft:profile": RESOLVABLE_PROFILE,  # PROFILE
     "minecraft:note_block_sound": IDENTIFIER,  # NOTE_BLOCK_SOUND
+    "minecraft:banner_patterns": PrefixedArray(  # BANNER_PATTERNS
+        Schema(pattern=_BANNER_PATTERN, color=ENUM)
+    ),
     "minecraft:base_color": ENUM,  # BASE_COLOR
     "minecraft:block_state": PrefixedArray(  # BLOCK_STATE
         Schema(name=String(32767), value=String(32767))
     ),
     "minecraft:lock": NBT_TAG,  # LOCK
     "minecraft:container_loot": NBT_TAG,  # CONTAINER_LOOT
+    "minecraft:break_sound": SOUND_EVENT,  # BREAK_SOUND
+    "minecraft:compostable": _RESOLVABLE_INT,  # COMPOSTABLE
+    "minecraft:cooking_fuel": Schema(  # COOKING_FUEL
+        burn_time=_RESOLVABLE_INT, speed_multiplier=_RESOLVABLE_FLOAT
+    ),
+    "minecraft:brewing_fuel": Schema(  # BREWING_FUEL
+        uses=_RESOLVABLE_INT, speed_multiplier=_RESOLVABLE_FLOAT
+    ),
+    "minecraft:mob_visibility": Schema(  # MOB_VISIBILITY
+        targeting_entity_types=HOLDER_SET, visibility=FLOAT
+    ),
     "minecraft:villager/variant": REGISTRY_ID,  # VILLAGER_VARIANT
     "minecraft:wolf/variant": REGISTRY_ID,  # WOLF_VARIANT
     "minecraft:wolf/sound_variant": REGISTRY_ID,  # WOLF_SOUND_VARIANT
@@ -331,6 +396,7 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:zombie_nautilus/variant": REGISTRY_ID,  # ZOMBIE_NAUTILUS_VARIANT
     "minecraft:frog/variant": REGISTRY_ID,  # FROG_VARIANT
     "minecraft:horse/variant": ENUM,  # HORSE_VARIANT
+    "minecraft:painting/variant": PAINTING_VARIANT,  # PAINTING_VARIANT
     "minecraft:llama/variant": ENUM,  # LLAMA_VARIANT
     "minecraft:axolotl/variant": ENUM,  # AXOLOTL_VARIANT
     "minecraft:cat/variant": REGISTRY_ID,  # CAT_VARIANT

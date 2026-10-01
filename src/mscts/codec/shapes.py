@@ -10,6 +10,7 @@ from dataclasses import dataclass
 
 from mscts.codec.schema import (
     BOOL,
+    FLOAT,
     IDENTIFIER,
     NBT,
     POSITION,
@@ -239,6 +240,9 @@ HOLDER_SET: WireType[dict[str, object]] = _HolderSet()
 On the wire a VarInt: 0 and then a tag's Identifier, else the number of ids + 1 and the ids.
 Its value is `{"tag": "minecraft:logs"}` or `{"ids": [registry id, ...]}`.
 """
+
+SOUND_EVENT = Holder(Schema(location=IDENTIFIER, fixed_range=PrefixedOptional(FLOAT)))
+"""A sound event (`SoundEvent.STREAM_CODEC`): a registry id, or its Identifier and fixed range."""
 
 GLOBAL_POS = Schema(dimension=IDENTIFIER, pos=POSITION)
 """A position in a dimension (`GlobalPos.STREAM_CODEC`): `{dimension, pos: {x, y, z}}`."""

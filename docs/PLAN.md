@@ -50,7 +50,7 @@ test needs it:
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
-| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `Holder`, `Either`, `HOLDER_SET`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
+| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`) |
 | `codec/items.py` | `SLOT`, the item stack field |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
@@ -255,6 +255,7 @@ class Holder:                    # VarInt 0 + the value, else registry id + 1: {
 class Either:                    # a Bool, then the left (true) or right type: {left_key: v} | {right_key: v}
     left_key: str; left: WireType[object]; right_key: str; right: WireType[object]
 HOLDER_SET: WireType[dict]       # VarInt 0 + a tag, else n + 1 and n ids: {tag: "minecraft:logs"} | {ids: [id, ...]}
+SOUND_EVENT: Holder              # {reference: id} | {direct: {location, fixed_range: float | None}}
 GLOBAL_POS: Schema               # {dimension, pos: {x, y, z}}
 PAINTING_VARIANT: WireType[dict] # Holder: {reference: id} | {direct: {width, height, asset_id, title, author}}
 RESOLVABLE_PROFILE: Schema       # {profile: {game_profile: {...}} | {partial: {...}}, skin_patch: {...}}
