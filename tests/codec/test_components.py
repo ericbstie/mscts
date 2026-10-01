@@ -2,16 +2,19 @@
 
 The hex payloads are built by hand from the layouts in docs/research/2026-09-30-item-stacks.md,
 not produced by the Codec. These tests use a three-component table of their own, so they say
-nothing about which components the Target has: tests/codec/test_slot.py and the coverage test
-do.
+nothing about which components the Target has: the coverage test below, and
+tests/codec/test_slot.py, do.
 """
 
 import pytest
 from support.wire import read_all, written
 
+from mscts.codec.components import TABLE as TARGET_TABLE
 from mscts.codec.components import ComponentTable, Patch
+from mscts.codec.registry_names import registry_names
 from mscts.codec.schema import VAR_INT, SchemaError
 from mscts.codec.wire import WireError
+from mscts.target import TARGET
 
 NAMES = ("minecraft:a", "minecraft:b", "minecraft:c")
 # `a` is a VarInt, `b` is not network-synchronised, `c` has no layout in the table yet.
@@ -25,6 +28,18 @@ def test_the_table_maps_names_to_ids_and_back() -> None:
     assert TABLE.names == NAMES
     assert [TABLE.type_id(name) for name in NAMES] == [0, 1, 2]
     assert [TABLE.type_name(type_id) for type_id in range(3)] == list(NAMES)
+
+
+def test_the_table_lists_the_types_it_has_no_entry_for() -> None:
+    # `a` has a layout and `b` is marked not network-synchronised: both are entries. `c` is not.
+    assert TABLE.without_layout == ("minecraft:c",)
+
+
+def test_every_data_component_type_of_the_target_has_an_entry_in_the_real_table() -> None:
+    names = registry_names(TARGET.minecraft_version, "minecraft:data_component_type")
+    assert len(names) == 122
+    assert TARGET_TABLE.names == names
+    assert TARGET_TABLE.without_layout == ()
 
 
 def test_a_layout_for_a_name_the_table_lacks_is_refused_when_declared() -> None:

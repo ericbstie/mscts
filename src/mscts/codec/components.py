@@ -81,6 +81,14 @@ class ComponentTable:
         """Every data component type's name, in id order."""
         return self._names
 
+    @property
+    def without_layout(self) -> tuple[str, ...]:
+        """The types the table has no entry for yet, in id order.
+
+        A type marked not network-synchronised has an entry, so it is not listed.
+        """
+        return tuple(name for name in self._names if name not in self._layouts)
+
     def type_id(self, name: str) -> int:
         """The protocol id of the type `name`.
 
@@ -148,11 +156,54 @@ def _mapping_with(value: object, keys: tuple[str, ...]) -> Mapping[str, object]:
     return given
 
 
+def _name_of(value: object) -> str:
+    if not isinstance(value, str):
+        msg = f"expected a str, got {type(value).__name__}"
+        raise WireError(msg)
+    return value
+
+
 def _list_of(value: object, what: str) -> list[object]:
     if not isinstance(value, list | tuple):
         msg = f"{what}: expected a list or tuple, got {type(value).__name__}"
         raise WireError(msg)
     return list(value)
+
+
+@dataclass(frozen=True, slots=True)
+class TypedComponent:
+    """One data component (`TypedDataComponent.STREAM_CODEC`): its type id, then its value.
+
+    The value's layout is the table's for that type. Its value is `{"type": name, "value":
+    value}`. A value's error is prefixed with the component's name.
+
+    Attributes:
+        table: The types and the layout of each value.
+    """
+
+    table: ComponentTable
+
+    def read(self, reader: Reader) -> dict[str, object]:
+        """Consume the type id, then the value of that type."""
+        name = self.table.type_name(reader.var_int())
+        layout = self.table.layout(name)
+        try:
+            return {"type": name, "value": layout.read(reader)}
+        except WireError as exc:
+            msg = f"{name}: {exc}"
+            raise WireError(msg) from exc
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Append `value`: the id of its type, then its value."""
+        given = _mapping_with(value, ("type", "value"))
+        name = _name_of(given["type"])
+        layout = self.table.layout(name)
+        writer.var_int(self.table.type_id(name))
+        try:
+            layout.write(writer, given["value"])
+        except WireError as exc:
+            msg = f"{name}: {exc}"
+            raise WireError(msg) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,10 +228,11 @@ class Patch:
         removed_count = _read_count(reader, "removed")
         _check_count(reader, "added", added_count)
         _check_count(reader, "removed", removed_count)
+        typed = TypedComponent(self.table)
         added = []
         for index in range(added_count):
             try:
-                added.append(self._read_added(reader))
+                added.append(typed.read(reader))
             except WireError as exc:
                 msg = f"added: {index}: {exc}"
                 raise WireError(msg) from exc
@@ -200,45 +252,19 @@ class Patch:
         removed = _list_of(given["removed"], "removed")
         writer.var_int(len(added))
         writer.var_int(len(removed))
+        typed = TypedComponent(self.table)
         for index, pair in enumerate(added):
             try:
-                self._write_added(writer, pair)
+                typed.write(writer, pair)
             except WireError as exc:
                 msg = f"added: {index}: {exc}"
                 raise WireError(msg) from exc
         for index, name in enumerate(removed):
             try:
-                writer.var_int(self.table.type_id(self._name(name)))
+                writer.var_int(self.table.type_id(_name_of(name)))
             except WireError as exc:
                 msg = f"removed: {index}: {exc}"
                 raise WireError(msg) from exc
-
-    def _read_added(self, reader: Reader) -> dict[str, object]:
-        name = self.table.type_name(reader.var_int())
-        layout = self.table.layout(name)
-        try:
-            return {"type": name, "value": layout.read(reader)}
-        except WireError as exc:
-            msg = f"{name}: {exc}"
-            raise WireError(msg) from exc
-
-    def _write_added(self, writer: Writer, pair: object) -> None:
-        given = _mapping_with(pair, ("type", "value"))
-        name = self._name(given["type"])
-        layout = self.table.layout(name)
-        writer.var_int(self.table.type_id(name))
-        try:
-            layout.write(writer, given["value"])
-        except WireError as exc:
-            msg = f"{name}: {exc}"
-            raise WireError(msg) from exc
-
-    @staticmethod
-    def _name(value: object) -> str:
-        if not isinstance(value, str):
-            msg = f"expected a str, got {type(value).__name__}"
-            raise WireError(msg)
-        return value
 
 
 # A `Map` (`ByteBufCodecs.map`) is a list of its pairs, in wire order: a dict would lose a repeated
@@ -349,6 +375,33 @@ _SIGN_TEXT = Schema(
     has_glowing_text=BOOL,
 )
 
+# `AdventureModePredicate`: block predicates, whose component matchers are read with the table
+# that contains them. A property matches exactly (one String) or within a range (each bound
+# optional). A partial matcher's type is a predicate type or a component type, and either way its
+# value is an NBT tag (`DataComponentPredicate.Type.singleStreamCodec`).
+_STATE_PROPERTY = Schema(
+    name=String(32767),
+    value_matcher=Either(
+        "exact",
+        String(32767),
+        "ranged",
+        Schema(min=PrefixedOptional(String(32767)), max=PrefixedOptional(String(32767))),
+    ),
+)
+_PARTIAL_MATCHER = Schema(
+    type=Either("predicate", REGISTRY_ID, "component", REGISTRY_ID), value=NBT_TAG
+)
+_BLOCK_PREDICATE = Schema(
+    blocks=PrefixedOptional(HOLDER_SET),
+    properties=PrefixedOptional(PrefixedArray(_STATE_PROPERTY)),
+    nbt=PrefixedOptional(COMPOUND_TAG),
+    components=Schema(
+        exact=PrefixedArray(Deferred(lambda: TYPED_COMPONENT)),
+        partial=PrefixedArray(_PARTIAL_MATCHER, max_length=64),
+    ),
+)
+_ADVENTURE_MODE_PREDICATE = PrefixedArray(_BLOCK_PREDICATE)
+
 # In registry order. Each entry cites the `DataComponents` field that registers the name, and the
 # layout is the one in docs/research/2026-09-30-item-stacks.md. A component with no network codec
 # of its own (custom_data, intangible_projectile, map_decorations, debug_stick_state, recipes,
@@ -370,6 +423,8 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:lore": PrefixedArray(TEXT_COMPONENT, max_length=256),  # LORE
     "minecraft:rarity": ENUM,  # RARITY
     "minecraft:enchantments": _ENCHANTMENTS,  # ENCHANTMENTS
+    "minecraft:can_place_on": _ADVENTURE_MODE_PREDICATE,  # CAN_PLACE_ON
+    "minecraft:can_break": _ADVENTURE_MODE_PREDICATE,  # CAN_BREAK
     "minecraft:attribute_modifiers": PrefixedArray(
         _ATTRIBUTE_MODIFIER_ENTRY
     ),  # ATTRIBUTE_MODIFIERS
@@ -591,6 +646,9 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
 
 TABLE = ComponentTable(registry_names(TARGET.minecraft_version, _REGISTRY), _LAYOUTS)
 """The Target's data components and the wire type of each one's value."""
+
+TYPED_COMPONENT = TypedComponent(TABLE)
+"""One data component of the Target's table: its type id, then its value."""
 
 PATCH = Patch(TABLE)
 """The patch of data components a stack carries (`DataComponentPatch.STREAM_CODEC`)."""

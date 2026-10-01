@@ -51,7 +51,7 @@ test needs it:
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
 | `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
-| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
+| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
 | `codec/items.py` | `SLOT`, the item stack field |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
@@ -272,8 +272,13 @@ RESOLVABLE_PROFILE: Schema       # {profile: {game_profile: {...}} | {partial: {
 # codec/components.py. A data component's value has no length on the wire, so each one's layout
 # must be known to read past it: a component with no layout, or an id past the registry, is a
 # WireError naming it. Ids come from the generated name list, never hand-typed.
-class ComponentTable:              # names, type_id(name), type_name(id), layout(name)
+class ComponentTable:              # names, without_layout, type_id(name), type_name(id), layout(name)
 TABLE: ComponentTable
+@frozen
+class TypedComponent:              # WireType[dict[str, object]]: a type id, then that type's value
+    table: ComponentTable
+TYPED_COMPONENT: TypedComponent    # TypedComponent(TABLE): {type: "minecraft:damage", value: 5}. The exact
+                                   # matchers of can_place_on and can_break read it, so they recurse
 @frozen
 class Patch:                       # WireType[dict[str, object]]
     table: ComponentTable
