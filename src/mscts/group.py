@@ -27,6 +27,22 @@ class GroupKind(StrEnum):
     """Random mechanics, run N times per server and compared as distributions."""
 
 
+class CommandMissing(Exception):  # noqa: N818 - PLAN's name: a fact about the server, not a bug
+    """The server has no command `root`, so Control did not send it.
+
+    A Run reports a Group the Candidate raises it on as `blocked`, naming the command; on
+    the Reference, it is an `error`.
+
+    Attributes:
+        root: The command's first word, e.g. `tick`.
+    """
+
+    def __init__(self, root: str) -> None:
+        """Say the server has no command `root`."""
+        super().__init__(f"the server has no /{root} command")
+        self.root = root
+
+
 class Control(Protocol):
     """The channel that sets up Fixtures: by default, an Operator Bot (ADR-0001)."""
 

@@ -9,6 +9,10 @@ from enum import StrEnum, auto
 # network; and each Instance gets a host of its own (runner.free_endpoint).
 LOOPBACK = ipaddress.IPv4Network("127.0.0.0/8")
 
+CONTROL_PLAYER = "control"
+"""The name of Control's Bot, the operator a Group sets the world up with
+(`GroupContext.control`). No Comparison compares what it receives."""
+
 MAX_VIEW_DISTANCE = 12
 """The view distance a Bot asks for, as a fresh vanilla client does (its `client_information`,
 `CLIENT_INFORMATION` in the codec). The server sends a player the chunks of the smaller of

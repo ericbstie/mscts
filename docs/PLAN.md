@@ -880,7 +880,8 @@ RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields va
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
-    # Masks the RANDOM_FIELDS, then applies `masks`.
+    # Masks the RANDOM_FIELDS, then applies `masks`. Every Bot is compared but Control's
+    # (spec.CONTROL_PLAYER): its Events stay in the Transcript.
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
     # a value outside the codec value model. Divergences are grouped by Bot in name order,
     # then in stream order, and within a packet in path order: its gameplay Divergences
@@ -930,8 +931,10 @@ def judge(group: Group, reference: Transcript | GroupError,
     # The Verdict rule (audit H3): a Candidate failure (its GroupError's cause is one of
     # CANDIDATE_FAILURES) is `mismatch`: a `failed` Divergence first, then what compare
     # finds in the Transcripts so far (e.g. the undecodable frame, by payload), whatever the
-    # Masks. `error` only if the Reference failed, the Group raised anything else on the
-    # Candidate (a harness bug), or compare raised. Else compare(reference, candidate, masks).
+    # Masks. CommandMissing on the Candidate (it lacks a command Control needs) is
+    # `blocked`, detail "needs /<root>". `error` only if the Reference failed (CommandMissing
+    # included), the Group raised anything else on the Candidate (a harness bug), or compare
+    # raised. Else compare(reference, candidate, masks).
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
@@ -969,6 +972,9 @@ proves it necessary:
      server sent;
    - timestamps and Marks, which are timing data for Measurements;
    - the interleaving of different Bots' packets, which is timing too;
+   - everything Control's Bot (`spec.CONTROL_PLAYER`, `control`)
+     received: it sets the world up as an operator, and its Events stay
+     in the Transcript;
    - in a Transcript with **Observation windows**, the play packets they
      do not observe. A window opens at an `observe:open` Mark and ends at
      the next `observe:open` or `observe:close` Mark, or at the end of the

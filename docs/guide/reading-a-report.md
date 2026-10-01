@@ -140,10 +140,11 @@ Not judged, or not the same every run
   status/ping was different in 2 of 5 runs
 ```
 
-This section lists Groups that mscts skipped because a prerequisite did
-not match (`blocked`), Groups it could not judge because mscts or vanilla
-failed (`error`), and Groups that had a gameplay difference in some runs
-but not in others. A Group that differs only some of the time often points
+This section lists Groups that mscts skipped (`blocked`), because a
+prerequisite did not match or because the Candidate does not have a command
+the Group sets up the world with (`needs /tick`, for example). It also lists
+Groups it could not judge because mscts or vanilla failed (`error`), and
+Groups that had a gameplay difference in some runs but not in others. A Group that differs only some of the time often points
 to a race or a timing-dependent path in the Candidate.
 
 ## Timings

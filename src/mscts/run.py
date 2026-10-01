@@ -13,7 +13,7 @@ from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
 from mscts.codec.packets import CodecError
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
-from mscts.group import Group, GroupContext, GroupKind, resolve
+from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
 from mscts.measure import Measurement, measurements
 from mscts.net import Endpoint, ProtocolError
 from mscts.runner import free_endpoint, running
@@ -223,11 +223,16 @@ def judge(
       Bot it came out of (`GroupError.bot`), then whatever
       the Comparison of the Transcripts so far finds. Never `error`, which a
       compliance score leaves out (audit H3).
+    - The Candidate does not have a command the Group's Control needs (`CommandMissing`):
+      `blocked`, naming it (`needs /tick`).
     - The Reference failed, the Group raised anything else on the Candidate, or the
       Comparison itself raised: `error`, the harness or the Reference having failed.
     """
     if isinstance(reference, GroupError):
         return _error(group, f"the Reference failed: {reference}")
+    if isinstance(candidate, GroupError) and isinstance(candidate.__cause__, CommandMissing):
+        detail = f"needs /{candidate.__cause__.root}"
+        return Verdict(group_id=group.id, outcome=Outcome.BLOCKED, detail=detail)
     if isinstance(candidate, GroupError) and not isinstance(
         candidate.__cause__, CANDIDATE_FAILURES
     ):
