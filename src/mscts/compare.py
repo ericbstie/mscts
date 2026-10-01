@@ -139,6 +139,36 @@ class Mask:
             _mask_steps(self)
 
 
+UNORDERED: Mapping[str, str] = MappingProxyType(
+    {
+        "minecraft:update_tags": (
+            "The client reads its registries, and the tags of each, into maps, and vanilla "
+            "sends both in an order that changes from one boot to the next (hash maps). Each "
+            "tag's entries keep their order."
+        ),
+    }
+)
+"""The packets, in any State, whose lists of named entries every Comparison sorts by name,
+each with the reason: vanilla's own order changes from one boot to the next, so it is
+never a Divergence, not even a network traffic one (docs/research/2026-10-01-control.md).
+"""
+
+RANDOM_FIELDS: Mapping[str, str] = MappingProxyType(
+    {
+        "minecraft:login_finished.session_id": (
+            "Vanilla draws it at random when its first connection opens "
+            "(ServerConnectionListener.getSessionId), and the client only reports it in its "
+            "telemetry."
+        ),
+    }
+)
+"""The fields vanilla draws at random on every run, as `<packet>.<path>`, each with the
+reason, which says where vanilla draws it. No Comparison compares them: two vanilla runs
+would differ, and their distribution belongs to a statistical Group (ADR-0011). Every
+Comparison masks them before its Group's own Masks, in any State.
+"""
+
+
 type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
 
 
@@ -253,12 +283,13 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
     Each Bot's stream is normalized first: if the Transcript has Observation windows,
     the play Packets they do not observe are left out (`_Windows.observes`); the
-    Packets a `*` Mask names are dropped; the rest are put in canonical form
-    (`_CANONICAL`: e.g. a status response's JSON is parsed, and its text components
-    written one way), and every field a Mask names is removed from the Packets of that
-    name, on both sides and wherever present. Indices count the normalized stream, so
-    they do not shift when a re-run has more or fewer Packets left out or dropped;
-    paths and values are those of the canonical form.
+    Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
+    sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
+    JSON is parsed, and its text components written one way), and every field a Mask
+    names is removed from the Packets of that name, on both sides and wherever present.
+    The Masks are one for each of the `RANDOM_FIELDS`, then `masks`. Indices count the
+    normalized stream, so they do not shift when a re-run has more or fewer Packets left
+    out or dropped; paths and values are those of the sorted, canonical form.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -289,7 +320,7 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
             f"{reference.group_id!r} and {candidate.group_id!r}"
         )
         raise ValueError(msg)
-    indexed = _Masks.of(masks)
+    indexed = _Masks.of((*_RANDOM_MASKS, *masks))
     bots = sorted(_bots(reference) | _bots(candidate))
     compared: set[str] = set()
     divergences = tuple(
@@ -505,24 +536,31 @@ class _Windows:
 
 
 def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
-    """Copy `packet`'s fields, put them in canonical form, then apply the Masks."""
+    """Copy `packet`'s fields, sort them (`UNORDERED`), make them canonical, apply the Masks."""
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
     paths = masks.paths.get(packet.name, ())
     canonical = _CANONICAL.get((packet.state, packet.name))
     if canonical is None:
-        fields = _plain_mapping(packet.fields.items(), packet.name, ())
+        fields = _copy(packet, packet.fields)
         _remove_all(fields, paths)
         return _Normalized(packet=packet, fields=fields)
-    raw = _plain_mapping(packet.fields.items(), packet.name, ())
-    parsed = _plain_mapping(packet.fields.items(), packet.name, ())
+    raw = _copy(packet, packet.fields)
+    parsed = _copy(packet, packet.fields)
     if (json_text := _JSON_TEXT.get((packet.state, packet.name))) is not None:
         parsed = _parsed(parsed, json_text)
-    unmasked = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
-    fields = canonical(_plain_mapping(packet.fields.items(), packet.name, ()))
+    unmasked = canonical(_copy(packet, packet.fields))
+    fields = canonical(_copy(packet, packet.fields))
     for copy in (raw, parsed, fields):
         _remove_all(copy, paths)
     return _Normalized(packet=packet, fields=fields, raw=raw, parsed=parsed, unmasked=unmasked)
+
+
+def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
+    """A copy of `fields`, `packet`'s, in the value model, sorted if `UNORDERED` names it."""
+    copy = _plain_mapping(fields.items(), packet.name, ())
+    sort = _SORTS.get(packet.name)
+    return copy if sort is None else sort(copy)
 
 
 def _remove_all(fields: dict[str, _Value], paths: Iterable[_Path]) -> None:
@@ -585,6 +623,48 @@ def _child(node: _Value, step: _Step) -> _Value | Absent:
     if isinstance(node, list) and isinstance(step, int) and step < len(node):
         return node[step]
     return ABSENT
+
+
+# Sorting: the lists `UNORDERED` names, sorted before anything else, so their order is no
+# Divergence at all. Vanilla's own order changes from one boot to the next, so a Candidate's
+# order could never be told apart from it (PLAN, Comparison semantics, step 3).
+
+
+def _sorted_update_tags(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `tagged_registries` by registry, and each one's `tags` by tag name.
+
+    The sorts are stable, so a name sent twice keeps the order of its values: the client
+    keeps the last one. A tag's `entries` keep their order.
+    """
+    registries = fields.get("tagged_registries")
+    if not isinstance(registries, list):
+        return fields
+    sorted_tags = [_with_sorted_tags(registry) for registry in registries]
+    return {**fields, "tagged_registries": _sorted_by(sorted_tags, "registry")}
+
+
+def _with_sorted_tags(registry: _Value) -> _Value:
+    if isinstance(registry, dict) and isinstance(tags := registry.get("tags"), list):
+        return {**registry, "tags": _sorted_by(tags, "tag_name")}
+    return registry
+
+
+def _sorted_by(items: _Value, key: str) -> _Value:
+    """`items` stably sorted by each one's `key`, if it is a list of mappings with str keys."""
+    if not isinstance(items, list):
+        return items
+    names: list[tuple[str, _Value]] = []
+    for item in items:
+        if not (isinstance(item, dict) and isinstance(name := item.get(key), str)):
+            return items
+        names.append((name, item))
+    return [item for _, item in sorted(names, key=lambda pair: pair[0])]
+
+
+_SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = MappingProxyType(
+    {"minecraft:update_tags": _sorted_update_tags}
+)
+"""How each packet `UNORDERED` names is sorted, by name, in any State."""
 
 
 # Canonicalization: protocol equivalences, applied before the Masks. It is not masking:
@@ -736,45 +816,8 @@ def _nesting(value: object) -> int:
     return deepest
 
 
-def _canonical_update_tags(fields: dict[str, _Value]) -> dict[str, _Value]:
-    """Order `tagged_registries` by registry, and each one's `tags` by tag name.
-
-    The sorts are stable, so a name sent twice keeps the order of its values: the client
-    keeps the last one. A tag's `entries` keep their order.
-    """
-    registries = fields.get("tagged_registries")
-    if not isinstance(registries, list):
-        return fields
-    canonical = [_with_sorted_tags(registry) for registry in registries]
-    return {**fields, "tagged_registries": _sorted_by(canonical, "registry")}
-
-
-def _with_sorted_tags(registry: _Value) -> _Value:
-    if isinstance(registry, dict) and isinstance(tags := registry.get("tags"), list):
-        return {**registry, "tags": _sorted_by(tags, "tag_name")}
-    return registry
-
-
-def _sorted_by(items: _Value, key: str) -> _Value:
-    """`items` stably sorted by each one's `key`, if it is a list of mappings with str keys."""
-    if not isinstance(items, list):
-        return items
-    names: list[tuple[str, _Value]] = []
-    for item in items:
-        if not (isinstance(item, dict) and isinstance(name := item.get(key), str)):
-            return items
-        names.append((name, item))
-    return [item for _, item in sorted(names, key=lambda pair: pair[0])]
-
-
 _CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
-    MappingProxyType(
-        {
-            (State.STATUS, "minecraft:status_response"): _canonical_status_response,
-            (State.CONFIGURATION, "minecraft:update_tags"): _canonical_update_tags,
-            (State.PLAY, "minecraft:update_tags"): _canonical_update_tags,
-        }
-    )
+    MappingProxyType({(State.STATUS, "minecraft:status_response"): _canonical_status_response})
 )
 """The canonical form of each clientbound packet that has one, by (State, name)."""
 
@@ -1116,3 +1159,17 @@ def _quoted_key(text: str, position: int) -> tuple[_Step, int] | None:
     if isinstance(key, str) and text.startswith("]", end):
         return key, end + 1
     return None
+
+
+# The random fields' Masks, last: a Mask checks its path with the functions above when it
+# is made, so a `RANDOM_FIELDS` key that is not `<packet>.<path>` fails the import.
+
+
+def _random_mask(field: str, reason: str) -> Mask:
+    packet, _, path = field.partition(".")
+    return Mask(packet, path, reason=reason)
+
+
+_RANDOM_MASKS: tuple[Mask, ...] = tuple(
+    _random_mask(field, reason) for field, reason in RANDOM_FIELDS.items()
+)

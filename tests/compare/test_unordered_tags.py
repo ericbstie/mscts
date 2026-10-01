@@ -1,14 +1,16 @@
-"""Canonicalization of `update_tags`: the order of registries and of tags is network traffic.
+"""`update_tags` is compared sorted (`UNORDERED`): its order is no difference at all.
 
-The client reads both into maps (PLAN, Comparison semantics), so only which value each
-name ends with matters: the last one sent. The ids in a tag's entries stay in order.
-Packets are built through the Target's real Codec, in configuration and in play.
+The order of its registries and of their tags never counts. Vanilla sends both in an
+order that changes from one boot to the next, and the client reads both into maps
+(PLAN, Comparison semantics), so only which value each name ends
+with matters: the last one sent. The ids in a tag's entries stay in order. Packets are
+built through the Target's real Codec, in configuration and in play.
 """
 
 import pytest
 
 from mscts.codec.packets import Codec, Packet, State
-from mscts.compare import Divergence, Observability, compare
+from mscts.compare import Divergence, Mask, Observability, compare
 from tests.compare.build import CLIENTBOUND, transcript
 
 CODEC = Codec.load("26.3")
@@ -52,25 +54,26 @@ ITEM = ("minecraft:item", [("minecraft:logs", [4, 5])])
 
 
 @STATES
-def test_the_order_of_registries_is_a_network_traffic_difference(state: State) -> None:
-    divergences = _compare(state, [BLOCK, ITEM], [ITEM, BLOCK])
-    assert divergences
-    assert _gameplay(divergences) == []
-    assert _gameplay(_compare(state, [ITEM, BLOCK], [BLOCK, ITEM])) == []
+def test_the_order_of_registries_is_no_difference(state: State) -> None:
+    assert _compare(state, [BLOCK, ITEM], [ITEM, BLOCK]) == ()
+    assert _compare(state, [ITEM, BLOCK], [BLOCK, ITEM]) == ()
 
 
 @STATES
-def test_the_order_of_tags_in_a_registry_is_a_network_traffic_difference(state: State) -> None:
+def test_the_order_of_tags_in_a_registry_is_no_difference(state: State) -> None:
     reordered = ("minecraft:block", list(reversed(BLOCK[1])))
-    divergences = _compare(state, [BLOCK], [reordered])
-    assert [(d.path, d.observability) for d in divergences] == [
-        ("tagged_registries[0].tags[0].entries[0]", Observability.NETWORK_TRAFFIC),
-        ("tagged_registries[0].tags[0].entries[1]", Observability.NETWORK_TRAFFIC),
-        ("tagged_registries[0].tags[0].tag_name", Observability.NETWORK_TRAFFIC),
-        ("tagged_registries[0].tags[1].entries[0]", Observability.NETWORK_TRAFFIC),
-        ("tagged_registries[0].tags[1].entries[1]", Observability.NETWORK_TRAFFIC),
-        ("tagged_registries[0].tags[1].tag_name", Observability.NETWORK_TRAFFIC),
-    ]
+    assert _compare(state, [BLOCK], [reordered]) == ()
+
+
+def test_the_lists_are_sorted_before_the_masks_so_mask_paths_count_the_sorted_list() -> None:
+    masked = Mask("minecraft:update_tags", "tagged_registries[0].tags[0].entries", reason="x")
+    changed = ("minecraft:block", [("minecraft:climbable", [9]), ("minecraft:logs", [3])])
+    verdict = compare(
+        transcript(("alice", update_tags(State.CONFIGURATION, [ITEM, BLOCK]))),
+        transcript(("alice", update_tags(State.CONFIGURATION, [ITEM, changed]))),
+        [masked],
+    )
+    assert verdict.divergences == ()
 
 
 @STATES
@@ -82,26 +85,24 @@ def test_the_order_of_a_tags_entries_is_a_gameplay_difference(state: State) -> N
     ]
 
 
-def test_a_reordered_packet_with_a_real_difference_reports_it_at_its_canonical_path() -> None:
+def test_a_reordered_packet_with_a_real_difference_reports_only_that_at_its_sorted_path() -> None:
     changed = ("minecraft:item", [("minecraft:logs", [4, 6])])
-    assert _gameplay(_compare(State.CONFIGURATION, [BLOCK, ITEM], [changed, BLOCK])) == [
-        ("tagged_registries[1].tags[0].entries[1]", 5, 6)
-    ]
+    divergences = _compare(State.CONFIGURATION, [BLOCK, ITEM], [changed, BLOCK])
+    assert _gameplay(divergences) == [("tagged_registries[1].tags[0].entries[1]", 5, 6)]
+    assert len(divergences) == 1
 
 
 def test_a_repeated_name_keeps_its_order_since_the_last_one_wins() -> None:
     first = ("minecraft:item", [("minecraft:logs", [1])])
     last = ("minecraft:item", [("minecraft:logs", [2])])
-    # The same last value for every name: network traffic.
-    assert (
-        _gameplay(_compare(State.CONFIGURATION, [first, BLOCK, last], [BLOCK, first, last])) == []
-    )
+    # The same last value for every name: no difference.
+    assert _compare(State.CONFIGURATION, [first, BLOCK, last], [BLOCK, first, last]) == ()
     # A different last value: gameplay.
     assert _gameplay(_compare(State.CONFIGURATION, [first, last], [last, first])) != []
     one_registry = [("minecraft:block", [("a:t", [1]), ("b:t", [3]), ("a:t", [2])])]
     same_last = [("minecraft:block", [("b:t", [3]), ("a:t", [1]), ("a:t", [2])])]
     other_last = [("minecraft:block", [("a:t", [2]), ("b:t", [3]), ("a:t", [1])])]
-    assert _gameplay(_compare(State.PLAY, one_registry, same_last)) == []
+    assert _compare(State.PLAY, one_registry, same_last) == ()
     assert _gameplay(_compare(State.PLAY, one_registry, other_last)) != []
 
 

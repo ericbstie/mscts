@@ -14,7 +14,6 @@ from mscts.bot import Bot
 from mscts.codec import packets
 from mscts.codec.packets import Direction, State
 from mscts.codec.schema import Schema, String
-from mscts.compare import WHOLE_PACKET, Mask
 from mscts.group import Group, GroupContext
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
@@ -62,28 +61,5 @@ def _with_operator(spec: ServerSpec) -> ServerSpec:
     return dataclasses.replace(spec, operators=(OPERATOR,))
 
 
-JOIN_MASKS = (
-    Mask(
-        "minecraft:login_finished",
-        "session_id",
-        reason="a UUID vanilla draws at random (ClientboundLoginFinishedPacket.sessionId)",
-    ),
-    Mask(
-        "minecraft:update_tags",
-        WHOLE_PACKET,
-        reason=(
-            "vanilla sends its registries in a per-boot order (an IdentityHashMap), a "
-            "network traffic difference between two vanilla Instances; this probe tests "
-            "Observation windows, not the join"
-        ),
-    ),
-)
-"""What two vanilla Instances send differently in every join, outside any window."""
-
-SETBLOCK_OBSERVED = Group(
-    id="probe/setblock-observed",
-    run=_setblock_observed,
-    masks=JOIN_MASKS,
-    spec=_with_operator,
-)
+SETBLOCK_OBSERVED = Group(id="probe/setblock-observed", run=_setblock_observed, spec=_with_operator)
 """A probe Group, not registered: two Bots, an Observation window around one command."""
