@@ -87,8 +87,8 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AJ (opus): #18 observation windows and the barrier `Bot.sync()`, branch
-  `issue-18-windows`.
+- AL (opus): #17 Control, branch `issue-17-control`; it first makes the join
+  packets that differ between two vanilla Instances a shared Comparison rule.
 - AK (sonnet): #19 item stacks, branch `issue-19-item-stacks`. Until it lands, an
   item in entity metadata or `set_equipment` ends a Bot's session (#20 refuses an
   item stack rather than misread it).
@@ -212,6 +212,12 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   #19, which runs next).
 - #18 runs before #17: both need a barrier (a round trip the server answers only
   after everything caused before it), built once as `Bot.sync()`.
+- Merged #81 (#18: a Group compares only the play packets inside its Observation
+  windows; the barrier is two statistics round trips; ADR-0010). Its Pumpkin test
+  is an expected failure until #19. Found: every join differs between two vanilla
+  Instances (`session_id`, `update_tags` order), now a shared rule in #17.
+- The output lane (#14, #12, #9, #10, #13) went to the maintainer's helper agent,
+  with lead decisions on #9, #10, #12 and #14.
 
 ### 2026-09-30 — session 4: what to test between servers
 

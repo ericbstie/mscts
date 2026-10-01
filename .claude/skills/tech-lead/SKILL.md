@@ -59,6 +59,10 @@ first.
   whole file.
 - When you land a fix for a red that blocks everyone, message the
   in-flight workers (SendMessage).
+- Before merging a codec change, run the candidate tier as well as the
+  reference tier: a stricter schema can stop a Bot on what a Candidate
+  sends (#20's item stack placeholder stopped every two-Bot run on
+  Pumpkin).
 
 ## Steering heuristics
 

@@ -128,10 +128,12 @@ Done when: <observable condition, e.g. `mise run check` green + named tests exis
            timings are measured on a committed tree, with `--durations` of the touched
            tests and the load average>
 Base: <main commit the brief was written against; the worker first runs
-      `git merge --ff-only main` in its worktree>
+      `git merge --ff-only main` in its worktree; before the PR it rebases onto main
+      with `git rebase main --exec "mise run check"`>
 Context: <facts, file paths, gotchas the tech lead already knows; reusable scratchpad
          artifacts (jars, generated reports, probe scripts) by path; names a parallel
-         brief is introducing that this one must not reuse (check CONTEXT.md);
+         brief is introducing that this one must not reuse (check CONTEXT.md); the
+         files each parallel worker owns;
          the migration rule if this brief changes anything persisted (cache, files)>
          A rename brief pastes the exact current user-visible lines (`grep -n`: flags,
          help, Report and error text), which get red-first commits; the identifier
@@ -241,7 +243,8 @@ new classes of defect:
   `$VAR`, `$(…)` or `python -c`. Use literal absolute paths, not
   variables. For anything longer, Write a script file into the
   scratchpad and run it as a single plain command (`sh /abs/x.sh`,
-  `python3 /abs/x.py`). Use Edit/Write for code.
+  `python3 /abs/x.py`). Use Edit/Write for code, and to append to a file
+  (never a heredoc). Single-quote a Java class name that has a `$`.
 - **Run tiers through mise**: `mise run test:reference -- <pytest args>`.
   A plain `uv run pytest` uses the host toolchain (Java 21 here), which
   the Reference Adapter correctly refuses unless `MSCTS_JAVA` is set.
@@ -251,7 +254,8 @@ new classes of defect:
   limit, container restart) loses a worktree that has no commits; push
   your branch after every green commit. The lead resumes an interrupted
   worker by message. Keep research artifacts in your scratch dir, where
-  the next worker can reuse them, and a `findings.md` there: append each
+  the next worker can reuse them, and a `findings.txt` there (the harness
+  refuses a worker's `.md` report files): append each
   verified fact (a javap line, a layout, a live observation) the moment
   you have it. A resumed or compacted worker reads it first and never
   redoes research.
@@ -297,6 +301,15 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-01 | worker AJ (#18 observation windows) | The harness refused a `findings.md` | **adopt**: the findings file is `findings.txt` (Worker contract) |
+| 2026-10-01 | worker AJ | `git merge --ff-only main` was impossible once main moved | **adopt**: brief template, rebase with `--exec "mise run check"` before the PR |
+| 2026-10-01 | worker AJ | Every joining Group's Self-check fails: `login_finished.session_id` is random and `update_tags`' order changes per boot | **adopt**: a shared Comparison rule (a Mask table beside `HEARTBEAT`, a canonical `update_tags`), the first increment of #17, before any joining Group is registered |
+| 2026-10-01 | worker AJ | #20's placeholder refused even an empty item stack, so every two-Bot run on Pumpkin stopped; the lead merged #20 after the reference tier only | **adopt**: tech-lead skill, run the candidate tier too before merging a codec change; a placeholder decodes what it can (an empty stack). #19 replaces it |
+| 2026-10-01 | worker AJ | `<name>:start` / `<name>:end` Marks become Report timing rows, so the windows use `observe:open` / `observe:close` | **adopt**: briefs reserve the pair for Measurements (ADR-0010 records it) |
+| 2026-10-01 | worker AJ | The codec's owner was settled only on resume | **adopt**: brief template, list the files each parallel worker owns |
+| 2026-10-01 | worker AJ | A heredoc append and a `$` in a javap class name were refused | **adopt**: Worker contract, append with Edit or Write; single-quote `$` |
+| 2026-10-01 | worker AJ | One stats round trip or a play ping is not a barrier on vanilla; two stats round trips are (30/30 on both servers) | **adopt** (no change): recorded in the research note and ADR-0010 |
+| 2026-10-01 | worker AJ | A usage limit stopped it mid-increment; push-per-commit and the findings file made the resume cheap | **adopt** (no change) |
 | 2026-09-30 | worker AF (#20 entity schemas) | Three restarts, a rate limit and a compaction cost the javap findings, so about a quarter of the session went on repeating research | **adopt**: Worker contract and brief template, a `findings.md` in the scratch dir that gets each verified fact and is read first on resume |
 | 2026-09-30 | worker AF | `scripts/mutate.py` floods the terminal with every mutant's failure; a new file seemed to need `git add` | **adopt**: red-green Known trap, redirect it to a log. The `git add` part is wrong: `mutate.py` copies untracked files too |
 | 2026-09-30 | worker AF | Ruff's FBT003, D102, ARG002 and E501, and pytest's refusal of `parametrize(enumerate(...))`, cost about 8 fix cycles | **adopt**: red-green Known trap and Worker contract, `mise run fix` before each test run |
