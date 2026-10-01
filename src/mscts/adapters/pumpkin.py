@@ -474,7 +474,7 @@ def _refuse_what_pumpkin_cannot_honour(spec: ServerSpec) -> None:
         raise PrepareError(msg)
 
 
-# data/ops.json level for ServerSpec.operators: all commands, as vanilla's.
+# data/ops.json level for ServerSpec.all_operators: all commands, as vanilla's.
 OPERATOR_LEVEL = 4
 
 
@@ -535,7 +535,8 @@ class PumpkinAdapter:
         _refuse_what_pumpkin_cannot_honour(spec)
         texts = {
             "pumpkin.toml": pumpkin_toml(spec),
-            "data/ops.json": ops_json(spec.operators),
+            # Control's Bot first: an operator on every Instance (ServerSpec.all_operators).
+            "data/ops.json": ops_json(spec.all_operators),
             # Pumpkin's own first-run content of each, written so none is left to it.
             "data/whitelist.json": "[]",
             "data/banned-players.json": "[]",

@@ -91,6 +91,12 @@ def test_server_spec_view_distance_is_checked_on_replace_too() -> None:
         dataclasses.replace(ServerSpec(host=HOST, port=25599), view_distance=32)
 
 
+def test_control_is_always_an_operator_first() -> None:
+    assert ServerSpec(host=HOST, port=25599).all_operators == ("control",)
+    spec = ServerSpec(host=HOST, port=25599, operators=("Notch", "control", "Steve"))
+    assert spec.all_operators == ("control", "Notch", "Steve")
+
+
 def test_world_presets_are_only_flat_until_void_is_verified() -> None:
     assert [preset.value for preset in WorldPreset] == ["flat"]
 

@@ -526,7 +526,8 @@ class Difficulty(StrEnum):  PEACEFUL, EASY, NORMAL, HARD
 @frozen
 class ServerSpec:                   # invariants (not fields): offline, no encryption, no whitelist,
                                     # no pause-when-empty, no telemetry, no server icon, spawn protection 0,
-                                    # no outbound (non-loopback) network connection
+                                    # no outbound (non-loopback) network connection, and
+                                    # CONTROL_PLAYER ("control", Control's Bot) is an operator
     host: str                       # (host, port) is the Endpoint, and the server binds exactly it.
     port: int                       # host: a host address of spec.LOOPBACK (127.0.0.0/8, not its network
                                     # or broadcast address) as a dotted quad, else ValueError at
@@ -544,6 +545,9 @@ class ServerSpec:                   # invariants (not fields): offline, no encry
     difficulty: Difficulty = Difficulty.PEACEFUL
     operators: tuple[str, ...] = ()
     compression_threshold: int = 256
+    all_operators: tuple[str, ...]  # property: CONTROL_PLAYER, then `operators`, each once:
+                                    # what every Adapter makes an operator (level 4), each with
+                                    # its server's offline UUID (Pumpkin: sha256(name)[:16])
 
 @frozen
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
