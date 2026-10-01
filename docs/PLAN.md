@@ -50,6 +50,9 @@ test needs it:
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
+| `codec/shapes.py` | the wire shapes the data components share: `UNIT`, `NBT_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM` |
+| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`) |
+| `codec/items.py` | `SLOT`, the item stack field |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
@@ -238,6 +241,28 @@ SLOTS: tuple[str, ...]             # the 8 EquipmentSlot constants in ordinal or
 class EquipmentList:               # WireType[list[dict[str, object]]]
     item: WireType[object]         # how each slot's item is carried
 EQUIPMENT: WireType[list[dict[str, object]]]  # EquipmentList(PENDING_ITEM_STACK): refuses until #19
+
+# codec/shapes.py: the shapes the data components are built from.
+UNIT: WireType[None]             # no bytes (StreamCodec.unit): reads None, writes only None
+NBT_TAG: WireType[bytes]         # an NBT root tag of any type but END, as its exact bytes
+TEXT_COMPONENT: WireType[bytes]  # NBT_TAG: a text component is kept as its NBT bytes, not decoded
+REGISTRY_ID: WireType[int]       # a registry entry by protocol id: a plain VarInt, not range checked
+ENUM: WireType[int]              # an enum by ordinal: a plain VarInt, not range checked
+
+# codec/components.py. A data component's value has no length on the wire, so each one's layout
+# must be known to read past it: a component with no layout, or an id past the registry, is a
+# WireError naming it. Ids come from the generated name list, never hand-typed.
+class ComponentTable:              # names, type_id(name), type_name(id), layout(name)
+TABLE: ComponentTable
+@frozen
+class Patch:                       # WireType[dict[str, object]]
+    table: ComponentTable
+# A patch is {added: [{type: "minecraft:damage", value: 5}, ...], removed: ["minecraft:max_stack_size"]},
+# in wire order (a repeated type is kept). Errors read "added: 0: minecraft:damage: ...".
+PATCH: Patch                       # Patch(TABLE)
+
+# codec/items.py
+SLOT: WireType[dict[str, object] | None]  # None (a count of 0) | {count, item, components: <a patch>}
 
 class SchemaError(ValueError): ... # a declaration that can never be valid, raised when defined
 
