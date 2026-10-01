@@ -421,7 +421,7 @@ class Connection:                   # one TCP connection; owns framing, compress
 class Bot:                          # what Groups use; answers keep_alive / teleports / chunk batches itself
     name: str
     failure: Exception | None       # what its last failed operation (status, ping, join,
-                                    # expect, sync, drain) raised: which Bot a Group's failure
+                                    # expect, command, sync, drain) raised: which Bot a Group's failure
                                     # came from
     closed: bool                    # (property) close was called
     in_play: bool                   # (property) joined, and not closed: what sync needs
@@ -452,6 +452,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
+    # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command
+    # (String 32767) and returns at once; what the server answers arrives like any packet.
     # sync, the barrier: returns once the server has sent everything caused by what it
     # received before. On a Bot in play (else ProtocolError, nothing sent): client_command
     # (REQUEST_STATS) then expect(award_stats), twice, the second request only after the
