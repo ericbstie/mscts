@@ -1,4 +1,11 @@
-"""Groups: named, deterministic scripts a Run plays against each Instance."""
+"""Groups: named, deterministic scripts a Run plays against each Instance.
+
+A Group sets the world up through Control (`GroupContext.control`), whose Bot, `control`,
+is an operator on every Instance. A Group's own Bots stay non-operators unless the
+mechanic it tests needs one: vanilla sends each operator's command feedback to the other
+operators (`CommandSourceStack.broadcastToAdmins`, while the `send_command_feedback`
+game rule is on), so an operator Bot would receive Control's answers too.
+"""
 
 import asyncio
 import contextlib
@@ -9,9 +16,11 @@ from types import MappingProxyType
 from typing import Protocol
 
 from mscts.bot import Bot
+from mscts.codec.packets import Direction, Packet
+from mscts.codec.schemas.play.commands import root_literals
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
-from mscts.net import Endpoint
-from mscts.spec import ServerSpec
+from mscts.net import Endpoint, ProtocolError
+from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
 
@@ -46,9 +55,111 @@ class CommandMissing(Exception):  # noqa: N818 - PLAN's name: a fact about the s
 class Control(Protocol):
     """The channel that sets up Fixtures: by default, an Operator Bot (ADR-0001)."""
 
-    async def run(self, command: str) -> None:
-        """Run `command`, in vanilla command syntax, without the leading slash."""
+    async def run(self, command: str) -> tuple[Packet, ...]:
+        """Run `command`, in vanilla command syntax, without the leading slash.
+
+        Returns once the server has answered it, with the `system_chat`s it answered with.
+        """
         ...
+
+
+MARKER_PREFIX = "mscts-barrier-"
+"""The start of each token Control's barrier says to itself (`tellraw`)."""
+
+_SYSTEM_CHAT = "minecraft:system_chat"
+_COMMANDS = "minecraft:commands"
+
+
+class OperatorBot:
+    """Control through a Bot called `control` (`spec.CONTROL_PLAYER`), an operator.
+
+    Every Adapter makes `control` an operator, so it may run any command.
+    """
+
+    def __init__(
+        self, connect: Callable[[str], Awaitable[Bot]], transcript: Transcript, *, timeout_s: float
+    ) -> None:
+        """Connect its Bot with `connect` on first use; read its tree from `transcript`."""
+        self._connect = connect
+        self._transcript = transcript
+        self._timeout_s = timeout_s
+        self._bot: Bot | None = None
+        self._markers = 0
+
+    async def run(self, command: str) -> tuple[Packet, ...]:
+        """Run `command` as `control`, and return once the server has answered it.
+
+        On first use, the Bot joins and passes the barrier (`Bot.sync`), so that nothing
+        the join caused is taken for an answer. Each run then takes what has already
+        arrived, sends `command`, then a marker, `tellraw @s "<token>"` with a token of
+        its own, and waits for the `system_chat` holding the token: vanilla runs a
+        player's commands one after another, so the command has run by then. Last, the
+        Bot passes the barrier, so the server has also sent what the command changed.
+
+        Returns:
+            The `system_chat`s that arrived before the marker's answer: what the server
+            said in answer to the command, an empty tuple if nothing.
+
+        Raises:
+            ValueError: `command` does not start with its name (it is empty, or starts
+                with a slash or a space).
+            CommandMissing: The server's command tree for `control` lacks the command's
+                name, or `tellraw`, which the marker needs. Nothing is sent.
+            ProtocolError: The command tree is broken, or the server disconnected the Bot.
+            TimeoutError: No command tree, or no answer to the marker, in time.
+        """
+        root = command.split(" ", 1)[0]
+        if not root or root.startswith("/"):
+            msg = f"a command starts with its name, without a slash: {command!r}"
+            raise ValueError(msg)
+        bot = await self._joined()
+        commands = await self._commands(bot)
+        for name in (root, "tellraw"):
+            if name not in commands:
+                raise CommandMissing(name)
+        await bot.drain()
+        self._markers += 1
+        token = f"{MARKER_PREFIX}{self._markers}"
+        await bot.command(command)
+        await bot.command(f'tellraw @s "{token}"')
+        said: list[Packet] = []
+
+        def answers_marker(packet: Packet) -> bool:
+            # Text components are not decoded yet, so the token is looked for in the raw
+            # bytes: a String tag, or a compound's text, holds it as it was sent.
+            if token.encode() in packet.payload:
+                return True
+            said.append(packet)
+            return False
+
+        await bot.expect(_SYSTEM_CHAT, timeout_s=self._timeout_s, where=answers_marker)
+        await bot.sync()
+        return tuple(said)
+
+    async def _joined(self) -> Bot:
+        if self._bot is None:
+            bot = await self._connect(CONTROL_PLAYER)
+            await bot.join()
+            await bot.sync()
+            self._bot = bot
+        return self._bot
+
+    async def _commands(self, bot: Bot) -> frozenset[str]:
+        """The names of the commands the server's last command tree for the Bot holds."""
+        trees = [
+            event.packet
+            for event in self._transcript.events
+            if event.bot == bot.name
+            and event.packet.direction is Direction.CLIENTBOUND
+            and event.packet.name == _COMMANDS
+        ]
+        tree = trees[-1] if trees else await bot.expect(_COMMANDS, timeout_s=self._timeout_s)
+        try:
+            return root_literals(tree.fields or {})
+        except (KeyError, ValueError) as exc:
+            error = ProtocolError(f"the command tree {bot.name} received is broken: {exc}")
+            bot.failure = error
+            raise error from exc
 
 
 def identity(spec: ServerSpec) -> ServerSpec:
@@ -71,25 +182,28 @@ class GroupContext:
         self._bots: dict[str, Bot] = {}
         self._unconnected: tuple[str, Exception] | None = None
         self._observing = False
+        self._control = OperatorBot(self._connect, transcript, timeout_s=timeout_s)
 
     @property
     def control(self) -> Control:
-        """The Control channel. Not built yet: no Group needs Fixtures before M5.
-
-        Raises:
-            NotImplementedError: Always, until M5 builds the Operator Bot.
-        """
-        msg = "Control (the Operator Bot) arrives in milestone M5"
-        raise NotImplementedError(msg)
+        """The Control channel: an Operator Bot, called `control`, that joins on first use."""
+        return self._control
 
     async def bot(self, name: str) -> Bot:
         """Connect a Bot called `name`, recording to this Group's Transcript.
 
         Raises:
-            ValueError: This Group already has a Bot called `name`.
+            ValueError: This Group already has a Bot called `name`, or `name` is
+                `control`, Control's Bot.
             OSError: The connection failed.
             TimeoutError: It did not connect in time.
         """
+        if name == CONTROL_PLAYER:
+            msg = f"{name!r} is Control's Bot: run its commands with context.control"
+            raise ValueError(msg)
+        return await self._connect(name)
+
+    async def _connect(self, name: str) -> Bot:
         if name in self._bots:
             msg = f"the Group already has a Bot called {name!r}"
             raise ValueError(msg)

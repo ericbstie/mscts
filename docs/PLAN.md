@@ -67,7 +67,7 @@ test needs it:
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
-| `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve` |
+| `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve`; `Control`, `OperatorBot`, `CommandMissing` |
 | `groups/*.py` | the Groups themselves (`import mscts.groups` registers them) |
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict` |
@@ -461,7 +461,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # first answer. Vanilla handles the request at the start of a tick, before that tick
     # sends what changed, so one round trip is not enough; the second answer follows a whole
     # tick (docs/research/2026-09-30-observation-window.md). Observation windows call it
-    # when they close, and Control will call it after each command.
+    # when they close, and Control calls it after each command's marker (OperatorBot).
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
     # nothing left to take, raises as recv does.
@@ -751,11 +751,13 @@ class Transcript:                   # a plain data holder: no I/O
 class GroupContext:
     def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None: ...
     endpoint: Endpoint
-    control: Control                # Operator Bot by default (ADR-0001). Until M5 builds it,
-                                    # reading it raises NotImplementedError naming M5
+    control: Control                # an OperatorBot (ADR-0001), the same one on every read;
+                                    # its Bot is one of the context's Bots (closed, synced
+                                    # and drained with them, and named by raised_by)
     async def bot(self, name: str) -> Bot: ...   # Bot.connect(endpoint, TARGET, timeout_s=...),
                                                  # recording to the transcript; ValueError on a
-                                                 # second Bot of the same name
+                                                 # second Bot of the same name, or on
+                                                 # CONTROL_PLAYER (Control's Bot)
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
     def observe(self, *names: str) -> AbstractAsyncContextManager[None]: ...
@@ -774,7 +776,27 @@ class GroupContext:
                                     # it is; "" if none (the script itself raised it)
 
 class Control(Protocol):
-    async def run(self, command: str) -> None: ...
+    async def run(self, command: str) -> tuple[Packet, ...]: ...   # the system_chats it answered
+
+class OperatorBot:                  # Control through a Bot called CONTROL_PLAYER, an operator
+    def __init__(self, connect: Callable[[str], Awaitable[Bot]], transcript: Transcript,
+                 *, timeout_s: float) -> None: ...
+    async def run(self, command: str) -> tuple[Packet, ...]: ...
+    # run(command), the command without its slash:
+    # 1. ValueError, nothing sent, unless it starts with its name (not "", "/…" or " …").
+    # 2. On first use: connect(CONTROL_PLAYER), join, sync, so nothing the join caused is
+    #    taken for an answer.
+    # 3. root_literals of the last `commands` tree the Bot received (else expect one): its
+    #    name, then "tellraw", must be there, else CommandMissing(name), nothing sent. A
+    #    tree root_literals refuses → ProtocolError, as the Bot's failure.
+    # 4. drain, then send the command, then the marker `tellraw @s "<MARKER_PREFIX><n>"`
+    #    (n counts this OperatorBot's runs from 1), then expect the system_chat whose raw
+    #    bytes hold the token (text components are not decoded yet), then sync. Returns
+    #    the system_chats taken before the marker's answer, () if none.
+    # Vanilla runs a player's commands in order on one queue, so the marker answers after
+    # the command has run; Pumpkin runs each command as its own task, so a command that
+    # takes more than about a tick longer than the marker can land after run returns
+    # (ADR-0010, amendment; docs/research/2026-10-01-control.md).
 
 class GroupKind(StrEnum):           # ADR-0006; values "exact", "tick-exact", "statistical"
     EXACT, TICK_EXACT, STATISTICAL

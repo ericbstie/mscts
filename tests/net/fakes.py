@@ -11,7 +11,7 @@ import socket
 import struct
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass
 
@@ -170,6 +170,8 @@ class JoinScript:
         keep_alive_id: Sent (and its echo awaited) once the first chunk batch is
             acknowledged, or None.
         disconnect_in: The State in which to disconnect the client instead of going on.
+        commands: The fields of a `commands` packet (the command tree) sent in play before
+            the join teleport, as vanilla sends its own, or None to send none.
         then: Run last, before waiting for the client to close, or None.
     """
 
@@ -177,6 +179,7 @@ class JoinScript:
     code_of_conduct: str | None = None
     keep_alive_id: int | None = None
     disconnect_in: State | None = None
+    commands: Mapping[str, object] | None = None
     then: Handler | None = None
 
 
@@ -276,6 +279,8 @@ class _Join:
             await peer.send("minecraft:disconnect", reason=_DISCONNECT_REASON)
             return False
         await peer.write(peer.raw_frame("minecraft:change_difficulty", b"\x00\x01"))
+        if self.script.commands is not None:
+            await peer.send("minecraft:commands", **self.script.commands)
         await peer.send(
             "minecraft:player_position",
             teleport_id=1,

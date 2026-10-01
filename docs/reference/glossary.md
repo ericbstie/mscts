@@ -81,8 +81,8 @@ in play has finished.
 
 ### Control
 
-How a Group sets up Fixtures. By default, an operator Bot that sends
-vanilla commands. Not built yet.
+How a Group sets up Fixtures: `context.control`, an operator Bot called
+`control` that runs vanilla commands. What it receives is never compared.
 
 ### Fixture
 
