@@ -7,10 +7,24 @@ the 26.3 server jar (docs/research/2026-09-30-item-stacks.md).
 
 from dataclasses import dataclass
 
-from mscts.codec.schema import NBT, WireType
+from mscts.codec.schema import NBT, VAR_INT, WireType
 from mscts.codec.wire import Reader, WireError, Writer
 
 _NBT_END = 0
+
+REGISTRY_ID: WireType[int] = VAR_INT
+"""An entry of a registry by protocol id (`ByteBufCodecs.registry`, `holderRegistry`).
+
+A plain VarInt with no offset. The codec has no registries, so it cannot tell a valid id from
+one past the end of the registry.
+"""
+
+ENUM: WireType[int] = VAR_INT
+"""An enum by ordinal (`ByteBufCodecs.idMapper` over a `ByIdMap`): a plain VarInt.
+
+Vanilla answers an out-of-range ordinal with the enum's default instead of failing, so every
+VarInt is a valid read.
+"""
 
 
 @dataclass(frozen=True, slots=True)

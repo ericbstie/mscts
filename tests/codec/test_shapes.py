@@ -7,8 +7,19 @@ not produced by the Codec.
 import pytest
 from support.wire import read_all, written
 
-from mscts.codec.shapes import NBT_TAG, UNIT
+from mscts.codec.schema import WireType
+from mscts.codec.shapes import ENUM, NBT_TAG, REGISTRY_ID, UNIT
 from mscts.codec.wire import Reader, WireError
+
+# Registry ids and enums: plain VarInts with no offset (`registry`, `holderRegistry`, `idMapper`).
+
+
+@pytest.mark.parametrize("wire_type", [REGISTRY_ID, ENUM], ids=["registry id", "enum"])
+def test_a_registry_id_and_an_enum_are_a_plain_varint(wire_type: WireType[int]) -> None:
+    assert read_all(wire_type, bytes.fromhex("c9 08")) == 1097
+    assert written(wire_type, 1097) == bytes.fromhex("c9 08")
+    assert read_all(wire_type, b"\x00") == 0
+
 
 # Unit: `StreamCodec.unit`, no bytes at all; its value is None.
 
