@@ -5,12 +5,14 @@
 else needs to be written when a Group is registered (#84).
 """
 
-from collections.abc import Mapping
+import dataclasses
+from collections.abc import Mapping, Sequence
 
 import pytest
 
 import mscts.groups  # noqa: F401 - registers the shipped Groups
-from mscts.group import GROUPS
+from mscts.group import GROUPS, Group
+from mscts.spec import ServerSpec
 
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
@@ -34,6 +36,19 @@ def repeat_from(environ: Mapping[str, str]) -> int:
         msg = f"{REPEAT_VAR} is {text!r}: it must be a whole number of at least 1"
         raise ValueError(msg)
     return repeat
+
+
+def needs_instances_of_their_own(groups: Sequence[Group], pair_spec: ServerSpec) -> bool:
+    """Whether a Group of `groups` changes the ServerSpec the shared pair was booted with.
+
+    A Run can only play such a Group on Instances it launches itself (`run` refuses an
+    Attached side of another ServerSpec). The Endpoint is no part of the ServerSpec here.
+    """
+    return any(
+        dataclasses.replace(group.spec(pair_spec), host=pair_spec.host, port=pair_spec.port)
+        != pair_spec
+        for group in groups
+    )
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:

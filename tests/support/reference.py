@@ -2,23 +2,25 @@
 
 The reference tier (`tests/reference/conftest.py`) and the Self-check tier
 (`tests/selfcheck/conftest.py`) both boot Reference Instances, so how one is booted and
-leak-guarded lives here.
+leak-guarded lives here. A test that gives a Run a Reference to launch Instances from
+itself uses `own_reference`.
 """
 
 import contextlib
 import dataclasses
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 from mscts import install
+from mscts.adapters.base import Installation, LaunchPlan
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
 from mscts.net import Endpoint
-from mscts.run import Attached
+from mscts.run import Attached, Server
 from mscts.runner import Instance, free_endpoint, running
 from mscts.spec import ServerSpec
-from mscts.target import TARGET
+from mscts.target import TARGET, Target
 from support.leak_guard import kill_survivors
 
 READY_TIMEOUT_S = 120  # a cold first boot unpacks the bundled libraries and makes a world
@@ -63,3 +65,36 @@ def default_spec(endpoint: Endpoint) -> ServerSpec:
 def attached(instance: Instance) -> Attached:
     """`instance`, a Reference booted at the default ServerSpec, as a Run's Attached side."""
     return Attached(name=VanillaAdapter.name, spec=default_spec(instance.endpoint))
+
+
+@dataclasses.dataclass
+class _Tagged:
+    """VanillaAdapter, with a leak-guard token in every LaunchPlan's environment."""
+
+    token: str
+    name: str = VanillaAdapter.name
+    vanilla: VanillaAdapter = dataclasses.field(default_factory=VanillaAdapter)
+    binary: str = "server.jar"
+
+    def check(self, binary: Path, target: Target) -> None:
+        self.vanilla.check(binary, target)
+
+    def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
+        plan = self.vanilla.prepare(installation, spec, workdir)
+        return dataclasses.replace(plan, env={**plan.env, _TOKEN_VAR: self.token})
+
+
+@contextlib.contextmanager
+def own_reference(cache_dir: Path) -> Iterator[Server]:
+    """A Reference side for a Run that launches the Instances itself, leak-guarded.
+
+    Pass it as both sides to `run` for a Self-check on Instances of the Run's own, one pair
+    for each ServerSpec its Groups make. Once the block ends, anything still tagged with
+    the token unique to it is a leak, and is killed and reported as a test failure.
+    """
+    adapter = _Tagged(token=uuid.uuid4().hex)
+    try:
+        yield Server(adapter, install.require(adapter, TARGET, cache_dir))
+    finally:
+        leaked = kill_survivors(f"{_TOKEN_VAR}={adapter.token}")
+    assert not leaked, f"a Reference Instance outlived the Run: {leaked}"
