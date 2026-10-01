@@ -16,7 +16,7 @@ from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.bot import status_probe
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
-from mscts.run import GroupError, run_group
+from mscts.run import run_group
 from mscts.runner import free_endpoint, running
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
@@ -24,10 +24,6 @@ from mscts.target import TARGET
 pytestmark = pytest.mark.candidate
 
 _GUARD = "MSCTS_LEAK_GUARD"
-
-_NEEDS_ITEM_STACKS = "item stack: needs #19"
-"""Pumpkin sends the operator `set_equipment` 02 00 00 (the watcher's player, main hand,
-an empty stack) as the watcher joins, and the Codec refuses every item stack until #19."""
 
 
 @pytest.mark.asyncio
@@ -47,10 +43,6 @@ async def test_the_probe_group_completes_against_pumpkin(
             plan, ready=status_probe(TARGET), ready_timeout=60, stop_timeout=30
         ) as instance:
             transcript = await run_group(SETBLOCK_OBSERVED, instance.endpoint, server="pumpkin")
-    except GroupError as error:
-        if _NEEDS_ITEM_STACKS not in str(error):
-            raise
-        pytest.xfail(f"until #19 decodes item stacks: {error}")
     finally:
         leaked = kill_survivors(f"{_GUARD}={token}", within=3.0)
     assert not leaked, f"Pumpkin processes outlived the test: {leaked}"
