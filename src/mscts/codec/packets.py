@@ -107,6 +107,10 @@ class Codec:
                     msg = f"{state} {direction}: {other} and {name} share id {packet_id:#04x}"
                     raise CodecError(msg)
                 self._ids[state, direction, name] = packet_id
+        self._ordered: dict[tuple[State, Direction], tuple[str, ...]] = {
+            key: tuple(sorted(by_name, key=by_name.__getitem__))
+            for key, by_name in packet_ids.items()
+        }
         self._schemas: dict[tuple[State, Direction, str], Schema] = {}
         for (state, direction), by_name in (schemas or {}).items():
             for name, schema in by_name.items():
@@ -149,6 +153,13 @@ class Codec:
         except KeyError:
             msg = f"no packet {state} {direction} {name}"
             raise UnknownPacketError(msg) from None
+
+    def names(self, state: State, direction: Direction) -> tuple[str, ...]:
+        """Return the names of the packets in `state` travelling `direction`, in id order.
+
+        A state with no packets that way (the Handshake's clientbound) has no names.
+        """
+        return self._ordered.get((state, direction), ())
 
     def packet_name(self, state: State, direction: Direction, packet_id: int) -> str:
         """Return the name of packet `packet_id` in `state`, travelling `direction`.

@@ -87,6 +87,38 @@ def test_packet_name_of_negative_id_raises() -> None:
         CODEC.packet_name(State.STATUS, Direction.CLIENTBOUND, -1)
 
 
+def test_names_are_the_packets_of_a_state_and_direction_in_id_order() -> None:
+    assert CODEC.names(State.STATUS, Direction.CLIENTBOUND) == (
+        "minecraft:status_response",
+        "minecraft:pong_response",
+    )
+    assert CODEC.names(State.STATUS, Direction.SERVERBOUND) == (
+        "minecraft:status_request",
+        "minecraft:ping_request",
+    )
+
+
+def test_names_of_every_state_and_direction_are_what_the_report_has_there_by_id() -> None:
+    expected: dict[tuple[State, Direction], dict[int, str]] = {}
+    for state, direction, name, packet_id in _report_entries():
+        expected.setdefault((state, direction), {})[packet_id] = name
+    for (state, direction), by_id in expected.items():
+        assert CODEC.names(state, direction) == tuple(by_id[i] for i in sorted(by_id))
+    assert (
+        sum(len(CODEC.names(state, direction)) for state in State for direction in Direction) == 260
+    )
+
+
+def test_a_packet_in_two_states_is_among_the_names_of_each() -> None:
+    for state in (State.CONFIGURATION, State.PLAY):
+        assert "minecraft:keep_alive" in CODEC.names(state, Direction.CLIENTBOUND)
+    assert "minecraft:keep_alive" not in CODEC.names(State.LOGIN, Direction.CLIENTBOUND)
+
+
+def test_a_state_with_no_packets_in_a_direction_has_no_names() -> None:
+    assert CODEC.names(State.HANDSHAKE, Direction.CLIENTBOUND) == ()
+
+
 def test_unknown_packet_error_is_a_codec_error() -> None:
     assert issubclass(UnknownPacketError, CodecError)
 
