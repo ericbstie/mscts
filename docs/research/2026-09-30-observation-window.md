@@ -103,6 +103,17 @@ packet phase at the start of a tick. A command needs Control's barrier:
 a marker command behind it in the same queue, then `Bot.sync()`
 (`docs/research/2026-10-01-control.md`, The Control barrier).
 
+## Amendment, 2026-10-01 (#88): two round trips can share a tick start
+
+"The answers are always one tick apart (never the same `processQueuedPackets`
+pass)" holds on a quiet machine only. `processQueuedPackets` polls until the
+queue is empty, so a request that arrives while a pass is still running is
+handled in that pass. Under load (a looping `mise run check` and a second probe
+loop beside the probe) 2 of 529 plays had every round trip of the window's
+barrier answered within 1.6 ms, before the tick's flush, and the window closed
+21 ms and 2.8 ms before the change was sent
+(`docs/research/2026-10-01-join-chunks.md`).
+
 ## What arrives on a clock — live and javap
 
 Two Bots, idle, 35 s with the world running and then 35 s frozen.
