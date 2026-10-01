@@ -245,6 +245,11 @@ new classes of defect:
   scratchpad and run it as a single plain command (`sh /abs/x.sh`,
   `python3 /abs/x.py`). Use Edit/Write for code, and to append to a file
   (never a heredoc). Single-quote a Java class name that has a `$`.
+  A `;` inside a quoted `sed` script, or a `(` or `$` in an argument, is
+  refused too: read a file range with Read (offset, limit), and put such
+  arguments inside the script.
+- Before deleting a shared helper (`tests/support/`, a fake), grep
+  `origin/main` for its users: a parallel branch may have added some.
 - **Run tiers through mise**: `mise run test:reference -- <pytest args>`.
   A plain `uv run pytest` uses the host toolchain (Java 21 here), which
   the Reference Adapter correctly refuses unless `MSCTS_JAVA` is set.
@@ -301,6 +306,15 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-01 | worker AL (#17 Control) | `Bot.sync()` was no barrier behind a command (8 of 80 plays), though #18 had passed 20 of 20 once; about 2 h of diagnosis | **adopt**: brief template, a change to a barrier or window is done when its Self-check passes 20 of 20 five times in a row, with a javap account of every queue it crosses |
+| 2026-10-01 | worker AL | Pumpkin runs each `chat_command` in its own task, so answers come out of order (71 of 100) | **adopt**: protocol-research skill, measure packet order on both servers (100 runs) and read where the Candidate dispatches the packet before fixing an order contract |
+| 2026-10-01 | worker AL | #17 needed #19's generated name list before #19 merged: two cherry-picks and a conflicted rebase | **adopt**: tech-lead skill, a generated file two briefs need lands first, as its own small PR |
+| 2026-10-01 | worker AL | Deleting `tests/support/commands.py` collided with #19's three new users | **adopt**: brief template, the ownership list names shared test helpers too; Worker contract, grep `origin/main` before deleting a shared helper. The move went to AN (#84) |
+| 2026-10-01 | worker AL | ty refuses `dict.fromkeys(...)` as `dict[str, object]`; D205/E501 on docstring summaries, RUF043 on `match=`, C901 on a many-knob fake | **adopt**: red-green Known traps |
+| 2026-10-01 | worker AL | `;` in a quoted sed script and `(` / `$` in arguments were refused | **adopt**: Worker contract |
+| 2026-10-01 | worker AL | Pumpkin's source is not reachable through the GitHub tools | **adopt**: protocol-research skill, fetch the raw files of the commit the binary's `Commit:` string names |
+| 2026-10-01 | worker AL | Wrote its own mutation runner before finding `scripts/mutate.py --batch` | **adopt** (no change): red-green already documents `--batch`; briefs name it |
+| 2026-10-01 | lead | A reference test failed once in two runs at #17's merge: a joining Bot got two `player_position`s on the shared Reference | **adopt**: AN investigates it with javap in #84's PR; a retry is not a fix |
 | 2026-10-01 | worker AK (#19 item stacks) | 122 components took 17 codec commits and four usage-limit resumes; a scratch javap interpreter made the table mechanical only after an up-front increment | **adopt**: tech-lead skill, a wide table (about 20 entries of one mechanism or more) gets its javap layouts derived and posted on the issue before briefing, by a sonnet triage with `scripts/research/layout.py` |
 | 2026-10-01 | worker AK | About eight blind Pumpkin probe runs before the console showed commands had stopped after the fourth slash-named `/give` | **adopt**: #83, a failing tier test shows each Instance's console tail (increment 0 of the first brief after #17) |
 | 2026-10-01 | worker AK | `Bot.sync()` does not cover Pumpkin's inventory updates: Pumpkin runs a command about a tick after the barrier answers | **adopt** (no change): #17's `Control.run` waits for its own `tellraw` marker before the sync |

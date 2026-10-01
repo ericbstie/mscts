@@ -50,7 +50,15 @@ by a test.
    runs the selected JDK's `javap -c -p -constants`; add `-v` to resolve lambdas.
    Set `MSCTS_JAVA` to the real Java 25 JDK's `bin/java` to select that JDK.
 5. Candidate source code, only to understand a Candidate. Never use it to
-   decide what is correct.
+   decide what is correct. The GitHub tools reach only this repo: fetch
+   the raw files of the commit the Candidate binary's `Commit:` string
+   names.
+
+Before fixing a contract on packet order (what answers what, and when),
+measure the order on both servers over about 100 runs, and read where
+each server dispatches the packet: inline, once per tick, or in a task
+of its own. Pumpkin runs each `chat_command` in a task of its own, so its
+answers come out of order (#17).
 
 Do **not** rely on a summarizer (WebFetch or similar) for field layouts.
 One summary got a 26.3 field order wrong. Grep the raw wikitext table

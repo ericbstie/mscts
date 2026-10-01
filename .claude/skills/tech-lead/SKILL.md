@@ -73,6 +73,13 @@ first.
   output line) against what the code emits today, for instance from a
   unit test's Divergence. A spec example that contradicts its own rule
   costs the worker a design detour (AH, #8).
+- A generated file that two briefs need (a name list, a table) lands
+  first, as its own small PR (AL, #17, cherry-picked #19's).
+- A change to a barrier or an Observation window is done when its
+  Self-check passes 20 of 20 five times in a row, with a javap account of
+  every queue it crosses: one 20 of 20 hid a 1-in-10 flake (#18).
+- The ownership list in a brief names the shared test helpers
+  (`tests/support/`, fakes) a parallel worker may import, not only `src/`.
 - A wide table (about 20 entries of one mechanism or more, like the 122
   data components) gets its layouts derived before briefing: a `sonnet`
   triage runs `scripts/research/layout.py` over each entry and posts the

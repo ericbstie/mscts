@@ -87,14 +87,14 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AL (opus): #17 Control, branch `issue-17-control`; it first makes the join
-  packets that differ between two vanilla Instances a shared Comparison rule.
-- AM (sonnet): #29 block and world event schemas, branch `issue-29-block-events`.
-  Its seed rule and live tiers wait for #17's `RANDOM_FIELDS` and `Control`.
+- AM (sonnet): #29 block and world event schemas, branch `issue-29-block-events`:
+  the sound seeds join `RANDOM_FIELDS`, then the live tiers.
+- AN (sonnet): #83 (console tail on a tier failure), then #84 (the Self-check tier
+  driven by the Group registry), with the move off `tests/support/commands.py` and
+  the flat world test's second `player_position`.
 
-Known flake on main until #17 lands: #18's 20-of-20 Self-check
-(`test_observe_reference.py`) fails about 1 run in 10, because a command's
-feedback can arrive after the barrier. #17's `tellraw` marker fixes it.
+Next: #30 `join/basic`, the first Group built by the routine
+(`.claude/skills/test-group`, committed with it), then #23 tick-exact.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -227,6 +227,10 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   that does not decode, and its `/give` parser hangs a thread for good on a
   component name with a slash. Filed #83: a failing tier test shows each
   Instance's console tail.
+- Merged #85 (#17: Control runs a command, then a `tellraw` marker, and waits
+  for the marker before the barrier; 440 Self-check plays without a failure).
+  Pumpkin answers commands out of order. Filed #84 (one Self-check tier driven by
+  the registry), because G5 is broken: check 11–18 s, reference tier 147–303 s.
 
 ### 2026-09-30 — session 4: what to test between servers
 

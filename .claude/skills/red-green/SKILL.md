@@ -300,6 +300,12 @@ then one commit.
   ARG002 (an unused argument: `del` it), E501 (docstrings too). Run
   `mise run fix` before each test run. pytest refuses
   `parametrize(..., enumerate(...))`: build a list first.
+- ty refuses `dict.fromkeys(...)` (or a `MappingProxyType` of it) as a
+  `dict[str, object]`: build such a dict field by field.
+- A docstring's first line is one sentence of at most 100 characters
+  (D205, E501). `pytest.raises(match=...)` takes a raw string (RUF043).
+  A fake server with several knobs is a small dataclass with methods,
+  not one closure (C901).
 
 ## When stuck
 
