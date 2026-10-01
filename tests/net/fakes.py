@@ -299,6 +299,39 @@ class _Join:
         return True
 
 
+type Answer = Callable[[Peer, int], Awaitable[None]]
+"""What `play_server` does on the n-th `client_command` it gets, counting from 1."""
+
+NO_STATISTICS = b"\x00"
+"""An `award_stats` payload holding no statistics (a VarInt count of 0)."""
+
+
+async def answer_at_once(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
+    """Answer a statistics request at once, as vanilla does: with an award_stats."""
+    await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+
+
+async def never_answer(peer: Peer, request: int) -> None:
+    """Leave a statistics request unanswered."""
+
+
+def play_server(seen: list[Packet], answer: Answer = answer_at_once) -> Handler:
+    """Join like vanilla (`join_server`), then run `answer` for each `client_command`.
+
+    Every serverbound Packet goes into `seen`.
+    """
+
+    async def then(peer: Peer) -> None:
+        requests = 0
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name == "minecraft:client_command":
+                requests += 1
+                await answer(peer, requests)
+
+    return join_server(seen, JoinScript(then=then))
+
+
 @asynccontextmanager
 async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
     """Listen on a free localhost port, running `handler` for each connection.

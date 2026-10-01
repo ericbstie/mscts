@@ -13,6 +13,7 @@ from typing import Self
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.schemas.configuration import CLIENT_INFORMATION
+from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
@@ -46,6 +47,13 @@ _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
 """Teleport Flags bits (wiki Data types; vanilla's `Relative`): which parts add to the pose."""
 
 _PITCH_LIMIT = 90.0
+
+_SYNC_ROUND_TRIPS = 2
+"""How many statistics requests `sync` makes, one after the other.
+
+One is not enough on vanilla: it answers at the start of a tick, before that tick sends
+what the request's predecessors changed (docs/research/2026-09-30-observation-window.md).
+"""
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
@@ -201,6 +209,7 @@ class Bot:
         self._endpoint = endpoint
         self._target = target
         self._timeout_s = timeout_s
+        self._closed = False
 
     @classmethod
     async def connect(
@@ -226,6 +235,16 @@ class Bot:
                 endpoint, codec, bot=name, transcript=transcript, answer=Replies()
             )
         return cls(connection, endpoint, target, name=name, timeout_s=timeout_s)
+
+    @property
+    def closed(self) -> bool:
+        """Whether `close` was called."""
+        return self._closed
+
+    @property
+    def in_play(self) -> bool:
+        """Whether the Bot has joined and is not closed: what `sync` needs."""
+        return not self._closed and self._connection.state is State.PLAY
 
     async def status(self) -> Mapping[str, object]:
         """Ask for the server's status, and return the parsed status JSON.
@@ -314,8 +333,53 @@ class Bot:
                     return packet
                 self._refuse(packet)
 
+    async def sync(self) -> None:
+        """Return once the server has sent everything caused by what it received before.
+
+        The barrier of an Observation window: the Bot asks for its statistics
+        (`client_command`, `REQUEST_STATS`) and takes packets until the answer
+        (`award_stats`), twice, the second request sent only once the first answer has
+        arrived. Vanilla answers at the start of a tick, before that tick sends what it
+        changed, so the second answer comes after a whole tick that started after
+        everything the server had received; Pumpkin answers once per tick too
+        (docs/research/2026-09-30-observation-window.md). Every packet taken is
+        recorded, and the Bot's Replies have already answered each.
+
+        Raises:
+            ProtocolError: The Bot is not in play, or the server disconnected it.
+            TimeoutError: The answers had not arrived within `timeout_s`.
+        """
+        if not self.in_play:
+            msg = f"sync needs a Bot in play, not one in {self._connection.state}"
+            raise ProtocolError(msg)
+        async with self._operation(self._timeout_s):
+            for _ in range(_SYNC_ROUND_TRIPS):
+                await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
+                await self.expect("minecraft:award_stats", timeout_s=self._timeout_s)
+
+    async def drain(self) -> None:
+        """Take every packet that has already arrived, without waiting for another.
+
+        Each is recorded, and the Bot's Replies have already answered it.
+
+        Raises:
+            CodecError: A frame the Bot took does not decode.
+            ConnectionError: The Connection is closed, or the server closed or reset it,
+                and nothing is left to take.
+        """
+        try:
+            while True:
+                try:
+                    await self._connection.recv(timeout_s=0)
+                except TimeoutError:
+                    return
+        except Exception as error:
+            self.failure = error
+            raise
+
     async def close(self) -> None:
         """Close the Bot's Connection. Calling it again does nothing."""
+        self._closed = True
         await self._connection.close()
 
     @contextlib.asynccontextmanager
