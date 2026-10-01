@@ -867,9 +867,18 @@ OBSERVE_CLOSE = "observe:close"     # the Mark that closes it
 HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
                                     # compares (keep_alive, set_time, award_stats; evidence in
                                     # docs/research/2026-09-30-observation-window.md)
+UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any State) whose lists
+                                    # of named entries every Comparison sorts by name first, so
+                                    # their order is no Divergence at all: update_tags (vanilla's
+                                    # order changes per boot; docs/research/2026-10-01-control.md)
+RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
+                                    # random on every run, which no exact Group compares
+                                    # (ADR-0011): minecraft:login_finished.session_id (same
+                                    # evidence)
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
+    # Masks the RANDOM_FIELDS, then applies `masks`.
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
     # a value outside the codec value model. Divergences are grouped by Bot in name order,
     # then in stream order, and within a packet in path order: its gameplay Divergences
@@ -968,7 +977,41 @@ proves it necessary:
      login and configuration packets are compared whole, and a Transcript
      with no window is compared whole. Each side is windowed by its own
      Marks. A packet a window leaves out is no test case, and a Bot with
-     Events only outside the windows still counts as present.
+     Events only outside the windows still counts as present;
+   - the order of the lists `compare.UNORDERED` names, which every copy
+     of a packet (raw and canonical) has sorted before anything else, so
+     their order is no Divergence at all, and paths, Masks included,
+     count the sorted lists. `configuration` and `play` /
+     `minecraft:update_tags`: `tagged_registries` is sorted by
+     `registry`, and each registry's `tags` by `tag_name`, both stably;
+     each tag's `entries` keep their order. Vanilla sends both in an
+     order that changes from one boot to the next (#17: the registry
+     order changed in 2 of 5 boots and the tag order in 9 of 15
+     registries between two; `javap` on the 26.3 server:
+     `TagNetworkSerialization.serializeTagsToNetwork` collects with
+     `Collectors.toMap`, a `HashMap` keyed by the registry's
+     `ResourceKey`, and `serializeToNetwork(registry)` fills a
+     `HashMap<Identifier, IntList>` from `registry.getTags()`; entries
+     come from `TagLoader.tryBuildTag`'s `LinkedHashSet` in tag-file
+     order, so they are the same every boot). The client decodes both
+     into maps. Evidence, with `javap -c -p -constants -v` on the same client
+     jar: `ClientboundUpdateTagsPacket.STREAM_CODEC` is
+     `ByteBufCodecs.map(IdentityHashMap::new,
+     ResourceKey.REGISTRY_STREAM_CODEC, NetworkPayload.STREAM_CODEC)`,
+     and `TagNetworkSerialization$NetworkPayload.STREAM_CODEC` is
+     `ByteBufCodecs.map(HashMap::new, Identifier.STREAM_CODEC,
+     ID_LIST_STREAM_CODEC)` with `ID_LIST_STREAM_CODEC` =
+     `VAR_INT.apply(collection(IntArrayList::new))`. `ByteBufCodecs.map`'s
+     decoder (`ByteBufCodecs$28.decode`) reads the count, then `Map.put`s
+     each key and value in turn, so a repeated name keeps its last value.
+     Registry keys come from `ResourceKey.createRegistryKey`, which
+     interns them (`ResourceKey.create` through a `computeIfAbsent`
+     cache), so the `IdentityHashMap` is keyed by name. Both maps compare
+     by `Map.equals`, order-free, while an `IntArrayList` compares in
+     order. A stable sort keeps each name's values in their order, so two
+     encodings with equal sorted forms give each name the same last
+     value, and decode to equal maps. (Not every equal pair is caught: a
+     name repeated on one side only stays a Divergence.)
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
@@ -1073,27 +1116,6 @@ proves it necessary:
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
-   - `configuration` and `play` / `minecraft:update_tags`:
-     `tagged_registries` is sorted by `registry`, and each registry's
-     `tags` by `tag_name`, both stably; each tag's `entries` keep their
-     order. Evidence, with `javap -c -p -constants -v` on the same client
-     jar: `ClientboundUpdateTagsPacket.STREAM_CODEC` is
-     `ByteBufCodecs.map(IdentityHashMap::new,
-     ResourceKey.REGISTRY_STREAM_CODEC, NetworkPayload.STREAM_CODEC)`,
-     and `TagNetworkSerialization$NetworkPayload.STREAM_CODEC` is
-     `ByteBufCodecs.map(HashMap::new, Identifier.STREAM_CODEC,
-     ID_LIST_STREAM_CODEC)` with `ID_LIST_STREAM_CODEC` =
-     `VAR_INT.apply(collection(IntArrayList::new))`. `ByteBufCodecs.map`'s
-     decoder (`ByteBufCodecs$28.decode`) reads the count, then `Map.put`s
-     each key and value in turn, so a repeated name keeps its last value.
-     Registry keys come from `ResourceKey.createRegistryKey`, which
-     interns them (`ResourceKey.create` through a `computeIfAbsent`
-     cache), so the `IdentityHashMap` is keyed by name. Both maps compare
-     by `Map.equals`, order-free, while an `IntArrayList` compares in
-     order. A stable sort keeps each name's values in their order, so two
-     encodings with equal sorted forms give each name the same last
-     value, and decode to equal maps. (Not every equal pair is caught: a
-     name repeated on one side only stays a Divergence.)
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡
@@ -1120,7 +1142,16 @@ proves it necessary:
    sides, wherever the path is present: presence is ignored, so a field
    one side lacks is not a Divergence. A path ending in a list index
    removes that element, and the list closes up. Paths apply to the
-   canonical form (step 2). A
+   canonical form (step 2). Before its Group's own Masks, every
+   Comparison masks the **random fields** (`compare.RANDOM_FIELDS`,
+   ADR-0011), which vanilla draws at random on every run, so no exact
+   Group compares them (a statistical Group compares their
+   distribution): `login_finished.session_id`, which vanilla draws with
+   `UUID.randomUUID()` when its first connection opens
+   (`ServerConnectionListener.getSessionId`, reset when no connection
+   is left) and the client only passes to its telemetry
+   (`ClientTelemetryManager.createWorldSessionManager`; `javap` on 26.3,
+   #17). A
    Mask that matches nothing is not an error, since a Mask may name
    packets a Group never sees; a field Mask on a packet with no
    fields does nothing, so its payload still differs and the Self-check
@@ -1453,11 +1484,16 @@ then record the answer in an ADR:
   the shallowest canonically equal path instead? **Decided with the
   Report:** the Report groups them per packet (a count of differing
   leaves and a few examples); `compare` keeps reporting every leaf.
+  (Since #17 `update_tags` is sorted before anything, so its order
+  yields none.)
 - ADR-0007 requires a Self-check with no network traffic Divergences, on the
   premise that vanilla sends identical bytes each run. The server writes
   `update_tags` from hash maps (worker P); if its order varies between
   runs, the join Self-check will show network traffic Divergences. Check it
   when the join Group's Self-check runs, before relaxing anything.
+  **Decided (#17):** it varies from boot to boot, so `compare.UNORDERED`
+  sorts it before anything and its order is no Divergence (Comparison
+  semantics, step 1).
 - Should the text component **list form** (`["a", "b"]` ≡
   `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
   `createFromList` is `first.copy().append(rest)`) be canonical? No

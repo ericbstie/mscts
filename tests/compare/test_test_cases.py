@@ -305,26 +305,25 @@ def test_the_differing_test_cases_say_how_they_differ() -> None:
     assert set(verdict.differing) < set(verdict.test_cases)  # the others are the same
 
 
-def _tags(*registries: str) -> Packet:
-    tagged = [{"registry": registry, "tags": []} for registry in registries]
-    return packet(
-        "minecraft:update_tags", state=State.CONFIGURATION, fields={"tagged_registries": tagged}
-    )
+def _extra(*extra: object) -> Packet:
+    """A status whose description has `extra`, the text components after its own."""
+    return _status(json.dumps({"description": {"text": "a", "extra": list(extra)}}))
+
+
+EXTRA = "status_response.description.extra[]"
 
 
 def test_a_test_case_with_any_gameplay_difference_differs_in_gameplay() -> None:
-    # a and b swap places (network traffic: the client reads a map), c becomes d (gameplay).
-    verdict = _verdict([_tags("a", "b", "c")], [_tags("b", "a", "d")])
-    name = "configuration:update_tags.tagged_registries[].registry"
+    # "b" is written two ways (network traffic: the client reads both alike); 5 becomes 6
+    # (gameplay). Both are elements of the same list, so of one test case.
+    verdict = _verdict([_extra({"text": "b"}, 5)], [_extra("b", 6)])
     assert sorted((d.test_case, d.observability) for d in verdict.divergences) == [
-        (name, Observability.GAMEPLAY),
-        (name, Observability.NETWORK_TRAFFIC),
-        (name, Observability.NETWORK_TRAFFIC),
+        (EXTRA, Observability.GAMEPLAY),
+        (EXTRA, Observability.NETWORK_TRAFFIC),
     ]
-    assert verdict.differing == {name: Observability.GAMEPLAY}
+    assert verdict.differing == {EXTRA: Observability.GAMEPLAY}
 
 
 def test_a_test_case_with_only_network_traffic_differences_differs_in_network_traffic() -> None:
-    verdict = _verdict([_tags("a", "b")], [_tags("b", "a")])
-    name = "configuration:update_tags.tagged_registries[].registry"
-    assert verdict.differing == {name: Observability.NETWORK_TRAFFIC}
+    verdict = _verdict([_extra({"text": "b"})], [_extra("b")])
+    assert verdict.differing == {EXTRA: Observability.NETWORK_TRAFFIC}

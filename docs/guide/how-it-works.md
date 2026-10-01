@@ -81,8 +81,8 @@ differences, in their own section, but compliance scores count only gameplay
 ones.
 
 A difference is only network traffic where such a rule says so. Today the
-canonical table covers the server list answer and the tag lists sent while
-joining. Any other difference counts as gameplay.
+canonical table covers the server list answer. Any other difference counts
+as gameplay.
 
 ## Masks
 
@@ -91,9 +91,15 @@ keep-alive ids, teleport ids. A **Mask** excludes one such field from the
 Comparison. A Mask must give a reason, and that reason must show the value
 has no gameplay meaning.
 
-mscts never masks anything a player could observe, even if it is random.
-Random mechanics, such as mob spawning and loot, will be compared
-statistically instead, as distributions over many runs.
+A few fields hold a value vanilla picks at random every time, such as the
+session id each login gets. Two runs of vanilla never agree on them, so
+mscts leaves them out for every Group. Vanilla also sends the tag lists in
+an order that changes each time it starts, and the client reads them into
+lookup tables, so mscts compares them sorted by name.
+
+Otherwise mscts never masks anything a player could observe, even if it
+is random. Random mechanics, such as mob spawning and loot, will be
+compared statistically instead, as distributions over many runs.
 
 ## Self-checks
 
