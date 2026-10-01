@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import cast
 
+from mscts.codec.registry_names import registry_names
 from mscts.codec.schema import (
     BOOL,
     BYTE,
@@ -34,17 +35,12 @@ from mscts.codec.schema import (
     WireType,
 )
 from mscts.codec.wire import Reader, WireError, Writer
+from mscts.target import TARGET
 
 SERVERBOUND: Mapping[str, Schema] = {
     # Chat Command: a command, without its slash, run as the player (unsigned: a command
     # with no signed argument).
     "minecraft:chat_command": Schema(command=String(32767)),
-}
-
-CLIENTBOUND: Mapping[str, Schema] = {
-    # System Chat Message: a message from the server, such as a command's feedback. The
-    # content is a text component, kept as its NBT bytes until text components decode.
-    "minecraft:system_chat": Schema(content=NBT, overlay=BOOL),
 }
 
 # The command tree.
@@ -281,6 +277,17 @@ def commands_schema(parsers: Sequence[str]) -> Schema:
             `minecraft:command_argument_type` registry.
     """
     return Schema(nodes=PrefixedArray(CommandNode(parsers)), root_index=VAR_INT)
+
+
+CLIENTBOUND: Mapping[str, Schema] = {
+    # Commands: the command tree, the commands this player may run and their arguments.
+    "minecraft:commands": commands_schema(
+        registry_names(TARGET.minecraft_version, "minecraft:command_argument_type")
+    ),
+    # System Chat Message: a message from the server, such as a command's feedback. The
+    # content is a text component, kept as its NBT bytes until text components decode.
+    "minecraft:system_chat": Schema(content=NBT, overlay=BOOL),
+}
 
 
 def root_literals(tree: Mapping[str, object]) -> frozenset[str]:

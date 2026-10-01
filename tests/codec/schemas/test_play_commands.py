@@ -1,10 +1,13 @@
 """The play schemas a command travels in, round-tripped through hand-built bytes."""
 
 import struct
+from pathlib import Path
+from typing import cast
 
 import pytest
 
 from mscts.codec.packets import Codec, CodecError, Direction, State
+from mscts.codec.registry_names import registry_names
 from mscts.codec.schemas.play.commands import (
     PROPERTIES,
     CommandNode,
@@ -282,3 +285,78 @@ def test_root_literals_refuses_an_index_out_of_the_tree(
 ) -> None:
     with pytest.raises(ValueError, match=error):
         root_literals(tree)
+
+
+# The 26.3 command tree: the registry's parser list, and the trees each server sent an
+# operator (docs/research/2026-10-01-control.md, "The trees each server sends").
+
+PARSERS_26_3 = registry_names("26.3", "minecraft:command_argument_type")
+DATA = Path(__file__).parent / "data"
+RECORDED = {
+    # (payload after the packet id, nodes, root commands)
+    "vanilla 26.3": ("vanilla-26.3-operator-commands.bin", 2399, 92),
+    "Pumpkin 4426d11": ("pumpkin-26.3-operator-commands.bin", 1402, 100),
+}
+
+
+@pytest.mark.parametrize(("file", "nodes", "roots"), RECORDED.values(), ids=RECORDED.keys())
+def test_a_recorded_tree_decodes_and_encodes_byte_for_byte(
+    file: str, nodes: int, roots: int
+) -> None:
+    payload = (DATA / file).read_bytes()
+    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:commands")
+    data = bytes([packet_id]) + payload
+
+    packet = CODEC.decode(State.PLAY, CLIENTBOUND, data)
+
+    tree = packet.fields
+    assert tree is not None
+    assert len(cast("list[object]", tree["nodes"])) == nodes
+    assert len(root_literals(tree)) == roots
+    assert {"setblock", "tick", "tellraw"} <= root_literals(tree)
+    assert CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:commands", tree) == data
+
+
+# A sample of each parser's properties, for the parsers that have some.
+SAMPLE_PROPERTIES = {
+    "brigadier:float": bytes([0x00]),
+    "brigadier:double": bytes([0x00]),
+    "brigadier:integer": bytes([0x00]),
+    "brigadier:long": bytes([0x00]),
+    "brigadier:string": bytes([0x00]),
+    "minecraft:entity": bytes([0x00]),
+    "minecraft:score_holder": bytes([0x00]),
+    "minecraft:time": struct.pack(">i", 0),
+    "minecraft:resource_or_tag": string("minecraft:block"),
+    "minecraft:resource_or_tag_key": string("minecraft:block"),
+    "minecraft:resource": string("minecraft:block"),
+    "minecraft:resource_key": string("minecraft:block"),
+    "minecraft:resource_selector": string("minecraft:block"),
+}
+
+
+def test_every_parser_with_properties_is_a_26_3_parser() -> None:
+    assert set(PROPERTIES) <= set(PARSERS_26_3)
+    assert set(SAMPLE_PROPERTIES) == set(PROPERTIES)
+
+
+@pytest.mark.parametrize("parser", PARSERS_26_3)
+def test_every_26_3_parser_decodes(parser: str) -> None:
+    schema = commands_schema(PARSERS_26_3)
+    argument = bytes([ARGUMENT, 0x00]) + string("x") + bytes([PARSERS_26_3.index(parser)])
+    root = bytes([ROOT, 0x01, 0x01])
+    data = bytes([0x02]) + root + argument + SAMPLE_PROPERTIES.get(parser, b"") + bytes([0x00])
+
+    reader = Reader(data)
+    tree = schema.read(reader)
+    reader.expect_end()
+
+    assert cast("list[dict[str, object]]", tree["nodes"])[1]["parser"] == parser
+
+
+def test_a_parser_id_26_3_does_not_have_is_refused_naming_it() -> None:
+    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:commands")
+    unknown = len(PARSERS_26_3)
+    data = bytes([packet_id, 0x01, ARGUMENT, 0x00]) + string("x") + bytes([unknown, 0x00])
+    with pytest.raises(CodecError, match=f"unknown parser id {unknown}"):
+        CODEC.decode(State.PLAY, CLIENTBOUND, data)
