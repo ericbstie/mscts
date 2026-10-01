@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from mscts.codec.registry_names import registry_names
 from mscts.codec.schema import (
     BOOL,
+    DOUBLE,
     FLOAT,
     IDENTIFIER,
     INT,
@@ -22,6 +23,7 @@ from mscts.codec.schema import (
     Schema,
     SchemaError,
     String,
+    Tagged,
     WireType,
 )
 from mscts.codec.shapes import (
@@ -318,6 +320,27 @@ _CONSUME_EFFECT = registry_dispatch(
         "minecraft:play_sound": SOUND_EVENT,
     },
 )
+
+ITEM_STACK_TEMPLATE: Schema = Schema(
+    item=REGISTRY_ID, count=VAR_INT, components=Deferred(lambda: PATCH)
+)
+"""A stack inside a component or a particle (`ItemStackTemplate.STREAM_CODEC`).
+
+The item, then the count, then the patch: not the `SLOT` order, and never empty. The patch is
+the table's own, so a template's components are read with the same layouts.
+"""
+
+# How the tooltip shows an attribute modifier: the type of `ItemAttributeModifiers.Display`
+# (ordinals 0 to 2, from `Display$Type`), then a text for an override.
+_ATTRIBUTE_DISPLAY = Tagged(
+    "type", "value", (("default", None), ("hidden", None), ("override", TEXT_COMPONENT))
+)
+_ATTRIBUTE_MODIFIER_ENTRY = Schema(
+    attribute=REGISTRY_ID,
+    modifier=Schema(id=IDENTIFIER, amount=DOUBLE, operation=ENUM),
+    slot=ENUM,
+    display=_ATTRIBUTE_DISPLAY,
+)
 _SIGN_LINES = FixedArray(TEXT_COMPONENT, 4)
 _SIGN_TEXT = Schema(
     messages=_SIGN_LINES,
@@ -347,6 +370,9 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:lore": PrefixedArray(TEXT_COMPONENT, max_length=256),  # LORE
     "minecraft:rarity": ENUM,  # RARITY
     "minecraft:enchantments": _ENCHANTMENTS,  # ENCHANTMENTS
+    "minecraft:attribute_modifiers": PrefixedArray(
+        _ATTRIBUTE_MODIFIER_ENTRY
+    ),  # ATTRIBUTE_MODIFIERS
     "minecraft:custom_model_data": Schema(  # CUSTOM_MODEL_DATA
         floats=PrefixedArray(FLOAT),
         flags=PrefixedArray(BOOL),
@@ -370,6 +396,7 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
         has_consume_particles=BOOL,
         on_consume_effects=PrefixedArray(_CONSUME_EFFECT),
     ),
+    "minecraft:use_remainder": ITEM_STACK_TEMPLATE,  # USE_REMAINDER
     "minecraft:use_cooldown": Schema(  # USE_COOLDOWN
         seconds=FLOAT, group=PrefixedOptional(IDENTIFIER)
     ),
@@ -446,6 +473,10 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:map_id": VAR_INT,  # MAP_ID
     "minecraft:map_decorations": NBT_TAG,  # MAP_DECORATIONS
     "minecraft:map_post_processing": ENUM,  # MAP_POST_PROCESSING
+    "minecraft:charged_projectiles": PrefixedArray(  # CHARGED_PROJECTILES
+        ITEM_STACK_TEMPLATE, max_length=1024
+    ),
+    "minecraft:bundle_contents": PrefixedArray(ITEM_STACK_TEMPLATE),  # BUNDLE_CONTENTS
     "minecraft:potion_contents": Schema(  # POTION_CONTENTS
         potion=PrefixedOptional(REGISTRY_ID),
         custom_color=PrefixedOptional(INT),
@@ -493,12 +524,22 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
         Schema(pattern=_BANNER_PATTERN, color=ENUM)
     ),
     "minecraft:base_color": ENUM,  # BASE_COLOR
+    "minecraft:pot_decorations": Schema(  # POT_DECORATIONS
+        back=PrefixedOptional(ITEM_STACK_TEMPLATE),
+        left=PrefixedOptional(ITEM_STACK_TEMPLATE),
+        right=PrefixedOptional(ITEM_STACK_TEMPLATE),
+        front=PrefixedOptional(ITEM_STACK_TEMPLATE),
+    ),
+    "minecraft:container": PrefixedArray(  # CONTAINER
+        PrefixedOptional(ITEM_STACK_TEMPLATE), max_length=256
+    ),
     "minecraft:block_state": PrefixedArray(  # BLOCK_STATE
         Schema(name=String(32767), value=String(32767))
     ),
     "minecraft:bees": PrefixedArray(  # BEES
         Schema(entity_data=_TYPED_DATA, ticks_in_hive=VAR_INT, min_ticks_in_hive=VAR_INT)
     ),
+    "minecraft:sulfur_cube_content": ITEM_STACK_TEMPLATE,  # SULFUR_CUBE_CONTENT
     "minecraft:lock": NBT_TAG,  # LOCK
     "minecraft:container_loot": NBT_TAG,  # CONTAINER_LOOT
     "minecraft:break_sound": SOUND_EVENT,  # BREAK_SOUND

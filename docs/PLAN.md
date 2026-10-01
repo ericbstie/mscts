@@ -51,7 +51,7 @@ test needs it:
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
 | `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
 | `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
-| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`) |
+| `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
 | `codec/items.py` | `SLOT`, the item stack field |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
@@ -280,6 +280,8 @@ class Patch:                       # WireType[dict[str, object]]
 # A patch is {added: [{type: "minecraft:damage", value: 5}, ...], removed: ["minecraft:max_stack_size"]},
 # in wire order (a repeated type is kept). Errors read "added: 0: minecraft:damage: ...".
 PATCH: Patch                       # Patch(TABLE)
+ITEM_STACK_TEMPLATE: Schema        # a stack inside a component or a particle: {item, count, components}.
+                                   # Item, then count, then patch: not SLOT's order, and never empty
 
 # codec/items.py
 SLOT: WireType[dict[str, object] | None]  # None (a count of 0) | {count, item, components: <a patch>}
