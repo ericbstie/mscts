@@ -1,15 +1,17 @@
 """The Reference's flat world at the default ServerSpec, as a joining Bot sees it.
 
 Pins the facts in support.chunks that the Pumpkin Adapter's world save is checked against
-(tests/adapters/test_pumpkin_world.py), on the session's shared Reference.
+(tests/adapters/test_pumpkin_world.py), on the session's shared Reference. The join may send
+the first `player_position` again, so only what it repeats is asserted (docs/research/
+2026-09-26-join.md, "More than one `player_position` at join").
 """
 
 import pytest
 from support.chunks import (
-    FLAT_SPAWN_Y,
     OVERWORLD_SECTIONS,
     decode_chunk,
     play_packets,
+    unlike_a_flat_join,
     unlike_the_reference_flat_world,
 )
 
@@ -38,8 +40,7 @@ async def test_a_bot_joins_a_flat_peaceful_world_at_y_minus_60(reference: Instan
     ]
     assert chunks
     assert [d for chunk in chunks for d in unlike_the_reference_flat_world(chunk)] == []
-    (position,) = play_packets(transcript, "minecraft:player_position")
-    assert (position.fields or {}).get("y") == FLAT_SPAWN_Y
+    assert unlike_a_flat_join(play_packets(transcript, "minecraft:player_position")) == []
     # Change Difficulty (wiki Packets, revision 3790659): an Unsigned Byte difficulty
     # (0 peaceful), then a Boolean, locked.
     (difficulty,) = play_packets(transcript, "minecraft:change_difficulty")
