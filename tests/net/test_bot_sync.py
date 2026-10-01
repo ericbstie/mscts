@@ -24,6 +24,8 @@ from tests.net.fakes import (
 CODEC = Codec.for_target(TARGET)
 REQUEST, ANSWER = "minecraft:client_command", "minecraft:award_stats"
 CLIENTBOUND, SERVERBOUND = Direction.CLIENTBOUND, Direction.SERVERBOUND
+BLOCK = bytes.fromhex("0000004000001fc401")
+"""A `block_update` payload: it decodes strictly, so a stand-in one is a position and a state."""
 
 
 def received(transcript: Transcript) -> list[str]:
@@ -55,7 +57,7 @@ def test_sync_takes_everything_the_server_sent_before_its_last_answer() -> None:
     async def late(peer: Peer, request: int) -> None:
         if request == 2:
             await asyncio.sleep(0.2)
-            await peer.write(peer.raw_frame("minecraft:block_update", b"\x01"))
+            await peer.write(peer.raw_frame("minecraft:block_update", BLOCK))
         await answer_at_once(peer, request)
 
     async def use(bot: Bot) -> list[str]:
@@ -110,7 +112,7 @@ def test_drain_takes_what_has_arrived_and_does_not_wait_for_more() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 
     async def with_stragglers(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
-        straggler = peer.raw_frame("minecraft:block_update", b"\x01")
+        straggler = peer.raw_frame("minecraft:block_update", BLOCK)
         await peer.write(peer.raw_frame(ANSWER, NO_STATISTICS) + straggler + straggler)
 
     async def use(bot: Bot) -> tuple[int, int, float]:

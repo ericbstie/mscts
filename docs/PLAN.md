@@ -49,12 +49,13 @@ test needs it:
 | `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, optional global pos; the painting variant and resolvable profile live in `codec/shapes.py`), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
-| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
+| `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SECTION_POSITION`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `ComponentType` and `COMPONENT_TYPE` (a type by name), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
 | `codec/items.py` | `SLOT`, the item stack field, and `HASHED_SLOT`, the hashed stack a client sends (the wire type only) |
 | `codec/schemas/<state>.py` | the Target's packet schemas, one module per State; play is a package, one module per mechanic |
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/schemas/play/commands.py` | `chat_command`, `system_chat` and `commands`: the command tree as `CommandNode`s (every 26.3 parser, its id read through `registry_names`), and `root_literals(tree)`, the commands a player may run |
+| `codec/schemas/play/blocks.py` | the block packets' schemas: `block_update`, `section_blocks_update` (its blocks decode to `{x, y, z, state}`), `block_entity_data`, `block_event`, `block_destruction` |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
 | `codec/data/26.3/` | generated `packets.json` and `registry_names.json` (the data component, consume effect and command argument parser names in protocol id order). Committed, regenerated and checked by `mise run regen:packets` |
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id |
@@ -266,6 +267,7 @@ class Holder:                    # VarInt 0 + the value, else registry id + 1: {
 class Either:                    # a Bool, then the left (true) or right type: {left_key: v} | {right_key: v}
     left_key: str; left: WireType[object]; right_key: str; right: WireType[object]
 HOLDER_SET: WireType[dict]       # VarInt 0 + a tag, else n + 1 and n ids: {tag: "minecraft:logs"} | {ids: [id, ...]}
+SECTION_POSITION: WireType[dict[str, int]]  # {x, y, z} of a chunk section, packed 22/20/22 bits into a Long
 SOUND_EVENT: Holder              # {reference: id} | {direct: {location, fixed_range: float | None}}
 GLOBAL_POS: Schema               # {dimension, pos: {x, y, z}}
 PAINTING_VARIANT: WireType[dict] # Holder: {reference: id} | {direct: {width, height, asset_id, title, author}}
