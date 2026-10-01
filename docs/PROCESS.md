@@ -306,6 +306,12 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-01 | worker AM (#29 block events) | Wrote a throwaway recorder twice (Control commands in windows, each watcher packet as JSONL); every pin payload came from it | **adopt**: increment 0 of #30's brief commits it as `scripts/research/record.py` |
+| 2026-10-01 | worker AM | Making `block_update` strict broke a live test's test-case names, seen only in the reference tier | **adopt** (no change): briefs already run both tiers before the PR, and the lead runs them before merging |
+| 2026-10-01 | worker AM | The probe's Self-check failed once in 20 under load after #17 (the watcher missed a `block_update`) | **adopt**: #88 (a joined Bot has the chunks around it), to AO; one failure in six loop runs, only the run under load |
+| 2026-10-01 | worker AM | `VEC3` is new; three older inline spellings of it remain | **defer**: the next refactor or audit batch |
+| 2026-10-01 | worker AM | Three heredoc slips | **adopt** (no change): the rule stays; the common brief file repeats it |
+| 2026-10-01 | lead | Briefs repeated the same 30 lines of rules | **adopt**: `scratchpad/brief-common.txt` holds them; a brief names it and keeps only the issue's specifics |
 | 2026-10-01 | worker AL (#17 Control) | `Bot.sync()` was no barrier behind a command (8 of 80 plays), though #18 had passed 20 of 20 once; about 2 h of diagnosis | **adopt**: brief template, a change to a barrier or window is done when its Self-check passes 20 of 20 five times in a row, with a javap account of every queue it crosses |
 | 2026-10-01 | worker AL | Pumpkin runs each `chat_command` in its own task, so answers come out of order (71 of 100) | **adopt**: protocol-research skill, measure packet order on both servers (100 runs) and read where the Candidate dispatches the packet before fixing an order contract |
 | 2026-10-01 | worker AL | #17 needed #19's generated name list before #19 merged: two cherry-picks and a conflicted rebase | **adopt**: tech-lead skill, a generated file two briefs need lands first, as its own small PR |

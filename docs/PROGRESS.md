@@ -87,8 +87,8 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AM (sonnet): #29 block and world event schemas, branch `issue-29-block-events`:
-  the sound seeds join `RANDOM_FIELDS`, then the live tiers.
+- AO (sonnet): #88, a joined Bot has the chunks around it before a Group acts
+  (the probe's Self-check still fails about once in 20 under load).
 - AN (sonnet): #83 (console tail on a tier failure), then #84 (the Self-check tier
   driven by the Group registry), with the move off `tests/support/commands.py` and
   the flat world test's second `player_position`.
@@ -231,6 +231,10 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   for the marker before the barrier; 440 Self-check plays without a failure).
   Pumpkin answers commands out of order. Filed #84 (one Self-check tier driven by
   the registry), because G5 is broken: check 11–18 s, reference tier 147–303 s.
+- Merged #87 (#29: block and world event schemas; the sound seeds are random
+  fields; a random pitch is a Group's own Mask, never a global one). Pumpkin's
+  block and world events all decode. Filed #88: under load a watcher can miss a
+  `block_update` in a chunk it has not received yet.
 
 ### 2026-09-30 — session 4: what to test between servers
 
