@@ -333,6 +333,21 @@ class Bot:
                     return packet
                 self._refuse(packet)
 
+    async def command(self, command: str) -> None:
+        """Run `command`, without its leading `/`, as this Bot's player.
+
+        Sends it as an unsigned `chat_command` and returns at once: whatever the server
+        answers arrives later, like any other packet.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        if not self.in_play:
+            msg = f"command needs a Bot in play, not one in {self._connection.state}"
+            raise ProtocolError(msg)
+        async with self._operation(self._timeout_s):
+            await self._connection.send("minecraft:chat_command", command=command)
+
     async def sync(self) -> None:
         """Return once the server has sent everything caused by what it received before.
 

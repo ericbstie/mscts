@@ -41,6 +41,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
+| `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.sync()` | Waits until the server has answered a request sent after everything else, so everything it sent because of what came before has arrived. Needs a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
