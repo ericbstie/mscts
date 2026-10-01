@@ -15,9 +15,8 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from support.reference import attached, booted
+from support.reference import booted
 
-from mscts.run import Attached
 from mscts.runner import Instance
 
 type BootReference = Callable[..., contextlib.AbstractAsyncContextManager[Instance]]
@@ -38,9 +37,3 @@ async def reference(
 def boot_reference(cache_dir: Path, tmp_path: Path) -> BootReference:
     """Boot a Reference of the test's own, with ServerSpec changes such as view_distance=4."""
     return functools.partial(booted, cache_dir, tmp_path / "reference")
-
-
-@pytest.fixture(scope="session")
-def reference_attached(reference: Instance) -> Attached:
-    """The session's Reference Instance as a Run's Attached side (the fixture owns it)."""
-    return attached(reference)
