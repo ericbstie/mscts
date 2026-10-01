@@ -789,7 +789,7 @@ class OperatorBot:                  # Control through a Bot called CONTROL_PLAYE
     # 3. root_literals of the last `commands` tree the Bot received (else expect one): its
     #    name, then "tellraw", must be there, else CommandMissing(name), nothing sent. A
     #    tree root_literals refuses → ProtocolError, as the Bot's failure.
-    # 4. drain, then send the command, then the marker `tellraw @s "<MARKER_PREFIX><n>"`
+    # 4. send the command, then the marker `tellraw @s "<MARKER_PREFIX><n>"`
     #    (n counts this OperatorBot's runs from 1), then expect the system_chat whose raw
     #    bytes hold the token (text components are not decoded yet), then sync. Returns
     #    every system_chat that arrived from sending the command to the end of that sync,
