@@ -29,6 +29,10 @@ The development tests are split into tiers by the infrastructure they need.
 Install vanilla before the reference tier with `mise run install:reference`.
 Tests never install anything themselves.
 
+When a test in one of the server tiers fails, look at the end of its failure
+output: for every server it used, an `Instance console` section shows the
+last lines of that server's console.
+
 Run one test with:
 
 ```sh
