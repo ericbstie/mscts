@@ -59,6 +59,31 @@ def test_the_section_names_the_console_file_and_shows_only_its_last_lines(
     assert "console line 60\n" not in out, out
 
 
+def test_a_passing_test_shows_no_console(suite: pytest.Pytester) -> None:
+    """Pin: `-rA` prints what a passing test's report holds, sections included."""
+    suite.makepyfile("def test_passes(reference):\n    assert True\n")
+
+    result = suite.runpytest("-rA")
+
+    result.assert_outcomes(passed=1)
+    assert SECTION not in result.stdout.str(), result.stdout.str()
+
+
+def test_a_failing_test_shows_the_console_of_an_instance_a_fixture_got_through_another(
+    suite: pytest.Pytester,
+) -> None:
+    """Pin: the shared Reference reaches a test through `reference_attached`, not by name."""
+    suite.makeconftest(
+        CONFTEST + "\n\n@pytest.fixture\ndef attached(reference):\n    return reference.endpoint\n"
+    )
+    suite.makepyfile("def test_fails(attached):\n    assert False\n")
+
+    result = suite.runpytest()
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines([f"*{SECTION} (reference)*", "console line 100"])
+
+
 def test_a_failing_test_shows_the_console_of_an_instance_it_started_below_its_tmp_path(
     suite: pytest.Pytester,
 ) -> None:
