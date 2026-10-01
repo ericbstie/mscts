@@ -14,7 +14,9 @@ from typing import Any, cast
 
 from mscts.bot import Bot
 from mscts.codec.items import SLOT
+from mscts.codec.packets import Packet
 from mscts.codec.schema import SHORT, VAR_INT, Schema
+from mscts.codec.wire import WireError
 from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -71,21 +73,35 @@ async def operator_bot(instance: Instance, server: str) -> AsyncIterator[tuple[B
         await bot.close()
 
 
-async def given_slots(bot: Bot, transcript: Transcript, argument: str) -> list[bytes]:
-    """Give the operator `argument`; the payloads of every `container_set_slot` that follows.
+async def given_slots(
+    bot: Bot, transcript: Transcript, argument: str, *, wait_s: float = 10.0
+) -> list[bytes]:
+    """Give the operator `argument`; the payloads of the `container_set_slot`s it causes.
 
-    The Bot's barrier (`sync`) ends the wait: the server has sent everything the command
-    caused when it returns. The payloads are the transcript's, so a stack the Codec cannot
-    decode is the caller's to report.
+    It takes packets until one carries a stack (or `wait_s` passes, when the server sends
+    none), then until the Bot's barrier (`sync`) answers, for whatever else the command
+    sent. The barrier alone is not enough: Pumpkin runs a command after the tick it was
+    sent in, so the barrier can answer first. The payloads are the transcript's, so a stack
+    the Codec cannot decode is the caller's to report.
     """
     first = len(transcript.events)
     await command(bot, f"give {OPERATOR} minecraft:{argument}")
+    with contextlib.suppress(TimeoutError):
+        await bot.expect("minecraft:container_set_slot", timeout_s=wait_s, where=_a_stack)
     await bot.sync()
     return [
         event.packet.payload
         for event in transcript.events[first:]
         if event.packet.name == "minecraft:container_set_slot"
     ]
+
+
+def _a_stack(packet: Packet) -> bool:
+    """Whether the `container_set_slot` holds a stack, or bytes that are none (not empty)."""
+    try:
+        return bool(stacks_of(read_slots([packet.payload])))
+    except WireError:
+        return True
 
 
 async def clear(bot: Bot) -> None:
