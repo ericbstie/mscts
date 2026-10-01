@@ -2,11 +2,12 @@
 
 Pinned with `javap` on `ClientboundSetEquipmentPacket` (a do-while: a slot byte, whose top bit says
 another follows, then an optional item stack) and on `EquipmentSlot` (the eight constants, whose
-ordinals are the slot ids). The stacks are stood in for by a Byte, since the item stack codec is
-#19's; `EQUIPMENT` itself refuses a stack until then.
+ordinals are the slot ids). Most tests stand in a Byte for the stacks; `EQUIPMENT` itself holds
+slots (`ItemStack.OPTIONAL_STREAM_CODEC`).
 """
 
 import pytest
+from support.items import stack
 
 from mscts.codec.equipment import EQUIPMENT, SLOTS, EquipmentList
 from mscts.codec.schema import BYTE, WireType
@@ -101,8 +102,19 @@ def test_equipment_is_written_from_a_list_or_tuple() -> None:
     assert written(BYTES, ({"slot": "head", "item": 1},)) == bytes.fromhex("05 01")
 
 
-def test_equipment_refuses_an_item_stack_until_the_item_stack_codec_lands() -> None:
-    with pytest.raises(WireError, match=r"^0: item: item stack: needs #19$"):
-        read_all(EQUIPMENT, bytes.fromhex("00 00"))
-    with pytest.raises(WireError, match=r"^0: item: item stack: needs #19$"):
-        written(EQUIPMENT, [{"slot": "mainhand", "item": None}])
+def test_the_items_of_equipment_are_slots_that_may_be_empty() -> None:
+    # The head holds 2 of item 55, then the main hand is empty.
+    encoded = bytes.fromhex("85 02 37 00 00  00 00")
+    value = [{"slot": "head", "item": stack(2, 55)}, {"slot": "mainhand", "item": None}]
+    assert read_all(EQUIPMENT, encoded) == value
+    assert written(EQUIPMENT, value) == encoded
+
+
+def test_a_stack_the_codec_cannot_read_is_refused_naming_the_slot_and_the_component() -> None:
+    # One of item 55 with one added component, of type 122: there are 122 types (0 to 121).
+    with pytest.raises(
+        WireError, match=r"^0: item: components: added: 0: unknown data component type id 122$"
+    ):
+        read_all(EQUIPMENT, bytes.fromhex("00 01 37 01 00 7a"))
+    with pytest.raises(WireError, match=r"^0: item: count: 0 is not positive"):
+        written(EQUIPMENT, [{"slot": "mainhand", "item": stack(0, 55)}])

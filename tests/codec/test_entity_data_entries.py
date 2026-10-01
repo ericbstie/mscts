@@ -8,6 +8,7 @@ serializer's `StreamCodec` layout, not produced by the Codec.
 import uuid
 
 import pytest
+from support.items import stack
 
 from mscts.codec.entity_data import ENTITY_DATA, SERIALIZERS
 from mscts.codec.schema import WireType
@@ -81,6 +82,9 @@ SAMPLES: list[tuple[str, str, object]] = [
     ("component", "08 0003 616263", STRING_TAG),
     ("optional_component", "00", None),
     ("optional_component", "01 08 0003 616263", STRING_TAG),
+    ("item_stack", "00", None),
+    ("item_stack", "03 37 00 00", stack(3, 55)),
+    ("item_stack", "01 37 01 00 03 07", stack(1, 55, damage=7)),
     ("boolean", "01", True),
     ("rotations", VECTOR_HEX, VECTOR),
     ("block_pos", POSITION_HEX, POSITION),
@@ -158,8 +162,8 @@ def test_the_serializers_are_those_of_26_3_in_registration_order() -> None:
     assert SERIALIZERS.names == SERIALIZER_NAMES
 
 
-def test_every_serializer_but_the_item_stack_has_a_sample() -> None:
-    assert {name for name, _, _ in SAMPLES} == set(SERIALIZER_NAMES) - {"item_stack"}
+def test_every_serializer_has_a_sample() -> None:
+    assert {name for name, _, _ in SAMPLES} == set(SERIALIZER_NAMES)
 
 
 @pytest.mark.parametrize(("name", "value_hex", "value"), SAMPLES)
@@ -213,11 +217,15 @@ def test_the_string_serializer_holds_at_most_32767_characters() -> None:
         written(ENTITY_DATA, [entry(0, "string", "a" * 32768)])
 
 
-def test_the_item_stack_serializer_needs_the_item_stack_codec() -> None:
-    with pytest.raises(WireError, match=r"^0: item_stack: item stack: needs #19$"):
-        read_all(ENTITY_DATA, bytes.fromhex("08 07 01 37 00 00 ff"))
-    with pytest.raises(WireError, match=r"^0: item_stack: item stack: needs #19$"):
-        written(ENTITY_DATA, [entry(8, "item_stack", None)])
+def test_an_item_stack_the_codec_cannot_read_is_refused_naming_the_entry_and_the_component() -> (
+    None
+):
+    # One of item 55 with one added component, of type 122: there are 122 types (0 to 121).
+    error = r"^0: item_stack: components: added: 0: unknown data component type id 122$"
+    with pytest.raises(WireError, match=error):
+        read_all(ENTITY_DATA, bytes.fromhex("08 07 01 37 01 00 7a ff"))
+    with pytest.raises(WireError, match=r"^0: item_stack: count: 0 is not positive"):
+        written(ENTITY_DATA, [entry(8, "item_stack", stack(0, 55))])
 
 
 def test_no_entries_is_just_the_terminator() -> None:

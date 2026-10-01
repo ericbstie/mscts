@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Mapping
 
 import pytest
+from support.items import stack
 
 from mscts.codec.equipment import EQUIPMENT
 from mscts.codec.packets import Codec, CodecError, Direction, State
@@ -445,6 +446,11 @@ RECORDED_METADATA = [
             metadata(20, "pig_sound_variant", 0),
         ],
     ),
+    # A dropped item's item stack (entry 8): 3 of item 55, then 1, 2 and 1 of item 1097.
+    ("11 08 07 03 37 00 00 ff", 17, [metadata(8, "item_stack", stack(3, 55))]),
+    ("12 08 07 01 c9 08 00 00 ff", 18, [metadata(8, "item_stack", stack(1, 1097))]),
+    ("1a 08 07 02 c9 08 00 00 ff", 26, [metadata(8, "item_stack", stack(2, 1097))]),
+    ("21 08 07 01 c9 08 00 00 ff", 33, [metadata(8, "item_stack", stack(1, 1097))]),
 ]
 
 # Recorded from Pumpkin, the Candidate of the probe: they decode strictly too. Some of its
@@ -477,6 +483,10 @@ RECORDED_PUMPKIN_METADATA = [
             metadata(11, "int", -1),
         ],
     ),
+    # A dropped item's item stack: 3 of item 55, 3 of item 1097 and 1 of item 1097.
+    ("05 08 07 03 37 00 00 ff", 5, [metadata(8, "item_stack", stack(3, 55))]),
+    ("06 08 07 03 c9 08 00 00 ff", 6, [metadata(8, "item_stack", stack(3, 1097))]),
+    ("04 08 07 01 c9 08 00 00 ff", 4, [metadata(8, "item_stack", stack(1, 1097))]),
 ]
 
 
@@ -487,23 +497,6 @@ def test_set_entity_data_decodes_and_re_encodes(
     payload: str, entity_id: int, entries: list[dict[str, object]]
 ) -> None:
     round_trip("minecraft:set_entity_data", {"entity_id": entity_id, "entries": entries}, payload)
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        "11 08 07 03 37 00 00 ff",  # a dropped item: 3 of item 55
-        "12 08 07 01 c9 08 00 00 ff",  # a dropped item: 1 of item 1097
-        "1a 08 07 02 c9 08 00 00 ff",
-    ],
-)
-def test_set_entity_data_with_an_item_stack_is_undecodable_until_the_item_codec_lands(
-    payload: str,
-) -> None:
-    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:set_entity_data")
-    data = Writer().var_int(packet_id).to_bytes() + bytes.fromhex(payload)
-    with pytest.raises(CodecError, match=r"entries: 0: item_stack: item stack: needs #19$"):
-        CODEC.decode(State.PLAY, CLIENTBOUND, data)
 
 
 def test_set_entity_data_has_its_entity_id_as_an_entity_id() -> None:
@@ -833,20 +826,27 @@ def test_passenger_link_and_state_packets_have_their_entity_ids_as_entity_ids(
     assert entity_id_paths(play_schema(f"minecraft:{name}")) == paths
 
 
-def test_set_equipment_is_an_entity_id_and_equipment_whose_items_await_the_item_codec() -> None:
-    # The slots are pinned in test_equipment.py; the item stacks are #19's, so a packet with
-    # one refuses in both directions until then.
+def test_set_equipment_is_an_entity_id_and_equipment() -> None:
+    # The slots and their stacks are pinned in test_equipment.py.
     fields = play_schema("minecraft:set_equipment").fields
     assert list(fields) == ["entity_id", "equipment"]
     assert fields["equipment"] is EQUIPMENT
     assert entity_id_paths(play_schema("minecraft:set_equipment")) == ["entity_id"]
-    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:set_equipment")
-    data = Writer().var_int(packet_id).to_bytes() + bytes.fromhex("ac02 05 00")
-    with pytest.raises(CodecError, match=r"equipment: 0: item: item stack: needs #19$"):
-        CODEC.decode(State.PLAY, CLIENTBOUND, data)
-    encoded = {"entity_id": 300, "equipment": [{"slot": "head", "item": None}]}
-    with pytest.raises(CodecError, match=r"equipment: 0: item: item stack: needs #19$"):
-        CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:set_equipment", encoded)
+
+
+def test_set_equipment_decodes_and_re_encodes() -> None:
+    # Built by hand: entity 300 with 2 of item 55 on the head, and its main hand empty.
+    round_trip(
+        "minecraft:set_equipment",
+        {
+            "entity_id": 300,
+            "equipment": [
+                {"slot": "head", "item": stack(2, 55)},
+                {"slot": "mainhand", "item": None},
+            ],
+        },
+        "ac02 85 02 37 00 00 00 00",
+    )
 
 
 def test_the_entity_ids_of_a_link_are_ints() -> None:
