@@ -532,7 +532,9 @@ class ServerSpec:                   # invariants (not fields): offline, no encry
                                     # both from runner.free_endpoint(), one per Instance
     motd: str = "mscts"
     max_players: int = 20
-    view_distance: int = 2
+    view_distance: int = 2          # at most MAX_VIEW_DISTANCE (12, what a Bot's client_information
+                                    # asks for: the server uses the smaller of the two), else
+                                    # SpecError (a ValueError) at construction and on replace
     simulation_distance: int = 2
     world: WorldPreset = WorldPreset.FLAT
     seed: int = 0
