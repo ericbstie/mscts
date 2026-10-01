@@ -7,8 +7,8 @@ not produced by the Codec.
 import pytest
 from support.wire import read_all, written
 
-from mscts.codec.schema import WireType
-from mscts.codec.shapes import ENUM, NBT_TAG, REGISTRY_ID, UNIT
+from mscts.codec.schema import IDENTIFIER, VAR_INT, WireType
+from mscts.codec.shapes import ENUM, HOLDER_SET, NBT_TAG, REGISTRY_ID, UNIT, Either, Holder
 from mscts.codec.wire import Reader, WireError
 
 # Registry ids and enums: plain VarInts with no offset (`registry`, `holderRegistry`, `idMapper`).
@@ -76,3 +76,150 @@ def test_nbt_tag_refuses_no_bytes_and_a_truncated_tag() -> None:
 def test_nbt_tag_writes_only_bytes() -> None:
     with pytest.raises(WireError, match="expected bytes"):
         written(NBT_TAG, "hi")
+
+
+# Holder: `ByteBufCodecs.holder`. A VarInt: 0 and then the value itself, else the registry id + 1.
+
+HOLDER = Holder(VAR_INT)
+
+
+@pytest.mark.parametrize(
+    ("encoded", "value"),
+    [("01", {"reference": 0}), ("2b", {"reference": 42}), ("00 07", {"direct": 7})],
+    ids=["first entry", "entry 42", "the value itself"],
+)
+def test_a_holder_is_a_registry_id_plus_one_or_zero_and_the_value(
+    encoded: str, value: dict[str, object]
+) -> None:
+    assert read_all(HOLDER, bytes.fromhex(encoded)) == value
+    assert written(HOLDER, value) == bytes.fromhex(encoded)
+
+
+def test_a_holder_refuses_a_negative_number() -> None:
+    with pytest.raises(WireError, match=r"^holder id -1 is negative$"):
+        read_all(HOLDER, bytes.fromhex("ffffffff0f"))
+
+
+def test_a_holder_names_the_direct_value_when_it_is_bad() -> None:
+    with pytest.raises(WireError, match=r"^direct: "):
+        read_all(HOLDER, bytes.fromhex("00 80"))
+    with pytest.raises(WireError, match=r"^direct: expected an int"):
+        written(HOLDER, {"direct": "x"})
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({}, "exactly one of reference and direct"),
+        ({"reference": 1, "direct": 1}, "exactly one of reference and direct"),
+        ({"other": 1}, "exactly one of reference and direct"),
+        ([("reference", 1)], "expected a mapping"),
+        ({"reference": -1}, "negative"),
+        ({"reference": True}, "expected an int"),
+    ],
+)
+def test_a_holder_writes_only_one_of_a_reference_and_a_direct_value(
+    value: object, message: str
+) -> None:
+    with pytest.raises(WireError, match=message):
+        written(HOLDER, value)
+
+
+# Either: `ByteBufCodecs.either`. A Bool, then the left type when true, else the right.
+
+EITHER = Either("number", VAR_INT, "text", IDENTIFIER)
+
+
+@pytest.mark.parametrize(
+    ("encoded", "value"),
+    [("01 05", {"number": 5}), ("00 03 61 3a 62", {"text": "a:b"})],
+    ids=["left", "right"],
+)
+def test_an_either_is_a_bool_then_the_left_or_the_right_value(
+    encoded: str, value: dict[str, object]
+) -> None:
+    assert read_all(EITHER, bytes.fromhex(encoded)) == value
+    assert written(EITHER, value) == bytes.fromhex(encoded)
+
+
+def test_an_either_refuses_a_bool_that_is_neither_zero_nor_one() -> None:
+    with pytest.raises(WireError, match="invalid bool byte 0x02"):
+        read_all(EITHER, bytes.fromhex("02 05"))
+
+
+def test_an_either_names_the_side_whose_value_is_bad() -> None:
+    with pytest.raises(WireError, match=r"^number: "):
+        read_all(EITHER, bytes.fromhex("01 80"))
+    with pytest.raises(WireError, match=r"^text: "):
+        read_all(EITHER, bytes.fromhex("00"))
+    with pytest.raises(WireError, match=r"^number: expected an int"):
+        written(EITHER, {"number": "x"})
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({}, "exactly one of number and text"),
+        ({"number": 1, "text": "a"}, "exactly one of number and text"),
+        ({"other": 1}, "exactly one of number and text"),
+        ([1], "expected a mapping"),
+    ],
+)
+def test_an_either_writes_only_one_side(value: object, message: str) -> None:
+    with pytest.raises(WireError, match=message):
+        written(EITHER, value)
+
+
+# Holder set: `ByteBufCodecs.holderSet`. A VarInt: 0 and then a tag's Identifier, else the
+# number of ids + 1 and the ids.
+
+
+@pytest.mark.parametrize(
+    ("encoded", "value"),
+    [
+        ("00 03 61 3a 62", {"tag": "a:b"}),
+        ("01", {"ids": []}),
+        ("03 05 c9 08", {"ids": [5, 1097]}),
+    ],
+    ids=["tag", "no ids", "two ids"],
+)
+def test_a_holder_set_is_a_tag_or_a_list_of_registry_ids(
+    encoded: str, value: dict[str, object]
+) -> None:
+    assert read_all(HOLDER_SET, bytes.fromhex(encoded)) == value
+    assert written(HOLDER_SET, value) == bytes.fromhex(encoded)
+
+
+def test_a_holder_set_refuses_a_negative_size() -> None:
+    with pytest.raises(WireError, match="negative"):
+        read_all(HOLDER_SET, bytes.fromhex("ffffffff0f"))
+
+
+def test_a_holder_set_refuses_more_ids_than_there_are_bytes_left() -> None:
+    with pytest.raises(WireError, match="exceeds"):
+        read_all(HOLDER_SET, bytes.fromhex("06 00"))
+
+
+def test_a_holder_set_names_the_part_that_is_bad() -> None:
+    with pytest.raises(WireError, match=r"^tag: "):
+        read_all(HOLDER_SET, bytes.fromhex("00"))
+    with pytest.raises(WireError, match=r"^ids: 1: "):
+        read_all(HOLDER_SET, bytes.fromhex("03 05 80"))
+    with pytest.raises(WireError, match=r"^tag: "):
+        written(HOLDER_SET, {"tag": 5})
+    with pytest.raises(WireError, match=r"^ids: 0: expected an int"):
+        written(HOLDER_SET, {"ids": ["x"]})
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        ({}, "exactly one of tag and ids"),
+        ({"tag": "a:b", "ids": []}, "exactly one of tag and ids"),
+        ([], "expected a mapping"),
+        ({"ids": 5}, "expected a list"),
+    ],
+)
+def test_a_holder_set_writes_only_a_tag_or_a_list_of_ids(value: object, message: str) -> None:
+    with pytest.raises(WireError, match=message):
+        written(HOLDER_SET, value)
