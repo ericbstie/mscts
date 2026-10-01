@@ -364,6 +364,225 @@ VALUES = [
         },
         id="sign_text_back",
     ),
+    # Mob effects: an effect id and its details, which may hold a hidden effect (more details).
+    pytest.param(
+        53,
+        "potion_contents",
+        "01 05  01 00 ff 00 00  01  02 01 0a 00 01 01 01 00 05 00 00 00 00  01 01 61",
+        {
+            "potion": 5,
+            "custom_color": 0xFF0000,
+            "custom_effects": [
+                {
+                    "effect": 2,
+                    "details": {
+                        "amplifier": 1,
+                        "duration": 10,
+                        "ambient": False,
+                        "show_particles": True,
+                        "show_icon": True,
+                        "hidden_effect": {
+                            "amplifier": 0,
+                            "duration": 5,
+                            "ambient": False,
+                            "show_particles": False,
+                            "show_icon": False,
+                            "hidden_effect": None,
+                        },
+                    },
+                }
+            ],
+            "custom_name": "a",
+        },
+        id="potion_contents",
+    ),
+    pytest.param(
+        53,
+        "potion_contents",
+        "00 00 00 00",
+        {"potion": None, "custom_color": None, "custom_effects": [], "custom_name": None},
+        id="potion_contents empty",
+    ),
+    # Consume effects: a type id and the layout of that type.
+    pytest.param(
+        24,
+        "consumable",
+        "3fc00000 01 01 01  02  00 01  01 00 c8 01 00 01 01 00  3f000000  02",
+        {
+            "consume_seconds": 1.5,
+            "animation": 1,
+            "sound": {"reference": 0},
+            "has_consume_particles": True,
+            "on_consume_effects": [
+                {
+                    "type": "minecraft:apply_effects",
+                    "value": {
+                        "effects": [
+                            {
+                                "effect": 1,
+                                "details": {
+                                    "amplifier": 0,
+                                    "duration": 200,
+                                    "ambient": False,
+                                    "show_particles": True,
+                                    "show_icon": True,
+                                    "hidden_effect": None,
+                                },
+                            }
+                        ],
+                        "probability": 0.5,
+                    },
+                },
+                {"type": "minecraft:clear_all_effects", "value": None},
+            ],
+        },
+        id="consumable",
+    ),
+    pytest.param(
+        36,
+        "death_protection",
+        "03  01 00 03 61 3a 62  03 40000000 01  04 01",
+        [
+            {"type": "minecraft:remove_effects", "value": {"tag": "a:b"}},
+            {
+                "type": "minecraft:teleport_randomly",
+                "value": {"diameter": 2.0, "directional_particles": True},
+            },
+            {"type": "minecraft:play_sound", "value": {"reference": 0}},
+        ],
+        id="death_protection",
+    ),
+    # Tools, weapons and armour.
+    pytest.param(
+        28,
+        "tool",
+        "01  00 03 61 3a 62 01 40000000 01 01  3f800000 01 00",
+        {
+            "rules": [{"blocks": {"tag": "a:b"}, "speed": 2.0, "correct_for_drops": True}],
+            "default_mining_speed": 1.0,
+            "damage_per_block": 1,
+            "can_destroy_blocks_in_creative": False,
+        },
+        id="tool",
+    ),
+    pytest.param(
+        28,
+        "tool",
+        "01  01 00 00  3f800000 01 01",
+        {
+            "rules": [{"blocks": {"ids": []}, "speed": None, "correct_for_drops": None}],
+            "default_mining_speed": 1.0,
+            "damage_per_block": 1,
+            "can_destroy_blocks_in_creative": True,
+        },
+        id="tool with a bare rule",
+    ),
+    pytest.param(
+        32,
+        "equippable",
+        "03 01 01 03 61 3a 62 00 00 01 01 01 00 00 01",
+        {
+            "slot": 3,
+            "equip_sound": {"reference": 0},
+            "asset_id": "a:b",
+            "camera_overlay": None,
+            "allowed_entities": None,
+            "dispensable": True,
+            "swappable": True,
+            "damage_on_hurt": True,
+            "equip_on_interact": False,
+            "can_be_sheared": False,
+            "shearing_sound": {"reference": 0},
+        },
+        id="equippable",
+    ),
+    pytest.param(
+        32,
+        "equippable",
+        "00 01 00 01 03 61 3a 62 01 02 07 00 00 00 01 01 01",
+        {
+            "slot": 0,
+            "equip_sound": {"reference": 0},
+            "asset_id": None,
+            "camera_overlay": "a:b",
+            "allowed_entities": {"ids": [7]},
+            "dispensable": False,
+            "swappable": False,
+            "damage_on_hurt": False,
+            "equip_on_interact": True,
+            "can_be_sheared": True,
+            "shearing_sound": {"reference": 0},
+        },
+        id="equippable with an overlay and allowed entities",
+    ),
+    pytest.param(
+        37,
+        "blocks_attacks",
+        "3f000000 3f800000  01  42b40000 00 00000000 3f800000  3f800000 00000000 3f000000"
+        "  01 00 03 61 3a 62  01 01  00",
+        {
+            "block_delay_seconds": 0.5,
+            "disable_cooldown_scale": 1.0,
+            "damage_reductions": [
+                {"horizontal_blocking_angle": 90.0, "type": None, "base": 0.0, "factor": 1.0}
+            ],
+            "item_damage": {"threshold": 1.0, "base": 0.0, "factor": 0.5},
+            "bypassed_by": {"tag": "a:b"},
+            "block_sound": {"reference": 0},
+            "disable_sound": None,
+        },
+        id="blocks_attacks",
+    ),
+    pytest.param(
+        38,
+        "piercing_weapon",
+        "01 00 01 01 00",
+        {
+            "deals_knockback": True,
+            "dismounts": False,
+            "sound": {"reference": 0},
+            "hit_sound": None,
+        },
+        id="piercing_weapon",
+    ),
+    pytest.param(
+        39,
+        "kinetic_weapon",
+        "0a 05  01 14 3f800000 40000000  00  01 1e 3f000000 3f000000  3f000000 40000000  00  01 01",
+        {
+            "contact_cooldown_ticks": 10,
+            "delay_ticks": 5,
+            "dismount_conditions": {
+                "max_duration_ticks": 20,
+                "min_speed": 1.0,
+                "min_relative_speed": 2.0,
+            },
+            "knockback_conditions": None,
+            "damage_conditions": {
+                "max_duration_ticks": 30,
+                "min_speed": 0.5,
+                "min_relative_speed": 0.5,
+            },
+            "forward_movement": 0.5,
+            "damage_multiplier": 2.0,
+            "sound": None,
+            "hit_sound": {"reference": 0},
+        },
+        id="kinetic_weapon",
+    ),
+    pytest.param(
+        57,
+        "written_book_content",
+        f"01 54 00  01 41  02  01 {TEXT_A} 01 {TEXT_B}  01",
+        {
+            "title": {"raw": "T", "filtered": None},
+            "author": "A",
+            "generation": 2,
+            "pages": [{"raw": bytes.fromhex(TEXT_A), "filtered": bytes.fromhex(TEXT_B)}],
+            "resolved": True,
+        },
+        id="written_book_content",
+    ),
 ]
 
 
@@ -418,3 +637,29 @@ def test_a_diamond_sword_with_enchantments_damage_a_custom_name_and_lore() -> No
     )
     assert read_all(SLOT, encoded) == value
     assert written(SLOT, value) == encoded
+
+
+# Limits and refusals inside the nested types.
+
+
+def test_a_consume_effect_type_id_past_the_registry_is_a_wire_error_naming_it() -> None:
+    # death_protection with one effect of type 5; the registry has five (0 to 4).
+    message = r"^components: added: 0: minecraft:death_protection: 0: unknown type id 5$"
+    with pytest.raises(WireError, match=message):
+        read_all(SLOT, stack_with_component(36, "01 05"))
+
+
+def test_a_written_book_title_is_at_most_32_characters() -> None:
+    title = "21" + "61" * 33  # 33 characters
+    message = r"^components: added: 0: minecraft:written_book_content: title: raw: "
+    with pytest.raises(WireError, match=message):
+        read_all(SLOT, stack_with_component(57, f"{title} 00 01 41 00 00 01"))
+
+
+def test_hidden_effects_nested_too_deeply_are_a_wire_error_not_a_crash() -> None:
+    # Each level is a Details with a hidden effect after it. Python would run out of stack
+    # (RecursionError) long before the 12000 bytes do; vanilla reads it on the Java stack.
+    level = "00 00 00 00 00 01"
+    payload = "00 00 01 00" + level * 2000 + "00 00 00 00 00 00" + "00"
+    with pytest.raises(WireError, match="nested too deeply"):
+        read_all(SLOT, stack_with_component(53, payload))

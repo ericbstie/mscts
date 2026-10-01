@@ -36,9 +36,11 @@ from mscts.codec.shapes import (
     SOUND_EVENT,
     TEXT_COMPONENT,
     UNIT,
+    Deferred,
     Either,
     FixedArray,
     Holder,
+    registry_dispatch,
 )
 from mscts.codec.wire import Reader, WireError, Writer
 from mscts.target import TARGET
@@ -281,6 +283,41 @@ _FIREWORK_EXPLOSION = Schema(
     has_trail=BOOL,
     has_twinkle=BOOL,
 )
+_TOOL_RULE = Schema(
+    blocks=HOLDER_SET, speed=PrefixedOptional(FLOAT), correct_for_drops=PrefixedOptional(BOOL)
+)
+_DAMAGE_REDUCTION = Schema(
+    horizontal_blocking_angle=FLOAT, type=PrefixedOptional(HOLDER_SET), base=FLOAT, factor=FLOAT
+)
+_KINETIC_CONDITION = Schema(max_duration_ticks=VAR_INT, min_speed=FLOAT, min_relative_speed=FLOAT)
+_BOOK_TITLE = Schema(raw=String(32), filtered=PrefixedOptional(String(32)))
+_WRITTEN_PAGE = Schema(raw=TEXT_COMPONENT, filtered=PrefixedOptional(TEXT_COMPONENT))
+
+# A mob effect's details hold the hidden effect it replaces, which has details of its own
+# (`StreamCodec.recursive`).
+_MOB_EFFECT_DETAILS: Schema = Schema(
+    amplifier=VAR_INT,
+    duration=VAR_INT,
+    ambient=BOOL,
+    show_particles=BOOL,
+    show_icon=BOOL,
+    hidden_effect=PrefixedOptional(Deferred(lambda: _MOB_EFFECT_DETAILS)),
+)
+_MOB_EFFECT_INSTANCE = Schema(effect=REGISTRY_ID, details=_MOB_EFFECT_DETAILS)
+
+# `ConsumeEffect`: the id of a type in `minecraft:consume_effect_type`, then that type's fields.
+_CONSUME_EFFECT = registry_dispatch(
+    registry_names(TARGET.minecraft_version, "minecraft:consume_effect_type"),
+    {
+        "minecraft:apply_effects": Schema(
+            effects=PrefixedArray(_MOB_EFFECT_INSTANCE), probability=FLOAT
+        ),
+        "minecraft:remove_effects": HOLDER_SET,
+        "minecraft:clear_all_effects": None,
+        "minecraft:teleport_randomly": Schema(diameter=FLOAT, directional_particles=BOOL),
+        "minecraft:play_sound": SOUND_EVENT,
+    },
+)
 _SIGN_LINES = FixedArray(TEXT_COMPONENT, 4)
 _SIGN_TEXT = Schema(
     messages=_SIGN_LINES,
@@ -326,10 +363,23 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:food": Schema(  # FOOD
         nutrition=VAR_INT, saturation=FLOAT, can_always_eat=BOOL
     ),
+    "minecraft:consumable": Schema(  # CONSUMABLE
+        consume_seconds=FLOAT,
+        animation=ENUM,
+        sound=SOUND_EVENT,
+        has_consume_particles=BOOL,
+        on_consume_effects=PrefixedArray(_CONSUME_EFFECT),
+    ),
     "minecraft:use_cooldown": Schema(  # USE_COOLDOWN
         seconds=FLOAT, group=PrefixedOptional(IDENTIFIER)
     ),
     "minecraft:damage_resistant": HOLDER_SET,  # DAMAGE_RESISTANT
+    "minecraft:tool": Schema(  # TOOL
+        rules=PrefixedArray(_TOOL_RULE),
+        default_mining_speed=FLOAT,
+        damage_per_block=VAR_INT,
+        can_destroy_blocks_in_creative=BOOL,
+    ),
     "minecraft:weapon": Schema(  # WEAPON
         damage_per_attack=VAR_INT, disable_blocking_for=FLOAT
     ),
@@ -342,9 +392,49 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
         mob_factor=FLOAT,
     ),
     "minecraft:enchantable": VAR_INT,  # ENCHANTABLE
+    "minecraft:equippable": Schema(  # EQUIPPABLE
+        slot=ENUM,
+        equip_sound=SOUND_EVENT,
+        asset_id=PrefixedOptional(IDENTIFIER),
+        camera_overlay=PrefixedOptional(IDENTIFIER),
+        allowed_entities=PrefixedOptional(HOLDER_SET),
+        dispensable=BOOL,
+        swappable=BOOL,
+        damage_on_hurt=BOOL,
+        equip_on_interact=BOOL,
+        can_be_sheared=BOOL,
+        shearing_sound=SOUND_EVENT,
+    ),
     "minecraft:repairable": HOLDER_SET,  # REPAIRABLE
     "minecraft:glider": UNIT,  # GLIDER
     "minecraft:tooltip_style": IDENTIFIER,  # TOOLTIP_STYLE
+    "minecraft:death_protection": PrefixedArray(_CONSUME_EFFECT),  # DEATH_PROTECTION
+    "minecraft:blocks_attacks": Schema(  # BLOCKS_ATTACKS
+        block_delay_seconds=FLOAT,
+        disable_cooldown_scale=FLOAT,
+        damage_reductions=PrefixedArray(_DAMAGE_REDUCTION),
+        item_damage=Schema(threshold=FLOAT, base=FLOAT, factor=FLOAT),
+        bypassed_by=PrefixedOptional(HOLDER_SET),
+        block_sound=PrefixedOptional(SOUND_EVENT),
+        disable_sound=PrefixedOptional(SOUND_EVENT),
+    ),
+    "minecraft:piercing_weapon": Schema(  # PIERCING_WEAPON
+        deals_knockback=BOOL,
+        dismounts=BOOL,
+        sound=PrefixedOptional(SOUND_EVENT),
+        hit_sound=PrefixedOptional(SOUND_EVENT),
+    ),
+    "minecraft:kinetic_weapon": Schema(  # KINETIC_WEAPON
+        contact_cooldown_ticks=VAR_INT,
+        delay_ticks=VAR_INT,
+        dismount_conditions=PrefixedOptional(_KINETIC_CONDITION),
+        knockback_conditions=PrefixedOptional(_KINETIC_CONDITION),
+        damage_conditions=PrefixedOptional(_KINETIC_CONDITION),
+        forward_movement=FLOAT,
+        damage_multiplier=FLOAT,
+        sound=PrefixedOptional(SOUND_EVENT),
+        hit_sound=PrefixedOptional(SOUND_EVENT),
+    ),
     "minecraft:attack_animation": _SWING_ANIMATION,  # ATTACK_ANIMATION
     "minecraft:interact_animation": _SWING_ANIMATION,  # INTERACT_ANIMATION
     "minecraft:additional_trade_cost": VAR_INT,  # ADDITIONAL_TRADE_COST
@@ -356,12 +446,25 @@ _LAYOUTS: dict[str, WireType[object] | None] = {
     "minecraft:map_id": VAR_INT,  # MAP_ID
     "minecraft:map_decorations": NBT_TAG,  # MAP_DECORATIONS
     "minecraft:map_post_processing": ENUM,  # MAP_POST_PROCESSING
+    "minecraft:potion_contents": Schema(  # POTION_CONTENTS
+        potion=PrefixedOptional(REGISTRY_ID),
+        custom_color=PrefixedOptional(INT),
+        custom_effects=PrefixedArray(_MOB_EFFECT_INSTANCE),
+        custom_name=PrefixedOptional(String(32767)),
+    ),
     "minecraft:potion_duration_scale": FLOAT,  # POTION_DURATION_SCALE
     "minecraft:suspicious_stew_effects": PrefixedArray(  # SUSPICIOUS_STEW_EFFECTS
         Schema(effect=REGISTRY_ID, duration=VAR_INT)
     ),
     "minecraft:writable_book_content": PrefixedArray(  # WRITABLE_BOOK_CONTENT
         _BOOK_PAGE, max_length=100
+    ),
+    "minecraft:written_book_content": Schema(  # WRITTEN_BOOK_CONTENT
+        title=_BOOK_TITLE,
+        author=String(32767),
+        generation=VAR_INT,
+        pages=PrefixedArray(_WRITTEN_PAGE),
+        resolved=BOOL,
     ),
     "minecraft:trim": Schema(  # TRIM
         material=_TRIM_MATERIAL, pattern=_TRIM_PATTERN

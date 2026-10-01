@@ -5,7 +5,7 @@ The building blocks of the data component table (`codec/components.py`): wire ty
 the 26.3 server jar (docs/research/2026-09-30-item-stacks.md).
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 
 from mscts.codec.schema import (
@@ -21,11 +21,13 @@ from mscts.codec.schema import (
     Schema,
     SchemaError,
     String,
+    Tagged,
     WireType,
 )
 from mscts.codec.wire import Reader, WireError, Writer
 
 _NBT_END = 0
+_TOO_DEEP = "nested too deeply"
 
 
 def _integer(value: object) -> int:
@@ -186,6 +188,58 @@ class FixedArray[T]:
             except WireError as exc:
                 msg = f"{index}: {exc}"
                 raise WireError(msg) from exc
+
+
+@dataclass(frozen=True, slots=True)
+class Deferred[T]:
+    """A wire type named now and defined later: for a type that contains itself.
+
+    `StreamCodec.recursive` is how vanilla ties the knot. A value nested so deeply that Python
+    runs out of stack is a `WireError`, not a `RecursionError`: the bytes are the server's.
+
+    Attributes:
+        resolve: Returns the wire type; called each time it is read or written.
+    """
+
+    resolve: Callable[[], WireType[T]]
+
+    def read(self, reader: Reader) -> T:
+        """Read with the type `resolve` returns."""
+        try:
+            return self.resolve().read(reader)
+        except RecursionError as exc:
+            raise WireError(_TOO_DEEP) from exc
+
+    def write(self, writer: Writer, value: object) -> None:
+        """Write with the type `resolve` returns."""
+        try:
+            self.resolve().write(writer, value)
+        except RecursionError as exc:
+            raise WireError(_TOO_DEEP) from exc
+
+
+def registry_dispatch(
+    names: Sequence[str],
+    layouts: Mapping[str, WireType[object] | None],
+    tag_key: str = "type",
+    value_key: str = "value",
+) -> Tagged:
+    """A `Tagged` with one variant per registry entry: its id is the entry's position in `names`.
+
+    A layout of None is an entry that carries nothing (`StreamCodec.unit`).
+
+    Raises:
+        SchemaError: An entry has no layout, or a layout is for a name that is not an entry.
+    """
+    missing = [name for name in names if name not in layouts]
+    if missing:
+        msg = f"no layout for {', '.join(missing)}"
+        raise SchemaError(msg)
+    extra = sorted(name for name in layouts if name not in names)
+    if extra:
+        msg = f"layout for {', '.join(extra)}, which is not an entry"
+        raise SchemaError(msg)
+    return Tagged(tag_key, value_key, [(name, layouts[name]) for name in names])
 
 
 @dataclass(frozen=True, slots=True)

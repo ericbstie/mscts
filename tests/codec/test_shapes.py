@@ -9,7 +9,14 @@ from typing import cast
 import pytest
 from support.wire import read_all, written
 
-from mscts.codec.schema import IDENTIFIER, VAR_INT, SchemaError, WireType
+from mscts.codec.schema import (
+    IDENTIFIER,
+    VAR_INT,
+    PrefixedOptional,
+    Schema,
+    SchemaError,
+    WireType,
+)
 from mscts.codec.shapes import (
     COMPOUND_TAG,
     ENUM,
@@ -17,9 +24,11 @@ from mscts.codec.shapes import (
     NBT_TAG,
     REGISTRY_ID,
     UNIT,
+    Deferred,
     Either,
     FixedArray,
     Holder,
+    registry_dispatch,
 )
 from mscts.codec.wire import Reader, WireError
 
@@ -147,6 +156,58 @@ def test_a_fixed_array_writes_only_exactly_its_size(value: object) -> None:
 def test_a_fixed_array_needs_a_size_that_is_a_non_negative_int(size: object) -> None:
     with pytest.raises(SchemaError, match="size"):
         FixedArray(VAR_INT, cast("int", size))
+
+
+# Deferred: a wire type that is defined after the type that holds it, for a type that contains
+# itself (`StreamCodec.recursive`).
+
+NODE: WireType[dict[str, object]] = Schema(
+    value=VAR_INT, next=PrefixedOptional(Deferred(lambda: NODE))
+)
+
+
+def test_a_deferred_type_is_the_type_it_names() -> None:
+    encoded = bytes.fromhex("01 01 02 01 03 00")
+    value = {
+        "value": 1,
+        "next": {"value": 2, "next": {"value": 3, "next": None}},
+    }
+    assert read_all(NODE, encoded) == value
+    assert written(NODE, value) == encoded
+
+
+def test_a_type_nested_too_deeply_is_a_wire_error_not_a_recursion_error() -> None:
+    # Python would run out of stack long before 10000 bytes of nesting do.
+    encoded = bytes.fromhex("00 01") * 5000 + bytes.fromhex("00 00")
+    with pytest.raises(WireError, match="nested too deeply"):
+        read_all(NODE, encoded)
+    value: dict[str, object] = {"value": 0, "next": None}
+    for _ in range(5000):
+        value = {"value": 0, "next": value}
+    with pytest.raises(WireError, match="nested too deeply"):
+        written(NODE, value)
+
+
+# Registry dispatch: a Tagged whose variants are a registry's entries, named in protocol id order.
+
+
+def test_a_registry_dispatch_has_a_variant_per_entry_in_id_order() -> None:
+    dispatch = registry_dispatch(("x:a", "x:b"), {"x:a": VAR_INT, "x:b": None})
+    assert read_all(dispatch, bytes.fromhex("00 05")) == {"type": "x:a", "value": 5}
+    assert read_all(dispatch, bytes.fromhex("01")) == {"type": "x:b", "value": None}
+    assert written(dispatch, {"type": "x:b", "value": None}) == b"\x01"
+    with pytest.raises(WireError, match="unknown type id 2"):
+        read_all(dispatch, bytes.fromhex("02"))
+
+
+def test_a_registry_dispatch_refuses_an_entry_with_no_layout() -> None:
+    with pytest.raises(SchemaError, match=r"no layout for x:b"):
+        registry_dispatch(("x:a", "x:b"), {"x:a": VAR_INT})
+
+
+def test_a_registry_dispatch_refuses_a_layout_for_no_entry() -> None:
+    with pytest.raises(SchemaError, match=r"layout for x:c, which is not an entry"):
+        registry_dispatch(("x:a",), {"x:a": VAR_INT, "x:c": VAR_INT})
 
 
 # Holder: `ByteBufCodecs.holder`. A VarInt: 0 and then the value itself, else the registry id + 1.
