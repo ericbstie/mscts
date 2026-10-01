@@ -9,7 +9,7 @@ and fails on one past the last, so the Codec refuses it too.
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from mscts.codec.item_stack import PENDING_ITEM_STACK
+from mscts.codec.items import SLOT
 from mscts.codec.schema import WireType
 from mscts.codec.wire import Reader, WireError, Writer
 
@@ -90,5 +90,5 @@ class EquipmentList:
             raise WireError(msg) from exc
 
 
-EQUIPMENT: WireType[list[dict[str, object]]] = EquipmentList(PENDING_ITEM_STACK)
-"""The equipment of `set_equipment`. Its items are optional item stacks, which refuse until #19."""
+EQUIPMENT: WireType[list[dict[str, object]]] = EquipmentList(SLOT)
+"""The equipment of `set_equipment`. Its items are slots: a stack, or None for an empty one."""

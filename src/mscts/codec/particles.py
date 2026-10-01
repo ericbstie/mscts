@@ -7,7 +7,7 @@ being None for a type that has none. Colors are signed Ints as vanilla writes th
 RGB). A block state is its id in the global block state registry, not range checked.
 """
 
-from mscts.codec.item_stack import PENDING_ITEM_STACK
+from mscts.codec.components import ITEM_STACK_TEMPLATE
 from mscts.codec.schema import (
     DOUBLE,
     ENTITY_ID,
@@ -188,7 +188,7 @@ _OPTIONS: dict[str, WireType[object]] = {
     "flash": _COLOR,
     "sculk_charge": Schema(roll=FLOAT),
     # The item particle's options are an item stack template (an item, a count, components).
-    "item": PENDING_ITEM_STACK,
+    "item": ITEM_STACK_TEMPLATE,
     "vibration": Schema(destination=POSITION_SOURCE, arrival_in_ticks=VAR_INT),
     "trail": Schema(target=Schema(x=DOUBLE, y=DOUBLE, z=DOUBLE), color=INT, duration=VAR_INT),
     "shriek": Schema(delay=VAR_INT),

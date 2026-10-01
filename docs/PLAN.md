@@ -49,7 +49,6 @@ test needs it:
 | `codec/entity_data.py` | entity metadata: the value types (optional block state and unsigned int, optional global pos; the painting variant and resolvable profile live in `codec/shapes.py`), the serializer table `SERIALIZERS` and the entries list `ENTITY_DATA` |
 | `codec/particles.py` | `PARTICLE` (all 128 types of 26.3 and their options) and `POSITION_SOURCE` |
 | `codec/equipment.py` | `EquipmentList`, `EQUIPMENT`, `SLOTS`: the slots of `set_equipment`, each with an item stack |
-| `codec/item_stack.py` | `PENDING_ITEM_STACK`: an item stack field that refuses ("item stack: needs #19") until `SLOT` (#19) replaces it, then deleted. `ENTITY_DATA`, `PARTICLE` and `EQUIPMENT` use it: #19 swaps it for the real codec (optional stack in `set_equipment`) |
 | `codec/shapes.py` | the wire shapes the data components and the entity metadata share: `UNIT`, `NBT_TAG`, `COMPOUND_TAG`, `TEXT_COMPONENT`, `REGISTRY_ID`, `ENUM`, `FixedArray`, `Deferred`, `registry_dispatch`, `Holder`, `Either`, `HOLDER_SET`, `SOUND_EVENT`, `GLOBAL_POS`, `PAINTING_VARIANT`, `RESOLVABLE_PROFILE` |
 | `codec/components.py` | the data component table: `ComponentTable`, `TABLE` (every name of `minecraft:data_component_type`, in id order, with its value's wire type), `TypedComponent` and `TYPED_COMPONENT` (a type id and its value), `Patch` and `PATCH` (`DataComponentPatch`), `ITEM_STACK_TEMPLATE` |
 | `codec/items.py` | `SLOT`, the item stack field |
@@ -209,8 +208,9 @@ MOVE_DELTA: WireType[dict[str, object]]     # {on_ground, linear: {x, y, z}} | {
 POSITION_PATH: WireType[dict[str, object]]  # {linear: {x, y, z}} | {stepped: [{x, y, z, tick_offset}]}
 
 # codec/particles.py: both are Tagged. A particle is {type: "minecraft:dust", options: {...}},
-# options None for a type with none (22 of the 128 have them, the item particle's are a
-# stack, which needs #19); a position source is {type: "minecraft:block", value: {x, y, z}} or
+# options None for a type with none (22 of the 128 have them, the item particle's are an
+# ITEM_STACK_TEMPLATE: {item, count, components}); a position source is
+# {type: "minecraft:block", value: {x, y, z}} or
 # {type: "minecraft:entity", value: {entity_id, y_offset}} (its entity_id is an ENTITY_ID).
 PARTICLE: Tagged
 POSITION_SOURCE: Tagged
@@ -228,7 +228,7 @@ OPTIONAL_GLOBAL_POS: WireType[dict | None]    # {dimension, pos: {x, y, z}} | No
 SERIALIZERS: Tagged                           # {serializer: "float", value: 10.0}
 # The entries of set_entity_data: a list of {index, serializer, value} in wire order. An entry
 # is a u8 index (0..254: 0xFF ends the list) and a serializer id with its value. The
-# item_stack serializer (and the item particle) refuse with "item stack: needs #19".
+# item_stack serializer's value is a SLOT.
 ENTITY_DATA: WireType[list[dict[str, object]]]
 # Limit: an entity id inside a metadata value (a firework's shooter, an attached entity) or in
 # add_entity's `data` depends on the entity type, so it is a plain VarInt, not an `ENTITY_ID`.
@@ -240,7 +240,7 @@ SLOTS: tuple[str, ...]             # the 8 EquipmentSlot constants in ordinal or
 @frozen
 class EquipmentList:               # WireType[list[dict[str, object]]]
     item: WireType[object]         # how each slot's item is carried
-EQUIPMENT: WireType[list[dict[str, object]]]  # EquipmentList(PENDING_ITEM_STACK): refuses until #19
+EQUIPMENT: WireType[list[dict[str, object]]]  # EquipmentList(SLOT): each slot's item is a stack or None
 
 # codec/shapes.py: the shapes the data components are built from.
 UNIT: WireType[None]             # no bytes (StreamCodec.unit): reads None, writes only None

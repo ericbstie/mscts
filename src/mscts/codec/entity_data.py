@@ -12,7 +12,7 @@ shooter, a vibration source's target) is context dependent, so only a vibration'
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from mscts.codec.item_stack import PENDING_ITEM_STACK
+from mscts.codec.items import SLOT
 from mscts.codec.particles import PARTICLE
 from mscts.codec.schema import (
     BOOL,
@@ -88,7 +88,7 @@ SERIALIZERS = Tagged(
         ("string", String(32767)),
         ("component", NBT),
         ("optional_component", PrefixedOptional(NBT)),
-        ("item_stack", PENDING_ITEM_STACK),
+        ("item_stack", SLOT),
         ("boolean", BOOL),
         ("rotations", _VECTOR3),
         ("block_pos", POSITION),

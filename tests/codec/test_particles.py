@@ -257,6 +257,22 @@ SAMPLES = [
     ("shriek", "7305", {"delay": 5}),
     ("dust_pillar", "790a", {"block_state": 10}),
     ("block_crumble", "7d0a", {"block_state": 10}),
+    # The item particle holds a stack template: the item, then the count (not a slot's order),
+    # then the components.
+    (
+        "item",
+        "39 37 01 00 00",
+        {"item": 55, "count": 1, "components": {"added": [], "removed": []}},
+    ),
+    (
+        "item",
+        "39 37 02 01 00 03 07",
+        {
+            "item": 55,
+            "count": 2,
+            "components": {"added": [{"type": "minecraft:damage", "value": 7}], "removed": []},
+        },
+    ),
 ]
 
 
@@ -269,14 +285,23 @@ def test_a_particle_with_options_decodes_them_and_encodes_the_same_bytes(
 
 
 def test_every_type_that_has_options_is_sampled_and_no_other_is() -> None:
-    assert {name for name, _, _ in SAMPLES} == WITH_OPTIONS - {"item"}
+    assert {name for name, _, _ in SAMPLES} == WITH_OPTIONS
 
 
-def test_the_item_particle_needs_the_item_stack_codec() -> None:
-    with pytest.raises(WireError, match=r"^minecraft:item: item stack: needs #19$"):
-        read_all(PARTICLE, bytes.fromhex("3901370000"))
-    with pytest.raises(WireError, match=r"^minecraft:item: item stack: needs #19$"):
-        written(PARTICLE, particle("item", {"count": 1}))
+def test_the_item_particle_is_not_a_slot() -> None:
+    # `39 01 37 00 00` is a slot of one of item 55, and a template of 55 of item 1.
+    value = read_all(PARTICLE, bytes.fromhex("39 01 37 00 00"))
+    assert value == particle(
+        "item", {"item": 1, "count": 55, "components": {"added": [], "removed": []}}
+    )
+
+
+def test_the_item_particle_refuses_a_component_it_cannot_read() -> None:
+    with pytest.raises(
+        WireError,
+        match=r"^minecraft:item: components: added: 0: unknown data component type id 122$",
+    ):
+        read_all(PARTICLE, bytes.fromhex("39 37 01 01 00 7a"))
 
 
 def test_a_particle_type_id_past_the_registry_is_refused() -> None:
