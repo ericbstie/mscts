@@ -169,6 +169,8 @@ need is missing, add it here in the same commit that introduces it.
   - `unit`: hermetic. No external network, no Java, no Candidate.
     Localhost sockets and short helper processes are allowed.
   - `reference`: needs a live vanilla Instance.
+  - `selfcheck`: needs two live vanilla Instances. One test per registered
+    Group, each a Self-check, parametrised from `GROUPS`.
   - `candidate`: needs a live Candidate Instance.
   - `statistical`: opt-in, slow. Runs statistical Groups N times;
     never part of `check` or the default Run.

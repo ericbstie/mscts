@@ -109,6 +109,7 @@ The repository defines these tasks in `mise.toml`:
 | `mise run check` | Lint, format check, type check, bandit and the unit tests. Every commit must pass it. |
 | `mise run fix` | `ruff format` and autofixable lint. |
 | `mise run test:reference` | Tests against a live vanilla server. |
+| `mise run test:selfcheck` | Every registered Group against two live vanilla servers. |
 | `mise run test:candidate` | Tests against a live Candidate server. |
 | `mise run test:statistical` | Opt-in statistical tests. |
 | `mise run docs:dev` | This site, served locally with live reload. |
