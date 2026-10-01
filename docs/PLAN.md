@@ -915,7 +915,9 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random on every run, which no exact Group compares
                                     # (ADR-0011): minecraft:login_finished.session_id (same
-                                    # evidence)
+                                    # evidence), minecraft:sound.seed and
+                                    # minecraft:sound_entity.seed (docs/research/2026-10-01-
+                                    # block-world-events.md)
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
@@ -1198,7 +1200,13 @@ proves it necessary:
    (`ServerConnectionListener.getSessionId`, reset when no connection
    is left) and the client only passes to its telemetry
    (`ClientTelemetryManager.createWorldSessionManager`; `javap` on 26.3,
-   #17). A
+   #17), and the `seed` of `sound` and `sound_entity`, which vanilla
+   draws for every sound from `Level.soundSeedGenerator`, seeded from
+   `RandomSupport.generateUniqueSeed()` and not from the world seed
+   (`javap` on 26.3, and two vanilla runs that differ in it; #29). A
+   sound's pitch is not one: most sounds have a fixed pitch, so a Group
+   that plays a sound with a random pitch (a door's, `nextFloat() * 0.1 +
+   0.9`) masks `pitch` of `sound` itself. A
    Mask that matches nothing is not an error, since a Mask may name
    packets a Group never sees; a field Mask on a packet with no
    fields does nothing, so its payload still differs and the Self-check
