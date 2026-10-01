@@ -15,18 +15,18 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 from support.reference import booted
-from support.selfcheck import pytest_generate_tests  # noqa: F401 - one test per registered Group
+from support.selfcheck import (
+    pytest_generate_tests,  # noqa: F401 - one test per registered Group
+    repeat_from,
+)
 
 from mscts.runner import Instance
-
-REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
-DEFAULT_REPEAT = 3
 
 
 @pytest.fixture(scope="session")
 def repeat() -> int:
     """How many times each Group is played: `MSCTS_SELFCHECK_REPEAT`, else 3."""
-    return int(os.environ.get(REPEAT_VAR, DEFAULT_REPEAT))
+    return repeat_from(os.environ)
 
 
 @pytest_asyncio.fixture(scope="session", loop_scope="session")
