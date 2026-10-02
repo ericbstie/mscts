@@ -29,10 +29,12 @@ REGISTRY_NAME_LISTS = (
     "minecraft:command_argument_type",
     "minecraft:consume_effect_type",
     "minecraft:data_component_type",
+    "minecraft:entity_type",
 )
 """The registries whose entry names are committed: the data component table and the consume
-effect dispatch (`codec/components.py`) and the command argument parsers (#17) take their ids
-from these lists, never from source."""
+effect dispatch (`codec/components.py`), the command argument parsers (#17) and the player's
+entity type (the Comparison's entity renumbering, #21) take their ids from these lists, never
+from source."""
 
 
 class RegenError(RuntimeError):

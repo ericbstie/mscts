@@ -40,6 +40,14 @@ def test_command_argument_type_names_are_the_registry_in_protocol_id_order() -> 
     assert len(set(names)) == len(names)
 
 
+def test_entity_type_names_are_the_registry_in_protocol_id_order() -> None:
+    # An add_entity's `type` (#21): vanilla sent 159 for a player and 101 for a pig.
+    names = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
+    assert names[159] == "minecraft:player"
+    assert names[101] == "minecraft:pig"
+    assert len(set(names)) == len(names)
+
+
 def test_consume_effect_names_are_the_registry_in_protocol_id_order() -> None:
     assert registry_names(TARGET.minecraft_version, "minecraft:consume_effect_type") == (
         "minecraft:apply_effects",

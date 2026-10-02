@@ -74,7 +74,7 @@ test needs it:
 | `codec/schemas/play/blocks.py` | the block packets' schemas: `block_update`, `section_blocks_update` (its blocks decode to `{x, y, z, state}`), `block_entity_data`, `block_event`, `block_destruction` |
 | `codec/schemas/play/world_events.py` | the world event packets' schemas: `level_event`, `sound` and `sound_entity` (a `SOUND_EVENT`, a `SOUND_SOURCE` category and a random seed), `level_particles`, `game_event`, `explode` (its block particles a weighted list) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
-| `codec/data/26.3/` | generated `packets.json` and `registry_names.json` (the data component, consume effect and command argument parser names in protocol id order). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/data/26.3/` | generated `packets.json` and `registry_names.json` (the data component, consume effect, command argument parser and entity type names in protocol id order). Committed, regenerated and checked by `mise run regen:packets` |
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
