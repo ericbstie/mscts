@@ -1,0 +1,360 @@
+{
+  "target": {
+    "minecraft_version": "26.3",
+    "protocol_version": 777,
+    "java_major": 25
+  },
+  "reference": {
+    "name": "vanilla",
+    "version": "26.3",
+    "startup": [
+      {
+        "name": "instance.startup",
+        "unit": "ms",
+        "value": 23719.983328
+      }
+    ]
+  },
+  "candidate": {
+    "name": "pumpkin",
+    "version": "26.3",
+    "startup": [
+      {
+        "name": "instance.startup",
+        "unit": "ms",
+        "value": 75.937704
+      }
+    ]
+  },
+  "results": [
+    {
+      "group_id": "status/basic",
+      "verdicts": [
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
+          ],
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.max",
+              "reference": 20,
+              "candidate": 100,
+              "test_case": "status_response.players.max",
+              "observability": "gameplay"
+            }
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
+          ],
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.max",
+              "reference": 20,
+              "candidate": 100,
+              "test_case": "status_response.players.max",
+              "observability": "gameplay"
+            }
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
+          ],
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.max",
+              "reference": 20,
+              "candidate": 100,
+              "test_case": "status_response.players.max",
+              "observability": "gameplay"
+            }
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
+          ],
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.max",
+              "reference": 20,
+              "candidate": 100,
+              "test_case": "status_response.players.max",
+              "observability": "gameplay"
+            }
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
+          ],
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.max",
+              "reference": 20,
+              "candidate": 100,
+              "test_case": "status_response.players.max",
+              "observability": "gameplay"
+            }
+          ]
+        }
+      ],
+      "reference": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "candidate": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    {
+      "group_id": "status/ping",
+      "verdicts": [
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "pong_response.time"
+          ],
+          "divergences": [
+            {
+              "bot": "ping",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:pong_response",
+              "path": "time",
+              "reference": 1,
+              "candidate": 2,
+              "test_case": "pong_response.time",
+              "observability": "gameplay"
+            }
+          ]
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "detail": "",
+          "test_cases": [
+            "pong_response.time"
+          ],
+          "divergences": [
+            {
+              "bot": "ping",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:pong_response",
+              "path": "time",
+              "reference": 1,
+              "candidate": 2,
+              "test_case": "pong_response.time",
+              "observability": "gameplay"
+            }
+          ]
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "match",
+          "detail": "",
+          "test_cases": [
+            "pong_response.time"
+          ],
+          "divergences": []
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "match",
+          "detail": "",
+          "test_cases": [
+            "pong_response.time"
+          ],
+          "divergences": []
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "match",
+          "detail": "",
+          "test_cases": [
+            "pong_response.time"
+          ],
+          "divergences": []
+        }
+      ],
+      "reference": [
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 6.135056
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 1.987848
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 5.78935
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 1.060508
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 2.99591
+          }
+        ]
+      ],
+      "candidate": [
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.314576
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 1.883386
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 1.927017
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.374951
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.370687
+          }
+        ]
+      ]
+    },
+    {
+      "group_id": "join/basic",
+      "verdicts": [
+        {
+          "group_id": "join/basic",
+          "outcome": "blocked",
+          "detail": "prerequisite status/basic was mismatch",
+          "test_cases": [],
+          "divergences": []
+        },
+        {
+          "group_id": "join/basic",
+          "outcome": "blocked",
+          "detail": "prerequisite status/basic was mismatch",
+          "test_cases": [],
+          "divergences": []
+        },
+        {
+          "group_id": "join/basic",
+          "outcome": "blocked",
+          "detail": "prerequisite status/basic was mismatch",
+          "test_cases": [],
+          "divergences": []
+        },
+        {
+          "group_id": "join/basic",
+          "outcome": "blocked",
+          "detail": "prerequisite status/basic was mismatch",
+          "test_cases": [],
+          "divergences": []
+        },
+        {
+          "group_id": "join/basic",
+          "outcome": "blocked",
+          "detail": "prerequisite status/basic was mismatch",
+          "test_cases": [],
+          "divergences": []
+        }
+      ],
+      "reference": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "candidate": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ]
+    }
+  ],
+  "notes": [
+    "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
+  ]
+}

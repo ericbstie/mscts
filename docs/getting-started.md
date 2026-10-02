@@ -72,7 +72,7 @@ uv run mscts adapter list
 ADAPTER  VERSION           TARGET  STATE
 vanilla  26.3              26.3    installed
 pumpkin  nightly-48cba7ee  26.3    not installed
-pumpkin  -                 26.3    installed: no Registry entry, from pumpkin-X64-Linux (sha256 864f606e...)
+pumpkin  -                 26.3    installed: no Registry entry, from /tmp/pumpkin-X64-Linux (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e)
 ```
 
 ## 4. Run the comparison
@@ -107,9 +107,11 @@ Network traffic differences (a vanilla client reads both alike; not counted in s
 
 Timings (ms)
 ------------
-  measurement       vanilla median    p95  pumpkin median   p95  n
-  status.rtt                  1.41   3.18            0.27  0.48  5
-  instance.startup           9,987  9,987              39    39  1
+  measurement       vanilla median     p95  pumpkin median   p95  n
+  status.rtt                  3.00    6.14            0.37  1.93  5
+  instance.startup          23,720  23,720              76    76  1
+
+...
 ```
 
 Pumpkin sends four status values in a different form from vanilla. These are

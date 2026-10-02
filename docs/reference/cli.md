@@ -5,6 +5,16 @@ prints what it did. Every error goes to stderr, starts with `mscts:` and
 names the fix. Exit code 1 means a failure with such a message. Exit code 2
 means the command line itself was invalid.
 
+Every command accepts `-h` / `--help` to show its arguments and options.
+
+## `mscts`
+
+Choose `adapter` to install or inspect servers, or `run` to compare them.
+
+## `mscts adapter`
+
+Choose `install`, `list` or `status` to manage server Installations.
+
 ## `mscts adapter install`
 
 ```
