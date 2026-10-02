@@ -22,6 +22,7 @@ _WANTED = {
     "minecraft:consume_effect_type": ["minecraft:b", "minecraft:a"],
     "minecraft:data_component_type": ["minecraft:z", "minecraft:m", "minecraft:a"],
     "minecraft:entity_type": ["minecraft:m", "minecraft:a", "minecraft:z"],
+    "minecraft:slot_display": ["minecraft:a", "minecraft:z", "minecraft:m"],
 }
 
 
