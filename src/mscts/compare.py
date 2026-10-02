@@ -336,9 +336,10 @@ class Divergence:
         path: Where in the matched Packets they differ, or None for their whole
             payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
         reference: The value in the reference, or ABSENT. For `bot`, the number of
-            the Bot's Events. For a gameplay difference in a chunk's blocks or biomes, a
-            text that names the chunk and the first positions that differ, with the
-            reference's value at each (PLAN, Comparison semantics).
+            the Bot's Events. For a gameplay difference in a chunk's blocks, biomes or
+            light, a text that names the chunk and the first positions that differ, with
+            the reference's value at each, or says what its light section is (PLAN,
+            Comparison semantics).
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of
             the Bot's Events. For a chunk, as `reference` with the candidate's values.
         test_case: The test case it was found in (`test_case`): its packet's, for
@@ -415,7 +416,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way, and a chunk's sections hold
-    the id at each entry of their containers); each entity id whose
+    the id at each entry of their containers, and its light what the client applies to each
+    light section); each entity id whose
     `add_entity` was left out of the windows becomes its type and its position at the
     first such `add_entity` (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is
     `player <uuid>`), and every other entity id but one first seen in a
@@ -1368,16 +1370,21 @@ section is 16 blocks, or 4 biome cells, wide, deep and high."""
 
 
 def _canonical_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
-    """Each section's block states and biomes as the id at each entry (`_entries`).
+    """A chunk's sections and light as the client keeps them.
 
-    The client keeps the id at each position, not the palette that spelled it:
+    Each section's block states and biomes become the id at each entry (`_entries`), and the
+    light what the client applies (`_canonical_light`), for two light sections more than
+    sections. The client keeps the id at each position, not the palette that spelled it:
     `LevelChunkSection.read` reads each container with `PalettedContainer.read`, which unpacks
     its entries at the width the palette is read at.
     """
     sections = fields.get("sections")
     if not isinstance(sections, list):
         return fields
-    return {**fields, "sections": [_canonical_section(section) for section in sections]}
+    result = {**fields, "sections": [_canonical_section(section) for section in sections]}
+    if "light" in fields:
+        result["light"] = _canonical_light(fields["light"], len(sections) + _LIGHT_MARGIN)
+    return result
 
 
 def _canonical_section(section: _Value) -> _Value:
@@ -1426,11 +1433,96 @@ def _unpacked_ids(data: bytes, entries: int) -> list[int | None]:
     return [None if number == 0 else number - 1 for number in numbers]
 
 
+_LIGHT_LAYERS: Mapping[str, str] = MappingProxyType(
+    {
+        "sky_light_mask": "sky",
+        "empty_sky_light_mask": "sky",
+        "sky_light_arrays": "sky",
+        "block_light_mask": "block",
+        "empty_block_light_mask": "block",
+        "block_light_arrays": "block",
+    }
+)
+"""The fields of light data (`LIGHT_DATA`), each with the layer of the canonical form it
+is part of."""
+
+_LIGHT_BYTES = 2048
+"""How many bytes a light array has: `new DataLayer(byte[])` refuses any other length."""
+
+_LIGHT_MARGIN = 2
+"""How many more light sections a level has than sections: one below it, one above it
+(`LevelLightEngine.getLightSectionCount`)."""
+
+_LIGHT_SECTIONS_MAX = 256
+"""The most light sections a level has: `DimensionType`'s height is at most `Y_SIZE`,
+`(1 << BlockPos.PACKED_Y_LENGTH) - 32`, 4064 blocks, so 254 sections, and the margin."""
+
+_EMPTY = "empty"
+"""A light section sent empty, where the client's light is not the same as an array of 0s."""
+
+
+def _canonical_light(light: _Value, sections: int) -> _Value:
+    """Light data as the client applies it: the light each light section gets, by layer.
+
+    For each of the `sections` light sections, that is the next array if the mask has its bit
+    (an array the client cannot take shows what is wrong), else an empty section if the empty
+    mask has it, else None: the client keeps the light it had
+    (`ClientPacketListener.readSectionList`). Bits from `sections` up
+    are never read, and neither are the arrays past the mask's bits. An empty section is an
+    array of 0s for block light, and for sky light in light section 0, below the world: no
+    client code tells them apart there (docs/research/2026-10-02-chunks-light.md). Light data
+    not decoded by the codec stays as it is.
+    """
+    if not isinstance(light, dict):
+        return light
+    sky, block = (_light_layer(light, layer, sections) for layer in ("sky", "block"))
+    if sky is None or block is None:
+        return light
+    return {"sky": sky, "block": block}
+
+
+def _light_layer(light: dict[str, _Value], layer: str, sections: int) -> list[_Value] | None:
+    mask = light.get(f"{layer}_light_mask")
+    empty = light.get(f"empty_{layer}_light_mask")
+    arrays = light.get(f"{layer}_light_arrays")
+    if not (isinstance(mask, bytes) and isinstance(empty, bytes) and isinstance(arrays, list)):
+        return None
+    sent, emptied = int.from_bytes(mask, "little"), int.from_bytes(empty, "little")
+    left = iter(arrays)
+    result: list[_Value] = []
+    for index in range(sections):
+        value: _Value = None
+        if sent >> index & 1:
+            value = next(left, "no array left")
+            if isinstance(value, bytes) and len(value) != _LIGHT_BYTES:
+                value = f"an array of {len(value)} bytes"
+        elif emptied >> index & 1:
+            value = bytes(_LIGHT_BYTES) if layer == "block" or index == 0 else _EMPTY
+        result.append(value)
+    return result
+
+
+def _canonical_light_update(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """The light data as the client applies it (`_canonical_light`).
+
+    Over as many light sections as any level has: a light update does not say how high its
+    level is.
+    """
+    if "data" not in fields:
+        return fields
+    return {**fields, "data": _canonical_light(fields["data"], _LIGHT_SECTIONS_MAX)}
+
+
 def _chunk_cover(path: _Path) -> _Path:
-    """The path of a chunk's canonical value that the raw value at `path` is part of."""
+    """The path of the canonical value that the raw value at `path` is part of.
+
+    For a chunk or a light update: a section's container, or a layer of its light.
+    """
     match path:
         case ("sections", int(), "block_states" | "biomes", *_):
             return path[:3]
+        case ("light" | "data", str() as key, *_) if key in _LIGHT_LAYERS:
+            return (path[0], _LIGHT_LAYERS[key])
     return path
 
 
@@ -1500,6 +1592,11 @@ class _Place:
         more = len(values) - _SHOWN_POSITIONS
         return f"{self.label()}: {named}" + (f" and {more} more" if more > 0 else "")
 
+    def summed(self, section: int, text: str) -> str:
+        """`text` about the whole of `section`, after the heights it spans."""
+        bottom = (self.bottom or 0) + 16 * section
+        return f"{self.label()}, y {bottom} to {bottom + 15}: {text}"
+
 
 type _Sides = tuple[dict[str, _Value], dict[str, _Value]]
 """The reference's and the candidate's fields of two matched Packets."""
@@ -1508,14 +1605,18 @@ type _Sides = tuple[dict[str, _Value], dict[str, _Value]]
 def _shown_chunk(
     path: _Path, reference: _Value | Absent, candidate: _Value | Absent, fields: _Sides
 ) -> tuple[object, object]:
-    """What a gameplay Divergence of a chunk shows on each side.
+    """What a gameplay Divergence of a chunk, or of a light update, shows on each side.
 
-    For a section's block states or biomes, the first positions that differ, each with the
-    side's id there, and how many more differ. Anything else shows its values.
+    For a section's block states or biomes, or a light section, the first positions that
+    differ, each with the side's id or light level there, and how many more differ; or, for
+    a light section that is not an array on both sides, what each side's is. Anything else
+    shows its values.
     """
     match path:
         case ("sections", int() as section, str() as field) if field in _CONTAINERS:
             return _shown_section(section, field, (reference, candidate), fields)
+        case ("light" | "data", "sky" | "block", int() as index):
+            return _shown_light(index - 1, (reference, candidate), fields)
     return reference, candidate
 
 
@@ -1549,18 +1650,63 @@ def _id_text(value: int | None) -> str:
     return "past the palette" if value is None else str(value)
 
 
+def _shown_light(
+    section: int, values: tuple[_Value | Absent, _Value | Absent], fields: _Sides
+) -> tuple[object, object]:
+    """What a light section's Divergence shows.
+
+    `section` is the world section it lights: -1 for the one below the world.
+    """
+    place = _Place.of(fields)
+    if place is None:
+        return values
+    reference, candidate = values
+    if isinstance(reference, bytes) and isinstance(candidate, bytes):
+        ref_levels, cand_levels = _levels(reference), _levels(candidate)
+        differing = [entry for entry, level in enumerate(ref_levels) if level != cand_levels[entry]]
+        return (
+            place.listed(section, 16, [(entry, str(ref_levels[entry])) for entry in differing]),
+            place.listed(section, 16, [(entry, str(cand_levels[entry])) for entry in differing]),
+        )
+    return place.summed(section, _light_text(reference)), place.summed(
+        section, _light_text(candidate)
+    )
+
+
+def _levels(data: bytes) -> list[int]:
+    """The light level at each entry of a light array: 4 bits each, low ones first (`DataLayer`)."""
+    levels: list[int] = []
+    for byte in data:
+        levels.extend((byte & 15, byte >> 4))
+    return levels
+
+
+def _light_text(value: _Value | Absent) -> str:
+    """A light section said whole: "all 15", "levels 0 to 15", "empty", "not sent", ...."""
+    if isinstance(value, bytes):
+        found = set(_levels(value))
+        return f"all {min(found)}" if len(found) == 1 else f"levels {min(found)} to {max(found)}"
+    if isinstance(value, str):
+        return value
+    return "not sent"
+
+
 _CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
     MappingProxyType(
         {
             (State.STATUS, "minecraft:status_response"): _canonical_status_response,
             (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
+            (State.PLAY, "minecraft:light_update"): _canonical_light_update,
         }
     )
 )
 """The canonical form of each clientbound packet that has one, by (State, name)."""
 
 _COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
-    {(State.PLAY, "minecraft:level_chunk_with_light"): _chunk_cover}
+    {
+        (State.PLAY, "minecraft:level_chunk_with_light"): _chunk_cover,
+        (State.PLAY, "minecraft:light_update"): _chunk_cover,
+    }
 )
 """For a packet in `_CANONICAL` whose canonical form is not shaped as it came: the path of the
 canonical value each raw path is part of. A raw difference is network traffic only if that
@@ -1569,7 +1715,12 @@ value is the same on both sides (`_network_traffic`)."""
 _SHOWN: Mapping[
     tuple[State, str],
     Callable[[_Path, _Value | Absent, _Value | Absent, _Sides], tuple[object, object]],
-] = MappingProxyType({(State.PLAY, "minecraft:level_chunk_with_light"): _shown_chunk})
+] = MappingProxyType(
+    {
+        (State.PLAY, "minecraft:level_chunk_with_light"): _shown_chunk,
+        (State.PLAY, "minecraft:light_update"): _shown_chunk,
+    }
+)
 """For a packet whose gameplay Divergences show something other than their canonical values:
 what they show, from the path, the two values and both sides' fields."""
 

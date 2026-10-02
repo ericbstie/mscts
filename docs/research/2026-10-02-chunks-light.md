@@ -193,6 +193,12 @@ sent. These are equal:
 - for sky light, in light section 0 only (below the world), an empty section and
   an array of zeros.
 
+A `light_update` does not say how high its level is. No level has more than 256
+light sections: `DimensionType` reads `height` with `Codec.intRange(16, Y_SIZE)`,
+and `Y_SIZE` is `(1 << BlockPos.PACKED_Y_LENGTH) - 32`, where `PACKED_Y_LENGTH`
+is `64 - 2 * 26` (`PACKED_HORIZONTAL_LENGTH` is `1 + log2` of the power of two
+above 30,000,000). So a level is at most 4,064 blocks, 254 sections, high.
+
 Everything else stays different. Not sending a section is not the same as
 sending it empty, since the client keeps what it had. Pumpkin's explicit sky
 arrays where vanilla names no section change what the client stores once those

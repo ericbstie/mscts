@@ -3,20 +3,24 @@
 The block state at each position and the biome of each 4x4x4 cell, however the server encoded
 them, so another palette is network traffic only, and a different block is a gameplay difference
 that names its position in the world. Heightmaps are kept by type and block entities by position,
-so their order is no difference (docs/research/2026-10-02-chunks-light.md). Packets are built
-through the Target's real Codec.
+so their order is no difference. Each light section is what the client applies: an array, an
+empty section, or nothing, by the rules docs/research/2026-10-02-chunks-light.md found. Packets
+are built through the Target's real Codec, or are what vanilla and Pumpkin sent.
 """
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 
 import pytest
 
 from mscts.codec.packets import Codec, Packet, State
-from mscts.compare import UNORDERED, Divergence, Verdict, compare
+from mscts.codec.wire import Writer
+from mscts.compare import UNORDERED, Divergence, Observability, Verdict, compare
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
 CHUNK = "minecraft:level_chunk_with_light"
+RECORDED = Path(__file__).resolve().parents[1] / "codec" / "schemas" / "data"
 
 AIR, STONE = 0, 1
 FLAT_LAYERS = (88, 10, 10, 9)  # the flat world's block states at y = -64 .. -61
@@ -73,32 +77,49 @@ def overworld(
 
 
 FLAT_BOTTOM = paletted(FLAT, [88, 10, 9, 0], bits=4, width=4)
-NO_LIGHT: dict[str, object] = {
-    "sky_light_mask": b"",
-    "block_light_mask": b"",
-    "empty_sky_light_mask": b"",
-    "empty_block_light_mask": b"",
-    "sky_light_arrays": [],
-    "block_light_arrays": [],
-}
+
+EMPTY = "empty"
+FULL, DARK = b"\xff" * 2048, bytes(2048)  # every light level 15, or 0
+type _Layer = Mapping[int, bytes | str]
+
+
+def _bit_set(indices: Iterable[int]) -> bytes:
+    """`BitSet.toByteArray()`: bit `i` is bit `i % 8` of byte `i // 8`, no trailing zero byte."""
+    number = sum(1 << index for index in set(indices))
+    return number.to_bytes((number.bit_length() + 7) // 8, "little")
+
+
+def light(sky: _Layer | None = None, block: _Layer | None = None) -> dict[str, object]:
+    """Light data sending each light section of `sky` and `block` as an array, or EMPTY.
+
+    Light section 0 is the one below the world; the others are not sent.
+    """
+    fields: dict[str, object] = {}
+    for name, layer in (("sky", sky or {}), ("block", block or {})):
+        fields[f"{name}_light_mask"] = _bit_set(i for i, v in layer.items() if isinstance(v, bytes))
+        fields[f"empty_{name}_light_mask"] = _bit_set(i for i, v in layer.items() if v == EMPTY)
+        fields[f"{name}_light_arrays"] = [
+            v for _, v in sorted(layer.items()) if isinstance(v, bytes)
+        ]
+    return fields
 
 
 def chunk(
     sections: list[dict[str, object]] | None = None,
     *,
-    x: int = 0,
-    z: int = 0,
+    at: tuple[int, int] = (0, 0),
     heightmaps: list[dict[str, object]] | None = None,
     block_entities: list[dict[str, object]] | None = None,
+    light_data: dict[str, object] | None = None,
 ) -> Packet:
-    """A chunk of `sections` (the flat world's by default), with no light."""
+    """A chunk of `sections` (the flat world's by default) at `at`, with no light unless given."""
     fields = {
-        "chunk_x": x,
-        "chunk_z": z,
+        "chunk_x": at[0],
+        "chunk_z": at[1],
         "heightmaps": heightmaps or [],
         "sections": overworld(FLAT_BOTTOM) if sections is None else sections,
         "block_entities": block_entities or [],
-        "light": NO_LIGHT,
+        "light": light() if light_data is None else light_data,
     }
     data = CODEC.encode(State.PLAY, CLIENTBOUND, CHUNK, fields)
     return CODEC.decode(State.PLAY, CLIENTBOUND, data)
@@ -163,7 +184,9 @@ PALETTE = [88, 10, 9, 0, STONE]
 def test_one_different_block_is_a_gameplay_difference_naming_its_position() -> None:
     stone = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
 
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM), x=2, z=-1), chunk(overworld(stone), x=2, z=-1))
+    verdict = _verdict(
+        chunk(overworld(FLAT_BOTTOM), at=(2, -1)), chunk(overworld(stone), at=(2, -1))
+    )
 
     assert verdict.divergences == (
         _gameplay(
@@ -339,3 +362,193 @@ def test_the_same_biomes_under_another_palette_are_network_traffic_only() -> Non
 
     assert verdict.divergences
     assert verdict.gameplay == ()
+
+
+# Light. Light section i is world section i - 1: in a 24-section chunk, light section 1 holds
+# y -64 to -49.
+
+
+def _lit(sky: _Layer | None = None, block: _Layer | None = None) -> Packet:
+    return chunk(light_data=light(sky, block))
+
+
+def _network_traffic_only(verdict: Verdict) -> bool:
+    return bool(verdict.divergences) and verdict.gameplay == ()
+
+
+def test_block_light_empty_and_an_array_of_zeros_are_network_traffic_only() -> None:
+    # No client code tells an empty DataLayer from one of zeros for block light.
+    assert _network_traffic_only(_verdict(_lit(block={1: EMPTY}), _lit(block={1: DARK})))
+
+
+def test_sky_light_below_the_world_empty_and_an_array_of_zeros_are_network_traffic_only() -> None:
+    # What two vanilla Instances sent in #30. The client never fills light section 0 with sky.
+    reference = _lit(sky={0: EMPTY, 1: FULL, 2: FULL})
+    candidate = _lit(sky={0: DARK, 1: FULL, 2: FULL})
+
+    assert _network_traffic_only(_verdict(reference, candidate))
+
+
+def test_sky_light_in_the_world_empty_and_an_array_of_zeros_differ_in_gameplay() -> None:
+    # SkyLightEngine.setLightEnabled fills an empty stored sky section with 15 the next time
+    # the client applies the chunk's light; an array of zeros stays dark.
+    verdict = _verdict(_lit(sky={2: EMPTY}), _lit(sky={2: DARK}))
+
+    assert verdict.divergences == (
+        _gameplay(
+            "light.sky[2]",
+            "chunk 0 0, y -48 to -33: empty",
+            "chunk 0 0, y -48 to -33: all 0",
+            "light.sky[]",
+        ),
+    )
+
+
+def test_a_light_section_not_sent_differs_from_an_empty_one() -> None:
+    # The client keeps the light it had for a section neither mask names.
+    verdict = _verdict(_lit(block={3: EMPTY}), _lit())
+
+    assert verdict.divergences == (
+        _gameplay(
+            "light.block[3]",
+            "chunk 0 0, y -32 to -17: all 0",
+            "chunk 0 0, y -32 to -17: not sent",
+            "light.block[]",
+        ),
+    )
+
+
+def test_the_mask_wins_over_the_empty_mask() -> None:
+    reference = light(sky={1: FULL})
+    candidate = {**reference, "empty_sky_light_mask": _bit_set([1])}
+
+    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+
+    assert [(d.path, d.observability) for d in verdict.divergences] == [
+        ("light.empty_sky_light_mask", Observability.NETWORK_TRAFFIC)
+    ]
+
+
+def test_bits_past_the_light_sections_and_arrays_past_the_mask_are_never_read() -> None:
+    # 24 sections have 26 light sections, 0 to 25.
+    reference = light(sky={1: FULL})
+    candidate = {
+        **reference,
+        "sky_light_mask": _bit_set([1, 26]),
+        "empty_block_light_mask": _bit_set([30]),
+        "sky_light_arrays": [FULL, DARK, DARK],
+    }
+
+    assert _network_traffic_only(_verdict(chunk(light_data=reference), chunk(light_data=candidate)))
+
+
+def test_a_different_light_level_names_its_position() -> None:
+    changed = bytearray(FULL)
+    changed[((4 << 8) | (4 << 4) | 3) >> 1] = 0x0F  # x 3, y 4, z 4: an odd entry, the high bits
+
+    verdict = _verdict(_lit(sky={1: FULL}), _lit(sky={1: bytes(changed)}))
+
+    assert verdict.divergences == (
+        _gameplay(
+            "light.sky[1]",
+            "chunk 0 0: 3 -60 4 is 15",
+            "chunk 0 0: 3 -60 4 is 0",
+            "light.sky[]",
+        ),
+    )
+
+
+def test_light_of_another_kind_is_summed_up() -> None:
+    levels = bytes(range(16)) * 128  # levels 0 to 15
+
+    verdict = _verdict(_lit(block={4: levels}), _lit(sky={4: DARK}))
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (
+            "light.block[4]",
+            "chunk 0 0, y -16 to -1: levels 0 to 15",
+            "chunk 0 0, y -16 to -1: not sent",
+        ),
+        ("light.sky[4]", "chunk 0 0, y -16 to -1: not sent", "chunk 0 0, y -16 to -1: all 0"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("arrays", "shown"),
+    [([], "no array left"), ([b"\xff" * 2047], "an array of 2047 bytes")],
+    ids=["too few arrays", "an array of another size"],
+)
+def test_light_the_client_cannot_read_is_a_value_of_its_own(
+    arrays: list[bytes], shown: str
+) -> None:
+    # The client fails: its iterator runs out, or DataLayer refuses an array not 2048 bytes long.
+    reference = light(sky={1: FULL})
+    candidate = {**reference, "sky_light_arrays": arrays}
+
+    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+
+    assert [(d.path, d.candidate) for d in verdict.gameplay] == [
+        ("light.sky[1]", f"chunk 0 0, y -64 to -49: {shown}")
+    ]
+
+
+def _recorded(server: str) -> Packet:
+    payload = (RECORDED / f"{server}-26.3-first-chunk.bin").read_bytes()
+    packet_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, CHUNK)
+    return CODEC.decode(State.PLAY, CLIENTBOUND, Writer().var_int(packet_id).to_bytes() + payload)
+
+
+def test_pumpkins_light_differs_in_gameplay_where_vanilla_sends_none() -> None:
+    # The first chunks of the 2026-09-30 joins have the same blocks, biomes and heightmaps.
+    # Vanilla sends sky arrays for light sections 1 and 2 and names no section above them;
+    # Pumpkin sends 15s up to the top. The client keeps what it had where vanilla names none,
+    # so that is a gameplay difference, never a canonical rule.
+    verdict = _verdict(_recorded("vanilla"), _recorded("pumpkin"))
+
+    above = range(3, 26)
+    assert {d.path for d in verdict.divergences} == {
+        *(f"light.sky[{index}]" for index in above),
+        *(f"light.block[{index}]" for index in above),
+    }
+    assert verdict.gameplay == verdict.divergences
+    shown = {d.path: (d.reference, d.candidate) for d in verdict.divergences}
+    assert shown["light.sky[3]"] == (
+        "chunk 0 0, y -32 to -17: not sent",
+        "chunk 0 0, y -32 to -17: all 15",
+    )
+    assert shown["light.sky[25]"] == (
+        "chunk 0 0, y 320 to 335: not sent",
+        "chunk 0 0, y 320 to 335: empty",
+    )
+
+
+def light_update(data: dict[str, object]) -> Packet:
+    fields = {"chunk_x": 1, "chunk_z": 2, "data": data}
+    encoded = CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:light_update", fields)
+    return CODEC.decode(State.PLAY, CLIENTBOUND, encoded)
+
+
+def test_a_light_update_follows_the_same_rules() -> None:
+    # It has no sections to say how high the world is: y counts from the world's bottom.
+    equal = _verdict(
+        light_update(light(sky={0: EMPTY}, block={1: EMPTY})),
+        light_update(light(sky={0: DARK}, block={1: DARK})),
+    )
+    differ = _verdict(light_update(light(sky={2: EMPTY})), light_update(light(sky={2: DARK})))
+
+    assert _network_traffic_only(equal)
+    assert [(d.path, d.reference, d.candidate) for d in differ.divergences] == [
+        (
+            "data.sky[2]",
+            "chunk 1 2 (y from the world's bottom), y 16 to 31: empty",
+            "chunk 1 2 (y from the world's bottom), y 16 to 31: all 0",
+        )
+    ]
+
+
+def test_a_light_update_naming_fewer_sections_differs_only_where_the_other_names_one() -> None:
+    verdict = _verdict(
+        light_update(light(sky={1: FULL, 5: FULL})), light_update(light(sky={1: FULL}))
+    )
+
+    assert [d.path for d in verdict.divergences] == ["data.sky[5]"]

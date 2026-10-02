@@ -1481,6 +1481,31 @@ proves it necessary:
      when both send 16 (the heights of the vanilla dimension types, from
      the 26.3 server jar's `data/minecraft/dimension_type`); otherwise it
      counts from the world's bottom, and the text says so.
+     Its `light`, and the `data` of a `play` / `minecraft:light_update`,
+     become what the client applies to each light section in each layer
+     (`light.sky[<i>]`, `light.block[<i>]`): the next array if the mask
+     has the section's bit, else an empty section if the empty mask has
+     it, else nothing sent, which leaves the client's light as it was
+     (`ClientPacketListener.readSectionList`; light section `i` is world
+     section `i - 1`). So the mask wins over the empty mask, and bits past
+     the light section count, and arrays past the mask's bits, are never
+     read: network traffic only. The count is the sections plus two
+     (`LevelLightEngine.getLightSectionCount`); a `light_update` does not
+     say how high its level is, so it is 256, the most any level has
+     (`DimensionType`'s height is at most `Y_SIZE`, `(1 <<
+     BlockPos.PACKED_Y_LENGTH) - 32` = 4064 blocks). An empty section
+     and an array of 2048 zero bytes are equal for block light, and for
+     sky light only in light section 0, below the world:
+     `SkyLightEngine.setLightEnabled` fills an empty stored sky section
+     with 15 within the world, and no other client code tells the two
+     apart (`docs/research/2026-10-02-chunks-light.md`). A section not
+     sent never equals one sent, empty or not, so Pumpkin's explicit sky
+     arrays where vanilla names no section are a gameplay difference. A
+     mask bit with no array left, or an array of another length, is a
+     value of its own: the client fails. A gameplay Divergence of a light
+     section shows the positions that differ, with each side's level, when
+     both sides send an array, and otherwise what each side's section is
+     (`chunk 0 0, y -32 to -17: not sent` against `all 15`).
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡
