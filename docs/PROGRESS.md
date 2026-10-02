@@ -87,12 +87,10 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AO (sonnet): #88, the barrier ends only after a tick has passed (a gap-checked
-  `Bot.sync()`; the probe's Self-check fails about once in 250 plays under load).
 - AP (sonnet): #97, a Group starts only once status says no player is online.
 - AQ (opus): #21, the Comparison numbers entities in the order each Bot first hears of them.
 
-Next: #30 `join/basic` (after #88 and #97), the first Group built by the routine
+Next: #30 `join/basic` (after #97), the first Group built by the routine
 (`.claude/skills/test-group`, committed with it), then #23 tick-exact.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
