@@ -87,11 +87,11 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AR (opus): #30 `join/basic`, the first Group built by the routine.
 - AQ (opus): #21, the Comparison numbers entities in the order each Bot first hears of them.
 
-Next: #23 tick-exact, then the test Groups by the routine (`.claude/skills/test-group`,
-committed with #30). The helper (ChatGPT) has #25 Bot movement.
+Next: #105 (`observe(until=)`, Control rejoins), then the test Groups by the routine
+(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #21, #105,
+#106 and #22. The helper (ChatGPT) has #25 Bot movement and #107.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -244,6 +244,10 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- #30 measured (worker AR): two vanilla joins matched in 2 of 84 plays, for six causes
+  traced by javap (hash-ordered lists, a clock value, chunk order, light encoding, the
+  barrier letting later batches and mobs in). Filed #105, #106, #107 and a #22 addition;
+  the test-group skill now starts every test issue with that measurement.
 - Merged #104 (#97: before each Group the Run polls status until no player is online,
   `mscts.settle`; a Candidate that never empties is a `mismatch`). Vanilla drops a closed
   Bot within 10–197 ms (`docs/research/2026-10-02-settle.md`).
