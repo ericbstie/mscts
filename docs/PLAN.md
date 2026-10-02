@@ -1338,7 +1338,9 @@ proves it necessary:
    and it is a classifier, not an eraser (ADR-0007): the raw fields are
    diffed too, and a raw difference whose canonical values (before the
    Masks) are equal at its path is reported as a **network traffic** `field`
-   Divergence, with the raw path and values. A raw field holding JSON
+   Divergence, with the raw path and values. Where the canonical form is
+   shaped unlike the raw fields (a chunk's sections), the canonical value
+   compared is the one the raw path is part of (`compare._COVERS`). A raw field holding JSON
    text (`_JSON_TEXT`: the status `json_response`) is diffed as its parsed,
    not yet canonical JSON value, so such a Divergence has its JSON path
    and values (`json_response.enforceSecureChat`, absent vs `true`);
@@ -1436,6 +1438,34 @@ proves it necessary:
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
+   - `play` / `minecraft:level_chunk_with_light` (#22): each section's
+     `block_states` and `biomes` become the id at each entry: one id if
+     every entry has it, else all of them, packed so that two are equal
+     exactly when their ids are. So the palette that spelled them (a
+     single value, a list or hash palette in any order, the global
+     palette, or a list palette sent with fewer bits than the client
+     reads it at) is network traffic only, and a block state or biome
+     that differs is a gameplay Divergence at `sections[<i>].block_states`
+     or `sections[<i>].biomes`. An entry that indexes past its palette is
+     a value of its own: the client reads it, and fails only when it
+     looks it up (`valueFor`). Evidence
+     (`docs/research/2026-10-02-chunks-light.md`, `javap` on the 26.3
+     client): `LevelChunk.replaceWithPacketData` reads each section with
+     `LevelChunkSection.read`, which keeps the counts as sent and reads
+     each container with `PalettedContainer.read`; that reads the palette
+     the bits pick (`Strategy.getConfigurationForBitCount`) and unpacks
+     the entries at the palette's width, so the client keeps the id at
+     each entry, not its spelling. A raw difference inside a section's
+     container is network traffic only when the two containers hold the
+     same ids (`compare._COVERS` names the canonical value a raw path is
+     part of). A gameplay Divergence of a container shows, on each side,
+     the chunk and the first three positions that differ, in world
+     coordinates, with that side's id there (`chunk 2 -1: 37 -62 -9 is
+     10`), then how many more differ; a biome cell is named by its lowest
+     block. y counts from -64 when both sides send 24 sections and from 0
+     when both send 16 (the heights of the vanilla dimension types, from
+     the 26.3 server jar's `data/minecraft/dimension_type`); otherwise it
+     counts from the world's bottom, and the text says so.
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡

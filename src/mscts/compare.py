@@ -42,6 +42,8 @@ from uuid import UUID
 from mscts.codec.entity_ids import EACH, Each, EntityIdPath, Step, Variant
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.registry_names import registry_names
+from mscts.codec.schemas.play.chunks import BIOMES, BLOCK_STATES, PalettedContainer
+from mscts.codec.wire import WireError
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
@@ -322,9 +324,11 @@ class Divergence:
         path: Where in the matched Packets they differ, or None for their whole
             payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
         reference: The value in the reference, or ABSENT. For `bot`, the number of
-            the Bot's Events.
+            the Bot's Events. For a gameplay difference in a chunk's blocks or biomes, a
+            text that names the chunk and the first positions that differ, with the
+            reference's value at each (PLAN, Comparison semantics).
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of
-            the Bot's Events.
+            the Bot's Events. For a chunk, as `reference` with the candidate's values.
         test_case: The test case it was found in (`test_case`): its packet's, for
             `missing`, `unexpected` and a `field` Divergence of the whole payload; its
             path's for any other `field` one, the raw path for network traffic. "" for
@@ -398,7 +402,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     the play Packets they do not observe are left out (`_Windows.observes`); the
     Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
-    JSON is parsed, and its text components written one way); each entity id whose
+    JSON is parsed, and its text components written one way, and a chunk's sections hold
+    the id at each entry of their containers); each entity id whose
     `add_entity` was left out of the windows becomes its type and its position at the
     first such `add_entity` (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is
     `player <uuid>`), and every other entity id but one first seen in a
@@ -420,7 +425,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     gameplay `field` Divergence per differing leaf, in path order. If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
-    and values, when the unmasked canonical values at that path are equal; otherwise the
+    and values, when the unmasked canonical values at that path (for a chunk, the canonical
+    value that path is part of, `_COVERS`) are equal; otherwise the
     gameplay Divergences under it (or a Mask) account for it. JSON text in a raw field
     (`_JSON_TEXT`) is diffed as its parsed value, at JSON paths, and as the whole text only
     when the parsed values are equal. A packet's network traffic
@@ -1291,10 +1297,222 @@ def _nesting(value: object) -> int:
     return deepest
 
 
+# Chunks (#22): a chunk's blocks and biomes as the vanilla client keeps them, whatever palette
+# the server spelled them with (docs/research/2026-10-02-chunks-light.md).
+
+
+_CONTAINERS: Mapping[str, tuple[PalettedContainer, int]] = MappingProxyType(
+    {"block_states": (BLOCK_STATES, 16), "biomes": (BIOMES, 4)}
+)
+"""A section's paletted containers, by field, each with how many entries are on its side: a
+section is 16 blocks, or 4 biome cells, wide, deep and high."""
+
+
+def _canonical_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Each section's block states and biomes as the id at each entry (`_entries`).
+
+    The client keeps the id at each position, not the palette that spelled it:
+    `LevelChunkSection.read` reads each container with `PalettedContainer.read`, which unpacks
+    its entries at the width the palette is read at.
+    """
+    sections = fields.get("sections")
+    if not isinstance(sections, list):
+        return fields
+    return {**fields, "sections": [_canonical_section(section) for section in sections]}
+
+
+def _canonical_section(section: _Value) -> _Value:
+    if not isinstance(section, dict):
+        return section
+    return {
+        key: _entries(_CONTAINERS[key][0], value)
+        if key in _CONTAINERS and isinstance(value, dict)
+        else value
+        for key, value in section.items()
+    }
+
+
+def _entries(container: PalettedContainer, value: dict[str, _Value]) -> _Value:
+    """A container's ids, entry by entry: one id if every entry has it, else `_packed_ids`.
+
+    A container `PalettedContainer.values` cannot read stays as it is.
+    """
+    try:
+        ids = container.values(value)
+    except (KeyError, WireError):
+        return value
+    first = ids[0]
+    if first is not None and ids.count(first) == len(ids):
+        return first
+    return _packed_ids(ids)
+
+
+def _packed_ids(ids: Sequence[int | None]) -> bytes:
+    """`ids` one after the other, as bytes that are equal exactly when the ids are.
+
+    Each is its id plus 1 (0 for an entry past its palette), in as many big-endian bytes as
+    the largest one needs.
+    """
+    numbers = [0 if each is None else each + 1 for each in ids]
+    size = max(1, -(-max(numbers).bit_length() // 8))
+    return b"".join(number.to_bytes(size, "big") for number in numbers)
+
+
+def _unpacked_ids(data: bytes, entries: int) -> list[int | None]:
+    """The `entries` ids `_packed_ids` packed into `data`."""
+    size = len(data) // entries
+    numbers = (
+        int.from_bytes(data[start : start + size], "big") for start in range(0, len(data), size)
+    )
+    return [None if number == 0 else number - 1 for number in numbers]
+
+
+def _chunk_cover(path: _Path) -> _Path:
+    """The path of a chunk's canonical value that the raw value at `path` is part of."""
+    match path:
+        case ("sections", int(), "block_states" | "biomes", *_):
+            return path[:3]
+    return path
+
+
+# What a gameplay Divergence of a chunk shows: the chunk, and the positions that differ.
+
+
+_SECTION_BOTTOMS: Mapping[int, int] = MappingProxyType({24: -64, 16: 0})
+"""The lowest y of the vanilla dimension types with that many sections: the overworld and
+overworld_caves are 384 blocks high from -64, the nether and the end 256 from 0 (the 26.3
+server jar's `data/minecraft/dimension_type`)."""
+
+_SHOWN_POSITIONS = 3
+"""How many differing positions a Divergence names; it counts the rest."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Place:
+    """Where a chunk is in the world, for what its Divergences show.
+
+    Attributes:
+        x: The chunk's x.
+        z: The chunk's z.
+        bottom: The y of its lowest block, if both sides have the section count of a vanilla
+            dimension type with the same lowest y (`_SECTION_BOTTOMS`); None counts y from the
+            world's bottom.
+    """
+
+    x: int
+    z: int
+    bottom: int | None
+
+    @classmethod
+    def of(cls, fields: tuple[dict[str, _Value], dict[str, _Value]]) -> Self | None:
+        """The place of two matched chunks, from the reference's position; None if unknown."""
+        x, z = fields[0].get("chunk_x"), fields[0].get("chunk_z")
+        if type(x) is not int or type(z) is not int:
+            return None
+        bottoms = {
+            _SECTION_BOTTOMS.get(len(sections))
+            if isinstance(sections := side.get("sections"), list)
+            else None
+            for side in fields
+        }
+        return cls(x=x, z=z, bottom=bottoms.pop() if len(bottoms) == 1 else None)
+
+    def label(self) -> str:
+        """`chunk <x> <z>`, saying so if y counts from the world's bottom."""
+        note = "" if self.bottom is not None else " (y from the world's bottom)"
+        return f"chunk {self.x} {self.z}{note}"
+
+    def position(self, section: int, entry: int, side: int) -> str:
+        """`x y z` in the world of `entry` of `section`, a cube of `side` entries a side.
+
+        An entry stands for its lowest corner: a biome cell is 4 blocks a side.
+        """
+        shift, scale = side.bit_length() - 1, 16 // side
+        x, z, y = entry & (side - 1), entry >> shift & (side - 1), entry >> 2 * shift
+        bottom = (self.bottom or 0) + 16 * section
+        return f"{16 * self.x + scale * x} {bottom + scale * y} {16 * self.z + scale * z}"
+
+    def listed(self, section: int, side: int, values: list[tuple[int, str]]) -> str:
+        """The first `_SHOWN_POSITIONS` entries of `values` with their values, and a count."""
+        named = ", ".join(
+            f"{self.position(section, entry, side)} is {value}"
+            for entry, value in values[:_SHOWN_POSITIONS]
+        )
+        more = len(values) - _SHOWN_POSITIONS
+        return f"{self.label()}: {named}" + (f" and {more} more" if more > 0 else "")
+
+
+type _Sides = tuple[dict[str, _Value], dict[str, _Value]]
+"""The reference's and the candidate's fields of two matched Packets."""
+
+
+def _shown_chunk(
+    path: _Path, reference: _Value | Absent, candidate: _Value | Absent, fields: _Sides
+) -> tuple[object, object]:
+    """What a gameplay Divergence of a chunk shows on each side.
+
+    For a section's block states or biomes, the first positions that differ, each with the
+    side's id there, and how many more differ. Anything else shows its values.
+    """
+    match path:
+        case ("sections", int() as section, str() as field) if field in _CONTAINERS:
+            return _shown_section(section, field, (reference, candidate), fields)
+    return reference, candidate
+
+
+def _shown_section(
+    section: int, field: str, values: tuple[_Value | Absent, _Value | Absent], fields: _Sides
+) -> tuple[object, object]:
+    container, side = _CONTAINERS[field]
+    reference, candidate = (_ids(value, container.entries) for value in values)
+    place = _Place.of(fields)
+    if place is None or reference is None or candidate is None:
+        return values
+    differing = [
+        entry for entry in range(container.entries) if reference[entry] != candidate[entry]
+    ]
+    return (
+        place.listed(section, side, [(entry, _id_text(reference[entry])) for entry in differing]),
+        place.listed(section, side, [(entry, _id_text(candidate[entry])) for entry in differing]),
+    )
+
+
+def _ids(value: _Value | Absent, entries: int) -> list[int | None] | None:
+    """The id at each entry of a canonical container; None if it is not one."""
+    if type(value) is int:
+        return [value] * entries
+    if isinstance(value, bytes):
+        return _unpacked_ids(value, entries)
+    return None
+
+
+def _id_text(value: int | None) -> str:
+    return "past the palette" if value is None else str(value)
+
+
 _CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
-    MappingProxyType({(State.STATUS, "minecraft:status_response"): _canonical_status_response})
+    MappingProxyType(
+        {
+            (State.STATUS, "minecraft:status_response"): _canonical_status_response,
+            (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
+        }
+    )
 )
 """The canonical form of each clientbound packet that has one, by (State, name)."""
+
+_COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
+    {(State.PLAY, "minecraft:level_chunk_with_light"): _chunk_cover}
+)
+"""For a packet in `_CANONICAL` whose canonical form is not shaped as it came: the path of the
+canonical value each raw path is part of. A raw difference is network traffic only if that
+value is the same on both sides (`_network_traffic`)."""
+
+_SHOWN: Mapping[
+    tuple[State, str],
+    Callable[[_Path, _Value | Absent, _Value | Absent, _Sides], tuple[object, object]],
+] = MappingProxyType({(State.PLAY, "minecraft:level_chunk_with_light"): _shown_chunk})
+"""For a packet whose gameplay Divergences show something other than their canonical values:
+what they show, from the path, the two values and both sides' fields."""
 
 _JSON_TEXT: Mapping[tuple[State, str], str] = MappingProxyType(
     {(State.STATUS, "minecraft:status_response"): "json_response"}
@@ -1436,12 +1654,17 @@ def _diff_matched(
         # Name each shape once: a list of 10,000 entries is 10,000 pairs but one name.
         names: dict[_Path, str] = {}
         masked = reference.masked | candidate.masked
+        shown = _SHOWN.get((state, name))
+        sides = (reference.fields, candidate.fields)
         for path, ref_value, cand_value in _pairs(reference.fields, candidate.fields, ()):
             shape = tuple(0 if isinstance(step, int) else step for step in path)
             if shape not in names:
                 names[shape] = _test_case(state, name, shape)
             if not _same(ref_value, cand_value):
-                differences.append((path, names[shape], ref_value, cand_value))
+                values = (ref_value, cand_value)
+                if shown is not None:
+                    values = shown(path, ref_value, cand_value, sides)
+                differences.append((path, names[shape], *values))
                 compared.add(names[shape])
             elif not (masked and path in masked):
                 compared.add(names[shape])
@@ -1476,7 +1699,9 @@ def _network_traffic(
     """Yield the raw differences whose unmasked canonical values are equal, in path order.
 
     A raw difference inside JSON text is taken at each JSON path where the parsed values
-    differ; only when they are equal (a JSON spelling) is it the whole text.
+    differ; only when they are equal (a JSON spelling) is it the whole text. The canonical
+    values compared are those at the raw path, or, for a packet in `_COVERS`, at the path of
+    the canonical value the raw one is part of.
     """
     if (
         reference.raw is None
@@ -1487,12 +1712,14 @@ def _network_traffic(
         or candidate.unmasked is None
     ):
         return
+    cover = _COVERS.get((reference.packet.state, reference.packet.name))
     for raw_path, raw_ref, raw_cand in _diff(reference.raw, candidate.raw, ()):
         parsed = (_at(reference.parsed, raw_path), _at(candidate.parsed, raw_path))
         found = list(_diff(*parsed, raw_path)) or [(raw_path, raw_ref, raw_cand)]
         for path, ref_value, cand_value in found:
-            canonical = (_at(reference.unmasked, path), _at(candidate.unmasked, path))
-            if next(_diff(*canonical, path), None) is None:
+            covering = path if cover is None else cover(path)
+            canonical = (_at(reference.unmasked, covering), _at(candidate.unmasked, covering))
+            if next(_diff(*canonical, covering), None) is None:
                 yield path, ref_value, cand_value
 
 
