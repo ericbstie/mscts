@@ -152,6 +152,13 @@ raises nothing.
      loosened, and that the vocabulary matches `CONTEXT.md`.
    - Rebase onto `main` with every commit re-checked:
      `git rebase main -x "mise run check"`.
+   - **Merge train.** When several PRs are ready, stack them: rebase each
+     onto the previous one's tip (the first onto `main`), every commit
+     re-checked, and push each. Run the live tiers the PRs need once, on
+     the last tip, and report the pass counts. Then merge the PRs in
+     stack order. If that run fails, run the tiers per PR to find which
+     one broke it, drop it from the train, and run the rest again. A
+     single ready PR is a train of one.
    - Merge the PR with a merge commit (never a squash or a rebase-merge),
      which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
@@ -680,6 +687,7 @@ Newest first. Every retrospective item gets a row.
 | Date | Change | Why |
 | --- | --- | --- |
 | 2026-10-02 | The old lead's brief-template rules move into `docs/roles/common.md`: a schema owns the regen lists, `HOLDS_NO_ENTITY_ID` and the fake placeholder packets; `TITLES` and the test case page change together; push early, every path inside the worktree; `--stress` only when briefed; sweep before docs | They lived only in the old lead's scratchpad (AT, AU, AV retrospectives) |
+| 2026-10-02 | Merge train: ready PRs are stacked and the live tiers run once on the stack's tip, then the PRs merge in order; per-PR runs only when a train fails (ADR-0009 amendment) | Maintainer: one unrelated merge made four PRs re-run 8 to 15 minute live tiers |
 | 2026-10-02 | The helper agent takes two roles: implementer on `helper-ready` tooling, docs and platform issues (at most 8 open), and comment-only reviewer on PRs labelled `helper-review`, scrutiny::high first | Maintainer: use the helper for high-scrutiny PRs and tooling tasks |
 | 2026-10-02 | The `ready` label is gone: an issue that is not ready carries `needs-triage`, and every other open issue is ready (ADR-0009 amendment) | Maintainer |
 | 2026-10-02 | PRs land with a merge commit, after the branch is rebased onto `main` with every commit re-checked (ADR-0009 amendment) | Maintainer: prefers regular merging |

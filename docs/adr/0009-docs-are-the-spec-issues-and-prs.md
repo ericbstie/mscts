@@ -71,3 +71,14 @@ each issue's commits stay together behind their merge. Labels are now
 (docs/PROCESS.md, Lanes and review levels). An open issue with neither
 `needs-triage` nor `needs-decision` is ready. `spec`, `enabler` and
 `ready` are gone.
+
+## Amendment (2026-10-02): a merge train runs the live tiers once
+
+Each PR must pass its live tiers on a branch rebased onto `main` before it
+merges, and each merge moves `main`, so PRs waiting in line used to re-run
+8 to 15 minute tiers after every merge. Now the tech lead stacks the ready
+PRs (each rebased onto the previous one's tip, every commit re-checked),
+runs the live tiers once on the last tip, and merges the PRs in stack
+order with merge commits. That tip is exactly what `main` becomes. If the
+run fails, the lead runs the tiers per PR to find the cause and drops that
+PR from the train.
