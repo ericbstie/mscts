@@ -87,6 +87,7 @@ test needs it:
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
 | `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve`; `Control`, `OperatorBot`, `CommandMissing` |
 | `groups/*.py` | the Groups themselves (`import mscts.groups` registers them) |
+| `settle.py` | `until_no_player_online(endpoint, *, deadline_s)`: polls an Instance's status until no player is online, `PlayersStillOnline` if it never is. `run` waits with it before each Group |
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict` |
 | `measure.py` | `Measurement`, span extraction, stats |
@@ -1010,6 +1011,32 @@ def test_case(state: State, packet: str, path: str | None) -> str: ...
     # ValueError if `path` is malformed or not spelled as a Divergence path would be.
 ```
 
+Waiting for the players of a Group to leave (`settle.py`, #97). `Bot.close()` only
+closes the socket and a server removes the player later (vanilla: on its next tick), so
+whatever plays on an Instance after Bots left it (a Run before its next Group, a Group
+after its Control Bot left) waits first. It asks only the status, so it works the same
+on every Candidate (ADR-0001), and it imports no Group or Run, so `group.py` can use it:
+
+```python
+SETTLE_INTERVAL_S = 0.02            # between status polls while players are still online
+SETTLE_TIMEOUT_S = 2.0              # an Instance's time to have none (~10x vanilla's worst, 197 ms)
+
+class PlayersStillOnline(Exception):  # str(): "2 players still online after waiting 2 s: watcher, control"
+    online: int                     # what the last status said
+    names: tuple[str, ...]          # the `players.sample` names it listed, if any
+    deadline_s: float
+
+async def until_no_player_online(endpoint: Endpoint, *,
+                                 deadline_s: float = SETTLE_TIMEOUT_S) -> None: ...
+    # Polls the status (a Bot's status request, as status/basic sends it, on a connection of
+    # its own) every SETTLE_INTERVAL_S until `players.online` is 0. PlayersStillOnline once
+    # deadline_s has passed with players still online. A status that cannot be read (refused,
+    # closed, late, not a status, no integer players.online) counts as empty: whatever plays
+    # next meets the same failure and reports it. A poll is never cancelled (one cut off
+    # between connecting and closing leaks its socket): the deadline is checked between polls
+    # and each poll bounds itself by deadline_s, so a server that never answers costs two.
+```
+
 Running Groups (`run.py`):
 
 ```python
@@ -1061,6 +1088,12 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
     # An Attached side is played at its endpoint for every Group, never started or
     # stopped; the same code path otherwise (judge, blocked, repetitions).
+    # Settling (#97): before a Group plays, both Instances are waited on at once with
+    # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
+    # A side that is still not empty means the Group is played on neither side: its
+    # Verdict is `error`, "the Reference had 2 players still online after waiting 2 s:
+    # watcher, control" (one sentence per such side, joined by "; "). The wait is not
+    # part of `elapsed_s`.
     # NotImplementedError for a Group that is not exact (M6a/M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
