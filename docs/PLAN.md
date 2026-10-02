@@ -1349,6 +1349,9 @@ class Report:                       # report.py
     # later: compliance = matches / (groups − errors); to_json(), to_markdown()
 
 def render_text(report: Report) -> str: ...
+# test_cases.py: TITLES: Mapping[str, str], test case name → short title.
+# docs/reference/test-cases.md has one entry per title, checked against the table.
+# Unknown test cases are still reported; the table never filters Comparisons.
 # Sections, in order: header (Reference, Candidate with versions, Target, repetitions);
 # a summary: the Groups counted by state, then the test cases counted the same way (one
 # test case is one name across the Run: different in gameplay in any Verdict is
