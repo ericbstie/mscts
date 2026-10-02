@@ -376,6 +376,15 @@ def test_minus_zero_and_zero_are_the_same_position_in_a_name() -> None:
     assert compare(reference, candidate, []).outcome is Outcome.MATCH
 
 
+def test_a_position_in_a_name_is_not_rounded() -> None:
+    reference = _hurt_one_spawned_before(spawn(5, x=1.5))
+    candidate = _hurt_one_spawned_before(spawn(5, x=1.5000000000000002))
+
+    assert [(d.reference, d.candidate) for d in compare(reference, candidate, []).divergences] == [
+        (PIG_AT, "pig@(1.5000000000000002, -60.0, 7.5)")
+    ]
+
+
 def test_an_id_first_seen_in_remove_entities_takes_no_number() -> None:
     # The Reference removes an entity the Bot never heard of: that shifts no other number.
     reference = transcript(
