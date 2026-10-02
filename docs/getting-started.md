@@ -8,8 +8,11 @@ mscts is not on PyPI yet. You run it from a checkout.
 
 ## Requirements
 
-- Linux on x86-64. The Pumpkin nightly build is Linux-only, and no other
-  platform has been tested.
+- Linux on x86-64. The live tiers have only been tested on Linux, and the
+  pinned Pumpkin build is Linux-only. The unit tier has been run on macOS
+  (Apple silicon), but does not yet pass because of
+  [process checks](https://github.com/ericbstie/mscts/issues/143) and
+  [loopback addresses](https://github.com/ericbstie/mscts/issues/144).
 - [mise](https://mise.jdx.dev). It installs the pinned Python, uv and Java 25
   for you.
 - About 200 MB of disk for the two servers.
