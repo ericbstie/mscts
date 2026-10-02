@@ -17,8 +17,11 @@
         <div class="ms-term-bar"><i></i><i></i><i></i></div>
 <pre v-pre><span class="prompt">$</span> mscts run --candidate pumpkin
 Running tests against pumpkin
-...
-Took 22.7 s</pre>
+- Server list description  status_response.description
+- Unused secure chat flag  status_response.enforceSecureChat
+- Server list icon  status_response.favicon
+- Server list player sample  status_response.players.sample
+Took 22 s</pre>
       </div>
     </section>
 
