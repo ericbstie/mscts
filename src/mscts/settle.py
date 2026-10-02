@@ -4,7 +4,8 @@
 its next tick). So whatever plays against an Instance after Bots have left it, a Run before
 its next Group or a Group after one of its own Bots left, waits first, with
 `until_no_player_online`. It asks the status (the request `status/basic` sends), so it works
-the same on every Candidate (ADR-0001).
+the same on every Candidate (ADR-0001). What vanilla's status does when a player leaves, and
+how long it takes, is in docs/research/2026-10-02-settle.md.
 """
 
 import asyncio
@@ -23,15 +24,17 @@ SETTLE_INTERVAL_S = 0.02
 Vanilla removes a closed Bot's player on its next tick (50 ms), and drops the cached
 status in the same call (`ServerGamePacketListenerImpl.removePlayerFromWorld` calls
 `MinecraftServer.invalidateStatus`, which the same tick's rebuild follows), so a poll
-every 20 ms, under a tick, finds the Instance empty soon after it is.
+every 20 ms, under a tick, finds the Instance empty soon after it is
+(docs/research/2026-10-02-settle.md).
 """
 
 SETTLE_TIMEOUT_S = 2.0
 """How long to wait for an Instance to have no player online.
 
 Measured live on vanilla 26.3: from the end of a Group to the first status that read
-`players.online == 0` took 10 to 197 ms (20 samples of the probe Group's two Bots, and 20
-of one Bot, at most 114 ms). This is about ten times the worst.
+`players.online == 0` took 10 to 197 ms, median 60 ms (20 samples of the probe Group's two
+Bots, and 20 of one Bot, at most 114 ms). This is about ten times the worst
+(docs/research/2026-10-02-settle.md).
 """
 
 _UNREADABLE: tuple[type[Exception], ...] = (CodecError, ProtocolError, OSError)

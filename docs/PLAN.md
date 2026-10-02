@@ -1015,7 +1015,8 @@ Waiting for the players of a Group to leave (`settle.py`, #97). `Bot.close()` on
 closes the socket and a server removes the player later (vanilla: on its next tick), so
 whatever plays on an Instance after Bots left it (a Run before its next Group, a Group
 after its Control Bot left) waits first. It asks only the status, so it works the same
-on every Candidate (ADR-0001), and it imports no Group or Run, so `group.py` can use it:
+on every Candidate (ADR-0001), and it imports no Group or Run, so `group.py` can use it
+(the evidence is `docs/research/2026-10-02-settle.md`):
 
 ```python
 SETTLE_INTERVAL_S = 0.02            # between status polls while players are still online
