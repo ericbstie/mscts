@@ -147,6 +147,7 @@ HOLDS_NO_ENTITY_ID: Mapping[str, str] = {
     "mscts.codec.shapes._NbtTag": "NBT, kept as its bytes",
     "mscts.codec.shapes._CompoundTag": "NBT, kept as its bytes",
     "mscts.codec.shapes._SectionPosition": "a chunk section's position",
+    "mscts.codec.shapes._HolderSet": "registry ids, or a tag's name",
     "mscts.codec.entity_data._ZeroIsNone": "a block state or a number",
     "mscts.codec.movement._MoveDelta": "a movement's numbers",
     "mscts.codec.movement._PositionPath": "a position's numbers",

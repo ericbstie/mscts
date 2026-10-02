@@ -72,6 +72,7 @@ test needs it:
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/schemas/play/commands.py` | `chat_command`, `system_chat` and `commands`: the command tree as `CommandNode`s (every 26.3 parser, its id read through `registry_names`), and `root_literals(tree)`, the commands a player may run |
 | `codec/schemas/play/blocks.py` | the block packets' schemas: `block_update`, `section_blocks_update` (its blocks decode to `{x, y, z, state}`), `block_entity_data`, `block_event`, `block_destruction` |
+| `codec/schemas/play/recipes.py` | `update_recipes`: the property sets (each item set a recipe takes as input) and the stonecutter's recipes, each an ingredient holder set and a slot display (all 11 types of `minecraft:slot_display`, read through `registry_names`) |
 | `codec/schemas/play/world_events.py` | the world event packets' schemas: `level_event`, `sound` and `sound_entity` (a `SOUND_EVENT`, a `SOUND_SOURCE` category and a random seed), `level_particles`, `game_event`, `explode` (its block particles a weighted list) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
