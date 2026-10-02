@@ -34,7 +34,10 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
 2. **Play.** A **Group** is a short async script with a name like
    `status/ping`. It opens one or more **Bots**. A Bot is a protocol client
    that answers what the vanilla client answers automatically, such as
-   keep-alives and teleport confirmations.
+   keep-alives and teleport confirmations. Before mscts plays a Group, it
+   waits until the previous Group's Bots have left, which it reads from each
+   server's own status; if players are still online after a short wait, it
+   does not play the Group and the Verdict is `error`.
 3. **Record.** Every packet a Bot sends or receives goes into a
    **Transcript** with a timestamp. A Group can also record named
    **Marks**, such as the start and end of a ping.
