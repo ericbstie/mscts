@@ -92,6 +92,23 @@ SLOT_DISPLAYS = {
         },
         b"\x08\x04\x07\x04\x07\x03",
     ),
+    "smithing_trim_direct": (
+        {
+            "type": "minecraft:smithing_trim",
+            "value": {
+                "base": ITEM,
+                "material": ITEM,
+                "pattern": {
+                    "direct": {
+                        "asset_id": "minecraft:a",
+                        "description": b"\x08\x00\x01P",  # network NBT: a string tag
+                        "decal": True,
+                    }
+                },
+            },
+        },
+        b"\x08\x04\x07\x04\x07\x00\x0bminecraft:a\x08\x00\x01P\x01",
+    ),
     "with_remainder": (
         {"type": "minecraft:with_remainder", "value": {"ingredient": ITEM, "remainder": ITEM}},
         b"\x09\x04\x07\x04\x07",

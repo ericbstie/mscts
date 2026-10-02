@@ -173,6 +173,19 @@ def test_a_raw_difference_under_a_masked_canonical_difference_is_not_reported() 
     assert verdict.divergences == ()
 
 
+def test_a_mask_hides_a_network_traffic_difference_inside_its_value() -> None:
+    """Only the description's spelling is reported: the unread member is under the Mask."""
+    mask = Mask(packet="minecraft:status_response", path="json_response.players", reason="a test")
+    verdict = _verdict(
+        '{"description":"x","players":{"max":1,"online":0,"extra":1}}',
+        '{"description":{"text":"x"},"players":{"max":1,"online":0}}',
+        mask,
+    )
+    assert [(d.path, d.observability) for d in verdict.divergences] == [
+        ("json_response.description", NETWORK_TRAFFIC)
+    ]
+
+
 def test_a_mask_on_the_raw_path_hides_its_network_traffic_divergence() -> None:
     mask = Mask(packet="minecraft:status_response", path="json_response", reason="a test")
     assert _verdict('{"a":1,"b":2}', '{"b":2,"a":1}', mask).divergences == ()
