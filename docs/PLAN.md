@@ -983,7 +983,8 @@ WHOLE_PACKET = "*"
 class Mask:
     packet: str                     # "minecraft:sound", in whatever State
     path: str                       # "pitch", "json_response.players.sample", or
-                                    # WHOLE_PACKET (drop the packet)
+                                    # WHOLE_PACKET (drop the packet); "[*]" is every index
+                                    # of a list ("players.sample[*].id")
     reason: str
     # ValueError at construction: an empty packet or reason (blank counts as empty), a
     # malformed path, or a path not spelled exactly as a Divergence path would be (the
@@ -1471,7 +1472,9 @@ proves it necessary:
    advancement criterion obtained or not, #106), so a field one side
    lacks, or holds None in, is still a Divergence. A path ending in a
    list index hides that element where it stands, so the list keeps its
-   length. Paths apply to the canonical form (step 2), so a value the
+   length. `[*]` in a Mask's path (never in a Divergence's) is every
+   index of the list there, so a Mask reaches a field of each element
+   (`players.sample[*].id`) wherever an element stands (#106). Paths apply to the canonical form (step 2), so a value the
    client reads as absent (a status's empty `players.sample`) is absent
    there. No Mask is on an entity id, which the
    numbering above already makes comparable: `Mask` refuses one. Before its Group's own Masks, every
@@ -1849,9 +1852,6 @@ then record the answer in an ADR:
   not a move. A content-aware alignment (e.g. matching on masked field
   equality) could read better; decide once a Self-check or Candidate
   shows a case.
-- Masks have no wildcard index (`players.sample[*].id`): a Mask on every
-  element of a list needs one per index, or a Mask on the whole list.
-  Add one when a Group needs it (M4 player info likely will).
 - A Divergence names the packet but not its State; `index` locates it,
   but a report might want the State shown for same-named packets
   (`custom_payload` in configuration and play).

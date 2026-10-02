@@ -7,6 +7,7 @@ import pytest
 
 from mscts.codec.packets import Packet, State
 from mscts.compare import ABSENT, MASKED, Mask, compare
+from mscts.compare import test_case as case_name
 from tests.compare.build import packet, transcript
 
 REASON = "nondeterministic in vanilla"
@@ -40,6 +41,10 @@ def test_every_divergence_path_is_a_valid_mask_path() -> None:
         'json_response["a.b"]',
         '["weird key"].x',
         'm[""]',
+        "players.sample[*].name",
+        "l[*]",
+        "l[*][0][*]",
+        'm["a.b"][*]',
     ],
 )
 def test_a_mask_takes_a_field_path_or_a_star(path: str) -> None:
@@ -77,6 +82,12 @@ def test_a_mask_needs_a_packet_name() -> None:
         "a[1.5]",
         "a.*",
         "**",
+        "[*]",
+        "[*].a",
+        "a[*",
+        "a[**]",
+        "a[ *]",
+        "a*",
     ],
 )
 def test_a_mask_rejects_a_malformed_path(path: str) -> None:
@@ -155,6 +166,47 @@ def test_a_field_mask_on_a_list_element_keeps_it_in_the_list() -> None:
         ("l[1]", 1, 2),
         ("l[2]", 2, ABSENT),
     ]
+
+
+def test_a_star_index_masks_every_element_of_a_list() -> None:
+    reference = {"l": [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}], "m": [[1, 2], [3]]}
+    candidate = {"l": [{"id": 3, "name": "a"}, {"id": 4, "name": "c"}], "m": [[5, 6], [7]]}
+    assert _fields_diff(reference, candidate, _mask("l[*].id"), _mask("m[*][*]")) == [
+        ("l[1].name", "b", "c")
+    ]
+
+
+def test_a_star_index_hides_values_but_not_whether_they_are_there() -> None:
+    reference = {"l": [{"id": 1}, {"id": None}, {"id": 2}]}
+    candidate = {"l": [{"id": 3}, {"id": 4}, {}, {"id": 5}]}
+    assert _fields_diff(reference, candidate, _mask("l[*].id")) == [
+        ("l[1].id", None, MASKED),
+        ("l[2].id", MASKED, ABSENT),
+        ("l[3]", ABSENT, {"id": MASKED}),
+    ]
+
+
+def test_a_star_index_masks_fields_that_are_no_test_cases() -> None:
+    verdict = compare(
+        transcript(("alice", packet("test:p", fields={"l": [{"id": 1, "n": "a"}]}))),
+        transcript(("alice", packet("test:p", fields={"l": [{"id": 2, "n": "a"}]}))),
+        [_mask("l[*].id")],
+    )
+    assert (verdict.divergences, verdict.test_cases) == ((), ("test:p.l[].n",))
+
+
+def test_a_star_index_on_what_is_no_list_hides_nothing() -> None:
+    assert _fields_diff({"l": {"a": 1}}, {"l": {"a": 2}}, _mask("l[*]")) == [("l.a", 1, 2)]
+
+
+def test_a_star_index_is_a_mask_path_only() -> None:
+    with pytest.raises(ValueError, match=re.escape("malformed field path 'a[*]'")):
+        case_name(State.PLAY, "minecraft:set_health", "a[*]")
+
+
+def test_a_mask_on_every_entity_id_of_a_list_is_refused() -> None:
+    with pytest.raises(ValueError, match="an entity id needs no Mask"):
+        Mask(packet="minecraft:remove_entities", path="entity_ids[*]", reason=REASON)
 
 
 def test_a_field_mask_on_a_path_one_side_lacks_leaves_the_other_side_masked() -> None:
