@@ -609,17 +609,20 @@ async def _settle(endpoint: Endpoint) -> _Reading | None:
     still listed players once `SETTLE_TIMEOUT_S` has passed. An Instance whose status
     cannot be read counts as empty here: the Group that plays next meets the same
     failure and reports it.
+
+    A poll is never cancelled from outside, because one cut off between connecting and
+    closing leaks its socket. The deadline is checked between polls, and each poll bounds
+    itself by `SETTLE_TIMEOUT_S` too, so a server that never answers costs at most two.
     """
-    reading: _Reading | None = None
-    try:
-        async with asyncio.timeout(SETTLE_TIMEOUT_S):
-            while True:
-                reading = await _players_online(endpoint)
-                if reading is None or reading.online == 0:
-                    return None
-                await asyncio.sleep(SETTLE_INTERVAL_S)
-    except TimeoutError:
-        return reading
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + SETTLE_TIMEOUT_S
+    while True:
+        reading = await _players_online(endpoint)
+        if reading is None or reading.online == 0:
+            return None
+        if loop.time() >= deadline:
+            return reading
+        await asyncio.sleep(SETTLE_INTERVAL_S)
 
 
 async def _players_online(endpoint: Endpoint) -> _Reading | None:
@@ -627,7 +630,7 @@ async def _players_online(endpoint: Endpoint) -> _Reading | None:
     transcript = Transcript(group_id="settle", server="")  # discarded
     try:
         bot = await Bot.connect(
-            endpoint, TARGET, name="settle", transcript=transcript, timeout_s=GROUP_TIMEOUT_S
+            endpoint, TARGET, name="settle", transcript=transcript, timeout_s=SETTLE_TIMEOUT_S
         )
     except _UNREADABLE:
         return None
