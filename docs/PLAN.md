@@ -73,7 +73,8 @@ test needs it:
 | `codec/schemas/play/commands.py` | `chat_command`, `system_chat` and `commands`: the command tree as `CommandNode`s (every 26.3 parser, its id read through `registry_names`), and `root_literals(tree)`, the commands a player may run |
 | `codec/schemas/play/blocks.py` | the block packets' schemas: `block_update`, `section_blocks_update` (its blocks decode to `{x, y, z, state}`), `block_entity_data`, `block_event`, `block_destruction` |
 | `codec/schemas/play/world_events.py` | the world event packets' schemas: `level_event`, `sound` and `sound_entity` (a `SOUND_EVENT`, a `SOUND_SOURCE` category and a random seed), `level_particles`, `game_event`, `explode` (its block particles a weighted list) |
-| `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode` |
+| `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
+| `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
 | `codec/data/26.3/` | generated `packets.json` and `registry_names.json` (the data component, consume effect, command argument parser and entity type names in protocol id order). Committed, regenerated and checked by `mise run regen:packets` |
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
@@ -155,6 +156,10 @@ class Codec:                        # one per Target; loaded from codec/data/<ve
     def packet_id(self, state: State, direction: Direction, name: str) -> int: ...
     def packet_name(self, state: State, direction: Direction, packet_id: int) -> str: ...
     def names(self, state: State, direction: Direction) -> tuple[str, ...]: ...  # in id order; () if none
+    def entity_id_paths(self, state: State, direction: Direction,
+                        name: str) -> tuple[EntityIdPath, ...]: ...
+    # where the packet's fields hold entity ids, in wire order, found in its schema by type
+    # (codec.entity_ids); () for a packet with none, no schema, or no such packet. Cached.
     def encode(self, state: State, direction: Direction, name: str,
                fields: Mapping[str, object]) -> bytes: ...          # VarInt id ‖ payload
     def decode(self, state: State, direction: Direction, data: bytes) -> Packet: ...
@@ -213,7 +218,8 @@ class Tagged:                      # WireType[dict[str, object]]: a VarInt that 
     # The value is {tag_key: variant name, value_key: payload}; a variant's id is its position,
     # a variant with no wire type has the payload None. An id no variant has is a WireError,
     # and so is a name no variant has when writing. `names` lists them in id order, and
-    # `variants` pairs each name with its wire type, so a walk of the fields can reach inside.
+    # `variants` pairs each name with its wire type, so a walk of the fields can reach inside;
+    # `tag_key` and `value_key` are the two keys.
 NBT: WireType[bytes]               # one network NBT tag, as its exact bytes, checked structurally
                                    # (tag types, lengths, 512 deep); not decoded into values yet
 POSITION: WireType[dict[str, int]] # {x, y, z} packed 26/26/12 bits into a Long
@@ -236,6 +242,32 @@ ENTITY_ID_OPTIONAL: EntityId       # VarInt, id + 1: a damage event's source ids
 # type (the renumbering, which needs no list of packets). Nothing
 # else in a schema is an EntityId. "No entity" reads as None, which the renumbering leaves
 # alone.
+
+# codec/entity_ids.py: where a value holds entity ids, walked from its wire type (#21).
+@frozen
+class Each: ...                    # the type of EACH (repr "EACH")
+EACH: Each                         # the step to every element of a list, in order
+@frozen
+class Variant:                     # the step that goes on only where value[key] == name: one
+    key: str                       # variant of a Tagged value (the next step is its value key)
+    name: str
+type Step = str | Each | Variant   # a mapping key, every element, or one variant
+type EntityIdPath = tuple[Step, ...]   # from a value to an entity id in it; () is the value itself
+def inner_types(wire_type: WireType[object]) -> tuple[tuple[EntityIdPath, WireType[object]], ...]
+    # what a wire type is made of, each with the steps to its value: a Schema's fields by name,
+    # an array's element (PrefixedArray, FixedArray) under EACH, an optional's value and a
+    # Deferred's type in place, each Tagged variant's payload under Variant(tag_key, name) and
+    # value_key, a Holder's direct value under "direct", an Either's sides under their keys,
+    # and ENTITY_DATA as a list of SERIALIZERS values. Anything else is read whole: ().
+def entity_id_paths(wire_type: WireType[object]) -> tuple[EntityIdPath, ...]
+    # every path to an EntityId, in wire order; a Deferred met again inside itself is cut,
+    # and ValueError if such a cycle holds an entity id (its paths would never end).
+# e.g. set_entity_data: ("entity_id",), and ("entries", EACH, Variant("serializer",
+# "particle"), "value", Variant("type", "minecraft:vibration"), "options", "destination",
+# Variant("type", "minecraft:entity"), "value", "entity_id"), and the same under "particles"
+# with one more EACH. tests/codec/test_entity_ids.py walks every schema: each wire type a
+# packet reaches is walked, an EntityId, or listed with the reason it holds none (an item
+# stack's data components, the command tree, NBT, ...).
 
 # codec/movement.py: each owns its discriminator (the number of steps, the path type); a
 # value names its variant by its key, exactly one of `linear` and `stepped`.

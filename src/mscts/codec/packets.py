@@ -7,6 +7,7 @@ from enum import StrEnum
 from importlib import resources
 from typing import TYPE_CHECKING, Self
 
+from mscts.codec.entity_ids import EntityIdPath, entity_id_paths
 from mscts.codec.schema import Schema
 from mscts.codec.schemas import configuration, handshake, login, play, status
 from mscts.codec.wire import Reader, WireError, Writer
@@ -118,6 +119,7 @@ class Codec:
                     msg = f"schema for no packet {state} {direction} {name}"
                     raise UnknownPacketError(msg)
                 self._schemas[state, direction, name] = schema
+        self._entity_id_paths: dict[tuple[State, Direction, str], tuple[EntityIdPath, ...]] = {}
 
     @classmethod
     def load(cls, minecraft_version: str) -> Self:
@@ -160,6 +162,20 @@ class Codec:
         A state with no packets that way (the Handshake's clientbound) has no names.
         """
         return self._ordered.get((state, direction), ())
+
+    def entity_id_paths(
+        self, state: State, direction: Direction, name: str
+    ) -> tuple[EntityIdPath, ...]:
+        """Where packet `name`'s fields hold entity ids: each path, in wire order.
+
+        Found in its schema by type (`entity_ids.entity_id_paths`). A packet with no
+        schema, or no such packet, names none.
+        """
+        key = (state, direction, name)
+        if key not in self._entity_id_paths:
+            schema = self._schemas.get(key)
+            self._entity_id_paths[key] = () if schema is None else entity_id_paths(schema)
+        return self._entity_id_paths[key]
 
     def packet_name(self, state: State, direction: Direction, packet_id: int) -> str:
         """Return the name of packet `packet_id` in `state`, travelling `direction`.
