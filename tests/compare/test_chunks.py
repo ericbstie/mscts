@@ -21,6 +21,7 @@ from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
 CHUNK = "minecraft:level_chunk_with_light"
+CHUNK_TEST_CASE = "level_chunk_with_light"
 RECORDED = Path(__file__).resolve().parents[1] / "codec" / "schemas" / "data"
 
 AIR, STONE = 0, 1
@@ -399,6 +400,38 @@ def test_a_direct_biome_container_of_another_width_is_a_gameplay_difference() ->
             f"chunk 0 0, y -64 to -49: 8 bits per entry where the client reads 7: {'29' * 64}",
         )
     ]
+
+
+# A batch: the server sends the chunks at one distance in the iteration order of a hash set, and
+# the client keeps each by its position.
+
+
+def _batch(*chunks: Packet) -> Transcript:
+    start = packet("minecraft:chunk_batch_start", fields={})
+    finished = packet("minecraft:chunk_batch_finished", fields={"batch_size": len(chunks)})
+    return transcript(*(("alice", each) for each in (start, *chunks, finished)))
+
+
+def test_the_chunks_of_a_batch_in_another_order_are_no_difference() -> None:
+    first, second, third = (chunk(at=at) for at in ((0, 0), (-1, 0), (0, 1)))
+
+    verdict = compare(_batch(first, second, third), _batch(third, first, second), [])
+
+    assert verdict.divergences == ()
+
+
+def test_a_chunk_only_one_side_sent_is_a_divergence_naming_its_position() -> None:
+    reference = _batch(chunk(at=(0, 0)), chunk(at=(3, -2)))
+    candidate = _batch(chunk(at=(1, 1)), chunk(at=(0, 0)))
+
+    assert compare(reference, candidate, []).divergences == (
+        divergence(
+            "missing", index=2, packet=CHUNK, reference="chunk 3 -2", test_case=CHUNK_TEST_CASE
+        ),
+        divergence(
+            "unexpected", index=2, packet=CHUNK, candidate="chunk 1 1", test_case=CHUNK_TEST_CASE
+        ),
+    )
 
 
 # Light. Light section i is world section i - 1: in a 24-section chunk, light section 1 holds

@@ -413,7 +413,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
     Each Bot's stream is normalized first: if the Transcript has Observation windows,
     the play Packets they do not observe are left out (`_Windows.observes`); the
-    Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
+    Packets a `*` Mask names are dropped; the chunks of each chunk batch are sorted by
+    position (`_by_position`); the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way, and a chunk's sections hold
     the id at each entry of their containers, and its light what the client applies to each
@@ -432,9 +433,10 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     shift when a re-run has more or fewer Packets left out or dropped; paths and values
     are those of the sorted, canonical, numbered form.
 
-    Each Bot's two streams are aligned on their packet keys (State and name), leaving
-    as few Packets unmatched as possible; swapping the sides mirrors the alignment.
-    Between two matched pairs, `missing` Divergences come before `unexpected` ones.
+    Each Bot's two streams are aligned on their packet keys (State and name, and a chunk's
+    position), leaving as few Packets unmatched as possible; swapping the sides mirrors the
+    alignment. Between two matched pairs, `missing` Divergences come before `unexpected`
+    ones. An unmatched chunk shows `chunk <x> <z>`, any other Packet its value.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
     gameplay `field` Divergence per differing leaf, in path order. If they have a
@@ -626,19 +628,84 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     """
     windows = _Windows.of(transcript)
     context = _Context.of(transcript, bot)
+    events = [
+        event
+        for event in transcript.events
+        if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
+    ]
+    taken = iter(
+        _by_position(
+            [
+                (event.packet, batch)
+                for event, batch in zip(events, _batches(events), strict=True)
+                if event.packet.name not in masks.dropped
+                and (windows is None or windows.observes(event))
+            ]
+        )
+    )
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
-    for event in transcript.events:
+    for event in events:
         packet = event.packet
-        if event.bot != bot or packet.direction is not Direction.CLIENTBOUND:
-            continue
         if windows is not None and not windows.observes(event):
             numbers.spawned(packet, masks)
         elif packet.name not in masks.dropped:
+            packet = next(taken)
             numbers.take(packet)
             stream.append(_normalize(packet, masks, numbers, context))
         numbers.removed(packet)
     return stream
+
+
+_CHUNK = "minecraft:level_chunk_with_light"
+_BATCH_START = "minecraft:chunk_batch_start"
+_BATCH_FINISHED = "minecraft:chunk_batch_finished"
+
+
+def _batches(events: Sequence[Event]) -> list[int | None]:
+    """For each of a Bot's clientbound Events, the number of the chunk batch it came in.
+
+    A batch is what comes from a `chunk_batch_start` to the next `chunk_batch_finished`, the
+    two included; the first batch is 1. An Event in no batch has None.
+    """
+    result: list[int | None] = []
+    count, batch = 0, None
+    for event in events:
+        packet = event.packet
+        if packet.state is State.PLAY and packet.name == _BATCH_START:
+            count += 1
+            batch = count
+        result.append(batch)
+        if packet.state is State.PLAY and packet.name == _BATCH_FINISHED:
+            batch = None
+    return result
+
+
+def _by_position(taken: Sequence[tuple[Packet, int | None]]) -> list[Packet]:
+    """The Packets of `taken`, with the chunks of each batch sorted by position (x, then z).
+
+    Only the chunks move, among the places the batch's chunks had; chunks at one position keep
+    their order. The server sends the chunks of a batch at one distance from the player in
+    the iteration order of a hash set (`PlayerChunkSender.sendNextChunks`), and the client
+    keeps each chunk by its position (docs/research/2026-10-02-chunks-light.md).
+    """
+    result = [packet for packet, _ in taken]
+    placed: dict[int, list[tuple[tuple[int, int], int]]] = {}
+    for index, (packet, batch) in enumerate(taken):
+        if batch is not None and (at := _chunk_at(packet)) is not None:
+            placed.setdefault(batch, []).append((at, index))
+    for chunks in placed.values():
+        for (_, index), (_, source) in zip(chunks, sorted(chunks), strict=True):
+            result[index] = taken[source][0]
+    return result
+
+
+def _chunk_at(packet: Packet) -> tuple[int, int] | None:
+    """The position (x, z) of a decoded `level_chunk_with_light`; None for any other Packet."""
+    if (packet.state, packet.name) != (State.PLAY, _CHUNK) or packet.fields is None:
+        return None
+    x, z = packet.fields.get("chunk_x"), packet.fields.get("chunk_z")
+    return (x, z) if type(x) is int and type(z) is int else None
 
 
 _BIOMES_REGISTRY = "minecraft:worldgen/biome"
@@ -1804,12 +1871,20 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 # Alignment.
 
 
-type _Key = tuple[str, str]
-"""What a Packet is aligned on: its State and name."""
+type _Key = tuple[str, ...]
+"""What a Packet is aligned on (`_key`): its State, its name and, for a chunk, its position
+(`chunk x z`; empty for any other Packet). The client keeps a chunk by its position, so two
+chunks at different positions are never one Packet sent two ways."""
 
 
 def _key(entry: _Normalized) -> _Key:
-    return (entry.packet.state.value, entry.packet.name)
+    return (entry.packet.state.value, entry.packet.name, _place_text(entry.packet))
+
+
+def _place_text(packet: Packet) -> str:
+    """`chunk <x> <z>` for a chunk (`_chunk_at`), else the empty string."""
+    at = _chunk_at(packet)
+    return "" if at is None else f"chunk {at[0]} {at[1]}"
 
 
 def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[int, int]]:
@@ -1900,14 +1975,16 @@ def _compare_streams(
 def _unmatched(
     bot: str, index: int, kind: Literal["missing", "unexpected"], entry: _Normalized
 ) -> Divergence:
+    """A Packet one side has: it shows its value, or for a chunk where it is (`chunk x z`)."""
+    value = _place_text(entry.packet) or entry.value
     return Divergence(
         bot=bot,
         index=index,
         kind=kind,
         packet=entry.packet.name,
         path=None,
-        reference=entry.value if kind == "missing" else ABSENT,
-        candidate=entry.value if kind == "unexpected" else ABSENT,
+        reference=value if kind == "missing" else ABSENT,
+        candidate=value if kind == "unexpected" else ABSENT,
         test_case=_test_case(entry.packet.state, entry.packet.name, ()),
     )
 
