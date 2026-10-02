@@ -20,12 +20,25 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
   narrowest test selection that kills the mutants, and pass `--timeout 300`.
 - Repeat a selection with
   `uv run scripts/repeat.py --times N [--stress] -- <pytest args>` (one
-  line per run, the union of failures). Never hand-roll a loop.
+  line per run, the union of failures). Never hand-roll a loop. Use
+  `--stress` only when your brief or issue asks: it slows every other
+  agent's tiers on this host.
+- Run the mutation sweep before the docs commits, so a bug it finds is
+  fixed while the code is fresh.
 - The docs checks run the guide's Python examples (#109): a fragment gets
   `<!-- not run: <why> -->` on the line before its fence.
 - A change outside your issue's Owns list, or in a core area another lane
   owns: stop and hand back the evidence and the options. Go on only when a
   lead message names the file.
+- A new packet schema also owns what it breaks: the generated name lists
+  (`mise run regen:packets`), `HOLDS_NO_ENTITY_ID`, and a placeholder
+  packet in `tests/net/fakes.py` that no longer decodes (replace it with
+  something a real server could send). Read the layout with
+  `scripts/research/layout.py` before the wiki.
+- A new test case name in `TITLES` and its row in
+  `docs/reference/test-cases.md` land in the same commit.
+- Push your first commit early, and start every Edit or Write path with
+  your worktree's path: a lost worktree loses only what was never pushed.
 - Run `mise run fix` before each test run (red-green Known traps lists
   ruff's recurring rules).
 - One plain command per Bash call: no `&&`, `;`, heredocs, `sed -i`, or

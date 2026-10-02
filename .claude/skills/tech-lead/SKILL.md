@@ -105,6 +105,8 @@ first.
 - A brief names the module and the public API of anything the next issue
   on the queue reuses, and states the Verdict of each new failure path
   (Candidate `mismatch` with a `failed` Divergence, Reference `error`; AP, #97).
+  The one it was meant to catch: `PlayersStillOnline` raised inside a Group
+  was `error` (audit 2026-10-02 H4, #114).
 - A wide table (about 20 entries of one mechanism or more, like the 122
   data components) gets its layouts derived before briefing: a `sonnet`
   triage runs `scripts/research/layout.py` over each entry and posts the
