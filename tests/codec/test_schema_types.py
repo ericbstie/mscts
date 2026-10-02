@@ -11,6 +11,7 @@ from mscts.codec.schema import (
     DOUBLE,
     ENTITY_ID,
     ENTITY_ID_INT,
+    ENTITY_ID_INT_OR_NONE,
     ENTITY_ID_OPTIONAL,
     FLOAT,
     IDENTIFIER,
@@ -393,6 +394,29 @@ def test_optional_entity_id_is_the_id_plus_one_and_zero_for_none(
 def test_optional_entity_id_refuses_minus_one_which_would_read_back_as_none() -> None:
     with pytest.raises(WireError, match="-1 is not an entity id"):
         written(ENTITY_ID_OPTIONAL, -1)
+
+
+# A lead's holder is an Int that is 0 for none: vanilla writes `dest != null ? dest.getId() :
+# 0` (ClientboundSetEntityLinkPacket), and the client takes no holder for 0 (Leashable).
+@pytest.mark.parametrize(
+    ("value", "encoded"), [(None, "00000000"), (15, "0000000f"), (-2, "fffffffe")]
+)
+def test_an_int_entity_id_or_none_is_the_id_and_zero_for_none(
+    value: int | None, encoded: str
+) -> None:
+    assert isinstance(ENTITY_ID_INT_OR_NONE, EntityId)
+    assert written(ENTITY_ID_INT_OR_NONE, value) == bytes.fromhex(encoded)
+    assert read_all(ENTITY_ID_INT_OR_NONE, bytes.fromhex(encoded)) == value
+
+
+def test_an_int_entity_id_or_none_refuses_0_which_would_read_back_as_none() -> None:
+    with pytest.raises(WireError, match="0 is not an entity id"):
+        written(ENTITY_ID_INT_OR_NONE, 0)
+
+
+def test_an_entity_id_is_not_both_plus_one_and_zero_for_none() -> None:
+    with pytest.raises(SchemaError, match="optional or zero_is_none, not both"):
+        EntityId(VAR_INT, optional=True, zero_is_none=True)
 
 
 # A Schema says which fields it has, so that they can be found by type.

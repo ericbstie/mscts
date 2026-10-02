@@ -16,6 +16,7 @@ from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.codec.schema import (
     ENTITY_ID,
     ENTITY_ID_INT,
+    ENTITY_ID_INT_OR_NONE,
     ENTITY_ID_OPTIONAL,
     EntityId,
     PrefixedArray,
@@ -751,7 +752,9 @@ def test_set_passengers_decodes_and_re_encodes() -> None:
 
 
 def test_set_entity_link_decodes_and_re_encodes() -> None:
-    # A lead from the entity 2 to the entity 15; the ids are Ints, and the holder 0 is none.
+    # A lead from the entity 2 to the entity 15; the ids are Ints, and the holder 0 is none:
+    # vanilla writes 0 for no holder, and the client only takes a holder that is not 0
+    # (Leashable.getLeashHolder, javap).
     round_trip(
         "minecraft:set_entity_link",
         {"attached_entity_id": 2, "holding_entity_id": 15},
@@ -759,9 +762,15 @@ def test_set_entity_link_decodes_and_re_encodes() -> None:
     )
     round_trip(
         "minecraft:set_entity_link",
-        {"attached_entity_id": 300, "holding_entity_id": 0},
+        {"attached_entity_id": 300, "holding_entity_id": None},
         "0000012c 00000000",
     )
+
+
+def test_a_set_entity_link_holder_of_0_is_refused_as_it_would_read_back_as_none() -> None:
+    fields = {"attached_entity_id": 300, "holding_entity_id": 0}
+    with pytest.raises(CodecError, match=r"holding_entity_id: 0 is not an entity id"):
+        CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:set_entity_link", fields)
 
 
 def test_set_health_decodes_and_re_encodes() -> None:
@@ -851,4 +860,4 @@ def test_set_equipment_decodes_and_re_encodes() -> None:
 def test_the_entity_ids_of_a_link_are_ints() -> None:
     fields = play_schema("minecraft:set_entity_link").fields
     assert fields["attached_entity_id"] is ENTITY_ID_INT
-    assert fields["holding_entity_id"] is ENTITY_ID_INT
+    assert fields["holding_entity_id"] is ENTITY_ID_INT_OR_NONE
