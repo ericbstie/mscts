@@ -177,6 +177,16 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "setBaseValue, removeModifiers and each modifier), so a repeated attribute keeps "
             "the last. Each attribute's modifiers keep their order."
         ),
+        "minecraft:update_recipes": (
+            "property_sets, sorted by property_set_id, and each one's items, sorted by item "
+            "id. Vanilla sends both in an order fixed per boot: RecipeManager collects the "
+            "property sets with Collectors.toUnmodifiableMap and each one's items with "
+            "Collectors.toUnmodifiableSet, whose iteration order is salted per boot. The "
+            "client reads them into a HashMap of sets (ClientboundUpdateRecipesPacket"
+            ".STREAM_CODEC: ByteBufCodecs.map(HashMap::new, ...); RecipePropertySet"
+            ".STREAM_CODEC: Set.copyOf), so a repeated property set keeps the last. The "
+            "stonecutter recipes keep their order."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
@@ -900,14 +910,28 @@ def _sorted_update_tags(fields: dict[str, _Value]) -> dict[str, _Value]:
     registries = fields.get("tagged_registries")
     if not isinstance(registries, list):
         return fields
-    sorted_tags = [_with_sorted_tags(registry) for registry in registries]
+    sorted_tags = [_with_sorted(registry, "tags", "tag_name") for registry in registries]
     return {**fields, "tagged_registries": _sorted_by(sorted_tags, "registry")}
 
 
-def _with_sorted_tags(registry: _Value) -> _Value:
-    if isinstance(registry, dict) and isinstance(tags := registry.get("tags"), list):
-        return {**registry, "tags": _sorted_by(tags, "tag_name")}
-    return registry
+def _sorted_update_recipes(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `property_sets` by id, and each one's `items` by item id.
+
+    The sorts are stable, so an id sent twice keeps the order of its items: the client keeps
+    the last one. The stonecutter recipes keep their order.
+    """
+    sets = fields.get("property_sets")
+    if not isinstance(sets, list):
+        return fields
+    sorted_items = [_with_sorted(property_set, "items", None) for property_set in sets]
+    return {**fields, "property_sets": _sorted_by(sorted_items, "property_set_id")}
+
+
+def _with_sorted(node: _Value, field: str, key: str | None) -> _Value:
+    """`node` with its list `field` sorted as `_sorted_by` does with `key`."""
+    if isinstance(node, dict) and field in node:
+        return {**node, field: _sorted_by(node[field], key)}
+    return node
 
 
 def _sorted_by(items: _Value, key: str | None) -> _Value:
@@ -945,6 +969,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:update_tags": _sorted_update_tags,
         "minecraft:login": _sorting("dimension_names", None),
         "minecraft:update_attributes": _sorting("attributes", "attribute"),
+        "minecraft:update_recipes": _sorted_update_recipes,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""
