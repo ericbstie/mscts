@@ -66,7 +66,8 @@ different block.
 
 A chunk only one server sent, shown by its chunk coordinates, such as
 `chunk 3 -2`. The client keeps chunks by position, so the order of
-chunks sent one right after the other is not compared. Differences
+chunks is not compared, nor which batch each one comes in, unless
+something that depends on the order comes between them. Differences
 inside a chunk both servers sent have the test cases below.
 
 ## `level_chunk_with_light.sections[].block_states`

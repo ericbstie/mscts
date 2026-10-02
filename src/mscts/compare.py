@@ -657,29 +657,74 @@ _CHUNK_PACKETS = frozenset(
 `ClientChunkCache.drop` with `queueLightRemoval`."""
 
 
-def _by_position(events: Sequence[Event]) -> list[Event]:
-    """A Bot's clientbound `events`, with each run of chunk packets in a row sorted by position.
+_CHUNK_NEUTRAL = frozenset(
+    {
+        "minecraft:chunk_batch_start",
+        "minecraft:chunk_batch_finished",
+        *HEARTBEAT,
+        "minecraft:pong_response",
+        "minecraft:bundle_delimiter",
+        "minecraft:add_entity",
+        "minecraft:move_entity_pos",
+        "minecraft:move_entity_pos_rot",
+        "minecraft:move_entity_rot",
+        "minecraft:rotate_head",
+        "minecraft:set_entity_motion",
+        "minecraft:update_attributes",
+        "minecraft:remove_entities",
+    }
+)
+"""The play packets whose handling on the client reads no chunk, so that a chunk packet has the
+same effect on either side of one (javap on the 26.3 client, docs/research/2026-10-02-chunks-
+light.md): a batch's start and end feed only `ChunkBatchSizeCalculator`; the heartbeat packets
+and `pong_response` touch the clock, the stats and the ping monitor; and the entity handlers set
+the entity's fields, while its chunk being loaded decides only whether it ticks
+(`TransientEntitySectionManager`), which either order ends with the same."""
 
-    A run is packets about one chunk each (`_CHUNK_PACKETS`) one after the other, with nothing
-    else between them, in the whole stream: before the windows, their narrowing or a Mask leave
-    anything out, since the client applies every packet in turn. Its packets are sorted by
-    position, x then z, stably, so those about one chunk keep their order. The server sends the
-    chunks at one distance from the player in the iteration order of a hash set
-    (`PlayerChunkSender.sendNextChunks`), and the light updates of a tick in that of an identity
-    hash set (`ServerChunkCache.chunkHoldersToBroadcast`); the client keeps chunks and their
-    light by position (docs/research/2026-10-02-chunks-light.md).
+
+def _by_position(events: Sequence[Event]) -> list[Event]:
+    """A Bot's clientbound `events`, with the chunk packets of each run sorted by position.
+
+    A run goes from a packet about one chunk (`_CHUNK_PACKETS`) to the last such packet before
+    anything but packets whose handling reads no chunk (`_CHUNK_NEUTRAL`), in the whole stream:
+    before the windows, their narrowing or a Mask leave anything out, since the client applies
+    every packet in turn. It becomes its chunk packets, sorted by position, x then z, stably, so
+    those about one chunk keep their order, then its other packets in their order. The server
+    sends the chunks at one distance from the player in the iteration order of a hash set, and
+    which of them are ready for a batch races (`PlayerChunkSender.sendNextChunks`); it sends the
+    light updates of a tick in the order of an identity hash set
+    (`ServerChunkCache.chunkHoldersToBroadcast`); and the client keeps chunks and their light by
+    position (docs/research/2026-10-02-chunks-light.md).
     """
-    result = list(events)
-    run: list[tuple[tuple[int, int], int]] = []  # each chunk packet's position and index
-    for index, event in enumerate([*events, None]):
-        at = None if event is None else _position(event.packet)
-        if at is not None:
-            run.append((at, index))
-            continue
-        for (_, place), (_, source) in zip(run, sorted(run), strict=True):
-            result[place] = events[source]
-        run = []
+    result: list[Event] = []
+    chunks: list[Event] = []
+    positions: list[tuple[int, int]] = []
+    held: list[Event] = []  # the run's other packets so far
+
+    def end_run() -> None:
+        order = sorted(range(len(chunks)), key=positions.__getitem__)
+        result.extend(chunks[index] for index in order)
+        result.extend(held)
+        chunks.clear()
+        positions.clear()
+        held.clear()
+
+    for event in events:
+        if (at := _position(event.packet)) is not None:
+            chunks.append(event)
+            positions.append(at)
+        elif chunks and _neutral(event.packet):
+            held.append(event)
+        else:
+            end_run()
+            result.append(event)
+    end_run()
     return result
+
+
+def _neutral(packet: Packet) -> bool:
+    """Whether `packet` is a play packet a run of chunk packets goes across (`_CHUNK_NEUTRAL`)."""
+    return packet.state is State.PLAY and packet.name in _CHUNK_NEUTRAL
 
 
 def _position(packet: Packet) -> tuple[int, int] | None:

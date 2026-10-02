@@ -635,6 +635,100 @@ def test_chunks_are_put_in_order_before_anything_is_left_out(
     assert verdict.gameplay
 
 
+# Batches. Which chunks go in which batch races between two vanilla Instances (the ordering review
+# of #122, finding 2): PlayerChunkSender.sendNextChunks takes the pending chunks that are ready.
+
+
+def test_chunks_are_compared_by_position_across_batches() -> None:
+    first, second, third, fourth = (chunk(at=(x, 0)) for x in range(4))
+
+    verdict = compare(
+        _played((first, second), (third, fourth)), _played((first, third), (second, fourth)), []
+    )
+
+    assert verdict.divergences == ()
+
+
+# The client handles these without reading a chunk (javap on the 26.3 client,
+# docs/research/2026-10-02-chunks-light.md), so a chunk may arrive on either side of one.
+UNRELATED = [
+    "minecraft:chunk_batch_start",
+    "minecraft:chunk_batch_finished",
+    "minecraft:keep_alive",
+    "minecraft:set_time",
+    "minecraft:award_stats",
+    "minecraft:pong_response",
+    "minecraft:bundle_delimiter",
+    "minecraft:add_entity",
+    "minecraft:move_entity_pos",
+    "minecraft:move_entity_pos_rot",
+    "minecraft:move_entity_rot",
+    "minecraft:rotate_head",
+    "minecraft:set_entity_motion",
+    "minecraft:update_attributes",
+    "minecraft:remove_entities",
+]
+
+
+def test_a_packet_between_batches_is_compared_after_the_chunks_around_it() -> None:
+    # What two vanilla Instances sent in a join: the player's attributes between two batches,
+    # after another number of chunks on each side.
+    first, second, third = (chunk(at=(x, 0)) for x in range(3))
+    attributes = packet("minecraft:update_attributes", fields={"entity_id": 1})
+
+    verdict = compare(
+        _played((first, second), attributes, (third,)),
+        _played((first,), attributes, (second, third)),
+        [],
+    )
+
+    assert [(d.kind, d.packet, d.path) for d in verdict.gameplay] == [
+        ("field", "minecraft:chunk_batch_finished", "batch_size"),
+        ("field", "minecraft:chunk_batch_finished", "batch_size"),
+    ]
+
+
+@pytest.mark.parametrize("name", UNRELATED)
+def test_chunks_are_sorted_across_a_packet_whose_handling_reads_no_chunk(name: str) -> None:
+    between = packet(name, fields={})
+
+    verdict = compare(_batch_of(LIT_A, between, LIT_B), _batch_of(LIT_B, between, LIT_A), [])
+
+    assert verdict.divergences == ()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # Its handler snaps the entity, or interpolates it, by whether its chunk is loaded
+        # (ClientLevel.isTickingEntity).
+        "minecraft:entity_position_sync",
+        "minecraft:teleport_entity",
+        # A sleeping entity's position is set from the bed block there (LivingEntity.setPosToBed).
+        "minecraft:set_entity_data",
+        "minecraft:entity_event",
+        "minecraft:block_update",
+        "minecraft:chunks_biomes",
+    ],
+)
+def test_chunks_keep_their_order_around_any_other_packet(name: str) -> None:
+    between = packet(name, fields={})
+
+    verdict = compare(_batch_of(LIT_A, between, LIT_B), _batch_of(LIT_B, between, LIT_A), [])
+
+    assert verdict.gameplay
+
+
+@pytest.mark.parametrize("change", CHANGES_B, ids=["light_update", "forget_level_chunk"])
+def test_a_chunk_never_moves_across_a_packet_that_changes_it_in_another_batch(
+    change: Packet,
+) -> None:
+    reference = _batch_of(START, LIT_B, _finished(1), change, START, LIT_A, _finished(1))
+    candidate = _batch_of(START, LIT_A, _finished(1), change, START, LIT_B, _finished(1))
+
+    assert compare(reference, candidate, []).gameplay
+
+
 def test_a_chunk_only_one_side_sent_is_a_divergence_naming_its_position() -> None:
     reference = _batch(chunk(at=(0, 0)), chunk(at=(3, -2)))
     candidate = _batch(chunk(at=(1, 1)), chunk(at=(0, 0)))

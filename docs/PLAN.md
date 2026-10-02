@@ -1350,25 +1350,42 @@ proves it necessary:
      block entities in a map keyed by `BlockPos`:
      `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
      those sent for one position keep their order.
-   - the order of packets about different chunks in a row. Each run of
-     `level_chunk_with_light`, `light_update` and `forget_level_chunk`
-     packets one right after the other is sorted by position, x then z,
-     stably, among the places the run's packets had
-     (`compare._by_position`), so the packets about one chunk keep their
-     order; indices count the sorted stream. The runs are found in a
-     Bot's whole clientbound stream, before windows, their narrowing or a
-     `*` Mask leave anything out: the client applies every packet in
-     turn, so any other packet between two chunks keeps them in their
-     order around it. Vanilla sends a batch's chunks nearest first, and
-     those at one distance in the iteration order of a `LongOpenHashSet`
-     of pending chunks, which can differ from one play to the next
-     (`javap` on the 26.3 server: `PlayerChunkSender.sendNextChunks`),
-     and the light updates of one tick in the iteration order of
-     `ServerChunkCache.chunkHoldersToBroadcast`, a `ReferenceOpenHashSet`.
-     The client applies each to the chunk at its position: a chunk with
+   - the order of packets about different chunks, and where they fall
+     among packets whose handling reads no chunk. A *chunk packet* is a
+     `level_chunk_with_light`, `light_update` or `forget_level_chunk`:
+     the client applies each to the chunk at its position (a chunk with
      `ClientChunkCache.replaceWithPacketData`, light with
      `ClientLevel.queueLightUpdate`, a forgotten chunk with
-     `ClientChunkCache.drop` and `queueLightRemoval`
+     `ClientChunkCache.drop` and `queueLightRemoval`). A *run* goes from a
+     chunk packet to the last chunk packet before any packet that is
+     neither a chunk packet nor in `compare._CHUNK_NEUTRAL`:
+     `chunk_batch_start` and `chunk_batch_finished` (their handlers feed
+     only `ChunkBatchSizeCalculator`), the heartbeat packets and
+     `pong_response`, and the entity packets whose handlers read no chunk
+     (`add_entity`, `move_entity_pos`, `move_entity_pos_rot`,
+     `move_entity_rot`, `rotate_head`, `set_entity_motion`,
+     `update_attributes`, `remove_entities`, `bundle_delimiter`; an
+     entity's chunk being loaded decides only whether it ticks, and
+     either order ends with the same). Each run becomes its chunk
+     packets, sorted by position, x then z, stably, so the packets about
+     one chunk keep their order, then its other packets in their order
+     (`compare._by_position`); indices count the sorted stream. So a
+     chunk never moves across a packet about its own position, nor
+     across any packet whose effect on the client depends on the order:
+     every other packet ends a run, among them `entity_position_sync` and
+     `teleport_entity` (their handlers snap or interpolate by
+     `ClientLevel.isTickingEntity`), `set_entity_data` (a sleeping
+     entity's position comes from the bed block there,
+     `LivingEntity.setPosToBed`), `entity_event`, the block packets and
+     `chunks_biomes`. The runs are found in a Bot's whole clientbound
+     stream, before windows, their narrowing or a `*` Mask leave anything
+     out, since the client applies every packet in turn. Vanilla sends a
+     batch's chunks nearest first, those at one distance in the
+     iteration order of a `LongOpenHashSet` of pending chunks, and which
+     of them are ready for a batch races between two Instances (`javap`
+     on the 26.3 server: `PlayerChunkSender.sendNextChunks`); it sends the
+     light updates of one tick in the iteration order of
+     `ServerChunkCache.chunkHoldersToBroadcast`, a `ReferenceOpenHashSet`
      (`docs/research/2026-10-02-chunks-light.md`).
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
