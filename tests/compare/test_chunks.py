@@ -16,6 +16,7 @@ import pytest
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.wire import Writer
 from mscts.compare import UNORDERED, Divergence, Observability, Verdict, compare
+from mscts.transcript import Transcript
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
@@ -362,6 +363,42 @@ def test_the_same_biomes_under_another_palette_are_network_traffic_only() -> Non
 
     assert verdict.divergences
     assert verdict.gameplay == ()
+
+
+# A direct biome container: the client reads it at ceillog2 of the biomes the server sent in
+# configuration, whatever its bits say; the codec reads it at the bits sent.
+
+
+def _joined(chunk_packet: Packet) -> Transcript:
+    """67 biomes in configuration, as both recorded joins sent, then `chunk_packet`."""
+    entries = [{"entry_id": f"minecraft:biome_{index}", "data": None} for index in range(67)]
+    fields = {"registry_id": "minecraft:worldgen/biome", "entries": entries}
+    encoded = CODEC.encode(State.CONFIGURATION, CLIENTBOUND, "minecraft:registry_data", fields)
+    registry = CODEC.decode(State.CONFIGURATION, CLIENTBOUND, encoded)
+    return transcript(("alice", registry), ("alice", chunk_packet))
+
+
+def test_a_direct_biome_container_of_the_width_the_client_reads_is_network_traffic_only() -> None:
+    biomes = direct([PLAINS] * 64, bits=7)  # 67 biomes: Mth.ceillog2(67) = 7
+
+    verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=biomes))), [])
+
+    assert verdict.divergences
+    assert verdict.gameplay == ()
+
+
+def test_a_direct_biome_container_of_another_width_is_a_gameplay_difference() -> None:
+    biomes = direct([PLAINS] * 64, bits=8)
+
+    verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=biomes))), [])
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.gameplay] == [
+        (
+            "sections[0].biomes",
+            "chunk 0 0, y -64 to -49: all 41",
+            f"chunk 0 0, y -64 to -49: 8 bits per entry where the client reads 7: {'29' * 64}",
+        )
+    ]
 
 
 # Light. Light section i is world section i - 1: in a 24-section chunk, light section 1 holds

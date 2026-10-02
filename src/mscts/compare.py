@@ -417,7 +417,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way, and a chunk's sections hold
     the id at each entry of their containers, and its light what the client applies to each
-    light section); each entity id whose
+    light section; a direct biome container's width is checked against the biomes the Bot's
+    configuration sent, `_Context`); each entity id whose
     `add_entity` was left out of the windows becomes its type and its position at the
     first such `add_entity` (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is
     `player <uuid>`), and every other entity id but one first seen in a
@@ -624,6 +625,7 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
     """
     windows = _Windows.of(transcript)
+    context = _Context.of(transcript, bot)
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
     for event in transcript.events:
@@ -634,9 +636,41 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
             numbers.spawned(packet, masks)
         elif packet.name not in masks.dropped:
             numbers.take(packet)
-            stream.append(_normalize(packet, masks, numbers))
+            stream.append(_normalize(packet, masks, numbers, context))
         numbers.removed(packet)
     return stream
+
+
+_BIOMES_REGISTRY = "minecraft:worldgen/biome"
+
+
+@dataclass(frozen=True, slots=True)
+class _Context:
+    """What a canonical form needs from the rest of a Bot's Transcript.
+
+    Attributes:
+        biomes: How many biomes the server sent the Bot in configuration (the entries of
+            its `registry_data` for `minecraft:worldgen/biome`), or None if it sent none.
+    """
+
+    biomes: int | None
+
+    @classmethod
+    def of(cls, transcript: Transcript, bot: str) -> Self:
+        """The context of `bot`'s stream, from all of its Events, compared or not."""
+        counts: list[int] = []
+        for event in transcript.events:
+            packet = event.packet
+            if (
+                event.bot == bot
+                and (packet.state, packet.direction, packet.name)
+                == (State.CONFIGURATION, Direction.CLIENTBOUND, "minecraft:registry_data")
+                and packet.fields is not None
+                and packet.fields.get("registry_id") == _BIOMES_REGISTRY
+                and isinstance(entries := packet.fields.get("entries"), list)
+            ):
+                counts.append(len(cast("list[object]", entries)))
+        return cls(biomes=sum(counts) if counts else None)
 
 
 @dataclass(frozen=True, slots=True)
@@ -960,10 +994,11 @@ def _player_type() -> int:
 # Normalization: copies of the fields, in the value model, with Masks applied.
 
 
-def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
+def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Context) -> _Normalized:
     """Copy `packet`'s fields; sort, canonicalize, number the entities, and apply the Masks.
 
-    Sorting is `UNORDERED`'s, and the numbers are `numbers`'.
+    Sorting is `UNORDERED`'s, the numbers are `numbers`', and the canonical form may use
+    `context`.
     """
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
@@ -978,8 +1013,8 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
     parsed = _copy(packet, packet.fields)
     if (json_text := _JSON_TEXT.get((packet.state, packet.name))) is not None:
         parsed = _parsed(parsed, json_text)
-    unmasked = canonical(_copy(packet, packet.fields))
-    fields = canonical(_copy(packet, packet.fields))
+    unmasked = canonical(_copy(packet, packet.fields), context)
+    fields = canonical(_copy(packet, packet.fields), context)
     for copy in (raw, parsed, unmasked, fields):
         numbers.apply(packet, copy)
     for copy in (raw, parsed):
@@ -1236,7 +1271,7 @@ def _parsed(fields: dict[str, _Value], json_text: str) -> dict[str, _Value]:
     return {**fields, json_text: value}
 
 
-def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
+def _canonical_status_response(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
     """Parse `json_response` into its JSON value: the members the client reads, canonical.
 
     It stays the raw string, and is compared as one, unless it is strict JSON.
@@ -1369,33 +1404,53 @@ _CONTAINERS: Mapping[str, tuple[PalettedContainer, int]] = MappingProxyType(
 section is 16 blocks, or 4 biome cells, wide, deep and high."""
 
 
-def _canonical_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+def _canonical_level_chunk(fields: dict[str, _Value], context: _Context) -> dict[str, _Value]:
     """A chunk's sections and light as the client keeps them.
 
-    Each section's block states and biomes become the id at each entry (`_entries`), and the
-    light what the client applies (`_canonical_light`), for two light sections more than
-    sections. The client keeps the id at each position, not the palette that spelled it:
-    `LevelChunkSection.read` reads each container with `PalettedContainer.read`, which unpacks
-    its entries at the width the palette is read at.
+    Each section's block states and biomes become the id at each entry (`_entries`,
+    `_biome_entries`), and the light what the client applies (`_canonical_light`), for two
+    light sections more than sections. The client keeps the id at each position, not the
+    palette that spelled it: `LevelChunkSection.read` reads each container with
+    `PalettedContainer.read`, which unpacks its entries at the width the palette is read at.
     """
     sections = fields.get("sections")
     if not isinstance(sections, list):
         return fields
-    result = {**fields, "sections": [_canonical_section(section) for section in sections]}
+    result = {
+        **fields,
+        "sections": [_canonical_section(section, context.biomes) for section in sections],
+    }
     if "light" in fields:
         result["light"] = _canonical_light(fields["light"], len(sections) + _LIGHT_MARGIN)
     return result
 
 
-def _canonical_section(section: _Value) -> _Value:
+def _canonical_section(section: _Value, biomes: int | None) -> _Value:
     if not isinstance(section, dict):
         return section
-    return {
-        key: _entries(_CONTAINERS[key][0], value)
-        if key in _CONTAINERS and isinstance(value, dict)
-        else value
-        for key, value in section.items()
-    }
+    result = dict(section)
+    if isinstance(states := section.get("block_states"), dict):
+        result["block_states"] = _entries(BLOCK_STATES, states)
+    if isinstance(cells := section.get("biomes"), dict):
+        result["biomes"] = _biome_entries(cells, biomes)
+    return result
+
+
+def _biome_entries(value: dict[str, _Value], biomes: int | None) -> _Value:
+    """A biome container's ids (`_entries`), or what is wrong with a direct one's width.
+
+    The client reads a direct biome container at `Mth.ceillog2` of the biomes the server sent
+    it (`Strategy.<init>`, `Configuration$Global`), whatever bits per entry are sent; the
+    codec reads it at the bits sent. If the Transcript has the biomes and the bits are not
+    that width, the client reads other ids than these, so the container is a value of its
+    own: the bits, the width the client reads, and the data.
+    """
+    bits, data = value.get("bits"), value.get("data")
+    if biomes is not None and value.get("palette") is None and isinstance(data, bytes):
+        width = (biomes - 1).bit_length()
+        if bits != width:
+            return f"{bits} bits per entry where the client reads {width}: {data.hex()}"
+    return _entries(BIOMES, value)
 
 
 def _entries(container: PalettedContainer, value: dict[str, _Value]) -> _Value:
@@ -1502,7 +1557,7 @@ def _light_layer(light: dict[str, _Value], layer: str, sections: int) -> list[_V
     return result
 
 
-def _canonical_light_update(fields: dict[str, _Value]) -> dict[str, _Value]:
+def _canonical_light_update(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
     """The light data as the client applies it (`_canonical_light`).
 
     Over as many light sections as any level has: a light update does not say how high its
@@ -1609,8 +1664,8 @@ def _shown_chunk(
 
     For a section's block states or biomes, or a light section, the first positions that
     differ, each with the side's id or light level there, and how many more differ; or, for
-    a light section that is not an array on both sides, what each side's is. Anything else
-    shows its values.
+    a container or a light section that is not ids or an array on both sides, what each
+    side's is. Anything else shows its values.
     """
     match path:
         case ("sections", int() as section, str() as field) if field in _CONTAINERS:
@@ -1626,8 +1681,13 @@ def _shown_section(
     container, side = _CONTAINERS[field]
     reference, candidate = (_ids(value, container.entries) for value in values)
     place = _Place.of(fields)
-    if place is None or reference is None or candidate is None:
+    if place is None:
         return values
+    if reference is None or candidate is None:
+        texts = [_container_text(value) for value in values]
+        if texts[0] is None or texts[1] is None:
+            return values
+        return place.summed(section, texts[0]), place.summed(section, texts[1])
     differing = [
         entry for entry in range(container.entries) if reference[entry] != candidate[entry]
     ]
@@ -1648,6 +1708,13 @@ def _ids(value: _Value | Absent, entries: int) -> list[int | None] | None:
 
 def _id_text(value: int | None) -> str:
     return "past the palette" if value is None else str(value)
+
+
+def _container_text(value: _Value | Absent) -> str | None:
+    """A canonical container said whole, "all 41" or what is wrong with it; None if neither."""
+    if type(value) is int:
+        return f"all {value}"
+    return value if isinstance(value, str) else None
 
 
 def _shown_light(
@@ -1691,16 +1758,17 @@ def _light_text(value: _Value | Absent) -> str:
     return "not sent"
 
 
-_CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
-    MappingProxyType(
-        {
-            (State.STATUS, "minecraft:status_response"): _canonical_status_response,
-            (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
-            (State.PLAY, "minecraft:light_update"): _canonical_light_update,
-        }
-    )
+_CANONICAL: Mapping[
+    tuple[State, str], Callable[[dict[str, _Value], _Context], dict[str, _Value]]
+] = MappingProxyType(
+    {
+        (State.STATUS, "minecraft:status_response"): _canonical_status_response,
+        (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
+        (State.PLAY, "minecraft:light_update"): _canonical_light_update,
+    }
 )
-"""The canonical form of each clientbound packet that has one, by (State, name)."""
+"""The canonical form of each clientbound packet that has one, by (State, name), from its
+fields and its Bot's `_Context`."""
 
 _COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
     {
