@@ -433,10 +433,11 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     shift when a re-run has more or fewer Packets left out or dropped; paths and values
     are those of the sorted, canonical, numbered form.
 
-    Each Bot's two streams are aligned on their packet keys (State and name, and a chunk's
-    position), leaving as few Packets unmatched as possible; swapping the sides mirrors the
-    alignment. Between two matched pairs, `missing` Divergences come before `unexpected`
-    ones. An unmatched chunk shows `chunk <x> <z>`, any other Packet its value.
+    Each Bot's two streams are aligned on their packet keys (State and name, and the position
+    of a packet about one chunk), leaving as few Packets unmatched as possible; swapping the
+    sides mirrors the alignment. Between two matched pairs, `missing` Divergences come before
+    `unexpected` ones. An unmatched chunk, light update or forgotten chunk shows
+    `chunk <x> <z>`, any other Packet its value.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
     gameplay `field` Divergence per differing leaf, in path order. If they have a
@@ -648,37 +649,42 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     return stream
 
 
-_CHUNK = "minecraft:level_chunk_with_light"
+_CHUNK_PACKETS = frozenset(
+    {"minecraft:level_chunk_with_light", "minecraft:light_update", "minecraft:forget_level_chunk"}
+)
+"""The play packets about one chunk, which the client applies to the chunk at their position:
+`ClientChunkCache.replaceWithPacketData` and the light queue, `ClientLevel.queueLightUpdate`, and
+`ClientChunkCache.drop` with `queueLightRemoval`."""
 
 
 def _by_position(events: Sequence[Event]) -> list[Event]:
-    """A Bot's clientbound `events`, with each run of chunks in a row sorted by position.
+    """A Bot's clientbound `events`, with each run of chunk packets in a row sorted by position.
 
-    A run is chunks one after the other, with nothing else between them, in the whole stream:
-    before the windows, their narrowing or a Mask leave anything out, since the client applies
-    every packet in turn. Its chunks are sorted by position, x then z, stably, so chunks at one
-    position keep their order. The server sends the chunks at one distance from the player in
-    the iteration order of a hash set (`PlayerChunkSender.sendNextChunks`), and the client keeps
-    each chunk by its position (docs/research/2026-10-02-chunks-light.md).
+    A run is packets about one chunk each (`_CHUNK_PACKETS`) one after the other, with nothing
+    else between them, in the whole stream: before the windows, their narrowing or a Mask leave
+    anything out, since the client applies every packet in turn. Its packets are sorted by
+    position, x then z, stably, so those about one chunk keep their order. The server sends the
+    chunks at one distance from the player in the iteration order of a hash set
+    (`PlayerChunkSender.sendNextChunks`), and the light updates of a tick in that of an identity
+    hash set (`ServerChunkCache.chunkHoldersToBroadcast`); the client keeps chunks and their
+    light by position (docs/research/2026-10-02-chunks-light.md).
     """
     result = list(events)
-    start = 0
-    while start < len(result):
-        stop = start
-        while stop < len(result) and _chunk_at(result[stop].packet) is not None:
-            stop += 1
-        run = result[start:stop]
-        positions = [_chunk_at(event.packet) or (0, 0) for event in run]
-        result[start:stop] = [
-            run[index] for index in sorted(range(len(run)), key=positions.__getitem__)
-        ]
-        start = stop + 1
+    run: list[tuple[tuple[int, int], int]] = []  # each chunk packet's position and index
+    for index, event in enumerate([*events, None]):
+        at = None if event is None else _position(event.packet)
+        if at is not None:
+            run.append((at, index))
+            continue
+        for (_, place), (_, source) in zip(run, sorted(run), strict=True):
+            result[place] = events[source]
+        run = []
     return result
 
 
-def _chunk_at(packet: Packet) -> tuple[int, int] | None:
-    """The position (x, z) of a decoded `level_chunk_with_light`; None for any other Packet."""
-    if (packet.state, packet.name) != (State.PLAY, _CHUNK) or packet.fields is None:
+def _position(packet: Packet) -> tuple[int, int] | None:
+    """The chunk (x, z) of a decoded play packet about one chunk (`_CHUNK_PACKETS`); else None."""
+    if packet.state is not State.PLAY or packet.name not in _CHUNK_PACKETS or not packet.fields:
         return None
     x, z = packet.fields.get("chunk_x"), packet.fields.get("chunk_z")
     return (x, z) if type(x) is int and type(z) is int else None
@@ -1848,9 +1854,9 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 
 
 type _Key = tuple[str, ...]
-"""What a Packet is aligned on (`_key`): its State, its name and, for a chunk, its position
-(`chunk x z`; empty for any other Packet). The client keeps a chunk by its position, so two
-chunks at different positions are never one Packet sent two ways."""
+"""What a Packet is aligned on (`_key`): its State, its name and, for a packet about one chunk,
+its position (`chunk x z`; empty for any other Packet). The client keeps a chunk and its light by
+position, so two such packets at different positions are never one Packet sent two ways."""
 
 
 def _key(entry: _Normalized) -> _Key:
@@ -1858,8 +1864,8 @@ def _key(entry: _Normalized) -> _Key:
 
 
 def _place_text(packet: Packet) -> str:
-    """`chunk <x> <z>` for a chunk (`_chunk_at`), else the empty string."""
-    at = _chunk_at(packet)
+    """`chunk <x> <z>` for a packet about one chunk (`_position`), else the empty string."""
+    at = _position(packet)
     return "" if at is None else f"chunk {at[0]} {at[1]}"
 
 
@@ -1951,7 +1957,7 @@ def _compare_streams(
 def _unmatched(
     bot: str, index: int, kind: Literal["missing", "unexpected"], entry: _Normalized
 ) -> Divergence:
-    """A Packet one side has: it shows its value, or for a chunk where it is (`chunk x z`)."""
+    """A Packet one side has: its value, or where it is for one about a chunk (`chunk x z`)."""
     value = _place_text(entry.packet) or entry.value
     return Divergence(
         bot=bot,

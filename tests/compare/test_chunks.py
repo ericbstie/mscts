@@ -15,7 +15,7 @@ import pytest
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.wire import Writer
-from mscts.compare import UNORDERED, Divergence, Mask, Observability, Verdict, compare
+from mscts.compare import ABSENT, UNORDERED, Divergence, Mask, Observability, Verdict, compare
 from mscts.test_cases import TITLES
 from mscts.transcript import Transcript
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
@@ -556,6 +556,57 @@ def test_a_chunk_never_moves_across_a_packet_that_changes_it(change: Packet) -> 
 def _batch_of(*packets: Packet | str) -> Transcript:
     """`packets` received by alice in order; a string is a Mark."""
     return transcript(*(each if isinstance(each, str) else ("alice", each) for each in packets))
+
+
+UPDATE_A, UPDATE_B = (
+    _at("minecraft:light_update", x, 0, data=light(sky={2: FULL})) for x in (0, 1)
+)
+FORGET_A, FORGET_B, FORGET_C = (_at("minecraft:forget_level_chunk", x, 0) for x in (0, 1, 2))
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ((UPDATE_A, UPDATE_B), (UPDATE_B, UPDATE_A)),
+        ((FORGET_A, FORGET_B), (FORGET_B, FORGET_A)),
+        ((LIT_A, UPDATE_B, FORGET_C), (FORGET_C, UPDATE_B, LIT_A)),
+    ],
+    ids=["light updates", "forgotten chunks", "a chunk, a light update and a forgotten chunk"],
+)
+def test_packets_for_different_chunks_in_a_row_are_sorted_by_position(
+    reference: tuple[Packet, ...], candidate: tuple[Packet, ...]
+) -> None:
+    # Vanilla sends the light updates of one tick in the order of an identity hash set
+    # (ServerChunkCache.chunkHoldersToBroadcast), and the client keeps light by position.
+    verdict = compare(_batch_of(LIT_A, LIT_B, *reference), _batch_of(LIT_A, LIT_B, *candidate), [])
+
+    assert verdict.divergences == ()
+
+
+def test_packets_for_one_chunk_keep_their_order() -> None:
+    verdict = compare(
+        _batch_of(LIT_B, UPDATE_B, FORGET_B), _batch_of(LIT_B, FORGET_B, UPDATE_B), []
+    )
+
+    assert verdict.gameplay
+
+
+@pytest.mark.parametrize("name", ["minecraft:light_update", "minecraft:forget_level_chunk"])
+def test_a_light_update_or_forgotten_chunk_is_matched_by_its_position(name: str) -> None:
+    # The verdict review of #122, probe 2: light for chunk 0 0 was shown against chunk -3 5's.
+    reference = _batch_of(_at(name, 0, 0, **_light_fields(name)))
+    candidate = _batch_of(_at(name, -3, 5, **_light_fields(name)))
+
+    assert [
+        (d.kind, d.reference, d.candidate) for d in compare(reference, candidate, []).divergences
+    ] == [
+        ("missing", "chunk 0 0", ABSENT),
+        ("unexpected", ABSENT, "chunk -3 5"),
+    ]
+
+
+def _light_fields(name: str) -> dict[str, object]:
+    return {"data": light(sky={5: FULL})} if name == "minecraft:light_update" else {}
 
 
 BLOCK = packet("minecraft:block_update", fields={"pos": {"x": 1, "y": -60, "z": 0}, "state": 1})

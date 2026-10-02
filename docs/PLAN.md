@@ -1020,8 +1020,8 @@ class Divergence:
     kind: Literal["bot", "missing", "unexpected", "field", "failed"]
     packet: str                     # the packet name ("" for bot and failed)
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
-    reference: object               # the packet's value, or ABSENT (a chunk only one
-    candidate: object               # side has shows "chunk <x> <z>", step 4)
+    reference: object               # the packet's value, or ABSENT (a chunk, light update
+    candidate: object               # or forgotten chunk one side has: "chunk <x> <z>", step 4)
     test_case: str                  # the test case it was found in (test_case(): the
                                     # packet's for missing, unexpected and a whole payload;
                                     # the path's, the raw one for network traffic, for any
@@ -1227,8 +1227,10 @@ proves it necessary:
 
 1. Take clientbound packets per Bot, in order. A packet's key is its
    (State, name): same-named packets of different States (`disconnect`,
-   `custom_payload`) are different packets; a chunk's key adds its
-   position (step 4). Not compared, on purpose:
+   `custom_payload`) are different packets; the key of a packet about
+   one chunk (`level_chunk_with_light`, `light_update`,
+   `forget_level_chunk`) adds its position (step 4). Not compared, on
+   purpose:
    - serverbound packets. They are the Group's own actions and the
      Bot's automatic answers. They differ between Instances by design
      (the handshake names each Instance's own Endpoint), and any
@@ -1348,19 +1350,26 @@ proves it necessary:
      block entities in a map keyed by `BlockPos`:
      `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
      those sent for one position keep their order.
-   - the order of chunks in a row. Each run of `level_chunk_with_light`
+   - the order of packets about different chunks in a row. Each run of
+     `level_chunk_with_light`, `light_update` and `forget_level_chunk`
      packets one right after the other is sorted by position, x then z,
-     stably, among the places the run's chunks had
-     (`compare._by_position`); indices count the sorted stream. The runs
-     are found in a Bot's whole clientbound stream, before windows, their
-     narrowing or a `*` Mask leave anything out: the client applies every
-     packet in turn, so any other packet between two chunks keeps them in
-     their order around it. Vanilla sends a batch's chunks nearest
-     first, and those at one distance in the iteration order of a
-     `LongOpenHashSet` of pending chunks, which can differ from one play
-     to the next (`javap` on the 26.3 server:
-     `PlayerChunkSender.sendNextChunks`); the client keeps each chunk by
-     its position (`docs/research/2026-10-02-chunks-light.md`).
+     stably, among the places the run's packets had
+     (`compare._by_position`), so the packets about one chunk keep their
+     order; indices count the sorted stream. The runs are found in a
+     Bot's whole clientbound stream, before windows, their narrowing or a
+     `*` Mask leave anything out: the client applies every packet in
+     turn, so any other packet between two chunks keeps them in their
+     order around it. Vanilla sends a batch's chunks nearest first, and
+     those at one distance in the iteration order of a `LongOpenHashSet`
+     of pending chunks, which can differ from one play to the next
+     (`javap` on the 26.3 server: `PlayerChunkSender.sendNextChunks`),
+     and the light updates of one tick in the iteration order of
+     `ServerChunkCache.chunkHoldersToBroadcast`, a `ReferenceOpenHashSet`.
+     The client applies each to the chunk at its position: a chunk with
+     `ClientChunkCache.replaceWithPacketData`, light with
+     `ClientLevel.queueLightUpdate`, a forgotten chunk with
+     `ClientChunkCache.drop` and `queueLightRemoval`
+     (`docs/research/2026-10-02-chunks-light.md`).
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
@@ -1659,9 +1668,10 @@ proves it necessary:
    signal to write its schema and a Mask.
 
    The alignment is a **longest common subsequence** of the packet keys
-   (State and name, and a chunk's position: two chunks at different
-   positions are never one packet sent two ways, so each is `missing` or
-   `unexpected`, and shows `chunk <x> <z>` rather than its fields),
+   (State and name, and the position of a chunk, light update or
+   forgotten chunk: two at different positions are never one packet sent
+   two ways, so each is `missing` or `unexpected`, and shows
+   `chunk <x> <z>` rather than its fields),
    so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
    mirrors it: match the common prefix and suffix as they stand (so of
