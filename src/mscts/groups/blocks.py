@@ -159,3 +159,51 @@ _SETBLOCK_CLEAR = "fill 1 -60 2 12 -60 2 minecraft:air"
 async def setblock(context: GroupContext) -> None:
     """The builder sets blocks in each mode, on air and on a block, with states and block data."""
     await _play(context, _SETBLOCK_CASES, _SETBLOCK_CLEAR)
+
+
+# `blocks/fill`: a 5 x 5 x 5 region whose y runs from -50 to -46, so that it crosses the border
+# between chunk sections -4 (y -64 to -49) and -3 (y -48 to -33). The flat world is air there.
+
+_FILL_BOX = "2 -50 2 6 -46 6"
+_FILL_CLEAR = f"fill {_FILL_BOX} minecraft:air"
+_FILL_BEFORE = (
+    _FILL_CLEAR,
+    "setblock 3 -49 3 minecraft:dirt",
+    "setblock 4 -48 4 minecraft:glass",
+    "setblock 5 -47 5 minecraft:glass",
+    "setblock 2 -50 4 minecraft:glass",
+)
+"""Blocks already in the region, in both sections. Only the dirt drops an item.
+
+Vanilla resends each new item at the end of the tick, in the hash order of its entity id.
+The two Instances number their entities differently, so a window with two drops can
+send them in a different order on each side: this is no Divergence worth reporting, and
+it makes a Group flaky (measured: 17 of 20 plays did not match with four drops).
+"""
+
+_FILL_OPTIONS = (
+    "",
+    "destroy",
+    "hollow",
+    "keep",
+    "outline",
+    "replace",
+    "replace minecraft:dirt",
+    "strict",
+)
+
+
+def _fill_cases() -> tuple[_Case, ...]:
+    return tuple(
+        _Case(command=f"fill {_FILL_BOX} minecraft:stone {option}".rstrip(), setup=_FILL_BEFORE)
+        for option in _FILL_OPTIONS
+    )
+
+
+_FILL_CASES = _fill_cases()
+
+
+@group("blocks/fill", spec=_with_builder, masks=DROP_MASKS)
+async def fill(context: GroupContext) -> None:
+    """The builder fills a region that crosses a chunk section border, in each mode."""
+    await _play(context, _FILL_CASES, _FILL_CLEAR)

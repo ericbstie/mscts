@@ -32,7 +32,7 @@ SYSTEM_CHAT, AWARD_STATS = "minecraft:system_chat", "minecraft:award_stats"
 MARKER = "tellraw @s "
 CONTROL = "control"
 COMMANDS = tree("setblock", "fill", "clone", "tellraw", "tick", "gamerule", "kill")
-GROUP_IDS = ("blocks/setblock",)
+GROUP_IDS = ("blocks/setblock", "blocks/fill")
 UNDO = ("kill @e[type=minecraft:item]", "gamerule random_tick_speed 3", "tick unfreeze")
 """What Control ends with, whatever happened: the last commands of every play."""
 
@@ -356,12 +356,123 @@ async def test_setblock_sets_the_block_that_is_already_there() -> None:
     assert any(command.block == block != AIR for command, block in cases)
 
 
+_FILL = re.compile(rf"fill {' '.join([_NUMBER] * 6)} (\S+?)(?: (.+))?")
+GLASS = "minecraft:glass"
+SECTION = 16
+"""Blocks high in a chunk section: a section border is where `y // SECTION` changes."""
+
+
+@dataclass(frozen=True)
+class Fill:
+    """A parsed `fill`: its box (lowest and highest corner), the block and what follows it."""
+
+    low: tuple[int, int, int]
+    high: tuple[int, int, int]
+    block: str
+    option: str | None
+
+
+def parse_fill(command: str) -> Fill | None:
+    """`command` as a Fill, or None if it is not a `fill` command."""
+    match = _FILL.fullmatch(command)
+    if match is None:
+        return None
+    *corner, block, option = match.groups()
+    x1, y1, z1, x2, y2, z2 = (int(number) for number in corner)
+    return Fill(
+        (min(x1, x2), min(y1, y2), min(z1, z2)),
+        (max(x1, x2), max(y1, y2), max(z1, z2)),
+        block,
+        option,
+    )
+
+
+def fill_cases(result: Play) -> list[Fill]:
+    """The `fill` each window's builder runs."""
+    cases = []
+    for window in result.windows:
+        command = parse_fill(window.builder[0])
+        assert command, window.builder
+        cases.append(command)
+    return cases
+
+
+def inside(box: Fill, command: Setblock) -> bool:
+    return all(
+        low <= at <= high for low, at, high in zip(box.low, command.at, box.high, strict=True)
+    )
+
+
+@pytest.mark.asyncio
+async def test_fill_tries_each_mode_the_default_and_a_filter() -> None:
+    options = {command.option for command in fill_cases(await played("blocks/fill"))}
+
+    assert options == {
+        None,
+        "destroy",
+        "hollow",
+        "keep",
+        "outline",
+        "replace",
+        "replace minecraft:dirt",
+        "strict",
+    }
+
+
+@pytest.mark.asyncio
+async def test_fill_covers_a_5_by_5_by_5_region_that_crosses_a_chunk_section_border() -> None:
+    boxes = {(command.low, command.high) for command in fill_cases(await played("blocks/fill"))}
+
+    assert len(boxes) == 1
+    [(low, high)] = boxes
+    assert tuple(top - bottom + 1 for bottom, top in zip(low, high, strict=True)) == (5, 5, 5)
+    assert low[1] // SECTION < high[1] // SECTION
+
+
+@pytest.mark.asyncio
+async def test_fill_starts_from_a_region_with_blocks_in_both_sections_already_in_it() -> None:
+    result = await played("blocks/fill")
+
+    for window, box in zip(result.windows, fill_cases(result), strict=True):
+        before = [setup for each in window.before if (setup := parse_setblock(each))]
+        placed = [setup for setup in before if setup.block != AIR and inside(box, setup)]
+        assert {setup.at[1] // SECTION for setup in placed} == {
+            box.low[1] // SECTION,
+            box.high[1] // SECTION,
+        }, window.before
+
+
+@pytest.mark.asyncio
+async def test_fill_leaves_each_window_one_block_that_drops_an_item() -> None:
+    # Vanilla resends each new item at the end of the tick in the hash order of its entity id,
+    # and the two Instances number their entities differently: two drops in a window can come
+    # in a different order on each side, which is no Divergence worth reporting. Glass drops
+    # nothing.
+    result = await played("blocks/fill")
+
+    for window, box in zip(result.windows, fill_cases(result), strict=True):
+        before = [setup for each in window.before if (setup := parse_setblock(each))]
+        droppers = [
+            setup for setup in before if setup.block not in (AIR, GLASS) and inside(box, setup)
+        ]
+        assert len(droppers) == 1, window.before
+
+
+def positions(command: str) -> list[tuple[int, int, int]]:
+    """Where a `setblock` or `fill` command puts blocks: its position, or its two corners."""
+    if (setblock := parse_setblock(command)) is not None:
+        return [setblock.at]
+    if (fill := parse_fill(command)) is not None:
+        return [fill.low, fill.high]
+    return []
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", GROUP_IDS)
 async def test_every_block_a_command_changes_is_in_chunk_0_0(group_id: str) -> None:
     # A Bot has had only the chunk it joined in (docs/guide/writing-a-group.md): x and z 0 to 15.
     commands = await every_command(group_id)
 
-    positions = [command.at for each in commands if (command := parse_setblock(each)) is not None]
-    assert positions
-    assert all(0 <= x <= 15 and 0 <= z <= 15 for x, _, z in positions), positions
+    changed = [at for command in commands for at in positions(command)]
+    assert changed
+    assert all(0 <= x <= 15 and 0 <= z <= 15 for x, _, z in changed), changed

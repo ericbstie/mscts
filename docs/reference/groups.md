@@ -36,10 +36,14 @@ changes is in the chunk the builder is sent when it joins, the one that holds x 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `blocks/setblock` | exact | none | Runs `/setblock` in each mode (`destroy`, `keep`, `replace`, `strict`), on air and on a block. Then it sets a block with states, a sign with text, a chest with an item, and the block that is already there. | none |
+| `blocks/fill` | exact | none | Runs `/fill` over a region of 5 by 5 by 5 blocks that crosses a chunk section border, with blocks already in it: with no mode, with each mode (`destroy`, `hollow`, `keep`, `outline`, `replace`, `strict`), and with `replace` and a block to replace. | none |
 
 A block dropped in `destroy` mode starts at a random place and speed. These Groups leave out where
 the item appears (`x`, `y` and `z` in `add_entity`), its sideways speed (`velocity.x` and
-`velocity.z`) and which way it faces (`yaw`). Which item drops, and how many, is still compared.
+`velocity.z`) and which way it faces (`yaw`). Which item drops, and how many, is still compared. The `/fill` region holds one block
+that drops an item. Vanilla sends the items a tick drops in an order that follows their entity
+ids, and two servers number their entities differently, so with several the Reference would not
+match itself.
 
 ## Planned
 
