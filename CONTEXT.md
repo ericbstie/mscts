@@ -128,7 +128,8 @@ need is missing, add it here in the same commit that introduces it.
   player could notice it) or **network traffic** (the servers send the
   same thing in different formats, and a vanilla client ends up with the
   same result): its `observability`. Network traffic Divergences are
-  reported separately and excluded from compliance scores (ADR-0007);
+  listed alongside gameplay differences and excluded from compliance scores
+  (ADR-0007, ADR-0012);
   `Verdict.gameplay` is what scores count.
 - **Test case**: one field a Comparison compares, named after its
   packet and its path in it (`status_response.players.max`,

@@ -1,34 +1,6 @@
-mscts Report
-  Reference    vanilla (its status says version "26.3")
-  Candidate    pumpkin (its status says version "26.3")
-  Target       Minecraft 26.3 (protocol 777)
-  Repetitions  5 of each group
-
-2 groups: 2 different in network traffic only.
-10 test cases: 6 identical, 4 different in network traffic only.
-No difference a player would notice was found.
-
-Network traffic differences (a vanilla client reads both alike; not counted in scores)
---------------------------------------------------------------------------------------
-  Server list ping (status)
-    status_response: 4 values are sent differently, e.g.
-      - status_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-      - status_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
-      - status_response.favicon: vanilla leaves it out, pumpkin sends null
-      - status_response.players.sample: vanilla leaves it out, pumpkin sends []
-
-Timings (ms)
-------------
-  measurement       vanilla median     p95  pumpkin median   p95  n
-  status.rtt                  3.00    6.14            0.37  1.93  5
-  instance.startup          23,720  23,720              76    76  1
-
-Notes
------
-  - Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet.
-
-How to read this
-----------------
-  gameplay: a vanilla client would read pumpkin's value differently from vanilla's, so a player could notice it.
-  network traffic: the bytes differ, but a vanilla client decodes both to the same thing, so no player could notice it.
-  test case: one value mscts compares, named after its packet and where it is in it (status_response.description); [] stands for any element of a list.
+Running tests against pumpkin
+- Server list description  status_response.description
+- Unused secure chat flag  status_response.enforceSecureChat
+- Server list icon  status_response.favicon
+- Server list player sample  status_response.players.sample
+Took 22.7 s

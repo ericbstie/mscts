@@ -12,5 +12,5 @@ def test_mscts_run_against_pumpkin_prints_a_report(capsys: pytest.CaptureFixture
 
     out, err = capsys.readouterr()
     assert code == 0, err
-    assert "Timings" in out
-    assert "instance.startup" in out
+    assert out.startswith("Running tests against pumpkin\n"), out
+    assert out.splitlines()[-1].startswith("Took "), out

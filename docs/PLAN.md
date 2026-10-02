@@ -1345,31 +1345,22 @@ class Report:                       # report.py
     candidate: SideSummary
     results: tuple[GroupResult, ...]
     notes: tuple[str, ...]          # plain remarks, e.g. what the Report leaves out
-    # Report.of(run_result, *, target, notes); repeat (property)
+    elapsed_s: float               # launch through shutdown, excluding install prompts
+    # Report.of(run_result, *, target, notes, elapsed_s); repeat (property)
     # later: compliance = matches / (groups − errors); to_json(), to_markdown()
 
 def render_text(report: Report) -> str: ...
 # test_cases.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
-# Sections, in order: header (Reference, Candidate with versions, Target, repetitions);
-# a summary: the Groups counted by state, then the test cases counted the same way (one
-# test case is one name across the Run: different in gameplay in any Verdict is
-# "different", else in network traffic in any is "different in network traffic only"),
-# then "No difference a player would notice was found." if none was gameplay (or, all
-# identical, "No differences from vanilla were found in the N test cases of the M groups
-# run."); each difference line leads with its test case, with "(at <path>)" when the
-# path has a list index and "(the whole packet)" for a payload;
-# "Differences a player would notice": gameplay Divergences by mechanic (the Group id's
-# first segment, titled from report.MECHANICS), then Group, each distinct one once with
-# "(in k of N runs)" when not in all, values over 80 chars cut with their full length;
-# "Network traffic differences": by mechanic, then **per packet** (the count of distinct
-# differing leaves and at most NETWORK_TRAFFIC_EXAMPLES examples; this settles the per-leaf
-# open question for the Report, compare keeps reporting leaves); error/blocked Groups with
-# their detail, and "different in k of N runs"; "Timings (ms)": median and nearest-rank p95
-# per Measurement name for both sides, instance.startup included; notes; a three-line
-# legend (gameplay, network traffic, test case). A Group whose Divergences are all
-# network traffic reads "different in network traffic only".
+# ADR-0012 / #9: first line "Running tests against <candidate adapter name>";
+# one plain line per differing test case, deduplicated across Groups and repetitions,
+# with its TITLES title and name, or its bare name when unknown. Gameplay and network
+# traffic share the list. Then blocked, error and failed Groups, with id and reason;
+# Group-level bot differences are retained too. "No differences." only if the list
+# is empty and every Group was compared. Last line "Took <seconds> s", rounded to
+# tenths, including launch and shutdown. No values, section headings, Notes, legend,
+# counts or per-Measurement timing table.
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
@@ -1391,7 +1382,7 @@ mscts adapter status <adapter>      # root, entry, sha256, size, from, installed
 mscts selfcheck [--group GLOB] [--repeat N]
 mscts run --candidate <adapter> [--group GLOB] [--repeat N] [--out DIR]
     # --group: fnmatch over the registered exact Group ids, prerequisites added
-    # (default status/*); --repeat default 5; --out not implemented yet (the Report says so).
+    # (default status/*); --repeat default 5; --out not implemented yet.
     # Plays in a fresh temp dir, removed afterwards (kept, and named, when an Instance could
     # not start). Progress ("starting vanilla and pumpkin ...", "running status/basic (1 of
     # 5) ...", run.LOG at INFO) on stderr; the Report (render_text) on stdout; exit 0 when
@@ -1545,9 +1536,9 @@ then record the answer in an ADR:
 - Network traffic Divergences are reported per differing raw leaf, so a
   reordered `update_tags` (≈59 KB) yields one for every shifted leaf.
   Should the Report group them per packet, or should `compare` report
-  the shallowest canonically equal path instead? **Decided with the
-  Report:** the Report groups them per packet (a count of differing
-  leaves and a few examples); `compare` keeps reporting every leaf.
+  the shallowest canonically equal path instead? **Decided with #9:** the
+  default Report lists each test case once;
+  `compare` keeps reporting every leaf.
   (Since #17 `update_tags` is sorted before anything, so its order
   yields none.)
 - ADR-0007 requires a Self-check with no network traffic Divergences, on the

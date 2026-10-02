@@ -66,6 +66,13 @@ mscts run --candidate <adapter> [--group GLOB] [--repeat N]
 Starts vanilla and the Candidate, plays the chosen Groups against both,
 stops both and prints the Report to stdout. Progress goes to stderr.
 
+The Report starts with `Running tests against <adapter name>`, lists each
+differing test case once, then gives the total Run time in seconds. Known
+test cases have a [title](/reference/test-cases); others keep just their
+name. Gameplay and network traffic differences share the list. Skipped or
+failed Groups follow it with their reasons. If nothing differed and no
+Group was skipped or failed, the Report says `No differences.`.
+
 | Option | Default | Description |
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |

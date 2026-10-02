@@ -61,5 +61,10 @@ def report_from_sample(path: Path) -> Report:
         for role in ("reference", "candidate")
     ]
     return Report(
-        Target(**data["target"]), sides[0], sides[1], tuple(results), tuple(data["notes"])
+        Target(**data["target"]),
+        sides[0],
+        sides[1],
+        tuple(results),
+        tuple(data["notes"]),
+        data["elapsed_s"],
     )

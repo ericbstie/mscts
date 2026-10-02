@@ -10,6 +10,7 @@ import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
+from time import perf_counter
 from types import MappingProxyType
 from typing import override
 
@@ -195,6 +196,7 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
         msg = f"--repeat must be at least 1, not {repeat}"
         raise _UsageError(msg)
     reference, candidate = _server(REFERENCE), _server(str(arguments.candidate))
+    started = perf_counter()
     workdir = Path(tempfile.mkdtemp(prefix="mscts-run-"))
     try:
         with _progress():
@@ -208,7 +210,8 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
         shutil.rmtree(workdir)
         raise
     shutil.rmtree(workdir)
-    sys.stdout.write(render_text(Report.of(result, target=TARGET, notes=RUN_NOTES)))
+    report = Report.of(result, target=TARGET, notes=RUN_NOTES, elapsed_s=perf_counter() - started)
+    sys.stdout.write(render_text(report))
     return 0
 
 
