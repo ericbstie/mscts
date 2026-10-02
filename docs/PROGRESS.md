@@ -84,6 +84,14 @@ Environment notes:
 
 ## In flight
 
+Session 6 (2026-10-02, the project thread): the process moved to lanes and
+review levels (PROCESS, changelog 2026-10-02). Every open issue has a
+`lane:*` label; `docs/RISK.md` sets each lane's review level. The audit of
+the timing and Compare code (reviewer, read-only) found 5 high bugs; fixes
+filed as #114 and #116 (`lane:comparison`), #115 and #117 (`lane:timing`).
+#114 goes before #30. Up to 5 agents at once.
+
+
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 

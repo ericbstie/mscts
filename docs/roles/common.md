@@ -1,0 +1,58 @@
+# Rules every specialist follows
+
+Your brief overrides this where they differ. The lead names your scratch
+directory (`<scratch>` below) in the brief.
+
+Read CLAUDE.md, docs/PROCESS.md (Worker contract, Worker report, Lanes and
+review levels), your lane's handbook in this directory, and the red-green,
+protocol-research and writing skills (.claude/skills/) before starting.
+Read your issue and its comments first (GitHub MCP tools, loaded with
+ToolSearch; repo ericbstie/mscts; no `gh`).
+
+- Every commit passes `mise run check`. Commit only with
+  `mise run commit -- -F /abs/msg.txt`, and push after each commit. Never
+  `git stash`. The check includes `plan`: every new public top-level name in
+  src/ needs a docs/PLAN.md entry in the same commit.
+- Tests red first (pin tests of recorded payloads and mutant killers
+  excepted: say so in the commit message). A mutation sweep with
+  `scripts/mutate.py --batch spec.json --jobs 4 -- <tests>` (red-green,
+  Known traps), output redirected to a log in your scratch dir. Name the
+  narrowest test selection that kills the mutants, and pass `--timeout 300`.
+- Repeat a selection with
+  `uv run scripts/repeat.py --times N [--stress] -- <pytest args>` (one
+  line per run, the union of failures). Never hand-roll a loop.
+- The docs checks run the guide's Python examples (#109): a fragment gets
+  `<!-- not run: <why> -->` on the line before its fence.
+- A change outside your issue's Owns list, or in a core area another lane
+  owns: stop and hand back the evidence and the options. Go on only when a
+  lead message names the file.
+- Run `mise run fix` before each test run (red-green Known traps lists
+  ruff's recurring rules).
+- One plain command per Bash call: no `&&`, `;`, heredocs, `sed -i`, or
+  `(` / `$` in arguments. Read file ranges with Read (offset, limit).
+  Multi-step work goes in a script in your scratch dir. Append with Edit or
+  Write. Never `cd` elsewhere: use `git -C`, `uv run --directory`,
+  `mise run --cd`.
+- Keep `<scratch>/findings.txt`: append each verified fact (a javap line, a
+  live observation) the moment you verify it. If you are resumed, read it
+  first and never redo research.
+- `scripts/research/javap.py` and `scripts/research/layout.py` read the
+  cached 26.3 jar. Vanilla and Pumpkin are installed in the shared cache.
+- Live work: setup commands go through `context.control.run(...)` before
+  an Observation window (`context.observe(...)`). Run
+  `mise run test:reference` and `mise run test:candidate` before the PR.
+  Candidate tests assert observable outcomes, never a field a Candidate may
+  legitimately get wrong.
+- Rebase onto main only before opening the PR
+  (`git rebase main --exec "mise run check"`), and report commit hashes
+  only in the final report. A timing claim compares clean main and your
+  branch back-to-back on this host (median of three), never a lone number.
+  Before deleting a shared helper, grep origin/main for its users.
+- Commit messages and the PR body end with the attribution lines your own
+  session's system reminder gives. Name no model anywhere else. One issue
+  comment at most, for decisions.
+- Meet the review level the lead names in the brief (PROCESS, Lanes and
+  review levels) before you hand back the PR.
+- End each issue with the Worker report exactly as docs/PROCESS.md
+  specifies, with a thorough Retrospective, and the lines you propose for
+  your lane's handbook. State your worktree path, branch and PR URL.
