@@ -259,6 +259,31 @@ def test_an_action_inside_a_window_on_another_entity_spawned_before_it_is_a_dive
     )
 
 
+def test_a_missing_entity_spawned_before_the_window_shifts_no_other_entitys_name() -> None:
+    # The Candidate never spawned the pig, so it never swings it; the cow is the same cow.
+    reference = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(5, x=1.5)),
+        ("alice", spawn(6, x=3.5, kind=COW)),
+        OBSERVE_OPEN,
+        ("alice", swing(5)),
+        ("alice", hurt(6)),
+        OBSERVE_CLOSE,
+    )
+    candidate = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(5, x=3.5, kind=COW)),
+        OBSERVE_OPEN,
+        ("alice", hurt(5)),
+        OBSERVE_CLOSE,
+    )
+
+    verdict = compare(reference, candidate, [])
+
+    assert [(d.kind, d.packet) for d in verdict.divergences] == [("missing", "minecraft:animate")]
+    assert "hurt_animation.entity_id" not in verdict.differing  # the score counts it as the same
+
+
 def test_an_id_reused_after_remove_entities_is_a_new_entity() -> None:
     # Vanilla never reuses an id; the client reads the reuse as a new entity all the same.
     def pigs(second: int) -> Transcript:
@@ -427,6 +452,9 @@ def test_a_mask_on_an_entity_id_is_refused(name: str, path: str) -> None:
         ("minecraft:login", "*"),
         ("minecraft:add_entity", "x"),
         ("minecraft:set_entity_data", "entries"),
+        ("minecraft:set_entity_data", "entries[*].value"),
+        # A key where a list of entity ids has its elements is no entity id (mutant C7).
+        ("minecraft:remove_entities", "entity_ids.count"),
         ("minecraft:level_particles", "particle"),
         ("test:entity", "entity_id"),
     ],
