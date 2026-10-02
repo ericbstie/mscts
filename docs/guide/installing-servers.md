@@ -12,7 +12,7 @@ The maintainer approves each entry.
 
 ```sh
 uv run mscts adapter install vanilla
-uv run mscts adapter install pumpkin --version nightly-48cba7ee
+uv run mscts adapter install pumpkin --version nightly-b8382a8a
 ```
 
 Without `--version`, mscts picks the entry for the current Target. It prints
@@ -25,7 +25,7 @@ Current entries:
 | Adapter | Version | Source |
 | --- | --- | --- |
 | `vanilla` | `26.3` | Mojang's server jar, checked by the sha1 and size Mojang publishes |
-| `pumpkin` | `nightly-48cba7ee` | One build of Pumpkin's Linux x86-64 nightly, pinned 2026-09-26 by sha256 |
+| `pumpkin` | `nightly-b8382a8a` | One build of Pumpkin's Linux x86-64 nightly, pinned 2026-10-02 by sha256 |
 
 ::: warning Pumpkin's nightly moves
 Pumpkin publishes every nightly at the same URL. Once a newer build replaces
@@ -53,8 +53,7 @@ uv run mscts adapter list
 ```
 ADAPTER  VERSION           TARGET  STATE
 vanilla  26.3              26.3    installed
-pumpkin  nightly-48cba7ee  26.3    not installed
-pumpkin  -                 26.3    installed: no Registry entry, from /tmp/pumpkin-X64-Linux (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e)
+pumpkin  nightly-b8382a8a  26.3    installed
 ```
 
 ```sh

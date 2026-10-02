@@ -71,8 +71,7 @@ uv run mscts adapter list
 ```
 ADAPTER  VERSION           TARGET  STATE
 vanilla  26.3              26.3    installed
-pumpkin  nightly-48cba7ee  26.3    not installed
-pumpkin  -                 26.3    installed: no Registry entry, from /tmp/pumpkin-X64-Linux (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e)
+pumpkin  nightly-b8382a8a  26.3    installed
 ```
 
 ## 4. Run the comparison

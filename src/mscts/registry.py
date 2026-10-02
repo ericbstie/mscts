@@ -29,7 +29,7 @@ class Entry:
     """One installable server build, pinned by sha256 and/or its publisher's hash."""
 
     adapter: str  # the Adapter that runs it ("pumpkin")
-    version: str  # the label `--version` names ("26.3", "nightly-48cba7ee")
+    version: str  # the label `--version` names ("26.3", "nightly-b8382a8a")
     target: str  # the Target's Minecraft version it speaks
     url: str  # HTTPS only
     sha256: str | None = None
@@ -39,7 +39,7 @@ class Entry:
 
     @override
     def __str__(self) -> str:
-        """`pumpkin nightly-48cba7ee`: how commands name this entry."""
+        """`pumpkin nightly-b8382a8a`: how commands name this entry."""
         return f"{self.adapter} {self.version}"
 
     def matches(self, body: bytes) -> bool:

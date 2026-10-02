@@ -1,3 +1,3 @@
 mise exec -- uv run mscts adapter list
-Captured 2026-10-02 on main 9730233, Ubuntu VPS, Java 25.
-Pumpkin sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e.
+Captured 2026-10-02 on issue-130-repin-pumpkin (off main 6a05cc6), cloud Linux container, Java 25.
+Pumpkin installed from the Registry entry nightly-b8382a8a.
