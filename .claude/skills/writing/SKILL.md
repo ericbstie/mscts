@@ -27,7 +27,10 @@ say they like a wording:
    prevented the mistake.
 5. Go back to the work you were doing.
 
-Never invent a reason.
+Never invent a reason. Examples without one still count: they are the
+raw material for later rules. When two or more examples share a pattern
+that no rule covers yet, propose a rule that covers them, and add it
+once the maintainer approves it.
 
 The maintainer may run a dedicated writer session for wording tweaks.
 Any session that writes user-facing text follows this skill all the same.
