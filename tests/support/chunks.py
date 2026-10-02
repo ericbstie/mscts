@@ -1,8 +1,8 @@
 """The Reference's flat world, its chunks and where a join puts the player, pinned.
 
-The decoder itself (position and sections, single valued and indirect palettes) lives in
-`scripts/research/chunkformat.py`, loaded here by path: both a plain research script and
-these pins reuse the very same code, and tests need no reachable `scripts` package for it.
+The codec decodes a chunk; `scripts/research/chunkformat.py`, loaded here by path, spells its
+sections out block by block: both a plain research script and these pins reuse the very same
+code, and tests need no reachable `scripts` package for it.
 """
 
 import importlib.util

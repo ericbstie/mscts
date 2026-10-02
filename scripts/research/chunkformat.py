@@ -1,9 +1,9 @@
-"""Just enough of `level_chunk_with_light` to see which blocks a chunk's layers hold.
+"""A chunk's position and sections, spelled out block by block, from a `level_chunk_with_light`.
 
-Layout: minecraft.wiki `Java_Edition_protocol/Chunk_format`, revision 3661930 (packet
-structure, Chunk Section and Paletted Container structures, Data Array format). Only the
-chunk's position and its sections are read; the block entities and light that follow
-the sections are not.
+The codec decodes the payload (`mscts/codec/schemas/play/chunks.py`): all of it and strictly,
+every palette a server may send, the global one too (docs/research/2026-10-02-chunks-light.md).
+This module only spells each section's block states and biomes out, entry by entry, so a pin
+can ask which blocks a layer holds.
 
 `tests/support/chunks.py` loads this module by path (so it stays reusable from a plain
 script, and tests need no reachable `scripts` package) and builds its Reference-specific
@@ -11,9 +11,10 @@ pins (the flat world's expected layers) on top of it; `scripts/research/join.py`
 same for `--chunks N`.
 """
 
-import struct
 from dataclasses import dataclass
+from typing import cast
 
+from mscts.codec.schemas.play.chunks import BIOMES, BLOCK_STATES, CLIENTBOUND
 from mscts.codec.wire import Reader
 
 SECTION_ENTRIES = 4096  # 16 x 16 x 16 block states, y slowest, then z, then x
@@ -21,9 +22,11 @@ BIOME_ENTRIES = 64  # 4 x 4 x 4 biome cells
 LAYER = 256  # one y level of a section
 
 # The overworld dimension type's height (-64..320, the vanilla dimension registry, not any
-# Adapter's own choice) is 384 blocks, i.e. 24 sections: how many `decode_chunk` needs for
-# an overworld `level_chunk_with_light` (docs/research/2026-09-26-pumpkin.md).
+# Adapter's own choice) is 384 blocks, i.e. 24 sections: how many an overworld
+# `level_chunk_with_light` has (docs/research/2026-09-26-pumpkin.md).
 OVERWORLD_SECTIONS = 24
+
+_CHUNK = CLIENTBOUND["minecraft:level_chunk_with_light"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,10 +34,10 @@ class Section:
     """One 16-block-high chunk section."""
 
     block_count: int  # its non-air blocks, as the server counted them
-    states: tuple[int, ...]  # global block state ids
-    biomes: tuple[int, ...]  # biome registry ids
+    states: tuple[int | None, ...]  # global block state ids; None past the palette
+    biomes: tuple[int | None, ...]  # biome registry ids; None past the palette
 
-    def layer(self, y: int) -> frozenset[int]:
+    def layer(self, y: int) -> frozenset[int | None]:
         """The block states at section-relative height `y` (0..15)."""
         return frozenset(self.states[y * LAYER : (y + 1) * LAYER])
 
@@ -48,39 +51,28 @@ class Chunk:
     sections: tuple[Section, ...]
 
 
-def _paletted(reader: Reader, entries: int, max_indirect: int) -> tuple[int, ...]:
-    bits = reader.raw(1)[0]
-    if bits > max_indirect:
-        msg = f"a direct palette ({bits} bits per entry) is not decoded here"
-        raise ValueError(msg)
-    if bits == 0:  # single valued: the palette is one id, and there is no data array
-        return (reader.var_int(),) * entries
-    palette = [reader.var_int() for _ in range(reader.var_int())]
-    per_long = 64 // bits
-    values: list[int] = []
-    for _ in range(-(-entries // per_long)):  # the array's length is not sent (1.21.5+)
-        (word,) = struct.unpack(">Q", reader.raw(8))
-        values.extend((word >> (index * bits)) & ((1 << bits) - 1) for index in range(per_long))
-    return tuple(palette[value] for value in values[:entries])
-
-
 def decode_chunk(payload: bytes, section_count: int) -> Chunk:
     """The position and first `section_count` sections of a `level_chunk_with_light` payload.
 
-    Handles the single valued and indirect palettes only: a direct (global) one raises
-    ValueError. A payload too short for this layout raises the Reader's error.
+    Raises WireError (a ValueError) if the codec refuses the payload, and ValueError if it
+    has fewer than `section_count` sections.
     """
     reader = Reader(payload)
-    x, z = reader.int_(), reader.int_()
-    for _ in range(reader.var_int()):  # heightmaps: a type, then a prefixed array of Long
-        reader.var_int()
-        reader.raw(8 * reader.var_int())
-    data = Reader(reader.raw(reader.var_int()))
-    sections = []
-    for _ in range(section_count):
-        block_count = struct.unpack(">h", data.raw(2))[0]
-        data.raw(2)  # fluid count
-        states = _paletted(data, SECTION_ENTRIES, max_indirect=8)
-        biomes = _paletted(data, BIOME_ENTRIES, max_indirect=3)
-        sections.append(Section(block_count, states, biomes))
-    return Chunk(x, z, tuple(sections))
+    fields = _CHUNK.read(reader)
+    reader.expect_end()
+    sections = cast("list[dict[str, object]]", fields["sections"])
+    if len(sections) < section_count:
+        msg = f"the chunk has {len(sections)} section(s), fewer than {section_count}"
+        raise ValueError(msg)
+    return Chunk(
+        x=cast("int", fields["chunk_x"]),
+        z=cast("int", fields["chunk_z"]),
+        sections=tuple(
+            Section(
+                block_count=cast("int", section["block_count"]),
+                states=BLOCK_STATES.values(cast("dict[str, object]", section["block_states"])),
+                biomes=BIOMES.values(cast("dict[str, object]", section["biomes"])),
+            )
+            for section in sections[:section_count]
+        ),
+    )
