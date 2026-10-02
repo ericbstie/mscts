@@ -106,3 +106,48 @@ without a decimal point.
 Groups still record Measurements such as `status.rtt`, and the Run records
 `instance.startup`. The default Report keeps the final total and leaves
 those Measurements in the Run result.
+
+## Verbose values and Group times
+
+Add `-v` or `--verbose` to see both values below each difference and the
+installed versions at the top:
+
+```sh
+uv run mscts run --candidate pumpkin --verbose
+```
+
+```
+Running tests against pumpkin
+  Reference    vanilla 26.3
+  Candidate    pumpkin sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e
+  Target       Minecraft 26.3 (protocol 777)
+  Repetitions  5 of each group
+- Server list description  status_response.description
+  vanilla sends "mscts", pumpkin sends {"text": "mscts"}
+- Unused secure chat flag  status_response.enforceSecureChat
+  vanilla leaves it out, pumpkin sends true
+- Server list icon  status_response.favicon
+  vanilla leaves it out, pumpkin sends null
+- Server list player sample  status_response.players.sample
+  vanilla leaves it out, pumpkin sends []
+Group times
+  status/basic 0.1 s
+  status/ping 0.2 s
+Took 50.5 s
+```
+
+The installed version is the Registry version or the verified binary's
+sha256. A server's own status version can claim something else, so it
+never supplies this header. Without installation provenance, the header
+says `installed version unknown`.
+
+Identical differences from repetitions appear once; distinct values stay
+under the same test case. List values also name their element's path.
+Missing values say `leaves it out`; `null` remains a value. Binary values
+use hexadecimal, and UUIDs use their usual string form. Inside a composite
+value, binary data is written as `{"bytes": "<hex>"}`.
+
+Each Group's time adds all repetitions, playing both servers and comparing
+their Transcripts. It excludes starting and stopping Instances, which the
+final total includes. A skipped Group says `not played`. Older Report
+inputs without durations say `not recorded`.

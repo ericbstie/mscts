@@ -50,6 +50,7 @@ def report_from_sample(path: Path) -> Report:
                 tuple(verdicts),
                 tuple(tuple(Measurement(**m) for m in run) for run in result["reference"]),
                 tuple(tuple(Measurement(**m) for m in run) for run in result["candidate"]),
+                tuple(result.get("elapsed_s", ())),
             )
         )
     sides = [
@@ -57,6 +58,7 @@ def report_from_sample(path: Path) -> Report:
             data[role]["name"],
             data[role]["version"],
             tuple(Measurement(**m) for m in data[role]["startup"]),
+            data[role].get("installed_version"),
         )
         for role in ("reference", "candidate")
     ]

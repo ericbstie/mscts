@@ -23,7 +23,11 @@ def test_every_stored_output_records_its_capture_command() -> None:
 
 @pytest.mark.parametrize("sample", sorted(SAMPLES.glob("*.json")), ids=lambda path: path.stem)
 def test_stored_report_output_matches_the_renderer(sample: Path) -> None:
-    assert render_text(report_from_sample(sample)) == sample.with_suffix(".txt").read_text()
+    verbose = " --verbose" in sample.with_suffix(".command").read_text().splitlines()[0]
+    assert (
+        render_text(report_from_sample(sample), verbose=verbose)
+        == sample.with_suffix(".txt").read_text()
+    )
 
 
 def _matches(excerpt: str, output: str) -> bool:

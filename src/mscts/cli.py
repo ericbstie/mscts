@@ -211,7 +211,7 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
         raise
     shutil.rmtree(workdir)
     report = Report.of(result, target=TARGET, notes=RUN_NOTES, elapsed_s=perf_counter() - started)
-    sys.stdout.write(render_text(report))
+    sys.stdout.write(render_text(report, verbose=arguments.verbose))
     return 0
 
 
@@ -251,6 +251,12 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_REPEAT,
         metavar="N",
         help=f"how many times to play each Group (default: {DEFAULT_REPEAT})",
+    )
+    running.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="show installed versions, values and Group times",
     )
     return parser
 

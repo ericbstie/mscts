@@ -182,3 +182,19 @@ def test_the_work_directory_is_removed_afterwards(
 
     assert code == 0
     assert list((tmp_path / "tmp").iterdir()) == []
+
+
+@pytest.mark.parametrize("option", ["-v", "--verbose"])
+def test_verbose_cli_adds_header_values_and_group_times(
+    option: str, fakes: Fakes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--help"])
+    help_text, _ = capsys.readouterr()
+    assert option in help_text
+    fakes(pumpkin_description="not vanilla")
+    code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "1", option)
+    assert code == 0, err
+    assert "  Candidate    pumpkin (installed version unknown)\n" in out, out
+    assert '  vanilla sends "mscts", pumpkin sends "not vanilla"\n' in out, out
+    assert "Group times\n  status/basic " in out, out
