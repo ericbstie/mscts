@@ -241,12 +241,19 @@ RANDOM_FIELDS: Mapping[str, str] = MappingProxyType(
             "seeds with System.nanoTime(), not with the world seed. The client uses it to "
             "pick the sound's variant."
         ),
+        "minecraft:update_advancements.progress[*].criteria[*].obtained": (
+            "Vanilla reads it from its clock: CriterionProgress.grant sets it to "
+            "Instant.now() when the player obtains the criterion, and it is sent as "
+            "milliseconds since the epoch, so two runs never send the same time. Whether "
+            "the criterion was obtained is still compared."
+        ),
     }
 )
-"""The fields vanilla draws at random on every run, as `<packet>.<path>`, each with the
-reason, which says where vanilla draws it. No Comparison compares them: two vanilla runs
-would differ, and their distribution belongs to a statistical Group (ADR-0011). Every
-Comparison masks them before its Group's own Masks, in any State.
+"""The fields vanilla draws at random, or reads from its clock, on every run, as
+`<packet>.<path>`, each with the reason, which says where vanilla draws or reads it. No
+Comparison compares their values: two vanilla runs would differ, and their distribution
+belongs to a statistical Group (ADR-0011). Whether one is there is still compared, as for
+any Mask. Every Comparison masks them before its Group's own Masks, in any State.
 """
 
 ENTITY_UUIDS: Mapping[str, str] = MappingProxyType(

@@ -1066,11 +1066,13 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # update_recipes' property sets and update_advancements'
                                     # removed ids and progress (#30, #106)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
-                                    # random on every run, which no exact Group compares
-                                    # (ADR-0011): minecraft:login_finished.session_id (same
-                                    # evidence), minecraft:sound.seed and
-                                    # minecraft:sound_entity.seed (docs/research/2026-10-01-
-                                    # block-world-events.md)
+                                    # random, or reads from its clock, on every run, whose
+                                    # values no exact Group compares (ADR-0011):
+                                    # minecraft:login_finished.session_id (same evidence),
+                                    # minecraft:sound.seed and minecraft:sound_entity.seed
+                                    # (docs/research/2026-10-01-block-world-events.md), and
+                                    # update_advancements' progress[*].criteria[*].obtained
+                                    # (#106)
 ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields that hold an
                                     # entity's UUID, which every Comparison numbers by first
                                     # appearance, but not a player's (#21):
@@ -1479,9 +1481,9 @@ proves it necessary:
    there. No Mask is on an entity id, which the
    numbering above already makes comparable: `Mask` refuses one. Before its Group's own Masks, every
    Comparison masks the **random fields** (`compare.RANDOM_FIELDS`,
-   ADR-0011), which vanilla draws at random on every run, so no exact
-   Group compares them (a statistical Group compares their
-   distribution): `login_finished.session_id`, which vanilla draws with
+   ADR-0011), which vanilla draws at random, or reads from its clock, on
+   every run, so no exact Group compares their values (a statistical
+   Group compares their distribution): `login_finished.session_id`, which vanilla draws with
    `UUID.randomUUID()` when its first connection opens
    (`ServerConnectionListener.getSessionId`, reset when no connection
    is left) and the client only passes to its telemetry
@@ -1489,7 +1491,11 @@ proves it necessary:
    #17), and the `seed` of `sound` and `sound_entity`, which vanilla
    draws for every sound from `Level.soundSeedGenerator`, seeded from
    `RandomSupport.generateUniqueSeed()` and not from the world seed
-   (`javap` on 26.3, and two vanilla runs that differ in it; #29). A
+   (`javap` on 26.3, and two vanilla runs that differ in it; #29), and
+   `update_advancements`' `progress[*].criteria[*].obtained`, which
+   `CriterionProgress.grant` sets to `Instant.now()` when the player
+   obtains the criterion (`javap` on 26.3, and two vanilla joins that
+   differ only in it; #106). A
    sound's pitch is not one: most sounds have a fixed pitch, so a Group
    that plays a sound with a random pitch (a door's, `nextFloat() * 0.1 +
    0.9`) masks `pitch` of `sound` itself. A
