@@ -90,8 +90,10 @@ Took 41 s
 `Not tested` means a prerequisite did not match, or the Candidate lacks a
 command the Group needs, such as `/tick`. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
-frame that did not decode, closed the connection or did not answer in
-time. Different packet counts for a Bot also name the Group.
+frame that did not decode, closed the connection, did not answer in time,
+or still had players online from the Group before. If this happens while
+mscts waits for the players of the Group before to leave, it does not
+play the Group. Different packet counts for a Bot also name the Group.
 
 A Group appears once, with each distinct reason from its repetitions.
 Skipped or failed Groups never produce a misleading `No differences.`.

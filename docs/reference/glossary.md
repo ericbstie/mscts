@@ -234,10 +234,12 @@ network traffic only: gameplay if any of its Divergences is.
 prerequisite Group did not match), or `error` (the harness failed, or
 the Reference itself could not run the Group). A failure the
 Candidate caused (a frame that does not decode, an answer that breaks
-the protocol, no answer in time, a connection closed, reset or refused)
-is a `mismatch`, led by a `failed` Divergence that says what happened,
-never an `error`: compliance scores leave `error` out, so a Candidate
-must never score better by failing.
+the protocol, no answer in time, a connection closed, reset or refused,
+or players still online from the Group before) is a `mismatch`, led by
+a `failed` Divergence that says what happened, never an `error`:
+compliance scores leave `error` out, so a Candidate must never score
+better by failing. The same holds while mscts waits for the players of
+the Group before to leave; it then does not play the Group.
 
 ### Self-check
 
