@@ -36,7 +36,7 @@ from types import MappingProxyType
 from typing import Literal, NoReturn, Self, cast, override
 from uuid import UUID
 
-from mscts.codec.entity_ids import Each, EntityIdPath, Step, Variant
+from mscts.codec.entity_ids import EACH, Each, EntityIdPath, Step, Variant
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.registry_names import registry_names
 from mscts.spec import CONTROL_PLAYER
@@ -50,6 +50,11 @@ type _Step = str | int
 """One step of a field path: a mapping key, or a list index."""
 
 type _Path = tuple[_Step, ...]
+
+type _MaskStep = _Step | Each
+"""One step of a Mask's path: a key, an index, or EACH (`[*]`), every index of a list."""
+
+type _MaskPath = tuple[_MaskStep, ...]
 
 
 class Outcome(StrEnum):
@@ -129,7 +134,8 @@ class Mask:
     Attributes:
         packet: The packet name, e.g. `minecraft:login`, in whatever State.
         path: The field path, spelled as Divergence paths are (e.g. `entity_id`,
-            `players.sample[0].name`), or `*` (WHOLE_PACKET) for the whole packet.
+            `players.sample[0].name`), where `[*]` is every index of a list
+            (`players.sample[*].name`); or `*` (WHOLE_PACKET) for the whole packet.
         reason: Why it is nondeterministic.
     """
 
@@ -452,7 +458,8 @@ def test_case(state: State, packet: str, path: str | None) -> str:
     Raises:
         ValueError: `path` is malformed, or not spelled as a Divergence path would be.
     """
-    return _test_case(state, packet, () if path is None else _steps(packet, path, "field path"))
+    steps = () if path is None else _steps(packet, path, "field path")
+    return _test_case(state, packet, cast("_Path", steps))  # no EACH: `[*]` is malformed here
 
 
 def _test_case(state: State, packet: str, path: _Path) -> str:
@@ -525,12 +532,12 @@ class _Masks:
     """
 
     dropped: frozenset[str]
-    paths: Mapping[str, Sequence[_Path]]
+    paths: Mapping[str, Sequence[_MaskPath]]
 
     @classmethod
     def of(cls, masks: Sequence[Mask]) -> Self:
         """Index `masks`."""
-        paths: dict[str, list[_Path]] = {}
+        paths: dict[str, list[_MaskPath]] = {}
         for mask in masks:
             if mask.path != WHOLE_PACKET:
                 paths.setdefault(mask.packet, []).append(_mask_steps(mask))
@@ -788,10 +795,11 @@ def _uuid_paths(packet: str, fields: Iterable[str]) -> tuple[EntityIdPath, ...]:
     return tuple(paths)
 
 
-def _is_entity_id(packet: str, path: _Path) -> bool:
+def _is_entity_id(packet: str, path: _MaskPath) -> bool:
     """Whether `path` is an entity id of the clientbound `packet`, in any State, or a list of them.
 
-    A list index in `path` stands for any element, and a Variant step is not in a path.
+    A list index or EACH in `path` stands for any element, and a Variant step is not in a
+    path.
     """
     for state in State:
         for entity_path in _codec().entity_id_paths(state, Direction.CLIENTBOUND, packet):
@@ -805,9 +813,11 @@ def _is_entity_id(packet: str, path: _Path) -> bool:
     return False
 
 
-def _step_fits(step: _Step, key: Step) -> bool:
+def _step_fits(step: _MaskStep, key: Step) -> bool:
     """Whether a Mask path's `step` is `key`, an entity id path's: EACH is any list index."""
-    return type(step) is int if isinstance(key, Each) else step == key
+    if isinstance(key, Each):
+        return isinstance(step, Each) or type(step) is int
+    return step == key
 
 
 def _is_player(fields: Mapping[str, object]) -> bool:
@@ -863,7 +873,7 @@ def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
     return copy if sort is None else sort(copy)
 
 
-def _hide_all(fields: dict[str, _Value], paths: Iterable[_Path]) -> frozenset[_Path]:
+def _hide_all(fields: dict[str, _Value], paths: Iterable[_MaskPath]) -> frozenset[_Path]:
     """Hide the value at each of `paths` in `fields` (`_hidden`); return where one stood."""
     found: list[_Path] = []
     for path in paths:
@@ -905,24 +915,23 @@ def _plain(value: object, packet: str, path: _Path) -> _Value:
     raise TypeError(msg)
 
 
-def _hidden(value: _Value, path: _Path, at: _Path, found: list[_Path]) -> _Value:
+def _hidden(value: _Value, path: _MaskPath, at: _Path, found: list[_Path]) -> _Value:
     """`value` with MASKED in place of what is at `path` in it, unless that is None.
 
-    `at` is where `value` is in the fields; each path in the fields at which a value
-    stands, None included, is added to `found`. A list keeps its length. Lists and
-    mappings on the way are changed in place.
+    EACH in `path` is every element of a list. `at` is where `value` is in the fields;
+    each path in the fields at which a value stands, None included, is added to `found`.
+    A list keeps its length. Lists and mappings on the way are changed in place.
     """
     if not path:
         found.append(at)
         return value if value is None else MASKED
     step, rest = path[0], path[1:]
-    match value:
-        case dict() if isinstance(step, str) and step in value:
-            value[step] = _hidden(value[step], rest, (*at, step), found)
-        case list() if isinstance(step, int) and step < len(value):
-            value[step] = _hidden(value[step], rest, (*at, step), found)
-        case _:
-            pass
+    if isinstance(value, dict) and isinstance(step, str) and step in value:
+        value[step] = _hidden(value[step], rest, (*at, step), found)
+    elif isinstance(value, list) and isinstance(step, Each):
+        value[:] = [_hidden(item, rest, (*at, index), found) for index, item in enumerate(value)]
+    elif isinstance(value, list) and isinstance(step, int) and step < len(value):
+        value[step] = _hidden(value[step], rest, (*at, step), found)
     return value
 
 
@@ -1440,19 +1449,23 @@ def _same(reference: _Value | Absent, candidate: _Value | Absent) -> bool:
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _DOTTED_KEY = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
 _INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
+_EACH = "[*]"
 _JSON = json.JSONDecoder()
 
 
-def _render(path: _Path, *, index_free: bool = False) -> str:
+def _render(path: _MaskPath, *, index_free: bool = False) -> str:
     """Write a field path: `players.sample[0].name`, or `m["not an identifier"]`.
 
     A key that is an identifier follows a dot (none at the start). Any other key is a
     JSON string in brackets, and a list index is a number in brackets, or nothing in
-    them if `index_free` (`players.sample[].name`, as test cases are named).
+    them if `index_free` (`players.sample[].name`, as test cases are named). EACH, in a
+    Mask's path, is `[*]`.
     """
     parts: list[str] = []
     for step in path:
-        if isinstance(step, int):
+        if isinstance(step, Each):
+            parts.append(_EACH)
+        elif isinstance(step, int):
             parts.append("[]" if index_free else f"[{step}]")
         elif _IDENTIFIER.fullmatch(step):
             parts.append(f".{step}" if parts else step)
@@ -1465,18 +1478,20 @@ def _where(path: _Path) -> str:
     return _render(path) or "fields"
 
 
-def _mask_steps(mask: Mask) -> _Path:
-    """Return the steps of `mask`'s field path (see `_steps`)."""
-    return _steps(mask.packet, mask.path, "Mask path")
+def _mask_steps(mask: Mask) -> _MaskPath:
+    """Return the steps of `mask`'s field path, where `[*]` is EACH (see `_steps`)."""
+    return _steps(mask.packet, mask.path, "Mask path", each=True)
 
 
-def _steps(packet: str, path: str, what: str) -> _Path:
+def _steps(packet: str, path: str, what: str, *, each: bool = False) -> _MaskPath:
     """Return the steps of `path`, a `what` of `packet` (named in any error).
+
+    `[*]` is a step, EACH, only if `each`; a path without one is a `_Path`.
 
     Raises:
         ValueError: The path is malformed, or not spelled as a Divergence path would be.
     """
-    steps = _parse_path(path)
+    steps = _parse_path(path, each=each)
     if steps is None:
         msg = f"{packet}: malformed {what} {path!r}"
         raise ValueError(msg)
@@ -1486,15 +1501,16 @@ def _steps(packet: str, path: str, what: str) -> _Path:
     return steps
 
 
-def _parse_path(text: str) -> _Path | None:
+def _parse_path(text: str, *, each: bool) -> _MaskPath | None:
     """Read a field path in the syntax `_render` writes, or return None if malformed.
 
-    A path starts with a key, bare or quoted, never with an index.
+    A path starts with a key, bare or quoted, never with an index. `[*]` is EACH if
+    `each`, and malformed if not.
     """
-    steps: list[_Step] = []
+    steps: list[_MaskStep] = []
     position = 0
     while position < len(text) or not steps:
-        step = _next_step(text, position, start=not steps)
+        step = _next_step(text, position, start=not steps, each=each)
         if step is None:
             return None
         steps.append(step[0])
@@ -1502,7 +1518,9 @@ def _parse_path(text: str) -> _Path | None:
     return tuple(steps)
 
 
-def _next_step(text: str, position: int, *, start: bool) -> tuple[_Step, int] | None:
+def _next_step(
+    text: str, position: int, *, start: bool, each: bool
+) -> tuple[_MaskStep, int] | None:
     """Read the step at `position`: return it and where the next one starts, or None."""
     if text.startswith('["', position):
         return _quoted_key(text, position)
@@ -1513,6 +1531,8 @@ def _next_step(text: str, position: int, *, start: bool) -> tuple[_Step, int] | 
         return str(match[1]), match.end()
     if match := _INDEX.match(text, position):
         return int(match[1]), match.end()
+    if each and text.startswith(_EACH, position):
+        return EACH, position + len(_EACH)
     return None
 
 
