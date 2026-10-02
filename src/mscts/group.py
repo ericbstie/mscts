@@ -62,6 +62,15 @@ class Control(Protocol):
         """
         ...
 
+    async def leave(self) -> None:
+        """Close Control's Bot, if it has joined.
+
+        The next `run` joins a new Bot, and passes the barrier first, as on first use. A
+        server removes a closed Bot's player a tick later, so a Group that needs the
+        server empty waits with `mscts.settle.until_no_player_online`.
+        """
+        ...
+
 
 MARKER_PREFIX = "mscts-barrier-"
 """The start of each token Control's barrier says to itself (`tellraw`)."""
@@ -84,13 +93,15 @@ class OperatorBot:
         self._transcript = transcript
         self._timeout_s = timeout_s
         self._bot: Bot | None = None
+        self._joined_ns = 0
         self._markers = 0
 
     async def run(self, command: str) -> tuple[Packet, ...]:
         """Run `command` as `control`, and return once the server has answered it.
 
-        On first use, the Bot joins and passes the barrier (`Bot.sync`), so that nothing
-        the join caused is taken for an answer. Each run then sends `command`, then a
+        On first use, and the first after `leave`, a new Bot joins and passes the barrier
+        (`Bot.sync`), so that nothing the join caused is taken for an answer. Each run
+        then sends `command`, then a
         marker, `tellraw @s "<token>"` with a token of its own, and waits for the
         `system_chat` holding the token: vanilla runs a
         player's commands one after another, so the command has run by then. Last, the
@@ -142,8 +153,21 @@ class OperatorBot:
             and event.packet is not marker
         )
 
+    async def leave(self) -> None:
+        """Close Control's Bot, if it has joined; the next `run` joins a new one.
+
+        The new Bot passes the barrier first and reads the command tree its own join
+        sent, as Control's first Bot did. A server removes a closed Bot's player later
+        (vanilla on its next tick): wait with `mscts.settle.until_no_player_online` if the
+        server must be empty. Calling it with no Bot joined does nothing.
+        """
+        if self._bot is not None:
+            bot, self._bot = self._bot, None
+            await bot.close()
+
     async def _joined(self) -> Bot:
         if self._bot is None:
+            self._joined_ns = self._transcript.now_ns()
             bot = await self._connect(CONTROL_PLAYER)
             await bot.join()
             await bot.sync()
@@ -151,11 +175,12 @@ class OperatorBot:
         return self._bot
 
     async def _commands(self, bot: Bot) -> frozenset[str]:
-        """The names of the commands the server's last command tree for the Bot holds."""
+        """The names of the commands the last command tree the Bot received holds."""
         trees = [
             event.packet
             for event in self._transcript.events
             if event.bot == bot.name
+            and event.t_ns >= self._joined_ns  # not the tree a Bot that left was sent
             and event.packet.direction is Direction.CLIENTBOUND
             and event.packet.name == _COMMANDS
         ]
@@ -210,7 +235,8 @@ class GroupContext:
         return await self._connect(name)
 
     async def _connect(self, name: str) -> Bot:
-        if name in self._bots:
+        previous = self._bots.get(name)
+        if previous is not None and not (name == CONTROL_PLAYER and previous.closed):
             msg = f"the Group already has a Bot called {name!r}"
             raise ValueError(msg)
         try:
