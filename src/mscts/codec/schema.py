@@ -532,6 +532,16 @@ class Tagged:
         self._ids = ids
 
     @property
+    def tag_key(self) -> str:
+        """The key of the value that holds the variant's name."""
+        return self._tag_key
+
+    @property
+    def value_key(self) -> str:
+        """The key of the value that holds the variant's payload."""
+        return self._value_key
+
+    @property
     def names(self) -> tuple[str, ...]:
         """The variant names, in id order."""
         return tuple(name for name, _ in self._variants)
