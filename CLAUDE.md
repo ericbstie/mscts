@@ -31,7 +31,7 @@ skill before writing or rewording any user-facing text.
 
 The docs site is the spec for what users see, and always matches the
 code (ADR-0009). Each issue is worked on its own `issue-<n>-<slug>`
-branch and lands as one PR, rebase-merged into `main`. Never commit red:
+branch and lands as one PR, merged into `main` with a merge commit. Never commit red:
 every commit passes `mise run check`.
 
 ## Commands

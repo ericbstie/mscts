@@ -32,7 +32,7 @@ first.
      Acceptance tests) and read the issue's new comments.
    - Integrate: rebase the branch with
      `git rebase main -x "mise run check"`, push it, and merge the PR
-     with a rebase (never a squash).
+     with a merge commit (never a squash or a rebase-merge).
    - Log every retrospective item with a decision (adopt, defer or
      reject). Apply the adopted changes in a `docs:` or `tooling:`
      commit.
