@@ -96,9 +96,10 @@ need is missing, add it here in the same commit that introduces it.
   A window can be narrowed to named packets. Status, login and
   configuration packets are compared whole, and so is every packet of a
   Group with no window. When a window closes, each Bot in play first
-  passes the **barrier** (`Bot.sync`: a request the server answers only
-  after it has sent everything caused by what it received before), then
-  takes what has already arrived (the **drain**). _Avoid_: phase,
+  passes the **barrier** (`Bot.sync`: it asks the server for its
+  statistics until two answers arrive at least 5 ms apart, which shows a
+  tick has passed since the server received what the Bot sent before),
+  then takes what has already arrived (the **drain**). _Avoid_: phase,
   section.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (entity ids, keep-alive ids, teleport ids) from

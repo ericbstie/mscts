@@ -153,9 +153,10 @@ sends on a clock whatever a Group does (keep-alives, the time of day).
 A window can be narrowed to named packets. Status, login and
 configuration packets are compared whole, and so is every packet of a
 Group with no window. When a window closes, each Bot in play first
-passes the **barrier** (`Bot.sync`: a request the server answers only
-after it has sent everything caused by what it received before), then
-takes what has already arrived (the **drain**).
+passes the **barrier** (`Bot.sync`: it asks the server for its
+statistics until two answers arrive at least 5 ms apart, which shows a
+tick has passed since the server received what the Bot sent before),
+then takes what has already arrived (the **drain**).
 
 ### Mask
 

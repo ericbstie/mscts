@@ -42,7 +42,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
-| `await bot.sync()` | Waits until the server has answered a request sent after everything else, so everything it sent because of what came before has arrived. Needs a Bot that has joined. |
+| `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent before, so everything it sent because of that has arrived. Needs a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
 
@@ -72,16 +72,25 @@ becomes a `failed` Divergence. A timeout on vanilla makes the Verdict
 
 Only what a Bot receives inside `async with context.observe():` is
 compared. Set the world up before it and clean up after it. When the block
-ends, each Bot first waits until the server has answered a request sent
-after everything else, then takes what has arrived. A few packets the
-server sends on a clock rather than because of anything a Group did
-(keep-alives and the time of day) are never compared inside a window.
+ends, each Bot first waits until a tick has passed on the server since it
+received everything the Bot sent, then takes what has arrived. A few
+packets the server sends on a clock rather than because of anything a Group
+did (keep-alives and the time of day) are never compared inside a window.
 Groups of their own compare them. To compare only some packets, name them:
 `context.observe("minecraft:block_update")`.
 
 A Group with no window compares everything its Bots receive. With one,
 what a Bot receives before it is in the world (the status, logging in and
 configuration) is still compared whole.
+
+Change blocks only in chunks a Bot has had since it joined. Vanilla sends a
+player no `block_update` for a chunk it has not yet sent them: the change
+arrives in the chunk data instead. Pumpkin sends the update anyway, so a
+block changed in a chunk the Bot does not have yet would differ between the
+two servers for a reason that has nothing to do with the block. `bot.join()`
+returns once the first chunk batch has finished, and that batch holds
+chunk (0, 0) on vanilla and on Pumpkin: the blocks with x and z from 0 to
+15. Keep a Group's blocks there.
 
 ## Timing a span
 
