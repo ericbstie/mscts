@@ -19,10 +19,12 @@ run never writes to the shared `.venv`, which matters here more than in a single
 mutation: several `--times` runs, or a parallel worker's own `time_tier.py`, could
 otherwise race on syncing it.
 
-For each run, prints: the tier's total wall time, the 10 slowest tests (parsed out of
-pytest's own `--durations=10` section), and the 1-minute load average (`os.getloadavg()
-[0]`) before and after -- so a timing claim always carries the load the machine was
-under, per the Worker contract.
+For each run, prints: the tier's total wall time, its last pytest summary, the 10
+slowest tests (parsed out of pytest's own `--durations=10` section), and the
+1-minute load average (`os.getloadavg()[0]`) before and after -- so a timing claim
+always carries the load the machine was under, per the Worker contract.
+Exits non-zero if any timed command fails, after
+printing all requested runs' reports.
 """
 
 import argparse
@@ -208,6 +210,18 @@ def run_in_copy(
 
 _DURATIONS_HEADER_RE = re.compile(r"slowest \d+ durations", re.IGNORECASE)
 _DURATIONS_LINE_RE = re.compile(r"^\d+\.\d+s\s+\S+\s+\S+")
+_SUMMARY_RE = re.compile(
+    r"^(?:=+\s*)?(?P<summary>(?:\d+ (?:passed|failed|skipped|deselected|xfailed|xpassed|"
+    r"errors?|warnings?)|no tests ran).*? in \d+(?:\.\d+)?s(?: \([\d:]+\))?)(?:\s*=+)?$"
+)
+
+
+def last_pytest_summary(output: str) -> str | None:
+    """The last pytest result line, without its decorative equals signs (#98)."""
+    for line in reversed(output.splitlines()):
+        if match := _SUMMARY_RE.fullmatch(line.strip()):
+            return str(match["summary"])
+    return None
 
 
 def parse_slowest_durations(pytest_output: str) -> list[str]:
@@ -242,13 +256,15 @@ class RunResult:
     """One run's timing.
 
     Total wall time, the 1-minute load average before/after, and the slowest-duration
-    lines pytest reported.
+    lines pytest reported, its last summary, and whether any command failed.
     """
 
     total_s: float
     load_before: float
     load_after: float
     slowest: list[str]
+    summary: str | None
+    failed: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,10 +309,12 @@ def run_tier_once(
         load_before = hooks.get_load()
         start = time.perf_counter()
         outputs: list[str] = []
+        failed = False
         for command in task_commands:
             argv = prepare_command(command, durations=durations)
             result = run(copy_root, argv)
-            outputs.append(result.stdout + result.stderr)
+            outputs.append(f"{result.stdout}\n{result.stderr}")
+            failed = failed or result.returncode != 0
         total_s = time.perf_counter() - start
         load_after = hooks.get_load()
     finally:
@@ -305,16 +323,23 @@ def run_tier_once(
     for output in outputs:
         slowest.extend(parse_slowest_durations(output))
     return RunResult(
-        total_s=total_s, load_before=load_before, load_after=load_after, slowest=slowest
+        total_s=total_s,
+        load_before=load_before,
+        load_after=load_after,
+        slowest=slowest,
+        summary=last_pytest_summary("\n".join(outputs)),
+        failed=failed,
     )
 
 
 def print_run_report(index: int, times: int, result: RunResult) -> None:
-    """Print one run's report: header line, then its slowest durations, if any."""
+    """Print one run's timing, last pytest summary and slowest durations, if any."""
     print(
         f"run {index}/{times}: tier total {result.total_s:.1f}s, "
         f"load avg before {result.load_before:.2f}, after {result.load_after:.2f}"
     )
+    if result.summary is not None:
+        print(f"  {result.summary}")
     if result.slowest:
         print(f"  slowest {len(result.slowest)} durations:")
         for line in result.slowest:
@@ -339,6 +364,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     def run(copy_root: Path, command: Sequence[str]) -> subprocess.CompletedProcess[str]:
         return run_in_copy(venv, copy_root, command)
 
+    failed = False
     for index in range(1, args.times + 1):
         try:
             result = run_tier_once(repo_root, task_commands, run)
@@ -346,7 +372,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(f"time_tier.py: {exc}", file=sys.stderr)
             return 2
         print_run_report(index, args.times, result)
-    return 0
+        failed = failed or result.failed
+    return int(failed)
 
 
 if __name__ == "__main__":
