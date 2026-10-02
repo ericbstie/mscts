@@ -11,13 +11,14 @@ from time import perf_counter
 
 import mscts.groups  # noqa: F401 - importing it registers the shipped Groups
 from mscts.adapters.base import Adapter, Installation
-from mscts.bot import Bot, status_probe
+from mscts.bot import status_probe
 from mscts.codec.packets import CodecError
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
 from mscts.measure import Measurement, measurements
 from mscts.net import Endpoint, ProtocolError
 from mscts.runner import free_endpoint, running
+from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -39,29 +40,8 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
 )
 """What a Group raises when the Candidate caused it: a `mismatch`, never `error`."""
 
-SETTLE_INTERVAL_S = 0.02
-"""How long a Run waits between polls of an Instance's status while players are online.
-
-Vanilla removes a closed Bot's player on its next tick (50 ms), and drops the cached
-status in the same call (`ServerGamePacketListenerImpl.removePlayerFromWorld` calls
-`MinecraftServer.invalidateStatus`, which the same tick's rebuild follows), so a poll
-every 20 ms, under a tick, finds the Instance empty soon after it is.
-"""
-
-SETTLE_TIMEOUT_S = 2.0
-"""How long a Run waits for an Instance to have no player online before a Group plays.
-
-Measured live on vanilla 26.3: from the end of a Group to the first status that read
-`players.online == 0` took 10 to 197 ms (20 samples of the probe Group's two Bots, and 20
-of one Bot, at most 114 ms). This is about ten times the worst. Past it the Group is not
-played, and its Verdict is `error`.
-"""
-
 LOG = logging.getLogger("mscts.run")
 """Where a Run says what it is doing (INFO): the Instances it starts, the Group it plays."""
-
-_UNREADABLE: tuple[type[Exception], ...] = (*CANDIDATE_FAILURES, OSError)
-"""What a status poll raises when the Instance gives no readable answer."""
 
 _ROLES = ("Reference", "Candidate")
 """What a Run calls its two sides, in order, in a Verdict's detail."""
@@ -573,95 +553,28 @@ def _installed_version(side: Side) -> str | None:
     return f"sha256 {source.sha256}"
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
-class _Reading:
-    """What a status said of the players online: how many, and the names it listed."""
-
-    online: int
-    names: tuple[str, ...]
-
-
 async def _busy(endpoints: Sequence[Endpoint]) -> str:
     """Wait for each Instance to have no player online, and say which still had, if any.
 
-    Every Instance is polled at once. The answer is "" if all emptied, else one sentence
-    for each that did not, led by its role: "the Reference still had 2 players online ...".
+    Every Instance is waited on at once. The answer is "" if all emptied, else one
+    sentence for each that did not, led by its role: "the Reference had 2 players still
+    online after waiting 2 s: watcher, control".
     """
-    readings = await asyncio.gather(*(_settle(endpoint) for endpoint in endpoints))
+    left = await asyncio.gather(*(_left(endpoint) for endpoint in endpoints))
     return "; ".join(
-        _still_online(role, reading)
-        for role, reading in zip(_ROLES, readings, strict=True)
-        if reading is not None
+        f"the {role} had {players}"
+        for role, players in zip(_ROLES, left, strict=True)
+        if players is not None
     )
 
 
-def _still_online(role: str, reading: _Reading) -> str:
-    players = f"{reading.online} player{'' if reading.online == 1 else 's'}"
-    text = f"the {role} still had {players} online after waiting {SETTLE_TIMEOUT_S:g} s"
-    return f"{text}: {', '.join(reading.names)}" if reading.names else text
-
-
-async def _settle(endpoint: Endpoint) -> _Reading | None:
-    """Poll the status of the Instance at `endpoint` until it says no player is online.
-
-    The players of the Group that played before have left only once it does: a closed
-    Bot is removed by the server later. Returns None then, or the last status that
-    still listed players once `SETTLE_TIMEOUT_S` has passed. An Instance whose status
-    cannot be read counts as empty here: the Group that plays next meets the same
-    failure and reports it.
-
-    A poll is never cancelled from outside, because one cut off between connecting and
-    closing leaks its socket. The deadline is checked between polls, and each poll bounds
-    itself by `SETTLE_TIMEOUT_S` too, so a server that never answers costs at most two.
-    """
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + SETTLE_TIMEOUT_S
-    while True:
-        reading = await _players_online(endpoint)
-        if reading is None or reading.online == 0:
-            return None
-        if loop.time() >= deadline:
-            return reading
-        await asyncio.sleep(SETTLE_INTERVAL_S)
-
-
-async def _players_online(endpoint: Endpoint) -> _Reading | None:
-    """The players the status at `endpoint` says are online, or None if it gives no readable one."""
-    transcript = Transcript(group_id="settle", server="")  # discarded
+async def _left(endpoint: Endpoint) -> PlayersStillOnline | None:
+    """Wait `SETTLE_TIMEOUT_S` for no player online at `endpoint`; who was left, if any."""
     try:
-        bot = await Bot.connect(
-            endpoint, TARGET, name="settle", transcript=transcript, timeout_s=SETTLE_TIMEOUT_S
-        )
-    except _UNREADABLE:
-        return None
-    try:
-        reply = await bot.status()
-    except _UNREADABLE:
-        return None
-    finally:
-        await bot.close()
-    players: object = reply.get("players")
-    if not isinstance(players, dict):
-        return None
-    fields = {str(key): value for key, value in players.items()}
-    online = fields.get("online")
-    if not isinstance(online, int) or isinstance(online, bool):
-        return None
-    return _Reading(online=online, names=_names(fields.get("sample")))
-
-
-def _names(sample: object) -> tuple[str, ...]:
-    """The player names a status `players.sample` lists; whatever else it holds is ignored."""
-    names: list[str] = []
-    for entry in sample if isinstance(sample, list) else ():
-        name = (
-            {str(key): value for key, value in entry.items()}.get("name")
-            if isinstance(entry, dict)
-            else None
-        )
-        if isinstance(name, str):
-            names.append(name)
-    return tuple(names)
+        await until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+    except PlayersStillOnline as players:
+        return players
+    return None
 
 
 async def _attempt(group: Group, endpoint: Endpoint, *, server: str) -> Transcript | GroupError:
