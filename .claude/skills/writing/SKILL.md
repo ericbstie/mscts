@@ -10,18 +10,27 @@ Every rule here comes from a real edit, with the example that taught it.
 
 ## Keeping this skill current
 
-Whenever the maintainer asks to remove or reword something, or says they
-like a wording:
+This skill is a living document, and only the maintainer's explicit
+feedback changes it. Whenever they ask to remove or reword something, or
+say they like a wording:
 
-1. If they have not said why, ask why and how they perceived it: what it
-   made them think or feel, and who they pictured reading it.
-2. Make the change.
-3. Add their reason to this skill in the same commit: a rule under
-   **Principles** (new, or sharpened), and an entry under **Examples**
-   with the before, the after and the why, in their words where possible.
+1. If they have not said why, ask briefly: what put them off (or what
+   they liked), and what would read better. One or two questions, not an
+   interview.
+2. Make the change to the prose.
+3. Update this skill only when they have given a reason, suggested a
+   rewording, or approved one you proposed. Then, in the same commit:
+   generalise it into a rule under **Principles** (new, or a sharpened
+   existing one) that would have prevented the mistake, and add an entry
+   under **Examples** with the before, the after and the why, in their
+   words where possible.
+4. Go back to the work you were doing.
 
-Never invent a reason. If the maintainer gave none and declines to say,
-record the example with "why: not given".
+Never invent a reason. If they give no reason and no rewording, change
+the prose and leave this skill as it is.
+
+The maintainer may run a dedicated writer session for wording tweaks.
+Any session that writes user-facing text follows this skill all the same.
 
 ## Principles
 
