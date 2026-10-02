@@ -147,9 +147,9 @@ under the same test case. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. An entity id is
-written `"#<n>"`: the n-th entity the Bot heard of, its own player being
-`"#1"`. The UUID of an entity that is not a player is written the same
-way, counted on its own.
+written `"#<n>"`: the n-th entity in what mscts compared for that Bot.
+The UUID of an entity that is not a player is written the same way,
+counted on its own.
 
 Each Group's time adds all repetitions, playing both servers and comparing
 their Transcripts. It excludes starting and stopping Instances, which the

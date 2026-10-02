@@ -1037,9 +1037,10 @@ ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields th
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
-    # Numbers each Bot's entity ids and ENTITY_UUIDS `#1`, `#2`, ... in the order it first
-    # heard of them (Comparison semantics, between steps 2 and 3), so Divergence paths and
-    # values show `#<n>` where the packets had ids.
+    # Numbers each Bot's entity ids and ENTITY_UUIDS `#1`, `#2`, ... in the order they first
+    # appear in the packets it compares, never those outside the windows (Comparison
+    # semantics, between steps 2 and 3), so Divergence paths and values show `#<n>` where
+    # the packets had ids.
     # Masks the RANDOM_FIELDS, then applies `masks`. Every Bot is compared but Control's
     # (spec.CONTROL_PLAYER): its Events stay in the Transcript.
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
@@ -1342,9 +1343,14 @@ proves it necessary:
    the whole server, and every mob a random UUID (the `Entity`
    constructor takes `Mth.createInsecureUUID` of a new `RandomSource`),
    so the same entities on two servers have other ids and UUIDs. Each
-   entity id becomes `#<n>`: the n-th entity the Bot heard of, counting
-   every clientbound packet of its whole Transcript from `login` (whose
-   own player is `#1`), windowed or not, in wire order. The Codec names
+   entity id becomes `#<n>`: the n-th entity in the packets the
+   Comparison takes for the Bot (step 1, less the packets a `*` Mask
+   drops), in wire order. Packets outside the windows take no number:
+   how many chunk batches, world-generation mobs and natural spawns a
+   Bot heard of before a window opened is timing, and counting them
+   would shift every number inside it. So what is not compared never
+   shifts what is; without windows, the Bot's own player (`login`) is
+   `#1`. The Codec names
    where a packet holds entity ids (`Codec.entity_id_paths`, found in
    the schemas by type, so no list of packets is kept); an id of no
    entity (None) stays None. Each field `compare.ENTITY_UUIDS` names

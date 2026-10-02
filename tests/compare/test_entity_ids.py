@@ -2,9 +2,9 @@
 
 Vanilla gives entity ids from a counter and mobs random UUIDs, so two servers that send the
 same entities send other numbers for them. A Comparison replaces each id by `#<n>`, the n-th
-entity the Bot heard of (its own player, from `login`, is #1), and each UUID of an entity that
-is not a player by `#<n>`, the n-th such UUID. So the same entities compare equal, and a packet
-about another entity is still a Divergence.
+entity in the Bot's compared packets (without windows, its own player, from `login`, is #1),
+and each UUID of an entity that is not a player by `#<n>`, the n-th such UUID. So the same
+entities compare equal, and a packet about another entity is still a Divergence.
 """
 
 import re
@@ -24,6 +24,7 @@ from mscts.compare import (
     compare,
 )
 from mscts.target import TARGET
+from mscts.transcript import Transcript
 from tests.compare.build import divergence, packet, transcript
 
 ENTITY_TYPES = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
@@ -175,34 +176,45 @@ def test_a_uuid_given_to_two_entities_is_a_divergence() -> None:
     ]
 
 
-def test_an_entity_heard_of_before_a_window_keeps_its_number_inside_it() -> None:
+def test_entities_heard_of_before_a_window_do_not_shift_the_numbers_inside_it() -> None:
+    # Before a window, timing decides how many chunks, world-gen mobs and natural spawns a
+    # Bot has heard of; only what the Comparison takes is numbered.
     reference = transcript(
         ("alice", login(1)),
         ("alice", spawn(5)),
-        ("alice", spawn(6)),
         OBSERVE_OPEN,
-        ("alice", metadata(5)),
-        OBSERVE_CLOSE,
-    )
-    same = transcript(
-        ("alice", login(1)),
-        ("alice", spawn(8)),
-        ("alice", spawn(9)),
-        OBSERVE_OPEN,
-        ("alice", metadata(8)),
-        OBSERVE_CLOSE,
-    )
-    other = transcript(
-        ("alice", login(1)),
-        ("alice", spawn(8)),
-        ("alice", spawn(9)),
-        OBSERVE_OPEN,
+        ("alice", spawn(9, x=1.5)),
         ("alice", metadata(9)),
+        ("alice", spawn(10, x=2.5)),
         OBSERVE_CLOSE,
     )
-    assert compare(reference, same, []).outcome is Outcome.MATCH
-    assert [(d.reference, d.candidate) for d in compare(reference, other, []).divergences] == [
-        ("#2", "#3")
+    candidate = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(7)),
+        ("alice", spawn(6)),
+        ("alice", metadata(8)),
+        OBSERVE_OPEN,
+        ("alice", spawn(20, x=1.5)),
+        ("alice", metadata(20)),
+        ("alice", spawn(21, x=2.5)),
+        OBSERVE_CLOSE,
+    )
+    verdict = compare(reference, candidate, [])
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert "add_entity.entity_id" in verdict.test_cases
+
+
+def test_inside_a_window_the_first_entity_it_names_is_number_one() -> None:
+    # Was: an entity heard of before a window kept its number; now nothing before it counts.
+    def window(*entity_ids: int) -> Transcript:
+        updates = [("alice", metadata(entity_id)) for entity_id in entity_ids]
+        return transcript(
+            ("alice", login(1)), ("alice", spawn(5)), OBSERVE_OPEN, *updates, OBSERVE_CLOSE
+        )
+
+    verdict = compare(window(5, 6, 5), window(8, 9, 9), [])
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (2, "entity_id", "#1", "#2")
     ]
 
 

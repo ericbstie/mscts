@@ -17,7 +17,8 @@ left out on purpose:
 - The interleaving of different Bots' Packets is timing too, so each Bot is compared
   on its own.
 - Entity ids and the random UUIDs of mobs: vanilla gives ids from a counter, so each is
-  compared as the order in which the Bot first heard of its entity (`ENTITY_UUIDS`).
+  compared as the order in which its entity first appears in the Bot's compared Packets
+  (`ENTITY_UUIDS`).
 - Control's Bot (`CONTROL_PLAYER`) sets the world up, as an operator: what it receives
   is the servers' answers to that, not what the Group tests.
 """
@@ -205,8 +206,8 @@ ENTITY_UUIDS: Mapping[str, str] = MappingProxyType(
 """The fields that hold the UUID of an entity, as `<packet>.<path>`, each with the reason.
 
 Every Comparison numbers them as it numbers entity ids, by first appearance, but in a count
-of their own: `#1` is the first such UUID a Bot hears of. A packet whose `type` field is the
-player's entity type (`minecraft:player`) numbers no UUID, and keeps its own as it is
+of their own: `#1` is the first such UUID in a Bot's compared Packets. A packet whose `type`
+field is the player's entity type (`minecraft:player`) numbers no UUID, and keeps its own as it is
 (Pumpkin's player UUIDs differ from vanilla's, and that is a Divergence), unless an entity
 that is not a player has the same UUID: then it shows that entity's number.
 """
@@ -329,9 +330,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way); each entity id, and each
-    of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the n-th the Bot heard of over
-    its whole Transcript (`_Numbers`); and every field a Mask names is removed from the
-    Packets of that name, on both sides and wherever present.
+    of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the n-th in the Packets left in
+    the stream, so nothing left out or dropped counts (`_Numbers`); and every field a Mask
+    names is removed from the Packets of that name, on both sides and wherever present.
     The Masks are one for each of the `RANDOM_FIELDS`, then `masks`. Indices count the
     normalized stream, so they do not shift when a re-run has more or fewer Packets left
     out or dropped; paths and values are those of the sorted, canonical, numbered form.
@@ -517,19 +518,21 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     """Return `bot`'s normalized stream: its clientbound Packets, less the dropped ones.
 
     If the Transcript has Observation windows, its play Packets are only those inside
-    one of them (`_Windows.observes`). Entity ids are numbered over all its clientbound
-    Packets, windows or not (`_Numbers.of`).
+    one of them (`_Windows.observes`). Entity ids are numbered over these Packets only
+    (`_Numbers.of`): how many entities a Bot heard of before a window is timing, so what
+    is not compared never shifts the numbers of what is.
     """
     windows = _Windows.of(transcript)
-    numbers = _Numbers.of(transcript, bot)
-    return [
-        _normalize(event.packet, masks, numbers)
+    taken = [
+        event.packet
         for event in transcript.events
         if event.bot == bot
         and event.packet.direction is Direction.CLIENTBOUND
         and event.packet.name not in masks.dropped
         and (windows is None or windows.observes(event))
     ]
+    numbers = _Numbers.of(taken)
+    return [_normalize(packet, masks, numbers) for packet in taken]
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,10 +580,12 @@ class _Windows:
         return narrowed is not None and (not narrowed or packet.name in narrowed)
 
 
-# Entity numbering (#21): each entity id a Bot hears of, and each entity UUID (`ENTITY_UUIDS`),
-# becomes `#<n>` in the order the Bot first heard of it, after Canonicalization and before the
-# Masks. Vanilla gives ids from a counter and mobs random UUIDs, so the same entities on two
-# servers compare equal only by their order. The Codec says where a packet's entity ids are.
+# Entity numbering (#21): each entity id in a Bot's compared Packets, and each entity UUID
+# (`ENTITY_UUIDS`), becomes `#<n>` in the order it first appears there, after Canonicalization
+# and before the Masks. Vanilla gives ids from a counter and mobs random UUIDs, so the same
+# entities on two servers compare equal only by their order. Packets left out of the
+# Comparison (outside the windows) take no number: how many arrived is timing. The Codec says
+# where a packet's entity ids are.
 
 
 @dataclass(frozen=True, slots=True)
@@ -650,7 +655,7 @@ def _replaced(value: _Value, trie: _Trie, number: Callable[[_Value], _Value]) ->
 
 @dataclass(frozen=True, slots=True)
 class _Numbers:
-    """What a Bot numbered the entities it heard of: `#1` is the first.
+    """The numbers of the entities in a Bot's compared Packets: `#1` is the first.
 
     Attributes:
         ids: Each entity id's number.
@@ -661,17 +666,14 @@ class _Numbers:
     uuids: dict[UUID, str]
 
     @classmethod
-    def of(cls, transcript: Transcript, bot: str) -> Self:
-        """Number the entity ids and UUIDs in `bot`'s clientbound Packets, in wire order.
+    def of(cls, packets: Iterable[Packet]) -> Self:
+        """Number the entity ids and UUIDs in `packets`, a Bot's compared stream, in order.
 
-        The first is the Bot's own player, from `login`. An id of None (no entity) is not
-        an entity, and neither is the UUID of a player (`ENTITY_UUIDS`).
+        Without windows, the first is the Bot's own player, from `login`. An id of None (no
+        entity) is not an entity, and neither is the UUID of a player (`ENTITY_UUIDS`).
         """
         numbers = cls(ids={}, uuids={})
-        for event in transcript.events:
-            packet = event.packet
-            if event.bot != bot or packet.direction is not Direction.CLIENTBOUND:
-                continue
+        for packet in packets:
             if packet.fields is None:
                 continue
             ids, uuids = _entity_tries(packet.state, packet.name)
