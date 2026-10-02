@@ -893,6 +893,20 @@ def test_a_chunk_the_codec_cannot_read_needs_8_bytes_for_a_position(
     assert [d.kind for d in verdict.gameplay] == kinds
 
 
+def test_only_a_chunk_the_codec_cannot_read_gets_a_position_from_its_bytes() -> None:
+    # A light update starts with VarInts, not Ints: two the codec refuses keep no position.
+    def refused(payload: bytes) -> Packet:
+        name = "minecraft:light_update"
+        data = Writer().var_int(CODEC.packet_id(State.PLAY, CLIENTBOUND, name)).to_bytes()
+        return CODEC.undecodable(State.PLAY, CLIENTBOUND, data + payload, "cut short")
+
+    verdict = compare(
+        _batch(refused(bytes(9))), _batch(refused(b"\x00\x00\x00\x01" + bytes(5))), []
+    )
+
+    assert [d.kind for d in verdict.gameplay] == ["field"]
+
+
 # Light. Light section i is world section i - 1: in a 24-section chunk, light section 1 holds
 # y -64 to -49.
 
@@ -1116,6 +1130,13 @@ def test_sections_past_the_most_a_level_has_are_one_value() -> None:
     assert "sections[255]" not in shown
     assert "light.sky[256]" not in shown
     assert len(verdict.divergences) <= 3 * 254
+
+
+def test_as_many_sections_as_the_most_a_level_has_are_each_compared() -> None:
+    verdict = _verdict(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 230]))
+
+    assert "sections[253]" in {d.path for d in verdict.divergences}
+    assert "sections[254]" not in {d.path for d in verdict.divergences}
 
 
 def test_light_arrays_past_the_most_a_level_has_are_one_value() -> None:

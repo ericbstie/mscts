@@ -1784,12 +1784,9 @@ only one side sent is network traffic (`_canonical_batch_finished`)."""
 def _chunk_cover(path: _Path) -> _Path:
     """The path of the canonical value that the raw value at `path` is part of.
 
-    For a chunk or a light update: a section's container, a layer of its light, or the
-    heightmaps (`_kept_heightmaps`).
+    For a chunk or a light update: a section's container, or a layer of its light.
     """
     match path:
-        case ("heightmaps", *_):
-            return path[:1]
         case ("sections", int(), "block_states" | "biomes", *_):
             return path[:3]
         case ("light" | "data", str() as key, *_) if key in _LIGHT_LAYERS:
