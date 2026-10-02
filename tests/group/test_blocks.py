@@ -10,6 +10,7 @@ import json
 import re
 from contextlib import suppress
 from dataclasses import dataclass, field, replace
+from typing import Self
 
 import pytest
 
@@ -32,7 +33,7 @@ SYSTEM_CHAT, AWARD_STATS = "minecraft:system_chat", "minecraft:award_stats"
 MARKER = "tellraw @s "
 CONTROL = "control"
 COMMANDS = tree("setblock", "fill", "clone", "tellraw", "tick", "gamerule", "kill")
-GROUP_IDS = ("blocks/setblock", "blocks/fill")
+GROUP_IDS = ("blocks/setblock", "blocks/fill", "blocks/clone")
 UNDO = ("kill @e[type=minecraft:item]", "gamerule random_tick_speed 3", "tick unfreeze")
 """What Control ends with, whatever happened: the last commands of every play."""
 
@@ -206,6 +207,7 @@ def test_each_group_is_exact_with_the_builder_an_operator_and_the_drop_masks(
     assert {(mask.packet, mask.path) for mask in group.masks} == {
         ("minecraft:add_entity", path)
         for path in ("x", "y", "z", "velocity.x", "velocity.z", "yaw")
+        if group_id != "blocks/clone"  # a clone drops no item
     }
 
 
@@ -356,18 +358,57 @@ async def test_setblock_sets_the_block_that_is_already_there() -> None:
     assert any(command.block == block != AIR for command, block in cases)
 
 
-_FILL = re.compile(rf"fill {' '.join([_NUMBER] * 6)} (\S+?)(?: (.+))?")
 GLASS = "minecraft:glass"
 SECTION = 16
 """Blocks high in a chunk section: a section border is where `y // SECTION` changes."""
 
+type Point = tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class Box:
+    """A box of blocks, from its lowest corner to its highest (both inside it)."""
+
+    low: Point
+    high: Point
+
+    @classmethod
+    def between(cls, one: Point, other: Point) -> Self:
+        """The box with these two corners, given in either order."""
+        low = (min(one[0], other[0]), min(one[1], other[1]), min(one[2], other[2]))
+        high = (max(one[0], other[0]), max(one[1], other[1]), max(one[2], other[2]))
+        return cls(low, high)
+
+    @property
+    def size(self) -> Point:
+        return (
+            self.high[0] - self.low[0] + 1,
+            self.high[1] - self.low[1] + 1,
+            self.high[2] - self.low[2] + 1,
+        )
+
+    def holds(self, at: Point) -> bool:
+        return all(
+            low <= each <= high for low, each, high in zip(self.low, at, self.high, strict=True)
+        )
+
+    def overlaps(self, other: Self) -> bool:
+        return all(
+            low <= other_high and other_low <= high
+            for low, high, other_low, other_high in zip(
+                self.low, self.high, other.low, other.high, strict=True
+            )
+        )
+
+
+_FILL = re.compile(rf"fill {' '.join([_NUMBER] * 6)} (\S+?)(?: (.+))?")
+
 
 @dataclass(frozen=True)
 class Fill:
-    """A parsed `fill`: its box (lowest and highest corner), the block and what follows it."""
+    """A parsed `fill`: its box, the block, and the mode (or `replace` and a filter) after it."""
 
-    low: tuple[int, int, int]
-    high: tuple[int, int, int]
+    box: Box
     block: str
     option: str | None
 
@@ -377,14 +418,9 @@ def parse_fill(command: str) -> Fill | None:
     match = _FILL.fullmatch(command)
     if match is None:
         return None
-    *corner, block, option = match.groups()
-    x1, y1, z1, x2, y2, z2 = (int(number) for number in corner)
-    return Fill(
-        (min(x1, x2), min(y1, y2), min(z1, z2)),
-        (max(x1, x2), max(y1, y2), max(z1, z2)),
-        block,
-        option,
-    )
+    *corners, block, option = match.groups()
+    x1, y1, z1, x2, y2, z2 = (int(number) for number in corners)
+    return Fill(Box.between((x1, y1, z1), (x2, y2, z2)), block, option)
 
 
 def fill_cases(result: Play) -> list[Fill]:
@@ -397,10 +433,10 @@ def fill_cases(result: Play) -> list[Fill]:
     return cases
 
 
-def inside(box: Fill, command: Setblock) -> bool:
-    return all(
-        low <= at <= high for low, at, high in zip(box.low, command.at, box.high, strict=True)
-    )
+def placed(window: Window) -> list[Setblock]:
+    """The blocks Control set before `window` opened, but air."""
+    setups = (parse_setblock(command) for command in window.before)
+    return [setup for setup in setups if setup is not None and setup.block != AIR]
 
 
 @pytest.mark.asyncio
@@ -421,24 +457,23 @@ async def test_fill_tries_each_mode_the_default_and_a_filter() -> None:
 
 @pytest.mark.asyncio
 async def test_fill_covers_a_5_by_5_by_5_region_that_crosses_a_chunk_section_border() -> None:
-    boxes = {(command.low, command.high) for command in fill_cases(await played("blocks/fill"))}
+    boxes = {command.box for command in fill_cases(await played("blocks/fill"))}
 
     assert len(boxes) == 1
-    [(low, high)] = boxes
-    assert tuple(top - bottom + 1 for bottom, top in zip(low, high, strict=True)) == (5, 5, 5)
-    assert low[1] // SECTION < high[1] // SECTION
+    [box] = boxes
+    assert box.size == (5, 5, 5)
+    assert box.low[1] // SECTION < box.high[1] // SECTION
 
 
 @pytest.mark.asyncio
 async def test_fill_starts_from_a_region_with_blocks_in_both_sections_already_in_it() -> None:
     result = await played("blocks/fill")
 
-    for window, box in zip(result.windows, fill_cases(result), strict=True):
-        before = [setup for each in window.before if (setup := parse_setblock(each))]
-        placed = [setup for setup in before if setup.block != AIR and inside(box, setup)]
-        assert {setup.at[1] // SECTION for setup in placed} == {
-            box.low[1] // SECTION,
-            box.high[1] // SECTION,
+    for window, command in zip(result.windows, fill_cases(result), strict=True):
+        inside = [setup for setup in placed(window) if command.box.holds(setup.at)]
+        assert {setup.at[1] // SECTION for setup in inside} == {
+            command.box.low[1] // SECTION,
+            command.box.high[1] // SECTION,
         }, window.before
 
 
@@ -450,20 +485,138 @@ async def test_fill_leaves_each_window_one_block_that_drops_an_item() -> None:
     # nothing.
     result = await played("blocks/fill")
 
-    for window, box in zip(result.windows, fill_cases(result), strict=True):
-        before = [setup for each in window.before if (setup := parse_setblock(each))]
+    for window, command in zip(result.windows, fill_cases(result), strict=True):
         droppers = [
-            setup for setup in before if setup.block not in (AIR, GLASS) and inside(box, setup)
+            setup
+            for setup in placed(window)
+            if setup.block != GLASS and command.box.holds(setup.at)
         ]
         assert len(droppers) == 1, window.before
 
 
-def positions(command: str) -> list[tuple[int, int, int]]:
-    """Where a `setblock` or `fill` command puts blocks: its position, or its two corners."""
+_CLONE = re.compile(
+    rf"clone {' '.join([_NUMBER] * 9)} (replace|masked|filtered \S+)(?: (normal|force|move))?"
+)
+
+
+@dataclass(frozen=True)
+class Clone:
+    """A parsed `clone`: the box it copies, the box it copies to, which blocks and how."""
+
+    source: Box
+    destination: Box
+    blocks: str
+    how: str | None
+
+    @property
+    def mask(self) -> str:
+        """Which blocks it copies: `replace`, `masked` or `filtered`."""
+        return self.blocks.split()[0]
+
+    @property
+    def offset(self) -> Point:
+        """How far the copy moves each block."""
+        return (
+            self.destination.low[0] - self.source.low[0],
+            self.destination.low[1] - self.source.low[1],
+            self.destination.low[2] - self.source.low[2],
+        )
+
+
+def parse_clone(command: str) -> Clone | None:
+    """`command` as a Clone, or None if it is not a `clone` command."""
+    match = _CLONE.fullmatch(command)
+    if match is None:
+        return None
+    *numbers, blocks, how = match.groups()
+    x1, y1, z1, x2, y2, z2, dx, dy, dz = (int(number) for number in numbers)
+    source = Box.between((x1, y1, z1), (x2, y2, z2))
+    size = source.size
+    destination = Box((dx, dy, dz), (dx + size[0] - 1, dy + size[1] - 1, dz + size[2] - 1))
+    return Clone(source, destination, blocks, how)
+
+
+def clone_cases(result: Play) -> list[Clone]:
+    """The `clone` each window's builder runs."""
+    cases = []
+    for window in result.windows:
+        command = parse_clone(window.builder[0])
+        assert command, window.builder
+        cases.append(command)
+    return cases
+
+
+def apart(result: Play) -> list[tuple[Window, Clone]]:
+    """The windows whose source and destination do not overlap, each with its `clone`."""
+    cases = zip(result.windows, clone_cases(result), strict=True)
+    return [
+        (window, clone) for window, clone in cases if not clone.source.overlaps(clone.destination)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_clone_tries_each_kind_of_block_with_each_way_to_copy() -> None:
+    clones = [clone for _, clone in apart(await played("blocks/clone"))]
+
+    assert {(clone.mask, clone.how) for clone in clones} == {
+        (mask, how)
+        for mask in ("replace", "masked", "filtered")
+        for how in ("normal", "force", "move")
+    }
+    assert {clone.blocks for clone in clones if clone.mask == "filtered"} == {
+        "filtered minecraft:stone"
+    }
+
+
+@pytest.mark.asyncio
+async def test_clone_tries_a_source_and_destination_that_overlap_with_and_without_force() -> None:
+    result = await played("blocks/clone")
+
+    overlapping = [
+        clone for clone in clone_cases(result) if clone.source.overlaps(clone.destination)
+    ]
+    assert {clone.how for clone in overlapping} == {"normal", "force", "move"}
+
+
+@pytest.mark.asyncio
+async def test_clone_copies_a_chest_with_an_item_a_sign_with_text_and_a_block_with_states() -> None:
+    result = await played("blocks/clone")
+
+    for window, clone in apart(result):
+        source = [setup.block for setup in placed(window) if clone.source.holds(setup.at)]
+        assert any(
+            block.startswith("minecraft:oak_sign") and "front_text" in block for block in source
+        )
+        assert any(
+            block.startswith("minecraft:chest") and "minecraft:diamond" in block for block in source
+        )
+        assert any(block.startswith("minecraft:oak_stairs[") for block in source)
+        assert "minecraft:stone" in source
+
+
+@pytest.mark.asyncio
+async def test_clone_has_a_block_in_the_destination_where_the_source_has_air() -> None:
+    # `masked` leaves it alone and `replace` clears it.
+    for window, clone in apart(await played("blocks/clone")):
+        dx, dy, dz = clone.offset
+        copied = {setup.at for setup in placed(window) if clone.source.holds(setup.at)}
+        gaps = [
+            setup
+            for setup in placed(window)
+            if clone.destination.holds(setup.at)
+            and (setup.at[0] - dx, setup.at[1] - dy, setup.at[2] - dz) not in copied
+        ]
+        assert gaps, window.before
+
+
+def positions(command: str) -> list[Point]:
+    """Where a command puts blocks: a `setblock`'s position, or the corners of its boxes."""
     if (setblock := parse_setblock(command)) is not None:
         return [setblock.at]
     if (fill := parse_fill(command)) is not None:
-        return [fill.low, fill.high]
+        return [fill.box.low, fill.box.high]
+    if (clone := parse_clone(command)) is not None:
+        return [clone.source.low, clone.source.high, clone.destination.low, clone.destination.high]
     return []
 
 

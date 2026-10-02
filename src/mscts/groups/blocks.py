@@ -121,6 +121,10 @@ async def _play(context: GroupContext, cases: tuple[_Case, ...], clear: str) -> 
 
 _ROW = "{x} -60 2"
 
+_STAIRS = "minecraft:oak_stairs[facing=east,half=top]"
+_SIGN = 'minecraft:oak_sign[rotation=4]{front_text:{messages:["Hello","mscts","",""]}}'
+_CHEST = 'minecraft:chest[facing=north]{Items:[{Slot:0b,id:"minecraft:diamond",count:3}]}'
+
 
 def _setblock_cases() -> tuple[_Case, ...]:
     cases = []
@@ -135,10 +139,7 @@ def _setblock_cases() -> tuple[_Case, ...]:
                 )
             )
             x += 1
-    states = "minecraft:oak_stairs[facing=east,half=top]"
-    sign = 'minecraft:oak_sign[rotation=4]{front_text:{messages:["Hello","mscts","",""]}}'
-    chest = 'minecraft:chest[facing=north]{Items:[{Slot:0b,id:"minecraft:diamond",count:3}]}'
-    for block in (states, sign, chest):
+    for block in (_STAIRS, _SIGN, _CHEST):
         at = _ROW.format(x=x)
         cases.append(
             _Case(command=f"setblock {at} {block}", setup=(f"setblock {at} minecraft:air",))
@@ -207,3 +208,50 @@ _FILL_CASES = _fill_cases()
 async def fill(context: GroupContext) -> None:
     """The builder fills a region that crosses a chunk section border, in each mode."""
     await _play(context, _FILL_CASES, _FILL_CLEAR)
+
+
+# `blocks/clone`: copy a box of 3 x 3 x 3 blocks (x 2 to 4, z 8 to 10, above the flat world).
+# A clone drops no item, so the Group has no Mask.
+
+_CLONE_SOURCE = "2 -60 8 4 -58 10"
+_CLONE_APART = "8 -60 8"
+_CLONE_OVERLAPPING = "3 -60 9"
+_CLONE_CLEAR = "fill 2 -60 8 10 -58 11 minecraft:air"
+_CLONE_BEFORE = (
+    _CLONE_CLEAR,
+    "setblock 2 -60 8 minecraft:stone",
+    "setblock 3 -60 9 minecraft:dirt",
+    f"setblock 4 -60 8 {_SIGN}",
+    f"setblock 4 -59 10 {_STAIRS}",
+    f"setblock 3 -59 9 {_CHEST}",
+    "setblock 10 -58 10 minecraft:gold_block",
+)
+"""The source holds a block of each kind and air; the gold block is where the source has air."""
+
+_CLONE_BLOCKS = ("replace", "masked", "filtered minecraft:stone")
+_CLONE_HOW = ("normal", "force", "move")
+
+
+def _clone_cases() -> tuple[_Case, ...]:
+    apart = (
+        _Case(command=f"clone {_CLONE_SOURCE} {_CLONE_APART} {blocks} {how}", setup=_CLONE_BEFORE)
+        for blocks in _CLONE_BLOCKS
+        for how in _CLONE_HOW
+    )
+    overlapping = (
+        _Case(
+            command=f"clone {_CLONE_SOURCE} {_CLONE_OVERLAPPING} replace {how}",
+            setup=_CLONE_BEFORE,
+        )
+        for how in _CLONE_HOW
+    )
+    return (*apart, *overlapping)
+
+
+_CLONE_CASES = _clone_cases()
+
+
+@group("blocks/clone", spec=_with_builder)
+async def clone(context: GroupContext) -> None:
+    """The builder clones blocks with each filter and each way to copy, and over themselves."""
+    await _play(context, _CLONE_CASES, _CLONE_CLEAR)
