@@ -2,7 +2,8 @@
 
 Status: accepted (2026-10-01). Refines ADR-0006's Masks rule (item 2) for
 heartbeat packets and the barrier's packets. Amended 2026-10-01 (#17):
-Control's barrier, below.
+Control's barrier, below. Amended 2026-10-02 (#88): the barrier ends only
+after a tick has passed, below.
 
 ## Context
 
@@ -59,8 +60,10 @@ maintainer chose windows.
    before the tick sends what changed, so one round trip is not enough.
    A play ping does not work either: vanilla answers it at once, off the
    main thread. Two round trips ended after every effect of a command on
-   vanilla and on Pumpkin in 30 out of 30 trials each. Then the window's close Mark is recorded,
-   and every Bot takes what has already arrived, without waiting.
+   vanilla and on Pumpkin in 30 out of 30 trials each, on a quiet machine
+   (the 2026-10-02 amendment replaces this: two round trips are not
+   enough under load). Then the window's close Mark is recorded, and every
+   Bot takes what has already arrived, without waiting.
 5. **A Candidate that never answers the barrier fails the Group**: the
    timeout is the Bot's failure, so the Verdict is a `failed` Divergence,
    never `error` (H3b).
@@ -114,3 +117,46 @@ of each tick. A probe Group with `setblock` inside a window lost the
 
 This replaces the last consequence's "calls `Bot.sync` after each
 command", and answers the one before it for commands sent through Control.
+
+## Amendment (2026-10-02, #88): the barrier ends only after a tick has passed
+
+Item 4's barrier is two round trips, on the premise that vanilla answers a
+request at the start of a tick, so the second answer comes a whole tick
+after the first. That held on a quiet machine. Under load, a `setblock`'s
+`block_update` reached a Bot after its window had closed in 2 of 529 plays
+of the probe Group (`docs/research/2026-10-01-join-chunks.md`). In both, the
+barrier's six answers came within 1.6 ms. Vanilla's `PacketProcessor`
+handles every queued packet in one pass at the start of a tick, a request
+that arrives during the pass included, so two requests sent back to back
+can be answered together, before that tick has sent anything. Of 600 sides
+measured, 12 had a pair of answers closer than 5 ms.
+
+1. **A pair of answers ends the barrier only if they arrived at least
+   `TICK_GAP_S` (5 ms) apart.** `Bot.sync` sends a request, takes its
+   answer, sends another and takes that: a pair. It compares when the
+   answers arrived (`Connection.last_arrival_ns`), not when the Bot took
+   them. Answers from one pass came 0.1 to 3.6 ms apart, and answers from
+   different ticks at least 5.4 ms.
+2. **A pair that arrives closer is followed by a wait and another pair.**
+   The Bot waits `TICK_GAP_S`, for the pass to end, then asks again. The
+   wait goes between pairs. Between the two requests of a pair it would put
+   the answers `TICK_GAP_S` apart whatever the server does, and the gap
+   would prove nothing.
+3. **The barrier gives up after `SYNC_MAX_TRIPS` (6) requests, three
+   pairs.** `Bot.sync` returns and leaves the Mark `sync:capped <Bot name>`
+   (`bot.SYNC_CAPPED`). A server that answers on its network thread, with no
+   tick between, never shows a gap, and must not hold a Bot for ever.
+   Compare reads only `observe:` Marks and the Report times only
+   `:start` and `:end` Marks, so the Mark changes no Verdict.
+4. **It is a threshold.** A stall longer than `TICK_GAP_S` inside one pass
+   would get through.
+
+A pending chunk is a second way for a block change to leave no
+`block_update`. Vanilla sends none for a chunk it has not yet sent to a
+player: the change reaches the Bot in the chunk data. Pumpkin sends one
+anyway. `Bot.join` returns after the first chunk batch. It held chunk
+(0, 0) on vanilla in every join measured (1,318 of 1,318), and on Pumpkin
+in the runs made. So
+**Groups change blocks only in chunks a Bot has had since join**, for now
+chunk (0, 0): blocks with x and z from 0 to 15. A Group that needs more
+waits for the chunks it needs (not built yet).
