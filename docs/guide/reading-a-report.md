@@ -45,7 +45,8 @@ keeps the name of its test case, after its title when one is known.
 - The status response is one piece of JSON text, so its test cases are
   named from inside the JSON: `status_response.description`.
 
-A value that a Mask excludes, such as an entity id, is not a test case.
+A value that a Mask excludes, such as a sound's random seed, is not a test
+case.
 
 Each test case is identical, different, or different in network traffic
 only. One that is different in any Group or any run counts as different.
@@ -145,7 +146,10 @@ Identical differences from repetitions appear once; distinct values stay
 under the same test case. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
-value, binary data is written as `{"bytes": "<hex>"}`.
+value, binary data is written as `{"bytes": "<hex>"}`. An entity id is
+written `"#<n>"`: the n-th entity the Bot heard of, its own player being
+`"#1"`. The UUID of an entity that is not a player is written the same
+way, counted on its own.
 
 Each Group's time adds all repetitions, playing both servers and comparing
 their Transcripts. It excludes starting and stopping Instances, which the

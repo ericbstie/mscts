@@ -102,9 +102,11 @@ need is missing, add it here in the same commit that introduces it.
   then takes what has already arrived (the **drain**). _Avoid_: phase,
   section.
 - **Mask**: a normalization rule that excludes an identifier with no
-  gameplay meaning (entity ids, keep-alive ids, teleport ids) from
+  gameplay meaning (keep-alive ids, teleport ids) from
   Comparison. Anything a player could notice is never masked, even when
-  it is random; that is judged statistically instead (ADR-0006).
+  it is random; that is judged statistically instead (ADR-0006). Entity
+  ids need no Mask, and may not have one: every Comparison numbers each
+  Bot's entities in the order it first hears of them (#21).
 - **Random field**: a field vanilla draws at random on every run, such as
   the login's session id or a sound's seed (`compare.RANDOM_FIELDS`, each
   with its reason).

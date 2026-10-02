@@ -161,9 +161,11 @@ then takes what has already arrived (the **drain**).
 ### Mask
 
 A normalization rule that excludes an identifier with no
-gameplay meaning (entity ids, keep-alive ids, teleport ids) from
+gameplay meaning (keep-alive ids, teleport ids) from
 Comparison. Anything a player could notice is never masked, even when
-it is random; that is judged statistically instead (ADR-0006).
+it is random; that is judged statistically instead (ADR-0006). Entity
+ids need no Mask, and may not have one: every Comparison numbers each
+Bot's entities in the order it first hears of them (#21).
 
 ### Random field
 

@@ -947,13 +947,17 @@ WHOLE_PACKET = "*"
 
 @frozen
 class Mask:
-    packet: str                     # "minecraft:login", in whatever State
-    path: str                       # "entity_id", "json_response.players.sample", or
+    packet: str                     # "minecraft:sound", in whatever State
+    path: str                       # "pitch", "json_response.players.sample", or
                                     # WHOLE_PACKET (drop the packet)
     reason: str
     # ValueError at construction: an empty packet or reason (blank counts as empty), a
     # malformed path, or a path not spelled exactly as a Divergence path would be (the
     # message gives the spelling), so a path copied from a Divergence is always valid.
+    # Also a path that is an entity id of the clientbound packet in any State, or a
+    # list of them (`Codec.entity_id_paths`; a list index fits EACH, and a Variant is
+    # no step of a path): every Comparison numbers those instead, and the message says
+    # so (#21). A path around one (`set_entity_data` / `entries`) is still a Mask.
 
 class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
@@ -1352,8 +1356,9 @@ proves it necessary:
    (`entity_id`, `#2` against `#3`), and entities sent in another order
    differ in their other fields. Not numbered (they stay raw, so they
    compare as vanilla sent them): an entity id inside `add_entity.data`
-   (a projectile's owner, a plain VarInt in the schema), and the UUIDs
-   of other packets. A Candidate that gives a removed entity's id
+   (a projectile's owner) or inside a metadata value (a firework's
+   shooter), each a plain VarInt in the schema (see `ENTITY_DATA`), and
+   the UUIDs of other packets. A Candidate that gives a removed entity's id
    to a new one would show differences vanilla would not, since an id
    keeps its first number.
 3. Apply **Masks**, which remove identifiers with no gameplay meaning, or
@@ -1366,7 +1371,8 @@ proves it necessary:
    sides, wherever the path is present: presence is ignored, so a field
    one side lacks is not a Divergence. A path ending in a list index
    removes that element, and the list closes up. Paths apply to the
-   canonical form (step 2). Before its Group's own Masks, every
+   canonical form (step 2). No Mask is on an entity id, which the
+   numbering above already makes comparable: `Mask` refuses one. Before its Group's own Masks, every
    Comparison masks the **random fields** (`compare.RANDOM_FIELDS`,
    ADR-0011), which vanilla draws at random on every run, so no exact
    Group compares them (a statistical Group compares their
@@ -1631,8 +1637,8 @@ Divergences are readable. Add **Paper** as a high-parity sanity Candidate:
 false mismatches against a vanilla fork point at harness bugs.
 
 **M4 — Join.** Compression, login, configuration (known packs), play up to
-the first chunk batch. `join/basic` Group. Masks for entity ids and
-keep-alive ids only; spawn position is pinned by a Fixture here and
+the first chunk batch. `join/basic` Group. Masks for keep-alive ids
+only (entity ids are numbered, #21); spawn position is pinned by a Fixture here and
 measured statistically in M6b (ADR-0006). The Self-check must pass 20/20. Measurements:
 `join.to_play`, `join.to_first_chunk`.
 
