@@ -1348,21 +1348,19 @@ proves it necessary:
      block entities in a map keyed by `BlockPos`:
      `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
      those sent for one position keep their order.
-   - the order of the chunks in a chunk batch. The
-     `level_chunk_with_light` packets from a `chunk_batch_start` to the
-     next `chunk_batch_finished` (whether or not a Mask drops those two)
-     are sorted by position, x then z, stably, each moving only among the
-     places the batch's chunks had (`compare._by_position`); indices
-     count the sorted stream. Vanilla sends a batch's chunks nearest
+   - the order of chunks in a row. Each run of `level_chunk_with_light`
+     packets one right after the other is sorted by position, x then z,
+     stably, among the places the run's chunks had
+     (`compare._by_position`); indices count the sorted stream. The runs
+     are found in a Bot's whole clientbound stream, before windows, their
+     narrowing or a `*` Mask leave anything out: the client applies every
+     packet in turn, so any other packet between two chunks keeps them in
+     their order around it. Vanilla sends a batch's chunks nearest
      first, and those at one distance in the iteration order of a
      `LongOpenHashSet` of pending chunks, which can differ from one play
      to the next (`javap` on the 26.3 server:
      `PlayerChunkSender.sendNextChunks`); the client keeps each chunk by
-     its position. Nothing is sent between a batch's chunks: the server
-     sends the batch in one call on its thread (`sendChunk` sends only
-     the chunk while no client subscribes to debug values), and in both
-     recorded joins nothing came between them
-     (`docs/research/2026-10-02-chunks-light.md`).
+     its position (`docs/research/2026-10-02-chunks-light.md`).
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,

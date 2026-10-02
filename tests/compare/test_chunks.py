@@ -15,7 +15,7 @@ import pytest
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.wire import Writer
-from mscts.compare import UNORDERED, Divergence, Observability, Verdict, compare
+from mscts.compare import UNORDERED, Divergence, Mask, Observability, Verdict, compare
 from mscts.test_cases import TITLES
 from mscts.transcript import Transcript
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
@@ -516,18 +516,72 @@ def _played(*items: Packet | tuple[Packet, ...]) -> Transcript:
     return transcript(*(("alice", each) for each in packets))
 
 
-def test_chunks_are_sorted_only_within_their_batch() -> None:
-    first, second, third, fourth = (chunk(at=(x, 0)) for x in range(4))
+def test_chunks_in_a_row_are_sorted_in_or_out_of_a_batch() -> None:
+    first, second, third = (chunk(at=(x, 0)) for x in range(3))
 
-    across_batches = compare(
-        _played((first, second), (third, fourth)), _played((first, third), (second, fourth)), []
-    )
-    outside_batches = compare(
-        _played((first,), second, third), _played((first,), third, second), []
+    verdict = compare(_played((first,), second, third), _played((first,), third, second), [])
+
+    assert verdict.divergences == ()
+
+
+def _at(name: str, x: int, z: int, **fields: object) -> Packet:
+    """A `light_update` or `forget_level_chunk` of the chunk at x, z, through the Codec."""
+    encoded = CODEC.encode(State.PLAY, CLIENTBOUND, name, {"chunk_x": x, "chunk_z": z, **fields})
+    return CODEC.decode(State.PLAY, CLIENTBOUND, encoded)
+
+
+START = packet("minecraft:chunk_batch_start", fields={})
+LIT_A, LIT_B = (chunk(at=at, light_data=light(sky={2: DARK})) for at in ((0, 0), (1, 0)))
+# Each kind of packet that changes chunk B on the client: its light, and dropping it.
+CHANGES_B = [
+    _at("minecraft:light_update", 1, 0, data=light(sky={2: FULL})),
+    _at("minecraft:forget_level_chunk", 1, 0),
+]
+
+
+def _finished(size: int) -> Packet:
+    return packet("minecraft:chunk_batch_finished", fields={"batch_size": size})
+
+
+@pytest.mark.parametrize("change", CHANGES_B, ids=["light_update", "forget_level_chunk"])
+def test_a_chunk_never_moves_across_a_packet_that_changes_it(change: Packet) -> None:
+    # The client applies B, then the change, on one side; the change, then B, on the other. The
+    # second ends with B's own light, or with B loaded (the ordering review of #122, probes 1, 2).
+    reference = _batch_of(START, LIT_B, change, LIT_A, _finished(2))
+    candidate = _batch_of(START, LIT_A, change, LIT_B, _finished(2))
+
+    assert compare(reference, candidate, []).gameplay
+
+
+def _batch_of(*packets: Packet | str) -> Transcript:
+    """`packets` received by alice in order; a string is a Mark."""
+    return transcript(*(each if isinstance(each, str) else ("alice", each) for each in packets))
+
+
+BLOCK = packet("minecraft:block_update", fields={"pos": {"x": 1, "y": -60, "z": 0}, "state": 1})
+NARROWED = "observe:open minecraft:level_chunk_with_light"
+
+
+@pytest.mark.parametrize(
+    ("window", "masks"),
+    [(True, []), (False, [Mask("minecraft:block_update", "*", "a test")])],
+    ids=["a narrowed window", "a Mask of the whole packet"],
+)
+def test_chunks_are_put_in_order_before_anything_is_left_out(
+    *, window: bool, masks: list[Mask]
+) -> None:
+    # The block update between the chunks is not compared, but the client still applies it
+    # between them, so they keep their order around it.
+    first, second = chunk(at=(0, 0)), chunk(at=(1, 0))
+    opened, closed = ((NARROWED,), ("observe:close",)) if window else ((), ())
+
+    verdict = compare(
+        _batch_of(*opened, START, first, BLOCK, second, _finished(2), *closed),
+        _batch_of(*opened, START, second, BLOCK, first, _finished(2), *closed),
+        masks,
     )
 
-    assert across_batches.gameplay
-    assert outside_batches.gameplay
+    assert verdict.gameplay
 
 
 def test_a_chunk_only_one_side_sent_is_a_divergence_naming_its_position() -> None:

@@ -411,10 +411,10 @@ class Verdict:
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
     """Diff the Candidate's Transcript of a Group against the Reference's.
 
-    Each Bot's stream is normalized first: if the Transcript has Observation windows,
-    the play Packets they do not observe are left out (`_Windows.observes`); the
-    Packets a `*` Mask names are dropped; the chunks of each chunk batch are sorted by
-    position (`_by_position`); the lists of the Packets `UNORDERED` names are
+    Each Bot's stream is normalized first: the chunks in a row are sorted by position
+    (`_by_position`); then, if the Transcript has Observation windows, the play Packets they
+    do not observe are left out (`_Windows.observes`); the Packets a `*` Mask names are
+    dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way, and a chunk's sections hold
     the id at each entry of their containers, and its light what the client applies to each
@@ -628,20 +628,12 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     """
     windows = _Windows.of(transcript)
     context = _Context.of(transcript, bot)
-    events = [
-        event
-        for event in transcript.events
-        if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
-    ]
-    taken = iter(
-        _by_position(
-            [
-                (event.packet, batch)
-                for event, batch in zip(events, _batches(events), strict=True)
-                if event.packet.name not in masks.dropped
-                and (windows is None or windows.observes(event))
-            ]
-        )
+    events = _by_position(
+        [
+            event
+            for event in transcript.events
+            if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
+        ]
     )
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
@@ -650,7 +642,6 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
         if windows is not None and not windows.observes(event):
             numbers.spawned(packet, masks)
         elif packet.name not in masks.dropped:
-            packet = next(taken)
             numbers.take(packet)
             stream.append(_normalize(packet, masks, numbers, context))
         numbers.removed(packet)
@@ -658,45 +649,30 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
 
 
 _CHUNK = "minecraft:level_chunk_with_light"
-_BATCH_START = "minecraft:chunk_batch_start"
-_BATCH_FINISHED = "minecraft:chunk_batch_finished"
 
 
-def _batches(events: Sequence[Event]) -> list[int | None]:
-    """For each of a Bot's clientbound Events, the number of the chunk batch it came in.
+def _by_position(events: Sequence[Event]) -> list[Event]:
+    """A Bot's clientbound `events`, with each run of chunks in a row sorted by position.
 
-    A batch is what comes from a `chunk_batch_start` to the next `chunk_batch_finished`, the
-    two included; the first batch is 1. An Event in no batch has None.
+    A run is chunks one after the other, with nothing else between them, in the whole stream:
+    before the windows, their narrowing or a Mask leave anything out, since the client applies
+    every packet in turn. Its chunks are sorted by position, x then z, stably, so chunks at one
+    position keep their order. The server sends the chunks at one distance from the player in
+    the iteration order of a hash set (`PlayerChunkSender.sendNextChunks`), and the client keeps
+    each chunk by its position (docs/research/2026-10-02-chunks-light.md).
     """
-    result: list[int | None] = []
-    count, batch = 0, None
-    for event in events:
-        packet = event.packet
-        if packet.state is State.PLAY and packet.name == _BATCH_START:
-            count += 1
-            batch = count
-        result.append(batch)
-        if packet.state is State.PLAY and packet.name == _BATCH_FINISHED:
-            batch = None
-    return result
-
-
-def _by_position(taken: Sequence[tuple[Packet, int | None]]) -> list[Packet]:
-    """The Packets of `taken`, with the chunks of each batch sorted by position (x, then z).
-
-    Only the chunks move, among the places the batch's chunks had; chunks at one position keep
-    their order. The server sends the chunks of a batch at one distance from the player in
-    the iteration order of a hash set (`PlayerChunkSender.sendNextChunks`), and the client
-    keeps each chunk by its position (docs/research/2026-10-02-chunks-light.md).
-    """
-    result = [packet for packet, _ in taken]
-    placed: dict[int, list[tuple[tuple[int, int], int]]] = {}
-    for index, (packet, batch) in enumerate(taken):
-        if batch is not None and (at := _chunk_at(packet)) is not None:
-            placed.setdefault(batch, []).append((at, index))
-    for chunks in placed.values():
-        for (_, index), (_, source) in zip(chunks, sorted(chunks), strict=True):
-            result[index] = taken[source][0]
+    result = list(events)
+    start = 0
+    while start < len(result):
+        stop = start
+        while stop < len(result) and _chunk_at(result[stop].packet) is not None:
+            stop += 1
+        run = result[start:stop]
+        positions = [_chunk_at(event.packet) or (0, 0) for event in run]
+        result[start:stop] = [
+            run[index] for index in sorted(range(len(run)), key=positions.__getitem__)
+        ]
+        start = stop + 1
     return result
 
 
