@@ -12,7 +12,8 @@ mise run check
 ```
 
 `check` runs ruff (every rule enabled), the ruff format check, ty with every
-diagnostic as an error, bandit over `src/`, and the unit tests in parallel.
+diagnostic as an error, bandit over `src/`, the public-name check against
+`docs/PLAN.md`, and the unit tests in parallel.
 It takes a few seconds.
 
 ## Test tiers
@@ -75,6 +76,11 @@ what a Candidate does.
   [`CONTEXT.md`](https://github.com/ericbstie/mscts/blob/main/CONTEXT.md)
   have one meaning each. Add a term there in the same commit that
   introduces it.
+- **Name public definitions in PLAN.** `mise run plan` checks classes,
+  functions, constants and type aliases defined directly at module level
+  under `src/mscts/`. Names starting with `_`, imports, class members and
+  definitions inside functions are excluded. Add each public name to its
+  module's interface section in `docs/PLAN.md` in the same PR.
 - **One issue, one PR.** Changes start as a spec issue that quotes the
   target wording of this site. The PR changes the code and the page
   together, so the site always matches the code.
