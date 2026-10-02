@@ -88,9 +88,11 @@ named and the rest counted.
 The biome of each 4×4×4 cell of a chunk section, shown like blocks, at
 the cell's lowest corner. Another encoding of the same biomes is network
 traffic only. One encoding packs each biome at a bit width that depends
-on how many biomes the server listed when the player joined. If a
-server sends another width, the client reads other biomes than the
-server meant, so that difference changes what a player sees.
+on how many biomes the server listed when the player joined, and the
+client reads it at that width whatever width the server names. mscts
+compares the biomes the client reads. If the data does not fit that
+width, the client reads the rest of the chunk wrong, so that difference
+changes what a player sees.
 
 ## `level_chunk_with_light.light.sky[]`
 

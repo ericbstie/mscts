@@ -471,18 +471,49 @@ def test_a_direct_biome_container_of_the_width_the_client_reads_is_network_traff
     assert verdict.gameplay == ()
 
 
-@pytest.mark.parametrize("bits", [8, 6])
-def test_a_direct_biome_container_of_another_width_is_a_gameplay_difference(bits: int) -> None:
-    cells = direct([PLAINS] * 64, bits=bits)
+TWO_BIOMES = [PLAINS] * 32 + [3] * 32
+
+
+def test_a_direct_biome_container_is_read_at_the_clients_width_when_its_data_fits() -> None:
+    # The client sizes the storage by bitsInMemory() and never reads the byte sent
+    # (PalettedContainer.read, createOrReuseData; the verdict review of #122, probe 1). 7 and 8
+    # bits both take 8 Longs for 64 entries.
+    sent: dict[str, object] = {"bits": 8, "palette": None, "data": _packed(TWO_BIOMES, 7)}
+    reference = chunk(overworld(FLAT_BOTTOM, biomes=direct(TWO_BIOMES, bits=7)))
+
+    verdict = compare(_joined(reference), _joined(chunk(overworld(FLAT_BOTTOM, biomes=sent))), [])
+
+    assert [(d.path, d.observability) for d in verdict.divergences] == [
+        ("sections[0].biomes.bits", Observability.NETWORK_TRAFFIC)
+    ]
+
+
+def test_a_direct_biome_container_packed_at_another_width_that_fits_is_read_at_the_clients() -> (
+    None
+):
+    # 8 bits of data read 7 at a time: the client reads other biomes.
+    sent = direct(TWO_BIOMES, bits=8)
+    reference = chunk(overworld(FLAT_BOTTOM, biomes=direct(TWO_BIOMES, bits=7)))
+
+    verdict = compare(_joined(reference), _joined(chunk(overworld(FLAT_BOTTOM, biomes=sent))), [])
+
+    (difference,) = verdict.gameplay
+    assert difference.path == "sections[0].biomes"
+    assert str(difference.candidate).startswith("chunk 0 0: 4 -64 0 is ")
+
+
+def test_a_direct_biome_container_whose_data_does_not_fit_is_a_gameplay_difference() -> None:
+    # 6 bits take 7 Longs: the client would read 8, and so the rest of the chunk differently.
+    cells = direct([PLAINS] * 64, bits=6)
 
     verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=cells))), [])
 
-    data = _packed([PLAINS] * 64, bits).hex()
+    data = _packed([PLAINS] * 64, 6).hex()
     assert [(d.path, d.reference, d.candidate) for d in verdict.gameplay] == [
         (
             "sections[0].biomes",
             "chunk 0 0, y -64 to -49: all 41",
-            f"chunk 0 0, y -64 to -49: {bits} bits per entry where the client reads 7: {data}",
+            f"chunk 0 0, y -64 to -49: 6 bits per entry where the client reads 7: {data}",
         )
     ]
 

@@ -32,7 +32,7 @@ import re
 import struct
 from array import array
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
 from types import MappingProxyType
@@ -1532,20 +1532,30 @@ def _canonical_section(section: _Value, biomes: int | None) -> _Value:
 
 
 def _biome_entries(value: dict[str, _Value], biomes: int | None) -> _Value:
-    """A biome container's ids (`_entries`), or what is wrong with a direct one's width.
+    """A biome container's ids (`_entries`) as the client reads them.
 
     The client reads a direct biome container at `Mth.ceillog2` of the biomes the server sent
     it (`Strategy.<init>`, `Configuration$Global`), whatever bits per entry are sent; the
-    codec reads it at the bits sent. If the Transcript has the biomes and the bits are not
-    that width, the client reads other ids than these, so the container is a value of its
-    own: the bits, the width the client reads, and the data.
+    codec reads it at the bits sent. If the Transcript has the biomes, a direct container
+    whose data is as long as that width takes is read at that width, so its ids are the ones
+    the client reads and the bits sent are network traffic. Data of another length cannot be
+    what the client reads: the container is then a value of its own, the bits, the width the
+    client reads, and the data.
     """
     bits, data = value.get("bits"), value.get("data")
     if biomes is not None and value.get("palette") is None and isinstance(data, bytes):
         width = (biomes - 1).bit_length()
-        if bits != width:
-            return f"{bits} bits per entry where the client reads {width}: {data.hex()}"
+        if bits == width:
+            return _entries(BIOMES, value)
+        if width and len(data) == _LONG_BYTES * -(-BIOMES.entries // (_LONG_BITS // width)):
+            return _entries(replace(BIOMES, id_count=biomes), value)
+        return f"{bits} bits per entry where the client reads {width}: {data.hex()}"
     return _entries(BIOMES, value)
+
+
+_LONG_BITS = 64
+_LONG_BYTES = 8
+"""A packed Long's bits and bytes: a container's data is whole Longs (`SimpleBitStorage`)."""
 
 
 def _entries(container: PalettedContainer, value: dict[str, _Value]) -> _Value:

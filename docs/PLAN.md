@@ -1529,20 +1529,24 @@ proves it necessary:
      when both send 16 (the heights of the vanilla dimension types, from
      the 26.3 server jar's `data/minecraft/dimension_type`); otherwise it
      counts from the world's bottom, and the text says so.
-     A direct biome container is the one exception to "network traffic
-     only": the client reads its entries at `Mth.ceillog2` of the biomes
-     the server sent it (`Strategy.<init>`, `Configuration$Global`),
-     whatever bits per entry are sent, but the codec reads one packet at a
-     time and reads it at the bits sent. So the Comparison checks the bits
-     against the same Bot's `registry_data` for `minecraft:worldgen/biome`
-     in the same Transcript (the entries of every such packet, counted;
-     `compare._Context`): bits of another width are a value of their own,
-     a gameplay Divergence that shows the bits, the width the client reads
-     and the data (`chunk 0 0, y -64 to -49: 8 bits per entry where the
-     client reads 7: …`), since the client reads other biomes than the
-     codec does. A Transcript with no such `registry_data` (one recorded
-     from play, without configuration) is not checked. The vanilla server
-     writes its storage's bits, so a direct container's byte is that width.
+     A direct biome container is read as the client reads it, which the
+     codec cannot do alone: the client reads its entries at `Mth.ceillog2`
+     of the biomes the server sent it (`Strategy.<init>`,
+     `Configuration$Global`), whatever bits per entry are sent, but the
+     codec reads one packet at a time and reads it at the bits sent. So
+     the Comparison takes that width from the same Bot's `registry_data`
+     for `minecraft:worldgen/biome` in the same Transcript (the entries of
+     every such packet, counted; `compare._Context`). Data as long as that
+     width takes is read at that width, so the bits sent are network
+     traffic and the biomes compare as above. Data of another length is
+     not what the client reads (it reads that many Longs and the rest of
+     the packet is shifted): it is a value of its own, a gameplay
+     Divergence that shows the bits, the width the client reads and the
+     data (`chunk 0 0, y -64 to -49: 6 bits per entry where the client
+     reads 7: …`). A Transcript with no such `registry_data` (one recorded
+     from play, without configuration) is read at the bits sent. The
+     vanilla server writes its storage's bits, so a direct container's
+     byte is that width.
      Its `light`, and the `data` of a `play` / `minecraft:light_update`,
      become what the client applies to each light section in each layer
      (`light.sky[<i>]`, `light.block[<i>]`): the next array if the mask

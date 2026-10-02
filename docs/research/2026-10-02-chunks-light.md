@@ -72,8 +72,11 @@ configuration for it (`Strategy.getConfigurationForBitCount`):
 - Biomes: the registry the server sent in configuration (`registry_data` for
   `minecraft:worldgen/biome`). Both recorded joins send 67 entries, so 7 bits. The
   codec reads one packet at a time and cannot see that registry, so it reads a
-  direct biome container at the bits sent, and the Comparison checks those bits
-  against the same Transcript's registry (decided on #22).
+  direct biome container at the bits sent. The Comparison reads it again at the
+  width of the same Transcript's registry when its data is as long as that width
+  takes, as the client does (decided on #22; #122's review, finding 1). With 64
+  entries, 7 and 8 bits both take 8 longs, so data sent with a byte of 8 is read
+  by the client at 7 bits without error.
 - The vanilla server writes the bits of its storage (`PalettedContainer$Data.write`:
   `storage.getBits()`), so for a direct container the byte is the global width.
 - The palette: one VarInt for a single value; a VarInt count and that many ids for
