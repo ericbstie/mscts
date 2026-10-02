@@ -12,12 +12,14 @@ This file is owned by the tech lead. It changes only through the
 ## Roles
 
 **Tech lead (the main session).**
-- Owns the queue (GitHub issues labelled `ready`, ADR-0009),
+- Owns the queue (open GitHub issues without `needs-triage` or
+  `needs-decision`, ADR-0009),
   `docs/PROGRESS.md`, `docs/PLAN.md`, the ADRs, this file, and the skills.
 - Writes spec issues with the maintainer, briefs workers on them, chooses
   the model, and spawns workers.
-- Reviews each worker's PR against its issue and merges it with a rebase,
-  so every commit on `main` passes `mise run check`.
+- Reviews each worker's PR against its issue, rebases it onto `main` with
+  every commit re-checked, and merges it with a merge commit, so every
+  commit on `main` passes `mise run check`.
 - Reads every retrospective and decides what to change.
 - Sends work to refactoring or auditing when retrospectives or reviews
   show drift.
@@ -123,8 +125,8 @@ raises nothing.
 
 ## Cycle
 
-1. **Plan a batch.** Give each running specialist its lane's next `ready`
-   issue (at most 5 agents at once, the reviewer included). Issues that
+1. **Plan a batch.** Give each running specialist its lane's next ready
+   issue (no `needs-triage` or `needs-decision`) (at most 5 agents at once, the reviewer included). Issues that
    run in parallel have disjoint "Owns" lists (files, modules and doc
    sections). Skip any labelled `needs-decision`. Check each issue's
    `scrutiny::*` label against `docs/RISK.md`.
@@ -140,10 +142,12 @@ raises nothing.
      loosened, and that the vocabulary matches `CONTEXT.md`.
    - Rebase onto `main` with every commit re-checked:
      `git rebase main -x "mise run check"`.
-   - Merge the PR with a rebase (never a squash), which closes the issue.
+   - Merge the PR with a merge commit (never a squash or a rebase-merge),
+     which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
      may need a follow-up issue.
-   - Add `ready` to every `test` issue whose Needs have now all landed.
+   - Remove `needs-triage` from every issue whose Needs have now all
+     landed, once its spec is complete.
 4. **Risk and handbook.** Log any bug found in `docs/RISK.md` and update
    the levels. Commit the specialist's proposed handbook lines to its
    `docs/roles/<lane>.md`.
@@ -658,6 +662,8 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-02 | The `ready` label is gone: an issue that is not ready carries `needs-triage`, and every other open issue is ready (ADR-0009 amendment) | Maintainer |
+| 2026-10-02 | PRs land with a merge commit, after the branch is rebased onto `main` with every commit re-checked (ADR-0009 amendment) | Maintainer: prefers regular merging |
 | 2026-10-02 | Lanes and review levels: long-lived specialists own a `lane:*` of issues end to end, with a handbook each (`docs/roles/`); core areas have one owner; each issue carries `scrutiny::low`, `scrutiny::medium` or `scrutiny::high`, set by the lead from `docs/RISK.md`, where an escaped bug raises its area one level and 5 clean merges lower it; a reviewer gives `scrutiny::high` PRs two independent reviews; the `spec` and `enabler` labels are gone (every issue is a spec); up to 5 agents at once. The common worker rules moved from the lead's scratchpad to `docs/roles/common.md` | Maintainer: longer-lived agents with roles, each taking 8–15 issues in one domain, and review rigor triaged by difficulty and raised where bugs are found; labels `scrutiny::low/medium/high`, without `spec` and `enabler`. The audit of 2026-10-02 found 5 high bugs in the timing and Compare code |
 | 2026-09-30 | Test proposals: the `test` issue template (`.github/ISSUE_TEMPLATE/test.md`), "Proposing a test" in `docs/contributing.md`, and `test` / `enabler` labels. Infrastructure several tests need is one shared `enabler` issue; a `test` issue gets `ready` once its enablers land. Evidence lives in `docs/research/2026-09-30-gameplay-survey.md` | Maintainer: explore what to compare between servers (lighting, spawning, combat, mob simulation, chunk loading, …) and make adding a test a standard process that independent agents can pick up |
 | 2026-09-27 | ADR-0009: the docs site is the spec; GitHub spec issues are the queue; one PR per issue, owned by its worker; scope surprises as issue comments; retrospectives stay private to the lead; docs examples are checked by tests | Maintainer: define the interface and wording in the docs, have agents make the code match, and parallelize across issues |

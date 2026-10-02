@@ -57,3 +57,17 @@ the tech lead. That would give three sources of truth for one interface.
   conflict. The tech lead batches issues whose "Owns" lists are disjoint.
 - GitHub access (the GitHub MCP tools) is part of the worker toolchain.
 - `git bisect run mise run check` still works across `main`.
+
+## Amendment (2026-10-02): PRs land with a merge commit
+
+The maintainer prefers regular merging. The tech lead still rebases a PR's
+branch onto `main` with `git rebase main -x "mise run check"` and pushes
+it, then merges the PR with a merge commit instead of a rebase-merge. Every
+commit on `main`, the merge commits included, still passes
+`mise run check`, so `git bisect run mise run check` keeps working, and
+each issue's commits stay together behind their merge. Labels are now
+`needs-triage` (not ready: incomplete, or waiting on another issue),
+`needs-decision`, `opus` or `sonnet`, a `lane:*` and a `scrutiny::*`
+(docs/PROCESS.md, Lanes and review levels). An open issue with neither
+`needs-triage` nor `needs-decision` is ready. `spec`, `enabler` and
+`ready` are gone.
