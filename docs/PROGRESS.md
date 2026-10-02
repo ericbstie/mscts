@@ -88,10 +88,11 @@ Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at 
 2 workers at a time):
 
 - AS (sonnet): #105, `observe(until=)` and Control leaving and rejoining.
+- AT (sonnet): #35 `blocks/*`, the test-group routine's first full run.
 
 Next: #105 (`observe(until=)`, Control rejoins), then the test Groups by the routine
 (`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #21, #105,
-#106 and #22. The helper (ChatGPT) has #25 Bot movement and #107.
+#106 and #22. The helper (ChatGPT) has #25 Bot movement.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -244,6 +245,9 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- Merged the helper's #110 (#107: probe_loop saves whole payloads, prints totals per
+  test case, exits 0, takes `run(loop=...)`; javap `--out DIR`) and #111 (#109: the
+  docs checks run the guide's Python examples; a fragment carries `<!-- not run: why -->`).
 - Merged #108 (#21: each Bot's entities are numbered `#1`, `#2`, ... in the order the
   compared packets first name them, so entity ids and mobs' UUIDs need no Mask, and a
   Mask on an entity id is refused; a pig-summoning Group self-checks 20 of 20 five times).
