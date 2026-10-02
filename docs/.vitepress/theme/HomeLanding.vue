@@ -41,9 +41,9 @@ Took 22 s</pre>
       <h2>How it works</h2>
       <p>
         mscts starts a vanilla Minecraft server alongside the custom server
-        you're testing. The custom server needs an mscts Adapter, a small
-        module that writes its configuration so it starts with the same
-        settings and the same world as vanilla
+        you're testing. The custom server must have an mscts Adapter, a
+        small module that writes its configuration so it starts with the
+        same settings and the same world as vanilla
         (<a :href="withBase('/guide/writing-an-adapter')">read more about Adapters</a>).
       </p>
       <p>

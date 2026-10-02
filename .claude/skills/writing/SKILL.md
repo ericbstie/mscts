@@ -86,6 +86,19 @@ Any session that writes user-facing text follows this skill all the same.
   names them. (Rule not yet generalised: the maintainer was "not sure
   exactly what makes it correct".)
 
+### Home page, "How it works", the Adapter
+
+- Before (the maintainer's draft): "The custom server must have an mscts
+  Adapter for it that can set up the baseline world state before the
+  test suite is run."
+- Before (the writer's version): "The custom server needs an mscts
+  Adapter, a small module that writes its configuration so it starts
+  with the same settings and the same world as vanilla."
+- After: "must have" from the draft, plus the rest of the writer's
+  version.
+- Why: "must have" over "needs": not given. "A small module that writes
+  its configuration …" was praised as "great", why not given.
+
 ### Home page, "How it works", running offline
 
 - Before: "Both run offline on your machine, and neither can reach the
