@@ -95,8 +95,10 @@ filed as #114 and #116 (`lane:comparison`), #115 and #117 (`lane:timing`).
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AV (opus): #22, chunks and light decoded and compared as the client sees them. Its PR
-  is for the next tech lead to review; session 5's lead does not merge it.
+- #22 is done in PR #122 (worker AV), not merged: the next tech lead reviews it. A
+  join's window then matches 19 of 20 live; the 20th differs only in network traffic
+  (a below-world sky section, empty vs zeros), which a Self-check still counts as a
+  `mismatch`: #30 decides.
 
 Session 5's lead stopped after #35 and #22 (maintainer). Open for the maintainer:
 vanilla's tick-end resends and `section_blocks_update.blocks` are hash-ordered (a
