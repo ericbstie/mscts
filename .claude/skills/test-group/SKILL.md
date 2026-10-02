@@ -13,19 +13,31 @@ a test PR.
 
 Play a draft of the Group 20 times on two fresh vanilla Instances
 before writing it in `src/`: a script in your scratch dir that hands
-`scripts/research/probe_loop.py`'s `run` a loop of its own (assign
-`probe_loop.loop` until #107 adds `loop=`), printing
-every Divergence and saving failing Transcripts. It costs about 15
-minutes and answers whether the Group can match at all. Read every
-Divergence back to its cause with javap, in the server (where vanilla
-makes the value) and in the client (what it reads it into):
+`scripts/research/probe_loop.py`'s `run(group, plays, out_dir, workdir)`
+the draft Group (it boots both Instances with the Group's own
+`spec`, prints the Divergences per test case and saves the whole
+Transcripts of failing plays; `loop=` takes a play loop of your own).
+Run it in the background and write the unit tests meanwhile: a Group
+with ten windows takes 10 to 40 minutes. It answers whether the Group
+can match at all. Read every Divergence back to its cause with javap,
+in the server (where vanilla makes the value) and in the client (what
+it reads it into):
 
 - a list the client reads into a set or map, sent in hash order (per
   boot or per join), needs a canonical sort (`compare.UNORDERED`),
   never a Mask;
 - a value vanilla draws at random, or reads from the clock (an
-  advancement's `obtained` time), is a `compare.RANDOM_FIELDS` entry;
+  advancement's `obtained` time), wherever the packet is sent, is a
+  `compare.RANDOM_FIELDS` entry; one that is random only for some
+  sources (the position and motion of an item a block drops; a spawned
+  pig's are not) is a Mask of the Group, with the javap line that draws it;
 - an identifier without gameplay meaning is a Mask, with its reason;
+- a window that makes several entities at once (a `fill ... destroy`
+  that drops four items) can still differ: vanilla resends each new
+  entity at the end of the tick in the hash order of its raw id, and
+  the two Instances' raw ids differ, so only the order differs (17 of
+  20 plays did not match, `blocks/fill`). Make one entity per window, or
+  ask the lead for a canonical order;
 - a Group that spawns or counts entities turns natural spawning off in
   its Fixture (`gamerule spawn_mobs false`; 26.3 rule names are
   snake_case), and tags what it summons so it removes only those;
@@ -63,18 +75,34 @@ options (`needs-decision`), and report.
    what the named Bots receive inside windows is compared. Name the
    packets the Group tests: an unnarrowed window also compares whatever
    the world sends meanwhile (mobs entering view, chunk batches).
+   A Bot that runs a command itself (an operator: `spec=` adds it to the
+   ServerSpec's `operators`) drains before the window and waits for its
+   own feedback inside it: `await bot.drain()`, then `async with
+   context.observe(...): await bot.command(...); await bot.expect(
+   "minecraft:system_chat", timeout_s=...)`. `Bot.sync` alone does not
+   cover a chat command on a server behind schedule, and an operator is
+   also told every other operator's feedback, which a bare `expect`
+   would take for its own (`groups/blocks.py`; its fake server is
+   `BlocksServer` in `tests/group/test_blocks.py`).
 4. Change blocks only in chunks a Bot has had since it joined
    (`docs/guide/writing-a-group.md`); there is no chunk wait yet.
 5. A Group starts with no player online (#97); it never relies on a
    previous Group's state, and leaves the server as it found it: undo
    every setting it changes (`tick freeze` -> `tick unfreeze`, gamerules)
    in a `finally`, because the Self-check tier and `mscts run` play every
-   Group on the same two Instances.
+   Group on the same two Instances. Push each undo on a
+   `contextlib.AsyncExitStack` as its setting is made, so that one that
+   fails does not stop the rest. Put a case a Candidate may hang on
+   last, so the others are compared first.
 6. The kind is `exact` unless the issue says `tick-exact` (#23) or
    `statistical` (#24).
 7. A span (`context.span`) ends when its body does, so it can time a
    whole Bot operation (`bot.join()`), not a packet inside one. The
    Report shows no timings (ADR-0012); a Run's results keep them.
+8. Not everything a server holds is sent to a Bot that watches it: a
+   chest's items are not (only its block state). Read such a value back
+   with a command (`data get block <pos> Items`) in a window of its own,
+   and compare the feedback.
 
 What a Candidate does wrong is the Report's job, never the Group's:
 a command it lacks gives `blocked` (`CommandMissing`), a packet it sends
@@ -90,13 +118,20 @@ join sets it in its Fixture.
 
 1. Unit: `tests/group/test_<mechanic>.py` against the fake server. Pin
    what each Bot sends and in which order, the windows and the Marks;
-   never what a server answers.
+   never what a server answers. A fake that answers late, or that sees a
+   Bot leave with something unread (the connection resets), flakes one
+   run in 25 to 40 under load: run the file through `python3
+   scripts/repeat.py --times 40 --stress -- tests/group/test_<mechanic>.py`
+   before the push (red-green, Known traps).
 2. Self-check: the registry tier (#84) covers a Group once registered.
    Before each push: `mise run test:selfcheck -- -k '<mechanic>/'`.
    Once, for the PR: `MSCTS_SELFCHECK_REPEAT=20` on the new Groups.
 3. Candidate evidence: `uv run mscts run --candidate pumpkin --group
    '<mechanic>/*'`, its Report in the PR body. A Divergence there is
-   what the suite is for, not a failure.
+   what the suite is for, not a failure. Run each Group alone too
+   (`--group '<id>'`): a Candidate that hangs on one Group is not
+   restarted, so the next Group of the same Run fails with a timeout that
+   is not its own.
 4. A Self-check that does not match is never fixed by a retry or a
    larger repeat. Find its cause as in "First" above.
 
