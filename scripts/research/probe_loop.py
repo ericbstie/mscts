@@ -275,13 +275,16 @@ async def loop(
 
 
 async def run(group: Group, plays: int, out_dir: Path, workdir: Path, *, loop: Loop = loop) -> int:
-    """Boot two vanilla Instances in `workdir`, play `group` `plays` times on them, stop them."""
+    """Boot two vanilla Instances in `workdir`, play `group` `plays` times on them, stop them.
+
+    The Instances boot with the ServerSpec the Group asks for (`group.spec`), as a Run does.
+    """
     adapter = VanillaAdapter()
     installation = install.require(adapter, TARGET, cache_dir())
     plans = []
     for side in SIDES:
         endpoint = free_endpoint()
-        spec = ServerSpec(host=endpoint.host, port=endpoint.port)
+        spec = group.spec(ServerSpec(host=endpoint.host, port=endpoint.port))
         plans.append(adapter.prepare(installation, spec, workdir / side))
     async with contextlib.AsyncExitStack() as stack:
         async with asyncio.TaskGroup() as boot:

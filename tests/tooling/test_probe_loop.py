@@ -7,6 +7,7 @@ import struct
 import time
 import types
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -314,6 +315,38 @@ async def test_run_uses_the_supplied_loop_with_both_prepared_endpoints(
     monkeypatch.setattr(probe_loop, "running", fake_running)
 
     assert await probe_loop.run(_GROUP, 3, tmp_path / "out", tmp_path, loop=custom) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_boots_each_instance_with_the_spec_the_group_asks_for(
+    probe_loop: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    specs: list[ServerSpec] = []
+
+    def prepare(_installation: object, spec: ServerSpec, _cwd: Path) -> types.SimpleNamespace:
+        specs.append(spec)
+        return types.SimpleNamespace(endpoint=Endpoint(spec.host, spec.port))
+
+    @contextlib.asynccontextmanager
+    async def fake_running(plan: object, **_kwargs: object) -> AsyncIterator[object]:
+        yield plan
+
+    async def custom(group: Group, endpoints: list[Endpoint], plays: int, out: Path) -> int:  # noqa: ARG001 - the loop's shape
+        return 0
+
+    def with_operator(spec: ServerSpec) -> ServerSpec:
+        return replace(spec, operators=("builder",))
+
+    monkeypatch.setattr(
+        probe_loop, "VanillaAdapter", lambda: types.SimpleNamespace(prepare=prepare)
+    )
+    monkeypatch.setattr(probe_loop.install, "require", lambda *_args: None)
+    monkeypatch.setattr(probe_loop, "running", fake_running)
+    group = Group(id="probe/operator", run=_nothing, spec=with_operator)
+
+    await probe_loop.run(group, 1, tmp_path / "out", tmp_path, loop=custom)
+
+    assert [spec.operators for spec in specs] == [("builder",), ("builder",)]
 
 
 @pytest.mark.asyncio
