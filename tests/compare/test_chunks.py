@@ -988,6 +988,45 @@ def test_a_light_update_naming_fewer_sections_differs_only_where_the_other_names
     assert [d.path for d in verdict.divergences] == ["data.sky[5]"]
 
 
+AIR_SECTION = section(single(AIR), block_count=0)
+
+
+def test_sections_past_the_most_a_level_has_are_one_value() -> None:
+    # The verdict review's probe: 20,000 sections made 59,930 Divergences. No level has more
+    # than 254 sections, so none past them is read, and their light sections stop at 256.
+    verdict = _verdict(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 19976]))
+
+    shown = {d.path: d.candidate for d in verdict.divergences}
+    assert shown["sections[254]"] == "19746 more sections"
+    assert "sections[255]" not in shown
+    assert "light.sky[256]" not in shown
+    assert len(verdict.divergences) <= 3 * 254
+
+
+def test_light_arrays_past_the_most_a_level_has_are_one_value() -> None:
+    reference = light(sky={1: FULL})
+    candidate = {**reference, "sky_light_arrays": [FULL, *[DARK] * 1000]}
+
+    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+
+    assert _network_traffic_only(verdict)
+    shown = {d.path: d.candidate for d in verdict.divergences}
+    assert shown["light.sky_light_arrays[256]"] == "745 more arrays"
+    assert "light.sky_light_arrays[257]" not in shown
+
+
+def test_light_update_arrays_past_the_most_a_level_has_are_one_value() -> None:
+    reference = light(sky={1: FULL})
+    candidate = {**reference, "sky_light_arrays": [FULL, *[DARK] * 1000]}
+
+    verdict = _verdict(light_update(reference), light_update(candidate))
+
+    assert _network_traffic_only(verdict)
+    assert {d.path: d.candidate for d in verdict.divergences}[
+        "data.sky_light_arrays[256]"
+    ] == "745 more arrays"
+
+
 def test_the_gameplay_test_cases_of_chunks_and_light_have_titles() -> None:
     stone = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
     biome = direct([PLAINS] * 63 + [PLAINS + 1], bits=7)

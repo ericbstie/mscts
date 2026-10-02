@@ -1123,6 +1123,8 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
 def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
     """A copy of `fields`, `packet`'s, in the value model, sorted if `UNORDERED` names it."""
     copy = _plain_mapping(fields.items(), packet.name, ())
+    if (cap := _CAPS.get((packet.state, packet.name))) is not None:
+        copy = cap(copy)
     sort = _SORTS.get(packet.name)
     return copy if sort is None else sort(copy)
 
@@ -1516,7 +1518,8 @@ def _canonical_level_chunk(fields: dict[str, _Value], context: _Context) -> dict
         "sections": [_canonical_section(section, context.biomes) for section in sections],
     }
     if "light" in fields:
-        result["light"] = _canonical_light(fields["light"], len(sections) + _LIGHT_MARGIN)
+        light_sections = min(len(sections), _SECTIONS_MAX) + _LIGHT_MARGIN
+        result["light"] = _canonical_light(fields["light"], light_sections)
     return result
 
 
@@ -1617,8 +1620,52 @@ _LIGHT_SECTIONS_MAX = 256
 """The most light sections a level has: `DimensionType`'s height is at most `Y_SIZE`,
 `(1 << BlockPos.PACKED_Y_LENGTH) - 32`, 4064 blocks, so 254 sections, and the margin."""
 
+_SECTIONS_MAX = _LIGHT_SECTIONS_MAX - _LIGHT_MARGIN
+"""The most sections a level has: 254."""
+
 _EMPTY = "empty"
 """A light section sent empty, where the client's light is not the same as an array of 0s."""
+
+
+def _capped(items: _Value, most: int, what: str) -> _Value:
+    """`items`' first `most` elements, then one that counts the rest (`19746 more sections`)."""
+    if not isinstance(items, list) or len(items) <= most:
+        return items
+    return [*items[:most], f"{len(items) - most} more {what}"]
+
+
+def _capped_light(light: _Value) -> _Value:
+    """Light data with at most `_LIGHT_SECTIONS_MAX` arrays in each layer (`_capped`).
+
+    A mask has a bit for each array the client takes, and no bit from the light section count
+    up is read (`_canonical_light`), so no array past the 256th is.
+    """
+    if not isinstance(light, dict):
+        return light
+    return {
+        key: _capped(value, _LIGHT_SECTIONS_MAX, "arrays") if key.endswith("_arrays") else value
+        for key, value in light.items()
+    }
+
+
+def _capped_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A chunk with at most `_SECTIONS_MAX` sections and `_capped_light` light.
+
+    The client reads one section for each section of its level and never the bytes after
+    them (`LevelChunk.replaceWithPacketData`), so a chunk of more sections than any level has
+    is compared as that many and a count of the rest: one value, not one for each.
+    """
+    result = dict(fields)
+    if "sections" in fields:
+        result["sections"] = _capped(fields["sections"], _SECTIONS_MAX, "sections")
+    if "light" in fields:
+        result["light"] = _capped_light(fields["light"])
+    return result
+
+
+def _capped_light_update(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A light update with `_capped_light` data."""
+    return {**fields, "data": _capped_light(fields["data"])} if "data" in fields else fields
 
 
 def _canonical_light(light: _Value, sections: int) -> _Value:
@@ -1892,6 +1939,17 @@ _CANONICAL: Mapping[
 )
 """The canonical form of each clientbound packet that has one, by (State, name), from its
 fields and its Bot's `_Context`."""
+
+_CAPS: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
+    MappingProxyType(
+        {
+            (State.PLAY, "minecraft:level_chunk_with_light"): _capped_level_chunk,
+            (State.PLAY, "minecraft:light_update"): _capped_light_update,
+        }
+    )
+)
+"""For a packet whose lists can be longer than the client ever reads: every copy of its fields
+cut to what can be read, and one value that counts the rest (`_capped`)."""
 
 _COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
     {

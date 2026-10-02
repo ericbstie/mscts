@@ -1559,7 +1559,13 @@ proves it necessary:
      (`LevelLightEngine.getLightSectionCount`); a `light_update` does not
      say how high its level is, so it is 256, the most any level has
      (`DimensionType`'s height is at most `Y_SIZE`, `(1 <<
-     BlockPos.PACKED_Y_LENGTH) - 32` = 4064 blocks). An empty section
+     BlockPos.PACKED_Y_LENGTH) - 32` = 4064 blocks). So every copy of a
+     chunk keeps at most 254 sections, and of its light, or a light
+     update's, at most 256 arrays a layer; the rest become one value
+     that counts them (`19746 more sections`, `compare._CAPS`): the
+     client reads no more (`LevelChunk.replaceWithPacketData` reads one
+     section for each section of its level), and a chunk of 20,000
+     sections is then a few hundred Divergences, not 60,000. An empty section
      and an array of 2048 zero bytes are equal for block light, and for
      sky light only in light section 0, below the world:
      `SkyLightEngine.setLightEnabled` fills an empty stored sky section
