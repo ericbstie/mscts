@@ -87,11 +87,11 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AP (sonnet): #97, a Group starts only once status says no player is online.
+- AR (opus): #30 `join/basic`, the first Group built by the routine.
 - AQ (opus): #21, the Comparison numbers entities in the order each Bot first hears of them.
 
-Next: #30 `join/basic` (after #97), the first Group built by the routine
-(`.claude/skills/test-group`, committed with it), then #23 tick-exact.
+Next: #23 tick-exact, then the test Groups by the routine (`.claude/skills/test-group`,
+committed with #30). The helper (ChatGPT) has #25 Bot movement.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -122,9 +122,8 @@ The maintainer's outside agents (Astra, ChatGPT) take GitHub issues labelled
 worker on a delegated item. A helper PR has a `## Verify` section (the
 commands that prove it, with their expected output) and a `## Surprises`
 section; the lead reviews helper PRs in batches (tech-lead skill).
-Open: #4 PLAN public-name check, #3 runner parent-death guard (lead decisions
-posted on both). A helper comments on an issue to claim it before starting.
-Merged: #5 (javap, closes #2), the output lane (#14, #12, #9, #10, #13) and #6.
+Open: #25 Bot movement (lead corrections posted). A helper comments on an issue to claim it before starting.
+Merged: #5 (javap, closes #2), the output lane (#14, #12, #9, #10, #13), #6, #4, #3, #98.
 Their PRs are reviewed and integrated like a worker branch.
 
 ## Next
@@ -245,6 +244,12 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- Merged #104 (#97: before each Group the Run polls status until no player is online,
+  `mscts.settle`; a Candidate that never empties is a `mismatch`). Vanilla drops a closed
+  Bot within 10–197 ms (`docs/research/2026-10-02-settle.md`).
+- Merged the helper's PRs #100 (#4: `mise run plan`, every public name is in PLAN), #102
+  (#3: the next launch sweeps orphaned Instance groups) and #103 (#98: `time_tier.py`
+  fails with its command).
 - Merged the helper's (ChatGPT) PRs: #91 (#14 docs drift checks), #92 (#12 test
   case titles), #93 (#9 the short default Report, ADR-0012), #94 (#10
   `--verbose`), #95 (#13 the home page's real Report) and #89 (#6 javap `--lib`).

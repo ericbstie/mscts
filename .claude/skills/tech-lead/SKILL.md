@@ -93,6 +93,9 @@ first.
   (AO, #88: the lead's cause was wrong).
 - A design in a decision comment states what its unit tests assert: writing
   the assertion exposes a flaw before the worker builds it (#88's cap).
+- A brief names the module and the public API of anything the next issue
+  on the queue reuses, and states the Verdict of each new failure path
+  (Candidate `mismatch` with a `failed` Divergence, Reference `error`; AP, #97).
 - A wide table (about 20 entries of one mechanism or more, like the 122
   data components) gets its layouts derived before briefing: a `sonnet`
   triage runs `scripts/research/layout.py` over each entry and posts the

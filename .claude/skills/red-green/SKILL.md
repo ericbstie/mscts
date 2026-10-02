@@ -83,6 +83,9 @@ then one commit.
 
 ## Known traps
 
+- Never cancel a Bot operation from outside (`asyncio.timeout` around a
+  connect-to-close span leaks the socket, and `filterwarnings = error` fails
+  the test). Bound it with the Bot's own `timeout_s`.
 - A fake server answers like the real one by default (`tests/net/fakes.py`
   answers a statistics pair a tick apart); a test that needs another timing
   says so. A fake that cuts corners breaks every later barrier change.
