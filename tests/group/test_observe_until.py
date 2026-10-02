@@ -1,0 +1,245 @@
+"""GroupContext.observe(until=...): a window that ends at a packet's arrival, with no barrier."""
+
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
+import pytest
+
+from mscts.codec.packets import Codec, Direction, Packet, State
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
+from mscts.group import Group, GroupContext
+from mscts.net import Endpoint, ProtocolError
+from mscts.run import GroupError, judge, run_group
+from mscts.target import TARGET
+from mscts.transcript import Mark, Transcript
+from tests.net.fakes import (
+    Handler,
+    JoinScript,
+    Peer,
+    answer_each_tick,
+    join_server,
+    serve,
+)
+
+CODEC = Codec.for_target(TARGET)
+REQUEST = "minecraft:client_command"
+BLOCK_UPDATE = "minecraft:block_update"
+BATCH_FINISHED = "minecraft:chunk_batch_finished"
+BLOCK = bytes.fromhex("0000004000001fc4")
+"""A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
+GAP_S = 0.04
+"""How long the fake waits between what it sends, so each arrives in a read of its own."""
+
+
+def server(seen: list[Packet], *, answers: bool = True, later_state: int = 1) -> Handler:
+    """Join like vanilla, then answer the command `batch` (if `answers`) with four packets.
+
+    A block_update, a chunk_batch_finished, a later block_update whose state is
+    `later_state`, and a second chunk_batch_finished, each `GAP_S` after the one before. A
+    statistics request is answered like vanilla's.
+    """
+
+    async def then(peer: Peer) -> None:
+        requests = 0
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name == REQUEST:
+                requests += 1
+                await answer_each_tick(peer, requests)
+            elif answers and (packet.fields or {}).get("command") == "batch":
+                await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
+                await asyncio.sleep(GAP_S)
+                await peer.send(BATCH_FINISHED, batch_size=1)
+                await asyncio.sleep(GAP_S)
+                await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + bytes([later_state])))
+                await asyncio.sleep(GAP_S)
+                await peer.send(BATCH_FINISHED, batch_size=2)
+
+    return join_server(seen, JoinScript(then=then))
+
+
+@asynccontextmanager
+async def playing(handler: Handler, transcript: Transcript) -> AsyncIterator[GroupContext]:
+    """A GroupContext against a fake server running `handler`, closed however the body ends."""
+    async with serve(CODEC, handler) as endpoint:
+        context = GroupContext(endpoint, transcript, timeout_s=2.0)
+        try:
+            yield context
+        finally:
+            await context.close()
+
+
+async def play(*, until: str | None, later_state: int = 1) -> Transcript:
+    """A Bot joins, then a window sees the server's four packets, and the Bot waits for them."""
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([], later_state=later_state), transcript) as context:
+        bot = await context.bot("alice")
+        await bot.join()
+        async with context.observe(until=until):
+            await bot.command("batch")
+            await asyncio.sleep(8 * GAP_S)
+    return transcript
+
+
+def arrivals(transcript: Transcript, name: str) -> list[int]:
+    return [
+        event.t_ns
+        for event in transcript.events
+        if event.packet.name == name and event.packet.direction is Direction.CLIENTBOUND
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_window_closes_when_the_first_such_packet_arrived_not_when_it_was_taken() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    seen: list[Packet] = []
+    async with playing(server(seen), transcript) as context:
+        bot = await context.bot("alice")
+        await bot.join()
+        async with context.observe(until=BATCH_FINISHED):
+            await bot.command("batch")
+            await asyncio.sleep(8 * GAP_S)
+            exit_ns = transcript.now_ns()
+
+    opened, closed = transcript.marks
+    assert (opened.label, closed.label) == (OBSERVE_OPEN, OBSERVE_CLOSE)
+    joined, first, _ = arrivals(transcript, BATCH_FINISHED)
+    assert joined < opened.t_ns <= first
+    assert closed.t_ns == first
+    assert exit_ns - closed.t_ns > 4 * GAP_S * 1e9, "the Mark is the arrival, not the time taken"
+    names = [packet.name for packet in seen]
+    assert REQUEST not in names, "no barrier"
+
+
+@pytest.mark.asyncio
+async def test_a_later_such_packet_and_what_follows_the_first_are_not_compared() -> None:
+    first = await play(until=BATCH_FINISHED, later_state=1)
+    second = await play(until=BATCH_FINISHED, later_state=2)
+
+    _, closed = first.marks
+    before, after = arrivals(first, BLOCK_UPDATE)
+    assert before < closed.t_ns < after
+    verdict = compare(first, second, [])
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert "block_update.block_state" in verdict.test_cases, "what came before is compared"
+
+
+@pytest.mark.asyncio
+async def test_a_window_with_a_barrier_does_compare_what_the_server_sends_after_it_all() -> None:
+    verdict = compare(
+        await play(until=None, later_state=1), await play(until=None, later_state=2), []
+    )
+
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+
+
+@pytest.mark.asyncio
+async def test_a_packet_that_arrived_before_the_window_opened_does_not_close_it() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        bot = await context.bot("alice")
+        await bot.join()
+        assert len(arrivals(transcript, BATCH_FINISHED)) == 1
+        with pytest.raises(ProtocolError, match=r"minecraft:chunk_batch_finished"):
+            async with context.observe(until=BATCH_FINISHED):
+                pass
+
+    assert [mark.label for mark in transcript.marks] == [OBSERVE_OPEN]
+
+
+@pytest.mark.asyncio
+async def test_a_packet_of_another_state_does_not_close_it() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    brand = "minecraft:custom_payload"  # configuration sends it, the fake's play does not
+
+    async def join_inside(context: GroupContext) -> None:
+        async with context.observe(until=brand):
+            bot = await context.bot("alice")
+            await bot.join()
+
+    async with playing(server([]), transcript) as context:
+        with pytest.raises(ProtocolError, match=r"minecraft:custom_payload"):
+            await join_inside(context)
+
+    assert brand in [event.packet.name for event in transcript.events]
+
+
+@pytest.mark.asyncio
+async def test_only_a_packet_the_server_sent_closes_it() -> None:
+    keep_alive = "minecraft:keep_alive"  # both directions send it in play
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    def heard(direction: Direction) -> Packet:
+        data = CODEC.encode(State.PLAY, direction, keep_alive, {"keep_alive_id": 1})
+        return CODEC.decode(State.PLAY, direction, data)
+
+    async def observe_with_a_sent_one() -> None:
+        async with context.observe(until=keep_alive):
+            transcript.record("alice", heard(Direction.SERVERBOUND), t_ns=transcript.now_ns())
+
+    with pytest.raises(ProtocolError, match=keep_alive):
+        await observe_with_a_sent_one()
+    async with context.observe(until=keep_alive):
+        transcript.record("alice", heard(Direction.SERVERBOUND), t_ns=transcript.now_ns())
+        arrival = transcript.now_ns()
+        transcript.record("alice", heard(Direction.CLIENTBOUND), t_ns=arrival)
+        transcript.record("bob", heard(Direction.CLIENTBOUND), t_ns=transcript.now_ns())
+
+    assert transcript.marks[-1] == Mark(t_ns=arrival, label=OBSERVE_CLOSE)
+
+
+@pytest.mark.asyncio
+async def test_the_window_is_over_after_a_missing_packet() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        with pytest.raises(ProtocolError):
+            async with context.observe(until=BATCH_FINISHED):
+                pass
+        async with context.observe():
+            pass
+
+    labels = [mark.label for mark in transcript.marks]
+    assert labels == [OBSERVE_OPEN, OBSERVE_OPEN, OBSERVE_CLOSE]
+
+
+async def _wait_for_a_block(context: GroupContext) -> None:
+    bot = await context.bot("alice")
+    await bot.join()
+    async with context.observe(until=BLOCK_UPDATE):
+        await bot.command("batch")
+        await bot.sync()
+
+
+WAITS = Group(id="test/until", run=_wait_for_a_block)
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_never_sends_the_packet_fails_rather_than_errs() -> None:
+    async with serve(CODEC, server([])) as endpoint:
+        reference = await run_group(WAITS, endpoint, server="vanilla", timeout_s=2.0)
+    async with serve(CODEC, server([], answers=False)) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(WAITS, endpoint, server="candidate", timeout_s=2.0)
+
+    verdict = judge(WAITS, reference, caught.value)
+
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+    failed = verdict.divergences[0]
+    assert failed.kind == "failed", verdict
+    assert BLOCK_UPDATE in str(failed.candidate), verdict
+
+
+@pytest.mark.asyncio
+async def test_a_reference_that_never_sends_the_packet_is_an_error() -> None:
+    async with serve(CODEC, server([], answers=False)) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(WAITS, endpoint, server="vanilla", timeout_s=2.0)
+    async with serve(CODEC, server([])) as endpoint:
+        candidate = await run_group(WAITS, endpoint, server="candidate", timeout_s=2.0)
+
+    verdict = judge(WAITS, caught.value, candidate)
+
+    assert verdict.outcome is Outcome.ERROR, verdict
+    assert BLOCK_UPDATE in (verdict.detail or ""), verdict

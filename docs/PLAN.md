@@ -877,7 +877,8 @@ class GroupContext:
                                                  # CONTROL_PLAYER (Control's Bot)
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
-    def observe(self, *names: str) -> AbstractAsyncContextManager[None]: ...
+    def observe(self, *names: str, until: str | None = None
+                ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: Marks OBSERVE_OPEN (then the
                                     # names, each after a space) on entry; when the body
                                     # completes, every Bot in play passes Bot.sync (all at
@@ -886,7 +887,18 @@ class GroupContext:
                                     # drains. A body that raises gets neither, so its window
                                     # runs to the Transcript's end. ValueError, nothing
                                     # marked: a window already open (no nesting), or a name
-                                    # that is not one word
+                                    # that is not one word.
+                                    # With `until` (a packet name): no barrier. Every Bot not
+                                    # closed drains, then OBSERVE_CLOSE is stamped with the
+                                    # Event.t_ns (the arrival, never the time a Bot took the
+                                    # packet; #88) of the first clientbound play packet of
+                                    # that name any Bot received at or after the open Mark.
+                                    # Compare puts a packet stamped at a Mark's time after
+                                    # it, so that packet is outside the window, as is all
+                                    # that follows. None arrived: ProtocolError naming the
+                                    # packet (a Candidate's is a `mismatch` with a `failed`
+                                    # Divergence, the Reference's an `error`, as for every
+                                    # CANDIDATE_FAILURES), and no close Mark
     async def close(self) -> None: ...   # closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`

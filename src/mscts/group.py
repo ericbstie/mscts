@@ -16,7 +16,7 @@ from types import MappingProxyType
 from typing import Protocol
 
 from mscts.bot import Bot
-from mscts.codec.packets import Direction, Packet
+from mscts.codec.packets import Direction, Packet, State
 from mscts.codec.schemas.play.commands import root_literals
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
 from mscts.net import Endpoint, ProtocolError
@@ -247,7 +247,7 @@ class GroupContext:
         self._mark(f"{name}:end")
 
     @contextlib.asynccontextmanager
-    async def observe(self, *names: str) -> AsyncIterator[None]:
+    async def observe(self, *names: str, until: str | None = None) -> AsyncIterator[None]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
         Marks `observe:open` on entry, followed by `names`, each after a space. When the
@@ -256,15 +256,25 @@ class GroupContext:
         what has already arrived, without waiting (`Bot.drain`). A body that raises gets
         neither: its window runs to the end of the Transcript.
 
+        With `until`, there is no barrier. Every Bot not closed takes what has already
+        arrived, and the window closes when the first play packet called `until` arrived
+        at any Bot after the window opened: its Mark is stamped with that arrival (not
+        with the time the Bot took the packet), so the packet itself, and everything
+        after it, is outside the window.
+
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
                 none for every packet.
+            until: The name of the packet whose arrival ends the window, e.g.
+                `minecraft:chunk_batch_finished`; None for a window that ends at the
+                barrier.
 
         Raises:
             ValueError: A window is open already (windows do not nest), or a name is not
                 one word.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
-            ProtocolError: The server disconnected a Bot before its barrier's answer.
+            ProtocolError: The server disconnected a Bot before its barrier's answer; or
+                no `until` packet arrived inside the window.
         """
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
@@ -275,13 +285,15 @@ class GroupContext:
                 raise ValueError(msg)
         self._observing = True
         try:
-            self._mark(" ".join((OBSERVE_OPEN, *names)))
+            opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
             yield
-            await self._sync()
-            self._mark(OBSERVE_CLOSE)
-            for bot in self._bots.values():
-                if not bot.closed:
-                    await bot.drain()
+            if until is None:
+                await self._sync()
+                self._mark(OBSERVE_CLOSE)
+                await self._drain()
+            else:
+                await self._drain()
+                self._mark(OBSERVE_CLOSE, t_ns=self._arrival_of(until, since=opened))
         finally:
             self._observing = False
 
@@ -290,8 +302,35 @@ class GroupContext:
         for bot in self._bots.values():
             await bot.close()
 
-    def _mark(self, label: str) -> None:
-        self._transcript.marks.append(Mark(t_ns=self._transcript.now_ns(), label=label))
+    def _mark(self, label: str, *, t_ns: int | None = None) -> int:
+        """Record a Mark at `t_ns`, by default now; return when it is."""
+        at = self._transcript.now_ns() if t_ns is None else t_ns
+        self._transcript.marks.append(Mark(t_ns=at, label=label))
+        return at
+
+    def _arrival_of(self, name: str, *, since: int) -> int:
+        """When the first play packet `name` that any Bot received at or after `since` arrived.
+
+        Raises:
+            ProtocolError: None did.
+        """
+        for event in self._transcript.events:  # ordered by arrival (Transcript.record)
+            packet = event.packet
+            if (
+                event.t_ns >= since
+                and packet.name == name
+                and packet.state is State.PLAY
+                and packet.direction is Direction.CLIENTBOUND
+            ):
+                return event.t_ns
+        msg = f"no {name} arrived at any Bot after the Observation window opened"
+        raise ProtocolError(msg)
+
+    async def _drain(self) -> None:
+        """Take what has already arrived at every Bot not closed, without waiting."""
+        for bot in self._bots.values():
+            if not bot.closed:
+                await bot.drain()
 
     async def _sync(self) -> None:
         """Pass the barrier on every Bot in play at once; raise the first Bot's error."""
