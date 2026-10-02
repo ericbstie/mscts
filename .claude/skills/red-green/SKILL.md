@@ -83,6 +83,11 @@ then one commit.
 
 ## Known traps
 
+- `mise run commit` commits what is staged: `git add` the files first, or it
+  stops with "nothing staged".
+- An inline `pytester` run inherits the outer `filterwarnings = error`: give it
+  `pytester.makeini` with `asyncio_default_fixture_loop_scope = function`, or
+  pytest-asyncio's warning fails it (`tests/tooling/test_selfcheck_collection.py`).
 - The Write/Edit tools turn `\uXXXX` in file content into the literal
   character. For a literal backslash-u in Python source, write `"\\u00E9"`
   (non-raw) and check it with `grep … | cat -A`. For test inputs, prefer

@@ -126,7 +126,8 @@ Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), neve
               for the Comparison to report, not a harness assertion.
 Done when: <observable condition, e.g. `mise run check` green + named tests exist;
            timings are measured on a committed tree, with `--durations` of the touched
-           tests and the load average>
+           tests and the load average; a timing claim compares clean main and the branch
+           back-to-back on the same host, median of three>
 Base: <main commit the brief was written against; the worker first runs
       `git merge --ff-only main` in its worktree; before the PR it rebases onto main
       with `git rebase main --exec "mise run check"`>
@@ -315,6 +316,10 @@ Newest first. Every retrospective item gets a row.
 | 2026-10-01 | worker AL (#17 Control) | `Bot.sync()` was no barrier behind a command (8 of 80 plays), though #18 had passed 20 of 20 once; about 2 h of diagnosis | **adopt**: brief template, a change to a barrier or window is done when its Self-check passes 20 of 20 five times in a row, with a javap account of every queue it crosses |
 | 2026-10-01 | worker AL | Pumpkin runs each `chat_command` in its own task, so answers come out of order (71 of 100) | **adopt**: protocol-research skill, measure packet order on both servers (100 runs) and read where the Candidate dispatches the packet before fixing an order contract |
 | 2026-10-01 | worker AL | #17 needed #19's generated name list before #19 merged: two cherry-picks and a conflicted rebase | **adopt**: tech-lead skill, a generated file two briefs need lands first, as its own small PR |
+| 2026-10-02 | worker AN (#83, #84) | A Group after a joining Group sees its Bots still online (`status/basic` failed 3 of 6 with the probe first): vanilla drops a closed Bot on its next tick | **adopt**: #97, a Group starts only once status says no player is online (before #30 registers `join`) |
+| 2026-10-02 | worker AN | Live-tier timings under other workers' load varied 210–395 s; `time_tier.py` cannot show a run passed (second time, after AI) | **adopt**: a timing claim compares clean main and the branch back-to-back on one host (brief template); #98 for `time_tier.py` (helper) |
+| 2026-10-02 | worker AN | `mise run commit` said "nothing staged"; an inline pytester run inherits `filterwarnings=error` and needs `asyncio_default_fixture_loop_scope` | **adopt**: red-green Known traps |
+| 2026-10-02 | worker AN | Both PRs edited the root conftest's `pytest_plugins` line; the glossary conflicted on rebase | **reject**: one trivial conflict each, and the glossary drift check caught the mismatch as designed |
 | 2026-10-01 | worker AL | Deleting `tests/support/commands.py` collided with #19's three new users | **adopt**: brief template, the ownership list names shared test helpers too; Worker contract, grep `origin/main` before deleting a shared helper. The move went to AN (#84) |
 | 2026-10-01 | worker AL | ty refuses `dict.fromkeys(...)` as `dict[str, object]`; D205/E501 on docstring summaries, RUF043 on `match=`, C901 on a many-knob fake | **adopt**: red-green Known traps |
 | 2026-10-01 | worker AL | `;` in a quoted sed script and `(` / `$` in arguments were refused | **adopt**: Worker contract |

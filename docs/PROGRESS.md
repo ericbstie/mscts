@@ -89,11 +89,9 @@ Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at 
 
 - AO (sonnet): #88, the barrier ends only after a tick has passed (a gap-checked
   `Bot.sync()`; the probe's Self-check fails about once in 250 plays under load).
-- AN (sonnet): #83 (console tail on a tier failure), then #84 (the Self-check tier
-  driven by the Group registry), with the move off `tests/support/commands.py` and
-  the flat world test's second `player_position`.
+- AP (sonnet): #97, a Group starts only once status says no player is online.
 
-Next: #30 `join/basic`, the first Group built by the routine
+Next: #30 `join/basic` (after #88 and #97), the first Group built by the routine
 (`.claude/skills/test-group`, committed with it), then #23 tick-exact.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
@@ -240,6 +238,11 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - #88 re-scoped after AO's research disproved the lead's chunk hypothesis: under
   load vanilla can answer both statistics round trips in one pass, before the
   tick's block updates. The fix is a gap-checked `Bot.sync()`; ADR-0010 is amended.
+- Merged #96 (#84: `mise run test:selfcheck` gives every registered Group a
+  Self-check on two shared Instances, 18–31 s; the reference tier is still 210–259 s).
+  A join's repeated `player_position` is a race with the server's first tick (javap
+  account in `docs/research/2026-09-26-join.md`), so only its pose is asserted.
+  Filed #97 (a Group sees the previous Group's Bots) and #98 (helper).
 - Merged the helper's (ChatGPT) PRs: #91 (#14 docs drift checks), #92 (#12 test
   case titles), #93 (#9 the short default Report, ADR-0012), #94 (#10
   `--verbose`), #95 (#13 the home page's real Report) and #89 (#6 javap `--lib`).
