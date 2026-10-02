@@ -897,7 +897,8 @@ class GroupContext:
                                     # of that name any Bot but Control received at or after
                                     # the open Mark (Control's receipts are never compared;
                                     # the earliest arrival over the Bots, whatever order
-                                    # they were recorded in).
+                                    # they were recorded in). The body must last until it
+                                    # has arrived: one that ends sooner fails as below.
                                     # Compare puts a packet stamped at a Mark's time
                                     # after the Mark, so the extra nanosecond keeps that
                                     # packet inside the window; the frames of one socket

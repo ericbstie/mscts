@@ -87,7 +87,7 @@ Groups of their own compare them.
 | Window option | What it does |
 | --- | --- |
 | `context.observe("minecraft:block_update", ...)` | Compares only the packets named. |
-| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. If no such packet arrived, the Group fails and says which. |
+| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block going until the packet has arrived (a Bot's `join` does for a join's packets): if none had when the block ended, the Group fails and says which. |
 
 Use `until` when what the server keeps sending after the part you compare
 would differ between two runs: after a join, later chunk batches and the
