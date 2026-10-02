@@ -48,6 +48,8 @@ by a test.
    under `mscts.cache.cache_dir()/research/26.3/`. Later runs need no network.
    It extracts `META-INF/versions/26.3/server-26.3.jar` for the server and
    runs the selected JDK's `javap -c -p -constants`; add `-v` to resolve lambdas.
+   For a class from a library jar (DataFixerUpper, Brigadier, Netty), add
+   `--lib <substring>` once per library, for example `--lib datafixerupper`.
    Set `MSCTS_JAVA` to the real Java 25 JDK's `bin/java` to select that JDK.
 5. Candidate source code, only to understand a Candidate. Never use it to
    decide what is correct. The GitHub tools reach only this repo: fetch

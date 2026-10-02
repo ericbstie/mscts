@@ -87,8 +87,8 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AO (sonnet): #88, a joined Bot has the chunks around it before a Group acts
-  (the probe's Self-check still fails about once in 20 under load).
+- AO (sonnet): #88, the barrier ends only after a tick has passed (a gap-checked
+  `Bot.sync()`; the probe's Self-check fails about once in 250 plays under load).
 - AN (sonnet): #83 (console tail on a tier failure), then #84 (the Self-check tier
   driven by the Group registry), with the move off `tests/support/commands.py` and
   the flat world test's second `player_position`.
@@ -125,12 +125,10 @@ The maintainer's outside agents (Astra, ChatGPT) take GitHub issues labelled
 worker on a delegated item. A helper PR has a `## Verify` section (the
 commands that prove it, with their expected output) and a `## Surprises`
 section; the lead reviews helper PRs in batches (tech-lead skill).
-Open: the output lane, in order #14 docs checks →
-#12 test case titles and reference → #9 short output → #10 verbose → #13 home
-page sample (lead decisions posted on #9, #10, #12 and #14); then #4 PLAN
-public-name check, #6 javap libraries, #3 runner parent-death guard. A helper
-comments on an issue to claim it before starting. Merged: #5 (javap, closes #2). Their PRs are reviewed and integrated
-like a worker branch.
+Open: #4 PLAN public-name check, #3 runner parent-death guard (lead decisions
+posted on both). A helper comments on an issue to claim it before starting.
+Merged: #5 (javap, closes #2), the output lane (#14, #12, #9, #10, #13) and #6.
+Their PRs are reviewed and integrated like a worker branch.
 
 ## Next
 
@@ -238,6 +236,13 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   fields; a random pitch is a Group's own Mask, never a global one). Pumpkin's
   block and world events all decode. Filed #88: under load a watcher can miss a
   `block_update` in a chunk it has not received yet.
+- Merged #86 (#83: a failing server-tier test shows each Instance's console tail).
+- #88 re-scoped after AO's research disproved the lead's chunk hypothesis: under
+  load vanilla can answer both statistics round trips in one pass, before the
+  tick's block updates. The fix is a gap-checked `Bot.sync()`; ADR-0010 is amended.
+- Merged the helper's (ChatGPT) PRs: #91 (#14 docs drift checks), #92 (#12 test
+  case titles), #93 (#9 the short default Report, ADR-0012), #94 (#10
+  `--verbose`), #95 (#13 the home page's real Report) and #89 (#6 javap `--lib`).
 
 ### 2026-09-30 — session 4: what to test between servers
 
