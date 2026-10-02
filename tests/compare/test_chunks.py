@@ -820,6 +820,39 @@ def test_a_chunk_only_one_side_sent_is_a_divergence_naming_its_position() -> Non
     )
 
 
+def _undecodable(at: tuple[int, int]) -> Packet:
+    """A chunk at `at` with a byte after its last field, which the codec refuses."""
+    sent = chunk(at=at)
+    data = Writer().var_int(sent.packet_id).to_bytes() + sent.payload + b"\x00"
+    return CODEC.undecodable(State.PLAY, CLIENTBOUND, data, "1 byte after the last field")
+
+
+def test_a_chunk_the_codec_cannot_read_is_matched_by_the_position_it_starts_with() -> None:
+    # The verdict review of #122, finding 5: chunk x and z are its first two Ints.
+    reference = _batch(chunk(at=(0, 0)), chunk(at=(1, 0)))
+    candidate = _batch(_undecodable((1, 0)), chunk(at=(0, 0)), _undecodable((2, 0)))
+
+    verdict = compare(reference, candidate, [])
+
+    payloads, unexpected = verdict.gameplay
+    assert (payloads.kind, payloads.path, payloads.index) == ("field", None, 2)
+    assert (unexpected.kind, unexpected.candidate) == ("unexpected", "chunk 2 0")
+
+
+@pytest.mark.parametrize(
+    ("size", "kinds"), [(8, ["field"]), (7, ["missing", "unexpected"])], ids=["8", "7"]
+)
+def test_a_chunk_the_codec_cannot_read_needs_8_bytes_for_a_position(
+    size: int, kinds: list[str]
+) -> None:
+    data = Writer().var_int(CODEC.packet_id(State.PLAY, CLIENTBOUND, CHUNK)).to_bytes()
+    cut = CODEC.undecodable(State.PLAY, CLIENTBOUND, data + bytes(size), "cut short")
+
+    verdict = compare(_batch(chunk()), _batch(cut), [])
+
+    assert [d.kind for d in verdict.gameplay] == kinds
+
+
 # Light. Light section i is world section i - 1: in a 24-section chunk, light section 1 holds
 # y -64 to -49.
 
@@ -871,6 +904,17 @@ def test_a_light_section_not_sent_differs_from_an_empty_one() -> None:
             "chunk 0 0, y -32 to -17: not sent",
             "light.block[]",
         ),
+    )
+
+
+def test_a_light_section_past_a_chunks_height_is_no_such_light_section() -> None:
+    # The verdict review of #122, finding 5: 25 sections have one more light section than 24.
+    verdict = _verdict(chunk(), chunk([*overworld(FLAT_BOTTOM), AIR_SECTION]))
+
+    shown = {d.path: (d.reference, d.candidate) for d in verdict.divergences}
+    assert shown["light.sky[26]"] == (
+        "chunk 0 0 (y from the world's bottom), y 400 to 415: no such light section",
+        "chunk 0 0 (y from the world's bottom), y 400 to 415: not sent",
     )
 
 

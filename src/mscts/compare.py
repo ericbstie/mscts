@@ -729,11 +729,24 @@ def _neutral(packet: Packet) -> bool:
 
 
 def _position(packet: Packet) -> tuple[int, int] | None:
-    """The chunk (x, z) of a decoded play packet about one chunk (`_CHUNK_PACKETS`); else None."""
-    if packet.state is not State.PLAY or packet.name not in _CHUNK_PACKETS or not packet.fields:
+    """The chunk (x, z) of a play packet about one chunk (`_CHUNK_PACKETS`); else None.
+
+    A chunk the codec could not read has the position of its first two Ints, which the client
+    reads first (`ClientboundLevelChunkWithLightPacket`), if it has 8 bytes.
+    """
+    if packet.state is not State.PLAY or packet.name not in _CHUNK_PACKETS:
         return None
+    if packet.fields is None:
+        if packet.name != _CHUNK or len(packet.payload) < _CHUNK_POSITION_BYTES:
+            return None
+        x, z = struct.unpack(">ii", packet.payload[:_CHUNK_POSITION_BYTES])
+        return x, z
     x, z = packet.fields.get("chunk_x"), packet.fields.get("chunk_z")
     return (x, z) if type(x) is int and type(z) is int else None
+
+
+_CHUNK = "minecraft:level_chunk_with_light"
+_CHUNK_POSITION_BYTES = 8
 
 
 _BIOMES_REGISTRY = "minecraft:worldgen/biome"
@@ -1931,13 +1944,16 @@ def _levels(data: bytes) -> list[int]:
 
 
 def _light_text(value: _Value | Absent) -> str:
-    """A light section said whole: "all 15", "levels 0 to 15", "empty", "not sent", ...."""
+    """A light section said whole: "all 15", "levels 0 to 15", "empty", "not sent", ....
+
+    ABSENT is past the side's light sections: "no such light section".
+    """
     if isinstance(value, bytes):
         found = set(_levels(value))
         return f"all {min(found)}" if len(found) == 1 else f"levels {min(found)} to {max(found)}"
     if isinstance(value, str):
         return value
-    return "not sent"
+    return "no such light section" if value is ABSENT else "not sent"
 
 
 _CANONICAL: Mapping[

@@ -1580,7 +1580,8 @@ proves it necessary:
      value of its own: the client fails. A gameplay Divergence of a light
      section shows the positions that differ, with each side's level, when
      both sides send an array, and otherwise what each side's section is
-     (`chunk 0 0, y -32 to -17: not sent` against `all 15`).
+     (`chunk 0 0, y -32 to -17: not sent` against `all 15`; `no such
+     light section` past a side's light section count).
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡
@@ -1709,7 +1710,8 @@ proves it necessary:
    (State and name, and the position of a chunk, light update or
    forgotten chunk: two at different positions are never one packet sent
    two ways, so each is `missing` or `unexpected`, and shows
-   `chunk <x> <z>` rather than its fields),
+   `chunk <x> <z>` rather than its fields; a chunk the codec cannot
+   read has the position of its first two Ints, if it has 8 bytes),
    so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
    mirrors it: match the common prefix and suffix as they stand (so of
