@@ -111,9 +111,10 @@ need is missing, add it here in the same commit that introduces it.
   it is random; that is judged statistically instead (ADR-0006). Entity
   ids need no Mask, and may not have one: every Comparison numbers each
   Bot's entities in the order it first hears of them (#21).
-- **Random field**: a field vanilla draws at random on every run, such as
-  the login's session id or a sound's seed (`compare.RANDOM_FIELDS`, each
-  with its reason).
+- **Random field**: a field whose value vanilla draws at random, or reads from its clock, on
+  every run, such as the login's session id, a sound's seed or when an
+  advancement criterion was obtained (`compare.RANDOM_FIELDS`, each with
+  its reason).
   Every Comparison masks it, whatever the Group, because two vanilla runs
   would differ; how it is distributed is a statistical Group's job
   (ADR-0011).
