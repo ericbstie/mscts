@@ -18,7 +18,7 @@ vanilla sent.
 
 ## A Run, step by step
 
-```
+```text
 Group ──► Bot(s) ──► vanilla  ──► Transcript R ──┐
                                                  ├──► Comparison ──► Verdict
 Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘

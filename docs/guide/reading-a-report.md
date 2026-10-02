@@ -9,11 +9,13 @@ The Report has up to eight sections. Empty sections are left out.
 ## Header
 
 ```
+...
 mscts Report
   Reference    vanilla (its status says version "26.3")
   Candidate    pumpkin (its status says version "26.3")
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
+...
 ```
 
 Each server's line quotes the version name its own status response gave.
@@ -26,9 +28,11 @@ test cases the same way. When no difference is one a player would notice, a
 third line says so:
 
 ```
+...
 2 groups: 2 different in network traffic only.
 10 test cases: 6 identical, 4 different in network traffic only.
 No difference a player would notice was found.
+...
 ```
 
 If nothing differed at all, the summary is one sentence:
@@ -70,14 +74,18 @@ player reads, is identical.
 
 This section lists gameplay Divergences under their mechanic, then under
 their Group. The mechanic is the first part of the Group id, so `status/ping`
-falls under "Server list ping (status)". An illustrative entry:
+falls under "Server list ping (status)". An entry rendered from illustrative Report inputs:
 
 ```
+...
 Differences a player would notice
 ---------------------------------
   Server list ping (status)
     status/basic
       - status_response.players.max: vanilla sends 20, pumpkin sends 100
+    status/ping
+      - pong_response.time: vanilla sends 1, pumpkin sends 2 (in 2 of 5 runs)
+...
 ```
 
 Each entry names its test case, then both values. Values longer than 80
@@ -100,6 +108,7 @@ An entry that appeared in only some runs ends with `(in 2 of 5 runs)`.
 ## Network traffic differences
 
 ```
+...
 Network traffic differences (a vanilla client reads both alike; not counted in scores)
 --------------------------------------------------------------------------------------
   Server list ping (status)
@@ -108,6 +117,7 @@ Network traffic differences (a vanilla client reads both alike; not counted in s
       - status_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
       - status_response.favicon: vanilla leaves it out, pumpkin sends null
       - status_response.players.sample: vanilla leaves it out, pumpkin sends []
+...
 ```
 
 These values differ in bytes but decode to the same thing in the vanilla
@@ -134,13 +144,15 @@ network traffic once a rule for it exists.
 ## Not judged, or not the same every run
 
 ```
+...
 Not judged, or not the same every run
 -------------------------------------
-  join/basic was not played (blocked): prerequisite status/basic was mismatch
   status/ping was different in 2 of 5 runs
+  join/basic was not played (blocked): prerequisite status/basic was mismatch
+...
 ```
 
-This section lists Groups that mscts skipped (`blocked`), because a
+The example above uses illustrative Report inputs. This section lists Groups that mscts skipped (`blocked`), because a
 prerequisite did not match or because the Candidate does not have a command
 the Group sets up the world with (`needs /tick`, for example). It also lists
 Groups it could not judge because mscts or vanilla failed (`error`), and
@@ -150,11 +162,13 @@ to a race or a timing-dependent path in the Candidate.
 ## Timings
 
 ```
+...
 Timings (ms)
 ------------
-  measurement       vanilla median    p95  pumpkin median   p95  n
-  status.rtt                  1.41   3.18            0.27  0.48  5
-  instance.startup           9,987  9,987              39    39  1
+  measurement       vanilla median     p95  pumpkin median   p95  n
+  status.rtt                  3.00    6.14            0.37  1.93  5
+  instance.startup          23,720  23,720              76    76  1
+...
 ```
 
 Each row is one Measurement, in milliseconds, with the median and p95 for
@@ -176,9 +190,11 @@ built yet. **How to read this** defines gameplay and network traffic in the
 Candidate's name, and says what a test case is:
 
 ```
+...
 How to read this
 ----------------
   gameplay: a vanilla client would read pumpkin's value differently from vanilla's, so a player could notice it.
   network traffic: the bytes differ, but a vanilla client decodes both to the same thing, so no player could notice it.
   test case: one value mscts compares, named after its packet and where it is in it (status_response.description); [] stands for any element of a list.
+...
 ```

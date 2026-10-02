@@ -54,7 +54,7 @@ uv run mscts adapter list
 ADAPTER  VERSION           TARGET  STATE
 vanilla  26.3              26.3    installed
 pumpkin  nightly-48cba7ee  26.3    not installed
-pumpkin  -                 26.3    installed: no Registry entry, from ./pumpkin-X64-Linux (sha256 864f606e...)
+pumpkin  -                 26.3    installed: no Registry entry, from /tmp/pumpkin-X64-Linux (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e)
 ```
 
 ```sh
@@ -67,7 +67,7 @@ vanilla 26.3: installed at /root/.cache/mscts/vanilla/26.3
   sha256:    d052f14d7a173734fba553711e5b570162e2f2a313267ee31a21b975a679be64
   size:      62294556 bytes
   from:      https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar
-  installed: 2026-09-27T08:30:59+00:00
+  installed: 2026-10-02T00:21:02+00:00
 ```
 
 `status` exits with code 1 when the Adapter has nothing installed, and prints

@@ -16,34 +16,32 @@
       <div class="ms-term" aria-label="A Report from mscts run, vanilla against Pumpkin">
         <div class="ms-term-bar"><i></i><i></i><i></i></div>
 <pre v-pre><span class="prompt">$</span> mscts run --candidate pumpkin
-<span class="muted">starting vanilla and pumpkin ...
-running status/basic (1 of 5) ...
-...</span>
-
-<span class="head">mscts Report</span>
+mscts Report
   Reference    vanilla (its status says version "26.3")
   Candidate    pumpkin (its status says version "26.3")
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
 
 2 groups: 2 different in network traffic only.
-10 test cases: 6 identical, 4 different in network
-traffic only.
+10 test cases: 6 identical, 4 different in network traffic only.
 No difference a player would notice was found.
 
-<span class="head">Network traffic differences</span>
+Network traffic differences (a vanilla client reads both alike; not counted in scores)
+--------------------------------------------------------------------------------------
   Server list ping (status)
     status_response: 4 values are sent differently, e.g.
-      - status_response.description: vanilla sends "mscts",
-        pumpkin sends {"text": "mscts"}
-      - status_response.favicon: vanilla leaves it out,
-        pumpkin sends null
-      <span class="muted">...</span>
+      - status_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
+      - status_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
+      - status_response.favicon: vanilla leaves it out, pumpkin sends null
+      - status_response.players.sample: vanilla leaves it out, pumpkin sends []
 
-<span class="head">Timings (ms)</span>
-  measurement       vanilla median  pumpkin median  n
-  status.rtt                  1.41            0.27  5
-  instance.startup           9,987              39  1</pre>
+Timings (ms)
+------------
+  measurement       vanilla median     p95  pumpkin median   p95  n
+  status.rtt                  3.00    6.14            0.37  1.93  5
+  instance.startup          23,720  23,720              76    76  1
+
+...</pre>
       </div>
     </section>
 
