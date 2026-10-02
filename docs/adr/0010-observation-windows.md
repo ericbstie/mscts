@@ -3,7 +3,8 @@
 Status: accepted (2026-10-01). Refines ADR-0006's Masks rule (item 2) for
 heartbeat packets and the barrier's packets. Amended 2026-10-01 (#17):
 Control's barrier, below. Amended 2026-10-02 (#88): the barrier ends only
-after a tick has passed, below.
+after a tick has passed, below. Amended 2026-10-02 (#105): a window can
+end at a packet's arrival, below.
 
 ## Context
 
@@ -160,3 +161,28 @@ in the runs made. So
 **Groups change blocks only in chunks a Bot has had since join**, for now
 chunk (0, 0): blocks with x and z from 0 to 15. A Group that needs more
 waits for the chunks it needs (not built yet).
+
+## Amendment (2026-10-02, #105): a window can end at a packet's arrival
+
+Item 4's barrier lets in whatever the server sends until the barrier's
+answers: for a join, that was 1 to 6 chunk batches and the mobs walking into
+view, so two vanilla joins matched in 2 of 84 plays (#30's measurement). A
+join's first chunk batch is the same on every Instance; what follows it
+depends on timing.
+
+1. **`observe(until=<packet>)` ends the window at that packet's arrival,
+   with no barrier.** Its close Mark is stamped a nanosecond after the
+   first such play packet arrived at a Bot other than Control's. The body
+   must last until it has arrived (`bot.join()` does); if none arrived,
+   the Group fails (a Candidate's `mismatch` with a `failed` Divergence,
+   the Reference's `error`).
+2. **Frames that one socket read completes are stamped a nanosecond
+   apart, in order.** Before, they shared a stamp, and vanilla sends a mob
+   bundle and `player_info_update` in the same read right after
+   `chunk_batch_finished`, so a Mark could not fall between them: 6 of 100
+   plays differed. With distinct stamps, 160 of 160 plays held the same
+   packet names, counts and chunk positions on two vanilla Instances.
+3. **`Control.leave()` closes Control's Bot;** the next `run` joins a new
+   one behind the barrier. A Group whose window holds a join sets its
+   Fixture, leaves (so the joining Bot does not see Control's player),
+   waits with `mscts.settle`, and rejoins Control to undo the Fixture.

@@ -87,12 +87,12 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AS (sonnet): #105, `observe(until=)` and Control leaving and rejoining.
+- AU (opus): #106, canonical forms for the join (dimension names, attributes, recipes,
+  advancements).
 - AT (sonnet): #35 `blocks/*`, the test-group routine's first full run.
 
-Next: #105 (`observe(until=)`, Control rejoins), then the test Groups by the routine
-(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #21, #105,
-#106 and #22. The helper (ChatGPT) has #25 Bot movement.
+Next: the test Groups by the routine
+(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #106 and #22. The helper (ChatGPT) has #25 Bot movement.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -245,6 +245,9 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- Merged #112 (#105: `observe(until=<packet>)` ends a window at that packet's arrival, no
+  barrier; frames of one socket read are stamped a nanosecond apart; `Control.leave()`;
+  a join's window held the same packets on two vanilla Instances in 160 of 160 plays).
 - Merged the helper's #110 (#107: probe_loop saves whole payloads, prints totals per
   test case, exits 0, takes `run(loop=...)`; javap `--out DIR`) and #111 (#109: the
   docs checks run the guide's Python examples; a fragment carries `<!-- not run: why -->`).

@@ -84,7 +84,11 @@ first.
   first, as its own small PR (AL, #17, cherry-picked #19's).
 - A change to a barrier or an Observation window is done when its
   Self-check passes 20 of 20 five times in a row, with a javap account of
-  every queue it crosses: one 20 of 20 hid a 1-in-10 flake (#18).
+  every queue it crosses: one 20 of 20 hid a 1-in-10 flake (#18). Its spec
+  gets a 20-play live probe before the brief: "one Mark at the arrival"
+  hid three layers, the last in `net.py` (AS, #105).
+- A resume message says "continue from where you stopped", never the
+  worker's state from memory: a wrong one reads as a decision (AS).
 - The ownership list in a brief names the shared test helpers
   (`tests/support/`, fakes) a parallel worker may import, not only `src/`.
 - A spec for a flaky failure names its cause as a hypothesis. Its first
