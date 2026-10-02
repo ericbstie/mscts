@@ -26,6 +26,9 @@ makes the value) and in the client (what it reads it into):
 - a value vanilla draws at random, or reads from the clock (an
   advancement's `obtained` time), is a `compare.RANDOM_FIELDS` entry;
 - an identifier without gameplay meaning is a Mask, with its reason;
+- a Group that spawns or counts entities turns natural spawning off in
+  its Fixture (`gamerule spawn_mobs false`; 26.3 rule names are
+  snake_case), and tags what it summons so it removes only those;
 - anything else is the Group not being deterministic yet: the window
   reaches timing (later chunk batches, a barrier that waits ticks) or
   world state that drifts between Instances (the default flat world

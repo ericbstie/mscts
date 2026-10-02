@@ -83,6 +83,8 @@ then one commit.
 
 ## Known traps
 
+- ty narrows `isinstance(value, Mapping)` only to `Top[Mapping]` and refuses
+  `value[key]`; `cast("Mapping[str, object]", value)` after the check.
 - Never cancel a Bot operation from outside (`asyncio.timeout` around a
   connect-to-close span leaks the socket, and `filterwarnings = error` fails
   the test). Bound it with the Bot's own `timeout_s`.
