@@ -894,8 +894,11 @@ class GroupContext:
                                     # closed drains, then OBSERVE_CLOSE is stamped 1 ns after
                                     # the Event.t_ns (the arrival, never the time a Bot took
                                     # the packet; #88) of the first clientbound play packet
-                                    # of that name any Bot received at or after the open
-                                    # Mark. Compare puts a packet stamped at a Mark's time
+                                    # of that name any Bot but Control received at or after
+                                    # the open Mark (Control's receipts are never compared;
+                                    # the earliest arrival over the Bots, whatever order
+                                    # they were recorded in).
+                                    # Compare puts a packet stamped at a Mark's time
                                     # after the Mark, so the extra nanosecond keeps that
                                     # packet inside the window; the frames of one socket
                                     # read are stamped a nanosecond apart (Connection), so
