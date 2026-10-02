@@ -1,7 +1,7 @@
 ---
 name: Spec
 about: One independent change that makes the code match the documented interface (ADR-0009)
-labels: ""
+labels: needs-triage
 ---
 
 ## Context
