@@ -47,6 +47,12 @@ def server(seen: list[Packet], *, answers: bool = True, later_state: int = 1) ->
             if packet.name == REQUEST:
                 requests += 1
                 await answer_each_tick(peer, requests)
+            elif answers and (packet.fields or {}).get("command") == "burst":
+                # One write, so one read at the Bot: both frames arrive at the same time.
+                await peer.write(
+                    peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01")
+                    + peer.frame(BATCH_FINISHED, batch_size=1)
+                )
             elif answers and (packet.fields or {}).get("command") == "batch":
                 await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
                 await asyncio.sleep(GAP_S)
@@ -106,7 +112,7 @@ async def test_the_window_closes_when_the_first_such_packet_arrived_not_when_it_
     assert (opened.label, closed.label) == (OBSERVE_OPEN, OBSERVE_CLOSE)
     joined, first, _ = arrivals(transcript, BATCH_FINISHED)
     assert joined < opened.t_ns <= first
-    assert closed.t_ns == first
+    assert closed.t_ns == first + 1, "just after the arrival (see the same-read test)"
     assert exit_ns - closed.t_ns > 4 * GAP_S * 1e9, "the Mark is the arrival, not the time taken"
     names = [packet.name for packet in seen]
     assert REQUEST not in names, "no barrier"
@@ -123,6 +129,28 @@ async def test_a_later_such_packet_and_what_follows_the_first_are_not_compared()
     verdict = compare(first, second, [])
     assert verdict.outcome is Outcome.MATCH, verdict
     assert "block_update.block_state" in verdict.test_cases, "what came before is compared"
+
+
+@pytest.mark.asyncio
+async def test_what_arrived_in_the_same_read_as_the_packet_is_in_the_window() -> None:
+    # The frames one read took share one arrival time, and a join's packets come in a
+    # few reads: a window that stopped before the packet's time would lose its read, and
+    # on a live server the whole join (#105).
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        bot = await context.bot("alice")
+        await bot.join()
+        async with context.observe(until=BATCH_FINISHED):
+            await bot.command("burst")
+            await asyncio.sleep(4 * GAP_S)
+
+    (block,) = arrivals(transcript, BLOCK_UPDATE)
+    _, batch = arrivals(transcript, BATCH_FINISHED)
+    assert block == batch, "one read took both"
+    _, closed = transcript.marks
+    assert closed.t_ns > batch
+    test_cases = compare(transcript, transcript, []).test_cases
+    assert "block_update.block_state" in test_cases
 
 
 @pytest.mark.asyncio
@@ -187,7 +215,7 @@ async def test_only_a_packet_the_server_sent_closes_it() -> None:
         transcript.record("alice", heard(Direction.CLIENTBOUND), t_ns=arrival)
         transcript.record("bob", heard(Direction.CLIENTBOUND), t_ns=transcript.now_ns())
 
-    assert transcript.marks[-1] == Mark(t_ns=arrival, label=OBSERVE_CLOSE)
+    assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
 
 
 @pytest.mark.asyncio
