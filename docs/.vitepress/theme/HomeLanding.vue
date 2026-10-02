@@ -28,13 +28,22 @@ Took 22 s</pre>
     <section class="ms-section">
       <h2>Why use this tool?</h2>
       <p>
-        mscts is for people who want a custom server that keeps vanilla's
-        behavior. It gives an objective measure of that playability: it lists
-        every difference a player on the vanilla client could notice. As a
-        player, you can decide whether a server is close enough to vanilla
-        for your liking. As a developer, you can focus on performance and new
-        features without sacrificing core vanilla compliance.
+        The official vanilla Minecraft server implementation includes a lot of
+        features and gameplay quirks that a modified Minecraft server most
+        likely wants to uphold. mscts gives developers a simpler way to check exactly which
+        features and quirks are kept.
       </p>
+      <p>
+        As a developer, you can use the results as a benchmark to work
+        towards, much like
+        <a href="https://github.com/tc39/test262">Test262</a> (the official
+        ECMAScript conformance test suite) is used to benchmark JavaScript
+        engines' conformity to the ECMAScript standard.
+      </p>
+    </section>
+
+    <section class="ms-section">
+      <h2>What is tested?</h2>
     </section>
 
     <section class="ms-section">

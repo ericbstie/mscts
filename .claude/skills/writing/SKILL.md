@@ -58,6 +58,8 @@ Any session that writes user-facing text follows this skill all the same.
   in mscts, so don't use "group" or "test" as ordinary words next to them
   ("the Report groups results by …", "tests are grouped by …"). Say
   "sorts", "lists" or "splits" instead.
+- **Write for Minecraft server developers.** They are the audience.
+  Players are not addressed; a developer may show them the results.
 - **Write for someone new.** No term or claim the reader cannot
   understand without context they don't have (a Self-check, a Group,
   "vanilla against vanilla").
@@ -75,6 +77,21 @@ Any session that writes user-facing text follows this skill all the same.
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Home page, "Why use this tool?"
+
+- Before: "mscts is for people who want a custom server that keeps
+  vanilla's behavior. It gives an objective measure of that playability:
+  it lists every difference a player on the vanilla client could notice.
+  As a player, you can decide … As a developer, you can focus …"
+- After: the maintainer's draft. Vanilla has features and quirks a
+  modified server most likely wants to uphold; mscts gives developers a
+  simpler way to check which are kept; use the results as a benchmark,
+  like Test262 for JavaScript engines.
+- Why: the colon says the same thing twice in two different ways (see
+  "How it works", opening). And the page is not for players at all:
+  "This is targeted only for Minecraft server developers. It's up to the
+  Minecraft server developers to use this tool as marketing."
 
 ### Home page, "How it works", opening
 
