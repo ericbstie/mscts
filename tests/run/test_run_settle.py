@@ -6,6 +6,7 @@ says no player is online (`mscts.settle`, tested in `test_settle.py`). The fakes
 each status request from a script of counts.
 """
 
+import asyncio
 from pathlib import Path
 from time import perf_counter
 
@@ -16,6 +17,7 @@ import mscts.settle as settle_module
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import Group, GroupContext
 from mscts.groups import status
+from mscts.net import Endpoint
 from mscts.run import run, run_results
 from tests.run.occupancy import Occupancy, attached, named, never_answer
 
@@ -136,6 +138,104 @@ async def test_a_candidate_that_never_empties_gives_a_mismatch_with_a_failed_div
         ),
     )
     assert played == []
+
+
+RAISED = "the wait for no player online failed: RuntimeError: an unexpected failure"
+"""What a settle poll that raises RuntimeError comes to as a sentence."""
+
+
+async def _play_with_a_raising_poll(
+    raising: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> tuple[list[Verdict], list[str]]:
+    """Run two Groups, the first settle poll of side `raising` raising RuntimeError.
+
+    The other side's first poll ends only after a while. Returns the Verdicts, and what
+    happened in order: each poll ending ("<side> settled"), each Group played.
+    """
+    happened: list[str] = []
+    raised: list[str] = []
+
+    async def poll(endpoint: Endpoint, *, deadline_s: float) -> None:
+        del deadline_s
+        side = names[endpoint.port]
+        if side == raising and not raised:
+            raised.append(side)
+            msg = "an unexpected failure"
+            raise RuntimeError(msg)
+        if side != raising:
+            await asyncio.sleep(0.1)  # still polling when the other side raises
+        happened.append(f"{side} settled")
+
+    async def script(context: GroupContext) -> None:
+        happened.append(f"{names[context.endpoint.port]} played")
+
+    monkeypatch.setattr(run_module, "until_no_player_online", poll)
+    async with (
+        attached("one", never_answer) as one,
+        attached("two", never_answer) as two,
+    ):
+        names = {one.endpoint.port: "Reference", two.endpoint.port: "Candidate"}
+        verdicts = await run(
+            [Group(id="test/first", run=script), Group(id="test/second", run=script)],
+            one,
+            two,
+            workdir=tmp_path / "run",
+        )
+    return verdicts, happened
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_whose_settle_poll_raises_gets_a_mismatch_and_the_run_goes_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    verdicts, happened = await _play_with_a_raising_poll("Candidate", monkeypatch, tmp_path)
+
+    first, second = verdicts
+    assert first == Verdict(
+        group_id="test/first",
+        outcome=Outcome.MISMATCH,
+        divergences=(
+            Divergence(
+                bot="",
+                index=0,
+                kind="failed",
+                packet="",
+                path=None,
+                reference=ABSENT,
+                candidate=RAISED,
+                test_case="",
+            ),
+        ),
+        detail=f"the Candidate failed: {RAISED}",
+    )
+    assert second.outcome is Outcome.MATCH
+    assert happened == [
+        "Reference settled",  # the other poll ran to its end before the Run went on
+        "Candidate settled",
+        "Reference settled",
+        "Reference played",
+        "Candidate played",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_reference_whose_settle_poll_raises_gets_an_error_and_the_run_goes_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    verdicts, happened = await _play_with_a_raising_poll("Reference", monkeypatch, tmp_path)
+
+    first, second = verdicts
+    assert first == Verdict(
+        group_id="test/first", outcome=Outcome.ERROR, detail=f"the Reference failed: {RAISED}"
+    )
+    assert second.outcome is Outcome.MATCH
+    assert happened == [
+        "Candidate settled",
+        "Reference settled",
+        "Candidate settled",
+        "Reference played",
+        "Candidate played",
+    ]
 
 
 @pytest.mark.asyncio
