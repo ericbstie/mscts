@@ -11,7 +11,7 @@
       {
         "name": "instance.startup",
         "unit": "ms",
-        "value": 23719.983328
+        "value": 20963.145479
       }
     ]
   },
@@ -22,7 +22,7 @@
       {
         "name": "instance.startup",
         "unit": "ms",
-        "value": 75.937704
+        "value": 104.036771
       }
     ]
   },
@@ -760,35 +760,35 @@
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 6.135056
+            "value": 6.048233
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.987848
+            "value": 1.509702
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 5.78935
+            "value": 5.902982
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.060508
+            "value": 5.998025
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 2.99591
+            "value": 2.83388
           }
         ]
       ],
@@ -797,35 +797,35 @@
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 0.314576
+            "value": 0.267847
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.883386
+            "value": 0.270188
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.927017
+            "value": 0.274469
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 0.374951
+            "value": 0.349672
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 0.370687
+            "value": 0.328192
           }
         ]
       ]
@@ -833,5 +833,6 @@
   ],
   "notes": [
     "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
-  ]
+  ],
+  "elapsed_s": 22.709659598000144
 }

@@ -1,38 +1,5 @@
-mscts Report
-  Reference    vanilla (its status says version "26.3")
-  Candidate    pumpkin (its status says version "26.3")
-  Target       Minecraft 26.3 (protocol 777)
-  Repetitions  5 of each group
-
-3 groups: 2 different, 1 blocked.
-2 test cases: 2 different.
-
-Differences a player would notice
----------------------------------
-  Server list ping (status)
-    status/basic
-      - status_response.players.max: vanilla sends 20, pumpkin sends 100
-    status/ping
-      - pong_response.time: vanilla sends 1, pumpkin sends 2 (in 2 of 5 runs)
-
-Not judged, or not the same every run
--------------------------------------
-  status/ping was different in 2 of 5 runs
-  join/basic was not played (blocked): prerequisite status/basic was mismatch
-
-Timings (ms)
-------------
-  measurement       vanilla median     p95  pumpkin median   p95  n
-  status.rtt                  3.00    6.14            0.37  1.93  5
-  instance.startup          23,720  23,720              76    76  1
-  Not measured where it was not played (see above): join/basic
-
-Notes
------
-  - Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet.
-
-How to read this
-----------------
-  gameplay: a vanilla client would read pumpkin's value differently from vanilla's, so a player could notice it.
-  network traffic: the bytes differ, but a vanilla client decodes both to the same thing, so no player could notice it.
-  test case: one value mscts compares, named after its packet and where it is in it (status_response.description); [] stands for any element of a list.
+Running tests against pumpkin
+- Player limit  status_response.players.max
+- Server list ping response  status:pong_response.timestamp
+- Not tested: prerequisite status/basic was mismatch  join/basic
+Took 41 s

@@ -42,8 +42,8 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    field. The result is a **Verdict**.
 5. **Repeat.** The Run plays every Group N times (five by default) against
    the same pair of servers, then stops both.
-6. **Report.** mscts prints the differences under their mechanic, followed
-   by timings.
+6. **Report.** mscts lists each differing test case once, then any skipped
+   or failed Groups and the total Run time.
 
 ## Verdicts
 
@@ -77,8 +77,8 @@ So every Divergence is one of two kinds:
 The rules that decide this form the **canonical table**. Each rule rewrites
 a value into one canonical form, and each one cites the client code that
 proves the two forms are equal. mscts still reports network traffic
-differences, in their own section, but compliance scores count only gameplay
-ones.
+differences alongside gameplay differences, but compliance scores count
+only gameplay ones.
 
 A difference is only network traffic where such a rule says so. Today the
 canonical table covers the server list answer. Any other difference counts
@@ -112,8 +112,9 @@ is flaky or is missing a Mask. It never means vanilla is wrong.
 A Group marks spans in its script. `status/ping` marks the time from
 sending a ping to receiving the pong, and mscts records that as
 `status.rtt` in milliseconds. mscts also records `instance.startup`, the
-time from launch until the server is ready. The Report shows the median and
-p95 of each measurement for both servers.
+time from launch until the server is ready. Those Measurements remain in
+the Run result. The default Report shows the total Run time, including
+starting and stopping both servers, in seconds.
 
 ## What mscts does not cover
 

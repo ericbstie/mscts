@@ -59,8 +59,8 @@ curl -sSfL -o pumpkin-X64-Linux \
 uv run mscts adapter install pumpkin --from pumpkin-X64-Linux
 ```
 
-A build installed with `--from` matches no Registry entry, so Reports name it
-by its sha256. See [Installing servers](/guide/installing-servers).
+A build installed with `--from` matches no Registry entry, so the Adapter
+listing names it by its sha256. See [Installing servers](/guide/installing-servers).
 
 Check what you have:
 
@@ -86,38 +86,18 @@ each, stops them and prints the Report. Progress goes to stderr and the
 Report to stdout, so `> report.txt` captures only the Report.
 
 ```
-mscts Report
-  Reference    vanilla (its status says version "26.3")
-  Candidate    pumpkin (its status says version "26.3")
-  Target       Minecraft 26.3 (protocol 777)
-  Repetitions  5 of each group
-
-2 groups: 2 different in network traffic only.
-10 test cases: 6 identical, 4 different in network traffic only.
-No difference a player would notice was found.
-
-Network traffic differences (a vanilla client reads both alike; not counted in scores)
---------------------------------------------------------------------------------------
-  Server list ping (status)
-    status_response: 4 values are sent differently, e.g.
-      - status_response.description: vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-      - status_response.enforceSecureChat: vanilla leaves it out, pumpkin sends true
-      - status_response.favicon: vanilla leaves it out, pumpkin sends null
-      - status_response.players.sample: vanilla leaves it out, pumpkin sends []
-
-Timings (ms)
-------------
-  measurement       vanilla median     p95  pumpkin median   p95  n
-  status.rtt                  3.00    6.14            0.37  1.93  5
-  instance.startup          23,720  23,720              76    76  1
-
-...
+Running tests against pumpkin
+- Server list description  status_response.description
+- Unused secure chat flag  status_response.enforceSecureChat
+- Server list icon  status_response.favicon
+- Server list player sample  status_response.players.sample
+Took 22.7 s
 ```
 
 Pumpkin sends four status values in a different form from vanilla. These are
 network traffic differences: the vanilla client decodes each pair to the
 same thing, so none of them count against Pumpkin.
-[Reading a Report](/guide/reading-a-report) explains each section.
+[Reading a Report](/guide/reading-a-report) explains the list and the test case names.
 
 ## Next
 

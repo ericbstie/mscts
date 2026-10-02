@@ -11,10 +11,11 @@ This page summarizes them. The ADR is the source when the two disagree.
 | [0003](https://github.com/ericbstie/mscts/blob/main/docs/adr/0003-single-pinned-target.md) | One Target at a time: Minecraft 26.3, protocol 777. Packet ids come from vanilla's data generator. |
 | [0004](https://github.com/ericbstie/mscts/blob/main/docs/adr/0004-adapters-are-translators.md) | An Adapter only translates a ServerSpec into config. One runner launches every server, and readiness is a status ping, never a log line. |
 | [0005](https://github.com/ericbstie/mscts/blob/main/docs/adr/0005-in-repo-plan-and-green-commits.md) | Every commit passes `mise run check`. The plan lives in the repository; the queue moved to issues (0009). |
-| [0006](https://github.com/ericbstie/mscts/blob/main/docs/adr/0006-compliance-is-a-catalogue-of-differences.md) | The Report lists every difference, grouped by mechanic, with no accepted deviations. Masks cover only ids with no gameplay meaning. Random mechanics are tested statistically. |
-| [0007](https://github.com/ericbstie/mscts/blob/main/docs/adr/0007-wire-only-divergences.md) | Network traffic differences, where the vanilla client ends up with the same result, are reported separately and left out of scores. |
+| [0006](https://github.com/ericbstie/mscts/blob/main/docs/adr/0006-compliance-is-a-catalogue-of-differences.md) | The Report lists every differing test case (0012 replaces the mechanic sections), with no accepted deviations. Masks cover only ids with no gameplay meaning. Random mechanics are tested statistically. |
+| [0007](https://github.com/ericbstie/mscts/blob/main/docs/adr/0007-wire-only-divergences.md) | Network traffic differences, where the vanilla client ends up with the same result, are left out of scores. ADR-0012 replaces the separate section. |
 | [0008](https://github.com/ericbstie/mscts/blob/main/docs/adr/0008-explicit-installs-pinned-registry-adapter-dx.md) | Installs are explicit and idempotent, the Registry pins every build by checksum, and Adapters get an authoring guide and a conformance check. |
 | [0009](https://github.com/ericbstie/mscts/blob/main/docs/adr/0009-docs-are-the-spec-issues-and-prs.md) | This site is the spec for what users see and always matches the code. Changes are GitHub issues, each landing as one PR. |
+| [0012](https://github.com/ericbstie/mscts/blob/main/docs/adr/0012-short-default-report.md) | The default Report lists differing test cases, skipped or failed Groups, and total Run time. Gameplay and network traffic share the list. |
 
 ## Why a black box
 
@@ -31,11 +32,11 @@ differences count. mscts reports every difference and leaves the judgement
 to the reader. A Candidate that fixes a vanilla bug shows up as a
 Divergence, like any other change in behaviour.
 
-## Why network traffic differences are separate
+## Why network traffic differences are listed
 
 Some differences change the bytes but not what the client decodes, such as
 a text component sent as `"x"` or as `{"text": "x"}`. mscts calls these
 network traffic differences. Counting those as
 failures would penalize choices the protocol allows. Hiding them would
-remove information a server developer may want. mscts reports them in
-their own section and keeps them out of scores.
+remove information a server developer may want. mscts lists them alongside
+gameplay differences and keeps them out of scores.

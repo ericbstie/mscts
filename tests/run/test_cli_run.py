@@ -56,10 +56,8 @@ def test_a_run_prints_the_report_and_says_what_it_does(
     code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "2")
 
     assert code == 0
-    summary = "No differences from vanilla were found in the 6 test cases of the 2 groups run."
-    assert summary in out, out
-    assert "Timings" in out
-    assert "--out" in out  # the Report says what it leaves out
+    assert out.startswith("Running tests against pumpkin\nNo differences.\nTook "), out
+    assert len(out.splitlines()) == 3
     assert err.index("starting vanilla and pumpkin ...") < err.index("running status/basic")
     assert "running status/ping" in err
     assert "mscts Report" not in err
@@ -73,9 +71,24 @@ def test_a_run_with_divergences_still_exits_0(
     code, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
 
     assert code == 0
-    assert "Differences a player would notice" in out
-    line = next(line for line in out.splitlines() if '"not vanilla"' in line)
-    assert line.startswith("      - status_response.description"), out
+    assert out.startswith(
+        "Running tests against pumpkin\n"
+        "- Server list description text  status_response.description.text\nTook "
+    ), out
+    assert len(out.splitlines()) == 3
+
+
+def test_the_cli_measures_the_total_run_time(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes()
+    times = iter((10.0, 51.25))
+    monkeypatch.setattr(cli, "perf_counter", lambda: next(times))
+
+    code, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+
+    assert code == 0
+    assert out == "Running tests against pumpkin\nNo differences.\nTook 41.2 s\n"
 
 
 def test_the_group_glob_picks_the_groups(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:

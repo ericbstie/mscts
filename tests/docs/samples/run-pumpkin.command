@@ -1,3 +1,3 @@
 mise exec -- uv run mscts run --candidate pumpkin
-Captured 2026-10-02 on main 9730233, Ubuntu VPS, Java 25.
-Pumpkin sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e.
+Captured 2026-10-02 on Ubuntu with Java 25, vanilla 26.3 and the locally installed Pumpkin build.
+Report inputs recorded during the same CLI run; total includes launch and shutdown.

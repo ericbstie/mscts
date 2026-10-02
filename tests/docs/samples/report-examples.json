@@ -159,7 +159,7 @@
           "outcome": "mismatch",
           "detail": "",
           "test_cases": [
-            "pong_response.time"
+            "status:pong_response.timestamp"
           ],
           "divergences": [
             {
@@ -167,10 +167,10 @@
               "index": 0,
               "kind": "field",
               "packet": "minecraft:pong_response",
-              "path": "time",
+              "path": "timestamp",
               "reference": 1,
               "candidate": 2,
-              "test_case": "pong_response.time",
+              "test_case": "status:pong_response.timestamp",
               "observability": "gameplay"
             }
           ]
@@ -180,7 +180,7 @@
           "outcome": "mismatch",
           "detail": "",
           "test_cases": [
-            "pong_response.time"
+            "status:pong_response.timestamp"
           ],
           "divergences": [
             {
@@ -188,10 +188,10 @@
               "index": 0,
               "kind": "field",
               "packet": "minecraft:pong_response",
-              "path": "time",
+              "path": "timestamp",
               "reference": 1,
               "candidate": 2,
-              "test_case": "pong_response.time",
+              "test_case": "status:pong_response.timestamp",
               "observability": "gameplay"
             }
           ]
@@ -201,7 +201,7 @@
           "outcome": "match",
           "detail": "",
           "test_cases": [
-            "pong_response.time"
+            "status:pong_response.timestamp"
           ],
           "divergences": []
         },
@@ -210,7 +210,7 @@
           "outcome": "match",
           "detail": "",
           "test_cases": [
-            "pong_response.time"
+            "status:pong_response.timestamp"
           ],
           "divergences": []
         },
@@ -219,7 +219,7 @@
           "outcome": "match",
           "detail": "",
           "test_cases": [
-            "pong_response.time"
+            "status:pong_response.timestamp"
           ],
           "divergences": []
         }
@@ -356,5 +356,6 @@
   ],
   "notes": [
     "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
-  ]
+  ],
+  "elapsed_s": 41.0
 }
