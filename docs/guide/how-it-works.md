@@ -36,8 +36,9 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    that answers what the vanilla client answers automatically, such as
    keep-alives and teleport confirmations. Before mscts plays a Group, it
    waits until the previous Group's Bots have left, which it reads from each
-   server's own status; if players are still online after a short wait, it
-   does not play the Group and the Verdict is `error`.
+   server's own status. If a server still has players online after a short
+   wait, mscts does not play the Group: the Verdict is `error` if that server
+   is vanilla, and `mismatch` if it is the Candidate.
 3. **Record.** Every packet a Bot sends or receives goes into a
    **Transcript** with a timestamp. A Group can also record named
    **Marks**, such as the start and end of a ping.
@@ -62,8 +63,9 @@ and stops the orphaned process groups.
 | `error` | mscts itself failed, or vanilla could not run the Group. |
 
 When the Candidate breaks the protocol, sends a frame that does not decode,
-closes the connection or stops answering, the Verdict is `mismatch`, led by
-a `failed` Divergence that says what happened. It is never `error`.
+closes the connection, stops answering, or still has players online from the
+Group before, the Verdict is `mismatch`, led by a `failed` Divergence that
+says what happened. It is never `error`.
 Compliance scores leave `error` out, so a Candidate must not be able to
 score better by crashing.
 

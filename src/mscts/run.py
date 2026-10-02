@@ -43,9 +43,6 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
 LOG = logging.getLogger("mscts.run")
 """Where a Run says what it is doing (INFO): the Instances it starts, the Group it plays."""
 
-_ROLES = ("Reference", "Candidate")
-"""What a Run calls its two sides, in order, in a Verdict's detail."""
-
 _STATUS_RESPONSE = "minecraft:status_response"
 
 _NS_PER_MS = 1_000_000
@@ -256,16 +253,7 @@ def judge(
         return _error(group, f"the Comparison failed: {type(exc).__name__}: {exc}")
     if not isinstance(candidate, GroupError):
         return verdict
-    failed = Divergence(
-        bot=candidate.bot,
-        index=0,
-        kind="failed",
-        packet="",
-        path=None,
-        reference=ABSENT,
-        candidate=str(candidate),
-        test_case="",
-    )
+    failed = _failed(bot=candidate.bot, what=str(candidate))
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
@@ -464,12 +452,13 @@ class _Instances:
 
         It waits first for both Instances to have no player online (the previous Group's
         Bots have left). If one has any after `SETTLE_TIMEOUT_S`, `group` is not played
-        on either, and its Verdict is `error`, naming the players still online.
+        on either, and its Verdict names the players still online: `error` if the
+        Reference has any, else `mismatch` (the Candidate's failure), see `_unsettled`.
         """
         endpoints = await self._pair(group.spec)
-        busy = await _busy(endpoints)
-        if busy:
-            return _Play(_error(group, busy))
+        unsettled = await _unsettled(group, endpoints)
+        if unsettled is not None:
+            return _Play(unsettled)
         started = perf_counter()
         attempts = [
             await _attempt(group, endpoint, server=side.name)
@@ -553,19 +542,32 @@ def _installed_version(side: Side) -> str | None:
     return f"sha256 {source.sha256}"
 
 
-async def _busy(endpoints: Sequence[Endpoint]) -> str:
-    """Wait for each Instance to have no player online, and say which still had, if any.
+async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
+    """Wait for the Reference and the Candidate to have no player online; None if both do.
 
-    Every Instance is waited on at once. The answer is "" if all emptied, else one
-    sentence for each that did not, led by its role: "the Reference had 2 players still
-    online after waiting 2 s: watcher, control".
+    Both are waited on at once. If one still has players at the deadline, the Verdict
+    that `group` gets instead of being played:
+
+    - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
+      2 players still online after waiting 2 s: watcher, control", and the same for the
+      Candidate after a "; " if it had too.
+    - Only the Candidate does: `mismatch` (a Candidate failure is never `error`, audit H3),
+      led by a `failed` Divergence that says who is still online.
     """
-    left = await asyncio.gather(*(_left(endpoint) for endpoint in endpoints))
-    return "; ".join(
-        f"the {role} had {players}"
-        for role, players in zip(_ROLES, left, strict=True)
-        if players is not None
-    )
+    reference, candidate = await asyncio.gather(*(_left(endpoint) for endpoint in endpoints))
+    if reference is not None:
+        detail = f"the Reference had {reference}"
+        if candidate is not None:
+            detail += f"; the Candidate had {candidate}"
+        return _error(group, detail)
+    if candidate is not None:
+        return Verdict(
+            group_id=group.id,
+            outcome=Outcome.MISMATCH,
+            divergences=(_failed(bot="", what=str(candidate)),),
+            detail=f"the Candidate failed: {candidate}",
+        )
+    return None
 
 
 async def _left(endpoint: Endpoint) -> PlayersStillOnline | None:
@@ -593,3 +595,17 @@ def _describe(error: Exception, timeout_s: float) -> str:
 
 def _error(group: Group, detail: str) -> Verdict:
     return Verdict(group_id=group.id, outcome=Outcome.ERROR, detail=detail)
+
+
+def _failed(*, bot: str, what: str) -> Divergence:
+    """The `failed` Divergence for a Candidate failure: `what` happened, out of Bot `bot`."""
+    return Divergence(
+        bot=bot,
+        index=0,
+        kind="failed",
+        packet="",
+        path=None,
+        reference=ABSENT,
+        candidate=what,
+        test_case="",
+    )

@@ -1088,10 +1088,13 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # stopped; the same code path otherwise (judge, blocked, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
-    # A side that is still not empty means the Group is played on neither side: its
-    # Verdict is `error`, "the Reference had 2 players still online after waiting 2 s:
-    # watcher, control" (one sentence per such side, joined by "; "). The wait is not
-    # part of `elapsed_s`.
+    # A side that is still not empty means the Group is played on neither side, and its
+    # Verdict says who is still online. The Reference's failure is `error`: "the Reference
+    # had 2 players still online after waiting 2 s: watcher, control" (the Candidate's
+    # sentence after a "; " if it had players too). The Candidate's alone is `mismatch`
+    # (audit H3: a Candidate failure is never `error`): a `failed` Divergence (bot "",
+    # candidate "2 players still online after waiting 2 s: watcher, control"), detail
+    # "the Candidate failed: ...". The wait is not part of `elapsed_s`.
     # NotImplementedError for a Group that is not exact (M6a/M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
