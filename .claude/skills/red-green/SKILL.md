@@ -83,6 +83,9 @@ then one commit.
 
 ## Known traps
 
+- `git rebase --autosquash` folds `fixup!` commits only with `-i`: use
+  `env GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`. Without
+  `-i` it reports success and leaves the fixup on top (AT, #35).
 - ty narrows `isinstance(value, Mapping)` only to `Top[Mapping]` and refuses
   `value[key]`; `cast("Mapping[str, object]", value)` after the check.
 - Never cancel a Bot operation from outside (`asyncio.timeout` around a

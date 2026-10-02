@@ -95,11 +95,16 @@ filed as #114 and #116 (`lane:comparison`), #115 and #117 (`lane:timing`).
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AV (opus): #22, chunks and light decoded and compared as the client sees them.
-- AT (sonnet): #35 `blocks/*`, the test-group routine's first full run.
+- AV (opus): #22, chunks and light decoded and compared as the client sees them. Its PR
+  is for the next tech lead to review; session 5's lead does not merge it.
+
+Session 5's lead stopped after #35 and #22 (maintainer). Open for the maintainer:
+vanilla's tick-end resends and `section_blocks_update.blocks` are hash-ordered (a
+canonical order in compare?); `mscts run` does not restart a stalled Candidate (Pumpkin
+hangs on `fill ... destroy`); a Pumpkin Report is ~3.8 MB of join Divergences.
 
 Next: the test Groups by the routine
-(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #22. The helper (ChatGPT) has #25 Bot movement.
+(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #22 (and #114).
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -252,6 +257,9 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- Merged #121 (#35: `blocks/setblock`, `blocks/fill`, `blocks/clone`, a `builder` operator
+  Bot runs each command in its own window; 20 of 20 Self-checks; the first full run of the
+  test-group routine, which it corrected). PRs now land with a merge commit.
 - Merged #113 (#106: login's dimension names, attributes, recipes and advancements sorted
   as the client keys them; `update_recipes` and `update_advancements` decode; a Mask hides a
   value, never whether it is there (`compare.MASKED`), and `[*]` is every index; `obtained`
