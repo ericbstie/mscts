@@ -194,11 +194,24 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             ".STREAM_CODEC: Set.copyOf), so a repeated property set keeps the last. The "
             "stonecutter recipes keep their order."
         ),
+        "minecraft:update_advancements": (
+            "removed, sorted by id, and progress, sorted by id, with each one's criteria "
+            "sorted by criterion. Vanilla sends them in hash order: PlayerAdvancements"
+            ".flushDirty collects the removed ids into a HashSet and the progress into a "
+            "HashMap keyed by Identifier, and AdvancementProgress keeps its criteria in a "
+            "HashMap. The client reads them into a set and maps "
+            "(ClientboundUpdateAdvancementsPacket.STREAM_CODEC: the removed ids into a "
+            "LinkedHashSet, the progress with ByteBufCodecs.map(HashMap::new, ...); "
+            "AdvancementProgress.STREAM_CODEC: the criteria the same way), so a repeated id "
+            "or criterion keeps its last value. The added advancements are read into a list, "
+            "and keep their order."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
-reason: what vanilla iterates in an order that changes from one boot (or join) to the next,
-and what the client reads the list into. The sort key is the key of the client's map or set,
+reason: the hash collection vanilla iterates to send the list, in an order the client does
+not keep and that may change from one boot (or join) to the next, and the map or set the
+client reads the list into. The sort key is the key of the client's map or set,
 and the sort is stable, so of a key sent twice the last stays last. That order is never a
 Divergence, not even a network traffic one (docs/research/2026-10-01-control.md, #30).
 """
@@ -952,6 +965,21 @@ def _sorted_update_recipes(fields: dict[str, _Value]) -> dict[str, _Value]:
     return {**fields, "property_sets": _sorted_by(sorted_items, "property_set_id")}
 
 
+def _sorted_update_advancements(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `removed` by id, `progress` by id, and each one's `criteria` by criterion.
+
+    The sorts are stable, so an id or a criterion sent twice keeps the order of its values:
+    the client keeps the last one. The added advancements keep their order.
+    """
+    result = dict(fields)
+    if "removed" in fields:
+        result["removed"] = _sorted_by(fields["removed"], None)
+    if isinstance(progress := fields.get("progress"), list):
+        sorted_criteria = [_with_sorted(each, "criteria", "criterion") for each in progress]
+        result["progress"] = _sorted_by(sorted_criteria, "id")
+    return result
+
+
 def _with_sorted(node: _Value, field: str, key: str | None) -> _Value:
     """`node` with its list `field` sorted as `_sorted_by` does with `key`."""
     if isinstance(node, dict) and field in node:
@@ -995,6 +1023,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:login": _sorting("dimension_names", None),
         "minecraft:update_attributes": _sorting("attributes", "attribute"),
         "minecraft:update_recipes": _sorted_update_recipes,
+        "minecraft:update_advancements": _sorted_update_advancements,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""

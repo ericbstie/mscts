@@ -1061,8 +1061,9 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # the key of the client's map or set, so their order is no
                                     # Divergence at all: update_tags (vanilla's order changes per
                                     # boot; docs/research/2026-10-01-control.md), login's
-                                    # dimension_names, update_attributes' attributes and
-                                    # update_recipes' property sets (#30)
+                                    # dimension_names, update_attributes' attributes,
+                                    # update_recipes' property sets and update_advancements'
+                                    # removed ids and progress (#30, #106)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random on every run, which no exact Group compares
                                     # (ADR-0011): minecraft:login_finished.session_id (same
@@ -1292,6 +1293,19 @@ proves it necessary:
      `ByteBufCodecs.map(HashMap::new, ...)`, and
      `RecipePropertySet.STREAM_CODEC` maps the item list through
      `Set.copyOf`), so a repeated set ends with its last items.
+     `play` / `minecraft:update_advancements`: `removed` is sorted by id,
+     and `progress` by `id`, with each one's `criteria` by `criterion`,
+     all stably; the added `advancements` keep their order. Vanilla
+     sends them in hash order (`javap` on the 26.3 server:
+     `PlayerAdvancements.flushDirty` collects the removed ids into a
+     `HashSet` and the progress into a `HashMap` keyed by `Identifier`,
+     and `AdvancementProgress` keeps its criteria in a `HashMap`). The
+     client reads them into a set and maps
+     (`ClientboundUpdateAdvancementsPacket.STREAM_CODEC`: the removed ids
+     into a `LinkedHashSet`, the progress with `ByteBufCodecs.map(
+     HashMap::new, ...)`, and `AdvancementProgress.STREAM_CODEC` the
+     criteria the same way), so a repeated id or criterion ends with its
+     last value. The added advancements are read into a list.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
