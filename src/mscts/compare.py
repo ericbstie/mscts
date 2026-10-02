@@ -1534,6 +1534,8 @@ def _canonical_level_chunk(fields: dict[str, _Value], context: _Context) -> dict
     palette that spelled it: `LevelChunkSection.read` reads each container with
     `PalettedContainer.read`, which unpacks its entries at the width the palette is read at.
     """
+    if "heightmaps" in fields:
+        fields = {**fields, "heightmaps": _kept_heightmaps(fields["heightmaps"])}
     sections = fields.get("sections")
     if not isinstance(sections, list):
         return fields
@@ -1545,6 +1547,24 @@ def _canonical_level_chunk(fields: dict[str, _Value], context: _Context) -> dict
         light_sections = min(len(sections), _SECTIONS_MAX) + _LIGHT_MARGIN
         result["light"] = _canonical_light(fields["light"], light_sections)
     return result
+
+
+def _kept_heightmaps(heightmaps: _Value) -> _Value:
+    """The heightmaps the client keeps: for each type it reads, the last one sent, by type.
+
+    The client reads an unknown type as 0 and puts each into an `EnumMap`
+    (`ClientboundLevelChunkPacketData`, `ByteBufCodecs.map`), so a later one of a type
+    replaces an earlier one. Heightmaps of no known type stay as they are.
+    """
+    if not isinstance(heightmaps, list):
+        return heightmaps
+    kept: dict[int, _Value] = {}
+    for item in heightmaps:
+        kind = _heightmap_type(item)
+        if kind is None or not isinstance(item, dict):
+            return heightmaps
+        kept[kind[0]] = {**item, "type": kind[0]}
+    return [kept[kind] for kind in sorted(kept)]
 
 
 def _canonical_section(section: _Value, biomes: int | None) -> _Value:
@@ -1764,9 +1784,12 @@ only one side sent is network traffic (`_canonical_batch_finished`)."""
 def _chunk_cover(path: _Path) -> _Path:
     """The path of the canonical value that the raw value at `path` is part of.
 
-    For a chunk or a light update: a section's container, or a layer of its light.
+    For a chunk or a light update: a section's container, a layer of its light, or the
+    heightmaps (`_kept_heightmaps`).
     """
     match path:
+        case ("heightmaps", *_):
+            return path[:1]
         case ("sections", int(), "block_states" | "biomes", *_):
             return path[:3]
         case ("light" | "data", str() as key, *_) if key in _LIGHT_LAYERS:

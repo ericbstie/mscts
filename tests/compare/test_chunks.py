@@ -396,6 +396,24 @@ def test_a_heightmap_type_the_client_does_not_know_sorts_as_the_one_it_reads() -
     assert verdict.gameplay
 
 
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ([heightmap(1, height=3), heightmap(1, height=2)], [heightmap(1, height=2)]),
+        ([heightmap(7, height=2)], [heightmap(0, height=2)]),
+    ],
+    ids=["a type sent twice keeps the last", "an unknown type is 0"],
+)
+def test_heightmaps_the_client_keeps_alike_are_network_traffic_only(
+    reference: list[dict[str, object]], candidate: list[dict[str, object]]
+) -> None:
+    # The verdict review of #122, finding 7: the client puts each into an EnumMap by its type,
+    # reading an unknown id as 0, so the last of a type is the one it keeps.
+    verdict = _verdict(chunk(heightmaps=reference), chunk(heightmaps=candidate))
+
+    assert _network_traffic_only(verdict)
+
+
 def block_entity(x: int, y: int, z: int, *, kind: int = 7) -> dict[str, object]:
     return {"x": x, "z": z, "y": y, "type": kind, "data": None}
 

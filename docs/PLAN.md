@@ -1501,7 +1501,11 @@ proves it necessary:
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
-   - `play` / `minecraft:level_chunk_with_light` (#22): each section's
+   - `play` / `minecraft:level_chunk_with_light` (#22): `heightmaps`
+     become the ones the client keeps, the last sent of each type it
+     reads (an unknown id as 0), by type: it puts them into an `EnumMap`,
+     so a type sent twice, or an unknown id where vanilla sends 0, is
+     network traffic only. Each section's
      `block_states` and `biomes` become the id at each entry: one id if
      every entry has it, else all of them, packed so that two are equal
      exactly when their ids are. So the palette that spelled them (a
