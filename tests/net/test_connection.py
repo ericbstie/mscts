@@ -494,6 +494,7 @@ def test_a_reply_that_arrives_while_the_caller_is_busy_is_stamped_when_it_arrive
 ) -> None:
     # Audit H2: the stamp was the time recv got round to reading, 300 ms late here.
     written: list[int] = []
+    resumed: list[int] = []
 
     async def server(peer: Peer) -> None:
         await peer.recv()
@@ -507,12 +508,14 @@ def test_a_reply_that_arrives_while_the_caller_is_busy_is_stamped_when_it_arrive
         ):
             await connection.send("test:request", value=1)
             await asyncio.sleep(0.3)  # busy elsewhere, e.g. another Bot or a Control command
+            resumed.append(transcript.now_ns())
             await connection.recv(timeout_s=1)
 
     asyncio.run(client())
-    request, reply = transcript.events
+    _, reply = transcript.events
     assert reply.packet.name == "test:reply"
-    assert written[0] - transcript.start_ns <= reply.t_ns < request.t_ns + 50_000_000
+    # Stamped before the caller came back for it, not when recv read it.
+    assert written[0] - transcript.start_ns <= reply.t_ns < resumed[0]
 
 
 def test_close_ends_the_background_reader(toy_codec: Codec, transcript: Transcript) -> None:

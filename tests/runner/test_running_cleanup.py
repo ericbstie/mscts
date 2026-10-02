@@ -79,13 +79,15 @@ async def test_a_timeout_around_the_body_stops_the_instance(
     pids: list[int] = []
 
     async def use() -> None:
-        async with running(plan, ready=tcp_probe, ready_timeout=5) as instance:
-            pids.append(instance.pid)
-            await asyncio.sleep(3600)
+        async with asyncio.timeout(None) as body:
+            async with running(plan, ready=tcp_probe, ready_timeout=5) as instance:
+                pids.append(instance.pid)
+                # Armed only once ready: under load a launch alone can outlast 0.3 s.
+                body.reschedule(asyncio.get_running_loop().time() + 0.3)
+                await asyncio.sleep(3600)
 
     with pytest.raises(TimeoutError):
-        async with asyncio.timeout(0.3):
-            await use()
+        await use()
     assert not is_alive(pids[0])
 
 
