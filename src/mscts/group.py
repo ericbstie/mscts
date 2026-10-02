@@ -287,7 +287,9 @@ class GroupContext:
         at any Bot but Control after the window opened. Its Mark is stamped a nanosecond
         after that arrival (not after the time the Bot took the packet). So the window
         holds the packet and everything that arrived before it, and none of what arrived
-        after it, not even a frame that came in the same read of the socket.
+        after it, not even a frame that came in the same read of the socket. The body
+        must last until the packet has arrived (`Bot.join` does, for a join's packets): a
+        body that ends sooner fails with the ProtocolError below.
 
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
