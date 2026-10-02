@@ -284,10 +284,10 @@ class GroupContext:
 
         With `until`, there is no barrier. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
-        at any Bot after the window opened. Its Mark is stamped a nanosecond after that
-        arrival (not after the time the Bot took the packet). So the window holds the
-        packet and everything that arrived before it, and none of what arrived after it,
-        not even a frame that came in the same read of the socket.
+        at any Bot but Control after the window opened. Its Mark is stamped a nanosecond
+        after that arrival (not after the time the Bot took the packet). So the window
+        holds the packet and everything that arrived before it, and none of what arrived
+        after it, not even a frame that came in the same read of the socket.
 
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
@@ -339,22 +339,28 @@ class GroupContext:
         return at
 
     def _arrival_of(self, name: str, *, since: int) -> int:
-        """When the first play packet `name` that any Bot received at or after `since` arrived.
+        """When the first play packet `name` arrived at a Bot but Control, at or after `since`.
+
+        Control's receipts are never compared, so they cannot end a window. A Bot records
+        a frame when it takes it, so this is the earliest arrival over all the Bots,
+        whatever order they were recorded in.
 
         Raises:
             ProtocolError: None did.
         """
-        for event in self._transcript.events:  # ordered by arrival (Transcript.record)
-            packet = event.packet
-            if (
-                event.t_ns >= since
-                and packet.name == name
-                and packet.state is State.PLAY
-                and packet.direction is Direction.CLIENTBOUND
-            ):
-                return event.t_ns
-        msg = f"no {name} arrived at any Bot after the Observation window opened"
-        raise ProtocolError(msg)
+        arrivals = [
+            event.t_ns
+            for event in self._transcript.events
+            if event.t_ns >= since
+            and event.bot != CONTROL_PLAYER
+            and event.packet.name == name
+            and event.packet.state is State.PLAY
+            and event.packet.direction is Direction.CLIENTBOUND
+        ]
+        if not arrivals:
+            msg = f"no {name} arrived at any Bot after the Observation window opened"
+            raise ProtocolError(msg)
+        return min(arrivals)
 
     async def _drain(self) -> None:
         """Take what has already arrived at every Bot not closed, without waiting."""

@@ -11,6 +11,7 @@ from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
 from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
+from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
 from tests.net.fakes import (
@@ -227,6 +228,48 @@ async def test_only_a_packet_the_server_sent_closes_it() -> None:
         transcript.record("bob", heard(Direction.CLIENTBOUND), t_ns=transcript.now_ns())
 
     assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
+
+
+def _heard_by(transcript: Transcript, bot: str, name: str, *, at: int) -> None:
+    data = CODEC.encode(State.PLAY, Direction.CLIENTBOUND, name, {"keep_alive_id": 1})
+    packet = CODEC.decode(State.PLAY, Direction.CLIENTBOUND, data)
+    transcript.record(bot, packet, t_ns=at)
+
+
+@pytest.mark.asyncio
+async def test_a_packet_that_control_received_does_not_close_it() -> None:
+    # Compare never compares Control's receipts, so what only Control heard is no end.
+    keep_alive = "minecraft:keep_alive"
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    async with context.observe(until=keep_alive):
+        _heard_by(transcript, CONTROL_PLAYER, keep_alive, at=transcript.now_ns())
+        arrival = transcript.now_ns()
+        _heard_by(transcript, "alice", keep_alive, at=arrival)
+
+    assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
+    with pytest.raises(ProtocolError, match=keep_alive):
+        async with context.observe(until=keep_alive):
+            _heard_by(transcript, CONTROL_PLAYER, keep_alive, at=transcript.now_ns())
+
+
+@pytest.mark.asyncio
+async def test_the_earliest_arrival_at_any_bot_closes_it_whichever_was_recorded_first() -> None:
+    # A Bot records a frame when it takes it, so across Bots the order of recording is not
+    # the order of arrival.
+    keep_alive = "minecraft:keep_alive"
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    async with context.observe(until=keep_alive):
+        earlier = transcript.now_ns()
+        later = transcript.now_ns()
+        _heard_by(transcript, "alice", keep_alive, at=later)
+        _heard_by(transcript, "bob", keep_alive, at=earlier)
+
+    assert earlier < later
+    assert transcript.marks[-1] == Mark(t_ns=earlier + 1, label=OBSERVE_CLOSE)
 
 
 @pytest.mark.asyncio
