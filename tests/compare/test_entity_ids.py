@@ -284,6 +284,51 @@ def test_a_missing_entity_spawned_before_the_window_shifts_no_other_entitys_name
     assert "hurt_animation.entity_id" not in verdict.differing  # the score counts it as the same
 
 
+def test_a_remove_entities_before_the_window_ends_the_name_too() -> None:
+    # The Reference's client forgot the pig before the window; the Candidate's did not.
+    def pig_then_hurt(*before: Packet) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5, x=1.5)),
+            *(("alice", item) for item in before),
+            OBSERVE_OPEN,
+            ("alice", hurt(5)),
+            OBSERVE_CLOSE,
+        )
+
+    verdict = compare(pig_then_hurt(removed(5)), pig_then_hurt(), [])
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("entity_id", "#1", PIG_AT)
+    ]
+
+
+def test_only_an_add_entity_names_an_entity() -> None:
+    reference = transcript(
+        ("alice", login(1)), ("alice", metadata(9)), OBSERVE_OPEN, ("alice", hurt(9)), OBSERVE_CLOSE
+    )
+    candidate = transcript(("alice", login(1)), OBSERVE_OPEN, ("alice", hurt(9)), OBSERVE_CLOSE)
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_an_entity_type_outside_the_registry_is_named_by_its_number() -> None:
+    def odd(x: float) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5, x=x, kind=9999)),
+            OBSERVE_OPEN,
+            ("alice", hurt(5)),
+            OBSERVE_CLOSE,
+        )
+
+    verdict = compare(odd(1.5), odd(2.5), [])
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        ("9999@(1.5, -60.0, 7.5)", "9999@(2.5, -60.0, 7.5)")
+    ]
+
+
 def test_an_id_reused_after_remove_entities_is_a_new_entity() -> None:
     # Vanilla never reuses an id; the client reads the reuse as a new entity all the same.
     def pigs(second: int) -> Transcript:
