@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 DOCS = ROOT / "docs"
 THEME = DOCS / ".vitepress" / "theme"
-NOT_SITE_PAGES = frozenset({"PLAN.md", "PROGRESS.md", "PROCESS.md"})
+NOT_SITE_PAGES = frozenset({"PLAN.md", "PROGRESS.md", "PROCESS.md", "RISK.md"})
 
 SITE_PAGES = sorted(
     [

@@ -18,9 +18,11 @@ export default defineConfig({
     "PLAN.md",
     "PROCESS.md",
     "PROGRESS.md",
+    "RISK.md",
     "adr/**",
     "audits/**",
     "research/**",
+    "roles/**",
     "README.md",
   ],
   head: [

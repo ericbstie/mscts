@@ -24,10 +24,20 @@ This file is owned by the tech lead. It changes only through the
 - Writes product code only for trivial integration fixes. Anything more
   goes in a brief.
 
-**Worker (a subagent).** Owns exactly one issue and its PR, following the
-`red-green` skill, in an isolated git worktree. It commits each increment
-green, pushes its `issue-<n>-<slug>` branch, opens the PR, and ends with
-the [report](#worker-report) to the tech lead.
+**Specialist (a long-lived worker subagent).** Owns one lane (see
+[Lanes and review levels](#lanes-and-review-levels)) and takes its issues
+one after another, each in an isolated git worktree, following the
+`red-green` skill. For each issue it commits each increment green, pushes
+its `issue-<n>-<slug>` branch, opens one PR, and ends with the
+[report](#worker-report) to the tech lead. The lead then sends the same
+agent its lane's next issue. What it learns goes in its handbook,
+`docs/roles/<lane>.md`, so a fresh agent can take over the lane when one
+runs out of context. Everything this file says about a worker applies to a
+specialist.
+
+**Reviewer (a subagent).** Never writes the code it reviews. It gives
+Rigorous PRs their independent reviews and runs audits
+(`docs/roles/reviewer.md`).
 
 ## Working with the maintainer
 
@@ -72,14 +82,55 @@ ADRs and briefs. What the maintainer has asked for:
 
 When unsure, use `opus`. A wrong Verdict costs more than a slower worker.
 
+## Lanes and review levels
+
+Every open issue carries one `lane:*` label: the hard part it shares with
+the other issues of that lane. A specialist implements its lane's issues
+fully (the enabler, the Group, its docs).
+
+| Lane | Hard part | Handbook |
+| --- | --- | --- |
+| `lane:timing` | What happens on which tick, and in what order | `docs/roles/timing.md` |
+| `lane:comparison` | What counts as a difference: decoding, canonical forms, what the client ends up seeing | `docs/roles/comparison.md` |
+| `lane:statistics` | Randomness: compare distributions over many runs | `docs/roles/statistics.md` |
+| `lane:player-actions` | The Bot behaving like a real client | `docs/roles/player-actions.md` |
+
+Platform, tooling and docs issues stay with the helper and the lead.
+
+**Core areas have one owner.** The timing specialist owns `net.py`,
+`bot.py`, `settle.py`, `group.py` and `transcript.py`; the comparison
+specialist owns `compare.py`, `measure.py`, `test_cases.py`, `codec/*` and
+the Verdict rules in `run.py`. Another lane that needs a change there asks
+the lead, who routes it.
+
+**Review levels.** Before briefing an issue, the lead sets its level: the
+highest level, in `docs/RISK.md`, of its lane and of every core area it
+will touch, raised one step for new concurrency, a new kind of Verdict, or
+code later Groups build on.
+
+| Level | Before the PR merges |
+| --- | --- |
+| Light | The worker's tests, `mise run check`, the changed tier once. The lead reads the diff. |
+| Standard | Light, plus a mutation sweep of the changed branches, the Self-check 20 of 20, and the reference tier on the rebased branch. |
+| Rigorous | Standard, plus the Self-check 20 of 20 five times in a row under `repeat.py --stress`, a javap account of every ordering assumption, and two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. |
+
+**Escalation.** `docs/RISK.md` logs every bug. A bug that escaped into
+`main` raises its lane and core area one level; 5 clean merges in a row
+lower it one level; an escape at Rigorous calls an audit. A bug caught
+before the merge is logged and raises nothing.
+
 ## Cycle
 
-1. **Plan a batch.** Choose 1–3 `ready` issues whose "Owns" lists
-   (files, modules and doc sections) are disjoint, so they can run in
-   parallel without conflicts. Skip any labelled `needs-decision`.
-2. **Brief and spawn** each one in the background with worktree
-   isolation, using the [template](#brief-template). The issue is the
-   spec; the brief adds only what the lead knows beyond it.
+1. **Plan a batch.** Give each running specialist its lane's next `ready`
+   issue (at most 5 agents at once, the reviewer included). Issues that
+   run in parallel have disjoint "Owns" lists (files, modules and doc
+   sections). Skip any labelled `needs-decision`. Set each issue's review
+   level from `docs/RISK.md`.
+2. **Brief** with the [template](#brief-template), naming
+   `docs/roles/common.md`, the lane's handbook and the review level. Spawn
+   a new specialist in the background with worktree isolation only when its
+   lane has none; otherwise send the running one its next issue. The issue
+   is the spec; the brief adds only what the lead knows beyond it.
 3. **Integrate** each PR as it finishes:
    - Review the diff against the issue: the Docs delta applied verbatim,
      the Interface exact, the Acceptance tests present and failing
@@ -92,14 +143,17 @@ When unsure, use `opus`. A wrong Verdict costs more than a slower worker.
      may need a follow-up issue.
    - If it was an `enabler` issue, add `ready` to every `test` issue whose
      Needs have now all landed.
-4. **Retrospective intake.** Log every item in the
+4. **Risk and handbook.** Log any bug found in `docs/RISK.md` and update
+   the levels. Commit the specialist's proposed handbook lines to its
+   `docs/roles/<lane>.md`.
+5. **Retrospective intake.** Log every item in the
    [retrospective log](#retrospective-log) and decide one of:
    - **adopt**: change the skill, PLAN, PROCESS or goal now, in a
      `docs:` or `tooling:` commit;
    - **defer**: open a spec issue for it;
    - **reject**: record why.
-5. **Update `docs/PROGRESS.md`** (Now, Log) and push.
-6. **Audit or refactor** after about every third batch, and sooner if
+6. **Update `docs/PROGRESS.md`** (Now, Log) and push.
+7. **Audit or refactor** after about every third batch, and sooner if
    retrospectives repeat a complaint or a review finds drift. An
    audit is an `opus` brief that reads a key feature end to end against
    PLAN, ADRs and the Reference, and reports findings before changing
@@ -178,6 +232,9 @@ new classes of defect:
   it by ownership (process, socket), never by the server's own answer.
 - **No Mask hides gameplay.** Every Mask's reason shows the field has no
   player-observable meaning (ADR-0006).
+- **Server text is parsed defensively.** Every `json.loads` of a server's
+  text catches `ValueError` and `RecursionError`, not only
+  `JSONDecodeError` (audit 2026-10-02 H3).
 - **Candidate output never crashes the harness.** Malformed or
   undecodable Candidate output is recorded and becomes a `mismatch`,
   never an `error` (which the compliance score excludes).
@@ -600,6 +657,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-02 | Lanes and review levels: long-lived specialists own a `lane:*` of issues end to end, with a handbook each (`docs/roles/`); core areas have one owner; the lead sets Light, Standard or Rigorous review per issue from `docs/RISK.md`, where an escaped bug raises its area one level and 5 clean merges lower it; a reviewer gives Rigorous PRs two independent reviews; up to 5 agents at once. The common worker rules moved from the lead's scratchpad to `docs/roles/common.md` | Maintainer: longer-lived agents with roles, each taking 8–15 issues in one domain, and review rigor triaged by difficulty and raised where bugs are found. The audit of 2026-10-02 found 5 high bugs in the timing and Compare code |
 | 2026-09-30 | Test proposals: the `test` issue template (`.github/ISSUE_TEMPLATE/test.md`), "Proposing a test" in `docs/contributing.md`, and `test` / `enabler` labels. Infrastructure several tests need is one shared `enabler` issue; a `test` issue gets `ready` once its enablers land. Evidence lives in `docs/research/2026-09-30-gameplay-survey.md` | Maintainer: explore what to compare between servers (lighting, spawning, combat, mob simulation, chunk loading, …) and make adding a test a standard process that independent agents can pick up |
 | 2026-09-27 | ADR-0009: the docs site is the spec; GitHub spec issues are the queue; one PR per issue, owned by its worker; scope surprises as issue comments; retrospectives stay private to the lead; docs examples are checked by tests | Maintainer: define the interface and wording in the docs, have agents make the code match, and parallelize across issues |
 | 2026-09-26 | Commits go through `mise run commit` (check, then commit only if green) | The piped-check slip happened twice |
