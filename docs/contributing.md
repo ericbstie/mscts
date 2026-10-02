@@ -133,8 +133,8 @@ A proposal:
   an entity id.
 - **Names the issues it needs.** When a test needs something mscts cannot
   do yet, such as sending commands, stepping ticks, or decoding chunks and
-  entities, that is a separate issue labelled `enabler`. Every test that
-  needs it links to it.
+  entities, that is a separate issue. Every test that needs it links to
+  it.
 
 A test issue is labelled `test`, and `ready` once every issue it needs has
 landed. Game rules and commands are named as vanilla 26.3 names them:
