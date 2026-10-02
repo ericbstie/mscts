@@ -9,7 +9,16 @@ from mscts.bot import status_probe
 from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.net import Endpoint, ProtocolError
 from mscts.target import TARGET
-from tests.net.fakes import HOST, VANILLA_STATUS, Handler, Peer, free_port, serve, status_server
+from tests.net.fakes import (
+    HANDLER_TIMEOUT_S,
+    HOST,
+    VANILLA_STATUS,
+    Handler,
+    Peer,
+    free_port,
+    serve,
+    status_server,
+)
 
 
 def probe_with(codec: Codec, handler: Handler, *, timeout_s: float = 1.0) -> bool:
@@ -83,10 +92,12 @@ def test_the_probe_closes_its_connection(codec: Codec) -> None:
 def test_a_cancelled_probe_closes_its_connection(codec: Codec) -> None:
     # The runner cancels a probe that is still waiting when it gives up.
     closed: list[bool] = []
+    asked = asyncio.Event()  # the probe has sent both packets and is waiting for the answer
 
     async def server(peer: Peer) -> None:
         await peer.recv()
         await peer.recv()
+        asked.set()
         await peer.eof()
         closed.append(True)
 
@@ -94,10 +105,11 @@ def test_a_cancelled_probe_closes_its_connection(codec: Codec) -> None:
         async with serve(codec, server) as endpoint:
 
             async def run_probe() -> bool:
-                return await status_probe(TARGET, timeout_s=1.0)(endpoint)
+                return await status_probe(TARGET, timeout_s=HANDLER_TIMEOUT_S)(endpoint)
 
             probe = asyncio.create_task(run_probe())
-            await asyncio.sleep(0.05)
+            async with asyncio.timeout(HANDLER_TIMEOUT_S):
+                await asked.wait()
             probe.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await probe
