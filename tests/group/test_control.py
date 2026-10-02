@@ -28,6 +28,7 @@ from tests.net.fakes import (
 
 CODEC = Codec.for_target(TARGET)
 CHAT_COMMAND, SYSTEM_CHAT = "minecraft:chat_command", "minecraft:system_chat"
+CLIENT_COMMAND = "minecraft:client_command"
 AWARD_STATS = "minecraft:award_stats"
 SETBLOCK = "setblock 1 -60 1 minecraft:stone"
 FEEDBACK = "Changed the block at 1, -60, 1"
@@ -91,12 +92,20 @@ class ControlServer:
     after_answer: Mapping[int, str] = field(default_factory=dict)
     new_commands: Mapping[str, object] | None = None
     on_command: Callable[[str], None] = lambda _: None
+    rejoin_without_tree: bool = False
     _requests: int = field(default=0, init=False)
     _held: list[str] = field(default_factory=list, init=False)
+    _connections: int = field(default=0, init=False)
 
     async def __call__(self, peer: Peer) -> None:
-        """Serve one connection: a Handler."""
-        await join_server(self.seen, JoinScript(commands=self.commands, then=self._play))(peer)
+        """Serve one connection: a Handler.
+
+        With `rejoin_without_tree`, every connection after the first joins with no
+        command tree.
+        """
+        self._connections += 1
+        commands = None if self._connections > 1 and self.rejoin_without_tree else self.commands
+        await join_server(self.seen, JoinScript(commands=commands, then=self._play))(peer)
 
     async def _play(self, peer: Peer) -> None:
         for message in self.after_join:
@@ -330,6 +339,88 @@ async def test_what_goes_wrong_in_control_is_controls_failure(
             await context.control.run(SETBLOCK)
 
     assert context.raised_by(caught.value) == "control"
+
+
+def closes(handler: Handler) -> tuple[Handler, asyncio.Event]:
+    """`handler`, and an Event that is set once it has served a connection to its end."""
+    closed = asyncio.Event()
+
+    async def tracked(peer: Peer) -> None:
+        try:
+            await handler(peer)
+        finally:
+            closed.set()
+
+    return tracked, closed
+
+
+@pytest.mark.asyncio
+async def test_leave_closes_the_bot_and_the_next_run_joins_a_new_one_behind_the_barrier() -> None:
+    seen: list[Packet] = []
+    transcript = Transcript(group_id="test/control", server="fake")
+    handler, closed = closes(ControlServer(seen))
+    async with playing(handler, transcript) as context:
+        await context.control.run(SETBLOCK)
+        await context.control.leave()
+        await asyncio.wait_for(closed.wait(), timeout=2.0)  # the server saw it close
+        await context.control.run("tick freeze")
+
+    steps = [
+        packet.name
+        for packet in seen
+        if packet.name in {"minecraft:hello", CLIENT_COMMAND, CHAT_COMMAND}
+    ]
+    hello, barrier = "minecraft:hello", [CLIENT_COMMAND, CLIENT_COMMAND]
+    run = [CHAT_COMMAND, CHAT_COMMAND, *barrier]  # the command, its marker, the barrier
+    assert steps == [hello, *barrier, *run, hello, *barrier, *run]
+    assert commands_sent(seen) == [
+        SETBLOCK,
+        'tellraw @s "mscts-barrier-1"',
+        "tick freeze",
+        'tellraw @s "mscts-barrier-2"',
+    ]
+    assert {event.bot for event in transcript.events} == {"control"}
+
+
+@pytest.mark.asyncio
+async def test_leave_before_control_has_joined_connects_nothing() -> None:
+    seen: list[Packet] = []
+    transcript = Transcript(group_id="test/control", server="fake")
+    async with playing(ControlServer(seen), transcript) as context:
+        await context.control.leave()
+        await context.control.leave()
+
+    assert seen == []
+    assert transcript.events == []
+
+
+@pytest.mark.asyncio
+async def test_a_control_bot_that_is_still_open_is_never_replaced() -> None:
+    # A join the server cut short leaves its Bot open and not yet Control's: a second run
+    # must not connect over it, or the first would never be closed.
+    transcript = Transcript(group_id="test/control", server="fake")
+    handler = join_server([], JoinScript(disconnect_in=State.PLAY))
+    async with playing(handler, transcript) as context:
+        with pytest.raises(ProtocolError):
+            await context.control.run(SETBLOCK)
+        with pytest.raises(ValueError, match="already has a Bot called 'control'"):
+            await context.control.run(SETBLOCK)
+
+
+@pytest.mark.asyncio
+async def test_a_rejoined_control_needs_the_tree_its_own_join_sent() -> None:
+    seen: list[Packet] = []
+    transcript = Transcript(group_id="test/control", server="fake")
+    async with playing(
+        ControlServer(seen, rejoin_without_tree=True), transcript, timeout_s=0.5
+    ) as context:
+        await context.control.run(SETBLOCK)
+        await context.control.leave()
+        with pytest.raises(TimeoutError) as caught:
+            await context.control.run(SETBLOCK)
+
+    assert context.raised_by(caught.value) == "control"
+    assert commands_sent(seen) == [SETBLOCK, 'tellraw @s "mscts-barrier-1"']
 
 
 async def _setblock(context: GroupContext) -> None:

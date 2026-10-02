@@ -906,6 +906,8 @@ class GroupContext:
 
 class Control(Protocol):
     async def run(self, command: str) -> tuple[Packet, ...]: ...   # the system_chats it answered
+    async def leave(self) -> None: ...   # close Control's Bot, if it has joined; the next run
+                                         # joins a new one (see OperatorBot)
 
 class OperatorBot:                  # Control through a Bot called CONTROL_PLAYER, an operator
     def __init__(self, connect: Callable[[str], Awaitable[Bot]], transcript: Transcript,
@@ -913,9 +915,10 @@ class OperatorBot:                  # Control through a Bot called CONTROL_PLAYE
     async def run(self, command: str) -> tuple[Packet, ...]: ...
     # run(command), the command without its slash:
     # 1. ValueError, nothing sent, unless it starts with its name (not "", "/…" or " …").
-    # 2. On first use: connect(CONTROL_PLAYER), join, sync, so nothing the join caused is
-    #    taken for an answer.
-    # 3. root_literals of the last `commands` tree the Bot received (else expect one): its
+    # 2. On first use, and the first after leave(): connect(CONTROL_PLAYER), join, sync, so
+    #    nothing the join caused is taken for an answer.
+    # 3. root_literals of the last `commands` tree the Bot received since it connected
+    #    (else expect one: a Bot that left is not the one that counts): its
     #    name, then "tellraw", must be there, else CommandMissing(name), nothing sent. A
     #    tree root_literals refuses → ProtocolError, as the Bot's failure.
     # 4. send the command, then the marker `tellraw @s "<MARKER_PREFIX><n>"`
@@ -929,6 +932,13 @@ class OperatorBot:                  # Control through a Bot called CONTROL_PLAYE
     # the command has run; Pumpkin runs each command as its own task, so a command that
     # takes more than about a tick longer than the marker can land after run returns
     # (ADR-0010, amendment; docs/research/2026-10-01-control.md).
+    async def leave(self) -> None: ...
+    # leave(): close the Bot, if one has joined (else nothing, so twice is the same as
+    # once); the next run joins a new Bot called CONTROL_PLAYER, which replaces the closed
+    # one in the context (GroupContext.raised_by then names the new one). The marker
+    # count goes on. The server drops the closed Bot's player a tick later: a Group that
+    # needs it gone (an observed Bot joins an empty server) waits with
+    # settle.until_no_player_online. A Fixture is then undone by a run that rejoins.
 
 class GroupKind(StrEnum):           # ADR-0006; values "exact", "tick-exact", "statistical"
     EXACT, TICK_EXACT, STATISTICAL

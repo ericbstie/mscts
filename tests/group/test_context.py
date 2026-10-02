@@ -80,3 +80,20 @@ async def test_two_bots_of_one_name_are_refused() -> None:
                 await context.bot("alice")
         finally:
             await context.close()
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_closed_still_holds_its_name() -> None:
+    # Only Control's Bot may be replaced after it left (`control.leave()`).
+    codec = Codec.for_target(TARGET)
+    transcript = Transcript(group_id="test/bot", server="fake")
+
+    async with serve(codec, status_server("{}", [])) as endpoint:
+        context = GroupContext(endpoint, transcript, timeout_s=1.0)
+        try:
+            alice = await context.bot("alice")
+            await alice.close()
+            with pytest.raises(ValueError, match="the Group already has a Bot called 'alice'"):
+                await context.bot("alice")
+        finally:
+            await context.close()
