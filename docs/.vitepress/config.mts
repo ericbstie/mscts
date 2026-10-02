@@ -67,6 +67,7 @@ export default defineConfig({
         items: [
           { text: "CLI", link: "/reference/cli" },
           { text: "Groups", link: "/reference/groups" },
+          { text: "Test cases", link: "/reference/test-cases" },
           { text: "ServerSpec", link: "/reference/server-spec" },
           { text: "Environment variables", link: "/reference/environment" },
           { text: "Glossary", link: "/reference/glossary" },
