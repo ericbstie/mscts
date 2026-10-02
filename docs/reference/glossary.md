@@ -165,7 +165,8 @@ when the first packet of that name arrived at a Bot.
 
 A normalization rule that excludes an identifier with no
 gameplay meaning (keep-alive ids, teleport ids) from
-Comparison. Anything a player could notice is never masked, even when
+Comparison. It hides the value only: a field one side lacks, or holds
+no value in, is still a Divergence. Anything a player could notice is never masked, even when
 it is random; that is judged statistically instead (ADR-0006). Entity
 ids need no Mask, and may not have one: every Comparison numbers each
 Bot's entities in the order it first hears of them (#21).
@@ -221,8 +222,8 @@ packet and its path in it (`status_response.players.max`,
 several same-named packets it was, so it is the same in every run.
 Every compared field is one, so nobody lists them by hand. A packet
 compared as a whole (by payload, missing or unexpected) is the test
-case of its packet name. Masked fields are not test cases, nor are
-packets an Observation window leaves out. Each test
+case of its packet name. A masked field is a test case only where one
+side lacks it, and packets an Observation window leaves out are none. Each test
 case in a Verdict is the same, different in gameplay, or different in
 network traffic only: gameplay if any of its Divergences is.
 

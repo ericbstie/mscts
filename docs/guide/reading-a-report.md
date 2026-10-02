@@ -45,8 +45,8 @@ keeps the name of its test case, after its title when one is known.
 - The status response is one piece of JSON text, so its test cases are
   named from inside the JSON: `status_response.description`.
 
-A value that a Mask excludes, such as a sound's random seed, is not a test
-case.
+A value that a Mask hides, such as a sound's random seed, is not a test
+case, unless one server leaves it out.
 
 Each test case is identical, different, or different in network traffic
 only. One that is different in any Group or any run counts as different.

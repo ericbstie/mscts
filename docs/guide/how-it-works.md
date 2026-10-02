@@ -96,8 +96,10 @@ as gameplay.
 ## Masks
 
 Some values differ between two runs of vanilla itself, such as keep-alive
-ids and teleport ids. A **Mask** excludes one such field from the
-Comparison. A Mask must give a reason, and that reason must show the value
+ids and teleport ids. A **Mask** hides that field's value from the
+Comparison. Whether the field is there still counts: if one server sends
+it and the other leaves it out, that is a difference. A Mask must give a
+reason, and that reason must show the value
 has no gameplay meaning.
 
 Entity ids, and the random UUIDs of mobs, differ too, but need no Mask.

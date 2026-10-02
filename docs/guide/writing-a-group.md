@@ -141,7 +141,8 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 - `masks` excludes fields that change between two runs of vanilla. Each
   `Mask` names a packet, a field path (or `*` for the whole packet) and a
   reason. The reason must show the field has no gameplay meaning. Reviews
-  reject a Mask that hides something a player could see. Fields vanilla
+  reject a Mask that hides something a player could see. A Mask hides
+  only the value: a field one server leaves out is still a difference. Fields vanilla
   picks at random every time, such as a login's session id, are already
   left out for every Group, so list only what your Group adds. Entity ids
   and the random UUIDs of mobs need no Mask. mscts numbers entities in the

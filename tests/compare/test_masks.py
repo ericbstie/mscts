@@ -1,4 +1,4 @@
-"""Masks: what a valid one is, and what it removes from a Comparison."""
+"""Masks: what a valid one is, and what it hides from a Comparison."""
 
 import re
 from collections.abc import Mapping
@@ -6,7 +6,7 @@ from collections.abc import Mapping
 import pytest
 
 from mscts.codec.packets import Packet, State
-from mscts.compare import ABSENT, Mask, compare
+from mscts.compare import ABSENT, MASKED, Mask, compare
 from tests.compare.build import packet, transcript
 
 REASON = "nondeterministic in vanilla"
@@ -114,15 +114,28 @@ def _mask(path: str, name: str = "test:p") -> Mask:
     return Mask(packet=name, path=path, reason=REASON)
 
 
-def test_a_field_mask_removes_the_field_from_both_sides() -> None:
+def test_a_field_mask_hides_the_field_on_both_sides() -> None:
     reference = {"entity_id": 1, "name": "a"}
     candidate = {"entity_id": 2, "name": "b"}
     assert _fields_diff(reference, candidate, _mask("entity_id")) == [("name", "a", "b")]
+    assert _fields_diff({"m": {"x": 1}}, {"m": [2, 3]}, _mask("m")) == []
 
 
-def test_a_field_mask_ignores_whether_the_field_is_present() -> None:
-    assert _fields_diff({"a": 1}, {"a": 1, "seed": 7}, _mask("seed")) == []
-    assert _fields_diff({"a": 1, "seed": 7}, {"a": 1}, _mask("seed")) == []
+def test_a_field_mask_hides_a_value_but_not_whether_it_is_there() -> None:
+    """A field one side lacks, or holds None in, is a Divergence even under a Mask.
+
+    A Mask says a value differs from run to run with no gameplay meaning; whether the
+    value is there at all is gameplay (an advancement criterion obtained or not), so it is
+    still compared: the Mask shows a value as MASKED, and leaves None and an absent field
+    as they are.
+    """
+    assert _fields_diff({"a": 1}, {"a": 1, "seed": 7}, _mask("seed")) == [("seed", ABSENT, MASKED)]
+    assert _fields_diff({"a": 1, "seed": 7}, {"a": 1}, _mask("seed")) == [("seed", MASKED, ABSENT)]
+    assert _fields_diff({"seed": None}, {"seed": 7}, _mask("seed")) == [("seed", None, MASKED)]
+    assert _fields_diff({"seed": None}, {"a": 1}, _mask("seed")) == [
+        ("a", ABSENT, 1),
+        ("seed", None, ABSENT),
+    ]
 
 
 def test_a_field_mask_reaches_into_mappings_and_lists() -> None:
@@ -131,14 +144,41 @@ def test_a_field_mask_reaches_into_mappings_and_lists() -> None:
     assert _fields_diff(reference, candidate, _mask("players.sample[0].id")) == []
 
 
-def test_a_field_mask_on_a_list_element_removes_it_from_the_list() -> None:
+def test_a_field_mask_on_a_list_element_keeps_it_in_the_list() -> None:
+    """The element is hidden where it stands: how long the list is still counts.
+
+    Taking it out would close the list up, and compare each later element with the
+    other side's element at another index.
+    """
     assert _fields_diff({"l": [9, 1, 2]}, {"l": [8, 1, 2]}, _mask("l[0]")) == []
+    assert _fields_diff({"l": [9, 1, 2]}, {"l": [1, 2]}, _mask("l[0]")) == [
+        ("l[1]", 1, 2),
+        ("l[2]", 2, ABSENT),
+    ]
 
 
 def test_a_field_mask_on_a_path_one_side_lacks_leaves_the_other_side_masked() -> None:
     reference = {"players": {"sample": [{"id": 1}]}}
     candidate = {"players": 5}
-    assert _fields_diff(reference, candidate, _mask("players.sample")) == [("players", {}, 5)]
+    assert _fields_diff(reference, candidate, _mask("players.sample")) == [
+        ("players", {"sample": MASKED}, 5)
+    ]
+
+
+def test_a_masked_field_is_a_test_case_only_where_it_diverges() -> None:
+    def test_cases(
+        reference: Mapping[str, object], candidate: Mapping[str, object]
+    ) -> tuple[str, ...]:
+        verdict = compare(
+            transcript(("alice", packet("test:p", fields=reference))),
+            transcript(("alice", packet("test:p", fields=candidate))),
+            [_mask("seed")],
+        )
+        return verdict.test_cases
+
+    assert test_cases({"a": 1, "seed": 7}, {"a": 1, "seed": 8}) == ("test:p.a",)
+    assert test_cases({"a": 1, "seed": None}, {"a": 1, "seed": None}) == ("test:p.a",)
+    assert test_cases({"a": 1, "seed": None}, {"a": 1, "seed": 8}) == ("test:p.a", "test:p.seed")
 
 
 def test_a_field_mask_applies_only_to_its_packet() -> None:
@@ -168,14 +208,14 @@ def test_a_field_mask_leaves_a_packet_without_fields_compared_by_payload() -> No
     assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [(None, "01", "02")]
 
 
-def test_a_missing_packet_shows_its_fields_with_the_masked_ones_removed() -> None:
+def test_a_missing_packet_shows_its_fields_with_the_masked_ones_hidden() -> None:
     verdict = compare(
         transcript(("alice", packet("test:p", fields={"entity_id": 1, "name": "a"}))),
         transcript(("alice", packet("test:other"))),
         [_mask("entity_id")],
     )
     assert [(d.kind, d.reference) for d in verdict.divergences] == [
-        ("missing", {"name": "a"}),
+        ("missing", {"entity_id": MASKED, "name": "a"}),
         ("unexpected", ABSENT),
     ]
 

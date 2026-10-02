@@ -998,6 +998,8 @@ class Observability(StrEnum):       # ADR-0007; values "gameplay", "network traf
     GAMEPLAY, NETWORK_TRAFFIC
 
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
+MASKED = "<masked>"                 # what a field Mask shows in place of a value (not None),
+                                    # on both sides, so presence still counts (step 3)
 
 @frozen
 class Divergence:
@@ -1441,17 +1443,22 @@ proves it necessary:
    the UUIDs of other packets. A Candidate that gives a removed entity's id
    to a new one would show differences vanilla would not, since an id
    keeps its first number.
-3. Apply **Masks**, which remove identifiers with no gameplay meaning, or
+3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream
    after dropping, so they stay the same across re-runs that differ in
    how many ambient packets arrived. A Bot's presence (the `bot`
-   Divergence) counts its Events before any Mask. A field Mask removes
-   its path from every packet of that name (in any State), on both
-   sides, wherever the path is present: presence is ignored, so a field
-   one side lacks is not a Divergence. A path ending in a list index
-   removes that element, and the list closes up. Paths apply to the
-   canonical form (step 2). No Mask is on an entity id, which the
+   Divergence) counts its Events before any Mask. A field Mask hides
+   the value at its path in every packet of that name (in any State),
+   on both sides, wherever the path is present: the value becomes
+   `MASKED`, unless it is None, which stays. A Mask hides a value, never
+   whether it is there: whether a value is there is gameplay (an
+   advancement criterion obtained or not, #106), so a field one side
+   lacks, or holds None in, is still a Divergence. A path ending in a
+   list index hides that element where it stands, so the list keeps its
+   length. Paths apply to the canonical form (step 2), so a value the
+   client reads as absent (a status's empty `players.sample`) is absent
+   there. No Mask is on an entity id, which the
    numbering above already makes comparable: `Mask` refuses one. Before its Group's own Masks, every
    Comparison masks the **random fields** (`compare.RANDOM_FIELDS`,
    ADR-0011), which vanilla draws at random on every run, so no exact
@@ -1541,8 +1548,10 @@ proves it necessary:
    A Verdict lists its test cases (`Verdict.test_cases`): the test case
    of every pair of leaves compared in matched packets, after Masks and
    canonicalization, whether the two were equal or not, and the test
-   case of every Divergence. A masked field, a dropped packet, and a
-   packet an Observation window leaves out are in none. Each is the same, different in gameplay, or different in
+   case of every Divergence. A dropped packet and a packet an
+   Observation window leaves out are in none, and neither is a pair of
+   values at a masked path that are the same (two `MASKED`, or two
+   None): a masked field is a test case only where it diverges. Each is the same, different in gameplay, or different in
    network traffic only (`Verdict.differing`). A network traffic test
    case appears only where the two formats differed: its raw path is
    not a compared field otherwise, and listing it as the same would

@@ -165,7 +165,11 @@ def test_a_raw_difference_under_a_masked_canonical_difference_is_not_reported() 
         path="json_response.players.sample",
         reason="who is online varies",
     )
-    verdict = _verdict('{"players":{"sample":[]}}', '{"players":{"sample":[{"name":"a"}]}}', mask)
+    verdict = _verdict(
+        '{"players":{"sample":[{"name":"b"}]}}',
+        '{"players":{"sample":[{"name":"a"},{"name":"c"}]}}',
+        mask,
+    )
     assert verdict.divergences == ()
 
 
