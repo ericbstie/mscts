@@ -32,7 +32,7 @@ CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_comma
 SYSTEM_CHAT, AWARD_STATS = "minecraft:system_chat", "minecraft:award_stats"
 MARKER = "tellraw @s "
 CONTROL = "control"
-COMMANDS = tree("setblock", "fill", "clone", "tellraw", "tick", "gamerule", "kill")
+COMMANDS = tree("setblock", "fill", "clone", "data", "tellraw", "tick", "gamerule", "kill")
 GROUP_IDS = ("blocks/setblock", "blocks/fill", "blocks/clone")
 UNDO = ("kill @e[type=minecraft:item]", "gamerule random_tick_speed 3", "tick unfreeze")
 """What Control ends with, whatever happened: the last commands of every play."""
@@ -305,6 +305,32 @@ def parse_setblock(command: str) -> Setblock | None:
     return Setblock((int(x), int(y), int(z)), block, mode)
 
 
+_DATA = re.compile(rf"data get block {_NUMBER} {_NUMBER} {_NUMBER} (\S+)")
+
+
+@dataclass(frozen=True)
+class Readback:
+    """A parsed `data get block`: the position it reads, and the path of the data."""
+
+    at: tuple[int, int, int]
+    path: str
+
+
+def parse_readback(command: str) -> Readback | None:
+    """`command` as a Readback, or None if it is not a `data get block` command."""
+    match = _DATA.fullmatch(command)
+    if match is None:
+        return None
+    x, y, z, path = match.groups()
+    return Readback((int(x), int(y), int(z)), path)
+
+
+def readbacks(result: Play) -> list[tuple[Window, Readback]]:
+    """The windows in which the builder reads a block entity back, with what it reads."""
+    reads = ((window, parse_readback(window.builder[0])) for window in result.windows)
+    return [(window, read) for window, read in reads if read is not None]
+
+
 async def every_command(group_id: str) -> list[str]:
     """Every command the Group sends, Control's first then the builder's."""
     transcript, _ = await play(group_id)
@@ -312,11 +338,12 @@ async def every_command(group_id: str) -> list[str]:
 
 
 def setblock_cases(result: Play) -> list[tuple[Setblock, str]]:
-    """Each window's `setblock`, with the block that was at its position when it opened."""
+    """Each `setblock` window's command, with the block at its position when the window opened."""
     cases = []
     for window in result.windows:
         command = parse_setblock(window.builder[0])
-        assert command, window.builder
+        if command is None:
+            continue
         there = AIR  # the flat world is air above its grass, at y = -61
         for setup in window.before:
             earlier = parse_setblock(setup)
@@ -356,6 +383,18 @@ async def test_setblock_sets_the_block_that_is_already_there() -> None:
     cases = setblock_cases(await played("blocks/setblock"))
 
     assert any(command.block == block != AIR for command, block in cases)
+
+
+@pytest.mark.asyncio
+async def test_setblock_reads_back_the_items_of_the_chest_it_placed() -> None:
+    # A chest's contents are not sent to a Bot that watches it: only the block state is. The
+    # builder's `data get block` answer says them, and that is compared.
+    [(window, read)] = readbacks(await played("blocks/setblock"))
+
+    assert read.path == "Items"
+    [block] = [setup.block for setup in placed(window) if setup.at == read.at]
+    assert block.startswith("minecraft:chest")
+    assert "minecraft:diamond" in block
 
 
 GLASS = "minecraft:glass"
@@ -545,21 +584,18 @@ def parse_clone(command: str) -> Clone | None:
     return Clone(source, destination, blocks, how)
 
 
-def clone_cases(result: Play) -> list[Clone]:
-    """The `clone` each window's builder runs."""
-    cases = []
-    for window in result.windows:
-        command = parse_clone(window.builder[0])
-        assert command, window.builder
-        cases.append(command)
-    return cases
+def clone_cases(result: Play) -> list[tuple[Window, Clone]]:
+    """The windows in which the builder runs a `clone`, each with it."""
+    cases = ((window, parse_clone(window.builder[0])) for window in result.windows)
+    return [(window, clone) for window, clone in cases if clone is not None]
 
 
 def apart(result: Play) -> list[tuple[Window, Clone]]:
-    """The windows whose source and destination do not overlap, each with its `clone`."""
-    cases = zip(result.windows, clone_cases(result), strict=True)
+    """The `clone` windows whose source and destination do not overlap."""
     return [
-        (window, clone) for window, clone in cases if not clone.source.overlaps(clone.destination)
+        (window, clone)
+        for window, clone in clone_cases(result)
+        if not clone.source.overlaps(clone.destination)
     ]
 
 
@@ -582,7 +618,7 @@ async def test_clone_tries_a_source_and_destination_that_overlap_with_and_withou
     result = await played("blocks/clone")
 
     overlapping = [
-        clone for clone in clone_cases(result) if clone.source.overlaps(clone.destination)
+        clone for _, clone in clone_cases(result) if clone.source.overlaps(clone.destination)
     ]
     assert {clone.how for clone in overlapping} == {"normal", "force", "move"}
 
@@ -618,10 +654,30 @@ async def test_clone_has_a_block_in_the_destination_where_the_source_has_air() -
         assert gaps, window.before
 
 
+@pytest.mark.asyncio
+async def test_clone_reads_back_the_items_of_a_chest_it_copied_and_one_it_moved() -> None:
+    result = await played("blocks/clone")
+
+    reads = readbacks(result)
+    assert len(reads) == 2
+    hows = set()
+    for window, read in reads:
+        [clone] = [parsed for command in window.before if (parsed := parse_clone(command))]
+        [chest] = [setup for setup in placed(window) if setup.block.startswith("minecraft:chest")]
+        dx, dy, dz = clone.offset
+        assert read.at == (chest.at[0] + dx, chest.at[1] + dy, chest.at[2] + dz)
+        assert read.path == "Items"
+        assert not clone.source.overlaps(clone.destination)
+        hows.add(clone.how)
+    assert hows == {"normal", "move"}
+
+
 def positions(command: str) -> list[Point]:
-    """Where a command puts blocks: a `setblock`'s position, or the corners of its boxes."""
+    """Where a command puts or reads blocks: a position, or the corners of its boxes."""
     if (setblock := parse_setblock(command)) is not None:
         return [setblock.at]
+    if (readback := parse_readback(command)) is not None:
+        return [readback.at]
     if (fill := parse_fill(command)) is not None:
         return [fill.box.low, fill.box.high]
     if (clone := parse_clone(command)) is not None:

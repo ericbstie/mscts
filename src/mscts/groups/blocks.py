@@ -149,11 +149,13 @@ def _setblock_cases() -> tuple[_Case, ...]:
     cases.append(
         _Case(command=f"setblock {at} minecraft:stone", setup=(f"setblock {at} minecraft:stone",))
     )
+    at = _ROW.format(x=x + 1)
+    cases.append(_Case(command=f"data get block {at} Items", setup=(f"setblock {at} {_CHEST}",)))
     return tuple(cases)
 
 
 _SETBLOCK_CASES = _setblock_cases()
-_SETBLOCK_CLEAR = "fill 1 -60 2 12 -60 2 minecraft:air"
+_SETBLOCK_CLEAR = "fill 1 -60 2 13 -60 2 minecraft:air"
 
 
 @group("blocks/setblock", spec=_with_builder, masks=DROP_MASKS)
@@ -229,6 +231,9 @@ _CLONE_BEFORE = (
 )
 """The source holds a block of each kind and air; the gold block is where the source has air."""
 
+_CLONE_CHEST_COPY = "9 -59 9"
+"""Where the source's chest is copied to."""
+
 _CLONE_BLOCKS = ("replace", "masked", "filtered minecraft:stone")
 _CLONE_HOW = ("normal", "force", "move")
 
@@ -246,7 +251,14 @@ def _clone_cases() -> tuple[_Case, ...]:
         )
         for how in _CLONE_HOW
     )
-    return (*apart, *overlapping)
+    chest = (
+        _Case(
+            command=f"data get block {_CLONE_CHEST_COPY} Items",
+            setup=(*_CLONE_BEFORE, f"clone {_CLONE_SOURCE} {_CLONE_APART} replace {how}"),
+        )
+        for how in ("normal", "move")
+    )
+    return (*apart, *overlapping, *chest)
 
 
 _CLONE_CASES = _clone_cases()

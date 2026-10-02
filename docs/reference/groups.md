@@ -35,14 +35,18 @@ changes is in the chunk the builder is sent when it joins, the one that holds x 
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `blocks/setblock` | exact | none | Runs `/setblock` in each mode (`destroy`, `keep`, `replace`, `strict`), on air and on a block. Then it sets a block with states, a sign with text, a chest with an item, and the block that is already there. | none |
+| `blocks/setblock` | exact | none | Runs `/setblock` in each mode (`destroy`, `keep`, `replace`, `strict`), on air and on a block. Then it sets a block with states, a sign with text, a chest with an item, and the block that is already there. Last, it reads the chest back with `/data get block`. | none |
 | `blocks/fill` | exact | none | Runs `/fill` over a region of 5 by 5 by 5 blocks that crosses a chunk section border, with blocks already in it: with no mode, with each mode (`destroy`, `hollow`, `keep`, `outline`, `replace`, `strict`), and with `replace` and a block to replace. | none |
-| `blocks/clone` | exact | none | Runs `/clone` on a box of 3 by 3 by 3 blocks that holds stone, dirt, a sign with text, a stair, a chest with an item and air: with each of `replace`, `masked` and `filtered`, each with `normal`, `force` and `move`. Then it clones the box onto a box that overlaps it, with `normal`, `force` and `move`. | none |
+| `blocks/clone` | exact | none | Runs `/clone` on a box of 3 by 3 by 3 blocks that holds stone, dirt, a sign with text, a stair, a chest with an item and air: with each of `replace`, `masked` and `filtered`, each with `normal`, `force` and `move`. Then it clones the box onto a box that overlaps it, with `normal`, `force` and `move`. Last, it reads the copied chest back with `/data get block`, after a `normal` and a `move` clone. | none |
 
 A block dropped in `destroy` mode starts at a random place and speed. `blocks/setblock` and
 `blocks/fill` leave out where the item appears (`x`, `y` and `z` in `add_entity`), its sideways
 speed (`velocity.x` and `velocity.z`) and which way it faces (`yaw`). Which item drops, and how
 many, is still compared. `/clone` drops nothing, so `blocks/clone` has no such Mask.
+
+The server does not send a chest's items to a player who is only watching it, so a window cannot
+see them in the block packets. The builder reads them with `/data get block`, and the message it
+gets back is compared.
 
 The `/fill` region holds one block that drops an item. Vanilla sends the items a tick drops in an
 order that follows their entity ids, and two servers number their entities differently, so with
