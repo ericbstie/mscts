@@ -87,12 +87,11 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AU (opus): #106, canonical forms for the join (dimension names, attributes, recipes,
-  advancements).
+- AV (opus): #22, chunks and light decoded and compared as the client sees them.
 - AT (sonnet): #35 `blocks/*`, the test-group routine's first full run.
 
 Next: the test Groups by the routine
-(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #106 and #22. The helper (ChatGPT) has #25 Bot movement.
+(`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #22. The helper (ChatGPT) has #25 Bot movement.
 
 Order: #18 (the barrier) → #17 (Control reuses it; ServerSpec refuses a view
 distance over 12) → #23 tick-exact; #19 alongside. Then the output issues #12, #9,
@@ -245,6 +244,10 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- Merged #113 (#106: login's dimension names, attributes, recipes and advancements sorted
+  as the client keys them; `update_recipes` and `update_advancements` decode; a Mask hides a
+  value, never whether it is there (`compare.MASKED`), and `[*]` is every index; `obtained`
+  is a clock value in `RANDOM_FIELDS`). A join's window now differs only in its chunks (#22).
 - Merged #112 (#105: `observe(until=<packet>)` ends a window at that packet's arrival, no
   barrier; frames of one socket read are stamped a nanosecond apart; `Control.leave()`;
   a join's window held the same packets on two vanilla Instances in 160 of 160 plays).

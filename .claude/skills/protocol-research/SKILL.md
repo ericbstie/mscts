@@ -26,7 +26,9 @@ by a test.
    ```
    The output is deterministic (byte-identical across runs), so a regen
    can be verified by diffing it against the committed copy.
-3. **minecraft.wiki as raw wikitext**, for field layouts and semantics:
+3. **minecraft.wiki as raw wikitext**, a hint for field layouts and semantics. It lags
+   26.3 (five disagreements in #106): for a composite or dispatched structure, run
+   `scripts/research/layout.py` and javap first.
    `curl -sS 'https://minecraft.wiki/w/Java_Edition_protocol/Packets?action=raw'`.
    Check that the page header names the Target protocol, and record the
    revision id:

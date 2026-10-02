@@ -99,6 +99,9 @@ first.
   the assertion exposes a flaw before the worker builds it (#88's cap).
 - Before briefing, check a spec's acceptance tests against every ADR that
   came after it (#30's timing criterion predated ADR-0012).
+- A brief that changes what a CONTEXT term means puts in Owns every page
+  that describes it (grep the term in docs/ and CONTEXT.md): #106's Mask
+  change took three Owns round trips (AU).
 - A brief names the module and the public API of anything the next issue
   on the queue reuses, and states the Verdict of each new failure path
   (Candidate `mismatch` with a `failed` Divergence, Reference `error`; AP, #97).

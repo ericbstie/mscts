@@ -1,7 +1,8 @@
 # ADR-0011: Exact Groups never compare a field vanilla draws at random
 
 Status: accepted (2026-10-01). Refines ADR-0006's Masks rule (item 2) for
-fields vanilla draws at random on every run.
+fields vanilla draws at random on every run. Amended 2026-10-02 (#106): a
+value vanilla reads from its clock is one too, below.
 
 ## Context
 
@@ -46,3 +47,13 @@ random one. `compare.UNORDERED` sorts it before anything else.
 - Each entry in `RANDOM_FIELDS` is reviewed like a Mask: its reason must
   show that vanilla draws the value at random, not merely that it
   differed once.
+
+## Amendment (2026-10-02, #106): clock values, and presence
+
+A value vanilla reads from its clock differs between two runs as a random
+draw does: an advancement criterion's `obtained` time is `Instant.now()`
+(javap, `CriterionProgress.grant`), and two vanilla joins differed only in
+it. So `RANDOM_FIELDS` holds fields vanilla draws at random or reads from its
+clock, with the same evidence rule. Its Masks, like every Mask, hide a value
+and never whether it is there: a criterion obtained on one side only is a
+Divergence (`compare.MASKED`).
