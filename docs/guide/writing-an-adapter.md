@@ -23,6 +23,14 @@ vanilla and Pumpkin Adapters are the best examples.
 ## The contract
 
 ```python
+from pathlib import Path
+from typing import Protocol
+
+from mscts.adapters.base import Installation, LaunchPlan
+from mscts.spec import ServerSpec
+from mscts.target import Target
+
+
 class Adapter(Protocol):
     name: str    # the name on the command line: "pumpkin"
     binary: str  # the one file an Installation holds: "server.jar"
@@ -35,6 +43,13 @@ class Adapter(Protocol):
 ```
 
 ```python
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+
+from mscts.net import Endpoint
+
+
 @dataclass(frozen=True, slots=True)
 class LaunchPlan:
     argv: tuple[str, ...]

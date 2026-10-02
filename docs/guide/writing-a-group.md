@@ -106,6 +106,7 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 `@group` takes options after the id. This example is illustrative.
 `door/open` is not registered yet.
 
+<!-- not run: Decorator fragment; it needs imports and an async Group function. -->
 ```python
 @group(
     "door/open",
