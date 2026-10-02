@@ -152,7 +152,9 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
   hears of it, so the same entities compare equal on both servers, and a
   packet about a different entity still shows up as a difference. Two
   entities of the same type spawned at the same position look the same to
-  mscts, so spawn them apart.
+  mscts, so spawn them apart. If an entity spawns at a random position,
+  such as an item a block drops, a Mask on that `add_entity` field hides
+  that part of its name too.
 - `spec` changes the ServerSpec for this Group. Groups with different
   specs get their own server Instances.
 

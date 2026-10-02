@@ -1085,7 +1085,8 @@ ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields th
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
     # Names each Bot's entity ids whose add_entity came outside the windows by type and
-    # spawn position (`pig@(1.5, -60.0, 7.5)`), and numbers its other entity ids and
+    # spawn position (`pig@(1.5, -60.0, 7.5)`, after the Masks), a player by UUID
+    # (`player <uuid>`), and numbers its other entity ids and
     # ENTITY_UUIDS `#1`, `#2`, ... in the order they first appear in the packets it
     # compares, never those outside the windows (Comparison semantics, between steps 2
     # and 3), so Divergence paths and values show a name or `#<n>` where the packets had ids.
@@ -1443,8 +1444,13 @@ proves it necessary:
    entity id whose `add_entity` the Bot received outside the windows
    becomes that entity's name (#116): its entity type and spawn
    position, `pig@(1.5, -60.0, 7.5)` (the type's registry name without
-   `minecraft:`, then `x`, `y` and `z` as Python writes floats). The
-   Group's own setup fixes both, however many other entities arrived
+   `minecraft:`, then `x`, `y` and `z` as Python writes floats, with
+   -0.0 written 0.0 and no rounding). The `add_entity`'s fields go
+   through the Group's Masks first, so an axis a Mask hides (an item
+   dropped at a random position) reads `<masked>` in the name. A player
+   is named by its UUID instead, `player <uuid>`: every Bot joins at
+   the same spot, and a player's UUID comes from its name or account.
+   The Group's own setup fixes the type and position, however many other entities arrived
    first, so an action inside a window on the wrong one of two entities
    spawned before it is a Divergence. Two entities of one type spawned
    at one position share a name, and cannot be told apart. Every other
@@ -1477,7 +1483,9 @@ proves it necessary:
    compared or not, ends the name or number of each id it removes, as
    the client forgets those entities: a later `add_entity` with the same
    id is a new entity, so a Candidate that gives a removed entity's id
-   to a new one shows no difference vanilla would not (#116).
+   to a new one shows no difference vanilla would not (#116). An id
+   first seen in a `remove_entities` takes no number: the entity is
+   gone, and a number would shift every later one.
 3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream

@@ -110,8 +110,8 @@ need is missing, add it here in the same commit that introduces it.
   no value in, is still a Divergence. Anything a player could notice is never masked, even when
   it is random; that is judged statistically instead (ADR-0006). Entity
   ids need no Mask, and may not have one: every Comparison names each
-  entity spawned before the window by its type and spawn position, and
-  numbers each Bot's other entities in the order it first hears of them
+  entity spawned before the window by its type and spawn position (a
+  player by its UUID; a masked axis reads `<masked>`), and numbers each Bot's other entities in the order it first hears of them
   (#21, #116). A Mask on a value that holds an entity id hides the id
   too, and its reason is the only guard.
 - **Random field**: a field whose value vanilla draws at random, or reads from its clock, on

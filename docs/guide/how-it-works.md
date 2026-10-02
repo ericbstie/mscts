@@ -104,8 +104,9 @@ has no gameplay meaning.
 
 Entity ids, and the random UUIDs of mobs, differ too, but need no Mask.
 mscts names an entity spawned before the compared part by its type and
-where it spawned, such as `pig@(1.5, -60.0, 7.5)`, and numbers the others
-in the order each Bot first hears of them. So the same entities compare
+where it spawned, such as `pig@(1.5, -60.0, 7.5)`, a player by its UUID,
+and numbers the others in the order each Bot first hears of them. A Mask
+on a position field of `add_entity` hides that part of the name too. So the same entities compare
 equal on both servers, and a packet about a different entity still shows
 up as a difference.
 
