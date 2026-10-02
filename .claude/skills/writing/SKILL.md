@@ -68,6 +68,8 @@ Any session that writes user-facing text follows this skill all the same.
 - **A section holds only what its heading promises.** Under "How it
   works", only how mscts tests compliancy; setup facts such as running
   offline belong elsewhere, if anywhere.
+- **State requirements firmly and formally.** "requires", not "needs"
+  (reads like a suggestion) or "must have" (too informal).
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
@@ -94,10 +96,12 @@ Any session that writes user-facing text follows this skill all the same.
 - Before (the writer's version): "The custom server needs an mscts
   Adapter, a small module that writes its configuration so it starts
   with the same settings and the same world as vanilla."
-- After: "must have" from the draft, plus the rest of the writer's
-  version.
-- Why: "must have" over "needs": not given. "A small module that writes
-  its configuration …" was praised as "great", why not given.
+- After: "The custom server requires an mscts Adapter, a small module
+  that writes its configuration …"
+- Why: "needs" sounds more like a suggestion; "must have" is firmer but
+  "a bit too informal"; "requires is the correct word here". "A small
+  module that writes its configuration …" was praised as "great", why
+  not given.
 
 ### Home page, "How it works", running offline
 
