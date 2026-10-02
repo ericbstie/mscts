@@ -2,10 +2,12 @@
 
 Two vanilla Instances send them in another order (#30): `login.dimension_names` in an order
 fixed per boot, `update_attributes.attributes` in one that changes from one join to the next,
-and `update_recipes`' property sets and their items in one fixed per boot. The client reads
-the names into a set, applies each attribute by its id, and reads the property sets into a map
-of sets, so only which values each key ends with matters. Packets are built through the
-Target's real Codec, or are what two vanilla Instances sent.
+and `update_recipes`' property sets and their items in one fixed per boot. `update_advancements`
+sends its removed ids, progress and criteria in hash order. The client reads the names into a
+set, applies each attribute by its id, reads the property sets into a map of sets, and the
+advancements' ids and criteria into sets and maps, so only which values each key ends with
+matters. Packets are built through the Target's real Codec, or are what two vanilla Instances
+sent.
 """
 
 from pathlib import Path
@@ -197,3 +199,69 @@ def test_two_vanilla_boots_send_the_same_recipes_in_another_order() -> None:
 
 def test_property_sets_are_compared_sorted_with_their_reason() -> None:
     assert "toUnmodifiableSet" in UNORDERED["minecraft:update_recipes"]
+
+
+type _Progress = list[tuple[str, list[str]]]
+
+
+def update_advancements(
+    removed: list[str], progress: _Progress, added: list[str] | None = None
+) -> Packet:
+    """An `update_advancements` that adds `added`, removes `removed` and has this progress.
+
+    The progress is each advancement's id and its criteria, none of them obtained.
+    """
+    return _play(
+        "minecraft:update_advancements",
+        {
+            "reset": False,
+            "advancements": [
+                {
+                    "id": name,
+                    "parent_id": None,
+                    "display": None,
+                    "requirements": [],
+                    "sends_telemetry_data": False,
+                    "x": 0.0,
+                    "y": 0.0,
+                }
+                for name in added or []
+            ],
+            "removed": removed,
+            "progress": [
+                {
+                    "id": name,
+                    "criteria": [{"criterion": each, "obtained": None} for each in criteria],
+                }
+                for name, criteria in progress
+            ],
+            "show_advancements": False,
+        },
+    )
+
+
+A, B, C = "minecraft:a", "minecraft:b", "minecraft:c"
+
+
+def test_the_order_of_removed_ids_progress_and_criteria_is_no_difference() -> None:
+    reference = update_advancements([A, B, C], [(A, ["x", "y"]), (B, ["z"])])
+    candidate = update_advancements([C, A, B], [(B, ["z"]), (A, ["y", "x"])])
+    assert _diff(reference, candidate) == []
+
+
+def test_another_criterion_is_a_difference_at_its_sorted_path() -> None:
+    reference = update_advancements([], [(B, ["z"]), (A, ["y", "x"])])
+    candidate = update_advancements([], [(A, ["x", "w"]), (B, ["z"])])
+    assert _diff(reference, candidate) == [
+        ("progress[0].criteria[0].criterion", "x", "w"),
+        ("progress[0].criteria[1].criterion", "y", "x"),
+    ]
+
+
+def test_the_order_of_added_advancements_is_a_difference() -> None:
+    reference = update_advancements([], [], added=[A, B])
+    assert _diff(reference, update_advancements([], [], added=[B, A])) != []
+
+
+def test_removed_ids_and_progress_are_compared_sorted_with_their_reason() -> None:
+    assert "LinkedHashSet" in UNORDERED["minecraft:update_advancements"]
