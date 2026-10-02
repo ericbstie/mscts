@@ -242,31 +242,49 @@ class EntityId:
         wire: How the id is carried: `VAR_INT` or `INT`.
         optional: The value is the id plus one on the wire, 0 meaning no entity, as vanilla
             writes a damage event's source ids; it reads as the id, or None for none.
+        zero_is_none: The value is the id itself, but 0 means no entity, as vanilla writes a
+            lead's holder; it reads as the id, or None for none.
     """
 
     wire: WireType[int]
     optional: bool = False
+    zero_is_none: bool = False
+
+    def __post_init__(self) -> None:
+        """Reject an id that is both kinds of optional.
+
+        Raises:
+            SchemaError: `optional` and `zero_is_none` are both true.
+        """
+        if self.optional and self.zero_is_none:
+            msg = "an entity id is optional or zero_is_none, not both"
+            raise SchemaError(msg)
 
     def read(self, reader: Reader) -> int | None:
-        """Consume the id, or (optional) None if the wire value is 0."""
+        """Consume the id, or None if the wire value is 0 and 0 means no entity."""
         value = self.wire.read(reader)
-        if not self.optional:
+        if not (self.optional or self.zero_is_none):
             return value
-        return None if value == 0 else value - 1
+        return None if value == 0 else value - self._shift
 
     def write(self, writer: Writer, value: object) -> None:
-        """Append `value`, an int (optional: an int, or None for no entity)."""
-        if not self.optional:
+        """Append `value`, an int, or None for no entity if the id may be none."""
+        if not (self.optional or self.zero_is_none):
             self.wire.write(writer, value)
             return
         if value is None:
             self.wire.write(writer, 0)
             return
         entity_id = _integer(value)
-        if entity_id == -1:
-            msg = "-1 is not an entity id (it would read back as no entity)"
+        if entity_id + self._shift == 0:
+            msg = f"{entity_id} is not an entity id (it would read back as no entity)"
             raise WireError(msg)
-        self.wire.write(writer, entity_id + 1)
+        self.wire.write(writer, entity_id + self._shift)
+
+    @property
+    def _shift(self) -> int:
+        """What is added to the id on the wire: 1 if `optional`, else 0."""
+        return 1 if self.optional else 0
 
 
 ENTITY_ID = EntityId(VAR_INT)
@@ -274,6 +292,9 @@ ENTITY_ID = EntityId(VAR_INT)
 
 ENTITY_ID_INT = EntityId(INT)
 """An entity id as an Int (`login`, `entity_event`, `set_entity_link`)."""
+
+ENTITY_ID_INT_OR_NONE = EntityId(INT, zero_is_none=True)
+"""An entity id as an Int, or None as 0 (`set_entity_link`'s holder: 0 detaches the lead)."""
 
 ENTITY_ID_OPTIONAL = EntityId(VAR_INT, optional=True)
 """An entity id or None, as a VarInt holding the id plus one (0 is none)."""

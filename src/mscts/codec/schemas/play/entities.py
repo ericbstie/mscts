@@ -17,6 +17,7 @@ from mscts.codec.schema import (
     DOUBLE,
     ENTITY_ID,
     ENTITY_ID_INT,
+    ENTITY_ID_INT_OR_NONE,
     ENTITY_ID_OPTIONAL,
     FLOAT,
     IDENTIFIER,
@@ -102,7 +103,7 @@ CLIENTBOUND: Mapping[str, Schema] = {
     "minecraft:set_entity_data": Schema(entity_id=ENTITY_ID, entries=ENTITY_DATA),
     # Link Entities: both ids are Ints (not VarInts); a holder of 0 detaches the lead.
     "minecraft:set_entity_link": Schema(
-        attached_entity_id=ENTITY_ID_INT, holding_entity_id=ENTITY_ID_INT
+        attached_entity_id=ENTITY_ID_INT, holding_entity_id=ENTITY_ID_INT_OR_NONE
     ),
     # Set Entity Velocity
     "minecraft:set_entity_motion": Schema(entity_id=ENTITY_ID, velocity=LP_VEC3),
