@@ -32,6 +32,13 @@ raw material for later rules. When two or more examples share a pattern
 that no rule covers yet, propose a rule that covers them, and add it
 once the maintainer approves it.
 
+Wording changes don't each get their own issue or PR. They collect as
+commits on one open PR, the wording batch, which the maintainer merges
+when they're done. Run `mise run check` and the docs build before each
+push, since the docs site deploys from main. If a proposed wording
+describes something the code doesn't do, say so instead of writing it,
+and leave the code change to the tech lead.
+
 The maintainer may run a dedicated writer session for wording tweaks.
 Any session that writes user-facing text follows this skill all the same.
 
