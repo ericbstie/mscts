@@ -168,6 +168,12 @@ def test_a_field_mask_on_a_list_element_keeps_it_in_the_list() -> None:
     ]
 
 
+def test_a_field_mask_on_an_index_past_the_end_hides_nothing_there() -> None:
+    assert _fields_diff({"l": [1, 2]}, {"l": [1, 2, 3]}, _mask("l[2]")) == [
+        ("l[2]", ABSENT, MASKED)
+    ]
+
+
 def test_a_star_index_masks_every_element_of_a_list() -> None:
     reference = {"l": [{"id": 1, "name": "a"}, {"id": 2, "name": "b"}], "m": [[1, 2], [3]]}
     candidate = {"l": [{"id": 3, "name": "a"}, {"id": 4, "name": "c"}], "m": [[5, 6], [7]]}
