@@ -211,6 +211,15 @@ def test_the_first_three_positions_that_differ_are_named_and_the_rest_counted() 
     assert difference.candidate == "chunk 0 0: 0 -61 0 is 1, 1 -61 0 is 1, 2 -61 0 is 1 and 2 more"
 
 
+def test_three_positions_that_differ_are_all_named() -> None:
+    changed = {(x, 3, 0): STONE for x in range(3)}
+    candidate = chunk(overworld(paletted(_with(changed), PALETTE, bits=4, width=4)))
+
+    (difference,) = _verdict(chunk(overworld(FLAT_BOTTOM)), candidate).divergences
+
+    assert difference.candidate == "chunk 0 0: 0 -61 0 is 1, 1 -61 0 is 1, 2 -61 0 is 1"
+
+
 def test_a_block_in_a_higher_section_names_its_height() -> None:
     sections = overworld(FLAT_BOTTOM)
     sections[5] = section(
@@ -248,6 +257,34 @@ def test_a_chunk_of_another_height_counts_y_from_the_worlds_bottom() -> None:
     ]
 
 
+STONE_BOTTOM = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
+NETHER_AIR = [section(single(AIR), block_count=0) for _ in range(15)]
+
+
+def test_a_chunk_as_high_as_the_nether_counts_y_from_0() -> None:
+    # The nether and the end have 16 sections, from y 0.
+    reference = [section(FLAT_BOTTOM, block_count=1024), *NETHER_AIR]
+    candidate = [section(STONE_BOTTOM, block_count=1024), *NETHER_AIR]
+
+    verdict = _verdict(chunk(reference), chunk(candidate))
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        ("chunk 0 0: 5 2 7 is 10", "chunk 0 0: 5 2 7 is 1")
+    ]
+
+
+def test_chunks_of_two_heights_count_y_from_the_worlds_bottom() -> None:
+    candidate = [section(STONE_BOTTOM, block_count=1024), *NETHER_AIR]
+
+    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(candidate))
+
+    shown = {d.path: (d.reference, d.candidate) for d in verdict.divergences}
+    assert shown["sections[0].block_states"] == (
+        "chunk 0 0 (y from the world's bottom): 5 2 7 is 10",
+        "chunk 0 0 (y from the world's bottom): 5 2 7 is 1",
+    )
+
+
 def test_an_entry_past_its_palette_is_a_difference_too() -> None:
     # The client reads it, and fails only when it looks the block up (`valueFor`).
     past = {"bits": 4, "palette": [88, 10, 9], "data": FLAT_BOTTOM["data"]}
@@ -260,6 +297,19 @@ def test_an_entry_past_its_palette_is_a_difference_too() -> None:
     assert difference.candidate == (
         "chunk 0 0: 0 -60 0 is past the palette, 1 -60 0 is past the palette, "
         "2 -60 0 is past the palette and 3069 more"
+    )
+
+
+def test_a_section_whose_every_entry_is_past_its_palette_names_its_positions() -> None:
+    every: dict[str, object] = {"bits": 4, "palette": [AIR], "data": _packed([1] * 4096, 4)}
+    sections = overworld(FLAT_BOTTOM)
+    sections[1] = section(every, block_count=0)
+
+    (difference,) = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(sections)).gameplay
+
+    assert difference.candidate == (
+        "chunk 0 0: 0 -48 0 is past the palette, 1 -48 0 is past the palette, "
+        "2 -48 0 is past the palette and 4093 more"
     )
 
 
@@ -296,6 +346,20 @@ def test_fields_the_codec_did_not_decode_are_compared_as_they_are() -> None:
     swapped = {key: value[::-1] for key, value in odd_lists.items()}
     verdict = _verdict(packet(CHUNK, fields=odd_lists), packet(CHUNK, fields=swapped))
     assert {str(d.path).split("[")[0] for d in verdict.gameplay} == {"heightmaps", "block_entities"}
+
+
+def test_a_container_the_client_cannot_read_is_shown_as_it_is() -> None:
+    def holding(block_states: object) -> Packet:
+        sections = [{"block_states": block_states}]
+        return packet(CHUNK, fields={"chunk_x": 0, "chunk_z": 0, "sections": sections})
+
+    unreadable = {"bits": 99, "palette": None, "data": b""}  # no palette has 99 bits
+
+    verdict = _verdict(holding(unreadable), holding(single(STONE)))
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("sections[0].block_states", unreadable, STONE)
+    ]
 
 
 def heightmap(kind: int, *, height: int | None = None) -> dict[str, object]:
@@ -371,34 +435,54 @@ def test_the_same_biomes_under_another_palette_are_network_traffic_only() -> Non
 # configuration, whatever its bits say; the codec reads it at the bits sent.
 
 
-def _joined(chunk_packet: Packet) -> Transcript:
-    """67 biomes in configuration, as both recorded joins sent, then `chunk_packet`."""
-    entries = [{"entry_id": f"minecraft:biome_{index}", "data": None} for index in range(67)]
-    fields = {"registry_id": "minecraft:worldgen/biome", "entries": entries}
+def _registry(name: str, size: int) -> Packet:
+    entries = [{"entry_id": f"minecraft:entry_{index}", "data": None} for index in range(size)]
+    fields = {"registry_id": name, "entries": entries}
     encoded = CODEC.encode(State.CONFIGURATION, CLIENTBOUND, "minecraft:registry_data", fields)
-    registry = CODEC.decode(State.CONFIGURATION, CLIENTBOUND, encoded)
-    return transcript(("alice", registry), ("alice", chunk_packet))
+    return CODEC.decode(State.CONFIGURATION, CLIENTBOUND, encoded)
 
 
-def test_a_direct_biome_container_of_the_width_the_client_reads_is_network_traffic_only() -> None:
-    biomes = direct([PLAINS] * 64, bits=7)  # 67 biomes: Mth.ceillog2(67) = 7
+def _joined(chunk_packet: Packet, *, biomes: int = 67) -> Transcript:
+    """`biomes` biomes in configuration (both recorded joins sent 67), then `chunk_packet`.
 
-    verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=biomes))), [])
+    Neither another registry nor another Bot's biomes count.
+    """
+    return transcript(
+        ("alice", _registry("minecraft:worldgen/biome", biomes)),
+        ("alice", _registry("minecraft:damage_type", 100)),
+        ("bob", _registry("minecraft:worldgen/biome", 100)),
+        ("alice", chunk_packet),
+    )
+
+
+@pytest.mark.parametrize(("biomes", "bits"), [(67, 7), (64, 6)])
+def test_a_direct_biome_container_of_the_width_the_client_reads_is_network_traffic_only(
+    biomes: int, bits: int
+) -> None:
+    # Mth.ceillog2(67) = 7, Mth.ceillog2(64) = 6.
+    cells = direct([PLAINS] * 64, bits=bits)
+    reference = _joined(chunk(), biomes=biomes)
+
+    verdict = compare(
+        reference, _joined(chunk(overworld(FLAT_BOTTOM, biomes=cells)), biomes=biomes), []
+    )
 
     assert verdict.divergences
     assert verdict.gameplay == ()
 
 
-def test_a_direct_biome_container_of_another_width_is_a_gameplay_difference() -> None:
-    biomes = direct([PLAINS] * 64, bits=8)
+@pytest.mark.parametrize("bits", [8, 6])
+def test_a_direct_biome_container_of_another_width_is_a_gameplay_difference(bits: int) -> None:
+    cells = direct([PLAINS] * 64, bits=bits)
 
-    verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=biomes))), [])
+    verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=cells))), [])
 
+    data = _packed([PLAINS] * 64, bits).hex()
     assert [(d.path, d.reference, d.candidate) for d in verdict.gameplay] == [
         (
             "sections[0].biomes",
             "chunk 0 0, y -64 to -49: all 41",
-            f"chunk 0 0, y -64 to -49: 8 bits per entry where the client reads 7: {'29' * 64}",
+            f"chunk 0 0, y -64 to -49: {bits} bits per entry where the client reads 7: {data}",
         )
     ]
 
@@ -408,9 +492,7 @@ def test_a_direct_biome_container_of_another_width_is_a_gameplay_difference() ->
 
 
 def _batch(*chunks: Packet) -> Transcript:
-    start = packet("minecraft:chunk_batch_start", fields={})
-    finished = packet("minecraft:chunk_batch_finished", fields={"batch_size": len(chunks)})
-    return transcript(*(("alice", each) for each in (start, *chunks, finished)))
+    return _played(chunks)
 
 
 def test_the_chunks_of_a_batch_in_another_order_are_no_difference() -> None:
@@ -419,6 +501,33 @@ def test_the_chunks_of_a_batch_in_another_order_are_no_difference() -> None:
     verdict = compare(_batch(first, second, third), _batch(third, first, second), [])
 
     assert verdict.divergences == ()
+
+
+def _played(*items: Packet | tuple[Packet, ...]) -> Transcript:
+    """The Packets in order, each tuple a batch of chunks."""
+    packets: list[Packet] = []
+    for item in items:
+        if isinstance(item, tuple):
+            start = packet("minecraft:chunk_batch_start", fields={})
+            finished = packet("minecraft:chunk_batch_finished", fields={"batch_size": len(item)})
+            packets.extend((start, *item, finished))
+        else:
+            packets.append(item)
+    return transcript(*(("alice", each) for each in packets))
+
+
+def test_chunks_are_sorted_only_within_their_batch() -> None:
+    first, second, third, fourth = (chunk(at=(x, 0)) for x in range(4))
+
+    across_batches = compare(
+        _played((first, second), (third, fourth)), _played((first, third), (second, fourth)), []
+    )
+    outside_batches = compare(
+        _played((first,), second, third), _played((first,), third, second), []
+    )
+
+    assert across_batches.gameplay
+    assert outside_batches.gameplay
 
 
 def test_a_chunk_only_one_side_sent_is_a_divergence_naming_its_position() -> None:
@@ -530,7 +639,7 @@ def test_a_different_light_level_names_its_position() -> None:
 
 
 def test_light_of_another_kind_is_summed_up() -> None:
-    levels = bytes(range(16)) * 128  # levels 0 to 15
+    levels = DARK[:1024] + FULL[:1024]  # levels 0 and 15
 
     verdict = _verdict(_lit(block={4: levels}), _lit(sky={4: DARK}))
 
@@ -615,6 +724,15 @@ def test_a_light_update_follows_the_same_rules() -> None:
             "chunk 1 2 (y from the world's bottom), y 16 to 31: all 0",
         )
     ]
+
+
+def test_a_light_update_is_read_over_256_light_sections() -> None:
+    # No level has more (DimensionType's height is at most Y_SIZE, 4064 blocks).
+    read = _verdict(light_update(light()), light_update(light(sky={255: FULL})))
+    never_read = _verdict(light_update(light()), light_update(light(sky={256: FULL})))
+
+    assert [d.path for d in read.gameplay] == ["data.sky[255]"]
+    assert _network_traffic_only(never_read)
 
 
 def test_a_light_update_naming_fewer_sections_differs_only_where_the_other_names_one() -> None:

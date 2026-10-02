@@ -372,6 +372,13 @@ def test_an_entry_past_the_palette_has_no_value() -> None:
     assert BLOCK_STATES.values(value)[:2] == (None, 7)
 
 
+@pytest.mark.parametrize("size", [0, 8192 - 1, 8192 + 8])
+def test_the_values_of_a_container_whose_data_is_not_its_size_are_refused(size: int) -> None:
+    # A direct block container is 16 bits per entry: 4096 entries are 1024 Longs.
+    with pytest.raises(WireError, match=r"data: expected 8192 bytes for 99 bits"):
+        BLOCK_STATES.values({"bits": 99, "palette": None, "data": bytes(size)})
+
+
 # Chunk biomes: biomes alone for some chunks, each a position and every section's biome container.
 
 

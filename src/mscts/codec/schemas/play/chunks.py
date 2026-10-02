@@ -201,12 +201,16 @@ class PalettedContainer:
         elif palette is not None:
             msg = f"palette: expected None for the global palette, got {type(palette).__name__}"
             raise WireError(msg)
+        writer.raw(out.raw(self._data(data, bits, width)).to_bytes())
+
+    def _data(self, data: object, bits: int, width: int) -> bytes:
+        """`data`, if it is the bytes of as many Longs as entries of `width` bits take."""
         size = _LONG_BYTES * self._longs(width)
         if not isinstance(data, bytes) or len(data) != size:
             got = f"{len(data)} bytes" if isinstance(data, bytes) else type(data).__name__
             msg = f"data: expected {size} bytes for {bits} bits, got {got}"
             raise WireError(msg)
-        writer.raw(out.raw(data).to_bytes())
+        return data
 
     def values(self, value: Mapping[str, object]) -> tuple[int | None, ...]:
         """The id at each entry of a container this type read, in entry order.
@@ -219,10 +223,7 @@ class PalettedContainer:
         kind, width = self._layout(bits)
         if kind == "single":
             return (_integer(palette, "palette"),) * self.entries
-        if not isinstance(data, bytes):
-            msg = f"data: expected bytes, got {type(data).__name__}"
-            raise WireError(msg)
-        indexes = _unpacked(data, width, self.entries)
+        indexes = _unpacked(self._data(data, bits, width), width, self.entries)
         if kind == "global":
             return tuple(indexes)
         listed = palette if isinstance(palette, list | tuple) else []
