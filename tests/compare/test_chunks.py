@@ -1153,8 +1153,25 @@ def test_the_gameplay_test_cases_of_chunks_and_light_have_titles() -> None:
             light_update(light(sky={2: DARK}, block={1: DARK})),
         ),
         compare(_batch(chunk()), _batch(chunk(at=(1, 0))), []),
+        *(
+            compare(_batch_of(START, _at(name, 0, 0, **_light_fields(name))), _batch_of(START), [])
+            for name in ("minecraft:light_update", "minecraft:forget_level_chunk")
+        ),
     ]
 
     cases = {d.test_case for verdict in verdicts for d in verdict.gameplay}
 
-    assert cases == {name for name in TITLES if "chunk" in name or "light" in name}
+    assert cases == {
+        name
+        for name in TITLES
+        if ("chunk" in name or "light" in name) and not name.startswith("chunk_batch")
+    }
+
+
+def test_the_network_traffic_test_cases_of_batches_have_titles() -> None:
+    first, second, third = (chunk(at=(x, 0)) for x in range(3))
+
+    verdict = compare(_played((first, second, third)), _played((first,), (second, third)), [])
+
+    cases = {d.test_case for d in verdict.divergences}
+    assert cases == {name for name in TITLES if name.startswith("chunk_batch")}

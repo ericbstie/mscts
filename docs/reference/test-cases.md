@@ -60,6 +60,38 @@ different block.
 The z coordinate of the block that changes. A different value changes a
 different block.
 
+## `chunk_batch_finished`
+
+**End of a chunk batch**
+
+A server sends chunks in batches, each between a start and an end
+packet. The client uses them only to decide how fast to ask for more
+chunks, and two vanilla servers can split the same chunks into
+different batches. So an end packet only one server sent is network
+traffic only.
+
+## `chunk_batch_finished.batch_size`
+
+**Chunks in a batch**
+
+How many chunks the batch held. Like the batches themselves, a
+different count is network traffic only.
+
+## `chunk_batch_start`
+
+**Start of a chunk batch**
+
+The packet before a batch of chunks. One only one server sent is
+network traffic only, as for the end of a batch.
+
+## `forget_level_chunk`
+
+**Chunk unloaded**
+
+The server tells the client to unload the chunk at a position, shown
+like `chunk 3 -2`. A server that unloads another chunk, or leaves one
+loaded, shows the player a different world.
+
 ## `level_chunk_with_light`
 
 **Chunk**
@@ -129,6 +161,15 @@ of a block breaking. A server that leaves it out shows no effect.
 
 Which effect plays. Vanilla sends 2001, a block breaking, with the state of
 the broken block as its data. A different number plays a different effect.
+
+## `light_update`
+
+**Light update**
+
+A later change to the light of a chunk, shown by the chunk's
+coordinates, such as `chunk 3 -2`, when only one server sent it. Light
+updates for different chunks can come in any order; those for one chunk
+keep theirs.
 
 ## `light_update.data.sky[]`
 
