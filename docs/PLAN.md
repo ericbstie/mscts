@@ -72,6 +72,7 @@ test needs it:
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/schemas/play/commands.py` | `chat_command`, `system_chat` and `commands`: the command tree as `CommandNode`s (every 26.3 parser, its id read through `registry_names`), and `root_literals(tree)`, the commands a player may run |
 | `codec/schemas/play/blocks.py` | the block packets' schemas: `block_update`, `section_blocks_update` (its blocks decode to `{x, y, z, state}`), `block_entity_data`, `block_event`, `block_destruction` |
+| `codec/schemas/play/chunks.py` | the chunk packets' schemas: `level_chunk_with_light` (its sections decoded, each block state and biome container a `PalettedContainer`: `{bits, palette, data}`), `light_update`, `forget_level_chunk`, `set_chunk_cache_center`, `set_chunk_cache_radius`, `chunks_biomes` |
 | `codec/schemas/play/recipes.py` | `update_recipes`: the property sets (each item set a recipe takes as input) and the stonecutter's recipes, each an ingredient holder set and a slot display (all 11 types of `minecraft:slot_display`, read through `registry_names`) |
 | `codec/schemas/play/advancements.py` | `update_advancements`: the advancements to add (each an id, a parent, a display whose background texture follows only if its flags say so, requirements, and x and y), the ids to remove, and each advancement's progress by criterion, with when it was obtained |
 | `codec/schemas/play/world_events.py` | the world event packets' schemas: `level_event`, `sound` and `sound_entity` (a `SOUND_EVENT`, a `SOUND_SOURCE` category and a random seed), `level_particles`, `game_event`, `explode` (its block particles a weighted list) |
@@ -115,6 +116,8 @@ decision. Signatures are Python 3.13. `@frozen` means
 - `codec.schemas.login`: `GAME_PROFILE` — login packet schema.
 - `codec.schemas.play`: `merge_submodules` — Play schema assembly.
 - `codec.schemas.play.commands`: `PROPERTIES`, `commands_schema` — command argument schemas.
+- `codec.schemas.play.chunks`: `PalettedContainer` (`read`, `write`, `values(container)`: the id
+  at each entry), `BLOCK_STATES`, `BIOMES`, `SECTION`, `LIGHT_DATA` — chunk and light schemas.
 
 ```python
 @frozen
