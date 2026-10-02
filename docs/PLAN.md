@@ -1473,9 +1473,11 @@ proves it necessary:
    compare as vanilla sent them): an entity id inside `add_entity.data`
    (a projectile's owner) or inside a metadata value (a firework's
    shooter), each a plain VarInt in the schema (see `ENTITY_DATA`), and
-   the UUIDs of other packets. A Candidate that gives a removed entity's id
-   to a new one would show differences vanilla would not, since an id
-   keeps its first number.
+   the UUIDs of other packets. A `remove_entities` the Bot received,
+   compared or not, ends the name or number of each id it removes, as
+   the client forgets those entities: a later `add_entity` with the same
+   id is a new entity, so a Candidate that gives a removed entity's id
+   to a new one shows no difference vanilla would not (#116).
 3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream

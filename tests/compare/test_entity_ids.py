@@ -259,6 +259,40 @@ def test_an_action_inside_a_window_on_another_entity_spawned_before_it_is_a_dive
     )
 
 
+def test_an_id_reused_after_remove_entities_is_a_new_entity() -> None:
+    # Vanilla never reuses an id; the client reads the reuse as a new entity all the same.
+    def pigs(second: int) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5)),
+            ("alice", hurt(5)),
+            ("alice", removed(5)),
+            ("alice", spawn(second)),
+            ("alice", hurt(second)),
+        )
+
+    verdict = compare(pigs(6), pigs(5), [])
+
+    assert verdict.outcome is Outcome.MATCH, verdict
+
+
+def test_remove_entities_ends_a_name_given_before_the_window() -> None:
+    def farm(second: int) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5, x=1.5)),
+            OBSERVE_OPEN,
+            ("alice", removed(5)),
+            ("alice", spawn(second, x=2.5)),
+            ("alice", hurt(second)),
+            OBSERVE_CLOSE,
+        )
+
+    verdict = compare(farm(6), farm(5), [])
+
+    assert verdict.outcome is Outcome.MATCH, verdict
+
+
 def test_inside_a_window_the_first_entity_spawned_in_it_is_number_one() -> None:
     # An entity spawned before the window is named (above); one spawned inside it is
     # numbered, and nothing before the window counts.

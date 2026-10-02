@@ -593,7 +593,8 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     one of them (`_Windows.observes`). Entity ids are numbered over these Packets only
     (`_Numbers.take`): how many entities a Bot heard of before a window is timing, so what
     is not compared never shifts the numbers of what is. An entity whose `add_entity` was
-    left out of the windows is named by it instead (`_Numbers.spawned`).
+    left out of the windows is named by it instead (`_Numbers.spawned`), and any
+    `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
     """
     windows = _Windows.of(transcript)
     numbers = _Numbers(ids={}, uuids={})
@@ -607,6 +608,7 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
         elif packet.name not in masks.dropped:
             numbers.take(packet)
             stream.append(_normalize(packet, masks, numbers))
+        numbers.removed(packet)
     return stream
 
 
@@ -778,6 +780,19 @@ class _Numbers:
                 if isinstance(found, UUID):
                     self.uuids.setdefault(found, f"#{len(self.uuids) + 1}")
 
+    def removed(self, packet: Packet) -> None:
+        """End the name or number of each id `packet` removes, if it is a `remove_entities`.
+
+        Compared or not: the client forgets the entities either way, so a later `add_entity`
+        with one of the ids is a new entity.
+        """
+        if packet.name != _REMOVE_ENTITIES or packet.fields is None:
+            return
+        ids, _ = _entity_tries(packet.state, packet.name)
+        for found in _found(packet.fields, ids):
+            if type(found) is int:
+                self.ids.pop(found, None)
+
     def apply(self, packet: Packet, fields: dict[str, _Value]) -> None:
         """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields.
 
@@ -851,6 +866,7 @@ def _step_fits(step: _MaskStep, key: Step) -> bool:
 
 
 _ADD_ENTITY = "minecraft:add_entity"
+_REMOVE_ENTITIES = "minecraft:remove_entities"
 
 
 def _spawn_name(fields: Mapping[str, object]) -> str:
