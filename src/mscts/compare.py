@@ -137,6 +137,9 @@ class Mask:
         path: The field path, spelled as Divergence paths are (e.g. `entity_id`,
             `players.sample[0].name`), where `[*]` is every index of a list
             (`players.sample[*].name`); or `*` (WHOLE_PACKET) for the whole packet.
+            A path that is an entity id is refused, but a path to a value that holds
+            one (`set_entity_data` / `entries`), or `*`, hides the id with the rest:
+            its reason is the only guard that nothing a player sees is hidden with it.
         reason: Why it is nondeterministic.
     """
 
@@ -150,7 +153,7 @@ class Mask:
         Raises:
             ValueError: The packet name or the reason is empty, the path is malformed or
                 not spelled as a Divergence path would be, or it is an entity id (or a
-                list of them), which every Comparison numbers instead (#21).
+                list of them), which every Comparison names or numbers instead (#21).
         """
         if not self.packet:
             msg = "a Mask needs a packet name"
@@ -161,8 +164,9 @@ class Mask:
         if self.path != WHOLE_PACKET and _is_entity_id(self.packet, _mask_steps(self)):
             msg = (
                 f"{self.packet} {self.path}: an entity id needs no Mask; every Comparison "
-                "numbers entities in the order each Bot first hears of them, so the same "
-                "entities compare equal on both servers (#21)"
+                "names each entity by its type and where it spawned, or numbers it in the "
+                "order each Bot first hears of it, so the same entities compare equal on "
+                "both servers (#21)"
             )
             raise ValueError(msg)
 
