@@ -28,7 +28,8 @@ process changes. Workers follow the Worker contract in `docs/PROCESS.md`.
 Use the `red-green` skill for every change: one failing test, the minimum
 code, `mise run check`, one commit, repeat. Use the `protocol-research`
 skill before encoding any protocol or server fact. Use the `writing`
-skill before writing or rewording any user-facing text.
+skill before writing or rewording any user-facing text, and update it
+whenever the maintainer gives feedback on such text.
 
 The docs site is the spec for what users see, and always matches the
 code (ADR-0009). Each issue is worked on its own `issue-<n>-<slug>`
