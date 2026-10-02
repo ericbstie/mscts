@@ -16,7 +16,23 @@ Each goal is a check we can run, not an aspiration.
 | G3 | **Actionable** | Every Divergence names the Group, the Bot, the packet, the field path, and both values, and it reproduces on re-run. |
 | G4 | **Timed** | Every Group reports Measurements for the Reference and the Candidate over N repetitions (median, p95), plus Instance startup time. |
 | G6 | **Smooth DX** (ADR-0008) | Every command is idempotent and honest about what it did; every error names its fix. A server developer can write an Adapter from the authoring guide and prove it with `mscts adapter check` without reading mscts internals. |
-| G5 | **Fast loop** | `mise run check` takes under 10 s. `mise run test:reference` takes under 90 s on a warm cache. |
+| G5 | **Fast loop** | `mise run check` takes under 10 s. `mise run test:reference` takes under 90 s on a warm cache. It runs no Group's Self-check: those are the `selfcheck` tier (#84), which has a budget of its own, below. |
+
+G5 as measured on 2026-10-01 and 02 (4 CPUs, warm cache, one run at a time, with
+`scripts/time_tier.py` or `mise run`). Runs differ by 20% on this machine, so each figure is
+the range over the runs:
+
+- `mise run test:reference`, without the status Groups' Self-check, took 210 s to 259 s in 5
+  runs. Two of them were `mise run test:reference` twice in a row, both green (19 tests). The
+  90 s is not met. The slowest tests were 50 to 58 s (the
+  Observation window test that plays one Group 20 times), 40 to 46 s (item stacks) and 30 s
+  (a keep-alive cycle).
+- `mise run test:selfcheck` took 18 to 22 s for the two status Groups, and 24 to 31 s for a
+  joining Group (the probe Group in `tests/support/probe.py`: it joins two Bots and sets a
+  block). Every run starts with the two Reference boots, once for the tier: 13 to 17 s, plus
+  about 2 s to stop them. After that a Group costs its runs: 0.02 to 0.1 s per run for a
+  status Group, and 2.6 to 3.7 s per run for the joining Group. A Group that changes the
+  ServerSpec launches two Instances of its own, which took 20 s.
 
 Non-goals for now: Bedrock, online-mode auth and encryption, more than one
 Target (ADR-0003), and server-side-only behaviour such as disk format
