@@ -75,6 +75,13 @@ class Absent(Enum):
 ABSENT = Absent.ABSENT
 """A Divergence's value on the side that has no such packet (or field)."""
 
+MASKED = "<masked>"
+"""What a field Mask shows in place of each value at its path, on both sides.
+
+So two masked values are equal, while a value against None or an absent field is still a
+Divergence: a Mask hides a value, never whether it is there.
+"""
+
 
 WHOLE_PACKET = "*"
 """The Mask path that drops the whole packet."""
@@ -117,7 +124,7 @@ Evidence: docs/research/2026-09-30-observation-window.md. The barrier's request,
 
 @dataclass(frozen=True, slots=True)
 class Mask:
-    """A normalization rule: a field, or a whole packet, is excluded from Comparison.
+    """A normalization rule: a field's value, or a whole packet, is excluded from Comparison.
 
     Attributes:
         packet: The packet name, e.g. `minecraft:login`, in whatever State.
@@ -360,9 +367,12 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way); each entity id, and each
     of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the n-th in the Packets left in
-    the stream, so nothing left out or dropped counts (`_Numbers`); and every field a Mask
-    names is removed from the Packets of that name, on both sides and wherever present.
-    The Masks are one for each of the `RANDOM_FIELDS`, then `masks`. Indices count the
+    the stream, so nothing left out or dropped counts (`_Numbers`); and in the Packets of
+    a Mask's name, the value at its path is MASKED on both sides, wherever present, unless
+    it is None: a Mask hides a value, never whether it is there, so a field or a list
+    element one side lacks is still a Divergence, and a masked field is no test case
+    where it does not diverge. The Masks are one for each of the `RANDOM_FIELDS`, then
+    `masks`. Indices count the
     normalized stream, so they do not shift when a re-run has more or fewer Packets left
     out or dropped; paths and values are those of the sorted, canonical, numbered form.
 
@@ -467,14 +477,16 @@ class _Normalized:
     Attributes:
         packet: The Packet.
         fields: A copy of its fields, in the value model, in canonical form, with the
-            masked paths removed; None if it has none, and is then compared by payload.
+            masked values hidden (`_hidden`); None if it has none, and is then compared by
+            payload.
         raw: For a Packet with a canonical form, a copy of its fields as they came,
-            with the masked paths removed where they reach; else None.
+            with the masked values hidden where the paths reach; else None.
         parsed: For a Packet with a canonical form, `raw` with any JSON text in it
-            parsed but not canonical (`_JSON_TEXT`), with the masked paths removed where
-            they reach; else None.
+            parsed but not canonical (`_JSON_TEXT`), with the masked values hidden where
+            the paths reach; else None.
         unmasked: For a Packet with a canonical form, its canonical form before the
             Masks; else None.
+        masked: The paths in `fields` at which a Mask found a value, None included.
     """
 
     packet: Packet
@@ -482,6 +494,7 @@ class _Normalized:
     raw: dict[str, _Value] | None = None
     parsed: dict[str, _Value] | None = None
     unmasked: dict[str, _Value] | None = None
+    masked: frozenset[_Path] = frozenset()
 
     @property
     def value(self) -> object:
@@ -495,7 +508,7 @@ class _Masks:
 
     Attributes:
         dropped: The names of the packets dropped whole.
-        paths: The field paths removed, by packet name.
+        paths: The field paths hidden, by packet name.
     """
 
     dropped: frozenset[str]
@@ -812,8 +825,8 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
     if canonical is None:
         fields = _copy(packet, packet.fields)
         numbers.apply(packet, fields)
-        _remove_all(fields, paths)
-        return _Normalized(packet=packet, fields=fields)
+        masked = _hide_all(fields, paths)
+        return _Normalized(packet=packet, fields=fields, masked=masked)
     raw = _copy(packet, packet.fields)
     parsed = _copy(packet, packet.fields)
     if (json_text := _JSON_TEXT.get((packet.state, packet.name))) is not None:
@@ -822,9 +835,12 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
     fields = canonical(_copy(packet, packet.fields))
     for copy in (raw, parsed, unmasked, fields):
         numbers.apply(packet, copy)
-    for copy in (raw, parsed, fields):
-        _remove_all(copy, paths)
-    return _Normalized(packet=packet, fields=fields, raw=raw, parsed=parsed, unmasked=unmasked)
+    for copy in (raw, parsed):
+        _hide_all(copy, paths)
+    masked = _hide_all(fields, paths)
+    return _Normalized(
+        packet=packet, fields=fields, raw=raw, parsed=parsed, unmasked=unmasked, masked=masked
+    )
 
 
 def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
@@ -834,9 +850,12 @@ def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
     return copy if sort is None else sort(copy)
 
 
-def _remove_all(fields: dict[str, _Value], paths: Iterable[_Path]) -> None:
+def _hide_all(fields: dict[str, _Value], paths: Iterable[_Path]) -> frozenset[_Path]:
+    """Hide the value at each of `paths` in `fields` (`_hidden`); return where one stood."""
+    found: list[_Path] = []
     for path in paths:
-        _remove(fields, path)
+        _hidden(fields, path, (), found)
+    return frozenset(found)
 
 
 _LEAF_TYPES: frozenset[type] = frozenset({bool, int, float, str, bytes, UUID})
@@ -873,19 +892,25 @@ def _plain(value: object, packet: str, path: _Path) -> _Value:
     raise TypeError(msg)
 
 
-def _remove(fields: dict[str, _Value], path: _Path) -> None:
-    """Remove the value at `path` from `fields`, if there is one; a list closes up."""
-    node: _Value = fields
-    for step in path[:-1]:
-        child = _child(node, step)
-        if isinstance(child, Absent):
-            return
-        node = child
-    last = path[-1]
-    if isinstance(node, dict) and isinstance(last, str):
-        node.pop(last, None)
-    elif isinstance(node, list) and isinstance(last, int) and last < len(node):
-        del node[last]
+def _hidden(value: _Value, path: _Path, at: _Path, found: list[_Path]) -> _Value:
+    """`value` with MASKED in place of what is at `path` in it, unless that is None.
+
+    `at` is where `value` is in the fields; each path in the fields at which a value
+    stands, None included, is added to `found`. A list keeps its length. Lists and
+    mappings on the way are changed in place.
+    """
+    if not path:
+        found.append(at)
+        return value if value is None else MASKED
+    step, rest = path[0], path[1:]
+    match value:
+        case dict() if isinstance(step, str) and step in value:
+            value[step] = _hidden(value[step], rest, (*at, step), found)
+        case list() if isinstance(step, int) and step < len(value):
+            value[step] = _hidden(value[step], rest, (*at, step), found)
+        case _:
+            pass
+    return value
 
 
 def _child(node: _Value, step: _Step) -> _Value | Absent:
@@ -1254,7 +1279,8 @@ def _diff_matched(
 ) -> Iterator[Divergence]:
     """Diff two matched Packets, adding the test case of each pair compared to `compared`.
 
-    Two Packets compared by payload are one test case, the packet's.
+    Two Packets compared by payload are one test case, the packet's. A pair at a path a
+    Mask found a value at counts only if it differs: a masked field is no test case.
     """
     state, name = reference.packet.state, reference.packet.name
     differences: list[tuple[_Path | None, str, object, object]] = []
@@ -1267,13 +1293,16 @@ def _diff_matched(
     else:
         # Name each shape once: a list of 10,000 entries is 10,000 pairs but one name.
         names: dict[_Path, str] = {}
+        masked = reference.masked | candidate.masked
         for path, ref_value, cand_value in _pairs(reference.fields, candidate.fields, ()):
             shape = tuple(0 if isinstance(step, int) else step for step in path)
             if shape not in names:
                 names[shape] = _test_case(state, name, shape)
             if not _same(ref_value, cand_value):
                 differences.append((path, names[shape], ref_value, cand_value))
-        compared.update(names.values())
+                compared.add(names[shape])
+            elif not (masked and path in masked):
+                compared.add(names[shape])
     for path, case, ref_value, cand_value in differences:
         yield Divergence(
             bot=bot,

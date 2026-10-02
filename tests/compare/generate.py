@@ -2,11 +2,11 @@
 
 A Script is the deterministic part of a run: for each Bot, the packets it receives,
 by content. `render` turns a Script into a Transcript and chooses everything a re-run
-may change at random: the masked fields, how many ambient (dropped) packets arrive and
-where, the serverbound packets, the Bots' interleaving, the timestamps, and how the
-status JSON is spelled (key order, whitespace, and each description text as `"x"` or
-`{"text": "x"}`). Every Packet is built through a real Codec: the Target's for status
-packets, a toy one for play packets.
+may change at random: the masked fields' values (never whether they are there), how many
+ambient (dropped) packets arrive and where, the serverbound packets, the Bots'
+interleaving, the timestamps, and how the status JSON is spelled (key order, whitespace,
+and each description text as `"x"` or `{"text": "x"}`). Every Packet is built through a
+real Codec: the Target's for status packets, a toy one for play packets.
 """
 
 import json
@@ -169,7 +169,7 @@ def _status_json(description: str, most: object, online: object, rng: random.Ran
     sample = [{"name": rng.choice(_WORDS), "id": "00000000-0000-0000-0000-000000000000"}]
     status: dict[str, object] = {
         "description": description if rng.random() < 0.5 else {"text": description},
-        "players": {"max": most, "online": online, "sample": sample * rng.randint(0, 2)},
+        "players": {"max": most, "online": online, "sample": sample * rng.randint(1, 2)},
         "version": {"name": "26.3", "protocol": 777},
     }
     indent = rng.choice((None, 0, 2))
