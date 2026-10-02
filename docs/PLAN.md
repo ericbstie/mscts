@@ -1016,6 +1016,7 @@ Running Groups (`run.py`):
 GROUP_TIMEOUT_S = 10.0              # each Bot operation (Bot timeout_s)
 READY_TIMEOUT_S = 120.0             # an Instance's readiness (a cold vanilla boot)
 STOP_TIMEOUT_S = 30.0               # each stop step
+SETTLE_INTERVAL_S = 0.02            # between polls of an Instance's status while players are online
 
 class GroupError(Exception):        # the Group raised against one Instance; __cause__ is
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
