@@ -1,8 +1,8 @@
-"""Entities a Group spawns compare by the order a Bot hears of them (#21).
+"""Entities a Group spawns compare by the order they appear in a window (#21).
 
 The probe Group has Control summon three pigs inside an Observation window, and a watcher
 sees them spawn. Vanilla gives every pig a random UUID, so the Self-check matches only
-because each entity id and UUID is numbered in the order the watcher first hears of it.
+because each entity id and UUID is numbered in the order it first appears in the window.
 Two Reference Instances of the test's own play it 20 times each.
 """
 
@@ -27,8 +27,8 @@ loot leaves nothing behind when the probe kills it."""
 
 async def _pigs(context: GroupContext) -> None:
     """Control summons the pigs inside a window; the watcher sees them spawn."""
-    # Vanilla spawns animals near players at random, and an animal the watcher hears of
-    # before the window shifts the pigs' numbers.
+    # Vanilla spawns animals near players at random: one that spawns inside the window
+    # would be a difference between the two Instances.
     await context.control.run("gamerule spawn_mobs false")
     watcher = await context.bot("watcher")
     await watcher.join()
