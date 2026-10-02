@@ -102,7 +102,8 @@ The channel used to set up Fixtures. By default it is an
 then a marker command, and returns once the server has answered the
 marker and passed the barrier. What it receives is recorded but never
 compared, and a Candidate without one of its commands makes the Group
-`blocked`.
+`blocked`. Control can leave (its Bot closes), and its next command
+joins a new one.
 
 ### Fixture
 
@@ -156,7 +157,9 @@ Group with no window. When a window closes, each Bot in play first
 passes the **barrier** (`Bot.sync`: it asks the server for its
 statistics until two answers arrive at least 5 ms apart, which shows a
 tick has passed since the server received what the Bot sent before),
-then takes what has already arrived (the **drain**).
+then takes what has already arrived (the **drain**). A window can
+instead end at a packet's arrival (`until`): no barrier, and it closes
+when the first packet of that name arrived at a Bot.
 
 ### Mask
 

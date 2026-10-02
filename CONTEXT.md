@@ -65,7 +65,8 @@ need is missing, add it here in the same commit that introduces it.
   then a marker command, and returns once the server has answered the
   marker and passed the barrier. What it receives is recorded but never
   compared, and a Candidate without one of its commands makes the Group
-  `blocked`.
+  `blocked`. Control can leave (its Bot closes), and its next command
+  joins a new one.
 - **Fixture**: world or player state established before the observed part
   of a Group.
 
@@ -99,7 +100,9 @@ need is missing, add it here in the same commit that introduces it.
   passes the **barrier** (`Bot.sync`: it asks the server for its
   statistics until two answers arrive at least 5 ms apart, which shows a
   tick has passed since the server received what the Bot sent before),
-  then takes what has already arrived (the **drain**). _Avoid_: phase,
+  then takes what has already arrived (the **drain**). A window can
+  instead end at a packet's arrival (`until`): no barrier, and it closes
+  when the first packet of that name arrived at a Bot. _Avoid_: phase,
   section.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (keep-alive ids, teleport ids) from

@@ -58,6 +58,11 @@ ran, as `minecraft:system_chat` packets. Usually that is the command's
 answer. Keep setup commands before the window, and small. Your own Bots are
 not operators, and none of them can be called `control`.
 
+| Control method | What it does |
+| --- | --- |
+| `await context.control.run(command)` | Runs a command as Control's Bot, without the leading `/`, and returns once the server has answered it and a tick has passed. |
+| `await context.control.leave()` | Closes Control's Bot. The next `run` joins a new one and waits as it did the first time, so a Group can set a Fixture up, let Control leave while its own Bot joins, and put the Fixture back afterwards. A server removes a closed Bot's player a moment later: call `mscts.settle.until_no_player_online(context.endpoint)` before your Bot joins if the server has to be empty. |
+
 While it runs, each Bot sends and answers what the vanilla client sends and
 answers without asking the player: its brand and client settings after
 logging in, keep-alives, the join teleport, chunk batch acknowledgements,
@@ -73,11 +78,26 @@ becomes a `failed` Divergence. A timeout on vanilla makes the Verdict
 Only what a Bot receives inside `async with context.observe():` is
 compared. Set the world up before it and clean up after it. When the block
 ends, each Bot first waits until a tick has passed on the server since it
-received everything the Bot sent, then takes what has arrived. A few
+received everything the Bot sent, then takes what has arrived (a window
+with `until` waits for nothing: see below). A few
 packets the server sends on a clock rather than because of anything a Group
 did (keep-alives and the time of day) are never compared inside a window.
-Groups of their own compare them. To compare only some packets, name them:
-`context.observe("minecraft:block_update")`.
+Groups of their own compare them.
+
+| Window option | What it does |
+| --- | --- |
+| `context.observe("minecraft:block_update", ...)` | Compares only the packets named. |
+| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any Bot after the window opened, and waits for nothing: no barrier. The window holds that packet and what arrived with it, and nothing the server sends later. If no such packet arrived, the Group fails and says which. |
+
+Use `until` when what the server keeps sending after the part you compare
+would differ between two runs: after a join, later chunk batches and the
+mobs that wander into view. Put the Bot's join inside the window:
+
+<!-- not run: A fragment of a Group's function; it needs a context and a Bot. -->
+```python
+async with context.observe(until="minecraft:chunk_batch_finished"):
+    await bot.join()
+```
 
 A Group with no window compares everything its Bots receive. With one,
 what a Bot receives before it is in the world (the status, logging in and
