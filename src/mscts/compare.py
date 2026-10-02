@@ -348,8 +348,9 @@ class Divergence:
             `bot` and `failed`, which are about the Group, not one field.
         observability: `network traffic`: a `field` Divergence between raw values whose
             canonical forms are equal, so the vanilla client reads both alike; its path
-            and values are the raw ones. `gameplay`: every other Divergence, including
-            every `bot`, `missing`, `unexpected` and `failed` one.
+            and values are the raw ones; or a `missing` or `unexpected` `chunk_batch_start`
+            or `chunk_batch_finished`, which leave the client's world as it is. `gameplay`:
+            every other Divergence, including every `bot` and `failed` one.
     """
 
     bot: str
@@ -1662,6 +1663,23 @@ def _canonical_light_update(fields: dict[str, _Value], _context: _Context) -> di
     return {**fields, "data": _canonical_light(fields["data"], _LIGHT_SECTIONS_MAX)}
 
 
+def _canonical_batch_finished(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+    """No `batch_size`: the client feeds it only to the rate it asks the server for.
+
+    (`ClientPacketListener.handleChunkBatchFinished`: `ChunkBatchSizeCalculator.onBatchFinished`,
+    then `chunk_batch_received` with `getDesiredChunksPerTick`.) Which chunks a batch holds races
+    between two vanilla Instances, and the client keeps each chunk by its position.
+    """
+    return {key: value for key, value in fields.items() if key != "batch_size"}
+
+
+_BATCH_PACKETS = frozenset(
+    {(State.PLAY, "minecraft:chunk_batch_start"), (State.PLAY, "minecraft:chunk_batch_finished")}
+)
+"""The packets that mark a chunk batch: the client's world does not change with them, so one that
+only one side sent is network traffic (`_canonical_batch_finished`)."""
+
+
 def _chunk_cover(path: _Path) -> _Path:
     """The path of the canonical value that the raw value at `path` is part of.
 
@@ -1859,6 +1877,7 @@ _CANONICAL: Mapping[
         (State.STATUS, "minecraft:status_response"): _canonical_status_response,
         (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
         (State.PLAY, "minecraft:light_update"): _canonical_light_update,
+        (State.PLAY, "minecraft:chunk_batch_finished"): _canonical_batch_finished,
     }
 )
 """The canonical form of each clientbound packet that has one, by (State, name), from its
@@ -2002,17 +2021,26 @@ def _compare_streams(
 def _unmatched(
     bot: str, index: int, kind: Literal["missing", "unexpected"], entry: _Normalized
 ) -> Divergence:
-    """A Packet one side has: its value, or where it is for one about a chunk (`chunk x z`)."""
+    """A Packet one side has: its value, or where it is for one about a chunk (`chunk x z`).
+
+    It is network traffic for a packet that marks a chunk batch (`_BATCH_PACKETS`), else gameplay.
+    """
+    state, name = entry.packet.state, entry.packet.name
     value = _place_text(entry.packet) or entry.value
     return Divergence(
         bot=bot,
         index=index,
         kind=kind,
-        packet=entry.packet.name,
+        packet=name,
         path=None,
         reference=value if kind == "missing" else ABSENT,
         candidate=value if kind == "unexpected" else ABSENT,
-        test_case=_test_case(entry.packet.state, entry.packet.name, ()),
+        test_case=_test_case(state, name, ()),
+        observability=(
+            Observability.NETWORK_TRAFFIC
+            if (state, name) in _BATCH_PACKETS
+            else Observability.GAMEPLAY
+        ),
     )
 
 

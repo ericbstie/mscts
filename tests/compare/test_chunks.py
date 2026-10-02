@@ -682,9 +682,24 @@ def test_a_packet_between_batches_is_compared_after_the_chunks_around_it() -> No
         [],
     )
 
-    assert [(d.kind, d.packet, d.path) for d in verdict.gameplay] == [
+    assert [(d.kind, d.packet, d.path) for d in verdict.divergences] == [
         ("field", "minecraft:chunk_batch_finished", "batch_size"),
         ("field", "minecraft:chunk_batch_finished", "batch_size"),
+    ]
+    assert verdict.gameplay == ()
+
+
+def test_another_number_of_batches_is_network_traffic_only() -> None:
+    # The batch packets only feed the rate the client asks the server for
+    # (ChunkBatchSizeCalculator): which chunks a batch holds is network traffic.
+    first, second, third = (chunk(at=(x, 0)) for x in range(3))
+
+    verdict = compare(_played((first, second, third)), _played((first,), (second, third)), [])
+
+    assert [(d.kind, d.packet, d.observability) for d in verdict.divergences] == [
+        ("field", "minecraft:chunk_batch_finished", Observability.NETWORK_TRAFFIC),
+        ("unexpected", "minecraft:chunk_batch_start", Observability.NETWORK_TRAFFIC),
+        ("unexpected", "minecraft:chunk_batch_finished", Observability.NETWORK_TRAFFIC),
     ]
 
 

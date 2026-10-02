@@ -1028,8 +1028,9 @@ class Divergence:
                                     # other field one); "" for bot and failed (Group-level)
     observability: Observability = Observability.GAMEPLAY
     # network traffic: a `field` Divergence between raw values whose canonical forms are
-    #   equal (path and values are the raw ones); gameplay: every other Divergence, so every
-    #   bot, missing, unexpected and failed one (run.judge's `failed` keeps the default).
+    #   equal (path and values are the raw ones), or a missing or unexpected
+    #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
+    #   so every bot and failed one (run.judge's `failed` keeps the default).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
     #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
@@ -1386,7 +1387,14 @@ proves it necessary:
      on the 26.3 server: `PlayerChunkSender.sendNextChunks`); it sends the
      light updates of one tick in the iteration order of
      `ServerChunkCache.chunkHoldersToBroadcast`, a `ReferenceOpenHashSet`
-     (`docs/research/2026-10-02-chunks-light.md`).
+     (`docs/research/2026-10-02-chunks-light.md`). So which chunks a batch
+     holds is network traffic: a `chunk_batch_start` or
+     `chunk_batch_finished` only one side sent is a network traffic
+     Divergence, and so is another `batch_size`, which the canonical form
+     of `chunk_batch_finished` leaves out (step 2). The client feeds it
+     only to the rate it asks the server for
+     (`ChunkBatchSizeCalculator.onBatchFinished`, then
+     `chunk_batch_received`).
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
