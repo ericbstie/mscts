@@ -1,6 +1,7 @@
 """The default Report is a list of differences and the total Run time (#9)."""
 
 from dataclasses import replace
+from uuid import UUID
 
 import pytest
 
@@ -179,3 +180,77 @@ def test_a_bot_difference_without_a_test_case_still_names_its_group() -> None:
 
 def test_total_time_keeps_tenths_of_a_second() -> None:
     assert render_text(_report(elapsed_s=0.25)).endswith("Took 0.2 s\n")
+
+
+def test_verbose_header_uses_installed_versions_instead_of_status_claims() -> None:
+    report = _report(_result(_verdict(_field("status_response.description"))))
+    report = replace(
+        report,
+        reference=replace(report.reference, installed_version="26.3"),
+        candidate=replace(report.candidate, installed_version="nightly-abc"),
+    )
+    assert render_text(report, verbose=True) == (
+        "Running tests against pumpkin\n"
+        "  Reference    vanilla 26.3\n"
+        "  Candidate    pumpkin nightly-abc\n"
+        "  Target       Minecraft 26.3 (protocol 777)\n"
+        "  Repetitions  1 of each group\n"
+        "- Server list description  status_response.description\n"
+        '  vanilla sends "reference value", pumpkin sends "candidate value"\n'
+        "Group times\n"
+        "  status/basic not recorded\n"
+        "Took 41 s\n"
+    )
+
+
+def test_verbose_values_are_under_their_case_and_keep_distinct_values() -> None:
+    field = replace(
+        _field("status_response.description"), reference="mscts", candidate={"text": "mscts"}
+    )
+    other = replace(field, candidate={"text": "other"})
+    report = _report(_result(_verdict(field), _verdict(field, replace(field, index=3), other)))
+    text = render_text(report, verbose=True)
+    assert text.count("- Server list description  status_response.description\n") == 1
+    assert text.count('  vanilla sends "mscts", pumpkin sends {"text": "mscts"}\n') == 1
+    assert 'pumpkin sends {"text": "other"}\n' in text, text
+
+
+def test_verbose_preserves_absent_null_and_bytes_without_inventing_values() -> None:
+    missing = replace(_field("new.field"), reference=ABSENT, candidate=None)
+    payload = replace(_field("new.payload"), reference=b"\x00\xff", candidate=b"\x01")
+    text = render_text(_report(_result(_verdict(missing, payload))), verbose=True)
+    assert "- new.field\n  vanilla leaves it out, pumpkin sends null\n" in text, text
+    assert "- new.payload\n  vanilla sends bytes 00ff, pumpkin sends bytes 01\n" in text, text
+
+
+def test_verbose_list_values_keep_the_element_path() -> None:
+    field = replace(_field("list[].name"), path="list[2].name")
+    assert '  list[2].name: vanilla sends "reference value"' in render_text(
+        _report(_result(_verdict(field))), verbose=True
+    )
+
+
+def test_verbose_group_times_total_all_repetitions_and_mark_blocked_groups() -> None:
+    played = replace(_result(_verdict(), _verdict()), elapsed_s=(0.4, 0.6))
+    blocked = _result(Verdict("join/basic", Outcome.BLOCKED, detail="needs /tick"))
+    text = render_text(_report(played, blocked), verbose=True)
+    assert "Group times\n  status/basic 1 s\n  join/basic not played\n" in text, text
+    assert "No differences." not in text
+    assert "Timings (ms)" not in text
+    assert "Notes" not in text
+    assert "How to read this" not in text
+
+
+def test_default_output_is_unchanged_when_verbose_data_is_available() -> None:
+    result = replace(_result(_verdict()), elapsed_s=(0.25,))
+    report = _report(result)
+    report = replace(report, candidate=replace(report.candidate, installed_version="nightly-abc"))
+    assert render_text(report) == "Running tests against pumpkin\nNo differences.\nTook 41 s\n"
+
+
+def test_verbose_renders_uuid_and_nested_binary_values() -> None:
+    value = {"id": UUID("12345678-1234-5678-1234-567812345678"), "data": [b"\x00\xff"]}
+    field = replace(_field("new.record"), reference=value, candidate=ABSENT)
+    text = render_text(_report(_result(_verdict(field))), verbose=True)
+    assert '"data": [{"bytes": "00ff"}]' in text, text
+    assert '"id": "12345678-1234-5678-1234-567812345678"' in text, text

@@ -60,7 +60,7 @@ with code 1 if nothing is installed, and prints the install command.
 ## `mscts run`
 
 ```
-mscts run --candidate <adapter> [--group GLOB] [--repeat N]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose]
 ```
 
 Starts vanilla and the Candidate, plays the chosen Groups against both,
@@ -78,6 +78,15 @@ Group was skipped or failed, the Report says `No differences.`.
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
 | `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
+| `-v`, `--verbose` | off | Add installed versions, Target, repetitions, both values for each difference, and time per Group. |
+
+Verbose values appear directly under their test case. Distinct values from
+different repetitions are kept; identical differences are shown once.
+Group time is the sum of playing both sides and comparing them across
+all repetitions. It excludes Instance startup and shutdown, which remain
+in the final total. Skipped Groups say `not played`. The installed version
+comes from the verified Registry entry, or the binary's sha256 when no
+entry matches. It does not trust the version claimed in a status response.
 
 `--candidate vanilla` plays vanilla against a second vanilla server. That is
 a quick way to see a Self-check.

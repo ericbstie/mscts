@@ -60,7 +60,7 @@ uv run mscts adapter install pumpkin --from pumpkin-X64-Linux
 ```
 
 A build installed with `--from` matches no Registry entry, so the Adapter
-listing names it by its sha256. See [Installing servers](/guide/installing-servers).
+listing and verbose Report name it by its sha256. See [Installing servers](/guide/installing-servers).
 
 Check what you have:
 

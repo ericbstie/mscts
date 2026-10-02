@@ -7,6 +7,7 @@ import json
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
+from time import perf_counter
 
 import mscts.groups  # noqa: F401 - importing it registers the shipped Groups
 from mscts.adapters.base import Adapter, Installation
@@ -112,12 +113,15 @@ class GroupResult:
         reference: The Reference's Measurements in each repetition (none if the
             Group was blocked there).
         candidate: The Candidate's Measurements in each repetition, likewise.
+        elapsed_s: Seconds playing both sides and comparing, per repetition; zero
+            when blocked. Instance startup and shutdown are excluded.
     """
 
     group_id: str
     verdicts: tuple[Verdict, ...]
     reference: tuple[tuple[Measurement, ...], ...]
     candidate: tuple[tuple[Measurement, ...], ...]
+    elapsed_s: tuple[float, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -130,11 +134,14 @@ class SideSummary:
             none was a status JSON naming a version.
         startup: One `instance.startup` Measurement per Instance the Run launched for
             it, launch to ready; none for an Attached side.
+        installed_version: The verified Registry version or sha256, or None for
+            an Attached side or an Installation without recorded provenance.
     """
 
     name: str
     version: str | None
     startup: tuple[Measurement, ...]
+    installed_version: str | None = None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -161,6 +168,7 @@ class _Play:
     verdict: Verdict
     reference: tuple[Measurement, ...] = ()
     candidate: tuple[Measurement, ...] = ()
+    elapsed_s: float = 0.0
 
 
 def status_version(transcript: Transcript) -> str | None:
@@ -354,6 +362,7 @@ async def run_results(
                 verdicts=tuple(play.verdict for play in played),
                 reference=tuple(play.reference for play in played),
                 candidate=tuple(play.candidate for play in played),
+                elapsed_s=tuple(play.elapsed_s for play in played),
             )
             for group_id, played in plays.items()
         ),
@@ -449,6 +458,7 @@ class _Instances:
     async def play(self, group: Group) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it."""
         endpoints = await self._pair(group.spec)
+        started = perf_counter()
         attempts = [
             await _attempt(group, endpoint, server=side.name)
             for side, endpoint in zip(self._sides, endpoints, strict=True)
@@ -465,13 +475,17 @@ class _Instances:
             judge(group, *attempts),
             reference=tuple(measurements(reference)),
             candidate=tuple(measurements(candidate)),
+            elapsed_s=perf_counter() - started,
         )
 
     def summaries(self) -> tuple[SideSummary, SideSummary]:
         """What the Run learned about the Reference and the Candidate, in that order."""
         reference, candidate = (
             SideSummary(
-                name=side.name, version=self._versions[role], startup=tuple(self._startup[role])
+                name=side.name,
+                version=self._versions[role],
+                startup=tuple(self._startup[role]),
+                installed_version=_installed_version(side),
             )
             for role, side in enumerate(self._sides)
         )
@@ -516,6 +530,15 @@ class _Instances:
             Measurement(name="instance.startup", unit="ms", value=startup_ms)
         )
         return instance.endpoint
+
+
+def _installed_version(side: Side) -> str | None:
+    if isinstance(side, Attached) or side.installation.source is None:
+        return None
+    source = side.installation.source
+    if source.entry is not None:
+        return source.entry.removeprefix(f"{side.name} ")
+    return f"sha256 {source.sha256}"
 
 
 async def _attempt(group: Group, endpoint: Endpoint, *, server: str) -> Transcript | GroupError:

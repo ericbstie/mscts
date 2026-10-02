@@ -1,10 +1,13 @@
 """A Run's full result: Verdicts per repetition, Measurements, and what each side is."""
 
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from mscts import run as runs
+from mscts.adapters.base import Source
 from mscts.codec.packets import Direction, Packet, State
 from mscts.compare import Outcome
 from mscts.group import Group
@@ -90,6 +93,7 @@ async def test_a_blocked_group_has_no_measurements(fake_server: MakeServer, tmp_
     ping = result.results[1]
     assert ping.verdicts[0].outcome is Outcome.BLOCKED
     assert ping.reference == ping.candidate == ((),)
+    assert ping.elapsed_s == (0.0,)
 
 
 def _status(json_response: object) -> Transcript:
@@ -125,3 +129,31 @@ def test_the_status_version_is_read_leniently(json_response: object, expected: s
 
 def test_a_transcript_without_a_status_response_has_no_version() -> None:
     assert status_version(Transcript(group_id="status/basic", server="x")) is None
+
+
+@pytest.mark.asyncio
+async def test_group_time_covers_both_plays_and_comparison_per_repetition(
+    fake_server: MakeServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    times = iter((10.0, 10.4, 20.0, 20.6, 30.0, 30.8, 40.0, 40.9))
+    monkeypatch.setattr(runs, "perf_counter", lambda: next(times))
+    result = await run_results(
+        [BASIC, PING], fake_server("one"), fake_server("two"), workdir=tmp_path / "run", repeat=2
+    )
+    assert result.results[0].elapsed_s == pytest.approx((0.4, 0.8))
+    assert result.results[1].elapsed_s == pytest.approx((0.6, 0.9))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entry", ["two nightly-abc", None], ids=["registry", "local-file"])
+async def test_installed_version_comes_from_source_instead_of_status(
+    entry: str | None, fake_server: MakeServer, tmp_path: Path
+) -> None:
+    candidate = fake_server("two")
+    source = Source(sha256="a" * 64, size=1, entry=entry)
+    candidate = replace(candidate, installation=replace(candidate.installation, source=source))
+    result = await run_results([BASIC], fake_server("one"), candidate, workdir=tmp_path / "run")
+    assert result.candidate.version == "26.3"
+    expected = "nightly-abc" if entry else f"sha256 {'a' * 64}"
+    assert result.candidate.installed_version == expected
+    assert result.reference.installed_version is None

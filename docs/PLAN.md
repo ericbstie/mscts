@@ -1323,6 +1323,7 @@ class GroupResult:
     verdicts: tuple[Verdict, ...]                    # one per repetition
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
+    elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition; blocked 0
 
 @frozen
 class SideSummary:
@@ -1330,6 +1331,7 @@ class SideSummary:
     version: str | None             # version.name of its first status_response (lenient)
     startup: tuple[Measurement, ...]  # instance.startup (ms, ready_ns - launched_ns) per
                                       # launched Instance; none for an Attached side
+    installed_version: str | None = None # Registry version or sha256; unknown without Source
 
 @frozen
 class RunResult:
@@ -1349,7 +1351,7 @@ class Report:                       # report.py
     # Report.of(run_result, *, target, notes, elapsed_s); repeat (property)
     # later: compliance = matches / (groups − errors); to_json(), to_markdown()
 
-def render_text(report: Report) -> str: ...
+def render_text(report: Report, *, verbose: bool = False) -> str: ...
 # test_cases.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
@@ -1361,6 +1363,10 @@ def render_text(report: Report) -> str: ...
 # is empty and every Group was compared. Last line "Took <seconds> s", rounded to
 # tenths, including launch and shutdown. No values, section headings, Notes, legend,
 # counts or per-Measurement timing table.
+# #10: verbose adds installed versions, Target and repetitions at the top, distinct
+# pairs of actual values directly under each difference, and total time per Group
+# across repetitions (play both sides + Comparison; excludes startup/shutdown).
+# Blocked Groups say "not played"; older results without durations say "not recorded".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
@@ -1380,7 +1386,7 @@ mscts adapter list                  # ADAPTER VERSION TARGET STATE, one row per 
 mscts adapter status <adapter>      # root, entry, sha256, size, from, installed; exit 1 and
                                     # the install command when nothing is installed
 mscts selfcheck [--group GLOB] [--repeat N]
-mscts run --candidate <adapter> [--group GLOB] [--repeat N] [--out DIR]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
     # --group: fnmatch over the registered exact Group ids, prerequisites added
     # (default status/*); --repeat default 5; --out not implemented yet.
     # Plays in a fresh temp dir, removed afterwards (kept, and named, when an Instance could
