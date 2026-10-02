@@ -2,12 +2,12 @@
 
 Vanilla gives entity ids from a counter and mobs random UUIDs, so two servers that send the
 same entities send other numbers for them. A Comparison replaces the id of an entity whose
-`add_entity` came before the window (outside the windows) by its type and spawn position,
-`pig@(1.5, -60.0, 7.5)` after the Masks (a player's by `player <uuid>`); any other id by
-`#<n>`, the n-th entity in the Bot's compared packets (without windows, its own player,
-from `login`, is #1); and each UUID of an entity that is not a player by `#<n>`, the n-th
-such UUID. So the same entities compare equal, and a packet about another entity is still
-a Divergence.
+`add_entity` came before the window (outside the windows) by its type and its position at
+the first such add_entity, `pig@(1.5, -60.0, 7.5)` after the Masks (a player's by
+`player <uuid>`); any other id by `#<n>`, the n-th entity in the Bot's compared packets
+(without windows, its own player, from `login`, is #1); and each UUID of an entity that is
+not a player by `#<n>`, the n-th such UUID. So the same entities compare equal, and a
+packet about another entity is still a Divergence.
 """
 
 import re
@@ -355,8 +355,16 @@ def test_a_mask_on_add_entitys_position_masks_it_in_the_name_too() -> None:
     ]
 
 
+def test_an_entity_keeps_the_name_of_its_first_add_entity_before_the_window() -> None:
+    # Vanilla sends add_entity again when tracking restarts, at the entity's position then.
+    reference = _hurt_one_spawned_before(spawn(5, x=1.5), spawn(5, x=2.5))
+    candidate = _hurt_one_spawned_before(spawn(5, x=1.5))
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
 def test_a_player_spawned_before_the_window_is_named_by_its_uuid() -> None:
-    # Every Bot joins at the same spot, so a player's position cannot tell two apart.
+    # Where a player joins is random or shared, so its position cannot tell two apart.
     bob, carol = uuid.UUID(int=1), uuid.UUID(int=2)
     spawns = (spawn(5, kind=PLAYER, uuid_=bob), spawn(6, kind=PLAYER, uuid_=carol))
 
@@ -367,6 +375,14 @@ def test_a_player_spawned_before_the_window_is_named_by_its_uuid() -> None:
     assert [(d.reference, d.candidate) for d in verdict.divergences] == [
         (f"player {bob}", f"player {carol}")
     ]
+
+
+def test_a_player_that_joined_before_the_window_at_a_random_position_is_the_same_player() -> None:
+    bob = uuid.UUID(int=1)
+    reference = _hurt_one_spawned_before(spawn(5, x=3.5, kind=PLAYER, uuid_=bob))
+    candidate = _hurt_one_spawned_before(spawn(5, x=-12.5, kind=PLAYER, uuid_=bob))
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
 
 
 def test_minus_zero_and_zero_are_the_same_position_in_a_name() -> None:

@@ -42,11 +42,15 @@ it reads it into):
   its Fixture (`gamerule spawn_mobs false`; 26.3 rule names are
   snake_case), and tags what it summons so it removes only those;
 - entities a Group spawns before its window are told apart by type and
-  spawn position (`pig@(1.5, -60.0, 7.5)`, #116): spawn two of one type
-  at different positions, or the Comparison cannot tell which one a
-  packet in the window is about; an entity that spawns at a random
-  position (a dropped item) takes a Mask on that `add_entity` axis,
-  which hides it in the name too;
+  position at their first `add_entity` before the window
+  (`pig@(1.5, -60.0, 7.5)`, #116): spawn two of one type at different
+  positions, or the Comparison cannot tell which one a packet in the
+  window is about; an entity that spawns at a random position (a
+  dropped item) takes a Mask on that `add_entity` axis, which hides it
+  in the name too;
+- an entity named by its position must not move before the window:
+  summon it with `NoAI:1b`, or run `tick freeze` while the Fixture sets
+  it up, or its first `add_entity` can carry a position it drifted to;
 - anything else is the Group not being deterministic yet: the window
   reaches timing (later chunk batches, a barrier that waits ticks) or
   world state that drifts between Instances (the default flat world

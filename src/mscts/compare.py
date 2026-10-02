@@ -17,8 +17,8 @@ left out on purpose:
 - The interleaving of different Bots' Packets is timing too, so each Bot is compared
   on its own.
 - Entity ids and the random UUIDs of mobs: vanilla gives ids from a counter, so an
-  entity spawned outside the windows is compared as its type and spawn position (a
-  player as its UUID), and any
+  entity spawned outside the windows is compared as its type and its position at its
+  first add_entity there (a player as its UUID), and any
   other as the order in which it first appears in the Bot's compared Packets
   (`ENTITY_UUIDS`).
 - Control's Bot (`CONTROL_PLAYER`) sets the world up, as an operator: what it receives
@@ -398,18 +398,18 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
     JSON is parsed, and its text components written one way); each entity id whose
-    `add_entity` was left out of the windows becomes its type and spawn position
-    (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is `player <uuid>`), and
-    every other entity id but one first seen in a `remove_entities`, and each of the `ENTITY_UUIDS`
-    but a player's, becomes `#<n>`, the n-th in the Packets left in the stream, so nothing
-    left out or dropped counts (`_Numbers`); and in the Packets of
-    a Mask's name, the value at its path is MASKED on both sides, wherever present, unless
-    it is None: a Mask hides a value, never whether it is there, so a field or a list
-    element one side lacks is still a Divergence, and a masked field is no test case
-    where it does not diverge. The Masks are one for each of the `RANDOM_FIELDS`, then
-    `masks`. Indices count the
-    normalized stream, so they do not shift when a re-run has more or fewer Packets left
-    out or dropped; paths and values are those of the sorted, canonical, numbered form.
+    `add_entity` was left out of the windows becomes its type and its position at the
+    first such `add_entity` (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is
+    `player <uuid>`), and every other entity id but one first seen in a
+    `remove_entities`, and each of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the
+    n-th in the Packets left in the stream, so nothing left out or dropped counts
+    (`_Numbers`); and in the Packets of a Mask's name, the value at its path is MASKED on
+    both sides, wherever present, unless it is None: a Mask hides a value, never whether
+    it is there, so a field or a list element one side lacks is still a Divergence, and a
+    masked field is no test case where it does not diverge. The Masks are one for each of
+    the `RANDOM_FIELDS`, then `masks`. Indices count the normalized stream, so they do not
+    shift when a re-run has more or fewer Packets left out or dropped; paths and values
+    are those of the sorted, canonical, numbered form.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -668,8 +668,8 @@ class _Windows:
 # and before the Masks. Vanilla gives ids from a counter and mobs random UUIDs, so the same
 # entities on two servers compare equal only by their order. Packets left out of the
 # Comparison (outside the windows) take no number: how many arrived is timing. But an entity
-# whose add_entity came outside the windows is named by its type and spawn position (#116;
-# a player by its UUID, as every Bot joins at one spot),
+# whose add_entity came outside the windows is named by its type and its position at the
+# first such add_entity (#116; a player by its UUID, as where a player joins is not fixed),
 # which the Group's setup fixes, so an action inside a window on the wrong one of two such
 # entities is still a Divergence. The Codec says where a packet's entity ids are.
 
@@ -760,15 +760,18 @@ class _Numbers:
     def spawned(self, packet: Packet, masks: _Masks) -> None:
         """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.
 
-        The name is the entity's type and where it spawned (`pig@(1.5, -60.0, 7.5)`), which
-        the Group's own setup fixes, however many other entities arrived first. A player is
-        named by its UUID instead (`player <uuid>`): every Bot joins at the same spot. The
+        The name is the entity's type and its position at its first `add_entity` before the
+        window (`pig@(1.5, -60.0, 7.5)`), which the Group's own setup fixes, however many
+        other entities arrived first. Vanilla sends `add_entity` again when tracking
+        restarts, at the position then, so a later one keeps the first name, unless a
+        `remove_entities` ended it in between (`removed`). A player is named by its UUID
+        instead (`player <uuid>`): where a player joins is not fixed by the Group. The
         fields go through the Group's Masks first, so a masked axis reads MASKED.
         """
         if packet.name != _ADD_ENTITY or packet.fields is None:
             return
         entity_id = packet.fields.get("entity_id")
-        if type(entity_id) is int:
+        if type(entity_id) is int and entity_id not in self.ids:
             fields = _copy(packet, packet.fields)
             _hide_all(fields, masks.paths.get(packet.name, ()))
             self.ids[entity_id] = (
@@ -885,7 +888,7 @@ _REMOVE_ENTITIES = "minecraft:remove_entities"
 
 
 def _spawn_name(fields: Mapping[str, object]) -> str:
-    """An entity's name from its `add_entity` `fields`: its type and where it spawned.
+    """An entity's name from its `add_entity` `fields`: its type and position there.
 
     For example `pig@(1.5, -60.0, 7.5)`. A type id outside the registry is written as the
     number, a masked axis as MASKED, and -0.0 as 0.0.
@@ -899,7 +902,7 @@ def _spawn_name(fields: Mapping[str, object]) -> str:
 
 
 def _axis(value: object) -> str:
-    """One axis of a spawn position in a name: MASKED as is, -0.0 as 0.0, else its repr."""
+    """One axis of a position in a name: MASKED as is, -0.0 as 0.0, else its repr."""
     if value == MASKED:
         return MASKED
     return repr(value + 0.0) if type(value) is float else repr(value)

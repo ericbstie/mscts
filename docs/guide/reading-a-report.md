@@ -147,10 +147,12 @@ under the same test case. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. An entity spawned
-before the compared part is written by its type and where it spawned, such
-as `"pig@(1.5, -60.0, 7.5)"`; a masked position reads `<masked>`, as in
-`"pig@(<masked>, -60.0, 7.5)"`, and -0.0 is written 0.0. A player spawned
-then is written `"player <uuid>"`. Any other entity id is written `"#<n>"`: the
+before the compared part is written by its type and where the client first
+saw it, such as `"pig@(1.5, -60.0, 7.5)"`; a masked position reads
+`<masked>`, as in `"pig@(<masked>, -60.0, 7.5)"`, and -0.0 is written 0.0.
+A player spawned then is written `"player <uuid>"`. If such an entity has
+another type or position on the two servers, the difference shows as
+`<packet>.entity_id` on each packet about that entity. Any other entity id is written `"#<n>"`: the
 n-th entity in what mscts compared for that Bot.
 The UUID of an entity that is not a player is written the same way,
 counted on its own.
