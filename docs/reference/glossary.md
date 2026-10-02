@@ -182,9 +182,10 @@ would differ; how it is distributed is a statistical Group's job
 ### Unordered list
 
 A list vanilla sends in an order that changes from
-one boot to the next while the client reads it into a map, such as the
-tag lists (`compare.UNORDERED`). Every Comparison sorts it by name
-before anything else, so its order is no Divergence at all.
+one boot (or join) to the next while the client keeps its entries in a
+map or a set, such as the tag lists (`compare.UNORDERED`). Every
+Comparison sorts it by each entry's key in that map or set, before
+anything else, so its order is no Divergence at all.
 
 ### Canonicalization
 

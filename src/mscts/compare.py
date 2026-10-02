@@ -160,11 +160,30 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "sends both in an order that changes from one boot to the next (hash maps). Each "
             "tag's entries keep their order."
         ),
+        "minecraft:login": (
+            "dimension_names, sorted by name. Vanilla sends them in an order fixed per boot: "
+            "MinecraftServer.createLevels adds the overworld, then iterates "
+            "MappedRegistry.byKey, a HashMap keyed by ResourceKey, which has no hashCode of its "
+            "own. The client reads them into a HashSet (ClientboundLoginPacket.STREAM_CODEC: "
+            "ByteBufCodecs.collection(Sets::newHashSetWithExpectedSize))."
+        ),
+        "minecraft:update_attributes": (
+            "attributes, sorted by attribute. Vanilla sends them in an order that changes from "
+            "one join to the next: AttributeMap keeps them in fastutil hash collections "
+            "(attributesToSync, an ObjectOpenHashSet of AttributeInstance, which has no "
+            "hashCode of its own; getSyncableAttributes iterates an Object2ObjectOpenHashMap). "
+            "The client applies each to the entity's instance of its attribute "
+            "(ClientPacketListener.handleUpdateAttributes: AttributeMap.getInstance, then "
+            "setBaseValue, removeModifiers and each modifier), so a repeated attribute keeps "
+            "the last. Each attribute's modifiers keep their order."
+        ),
     }
 )
-"""The packets, in any State, whose lists of named entries every Comparison sorts by name,
-each with the reason: vanilla's own order changes from one boot to the next, so it is
-never a Divergence, not even a network traffic one (docs/research/2026-10-01-control.md).
+"""The packets, in any State, whose unordered lists every Comparison sorts, each with the
+reason: what vanilla iterates in an order that changes from one boot (or join) to the next,
+and what the client reads the list into. The sort key is the key of the client's map or set,
+and the sort is stable, so of a key sent twice the last stays last. That order is never a
+Divergence, not even a network traffic one (docs/research/2026-10-01-control.md, #30).
 """
 
 RANDOM_FIELDS: Mapping[str, str] = MappingProxyType(
@@ -891,20 +910,42 @@ def _with_sorted_tags(registry: _Value) -> _Value:
     return registry
 
 
-def _sorted_by(items: _Value, key: str) -> _Value:
-    """`items` stably sorted by each one's `key`, if it is a list of mappings with str keys."""
+def _sorted_by(items: _Value, key: str | None) -> _Value:
+    """`items` stably sorted by each one's `key`, or by each one itself if `key` is None.
+
+    Unchanged unless it is a list whose sort keys are all str, or all int.
+    """
     if not isinstance(items, list):
         return items
-    names: list[tuple[str, _Value]] = []
-    for item in items:
-        if not (isinstance(item, dict) and isinstance(name := item.get(key), str)):
-            return items
-        names.append((name, item))
-    return [item for _, item in sorted(names, key=lambda pair: pair[0])]
+    keys = [item if key is None else _sort_key(item, key) for item in items]
+    names = [name for name in keys if isinstance(name, str)]
+    numbers = [number for number in keys if type(number) is int]
+    if len(names) == len(items):
+        return [items[index] for index in sorted(range(len(items)), key=names.__getitem__)]
+    if len(numbers) == len(items):
+        return [items[index] for index in sorted(range(len(items)), key=numbers.__getitem__)]
+    return items
+
+
+def _sort_key(item: _Value, key: str) -> _Value:
+    return item.get(key) if isinstance(item, dict) else None
+
+
+def _sorting(field: str, key: str | None) -> Callable[[dict[str, _Value]], dict[str, _Value]]:
+    """Sort the list `field` of a packet's fields, as `_sorted_by` does with `key`."""
+
+    def sort(fields: dict[str, _Value]) -> dict[str, _Value]:
+        return {**fields, field: _sorted_by(fields[field], key)} if field in fields else fields
+
+    return sort
 
 
 _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = MappingProxyType(
-    {"minecraft:update_tags": _sorted_update_tags}
+    {
+        "minecraft:update_tags": _sorted_update_tags,
+        "minecraft:login": _sorting("dimension_names", None),
+        "minecraft:update_attributes": _sorting("attributes", "attribute"),
+    }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""
 

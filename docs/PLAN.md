@@ -1052,10 +1052,12 @@ OBSERVE_CLOSE = "observe:close"     # the Mark that closes it
 HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
                                     # compares (keep_alive, set_time, award_stats; evidence in
                                     # docs/research/2026-09-30-observation-window.md)
-UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any State) whose lists
-                                    # of named entries every Comparison sorts by name first, so
-                                    # their order is no Divergence at all: update_tags (vanilla's
-                                    # order changes per boot; docs/research/2026-10-01-control.md)
+UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any State) whose
+                                    # unordered lists every Comparison sorts first, stably, by
+                                    # the key of the client's map or set, so their order is no
+                                    # Divergence at all: update_tags (vanilla's order changes per
+                                    # boot; docs/research/2026-10-01-control.md), login's
+                                    # dimension_names and update_attributes' attributes (#30)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random on every run, which no exact Group compares
                                     # (ADR-0011): minecraft:login_finished.session_id (same
@@ -1249,6 +1251,27 @@ proves it necessary:
      encodings with equal sorted forms give each name the same last
      value, and decode to equal maps. (Not every equal pair is caught: a
      name repeated on one side only stays a Divergence.)
+     `play` / `minecraft:login`: `dimension_names` is sorted by name.
+     Vanilla sends them in an order fixed per boot (#30: the nether and
+     the end swapped between two Instances; `javap` on the 26.3 server:
+     `MinecraftServer.createLevels` puts the overworld first, then
+     iterates `MappedRegistry.byKey`, a `HashMap` keyed by `ResourceKey`,
+     which defines no `hashCode`). The client reads them into a `HashSet`
+     (`ClientboundLoginPacket.STREAM_CODEC`: `ByteBufCodecs.collection(
+     Sets::newHashSetWithExpectedSize)`).
+     `play` / `minecraft:update_attributes`: `attributes` is sorted by
+     `attribute`, stably; each attribute's `modifiers` keep their order.
+     Vanilla sends them in an order that changes from one join to the
+     next (#30: 14 of 20 plays; `javap` on the 26.3 server: `AttributeMap`
+     keeps them in fastutil hash collections, `attributesToSync` an
+     `ObjectOpenHashSet` of `AttributeInstance`, which defines no
+     `hashCode`, and `attributes` an `Object2ObjectOpenHashMap` that
+     `getSyncableAttributes` iterates). The client reads a list, but
+     applies each entry to the entity's instance of its attribute
+     (`ClientPacketListener.handleUpdateAttributes`:
+     `AttributeMap.getInstance`, then `setBaseValue`, `removeModifiers`,
+     and `addTransientModifier` for each modifier), so a repeated
+     attribute ends with its last entry, which the stable sort keeps last.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
