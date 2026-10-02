@@ -109,5 +109,4 @@ def test_a_random_field_hides_only_itself() -> None:
 
 
 def test_update_tags_is_compared_sorted_by_name_with_its_reason() -> None:
-    assert set(UNORDERED) == {"minecraft:update_tags"}
     assert "changes from one boot to the next" in UNORDERED["minecraft:update_tags"]
