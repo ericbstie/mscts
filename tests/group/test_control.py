@@ -1,5 +1,6 @@
 """Control: the operator Bot a Group sets the world up with, against a fake server."""
 
+import asyncio
 import json
 import struct
 from collections.abc import AsyncIterator, Callable, Mapping
@@ -17,6 +18,7 @@ from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
 from tests.net.fakes import (
     NO_STATISTICS,
+    TICK_S,
     Handler,
     JoinScript,
     Peer,
@@ -75,8 +77,10 @@ class ControlServer:
     back as a system_chat, unless `answers_markers` is False; any other command gets its
     `feedback`, or, if `out_of_order`, gets it after the next marker's answer, as Pumpkin
     often does. The n-th statistics request gets an award_stats, followed in the same
-    write by `after_answer[n]` if there is one. `on_command` is called with each command
-    before it is answered. Every serverbound Packet goes into `seen`.
+    write by `after_answer[n]` if there is one; an even one is answered a tick (`TICK_S`)
+    later, so each barrier of two requests shows a tick between its answers, as vanilla's
+    does. `on_command` is called with each command before it is answered. Every serverbound
+    Packet goes into `seen`.
     """
 
     seen: list[Packet] = field(default_factory=list)
@@ -103,6 +107,8 @@ class ControlServer:
             self.seen.append(packet)
             if packet.name == "minecraft:client_command":
                 self._requests += 1
+                if self._requests % 2 == 0:
+                    await asyncio.sleep(TICK_S)  # a barrier's second answer comes a tick later
                 straggler = self.after_answer.get(self._requests)
                 said = b"" if straggler is None else chat(peer, straggler)
                 await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + said)

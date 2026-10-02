@@ -17,6 +17,7 @@ from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import (
     NO_STATISTICS,
+    TICK_S,
     Handler,
     Peer,
     answer_at_once,
@@ -196,6 +197,8 @@ async def test_the_drain_takes_what_arrived_after_the_barrier_without_waiting() 
     transcript = Transcript(group_id="test/observe", server="fake")
 
     async def with_a_straggler(peer: Peer, request: int) -> None:
+        if request % 2 == 0:
+            await asyncio.sleep(TICK_S)  # a barrier's second answer comes a tick later
         answer = peer.raw_frame(ANSWER, NO_STATISTICS)
         straggler = peer.raw_frame(BLOCK_UPDATE, BLOCK + bytes([request]))
         await peer.write(answer + straggler)

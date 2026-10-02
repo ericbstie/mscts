@@ -484,12 +484,19 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command
     # (String 32767) and returns at once; what the server answers arrives like any packet.
     # sync, the barrier: returns once the server has sent everything caused by what it
-    # received before. On a Bot in play (else ProtocolError, nothing sent): client_command
-    # (REQUEST_STATS) then expect(award_stats), twice, the second request only after the
-    # first answer. Vanilla handles the request at the start of a tick, before that tick
-    # sends what changed, so one round trip is not enough; the second answer follows a whole
-    # tick (docs/research/2026-09-30-observation-window.md). Observation windows call it
-    # when they close, and Control calls it after each command's marker (OperatorBot).
+    # received before. On a Bot in play (else ProtocolError, nothing sent): a pair is
+    # client_command (REQUEST_STATS) then expect(award_stats), twice, the second request only
+    # after the first answer. Vanilla handles a request at the start of a tick, before that
+    # tick sends what changed, but a request that arrives while a tick's pass over the
+    # queue runs is handled in that pass, so both of a pair can be answered at one tick's
+    # start (docs/research/2026-10-01-join-chunks.md). The pair proves a tick has passed
+    # only if its two answers arrived at least TICK_GAP_S (0.005) apart (Connection.
+    # last_arrival_ns); if they arrived closer, the Bot waits TICK_GAP_S, for that pass to
+    # end, and sends another pair. After SYNC_MAX_TRIPS (6, three pairs) requests it
+    # returns, leaving the Mark "sync:capped <name>" (SYNC_CAPPED): a server that never
+    # shows a gap. Compare reads only "observe:" Marks, so the Mark changes no Verdict.
+    # Observation windows call it when they close, and Control calls it after each
+    # command's marker (OperatorBot).
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
     # nothing left to take, raises as recv does.
@@ -498,6 +505,9 @@ def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
+TICK_GAP_S = 0.005                  # two award_stats answers this far apart: a tick passed between them
+SYNC_MAX_TRIPS = 6                  # the most requests sync makes (an even number: whole pairs)
+SYNC_CAPPED = "sync:capped"         # the Mark label sync leaves, then " <name>", on reaching the cap
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...
     # As the 26.3 client does (javap): login_finished → login_acknowledged, then configuration
