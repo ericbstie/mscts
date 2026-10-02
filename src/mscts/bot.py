@@ -9,7 +9,7 @@ import struct
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Self
+from typing import Self, cast
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.schemas.configuration import CLIENT_INFORMATION
@@ -17,7 +17,7 @@ from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
-from mscts.transcript import Transcript
+from mscts.transcript import Mark, Transcript
 
 PROBE_TIMEOUT_S = 1.0
 """How long one readiness probe attempt waits, from connecting to the status answer."""
@@ -48,12 +48,23 @@ _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
 
 _PITCH_LIMIT = 90.0
 
-_SYNC_ROUND_TRIPS = 2
-"""How many statistics requests `sync` makes, one after the other.
+TICK_GAP_S = 0.005
+"""How far apart two statistics answers must arrive to show that a tick passed between them.
 
-One is not enough on vanilla: it answers at the start of a tick, before that tick sends
-what the request's predecessors changed (docs/research/2026-09-30-observation-window.md).
+Vanilla handles every packet that has arrived in one pass at the start of a tick, a request
+that arrives during the pass included, so two requests sent back to back can be answered
+together, before that tick sends anything. Answers inside one pass came 0.1 to 3.6 ms
+apart; answers from different ticks, at least 5.4 ms (docs/research/2026-10-01-join-chunks.md).
 """
+
+SYNC_MAX_TRIPS = 6
+"""The most statistics requests `sync` makes: three pairs, an even number.
+
+A server that never shows a gap between two answers must not hold the Bot for ever.
+"""
+
+SYNC_CAPPED = "sync:capped"
+"""The label of the Mark (followed by the Bot's name) `sync` leaves on reaching `SYNC_MAX_TRIPS`."""
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
@@ -351,14 +362,18 @@ class Bot:
     async def sync(self) -> None:
         """Return once the server has sent everything caused by what it received before.
 
-        The barrier of an Observation window: the Bot asks for its statistics
+        The barrier of an Observation window. The Bot asks for its statistics
         (`client_command`, `REQUEST_STATS`) and takes packets until the answer
         (`award_stats`), twice, the second request sent only once the first answer has
-        arrived. Vanilla answers at the start of a tick, before that tick sends what it
-        changed, so the second answer comes after a whole tick that started after
-        everything the server had received; Pumpkin answers once per tick too
-        (docs/research/2026-09-30-observation-window.md). Every packet taken is
-        recorded, and the Bot's Replies have already answered each.
+        arrived: a pair. Vanilla answers at the start of a tick, before that tick sends
+        what it changed, so an answer that comes after a tick has passed since the last
+        one proves the server has sent everything caused by what it had received. The two
+        answers of a pair prove it only if they arrive at least `TICK_GAP_S` apart; if
+        they arrive closer, the server handled both in one pass of one tick, so the Bot
+        waits `TICK_GAP_S` for that pass to end and asks again. After `SYNC_MAX_TRIPS`
+        requests it stops, and leaves the Mark `SYNC_CAPPED` and its name: a server that
+        never shows a gap. Every packet taken is recorded, and the Bot's Replies have
+        already answered each (docs/research/2026-10-01-join-chunks.md).
 
         Raises:
             ProtocolError: The Bot is not in play, or the server disconnected it.
@@ -368,9 +383,29 @@ class Bot:
             msg = f"sync needs a Bot in play, not one in {self._connection.state}"
             raise ProtocolError(msg)
         async with self._operation(self._timeout_s):
-            for _ in range(_SYNC_ROUND_TRIPS):
-                await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
-                await self.expect("minecraft:award_stats", timeout_s=self._timeout_s)
+            trips = 0
+            while True:
+                first = await self._ask_for_statistics()
+                second = await self._ask_for_statistics()
+                trips += 2
+                if second - first >= round(TICK_GAP_S * 1e9):
+                    return
+                if trips >= SYNC_MAX_TRIPS:
+                    self._connection.transcript.marks.append(
+                        Mark(
+                            t_ns=self._connection.transcript.now_ns(),
+                            label=f"{SYNC_CAPPED} {self.name}",
+                        )
+                    )
+                    return
+                await asyncio.sleep(TICK_GAP_S)
+
+    async def _ask_for_statistics(self) -> int:
+        """Request the statistics, take packets until the answer, and return when it arrived."""
+        await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
+        await self.expect("minecraft:award_stats", timeout_s=self._timeout_s)
+        # `expect` returned a Packet, so `recv` did, and has set the arrival time.
+        return cast("int", self._connection.last_arrival_ns)
 
     async def drain(self) -> None:
         """Take every packet that has already arrived, without waiting for another.

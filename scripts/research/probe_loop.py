@@ -6,7 +6,8 @@ Boots two Instances of the vanilla Reference, as the live Self-check does, then 
 probe Group (`tests/support/probe.py`) PLAYS times on each in turn and judges the pair.
 One line per play gives the Verdict and, for each side: when the watcher's first chunk
 batch and its chunk (0, 0) arrived, when the window opened and closed, the gaps between
-the barrier's answers (`award_stats`) inside the window for each Bot, and when the first
+the barrier's answers (`award_stats`) inside the window for each Bot, how long each Bot's
+`sync` took, which Bots' `sync` was capped (`sync:capped`), and when the first
 `block_update` reached each Bot against the window's close. A play that does not match
 has both Transcripts saved in OUT_DIR as `play-<n>-<side>.jsonl` (the Marks, then the
 Events; a research format, not a public one). `--stress N` runs N busy-loop processes
@@ -34,7 +35,7 @@ from pathlib import Path
 
 from mscts import install
 from mscts.adapters.vanilla import VanillaAdapter
-from mscts.bot import status_probe
+from mscts.bot import SYNC_CAPPED, status_probe
 from mscts.cache import cache_dir
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome
 from mscts.group import Group
@@ -51,6 +52,7 @@ WATCHER = "watcher"
 CHUNK = "minecraft:level_chunk_with_light"
 BATCH_FINISHED = "minecraft:chunk_batch_finished"
 ANSWER = "minecraft:award_stats"
+REQUEST = "minecraft:client_command"
 BLOCK_UPDATE = "minecraft:block_update"
 SIDES = ("a", "b")
 SHORT_PAYLOAD = 64
@@ -97,6 +99,10 @@ class Side:
         open_ms: When the window opened (None if it did not).
         close_ms: When the window closed (None if it did not).
         gaps_ms: For each Bot, the gaps between its `award_stats` answers inside the window.
+        sync_ms: For each Bot, how long its `sync` took: from its first `client_command`
+            after the window opened to its last `award_stats` inside it (None if either
+            is missing).
+        capped: The Bots whose `sync` stopped at `SYNC_MAX_TRIPS`, as its Mark says.
         update_ms: For each Bot, when its first `block_update` after the window opened came.
     """
 
@@ -106,6 +112,8 @@ class Side:
     open_ms: float | None
     close_ms: float | None
     gaps_ms: dict[str, list[float]]
+    sync_ms: dict[str, float | None]
+    capped: tuple[str, ...]
     update_ms: dict[str, float | None]
 
     def update_where(self, bot: str) -> str:
@@ -120,13 +128,15 @@ class Side:
     def line(self) -> str:
         """One line: the numbers above, in a fixed order."""
         gaps = " ".join(f"{bot}_gaps={gaps}" for bot, gaps in sorted(self.gaps_ms.items()))
+        syncs = " ".join(f"{bot}_sync={took}" for bot, took in sorted(self.sync_ms.items()))
         updates = " ".join(
             f"{bot}_update={self.update_where(bot)}({self.update_ms.get(bot)})"
             for bot in sorted(self.update_ms)
         )
+        capped = ",".join(self.capped) or "none"
         return (
             f"first_batch={self.first_batch_ms} chunk00={self.chunk00_ms} chunks={self.chunks} "
-            f"open={self.open_ms} close={self.close_ms} {gaps} {updates}"
+            f"open={self.open_ms} close={self.close_ms} {gaps} {syncs} capped={capped} {updates}"
         )
 
 
@@ -139,6 +149,7 @@ def summarise(transcript: Transcript, *, bots: Sequence[str] = (CONTROL_PLAYER, 
     chunks = [e for e in watcher if e.packet.name == CHUNK]
     chunk00 = next((e.t_ns for e in chunks if chunk_xz(e.packet.payload) == (0, 0)), None)
     gaps: dict[str, list[float]] = {}
+    syncs: dict[str, float | None] = {}
     updates: dict[str, float | None] = {}
     for bot in bots:
         answers = [
@@ -151,6 +162,18 @@ def summarise(transcript: Transcript, *, bots: Sequence[str] = (CONTROL_PLAYER, 
             and opened <= e.t_ns <= closed
         ]
         gaps[bot] = [round((b - a) / 1e6, 1) for a, b in itertools.pairwise(answers)]
+        request = next(
+            (
+                e.t_ns
+                for e in transcript.events
+                if e.bot == bot
+                and e.packet.name == REQUEST
+                and opened is not None
+                and e.t_ns >= opened
+            ),
+            None,
+        )
+        syncs[bot] = ms(answers[-1] - request) if request is not None and answers else None
         update = next(
             (
                 e.t_ns
@@ -170,6 +193,12 @@ def summarise(transcript: Transcript, *, bots: Sequence[str] = (CONTROL_PLAYER, 
         open_ms=ms(opened),
         close_ms=ms(closed),
         gaps_ms=gaps,
+        sync_ms=syncs,
+        capped=tuple(
+            m.label.removeprefix(f"{SYNC_CAPPED} ")
+            for m in transcript.marks
+            if m.label.startswith(f"{SYNC_CAPPED} ")
+        ),
         update_ms=updates,
     )
 

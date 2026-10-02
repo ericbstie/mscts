@@ -311,19 +311,49 @@ NO_STATISTICS = b"\x00"
 """An `award_stats` payload holding no statistics (a VarInt count of 0)."""
 
 
+TICK_S = 0.05
+"""How long the fake's tick lasts, as vanilla's does: what a request waits for to be answered."""
+
+
 async def answer_at_once(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
-    """Answer a statistics request at once, as vanilla does: with an award_stats."""
+    """Answer a statistics request at once, with an award_stats.
+
+    A server that does this for every request never shows a tick between two answers: they
+    come a fraction of a millisecond apart.
+    """
     await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+
+
+def answer_like_vanilla_after(shared: int, *, tick_s: float = TICK_S) -> Answer:
+    """Answer the first `shared` requests at once, as one packet pass would, then like vanilla.
+
+    Vanilla answers a request at the start of a tick. A Bot's barrier sends its second
+    request as soon as the first answer arrives, so vanilla answers the pair a tick
+    apart: from the request after the first `shared`, every first of a pair at once and
+    every second `tick_s` later.
+    """
+
+    async def answer(peer: Peer, request: int) -> None:
+        if request > shared and (request - shared) % 2 == 0:
+            await asyncio.sleep(tick_s)
+        await answer_at_once(peer, request)
+
+    return answer
+
+
+answer_each_tick = answer_like_vanilla_after(0)
+"""An Answer like vanilla's on a quiet machine: a barrier's two answers come a tick apart."""
 
 
 async def never_answer(peer: Peer, request: int) -> None:
     """Leave a statistics request unanswered."""
 
 
-def play_server(seen: list[Packet], answer: Answer = answer_at_once) -> Handler:
+def play_server(seen: list[Packet], answer: Answer = answer_each_tick) -> Handler:
     """Join like vanilla (`join_server`), then run `answer` for each `client_command`.
 
-    Every serverbound Packet goes into `seen`.
+    Every serverbound Packet goes into `seen`. The default `answer` is vanilla's: a
+    barrier's two answers come a tick apart.
     """
 
     async def then(peer: Peer) -> None:
