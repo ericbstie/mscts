@@ -1058,7 +1058,8 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # the key of the client's map or set, so their order is no
                                     # Divergence at all: update_tags (vanilla's order changes per
                                     # boot; docs/research/2026-10-01-control.md), login's
-                                    # dimension_names and update_attributes' attributes (#30)
+                                    # dimension_names, update_attributes' attributes and
+                                    # update_recipes' property sets (#30)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random on every run, which no exact Group compares
                                     # (ADR-0011): minecraft:login_finished.session_id (same
@@ -1273,6 +1274,21 @@ proves it necessary:
      `AttributeMap.getInstance`, then `setBaseValue`, `removeModifiers`,
      and `addTransientModifier` for each modifier), so a repeated
      attribute ends with its last entry, which the stable sort keeps last.
+     `play` / `minecraft:update_recipes`: `property_sets` is sorted by
+     `property_set_id`, and each set's `items` by item id, both stably;
+     `stonecutter_recipes` keep their order. Vanilla sends both in an
+     order fixed per boot (#30: two Instances sent the same 9 sets in
+     another order, and another item order in 8 of them, while their 351
+     stonecutter recipes came in the same order; `javap` on the 26.3
+     server: `RecipeManager` collects the sets with
+     `Collectors.toUnmodifiableMap` and `RecipePropertySet.create` each
+     set's items with `Collectors.toUnmodifiableSet`, whose iteration
+     order is salted per JVM, and `Item` defines no `hashCode`). The
+     client reads them into a map of sets
+     (`ClientboundUpdateRecipesPacket.STREAM_CODEC`:
+     `ByteBufCodecs.map(HashMap::new, ...)`, and
+     `RecipePropertySet.STREAM_CODEC` maps the item list through
+     `Set.copyOf`), so a repeated set ends with its last items.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
