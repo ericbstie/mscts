@@ -206,8 +206,9 @@ ENTITY_UUIDS: Mapping[str, str] = MappingProxyType(
 
 Every Comparison numbers them as it numbers entity ids, by first appearance, but in a count
 of their own: `#1` is the first such UUID a Bot hears of. A packet whose `type` field is the
-player's entity type (`minecraft:player`) keeps its UUID: Pumpkin's player UUIDs differ from
-vanilla's, and that is a Divergence.
+player's entity type (`minecraft:player`) numbers no UUID, and keeps its own as it is
+(Pumpkin's player UUIDs differ from vanilla's, and that is a Divergence), unless an entity
+that is not a player has the same UUID: then it shows that entity's number.
 """
 
 
@@ -684,17 +685,20 @@ class _Numbers:
         return numbers
 
     def apply(self, packet: Packet, fields: dict[str, _Value]) -> None:
-        """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields."""
+        """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields.
+
+        A player's UUID took no number, so it stays as it is, unless an entity that is not
+        a player had it too: then it shows that entity's number.
+        """
         ids, uuids = _entity_tries(packet.state, packet.name)
         _replaced(
             fields, ids, lambda value: self.ids.get(value, value) if type(value) is int else value
         )
-        if not _is_player(fields):
-            _replaced(
-                fields,
-                uuids,
-                lambda value: self.uuids.get(value, value) if isinstance(value, UUID) else value,
-            )
+        _replaced(
+            fields,
+            uuids,
+            lambda value: self.uuids.get(value, value) if isinstance(value, UUID) else value,
+        )
 
 
 @cache
@@ -705,8 +709,17 @@ def _entity_tries(state: State, packet: str) -> tuple[_Trie, _Trie]:
         ValueError: An `ENTITY_UUIDS` path is malformed, or has a list index.
     """
     ids = _codec().entity_id_paths(state, Direction.CLIENTBOUND, packet)
-    uuids: list[EntityIdPath] = []
-    for field in ENTITY_UUIDS:
+    return _Trie.of(ids), _Trie.of(_uuid_paths(packet, ENTITY_UUIDS))
+
+
+def _uuid_paths(packet: str, fields: Iterable[str]) -> tuple[EntityIdPath, ...]:
+    """The paths in `packet` of those `fields` (`<packet>.<path>`, as `ENTITY_UUIDS`) it has.
+
+    Raises:
+        ValueError: A path of `packet` is malformed, or has a list index.
+    """
+    paths: list[EntityIdPath] = []
+    for field in fields:
         name, _, path = field.partition(".")
         if name == packet:
             steps = _steps(name, path, "ENTITY_UUIDS path")
@@ -714,8 +727,8 @@ def _entity_tries(state: State, packet: str) -> tuple[_Trie, _Trie]:
             if keys != steps:
                 msg = f"{field}: an entity UUID's path has keys only"
                 raise ValueError(msg)
-            uuids.append(keys)
-    return _Trie.of(ids), _Trie.of(uuids)
+            paths.append(keys)
+    return tuple(paths)
 
 
 def _is_entity_id(packet: str, path: _Path) -> bool:

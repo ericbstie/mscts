@@ -1350,7 +1350,9 @@ proves it necessary:
    entity (None) stays None. Each field `compare.ENTITY_UUIDS` names
    becomes `#<n>` too, counted on its own, except in a packet whose
    `type` is the player's entity type: a player's UUID comes from its
-   name or account, so it is compared as it is. Each Bot is numbered
+   name or account, so it takes no number and is compared as it is
+   (unless an entity that is not a player has the same UUID, whose
+   number it then shows, so the reuse is a Divergence). Each Bot is numbered
    on its own (Control's is not compared). So the same entities compare
    equal, a packet about another entity is still a `field` Divergence
    (`entity_id`, `#2` against `#3`), and entities sent in another order
