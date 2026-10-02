@@ -456,6 +456,15 @@ async def test_fill_tries_each_mode_the_default_and_a_filter() -> None:
 
 
 @pytest.mark.asyncio
+async def test_fill_tries_destroy_last_so_a_server_that_hangs_on_it_answers_the_rest_first() -> (
+    None
+):
+    options = [command.option for command in fill_cases(await played("blocks/fill"))]
+
+    assert options[-1] == "destroy"
+
+
+@pytest.mark.asyncio
 async def test_fill_covers_a_5_by_5_by_5_region_that_crosses_a_chunk_section_border() -> None:
     boxes = {command.box for command in fill_cases(await played("blocks/fill"))}
 

@@ -184,14 +184,15 @@ it makes a Group flaky (measured: 17 of 20 plays did not match with four drops).
 
 _FILL_OPTIONS = (
     "",
-    "destroy",
     "hollow",
     "keep",
     "outline",
     "replace",
     "replace minecraft:dirt",
     "strict",
+    "destroy",
 )
+"""The modes, `destroy` last: a Candidate that hangs on it has answered the rest by then."""
 
 
 def _fill_cases() -> tuple[_Case, ...]:
