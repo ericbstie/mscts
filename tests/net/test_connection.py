@@ -465,11 +465,15 @@ def test_recv_stamps_a_frame_split_across_writes_when_its_last_part_arrives(
     assert second_part_written[0] - transcript.start_ns <= event.t_ns <= returned
 
 
-def test_recv_takes_two_frames_of_one_write_in_order_both_stamped_on_arrival(
+def test_recv_takes_three_frames_of_one_write_in_order_stamped_on_arrival_a_ns_apart(
     toy_codec: Codec, transcript: Transcript
 ) -> None:
+    # The read that completed them gives them one arrival time. No two frames share a
+    # stamp, so a Mark can fall between two of them (an `until` window's close, #105).
     async def server(peer: Peer) -> None:
-        await peer.write(peer.frame("test:reply", value=1) + peer.frame("test:empty"))
+        await peer.write(
+            peer.frame("test:reply", value=1) + peer.frame("test:empty") + peer.frame("test:empty")
+        )
         await peer.eof()
 
     async def client() -> int:
@@ -481,12 +485,14 @@ def test_recv_takes_two_frames_of_one_write_in_order_both_stamped_on_arrival(
             await asyncio.sleep(0.02)
             before_second = transcript.now_ns()
             await connection.recv(timeout_s=1)
+            await connection.recv(timeout_s=1)
             return before_second
 
     before_second = asyncio.run(client())
-    first, second = transcript.events
-    assert (first.packet.name, second.packet.name) == ("test:reply", "test:empty")
-    assert first.t_ns == second.t_ns < before_second
+    first, second, third = transcript.events
+    assert [e.packet.name for e in (first, second, third)] == ["test:reply"] + ["test:empty"] * 2
+    assert (second.t_ns, third.t_ns) == (first.t_ns + 1, first.t_ns + 2)
+    assert third.t_ns < before_second
 
 
 def test_a_reply_that_arrives_while_the_caller_is_busy_is_stamped_when_it_arrived(

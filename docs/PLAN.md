@@ -473,7 +473,9 @@ class Connection:                   # one TCP connection; owns framing, compress
     # each complete frame when the read that completed it returned, decodes it in the State
     # current then, and queues it. recv takes the next queued Packet and records it with that
     # arrival stamp, so the Transcript holds the frames the Bot took, independent of TCP
-    # segmentation, each stamped when it arrived however late it is taken. close cancels the
+    # segmentation, each stamped when it arrived however late it is taken. The frames one read
+    # completed are stamped a nanosecond apart, in order (the first at the read's time), so a
+    # Mark can fall between any two of them. close cancels the
     # reader and waits for it to finish, and a recv still waiting raises ConnectionClosedError.
     # `name` is positional-only, so a packet field called `name` (login `hello`) fits in **fields.
     # Timeouts are named `timeout_s`: ruff's ASYNC109 flags a parameter named `timeout`, and its
@@ -893,12 +895,12 @@ class GroupContext:
                                     # the Event.t_ns (the arrival, never the time a Bot took
                                     # the packet; #88) of the first clientbound play packet
                                     # of that name any Bot received at or after the open
-                                    # Mark. The frames one socket read completed share one
-                                    # t_ns (Connection), and Compare puts a packet stamped at
-                                    # a Mark's time after the Mark: so the extra nanosecond
-                                    # keeps that packet and its read inside the window (a
-                                    # join's burst of packets would be out whole otherwise);
-                                    # what a later read brought is outside. None arrived:
+                                    # Mark. Compare puts a packet stamped at a Mark's time
+                                    # after the Mark, so the extra nanosecond keeps that
+                                    # packet inside the window; the frames of one socket
+                                    # read are stamped a nanosecond apart (Connection), so
+                                    # the next frame, even of the same read, is outside, and
+                                    # so is everything after it. None arrived:
                                     # ProtocolError naming the
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every

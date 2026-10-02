@@ -92,7 +92,9 @@ class Connection:
 
     A background reader reads the socket continuously from `open` until `close`. It
     stamps each frame when the read that completed it returns, decodes it, and queues
-    it for `recv`, so a frame's time is when it arrived, not when it was taken.
+    it for `recv`, so a frame's time is when it arrived, not when it was taken. The
+    frames one read completed are stamped a nanosecond apart, in order, so a Mark can
+    fall between any two of them.
 
     Every Packet it sends or receives is recorded to its Transcript as an Event of
     its Bot:
@@ -101,8 +103,8 @@ class Connection:
       socket, and it is recorded as decoded from the exact bytes written.
     - A received Packet is recorded when `recv` returns it, with its arrival stamp.
       So the Transcript holds the frames the Bot took, whatever the TCP segmentation,
-      and frames that arrived together keep the time they arrived, however late they
-      are taken.
+      and frames that arrived together keep the time they arrived (to the nanosecond
+      that orders them), however late they are taken.
     """
 
     def __init__(
@@ -289,6 +291,7 @@ class Connection:
                     return
                 self._frames.extend(chunk)
                 while (arrival := self._next_arrival(t_ns)) is not None:
+                    t_ns += 1  # the next frame of this read arrived a nanosecond later
                     failure = await self._answered(arrival)
                     self._arrivals.put_nowait(arrival)
                     if failure is not None:

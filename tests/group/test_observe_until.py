@@ -48,10 +48,11 @@ def server(seen: list[Packet], *, answers: bool = True, later_state: int = 1) ->
                 requests += 1
                 await answer_each_tick(peer, requests)
             elif answers and (packet.fields or {}).get("command") == "burst":
-                # One write, so one read at the Bot: both frames arrive at the same time.
+                # One write, so one read at the Bot: all three frames arrive together.
                 await peer.write(
                     peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01")
                     + peer.frame(BATCH_FINISHED, batch_size=1)
+                    + peer.raw_frame(BLOCK_UPDATE, BLOCK + bytes([later_state]))
                 )
             elif answers and (packet.fields or {}).get("command") == "batch":
                 await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
@@ -112,7 +113,7 @@ async def test_the_window_closes_when_the_first_such_packet_arrived_not_when_it_
     assert (opened.label, closed.label) == (OBSERVE_OPEN, OBSERVE_CLOSE)
     joined, first, _ = arrivals(transcript, BATCH_FINISHED)
     assert joined < opened.t_ns <= first
-    assert closed.t_ns == first + 1, "just after the arrival (see the same-read test)"
+    assert closed.t_ns == first + 1, "just after the arrival (see the burst test)"
     assert exit_ns - closed.t_ns > 4 * GAP_S * 1e9, "the Mark is the arrival, not the time taken"
     names = [packet.name for packet in seen]
     assert REQUEST not in names, "no barrier"
@@ -131,26 +132,36 @@ async def test_a_later_such_packet_and_what_follows_the_first_are_not_compared()
     assert "block_update.block_state" in verdict.test_cases, "what came before is compared"
 
 
-@pytest.mark.asyncio
-async def test_what_arrived_in_the_same_read_as_the_packet_is_in_the_window() -> None:
-    # The frames one read took share one arrival time, and a join's packets come in a
-    # few reads: a window that stopped before the packet's time would lose its read, and
-    # on a live server the whole join (#105).
+async def burst(*, trailing_state: int) -> Transcript:
+    """A Bot joins, then a window sees one read with a block_update, the batch, a block_update."""
     transcript = Transcript(group_id="test/until", server="fake")
-    async with playing(server([]), transcript) as context:
+    async with playing(server([], later_state=trailing_state), transcript) as context:
         bot = await context.bot("alice")
         await bot.join()
         async with context.observe(until=BATCH_FINISHED):
             await bot.command("burst")
             await asyncio.sleep(4 * GAP_S)
+    return transcript
 
-    (block,) = arrivals(transcript, BLOCK_UPDATE)
-    _, batch = arrivals(transcript, BATCH_FINISHED)
-    assert block == batch, "one read took both"
-    _, closed = transcript.marks
-    assert closed.t_ns > batch
-    test_cases = compare(transcript, transcript, []).test_cases
-    assert "block_update.block_state" in test_cases
+
+@pytest.mark.asyncio
+async def test_what_one_read_brought_before_the_packet_is_in_the_window_and_after_it_is_not() -> (
+    None
+):
+    # A join's packets come in a few reads, so a window that closed before the packet's
+    # stamp would lose the whole read. Frames of one read are a nanosecond apart, so the
+    # close Mark falls between the packet and the frame behind it (#105).
+    first = await burst(trailing_state=1)
+    second = await burst(trailing_state=2)
+
+    before, after = arrivals(first, BLOCK_UPDATE)
+    _, batch = arrivals(first, BATCH_FINISHED)
+    _, closed = first.marks
+    assert (batch, after) == (before + 1, before + 2), "one read took all three"
+    assert closed.t_ns == batch + 1
+    verdict = compare(first, second, [])
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert "block_update.block_state" in verdict.test_cases, "what came before it is compared"
 
 
 @pytest.mark.asyncio
