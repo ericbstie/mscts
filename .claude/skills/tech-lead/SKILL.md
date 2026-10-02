@@ -87,6 +87,12 @@ first.
   every queue it crosses: one 20 of 20 hid a 1-in-10 flake (#18).
 - The ownership list in a brief names the shared test helpers
   (`tests/support/`, fakes) a parallel worker may import, not only `src/`.
+- A spec for a flaky failure names its cause as a hypothesis. Its first
+  increment reproduces the failure under load (a looping `mise run check`
+  plus `scripts/research/probe_loop.py`) and keeps the failing Transcripts
+  (AO, #88: the lead's cause was wrong).
+- A design in a decision comment states what its unit tests assert: writing
+  the assertion exposes a flaw before the worker builds it (#88's cap).
 - A wide table (about 20 entries of one mechanism or more, like the 122
   data components) gets its layouts derived before briefing: a `sonnet`
   triage runs `scripts/research/layout.py` over each entry and posts the

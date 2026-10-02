@@ -90,6 +90,7 @@ Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at 
 - AO (sonnet): #88, the barrier ends only after a tick has passed (a gap-checked
   `Bot.sync()`; the probe's Self-check fails about once in 250 plays under load).
 - AP (sonnet): #97, a Group starts only once status says no player is online.
+- AQ (opus): #21, the Comparison numbers entities in the order each Bot first hears of them.
 
 Next: #30 `join/basic` (after #88 and #97), the first Group built by the routine
 (`.claude/skills/test-group`, committed with it), then #23 tick-exact.
@@ -243,6 +244,9 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
   A join's repeated `player_position` is a race with the server's first tick (javap
   account in `docs/research/2026-09-26-join.md`), so only its pose is asserted.
   Filed #97 (a Group sees the previous Group's Bots) and #98 (helper).
+- Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
+  tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
+  probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
 - Merged the helper's (ChatGPT) PRs: #91 (#14 docs drift checks), #92 (#12 test
   case titles), #93 (#9 the short default Report, ADR-0012), #94 (#10
   `--verbose`), #95 (#13 the home page's real Report) and #89 (#6 javap `--lib`).

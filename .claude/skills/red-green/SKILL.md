@@ -83,6 +83,13 @@ then one commit.
 
 ## Known traps
 
+- A fake server answers like the real one by default (`tests/net/fakes.py`
+  answers a statistics pair a tick apart); a test that needs another timing
+  says so. A fake that cuts corners breaks every later barrier change.
+- `CONTEXT.md` and `docs/reference/glossary.md` change together
+  (`tests/docs/test_glossary.py`). If a `rebase --exec` stops on such a
+  commit, fix it and run `mise run commit -- --amend --no-edit`, then
+  `git rebase --continue`.
 - `mise run commit` commits what is staged: `git add` the files first, or it
   stops with "nothing staged".
 - An inline `pytester` run inherits the outer `filterwarnings = error`: give it
