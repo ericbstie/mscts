@@ -14,7 +14,15 @@ import pytest
 
 from mscts.codec.packets import Packet
 from mscts.codec.registry_names import registry_names
-from mscts.compare import ENTITY_UUIDS, OBSERVE_CLOSE, OBSERVE_OPEN, Mask, Outcome, compare
+from mscts.compare import (
+    ENTITY_UUIDS,
+    OBSERVE_CLOSE,
+    OBSERVE_OPEN,
+    Mask,
+    Outcome,
+    _uuid_paths,
+    compare,
+)
 from mscts.target import TARGET
 from tests.compare.build import divergence, packet, transcript
 
@@ -93,6 +101,65 @@ def test_a_players_uuid_is_compared_as_it_is() -> None:
     verdict = compare(reference, candidate, [])
     assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
         ("entity_uuid", bob, other)
+    ]
+
+
+def test_a_players_uuid_takes_no_number() -> None:
+    # Both hear of entity 2 first; only the reference hears of it as a player.
+    reference = transcript(
+        ("alice", login(1)), ("alice", spawn(2, kind=PLAYER)), ("alice", spawn(3))
+    )
+    candidate = transcript(("alice", login(1)), ("alice", metadata(2)), ("alice", spawn(3)))
+    verdict = compare(reference, candidate, [])
+    assert [(d.kind, d.index) for d in verdict.divergences] == [("missing", 1), ("unexpected", 1)]
+
+
+def test_a_mob_given_a_players_uuid_is_a_divergence() -> None:
+    bob = uuid.UUID(int=1)
+    reference = transcript(
+        ("alice", login(1)), ("alice", spawn(3)), ("alice", spawn(2, kind=PLAYER, uuid_=bob))
+    )
+    candidate = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(3, uuid_=bob)),
+        ("alice", spawn(2, kind=PLAYER, uuid_=bob)),
+    )
+    verdict = compare(reference, candidate, [])
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (2, "entity_uuid", bob, "#1")
+    ]
+
+
+def test_no_entity_takes_no_number() -> None:
+    def lead(holder: int | None) -> Packet:
+        fields = {"attached_entity_id": 1, "holding_entity_id": holder}
+        return packet("minecraft:set_entity_link", fields=fields)
+
+    # The pig is the second entity the reference heard of, and the third the candidate did.
+    reference = transcript(("alice", login(1)), ("alice", lead(None)), ("alice", spawn(3)))
+    candidate = transcript(("alice", login(1)), ("alice", lead(2)), ("alice", spawn(3)))
+    verdict = compare(reference, candidate, [])
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("holding_entity_id", None, "#2"),
+        ("entity_id", "#2", "#3"),
+    ]
+
+
+def test_an_entity_first_heard_of_in_a_list_is_numbered_there() -> None:
+    def riders(vehicle: int, *passengers: int) -> Packet:
+        fields = {"vehicle": vehicle, "passengers": list(passengers)}
+        return packet("minecraft:set_passengers", fields=fields)
+
+    reference = transcript(
+        ("alice", login(1)), ("alice", riders(1, 4, 5)), ("alice", spawn(4)), ("alice", spawn(5))
+    )
+    candidate = transcript(
+        ("alice", login(1)), ("alice", riders(1, 7, 6)), ("alice", spawn(6)), ("alice", spawn(7))
+    )
+    verdict = compare(reference, candidate, [])
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (2, "entity_id", "#2", "#3"),
+        (3, "entity_id", "#3", "#2"),
     ]
 
 
@@ -195,6 +262,35 @@ def test_an_entity_id_deep_in_a_value_is_numbered_too() -> None:
     reference = transcript(("alice", login(1)), ("alice", spawn(3)), ("alice", vibration(3)))
     candidate = transcript(("alice", login(10)), ("alice", spawn(11)), ("alice", vibration(11)))
     assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_the_same_keys_under_another_variant_are_left_as_they_are() -> None:
+    # Only a vibration's destination holds an entity id; a made-up dust with the same keys
+    # shows that the variant is checked where ids are replaced, not only where they are found.
+    def dust(entity_id: int) -> Packet:
+        destination = {"type": "minecraft:entity", "value": {"entity_id": entity_id}}
+        particle = {"type": "minecraft:dust", "options": {"destination": destination}}
+        return packet("minecraft:level_particles", fields={"particle": particle})
+
+    # The reference's first dust takes no number either, so both pigs are #2.
+    reference = transcript(
+        ("alice", login(1)), ("alice", dust(9)), ("alice", spawn(3)), ("alice", dust(3))
+    )
+    candidate = transcript(("alice", login(1)), ("alice", spawn(7)), ("alice", dust(7)))
+    verdict = compare(reference, candidate, [])
+    assert [(d.kind, d.index, d.path) for d in verdict.divergences] == [
+        ("missing", 1, None),
+        ("field", 3, "particle.options.destination.value.entity_id"),
+    ]
+    assert (verdict.divergences[1].reference, verdict.divergences[1].candidate) == (3, 7)
+
+
+def test_an_entity_uuid_path_has_keys_only() -> None:
+    assert _uuid_paths("minecraft:add_entity", ENTITY_UUIDS) == (("entity_uuid",),)
+    assert _uuid_paths("minecraft:login", ENTITY_UUIDS) == ()
+    error = re.escape("minecraft:add_entity.uuids[0]: an entity UUID's path has keys only")
+    with pytest.raises(ValueError, match=error):
+        _uuid_paths("minecraft:add_entity", ["minecraft:add_entity.uuids[0]"])
 
 
 @pytest.mark.parametrize(
