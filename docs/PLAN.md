@@ -763,6 +763,17 @@ async def running(plan: LaunchPlan, *, ready: Callable[[Endpoint], Awaitable[boo
 # stopping SIGKILLs at once, and waits (at most 1 s) for the exit to be seen, so nothing,
 # not even an unclosed transport, outlives running() when the event loop ends right after.
 # How it stopped is logged on `mscts.runner`.
+# Parent death (#3): a per-Instance record in cache_dir()/instances is locked by the
+# harness before spawning. The child gets only plan.env plus MSCTS_INSTANCE_TOKEN,
+# a fresh identity inherited by descendants; the record then stores pid and starttime.
+# A SIGKILLed harness releases its lock. The next running() with the same cache sweeps
+# unlocked records, SIGKILLing a group only after proving its session/group id, the
+# leader's recorded starttime if it still exists, and an exact token in a member's
+# /proc environ with stable starttime across that read. A surviving descendant must
+# be no older than the recorded leader. Empty records cover death between spawn and
+# recording the leader: the exact token and stable process identity prove the group.
+# Locked records are skipped (including another Instance in the same harness).
+# Normal shutdown removes the record. No watcher or preexec_fn is used.
 
 class RunnerError(RuntimeError):    # could not launch, exited before ready, or not ready in time
     reason: str

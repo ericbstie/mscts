@@ -45,6 +45,10 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
 6. **Report.** mscts lists each differing test case once, then any skipped
    or failed Groups and the total Run time.
 
+If the mscts process is forcibly killed, its servers may keep running. The
+next Instance launch using the same cache checks their process identities
+and stops the orphaned process groups.
+
 ## Verdicts
 
 | Verdict | Meaning |

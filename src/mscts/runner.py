@@ -18,12 +18,19 @@ import signal
 import socket
 import sys
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TextIO
 
 from mscts.adapters.base import LaunchPlan
+from mscts.cache import cache_dir
 from mscts.net import Endpoint
+
+try:
+    import fcntl
+except ImportError:  # running() rejects platforms without Linux procfs before launching.
+    fcntl = None
 
 # The Instance's console (stdout and stderr), written into the plan's cwd.
 CONSOLE_LOG = "mscts-console.log"
@@ -40,6 +47,102 @@ _TCP_LISTEN = 0x0A  # the `st` column of /proc/net/tcp for a listening socket
 _SOCKET_LINK = re.compile(r"socket:\[(\d+)\]")  # what /proc/<pid>/fd/<n> points to
 
 _log = logging.getLogger(__name__)
+_INSTANCE_ENV = "MSCTS_INSTANCE_TOKEN"
+
+
+@dataclass(frozen=True, slots=True)
+class _ParentGuard:
+    """A harness-held lock and a per-Instance identity (#3)."""
+
+    record: TextIO
+    value: str
+
+    def record_process(self, pid: int) -> None:
+        """Store the leader's start time if it has not already exited."""
+        if identity := _guard_stat(PROC / str(pid)):
+            self.record.write(f"{pid} {identity[2]}\n")
+            self.record.flush()
+
+
+@contextlib.contextmanager
+def _parent_guard() -> Iterator[_ParentGuard]:
+    """Arm before spawning; sweep unlocked records, leaving live harnesses alone."""
+    if fcntl is None:
+        msg = "Instance guards require Linux flock"
+        raise OSError(msg)
+    directory = cache_dir() / "instances"
+    directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    _sweep_orphans(directory)
+    value = secrets.token_hex(32)
+    path = directory / f"{value}.guard"
+    pending = directory / f".{value}.pending"
+    try:
+        with pending.open("x+") as record:
+            fcntl.flock(record, fcntl.LOCK_EX)
+            pending.rename(path)
+            yield _ParentGuard(record, value)
+    finally:
+        path.unlink(missing_ok=True)
+        pending.unlink(missing_ok=True)
+
+
+def _guard_stat(process: Path) -> tuple[int, int, int] | None:
+    """Read pgrp, session and starttime (proc_pid_stat(5), fields 5, 6 and 22)."""
+    try:
+        fields = (process / "stat").read_text().rpartition(")")[2].split()
+        return int(fields[2]), int(fields[3]), int(fields[19])
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _guarded_group(process: Path, value: str, recorded: tuple[int, int] | None) -> int | None:
+    """Prove a stable process inherited this Instance's identity before signaling."""
+    identity = _guard_stat(process)
+    if identity is None:
+        return None
+    pgid, session, started = identity
+    if pgid <= 1 or pgid != session or pgid == os.getpgrp():
+        return None
+    if recorded is not None:
+        leader, born = recorded
+        if pgid != leader or started < born:
+            return None
+        current = _guard_stat(PROC / str(leader))
+        if current is not None and current != (leader, leader, born):
+            return None
+    try:
+        environ = (process / "environ").read_bytes().split(b"\0")
+    except OSError:
+        return None
+    needle = f"{_INSTANCE_ENV}={value}".encode()
+    return pgid if needle in environ and _guard_stat(process) == identity else None
+
+
+def _sweep_orphans(directory: Path) -> None:
+    """SIGKILL only proven groups whose harness no longer holds their record lock."""
+    if fcntl is None:
+        return
+    for path in directory.glob("*.guard"):
+        if re.fullmatch(r"[0-9a-f]{64}", path.stem) is None:
+            continue
+        try:
+            with path.open("r+") as record:
+                fcntl.flock(record, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fields = record.read().split()
+                recorded = None
+                if fields:
+                    leader, born = fields
+                    recorded = int(leader), int(born)
+                for process in _processes():
+                    if pgid := _guarded_group(process, path.stem, recorded):
+                        with contextlib.suppress(ProcessLookupError):
+                            os.killpg(pgid, signal.SIGKILL)
+                        _log.warning("stopped orphaned Instance process group %d", pgid)
+                path.unlink(missing_ok=True)
+        except (FileNotFoundError, BlockingIOError):
+            continue
+        except (OSError, ValueError, IndexError) as error:
+            _log.warning("could not sweep Instance record %s: %s", path, error)
 
 
 class RunnerError(RuntimeError):
@@ -116,8 +219,8 @@ async def running(
     each of them is open in a process of the Instance's process group (see
     `_listeners`). Otherwise another process answered, and polling goes on; if that
     lasts until `ready_timeout`, the RunnerError names who holds the socket. The
-    process runs in its own session with exactly `plan.env`, stdin piped, and stdout
-    and stderr in `log_path` (overwritten by each launch).
+    process runs in its own session with `plan.env` plus an Instance identity, stdin
+    piped, and stdout and stderr in `log_path` (overwritten by each launch).
 
     On leaving the context, however the body ends (normally, by an exception, by
     cancellation), the process is stopped and reaped: `plan.stop_stdin` is written to
@@ -125,50 +228,60 @@ async def running(
     SIGTERM, and after another `stop_timeout`, SIGKILL. A plan without a stop line gets
     SIGTERM at once. Being cancelled again while stopping SIGKILLs it at once. How it
     stopped is logged.
+
+    If the harness is SIGKILLed, the next launch using the same cache sweeps its
+    unlocked Instance records, proving process identities before killing each group.
     """
     log_path = plan.cwd / CONSOLE_LOG
     _check_ownership_is_provable(plan.endpoint, log_path)
-    deadline = asyncio.get_running_loop().time() + ready_timeout
-    try:
-        with log_path.open("wb") as console:
-            launched_ns = time.monotonic_ns()
-            process = await asyncio.create_subprocess_exec(
-                *plan.argv,
-                cwd=plan.cwd,
-                env=dict(plan.env),
-                stdin=asyncio.subprocess.PIPE,
-                stdout=console,
-                stderr=asyncio.subprocess.STDOUT,
-                start_new_session=True,
-            )
-    except OSError as error:
-        reason = f"could not launch {plan.argv[0]}: {error}"
-        raise _failure(reason, None, log_path) from error
-    try:
-        readiness = asyncio.timeout_at(deadline)
-        others = _OtherListeners(plan.endpoint)
+    with contextlib.ExitStack() as cleanup:
         try:
-            async with readiness:
-                ready_ns = await _ready_ns(process, ready, plan.endpoint, others)
-        except TimeoutError:
-            if not readiness.expired():  # the probe's own TimeoutError: a probe bug
-                raise
-            exit_code = await _stop(process, plan, stop_timeout)
-            host, port = plan.endpoint.host, plan.endpoint.port
-            reason = f"{plan.argv[0]} was not ready at {host}:{port} within {ready_timeout} s"
-            raise _failure(reason + others.explain(), exit_code, log_path) from None
-        if ready_ns is None:
-            reason = f"{plan.argv[0]} exited with code {process.returncode} before it was ready"
-            raise _failure(reason + others.explain(), process.returncode, log_path)
-        yield Instance(
-            endpoint=plan.endpoint,
-            pid=process.pid,
-            launched_ns=launched_ns,
-            ready_ns=ready_ns,
-            log_path=log_path,
-        )
-    finally:
-        await _stop(process, plan, stop_timeout)
+            guard = cleanup.enter_context(_parent_guard())
+        except OSError as error:
+            reason = f"could not guard Instance in {cache_dir() / 'instances'}: {error}"
+            raise _failure(reason, None, log_path) from error
+        deadline = asyncio.get_running_loop().time() + ready_timeout
+        try:
+            with log_path.open("wb") as console:
+                launched_ns = time.monotonic_ns()
+                process = await asyncio.create_subprocess_exec(
+                    *plan.argv,
+                    cwd=plan.cwd,
+                    env={**plan.env, _INSTANCE_ENV: guard.value},
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=console,
+                    stderr=asyncio.subprocess.STDOUT,
+                    start_new_session=True,
+                )
+        except OSError as error:
+            reason = f"could not launch {plan.argv[0]}: {error}"
+            raise _failure(reason, None, log_path) from error
+        try:
+            guard.record_process(process.pid)
+            readiness = asyncio.timeout_at(deadline)
+            others = _OtherListeners(plan.endpoint)
+            try:
+                async with readiness:
+                    ready_ns = await _ready_ns(process, ready, plan.endpoint, others)
+            except TimeoutError:
+                if not readiness.expired():  # the probe's own TimeoutError: a probe bug
+                    raise
+                exit_code = await _stop(process, plan, stop_timeout)
+                host, port = plan.endpoint.host, plan.endpoint.port
+                reason = f"{plan.argv[0]} was not ready at {host}:{port} within {ready_timeout} s"
+                raise _failure(reason + others.explain(), exit_code, log_path) from None
+            if ready_ns is None:
+                reason = f"{plan.argv[0]} exited with code {process.returncode} before it was ready"
+                raise _failure(reason + others.explain(), process.returncode, log_path)
+            yield Instance(
+                endpoint=plan.endpoint,
+                pid=process.pid,
+                launched_ns=launched_ns,
+                ready_ns=ready_ns,
+                log_path=log_path,
+            )
+        finally:
+            await _stop(process, plan, stop_timeout)
 
 
 async def _stop(process: asyncio.subprocess.Process, plan: LaunchPlan, stop_timeout: float) -> int:

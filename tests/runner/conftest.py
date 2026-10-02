@@ -46,7 +46,7 @@ def _state(pid: int) -> str | None:
     """The process state from /proc (R, S, Z, ...), or None if there is no such process."""
     try:
         stat = Path(f"/proc/{pid}/stat").read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return None
     return stat.rpartition(")")[2].split()[0]
 
@@ -103,6 +103,12 @@ def fake_env() -> Iterator[Mapping[str, str]]:
     yield MappingProxyType({**FAKE_ENV, "MSCTS_FAKE_TOKEN": token.partition("=")[2]})
     leaked = kill_survivors(token)  # a process just killed takes a moment to exit
     assert not leaked, f"fake server processes outlived the test: {leaked}"
+
+
+@pytest.fixture(autouse=True)
+def instance_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep each test's Instance records in its own cache."""
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path / "cache"))
 
 
 @pytest.fixture
