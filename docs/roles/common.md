@@ -51,7 +51,7 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
 - Commit messages and the PR body end with the attribution lines your own
   session's system reminder gives. Name no model anywhere else. One issue
   comment at most, for decisions.
-- Meet the review level the lead names in the brief (PROCESS, Lanes and
+- Meet the scrutiny level (the issue's `scrutiny::*` label) (PROCESS, Lanes and
   review levels) before you hand back the PR.
 - End each issue with the Worker report exactly as docs/PROCESS.md
   specifies, with a thorough Retrospective, and the lines you propose for

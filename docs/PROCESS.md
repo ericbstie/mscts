@@ -36,7 +36,7 @@ runs out of context. Everything this file says about a worker applies to a
 specialist.
 
 **Reviewer (a subagent).** Never writes the code it reviews. It gives
-Rigorous PRs their independent reviews and runs audits
+`scrutiny::high` PRs their independent reviews and runs audits
 (`docs/roles/reviewer.md`).
 
 ## Working with the maintainer
@@ -103,31 +103,33 @@ specialist owns `compare.py`, `measure.py`, `test_cases.py`, `codec/*` and
 the Verdict rules in `run.py`. Another lane that needs a change there asks
 the lead, who routes it.
 
-**Review levels.** Before briefing an issue, the lead sets its level: the
-highest level, in `docs/RISK.md`, of its lane and of every core area it
-will touch, raised one step for new concurrency, a new kind of Verdict, or
-code later Groups build on.
+**Scrutiny.** Every open issue also carries one `scrutiny::*` label,
+which the lead sets when triaging it and checks again before the brief:
+the highest level, in `docs/RISK.md`, of every area the issue will touch,
+raised one step for new concurrency, a new kind of Verdict, or code later
+Groups build on.
 
-| Level | Before the PR merges |
+| Label | Before the PR merges |
 | --- | --- |
-| Light | The worker's tests, `mise run check`, the changed tier once. The lead reads the diff. |
-| Standard | Light, plus a mutation sweep of the changed branches, the Self-check 20 of 20, and the reference tier on the rebased branch. |
-| Rigorous | Standard, plus the Self-check 20 of 20 five times in a row under `repeat.py --stress`, a javap account of every ordering assumption, and two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. |
+| `scrutiny::low` | The worker's tests, `mise run check`, the changed tier once. The lead reads the diff. |
+| `scrutiny::medium` | Low, plus a mutation sweep of the changed branches, the Self-check 20 of 20, and the reference tier on the rebased branch. |
+| `scrutiny::high` | Medium, plus the Self-check 20 of 20 five times in a row under `repeat.py --stress`, a javap account of every ordering assumption, and two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. |
 
 **Escalation.** `docs/RISK.md` logs every bug. A bug that escaped into
-`main` raises its lane and core area one level; 5 clean merges in a row
-lower it one level; an escape at Rigorous calls an audit. A bug caught
-before the merge is logged and raises nothing.
+`main` raises its area one level and the lead relabels that area's open
+issues; 5 clean merges in a row in an area lower it one level; an escape
+at high calls an audit. A bug caught before the merge is logged and
+raises nothing.
 
 ## Cycle
 
 1. **Plan a batch.** Give each running specialist its lane's next `ready`
    issue (at most 5 agents at once, the reviewer included). Issues that
    run in parallel have disjoint "Owns" lists (files, modules and doc
-   sections). Skip any labelled `needs-decision`. Set each issue's review
-   level from `docs/RISK.md`.
+   sections). Skip any labelled `needs-decision`. Check each issue's
+   `scrutiny::*` label against `docs/RISK.md`.
 2. **Brief** with the [template](#brief-template), naming
-   `docs/roles/common.md`, the lane's handbook and the review level. Spawn
+   `docs/roles/common.md`, the lane's handbook and the scrutiny level. Spawn
    a new specialist in the background with worktree isolation only when its
    lane has none; otherwise send the running one its next issue. The issue
    is the spec; the brief adds only what the lead knows beyond it.
@@ -141,8 +143,7 @@ before the merge is logged and raises nothing.
    - Merge the PR with a rebase (never a squash), which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
      may need a follow-up issue.
-   - If it was an `enabler` issue, add `ready` to every `test` issue whose
-     Needs have now all landed.
+   - Add `ready` to every `test` issue whose Needs have now all landed.
 4. **Risk and handbook.** Log any bug found in `docs/RISK.md` and update
    the levels. Commit the specialist's proposed handbook lines to its
    `docs/roles/<lane>.md`.
@@ -657,7 +658,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
-| 2026-10-02 | Lanes and review levels: long-lived specialists own a `lane:*` of issues end to end, with a handbook each (`docs/roles/`); core areas have one owner; the lead sets Light, Standard or Rigorous review per issue from `docs/RISK.md`, where an escaped bug raises its area one level and 5 clean merges lower it; a reviewer gives Rigorous PRs two independent reviews; up to 5 agents at once. The common worker rules moved from the lead's scratchpad to `docs/roles/common.md` | Maintainer: longer-lived agents with roles, each taking 8–15 issues in one domain, and review rigor triaged by difficulty and raised where bugs are found. The audit of 2026-10-02 found 5 high bugs in the timing and Compare code |
+| 2026-10-02 | Lanes and review levels: long-lived specialists own a `lane:*` of issues end to end, with a handbook each (`docs/roles/`); core areas have one owner; each issue carries `scrutiny::low`, `scrutiny::medium` or `scrutiny::high`, set by the lead from `docs/RISK.md`, where an escaped bug raises its area one level and 5 clean merges lower it; a reviewer gives `scrutiny::high` PRs two independent reviews; the `spec` and `enabler` labels are gone (every issue is a spec); up to 5 agents at once. The common worker rules moved from the lead's scratchpad to `docs/roles/common.md` | Maintainer: longer-lived agents with roles, each taking 8–15 issues in one domain, and review rigor triaged by difficulty and raised where bugs are found; labels `scrutiny::low/medium/high`, without `spec` and `enabler`. The audit of 2026-10-02 found 5 high bugs in the timing and Compare code |
 | 2026-09-30 | Test proposals: the `test` issue template (`.github/ISSUE_TEMPLATE/test.md`), "Proposing a test" in `docs/contributing.md`, and `test` / `enabler` labels. Infrastructure several tests need is one shared `enabler` issue; a `test` issue gets `ready` once its enablers land. Evidence lives in `docs/research/2026-09-30-gameplay-survey.md` | Maintainer: explore what to compare between servers (lighting, spawning, combat, mob simulation, chunk loading, …) and make adding a test a standard process that independent agents can pick up |
 | 2026-09-27 | ADR-0009: the docs site is the spec; GitHub spec issues are the queue; one PR per issue, owned by its worker; scope surprises as issue comments; retrospectives stay private to the lead; docs examples are checked by tests | Maintainer: define the interface and wording in the docs, have agents make the code match, and parallelize across issues |
 | 2026-09-26 | Commits go through `mise run commit` (check, then commit only if green) | The piped-check slip happened twice |

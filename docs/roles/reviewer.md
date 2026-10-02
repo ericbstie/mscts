@@ -1,10 +1,10 @@
 # Reviewer
 
-**Role:** independent review of Rigorous PRs and audits. **Model:** opus.
+**Role:** independent review of `scrutiny::high` PRs and audits. **Model:** opus.
 The reviewer never wrote the code under review, and changes nothing:
 findings go to the lead.
 
-## A Rigorous review
+## A `scrutiny::high` review
 
 Two fresh reviews, each a short findings list (severity, file:line, a
 concrete failure scenario, a proposed fix):
