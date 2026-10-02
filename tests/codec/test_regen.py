@@ -21,6 +21,7 @@ _WANTED = {
     "minecraft:command_argument_type": ["minecraft:m", "minecraft:z", "minecraft:a"],
     "minecraft:consume_effect_type": ["minecraft:b", "minecraft:a"],
     "minecraft:data_component_type": ["minecraft:z", "minecraft:m", "minecraft:a"],
+    "minecraft:entity_type": ["minecraft:m", "minecraft:a", "minecraft:z"],
 }
 
 

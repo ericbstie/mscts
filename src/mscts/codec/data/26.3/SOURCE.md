@@ -10,7 +10,7 @@ a name's position is its id. Do not edit either by hand.
 | --- | --- |
 | Target | 26.3 / protocol 777 (`version.json` in the jar: `protocol_version` 777, `java_version` 25) |
 | Server jar | `downloads.server` of 26.3 in the piston-meta version manifest, sha1 `33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c` |
-| Generated | 2026-09-25 (`packets.json`), 2026-10-01 (`registry_names.json`), with Temurin 25 |
+| Generated | 2026-09-25 (`packets.json`), 2026-10-02 (`registry_names.json`), with Temurin 25 |
 | packets.json sha1 | `57d738152562d40d7ba3fc4f106431ec4858de40` |
 
 Generator command (from the `protocol-research` skill):
