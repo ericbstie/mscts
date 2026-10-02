@@ -2037,9 +2037,13 @@ then record the answer in an ADR:
   - a section past the level's section count, which the client never
     reads, still differs from none, since the Comparison does not know
     the level's height; vanilla and Pumpkin sent exactly the level's
-    sections in the recorded joins;
+    sections in the recorded joins. Past 254 sections, the most any
+    level has, the rest are one value that counts them;
   - a `light_update`'s bits from the level's light section count up to
     256 are compared, for the same reason;
+  - a chunk whose sections buffer ends with bytes that are not a whole
+    section, which the client never reads, is one the codec refuses, so
+    it is compared by payload (at the position of its first two Ints);
   - `chunks_biomes` has no canonical form: its biome containers are
     compared as sent, so another encoding of the same biomes is a
     gameplay Divergence (no Group receives it yet);

@@ -211,7 +211,7 @@ sending it empty, since the client keeps what it had. Pumpkin's explicit sky
 arrays where vanilla names no section change what the client stores once those
 sections hold light, so they are a gameplay difference, not an encoding.
 
-## Chunk order within a batch
+## Chunk order and batches
 
 (Server `PlayerChunkSender`.) `sendNextChunks` sends `chunk_batch_start`, then
 each chunk (`sendChunk`: the `level_chunk_with_light`, then
@@ -221,5 +221,67 @@ on the server thread. The chunks come nearest first
 (`ChunkPos.distanceSquared`), from the `LongOpenHashSet` of pending chunks:
 sorted, or `Comparators.least` when more are pending than the batch takes.
 Chunks at the same distance come in the set's iteration order, which can differ
-from one play to the next. The client keeps a chunk by position. In both
-recorded joins, nothing came between a batch's chunks.
+from one play to the next. In both recorded joins, nothing the server thread
+sends came between a batch's chunks. A play `pong_response` can: the server
+answers a ping from the network thread (#122's ordering review).
+
+Which chunks a batch holds also races: `sendNextChunks` takes only the chunks
+that are ready, and readiness depends on the worker threads. Under load, two
+vanilla Instances with the same chunk centre split the same chunks into other
+batches (#122's ordering review, finding 2).
+
+The light updates of one tick go out in the order of
+`ServerChunkCache.chunkHoldersToBroadcast`, a `ReferenceOpenHashSet`, so their
+order across chunks is an identity hash order (#122's ordering review). That
+light for different chunks has the same effect in either order is *inferred*:
+each update is queued for its own position.
+
+### What the client does with each packet
+
+- `level_chunk_with_light`, `light_update` and `forget_level_chunk` act on the
+  chunk at their position: `ClientChunkCache.replaceWithPacketData` and the
+  light queue, `ClientLevel.queueLightUpdate`, `ClientChunkCache.drop` with
+  `queueLightRemoval`. So their order matters for one position.
+- `chunk_batch_start` and `chunk_batch_finished` feed only
+  `ChunkBatchSizeCalculator` (`onBatchStart`, `onBatchFinished(batchSize)`,
+  then `chunk_batch_received` with `getDesiredChunksPerTick`), on the network
+  thread. They do not change the world, and `batch_size` only sets the rate the
+  client asks the server for.
+- `keep_alive` is answered; `set_time` sets the clock
+  (`ClientLevel.setTimeFromServer`, `ClientClockManager.handleUpdates`);
+  `award_stats` sets stats; `pong_response` goes to `PingDebugMonitor`. None
+  reads a chunk.
+- `add_entity` (`Entity.recreateFromPacket`, `ClientLevel.addEntity`), the
+  `move_entity_*` packets (`Entity.moveOrInterpolateTo`), `rotate_head`,
+  `set_entity_motion`, `update_attributes` and `remove_entities` set the
+  entity's fields. Whether its chunk is loaded decides only whether it ticks:
+  `TransientEntitySectionManager.addEntity` takes a section's status from the
+  ticking chunks, and `startTicking` / `stopTicking` update the sections that
+  exist, so either order ends the same.
+- `entity_position_sync` and `teleport_entity` call `ClientLevel.isTickingEntity`:
+  the entity snaps or moves smoothly depending on whether its chunk is loaded.
+- `set_entity_data` can read a block: `LivingEntity.onSyncedDataUpdated`, on the
+  client, calls `setPosToBed`, which reads `level().getBlockState` at the bed.
+  Of the 39 `onSyncedDataUpdated` overrides in the client's entity and player
+  classes, this is the only one that reads the world.
+- `entity_event` (`Entity.handleEntityEvent`, one override for each kind) is not
+  traced.
+
+In six pairs of live vanilla joins (49 chunks each, in 4 to 10 batches), only
+`update_attributes` and `set_time` came between batches, and entity bundles came
+after the last chunk. With the same chunk centre, the rule below left no chunk
+missing or unexpected; with another centre (a random spawn), one row of the 7x7
+chunks differed, as it should.
+
+### The rule
+
+A *run* goes from a chunk packet to the last chunk packet before any packet that
+is neither a chunk packet nor one of those that read no chunk (the batch
+packets, the heartbeat packets, `pong_response`, `bundle_delimiter` and the entity
+packets above that set fields). Each run becomes its chunk packets, sorted
+stably by position, then its other packets in their order. Runs are found in the
+Bot's whole stream, before windows or Masks leave anything out. So a chunk never
+moves across a packet for its own position, nor across any packet whose effect
+can depend on the order (`entity_position_sync`, `teleport_entity`,
+`set_entity_data`, `entity_event`, or anything not in the list). Batch packets
+only one side sent, and another `batch_size`, are network traffic.
