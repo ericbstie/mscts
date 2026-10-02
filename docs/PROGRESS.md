@@ -87,7 +87,7 @@ Environment notes:
 Session 5 (goal: implement every `test` issue, #30–#72, with its enablers; at most
 2 workers at a time):
 
-- AQ (opus): #21, the Comparison numbers entities in the order each Bot first hears of them.
+- AS (sonnet): #105, `observe(until=)` and Control leaving and rejoining.
 
 Next: #105 (`observe(until=)`, Control rejoins), then the test Groups by the routine
 (`.claude/skills/test-group`), simplest first. #30 `join/basic` waits for #21, #105,
@@ -244,6 +244,9 @@ workers, about 1.5 opus sessions per issue on average, one consistent architectu
 - Merged #99 (#88: `Bot.sync()` ends only when a pair of statistics answers arrive a
   tick apart, at least 5 ms; capped at six requests with a `sync:capped` Mark; 884
   probe plays under load with no mismatch). Pumpkin answers a pair 50 ms apart.
+- Merged #108 (#21: each Bot's entities are numbered `#1`, `#2`, ... in the order the
+  compared packets first name them, so entity ids and mobs' UUIDs need no Mask, and a
+  Mask on an entity id is refused; a pig-summoning Group self-checks 20 of 20 five times).
 - #30 measured (worker AR): two vanilla joins matched in 2 of 84 plays, for six causes
   traced by javap (hash-ordered lists, a clock value, chunk order, light encoding, the
   barrier letting later batches and mobs in). Filed #105, #106, #107 and a #22 addition;
