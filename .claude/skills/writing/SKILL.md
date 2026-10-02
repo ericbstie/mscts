@@ -65,6 +65,9 @@ Any session that writes user-facing text follows this skill all the same.
   command shows it, the page need not say it is shown.
 - **Only what is useful to the user.** Internal rules and project
   promises (explicit installs) are not selling points.
+- **A section holds only what its heading promises.** Under "How it
+  works", only how mscts tests compliancy; setup facts such as running
+  offline belong elsewhere, if anywhere.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
@@ -76,12 +79,20 @@ Any session that writes user-facing text follows this skill all the same.
 - Before: "mscts starts two servers on your machine: vanilla Minecraft and
   the custom server you want to compare with it."
 - After: "mscts starts a vanilla Minecraft server alongside the custom
-  server you're testing." Then: the custom server needs an Adapter (with
-  a link), mscts connects as a player and compares, and the planned
-  longer runs for random mechanics. The maintainer suggested the
-  rewording and the outline.
+  server you're testing." The maintainer suggested the rewording.
 - Why: "the custom server you want to compare with it is a bit weirdly
-  sentenced".
+  sentenced". And say it straight away: "AI has a tendency to say the
+  same thing two times". The colon first announces two servers, then
+  names them. (Rule not yet generalised: the maintainer was "not sure
+  exactly what makes it correct".)
+
+### Home page, "How it works", running offline
+
+- Before: "Both run offline on your machine, and neither can reach the
+  internet."
+- After: removed.
+- Why: "How it works" should only say how mscts is able to test
+  compliancy. Running on localhost isn't necessary for that.
 
 ### Home page, "Rules mscts follows"
 
