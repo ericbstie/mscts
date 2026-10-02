@@ -77,8 +77,8 @@ test needs it:
 | `codec/schemas/play/world_events.py` | the world event packets' schemas: `level_event`, `sound` and `sound_entity` (a `SOUND_EVENT`, a `SOUND_SOURCE` category and a random seed), `level_particles`, `game_event`, `explode` (its block particles a weighted list) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
-| `codec/data/26.3/` | generated `packets.json` and `registry_names.json` (the data component, consume effect, command argument parser, entity type and slot display names in protocol id order). Committed, regenerated and checked by `mise run regen:packets` |
-| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id |
+| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type and slot display names in protocol id order) and `block_states.json` (how many block states there are). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `spec.py` | `ServerSpec` and its enums |
@@ -108,9 +108,10 @@ decision. Signatures are Python 3.13. `@frozen` means
 - `codec.framing`: `FrameDecoder`, `FrameError`, `MAX_DATA_LENGTH`, `encode_frame` — frame encoding
   and decoding.
 - `codec.packets`: `PacketIds`, `Schemas` — Codec lookup table types.
-- `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `compare_or_write`,
-  `data_generator_argv`, `fresh_data`, `packets_json_path`, `regenerate`, `registry_names_json`,
-  `registry_names_path`, `run_data_generator` — Mojang data regeneration.
+- `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `block_states_json`,
+  `block_states_path`, `compare_or_write`, `data_generator_argv`, `fresh_data`,
+  `packets_json_path`, `regenerate`, `registry_names_json`, `registry_names_path`,
+  `run_data_generator` — Mojang data regeneration.
 - `codec.schemas.login`: `GAME_PROFILE` — login packet schema.
 - `codec.schemas.play`: `merge_submodules` — Play schema assembly.
 - `codec.schemas.play.commands`: `PROPERTIES`, `commands_schema` — command argument schemas.

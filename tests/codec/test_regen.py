@@ -6,6 +6,8 @@ import pytest
 
 from mscts.codec import regen
 from mscts.codec.regen import (
+    block_states_json,
+    block_states_path,
     compare_or_write,
     data_generator_argv,
     fresh_data,
@@ -91,18 +93,65 @@ def test_registry_names_json_rejects_an_entry_without_an_integer_protocol_id(
         registry_names_json(json.dumps(report).encode())
 
 
+def _blocks(*state_ids: list[int]) -> bytes:
+    """A blocks.json as the data generator writes it: each block's states and their ids."""
+    report = {
+        f"minecraft:block_{index}": {"states": [{"id": state_id} for state_id in ids]}
+        for index, ids in enumerate(state_ids)
+    }
+    return json.dumps(report).encode()
+
+
+def test_block_states_path_is_the_committed_package_data() -> None:
+    resource = resources.files("mscts.codec").joinpath(
+        "data", TARGET.minecraft_version, "block_states.json"
+    )
+    assert block_states_path(TARGET) == Path(str(resource))
+
+
+def test_block_states_json_counts_the_block_states_of_every_block() -> None:
+    text = block_states_json(_blocks([2, 0], [1], [4, 3])).decode()
+    assert text == json.dumps({"count": 5}, indent=2) + "\n"
+
+
+@pytest.mark.parametrize("state_ids", [([0], [2]), ([0, 1], [1])], ids=["a gap", "a repeated id"])
+def test_block_states_json_rejects_ids_that_are_not_0_to_n(state_ids: tuple[list[int]]) -> None:
+    with pytest.raises(regen.RegenError, match="block state ids"):
+        block_states_json(_blocks(*state_ids))
+
+
+@pytest.mark.parametrize(
+    "report",
+    [[], {"minecraft:stone": {}}, {"minecraft:stone": {"states": [{"id": "0"}]}}],
+    ids=["not a mapping", "no states", "a text id"],
+)
+def test_block_states_json_rejects_a_report_without_integer_state_ids(report: object) -> None:
+    with pytest.raises(regen.RegenError, match=r"blocks\.json"):
+        block_states_json(json.dumps(report).encode())
+
+
 def test_fresh_data_is_the_packet_report_and_the_registry_name_lists(tmp_path: Path) -> None:
     (tmp_path / "packets.json").write_bytes(b'{"packets": true}')
     (tmp_path / "registries.json").write_bytes(_report(_WANTED))
+    (tmp_path / "blocks.json").write_bytes(_blocks([0, 1]))
     assert fresh_data(TARGET, tmp_path) == {
         packets_json_path(TARGET): b'{"packets": true}',
         registry_names_path(TARGET): registry_names_json(_report(_WANTED)),
+        block_states_path(TARGET): block_states_json(_blocks([0, 1])),
     }
 
 
 def test_fresh_data_raises_when_the_registries_report_is_missing(tmp_path: Path) -> None:
     (tmp_path / "packets.json").write_bytes(b"{}")
+    (tmp_path / "blocks.json").write_bytes(_blocks([0]))
     with pytest.raises(regen.RegenError, match=r"registries\.json"):
+        fresh_data(TARGET, tmp_path)
+
+
+def test_fresh_data_raises_when_the_blocks_report_is_missing(tmp_path: Path) -> None:
+    (tmp_path / "packets.json").write_bytes(b"{}")
+    (tmp_path / "registries.json").write_bytes(_report(_WANTED))
+    with pytest.raises(regen.RegenError, match=r"blocks\.json"):
         fresh_data(TARGET, tmp_path)
 
 

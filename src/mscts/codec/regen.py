@@ -1,8 +1,9 @@
 """Regenerate the vanilla data the codec commits and verify it against the committed copies.
 
-That is the packet report (`packets.json`, copied verbatim) and the names of the registries
+That is the packet report (`packets.json`, copied verbatim), the names of the registries
 the codec needs, in protocol id order (`registry_names.json`, derived from the registry
-report). Runnable as `python -m mscts.codec.regen` (check mode; non-zero exit and a message
+report), and how many block states there are (`block_states.json`, from the block report).
+Runnable as `python -m mscts.codec.regen` (check mode; non-zero exit and a message
 on any difference) or `python -m mscts.codec.regen --write` (update the committed files).
 See also the `regen:packets` mise task.
 """
@@ -23,6 +24,7 @@ from mscts.target import TARGET, Target
 DATA_DIR = Path(__file__).parent / "data"
 _REPORT_RELATIVE = Path("reports") / "packets.json"
 _REGISTRIES_REPORT = "registries.json"
+_BLOCKS_REPORT = "blocks.json"
 _GENERATOR_TIMEOUT_S = 300
 
 REGISTRY_NAME_LISTS = (
@@ -50,6 +52,11 @@ def packets_json_path(target: Target) -> Path:
 def registry_names_path(target: Target) -> Path:
     """Where the committed registry_names.json for `target` lives."""
     return DATA_DIR / target.minecraft_version / "registry_names.json"
+
+
+def block_states_path(target: Target) -> Path:
+    """Where the committed block_states.json for `target` lives."""
+    return DATA_DIR / target.minecraft_version / "block_states.json"
 
 
 def data_generator_argv(java: Path, jar: Path, output: Path) -> list[str]:
@@ -129,19 +136,47 @@ def _id_name_pairs(report: object, registry: str) -> list[tuple[int, str]]:
     return sorted(pairs)
 
 
+def block_states_json(blocks_report: bytes) -> bytes:
+    """The text of block_states.json for a generated `blocks.json`: `{"count": n}`.
+
+    `n` is how many block states the blocks have between them: the size of the global block
+    state palette, which sets the width of a direct block container in a chunk. Raises
+    RegenError if a state has no integer id, or the ids are not 0..n-1.
+    """
+    report: object = json.loads(blocks_report)
+    ids: list[int] = []
+    for block in report.values() if isinstance(report, dict) else [None]:
+        states = block.get("states") if isinstance(block, dict) else None
+        if not isinstance(states, list):
+            msg = f"{_BLOCKS_REPORT}: a block has no list of states"
+            raise RegenError(msg)
+        for state in states:
+            state_id = state.get("id") if isinstance(state, dict) else None
+            if not isinstance(state_id, int):
+                msg = f"{_BLOCKS_REPORT}: a block state has no integer id"
+                raise RegenError(msg)
+            ids.append(state_id)
+    if sorted(ids) != list(range(len(ids))):
+        msg = f"block state ids are not 0 to {len(ids) - 1} without a gap or repeat"
+        raise RegenError(msg)
+    return (json.dumps({"count": len(ids)}, indent=2) + "\n").encode()
+
+
 def fresh_data(target: Target, reports: Path) -> dict[Path, bytes]:
     """Each committed file's fresh contents, from a data generator's `reports` directory.
 
-    Raises RegenError if `registries.json` is missing (packets.json is checked by
-    run_data_generator).
+    Raises RegenError if `registries.json` or `blocks.json` is missing (packets.json is
+    checked by run_data_generator).
     """
-    registries = reports / _REGISTRIES_REPORT
-    if not registries.is_file():
-        msg = f"data generator did not write {registries}"
-        raise RegenError(msg)
+    registries, blocks = reports / _REGISTRIES_REPORT, reports / _BLOCKS_REPORT
+    for report in (registries, blocks):
+        if not report.is_file():
+            msg = f"data generator did not write {report}"
+            raise RegenError(msg)
     return {
         packets_json_path(target): (reports / "packets.json").read_bytes(),
         registry_names_path(target): registry_names_json(registries.read_bytes()),
+        block_states_path(target): block_states_json(blocks.read_bytes()),
     }
 
 
