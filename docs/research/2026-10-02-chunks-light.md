@@ -70,7 +70,11 @@ configuration for it (`Strategy.getConfigurationForBitCount`):
   `blocks.json` (jar sha1 `33680f5f…`) has 35,723 states with ids 0 to 35,722,
   so a direct block container has 16 bits per entry.
 - Biomes: the registry the server sent in configuration (`registry_data` for
-  `minecraft:worldgen/biome`). Both recorded joins send 67 entries, so 7 bits. The
+  `minecraft:worldgen/biome`). Each configuration collects its registries afresh
+  (`ClientConfigurationPacketListenerImpl.<init>` makes a new
+  `RegistryDataCollector`) and appends the entries of every `registry_data` for a
+  registry (`RegistryDataCollector$ContentsCollector.append`: `List.addAll`). Both
+  recorded joins send 67 entries, so 7 bits. The
   codec reads one packet at a time and cannot see that registry, so it reads a
   direct biome container at the bits sent. The Comparison reads it again at the
   width of the same Transcript's registry when its data is as long as that width

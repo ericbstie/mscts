@@ -1538,8 +1538,11 @@ proves it necessary:
      `Configuration$Global`), whatever bits per entry are sent, but the
      codec reads one packet at a time and reads it at the bits sent. So
      the Comparison takes that width from the same Bot's `registry_data`
-     for `minecraft:worldgen/biome` in the same Transcript (the entries of
-     every such packet, counted; `compare._Context`). Data as long as that
+     for `minecraft:worldgen/biome` in the same Transcript: the entries of
+     every such packet in the last configuration before the chunk, counted
+     (`compare._Context`; each configuration has a new
+     `RegistryDataCollector`, whose `ContentsCollector.append` adds the
+     entries of each packet for a registry). Data as long as that
      width takes is read at that width, so the bits sent are network
      traffic and the biomes compare as above. Data of another length is
      not what the client reads (it reads that many Longs and the rest of

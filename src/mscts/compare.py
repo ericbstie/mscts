@@ -629,7 +629,6 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
     """
     windows = _Windows.of(transcript)
-    context = _Context.of(transcript, bot)
     events = _by_position(
         [
             event
@@ -639,7 +638,7 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     )
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
-    for event in events:
+    for event, context in zip(events, _Context.each(events), strict=True):
         packet = event.packet
         if windows is not None and not windows.observes(event):
             numbers.spawned(packet, masks)
@@ -764,21 +763,33 @@ class _Context:
     biomes: int | None
 
     @classmethod
-    def of(cls, transcript: Transcript, bot: str) -> Self:
-        """The context of `bot`'s stream, from all of its Events, compared or not."""
-        counts: list[int] = []
-        for event in transcript.events:
+    def each(cls, events: Sequence[Event]) -> list[Self]:
+        """The context of each of a Bot's clientbound `events`, compared or not, in their order.
+
+        The biomes are those of the last configuration before the Event: the client collects
+        each configuration's registries afresh (`ClientConfigurationPacketListenerImpl.<init>`
+        makes a new `RegistryDataCollector`), and appends the entries of every `registry_data`
+        for one registry (`RegistryDataCollector$ContentsCollector.append`).
+        """
+        contexts: list[Self] = []
+        biomes: int | None = None
+        counts: list[int] | None = None  # in the configuration the Bot is in, if it is in one
+        for event in events:
             packet = event.packet
-            if (
-                event.bot == bot
-                and (packet.state, packet.direction, packet.name)
-                == (State.CONFIGURATION, Direction.CLIENTBOUND, "minecraft:registry_data")
-                and packet.fields is not None
-                and packet.fields.get("registry_id") == _BIOMES_REGISTRY
-                and isinstance(entries := packet.fields.get("entries"), list)
-            ):
-                counts.append(len(cast("list[object]", entries)))
-        return cls(biomes=sum(counts) if counts else None)
+            if packet.state is not State.CONFIGURATION:
+                if counts is not None:
+                    biomes, counts = (sum(counts) if counts else None), None
+            else:
+                counts = [] if counts is None else counts
+                if (
+                    packet.name == "minecraft:registry_data"
+                    and packet.fields is not None
+                    and packet.fields.get("registry_id") == _BIOMES_REGISTRY
+                    and isinstance(entries := packet.fields.get("entries"), list)
+                ):
+                    counts.append(len(cast("list[object]", entries)))
+            contexts.append(cls(biomes=biomes))
+        return contexts
 
 
 @dataclass(frozen=True, slots=True)

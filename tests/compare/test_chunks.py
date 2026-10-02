@@ -518,6 +518,28 @@ def test_a_direct_biome_container_whose_data_does_not_fit_is_a_gameplay_differen
     ]
 
 
+def test_a_chunk_is_read_with_the_biomes_of_the_last_configuration_before_it() -> None:
+    # The verdict review of #122, finding 6. Each configuration has its own RegistryDataCollector
+    # (ClientConfigurationPacketListenerImpl.<init>), which appends the entries of each
+    # registry_data (RegistryDataCollector$ContentsCollector.append: List.addAll).
+    def configured_twice(biomes: dict[str, object]) -> Transcript:
+        return transcript(
+            ("alice", _registry("minecraft:worldgen/biome", 100)),
+            ("alice", packet("minecraft:start_configuration", fields={})),
+            ("alice", _registry("minecraft:worldgen/biome", 40)),
+            ("alice", _registry("minecraft:worldgen/biome", 27)),
+            ("alice", chunk(overworld(FLAT_BOTTOM, biomes=biomes))),
+        )
+
+    reference = configured_twice(direct(TWO_BIOMES, bits=7))  # 40 + 27 biomes: 7 bits
+    candidate = configured_twice(paletted(TWO_BIOMES, [PLAINS, 3], bits=1, width=1))
+
+    verdict = compare(reference, candidate, [])
+
+    assert verdict.divergences
+    assert verdict.gameplay == ()
+
+
 def test_a_container_of_ids_against_one_the_client_cannot_read_names_its_ids() -> None:
     # The verdict review of #122, finding 4: the packed ids are mscts's own form, not a value.
     reference = chunk(overworld(FLAT_BOTTOM, biomes=direct(TWO_BIOMES, bits=7)))
