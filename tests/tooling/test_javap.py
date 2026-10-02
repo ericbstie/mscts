@@ -9,6 +9,7 @@ import subprocess
 import types
 import zipfile
 from pathlib import Path
+from typing import TextIO
 
 import pytest
 
@@ -247,6 +248,34 @@ def test_main_places_selected_libraries_after_the_target_jar_on_the_classpath(
             "com.mojang.Example$Inner",
         ]
     ]
+
+
+@pytest.mark.parametrize("failed", [False, True])
+def test_out_writes_one_file_per_class_and_preserves_failure(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, failed: bool
+) -> None:
+    monkeypatch.setattr(javap, "_executable", lambda: tmp_path / "javap")
+    monkeypatch.setattr(javap, "classpath", lambda _side: tmp_path / "client.jar")
+    monkeypatch.setattr(javap, "cached_libraries", lambda _patterns: [])
+    names = ["net.minecraft.Foo$Inner", "net.minecraft.Bar"]
+    calls: list[str] = []
+
+    def fake_run(
+        argv: list[str], *, check: bool, stdout: TextIO
+    ) -> subprocess.CompletedProcess[bytes]:
+        assert check is False
+        calls.append(argv[-1])
+        stdout.write(f"disassembled {argv[-1]}\n")
+        return subprocess.CompletedProcess(argv, 7 if failed and len(calls) == 1 else 0)
+
+    monkeypatch.setattr(javap, "_run", fake_run)
+    out = tmp_path / "new" / "output"
+
+    assert javap.main(["client", *names, "--out", str(out)]) == (7 if failed else 0)
+    assert calls == names
+    assert sorted(path.name for path in out.iterdir()) == sorted(f"{name}.txt" for name in names)
+    for name in names:
+        assert (out / f"{name}.txt").read_text() == f"disassembled {name}\n"
 
 
 def test_client_jar_is_verified_and_reused_offline(

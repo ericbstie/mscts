@@ -228,7 +228,7 @@ def run_repeats(
     failing_ids: set[str] = set()
     for index in range(times):
         returncode, ids = run(uv, pytest_args)
-        print(f"run {index + 1}/{times}: exit code {returncode}, {len(ids)} failing")
+        print(f"run {index + 1}/{times}: exit code {returncode}, {len(ids)} failing", flush=True)
         if returncode == 0:
             passed += 1
         else:

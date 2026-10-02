@@ -12,6 +12,9 @@ the barrier's answers (`award_stats`) inside the window for each Bot, how long e
 has both Transcripts saved in OUT_DIR as `play-<n>-<side>.jsonl` (the Marks, then the
 Events; a research format, not a public one). `--stress N` runs N busy-loop processes
 beside it. All times are milliseconds from the start of the side's Transcript.
+Saved payloads are complete. A finished probe prints play/match totals and Divergences
+per test case, and exits zero even if the servers differed. `run(loop=...)` can use
+another play loop (#107).
 
 Made for #88, a failure about once in 200 plays, which a quiet machine never showed:
 run it beside a looping `mise run check`.
@@ -29,6 +32,7 @@ import sys
 import tempfile
 import types
 import uuid
+from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,11 +59,12 @@ ANSWER = "minecraft:award_stats"
 REQUEST = "minecraft:client_command"
 BLOCK_UPDATE = "minecraft:block_update"
 SIDES = ("a", "b")
-SHORT_PAYLOAD = 64
-"""A saved Event keeps its payload as hex only below this many bytes (chunks are far more)."""
 
 type Play = Callable[..., Awaitable[Transcript]]
 """How a Group is played on one Endpoint: `run_group`'s signature."""
+
+type Loop = Callable[[Group, Sequence[Endpoint], int, Path], Awaitable[int]]
+"""The play loop `run` uses; returns the number of plays that did not match."""
 
 
 def _load_script(path: Path) -> types.ModuleType:
@@ -221,9 +226,7 @@ def save(transcript: Transcript, path: Path) -> None:
                 "state": packet.state.value,
                 "name": packet.name,
                 "chunk": chunk_xz(packet.payload) if packet.name == CHUNK else None,
-                "payload_hex": (
-                    packet.payload.hex() if len(packet.payload) < SHORT_PAYLOAD else None
-                ),
+                "payload_hex": packet.payload.hex(),
                 "fields": join.jsonable(packet.fields) if packet.fields is not None else None,
             }
             sink.write(json.dumps(row) + "\n")
@@ -243,6 +246,7 @@ async def loop(
     `match` in `out_dir`. Returns how many plays did not match.
     """
     not_matching = 0
+    divergences: Counter[str] = Counter()
     for number in range(plays):
         attempts: list[Transcript | GroupError] = []
         for side, endpoint in zip(SIDES, endpoints, strict=False):
@@ -253,6 +257,7 @@ async def loop(
         verdict = judge(group, attempts[0], attempts[1])
         transcripts = [a.transcript if isinstance(a, GroupError) else a for a in attempts]
         matched = verdict.outcome is Outcome.MATCH
+        divergences.update(d.test_case for d in verdict.divergences)
         sides = " | ".join(
             f"{side} {summarise(transcript).line()}"
             for side, transcript in zip(SIDES, transcripts, strict=False)
@@ -263,10 +268,13 @@ async def loop(
             print("   detail:", str(verdict.detail)[:400], flush=True)
             for side, transcript in zip(SIDES, transcripts, strict=False):
                 save(transcript, out_dir / f"play-{number}-{side}.jsonl")
+    print(f"totals: {plays} plays, {plays - not_matching} matched", flush=True)
+    for name, count in sorted(divergences.items()):
+        print(f"  {name}: {count} Divergences", flush=True)
     return not_matching
 
 
-async def run(group: Group, plays: int, out_dir: Path, workdir: Path) -> int:
+async def run(group: Group, plays: int, out_dir: Path, workdir: Path, *, loop: Loop = loop) -> int:
     """Boot two vanilla Instances in `workdir`, play `group` `plays` times on them, stop them."""
     adapter = VanillaAdapter()
     installation = install.require(adapter, TARGET, cache_dir())
@@ -306,7 +314,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run probe_loop.py end to end; return its exit code (1 if any play did not match)."""
+    """Run probe_loop.py; a completed probe exits zero even when plays differ (#107)."""
     args = parse_args(argv)
     probe = _load_script(Path(__file__).resolve().parents[2] / "tests" / "support" / "probe.py")
     workdir = Path(tempfile.mkdtemp(prefix="mscts-research-probe-loop-"))
@@ -318,7 +326,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
     print("done", args.plays, "plays;", not_matching, "not matching", flush=True)
-    return 1 if not_matching else 0
+    return 0
 
 
 if __name__ == "__main__":

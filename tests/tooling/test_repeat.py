@@ -6,6 +6,7 @@ gone, using the leak-guard pattern (tests/support/leak_guard.py).
 """
 
 import importlib.util
+import sys
 import time
 import types
 import uuid
@@ -94,6 +95,25 @@ def test_run_repeats_counts_passes_and_failures(repeat: types.ModuleType) -> Non
     assert result.passed == 2
     assert result.failed == 1
     assert result.failing_ids == frozenset({"tests/x.py::test_a"})
+
+
+def test_a_progress_line_is_visible_in_a_file_before_the_next_run(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "repeat.log"
+    calls = 0
+
+    def fake_run(_uv: str, _args: object) -> tuple[int, frozenset[str]]:
+        nonlocal calls
+        if calls:
+            assert "run 1/2: exit code 0, 0 failing" in output.read_text()
+        calls += 1
+        return 0, frozenset[str]()
+
+    with output.open("w") as stream, monkeypatch.context() as patch:
+        patch.setattr(sys, "stdout", stream)
+        repeat.run_repeats("uv", (), 2, run=fake_run)
+    assert calls == 2
 
 
 def test_run_repeats_unions_failing_ids_across_runs(repeat: types.ModuleType) -> None:
