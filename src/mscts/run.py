@@ -37,6 +37,7 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
     ProtocolError,  # an answer that breaks the protocol's sequence or content
     TimeoutError,  # no answer in time
     ConnectionError,  # the connection was closed, reset or refused
+    PlayersStillOnline,  # a closed Bot's player still listed, past the Group's wait (audit H4)
 )
 """What a Group raises when the Candidate caused it: a `mismatch`, never `error`."""
 
@@ -227,7 +228,8 @@ def judge(
     What `compare` finds, with the Group's Masks, except:
 
     - The Candidate failed in a way it caused (`CANDIDATE_FAILURES`: its output did not
-      decode, broke the protocol, never came, or its connection closed or was refused):
+      decode, broke the protocol, never came, its connection closed or was refused, or it
+      kept a closed Bot's player online past the Group's wait):
       `mismatch`, led by a `failed` Divergence that says what happened and names the
       Bot it came out of (`GroupError.bot`), then whatever
       the Comparison of the Transcripts so far finds. Never `error`, which a

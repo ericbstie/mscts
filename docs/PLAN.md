@@ -1160,7 +1160,8 @@ type Side = Server | Attached
 async def run_group(group: Group, endpoint: Endpoint, *, server: str,
                     timeout_s: float = GROUP_TIMEOUT_S) -> Transcript: ...
     # one Instance; closes every Bot however it ends; GroupError if the Group raised
-CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError)
+CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError,
+                      PlayersStillOnline)
 def judge(group: Group, reference: Transcript | GroupError,
           candidate: Transcript | GroupError) -> Verdict: ...
     # The Verdict rule (audit H3): a Candidate failure (its GroupError's cause is one of

@@ -18,6 +18,7 @@ from mscts.group import CommandMissing, Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
+from mscts.settle import PlayersStillOnline
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.compare.build import divergence
@@ -199,6 +200,41 @@ async def test_the_failed_divergence_names_the_bot_the_failure_came_out_of(raise
 
     assert verdict.outcome is Outcome.MISMATCH
     assert verdict.divergences[0] == _failed(str(candidate), raiser.bot)
+
+
+async def _waits_in_vain(context: GroupContext) -> None:  # noqa: ARG001 - a Script
+    """The Group waited with `until_no_player_online` after `control.leave()`, in vain."""
+    raise PlayersStillOnline(1, ["control"], 2.0)
+
+
+WAITS_IN_VAIN = Group(id="test/waits-in-vain", run=_waits_in_vain)
+STILL_ONLINE = "PlayersStillOnline: 1 player still online after waiting 2 s: control"
+
+
+@pytest.mark.asyncio
+async def test_a_group_raising_players_still_online_on_the_candidate_is_a_mismatch() -> None:
+    candidate = await _play(WAITS_IN_VAIN, _mute)
+    assert isinstance(candidate, GroupError)
+
+    verdict = judge(WAITS_IN_VAIN, Transcript(WAITS_IN_VAIN.id, "vanilla"), candidate)
+
+    assert verdict == Verdict(
+        "test/waits-in-vain",
+        Outcome.MISMATCH,
+        divergences=(_failed(STILL_ONLINE, bot=""),),
+        detail=f"the Candidate failed: {STILL_ONLINE}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_group_raising_players_still_online_on_the_reference_is_an_error() -> None:
+    reference = await _play(WAITS_IN_VAIN, _mute)
+    assert isinstance(reference, GroupError)
+
+    verdict = judge(WAITS_IN_VAIN, reference, Transcript(WAITS_IN_VAIN.id, "pumpkin"))
+
+    detail = f"the Reference failed: {STILL_ONLINE}"
+    assert verdict == Verdict("test/waits-in-vain", Outcome.ERROR, detail=detail)
 
 
 async def _needs_tick(context: GroupContext) -> None:  # noqa: ARG001 - a Script
