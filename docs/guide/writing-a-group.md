@@ -104,13 +104,13 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 ## Options
 
 `@group` takes options after the id. This example is illustrative.
-`join/basic` is not registered yet.
+`door/open` is not registered yet.
 
 ```python
 @group(
-    "join/basic",
+    "door/open",
     requires=("status/basic",),
-    masks=(Mask("minecraft:login", "entity_id", reason="an entity id, assigned per session"),),
+    masks=(Mask("minecraft:sound", "pitch", reason="a door's sound has a random pitch"),),
     spec=lambda spec: replace(spec, view_distance=4),
 )
 ```

@@ -48,7 +48,7 @@ def test_group_kinds_are_named_as_adr_0006_names_them() -> None:
 
 @pytest.mark.usefixtures("registering")
 def test_the_decorator_registers_the_group_with_its_options() -> None:
-    mask = Mask(packet="minecraft:login", path="entity_id", reason="an id with no meaning")
+    mask = Mask(packet="minecraft:sound", path="pitch", reason="a door's pitch is random")
 
     @group(
         "test/decorated",

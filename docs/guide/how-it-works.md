@@ -95,10 +95,15 @@ as gameplay.
 
 ## Masks
 
-Some values differ between two runs of vanilla itself: entity ids,
-keep-alive ids, teleport ids. A **Mask** excludes one such field from the
+Some values differ between two runs of vanilla itself, such as keep-alive
+ids and teleport ids. A **Mask** excludes one such field from the
 Comparison. A Mask must give a reason, and that reason must show the value
 has no gameplay meaning.
+
+Entity ids, and the random UUIDs of mobs, differ too, but need no Mask.
+mscts numbers entities in the order each Bot first hears of them, so the
+same entities compare equal on both servers, and a packet about a
+different entity still shows up as a difference.
 
 A few fields hold a value vanilla picks at random every time, such as the
 session id each login gets. Two runs of vanilla never agree on them, so

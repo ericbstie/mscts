@@ -35,7 +35,7 @@ from types import MappingProxyType
 from typing import Literal, NoReturn, Self, cast, override
 from uuid import UUID
 
-from mscts.codec.entity_ids import EntityIdPath, Step, Variant
+from mscts.codec.entity_ids import Each, EntityIdPath, Step, Variant
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.registry_names import registry_names
 from mscts.spec import CONTROL_PLAYER
@@ -133,8 +133,9 @@ class Mask:
         """Reject a Mask that could never be right.
 
         Raises:
-            ValueError: The packet name or the reason is empty, or the path is
-                malformed or not spelled as a Divergence path would be.
+            ValueError: The packet name or the reason is empty, the path is malformed or
+                not spelled as a Divergence path would be, or it is an entity id (or a
+                list of them), which every Comparison numbers instead (#21).
         """
         if not self.packet:
             msg = "a Mask needs a packet name"
@@ -142,8 +143,13 @@ class Mask:
         if not self.reason.strip():
             msg = f"{self.packet} {self.path}: a Mask needs a reason"
             raise ValueError(msg)
-        if self.path != WHOLE_PACKET:
-            _mask_steps(self)
+        if self.path != WHOLE_PACKET and _is_entity_id(self.packet, _mask_steps(self)):
+            msg = (
+                f"{self.packet} {self.path}: an entity id needs no Mask; every Comparison "
+                "numbers entities in the order each Bot first hears of them, so the same "
+                "entities compare equal on both servers (#21)"
+            )
+            raise ValueError(msg)
 
 
 UNORDERED: Mapping[str, str] = MappingProxyType(
@@ -710,6 +716,28 @@ def _entity_tries(state: State, packet: str) -> tuple[_Trie, _Trie]:
                 raise ValueError(msg)
             uuids.append(keys)
     return _Trie.of(ids), _Trie.of(uuids)
+
+
+def _is_entity_id(packet: str, path: _Path) -> bool:
+    """Whether `path` is an entity id of the clientbound `packet`, in any State, or a list of them.
+
+    A list index in `path` stands for any element, and a Variant step is not in a path.
+    """
+    for state in State:
+        for entity_path in _codec().entity_id_paths(state, Direction.CLIENTBOUND, packet):
+            keys = tuple(step for step in entity_path if not isinstance(step, Variant))
+            while True:
+                if len(keys) == len(path) and all(map(_step_fits, path, keys)):
+                    return True
+                if not keys or not isinstance(keys[-1], Each):
+                    break
+                keys = keys[:-1]
+    return False
+
+
+def _step_fits(step: _Step, key: Step) -> bool:
+    """Whether a Mask path's `step` is `key`, an entity id path's: EACH is any list index."""
+    return type(step) is int if isinstance(key, Each) else step == key
 
 
 def _is_player(fields: Mapping[str, object]) -> bool:

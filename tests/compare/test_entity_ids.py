@@ -7,11 +7,14 @@ is not a player by `#<n>`, the n-th such UUID. So the same entities compare equa
 about another entity is still a Divergence.
 """
 
+import re
 import uuid
+
+import pytest
 
 from mscts.codec.packets import Packet
 from mscts.codec.registry_names import registry_names
-from mscts.compare import ENTITY_UUIDS, OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
+from mscts.compare import ENTITY_UUIDS, OBSERVE_CLOSE, OBSERVE_OPEN, Mask, Outcome, compare
 from mscts.target import TARGET
 from tests.compare.build import divergence, packet, transcript
 
@@ -192,6 +195,36 @@ def test_an_entity_id_deep_in_a_value_is_numbered_too() -> None:
     reference = transcript(("alice", login(1)), ("alice", spawn(3)), ("alice", vibration(3)))
     candidate = transcript(("alice", login(10)), ("alice", spawn(11)), ("alice", vibration(11)))
     assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+@pytest.mark.parametrize(
+    ("name", "path"),
+    [
+        ("minecraft:login", "entity_id"),
+        ("minecraft:add_entity", "entity_id"),
+        ("minecraft:remove_entities", "entity_ids"),
+        ("minecraft:remove_entities", "entity_ids[1]"),
+        ("minecraft:set_entity_link", "holding_entity_id"),
+        ("minecraft:level_particles", "particle.options.destination.value.entity_id"),
+    ],
+)
+def test_a_mask_on_an_entity_id_is_refused(name: str, path: str) -> None:
+    with pytest.raises(ValueError, match=re.escape(f"{name} {path}: ") + ".*#21"):
+        Mask(name, path, reason="assigned per session")
+
+
+@pytest.mark.parametrize(
+    ("name", "path"),
+    [
+        ("minecraft:login", "*"),
+        ("minecraft:add_entity", "x"),
+        ("minecraft:set_entity_data", "entries"),
+        ("minecraft:level_particles", "particle"),
+        ("test:entity", "entity_id"),
+    ],
+)
+def test_a_mask_beside_or_around_an_entity_id_is_kept(name: str, path: str) -> None:
+    assert Mask(name, path, reason="a test").path == path
 
 
 def test_every_entity_uuid_field_has_a_reason() -> None:
