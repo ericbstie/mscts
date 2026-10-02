@@ -518,6 +518,37 @@ def test_a_direct_biome_container_whose_data_does_not_fit_is_a_gameplay_differen
     ]
 
 
+def test_a_container_of_ids_against_one_the_client_cannot_read_names_its_ids() -> None:
+    # The verdict review of #122, finding 4: the packed ids are mscts's own form, not a value.
+    reference = chunk(overworld(FLAT_BOTTOM, biomes=direct(TWO_BIOMES, bits=7)))
+    sent = direct([PLAINS] * 64, bits=6)
+
+    verdict = compare(_joined(reference), _joined(chunk(overworld(FLAT_BOTTOM, biomes=sent))), [])
+
+    (difference,) = verdict.gameplay
+    assert difference.reference == "chunk 0 0, y -64 to -49: ids 3 to 41"
+
+
+@pytest.mark.parametrize(
+    ("indices", "shown"),
+    [
+        ([0, 1] * 32, "id 41 and entries past the palette"),
+        ([1] * 64, "every entry past the palette"),
+    ],
+)
+def test_a_container_with_entries_past_its_palette_says_so_when_named_whole(
+    indices: list[int], shown: str
+) -> None:
+    past: dict[str, object] = {"bits": 1, "palette": [PLAINS], "data": _packed(indices, 1)}
+    reference = chunk(overworld(FLAT_BOTTOM, biomes=past))
+    sent = direct([PLAINS] * 64, bits=6)
+
+    verdict = compare(_joined(reference), _joined(chunk(overworld(FLAT_BOTTOM, biomes=sent))), [])
+
+    (difference,) = verdict.gameplay
+    assert difference.reference == f"chunk 0 0, y -64 to -49: {shown}"
+
+
 # A batch: the server sends the chunks at one distance in the iteration order of a hash set, and
 # the client keeps each by its position.
 

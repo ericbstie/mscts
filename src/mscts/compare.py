@@ -1853,7 +1853,7 @@ def _shown_section(
     if place is None:
         return values
     if reference is None or candidate is None:
-        texts = [_container_text(value) for value in values]
+        texts = [_container_text(value, container.entries) for value in values]
         if texts[0] is None or texts[1] is None:
             return values
         return place.summed(section, texts[0]), place.summed(section, texts[1])
@@ -1879,11 +1879,24 @@ def _id_text(value: int | None) -> str:
     return "past the palette" if value is None else str(value)
 
 
-def _container_text(value: _Value | Absent) -> str | None:
-    """A canonical container said whole, "all 41" or what is wrong with it; None if neither."""
+def _container_text(value: _Value | Absent, entries: int) -> str | None:
+    """A canonical container said whole; None if it is not one.
+
+    "all 41", "ids 3 to 41" (with "and entries past the palette" if it has any), or what is
+    wrong with it.
+    """
     if type(value) is int:
         return f"all {value}"
-    return value if isinstance(value, str) else None
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, bytes):
+        return None
+    ids = _unpacked_ids(value, entries)
+    known = sorted({each for each in ids if each is not None})
+    if not known:
+        return "every entry past the palette"
+    text = f"id {known[0]}" if len(known) == 1 else f"ids {known[0]} to {known[-1]}"
+    return text + (" and entries past the palette" if None in ids else "")
 
 
 def _shown_light(

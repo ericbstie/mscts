@@ -1528,7 +1528,10 @@ proves it necessary:
      block. y counts from -64 when both sides send 24 sections and from 0
      when both send 16 (the heights of the vanilla dimension types, from
      the 26.3 server jar's `data/minecraft/dimension_type`); otherwise it
-     counts from the world's bottom, and the text says so.
+     counts from the world's bottom, and the text says so. Against a
+     container that is not ids (one the client cannot read), each side
+     is said whole: `all 41`, `ids 3 to 41` (and `entries past the
+     palette` if it has any), or what is wrong with it.
      A direct biome container is read as the client reads it, which the
      codec cannot do alone: the client reads its entries at `Mth.ceillog2`
      of the biomes the server sent it (`Strategy.<init>`,
