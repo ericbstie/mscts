@@ -11,7 +11,7 @@ from time import perf_counter
 
 import mscts.groups  # noqa: F401 - importing it registers the shipped Groups
 from mscts.adapters.base import Adapter, Installation
-from mscts.bot import status_probe
+from mscts.bot import Bot, status_probe
 from mscts.codec.packets import CodecError
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
@@ -39,8 +39,18 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
 )
 """What a Group raises when the Candidate caused it: a `mismatch`, never `error`."""
 
+SETTLE_INTERVAL_S = 0.02
+"""How long a Run waits between polls of an Instance's status while players are online.
+
+Vanilla removes a closed Bot's player on its next tick (50 ms) and the status follows
+within that tick, so a poll every 20 ms finds the Instance empty soon after it is.
+"""
+
 LOG = logging.getLogger("mscts.run")
 """Where a Run says what it is doing (INFO): the Instances it starts, the Group it plays."""
+
+_UNREADABLE: tuple[type[Exception], ...] = (*CANDIDATE_FAILURES, OSError)
+"""What a status poll raises when the Instance gives no readable answer."""
 
 _STATUS_RESPONSE = "minecraft:status_response"
 
@@ -458,6 +468,7 @@ class _Instances:
     async def play(self, group: Group) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it."""
         endpoints = await self._pair(group.spec)
+        await asyncio.gather(*(_settle(endpoint) for endpoint in endpoints))
         started = perf_counter()
         attempts = [
             await _attempt(group, endpoint, server=side.name)
@@ -539,6 +550,41 @@ def _installed_version(side: Side) -> str | None:
     if source.entry is not None:
         return source.entry.removeprefix(f"{side.name} ")
     return f"sha256 {source.sha256}"
+
+
+async def _settle(endpoint: Endpoint) -> None:
+    """Poll the status of the Instance at `endpoint` until it says no player is online.
+
+    The players of the Group that played before have left only once it does: a closed
+    Bot is removed by the server later. An Instance whose status cannot be read counts as
+    empty here: the Group that plays next meets the same failure and reports it.
+    """
+    while True:
+        if not await _players_online(endpoint):
+            return
+        await asyncio.sleep(SETTLE_INTERVAL_S)
+
+
+async def _players_online(endpoint: Endpoint) -> int | None:
+    """The `players.online` of the status at `endpoint`, or None if it gives no readable one."""
+    transcript = Transcript(group_id="settle", server="")  # discarded
+    try:
+        bot = await Bot.connect(
+            endpoint, TARGET, name="settle", transcript=transcript, timeout_s=GROUP_TIMEOUT_S
+        )
+    except _UNREADABLE:
+        return None
+    try:
+        reply = await bot.status()
+    except _UNREADABLE:
+        return None
+    finally:
+        await bot.close()
+    players: object = reply.get("players")
+    if not isinstance(players, dict):
+        return None
+    online = {str(key): value for key, value in players.items()}.get("online")
+    return online if isinstance(online, int) and not isinstance(online, bool) else None
 
 
 async def _attempt(group: Group, endpoint: Endpoint, *, server: str) -> Transcript | GroupError:
