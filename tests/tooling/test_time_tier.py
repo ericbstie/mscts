@@ -245,3 +245,109 @@ def test_run_tier_once_cleans_up_the_copy_even_if_run_raises(
         )
 
     assert not (tmp_path / "copy").exists()
+
+
+@pytest.mark.parametrize("codes", [(0, 0), (1, 0), (0, 2)])
+def test_main_reports_each_runs_last_pytest_summary_and_fails_if_any_command_failed(
+    time_tier: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    codes: tuple[int, int],
+) -> None:
+    completed = iter(codes)
+    copies: list[Path] = []
+    original_run_tier_once = time_tier.run_tier_once
+
+    def fake_make_copy(_repo: Path, destination: Path) -> None:
+        destination.mkdir(parents=True)
+        copies.append(destination)
+
+    def fake_run(_venv: Path, _copy: Path, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        code = next(completed)
+        summary = "1 failed in 0.02s" if code else "2 passed in 0.01s"
+        output = f"== 99 passed in 1.00s ==\n== {summary} ==\ntrailing diagnostic\n"
+        return subprocess.CompletedProcess(argv, code, stdout=output, stderr="")
+
+    def run_once(repo: Path, commands: list[str], run: object) -> object:
+        return original_run_tier_once(
+            repo,
+            commands,
+            run,
+            hooks=time_tier.CopyHooks(
+                make_copy=fake_make_copy,
+                get_load=lambda: 0.0,
+                new_copy_root=lambda: tmp_path / f"run-{len(copies)}" / "copy",
+            ),
+        )
+
+    monkeypatch.setattr(time_tier, "task_run_commands", lambda *_args: ["uv run pytest"])
+    monkeypatch.setattr(time_tier, "_venv_path", lambda _repo: tmp_path)
+    monkeypatch.setattr(time_tier, "run_in_copy", fake_run)
+    monkeypatch.setattr(time_tier, "run_tier_once", run_once)
+
+    status = time_tier.main(["test", "--times", "2"])
+
+    assert (status != 0) == any(codes)
+    output = capsys.readouterr().out
+    lines = output.splitlines()
+    for index, code in enumerate(codes, 1):
+        heading = next(i for i, line in enumerate(lines) if line.startswith(f"run {index}/2:"))
+        summary = "1 failed in 0.02s" if code else "2 passed in 0.01s"
+        assert lines[heading + 1].strip() == summary, output
+    assert "99 passed" not in output
+    assert "trailing diagnostic" not in output
+    assert len(copies) == 2
+    assert all(not copy.exists() for copy in copies)
+
+
+def test_a_later_passing_command_does_not_erase_failure_or_the_last_stderr_summary(
+    time_tier: types.ModuleType, tmp_path: Path
+) -> None:
+    responses = iter(
+        [
+            subprocess.CompletedProcess([], 1, stdout=_SAMPLE_OUTPUT, stderr=""),
+            subprocess.CompletedProcess(
+                [], 0, stdout="diagnostic", stderr="== 2 passed in 0.03s ==\n"
+            ),
+        ]
+    )
+
+    def fake_make_copy(_repo: Path, destination: Path) -> None:
+        destination.mkdir(parents=True)
+
+    result = time_tier.run_tier_once(
+        tmp_path / "repo",
+        ["uv run pytest first", "uv run pytest second"],
+        lambda _copy, _argv: next(responses),
+        hooks=time_tier.CopyHooks(
+            make_copy=fake_make_copy,
+            get_load=lambda: 0.0,
+            new_copy_root=lambda: tmp_path / "run" / "copy",
+        ),
+    )
+
+    assert result.failed
+    assert result.summary == "2 passed in 0.03s"
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [
+        (_SAMPLE_OUTPUT, "5 passed in 41.02s"),
+        (
+            "20 passed, 200 deselected in 211.30s (0:03:31)\n",
+            "20 passed, 200 deselected in 211.30s (0:03:31)",
+        ),
+        (
+            "== 1 failed, 2 passed, 3 skipped, 1 error in 1.23s ==",
+            "1 failed, 2 passed, 3 skipped, 1 error in 1.23s",
+        ),
+        ("no tests ran in 0.01s", "no tests ran in 0.01s"),
+        ("All checks passed!\n", None),
+    ],
+)
+def test_last_pytest_summary_accepts_verbose_and_quiet_results_without_inventing_one(
+    time_tier: types.ModuleType, output: str, expected: str | None
+) -> None:
+    assert time_tier.last_pytest_summary(output) == expected
