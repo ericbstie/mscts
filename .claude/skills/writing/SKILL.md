@@ -64,6 +64,18 @@ Any session that writes user-facing text follows this skill all the same.
 
 ## Examples
 
+### Home page, "How it works", opening
+
+- Before: "mscts starts two servers on your machine: vanilla Minecraft and
+  the custom server you want to compare with it."
+- After: "mscts starts a vanilla Minecraft server alongside the custom
+  server you're testing." Then: the custom server needs an Adapter (with
+  a link), mscts connects as a player and compares, and the planned
+  longer runs for random mechanics. The maintainer suggested the
+  rewording and the outline.
+- Why: "the custom server you want to compare with it is a bit weirdly
+  sentenced".
+
 ### Home page, "Rules mscts follows"
 
 - Before: a section of six rules ("Vanilla is always right", "Every

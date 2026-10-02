@@ -40,14 +40,15 @@ Took 22 s</pre>
     <section class="ms-section">
       <h2>How it works</h2>
       <p>
-        mscts starts two servers on your machine: vanilla Minecraft and the
-        custom server you want to compare with it. Both run offline, each on
-        its own local address, and neither can reach the internet. For each kind of
-        server, a small module called an Adapter writes that server's own
-        configuration, so both start with the same settings.
+        mscts starts a vanilla Minecraft server alongside the custom server
+        you're testing. Both run offline on your machine, and neither can
+        reach the internet. The custom server needs an mscts Adapter, a small
+        module that writes its configuration so it starts with the same
+        settings and the same world as vanilla
+        (<a :href="withBase('/guide/writing-an-adapter')">read more about Adapters</a>).
       </p>
       <p>
-        mscts then connects to each server the way the Minecraft client does,
+        With everything set up, mscts connects to each server as a player,
         performs the same actions on both, and records every message each
         server sends back. It never reads either server's code, so it works
         the same for a server written in Rust, Java or anything else. Finally
@@ -55,6 +56,13 @@ Took 22 s</pre>
         case, named after its message and the field, such as
         <code>status_response.description</code>, and mscts lists every one
         where the custom server differs from vanilla.
+      </p>
+      <p>
+        Some mechanics are random, such as mob spawning and loot, so one
+        recording cannot show whether two servers behave the same. For
+        those, mscts will repeat the same actions many times and compare the
+        spread of results. These longer runs are planned and not available
+        yet.
       </p>
     </section>
 
