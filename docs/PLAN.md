@@ -1973,7 +1973,24 @@ then record the answer in an ADR:
   `player_info_update` none yet. Until this is decided, a window that can
   catch them names the packets it tests.
 - How should chunk data be compared: decode the palette into block states,
-  or compare raw?
+  or compare raw? **Decided (#22):** decode. The codec decodes each
+  section's paletted containers (`codec/schemas/play/chunks.py`), and
+  the Comparison compares the block state at each position, the biome of
+  each cell and the light of each light section as the client keeps them
+  (Comparison semantics, steps 1 and 2), so another encoding is network
+  traffic only. Considered and not encoded:
+  - a section past the level's section count, which the client never
+    reads, still differs from none, since the Comparison does not know
+    the level's height; vanilla and Pumpkin sent exactly the level's
+    sections in the recorded joins;
+  - a `light_update`'s bits from the level's light section count up to
+    256 are compared, for the same reason;
+  - `chunks_biomes` has no canonical form: its biome containers are
+    compared as sent, so another encoding of the same biomes is a
+    gameplay Divergence (no Group receives it yet);
+  - a chunk's block and fluid counts are compared as sent: the client
+    keeps them, and the light engine reads a block count of 0 as an
+    empty section.
 - Transcripts record a frame when the Bot *takes* it (stamped when it
   arrived, by the Connection's background reader), so they do not depend
   on TCP segmentation, but packets never taken are absent. Should

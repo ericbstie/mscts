@@ -16,6 +16,7 @@ import pytest
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.wire import Writer
 from mscts.compare import UNORDERED, Divergence, Observability, Verdict, compare
+from mscts.test_cases import TITLES
 from mscts.transcript import Transcript
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
@@ -622,3 +623,21 @@ def test_a_light_update_naming_fewer_sections_differs_only_where_the_other_names
     )
 
     assert [d.path for d in verdict.divergences] == ["data.sky[5]"]
+
+
+def test_the_gameplay_test_cases_of_chunks_and_light_have_titles() -> None:
+    stone = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
+    biome = direct([PLAINS] * 63 + [PLAINS + 1], bits=7)
+    verdicts = [
+        _verdict(chunk(), chunk(overworld(stone, biomes=biome))),
+        _verdict(_lit(sky={2: EMPTY}, block={1: FULL}), _lit(sky={2: DARK}, block={1: DARK})),
+        _verdict(
+            light_update(light(sky={2: EMPTY}, block={1: FULL})),
+            light_update(light(sky={2: DARK}, block={1: DARK})),
+        ),
+        compare(_batch(chunk()), _batch(chunk(at=(1, 0))), []),
+    ]
+
+    cases = {d.test_case for verdict in verdicts for d in verdict.gameplay}
+
+    assert cases == {name for name in TITLES if "chunk" in name or "light" in name}

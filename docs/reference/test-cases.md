@@ -60,6 +60,59 @@ different block.
 The z coordinate of the block that changes. A different value changes a
 different block.
 
+## `level_chunk_with_light`
+
+**Chunk**
+
+A chunk only one server sent, shown by its chunk coordinates, such as
+`chunk 3 -2`. The client keeps chunks by position, so the order of the
+chunks in one batch is not compared. Differences inside a chunk both
+servers sent have the test cases below.
+
+## `level_chunk_with_light.sections[].block_states`
+
+**Blocks in a chunk section**
+
+The block at each position of one 16-block-high section of a chunk.
+Servers can encode the same blocks in different ways; that difference is
+network traffic only. A different block is shown at its position in the
+world, with each server's block state id there, such as
+`chunk 2 -1: 37 -62 -9 is 10`. The first three positions that differ are
+named and the rest counted.
+
+## `level_chunk_with_light.sections[].biomes`
+
+**Biomes in a chunk section**
+
+The biome of each 4×4×4 cell of a chunk section, shown like blocks, at
+the cell's lowest corner. Another encoding of the same biomes is network
+traffic only. One encoding packs each biome at a bit width that depends
+on how many biomes the server listed when the player joined. If a
+server sends another width, the client reads other biomes than the
+server meant, so that difference changes what a player sees.
+
+## `level_chunk_with_light.light.sky[]`
+
+**Sky light in a chunk section**
+
+The sky light a server sends for one section of a chunk: a light level
+for each block, an empty section, or nothing, which keeps the light the
+client already had. Index 0 is the section below the world. A different
+level is shown at its position in the world; otherwise each server's
+section is described, such as `not sent` or `all 15`. Below the world, an
+empty section and a section of level 0 everywhere are the same to the
+client. Elsewhere the client later fills an empty section with full sky
+light, so the two differ.
+
+## `level_chunk_with_light.light.block[]`
+
+**Block light in a chunk section**
+
+The light from torches and other light sources in one section of a
+chunk, compared like sky light. An empty section and a section of level
+0 everywhere are the same to the client, so that difference is network
+traffic only.
+
 ## `level_event`
 
 **World event**
@@ -73,6 +126,20 @@ of a block breaking. A server that leaves it out shows no effect.
 
 Which effect plays. Vanilla sends 2001, a block breaking, with the state of
 the broken block as its data. A different number plays a different effect.
+
+## `light_update.data.sky[]`
+
+**Sky light update**
+
+A later change to the sky light of a chunk section, compared like the
+sky light a chunk is sent with.
+
+## `light_update.data.block[]`
+
+**Block light update**
+
+A later change to the block light of a chunk section, compared like the
+block light a chunk is sent with.
 
 ## `section_blocks_update`
 

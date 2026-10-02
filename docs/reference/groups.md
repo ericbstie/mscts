@@ -62,6 +62,15 @@ several the Reference would not match itself.
 
 See [Project status](/status) for the order.
 
+## How chunks are compared
+
+mscts compares a chunk the way the vanilla client ends up seeing it:
+the block at each position, the biome of each 4×4×4 cell, the
+heightmaps, the block entities, and the sky and block light of each
+section. Two servers can encode the same chunk in different ways; that
+is reported as a network traffic difference. A different block or light
+level is reported per chunk section, with the positions that differ.
+
 ## Built-in Measurements
 
 | Name | Unit | Source |
