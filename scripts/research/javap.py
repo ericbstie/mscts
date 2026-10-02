@@ -1,4 +1,4 @@
-"""Inspect the Target's vanilla client or server with javap, using verified cached jars."""
+"""Inspect the Target with javap using verified jars; --out DIR saves one .txt per class."""
 
 import argparse
 import hashlib
@@ -198,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("side", choices=("client", "server"))
     parser.add_argument("classes", nargs="+", metavar="Class")
     parser.add_argument("-v", action="store_true", help="include the verbose constant pool")
+    parser.add_argument("--out", type=Path, help="write one CLASS.txt file per class in DIR")
     parser.add_argument(
         "--lib",
         action="append",
@@ -208,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if any(name.startswith("-") for name in args.classes):
         parser.error("class names cannot start with '-'")
+    if args.out is not None and any("/" in name or "\\" in name for name in args.classes):
+        parser.error("class names cannot contain path separators")
     try:
         executable = _executable()
         jar = classpath(args.side)
@@ -216,7 +219,16 @@ def main(argv: list[str] | None = None) -> int:
         if args.v:
             command.append("-v")
         paths = os.pathsep.join(str(path) for path in [jar, *libraries])
-        command.extend(["-classpath", paths, *args.classes])
+        command.extend(["-classpath", paths])
+        if args.out is not None:
+            args.out.mkdir(parents=True, exist_ok=True)
+            status = 0
+            for name in args.classes:
+                with (args.out / f"{name}.txt").open("w", encoding="utf-8") as sink:
+                    result = _run([*command, name], stdout=sink, check=False)  # noqa: S603
+                status = status or result.returncode
+            return status
+        command.extend(args.classes)
         # The selected JDK's absolute executable, with separate arguments and no shell.
         return _run(command, check=False).returncode  # noqa: S603
     except (OSError, ValueError, PrepareError, ProvisionError) as error:

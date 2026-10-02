@@ -1,10 +1,12 @@
 """Hermetic tests for scripts/research/probe_loop.py: summaries, saved plays, the loop."""
 
+import contextlib
 import importlib.util
 import json
 import struct
 import time
 import types
+from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from mscts.codec.packets import Direction, Packet, State
 from mscts.group import Group, GroupContext
 from mscts.net import Endpoint
 from mscts.run import GroupError
+from mscts.spec import ServerSpec
 from mscts.transcript import Mark, Transcript
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "probe_loop.py"
@@ -172,15 +175,19 @@ def test_save_writes_the_marks_then_each_event_as_one_json_object(
     assert all(row["chunk"] is None for row in events if row["name"] != chunk["name"])
 
 
-def test_save_leaves_a_long_payload_out(probe_loop: types.ModuleType, tmp_path: Path) -> None:
+@pytest.mark.parametrize("size", [63, 64, 2048])
+def test_save_keeps_every_byte_of_a_long_payload(
+    probe_loop: types.ModuleType, tmp_path: Path, size: int
+) -> None:
     transcript = _blank()
-    transcript.record("watcher", _packet("minecraft:set_time", payload=bytes(64)), t_ns=0)
+    payload = bytes(index % 256 for index in range(size))
+    transcript.record("watcher", _packet("minecraft:set_time", payload=payload), t_ns=0)
     out = tmp_path / "play.jsonl"
 
     probe_loop.save(transcript, out)
 
     (row,) = [json.loads(line) for line in out.read_text().splitlines()]
-    assert row["payload_hex"] is None
+    assert bytes.fromhex(row["payload_hex"]) == payload
 
 
 async def _nothing(context: GroupContext) -> None:
@@ -217,7 +224,7 @@ async def test_a_loop_of_matching_plays_saves_nothing(
 
     out = capsys.readouterr().out
     assert not_matching == 0
-    assert [line.split()[:3] for line in out.splitlines()] == [
+    assert [line.split()[:3] for line in out.splitlines()[:2]] == [
         ["0", "ok", "match"],
         ["1", "ok", "match"],
     ]
@@ -238,7 +245,7 @@ async def test_a_play_that_does_not_match_has_both_transcripts_saved(
 
     out = capsys.readouterr().out
     assert not_matching == 1
-    lines = [line.split()[:3] for line in out.splitlines() if not line.startswith("   ")]
+    lines = [line.split()[:3] for line in out.splitlines() if line[:1].isdigit()]
     assert lines == [["0", "ok", "match"], ["1", "BAD", "mismatch"]]
     assert "watcher_update=none(None)" in out
     assert sorted(path.name for path in (tmp_path / "out").iterdir()) == [
@@ -275,3 +282,77 @@ def test_rejects_a_count_that_is_not_a_number(probe_loop: types.ModuleType) -> N
     with pytest.raises(SystemExit) as error:
         probe_loop.parse_args(["many", "out"])
     assert error.value.code == 2
+
+
+@pytest.mark.asyncio
+async def test_run_uses_the_supplied_loop_with_both_prepared_endpoints(
+    probe_loop: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepared: list[Endpoint] = []
+
+    def prepare(_installation: object, spec: ServerSpec, _cwd: Path) -> types.SimpleNamespace:
+        endpoint = Endpoint(spec.host, spec.port)
+        prepared.append(endpoint)
+        return types.SimpleNamespace(endpoint=endpoint)
+
+    @contextlib.asynccontextmanager
+    async def fake_running(plan: object, **_kwargs: object) -> AsyncIterator[object]:
+        yield plan
+
+    async def custom(group: Group, endpoints: list[Endpoint], plays: int, out: Path) -> int:
+        assert group is _GROUP
+        assert endpoints == prepared
+        assert len(endpoints) == 2
+        assert plays == 3
+        assert out == tmp_path / "out"
+        return 2
+
+    monkeypatch.setattr(
+        probe_loop, "VanillaAdapter", lambda: types.SimpleNamespace(prepare=prepare)
+    )
+    monkeypatch.setattr(probe_loop.install, "require", lambda *_args: None)
+    monkeypatch.setattr(probe_loop, "running", fake_running)
+
+    assert await probe_loop.run(_GROUP, 3, tmp_path / "out", tmp_path, loop=custom) == 2
+
+
+@pytest.mark.asyncio
+async def test_loop_prints_totals_and_tallies_divergences_by_test_case(
+    probe_loop: types.ModuleType, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    good = _transcript(watcher_update=True, control_update_ms=165)
+    bad = _transcript(watcher_update=False, control_update_ms=175)
+    await probe_loop.loop(
+        _GROUP, _ENDPOINTS, 3, tmp_path / "out", play=_plays([good, bad, good, bad, good, good])
+    )
+    out = capsys.readouterr().out
+    assert "totals: 3 plays, 1 matched" in out, out
+    assert "  block_update: 2 Divergences" in out, out
+
+
+def test_a_finished_probe_with_mismatches_exits_zero(
+    probe_loop: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def finished(*_args: object) -> int:
+        return 1
+
+    monkeypatch.setattr(probe_loop, "run", finished)
+    assert probe_loop.main(["1", str(tmp_path / "out")]) == 0
+
+
+def test_a_crashed_probe_raises_and_removes_its_workdir(
+    probe_loop: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    workdirs: list[Path] = []
+
+    async def crash(_group: Group, _plays: int, _out: Path, workdir: Path) -> int:
+        workdirs.append(workdir)
+        (workdir / "started").touch()
+        msg = "deliberate probe crash"
+        raise RuntimeError(msg)
+
+    monkeypatch.setattr(probe_loop, "run", crash)
+    with pytest.raises(RuntimeError, match="deliberate probe crash"):
+        probe_loop.main(["1", str(tmp_path / "out")])
+    assert len(workdirs) == 1
+    assert not workdirs[0].exists()
