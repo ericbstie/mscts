@@ -13,7 +13,7 @@ import pytest
 
 import mscts.run as run_module
 import mscts.settle as settle_module
-from mscts.compare import Outcome
+from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import Group, GroupContext
 from mscts.groups import status
 from mscts.run import run, run_results
@@ -67,14 +67,17 @@ async def test_the_wait_is_no_part_of_the_time_a_group_took(
     assert elapsed_s < 2 * interval_s * 0.9, "the Group's time includes the wait"
 
 
-@pytest.mark.asyncio
-@pytest.mark.timeout(10)  # the deadline is what ends the wait: a hang is the failure
-@pytest.mark.parametrize(
-    "stuck", [("Reference",), ("Candidate",), ("Reference", "Candidate")], ids="/".join
-)
-async def test_a_server_that_never_empties_gives_an_error_naming_the_deadline(
+SAID = "2 players still online after waiting 0.3 s: watcher, control"
+"""What a status that never empties, at `DEADLINE_S`, comes to as a sentence."""
+
+
+async def _play_with_stuck(
     stuck: tuple[str, ...], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
+) -> tuple[Verdict, list[int]]:
+    """Run a Group on two fake servers, those in `stuck` never emptying.
+
+    Returns the Group's Verdict, and the ports it played on.
+    """
     monkeypatch.setattr(run_module, "SETTLE_TIMEOUT_S", DEADLINE_S)
     sides = {
         role: Occupancy(online=(2,), sample=named("watcher", "control"))
@@ -94,10 +97,44 @@ async def test_a_server_that_never_empties_gives_an_error_naming_the_deadline(
         [verdict] = await run(
             [Group(id="test/settle", run=script)], one, two, workdir=tmp_path / "run"
         )
+    return verdict, played
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)  # the deadline is what ends the wait: a hang is the failure
+@pytest.mark.parametrize("stuck", [("Reference",), ("Reference", "Candidate")], ids="/".join)
+async def test_a_reference_that_never_empties_gives_an_error_naming_the_deadline(
+    stuck: tuple[str, ...], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    verdict, played = await _play_with_stuck(stuck, monkeypatch, tmp_path)
 
     assert verdict.outcome is Outcome.ERROR
-    said = "2 players still online after waiting 0.3 s: watcher, control"
-    assert verdict.detail == "; ".join(f"the {role} had {said}" for role in stuck)
+    assert verdict.detail == "; ".join(f"the {role} had {SAID}" for role in stuck)
+    assert verdict.divergences == ()
+    assert played == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)  # the deadline is what ends the wait: a hang is the failure
+async def test_a_candidate_that_never_empties_gives_a_mismatch_with_a_failed_divergence(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    verdict, played = await _play_with_stuck(("Candidate",), monkeypatch, tmp_path)
+
+    assert verdict.outcome is Outcome.MISMATCH, "a Candidate failure is never an error (audit H3)"
+    assert verdict.detail == f"the Candidate failed: {SAID}"
+    assert verdict.divergences == (
+        Divergence(
+            bot="",
+            index=0,
+            kind="failed",
+            packet="",
+            path=None,
+            reference=ABSENT,
+            candidate=SAID,
+            test_case="",
+        ),
+    )
     assert played == []
 
 
