@@ -101,6 +101,16 @@ decision. Signatures are Python 3.13. `@frozen` means
 
 ### Target and codec
 
+- `codec.framing`: `FrameDecoder`, `FrameError`, `MAX_DATA_LENGTH`, `encode_frame` — frame encoding
+  and decoding.
+- `codec.packets`: `PacketIds`, `Schemas` — Codec lookup table types.
+- `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `compare_or_write`,
+  `data_generator_argv`, `fresh_data`, `packets_json_path`, `regenerate`, `registry_names_json`,
+  `registry_names_path`, `run_data_generator` — Mojang data regeneration.
+- `codec.schemas.login`: `GAME_PROFILE` — login packet schema.
+- `codec.schemas.play`: `merge_submodules` — Play schema assembly.
+- `codec.schemas.play.commands`: `PROPERTIES`, `commands_schema` — command argument schemas.
+
 ```python
 @frozen
 class Target:
@@ -532,6 +542,18 @@ def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
 
 ### Servers
 
+- `adapters.fetch`: `HttpsOnlyRedirects`, `MAX_REDIRECTS` — HTTPS redirects.
+- `adapters.pumpkin`: `BINARY`, `INVARIANTS`, `LEVEL_DAT`, `OPERATOR_LEVEL`, `Toml`, `TomlValue`,
+  `VANILLA_EQUIVALENTS`, `WORLD_DATA_VERSION`, `WORLD_GEN_SETTINGS`, `WORLD_LEVEL_VERSION`,
+  `ops_json`, `pumpkin_config`, `pumpkin_defaults`, `pumpkin_toml`, `toml_document` — launch
+  configuration and native files.
+- `adapters.vanilla`: `HEAP`, `HOST_INDEPENDENCE`, `INVARIANTS`, `JAR`, `JAVA_ENV`, `LAUNCH_ENV`,
+  `NO_NETWORK`, `OPERATOR_LEVEL`, `VANILLA_DEFAULTS`, `java_properties`, `java_version`, `ops_json`,
+  `resolve_java`, `server_properties` — launch configuration and Java selection.
+- `cache`: `CACHE_ENV` — cache environment variable.
+- `install`: `describe`, `root_of` — Installation paths and descriptions.
+- `runner`: `PROC` — Linux process information.
+
 ```python
 # registry.py: the Registry (ADR-0008), committed as src/mscts/data/registry.toml
 @frozen
@@ -762,6 +784,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 ```
 
 ### Groups, Transcripts, Comparison
+
+- `compare`: `DivergenceKind` — Divergence classification.
+- `groups.status`: `PING_PAYLOAD` — status ping payload.
+- `run`: `status_version` — status version extraction.
 
 ```python
 @frozen
@@ -1323,6 +1349,9 @@ proves it necessary:
    claim a comparison that was never made.
 
 ### Measurements and Report
+
+- `cli`: `ADAPTERS`, `DEFAULT_GROUPS`, `DEFAULT_REPEAT`, `REFERENCE`, `RUN_NOTES` — CLI defaults and
+  Run notes.
 
 ```python
 @frozen

@@ -33,7 +33,11 @@ run = "uv run pytest -m 'not reference and not selfcheck and not candidate and n
 
 [tasks.check]
 description = "Everything a commit must pass"
-depends = ["lint", "types", "sec", "test"]
+depends = ["lint", "types", "sec", "test", "plan"]
+
+[tasks.plan]
+description = "Check public top-level names against docs/PLAN.md"
+run = "uv run python scripts/plan_names.py"
 
 [tasks.commit]
 description = "THE way to commit: mise run check, and `git commit` only if it exited 0"
