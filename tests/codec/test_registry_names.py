@@ -48,6 +48,23 @@ def test_entity_type_names_are_the_registry_in_protocol_id_order() -> None:
     assert len(set(names)) == len(names)
 
 
+def test_slot_display_names_are_the_registry_in_protocol_id_order() -> None:
+    # A recipe's slot display (#106), in `SlotDisplays.bootstrap`'s registration order.
+    assert registry_names(TARGET.minecraft_version, "minecraft:slot_display") == (
+        "minecraft:empty",
+        "minecraft:any_fuel",
+        "minecraft:with_any_potion",
+        "minecraft:only_with_component",
+        "minecraft:item",
+        "minecraft:item_stack",
+        "minecraft:tag",
+        "minecraft:dyed",
+        "minecraft:smithing_trim",
+        "minecraft:with_remainder",
+        "minecraft:composite",
+    )
+
+
 def test_consume_effect_names_are_the_registry_in_protocol_id_order() -> None:
     assert registry_names(TARGET.minecraft_version, "minecraft:consume_effect_type") == (
         "minecraft:apply_effects",
