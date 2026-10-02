@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import pytest
 
+import mscts.run as run_module
 from mscts.codec.packets import Codec
 from mscts.codec.wire import Writer
 from mscts.compare import Divergence, Mask, Outcome, Verdict
@@ -235,6 +236,21 @@ async def test_a_group_raising_players_still_online_on_the_reference_is_an_error
 
     detail = f"the Reference failed: {STILL_ONLINE}"
     assert verdict == Verdict("test/waits-in-vain", Outcome.ERROR, detail=detail)
+
+
+def test_a_comparison_that_raises_value_error_is_an_error_naming_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def refuses(*_: object) -> Verdict:
+        msg = "a path the Comparison refuses"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(run_module, "compare", refuses)
+
+    verdict = judge(BASIC, Transcript(BASIC.id, "vanilla"), Transcript(BASIC.id, "pumpkin"))
+
+    detail = "the Comparison failed: ValueError: a path the Comparison refuses"
+    assert verdict == Verdict("status/basic", Outcome.ERROR, detail=detail)
 
 
 async def _needs_tick(context: GroupContext) -> None:  # noqa: ARG001 - a Script
