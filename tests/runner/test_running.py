@@ -53,7 +53,7 @@ async def test_running_yields_the_instance_once_the_probe_first_answers_true(
 
 
 @pytest.mark.asyncio
-async def test_the_instance_runs_the_plan_in_its_cwd_with_only_its_env_and_logs_its_console(
+async def test_the_instance_runs_in_its_cwd_with_plan_env_and_guard_identity(
     fake_plan: FakePlan, tcp_probe: Probe, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("MSCTS_HARNESS_ONLY", "must not leak")
@@ -68,3 +68,4 @@ async def test_the_instance_runs_the_plan_in_its_cwd_with_only_its_env_and_logs_
     env = json.loads(env_line.removeprefix("env="))
     assert env["FAKE_ENV"] == "from-the-plan"
     assert "MSCTS_HARNESS_ONLY" not in env
+    assert len(env["MSCTS_INSTANCE_TOKEN"]) == 64
