@@ -599,7 +599,7 @@ def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
 @frozen
 class Entry:
     adapter: str                    # "pumpkin"
-    version: str                    # the --version label: "26.3", "nightly-48cba7ee"
+    version: str                    # the --version label: "26.3", "nightly-b8382a8a"
     target: str                     # the Target's Minecraft version it speaks
     url: str                        # HTTPS only
     sha256: str | None = None       # at least one of sha256 / sha1
@@ -607,7 +607,7 @@ class Entry:
     size: int | None = None
     note: str = ""                  # a pinned nightly says here that its URL moves
     def matches(self, body: bytes) -> bool: ...  # every pinned hash (and size) agrees
-    # str(entry) == "pumpkin nightly-48cba7ee"
+    # str(entry) == "pumpkin nightly-b8382a8a"
 
 @frozen
 class Registry:
@@ -654,7 +654,7 @@ class ServerSpec:                   # invariants (not fields): offline, no encry
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
     sha256: str                     # of the binary; every use verifies the binary by it
     size: int
-    entry: str | None = None        # the Registry entry it hash-matches, "pumpkin nightly-48cba7ee"
+    entry: str | None = None        # the Registry entry it hash-matches, "pumpkin nightly-b8382a8a"
     url: str | None = None          # downloaded from (the entry's URL) ...
     final_url: str | None = None    # ... which redirected here
     from_path: str | None = None    # or copied from this `--from` file (absolute)

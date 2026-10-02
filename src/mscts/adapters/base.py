@@ -27,7 +27,7 @@ class Source:
 
     sha256: str  # of the installed binary; every later use verifies the binary by it
     size: int
-    entry: str | None = None  # the Registry entry it hash-matches ("pumpkin nightly-48cba7ee")
+    entry: str | None = None  # the Registry entry it hash-matches ("pumpkin nightly-b8382a8a")
     url: str | None = None  # the URL it was downloaded from (the entry's)
     final_url: str | None = None  # where that URL finally redirected to
     from_path: str | None = None  # the `--from` file it was copied from
