@@ -889,13 +889,17 @@ class GroupContext:
                                     # marked: a window already open (no nesting), or a name
                                     # that is not one word.
                                     # With `until` (a packet name): no barrier. Every Bot not
-                                    # closed drains, then OBSERVE_CLOSE is stamped with the
-                                    # Event.t_ns (the arrival, never the time a Bot took the
-                                    # packet; #88) of the first clientbound play packet of
-                                    # that name any Bot received at or after the open Mark.
-                                    # Compare puts a packet stamped at a Mark's time after
-                                    # it, so that packet is outside the window, as is all
-                                    # that follows. None arrived: ProtocolError naming the
+                                    # closed drains, then OBSERVE_CLOSE is stamped 1 ns after
+                                    # the Event.t_ns (the arrival, never the time a Bot took
+                                    # the packet; #88) of the first clientbound play packet
+                                    # of that name any Bot received at or after the open
+                                    # Mark. The frames one socket read completed share one
+                                    # t_ns (Connection), and Compare puts a packet stamped at
+                                    # a Mark's time after the Mark: so the extra nanosecond
+                                    # keeps that packet and its read inside the window (a
+                                    # join's burst of packets would be out whole otherwise);
+                                    # what a later read brought is outside. None arrived:
+                                    # ProtocolError naming the
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
                                     # CANDIDATE_FAILURES), and no close Mark

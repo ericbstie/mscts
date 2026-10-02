@@ -284,9 +284,10 @@ class GroupContext:
 
         With `until`, there is no barrier. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
-        at any Bot after the window opened: its Mark is stamped with that arrival (not
-        with the time the Bot took the packet), so the packet itself, and everything
-        after it, is outside the window.
+        at any Bot after the window opened. Its Mark is stamped a nanosecond after that
+        arrival (not after the time the Bot took the packet). The frames one read of the
+        socket completed share one arrival time, so the window holds the packet and
+        everything that came in its read, and none of what came in a later one.
 
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
@@ -319,7 +320,11 @@ class GroupContext:
                 await self._drain()
             else:
                 await self._drain()
-                self._mark(OBSERVE_CLOSE, t_ns=self._arrival_of(until, since=opened))
+                # A Connection stamps every frame one read completed with that read's time,
+                # and Compare puts a packet stamped at a Mark's time after the Mark. So the
+                # Mark goes a nanosecond after the arrival, or a read that held the packet
+                # would be left out whole (a join's burst of packets, on a live server).
+                self._mark(OBSERVE_CLOSE, t_ns=self._arrival_of(until, since=opened) + 1)
         finally:
             self._observing = False
 
