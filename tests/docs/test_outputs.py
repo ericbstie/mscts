@@ -60,7 +60,7 @@ def test_the_home_terminal_matches_the_stored_run_output() -> None:
     text = html.unescape(re.sub(r"</?span\b[^>]*>", "", match[1]))
     command, example = text.split("\n", 1)
     assert command == "$ mscts run --candidate pumpkin"
-    assert _matches(example, (SAMPLES / "run-pumpkin.txt").read_text())
+    assert example + "\n" == (SAMPLES / "home-pumpkin.txt").read_text()
 
 
 @pytest.mark.parametrize(
