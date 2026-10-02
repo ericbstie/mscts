@@ -147,10 +147,12 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
   `players.sample[*].id`. Fields vanilla
   picks at random every time, such as a login's session id, are already
   left out for every Group, so list only what your Group adds. Entity ids
-  and the random UUIDs of mobs need no Mask. mscts numbers entities in the
-  order each Bot first hears of them, so the same entities compare equal
-  on both servers, and a packet about a different entity still shows up as
-  a difference.
+  and the random UUIDs of mobs need no Mask. mscts names each entity by its
+  type and where it spawned, or numbers it in the order each Bot first
+  hears of it, so the same entities compare equal on both servers, and a
+  packet about a different entity still shows up as a difference. Two
+  entities of the same type spawned at the same position look the same to
+  mscts, so spawn them apart.
 - `spec` changes the ServerSpec for this Group. Groups with different
   specs get their own server Instances.
 

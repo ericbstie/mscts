@@ -41,6 +41,10 @@ it reads it into):
 - a Group that spawns or counts entities turns natural spawning off in
   its Fixture (`gamerule spawn_mobs false`; 26.3 rule names are
   snake_case), and tags what it summons so it removes only those;
+- entities a Group spawns before its window are told apart by type and
+  spawn position (`pig@(1.5, -60.0, 7.5)`, #116): spawn two of one type
+  at different positions, or the Comparison cannot tell which one a
+  packet in the window is about;
 - anything else is the Group not being deterministic yet: the window
   reaches timing (later chunk batches, a barrier that waits ticks) or
   world state that drifts between Instances (the default flat world

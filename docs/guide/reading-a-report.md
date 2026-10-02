@@ -146,8 +146,10 @@ Identical differences from repetitions appear once; distinct values stay
 under the same test case. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
-value, binary data is written as `{"bytes": "<hex>"}`. An entity id is
-written `"#<n>"`: the n-th entity in what mscts compared for that Bot.
+value, binary data is written as `{"bytes": "<hex>"}`. An entity spawned
+before the compared part is written by its type and where it spawned, such
+as `"pig@(1.5, -60.0, 7.5)"`. Any other entity id is written `"#<n>"`: the
+n-th entity in what mscts compared for that Bot.
 The UUID of an entity that is not a player is written the same way,
 counted on its own.
 

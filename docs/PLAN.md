@@ -1084,10 +1084,11 @@ ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields th
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
-    # Numbers each Bot's entity ids and ENTITY_UUIDS `#1`, `#2`, ... in the order they first
-    # appear in the packets it compares, never those outside the windows (Comparison
-    # semantics, between steps 2 and 3), so Divergence paths and values show `#<n>` where
-    # the packets had ids.
+    # Names each Bot's entity ids whose add_entity came outside the windows by type and
+    # spawn position (`pig@(1.5, -60.0, 7.5)`), and numbers its other entity ids and
+    # ENTITY_UUIDS `#1`, `#2`, ... in the order they first appear in the packets it
+    # compares, never those outside the windows (Comparison semantics, between steps 2
+    # and 3), so Divergence paths and values show a name or `#<n>` where the packets had ids.
     # Masks the RANDOM_FIELDS, then applies `masks`. Every Bot is compared but Control's
     # (spec.CONTROL_PLAYER): its Events stay in the Transcript.
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
@@ -1438,7 +1439,15 @@ proves it necessary:
    and canonical) alike. Vanilla gives entity ids from one counter for
    the whole server, and every mob a random UUID (the `Entity`
    constructor takes `Mth.createInsecureUUID` of a new `RandomSource`),
-   so the same entities on two servers have other ids and UUIDs. Each
+   so the same entities on two servers have other ids and UUIDs. An
+   entity id whose `add_entity` the Bot received outside the windows
+   becomes that entity's name (#116): its entity type and spawn
+   position, `pig@(1.5, -60.0, 7.5)` (the type's registry name without
+   `minecraft:`, then `x`, `y` and `z` as Python writes floats). The
+   Group's own setup fixes both, however many other entities arrived
+   first, so an action inside a window on the wrong one of two entities
+   spawned before it is a Divergence. Two entities of one type spawned
+   at one position share a name, and cannot be told apart. Every other
    entity id becomes `#<n>`: the n-th entity in the packets the
    Comparison takes for the Bot (step 1, less the packets a `*` Mask
    drops), in wire order. Packets outside the windows take no number:
@@ -1446,7 +1455,9 @@ proves it necessary:
    Bot heard of before a window opened is timing, and counting them
    would shift every number inside it. So what is not compared never
    shifts what is; without windows, the Bot's own player (`login`) is
-   `#1`. The Codec names
+   `#1`, and with them, an id with no `add_entity` before the window
+   (the Bot's own player) takes the number of its first appearance in
+   one. The Codec names
    where a packet holds entity ids (`Codec.entity_id_paths`, found in
    the schemas by type, so no list of packets is kept); an id of no
    entity (None) stays None. Each field `compare.ENTITY_UUIDS` names
