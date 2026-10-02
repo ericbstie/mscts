@@ -2,8 +2,9 @@
 
 The block state at each position and the biome of each 4x4x4 cell, however the server encoded
 them, so another palette is network traffic only, and a different block is a gameplay difference
-that names its position in the world (docs/research/2026-10-02-chunks-light.md). Packets are
-built through the Target's real Codec.
+that names its position in the world. Heightmaps are kept by type and block entities by position,
+so their order is no difference (docs/research/2026-10-02-chunks-light.md). Packets are built
+through the Target's real Codec.
 """
 
 from collections.abc import Sequence
@@ -11,7 +12,7 @@ from collections.abc import Sequence
 import pytest
 
 from mscts.codec.packets import Codec, Packet, State
-from mscts.compare import Divergence, Verdict, compare
+from mscts.compare import UNORDERED, Divergence, Verdict, compare
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
@@ -82,13 +83,21 @@ NO_LIGHT: dict[str, object] = {
 }
 
 
-def chunk(sections: list[dict[str, object]], *, x: int = 0, z: int = 0) -> Packet:
+def chunk(
+    sections: list[dict[str, object]] | None = None,
+    *,
+    x: int = 0,
+    z: int = 0,
+    heightmaps: list[dict[str, object]] | None = None,
+    block_entities: list[dict[str, object]] | None = None,
+) -> Packet:
+    """A chunk of `sections` (the flat world's by default), with no light."""
     fields = {
         "chunk_x": x,
         "chunk_z": z,
-        "heightmaps": [],
-        "sections": sections,
-        "block_entities": [],
+        "heightmaps": heightmaps or [],
+        "sections": overworld(FLAT_BOTTOM) if sections is None else sections,
+        "block_entities": block_entities or [],
         "light": NO_LIGHT,
     }
     data = CODEC.encode(State.PLAY, CLIENTBOUND, CHUNK, fields)
@@ -256,6 +265,71 @@ def test_fields_the_codec_did_not_decode_are_compared_as_they_are() -> None:
         ("sections[0].block_states.bits", 0, 1)
     ]
     assert _verdict(packet(CHUNK, fields={"sections": "none"}), packet(CHUNK, fields={})).gameplay
+    # A list with an element of no known type or position keeps its order.
+    odd_lists = {"heightmaps": [{"type": 5}, {"type": "?"}], "block_entities": [{"y": 1}, "?"]}
+    swapped = {key: value[::-1] for key, value in odd_lists.items()}
+    verdict = _verdict(packet(CHUNK, fields=odd_lists), packet(CHUNK, fields=swapped))
+    assert {str(d.path).split("[")[0] for d in verdict.gameplay} == {"heightmaps", "block_entities"}
+
+
+def heightmap(kind: int, *, height: int | None = None) -> dict[str, object]:
+    """A heightmap of `Heightmap$Types` id `kind`: 37 Longs, each `height` (else `kind`)."""
+    return {"type": kind, "data": [kind if height is None else height] * 37}
+
+
+def test_the_order_of_heightmaps_is_no_difference() -> None:
+    reference = chunk(heightmaps=[heightmap(4), heightmap(1), heightmap(5)])
+    candidate = chunk(heightmaps=[heightmap(5), heightmap(4), heightmap(1)])
+
+    assert _verdict(reference, candidate).divergences == ()
+
+
+def test_another_heightmap_is_a_difference_at_its_sorted_path() -> None:
+    changed: dict[str, object] = {"type": 4, "data": [4, 4, 4, 9] + [4] * 33}
+    reference = chunk(heightmaps=[heightmap(5), heightmap(4), heightmap(1)])
+    candidate = chunk(heightmaps=[heightmap(1), changed, heightmap(5)])
+
+    verdict = _verdict(reference, candidate)
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("heightmaps[1].data[3]", 4, 9)
+    ]
+
+
+def test_a_heightmap_type_the_client_does_not_know_sorts_as_the_one_it_reads() -> None:
+    # The client reads an id it does not know as WORLD_SURFACE_WG (0), and keeps the last of a
+    # type sent twice: so these two differ.
+    unknown, known = heightmap(7, height=1), heightmap(0, height=2)
+
+    verdict = _verdict(chunk(heightmaps=[unknown, known]), chunk(heightmaps=[known, unknown]))
+
+    assert verdict.gameplay
+
+
+def block_entity(x: int, y: int, z: int, *, kind: int = 7) -> dict[str, object]:
+    return {"x": x, "z": z, "y": y, "type": kind, "data": None}
+
+
+def test_the_order_of_block_entities_at_different_positions_is_no_difference() -> None:
+    a, b, c = block_entity(1, -60, 2), block_entity(3, -61, 0), block_entity(0, -60, 9)
+
+    verdict = _verdict(chunk(block_entities=[a, b, c]), chunk(block_entities=[c, a, b]))
+
+    assert verdict.divergences == ()
+
+
+def test_block_entities_at_one_position_keep_their_order() -> None:
+    # The client loads each in turn, so the last one sent ends up loaded last.
+    first, second = block_entity(1, -60, 2, kind=7), block_entity(1, -60, 2, kind=8)
+
+    verdict = _verdict(chunk(block_entities=[first, second]), chunk(block_entities=[second, first]))
+
+    assert verdict.gameplay
+
+
+def test_heightmaps_and_block_entities_are_compared_sorted_with_their_reason() -> None:
+    assert "EnumMap" in UNORDERED[CHUNK]
+    assert "BlockPos" in UNORDERED[CHUNK]
 
 
 def test_the_same_biomes_under_another_palette_are_network_traffic_only() -> None:

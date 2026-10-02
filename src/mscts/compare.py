@@ -221,6 +221,18 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "or criterion keeps its last value. The added advancements are read into a list, "
             "and keep their order."
         ),
+        "minecraft:level_chunk_with_light": (
+            "heightmaps, sorted by the type the client reads (an id it does not know reads as "
+            "0, WORLD_SURFACE_WG), and block_entities, sorted by position (y, z, x). Vanilla "
+            "sends both in hash order: ClientboundLevelChunkPacketData collects the heightmaps "
+            "with Collectors.toMap, a HashMap keyed by the Heightmap$Types enum, in an order "
+            "fixed per boot, and iterates the chunk's block entities, an "
+            "Object2ObjectOpenHashMap keyed by BlockPos. The client reads the heightmaps into "
+            "an EnumMap (ClientboundLevelChunkPacketData.STREAM_CODEC: ByteBufCodecs.map("
+            "EnumMap::new, ...)), so a type sent twice keeps the last, and keeps the block "
+            "entities in a map keyed by BlockPos (LevelChunk.replaceWithPacketData), loading "
+            "those sent for one position in turn."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
@@ -1127,6 +1139,52 @@ def _sort_key(item: _Value, key: str) -> _Value:
     return item.get(key) if isinstance(item, dict) else None
 
 
+_HEIGHTMAP_TYPES = 6
+"""How many `Heightmap$Types` the client has: it reads any other id as the first, 0
+(`ByIdMap.continuous` with `OutOfBoundsStrategy.ZERO`)."""
+
+
+def _sorted_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `heightmaps` by the type the client reads, and `block_entities` by position.
+
+    The sorts are stable, so a type sent twice keeps the order of its values (the client
+    keeps the last one), and so do block entities sent for one position (the client loads
+    each in turn).
+    """
+    result = dict(fields)
+    if "heightmaps" in fields:
+        result["heightmaps"] = _sorted_on(fields["heightmaps"], _heightmap_type)
+    if "block_entities" in fields:
+        result["block_entities"] = _sorted_on(fields["block_entities"], _block_position)
+    return result
+
+
+def _sorted_on(items: _Value, key: Callable[[_Value], tuple[int, ...] | None]) -> _Value:
+    """`items` stably sorted by `key` of each one; unchanged unless no key is None."""
+    if not isinstance(items, list):
+        return items
+    keys = [key(item) for item in items]
+    known = [each for each in keys if each is not None]
+    if len(known) != len(items):
+        return items
+    return [items[index] for index in sorted(range(len(items)), key=known.__getitem__)]
+
+
+def _heightmap_type(item: _Value) -> tuple[int, ...] | None:
+    kind = item.get("type") if isinstance(item, dict) else None
+    if type(kind) is not int:
+        return None
+    return (kind if 0 <= kind < _HEIGHTMAP_TYPES else 0,)
+
+
+def _block_position(item: _Value) -> tuple[int, ...] | None:
+    if not isinstance(item, dict):
+        return None
+    position = [item.get(axis) for axis in ("y", "z", "x")]
+    numbers = [each for each in position if type(each) is int]
+    return tuple(numbers) if len(numbers) == len(position) else None
+
+
 def _sorting(field: str, key: str | None) -> Callable[[dict[str, _Value]], dict[str, _Value]]:
     """Sort the list `field` of a packet's fields, as `_sorted_by` does with `key`."""
 
@@ -1143,6 +1201,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:update_attributes": _sorting("attributes", "attribute"),
         "minecraft:update_recipes": _sorted_update_recipes,
         "minecraft:update_advancements": _sorted_update_advancements,
+        "minecraft:level_chunk_with_light": _sorted_level_chunk,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""

@@ -1332,6 +1332,21 @@ proves it necessary:
      HashMap::new, ...)`, and `AdvancementProgress.STREAM_CODEC` the
      criteria the same way), so a repeated id or criterion ends with its
      last value. The added advancements are read into a list.
+     `play` / `minecraft:level_chunk_with_light` (#22): `heightmaps` is
+     sorted by the type the client reads (an id it does not know reads as
+     0, `WORLD_SURFACE_WG`: `Heightmap$Types` decodes through
+     `ByIdMap.continuous` with `OutOfBoundsStrategy.ZERO`), and
+     `block_entities` by position (y, z, x), both stably. Vanilla sends
+     both in hash order (#30: two Instances sent the heightmaps in another
+     order; `javap` on 26.3: `ClientboundLevelChunkPacketData` collects
+     the heightmaps with `Collectors.toMap`, a `HashMap` keyed by the
+     enum, and iterates `LevelChunk.getBlockEntities()`, an
+     `Object2ObjectOpenHashMap` keyed by `BlockPos`). The client reads
+     the heightmaps into an `EnumMap` (`ByteBufCodecs.map(EnumMap::new,
+     ...)`), so a type sent twice ends with its last value, and keeps
+     block entities in a map keyed by `BlockPos`:
+     `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
+     those sent for one position keep their order.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
