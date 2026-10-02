@@ -7,6 +7,7 @@ each status request from a script of counts.
 """
 
 import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 
@@ -141,16 +142,28 @@ async def test_a_candidate_that_never_empties_gives_a_mismatch_with_a_failed_div
 
 
 RAISED = "the wait for no player online failed: RuntimeError: an unexpected failure"
-"""What a settle poll that raises RuntimeError comes to as a sentence."""
+"""What a settle poll that raises RuntimeError (a harness bug) comes to as a sentence."""
+
+CLOSED = "the wait for no player online failed: ConnectionError: the server closed it"
+"""What a settle poll that raises ConnectionError (a Candidate failure) comes to."""
+
+
+def _unexpected() -> BaseException:
+    msg = "an unexpected failure"
+    return RuntimeError(msg)
 
 
 async def _play_with_a_raising_poll(
-    raising: tuple[str, ...], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    raising: tuple[str, ...],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    failure: Callable[[], BaseException] = _unexpected,
 ) -> tuple[list[Verdict], list[str]]:
-    """Run two Groups, the first settle poll of each side in `raising` raising RuntimeError.
+    """Run two Groups, the first settle poll of each side in `raising` raising `failure()`.
 
     Every poll of another side ends only after a while. Returns the Verdicts, and what
-    happened in order: each poll ending ("<side> settled"), each Group played.
+    happened in order: each poll ending ("<side> settled"), each Group played. What
+    happened so far is in the list even when the Run raises.
     """
     happened: list[str] = []
     raised: set[str] = set()
@@ -160,8 +173,7 @@ async def _play_with_a_raising_poll(
         side = names[endpoint.port]
         if side in raising and side not in raised:
             raised.add(side)
-            msg = "an unexpected failure"
-            raise RuntimeError(msg)
+            raise failure()
         if side not in raising:
             await asyncio.sleep(0.1)  # still polling when the other side raises
         happened.append(f"{side} settled")
@@ -175,20 +187,29 @@ async def _play_with_a_raising_poll(
         attached("two", never_answer) as two,
     ):
         names = {one.endpoint.port: "Reference", two.endpoint.port: "Candidate"}
-        verdicts = await run(
-            [Group(id="test/first", run=script), Group(id="test/second", run=script)],
-            one,
-            two,
-            workdir=tmp_path / "run",
-        )
+        groups = [Group(id="test/first", run=script), Group(id="test/second", run=script)]
+        try:
+            verdicts = await run(groups, one, two, workdir=tmp_path / "run")
+        except BaseException as escaped:
+            escaped.add_note(f"happened: {happened}")
+            raise
     return verdicts, happened
 
 
+def _closed() -> BaseException:
+    msg = "the server closed it"
+    return ConnectionError(msg)
+
+
 @pytest.mark.asyncio
-async def test_a_candidate_whose_settle_poll_raises_gets_a_mismatch_and_the_run_goes_on(
+async def test_a_candidate_whose_settle_poll_fails_gets_a_mismatch_and_the_run_goes_on(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    verdicts, happened = await _play_with_a_raising_poll(("Candidate",), monkeypatch, tmp_path)
+    # A failure the poll does not catch itself, but that the Candidate causes
+    # (CANDIDATE_FAILURES): until_no_player_online is replaced, so it reaches the Run.
+    verdicts, happened = await _play_with_a_raising_poll(
+        ("Candidate",), monkeypatch, tmp_path, _closed
+    )
 
     first, second = verdicts
     assert first == Verdict(
@@ -202,11 +223,11 @@ async def test_a_candidate_whose_settle_poll_raises_gets_a_mismatch_and_the_run_
                 packet="",
                 path=None,
                 reference=ABSENT,
-                candidate=RAISED,
+                candidate=CLOSED,
                 test_case="",
             ),
         ),
-        detail=f"the Candidate failed: {RAISED}",
+        detail=f"the Candidate failed: {CLOSED}",
     )
     assert second.outcome is Outcome.MATCH
     assert happened == [
@@ -216,6 +237,31 @@ async def test_a_candidate_whose_settle_poll_raises_gets_a_mismatch_and_the_run_
         "Reference played",
         "Candidate played",
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_harness_bug_in_the_candidates_settle_poll_is_an_error_and_the_run_goes_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    verdicts, _ = await _play_with_a_raising_poll(("Candidate",), monkeypatch, tmp_path)
+
+    first, second = verdicts
+    detail = f"the harness failed on the Candidate: {RAISED}"
+    assert first == Verdict(group_id="test/first", outcome=Outcome.ERROR, detail=detail)
+    assert second.outcome is Outcome.MATCH
+
+
+@pytest.mark.asyncio
+async def test_a_settle_poll_cancelled_from_inside_is_raised_once_the_other_poll_ends(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def cancelled() -> BaseException:
+        return asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError) as raised:
+        await _play_with_a_raising_poll(("Reference",), monkeypatch, tmp_path, cancelled)
+
+    assert raised.value.__notes__ == ["happened: ['Candidate settled']"]
 
 
 @pytest.mark.asyncio

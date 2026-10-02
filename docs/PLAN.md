@@ -1190,11 +1190,18 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # sentence after a "; " if it had players too). The Candidate's alone is `mismatch`
     # (audit H3: a Candidate failure is never `error`): a `failed` Divergence (bot "",
     # candidate "2 players still online after waiting 2 s: watcher, control"), detail
-    # "the Candidate failed: ...". A wait that raises anything else (#114) is judged the
-    # same way, never raised out of the Run, and the other side's wait runs to its end:
-    # "the Reference failed: the wait for no player online failed: <Type>: <message>",
-    # or that sentence after "the Candidate failed: " and as the `failed` Divergence's
-    # candidate. The wait is not part of `elapsed_s`.
+    # "the Candidate failed: ...". A wait that raises anything else (#114) is never raised
+    # out of the Run, and the other side's wait runs to its end (gather with
+    # return_exceptions): on the Reference it is `error`, "the Reference failed: the wait
+    # for no player online failed: <Type>: <message>"; on the Candidate, one of
+    # CANDIDATE_FAILURES is `mismatch` as above, with "the wait for no player online
+    # failed: <Type>: <message>" as the `failed` Divergence's candidate and after "the
+    # Candidate failed: ", and anything else is a harness bug, `error`, "the harness failed
+    # on the Candidate: the wait for no player online failed: ...", as in judge. If both
+    # sides fail, the detail joins both sentences with "; ": "the Reference had ...; the
+    # Candidate failed: the wait ...". A BaseException that is not an Exception (a
+    # cancellation from inside a wait) is raised once both waits are done. The wait is
+    # not part of `elapsed_s`.
     # NotImplementedError for a Group that is not exact (M6a/M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
