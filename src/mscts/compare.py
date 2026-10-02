@@ -16,6 +16,8 @@ left out on purpose:
   are. The order of a Bot's stream is compared; when its Packets arrived is not.
 - The interleaving of different Bots' Packets is timing too, so each Bot is compared
   on its own.
+- Entity ids and the random UUIDs of mobs: vanilla gives ids from a counter, so each is
+  compared as the order in which the Bot first heard of its entity (`ENTITY_UUIDS`).
 - Control's Bot (`CONTROL_PLAYER`) sets the world up, as an operator: what it receives
   is the servers' answers to that, not what the Group tests.
 """
@@ -30,10 +32,12 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum
 from functools import cache
 from types import MappingProxyType
-from typing import Literal, NoReturn, Self, override
+from typing import Literal, NoReturn, Self, cast, override
 from uuid import UUID
 
+from mscts.codec.entity_ids import EntityIdPath, Step, Variant
 from mscts.codec.packets import Codec, Direction, Packet, State
+from mscts.codec.registry_names import registry_names
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
@@ -183,6 +187,23 @@ would differ, and their distribution belongs to a statistical Group (ADR-0011). 
 Comparison masks them before its Group's own Masks, in any State.
 """
 
+ENTITY_UUIDS: Mapping[str, str] = MappingProxyType(
+    {
+        "minecraft:add_entity.entity_uuid": (
+            "Vanilla draws an entity's UUID at random when it creates the entity: the Entity "
+            "constructor takes Mth.createInsecureUUID of a new RandomSource. A player's is "
+            "its own, from its name or its account, so the add_entity of a player keeps it."
+        ),
+    }
+)
+"""The fields that hold the UUID of an entity, as `<packet>.<path>`, each with the reason.
+
+Every Comparison numbers them as it numbers entity ids, by first appearance, but in a count
+of their own: `#1` is the first such UUID a Bot hears of. A packet whose `type` field is the
+player's entity type (`minecraft:player`) keeps its UUID: Pumpkin's player UUIDs differ from
+vanilla's, and that is a Divergence.
+"""
+
 
 type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
 
@@ -300,11 +321,13 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     the play Packets they do not observe are left out (`_Windows.observes`); the
     Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
-    JSON is parsed, and its text components written one way), and every field a Mask
-    names is removed from the Packets of that name, on both sides and wherever present.
+    JSON is parsed, and its text components written one way); each entity id, and each
+    of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the n-th the Bot heard of over
+    its whole Transcript (`_Numbers`); and every field a Mask names is removed from the
+    Packets of that name, on both sides and wherever present.
     The Masks are one for each of the `RANDOM_FIELDS`, then `masks`. Indices count the
     normalized stream, so they do not shift when a re-run has more or fewer Packets left
-    out or dropped; paths and values are those of the sorted, canonical form.
+    out or dropped; paths and values are those of the sorted, canonical, numbered form.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -388,8 +411,13 @@ def _test_case(state: State, packet: str, path: _Path) -> str:
 @cache
 def _in_more_than_one_state(packet: str) -> bool:
     """Whether the Target's `packets.json` has the clientbound `packet` in more than one State."""
-    codec = Codec.for_target(TARGET)
-    return sum(packet in codec.names(state, Direction.CLIENTBOUND) for state in State) > 1
+    return sum(packet in _codec().names(state, Direction.CLIENTBOUND) for state in State) > 1
+
+
+@cache
+def _codec() -> Codec:
+    """The Target's Codec, loaded once."""
+    return Codec.for_target(TARGET)
 
 
 # Bots and their streams.
@@ -482,11 +510,13 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     """Return `bot`'s normalized stream: its clientbound Packets, less the dropped ones.
 
     If the Transcript has Observation windows, its play Packets are only those inside
-    one of them (`_Windows.observes`).
+    one of them (`_Windows.observes`). Entity ids are numbered over all its clientbound
+    Packets, windows or not (`_Numbers.of`).
     """
     windows = _Windows.of(transcript)
+    numbers = _Numbers.of(transcript, bot)
     return [
-        _normalize(event.packet, masks)
+        _normalize(event.packet, masks, numbers)
         for event in transcript.events
         if event.bot == bot
         and event.packet.direction is Direction.CLIENTBOUND
@@ -540,17 +570,176 @@ class _Windows:
         return narrowed is not None and (not narrowed or packet.name in narrowed)
 
 
+# Entity numbering (#21): each entity id a Bot hears of, and each entity UUID (`ENTITY_UUIDS`),
+# becomes `#<n>` in the order the Bot first heard of it, after Canonicalization and before the
+# Masks. Vanilla gives ids from a counter and mobs random UUIDs, so the same entities on two
+# servers compare equal only by their order. The Codec says where a packet's entity ids are.
+
+
+@dataclass(frozen=True, slots=True)
+class _Trie:
+    """Paths into a value, merged on their first steps: a walk visits each end once, in order.
+
+    Attributes:
+        here: A path ends here.
+        steps: Each next step, with what goes on from it, in the order the paths came.
+    """
+
+    here: bool
+    steps: tuple[tuple[Step, "_Trie"], ...]
+
+    @classmethod
+    def of(cls, paths: Iterable[EntityIdPath]) -> Self:
+        """Merge `paths`."""
+        here = False
+        rests: dict[Step, list[EntityIdPath]] = {}
+        for path in paths:
+            if path:
+                rests.setdefault(path[0], []).append(path[1:])
+            else:
+                here = True
+        return cls(here=here, steps=tuple((step, cls.of(rest)) for step, rest in rests.items()))
+
+
+def _found(value: object, trie: _Trie) -> Iterator[object]:
+    """The values at the ends of `trie`'s paths in `value`, in wire order."""
+    if trie.here:
+        yield value
+    for step, rest in trie.steps:
+        for child in _next(value, step):
+            yield from _found(child, rest)
+
+
+def _next(value: object, step: Step) -> Sequence[object]:
+    """What `step` leads to from `value`: nothing if the value has no such part."""
+    if not isinstance(step, Variant | str):
+        return value if isinstance(value, list) else ()
+    if not isinstance(value, Mapping):
+        return ()
+    mapping = cast("Mapping[str, object]", value)  # a Packet's fields, or a value in them
+    if isinstance(step, Variant):
+        return (mapping,) if mapping.get(step.key) == step.name else ()
+    return (mapping[step],) if step in mapping else ()
+
+
+def _replaced(value: _Value, trie: _Trie, number: Callable[[_Value], _Value]) -> _Value:
+    """`value` with each value at the end of `trie`'s paths replaced by `number` of it.
+
+    Lists and mappings on the way are changed in place.
+    """
+    if trie.here:
+        return number(value)
+    for step, rest in trie.steps:
+        if isinstance(step, Variant):
+            if isinstance(value, dict) and value.get(step.key) == step.name:
+                value = _replaced(value, rest, number)
+        elif isinstance(step, str):
+            if isinstance(value, dict) and step in value:
+                value[step] = _replaced(value[step], rest, number)
+        elif isinstance(value, list):
+            value[:] = [_replaced(item, rest, number) for item in value]
+    return value
+
+
+@dataclass(frozen=True, slots=True)
+class _Numbers:
+    """What a Bot numbered the entities it heard of: `#1` is the first.
+
+    Attributes:
+        ids: Each entity id's number.
+        uuids: Each entity UUID's number, counted on their own.
+    """
+
+    ids: dict[int, str]
+    uuids: dict[UUID, str]
+
+    @classmethod
+    def of(cls, transcript: Transcript, bot: str) -> Self:
+        """Number the entity ids and UUIDs in `bot`'s clientbound Packets, in wire order.
+
+        The first is the Bot's own player, from `login`. An id of None (no entity) is not
+        an entity, and neither is the UUID of a player (`ENTITY_UUIDS`).
+        """
+        numbers = cls(ids={}, uuids={})
+        for event in transcript.events:
+            packet = event.packet
+            if event.bot != bot or packet.direction is not Direction.CLIENTBOUND:
+                continue
+            if packet.fields is None:
+                continue
+            ids, uuids = _entity_tries(packet.state, packet.name)
+            for found in _found(packet.fields, ids):
+                if type(found) is int:
+                    numbers.ids.setdefault(found, f"#{len(numbers.ids) + 1}")
+            if not _is_player(packet.fields):
+                for found in _found(packet.fields, uuids):
+                    if isinstance(found, UUID):
+                        numbers.uuids.setdefault(found, f"#{len(numbers.uuids) + 1}")
+        return numbers
+
+    def apply(self, packet: Packet, fields: dict[str, _Value]) -> None:
+        """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields."""
+        ids, uuids = _entity_tries(packet.state, packet.name)
+        _replaced(
+            fields, ids, lambda value: self.ids.get(value, value) if type(value) is int else value
+        )
+        if not _is_player(fields):
+            _replaced(
+                fields,
+                uuids,
+                lambda value: self.uuids.get(value, value) if isinstance(value, UUID) else value,
+            )
+
+
+@cache
+def _entity_tries(state: State, packet: str) -> tuple[_Trie, _Trie]:
+    """Where the clientbound `packet` in `state` has entity ids, and entity UUIDs.
+
+    Raises:
+        ValueError: An `ENTITY_UUIDS` path is malformed, or has a list index.
+    """
+    ids = _codec().entity_id_paths(state, Direction.CLIENTBOUND, packet)
+    uuids: list[EntityIdPath] = []
+    for field in ENTITY_UUIDS:
+        name, _, path = field.partition(".")
+        if name == packet:
+            steps = _steps(name, path, "ENTITY_UUIDS path")
+            keys = tuple(step for step in steps if isinstance(step, str))
+            if keys != steps:
+                msg = f"{field}: an entity UUID's path has keys only"
+                raise ValueError(msg)
+            uuids.append(keys)
+    return _Trie.of(ids), _Trie.of(uuids)
+
+
+def _is_player(fields: Mapping[str, object]) -> bool:
+    """Whether `fields` are a player's: their `type` is the player's entity type id."""
+    kind = fields.get("type")
+    return type(kind) is int and kind == _player_type()
+
+
+@cache
+def _player_type() -> int:
+    """The protocol id of `minecraft:player` among the entity types: what add_entity's `type` is."""
+    names = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
+    return names.index("minecraft:player")
+
+
 # Normalization: copies of the fields, in the value model, with Masks applied.
 
 
-def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
-    """Copy `packet`'s fields, sort them (`UNORDERED`), make them canonical, apply the Masks."""
+def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
+    """Copy `packet`'s fields; sort, canonicalize, number the entities, and apply the Masks.
+
+    Sorting is `UNORDERED`'s, and the numbers are `numbers`'.
+    """
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
     paths = masks.paths.get(packet.name, ())
     canonical = _CANONICAL.get((packet.state, packet.name))
     if canonical is None:
         fields = _copy(packet, packet.fields)
+        numbers.apply(packet, fields)
         _remove_all(fields, paths)
         return _Normalized(packet=packet, fields=fields)
     raw = _copy(packet, packet.fields)
@@ -559,6 +748,8 @@ def _normalize(packet: Packet, masks: _Masks) -> _Normalized:
         parsed = _parsed(parsed, json_text)
     unmasked = canonical(_copy(packet, packet.fields))
     fields = canonical(_copy(packet, packet.fields))
+    for copy in (raw, parsed, unmasked, fields):
+        numbers.apply(packet, copy)
     for copy in (raw, parsed, fields):
         _remove_all(copy, paths)
     return _Normalized(packet=packet, fields=fields, raw=raw, parsed=parsed, unmasked=unmasked)

@@ -1026,9 +1026,16 @@ RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields va
                                     # evidence), minecraft:sound.seed and
                                     # minecraft:sound_entity.seed (docs/research/2026-10-01-
                                     # block-world-events.md)
+ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields that hold an
+                                    # entity's UUID, which every Comparison numbers by first
+                                    # appearance, but not a player's (#21):
+                                    # minecraft:add_entity.entity_uuid
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
+    # Numbers each Bot's entity ids and ENTITY_UUIDS `#1`, `#2`, ... in the order it first
+    # heard of them (Comparison semantics, between steps 2 and 3), so Divergence paths and
+    # values show `#<n>` where the packets had ids.
     # Masks the RANDOM_FIELDS, then applies `masks`. Every Bot is compared but Control's
     # (spec.CONTROL_PLAYER): its Events stay in the Transcript.
     # ValueError if the Transcripts are of different Groups; TypeError if fields hold
@@ -1325,6 +1332,30 @@ proves it necessary:
    (a non-null value) is significant: the
    client shows the icon when there is one, and ServerSpec's invariant
    is "no server icon".
+
+   Then **number the entities** (#21), in every copy of a packet (raw
+   and canonical) alike. Vanilla gives entity ids from one counter for
+   the whole server, and every mob a random UUID (the `Entity`
+   constructor takes `Mth.createInsecureUUID` of a new `RandomSource`),
+   so the same entities on two servers have other ids and UUIDs. Each
+   entity id becomes `#<n>`: the n-th entity the Bot heard of, counting
+   every clientbound packet of its whole Transcript from `login` (whose
+   own player is `#1`), windowed or not, in wire order. The Codec names
+   where a packet holds entity ids (`Codec.entity_id_paths`, found in
+   the schemas by type, so no list of packets is kept); an id of no
+   entity (None) stays None. Each field `compare.ENTITY_UUIDS` names
+   becomes `#<n>` too, counted on its own, except in a packet whose
+   `type` is the player's entity type: a player's UUID comes from its
+   name or account, so it is compared as it is. Each Bot is numbered
+   on its own (Control's is not compared). So the same entities compare
+   equal, a packet about another entity is still a `field` Divergence
+   (`entity_id`, `#2` against `#3`), and entities sent in another order
+   differ in their other fields. Not numbered (they stay raw, so they
+   compare as vanilla sent them): an entity id inside `add_entity.data`
+   (a projectile's owner, a plain VarInt in the schema), and the UUIDs
+   of other packets. A Candidate that gives a removed entity's id
+   to a new one would show differences vanilla would not, since an id
+   keeps its first number.
 3. Apply **Masks**, which remove identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream

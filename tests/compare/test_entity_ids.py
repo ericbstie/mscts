@@ -1,0 +1,201 @@
+"""Entity ids: each Bot's are numbered in the order it first hears of them (#21).
+
+Vanilla gives entity ids from a counter and mobs random UUIDs, so two servers that send the
+same entities send other numbers for them. A Comparison replaces each id by `#<n>`, the n-th
+entity the Bot heard of (its own player, from `login`, is #1), and each UUID of an entity that
+is not a player by `#<n>`, the n-th such UUID. So the same entities compare equal, and a packet
+about another entity is still a Divergence.
+"""
+
+import uuid
+
+from mscts.codec.packets import Packet
+from mscts.codec.registry_names import registry_names
+from mscts.compare import ENTITY_UUIDS, OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
+from mscts.target import TARGET
+from tests.compare.build import divergence, packet, transcript
+
+ENTITY_TYPES = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
+PLAYER, PIG = ENTITY_TYPES.index("minecraft:player"), ENTITY_TYPES.index("minecraft:pig")
+
+
+def login(entity_id: int) -> Packet:
+    return packet("minecraft:login", fields={"entity_id": entity_id})
+
+
+def spawn(
+    entity_id: int, *, x: float = 4.5, kind: int = PIG, uuid_: uuid.UUID | None = None
+) -> Packet:
+    fields = {"entity_id": entity_id, "entity_uuid": uuid_ or uuid.uuid4(), "type": kind, "x": x}
+    return packet("minecraft:add_entity", fields=fields)
+
+
+def metadata(entity_id: int, health: float = 10.0) -> Packet:
+    entries = [{"index": 9, "serializer": "float", "value": health}]
+    return packet("minecraft:set_entity_data", fields={"entity_id": entity_id, "entries": entries})
+
+
+def test_the_same_entities_under_other_ids_and_uuids_match() -> None:
+    reference = transcript(
+        ("alice", login(1)), ("alice", spawn(3)), ("alice", metadata(3)), ("alice", spawn(4))
+    )
+    candidate = transcript(
+        ("alice", login(40)), ("alice", spawn(7)), ("alice", metadata(7)), ("alice", spawn(2))
+    )
+    verdict = compare(reference, candidate, [])
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert "add_entity.entity_id" in verdict.test_cases
+    assert "add_entity.entity_uuid" in verdict.test_cases
+
+
+def test_metadata_aimed_at_another_entity_is_a_divergence_that_shows_the_numbers() -> None:
+    reference = transcript(
+        ("alice", login(1)), ("alice", spawn(3)), ("alice", spawn(4)), ("alice", metadata(3))
+    )
+    candidate = transcript(
+        ("alice", login(1)), ("alice", spawn(3)), ("alice", spawn(4)), ("alice", metadata(4))
+    )
+    verdict = compare(reference, candidate, [])
+    assert verdict.divergences == (
+        divergence(
+            "field",
+            index=3,
+            packet="minecraft:set_entity_data",
+            path="entity_id",
+            reference="#2",
+            candidate="#3",
+            test_case="set_entity_data.entity_id",
+        ),
+    )
+
+
+def test_entities_spawned_in_another_order_are_divergences() -> None:
+    reference = transcript(
+        ("alice", login(1)), ("alice", spawn(3, x=1.5)), ("alice", spawn(4, x=2.5))
+    )
+    candidate = transcript(
+        ("alice", login(1)), ("alice", spawn(3, x=2.5)), ("alice", spawn(4, x=1.5))
+    )
+    verdict = compare(reference, candidate, [])
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (1, "x", 1.5, 2.5),
+        (2, "x", 2.5, 1.5),
+    ]
+
+
+def test_a_players_uuid_is_compared_as_it_is() -> None:
+    bob, other = uuid.UUID(int=1), uuid.UUID(int=2)
+    reference = transcript(("alice", login(1)), ("alice", spawn(2, kind=PLAYER, uuid_=bob)))
+    candidate = transcript(("alice", login(1)), ("alice", spawn(2, kind=PLAYER, uuid_=other)))
+    verdict = compare(reference, candidate, [])
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("entity_uuid", bob, other)
+    ]
+
+
+def test_a_uuid_given_to_two_entities_is_a_divergence() -> None:
+    pig = uuid.UUID(int=3)
+    reference = transcript(("alice", login(1)), ("alice", spawn(3)), ("alice", spawn(4)))
+    candidate = transcript(
+        ("alice", login(1)), ("alice", spawn(3, uuid_=pig)), ("alice", spawn(4, uuid_=pig))
+    )
+    verdict = compare(reference, candidate, [])
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (2, "entity_uuid", "#2", "#1")
+    ]
+
+
+def test_an_entity_heard_of_before_a_window_keeps_its_number_inside_it() -> None:
+    reference = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(5)),
+        ("alice", spawn(6)),
+        OBSERVE_OPEN,
+        ("alice", metadata(5)),
+        OBSERVE_CLOSE,
+    )
+    same = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(8)),
+        ("alice", spawn(9)),
+        OBSERVE_OPEN,
+        ("alice", metadata(8)),
+        OBSERVE_CLOSE,
+    )
+    other = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(8)),
+        ("alice", spawn(9)),
+        OBSERVE_OPEN,
+        ("alice", metadata(9)),
+        OBSERVE_CLOSE,
+    )
+    assert compare(reference, same, []).outcome is Outcome.MATCH
+    assert [(d.reference, d.candidate) for d in compare(reference, other, []).divergences] == [
+        ("#2", "#3")
+    ]
+
+
+def test_each_bot_numbers_the_entities_it_hears_of_itself() -> None:
+    # The interleaving of two Bots' packets is timing: each Bot's own player is its #1.
+    reference = transcript(
+        ("alice", login(1)), ("bob", login(2)), ("alice", spawn(2)), ("bob", spawn(1))
+    )
+    candidate = transcript(
+        ("bob", login(6)), ("alice", login(5)), ("bob", spawn(5)), ("alice", spawn(6))
+    )
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_a_list_of_entity_ids_is_numbered_element_by_element() -> None:
+    def removed(*entity_ids: int) -> Packet:
+        return packet("minecraft:remove_entities", fields={"entity_ids": list(entity_ids)})
+
+    reference = transcript(
+        ("alice", login(1)), ("alice", spawn(3)), ("alice", spawn(4)), ("alice", removed(3, 4))
+    )
+    candidate = transcript(
+        ("alice", login(1)), ("alice", spawn(8)), ("alice", spawn(9)), ("alice", removed(9, 8))
+    )
+    verdict = compare(reference, candidate, [])
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("entity_ids[0]", "#2", "#3"),
+        ("entity_ids[1]", "#3", "#2"),
+    ]
+
+
+def test_no_entity_stays_none() -> None:
+    def lead(holder: int | None) -> Packet:
+        fields = {"attached_entity_id": 3, "holding_entity_id": holder}
+        return packet("minecraft:set_entity_link", fields=fields)
+
+    reference = transcript(("alice", login(1)), ("alice", spawn(3)), ("alice", lead(None)))
+    candidate = transcript(("alice", login(1)), ("alice", spawn(3)), ("alice", lead(1)))
+    verdict = compare(reference, candidate, [])
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("holding_entity_id", None, "#1")
+    ]
+
+
+def test_an_entity_id_deep_in_a_value_is_numbered_too() -> None:
+    def vibration(entity_id: int) -> Packet:
+        destination = {
+            "type": "minecraft:entity",
+            "value": {"entity_id": entity_id, "y_offset": 0.0},
+        }
+        particle = {
+            "type": "minecraft:vibration",
+            "options": {"destination": destination, "arrival_in_ticks": 5},
+        }
+        return packet("minecraft:level_particles", fields={"particle": particle})
+
+    reference = transcript(("alice", login(1)), ("alice", spawn(3)), ("alice", vibration(3)))
+    candidate = transcript(("alice", login(10)), ("alice", spawn(11)), ("alice", vibration(11)))
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_every_entity_uuid_field_has_a_reason() -> None:
+    assert ENTITY_UUIDS
+    for field, reason in ENTITY_UUIDS.items():
+        assert field.startswith("minecraft:"), field
+        assert reason.strip(), field
