@@ -153,6 +153,7 @@ HOLDS_NO_ENTITY_ID: Mapping[str, str] = {
     "mscts.codec.movement._PositionPath": "a position's numbers",
     "mscts.codec.schemas.play.blocks._SectionBlock": "a block state and its position",
     "mscts.codec.schemas.play.commands.CommandNode": "the command tree",
+    "mscts.codec.schemas.play.advancements._Display": "text, an item stack and flags",
     "mscts.codec.equipment.EquipmentList": "equipment slots and item stacks",
     "mscts.codec.items._Slot": "an item stack: an item id, a count and data components",
     "mscts.codec.components.Patch": "data components: no layout in components.py is an EntityId",
