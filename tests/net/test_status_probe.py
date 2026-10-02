@@ -1,7 +1,9 @@
 """The status readiness probe, against a fake localhost server using the Target's Codec."""
 
 import asyncio
+import gc
 import json
+import socket
 
 import pytest
 
@@ -58,21 +60,47 @@ def test_the_probe_is_false_when_the_server_resets_the_connection(codec: Codec) 
 
 
 def test_the_probe_is_false_soon_when_the_server_does_not_answer(codec: Codec) -> None:
+    # Only the wait for the answer is timed. On a loaded host the connect can take
+    # longer, and the probe may even give up while connecting, which is also False.
+    asked_at: list[float] = []
+
     async def server(peer: Peer) -> None:
-        await peer.recv()
-        await peer.recv()
-        await peer.eof()
+        asked_at.extend(
+            [
+                asyncio.get_running_loop().time()
+                async for packet in peer.packets()
+                if packet.name == "minecraft:status_request"
+            ]
+        )
 
     async def client() -> tuple[bool, float]:
-        loop = asyncio.get_running_loop()
         async with serve(codec, server) as endpoint:
-            start = loop.time()
             ready = await status_probe(TARGET, timeout_s=0.05)(endpoint)
-            return ready, loop.time() - start
+            return ready, asyncio.get_running_loop().time()
 
-    ready, elapsed = asyncio.run(client())
+    ready, returned_at = asyncio.run(client())
     assert ready is False
-    assert elapsed < 0.5
+    assert [returned_at - at < 0.5 for at in asked_at] in ([], [True])
+
+
+@pytest.mark.parametrize("turns", range(6), ids=[f"turns-{turns}" for turns in range(6)])
+def test_the_fake_server_ends_when_a_client_gave_up_while_connecting(
+    codec: Codec, turns: int
+) -> None:
+    # A probe whose connect bound expires can leave `serve` after the kernel accepted its
+    # connection but before the fake did. `turns` loop iterations in, the fake is at some
+    # step of accepting it (3 was the hang: accepted, handed over after the body left).
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with asyncio.timeout(1), serve(codec, server) as endpoint:
+            with socket.create_connection((endpoint.host, endpoint.port)):
+                for _ in range(turns):
+                    await asyncio.sleep(0)
+
+    asyncio.run(client())
+    gc.collect()  # a leaked socket warns here, in this test, not in a later one
 
 
 def test_the_probe_closes_its_connection(codec: Codec) -> None:
