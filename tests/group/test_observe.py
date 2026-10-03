@@ -11,7 +11,7 @@ from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
-from mscts.net import Endpoint
+from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -19,8 +19,10 @@ from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
     Handler,
+    JoinScript,
     Peer,
     answer_at_once,
+    join_server,
     never_answer,
     play_server,
     serve,
@@ -33,6 +35,8 @@ BLOCK_UPDATE = "minecraft:block_update"
 BLOCK = bytes.fromhex("0000004000001fc4")
 """A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
 _UNUSED = Endpoint(host="127.0.0.1", port=1)
+ALICE_CLOSE = f"{OBSERVE_CLOSE} alice"
+"""The close Mark of alice's window."""
 
 
 @asynccontextmanager
@@ -58,10 +62,10 @@ def labels(transcript: Transcript) -> list[str]:
     return [mark.label for mark in transcript.marks]
 
 
-def window(transcript: Transcript) -> tuple[int, int]:
-    """The open and close times of the Transcript's only window."""
-    opened, closed = transcript.marks
-    assert (opened.label.split()[0], closed.label) == (OBSERVE_OPEN, OBSERVE_CLOSE)
+def window(transcript: Transcript, bot: str = "alice") -> tuple[int, int]:
+    """The open and close times of the Transcript's only window, as `bot` sees it."""
+    (opened,) = [m for m in transcript.marks if m.label.split()[0] == OBSERVE_OPEN]
+    (closed,) = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {bot}"]
     return opened.t_ns, closed.t_ns
 
 
@@ -82,7 +86,7 @@ async def test_a_window_marks_where_it_opens_and_where_it_closes() -> None:
             inside = labels(transcript)
 
     assert inside == [OBSERVE_OPEN]
-    assert labels(transcript) == [OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE, OBSERVE_CLOSE]
 
 
 @pytest.mark.asyncio
@@ -95,18 +99,50 @@ async def test_a_narrowed_window_names_its_packets_in_its_open_mark() -> None:
 
     assert labels(transcript) == [
         f"{OBSERVE_OPEN} {BLOCK_UPDATE} minecraft:system_chat",
+        ALICE_CLOSE,
         OBSERVE_CLOSE,
     ]
 
 
+NOT_A_PLAY_PACKET = [
+    # Audit 2026-10-02, MD1: each was accepted, and a window narrowed to it compared nothing.
+    "minecraft:block_updat",
+    "block_update",
+    "",
+    "minecraft:block update",
+    "minecraft:a\tb",
+    "minecraft:client_command",  # serverbound
+    "minecraft:login_finished",  # not in play
+]
+HEARTBEATS = ["minecraft:set_time", "minecraft:keep_alive", "minecraft:award_stats"]
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("name", ["", "minecraft:block update", "minecraft:a\tb"])
-async def test_a_packet_name_is_one_word(name: str) -> None:
+@pytest.mark.parametrize("name", NOT_A_PLAY_PACKET)
+async def test_observe_refuses_a_name_that_is_not_a_clientbound_play_packet(name: str) -> None:
     transcript = Transcript(group_id="test/observe", server="fake")
     context = GroupContext(_UNUSED, transcript, timeout_s=1.0)
 
-    with pytest.raises(ValueError, match="a packet name is one word"):
+    with pytest.raises(ValueError, match="not a packet the server sends in play"):
         async with context.observe(BLOCK_UPDATE, name):
+            pass
+    with pytest.raises(ValueError, match="not a packet the server sends in play"):
+        async with context.observe(BLOCK_UPDATE, until=name):
+            pass
+    assert transcript.marks == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", HEARTBEATS)
+async def test_observe_refuses_a_heartbeat_packet(name: str) -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+    context = GroupContext(_UNUSED, transcript, timeout_s=1.0)
+
+    with pytest.raises(ValueError, match="a heartbeat packet"):
+        async with context.observe(name):
+            pass
+    with pytest.raises(ValueError, match="a heartbeat packet"):
+        async with context.observe(until=name):
             pass
     assert transcript.marks == []
 
@@ -128,9 +164,11 @@ async def test_windows_do_not_nest_and_one_may_follow_another() -> None:
 
     assert labels(transcript) == [
         OBSERVE_OPEN,
+        ALICE_CLOSE,
         OBSERVE_CLOSE,
         OBSERVE_OPEN,
         OBSERVE_OPEN,
+        ALICE_CLOSE,
         OBSERVE_CLOSE,
     ]
 
@@ -158,8 +196,8 @@ async def test_every_bot_in_play_passes_the_barrier_before_the_window_closes() -
         async with context.observe():
             pass
 
-    _, closed = window(transcript)
     for bot in ("alice", "bob"):
+        _, closed = window(transcript, bot)
         answers = [
             event.t_ns
             for event in transcript.events
@@ -167,6 +205,43 @@ async def test_every_bot_in_play_passes_the_barrier_before_the_window_closes() -
         ]
         assert len(answers) == 2, bot
         assert answers[-1] <= closed, bot
+
+
+@pytest.mark.asyncio
+async def test_each_bots_window_ends_at_its_own_barriers_last_answer() -> None:
+    # Audit 2026-10-02, MD2: one close Mark for every Bot, stamped once the slowest barrier
+    # had returned, let a Bot whose barrier ended early take what arrived meanwhile.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    second_requests = 0
+
+    async def one_bot_slow(peer: Peer, request: int) -> None:
+        nonlocal second_requests
+        if request != 2:
+            await answer_at_once(peer, request)
+            return
+        second_requests += 1
+        if second_requests == 1:  # the first Bot to ask twice: done, then a straggler
+            await answer_at_once(peer, request)
+            await asyncio.sleep(0.03)
+            await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
+        else:  # the other: its barrier runs on past the straggler
+            await asyncio.sleep(0.15)
+            await answer_at_once(peer, request)
+
+    async with playing(play_server([], one_bot_slow), transcript) as context:
+        await joined(context, "alice")
+        await joined(context, "bob")
+        async with context.observe():
+            pass
+
+    (straggler,) = [e for e in transcript.events if e.packet.name == BLOCK_UPDATE]
+    (closed,) = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {straggler.bot}"]
+    last_answer = max(
+        e.t_ns for e in transcript.events if e.bot == straggler.bot and e.packet.name == ANSWER
+    )
+    assert closed.t_ns == last_answer + 1
+    assert closed.t_ns < straggler.t_ns
+    assert "block_update.block_state" not in compare(transcript, transcript, []).test_cases
 
 
 @pytest.mark.asyncio
@@ -225,7 +300,7 @@ async def test_a_bot_not_in_play_is_not_synced() -> None:
         async with context.observe():
             pass
 
-    assert labels(transcript) == [OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE, OBSERVE_CLOSE]
     assert seen == []
 
 
@@ -238,8 +313,180 @@ async def test_a_bot_the_group_closed_is_neither_synced_nor_drained() -> None:
         async with context.observe():
             await bot.close()
 
-    assert labels(transcript) == [OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE, OBSERVE_CLOSE]
     assert REQUEST not in [packet.name for packet in seen]
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_passes_no_barrier_closes_with_the_unnamed_mark_after_every_barrier() -> (
+    None
+):
+    # Review of #179, K6: nothing pinned where such a Bot's close Mark lands.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(play_server([]), transcript) as context:
+        await joined(context, "alice")
+        bob = await joined(context, "bob")
+        async with context.observe():
+            await bob.close()
+
+    closes = {m.label: m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_CLOSE)}
+    alices_last_answer = max(
+        e.t_ns for e in transcript.events if e.bot == "alice" and e.packet.name == ANSWER
+    )
+    assert closes[f"{OBSERVE_CLOSE} bob"] == closes[OBSERVE_CLOSE] > alices_last_answer
+
+
+def kicking_server() -> Handler:
+    """Join like vanilla, answer the barrier at once, and disconnect a Bot that runs `kick`."""
+
+    async def then(peer: Peer) -> None:
+        requests = 0
+        async for packet in peer.packets():
+            if packet.name == REQUEST:
+                requests += 1
+                await answer_at_once(peer, requests)
+            elif (packet.fields or {}).get("command") == "kick":
+                await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+                await peer.close()
+                return
+
+    return join_server([], JoinScript(then=then))
+
+
+KICKED = bytes.fromhex("08 0004") + b"kick"
+"""A disconnect's reason: an NBT String text component."""
+
+
+@pytest.mark.asyncio
+async def test_a_bot_the_server_disconnected_does_not_fail_the_windows_end() -> None:
+    # Audit 2026-10-02, L2: a kicked Bot is still in play by its send State, so the barrier
+    # and the drain raised ConnectionClosedError for a Group that tests a kick.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(kicking_server(), transcript) as context:
+        alice = await joined(context, "alice")
+        await joined(context, "bob")
+        async with context.observe():
+            await alice.command("kick")
+            await alice.expect("minecraft:disconnect", timeout_s=2.0)
+
+    assert sorted(labels(transcript)[1:]) == [
+        OBSERVE_CLOSE,
+        f"{OBSERVE_CLOSE} alice",
+        f"{OBSERVE_CLOSE} bob",
+    ]
+    bobs_answers = [e for e in transcript.events if e.bot == "bob" and e.packet.name == ANSWER]
+    assert len(bobs_answers) == 2  # bob passed his barrier as usual
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_the_group_did_not_take_fails_the_bots_barrier() -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+
+    async def kick_untaken(context: GroupContext) -> None:
+        alice = await joined(context, "alice")
+        async with context.observe():
+            await alice.command("kick")
+            await asyncio.sleep(0.1)  # the disconnect and the end arrive, untaken
+
+    async with playing(kicking_server(), transcript) as context:
+        with pytest.raises(ProtocolError, match="disconnected alice"):
+            await kick_untaken(context)
+
+
+async def kick_at_the_barrier(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
+    """Disconnect the Bot instead of answering its barrier."""
+    await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+    await peer.close()
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_disconnects_a_bot_the_reference_keeps_fails() -> None:
+    # The disconnect is still queued, untaken by the Group, so the barrier takes it and
+    # fails: only a kick the Group took itself is skipped.
+    async with serve(CODEC, play_server([])) as endpoint:
+        reference = await run_group(OBSERVING, endpoint, server="vanilla", timeout_s=2.0)
+    async with serve(CODEC, play_server([], kick_at_the_barrier)) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(OBSERVING, endpoint, server="candidate", timeout_s=2.0)
+
+    verdict = judge(OBSERVING, reference, caught.value)
+
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+    failed = verdict.divergences[0]
+    assert (failed.kind, failed.bot) == ("failed", "alice"), verdict
+    assert "disconnected alice" in str(failed.candidate), verdict
+
+
+async def kick_after_the_first_barrier(peer: Peer, request: int) -> None:
+    """Answer; after the first barrier's second answer, disconnect the Bot, and close later."""
+    if request > 2:
+        return
+    await answer_at_once(peer, request)
+    if request == 2:
+        await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+        await asyncio.sleep(0.3)  # the end comes later
+        await peer.close()
+
+
+async def _two_windows(context: GroupContext) -> None:
+    await joined(context)
+    async with context.observe():
+        pass
+    await asyncio.sleep(0.05)
+    async with context.observe(BLOCK_UPDATE):
+        pass
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("windows", [1, 2])
+async def test_a_candidate_that_kicks_a_bot_just_after_its_barrier_mismatches(windows: int) -> None:
+    # Review of #179, HIGH 1: the drain took the disconnect, and the Bot was then skipped as
+    # though the Group had taken it, so this Candidate matched.
+    group = Group(id="test/observe", run=_join_and_observe if windows == 1 else _two_windows)
+    async with serve(CODEC, play_server([])) as endpoint:
+        reference = await run_group(group, endpoint, server="vanilla", timeout_s=2.0)
+    async with serve(CODEC, play_server([], kick_after_the_first_barrier)) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(group, endpoint, server="candidate", timeout_s=2.0)
+
+    verdict = judge(group, reference, caught.value)
+
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+    failed = verdict.divergences[0]
+    assert (failed.kind, failed.bot) == ("failed", "alice"), verdict
+    assert "disconnected alice" in str(failed.candidate), verdict
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_the_group_took_is_inside_the_window_and_compared() -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(kicking_server(), transcript) as context:
+        alice = await joined(context, "alice")
+        await joined(context, "bob")
+        async with context.observe():
+            await alice.command("kick")
+            await alice.expect("minecraft:disconnect", timeout_s=2.0)
+
+    (disconnect,) = arrivals(transcript, "minecraft:disconnect")
+    opened, closed = window(transcript, "alice")
+    assert opened <= disconnect < closed
+    test_cases = compare(transcript, transcript, []).test_cases
+    assert "play:disconnect.reason" in test_cases, test_cases
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_joins_after_a_window_is_outside_it() -> None:
+    # Review of #179, HIGH 2: a Bot that joined after the window closed had no close Mark,
+    # so its window never ended and everything it received after was compared.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(play_server([]), transcript) as context:
+        await joined(context, "alice")
+        async with context.observe():
+            pass
+        await joined(context, "carol")
+
+    test_cases = compare(transcript, transcript, []).test_cases
+    assert not [case for case in test_cases if "chunk" in case or "position" in case], test_cases
 
 
 async def _join_and_observe(context: GroupContext) -> None:

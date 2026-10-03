@@ -9,6 +9,7 @@ game rule is on), so an operator Bot would receive Control's answers too.
 
 import asyncio
 import contextlib
+import functools
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -16,9 +17,9 @@ from types import MappingProxyType
 from typing import Protocol
 
 from mscts.bot import Bot
-from mscts.codec.packets import Direction, Packet, State
+from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.schemas.play.commands import root_literals
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
+from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN, Mask
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.target import TARGET
@@ -273,14 +274,27 @@ class GroupContext:
         self._mark(f"{name}:end")
 
     @contextlib.asynccontextmanager
-    async def observe(self, *names: str, until: str | None = None) -> AsyncIterator[None]:
+    async def observe(
+        self, *names: str, until: str | None = None, bot: Bot | None = None
+    ) -> AsyncIterator[None]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
         Marks `observe:open` on entry, followed by `names`, each after a space. When the
-        body completes, every Bot in play passes the barrier (`Bot.sync`), all at once;
-        then the window gets its `observe:close` Mark, and every Bot not closed takes
-        what has already arrived, without waiting (`Bot.drain`). A body that raises gets
-        neither: its window runs to the end of the Transcript.
+        body completes, every Bot in play passes the barrier (`Bot.sync`), all at once.
+        Each Bot's window ends at its own barrier: it gets the Mark `observe:close <Bot
+        name>` a nanosecond after its barrier's last answer arrived, whatever the other
+        Bots are still waiting for (a Bot that passes none gets it once every barrier has
+        returned). Once every barrier has returned, the Mark `observe:close` ends the
+        window for any Bot the Group makes later. Then every Bot not closed takes what
+        has already arrived, without waiting (`Bot.drain`). A Bot whose `expect` returned
+        the server's disconnect (`Bot.disconnected`, as a Group that tests a kick does)
+        passes no barrier and takes nothing; a disconnect the barrier or the drain takes
+        fails the Bot. A body that raises gets neither: its window runs to the end of the
+        Transcript.
+
+        A barrier covers what the Bot itself sent. A window that must hold what another
+        Bot's action causes at this Bot waits, in its body, for that action's feedback
+        before it closes, as `OperatorBot.run` does for a command.
 
         With `until`, there is no barrier. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
@@ -291,41 +305,61 @@ class GroupContext:
         must last until the packet has arrived (`Bot.join` does, for a join's packets): a
         body that ends sooner fails with the ProtocolError below.
 
+        With `bot` too, only that Bot's `until` packet ends the window. Without it, with
+        more than one Bot, where the window ends for the others is timing: each Bot's
+        reader stamps a frame when it reads its own socket, and the readers run one after
+        another, so a packet that reached one Bot's socket first can be stamped later.
+
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
                 none for every packet.
             until: The name of the packet whose arrival ends the window, e.g.
                 `minecraft:chunk_batch_finished`; None for a window that ends at the
                 barrier.
+            bot: The Bot whose `until` packet ends the window; None for any Bot but
+                Control.
 
         Raises:
-            ValueError: A window is open already (windows do not nest), or a name is not
-                one word.
+            ValueError: A window is open already (windows do not nest), or a name (in
+                `names` or `until`) is not a packet the Target's server sends in play,
+                or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
+                `bot` is given without `until`, or is not one of this Group's Bots.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
-            ProtocolError: The server disconnected a Bot before its barrier's answer; or
-                no `until` packet arrived inside the window.
+            ProtocolError: The server disconnected a Bot, and the barrier or the drain
+                took the disconnect; or no `until` packet arrived inside the window.
         """
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
             raise ValueError(msg)
-        for name in names:
-            if name.split() != [name]:
-                msg = f"a packet name is one word, not {name!r}"
-                raise ValueError(msg)
+        for name in (*names, *(() if until is None else (until,))):
+            _check_observable(name)
+        if bot is not None and until is None:
+            msg = "bot= names the Bot whose until packet ends the window: give until too"
+            raise ValueError(msg)
+        if bot is not None and self._bots.get(bot.name) is not bot:
+            msg = f"{bot.name!r} is not one of this Group's Bots"
+            raise ValueError(msg)
         self._observing = True
         try:
             opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
             yield
             if until is None:
-                await self._sync()
-                self._mark(OBSERVE_CLOSE)
+                ends = await self._sync()
+                now = self._transcript.now_ns()
+                for name in self._bots:
+                    # A packet stamped at a Mark's time is after it: the answer is inside.
+                    at = ends[name] + 1 if name in ends else now
+                    self._mark(f"{OBSERVE_CLOSE} {name}", t_ns=at)
+                # A Bot the Group makes later has no Mark of its own: this one ends its window.
+                self._mark(OBSERVE_CLOSE, t_ns=now)
                 await self._drain()
             else:
                 await self._drain()
                 # Compare puts a packet stamped at a Mark's time after the Mark, so the Mark
                 # goes a nanosecond after the arrival. A Connection stamps the frames of one
                 # read a nanosecond apart, so that is just before the next frame.
-                self._mark(OBSERVE_CLOSE, t_ns=self._arrival_of(until, since=opened) + 1)
+                arrival = self._arrival_of(until, since=opened, bot=bot)
+                self._mark(OBSERVE_CLOSE, t_ns=arrival + 1)
         finally:
             self._observing = False
 
@@ -340,12 +374,12 @@ class GroupContext:
         self._transcript.marks.append(Mark(t_ns=at, label=label))
         return at
 
-    def _arrival_of(self, name: str, *, since: int) -> int:
-        """When the first play packet `name` arrived at a Bot but Control, at or after `since`.
+    def _arrival_of(self, name: str, *, since: int, bot: Bot | None) -> int:
+        """When the first play packet `name` arrived at `bot`, at or after `since`.
 
-        Control's receipts are never compared, so they cannot end a window. A Bot records
-        a frame when it takes it, so this is the earliest arrival over all the Bots,
-        whatever order they were recorded in.
+        With no `bot`, at any Bot but Control: Control's receipts are never compared, so
+        they cannot end a window. A Bot records a frame when it takes it, so this is the
+        earliest arrival over all the Bots, whatever order they were recorded in.
 
         Raises:
             ProtocolError: None did.
@@ -354,31 +388,80 @@ class GroupContext:
             event.t_ns
             for event in self._transcript.events
             if event.t_ns >= since
-            and event.bot != CONTROL_PLAYER
+            and (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
             and event.packet.name == name
             and event.packet.state is State.PLAY
             and event.packet.direction is Direction.CLIENTBOUND
         ]
         if not arrivals:
-            msg = f"no {name} arrived at any Bot after the Observation window opened"
+            at = "any Bot" if bot is None else bot.name
+            msg = f"no {name} arrived at {at} after the Observation window opened"
             raise ProtocolError(msg)
         return min(arrivals)
 
     async def _drain(self) -> None:
-        """Take what has already arrived at every Bot not closed, without waiting."""
+        """Take what has already arrived at every Bot not closed, without waiting.
+
+        A Bot whose `expect` returned the server's disconnect is skipped: the server sends
+        it nothing more. A disconnect the drain takes fails the Bot (`Bot.drain`).
+        """
         for bot in self._bots.values():
-            if not bot.closed:
+            if not bot.closed and not bot.disconnected:
                 await bot.drain()
 
-    async def _sync(self) -> None:
-        """Pass the barrier on every Bot in play at once; raise the first Bot's error."""
+    async def _sync(self) -> dict[str, int]:
+        """Pass the barrier on every Bot in play at once; raise the first Bot's error.
+
+        A Bot whose `expect` returned the server's disconnect passes none: one the Group
+        did not take is still queued, so that Bot's barrier takes it and fails. Returns when each
+        Bot's barrier's last answer arrived, by the Bot's name.
+        """
+
+        async def barrier(bot: Bot) -> int:
+            await bot.sync()
+            # The last packet sync took is its last answer, the Bot's latest award_stats.
+            return next(
+                event.t_ns
+                for event in reversed(self._transcript.events)
+                if event.bot == bot.name
+                and event.packet.name == _ANSWER
+                and event.packet.direction is Direction.CLIENTBOUND
+            )
+
         try:
             async with asyncio.TaskGroup() as barriers:
-                for bot in self._bots.values():
-                    if bot.in_play:
-                        barriers.create_task(bot.sync())
+                tasks = {
+                    name: barriers.create_task(barrier(bot))
+                    for name, bot in self._bots.items()
+                    if bot.in_play and not bot.disconnected
+                }
         except ExceptionGroup as errors:
             raise errors.exceptions[0] from None
+        return {name: task.result() for name, task in tasks.items()}
+
+
+_ANSWER = "minecraft:award_stats"
+"""The barrier's answer (`Bot.sync`)."""
+
+
+@functools.cache
+def _play_names() -> frozenset[str]:
+    """The names of the packets the Target's server sends in play."""
+    return frozenset(Codec.for_target(TARGET).names(State.PLAY, Direction.CLIENTBOUND))
+
+
+def _check_observable(name: str) -> None:
+    """Raise ValueError unless a window can compare packet `name` (audit 2026-10-02, MD1).
+
+    A window narrowed to, or ended by, a name the server never sends would compare
+    nothing on either side, and match.
+    """
+    if name not in _play_names():
+        msg = f"{name!r} is not a packet the server sends in play, e.g. 'minecraft:block_update'"
+        raise ValueError(msg)
+    if name in HEARTBEAT:
+        msg = f"{name!r} is a heartbeat packet, which no window compares: {HEARTBEAT[name]}"
+        raise ValueError(msg)
 
 
 type Script = Callable[[GroupContext], Awaitable[None]]

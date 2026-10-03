@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
@@ -27,6 +28,8 @@ CODEC = Codec.for_target(TARGET)
 REQUEST = "minecraft:client_command"
 BLOCK_UPDATE = "minecraft:block_update"
 BATCH_FINISHED = "minecraft:chunk_batch_finished"
+DIFFICULTY = "minecraft:change_difficulty"
+"""A play packet sent both ways that can end a window (a keep-alive is a heartbeat)."""
 BLOCK = bytes.fromhex("0000004000001fc4")
 """A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
 GAP_S = 0.04
@@ -207,21 +210,21 @@ async def test_a_packet_of_another_state_does_not_close_it() -> None:
 
 @pytest.mark.asyncio
 async def test_only_a_packet_the_server_sent_closes_it() -> None:
-    keep_alive = "minecraft:keep_alive"  # both directions send it in play
+    payloads = {Direction.CLIENTBOUND: b"\x00\x01", Direction.SERVERBOUND: b"\x00"}
     transcript = Transcript(group_id="test/until", server="fake")
     context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
 
     def heard(direction: Direction) -> Packet:
-        data = CODEC.encode(State.PLAY, direction, keep_alive, {"keep_alive_id": 1})
-        return CODEC.decode(State.PLAY, direction, data)
+        packet_id = CODEC.packet_id(State.PLAY, direction, DIFFICULTY)
+        return CODEC.decode(State.PLAY, direction, bytes([packet_id]) + payloads[direction])
 
     async def observe_with_a_sent_one() -> None:
-        async with context.observe(until=keep_alive):
+        async with context.observe(until=DIFFICULTY):
             transcript.record("alice", heard(Direction.SERVERBOUND), t_ns=transcript.now_ns())
 
-    with pytest.raises(ProtocolError, match=keep_alive):
+    with pytest.raises(ProtocolError, match=DIFFICULTY):
         await observe_with_a_sent_one()
-    async with context.observe(until=keep_alive):
+    async with context.observe(until=DIFFICULTY):
         transcript.record("alice", heard(Direction.SERVERBOUND), t_ns=transcript.now_ns())
         arrival = transcript.now_ns()
         transcript.record("alice", heard(Direction.CLIENTBOUND), t_ns=arrival)
@@ -231,45 +234,93 @@ async def test_only_a_packet_the_server_sent_closes_it() -> None:
 
 
 def _heard_by(transcript: Transcript, bot: str, name: str, *, at: int) -> None:
-    data = CODEC.encode(State.PLAY, Direction.CLIENTBOUND, name, {"keep_alive_id": 1})
-    packet = CODEC.decode(State.PLAY, Direction.CLIENTBOUND, data)
+    packet_id = CODEC.packet_id(State.PLAY, Direction.CLIENTBOUND, name)
+    packet = CODEC.decode(State.PLAY, Direction.CLIENTBOUND, bytes([packet_id, 0, 1]))
     transcript.record(bot, packet, t_ns=at)
 
 
 @pytest.mark.asyncio
 async def test_a_packet_that_control_received_does_not_close_it() -> None:
     # Compare never compares Control's receipts, so what only Control heard is no end.
-    keep_alive = "minecraft:keep_alive"
     transcript = Transcript(group_id="test/until", server="fake")
     context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
 
-    async with context.observe(until=keep_alive):
-        _heard_by(transcript, CONTROL_PLAYER, keep_alive, at=transcript.now_ns())
+    async with context.observe(until=DIFFICULTY):
+        _heard_by(transcript, CONTROL_PLAYER, DIFFICULTY, at=transcript.now_ns())
         arrival = transcript.now_ns()
-        _heard_by(transcript, "alice", keep_alive, at=arrival)
+        _heard_by(transcript, "alice", DIFFICULTY, at=arrival)
 
     assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
-    with pytest.raises(ProtocolError, match=keep_alive):
-        async with context.observe(until=keep_alive):
-            _heard_by(transcript, CONTROL_PLAYER, keep_alive, at=transcript.now_ns())
+    with pytest.raises(ProtocolError, match=DIFFICULTY):
+        async with context.observe(until=DIFFICULTY):
+            _heard_by(transcript, CONTROL_PLAYER, DIFFICULTY, at=transcript.now_ns())
 
 
 @pytest.mark.asyncio
 async def test_the_earliest_arrival_at_any_bot_closes_it_whichever_was_recorded_first() -> None:
     # A Bot records a frame when it takes it, so across Bots the order of recording is not
     # the order of arrival.
-    keep_alive = "minecraft:keep_alive"
     transcript = Transcript(group_id="test/until", server="fake")
     context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
 
-    async with context.observe(until=keep_alive):
+    async with context.observe(until=DIFFICULTY):
         earlier = transcript.now_ns()
         later = transcript.now_ns()
-        _heard_by(transcript, "alice", keep_alive, at=later)
-        _heard_by(transcript, "bob", keep_alive, at=earlier)
+        _heard_by(transcript, "alice", DIFFICULTY, at=later)
+        _heard_by(transcript, "bob", DIFFICULTY, at=earlier)
 
     assert earlier < later
     assert transcript.marks[-1] == Mark(t_ns=earlier + 1, label=OBSERVE_CLOSE)
+
+
+async def _joined(context: GroupContext, name: str) -> Bot:
+    bot = await context.bot(name)
+    await bot.join()
+    return bot
+
+
+@pytest.mark.asyncio
+async def test_until_with_bot_ends_the_window_at_that_bots_packet() -> None:
+    # Audit 2026-10-02, L1: across Bots, arrival order is the order the readers ran, so
+    # another Bot's packet stamped earlier must not end the window of the Bot named.
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        alice = await _joined(context, "alice")
+        await _joined(context, "bob")
+        async with context.observe(until=DIFFICULTY, bot=alice):
+            _heard_by(transcript, "bob", DIFFICULTY, at=transcript.now_ns())
+            arrival = transcript.now_ns()
+            _heard_by(transcript, "alice", DIFFICULTY, at=arrival)
+
+    assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
+
+
+@pytest.mark.asyncio
+async def test_until_with_bot_fails_when_only_another_bot_got_the_packet() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        alice = await _joined(context, "alice")
+        await _joined(context, "bob")
+        with pytest.raises(ProtocolError, match=f"no {DIFFICULTY} arrived at alice"):
+            async with context.observe(until=DIFFICULTY, bot=alice):
+                _heard_by(transcript, "bob", DIFFICULTY, at=transcript.now_ns())
+
+
+@pytest.mark.asyncio
+async def test_bot_needs_until_and_one_of_the_groups_bots() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        alice = await _joined(context, "alice")
+        with pytest.raises(ValueError, match="bot= names the Bot whose until packet"):
+            async with context.observe(bot=alice):
+                pass
+        async with playing(server([]), Transcript(group_id="other", server="fake")) as other:
+            stranger = await _joined(other, "carol")
+            with pytest.raises(ValueError, match="not one of this Group's Bots"):
+                async with context.observe(until=DIFFICULTY, bot=stranger):
+                    pass
+
+    assert transcript.marks == []
 
 
 @pytest.mark.asyncio
@@ -283,7 +334,7 @@ async def test_the_window_is_over_after_a_missing_packet() -> None:
             pass
 
     labels = [mark.label for mark in transcript.marks]
-    assert labels == [OBSERVE_OPEN, OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels == [OBSERVE_OPEN, OBSERVE_OPEN, OBSERVE_CLOSE]  # no Bot's own close
 
 
 async def _wait_for_a_block(context: GroupContext) -> None:

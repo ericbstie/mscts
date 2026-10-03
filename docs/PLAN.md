@@ -511,6 +511,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                                     # came from
     closed: bool                    # (property) close was called
     in_play: bool                   # (property) joined, and not closed: what sync needs
+    disconnected: bool              # (property) expect has returned the server's disconnect
+                                    # (a Group that tests a kick takes it so)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -554,7 +556,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # command's marker (OperatorBot).
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
-    # nothing left to take, raises as recv does.
+    # nothing left to take, raises as recv does. A disconnect it takes → ProtocolError, as
+    # in expect (a Group that tests a kick takes the disconnect itself, with expect).
 
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
 
@@ -890,25 +893,37 @@ class GroupContext:
                                                  # CONTROL_PLAYER (Control's Bot)
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
-    def observe(self, *names: str, until: str | None = None
+    def observe(self, *names: str, until: str | None = None, bot: Bot | None = None
                 ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: Marks OBSERVE_OPEN (then the
                                     # names, each after a space) on entry; when the body
-                                    # completes, every Bot in play passes Bot.sync (all at
-                                    # once; the first error raises, as that Bot's failure),
-                                    # then the OBSERVE_CLOSE Mark, then every Bot not closed
-                                    # drains. A body that raises gets neither, so its window
+                                    # completes, every Bot in play and not disconnected passes
+                                    # Bot.sync (all at once; the first error raises, as that
+                                    # Bot's failure), then a Mark "OBSERVE_CLOSE <Bot name>"
+                                    # per Bot, 1 ns after its barrier's last answer's arrival
+                                    # (a Bot that passed none: once every barrier returned),
+                                    # then an unnamed OBSERVE_CLOSE at that same time (it ends
+                                    # the window of a Bot made later), then every Bot neither
+                                    # closed nor disconnected drains (Bot.disconnected: the
+                                    # Group's expect returned the server's disconnect, so a
+                                    # kick it tests is no error; one the barrier or the drain
+                                    # takes fails that Bot). A barrier covers what its own
+                                    # Bot sent: a window that must hold another Bot's effect
+                                    # waits for that effect's feedback before closing. A body that raises gets neither, so its window
                                     # runs to the Transcript's end. ValueError, nothing
                                     # marked: a window already open (no nesting), or a name
-                                    # that is not one word.
+                                    # (in names or until) that is not in
+                                    # Codec.names(PLAY, CLIENTBOUND) or is in HEARTBEAT.
                                     # With `until` (a packet name): no barrier. Every Bot not
                                     # closed drains, then OBSERVE_CLOSE is stamped 1 ns after
                                     # the Event.t_ns (the arrival, never the time a Bot took
                                     # the packet; #88) of the first clientbound play packet
-                                    # of that name any Bot but Control received at or after
-                                    # the open Mark (Control's receipts are never compared;
-                                    # the earliest arrival over the Bots, whatever order
-                                    # they were recorded in). The body must last until it
+                                    # of that name `bot` (if given), else any Bot but Control,
+                                    # received at or after the open Mark (Control's receipts
+                                    # are never compared; the earliest arrival over the Bots,
+                                    # whatever order they were recorded in). ValueError:
+                                    # `bot` without `until`, or not one of this Group's Bots.
+                                    # The body must last until it
                                     # has arrived: one that ends sooner fails as below.
                                     # Compare puts a packet stamped at a Mark's time
                                     # after the Mark, so the extra nanosecond keeps that
@@ -1063,7 +1078,9 @@ class Verdict:
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
-OBSERVE_CLOSE = "observe:close"     # the Mark that closes it
+OBSERVE_CLOSE = "observe:close"     # the Mark that closes it: for one Bot with its name
+                                    # after it ("observe:close alice"), without for every Bot
+                                    # with no close Mark of its own in that window
 HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
                                     # compares (keep_alive, set_time, award_stats; evidence in
                                     # docs/research/2026-09-30-observation-window.md)
@@ -1260,9 +1277,12 @@ proves it necessary:
      received: it sets the world up as an operator, and its Events stay
      in the Transcript;
    - in a Transcript with **Observation windows**, the play packets they
-     do not observe. A window opens at an `observe:open` Mark and ends at
-     the next `observe:open` or `observe:close` Mark, or at the end of the
-     Transcript if none follows (the Group raised inside it). It observes
+     do not observe. A window opens at an `observe:open` Mark and ends, for
+     a Bot, at its first `observe:close <that Bot>` Mark before the next
+     `observe:open` Mark; with none, at its first `observe:close` Mark
+     naming no Bot; with neither, at the next `observe:open` Mark, or at
+     the end of the Transcript if none follows (the Group raised inside
+     it). It observes
      every play packet that arrived (`t_ns`) at or after its open Mark and
      before its end, except the heartbeat packets (`compare.is_heartbeat`),
      and only the packets it names if its open Mark names any. Status,

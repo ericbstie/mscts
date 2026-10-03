@@ -145,7 +145,11 @@ class Side:
 def summarise(transcript: Transcript, *, bots: Sequence[str] = (CONTROL_PLAYER, WATCHER)) -> Side:
     """The `Side` of `transcript`: the watcher's join, and the first window's barrier."""
     opened = next((m.t_ns for m in transcript.marks if m.label.split()[0] == OBSERVE_OPEN), None)
-    closed = next((m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE), None)
+    closes: dict[str, int] = {}  # the first window's close Marks: one per Bot, or one for all
+    for mark in transcript.marks:
+        if mark.label.split()[0] == OBSERVE_CLOSE:
+            closes.setdefault(mark.label, mark.t_ns)
+    closed = max(closes.values(), default=None)
     watcher = [e for e in transcript.events if e.bot == WATCHER]
     first_batch = next((e.t_ns for e in watcher if e.packet.name == BATCH_FINISHED), None)
     chunks = [e for e in watcher if e.packet.name == CHUNK]
@@ -154,14 +158,15 @@ def summarise(transcript: Transcript, *, bots: Sequence[str] = (CONTROL_PLAYER, 
     syncs: dict[str, float | None] = {}
     updates: dict[str, float | None] = {}
     for bot in bots:
+        own = closes.get(f"{OBSERVE_CLOSE} {bot}", closes.get(OBSERVE_CLOSE))
         answers = [
             e.t_ns
             for e in transcript.events
             if e.bot == bot
             and e.packet.name == ANSWER
             and opened is not None
-            and closed is not None
-            and opened <= e.t_ns <= closed
+            and own is not None
+            and opened <= e.t_ns <= own
         ]
         gaps[bot] = [round((b - a) / 1e6, 1) for a, b in itertools.pairwise(answers)]
         request = next(

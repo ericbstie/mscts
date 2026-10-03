@@ -220,6 +220,7 @@ class Bot:
         self._target = target
         self._timeout_s = timeout_s
         self._closed = False
+        self._disconnected = False  # expect returned the server's disconnect
 
     @classmethod
     async def connect(
@@ -250,6 +251,14 @@ class Bot:
     def closed(self) -> bool:
         """Whether `close` was called."""
         return self._closed
+
+    @property
+    def disconnected(self) -> bool:
+        """Whether `expect` has returned the server's disconnect: the server sends it no more.
+
+        A Group that tests a kick takes it so; `sync` and `drain` refuse one they take.
+        """
+        return self._disconnected
 
     @property
     def in_play(self) -> bool:
@@ -340,6 +349,7 @@ class Bot:
             while True:
                 packet = await self._connection.recv(timeout_s=timeout_s)
                 if packet.name == name and (where is None or where(packet)):
+                    self._disconnected |= _ends_the_session(packet)
                     return packet
                 self._refuse(packet)
 
@@ -434,13 +444,16 @@ class Bot:
             CodecError: A frame the Bot took does not decode.
             ConnectionError: The Connection is closed, or the server closed or reset it,
                 and nothing is left to take.
+            ProtocolError: The server disconnected the Bot: a Group that tests a kick takes
+                the disconnect itself, with `expect`.
         """
         try:
             while True:
                 try:
-                    await self._connection.recv(timeout_s=0)
+                    packet = await self._connection.recv(timeout_s=0)
                 except TimeoutError:
                     return
+                self._refuse(packet)
         except Exception as error:
             self.failure = error
             raise
@@ -549,6 +562,18 @@ def _json_field(value: object, key: str) -> object:
     if not isinstance(value, Mapping):
         return None
     return {str(name): item for name, item in value.items()}.get(key)
+
+
+def _ends_the_session(packet: Packet) -> bool:
+    """Whether `packet` is the server's disconnect, after which it closes the connection."""
+    match packet.state, packet.name:
+        case (State.LOGIN, "minecraft:login_disconnect") | (
+            State.CONFIGURATION | State.PLAY,
+            "minecraft:disconnect",
+        ):
+            return True
+        case _:
+            return False
 
 
 def _expect(packet: Packet, name: str) -> None:
