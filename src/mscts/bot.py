@@ -43,6 +43,12 @@ sent on channel `minecraft:brand` as a String.
 _BRAND_MAX = 32767
 """`BrandPayload` writes the brand with `FriendlyByteBuf.writeUtf`, at most 32767."""
 
+_CONFIGURATION_ANSWERS = {
+    "minecraft:code_of_conduct": "minecraft:accept_code_of_conduct",
+    "minecraft:finish_configuration": "minecraft:finish_configuration",
+}
+"""Configuration packets answered by a packet with no fields: what each is answered with."""
+
 _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
     1 << bit for bit in range(5)
 )
@@ -431,16 +437,19 @@ class Replies:
                 await connection.send(
                     "minecraft:select_known_packs", known_packs=fields.get("known_packs")
                 )
-            case State.CONFIGURATION, "minecraft:code_of_conduct":
-                await connection.send("minecraft:accept_code_of_conduct")
-            case State.CONFIGURATION, "minecraft:finish_configuration":
-                await connection.send("minecraft:finish_configuration")
+            case (
+                State.CONFIGURATION,
+                "minecraft:code_of_conduct" | "minecraft:finish_configuration",
+            ):
+                await connection.send(_CONFIGURATION_ANSWERS[packet.name])
             case State.CONFIGURATION | State.PLAY, "minecraft:keep_alive":
                 await connection.send(
                     "minecraft:keep_alive", keep_alive_id=fields.get("keep_alive_id")
                 )
-            case State.PLAY, "minecraft:login" | "minecraft:respawn" | "minecraft:set_held_slot":
-                self._follow(packet.name, fields)
+            case State.PLAY, "minecraft:login" | "minecraft:respawn":
+                self._new_player(packet.name, fields)
+            case State.PLAY, "minecraft:set_held_slot":
+                self._select_slot(_field(fields, "slot", int))
             case State.PLAY, "minecraft:player_position":
                 self.pose.teleport(fields)
                 await connection.send(
@@ -461,8 +470,8 @@ class Replies:
             case _:
                 pass
 
-    def _follow(self, name: str, fields: Mapping[str, object]) -> None:
-        """Keep up with a login, a respawn or a held slot, as the client does (26.3 javap).
+    def _new_player(self, name: str, fields: Mapping[str, object]) -> None:
+        """Start again with the new player a login or a respawn brings (26.3 javap).
 
         A login names the player's entity id, and brings a new level and a new
         `MultiPlayerGameMode`: `interaction` starts again. A login or a respawn makes a new
@@ -470,14 +479,8 @@ class Replies:
         keys and sprinting last reported, and one into another dimension brings a new level,
         whose block-change sequence starts at 0 (`ClientPacketListener.handleLogin`,
         `handleRespawn`). A respawn's new player selects slot 0 (a new `Inventory`), while the
-        `MultiPlayerGameMode` keeps the slot last sent. A held slot from the server is
-        selected if it is in the hotbar (`handleSetHeldSlot`), and the next tick sends it back.
+        `MultiPlayerGameMode` keeps the slot last sent.
         """
-        if name == "minecraft:set_held_slot":
-            slot = _field(fields, "slot", int)
-            if 0 <= slot < _HOTBAR_SLOTS:
-                self.interaction.selected_slot = slot
-            return
         dimension = _field(fields, "dimension_name", str)
         if name == "minecraft:login":
             self.entity_id = _field(fields, "entity_id", int)
@@ -493,6 +496,14 @@ class Replies:
             if dimension != self._dimension:
                 self.interaction.sequence = 0
         self._dimension = dimension
+
+    def _select_slot(self, slot: int) -> None:
+        """Select the held slot the server sent, if it is in the hotbar (`handleSetHeldSlot`).
+
+        The slot last sent stays, so the next tick sends the selected one back.
+        """
+        if 0 <= slot < _HOTBAR_SLOTS:
+            self.interaction.selected_slot = slot
 
 
 @dataclass(frozen=True, slots=True)
