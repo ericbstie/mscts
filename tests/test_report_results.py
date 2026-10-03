@@ -6,7 +6,10 @@ from dataclasses import replace
 import pytest
 
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
+from mscts.group import Group
+from mscts.groups import status
 from mscts.report import CaseResult, GroupLine, LineResult, Totals, report_lines, totals
+from mscts.run import GroupError, judge
 from mscts.transcript import Transcript
 from tests.compare.build import packet, transcript
 from tests.test_report import _field, _report, _result, _verdict
@@ -289,3 +292,31 @@ def test_a_packet_only_the_candidate_sent_fails_its_own_test_case_alone() -> Non
         "foo": LineResult.FAIL,
         "foo.a": LineResult.PASS,
     }
+
+
+def test_failing_a_whole_group_scores_no_higher_than_sending_each_value_wrong() -> None:
+    fields = {f"f{n}": n for n in range(10)}
+    wrong = {name: value + 1000 for name, value in fields.items()}
+    group = Group(id="x/a", run=status.basic)
+
+    def play(group_id: str, *sent: Mapping[str, object]) -> Transcript:
+        return transcript(
+            *(("alice", packet("minecraft:foo", fields=one)) for one in sent), group_id=group_id
+        )
+
+    many = {f"g{n}": n for n in range(100)}
+    passing = compare(play("x/b", many), play("x/b", many), ())
+    reference = play("x/a", fields)
+
+    def score(candidate: Transcript | GroupError) -> float:
+        verdict = judge(group, reference, candidate)
+        result = totals(report_lines(_report(_result(passing), _result(verdict)))).score
+        assert result is not None
+        return result
+
+    # Every value sent right, then the Group raised: before #262, 10 of 10 passed.
+    raised = GroupError(play("x/a", fields), "TimeoutError: no answer", bot="alice")
+    garbage = play("x/a", {"f0": {1, 2}})  # a value the Comparison cannot take (#239)
+    assert score(play("x/a", wrong)) == pytest.approx(100 / 110)
+    assert score(raised) <= score(play("x/a", wrong))
+    assert score(garbage) <= score(play("x/a", wrong))

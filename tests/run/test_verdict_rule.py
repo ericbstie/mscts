@@ -115,6 +115,11 @@ async def test_a_candidate_failure_is_a_mismatch_that_says_what_happened(mode: M
     assert failed == _failed(str(candidate))
     assert str(candidate).startswith(mode.failure)
     assert verdict.detail == f"the Candidate failed: {candidate}"
+    # Each test case the Reference's play has is the Candidate's too, failed (#262).
+    assert isinstance(reference, Transcript)
+    own = compare(reference, reference, ()).test_cases
+    assert len(own) > 1
+    assert set(own) <= set(verdict.test_cases)
 
 
 @pytest.mark.asyncio

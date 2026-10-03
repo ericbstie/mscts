@@ -4,7 +4,7 @@ import pytest
 
 import mscts.compare
 from mscts.codec.packets import Codec, Direction, Packet, State
-from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
+from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict, compare
 from mscts.group import Group, GroupContext
 from mscts.groups import status
 from mscts.run import GroupError, blocked, judge, run_group
@@ -162,6 +162,27 @@ async def test_a_candidate_value_the_comparison_cannot_take_is_a_mismatch_naming
     assert isinstance(failed.candidate, str)
     assert failed.candidate.startswith("the Comparison failed: TypeError: ")
     assert verdict.detail == f"the Candidate failed: {failed.candidate}"
+    # Each test case the Reference's play has is the Candidate's too, failed (#262).
+    assert verdict.test_cases == compare(reference, reference, ()).test_cases
+    assert verdict.test_cases
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_raised_and_sent_a_value_the_comparison_cannot_take_says_both() -> (
+    None
+):
+    reference = await _against(BASIC, _vanilla(), server="vanilla")
+    candidate = GroupError(_odd("fake"), "TimeoutError: no answer", bot="status")
+
+    verdict = judge(BASIC, reference, candidate)
+
+    assert verdict.outcome is Outcome.MISMATCH
+    raised, comparison = verdict.divergences
+    assert (raised.kind, raised.bot, raised.candidate) == ("failed", "status", str(candidate))
+    assert (comparison.kind, comparison.bot) == ("failed", "")
+    assert str(comparison.candidate).startswith("the Comparison failed: TypeError: ")
+    assert verdict.detail == f"the Candidate failed: {candidate}"
+    assert verdict.test_cases == compare(reference, reference, ()).test_cases
 
 
 def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:

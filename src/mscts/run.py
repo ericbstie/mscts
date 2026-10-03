@@ -275,23 +275,26 @@ def judge(
     except Exception as exc:  # any Comparison bug is this Group's error (#174)
         LOG.warning("the Comparison of %s failed", group.id, exc_info=exc)
         what = f"the Comparison failed: {type(exc).__name__}: {exc}"
-        if not _compares_itself(reference, group):
+        own = _itself(reference, group)
+        if own is None:
             return _error(group, what)
-        verdict = Verdict(
+        first = str(candidate) if isinstance(candidate, GroupError) else what
+        return Verdict(
             group_id=group.id,
             outcome=Outcome.MISMATCH,
-            divergences=(_failed(bot="", what=what),),
-            detail=f"the Candidate failed: {what}",
+            divergences=(*_group_failed(candidate), _failed(bot="", what=what)),
+            detail=f"the Candidate failed: {first}",
+            test_cases=own.test_cases,
         )
     if not isinstance(candidate, GroupError):
         return verdict
-    failed = _failed(bot=candidate.bot, what=str(candidate))
+    own = _itself(reference, group)
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
-        divergences=(failed, *verdict.divergences),
+        divergences=(*_group_failed(candidate), *verdict.divergences),
         detail=f"the Candidate failed: {candidate}",
-        test_cases=verdict.test_cases,
+        test_cases=tuple(sorted({*verdict.test_cases, *(own.test_cases if own else ())})),
     )
 
 
@@ -724,14 +727,24 @@ def _error(group: Group, detail: str) -> Verdict:
     return Verdict(group_id=group.id, outcome=Outcome.ERROR, detail=detail)
 
 
-def _compares_itself(reference: Transcript, group: Group) -> bool:
-    """Whether the Comparison takes the Reference's Transcript against itself without raising."""
+def _itself(reference: Transcript, group: Group) -> Verdict | None:
+    """The Reference's Transcript compared with itself; None if the Comparison raises on it.
+
+    Its test cases are each one the Reference's play has, which a Candidate that failed the
+    whole Group fails (#262).
+    """
     try:
-        compare(reference, reference, group.masks)
+        return compare(reference, reference, group.masks)
     except Exception as exc:  # raising here is the answer: the Reference's data is odd
         LOG.warning("the Comparison of %s fails on the Reference alone", group.id, exc_info=exc)
-        return False
-    return True
+        return None
+
+
+def _group_failed(candidate: Transcript | GroupError) -> tuple[Divergence, ...]:
+    """The `failed` Divergence for the Group raising on the Candidate, if it did."""
+    if isinstance(candidate, GroupError):
+        return (_failed(bot=candidate.bot, what=str(candidate)),)
+    return ()
 
 
 def _failed(*, bot: str, what: str) -> Divergence:
