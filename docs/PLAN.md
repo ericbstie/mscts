@@ -589,8 +589,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # so the next tick reports the corrected position. A Bot starts on the ground; look
     # rounds to binary32, holds pitch to -90..90 and ignores a non-finite value (Entity
     # setYRot / setXRot). jump holds the key for its tick only; the next call releases it.
-    # The Bot simulates no physics: the Group gives each position. Horizontal collision is
-    # never reported.
+    # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
+    # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
     # disconnect, catches up with the socket (Connection.caught_up), then drains only if its
     # Replies have seen the server's disconnect (Replies.saw_disconnect), so the drain refuses

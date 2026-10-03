@@ -578,8 +578,12 @@ class Bot:
 
         Raises:
             ProtocolError: The Bot is not in play.
+            ValueError: A coordinate is NaN or infinite; nothing is sent.
         """
         self._require_play("move")
+        if not all(math.isfinite(coordinate) for coordinate in (x, y, z)):
+            msg = f"move needs finite coordinates, not {x}, {y}, {z}"
+            raise ValueError(msg)
         pose = self._replies.pose
         pose.x, pose.y, pose.z = x, y, z
         self._controls.on_ground = on_ground

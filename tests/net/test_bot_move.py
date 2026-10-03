@@ -6,6 +6,7 @@ packet the change calls for (if any), then `client_tick_end`.
 """
 
 import dataclasses
+import math
 from collections.abc import Awaitable, Callable, Mapping
 
 import pytest
@@ -222,6 +223,22 @@ def test_a_fresh_client_last_reported_itself_off_the_ground() -> None:
     origin = {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "pitch": 0.0}
     status = ("minecraft:move_player_status_only", {"flags": ON_GROUND})
     assert play(script, teleport_to=origin) == [[status, TICK_END]]
+
+
+@pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf])
+def test_move_refuses_a_coordinate_that_is_not_finite(bad: float) -> None:
+    # No client can be at one, and vanilla kicks a move to one: nothing is sent or changed.
+    positions: list[Position] = []
+
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        with pytest.raises(ValueError, match="move needs finite coordinates"):
+            await bot.move(1.0, bad, 3.0)
+        positions.append(bot.position)
+        await bot.tick()
+
+    assert play(script)[1:] == [[TICK_END]]
+    assert positions == [Position(**SPAWN_POSITION, **SPAWN_ROTATION)]
 
 
 def test_a_move_off_the_ground_says_so_in_the_flags() -> None:
