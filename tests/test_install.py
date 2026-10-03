@@ -273,9 +273,20 @@ def test_install_from_a_missing_file_says_so(tmp_path: Path) -> None:
 
 def test_install_from_a_build_for_another_minecraft_version_is_refused(tmp_path: Path) -> None:
     supplied = write(tmp_path / "pumpkin", fake_pumpkin(version="0.2.0+26.4-26.60"))
-    with pytest.raises(ProvisionError, match=r"this mscts tests Minecraft 26\.3\."):
+    with pytest.raises(ProvisionError) as raised:
         install_from(ADAPTER, TARGET, tmp_path / "cache", supplied)
+    assert str(raised.value).startswith(f"{supplied} is not supported: "), raised.value
     assert not root_of(tmp_path / "cache").exists()
+
+
+def test_install_from_an_unsupported_file_over_an_installation_says_so_first(
+    tmp_path: Path,
+) -> None:
+    install_from(ADAPTER, TARGET, tmp_path / "cache", write(tmp_path / "a", NIGHTLY))
+    supplied = write(tmp_path / "b", fake_pumpkin(version="0.2.0+26.4-26.60"))
+    with pytest.raises(ProvisionError) as raised:
+        install_from(ADAPTER, TARGET, tmp_path / "cache", supplied)
+    assert str(raised.value).startswith(f"{supplied} is not supported: "), raised.value
 
 
 def test_the_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

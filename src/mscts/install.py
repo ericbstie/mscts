@@ -250,12 +250,16 @@ def install_release(
 
 
 def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) -> Installed:
-    """Install the file at `path`, recording its sha256 and the Build it names."""
+    """Install the file at `path`, recording its sha256 and the Build it names.
+
+    A file the Adapter cannot run is refused first, naming `path`, whatever is installed.
+    """
     try:
         body = path.read_bytes()
     except OSError as error:
         msg = f"cannot read {path}: {error}"
         raise ProvisionError(msg) from error
+    named = adapter.check(path, target)  # its errors name the user's file, and come first
     sha256 = hashlib.sha256(body).hexdigest()
     root = root_of(adapter, target, cache_dir)
     existing = installed(adapter, target, cache_dir)
@@ -272,10 +276,8 @@ def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) 
             f"{root} and run `{install_command(adapter.name, path=str(path))}`"
         )
         raise ProvisionError(msg)
-    named: list[Build] = []
 
     def source(build: Build) -> Source:
-        named.append(build)
         return Source(
             sha256=sha256,
             size=len(body),
@@ -286,7 +288,7 @@ def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) 
         )
 
     _write(adapter, target, cache_dir, body, source)
-    what = f"installed {path} ({adapter.name} {named[0]}, sha256 {sha256})"
+    what = f"installed {path} ({adapter.name} {named}, sha256 {sha256})"
     return _done(adapter, target, cache_dir, what)
 
 
