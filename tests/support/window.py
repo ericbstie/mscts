@@ -10,19 +10,24 @@ from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.transcript import Event, Transcript
 
 
-def last_window(transcript: Transcript, bot: str) -> list[Event]:
-    """Every event of `bot` inside the last Observation window of `transcript`, in time order.
+def window_since(transcript: Transcript, bot: str, since_ns: int) -> list[Event]:
+    """Every event of `bot` inside the first Observation window opened at or after `since_ns`.
 
-    As in Compare, the window starts at its `observe:open` Mark and ends at the Bot's own
-    `observe:close <bot>` Mark, or at the `observe:close` that names no Bot if it has none;
-    a window with no close Mark (its body raised) runs to the end. An event stamped at a
-    Mark's time is after the Mark. Empty if the Transcript has no window.
+    The events are in time order; none if no window opened since. As in Compare, the
+    window starts at its `observe:open` Mark and ends at the Bot's own `observe:close <bot>`
+    Mark, or at the `observe:close` that names no Bot if it has none; a window with no
+    close Mark (its body raised) runs to where the next one opens, or to the end. An event
+    stamped at a Mark's time is after the Mark.
     """
-    opens = [mark.t_ns for mark in transcript.marks if _label(mark.label) == OBSERVE_OPEN]
+    opens = sorted(
+        mark.t_ns
+        for mark in transcript.marks
+        if mark.label.split(" ", 1)[0] == OBSERVE_OPEN and mark.t_ns >= since_ns
+    )
     if not opens:
         return []
-    opened = max(opens)
-    closed = _close_of(transcript, bot, opened=opened)
+    opened, *later = opens
+    closed = _close_of(transcript, bot, opened=opened, next_opened=min(later, default=None))
     return [
         event
         for event in transcript.events
@@ -30,15 +35,21 @@ def last_window(transcript: Transcript, bot: str) -> list[Event]:
     ]
 
 
-def _close_of(transcript: Transcript, bot: str, *, opened: int) -> int | None:
-    """When the window opened at `opened` closes for `bot`; None if it never does."""
+def _close_of(
+    transcript: Transcript, bot: str, *, opened: int, next_opened: int | None
+) -> int | None:
+    """When the window opened at `opened` closes for `bot`; None if it never does.
+
+    A window with no close Mark of its own ends where the next one opens, if one does.
+    """
     for label in (f"{OBSERVE_CLOSE} {bot}", OBSERVE_CLOSE):  # its own close wins
-        closes = [m.t_ns for m in transcript.marks if m.label == label and m.t_ns >= opened]
+        closes = [
+            mark.t_ns
+            for mark in transcript.marks
+            if mark.label == label
+            and opened <= mark.t_ns
+            and (next_opened is None or mark.t_ns < next_opened)
+        ]
         if closes:
             return min(closes)
-    return None
-
-
-def _label(label: str) -> str:
-    """A Mark's label without the names that follow it."""
-    return label.split(" ", 1)[0]
+    return next_opened

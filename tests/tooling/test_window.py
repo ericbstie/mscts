@@ -1,4 +1,4 @@
-from support.window import last_window
+from support.window import window_since
 
 from mscts.codec.packets import Direction, Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
@@ -30,13 +30,24 @@ def test_a_late_recorded_packet_is_read_by_its_time_not_by_where_it_landed() -> 
     transcript.record("watcher", PACKET, t_ns=15)  # recorded late, stamped before the window
 
     assert transcript.events[first].t_ns == 15  # an index window would take it
-    assert last_window(transcript, "watcher") == [late_inside, inside]
+    assert window_since(transcript, "watcher", 0) == [late_inside, inside]
 
 
 def test_a_window_with_no_close_mark_runs_to_the_end() -> None:
     transcript = _transcript(Mark(t_ns=20, label=OBSERVE_OPEN))
     later = transcript.record("watcher", PACKET, t_ns=90)
-    assert last_window(transcript, "watcher") == [later]
+    assert window_since(transcript, "watcher", 0) == [later]
+
+
+def test_a_window_with_no_close_mark_ends_where_the_next_one_opens() -> None:
+    transcript = _transcript(
+        Mark(t_ns=20, label=OBSERVE_OPEN),
+        Mark(t_ns=60, label=OBSERVE_OPEN),
+        Mark(t_ns=80, label=f"{OBSERVE_CLOSE} watcher"),
+    )
+    inside = transcript.record("watcher", PACKET, t_ns=30)
+    transcript.record("watcher", PACKET, t_ns=70)
+    assert window_since(transcript, "watcher", 0) == [inside]
 
 
 def test_the_bots_own_close_mark_ends_its_window_before_the_unnamed_one() -> None:
@@ -48,22 +59,22 @@ def test_the_bots_own_close_mark_ends_its_window_before_the_unnamed_one() -> Non
     inside = transcript.record("watcher", PACKET, t_ns=30)
     transcript.record("watcher", PACKET, t_ns=50)
     other = transcript.record("control", PACKET, t_ns=50)
-    assert last_window(transcript, "watcher") == [inside]
-    assert last_window(transcript, "control") == [other]
+    assert window_since(transcript, "watcher", 0) == [inside]
+    assert window_since(transcript, "control", 0) == [other]
 
 
-def test_only_the_last_window_is_read() -> None:
+def test_the_window_read_is_the_first_to_open_since_the_time_given() -> None:
     transcript = _transcript(
         Mark(t_ns=20, label=OBSERVE_OPEN),
         Mark(t_ns=40, label=OBSERVE_CLOSE),
         Mark(t_ns=60, label=f"{OBSERVE_OPEN} minecraft:block_update"),
     )
     transcript.record("watcher", PACKET, t_ns=30)
-    last = transcript.record("watcher", PACKET, t_ns=70)
-    assert last_window(transcript, "watcher") == [last]
+    second = transcript.record("watcher", PACKET, t_ns=70)
+    assert window_since(transcript, "watcher", 21) == [second]
 
 
-def test_a_transcript_with_no_window_has_nothing_in_one() -> None:
-    transcript = _transcript()
+def test_nothing_is_in_a_window_when_none_opened_since_the_time_given() -> None:
+    transcript = _transcript(Mark(t_ns=20, label=OBSERVE_OPEN))
     transcript.record("watcher", PACKET, t_ns=30)
-    assert last_window(transcript, "watcher") == []
+    assert window_since(transcript, "watcher", 21) == []
