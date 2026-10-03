@@ -9,10 +9,11 @@ independent check on the Connection's state machine.
 import asyncio
 import socket
 import struct
+import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from contextlib import asynccontextmanager, suppress
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 
 from mscts.bot import Bot
@@ -192,6 +193,8 @@ class JoinScript:
         disconnect_in: The State in which to disconnect the client instead of going on.
         commands: The fields of a `commands` packet (the command tree) sent in play before
             the join teleport, as vanilla sends its own, or None to send none.
+        after_batch: Frames written in the same write as the first `chunk_batch_finished`,
+            so they arrive with it, before `Bot.join` returns; or None.
         then: Run last, before waiting for the client to close, or None.
     """
 
@@ -200,6 +203,7 @@ class JoinScript:
     keep_alive_id: int | None = None
     disconnect_in: State | None = None
     commands: Mapping[str, object] | None = None
+    after_batch: Callable[[Peer], bytes] | None = None
     then: Handler | None = None
 
 
@@ -313,7 +317,9 @@ class _Join:
         await self.expect(peer, "minecraft:accept_teleportation")
         await peer.send("minecraft:chunk_batch_start")
         await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
-        await peer.send("minecraft:chunk_batch_finished", batch_size=1)
+        finished = peer.frame("minecraft:chunk_batch_finished", batch_size=1)
+        after = self.script.after_batch
+        await peer.write(finished + (b"" if after is None else after(peer)))
         await self.expect(peer, "minecraft:chunk_batch_received")
         # Vanilla takes player_loaded whenever it comes; waiting for it here pins where
         # the Bot sends it (docs/research/2026-09-26-join.md).
@@ -385,6 +391,62 @@ def play_server(seen: list[Packet], answer: Answer = answer_each_tick) -> Handle
                 await answer(peer, requests)
 
     return join_server(seen, JoinScript(then=then))
+
+
+PASS_S = 0.003
+"""How long `ticking_server`'s packet pass lasts: vanilla's lasted under 5 ms (research)."""
+
+EFFECT_AFTER_PASS_S = 0.03
+"""When, after the first pass, `ticking_server`'s tick sends what it changed."""
+
+BLOCK_UPDATE = bytes.fromhex("0000004000001fc401")
+"""A `block_update` payload (a position and a state) that decodes strictly."""
+
+
+def ticking_server(seen: list[Packet], *, stray: bool = False) -> Handler:
+    """Join like vanilla, then answer statistics requests in packet passes a tick apart.
+
+    The first request opens a pass of `PASS_S`, answered at once, and its tick sends a
+    `block_update` `EFFECT_AFTER_PASS_S` after the pass: what the barrier must wait for.
+    Passes come `TICK_S` apart from the first. A request that arrives during a pass is
+    answered at once, as vanilla answers every packet that arrives during its pass; any
+    other waits for the next pass. With `stray`, an `award_stats` nobody asked for
+    arrives with the join's `chunk_batch_finished`. Every serverbound Packet goes into
+    `seen`.
+    """
+
+    async def then(peer: Peer) -> None:
+        loop = asyncio.get_running_loop()
+        first: float | None = None
+        effects: list[asyncio.Task[None]] = []
+
+        async def effect() -> None:
+            await asyncio.sleep(PASS_S + EFFECT_AFTER_PASS_S)
+            await peer.write(peer.raw_frame("minecraft:block_update", BLOCK_UPDATE))
+
+        try:
+            async for packet in peer.packets():
+                seen.append(packet)
+                if packet.name != "minecraft:client_command":
+                    continue
+                now = loop.time()
+                if first is None:
+                    first = now
+                    effects.append(loop.create_task(effect()))
+                else:
+                    ticks, into = divmod(now - first, TICK_S)
+                    if into > PASS_S:
+                        await asyncio.sleep(first + (ticks + 1) * TICK_S - now)
+                await answer_at_once(peer, 0)
+        finally:
+            for task in effects:
+                task.cancel()
+            await asyncio.gather(*effects, return_exceptions=True)
+
+    def stray_answer(peer: Peer) -> bytes:
+        return peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
+
+    return join_server(seen, JoinScript(after_batch=stray_answer if stray else None, then=then))
 
 
 @asynccontextmanager
@@ -474,6 +536,58 @@ def with_bot[T](
                 await bot.close()
 
     return asyncio.run(client())
+
+
+@dataclass
+class _Thread:
+    """What `serve_in_thread`'s thread hands back to the test."""
+
+    started: threading.Event
+    endpoint: Endpoint | None = None
+    stop: Callable[[], object] | None = None
+    error: BaseException | None = None
+
+
+@contextmanager
+def serve_in_thread(codec: Codec, handler: Handler) -> Iterator[Endpoint]:
+    """`serve`, on an event loop in a thread of its own, for as long as the block runs.
+
+    The fake keeps time while the test's own loop is blocked (`time.sleep` in a Bot's
+    path), as a real server does. An error in the fake is raised when the block ends.
+    """
+    thread_state = _Thread(started=threading.Event())
+
+    async def main() -> None:
+        stopping = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        thread_state.stop = lambda: loop.call_soon_threadsafe(stopping.set)
+        async with serve(codec, handler) as endpoint:
+            thread_state.endpoint = endpoint
+            thread_state.started.set()
+            await stopping.wait()
+
+    def run() -> None:
+        try:
+            asyncio.run(main())
+        except BaseException as error:  # noqa: BLE001 - handed to the test's thread
+            thread_state.error = error
+        finally:
+            thread_state.started.set()
+
+    thread = threading.Thread(target=run, name="mscts fake server", daemon=True)
+    thread.start()
+    thread_state.started.wait(HANDLER_TIMEOUT_S)
+    try:
+        if thread_state.endpoint is None:
+            msg = "the fake server did not start"
+            raise RuntimeError(msg) from thread_state.error
+        yield thread_state.endpoint
+    finally:
+        if thread_state.stop is not None:
+            thread_state.stop()
+        thread.join(HANDLER_TIMEOUT_S)
+    if thread_state.error is not None:
+        raise thread_state.error
 
 
 def free_port() -> int:

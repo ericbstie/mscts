@@ -17,7 +17,7 @@ from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
-from mscts.transcript import Mark, Transcript
+from mscts.transcript import Transcript
 
 PROBE_TIMEOUT_S = 1.0
 """How long one readiness probe attempt waits, from connecting to the status answer."""
@@ -49,22 +49,24 @@ _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
 _PITCH_LIMIT = 90.0
 
 TICK_GAP_S = 0.005
-"""How far apart two statistics answers must arrive to show that a tick passed between them.
+"""How long `sync` waits after its first answer arrived before it asks again.
 
 Vanilla handles every packet that has arrived in one pass at the start of a tick, a request
 that arrives during the pass included, so two requests sent back to back can be answered
 together, before that tick sends anything. Answers inside one pass came 0.1 to 3.6 ms
 apart; answers from different ticks, at least 5.4 ms (docs/research/2026-10-01-join-chunks.md).
+A request sent this long after an answer arrived lands after that answer's pass.
 """
 
 SYNC_MAX_TRIPS = 6
-"""The most statistics requests `sync` makes: three pairs, an even number.
+"""No longer used by `sync`, which always makes one pair (#115).
 
-A server that never shows a gap between two answers must not hold the Bot for ever.
+Kept until #115 decides its Behaviour 2 and 4: `scripts/research/probe_loop.py` reads
+`SYNC_CAPPED`.
 """
 
 SYNC_CAPPED = "sync:capped"
-"""The label of the Mark (followed by the Bot's name) `sync` leaves on reaching `SYNC_MAX_TRIPS`."""
+"""The label of the Mark `sync` left at its cap. No longer left (#115); see `SYNC_MAX_TRIPS`."""
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
@@ -364,16 +366,14 @@ class Bot:
 
         The barrier of an Observation window. The Bot asks for its statistics
         (`client_command`, `REQUEST_STATS`) and takes packets until the answer
-        (`award_stats`), twice, the second request sent only once the first answer has
-        arrived: a pair. Vanilla answers at the start of a tick, before that tick sends
-        what it changed, so an answer that comes after a tick has passed since the last
-        one proves the server has sent everything caused by what it had received. The two
-        answers of a pair prove it only if they arrive at least `TICK_GAP_S` apart; if
-        they arrive closer, the server handled both in one pass of one tick, so the Bot
-        waits `TICK_GAP_S` for that pass to end and asks again. After `SYNC_MAX_TRIPS`
-        requests it stops, and leaves the Mark `SYNC_CAPPED` and its name: a server that
-        never shows a gap. Every packet taken is recorded, and the Bot's Replies have
-        already answered each (docs/research/2026-10-01-join-chunks.md).
+        (`award_stats`), twice: a pair. Vanilla handles every packet that has arrived in
+        one pass at the start of a tick, before that tick sends what it changed, and a
+        pass lasts under `TICK_GAP_S`. So the Bot sends the second request only once
+        `TICK_GAP_S` has passed since the first answer arrived: the request lands after
+        that pass, its answer comes from a later tick, and by then the server has sent
+        everything caused by what it had received. The proof is the wait, which a stall
+        in the Bot's own loop can only lengthen. Every packet taken is recorded, and the
+        Bot's Replies have already answered each (docs/research/2026-10-01-join-chunks.md).
 
         Raises:
             ProtocolError: The Bot is not in play, or the server disconnected it.
@@ -383,22 +383,18 @@ class Bot:
             msg = f"sync needs a Bot in play, not one in {self._connection.state}"
             raise ProtocolError(msg)
         async with self._operation(self._timeout_s):
-            trips = 0
-            while True:
-                first = await self._ask_for_statistics()
-                second = await self._ask_for_statistics()
-                trips += 2
-                if second - first >= round(TICK_GAP_S * 1e9):
-                    return
-                if trips >= SYNC_MAX_TRIPS:
-                    self._connection.transcript.marks.append(
-                        Mark(
-                            t_ns=self._connection.transcript.now_ns(),
-                            label=f"{SYNC_CAPPED} {self.name}",
-                        )
-                    )
-                    return
-                await asyncio.sleep(TICK_GAP_S)
+            first = await self._ask_for_statistics()
+            await self._wait_until(first + round(TICK_GAP_S * 1e9))
+            await self._ask_for_statistics()
+
+    async def _wait_until(self, t_ns: int) -> None:
+        """Return once the Transcript's clock has reached `t_ns`."""
+        transcript = self._connection.transcript
+        while True:
+            remaining_ns = t_ns - transcript.now_ns()
+            if remaining_ns <= 0:
+                return
+            await asyncio.sleep(remaining_ns / 1e9)
 
     async def _ask_for_statistics(self) -> int:
         """Request the statistics, take packets until the answer, and return when it arrived."""

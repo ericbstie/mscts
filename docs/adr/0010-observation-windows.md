@@ -208,3 +208,26 @@ counter, so whether it falls inside a window is timing
    differs.
 3. The position resend (`move_entity_pos` every 60 ticks) stays compared,
    as item 3 says, until PLAN.md's open question on it is decided.
+
+## Amendment (2026-10-03, #115): the barrier proves a tick by its wait
+
+The #88 amendment's proof was the gap between a pair's two answers, as the
+Bot's reader stamped them. A stall in the Bot's own loop (a GC pause,
+another Bot's reader decoding a chunk burst) stamps the second answer late,
+so a pair answered in one pass can look a tick apart (audit 2026-10-02 H1).
+Against a fake that keeps time in its own thread, a 12 ms stall after the
+second request made `sync` return before the tick's `block_update`.
+
+1. **The barrier is one pair, and the proof is the wait between its
+   requests.** `Bot.sync` sends a request, takes its answer, waits until
+   `TICK_GAP_S` (5 ms) has passed since that answer arrived, and only then
+   sends the second request. A pass lasts under 5 ms (answers from one pass
+   came 0.1 to 3.6 ms apart), so the second request lands after the pass
+   that answered the first, and its answer comes from a later tick, after
+   that tick sent what it changed. A stall can only lengthen the wait, so
+   it never turns a one-pass pair into a tick. This replaces the #88
+   amendment's items 1 to 4: item 2's objection holds for the gap as a
+   proof, not for the wait.
+2. **It rests on vanilla's pass.** A server that answers on its network
+   thread, with no tick between, gets the same wait and proves nothing by
+   it, as it did under the #88 cap.

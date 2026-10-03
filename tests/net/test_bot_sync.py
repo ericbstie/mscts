@@ -2,15 +2,14 @@
 
 import asyncio
 import time
-from collections.abc import Callable
 
 import pytest
 
 from mscts import bot as bot_module
 from mscts.bot import Bot
-from mscts.codec.packets import Codec, Direction, Packet
+from mscts.codec.packets import Codec, Direction
 from mscts.codec.schemas.play.stats import REQUEST_STATS
-from mscts.net import ConnectionClosedError, ProtocolError
+from mscts.net import Connection, ConnectionClosedError, ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import (
@@ -22,7 +21,9 @@ from tests.net.fakes import (
     answer_like_vanilla_after,
     never_answer,
     play_server,
+    serve_in_thread,
     status_server,
+    ticking_server,
     with_bot,
 )
 
@@ -33,6 +34,8 @@ WIDE_GAP_S = 0.1
 """A `TICK_GAP_S` far above a localhost round trip, so back-to-back answers are one pass."""
 BLOCK = bytes.fromhex("0000004000001fc401")
 """A `block_update` payload: it decodes strictly, so a stand-in one is a position and a state."""
+STALL_S = 0.012
+"""How long a test blocks the Bot's loop: a GC pause or a chunk burst decoded (audit H1)."""
 
 
 def received(transcript: Transcript) -> list[str]:
@@ -74,7 +77,9 @@ def test_sync_asks_for_statistics_twice_each_after_the_last_answer() -> None:
     assert [p.fields for p in seen if p.name == REQUEST] == [{"action": REQUEST_STATS}] * 2
 
 
-def test_two_answers_from_one_pass_make_sync_wait_and_ask_in_a_new_pair(wide_gap: float) -> None:
+def test_sync_is_one_pair_its_second_request_sent_a_tick_gap_after_the_first_answer(
+    wide_gap: float,
+) -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
     seen = []
 
@@ -82,22 +87,14 @@ def test_two_answers_from_one_pass_make_sync_wait_and_ask_in_a_new_pair(wide_gap
         await bot.join()
         await bot.sync()
 
-    # The first two requests are answered at once, a fraction of a millisecond apart;
-    # from the third, like vanilla: the second of a pair a tick later.
-    answer = answer_like_vanilla_after(2, tick_s=3 * wide_gap)
-    with_bot(CODEC, transcript, play_server(seen, answer), use, timeout_s=5.0)
+    # Even a server that answers at once gets one pair: the wait is the proof.
+    with_bot(CODEC, transcript, play_server(seen, answer_at_once), use, timeout_s=5.0)
 
     barrier = barrier_times(transcript)
-    assert [name for name, _ in barrier] == [REQUEST, ANSWER] * 4
-    times = [t_ns for _, t_ns in barrier]
-    wait_ns = round(wide_gap * 1e9)
-    assert times[3] - times[1] < wait_ns  # the first pair's answers shared a pass
-    assert times[4] - times[3] >= wait_ns  # so the Bot waited before asking again
-    assert times[2] - times[1] < wait_ns  # the second request of a pair follows at once
-    assert times[6] - times[5] < wait_ns
-    assert times[7] - times[5] >= wait_ns  # and the new pair's answers were a tick apart
-    assert transcript.marks == []
-    assert len([p for p in seen if p.name == REQUEST]) == 4
+    assert [name for name, _ in barrier] == [REQUEST, ANSWER] * 2
+    _, answered, asked, _ = [t_ns for _, t_ns in barrier]
+    assert asked - answered >= round(wide_gap * 1e9)
+    assert len([p for p in seen if p.name == REQUEST]) == 2
 
 
 def test_a_sync_whose_answers_come_a_tick_apart_ends_after_one_pair(wide_gap: float) -> None:
@@ -114,68 +111,45 @@ def test_a_sync_whose_answers_come_a_tick_apart_ends_after_one_pair(wide_gap: fl
     assert transcript.marks == []
 
 
-def test_a_server_that_never_shows_a_tick_ends_sync_at_the_cap_with_a_mark(
-    wide_gap: float,
-) -> None:
-    transcript = Transcript(group_id="test/sync", server="fake")
-    seen = []
-
-    async def use(bot: Bot) -> None:
-        await bot.join()
-        await bot.sync()  # returns, however the server answers
-
-    with_bot(CODEC, transcript, play_server(seen, answer_at_once), use, timeout_s=5.0)
-
-    barrier = barrier_times(transcript)
-    assert [name for name, _ in barrier] == [REQUEST, ANSWER] * bot_module.SYNC_MAX_TRIPS
-    assert len([p for p in seen if p.name == REQUEST]) == bot_module.SYNC_MAX_TRIPS
-    (mark,) = transcript.marks
-    assert mark.label == f"{bot_module.SYNC_CAPPED} alice"
-    assert mark.label.split()[0] == "sync:capped"
-    assert mark.t_ns >= barrier[-1][1]  # left once the last answer had arrived
-    wait_ns = round(wide_gap * 1e9)
-    times = [t_ns for _, t_ns in barrier]
-    pairs = list(
-        zip(times[1::4], times[4::4], strict=False)
-    )  # a pair's last answer, the next request
-    assert pairs
-    assert all(asked - answered >= wait_ns for answered, asked in pairs)
-
-
-def test_the_gap_is_between_when_answers_arrived_not_when_the_bot_took_them(
-    wide_gap: float, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    transcript = Transcript(group_id="test/sync", server="fake")
-    taken = []
-    real_expect = Bot.expect
-
-    async def slow_to_take_the_second(
-        self: Bot, name: str, *, timeout_s: float, where: Callable[[Packet], bool] | None = None
-    ) -> Packet:
-        packet = await real_expect(self, name, timeout_s=timeout_s, where=where)
-        if name == ANSWER:
-            taken.append(packet)
-            if len(taken) % 2 == 0:  # a busy Bot looks at the second answer a tick late
-                await asyncio.sleep(1.5 * wide_gap)
-        return packet
-
-    monkeypatch.setattr(Bot, "expect", slow_to_take_the_second)
-
-    async def use(bot: Bot) -> None:
-        await bot.join()
-        await bot.sync()
-
-    with_bot(CODEC, transcript, play_server([], answer_at_once), use, timeout_s=5.0)
-
-    assert len(taken) == bot_module.SYNC_MAX_TRIPS  # the answers came together, so it capped
-    (mark,) = transcript.marks
-    assert mark.label == f"{bot_module.SYNC_CAPPED} alice"
-
-
-def test_the_cap_is_a_whole_number_of_pairs() -> None:
-    assert bot_module.SYNC_MAX_TRIPS % 2 == 0
-    assert bot_module.SYNC_MAX_TRIPS >= 4
+def test_the_fakes_tick_is_longer_than_the_tick_gap() -> None:
     assert bot_module.TICK_GAP_S < TICK_S  # a vanilla-like tick is seen as one
+
+
+def test_a_bot_whose_loop_stalls_after_a_pairs_second_request_does_not_take_one_pass_for_a_tick(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Audit 2026-10-02 H1. The fake runs in its own thread, so it keeps time while the
+    # Bot's loop is blocked; a pair sent back to back lands in one 3 ms pass, and the
+    # stall stamps the second answer late, as if a tick had passed.
+    transcript = Transcript(group_id="test/sync", server="fake")
+    real_send = Connection.send
+    requests = 0
+
+    async def stalling_send(self: Connection, name: str, /, **fields: object) -> None:
+        nonlocal requests
+        await real_send(self, name, **fields)
+        if name == REQUEST:
+            requests += 1
+            if requests % 2 == 0:
+                # The loop is busy: another Bot decoding, GC, the OS. Blocking it is the
+                # point.
+                time.sleep(STALL_S)  # noqa: ASYNC251
+
+    monkeypatch.setattr(Connection, "send", stalling_send)
+
+    async def client() -> list[str]:
+        with serve_in_thread(CODEC, ticking_server([])) as endpoint:
+            bot = await Bot.connect(
+                endpoint, TARGET, name="alice", transcript=transcript, timeout_s=5.0
+            )
+            try:
+                await bot.join()
+                await bot.sync()
+                return received(transcript)
+            finally:
+                await bot.close()
+
+    assert "minecraft:block_update" in asyncio.run(client())
 
 
 def test_sync_takes_everything_the_server_sent_before_its_last_answer() -> None:
