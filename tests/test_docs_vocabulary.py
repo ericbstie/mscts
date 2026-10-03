@@ -5,7 +5,6 @@ protocol. The ADRs, research notes, audits, PLAN, PROGRESS and PROCESS record
 history and the codec's own names, so they are not checked.
 """
 
-import re
 from pathlib import Path
 
 import pytest
@@ -26,10 +25,6 @@ SITE_PAGES = sorted(
     ]
 )
 
-LINK_TARGET = re.compile(r"\]\([^)]*\)")
-"""A Markdown link's target. ADR-0007's file name keeps its old title, and a reader
-never sees the target, so it is not prose."""
-
 BANNED = {
     "wire": 'say "network traffic" (or "field types" for the codec\'s own types)',
     "observable": 'say "gameplay"',
@@ -39,7 +34,7 @@ BANNED = {
 def _hits(page: Path, word: str) -> list[str]:
     hits = []
     for number, line in enumerate(page.read_text().splitlines(), start=1):
-        if word in LINK_TARGET.sub("]", line).lower():
+        if word in line.lower():
             hits.append(f"{page.relative_to(ROOT)}:{number}: {line.strip()}")
     return hits
 
