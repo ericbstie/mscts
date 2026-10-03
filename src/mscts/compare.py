@@ -106,6 +106,14 @@ A window narrowed to some packets has their names after it, each after a space:
 `observe:open minecraft:block_update minecraft:system_chat`.
 """
 
+TICK_MARK = "tick:"
+"""The start of the label of the Mark that ends a tick of a tick-exact Group: `tick:<k>`.
+
+`GroupContext.step` records one for each tick it steps, k counting from 1 since the freeze:
+for each Bot with the Bot's name after a space (`tick:3 alice`), and one with no name for any
+Bot that has no Mark of its own for that tick.
+"""
+
 OBSERVE_CLOSE = "observe:close"
 """The label of the Mark that closes an Observation window.
 

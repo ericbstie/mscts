@@ -1033,8 +1033,20 @@ class GroupContext:
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
                                     # exception a Group raises), and no close Mark
+    async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
+                                    # Group froze already. close() unfreezes, however the
+                                    # Group ended (a failure to is logged, not raised)
+    async def step(self, ticks: int = 1) -> None: ...   # #23: per tick, control.run(
+                                    # "tick step 1") (marker, then barrier), then every Bot in
+                                    # play passes Bot.sync at once, then Marks
+                                    # "TICK_MARK<k> <Bot name>" 1 ns after each Bot's
+                                    # barrier's last answer (a Bot that passed none: now) and
+                                    # an unnamed "TICK_MARK<k>" now; k counts from 1 since the
+                                    # freeze. Vanilla sends nothing when a step ends
+                                    # (docs/research/2026-10-03-tick-step.md). ValueError:
+                                    # ticks < 1, or not frozen
     async def end(self) -> None: ...     # #184: Bot.refuse_queued_disconnect on every Bot
-    async def close(self) -> None: ...   # closes every Bot; idempotent
+    async def close(self) -> None: ...   # unfreezes if frozen, then closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
                                     # it is; "" if none (the script itself raised it)
@@ -1178,6 +1190,9 @@ class Verdict:
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
+TICK_MARK = "tick:"                 # #23: "tick:<k>" ends tick k of a tick-exact Group:
+                                    # for one Bot with its name after it ("tick:3 alice"),
+                                    # without for every Bot with no Mark of its own
 OBSERVE_CLOSE = "observe:close"     # the Mark that closes it: for one Bot with its name
                                     # after it ("observe:close alice"), without for every Bot
                                     # with no close Mark of its own in that window
