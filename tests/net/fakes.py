@@ -460,6 +460,39 @@ async def _answer_in_passes(peer: Peer, seen: list[Packet]) -> None:
         await asyncio.gather(*effects, return_exceptions=True)
 
 
+def flooding_server(seen: list[Packet]) -> Handler:
+    """Join like vanilla, then send `block_update`s back to back, and answer requests at once.
+
+    Between two `block_update`s it yields only one turn of its loop, so a client in another
+    thread almost always has bytes waiting: a stream with no gaps. Every serverbound Packet
+    goes into `seen`. A client that leaves ends the handler.
+    """
+    join = _Join(seen, JoinScript())
+
+    async def flood(peer: Peer) -> None:
+        update = peer.raw_frame("minecraft:block_update", BLOCK_UPDATE)
+        with suppress(ConnectionError):
+            while True:
+                await peer.write(update)
+                await asyncio.sleep(0)
+
+    async def handler(peer: Peer) -> None:
+        if not (await join.login(peer) and await join.configure(peer) and await join.play(peer)):
+            return
+        flooding = asyncio.get_running_loop().create_task(flood(peer))
+        try:
+            with suppress(ConnectionError):
+                async for packet in peer.packets():
+                    seen.append(packet)
+                    if packet.name == "minecraft:client_command":
+                        await answer_at_once(peer, 0)
+        finally:
+            flooding.cancel()
+            await asyncio.gather(flooding, return_exceptions=True)
+
+    return handler
+
+
 def scheduled_server(seen: list[Packet], *, stray_after_s: float | None = None) -> Handler:
     """Join like vanilla, then answer statistics requests in passes on a fixed schedule.
 
@@ -655,7 +688,8 @@ def serve_in_thread(codec: Codec, handler: Handler) -> Iterator[Endpoint]:
         yield thread_state.endpoint
     finally:
         if thread_state.stop is not None:
-            thread_state.stop()
+            with suppress(RuntimeError):  # its loop has closed already: the fake failed
+                thread_state.stop()
         thread.join(HANDLER_TIMEOUT_S)
     if thread_state.error is not None:
         raise thread_state.error

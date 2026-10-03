@@ -6,8 +6,9 @@ import time
 import pytest
 
 from mscts import bot as bot_module
+from mscts import net as net_module
 from mscts.bot import Bot
-from mscts.codec.packets import Codec, Direction
+from mscts.codec.packets import Codec, CodecError, Direction
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.net import Connection, ConnectionClosedError, ProtocolError
 from mscts.target import TARGET
@@ -15,10 +16,13 @@ from mscts.transcript import Transcript
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
+    JoinScript,
     Peer,
     answer_at_once,
     answer_each_tick,
     answer_like_vanilla_after,
+    flooding_server,
+    join_server,
     never_answer,
     play_server,
     scheduled_server,
@@ -199,7 +203,19 @@ def test_an_award_stats_that_arrived_before_the_request_is_not_its_answer() -> N
     assert "minecraft:block_update" in names
 
 
-def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_answer() -> None:
+@pytest.mark.parametrize(
+    "turns",
+    [
+        pytest.param(0, id="still-in-the-kernel"),
+        # Two turns: the transport moves the stray into the stream's buffer, and wakes
+        # the reader after the Bot's own next step (CPython's loop runs ready callbacks in
+        # order), so sync starts with the stray in the stream's buffer, unread.
+        pytest.param(2, id="in-the-stream-buffer"),
+    ],
+)
+def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_answer(
+    turns: int,
+) -> None:
     # Review A of #163, finding 1: the stray reaches the socket 5 ms after the join while
     # the Bot's loop is blocked, so the reader has not stamped it when the request goes.
     # Stamped after the request, it was taken as the answer, and the real one, at the next
@@ -214,6 +230,8 @@ def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_an
             try:
                 await bot.join()
                 time.sleep(0.02)  # noqa: ASYNC251 - the loop is busy: blocking it is the point
+                for _ in range(turns):
+                    await asyncio.sleep(0)
                 await bot.sync()
                 return received(transcript)
             finally:
@@ -221,6 +239,64 @@ def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_an
 
     assert "minecraft:block_update" in asyncio.run(client())
     assert [mark.label for mark in transcript.marks] == [f"{bot_module.SYNC_PASSED_OVER} alice"]
+
+
+def test_a_sync_against_a_stream_with_no_gaps_ends_well_inside_its_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Re-review of #163: catching up waited for a moment with nothing left to read, which a
+    # server in another process that never pauses may not give; it spun to the timeout.
+    # Here the kernel always reports a byte waiting, as it nearly always does for such a
+    # server: the flood keeps the reader busy, and nothing is ever quite read up.
+    transcript = Transcript(group_id="test/sync", server="fake")
+    timeout_s = 2.0  # under the fake's own handler timeout, so a spin fails here
+    real_unread = net_module._unread  # noqa: SLF001 - the kernel's count is what is faked
+
+    def never_empty(writer: asyncio.StreamWriter) -> int:
+        return max(real_unread(writer), 1)
+
+    monkeypatch.setattr(net_module, "_unread", never_empty)
+
+    async def client() -> float:
+        with serve_in_thread(CODEC, flooding_server([])) as endpoint:
+            bot = await Bot.connect(
+                endpoint, TARGET, name="alice", transcript=transcript, timeout_s=timeout_s
+            )
+            try:
+                await bot.join()
+                begun = time.perf_counter()
+                await bot.sync()
+                return time.perf_counter() - begun
+            finally:
+                await bot.close()
+
+    assert asyncio.run(client()) < timeout_s / 5
+
+
+def test_a_sync_after_the_reader_stopped_raises_its_error_without_waiting_for_more() -> None:
+    # A frame that does not decode stops the reader; what the server sends after it is
+    # never read. Catching up must not wait for those bytes, or sync would time out and
+    # report missing answers instead of the frame that broke the Connection.
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def broken_then_more(peer: Peer) -> None:
+        await peer.write(peer.raw_frame("minecraft:block_update", BLOCK + b"\x00"))
+        await asyncio.sleep(0.02)  # after the reader has stopped
+        await peer.write(peer.raw_frame("minecraft:block_update", BLOCK))
+        async for _ in peer.packets():  # the barrier's request, until the Bot closes
+            pass
+
+    async def use(bot: Bot) -> float:
+        await bot.join()
+        await asyncio.sleep(0.1)  # the broken frame stops the reader; the rest waits unread
+        begun = time.perf_counter()
+        with pytest.raises(CodecError):
+            await bot.sync()
+        return time.perf_counter() - begun
+
+    server = join_server([], JoinScript(then=broken_then_more))
+    took, _ = with_bot(CODEC, transcript, server, use, timeout_s=2.0)
+    assert took < 1.0
 
 
 def test_sync_takes_everything_the_server_sent_before_its_last_answer() -> None:

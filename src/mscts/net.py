@@ -133,6 +133,7 @@ class Connection:
         self._closed = False
         self._answer: Answer | None = None
         self._last_arrival_ns: int | None = None
+        self._stamped_bytes = 0  # every byte the reader has read, each stamped as it was
         self._reading = asyncio.get_running_loop().create_task(
             self._read_forever(), name=f"mscts Connection reader ({bot})"
         )
@@ -189,17 +190,19 @@ class Connection:
         return self._last_arrival_ns
 
     async def caught_up(self) -> None:
-        """Return once the reader has read and stamped every byte that reached the socket.
+        """Return once the reader has stamped every byte that had reached the socket on entry.
 
-        Nothing is waiting in the kernel's receive buffer (FIONREAD, on Linux and macOS),
-        in the stream's buffer, or in a frame not yet complete. So whatever arrived before
-        this returns is stamped before any time taken after it, however busy the event
-        loop was meanwhile. It also returns once the reader has ended.
+        The backlog is what waits then in the kernel's receive buffer (FIONREAD, on Linux
+        and macOS) and in the stream's buffer. So whatever arrived before this was called
+        is stamped before any time taken after it returns, however busy the event loop
+        was. Bytes that arrive meanwhile are not waited for, so a stream with no gaps
+        ends it too. It also returns once the reader has ended.
         """
+        # asyncio has no public view of what its StreamReader holds (CPython: `_buffer`).
+        held = len(getattr(self._reader, "_buffer", b""))
+        target = self._stamped_bytes + held + _unread(self._writer)
         while True:
-            # asyncio has no public view of what its StreamReader holds (CPython: `_buffer`).
-            held = getattr(self._reader, "_buffer", b"")
-            if self._reading.done() or not (_unread(self._writer) or held or self._frames.buffered):
+            if self._reading.done() or self._stamped_bytes >= target:
                 return
             await asyncio.sleep(0)  # a turn of the loop: the transport reads, the reader stamps
 
@@ -307,6 +310,7 @@ class Connection:
             while True:
                 chunk = await self._reader.read(_READ_SIZE)
                 t_ns = self._transcript.now_ns()
+                self._stamped_bytes += len(chunk)
                 if not chunk:
                     self._arrivals.put_nowait(self._end_of_stream())
                     return

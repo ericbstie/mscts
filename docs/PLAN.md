@@ -462,9 +462,9 @@ class Connection:                   # one TCP connection; owns framing, compress
     transcript: Transcript          # read-only: the Transcript it records to
     last_arrival_ns: int | None     # read-only: when the Packet recv last returned arrived, as the
                                     # Transcript stamps it (not when it was taken); None before the first
-    async def caught_up(self) -> None: ...  # once the reader has read and stamped every byte that
-                                    # reached the socket (FIONREAD 0, stream buffer and partial frame
-                                    # empty), or has ended; sync awaits it before stamping a request
+    async def caught_up(self) -> None: ...  # once the reader has stamped the backlog on entry
+                                    # (FIONREAD + the stream buffer; later bytes not waited for),
+                                    # or has ended; sync awaits it before stamping a request
     # The directions switch as the vanilla client switches them (26.3 javap: the terminal
     # packets, whose isTerminal() is true). Sending the intention moves both (intent 1 →
     # STATUS, 2 or 3 (transfer) → LOGIN, else ProtocolError). After that, what is *received*
