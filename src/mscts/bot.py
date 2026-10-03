@@ -1029,6 +1029,11 @@ class Bot:
         (`Minecraft.startAttack`, `MultiPlayerGameMode.attack`): `attack` with the entity's id,
         then the swing (`punch`). One call is one tick (see `tick`).
 
+        The client attacks with an item that has `piercing_weapon` (a spear) through another
+        packet, and vanilla's server ignores an `attack` made with one, so such an attack does
+        nothing on vanilla. Vanilla disconnects a player that attacks an item, an experience orb,
+        an arrow or itself (`invalid_entity_attacked`), which no real client sends.
+
         Raises:
             ProtocolError: The Bot is not in play.
         """
@@ -1042,13 +1047,15 @@ class Bot:
         *,
         off_hand: bool = False,
     ) -> None:
-        """Use the held item on `entity` (trade, shear, ride, put on a saddle), in one tick.
+        """Use the held item on `entity` (trade, shear, put on a saddle), in one client tick.
 
         `interact` with the entity's id, the main hand (or the off hand), where on the entity
         relative to its position (`at`, its feet by default), and whether the sneak key is held
         (`MultiPlayerGameMode.interact`). The client's swing for it sends nothing. A client that
-        sees the use do nothing goes on to `use_item`; the Bot cannot see that, so it sends
-        `interact` only. One call is one tick (see `tick`).
+        sees the use do nothing goes on (`Minecraft.startUseItem`): `use_item` with the same hand
+        if it holds something, then the same with the off hand. The Bot cannot see that, so it
+        sends `interact` only; a Group calls `use_item` itself. One call is one tick (see
+        `tick`).
 
         Raises:
             ProtocolError: The Bot is not in play.
