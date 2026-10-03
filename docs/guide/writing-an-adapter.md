@@ -122,6 +122,13 @@ without encryption, whitelist, telemetry or a server icon, with spawn
 protection 0, and without pausing when empty. None of these are ServerSpec
 fields. Your Adapter sets them every time.
 
+**Turn mob spawning off.** Every server must start with the
+`spawn_mobs` game rule off, so that no mob spawns from the first tick.
+Vanilla and Pumpkin read it from `world/data/minecraft/game_rules.dat`,
+not from their config. `mscts.adapters.fixture_world.game_rules()` builds
+that file: write it gzipped before the server starts. A unit test checks
+this for every Adapter in `ADAPTERS`.
+
 **Bind exactly the Endpoint.** The ServerSpec's host is always a loopback
 address, and each server gets its own. The server must listen on that host
 and port, and the LaunchPlan's `endpoint` must name them.
