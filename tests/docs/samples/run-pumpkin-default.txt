@@ -1,0 +1,17 @@
+Running tests against pumpkin
+Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
+- Server list description  status_response.description
+- Unused secure chat flag  status_response.enforceSecureChat
+- Server list icon  status_response.favicon
+- Server list player sample  status_response.players.sample
+- Player UUID at login  login_finished.profile.uuid
+- Configuration plugin message data  configuration:custom_payload.data
+- Registry entry data  registry_data.entries[].data
+- Registry entry  registry_data.entries[]
+- Registry entry name  registry_data.entries[].entry_id
+- Registry name  registry_data.registry_id
+- Tag member  configuration:update_tags.tagged_registries[].tags[].entries[]
+- Tag name  configuration:update_tags.tagged_registries[].tags[].tag_name
+- Tag  configuration:update_tags.tagged_registries[].tags[]
+- Server list player UUID  status_response.players.sample[].id
+Took 96.5 s
