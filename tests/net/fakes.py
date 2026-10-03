@@ -493,27 +493,39 @@ def flooding_server(seen: list[Packet]) -> Handler:
     return handler
 
 
-def scheduled_server(seen: list[Packet], *, stray_after_s: float | None = None) -> Handler:
+def scheduled_server(
+    seen: list[Packet],
+    *,
+    stray_after_s: float | None = None,
+    burst_after_s: float | None = None,
+) -> Handler:
     """Join like vanilla, then answer statistics requests in passes on a fixed schedule.
 
     Passes come `TICK_S` apart, the first one `TICK_S` after the join, whoever asks: a
     request that arrives during a pass (`PASS_S`) is answered at once, any other waits
     for the next pass. The tick of the first pass that answers sends a `block_update`
     `EFFECT_AFTER_PASS_S` after the pass. With `stray_after_s`, an `award_stats` nobody
-    asked for is sent that long after the join. Every serverbound Packet goes into
-    `seen`. A client that leaves while an answer is still due ends the handler.
+    asked for is sent that long after the join; with `burst_after_s`, `BURST_FRAMES`
+    `change_difficulty` frames in one write. Every serverbound Packet goes into `seen`.
+    A client that leaves while an answer is still due ends the handler.
     """
     join = _Join(seen, JoinScript())
 
     async def handler(peer: Peer) -> None:
         if await join.login(peer) and await join.configure(peer) and await join.play(peer):
             with suppress(ConnectionError):
-                await _answer_on_schedule(peer, seen, stray_after_s)
+                await _answer_on_schedule(peer, seen, stray_after_s, burst_after_s)
 
     return handler
 
 
-async def _answer_on_schedule(peer: Peer, seen: list[Packet], stray_after_s: float | None) -> None:
+BURST_FRAMES = 200
+"""How many frames `scheduled_server`'s burst holds: far more bytes than a stray's."""
+
+
+async def _answer_on_schedule(
+    peer: Peer, seen: list[Packet], stray_after_s: float | None, burst_after_s: float | None
+) -> None:
     """`scheduled_server`'s play: answer each statistics request at its pass, until EOF."""
     loop = asyncio.get_running_loop()
     joined = loop.time()
@@ -525,6 +537,9 @@ async def _answer_on_schedule(peer: Peer, seen: list[Packet], stray_after_s: flo
         with suppress(ConnectionError):  # the client may have left already
             await peer.write(frame)
 
+    if burst_after_s is not None:
+        burst = peer.raw_frame("minecraft:change_difficulty", b"\x00\x01") * BURST_FRAMES
+        sends.append(loop.create_task(send_at(joined + burst_after_s, burst)))
     if stray_after_s is not None:
         stray = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
         sends.append(loop.create_task(send_at(joined + stray_after_s, stray)))

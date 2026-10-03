@@ -255,12 +255,16 @@ second request made `sync` return before the tick's `block_update`.
    real answer queued to offset every later barrier. Before it stamps the
    request, the Bot's reader stamps the backlog: every byte waiting then
    in the kernel's buffer and the stream's. So a stray that arrived while
-   the Bot's loop was busy is still stamped before the request. Bytes that
-   arrive meanwhile are not waited for, so a server that never pauses
-   cannot hold the barrier up. One that reaches the socket after the
-   request is sent is taken as its answer, and so is one whose frame was
-   still partly in transit: the fix covers what arrived before, not a
-   server that sends statistics unasked at any moment.
+   the Bot's loop was busy is still stamped before the request, as long as
+   it fit in the Bot's receive buffer. Bytes that arrive meanwhile are not
+   waited for, so a server that never pauses cannot hold the barrier up.
+   A stray that reaches the socket after the request is sent is taken as
+   its answer, and so is one whose frame was still partly in transit. So
+   is one the server sent earlier but TCP flow control held back: while
+   the loop is busy, a large burst fills the Bot's receive window, and
+   what follows waits in the server's send buffer, where FIONREAD cannot
+   see it. The fix covers what reached the Bot before, not a server that
+   sends statistics unasked at any moment; #169 tracks that case.
 4. **No cap Mark.** With no retries there is no cap, so `SYNC_MAX_TRIPS`
    and the `sync:capped` Mark go. No Mark replaces that one: under the wait, a
    pair's answers always arrive at least `TICK_GAP_S` apart, so their gap

@@ -63,6 +63,18 @@ def barrier_times(transcript: Transcript) -> list[tuple[str, int]]:
     ]
 
 
+def block_until_bytes_wait_in_the_kernel(bot: Bot) -> None:
+    """Keep the Bot's loop busy until bytes wait unread in its socket's receive buffer.
+
+    A fixed stall is not enough under load: the fake's thread may send only after it.
+    """
+    writer = bot._connection._writer  # noqa: SLF001 - the socket is what is watched
+    deadline = time.monotonic() + 2.0
+    while net_module._unread(writer) == 0:  # noqa: SLF001
+        assert time.monotonic() < deadline, "nothing reached the Bot's socket"
+        time.sleep(0.001)
+
+
 def test_sync_asks_for_statistics_twice_each_after_the_last_answer() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
     seen = []
@@ -229,7 +241,7 @@ def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_an
             )
             try:
                 await bot.join()
-                time.sleep(0.02)  # noqa: ASYNC251 - the loop is busy: blocking it is the point
+                block_until_bytes_wait_in_the_kernel(bot)  # the stray, while the loop is busy
                 for _ in range(turns):
                     await asyncio.sleep(0)
                 await bot.sync()
@@ -241,36 +253,73 @@ def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_an
     assert [mark.label for mark in transcript.marks] == [f"{bot_module.SYNC_PASSED_OVER} alice"]
 
 
-def test_a_sync_against_a_stream_with_no_gaps_ends_well_inside_its_timeout(
+def test_an_award_stats_that_reached_the_socket_behind_a_burst_is_not_its_answer() -> None:
+    # Re-review 2 of #163, mutant N11: catching up must count each byte once. A burst sits
+    # unread in the stream's buffer and the stray behind it still in the kernel, so the
+    # reader needs a second turn for the stray; counting the burst twice ended the wait
+    # after the first, and the stray, stamped after the request, was taken as its answer.
+    transcript = Transcript(group_id="test/sync", server="fake")
+    server = scheduled_server([], burst_after_s=0.002, stray_after_s=0.015)
+
+    async def client() -> list[str]:
+        with serve_in_thread(CODEC, server) as endpoint:
+            bot = await Bot.connect(
+                endpoint, TARGET, name="alice", transcript=transcript, timeout_s=5.0
+            )
+            try:
+                await bot.join()
+                block_until_bytes_wait_in_the_kernel(bot)  # the burst, while the loop is busy
+                for _ in range(2):  # the transport moves it to the stream's buffer, unread
+                    await asyncio.sleep(0)
+                block_until_bytes_wait_in_the_kernel(bot)  # the stray, behind it
+                await bot.sync()
+                return received(transcript)
+            finally:
+                await bot.close()
+
+    assert "minecraft:block_update" in asyncio.run(client())
+    assert [mark.label for mark in transcript.marks] == [f"{bot_module.SYNC_PASSED_OVER} alice"]
+
+
+def test_catching_up_with_a_stream_with_no_gaps_ends_well_inside_the_sync_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Re-review of #163: catching up waited for a moment with nothing left to read, which a
     # server in another process that never pauses may not give; it spun to the timeout.
     # Here the kernel always reports a byte waiting, as it nearly always does for such a
-    # server: the flood keeps the reader busy, and nothing is ever quite read up.
+    # server: the flood keeps the reader busy, and nothing is ever quite read up. Only the
+    # catch-up is timed: the answers wait behind the flood, which takes longer under load.
     transcript = Transcript(group_id="test/sync", server="fake")
-    timeout_s = 2.0  # under the fake's own handler timeout, so a spin fails here
+    timeout_s = 4.0  # under the fake's own handler timeout, so a spin fails here
     real_unread = net_module._unread  # noqa: SLF001 - the kernel's count is what is faked
+    real_caught_up = net_module.Connection.caught_up
+    catch_ups: list[float] = []
 
     def never_empty(writer: asyncio.StreamWriter) -> int:
         return max(real_unread(writer), 1)
 
-    monkeypatch.setattr(net_module, "_unread", never_empty)
+    async def timed_caught_up(connection: net_module.Connection) -> None:
+        begun = time.perf_counter()
+        await real_caught_up(connection)
+        catch_ups.append(time.perf_counter() - begun)
 
-    async def client() -> float:
+    monkeypatch.setattr(net_module, "_unread", never_empty)
+    monkeypatch.setattr(net_module.Connection, "caught_up", timed_caught_up)
+
+    async def client() -> None:
         with serve_in_thread(CODEC, flooding_server([])) as endpoint:
             bot = await Bot.connect(
                 endpoint, TARGET, name="alice", transcript=transcript, timeout_s=timeout_s
             )
             try:
                 await bot.join()
-                begun = time.perf_counter()
                 await bot.sync()
-                return time.perf_counter() - begun
             finally:
                 await bot.close()
 
-    assert asyncio.run(client()) < timeout_s / 5
+    asyncio.run(client())
+    assert len(catch_ups) == 2
+    assert max(catch_ups) < timeout_s / 4
 
 
 def test_a_sync_after_the_reader_stopped_raises_its_error_without_waiting_for_more() -> None:
