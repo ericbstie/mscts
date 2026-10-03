@@ -1374,9 +1374,12 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Candidate failed: the wait ...". A BaseException that is not an Exception (a
     # cancellation from inside a wait) is raised once both waits are done. The wait is
     # not part of `elapsed_s`.
-    # #228: an Instance a Group left frozen (GroupError.left_frozen) plays no later Group:
-    # each is `error`, before the wait, "the Reference is unusable: <group id> failed and
-    # left its world frozen" (the Candidate's likewise, after a "; " if both are).
+    # #228: an Instance a Group left frozen (GroupError.left_frozen) plays no later Group,
+    # decided before the wait. The Reference's: each is `error`, "the Reference is
+    # unusable: <group id> failed and left its world frozen" (the Candidate's likewise,
+    # after a "; " if both are). Only the Candidate's: each is `mismatch`, led by a
+    # `failed` Divergence "<group id> failed and left its world frozen", so the Score
+    # counts it (an `error` is not scored, and would reward breaking the world).
     # NotImplementedError for a statistical Group (M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError

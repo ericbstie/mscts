@@ -491,9 +491,9 @@ class _Instances:
         Candidate did), see `_unsettled`.
         """
         endpoints = await self._pair(group.spec)
-        unusable = self._unusable_detail(endpoints)
+        unusable = self._unusable_verdict(group, endpoints)
         if unusable is not None:
-            return _Play(_error(group, unusable))
+            return _Play(unusable)
         unsettled = await _unsettled(group, endpoints)
         if unsettled is not None:
             return _Play(unsettled)
@@ -526,18 +526,33 @@ class _Instances:
         """Whether the play judged `verdict` keeps its Transcripts."""
         return self._keep_transcripts and verdict.outcome is not Outcome.MATCH
 
-    def _unusable_detail(self, endpoints: Sequence[Endpoint]) -> str | None:
-        """Why a Group cannot play on `endpoints` (Reference, then Candidate), or None.
+    def _unusable_verdict(self, group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
+        """The Verdict `group` gets unplayed if a side is unusable (#228), or None.
 
-        An Instance a failed Group left frozen (`GroupError.left_frozen`) would make every
-        later Group compare against a frozen world, so they are `error` instead (#228).
+        A side a failed Group left frozen (`GroupError.left_frozen`) would make every later
+        Group compare against a frozen world, so no later Group plays on either side:
+
+        - The Reference is unusable: `error`, "the Reference is unusable: <group> failed
+          and left its world frozen", and the same for the Candidate after a "; " if it is
+          too.
+        - Only the Candidate is: `mismatch`, led by a `failed` Divergence saying so, as for
+          any Candidate failure (`judge`), so the Score counts it: an `error`, which the
+          Score leaves out, would score a Candidate that broke its world better.
         """
-        details = [
-            f"the {role} is unusable: {self._unusable[endpoint]}"
-            for role, endpoint in zip(("Reference", "Candidate"), endpoints, strict=True)
-            if endpoint in self._unusable
-        ]
-        return "; ".join(details) or None
+        reference, candidate = (self._unusable.get(endpoint) for endpoint in endpoints)
+        if reference is not None:
+            detail = f"the Reference is unusable: {reference}"
+            if candidate is not None:
+                detail += f"; the Candidate is unusable: {candidate}"
+            return _error(group, detail)
+        if candidate is None:
+            return None
+        return Verdict(
+            group_id=group.id,
+            outcome=Outcome.MISMATCH,
+            divergences=(_failed(bot="", what=candidate),),
+            detail=f"the Candidate failed: {candidate}",
+        )
 
     def summaries(self) -> tuple[SideSummary, SideSummary]:
         """What the Run learned about the Reference and the Candidate, in that order."""

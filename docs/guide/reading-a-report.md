@@ -138,7 +138,9 @@ failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, closed the connection, did not answer in time,
 or still had players online from the Group before. If this happens while
 mscts waits for the players of the Group before to leave, it does not
-play the Group. Different packet counts for a Bot also give the Group a
+play the Group. If the Candidate's world stays frozen after a Group,
+mscts plays no later Group, and each of them fails as `Candidate failed`.
+Different packet counts for a Bot also give the Group a
 line.
 
 The line names each distinct reason from the Group's repetitions once. It

@@ -6,11 +6,13 @@ from pathlib import Path
 import pytest
 
 from mscts import run as run_module
-from mscts.compare import Outcome
+from mscts.compare import Outcome, Verdict
 from mscts.group import Group, GroupContext, GroupKind
-from mscts.run import run
+from mscts.report import GroupLine, LineResult, report_lines, totals
+from mscts.run import GroupResult, run
 from tests.group.test_control import ControlServer
 from tests.run.occupancy import attached
+from tests.test_report import _report
 
 GROUP_TIMEOUT_S = 0.5
 """Each Bot operation's bound here: short, since the frozen side never answers its unfreeze."""
@@ -57,30 +59,6 @@ def quick(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_module, "_unsettled", settled)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("frozen", ["Reference", "Candidate"])
-async def test_a_group_after_one_that_left_a_side_frozen_is_an_error(
-    frozen: str, tmp_path: Path
-) -> None:
-    stuck, working = refusing_to_unfreeze(), ControlServer()
-    sides = (stuck, working) if frozen == "Reference" else (working, stuck)
-    async with (
-        attached("vanilla", sides[0]) as reference,
-        attached("vanilla", sides[1]) as candidate,
-    ):
-        verdicts = await run(
-            [FAILS_FROZEN, JOINS], reference, candidate, workdir=tmp_path, repeat=2
-        )
-
-    later = [verdict for verdict in verdicts if verdict.group_id == JOINS.id]
-    assert [verdict.outcome for verdict in later] == [Outcome.ERROR, Outcome.ERROR], later
-    assert all(
-        verdict.detail
-        == f"the {frozen} is unusable: test/fails-frozen failed and left its world frozen"
-        for verdict in later
-    ), later
-
-
 async def _stays_frozen(context: GroupContext) -> None:
     await context.freeze()
 
@@ -88,24 +66,52 @@ async def _stays_frozen(context: GroupContext) -> None:
 STAYS_FROZEN = Group(id="test/stays-frozen", run=_stays_frozen, kind=GroupKind.TICK_EXACT)
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize("frozen", ["Reference", "Candidate"])
-async def test_a_group_after_one_that_could_not_unfreeze_at_its_end_is_an_error(
-    frozen: str, tmp_path: Path
-) -> None:
-    stuck, working = refusing_to_unfreeze(), ControlServer()
-    sides = (stuck, working) if frozen == "Reference" else (working, stuck)
+async def _later(group: Group, frozen: str, tmp_path: Path, *, repeat: int = 1) -> list[Verdict]:
+    """The Verdicts of JOINS, played after `group` with the `frozen` side refusing to unfreeze."""
+    stuck = {side: frozen in {side, "both"} for side in ("Reference", "Candidate")}
+    servers = [refusing_to_unfreeze() if stuck[side] else ControlServer() for side in stuck]
     async with (
-        attached("vanilla", sides[0]) as reference,
-        attached("vanilla", sides[1]) as candidate,
+        attached("vanilla", servers[0]) as reference,
+        attached("vanilla", servers[1]) as candidate,
     ):
-        verdicts = await run([STAYS_FROZEN, JOINS], reference, candidate, workdir=tmp_path)
+        verdicts = await run([group, JOINS], reference, candidate, workdir=tmp_path, repeat=repeat)
+    return [verdict for verdict in verdicts if verdict.group_id == JOINS.id]
 
-    later = verdicts[1]
-    assert later.outcome is Outcome.ERROR, verdicts
-    assert later.detail == (
-        f"the {frozen} is unusable: test/stays-frozen failed and left its world frozen"
-    )
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group", [FAILS_FROZEN, STAYS_FROZEN], ids=["failed", "ended"])
+@pytest.mark.parametrize("frozen", ["Reference", "both"])
+async def test_a_group_after_one_that_left_the_reference_frozen_is_an_error(
+    group: Group, frozen: str, tmp_path: Path
+) -> None:
+    later = await _later(group, frozen, tmp_path, repeat=2)
+
+    detail = f"the Reference is unusable: {group.id} failed and left its world frozen"
+    if frozen == "both":
+        detail += f"; the Candidate is unusable: {group.id} failed and left its world frozen"
+    assert [(verdict.outcome, verdict.detail) for verdict in later] == [(Outcome.ERROR, detail)] * 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group", [FAILS_FROZEN, STAYS_FROZEN], ids=["failed", "ended"])
+async def test_a_group_after_one_that_left_the_candidate_frozen_fails_and_is_scored(
+    group: Group, tmp_path: Path
+) -> None:
+    # #228 review: an `error` is left out of the Score, so a Candidate that broke its
+    # world would score better than one that did not.
+    later = await _later(group, "Candidate", tmp_path, repeat=2)
+
+    what = f"{group.id} failed and left its world frozen"
+    assert [(verdict.outcome, verdict.detail) for verdict in later] == [
+        (Outcome.MISMATCH, f"the Candidate failed: {what}")
+    ] * 2
+    assert all(
+        [(d.kind, d.candidate, d.test_case) for d in verdict.divergences] == [("failed", what, "")]
+        for verdict in later
+    ), later
+    lines = report_lines(_report(GroupResult(JOINS.id, tuple(later), (), ())))
+    assert lines == (GroupLine(JOINS.id, LineResult.FAIL, f"Candidate failed: {what}"),)
+    assert totals(lines).scored == 1
 
 
 @pytest.mark.asyncio
