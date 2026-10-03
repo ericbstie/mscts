@@ -1169,7 +1169,7 @@ on every Candidate (ADR-0001), and it imports no Group or Run, so `group.py` can
 SETTLE_INTERVAL_S = 0.02            # between status polls while players are still online
 SETTLE_TIMEOUT_S = 2.0              # an Instance's time to have none (~10x vanilla's worst, 197 ms)
 
-class PlayersStillOnline(Exception):  # str(): "2 players still online after waiting 2 s: watcher, control"
+class PlayersStillOnline(Exception):  # str(): "2 players still online after waiting 2 s: 'watcher', 'control'"
     online: int                     # what the last status said
     names: tuple[str, ...]          # the `players.sample` names it listed, if any
     deadline_s: float
@@ -1242,10 +1242,10 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
     # A side that is still not empty means the Group is played on neither side, and its
     # Verdict says who is still online. The Reference's failure is `error`: "the Reference
-    # had 2 players still online after waiting 2 s: watcher, control" (the Candidate's
+    # had 2 players still online after waiting 2 s: 'watcher', 'control'" (the Candidate's
     # sentence after a "; " if it had players too). The Candidate's alone is `mismatch`
     # (audit H3: a Candidate failure is never `error`): a `failed` Divergence (bot "",
-    # candidate "2 players still online after waiting 2 s: watcher, control"), detail
+    # candidate "2 players still online after waiting 2 s: 'watcher', 'control'"), detail
     # "the Candidate failed: ...". A wait that raises anything else (#114) is never raised
     # out of the Run, and the other side's wait runs to its end (gather with
     # return_exceptions): on the Reference it is `error`, "the Reference failed: the wait

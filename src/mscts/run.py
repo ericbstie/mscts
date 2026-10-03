@@ -563,7 +563,7 @@ async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | N
     wait raised, the Verdict that `group` gets instead of being played:
 
     - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
-      2 players still online after waiting 2 s: watcher, control" (or "the Reference
+      2 players still online after waiting 2 s: 'watcher', 'control'" (or "the Reference
       failed: the wait for no player online failed: RuntimeError: ..."), and the same
       for the Candidate after a "; " if it did too.
     - Only the Candidate does, with one of `CANDIDATE_FAILURES`: `mismatch` (a Candidate

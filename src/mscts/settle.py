@@ -48,8 +48,9 @@ An OSError is a refused, reset or closed connection (ConnectionError) or no answ
 class PlayersStillOnline(Exception):  # noqa: N818 - says what it found, as TimeoutError does
     """The deadline passed with players still online.
 
-    Its message says how many, after how long, and who: "2 players still online after
-    waiting 2 s: watcher, control".
+    Its message says how many, after how long, and who, each name as a Python literal, so
+    a name the server sent cannot break the line: "2 players still online after waiting
+    2 s: 'watcher', 'control'".
 
     Attributes:
         online: How many players the last status said were online.
@@ -61,7 +62,7 @@ class PlayersStillOnline(Exception):  # noqa: N818 - says what it found, as Time
         """Record what the last status said when `deadline_s` seconds had passed."""
         players = f"{online} player{'' if online == 1 else 's'}"
         text = f"{players} still online after waiting {deadline_s:g} s"
-        super().__init__(f"{text}: {', '.join(names)}" if names else text)
+        super().__init__(f"{text}: {', '.join(map(repr, names))}" if names else text)
         self.online = online
         self.names = tuple(names)
         self.deadline_s = deadline_s
