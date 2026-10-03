@@ -23,8 +23,8 @@ def test_mscts_run_against_pumpkin_prints_a_report(
     assert "Error: the Comparison failed" not in out, out
 
     if verbose:
-        assert "  Reference    vanilla 26.3\n" in out, out
-        assert "  Candidate    pumpkin " in out, out
+        assert "  Reference    vanilla 26.3 (sha256 " in out, out
+        assert "  Candidate    pumpkin nightly " in out, out
         assert "installed version unknown" not in out, out
         assert "Group times\n  status/basic " in out, out
         assert "  status/ping " in out, out
