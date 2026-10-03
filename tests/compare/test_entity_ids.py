@@ -356,7 +356,8 @@ def test_a_mask_on_add_entitys_position_masks_it_in_the_name_too() -> None:
 
 
 def test_an_entity_keeps_the_name_of_its_first_add_entity_before_the_window() -> None:
-    # Vanilla sends add_entity again when tracking restarts, at the entity's position then.
+    # Vanilla sends add_entity again only after remove_entities or a client world reset, but
+    # a Candidate may resend it, at another position, with no remove in between.
     reference = _hurt_one_spawned_before(spawn(5, x=1.5), spawn(5, x=2.5))
     candidate = _hurt_one_spawned_before(spawn(5, x=1.5))
 
@@ -383,6 +384,20 @@ def test_a_player_that_joined_before_the_window_at_a_random_position_is_the_same
     candidate = _hurt_one_spawned_before(spawn(5, x=-12.5, kind=PLAYER, uuid_=bob))
 
     assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_entities_that_would_share_a_name_are_told_apart_in_first_heard_order() -> None:
+    # A Mask can hide all that tells two names apart: two players whose UUIDs are masked.
+    mask = Mask("minecraft:add_entity", "entity_uuid", reason="a test: masked")
+    spawns = (spawn(5, kind=PLAYER), spawn(6, kind=PLAYER))
+
+    verdict = compare(
+        _hurt_one_spawned_before(*spawns), _hurt_one_spawned_before(*spawns, hurt_id=6), [mask]
+    )
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        ("player <masked>", "player <masked> #2")
+    ]
 
 
 def test_a_star_mask_on_add_entity_leaves_its_entities_unnamed() -> None:

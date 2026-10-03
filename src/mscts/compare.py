@@ -26,6 +26,7 @@ left out on purpose:
 """
 
 import bisect
+import dataclasses
 import json
 import re
 import struct
@@ -751,23 +752,27 @@ class _Numbers:
         ids: Each entity id's name or number.
         uuids: Each entity UUID's number, counted on their own.
         numbered: How many entity ids have taken a number.
+        names: How many entities have taken each name, before its suffix.
     """
 
     ids: dict[int, str]
     uuids: dict[UUID, str]
     numbered: int = 0
+    names: dict[str, int] = dataclasses.field(default_factory=dict)
 
     def spawned(self, packet: Packet, masks: _Masks) -> None:
         """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.
 
         The name is the entity's type and its position at its first `add_entity` before the
         window (`pig@(1.5, -60.0, 7.5)`), which the Group's own setup fixes, however many
-        other entities arrived first. Vanilla sends `add_entity` again when tracking
-        restarts, at the position then, so a later one keeps the first name, unless a
-        `remove_entities` ended it in between (`removed`). A player is named by its UUID
-        instead (`player <uuid>`): where a player joins is not fixed by the Group. The
+        other entities arrived first. A later `add_entity` for the id keeps the first name,
+        unless a `remove_entities` ended it in between (`removed`): vanilla sends one again
+        only after that, or after the client's world is reset. A player is named by its
+        UUID instead (`player <uuid>`): where a player joins is not fixed by the Group. The
         fields go through the Group's Masks first, so a masked axis reads MASKED; a `*`
-        Mask on `add_entity` names nothing, so its entities are numbered like the rest.
+        Mask on `add_entity` names nothing, so its entities are numbered like the rest. A
+        name an earlier entity already took gets a suffix, ` #2` for the second, in the
+        order the Bot heard of them, so a Mask never makes two entities one.
         """
         if packet.name != _ADD_ENTITY or packet.fields is None or packet.name in masks.dropped:
             return
@@ -775,9 +780,12 @@ class _Numbers:
         if type(entity_id) is int and entity_id not in self.ids:
             fields = _copy(packet, packet.fields)
             _hide_all(fields, masks.paths.get(packet.name, ()))
-            self.ids[entity_id] = (
+            name = (
                 f"player {fields.get('entity_uuid')}" if _is_player(fields) else _spawn_name(fields)
             )
+            taken = self.names.get(name, 0) + 1
+            self.names[name] = taken
+            self.ids[entity_id] = name if taken == 1 else f"{name} #{taken}"
 
     def take(self, packet: Packet) -> None:
         """Number the entity ids and UUIDs in `packet`, the next compared one, not yet known.

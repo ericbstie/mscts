@@ -1445,9 +1445,9 @@ proves it necessary:
    entity id whose `add_entity` the Bot received outside the windows
    becomes that entity's name (#116): its entity type and its position
    at its first `add_entity` before the window, `pig@(1.5, -60.0, 7.5)`
-   (vanilla sends `add_entity` again, at the position then, when
-   tracking restarts, so a later one keeps the first name unless a
-   `remove_entities` came in between; the type's registry name without
+   (a later `add_entity` for the id keeps the first name unless a
+   `remove_entities` came in between: vanilla resends one only after
+   that, or after the client's world is reset; the type's registry name without
    `minecraft:`, then `x`, `y` and `z` as Python writes floats, with
    -0.0 written 0.0 and no rounding). The `add_entity`'s fields go
    through the Group's Masks first, so an axis a Mask hides (an item
@@ -1455,11 +1455,15 @@ proves it necessary:
    Mask on `add_entity` names no entity (each is numbered). A player
    is named by its UUID instead, `player <uuid>`: where a player joins
    is random or shared, and its UUID comes from its name or account.
-   The Group's own setup fixes the type and position (with NoAI or
-   `tick freeze`, so the entity does not move), however many other entities arrived
-   first, so an action inside a window on the wrong one of two entities
-   spawned before it is a Divergence. Two entities of one type spawned
-   at one position share a name, and cannot be told apart. Every other
+   The Group's own setup fixes the type and position (with `tick
+   freeze`, or `NoAI:1b` for a mob and `NoGravity:1b` with no `Motion`
+   for any other entity, so it does not move), however many other
+   entities arrived first, so an action inside a window on the wrong
+   one of two entities spawned before it is a Divergence. A name an
+   earlier entity already took (two of one type at one position, or
+   names a Mask made equal) gets a suffix in the order the Bot heard of
+   them, `pig@(1.5, -60.0, 7.5) #2`, so a Mask never makes two entities
+   one. Every other
    entity id becomes `#<n>`: the n-th entity in the packets the
    Comparison takes for the Bot (step 1, less the packets a `*` Mask
    drops), in wire order. Packets outside the windows take no number:

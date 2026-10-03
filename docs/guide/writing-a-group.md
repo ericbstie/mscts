@@ -151,8 +151,9 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
   type and where it spawned, or numbers it in the order each Bot first
   hears of it, so the same entities compare equal on both servers, and a
   packet about a different entity still shows up as a difference. Two
-  entities of the same type spawned at the same position look the same to
-  mscts, so spawn them apart. If an entity spawns at a random position,
+  entities of the same type spawned at the same position are told apart
+  only by the order the client heard of them, so spawn them apart. If an
+  entity spawns at a random position,
   such as an item a block drops, a Mask on that `add_entity` field hides
   that part of its name too.
 - `spec` changes the ServerSpec for this Group. Groups with different
