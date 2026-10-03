@@ -32,6 +32,13 @@ raw material for later rules. When two or more examples share a pattern
 that no rule covers yet, propose a rule that covers them, and add it
 once the maintainer approves it.
 
+Wording changes don't each get their own issue or PR. They collect as
+commits on one open PR, the wording batch, which the maintainer merges
+when they're done. Run `mise run check` and the docs build before each
+push, since the docs site deploys from main. If a proposed wording
+describes something the code doesn't do, say so instead of writing it,
+and leave the code change to the tech lead.
+
 The maintainer may run a dedicated writer session for wording tweaks.
 Any session that writes user-facing text follows this skill all the same.
 
@@ -51,6 +58,8 @@ Any session that writes user-facing text follows this skill all the same.
   in mscts, so don't use "group" or "test" as ordinary words next to them
   ("the Report groups results by …", "tests are grouped by …"). Say
   "sorts", "lists" or "splits" instead.
+- **Write for Minecraft server developers.** They are the audience.
+  Players are not addressed; a developer may show them the results.
 - **Write for someone new.** No term or claim the reader cannot
   understand without context they don't have (a Self-check, a Group,
   "vanilla against vanilla").
@@ -58,11 +67,82 @@ Any session that writes user-facing text follows this skill all the same.
   command shows it, the page need not say it is shown.
 - **Only what is useful to the user.** Internal rules and project
   promises (explicit installs) are not selling points.
+- **A section holds only what its heading promises.** Under "How it
+  works", only how mscts tests compliancy; setup facts such as running
+  offline belong elsewhere, if anywhere.
+- **State requirements firmly and formally.** "requires", not "needs"
+  (reads like a suggestion) or "must have" (too informal).
+- **Use the headings readers already know.** A plain, conventional
+  title ("Roadmap") over an open-ended phrase ("What works today").
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Home page, "What works today"
+
+- Before: the heading "What works today".
+- After: "Roadmap".
+- Why: "a bit open-ended and unclear, especially for being a title", and
+  it "gives me this AI vibe"; the maintainer is used to just "Roadmap".
+
+### Home page, "Gameplay and network traffic test cases"
+
+- Before: a section explaining gameplay and network traffic differences,
+  with two cards.
+- After: removed.
+- Why: not given.
+
+### Home page, "Why use this tool?"
+
+- Before: "mscts is for people who want a custom server that keeps
+  vanilla's behavior. It gives an objective measure of that playability:
+  it lists every difference a player on the vanilla client could notice.
+  As a player, you can decide … As a developer, you can focus …"
+- After: the maintainer's draft. Vanilla has features and quirks a
+  modified server most likely wants to uphold; mscts gives developers a
+  simpler way to check which are kept; use the results as a benchmark,
+  like Test262 for JavaScript engines.
+- Why: the colon says the same thing twice in two different ways (see
+  "How it works", opening). And the page is not for players at all:
+  "This is targeted only for Minecraft server developers. It's up to the
+  Minecraft server developers to use this tool as marketing."
+
+### Home page, "How it works", opening
+
+- Before: "mscts starts two servers on your machine: vanilla Minecraft and
+  the custom server you want to compare with it."
+- After: "mscts starts a vanilla Minecraft server alongside the custom
+  server you're testing." The maintainer suggested the rewording.
+- Why: "the custom server you want to compare with it is a bit weirdly
+  sentenced". And say it straight away: "AI has a tendency to say the
+  same thing two times". The colon first announces two servers, then
+  names them. (Rule not yet generalised: the maintainer was "not sure
+  exactly what makes it correct".)
+
+### Home page, "How it works", the Adapter
+
+- Before (the maintainer's draft): "The custom server must have an mscts
+  Adapter for it that can set up the baseline world state before the
+  test suite is run."
+- Before (the writer's version): "The custom server needs an mscts
+  Adapter, a small module that writes its configuration so it starts
+  with the same settings and the same world as vanilla."
+- After: "The custom server requires an mscts Adapter, a small module
+  that writes its configuration …"
+- Why: "needs" sounds more like a suggestion; "must have" is firmer but
+  "a bit too informal"; "requires is the correct word here". "A small
+  module that writes its configuration …" was praised as "great", why
+  not given.
+
+### Home page, "How it works", running offline
+
+- Before: "Both run offline on your machine, and neither can reach the
+  internet."
+- After: removed.
+- Why: "How it works" should only say how mscts is able to test
+  compliancy. Running on localhost isn't necessary for that.
 
 ### Home page, "Rules mscts follows"
 
