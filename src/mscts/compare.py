@@ -426,6 +426,16 @@ class Divergence:
     test_case: str
     observability: Observability = Observability.GAMEPLAY
 
+    def __post_init__(self) -> None:
+        """Refuse a `bot` or `failed` Divergence that is network traffic.
+
+        It is about the whole Group and gives it a line of its own, which always fails;
+        a prerequisite passes only without one (`run.blocked`, #221).
+        """
+        if self.kind in {"bot", "failed"} and self.observability is not Observability.GAMEPLAY:
+            msg = f"a {self.kind} Divergence is gameplay, not {self.observability}"
+            raise ValueError(msg)
+
 
 @dataclass(frozen=True, slots=True)
 class Verdict:

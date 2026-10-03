@@ -350,8 +350,8 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     Transcripts of each repetition that did not match (`GroupResult.transcripts`, kept
     until the Run ends, so off by default); and for each side its `instance.startup`
     Measurements and the version its status_response named. A Group is `blocked`,
-    and not played (so it measures nothing), unless each of its prerequisites matched
-    earlier in the same repetition (so list them first).
+    and not played (so it measures nothing), unless each of its prerequisites passed (see
+    `blocked`) earlier in the same repetition (so list them first).
 
     A Server side gets one Instance per distinct ServerSpec the Groups' `spec` make,
     launched in its own directory under `workdir` at an Endpoint of its own

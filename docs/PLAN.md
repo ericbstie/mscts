@@ -1253,7 +1253,8 @@ class Divergence:
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
     #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
-    #   so every bot and failed one (run.judge's `failed` keeps the default).
+    #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
+    #   raises ValueError for a bot or failed one that is network traffic, #221).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
     #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)

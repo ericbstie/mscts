@@ -197,6 +197,20 @@ def test_a_network_traffic_prerequisite_blocks_if_network_traffic_does_not_pass(
     )
 
 
+@pytest.mark.parametrize("outcome", [Outcome.BLOCKED, Outcome.ERROR])
+def test_a_prerequisite_that_did_not_compare_blocks_whatever_its_divergences(
+    outcome: Outcome,
+) -> None:
+    differs = (_sample(Observability.NETWORK_TRAFFIC),)
+    basic = Verdict("status/basic", outcome, differs)
+
+    verdict = blocked(PING, {"status/basic": basic})
+
+    assert verdict == Verdict(
+        "status/ping", Outcome.BLOCKED, detail=f"prerequisite status/basic was {outcome}"
+    )
+
+
 def test_a_prerequisite_with_a_gameplay_difference_too_blocks() -> None:
     differs = (_sample(Observability.NETWORK_TRAFFIC), _sample(Observability.GAMEPLAY))
     basic = Verdict("status/basic", Outcome.MISMATCH, differs)
