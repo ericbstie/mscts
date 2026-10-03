@@ -29,6 +29,8 @@ Two things in the plan worked against this:
    vanilla bugs/glitches). Each entry names its reproducible Scenario.
    There are **no declared or expected deviations**. Candidates cannot
    annotate or exclude differences; interpretation is left to the reader.
+   A list of accepted deviations would let a Candidate decide which of its
+   differences count.
 2. **Masks are only for identifiers with no gameplay meaning**, such as
    entity ids, keep-alive ids and teleport ids. Anything a player could
    observe as gameplay is never masked. If it varies between vanilla runs,
