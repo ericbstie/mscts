@@ -10,6 +10,7 @@ game rule is on), so an operator Bot would receive Control's answers too.
 import asyncio
 import contextlib
 import functools
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -19,11 +20,13 @@ from typing import Protocol
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.schemas.play.commands import root_literals
-from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN, Mask
+from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Mask
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
+
+LOG = logging.getLogger(__name__)
 
 
 class GroupKind(StrEnum):
@@ -214,6 +217,7 @@ class GroupContext:
         self._bots: dict[str, Bot] = {}
         self._unconnected: tuple[str, Exception] | None = None
         self._observing = False
+        self._ticks: int | None = None  # the ticks stepped since the freeze; None: not frozen
         self._control = OperatorBot(self._connect, transcript, timeout_s=timeout_s)
 
     @property
@@ -351,14 +355,7 @@ class GroupContext:
             opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
             yield
             if until is None:
-                ends = await self._sync()
-                now = self._transcript.now_ns()
-                for name in self._bots:
-                    # A packet stamped at a Mark's time is after it: the answer is inside.
-                    at = ends[name] + 1 if name in ends else now
-                    self._mark(f"{OBSERVE_CLOSE} {name}", t_ns=at)
-                # A Bot the Group makes later has no Mark of its own: this one ends its window.
-                self._mark(OBSERVE_CLOSE, t_ns=now)
+                self._mark_each(OBSERVE_CLOSE, await self._sync())
                 await self._drain()
             else:
                 await self._drain()
@@ -370,21 +367,86 @@ class GroupContext:
         finally:
             self._observing = False
 
-    async def end(self) -> None:
-        """Refuse a disconnect still queued for any Bot, once the Group's script has completed.
+    async def freeze(self) -> None:
+        """Freeze the world, through Control (`tick freeze`), for a tick-exact Group.
 
-        A disconnect nothing took (it came after the last barrier, drain or `expect`) fails
-        its Bot (`Bot.refuse_queued_disconnect`), so a Candidate that kicks a Bot late does
-        not pass. `run_group` calls it before closing the Bots.
+        Returns once the server has run the command (`Control.run`). The world stays
+        frozen until the Group ends: `end` unfreezes it (`tick unfreeze`), and a failure to
+        fails the Group; if the Group failed first, `close` tries. So the next Group does
+        not start in a frozen world.
 
         Raises:
+            ValueError: The Group has frozen the world already.
+            CommandMissing: The server has no `/tick`.
+            TimeoutError: The server did not answer in time.
+        """
+        if self._ticks is not None:
+            msg = "the Group has frozen the world already"
+            raise ValueError(msg)
+        self._ticks = 0  # set first: a command that timed out may still have run
+        await self._control.run("tick freeze")
+
+    async def step(self, ticks: int = 1) -> None:
+        """Move the frozen world on `ticks` ticks, one at a time, and return once they ran.
+
+        Each tick is `tick step 1` through Control, which returns once the server has run
+        the command and then passed the barrier, so the stepped tick has sent what it
+        changed. Then every Bot in play passes the barrier, all at once, as at a window's
+        close, and gets the Mark `tick:<k> <Bot name>` a nanosecond after its barrier's
+        last answer arrived; k counts the ticks stepped since the freeze, from 1. Once
+        every barrier has returned, the Mark `tick:<k>` follows, for a Bot made later.
+        Vanilla sends no packet when a step ends (docs/research/2026-10-03-tick-step.md),
+        so the barrier is how a step is known to have ended.
+
+        Raises:
+            ValueError: `ticks` is less than 1, or the Group has not frozen the world.
+            TimeoutError: The server did not finish a step in time; that Bot's `failure`.
+            ProtocolError: The server disconnected a Bot, and a barrier took it.
+        """
+        if ticks < 1:
+            msg = f"a step moves the world on at least one tick, not {ticks}"
+            raise ValueError(msg)
+        if self._ticks is None:
+            msg = "freeze the world first (context.freeze()): only a frozen world steps"
+            raise ValueError(msg)
+        for _ in range(ticks):
+            await self._control.run("tick step 1")
+            ends = await self._sync()
+            self._ticks += 1
+            self._mark_each(f"{TICK_MARK}{self._ticks}", ends)
+
+    async def end(self) -> None:
+        """Unfreeze the world if the Group froze it, then refuse a disconnect still queued.
+
+        Called once the Group's script has completed, before the Bots close (`run_group`).
+        A world left frozen would spoil every later Group on the Instance, so an unfreeze
+        that fails fails the Group. A disconnect nothing took (it came after the last
+        barrier, drain or `expect`) fails its Bot (`Bot.refuse_queued_disconnect`), so a
+        Candidate that kicks a Bot late does not pass.
+
+        Raises:
+            TimeoutError: The server did not answer `tick unfreeze` in time.
             ProtocolError: The server disconnected a Bot; the Bot's `failure`.
         """
+        if self._ticks is not None:
+            self._ticks = None
+            await self._control.run("tick unfreeze")
         for bot in self._bots.values():
             await bot.refuse_queued_disconnect()
 
     async def close(self) -> None:
-        """Close every Bot. Calling it again does nothing."""
+        """Unfreeze the world if it is still frozen, then close every Bot.
+
+        The world is still frozen only if the Group failed before `end`, so a failure to
+        unfreeze here is logged, not raised: the Group's own error says more, and has
+        failed the Group already. Calling it again does nothing.
+        """
+        if self._ticks is not None:
+            self._ticks = None
+            try:
+                await self._control.run("tick unfreeze")
+            except Exception as error:
+                LOG.warning("could not unfreeze the world after the Group", exc_info=error)
         for bot in self._bots.values():
             await bot.close()
 
@@ -393,6 +455,19 @@ class GroupContext:
         at = self._transcript.now_ns() if t_ns is None else t_ns
         self._transcript.marks.append(Mark(t_ns=at, label=label))
         return at
+
+    def _mark_each(self, label: str, ends: Mapping[str, int]) -> None:
+        """Mark `<label> <Bot name>` for each Bot, then `label` alone, which is now.
+
+        A Bot's Mark is a nanosecond after its barrier's last answer arrived (`ends`): a
+        packet stamped at a Mark's time is after it, so the answer is before the Mark. A
+        Bot that passed no barrier gets its Mark now. The Mark with no name ends the same
+        span for a Bot the Group makes later.
+        """
+        now = self._transcript.now_ns()
+        for name in self._bots:
+            self._mark(f"{label} {name}", t_ns=ends[name] + 1 if name in ends else now)
+        self._mark(label, t_ns=now)
 
     def _arrival_of(self, name: str, *, since: int, bot: Bot | None) -> int:
         """When the first play packet `name` arrived at `bot`, at or after `since`.

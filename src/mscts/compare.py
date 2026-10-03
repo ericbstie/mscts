@@ -106,6 +106,22 @@ A window narrowed to some packets has their names after it, each after a space:
 `observe:open minecraft:block_update minecraft:system_chat`.
 """
 
+TICK_MARK = "tick:"
+"""The start of the label of the Mark that ends a tick of a tick-exact Group: `tick:<k>`.
+
+`GroupContext.step` records one for each tick it steps, k counting from 1 since the freeze:
+for each Bot with the Bot's name after a space (`tick:3 alice`), and one with no name for any
+Bot that has no Mark of its own for that tick.
+"""
+
+TICK_PATH = "(tick)"
+"""The path of the `field` Divergence of a packet a tick-exact Group got on different ticks.
+
+Its values are the two ticks, counting from 1 since the freeze (`TICK_MARK`). No field's path
+can be it: a path joins identifier keys with dots and puts any other key, and every index, in
+brackets, so it never holds a parenthesis.
+"""
+
 OBSERVE_CLOSE = "observe:close"
 """The label of the Mark that closes an Observation window.
 
@@ -479,6 +495,11 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     `unexpected` ones. An unmatched chunk, light update or forgotten chunk shows
     `chunk <x> <z>`, any other Packet its value.
 
+    In a tick-exact Group (its Transcript has `TICK_MARK` Marks), each play Packet holds the
+    tick it arrived on (`_Ticks`), and the Packets are aligned as without ticks. Two matched
+    Packets on different ticks are a `field` Divergence at `TICK_PATH`, with the two ticks
+    as its values and the packet's test case, then the Packets' differences.
+
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
     gameplay `field` Divergence per differing leaf, in path order. If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
@@ -591,6 +612,8 @@ class _Normalized:
         unmasked: For a Packet with a canonical form, its canonical form before the
             Masks; else None.
         masked: The paths in `fields` at which a Mask found a value, None included.
+        tick: For a play Packet of a tick-exact Group, the tick it arrived on (`_Ticks`);
+            else None.
     """
 
     packet: Packet
@@ -599,6 +622,7 @@ class _Normalized:
     parsed: dict[str, _Value] | None = None
     unmasked: dict[str, _Value] | None = None
     masked: frozenset[_Path] = frozenset()
+    tick: int | None = None
 
     @property
     def value(self) -> object:
@@ -669,11 +693,13 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     is not compared never shifts the numbers of what is. An entity whose `add_entity` was
     left out of the windows is named by it instead (`_Numbers.spawned`), and any
     `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
-    All of this runs over the Bot's Packets once its chunk packets are put in order
-    (`_by_position`). The sort moves only chunk packets, which carry no entity ids, so it
-    changes no entity's name or number.
+    If the Transcript has tick Marks (`TICK_MARK`), each play Packet holds the tick it
+    arrived on (`_Ticks`). All of this runs over the Bot's Packets once its chunk packets
+    are put in order (`_by_position`). The sort moves only chunk packets, which carry no
+    entity ids, so it changes no entity's name or number.
     """
     windows = _Windows.of(transcript, bot)
+    ticks = _Ticks.of(transcript, bot)
     events = _by_position(
         [
             event
@@ -689,7 +715,10 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
             numbers.spawned(packet, masks)
         elif packet.name not in masks.dropped:
             numbers.take(packet)
-            stream.append(_normalize(packet, masks, numbers, context))
+            normalized = _normalize(packet, masks, numbers, context)
+            if ticks is not None and packet.state is State.PLAY:
+                normalized = replace(normalized, tick=ticks.of_arrival(event.t_ns))
+            stream.append(normalized)
         numbers.removed(packet)
     return stream
 
@@ -920,6 +949,44 @@ class _Windows:
             return False
         narrowed = self.names[latest]
         return narrowed is not None and (not narrowed or packet.name in narrowed)
+
+
+@dataclass(frozen=True, slots=True)
+class _Ticks:
+    """A Transcript's ticks as one Bot sees them: when each stepped tick ended.
+
+    Attributes:
+        ends: When each tick ended, ascending: tick k's own Mark for the Bot
+            (`tick:<k> <Bot name>`), else its Mark that names no Bot.
+    """
+
+    ends: Sequence[int]
+
+    @classmethod
+    def of(cls, transcript: Transcript, bot: str) -> Self | None:
+        """Index the tick Marks of `transcript` as `bot` sees them; None if it has none."""
+        own: dict[int, int] = {}
+        unnamed: dict[int, int] = {}
+        for mark in transcript.marks:
+            label, *rest = mark.label.split(" ")
+            if not label.startswith(TICK_MARK):
+                continue
+            k = int(label.removeprefix(TICK_MARK))
+            if rest == [bot]:
+                own[k] = mark.t_ns
+            elif not rest:
+                unnamed[k] = mark.t_ns
+        ends = {**unnamed, **own}
+        return cls(ends=sorted(ends.values())) if ends else None
+
+    def of_arrival(self, t_ns: int) -> int:
+        """The tick a packet that arrived at `t_ns` arrived on, counting from 1.
+
+        Tick k holds what arrived after tick k-1's end and before tick k's end; a packet
+        stamped at an end's time is after it. What arrived after the last end is on the
+        tick after the last one stepped.
+        """
+        return bisect.bisect_right(self.ends, t_ns) + 1
 
 
 # Entity numbering (#21): each entity id in a Bot's compared Packets, and each entity UUID
@@ -2276,7 +2343,9 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 type _Key = tuple[str, ...]
 """What a Packet is aligned on (`_key`): its State, its name and, for a packet about one chunk,
 its position (`chunk x z`; empty for any other Packet). The client keeps a chunk and its light by
-position, so two such packets at different positions are never one Packet sent two ways."""
+position, so two such packets at different positions are never one Packet sent two ways. Not its
+tick in a tick-exact Group: two matched Packets on different ticks are a Divergence of their own
+(`_diff_ticks`), so a run of packets each a tick late still matches one for one (#23)."""
 
 
 def _key(entry: _Normalized) -> _Key:
@@ -2371,6 +2440,7 @@ def _compare_streams(
             yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):
             matched = (reference[ref_index], candidate[cand_index])
+            yield from _diff_ticks(bot, ref_index, *matched)
             yield from _diff_matched(bot, ref_index, *matched, compared)
         next_reference, next_candidate = ref_index + 1, cand_index + 1
 
@@ -2414,6 +2484,29 @@ def _leaves(value: _Value | Absent, path: _Path) -> Iterator[_Path]:
             yield from _leaves(item, (*path, index))
     else:
         yield path
+
+
+def _diff_ticks(
+    bot: str, index: int, reference: _Normalized, candidate: _Normalized
+) -> Iterator[Divergence]:
+    """The ticks of two matched Packets, if both have one and they differ (#23).
+
+    One `field` Divergence at `TICK_PATH`, with the two ticks, and the packet's test case;
+    the Packets' own differences follow it (`_diff_matched`).
+    """
+    if reference.tick is None or candidate.tick is None or reference.tick == candidate.tick:
+        return
+    state, name = reference.packet.state, reference.packet.name
+    yield Divergence(
+        bot=bot,
+        index=index,
+        kind="field",
+        packet=name,
+        path=TICK_PATH,
+        reference=reference.tick,
+        candidate=candidate.tick,
+        test_case=_test_case(state, name, ()),
+    )
 
 
 def _unmatched(

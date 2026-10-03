@@ -333,7 +333,7 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     and neither started nor stopped.
 
     Raises:
-        NotImplementedError: A Group is not `exact`: other kinds need M6a / M6b.
+        NotImplementedError: A Group is `statistical`, which needs M6b.
         ValueError: A Group is listed twice, or needs a ServerSpec an Attached side
             was not launched from. Nothing was started.
         RunnerError: An Instance could not be launched or did not become ready.
@@ -417,8 +417,8 @@ async def selfcheck(
 def _check(groups: Sequence[Group], sides: Sequence[Side]) -> None:
     seen: set[str] = set()
     for group in groups:
-        if group.kind is not GroupKind.EXACT:
-            msg = f"{group.id} is {group.kind}: only exact Groups can run before M6a/M6b"
+        if group.kind is GroupKind.STATISTICAL:
+            msg = f"{group.id} is {group.kind}: only exact and tick-exact Groups can run before M6b"
             raise NotImplementedError(msg)
         if group.id in seen:
             msg = f"{group.id} is listed twice"

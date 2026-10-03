@@ -1033,8 +1033,23 @@ class GroupContext:
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
                                     # exception a Group raises), and no close Mark
-    async def end(self) -> None: ...     # #184: Bot.refuse_queued_disconnect on every Bot
-    async def close(self) -> None: ...   # closes every Bot; idempotent
+    async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
+                                    # Group froze already. end() unfreezes (a failure fails
+                                    # the Group); after a failed Group, close() tries, and
+                                    # logs a failure
+    async def step(self, ticks: int = 1) -> None: ...   # #23: per tick, control.run(
+                                    # "tick step 1") (marker, then barrier), then every Bot in
+                                    # play passes Bot.sync at once, then Marks
+                                    # "TICK_MARK<k> <Bot name>" 1 ns after each Bot's
+                                    # barrier's last answer (a Bot that passed none: now) and
+                                    # an unnamed "TICK_MARK<k>" now; k counts from 1 since the
+                                    # freeze. Vanilla sends nothing when a step ends
+                                    # (docs/research/2026-10-03-tick-step.md). ValueError:
+                                    # ticks < 1, or not frozen
+    async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises);
+                                    # then #184: Bot.refuse_queued_disconnect on every Bot
+    async def close(self) -> None: ...   # unfreezes if still frozen (logged, not raised), then
+                                    # closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
                                     # it is; "" if none (the script itself raised it)
@@ -1151,7 +1166,9 @@ class Divergence:
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
     # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
-    # field: a difference between two matched packets;
+    # field: a difference between two matched packets, or (path TICK_PATH, the two ticks
+    #   as int values, the packet's test case) one packet a tick-exact Group got on
+    #   different ticks (#23), followed by the two packets' differences;
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
@@ -1178,6 +1195,13 @@ class Verdict:
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
+TICK_PATH = "(tick)"                # #23: the path of the field Divergence of a packet
+                                    # a tick-exact Group got on different ticks; the Report
+                                    # shows it before the values ("(tick): vanilla sends 1, ...");
+                                    # no field path holds a parenthesis
+TICK_MARK = "tick:"                 # #23: "tick:<k>" ends tick k of a tick-exact Group:
+                                    # for one Bot with its name after it ("tick:3 alice"),
+                                    # without for every Bot with no Mark of its own
 OBSERVE_CLOSE = "observe:close"     # the Mark that closes it: for one Bot with its name
                                     # after it ("observe:close alice"), without for every Bot
                                     # with no close Mark of its own in that window
@@ -1347,7 +1371,7 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Candidate failed: the wait ...". A BaseException that is not an Exception (a
     # cancellation from inside a wait) is raised once both waits are done. The wait is
     # not part of `elapsed_s`.
-    # NotImplementedError for a Group that is not exact (M6a/M6b); ValueError for one
+    # NotImplementedError for a statistical Group (M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
     # if an Instance cannot start.
@@ -1890,7 +1914,13 @@ proves it necessary:
    them, trace from the front, matching equal keys, otherwise skipping
    the key whose skipping keeps the longer subsequence, and on a tie
    the smaller key, whichever side it is on. Between two matched pairs,
-   `missing` comes before `unexpected`. A unit test checks every pair of
+   `missing` comes before `unexpected`. In a tick-exact Group (#23), each play
+   packet holds the tick it arrived on: the number of the Bot's `tick:<k>`
+   Marks before its arrival (its own, else the unnamed one), plus one. The
+   tick is not part of the key, so a run of packets each a tick late still
+   matches one for one; two matched packets on different ticks give one
+   `field` Divergence at `TICK_PATH`, then the two packets' differences.
+   A unit test checks every pair of
    key sequences up to length 4 over 3 keys: ordered, longest, and
    mirrored by a swap (an exhaustive run up to length 5 found no
    exception either). Not `difflib.SequenceMatcher`: it matches the

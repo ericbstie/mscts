@@ -190,14 +190,22 @@ def _status(arguments: argparse.Namespace, _world: _World) -> int:
     return 0
 
 
+_PLAYABLE_KINDS = frozenset({GroupKind.EXACT, GroupKind.TICK_EXACT})
+
+
 def _groups(pattern: str) -> tuple[Group, ...]:
-    """The registered exact Groups whose id matches `pattern`, with their prerequisites."""
-    exact = sorted(group_id for group_id, group in GROUPS.items() if group.kind is GroupKind.EXACT)
-    chosen = [group_id for group_id in exact if fnmatch.fnmatchcase(group_id, pattern)]
+    """The registered Groups a Run plays whose id matches `pattern`, with their prerequisites.
+
+    A Run plays exact and tick-exact Groups; statistical ones need M6b.
+    """
+    playable = sorted(
+        group_id for group_id, group in GROUPS.items() if group.kind in _PLAYABLE_KINDS
+    )
+    chosen = [group_id for group_id in playable if fnmatch.fnmatchcase(group_id, pattern)]
     if not chosen:
         msg = (
-            f"no registered exact Group matches --group {pattern!r}; "
-            f"the registered ones are {', '.join(exact)}"
+            f"no registered exact or tick-exact Group matches --group {pattern!r}; "
+            f"the registered ones are {', '.join(playable)}"
         )
         raise _UsageError(msg)
     return resolve(chosen)

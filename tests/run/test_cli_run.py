@@ -9,7 +9,10 @@ from types import MappingProxyType
 import pytest
 
 from mscts import cli, install, report_json
+from mscts import group as group_module
 from mscts.adapters.base import Adapter, Installation, ProvisionError
+from mscts.group import Group, GroupKind
+from mscts.groups import status
 from mscts.report import Report, render_markdown, render_text
 from mscts.target import Target
 from tests.run.fakes import FakeAdapter
@@ -125,6 +128,19 @@ def test_the_group_flag_selects_the_status_groups(
     assert "running status/ping" in err
 
 
+def test_the_group_flag_selects_a_tick_exact_group_too(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes()
+    tick_exact = Group(id="test/ticks", run=status.basic, kind=GroupKind.TICK_EXACT)
+    monkeypatch.setitem(group_module._REGISTERED, tick_exact.id, tick_exact)  # noqa: SLF001
+
+    code, _, err = _run(capsys, "--candidate", "pumpkin", "--group", "test/*", "--repeat", "1")
+
+    assert code == 0, err
+    assert "running test/ticks" in err
+
+
 def test_the_scenario_flag_is_gone(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:
     fakes()
 
@@ -145,7 +161,7 @@ def test_a_glob_that_matches_nothing_fails_naming_the_groups(
     assert (code, out) == (1, "")
     assert err.startswith("mscts: ")
     assert err.count("\n") == 1
-    assert "no registered exact Group matches --group 'nothing/*'" in err
+    assert "no registered exact or tick-exact Group matches --group 'nothing/*'" in err
     assert "status/basic" in err
 
 

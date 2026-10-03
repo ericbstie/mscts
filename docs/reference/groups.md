@@ -83,7 +83,7 @@ The comparison ends when the first chunk batch is complete. Later batches, and t
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
-| Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | The `tick-exact` kind. |
+| Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
 | Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
 
 See [Project status](/status) for the order.
