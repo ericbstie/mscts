@@ -95,10 +95,10 @@ need is missing, add it here in the same commit that introduces it.
   configuration packets are compared whole, and so is every packet of a
   Group with no window. Before a window opens, and when it closes, each
   Bot in play first passes the **barrier** (`Bot.sync`). It asks the server for its
-  statistics, waits 5 ms after the answer arrives, and asks again. The
-  second answer comes from a later tick, so by then the server has sent
+  statistics three times, each 5 ms after the last answer arrived. Each
+  later answer comes from a later tick, so by then the server has sent
   everything caused by what the Bot sent before. Each Bot's window ends
-  at its own barrier's second answer, whatever the other Bots are still
+  at its own barrier's last answer, whatever the other Bots are still
   waiting for, and a Bot made after the window ends is outside it. A
   barrier covers what its own Bot sent, so a window that must hold
   what another Bot's action causes waits for that action's feedback

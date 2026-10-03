@@ -7,7 +7,7 @@ import pytest
 
 from mscts import bot as bot_module
 from mscts import net as net_module
-from mscts.bot import Bot
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, CodecError, Direction
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.net import Connection, ConnectionClosedError, ProtocolError
@@ -75,7 +75,7 @@ def block_until_bytes_wait_in_the_kernel(bot: Bot) -> None:
         time.sleep(0.001)
 
 
-def test_sync_asks_for_statistics_twice_each_after_the_last_answer() -> None:
+def test_sync_asks_for_statistics_sync_requests_times_each_after_the_last_answer() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
     seen = []
 
@@ -90,11 +90,13 @@ def test_sync_asks_for_statistics_twice_each_after_the_last_answer() -> None:
         for event in transcript.events
         if event.packet.name in {REQUEST, ANSWER}
     ]
-    assert barrier == [(SERVERBOUND, REQUEST), (CLIENTBOUND, ANSWER)] * 2
-    assert [p.fields for p in seen if p.name == REQUEST] == [{"action": REQUEST_STATS}] * 2
+    assert barrier == [(SERVERBOUND, REQUEST), (CLIENTBOUND, ANSWER)] * SYNC_REQUESTS
+    assert [p.fields for p in seen if p.name == REQUEST] == [
+        {"action": REQUEST_STATS}
+    ] * SYNC_REQUESTS
 
 
-def test_sync_is_one_pair_its_second_request_sent_a_tick_gap_after_the_first_answer(
+def test_each_request_of_a_sync_is_sent_a_tick_gap_after_the_last_answer(
     wide_gap: float,
 ) -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
@@ -104,17 +106,20 @@ def test_sync_is_one_pair_its_second_request_sent_a_tick_gap_after_the_first_ans
         await bot.join()
         await bot.sync()
 
-    # Even a server that answers at once gets one pair: the wait is the proof.
+    # Even a server that answers at once gets SYNC_REQUESTS requests: the wait is the proof.
     with_bot(CODEC, transcript, play_server(seen, answer_at_once), use, timeout_s=5.0)
 
     barrier = barrier_times(transcript)
-    assert [name for name, _ in barrier] == [REQUEST, ANSWER] * 2
-    _, answered, asked, _ = [t_ns for _, t_ns in barrier]
-    assert asked - answered >= round(wide_gap * 1e9)
-    assert len([p for p in seen if p.name == REQUEST]) == 2
+    assert [name for name, _ in barrier] == [REQUEST, ANSWER] * SYNC_REQUESTS
+    times = [t_ns for _, t_ns in barrier]
+    answered, asked = times[1:-1:2], times[2::2]
+    assert all(a - b >= round(wide_gap * 1e9) for b, a in zip(answered, asked, strict=True))
+    assert len([p for p in seen if p.name == REQUEST]) == SYNC_REQUESTS
 
 
-def test_a_sync_whose_answers_come_a_tick_apart_ends_after_one_pair(wide_gap: float) -> None:
+def test_a_sync_whose_answers_come_a_tick_apart_ends_after_its_requests(
+    wide_gap: float,
+) -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 
     async def use(bot: Bot) -> None:
@@ -124,11 +129,11 @@ def test_a_sync_whose_answers_come_a_tick_apart_ends_after_one_pair(wide_gap: fl
     answer = answer_like_vanilla_after(0, tick_s=3 * wide_gap)
     with_bot(CODEC, transcript, play_server([], answer), use, timeout_s=5.0)
 
-    assert [name for name, _ in barrier_times(transcript)] == [REQUEST, ANSWER] * 2
+    assert [name for name, _ in barrier_times(transcript)] == [REQUEST, ANSWER] * SYNC_REQUESTS
     assert transcript.marks == []
 
 
-def test_the_second_request_is_sent_no_sooner_than_5_ms_after_the_first_answer_arrived() -> None:
+def test_each_request_is_sent_no_sooner_than_5_ms_after_the_last_answer_arrived() -> None:
     # Audit 2026-10-02 B2: the real TICK_GAP_S, not `wide_gap`. Answers from one vanilla
     # pass came up to 3.6 ms apart, so a halved wait would let the pair share a pass.
     transcript = Transcript(group_id="test/sync", server="fake")
@@ -139,8 +144,9 @@ def test_the_second_request_is_sent_no_sooner_than_5_ms_after_the_first_answer_a
 
     with_bot(CODEC, transcript, play_server([], answer_at_once), use)
 
-    _, answered, asked, _ = [t_ns for _, t_ns in barrier_times(transcript)]
-    assert asked - answered >= 5_000_000
+    times = [t_ns for _, t_ns in barrier_times(transcript)]
+    answered, asked = times[1:-1:2], times[2::2]
+    assert all(a - b >= 5_000_000 for b, a in zip(answered, asked, strict=True))
     # The gap is a lower bound, which load can stretch past a shorter wait: pin the value.
     assert bot_module.TICK_GAP_S == 0.005
 
@@ -164,7 +170,7 @@ def test_a_bot_whose_loop_stalls_after_a_pairs_second_request_does_not_take_one_
         await real_send(self, name, **fields)
         if name == REQUEST:
             requests += 1
-            if requests % 2 == 0:
+            if requests % SYNC_REQUESTS == 0:
                 # The loop is busy: another Bot decoding, GC, the OS. Blocking it is the
                 # point.
                 time.sleep(STALL_S)  # noqa: ASYNC251
@@ -198,6 +204,22 @@ def test_a_request_answered_at_a_later_pass_still_waits_tick_gap_from_its_answer
         return received(transcript)
 
     names, _ = with_bot(CODEC, transcript, scheduled_server([]), use, timeout_s=5.0)
+    assert "minecraft:block_update" in names
+
+
+def test_an_award_stats_sent_unasked_after_the_request_does_not_end_the_barrier_early() -> None:
+    # #169: the stray is taken as the first answer. The second request then reaches the
+    # server before its pass, both are answered in that pass, and a pair would end before
+    # the tick's block_update.
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def use(bot: Bot) -> list[str]:
+        await bot.join()
+        await bot.sync()
+        return received(transcript)
+
+    server = scheduled_server([], stray_on_request=True)
+    names, _ = with_bot(CODEC, transcript, server, use, timeout_s=5.0)
     assert "minecraft:block_update" in names
 
 
@@ -317,7 +339,7 @@ def test_catching_up_with_a_stream_with_no_gaps_ends_before_the_sync_times_out(
                 await bot.close()
 
     asyncio.run(client())
-    assert len(catch_ups) == 2  # the sync's two catch-ups each ended on their own
+    assert len(catch_ups) == SYNC_REQUESTS  # the sync's catch-ups each ended on their own
 
 
 def test_a_sync_after_the_reader_stopped_raises_its_error_without_waiting_for_more() -> None:
@@ -350,7 +372,7 @@ def test_sync_takes_everything_the_server_sent_before_its_last_answer() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 
     async def late(peer: Peer, request: int) -> None:
-        if request == 2:
+        if request == SYNC_REQUESTS:
             await asyncio.sleep(0.2)
             await peer.write(peer.raw_frame("minecraft:block_update", BLOCK))
         await answer_at_once(peer, request)
@@ -407,8 +429,8 @@ def test_drain_takes_what_has_arrived_and_does_not_wait_for_more() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 
     async def with_stragglers(peer: Peer, request: int) -> None:
-        if request % 2 == 0:
-            await asyncio.sleep(TICK_S)  # a barrier's second answer comes a tick later
+        if request % SYNC_REQUESTS == 0:
+            await asyncio.sleep(TICK_S)  # a barrier's last answer comes a tick later
         straggler = peer.raw_frame("minecraft:block_update", BLOCK)
         await peer.write(peer.raw_frame(ANSWER, NO_STATISTICS) + straggler + straggler)
 
@@ -424,7 +446,8 @@ def test_drain_takes_what_has_arrived_and_does_not_wait_for_more() -> None:
     (before, after, took), _ = with_bot(
         CODEC, transcript, play_server([], with_stragglers), use, timeout_s=5.0
     )
-    assert (before, after) == (2, 4)
+    # Two stragglers behind each answer: those behind the last are left for the drain.
+    assert (before, after) == (2 * (SYNC_REQUESTS - 1), 2 * SYNC_REQUESTS)
     assert took < 1.0, f"drain took {took:.2f} s"
 
 
@@ -433,7 +456,7 @@ def test_a_drain_that_finds_the_connection_closed_raises_as_the_bots_failure() -
 
     async def then_close(peer: Peer, request: int) -> None:
         await answer_each_tick(peer, request)
-        if request == 2:
+        if request == SYNC_REQUESTS:
             await peer.close()
 
     async def use(bot: Bot) -> bool:

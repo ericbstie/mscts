@@ -16,7 +16,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mappin
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 
-from mscts.bot import Bot
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.wire import Writer
@@ -356,14 +356,14 @@ async def answer_at_once(peer: Peer, request: int) -> None:  # noqa: ARG001 - an
 def answer_like_vanilla_after(shared: int, *, tick_s: float = TICK_S) -> Answer:
     """Answer the first `shared` requests at once, as one packet pass would, then like vanilla.
 
-    Vanilla answers a request at the start of a tick. A Bot's barrier sends its second
-    request as soon as the first answer arrives, so vanilla answers the pair a tick
-    apart: from the request after the first `shared`, every first of a pair at once and
-    every second `tick_s` later.
+    Vanilla answers a request at the start of a tick. A Bot's barrier sends each request
+    soon after the last answer arrived, so vanilla answers them a tick apart: from the
+    request after the first `shared`, the first of each barrier's `SYNC_REQUESTS` at once
+    and each of the others `tick_s` later.
     """
 
     async def answer(peer: Peer, request: int) -> None:
-        if request > shared and (request - shared) % 2 == 0:
+        if request > shared and (request - shared - 1) % SYNC_REQUESTS != 0:
             await asyncio.sleep(tick_s)
         await answer_at_once(peer, request)
 
@@ -371,7 +371,7 @@ def answer_like_vanilla_after(shared: int, *, tick_s: float = TICK_S) -> Answer:
 
 
 answer_each_tick = answer_like_vanilla_after(0)
-"""An Answer like vanilla's on a quiet machine: a barrier's two answers come a tick apart."""
+"""An Answer like vanilla's on a quiet machine: a barrier's answers come a tick apart."""
 
 
 async def never_answer(peer: Peer, request: int) -> None:
@@ -510,6 +510,7 @@ def scheduled_server(
     *,
     stray_after_s: float | None = None,
     burst_after_s: float | None = None,
+    stray_on_request: bool = False,
 ) -> Handler:
     """Join like vanilla, then answer statistics requests in passes on a fixed schedule.
 
@@ -518,15 +519,20 @@ def scheduled_server(
     for the next pass. The tick of the first pass that answers sends a `block_update`
     `EFFECT_AFTER_PASS_S` after the pass. With `stray_after_s`, an `award_stats` nobody
     asked for is sent that long after the join; with `burst_after_s`, `BURST_FRAMES`
-    `change_difficulty` frames in one write. Every serverbound Packet goes into `seen`.
-    A client that leaves while an answer is still due ends the handler.
+    `change_difficulty` frames in one write. With `stray_on_request`, an `award_stats`
+    nobody asked for is sent as soon as the first request arrives, before that request
+    waits for its pass: a Candidate that sends one when a statistic changes (#169). Every
+    serverbound Packet goes into `seen`. A client that leaves while an answer is still due
+    ends the handler.
     """
     join = _Join(seen, JoinScript())
 
     async def handler(peer: Peer) -> None:
         if await join.login(peer) and await join.configure(peer) and await join.play(peer):
             with suppress(ConnectionError):
-                await _answer_on_schedule(peer, seen, stray_after_s, burst_after_s)
+                await _answer_on_schedule(
+                    peer, seen, stray_after_s, burst_after_s, stray_on_request=stray_on_request
+                )
 
     return handler
 
@@ -536,7 +542,12 @@ BURST_FRAMES = 200
 
 
 async def _answer_on_schedule(
-    peer: Peer, seen: list[Packet], stray_after_s: float | None, burst_after_s: float | None
+    peer: Peer,
+    seen: list[Packet],
+    stray_after_s: float | None,
+    burst_after_s: float | None,
+    *,
+    stray_on_request: bool,
 ) -> None:
     """`scheduled_server`'s play: answer each statistics request at its pass, until EOF."""
     loop = asyncio.get_running_loop()
@@ -561,6 +572,9 @@ async def _answer_on_schedule(
             seen.append(packet)
             if packet.name != "minecraft:client_command":
                 continue
+            if stray_on_request:
+                stray_on_request = False
+                await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
             now = loop.time()
             ticks, into = divmod(max(now - first_pass, 0.0), TICK_S)
             this_pass = first_pass + ticks * TICK_S

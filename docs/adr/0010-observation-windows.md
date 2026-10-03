@@ -264,12 +264,29 @@ second request made `sync` return before the tick's `block_update`.
    the loop is busy, a large burst fills the Bot's receive window, and
    what follows waits in the server's send buffer, where FIONREAD cannot
    see it. The fix covers what reached the Bot before, not a server that
-   sends statistics unasked at any moment; #169 tracks that case.
+   sends statistics unasked at any moment; the #169 amendment covers one
+   such `award_stats`.
 4. **No cap Mark.** With no retries there is no cap, so `SYNC_MAX_TRIPS`
    and the `sync:capped` Mark go. No Mark replaces that one: under the wait, a
    pair's answers always arrive at least `TICK_GAP_S` apart, so their gap
    cannot show a server with no tick. The Transcript still holds both
    requests and both answers, with their times.
+
+## Amendment (2026-10-03, #169): a third request
+
+An `award_stats` that reaches the Bot after a request is taken as its
+answer, whether the server sent it unasked or flow control held it back.
+The next request is then sent 5 ms after that stray, and can land in the
+same pass as the first: the real answers come from one tick, and `sync`
+returns before that tick's changes. The Bot cannot tell such a stray from
+an answer before `sync` returns, since the surplus answer is still to come.
+
+1. **`Bot.sync` sends `SYNC_REQUESTS` (3) requests,** each `TICK_GAP_S`
+   after the last answer arrived. With one stray among the answers, two
+   of them are still a pass apart, so the barrier still proves a tick.
+   Two strays in one sync can still end it a pass early.
+2. **It costs up to one tick per sync,** on every server, vanilla
+   included: the third request waits for the next pass.
 
 ## Amendment (2026-10-03, #117): each Bot's window ends at its own barrier
 

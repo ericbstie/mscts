@@ -51,13 +51,22 @@ _PITCH_LIMIT = 90.0
 _FULL_TURN = 360.0
 
 TICK_GAP_S = 0.005
-"""How long `sync` waits after its first answer arrived before it asks again.
+"""How long `sync` waits after an answer arrived before it asks again.
 
 Vanilla handles every packet that has arrived in one pass at the start of a tick, a request
 that arrives during the pass included, so two requests sent back to back can be answered
 together, before that tick sends anything. Answers inside one pass came 0.1 to 3.6 ms
 apart; answers from different ticks, at least 5.4 ms (docs/research/2026-10-01-join-chunks.md).
 A request sent this long after an answer arrived lands after that answer's pass.
+"""
+
+SYNC_REQUESTS = 3
+"""How many statistics requests `sync` sends, each `TICK_GAP_S` after the last answer.
+
+Two would do if every `award_stats` were an answer. A Candidate may send one unasked, and
+the Bot cannot tell it from an answer: taken in an answer's place, it can let two requests
+land in one pass (#169). With three, one such `award_stats` still leaves two answers a
+pass apart.
 """
 
 SYNC_PASSED_OVER = "sync:passed-over"
@@ -718,14 +727,17 @@ class Bot:
 
         The barrier of an Observation window. The Bot asks for its statistics
         (`client_command`, `REQUEST_STATS`) and takes packets until the answer
-        (`award_stats`), twice: a pair. Vanilla handles every packet that has arrived in
-        one pass at the start of a tick, before that tick sends what it changed, and a
-        pass lasts under `TICK_GAP_S`. So the Bot sends the second request only once
-        `TICK_GAP_S` has passed since the first answer arrived: the request lands after
-        that pass, its answer comes from a later tick, and by then the server has sent
-        everything caused by what it had received. The proof is the wait, which a stall
-        in the Bot's own loop can only lengthen. Every packet taken is recorded, and the
-        Bot's Replies have already answered each (docs/research/2026-10-01-join-chunks.md).
+        (`award_stats`), `SYNC_REQUESTS` times. Vanilla handles every packet that has
+        arrived in one pass at the start of a tick, before that tick sends what it
+        changed, and a pass lasts under `TICK_GAP_S`. So the Bot sends each request only
+        once `TICK_GAP_S` has passed since the last answer arrived: the request lands
+        after that pass, its answer comes from a later tick, and by then the server has
+        sent everything caused by what it had received. The proof is the wait, which a
+        stall in the Bot's own loop can only lengthen. Every packet taken is recorded, and
+        the Bot's Replies have already answered each
+        (docs/research/2026-10-01-join-chunks.md). Two requests are the barrier; the
+        third keeps it when one `award_stats` the server sent unasked is taken as an
+        answer (#169). Two such `award_stats` in one sync can still end it a pass early.
 
         It covers what the server does in its packet pass and the tick after. A chat
         command is not run there (vanilla queues it as a server task, between ticks), so
@@ -739,9 +751,10 @@ class Bot:
             msg = f"sync needs a Bot in play, not one in {self._connection.state}"
             raise ProtocolError(msg)
         async with self._operation(self._timeout_s):
-            first = await self._ask_for_statistics()
-            await self._wait_until(first + round(TICK_GAP_S * 1e9))
-            await self._ask_for_statistics()
+            answered = await self._ask_for_statistics()
+            for _ in range(SYNC_REQUESTS - 1):
+                await self._wait_until(answered + round(TICK_GAP_S * 1e9))
+                answered = await self._ask_for_statistics()
 
     async def _wait_until(self, t_ns: int) -> None:
         """Return once the Transcript's clock has reached `t_ns`."""
