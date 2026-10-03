@@ -79,6 +79,18 @@ def test_a_move_decodes_each_axis_against_the_base_and_keeps_an_axis_that_did_no
     assert position(tracker, 41) == (4506 / 4096, 0.1, 411 / 4096)
 
 
+@pytest.mark.parametrize(
+    ("base", "decoded"),
+    [(2.5 / 4096, 4 / 4096), (-1.5 / 4096, 0.0)],
+    ids=["positive", "negative"],
+)
+def test_a_move_rounds_the_base_half_up_as_java_does(base: float, decoded: float) -> None:
+    # Math.round(2.5) is 3 and Math.round(-1.5) is -1, where Python's round gives 2 and -2.
+    tracker = tracked(added(41, ZOMBIE, base, -60.0, 2.5), moved(41, 1, 0, 0))
+
+    assert position(tracker, 41) == (decoded, -60.0, 2.5)
+
+
 def test_a_move_after_a_move_decodes_against_where_the_first_ended() -> None:
     tracker = tracked(
         added(41, ZOMBIE, 1.5, -60.0, 2.5), moved(41, 2048, 0, 0), moved(41, 2048, 0, 0)
@@ -118,7 +130,7 @@ def test_a_position_sync_puts_the_entity_at_the_path_end_and_moves_the_base() ->
     assert position(tracker, 41) == (13.0, -58.0, 3.0)
 
 
-RELATIVE_X = 0x01
+RELATIVE_X, RELATIVE_Y, RELATIVE_Z = 0x01, 0x02, 0x04
 
 
 def teleported(
@@ -132,11 +144,27 @@ def teleported(
     return ("minecraft:teleport_entity", {**fields, "flags": flags, "on_ground": True})
 
 
-def test_a_teleport_adds_a_flagged_axis_and_replaces_the_others() -> None:
-    teleport = teleported(41, 2.0, -50.0, 7.0, RELATIVE_X)
-    tracker = tracked(added(41, ZOMBIE, 1.5, -60.0, 2.5), teleport)
+@pytest.mark.parametrize(
+    ("flags", "expected"),
+    [
+        (RELATIVE_X, (12.0, 3.0, 4.0)),
+        (RELATIVE_Y, (2.0, -47.0, 4.0)),
+        (RELATIVE_Z, (2.0, 3.0, 11.0)),
+    ],
+    ids=["x", "y", "z"],
+)
+def test_a_teleport_adds_a_flagged_axis_to_where_the_entity_is_and_replaces_the_others(
+    flags: int, expected: tuple[float, float, float]
+) -> None:
+    # calculateAbsolute adds to the current position. The absolute teleport first moves the
+    # entity away from its move base, which a teleport leaves where it was.
+    tracker = tracked(
+        added(41, ZOMBIE, 1.5, -60.0, 2.5),
+        teleported(41, 10.0, -50.0, 7.0, 0),
+        teleported(41, 2.0, 3.0, 4.0, flags),
+    )
 
-    assert position(tracker, 41) == (3.5, -50.0, 7.0)
+    assert position(tracker, 41) == expected
 
 
 def test_a_teleport_leaves_the_base_so_a_later_move_decodes_against_the_old_one() -> None:
