@@ -274,7 +274,10 @@ on that server would start in a frozen world.
 a time, and returns once the server has finished them. Inside a window,
 packets are compared tick by tick: the same packet arriving one tick later
 on the Candidate is a difference. With `--verbose`, the Report shows the
-tick each server sent it on. A
+tick each server sent it on. Name the packets your Group tests in its
+window, and leave out light updates (`minecraft:light_update`): vanilla
+works light out separately from the tick, so a light update can arrive on
+a later tick than the change that caused it. A
 Candidate without `/tick` is reported as blocked, naming the command.
 
 `statistical` Groups are planned. They will run many times and compare
