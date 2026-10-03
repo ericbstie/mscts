@@ -1,4 +1,8 @@
-"""Every Adapter writes the Fixture world with natural mob spawning off (ADR-0013, #200)."""
+"""Every Adapter writes the game_rules.dat vanilla and Pumpkin read, with spawning off.
+
+ADR-0013. This checks the file only. Whether a server honours it is checked live: the
+reference probe's QUERY Group and test_pumpkin_control.py ask for `spawn_mobs`.
+"""
 
 from pathlib import Path
 
