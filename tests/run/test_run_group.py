@@ -128,22 +128,40 @@ async def test_a_reference_that_fails_is_an_error_naming_it() -> None:
     assert verdict.detail == "the Reference failed: TimeoutError: no answer"
 
 
-def test_a_comparison_the_harness_cannot_make_is_an_error() -> None:
+def _odd(server: str) -> Transcript:
+    """A Transcript holding a value the Comparison cannot take: it raises on it."""
     odd = Packet(
         state=State.STATUS,
         direction=Direction.CLIENTBOUND,
         name="minecraft:status_response",
         packet_id=0,
         payload=b"",
-        fields={"json_response": {1, 2}},  # outside the codec value model: a harness bug
+        fields={"json_response": {1, 2}},  # outside the codec value model
     )
-    reference = Transcript("status/basic", "vanilla")
-    reference.record("status", odd, t_ns=0)
+    transcript = Transcript("status/basic", server)
+    transcript.record("status", odd, t_ns=0)
+    return transcript
 
-    verdict = judge(BASIC, reference, Transcript("status/basic", "fake"))
+
+def test_a_comparison_the_harness_cannot_make_is_an_error() -> None:
+    verdict = judge(BASIC, _odd("vanilla"), Transcript("status/basic", "fake"))
 
     assert verdict.outcome is Outcome.ERROR
     assert verdict.detail.startswith("the Comparison failed: TypeError: ")
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_value_the_comparison_cannot_take_is_a_mismatch_naming_it() -> None:
+    reference = await _against(BASIC, _vanilla(), server="vanilla")
+
+    verdict = judge(BASIC, reference, _odd("fake"))
+
+    assert verdict.outcome is Outcome.MISMATCH
+    [failed] = verdict.divergences
+    assert (failed.kind, failed.bot, failed.test_case) == ("failed", "", "")
+    assert isinstance(failed.candidate, str)
+    assert failed.candidate.startswith("the Comparison failed: TypeError: ")
+    assert verdict.detail == f"the Candidate failed: {failed.candidate}"
 
 
 def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:

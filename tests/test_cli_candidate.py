@@ -31,9 +31,10 @@ def test_mscts_run_against_pumpkin_prints_a_report(
     assert report.candidate.name == "pumpkin"
     markdown = (tmp_path / "report.md").read_text()
     assert markdown.startswith("# Running tests against pumpkin\n"), markdown
-    # A Comparison that raises is that Group's `error`, and the Run goes on (#174), so only
-    # this tier sees a Comparison bug a Candidate's packets set off.
-    assert "Error: the Comparison failed" not in out, out
+    # A Comparison that raises on what a Candidate sent is that Candidate's `mismatch` (#239),
+    # and the Run goes on (#174), so only this tier sees a Comparison bug a Candidate's
+    # packets set off: as an `Error` line or a `Candidate failed` one.
+    assert "the Comparison failed" not in out, out
 
     if verbose:
         assert "  Reference    vanilla 26.3 (sha256 " in out, out

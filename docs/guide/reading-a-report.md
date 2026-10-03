@@ -136,8 +136,9 @@ of its test cases passes and it has no line of its own. So a prerequisite
 that differs only in network traffic passes. No shipped Group has a
 prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
-frame that did not decode, closed the connection, did not answer in time,
-or still had players online from the Group before. If this happens while
+frame that did not decode, sent a value mscts could not compare with
+vanilla's, closed the connection, did not answer in time, or still had
+players online from the Group before. If this happens while
 mscts waits for the players of the Group before to leave, it does not
 play the Group. If the Candidate's world stays frozen after a Group,
 mscts plays no later Group, and each of them fails as `Candidate failed`.

@@ -249,16 +249,20 @@ def judge(
       never came, its connection closed or was refused, it kept a closed Bot's player
       online past the Group's wait, or it sent a value the Group did not expect (#222).
       Never `error`, which a compliance score leaves out (audit H3).
+    - The Comparison raised, but compares the Reference's Transcript with itself without
+      raising: `mismatch`, led by a `failed` Divergence naming the exception, from no Bot.
+      The Reference's data is fine, so the Candidate sent what made it raise (#239).
     - The Candidate does not have a command the Group's Control needs (`CommandMissing`):
       `blocked`, naming it (`needs /tick`).
-    - The Reference failed, or the Comparison itself raised: `error`, the harness or the
-      Reference having failed.
+    - The Reference failed, or the Comparison raised on the Reference's own data (it
+      raises comparing it with itself too): `error`, the harness or the Reference having
+      failed.
       Any exception from the Comparison is caught, whatever its type, so that one Group's
       bug does not end the Run; the detail names it, and the log keeps its traceback.
       `MemoryError` and `RecursionError` are caught too and become that Group's `error`;
       an interrupt (`KeyboardInterrupt`, `SystemExit`) still ends the Run. The Self-check
-      and the reference tier fail on any `error`, and the candidate tier on one from the
-      Comparison, so a harness bug still shows (#174).
+      and the reference tier fail on any `error`, and the candidate tier on any Comparison
+      that raised, `error` or `mismatch`, so a harness bug still shows (#174, #239).
     """
     if isinstance(reference, GroupError):
         return _error(group, f"the Reference failed: {reference}")
@@ -270,7 +274,15 @@ def judge(
         verdict = compare(reference, transcript, group.masks)
     except Exception as exc:  # any Comparison bug is this Group's error (#174)
         LOG.warning("the Comparison of %s failed", group.id, exc_info=exc)
-        return _error(group, f"the Comparison failed: {type(exc).__name__}: {exc}")
+        what = f"the Comparison failed: {type(exc).__name__}: {exc}"
+        if not _compares_itself(reference, group):
+            return _error(group, what)
+        verdict = Verdict(
+            group_id=group.id,
+            outcome=Outcome.MISMATCH,
+            divergences=(_failed(bot="", what=what),),
+            detail=f"the Candidate failed: {what}",
+        )
     if not isinstance(candidate, GroupError):
         return verdict
     failed = _failed(bot=candidate.bot, what=str(candidate))
@@ -710,6 +722,16 @@ def _describe(error: Exception, timeout_s: float) -> str:
 
 def _error(group: Group, detail: str) -> Verdict:
     return Verdict(group_id=group.id, outcome=Outcome.ERROR, detail=detail)
+
+
+def _compares_itself(reference: Transcript, group: Group) -> bool:
+    """Whether the Comparison takes the Reference's Transcript against itself without raising."""
+    try:
+        compare(reference, reference, group.masks)
+    except Exception as exc:  # raising here is the answer: the Reference's data is odd
+        LOG.warning("the Comparison of %s fails on the Reference alone", group.id, exc_info=exc)
+        return False
+    return True
 
 
 def _failed(*, bot: str, what: str) -> Divergence:
