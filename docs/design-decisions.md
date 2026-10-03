@@ -16,3 +16,4 @@ The ADRs are the only place decisions live. This page lists them.
 - [ADR-0010: Groups compare play packets inside Observation windows](https://github.com/ericbstie/mscts/blob/main/docs/adr/0010-observation-windows.md)
 - [ADR-0011: Exact Groups never compare a field vanilla draws at random](https://github.com/ericbstie/mscts/blob/main/docs/adr/0011-random-fields.md)
 - [ADR-0012: The default Report is a short list of differences](https://github.com/ericbstie/mscts/blob/main/docs/adr/0012-short-default-report.md)
+- [ADR-0013: The Fixture world has natural mob spawning off](https://github.com/ericbstie/mscts/blob/main/docs/adr/0013-no-natural-mob-spawning.md)

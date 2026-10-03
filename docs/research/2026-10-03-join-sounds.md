@@ -60,8 +60,32 @@ on whichever Instance the sound happened to fall on.
 ## What this means
 
 A window near the spawn that is not narrowed to its own packets can hold a
-mob's sound on one Instance only. The join probe clears the mobs before its
-window: it sets `spawn_mobs` to false, runs
-`kill @e[type=!minecraft:player]` through Control, and sets `spawn_mobs`
-back to true afterwards. Whether the Fixture world should have no natural mob
-spawning at all is a separate decision.
+mob's sound on one Instance only. #183 first cleared the mobs inside the join
+probe. Since #200 (ADR-0013), every Adapter starts its server with
+`spawn_mobs` false, so the probe no longer clears them.
+
+## Turning spawning off from the first tick — javap, Pumpkin source and live
+
+- **verified (javap)** Vanilla 26.3's `server.properties` has no key for a
+  game rule (`DedicatedServerProperties`). The game rules are the saved data
+  `minecraft:game_rules`, in `world/data/minecraft/game_rules.dat`.
+  `MinecraftServer` loads it with
+  `SavedDataStorage.computeIfAbsent(GameRuleMap.TYPE)` when it starts, for a
+  new world too. `GameRuleMap.CODEC` maps each rule's registry name
+  (`minecraft:spawn_mobs`) to its value, a Byte for a boolean. The
+  `GameRules` constructor gives every rule the map leaves out its default.
+- **verified (live)** Vanilla's own `game_rules.dat` after
+  `gamerule spawn_mobs false` is a gzipped compound
+  `{data: {…, "minecraft:spawn_mobs": 0b, …}, DataVersion: 5023}`.
+- **verified (source, Pumpkin 4426d11)** `read_game_rules`
+  (`pumpkin-world/src/world_info/data_files.rs`) reads the `data` compound of
+  the same file, and keeps the default of every rule it leaves out.
+  `anvil.rs` prefers that file over `level.dat`. `spawn_mobs` gates both
+  natural spawning (`pumpkin/src/world/mod.rs`, the tick's spawn step) and
+  the mobs a new chunk generates with (`natural_spawner.rs`).
+- **verified (live)** Each Adapter wrote a `game_rules.dat` with only
+  `minecraft:spawn_mobs` false (vanilla stamped 5023, Pumpkin 4903). On both
+  servers, `gamerule spawn_mobs` answered `false`, and a Bot that stayed 30 s
+  at the spawn, over one 400-tick spawn cycle, got no mob's `add_entity`
+  (from vanilla only Control's player, from Pumpkin none). Without its own clearing, the join probe then had the
+  same window in 40 of 40 plays on two vanilla Instances.
