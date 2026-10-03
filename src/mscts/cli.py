@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import contextlib
 import fnmatch
+import functools
 import logging
+import os
 import shutil
 import sys
 import tempfile
@@ -15,7 +17,7 @@ from time import perf_counter
 from types import MappingProxyType
 from typing import override
 
-from mscts import install, run
+from mscts import install, report_json, run
 from mscts.adapters.base import (
     Adapter,
     Download,
@@ -29,7 +31,7 @@ from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
 from mscts.group import GROUPS, Group, GroupKind, resolve
-from mscts.report import Report, render_text
+from mscts.report import Report, render_markdown, render_text
 from mscts.runner import RunnerError
 from mscts.target import TARGET
 
@@ -51,6 +53,10 @@ DEFAULT_REPEAT = 5
 
 class _UsageError(Exception):
     """A command line the command cannot act on; its message names the fix."""
+
+
+class _OutputError(Exception):
+    """A finished Run's Report that could not be written to a file; the message names it."""
 
 
 def _say(text: str) -> None:
@@ -202,6 +208,7 @@ def _run(arguments: argparse.Namespace, _world: _World) -> int:
     if repeat < 1:
         msg = f"--repeat must be at least 1, not {repeat}"
         raise _UsageError(msg)
+    out = None if arguments.out is None else _made_out_folder(Path(arguments.out))
     reference, candidate = _server(REFERENCE), _server(str(arguments.candidate))
     started = perf_counter()
     workdir = Path(tempfile.mkdtemp(prefix="mscts-run-"))
@@ -219,7 +226,68 @@ def _run(arguments: argparse.Namespace, _world: _World) -> int:
     shutil.rmtree(workdir)
     report = Report.of(result, target=TARGET, notes=(), elapsed_s=perf_counter() - started)
     sys.stdout.write(render_text(report, verbose=arguments.verbose))
+    if out is not None:
+        _say(_write_report(report, out, verbose=arguments.verbose))
     return 0
+
+
+def _made_out_folder(folder: Path) -> Path:
+    """`folder`, made if it is not there yet: before the Run, so a bad --out costs no Run."""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        msg = f"cannot create the --out folder {folder}: {error.strerror}"
+        raise _UsageError(msg) from error
+    return folder
+
+
+def _write_report(report: Report, folder: Path, *, verbose: bool) -> str:
+    """Write report.json and report.md into `folder`, replacing any; say where they are.
+
+    Both are written to temporary files first, and replace the earlier pair only once
+    both are written, so a file that cannot be made leaves the earlier pair as it was.
+    """
+    files: dict[Path, Callable[[], str]] = {
+        folder / "report.json": lambda: report_json.dumps(report),
+        folder / "report.md": lambda: render_markdown(report, verbose=verbose),
+    }
+    staged: dict[Path, Path] = {}
+    try:
+        for path, render in files.items():
+            staged[path] = _staged(path, render)
+        for path, temporary in staged.items():
+            _failing_as_unwritable(path, functools.partial(temporary.replace, path))
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
+    return f"Report written to {' and '.join(map(str, files))}"
+
+
+def _staged(path: Path, render: Callable[[], str]) -> Path:
+    """A temporary file beside `path` holding `render()`'s text, for `path` to replace."""
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        _failing_as_unwritable(path, lambda: temporary.write_text(render(), encoding="utf-8"))
+    except BaseException:
+        temporary.unlink()
+        raise
+    return temporary
+
+
+def _failing_as_unwritable(path: Path, write: Callable[[], object]) -> None:
+    """Do `write`; a failure to make, encode or write `path` says so, naming it."""
+    try:
+        write()
+    except (OSError, TypeError, ValueError) as error:
+        msg = f"cannot write {path}: {_reason(error)}"
+        raise _OutputError(msg) from error
+
+
+def _reason(error: Exception) -> str:
+    """Why writing a file failed: the system's words, or the error's own."""
+    return error.strerror if isinstance(error, OSError) and error.strerror else str(error)
 
 
 _ACTIONS: Mapping[str, Callable[[argparse.Namespace, _World], int]] = MappingProxyType(
@@ -270,6 +338,11 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="show installed versions, values and Group times",
     )
+    running.add_argument(
+        "--out",
+        metavar="DIR",
+        help="also write the Report to DIR/report.json and DIR/report.md, replacing them",
+    )
     return parser
 
 
@@ -288,6 +361,6 @@ def main(
         command = str(arguments.command)
         action = str(arguments.action) if command == "adapter" else command
         return _ACTIONS[action](arguments, _World(fetch=fetch, now=now))
-    except (ProvisionError, PrepareError, _UsageError) as error:
+    except (ProvisionError, PrepareError, _UsageError, _OutputError) as error:
         sys.stderr.write(f"mscts: {error}\n")
         return 1

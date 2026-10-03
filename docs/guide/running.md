@@ -43,14 +43,24 @@ Report:
 uv run mscts run --candidate pumpkin > report.txt
 ```
 
-The Report is plain text.
+The Report is plain text. To keep it as files, add `--out DIR`:
+
+```sh
+uv run mscts run --candidate pumpkin --out reports/
+```
+
+mscts creates `reports/` if needed and writes `report.json` and
+`report.md` into it, replacing the files of an earlier Run. To keep two
+Runs side by side, give each its own folder.
+[Report files](/guide/reading-a-report#report-files) says what each
+file holds.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| `0` | The Run finished and printed a Report, whatever it found. |
-| `1` | mscts could not run. The message on stderr says why and names the fix. |
+| `0` | The Run finished and printed a Report, whatever it found, and wrote any `--out` files. |
+| `1` | mscts could not run, or could not write an `--out` file after printing the Report. The message on stderr says why. |
 | `2` | The command line was invalid. |
 
 A Run that finds differences still exits 0. An option to exit non-zero on

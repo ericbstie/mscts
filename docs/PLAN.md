@@ -1195,7 +1195,7 @@ on every Candidate (ADR-0001), and it imports no Group or Run, so `group.py` can
 SETTLE_INTERVAL_S = 0.02            # between status polls while players are still online
 SETTLE_TIMEOUT_S = 2.0              # an Instance's time to have none (~10x vanilla's worst, 197 ms)
 
-class PlayersStillOnline(Exception):  # str(): "2 players still online after waiting 2 s: watcher, control"
+class PlayersStillOnline(Exception):  # str(): "2 players still online after waiting 2 s: 'watcher', 'control'"
     online: int                     # what the last status said
     names: tuple[str, ...]          # the `players.sample` names it listed, if any
     deadline_s: float
@@ -1268,10 +1268,10 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
     # A side that is still not empty means the Group is played on neither side, and its
     # Verdict says who is still online. The Reference's failure is `error`: "the Reference
-    # had 2 players still online after waiting 2 s: watcher, control" (the Candidate's
+    # had 2 players still online after waiting 2 s: 'watcher', 'control'" (the Candidate's
     # sentence after a "; " if it had players too). The Candidate's alone is `mismatch`
     # (audit H3: a Candidate failure is never `error`): a `failed` Divergence (bot "",
-    # candidate "2 players still online after waiting 2 s: watcher, control"), detail
+    # candidate "2 players still online after waiting 2 s: 'watcher', 'control'"), detail
     # "the Candidate failed: ...". A wait that raises anything else (#114) is never raised
     # out of the Run, and the other side's wait runs to its end (gather with
     # return_exceptions): on the Reference it is `error`, "the Reference failed: the wait
@@ -1955,9 +1955,28 @@ class Report:                       # report.py
     notes: tuple[str, ...]          # plain remarks, e.g. what the Report leaves out
     elapsed_s: float               # launch through shutdown, excluding install prompts
     # Report.of(run_result, *, target, notes, elapsed_s); repeat (property)
-    # later: compliance = matches / (groups − errors); to_json(), to_markdown()
+    # later: compliance = matches / (groups − errors)
+
+# report_json.py: report.json, the whole Report (#190). dumps(report) -> str: the Report's
+# fields nested as in Report (target, reference, candidate, results, notes, elapsed_s),
+# indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
+# with one tag key: {"absent": true}, {"bytes": hex}, {"uuid": str}, {"float": "nan" |
+# "inf" | "-inf"}; a server object whose only key is a tag (or "dict") is {"dict": {...}}.
+# Any other value type is a TypeError. loads(text) -> Report reads it back, equal to the
+# Report written; ReportJsonError (a ValueError) names where malformed text differs.
+def dumps(report: Report) -> str: ...
+def loads(text: str) -> Report: ...
+class ReportJsonError(ValueError): ...
 
 def render_text(report: Report, *, verbose: bool = False) -> str: ...
+def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
+# report.md (#190): what render_text says, as Markdown. "# <first line>"; the build line
+# (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks; each entry "- <title> `<name>`",
+# its verbose values nested ("  - "), with values and paths as code spans; "## Group
+# times" and a list; the total last. Blocks are separated by a blank line. Text mscts did
+# not write is shown as it is: code spans fence it with more backticks than it holds, and
+# prose escapes \ ` * _ [ ] < > & | ~ and shows a line break as \n or \r, so server text
+# never starts a line of its own. Both renderers write one _Document.
 # case_titles.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
@@ -2000,7 +2019,11 @@ mscts adapter status <adapter>      # root, version, commit (if any), sha256, si
 mscts selfcheck [--group GLOB] [--repeat N]
 mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
     # --group: fnmatch over the registered exact Group ids, prerequisites added
-    # (default status/*); --repeat default 5; --out not implemented yet.
+    # (default status/*); --repeat default 5. --out DIR: made (parents too) before the
+    # Run, else exit 1 "cannot create the --out folder DIR: <strerror>"; after the Report,
+    # writes DIR/report.json (report_json.dumps) and DIR/report.md (render_markdown, same
+    # verbose), replacing both, then says "Report written to DIR/report.json and
+    # DIR/report.md".
     # Plays in a fresh temp dir, removed afterwards (kept, and named, when an Instance could
     # not start). Progress ("starting vanilla and pumpkin ...", "running status/basic (1 of
     # 5) ...", run.LOG at INFO) on stderr; the Report (render_text) on stdout; exit 0 when

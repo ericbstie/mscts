@@ -1,6 +1,7 @@
 """Reports: a short list of what a Run found (#9, ADR-0012)."""
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
@@ -9,6 +10,9 @@ from mscts.case_titles import TITLES
 from mscts.compare import ABSENT, Divergence, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
 from mscts.target import Target
+
+_NO_DIFFERENCES = "No differences."
+_GROUP_TIMES = "Group times"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,8 +48,131 @@ class Report:
         return max((len(result.verdicts) for result in self.results), default=0)
 
 
+@dataclass(frozen=True, slots=True)
+class _Literal:
+    """Text mscts did not write, such as a value or a name: Markdown shows it as code."""
+
+    text: str
+
+
+type _Line = tuple[str | _Literal, ...]
+"""One line of a Report: plain text and literals, written one after the other."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Entry:
+    """One listed difference or Group failure.
+
+    Attributes:
+        label: Its title or reason, if it has one.
+        name: Its test case name or Group id.
+        values: The verbose lines under it.
+    """
+
+    label: str
+    name: str
+    values: tuple[_Line, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _Document:
+    """What a Report says, before it is written as text or Markdown.
+
+    Attributes:
+        title: The first line.
+        build: The line naming the Candidate's exact build, when the verbose header,
+            which names it too, is not shown and the build is known; else None.
+        facts: The verbose header's labelled values, or none.
+        entries: Each differing test case, then each Group that failed or was skipped.
+        times: The verbose time of each Group (`status/basic 0.1 s`), or None.
+        total: The last line, the total Run time.
+    """
+
+    title: str
+    build: str | None
+    facts: tuple[tuple[str, str], ...]
+    entries: tuple[_Entry, ...]
+    times: tuple[str, ...] | None
+    total: str
+
+
 def render_text(report: Report, *, verbose: bool = False) -> str:
     """One first line, each differing test case once, Group failures, and total time."""
+    document = _document(report, verbose=verbose)
+    lines = [document.title]
+    if document.build is not None:
+        lines.append(document.build)
+    lines.extend(f"  {label:<13}{value}" for label, value in document.facts)
+    for entry in document.entries:
+        lines.append(f"- {entry.label}  {entry.name}" if entry.label else f"- {entry.name}")
+        lines.extend(f"  {_plain(line)}" for line in entry.values)
+    if not document.entries:
+        lines.append(_NO_DIFFERENCES)
+    if document.times is not None:
+        lines.append(_GROUP_TIMES)
+        lines.extend(f"  {time}" for time in document.times)
+    return "\n".join([*lines, document.total]) + "\n"
+
+
+def render_markdown(report: Report, *, verbose: bool = False) -> str:
+    """What render_text says, as Markdown: the first line a heading, names and values code."""
+    document = _document(report, verbose=verbose)
+    blocks = [f"# {_escape(document.title)}"]
+    if document.build is not None:
+        blocks.append(_escape(document.build))
+    if document.facts:
+        blocks.append(
+            "\\\n".join(f"{_escape(label)}: {_escape(value)}" for label, value in document.facts)
+        )
+    blocks.append("\n".join(_markdown_entry(entry) for entry in document.entries))
+    if not document.entries:
+        blocks[-1] = _NO_DIFFERENCES
+    if document.times is not None:
+        blocks.append(f"## {_GROUP_TIMES}")
+        blocks.append("\n".join(f"- {_escape(time)}" for time in document.times))
+    blocks.append(_escape(document.total))
+    return "\n\n".join(blocks) + "\n"
+
+
+def _markdown_entry(entry: _Entry) -> str:
+    label = f"{_escape(entry.label)} " if entry.label else ""
+    values = (f"\n  - {_markdown(line)}" for line in entry.values)
+    return f"- {label}{_code(entry.name)}{''.join(values)}"
+
+
+def _markdown(line: _Line) -> str:
+    return "".join(
+        _code(span.text) if isinstance(span, _Literal) else _escape(span) for span in line
+    )
+
+
+_SPECIAL = frozenset("\\`*_[]<>&|~")
+"""The characters Markdown could read as formatting inside a line."""
+
+_LINE_BREAKS = {"\n": "\\\\n", "\r": "\\\\r"}
+"""Each line break as Markdown that shows it as `\\n` or `\\r`, so the line goes on."""
+
+
+def _escape(text: str) -> str:
+    """`text` as Markdown that shows it as it is, on one line."""
+    return "".join(
+        f"\\{char}" if char in _SPECIAL else _LINE_BREAKS.get(char, char) for char in text
+    )
+
+
+def _code(text: str) -> str:
+    """`text` as a Markdown code span: fenced by more backticks than it holds in a row."""
+    fence = "`" * (1 + max((len(run) for run in re.findall("`+", text)), default=0))
+    padding = " " if text and (text[0] in "` " or text[-1] in "` ") else ""
+    return f"{fence}{padding}{text}{padding}{fence}"
+
+
+def _plain(line: _Line) -> str:
+    return "".join(span.text if isinstance(span, _Literal) else span for span in line)
+
+
+def _document(report: Report, *, verbose: bool) -> _Document:
+    """What the Report says: the verbose header, values and Group times only if `verbose`."""
     cases = dict.fromkeys(
         divergence.test_case
         for result in report.results
@@ -54,23 +181,20 @@ def render_text(report: Report, *, verbose: bool = False) -> str:
         if divergence.test_case
     )
     candidate = report.candidate
-    lines = [f"Running tests against {candidate.name}"]
-    if verbose:
-        lines.extend(_header(report))
-    elif candidate.installed_version is not None:  # the exact build tested (#156)
-        lines.append(f"Candidate: {candidate.name} {candidate.installed_version}")
-    for name in cases:
-        title = TITLES.get(name)
-        lines.append(f"- {title}  {name}" if title else f"- {name}")
-        if verbose:
-            lines.extend(_values(report, name))
-    group_lines = _group_lines(report, verbose=verbose)
-    lines.extend(group_lines)
-    if not cases and not group_lines:
-        lines.append("No differences.")
-    if verbose:
-        lines.extend(_group_times(report.results))
-    return "\n".join([*lines, f"Took {_seconds(report.elapsed_s)} s"]) + "\n"
+    version = candidate.installed_version  # the exact build tested (#156)
+    entries = [
+        _Entry(TITLES.get(name, ""), name, _values(report, name) if verbose else ())
+        for name in cases
+    ]
+    entries.extend(_group_entries(report, verbose=verbose))
+    return _Document(
+        title=f"Running tests against {candidate.name}",
+        build=None if verbose or version is None else f"Candidate: {candidate.name} {version}",
+        facts=_header(report) if verbose else (),
+        entries=tuple(entries),
+        times=_group_times(report.results) if verbose else None,
+        total=f"Took {_seconds(report.elapsed_s)} s",
+    )
 
 
 def _group_details(result: GroupResult) -> list[str]:
@@ -95,7 +219,7 @@ def _group_difference(divergence: Divergence) -> str:
     )
 
 
-def _header(report: Report) -> list[str]:
+def _header(report: Report) -> tuple[tuple[str, str], ...]:
     def side(summary: SideSummary) -> str:
         version = summary.installed_version or "(installed version unknown)"
         return f"{summary.name} {version}"
@@ -103,16 +227,16 @@ def _header(report: Report) -> list[str]:
     target = (
         f"Minecraft {report.target.minecraft_version} (protocol {report.target.protocol_version})"
     )
-    return [
-        f"  Reference    {side(report.reference)}",
-        f"  Candidate    {side(report.candidate)}",
-        f"  Target       {target}",
-        f"  Repetitions  {report.repeat} of each group",
-    ]
+    return (
+        ("Reference", side(report.reference)),
+        ("Candidate", side(report.candidate)),
+        ("Target", target),
+        ("Repetitions", f"{report.repeat} of each group"),
+    )
 
 
-def _values(report: Report, name: str) -> list[str]:
-    return list(
+def _values(report: Report, name: str) -> tuple[_Line, ...]:
+    return tuple(
         dict.fromkeys(
             _difference_values(report, divergence)
             for result in report.results
@@ -123,24 +247,30 @@ def _values(report: Report, name: str) -> list[str]:
     )
 
 
-def _difference_values(report: Report, divergence: Divergence) -> str:
-    path = f"{divergence.path}: " if divergence.path and "[" in divergence.path else ""
+def _difference_values(report: Report, divergence: Divergence) -> _Line:
+    path: _Line = (
+        (_Literal(divergence.path), ": ") if divergence.path and "[" in divergence.path else ()
+    )
     return (
-        f"  {path}{report.reference.name} {_sent(divergence.reference)}, "
-        f"{report.candidate.name} {_sent(divergence.candidate)}"
+        *path,
+        f"{report.reference.name} ",
+        *_sent(divergence.reference),
+        f", {report.candidate.name} ",
+        *_sent(divergence.candidate),
     )
 
 
-def _sent(value: object) -> str:
+def _sent(value: object) -> _Line:
     if value is ABSENT:
-        return "leaves it out"
+        return ("leaves it out",)
     if isinstance(value, bytes):
-        return f"sends bytes {value.hex()}"
-    return f"sends {json.dumps(value, ensure_ascii=False, sort_keys=True, default=_json_value)}"
+        return ("sends bytes ", _Literal(value.hex()))
+    text = json.dumps(value, ensure_ascii=False, sort_keys=True, default=_json_value)
+    return ("sends ", _Literal(text))
 
 
-def _group_times(results: Sequence[GroupResult]) -> list[str]:
-    lines = ["Group times"]
+def _group_times(results: Sequence[GroupResult]) -> tuple[str, ...]:
+    times = []
     for result in results:
         if all(verdict.outcome is Outcome.BLOCKED for verdict in result.verdicts):
             duration = "not played"
@@ -148,31 +278,32 @@ def _group_times(results: Sequence[GroupResult]) -> list[str]:
             duration = f"{_seconds(sum(result.elapsed_s))} s"
         else:
             duration = "not recorded"
-        lines.append(f"  {result.group_id} {duration}")
-    return lines
+        times.append(f"{result.group_id} {duration}")
+    return tuple(times)
 
 
 def _seconds(value: float) -> str:
     return f"{value:.1f}".removesuffix(".0")
 
 
-def _group_lines(report: Report, *, verbose: bool) -> list[str]:
-    lines = []
+def _group_entries(report: Report, *, verbose: bool) -> list[_Entry]:
+    entries = []
     for result in report.results:
         details = _group_details(result)
         if not details:
             continue
-        lines.append(f"- {'; '.join(details)}  {result.group_id}")
-        if verbose:
-            lines.extend(
-                dict.fromkeys(
-                    _difference_values(report, divergence)
-                    for verdict in result.verdicts
-                    for divergence in verdict.divergences
-                    if not divergence.test_case
-                )
+        values = (
+            dict.fromkeys(
+                _difference_values(report, divergence)
+                for verdict in result.verdicts
+                for divergence in verdict.divergences
+                if not divergence.test_case
             )
-    return lines
+            if verbose
+            else {}
+        )
+        entries.append(_Entry("; ".join(details), result.group_id, tuple(values)))
+    return entries
 
 
 def _json_value(value: object) -> object:

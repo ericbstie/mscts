@@ -56,7 +56,7 @@ async def test_it_raises_what_the_last_status_said_once_the_deadline_passes() ->
 
     left = raised.value
     assert (left.online, left.names, left.deadline_s) == (2, ("watcher", "control"), DEADLINE_S)
-    assert str(left) == "2 players still online after waiting 0.3 s: watcher, control"
+    assert str(left) == "2 players still online after waiting 0.3 s: 'watcher', 'control'"
     assert occupancy.polls > 1, "it gave up before the deadline"
 
 
@@ -72,9 +72,12 @@ WORDINGS = {
     "only the names it can read": Wording(
         3,
         [*named("a"), 5, {"name": 7, "id": "x"}, {"id": "x"}],
-        "3 players still online after waiting 0.3 s: a",
+        "3 players still online after waiting 0.3 s: 'a'",
     ),
     "a sample that is no list": Wording(2, 7, "2 players still online after waiting 0.3 s"),
+    "a name with a line break": Wording(
+        1, named("x\n# all good"), "1 player still online after waiting 0.3 s: 'x\\n# all good'"
+    ),
 }
 
 

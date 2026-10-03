@@ -212,7 +212,7 @@ async def _waits_in_vain(context: GroupContext) -> None:  # noqa: ARG001 - a Scr
 
 
 WAITS_IN_VAIN = Group(id="test/waits-in-vain", run=_waits_in_vain)
-STILL_ONLINE = "PlayersStillOnline: 1 player still online after waiting 2 s: control"
+STILL_ONLINE = "PlayersStillOnline: 1 player still online after waiting 2 s: 'control'"
 
 
 @pytest.mark.asyncio

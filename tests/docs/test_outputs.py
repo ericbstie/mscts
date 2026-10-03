@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from mscts.report import render_text
-from tests.docs.replay import report_from_sample
+from mscts import report_json
+from mscts.report import render_markdown, render_text
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = Path(__file__).with_name("samples")
@@ -21,13 +21,40 @@ def test_every_stored_output_records_its_capture_command() -> None:
         assert command.read_text().startswith("mise exec -- uv run ")
 
 
+def _command(sample: Path) -> list[str]:
+    """The arguments of the command that captured `sample`."""
+    return sample.with_suffix(".command").read_text().splitlines()[0].split()
+
+
+def _written(command: list[str]) -> str:
+    """The line `mscts run --out DIR` adds after the Report, or "" without --out."""
+    if "--out" not in command:
+        return ""
+    folder = Path(command[command.index("--out") + 1])
+    return f"Report written to {folder / 'report.json'} and {folder / 'report.md'}\n"
+
+
 @pytest.mark.parametrize("sample", sorted(SAMPLES.glob("*.json")), ids=lambda path: path.stem)
 def test_stored_report_output_matches_the_renderer(sample: Path) -> None:
-    verbose = " --verbose" in sample.with_suffix(".command").read_text().splitlines()[0]
+    command = _command(sample)
+    report = report_json.loads(sample.read_text())
     assert (
-        render_text(report_from_sample(sample), verbose=verbose)
+        render_text(report, verbose="--verbose" in command) + _written(command)
         == sample.with_suffix(".txt").read_text()
     )
+
+
+@pytest.mark.parametrize("sample", sorted(SAMPLES.glob("*.md")), ids=lambda path: path.stem)
+def test_a_stored_report_md_matches_the_renderer(sample: Path) -> None:
+    report = report_json.loads(sample.with_suffix(".json").read_text())
+    verbose = "--verbose" in _command(sample)
+    assert render_markdown(report, verbose=verbose) == sample.read_text()
+
+
+@pytest.mark.parametrize("sample", sorted(SAMPLES.glob("*.json")), ids=lambda path: path.stem)
+def test_each_stored_report_input_is_a_report_json(sample: Path) -> None:
+    text = sample.read_text()
+    assert report_json.dumps(report_json.loads(text)) == text
 
 
 def _matches(excerpt: str, output: str) -> bool:
@@ -38,17 +65,24 @@ def _matches(excerpt: str, output: str) -> bool:
     return re.fullmatch(pattern, output) is not None
 
 
+_STORED = {"": "*.txt", "md": "*.md", "json": "*.json"}
+"""Which stored samples a page's code block must match, by the block's language."""
+
+
 def test_every_output_example_matches_a_stored_real_output() -> None:
-    outputs = [path.read_text() for path in SAMPLES.glob("*.txt")]
-    assert outputs, "Capture command outputs under tests/docs/samples/"
+    outputs = {
+        language: [path.read_text() for path in SAMPLES.glob(pattern)]
+        for language, pattern in _STORED.items()
+    }
+    assert all(outputs.values()), "Capture command outputs under tests/docs/samples/"
     for page in PAGES:
         blocks = re.findall(
             r"^```([^\n]*)\n(.*?)^```[ \t]*$", page.read_text(), re.MULTILINE | re.DOTALL
         )
         for language, example in blocks:
-            if language:
+            if language not in _STORED:
                 continue
-            assert any(_matches(example, output) for output in outputs), (
+            assert any(_matches(example, output) for output in outputs[language]), (
                 f"{page.relative_to(ROOT)}: output differs from stored samples:\n{example}"
             )
 
