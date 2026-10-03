@@ -139,17 +139,17 @@ class Replies:
     Every other packet gets no answer.
 
     Attributes:
-        disconnected: Whether the server's disconnect has arrived, taken or not.
+        saw_disconnect: Whether the server's disconnect has arrived, taken or not.
     """
 
     def __init__(self) -> None:
         """Start with the player at the origin, facing yaw 0 and pitch 0."""
         self._pose = _Pose()
-        self.disconnected = False
+        self.saw_disconnect = False
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
-        self.disconnected |= _ends_the_session(packet)
+        self.saw_disconnect |= _ends_the_session(packet)
         fields = packet.fields or {}
         match packet.state, packet.name:
             case State.LOGIN, "minecraft:login_finished":
@@ -218,7 +218,7 @@ class Bot:
 
     def __init__(
         self,
-        line: AnsweredConnection,
+        answered: AnsweredConnection,
         endpoint: Endpoint,
         target: Target,
         *,
@@ -228,8 +228,8 @@ class Bot:
         """Drive an open Connection to `endpoint`, and its answer. Use `connect` to make one."""
         self.name = name
         self.failure: Exception | None = None
-        self._connection = line.connection
-        self._replies = line.replies  # sees each packet as it arrives, taken or not
+        self._connection = answered.connection
+        self._replies = answered.replies  # sees each packet as it arrives, taken or not
         self._endpoint = endpoint
         self._target = target
         self._timeout_s = timeout_s
@@ -260,8 +260,8 @@ class Bot:
             connection = await Connection.open(
                 endpoint, codec, bot=name, transcript=transcript, answer=replies
             )
-        line = AnsweredConnection(connection=connection, replies=replies)
-        return cls(line, endpoint, target, name=name, timeout_s=timeout_s)
+        answered = AnsweredConnection(connection=connection, replies=replies)
+        return cls(answered, endpoint, target, name=name, timeout_s=timeout_s)
 
     @property
     def closed(self) -> bool:
@@ -487,7 +487,7 @@ class Bot:
         if self._closed or self._disconnected:
             return
         await self._connection.caught_up()
-        if self._replies.disconnected:
+        if self._replies.saw_disconnect:
             await self.drain()
 
     async def close(self) -> None:

@@ -517,7 +517,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
     # connect opens the Connection with answer=Replies(): from then on the Bot answers by itself.
-    # The Bot keeps both (AnsweredConnection(connection, replies)); Replies.disconnected says
+    # The Bot keeps both (AnsweredConnection(connection, replies)); Replies.saw_disconnect says
     # whether the server's disconnect has arrived, taken or not.
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
@@ -563,7 +563,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # in expect (a Group that tests a kick takes the disconnect itself, with expect).
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
     # disconnect, catches up with the socket (Connection.caught_up), then drains only if its
-    # Replies have seen the server's disconnect (Replies.disconnected), so the drain refuses
+    # Replies have seen the server's disconnect (Replies.saw_disconnect), so the drain refuses
     # it; otherwise it takes and records nothing. GroupContext.end calls it on every Bot.
 
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
