@@ -990,3 +990,17 @@ def test_a_connection_gives_the_transcript_it_records_to(
             return connection.transcript
 
     assert asyncio.run(client()) is transcript
+
+
+def test_canary_asyncio_stream_reader_still_buffers_in_a_private_buffer_attribute() -> None:
+    """`Connection.caught_up` reads `StreamReader._buffer`, which asyncio does not promise.
+
+    If a CPython release renames it, `caught_up` would stop seeing bytes the stream holds
+    and the barrier could stamp a request before an answer that already arrived. This
+    turns that rename red here instead.
+    """
+
+    async def fresh_buffer() -> object:
+        return vars(asyncio.StreamReader()).get("_buffer")
+
+    assert isinstance(asyncio.run(fresh_buffer()), bytearray)
