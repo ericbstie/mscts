@@ -247,7 +247,8 @@ Score: 100% (19 of 19 test cases pass)\
 Took 13.3 s
 ```
 
-`report.json` is the whole Report, with or without `--verbose`. Its keys
+`report.json` is the whole Report, with or without `--verbose`, but for the
+differences a Verdict leaves out (see `results` below). Its keys
 are `target`, `reference`, `candidate`, `lines`, `totals`,
 `results`, `notes` and `elapsed_s`. `lines` has one entry for each test
 case of each Group and one for each Group's own line. `totals` counts
@@ -318,8 +319,7 @@ two Groups wrote this, among its other differences:
 ```
 
 The default Run also played `status/with-player`. Its first Verdict stored
-the first difference it found, the player's UUID, and left out 35,282
-others:
+141 differences, the first the player's UUID, and left out 35,282:
 
 ```json
 ...
@@ -364,5 +364,7 @@ An object a server sent whose only key is one of these, or `dict`, is
 written inside `{"dict": ...}`, so it never reads as one of them.
 
 In Python, `mscts.report_json.loads` reads a `report.json` back into the
-Report mscts wrote. It ignores `lines` and `totals`, which follow
-from `results`.
+Report mscts wrote, with up to 20 differences of a test case in each Verdict
+and the rest counted in `omitted`. It ignores `lines` and `totals`, which
+follow from `results`, and reads a file with no `omitted`, written before the
+limit, as one that left nothing out.
