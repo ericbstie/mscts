@@ -21,7 +21,6 @@ from mscts.adapters.base import (
     PrepareError,
     ProvisionError,
     Release,
-    UnavailableError,
     UnsupportedError,
     build_it_yourself,
 )
@@ -557,16 +556,14 @@ def _nightly_commit(refs: bytes) -> str:
     return commit
 
 
-def _require_commit(adapter: str, version: str, commit: str) -> None:
-    """ProvisionError unless `<adapter>@<version>` names `commit` by its first 7+ characters."""
+def _refuse_too_short(adapter: str, version: str) -> None:
+    """ProvisionError if `version` is a commit too short to name one (fewer than 7 characters)."""
     if _SHORT_HEX.fullmatch(version):
         msg = (
             f"{adapter}@{version} is too short to name a commit: name at least {_SHORT} "
-            f"characters of it, as in {adapter}@{commit[:_SHORT]}."
+            "characters of it."
         )
         raise ProvisionError(msg)
-    if len(version) < _SHORT or not commit.startswith(version):
-        raise UnavailableError(adapter, version, latest=Build(version=_NIGHTLY, commit=commit))
 
 
 class PumpkinAdapter:
@@ -576,15 +573,18 @@ class PumpkinAdapter:
     binary = BINARY
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The nightly, the only build Pumpkin publishes; `version` is "nightly" or its commit.
+        """The nightly, the only build Pumpkin publishes, at the commit its tag names.
 
-        A commit is named by its first 7 or more characters. The nightly's Minecraft
-        version shows only in the binary, so `check` refuses one for another `target`.
+        Whatever `version` names, the nightly is the only file to look at: whether it is that
+        build, only the file says (install checks it). The tag's commit may be ahead of the
+        file's for a few minutes. A commit shorter than 7 characters is refused unfetched.
+        The nightly's Minecraft version shows only in the binary, so `check` refuses one for
+        another `target`.
         """
         del target
+        if version is not None:
+            _refuse_too_short(self.name, version)
         commit = _nightly_commit(fetch(TAGS_URL).body)
-        if version is not None and version != _NIGHTLY:
-            _require_commit(self.name, version, commit)
         return Release(build=Build(version=_NIGHTLY, commit=commit), url=NIGHTLY_URL)
 
     def check(self, binary: Path, target: Target) -> Build:

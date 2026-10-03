@@ -73,7 +73,7 @@ def test_an_unpublished_version_fails_saying_how_to_build_it(
 ) -> None:
     code, out, err = run(capsys, "adapter", "install", "pumpkin@8f3c2a1")
     assert code == 1
-    assert out == f"downloading {TAGS_URL} ...\n"
+    assert out == f"downloading {TAGS_URL} ...\ndownloading {NIGHTLY_URL} ...\n"
     assert err == (
         "mscts: pumpkin@8f3c2a1 is not available for download. "
         "The latest is pumpkin nightly 4426d11.\n"

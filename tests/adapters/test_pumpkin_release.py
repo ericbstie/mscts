@@ -1,7 +1,7 @@
 import pytest
 from support.pumpkin import COMMIT, FakeGitHub, refs
 
-from mscts.adapters.base import Build, ProvisionError, Release, UnavailableError
+from mscts.adapters.base import Build, ProvisionError, Release
 from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL, PumpkinAdapter
 from mscts.target import TARGET
 
@@ -22,28 +22,22 @@ def test_the_nightly_s_commit_names_the_nightly(version: str) -> None:
     assert PumpkinAdapter().release(TARGET, version, FakeGitHub()) == NIGHTLY
 
 
+# The tag only finds the file: whether the file is the build asked for, only the file says.
 @pytest.mark.parametrize("version", ["8f3c2a1", "0.2.0+26.3-26.51"])
-def test_any_other_build_is_not_available_and_says_how_to_build_it(version: str) -> None:
-    said = (
-        f"pumpkin@{version} is not available for download. "
-        "The latest is pumpkin nightly 4426d11.\n"
-        "Build it yourself and install it with:\n"
-        "  mscts adapter install pumpkin --from <file>"
-    )
-    with pytest.raises(UnavailableError) as raised:
-        PumpkinAdapter().release(TARGET, version, FakeGitHub())
-    assert str(raised.value) == said
+def test_any_other_version_is_still_the_nightly_to_look_at(version: str) -> None:
+    github = FakeGitHub()
+    assert PumpkinAdapter().release(TARGET, version, github) == NIGHTLY
+    assert github.fetched == [TAGS_URL]
 
 
 @pytest.mark.parametrize("version", [COMMIT[:6], COMMIT[:1], "8f3c2a"])
 def test_fewer_than_7_characters_of_a_commit_are_too_short_to_name_one(version: str) -> None:
-    said = (
-        f"pumpkin@{version} is too short to name a commit: name at least 7 characters of it, "
-        "as in pumpkin@4426d11."
-    )
+    said = f"pumpkin@{version} is too short to name a commit: name at least 7 characters of it."
+    github = FakeGitHub()
     with pytest.raises(ProvisionError) as raised:
-        PumpkinAdapter().release(TARGET, version, FakeGitHub())
+        PumpkinAdapter().release(TARGET, version, github)
     assert str(raised.value) == said
+    assert github.fetched == []
 
 
 def test_an_annotated_tag_names_the_commit_it_points_to() -> None:

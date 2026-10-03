@@ -45,10 +45,12 @@ commit a nightly build was made from, at least its first 7 characters,
 or `nightly` for the latest one (the same as no version).
 
 Pumpkin publishes only its latest nightly, so an older commit cannot be
-downloaded. mscts then installs nothing, and says how to get it:
+downloaded. mscts downloads the nightly to read which commit it is, and if
+it is not the one you named, installs nothing and says how to get it:
 
 ```
 downloading https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack ...
+downloading https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux ...
 mscts: pumpkin@8f3c2a1 is not available for download. The latest is pumpkin nightly 4426d11.
 Build it yourself and install it with:
   mscts adapter install pumpkin --from <file>

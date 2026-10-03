@@ -210,12 +210,12 @@ def install_release(
     if unchanged is not None:
         return unchanged
     release = _release(adapter, target, version, fetch)
-    _vacant(existing, adapter, version)
     download = _verified_download(adapter, release, fetch)
     installed_at = _now()
 
     def source(build: Build) -> Source:
         downloaded = _what_was_downloaded(adapter.name, release, build, version)
+        _vacant(existing, adapter, version)
         return _downloaded_source(release, download, downloaded, installed_at)
 
     _write(adapter, target, cache_dir, download.body, source)

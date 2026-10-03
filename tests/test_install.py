@@ -115,21 +115,25 @@ def test_another_installed_build_is_never_replaced_silently(tmp_path: Path) -> N
         f"from {NIGHTLY_URL} (sha256 {sha256}). To install pumpkin@4426d11 instead, delete "
         f"{root_of(tmp_path)} and run `mscts adapter install pumpkin@4426d11`"
     )
-    assert github.fetched == [TAGS_URL]  # never the binary
+    assert (root_of(tmp_path) / "pumpkin").read_bytes() == older
 
 
 # A commit is named by 7 or more of its first characters: 4426 names no build.
 @pytest.mark.parametrize(
-    ("version", "said"), [("8f3c2a1", "is not available"), (COMMIT[:4], "is too short")]
+    ("version", "said", "fetched"),
+    [
+        ("8f3c2a1", "is not available", [TAGS_URL, NIGHTLY_URL]),  # only the file can say
+        (COMMIT[:4], "is too short", []),
+    ],
 )
 def test_a_build_that_cannot_be_installed_says_so_over_an_installed_one(
-    tmp_path: Path, version: str, said: str
+    tmp_path: Path, version: str, said: str, fetched: list[str]
 ) -> None:
     install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub())
     github = FakeGitHub()
     with pytest.raises(ProvisionError, match=rf"^pumpkin@{version} {said}"):
         install_release(ADAPTER, TARGET, tmp_path, version, github)
-    assert github.fetched == [TAGS_URL]
+    assert github.fetched == fetched
 
 
 def test_the_file_s_own_commit_is_installed_and_reported_whatever_the_tag_says(
@@ -142,6 +146,14 @@ def test_the_file_s_own_commit_is_installed_and_reported_whatever_the_tag_says(
         f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root_of(tmp_path)}"
     )
     assert (recorded(tmp_path)["version"], recorded(tmp_path)["commit"]) == ("nightly", COMMIT)
+    assert done.installation.source is not None
+    assert done.installation.source.build == Build(version="nightly", commit=COMMIT)
+
+
+def test_the_file_s_commit_named_while_the_tag_has_moved_on_is_installed(
+    tmp_path: Path,
+) -> None:
+    done = install_release(ADAPTER, TARGET, tmp_path, COMMIT[:7], FakeGitHub(tags=refs(OTHER)))
     assert done.installation.source is not None
     assert done.installation.source.build == Build(version="nightly", commit=COMMIT)
 
