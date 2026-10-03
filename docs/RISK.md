@@ -15,7 +15,7 @@ each level requires).
 | Area | Files | Level | Clean merges since the last escape | Why |
 | --- | --- | --- | --- | --- |
 | timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | high | 1 | Five escapes since 2026-09-26, then audit 2026-10-02 H1, H5 (`docs/audits/2026-10-02-timing-compare.md`); a socket leak on cancel since (#127; #133 turned out not to leak). The audit these call is folded into the reviews of #115 (PR #163, merged) and #117 (PR #179) |
-| comparison core | `compare.py`, `measure.py`, `test_cases.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 3 | Audit 2026-10-02 H2, H3, H4; vanilla's own chunk encodings read as Divergences (#172, found by #30's measurement). The independent review of PR #173 stood in for the audit |
+| comparison core | `compare.py`, `measure.py`, `case_titles.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 3 | Audit 2026-10-02 H2, H3, H4; vanilla's own chunk encodings read as Divergences (#172, found by #30's measurement). The independent review of PR #173 stood in for the audit |
 | codec | `codec/*` | medium | 0 | Audit K MD1, MD4 (2026-09-26); none since |
 | platform | `runner.py`, `adapters/*`, `install.py`, `registry.py`, `spec.py`, `cli.py`, `report.py` | medium | 1 | Audit K H1; orphaned Instances (#3) |
 | Groups | `groups/*`, `tests/group/*` | high | 1 | Raised 2026-10-03: `blocks/clone` gave `mismatch` on vanilla against vanilla (#170) |

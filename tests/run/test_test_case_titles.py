@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from mscts.case_titles import TITLES
 from mscts.group import GROUPS
 from mscts.run import Server, run_results
-from mscts.test_cases import TITLES
 from tests.docs.replay import report_from_sample
 
 

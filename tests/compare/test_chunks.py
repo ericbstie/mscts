@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.wire import Writer
 from mscts.compare import ABSENT, UNORDERED, Divergence, Mask, Observability, Verdict, compare
-from mscts.test_cases import TITLES
 from mscts.transcript import Transcript
 from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 

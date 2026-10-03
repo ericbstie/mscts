@@ -7,13 +7,13 @@ sent and the Marks. What a server answers is never asserted.
 import pytest
 
 from mscts.bot import Bot
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import join
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import ServerSpec
-from mscts.test_cases import TITLES
 from mscts.transcript import Transcript
 from tests.group.test_blocks import BlocksServer, sent
 from tests.group.test_control import playing
