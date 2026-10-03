@@ -1364,7 +1364,7 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Candidate failed: the wait ...". A BaseException that is not an Exception (a
     # cancellation from inside a wait) is raised once both waits are done. The wait is
     # not part of `elapsed_s`.
-    # NotImplementedError for a Group that is not exact (M6a/M6b); ValueError for one
+    # NotImplementedError for a statistical Group (M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
     # if an Instance cannot start.
