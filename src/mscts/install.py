@@ -141,8 +141,18 @@ def _write(
         shutil.rmtree(staging, ignore_errors=True)  # gone already if the rename worked
 
 
-def _now() -> str:
-    return datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
+type Clock = Callable[[], datetime.datetime]
+"""The time now, timezone-aware: utc_now, or a fixed time in tests."""
+
+
+def utc_now() -> datetime.datetime:
+    """The time now, in UTC: the Clock outside tests."""
+    return datetime.datetime.now(datetime.UTC)
+
+
+def _stamp(moment: datetime.datetime) -> str:
+    """`moment` as SOURCE.json records it: ISO 8601, to the second."""
+    return moment.isoformat(timespec="seconds")
 
 
 def _names(build: Build, version: str) -> bool:
@@ -197,8 +207,14 @@ def _published(adapter: Adapter, release: Release, download: Download) -> None:
     raise ProvisionError(msg)
 
 
-def install_release(
-    adapter: Adapter, target: Target, cache_dir: Path, version: str | None, fetch: Fetch
+def install_release(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in, not read
+    adapter: Adapter,
+    target: Target,
+    cache_dir: Path,
+    version: str | None,
+    fetch: Fetch,
+    *,
+    now: Clock = utc_now,
 ) -> Installed:
     """Download the latest build for `target` (or `version`'s) into the cache, verified.
 
@@ -213,7 +229,7 @@ def install_release(
         return unchanged
     release = _release(adapter, target, version, fetch)
     download = _verified_download(adapter, release, fetch)
-    installed_at = _now()
+    installed_at = _stamp(now())
 
     def source(build: Build) -> Source:
         downloaded = _what_was_downloaded(adapter.name, release, build, version)
@@ -321,7 +337,9 @@ def _downloaded_source(
     )
 
 
-def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) -> Installed:
+def install_from(
+    adapter: Adapter, target: Target, cache_dir: Path, path: Path, *, now: Clock = utc_now
+) -> Installed:
     """Install the file at `path`, recording its sha256 and the Build it names.
 
     A file the Adapter cannot run is refused first, naming `path`, whatever is installed.
@@ -331,7 +349,7 @@ def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) 
     existing = installed(adapter, target, cache_dir)
     if existing is not None and existing.source is not None:
         return _same_file(existing, adapter, path, hashlib.sha256(body).hexdigest())
-    installed_at = _now()
+    installed_at = _stamp(now())
 
     def source(build: Build) -> Source:
         return _supplied_source(path, body, build, installed_at)

@@ -772,7 +772,10 @@ class Installed:
 def installed(adapter, target, cache_dir) -> Installation | None: ...
     # verified by the recorded sha256; None if absent; ProvisionError naming the fix
     # ("delete <root> and run `mscts adapter install <adapter>` again") if unrecorded or changed
-def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetch) -> Installed: ...
+type Clock = Callable[[], datetime]       # the time now, timezone-aware; utc_now() outside tests,
+                                          # passed in from cli.main(..., now=) (function design)
+def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetch, *,
+                    now: Clock = utc_now) -> Installed: ...
     # adapter.release(target, version, fetch), then fetch(release.url): the publisher's sha1
     # and size checked where it lists them; adapter.check in staging. Records the Release's
     # version with the commit the file names (the release's commit only finds the file; a
@@ -786,7 +789,7 @@ def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetc
     # the Adapter's refusal of <v> first (vanilla@26.4 is not supported), never the binary.
     # A failed fetch (OSError, or an http.client.HTTPException such as a body
     # cut off midway) → ProvisionError naming the --from command.
-def install_from(adapter, target, cache_dir, path: Path) -> Installed: ...
+def install_from(adapter, target, cache_dir, path: Path, *, now: Clock = utc_now) -> Installed: ...
     # records the file's sha256, path and the Build adapter.check reads from it
 # install_command: adapters/base.py, re-exported here.
 @frozen

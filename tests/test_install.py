@@ -399,3 +399,17 @@ def test_an_adapter_s_refusal_from_release_gets_the_from_hint(tmp_path: Path) ->
         "Build it yourself and install it with:\n"
         "  mscts adapter install pumpkin --from <file>"
     )
+
+
+FIXED = datetime.datetime(2026, 10, 3, 12, 0, 1, tzinfo=datetime.UTC)
+
+
+def test_install_release_records_the_time_its_clock_gives(tmp_path: Path) -> None:
+    install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub(), now=lambda: FIXED)
+    assert recorded(tmp_path)["installed_at"] == "2026-10-03T12:00:01+00:00"
+
+
+def test_install_from_records_the_time_its_clock_gives(tmp_path: Path) -> None:
+    supplied = write(tmp_path / "pk", NIGHTLY)
+    install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, now=lambda: FIXED)
+    assert recorded(tmp_path / "cache")["installed_at"] == "2026-10-03T12:00:01+00:00"

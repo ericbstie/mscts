@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from types import MappingProxyType
@@ -101,7 +102,15 @@ def _adapter_at(argument: str) -> tuple[str, str | None]:
     return name, version or None
 
 
-def _install(arguments: argparse.Namespace, fetch: Fetch) -> int:
+@dataclass(frozen=True, slots=True)
+class _World:
+    """What a command reads from outside: the network and the clock, passed in at the top."""
+
+    fetch: Fetch
+    now: install.Clock
+
+
+def _install(arguments: argparse.Namespace, world: _World) -> int:
     name, version = arguments.adapter
     adapter = ADAPTERS[name]()
     if arguments.from_path is not None:
@@ -110,9 +119,11 @@ def _install(arguments: argparse.Namespace, fetch: Fetch) -> int:
                 f"{name}@{version} --from {arguments.from_path}: name a version or a file, not both"
             )
             raise _UsageError(msg)
-        done = install.install_from(adapter, TARGET, cache_dir(), Path(arguments.from_path))
+        path = Path(arguments.from_path)
+        done = install.install_from(adapter, TARGET, cache_dir(), path, now=world.now)
     else:
-        done = install.install_release(adapter, TARGET, cache_dir(), version, _saying(fetch))
+        fetch = _saying(world.fetch)
+        done = install.install_release(adapter, TARGET, cache_dir(), version, fetch, now=world.now)
     _say(done.message)
     return 0
 
@@ -125,7 +136,7 @@ def _state(adapter: Adapter) -> tuple[Installation | None, str | None]:
         return None, str(error)
 
 
-def _list(_arguments: argparse.Namespace, _fetch: Fetch) -> int:
+def _list(_arguments: argparse.Namespace, _world: _World) -> int:
     rows = [("ADAPTER", "VERSION", "TARGET", "STATE")]
     for name, make in ADAPTERS.items():
         installation, broken = _state(make())
@@ -142,7 +153,7 @@ def _list(_arguments: argparse.Namespace, _fetch: Fetch) -> int:
     return 0
 
 
-def _status(arguments: argparse.Namespace, _fetch: Fetch) -> int:
+def _status(arguments: argparse.Namespace, _world: _World) -> int:
     adapter = ADAPTERS[arguments.adapter]()
     what = f"{adapter.name} {TARGET.minecraft_version}"
     installation = install.installed(adapter, TARGET, cache_dir())
@@ -185,7 +196,7 @@ def _server(name: str) -> run.Server:
     return run.Server(adapter, install.require(adapter, TARGET, cache_dir(), terminal=terminal))
 
 
-def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
+def _run(arguments: argparse.Namespace, _world: _World) -> int:
     groups = _groups(str(arguments.group))
     repeat = int(arguments.repeat)
     if repeat < 1:
@@ -211,7 +222,7 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
     return 0
 
 
-_ACTIONS: Mapping[str, Callable[[argparse.Namespace, Fetch], int]] = MappingProxyType(
+_ACTIONS: Mapping[str, Callable[[argparse.Namespace, _World], int]] = MappingProxyType(
     {"install": _install, "list": _list, "status": _status, "run": _run}
 )
 
@@ -262,13 +273,21 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Sequence[str] | None = None, *, fetch: Fetch = https_get) -> int:
-    """Run the `mscts` command; return its exit code (1: a failure, whose message says why)."""
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    fetch: Fetch = https_get,
+    now: install.Clock = install.utc_now,
+) -> int:
+    """Run the `mscts` command; return its exit code (1: a failure, whose message says why).
+
+    The network (`fetch`) and the clock (`now`) are read only through these.
+    """
     arguments = _parser().parse_args(argv)
     try:
         command = str(arguments.command)
         action = str(arguments.action) if command == "adapter" else command
-        return _ACTIONS[action](arguments, fetch)
+        return _ACTIONS[action](arguments, _World(fetch=fetch, now=now))
     except (ProvisionError, PrepareError, _UsageError) as error:
         sys.stderr.write(f"mscts: {error}\n")
         return 1
