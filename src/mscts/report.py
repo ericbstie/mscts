@@ -1,6 +1,7 @@
 """Reports: a short list of what a Run found (#9, ADR-0012)."""
 
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
@@ -111,6 +112,54 @@ def render_text(report: Report, *, verbose: bool = False) -> str:
         lines.append(_GROUP_TIMES)
         lines.extend(f"  {time}" for time in document.times)
     return "\n".join([*lines, document.total]) + "\n"
+
+
+def render_markdown(report: Report, *, verbose: bool = False) -> str:
+    """What render_text says, as Markdown: the first line a heading, names and values code."""
+    document = _document(report, verbose=verbose)
+    blocks = [f"# {_escape(document.title)}"]
+    if document.build is not None:
+        blocks.append(_escape(document.build))
+    if document.facts:
+        blocks.append(
+            "\\\n".join(f"{_escape(label)}: {_escape(value)}" for label, value in document.facts)
+        )
+    blocks.append("\n".join(_markdown_entry(entry) for entry in document.entries))
+    if not document.entries:
+        blocks[-1] = _NO_DIFFERENCES
+    if document.times is not None:
+        blocks.append(f"## {_GROUP_TIMES}")
+        blocks.append("\n".join(f"- {_escape(time)}" for time in document.times))
+    blocks.append(_escape(document.total))
+    return "\n\n".join(blocks) + "\n"
+
+
+def _markdown_entry(entry: _Entry) -> str:
+    label = f"{_escape(entry.label)} " if entry.label else ""
+    values = (f"\n  - {_markdown(line)}" for line in entry.values)
+    return f"- {label}{_code(entry.name)}{''.join(values)}"
+
+
+def _markdown(line: _Line) -> str:
+    return "".join(
+        _code(span.text) if isinstance(span, _Literal) else _escape(span) for span in line
+    )
+
+
+_SPECIAL = frozenset("\\`*_[]<>&|~")
+"""The characters Markdown could read as formatting inside a line."""
+
+
+def _escape(text: str) -> str:
+    """`text` as Markdown that shows it as it is."""
+    return "".join(f"\\{char}" if char in _SPECIAL else char for char in text)
+
+
+def _code(text: str) -> str:
+    """`text` as a Markdown code span: fenced by more backticks than it holds in a row."""
+    fence = "`" * (1 + max((len(run) for run in re.findall("`+", text)), default=0))
+    padding = " " if text and (text[0] in "` " or text[-1] in "` ") else ""
+    return f"{fence}{padding}{text}{padding}{fence}"
 
 
 def _plain(line: _Line) -> str:
