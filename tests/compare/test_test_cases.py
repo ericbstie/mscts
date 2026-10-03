@@ -252,6 +252,16 @@ def test_each_leaf_of_a_reference_compound_the_candidate_replaced_is_a_test_case
     assert verdict.test_cases == ("set_health.a", "set_health.a.b", "set_health.a.c[].d")
 
 
+def test_an_empty_compound_inside_a_replaced_one_is_a_test_case() -> None:
+    verdict = _verdict([_health(a={"b": {}, "c": []})], [_health(a=0)])
+    assert verdict.test_cases == ("set_health.a", "set_health.a.b", "set_health.a.c")
+
+
+def test_an_empty_compound_of_a_packet_left_out_is_a_test_case() -> None:
+    verdict = _verdict([_health(a={}, b=[])], [])
+    assert verdict.test_cases == ("set_health", "set_health.a", "set_health.b")
+
+
 def test_a_masked_leaf_of_a_replaced_compound_is_no_test_case() -> None:
     mask = Mask("minecraft:set_health", "a.b", "why")
     verdict = _verdict([_health(a={"b": 1, "c": 2})], [_health(a=0)], mask)

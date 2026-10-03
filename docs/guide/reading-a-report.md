@@ -46,12 +46,12 @@ of a packet vanilla sent is a test case, so a Candidate that leaves a
 packet out, or stops before sending it, fails each of its fields, as if
 it had sent them all wrong. The same holds for a value that holds others,
 such as the `players` of a status response: a Candidate that leaves it
-out, or sends something else in its place, fails each value inside it.
-Copies of a packet share its test cases, so
-if vanilla sends a packet more often than the Candidate, every field of
-that packet fails, even in the copies that matched. The score is rounded down to one decimal, so
-only a Run where every scored test case passes shows 100%. If no test
-case was scored, the score is `none`.
+out, or sends something else in its place, fails each value inside it,
+an empty list or object included. Copies of a packet share its test
+cases, so if vanilla sends a packet more often than the Candidate, every
+field of that packet fails, even in the copies that matched. The score is
+rounded down to one decimal, so only a Run where every scored test case
+passes shows 100%. If no test case was scored, the score is `none`.
 
 The totals line counts the lines that passed and failed, then any that
 were not scored, such as `0 passed, 3 failed (1 not tested), 1 error (not
@@ -193,7 +193,9 @@ it never supplies this header. Without installation provenance, the header
 says `installed version unknown`.
 
 Identical differences from repetitions appear once; distinct values stay
-under the same line. List values also name their element's path.
+under the same line. A value that failed because the Candidate left out
+or replaced the packet or value holding it has no values of its own:
+they are under the line of the packet or value that holds it. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts

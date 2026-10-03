@@ -148,6 +148,28 @@ def test_replacing_a_compound_field_scores_no_higher_than_sending_each_leaf_wron
     assert score(replaced) <= score(wrong)
 
 
+def test_replacing_a_compound_of_empty_ones_scores_no_higher_than_filling_them_wrong() -> None:
+    def score(reference: Mapping[str, object], *sent: Mapping[str, object]) -> float:
+        many = {f"g{n}": n for n in range(100)}
+        passing = transcript(("alice", packet("minecraft:bar", fields=many)), group_id="x/b")
+        verdict = compare(
+            transcript(("alice", packet("minecraft:foo", fields=reference)), group_id="x/a"),
+            transcript(
+                *(("alice", packet("minecraft:foo", fields=one)) for one in sent), group_id="x/a"
+            ),
+            (),
+        )
+        lines = report_lines(_report(_result(compare(passing, passing, ())), _result(verdict)))
+        result = totals(lines).score
+        assert result is not None
+        return result
+
+    nested = {"a": {"b": {}, "c": []}}
+    assert score(nested, {"a": 0}) <= score(nested, {"a": {"b": 0, "c": 0}})
+    empty = {"a": {}, "b": []}
+    assert score(empty) <= score(empty, {"a": 0, "b": 0})
+
+
 def test_the_leaves_of_a_replaced_compound_fail_and_its_siblings_do_not() -> None:
     verdict = compare(
         transcript(

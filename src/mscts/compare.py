@@ -2391,13 +2391,29 @@ def _field_cases(entry: _Normalized) -> set[str]:
 def _leaf_cases(
     state: State, name: str, value: _Value | Absent, path: _Path, masked: frozenset[_Path]
 ) -> set[str]:
-    """The test cases of the leaves of `value`, at `path` in a Packet: none where masked."""
+    """The test cases of the leaves of `value`, at `path` in a Packet: none where masked.
+
+    An empty list or mapping is a leaf too, so a compound of empty ones is not worth less
+    than one of values when it is replaced or left out.
+    """
     names: dict[_Path, str] = {}
-    for leaf, _, _ in _pairs(value, value, path):
+    for leaf in _leaves(value, path):
         shape = tuple(0 if isinstance(step, int) else step for step in leaf)
         if shape not in names and leaf not in masked:
             names[shape] = _test_case(state, name, shape)
     return set(names.values())
+
+
+def _leaves(value: _Value | Absent, path: _Path) -> Iterator[_Path]:
+    """The path of each leaf of `value`, in the order `_pairs` gives, empty compounds included."""
+    if isinstance(value, dict) and value:
+        for key in sorted(value):
+            yield from _leaves(value[key], (*path, key))
+    elif isinstance(value, list) and value:
+        for index, item in enumerate(value):
+            yield from _leaves(item, (*path, index))
+    else:
+        yield path
 
 
 def _unmatched(
