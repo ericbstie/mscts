@@ -1046,11 +1046,12 @@ class GroupContext:
                                     # freeze. Vanilla sends nothing when a step ends
                                     # (docs/research/2026-10-03-tick-step.md). ValueError:
                                     # ticks < 1, or not frozen
-    async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises);
-                                    # then #184: Bot.refuse_queued_disconnect on every Bot
+    async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises,
+                                    # setting left_frozen: #228); then #184:
+                                    # Bot.refuse_queued_disconnect on every Bot
     async def close(self) -> None: ...   # unfreezes if still frozen (logged, not raised, and
                                     # sets left_frozen: #228), then closes every Bot; idempotent
-    left_frozen: bool               # #228: close() could not unfreeze the world
+    left_frozen: bool               # #228: end() or close() could not unfreeze the world
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
                                     # it is; "" if none (the script itself raised it)

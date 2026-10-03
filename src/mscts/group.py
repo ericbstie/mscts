@@ -207,7 +207,7 @@ class GroupContext:
 
     Attributes:
         endpoint: Where the Instance is reached.
-        left_frozen: The Group froze the world, failed, and `close` could not unfreeze
+        left_frozen: The Group froze the world, and `end` or `close` could not unfreeze
             it: the Instance is not fit for another Group (#228).
     """
 
@@ -423,9 +423,9 @@ class GroupContext:
 
         Called once the Group's script has completed, before the Bots close (`run_group`).
         A world left frozen would spoil every later Group on the Instance, so an unfreeze
-        that fails fails the Group. A disconnect nothing took (it came after the last
-        barrier, drain or `expect`) fails its Bot (`Bot.refuse_queued_disconnect`), so a
-        Candidate that kicks a Bot late does not pass.
+        that fails fails the Group and sets `left_frozen`. A disconnect nothing took (it
+        came after the last barrier, drain or `expect`) fails its Bot
+        (`Bot.refuse_queued_disconnect`), so a Candidate that kicks a Bot late does not pass.
 
         Raises:
             TimeoutError: The server did not answer `tick unfreeze` in time.
@@ -433,7 +433,11 @@ class GroupContext:
         """
         if self._ticks is not None:
             self._ticks = None
-            await self._control.run("tick unfreeze")
+            try:
+                await self._control.run("tick unfreeze")
+            except BaseException:
+                self.left_frozen = True
+                raise
         for bot in self._bots.values():
             await bot.refuse_queued_disconnect()
 

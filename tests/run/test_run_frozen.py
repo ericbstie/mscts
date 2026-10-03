@@ -81,6 +81,33 @@ async def test_a_group_after_one_that_left_a_side_frozen_is_an_error(
     ), later
 
 
+async def _stays_frozen(context: GroupContext) -> None:
+    await context.freeze()
+
+
+STAYS_FROZEN = Group(id="test/stays-frozen", run=_stays_frozen, kind=GroupKind.TICK_EXACT)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("frozen", ["Reference", "Candidate"])
+async def test_a_group_after_one_that_could_not_unfreeze_at_its_end_is_an_error(
+    frozen: str, tmp_path: Path
+) -> None:
+    stuck, working = refusing_to_unfreeze(), ControlServer()
+    sides = (stuck, working) if frozen == "Reference" else (working, stuck)
+    async with (
+        attached("vanilla", sides[0]) as reference,
+        attached("vanilla", sides[1]) as candidate,
+    ):
+        verdicts = await run([STAYS_FROZEN, JOINS], reference, candidate, workdir=tmp_path)
+
+    later = verdicts[1]
+    assert later.outcome is Outcome.ERROR, verdicts
+    assert later.detail == (
+        f"the {frozen} is unusable: test/stays-frozen failed and left its world frozen"
+    )
+
+
 @pytest.mark.asyncio
 async def test_a_side_that_unfroze_stays_usable(tmp_path: Path) -> None:
     async with (
