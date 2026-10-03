@@ -52,11 +52,20 @@ The `/fill` region holds one block that drops an item. Vanilla sends the items a
 order that follows their entity ids, and two servers number their entities differently, so with
 several the Reference would not match itself.
 
+## Joining a world (`join`)
+
+What a player receives when it joins, up to the end of the first chunk batch: the login, the configuration (registries, tags and enabled features) and the first play packets (the world, difficulty, abilities, position, inventory, health, experience, recipes, advancements, the world border and the first chunks).
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `join/basic` | exact | none | One player joins alone and receives the first chunk batch. The player spawns exactly at the world spawn (`gamerule respawn_radius 0`), and the check that repeats its first position is off (`gamerule player_movement_check false`). Both rules are put back afterwards. | `join.to_first_chunk` |
+
+The comparison ends when the first chunk batch is complete. Later batches, and the animals that walk into view, depend on timing.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
-| Joining a world (`join`) | `join/basic`: log in offline and receive the first chunk batch | Bots can already join; the Group is next. |
 | Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | The `tick-exact` kind. |
 | Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
 
@@ -76,4 +85,5 @@ level is reported per chunk section, with the positions that differ.
 | Name | Unit | Source |
 | --- | --- | --- |
 | `status.rtt` | ms | The `status.rtt` span in `status/ping`: from sending the ping to receiving the pong. |
+| `join.to_first_chunk` | ms | The `join.to_first_chunk` span in `join/basic`: from the start of the login to the end of the first chunk batch. |
 | `instance.startup` | ms | Every Run: from launching a server until it is ready. |
