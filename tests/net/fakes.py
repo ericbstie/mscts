@@ -460,12 +460,21 @@ async def _answer_in_passes(peer: Peer, seen: list[Packet]) -> None:
         await asyncio.gather(*effects, return_exceptions=True)
 
 
-def flooding_server(seen: list[Packet]) -> Handler:
-    """Join like vanilla, then send `block_update`s back to back, and answer requests at once.
+FLOOD_GAP_S = 0.001
+"""The pause between two of `flooding_server`'s `block_update`s.
 
-    Between two `block_update`s it yields only one turn of its loop, so a client in another
-    thread almost always has bytes waiting: a stream with no gaps. Every serverbound Packet
-    goes into `seen`. A client that leaves ends the handler.
+Short enough that the stream never stops. Long enough that a client keeps up with it
+however busy the machine is. Sent back to back, the updates filled the socket buffers
+faster than a loaded client could decode them, and an answer queued behind them came
+too late (#210)."""
+
+
+def flooding_server(seen: list[Packet]) -> Handler:
+    """Join like vanilla, then send a `block_update` every `FLOOD_GAP_S`, and answer requests.
+
+    The stream never stops, and a request is answered at once, behind at most the updates
+    the client has not read yet. Every serverbound Packet goes into `seen`. A client that
+    leaves ends the handler.
     """
     join = _Join(seen, JoinScript())
 
@@ -474,7 +483,7 @@ def flooding_server(seen: list[Packet]) -> Handler:
         with suppress(ConnectionError):
             while True:
                 await peer.write(update)
-                await asyncio.sleep(0)
+                await asyncio.sleep(FLOOD_GAP_S)
 
     async def handler(peer: Peer) -> None:
         if not (await join.login(peer) and await join.configure(peer) and await join.play(peer)):
