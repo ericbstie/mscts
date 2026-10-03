@@ -48,9 +48,9 @@ downloaded. mscts then installs nothing, and says how to get it:
 
 ```
 downloading https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack ...
-mscts: pumpkin@8f3c2a1 is not available: Pumpkin only publishes its latest nightly (now 4426d11).
+mscts: pumpkin@8f3c2a1 is not available for download. The latest is pumpkin nightly 4426d11.
 Build it yourself and install it with:
-  uv run mscts adapter install pumpkin --from <file>
+  mscts adapter install pumpkin --from <file>
 ```
 
 ## Only Minecraft 26.3

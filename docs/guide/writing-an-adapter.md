@@ -100,6 +100,8 @@ from mscts.adapters.base import (
     PrepareError,
     ProvisionError,
     Release,
+    UnavailableError,
+    UnsupportedError,
 )
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec, WorldPreset
@@ -120,13 +122,10 @@ class MyServerAdapter:
         if latest["minecraft"] != target.minecraft_version:
             msg = f"myserver has no build for Minecraft {target.minecraft_version} yet"
             raise ProvisionError(msg)
-        if version is not None and version != latest["version"]:
-            msg = (
-                f"myserver@{version} is not available: myserver only publishes its "
-                f"latest build (now {latest['version']})."
-            )
-            raise ProvisionError(msg)
-        return Release(build=Build(version=latest["version"]), url=latest["url"])
+        build = Build(version=latest["version"])
+        if version is not None and version != build.version:
+            raise UnavailableError(self.name, version, latest=build)
+        return Release(build=build, url=latest["url"])
 
     def check(self, binary: Path, target: Target) -> Build:
         body = binary.read_bytes()
@@ -136,11 +135,8 @@ class MyServerAdapter:
             raise ProvisionError(msg)
         version, minecraft = names[1].decode(), names[2].decode()
         if minecraft != target.minecraft_version:
-            msg = (
-                f"{binary} is not supported: it is myserver {version}, for Minecraft "
-                f"{minecraft}, and this mscts tests Minecraft {target.minecraft_version}."
-            )
-            raise ProvisionError(msg)
+            actual = f"myserver {version}, for Minecraft {minecraft}"
+            raise UnsupportedError(str(binary), target=target, actual=actual)
         return Build(version=version)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
@@ -184,20 +180,22 @@ size for the file, as Mojang does, put them in the `Release`. mscts checks
 the download against them.
 
 **Only the Minecraft version mscts tests.** Refuse a build for any other
-version, in `release` when you can tell from the version, and always in
-`check`. Say which version it is and which one mscts tests.
+version with `UnsupportedError`, in `release` when you can tell from the
+version, and always in `check`. Give it what was asked for (`myserver@1.2`
+or the file) and, when you know it, what the build is. mscts words the
+message, the same for every Adapter.
 
-**Raise `ProvisionError` for what you expect.** A missing build, a build
-for another version, a page that is not what you asked for: say what is
-wrong and how to get the build. If anything else goes wrong in `release`,
+**Raise `ProvisionError` for anything else you expect,** such as a page
+that is not what you asked for: say what is wrong. If anything else goes
+wrong in `release`,
 such as a page that does not parse, mscts says the build could not be
 found, gives the error and names `--from`, so a user never sees a
 traceback.
 
 **Never substitute a build.** If the version asked for cannot be
-downloaded, raise `ProvisionError` saying so and how to get it, for example
-by building it and installing the file with `--from`. Never return a
-different build instead.
+downloaded, raise `UnavailableError` with the latest build that can. mscts
+says so and how to install the build from a file with `--from`. Never
+return a different build instead.
 
 ## Rules for `prepare`
 

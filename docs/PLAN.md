@@ -681,6 +681,16 @@ class LaunchPlan:
     stop_stdin: bytes | None        # graceful stop via stdin (b"stop\n"); None → SIGTERM
 
 class ProvisionError(RuntimeError): ...   # an Installation is missing, unverifiable, or not installable
+# The two refusals an Adapter reports with facts, worded once by mscts (#158):
+class UnsupportedError(ProvisionError):  # (subject, *, target, actual=None)
+    # "<subject> is not supported: [it is <actual>, and ]this mscts tests Minecraft <v>."
+class UnavailableError(ProvisionError):  # (adapter, version, *, latest: Build)
+    # "<a>@<v> is not available for download. The latest is <a> <latest>.\n"
+    # + build_it_yourself(a)
+def build_it_yourself(adapter: str) -> str: ...  # "Build it yourself and install it with:\n
+                                    #   mscts adapter install <a> --from <file>"
+def install_command(adapter: str, *, version=None, path=None) -> str: ...  # the exact command line
+                                    # `mscts adapter install pumpkin@4426d11`, `... --from <file>`
 class PrepareError(RuntimeError): ...     # prepare cannot produce a LaunchPlan that meets the contract
 
 class Adapter(Protocol):
@@ -693,17 +703,15 @@ class Adapter(Protocol):
     # install.require(adapter, target, cache_dir).
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release: ...
         # The latest build for target (version None), or the one `<name>@<version>` names,
-        # read only through `fetch`. ProvisionError, naming what works, otherwise: vanilla:
+        # read only through `fetch`. Otherwise UnsupportedError or UnavailableError: vanilla:
         # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3." (nothing fetched),
         # else the jar Mojang's version manifest lists for target (its version JSON checked
         # by the manifest's sha1); Pumpkin: the nightly, Build("nightly", <the commit the
         # `nightly` tag names>), and `version` must be 7+ first characters of that commit, else
-        # "pumpkin@<v> is not available: Pumpkin only publishes its latest nightly (now
-        # <short>).\nBuild it yourself and install it with:\n  uv run mscts adapter install
-        # pumpkin --from <file>".
+        # UnavailableError(latest=that Build).
     def check(self, binary: Path, target: Target) -> Build: ...
         # The Build the file names, or ProvisionError unless `binary` is a server it can run
-        # for target. A build for another Minecraft version is refused: "<binary> is not
+        # for target. A build for another Minecraft version: UnsupportedError, "<binary> is not
         # supported: it is vanilla 26.4, and this mscts tests Minecraft 26.3." (vanilla: the
         # jar's version.json id and protocol_version; Pumpkin: an ELF executable whose
         # "<version> (Commit: <short>/" string names target.minecraft_version after "+", and
@@ -773,8 +781,7 @@ def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetc
     # cut off midway) → ProvisionError naming the --from command.
 def install_from(adapter, target, cache_dir, path: Path) -> Installed: ...
     # records the file's sha256, path and the Build adapter.check reads from it
-def install_command(adapter: str, *, version=None, path=None) -> str: ...  # the exact command line
-                                    # `mscts adapter install pumpkin@4426d11`, `... --from <file>`
+# install_command: adapters/base.py, re-exported here.
 @frozen
 class Terminal:
     stdin: TextIO                   # asked only if stdin.isatty()
@@ -1971,9 +1978,9 @@ mscts adapter install <adapter>[@<version>] [--from PATH]
     # into <root>", or "<adapter> <build> is already installed at <root> (sha256 …): nothing
     # to do. To check for a newer build, delete <root> and install again.". --from: install_from,
     # "installed <path> (<adapter> <build>, sha256 …) into <root>". @<version> with --from:
-    # "name a version or a file, not both". The Adapter's own refusals as they are:
+    # "name a version or a file, not both". The Adapter's refusals, as mscts words them:
     # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.", "pumpkin@8f3c2a1 is
-    # not available: …".
+    # not available for download. …".
 mscts adapter list                  # ADAPTER VERSION TARGET STATE, one row per Adapter: its
                                     # installed Build or "-", and installed | not installed |
                                     # unusable: see `mscts adapter status <a>`

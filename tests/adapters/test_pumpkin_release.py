@@ -1,7 +1,7 @@
 import pytest
 from support.pumpkin import COMMIT, FakeGitHub, refs
 
-from mscts.adapters.base import Build, ProvisionError, Release
+from mscts.adapters.base import Build, ProvisionError, Release, UnavailableError
 from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL, PumpkinAdapter
 from mscts.target import TARGET
 
@@ -25,12 +25,12 @@ def test_the_nightly_s_commit_names_the_nightly(version: str) -> None:
 @pytest.mark.parametrize("version", ["8f3c2a1", "0.2.0+26.3-26.51"])
 def test_any_other_build_is_not_available_and_says_how_to_build_it(version: str) -> None:
     said = (
-        f"pumpkin@{version} is not available: Pumpkin only publishes its latest nightly "
-        "(now 4426d11).\n"
+        f"pumpkin@{version} is not available for download. "
+        "The latest is pumpkin nightly 4426d11.\n"
         "Build it yourself and install it with:\n"
-        "  uv run mscts adapter install pumpkin --from <file>"
+        "  mscts adapter install pumpkin --from <file>"
     )
-    with pytest.raises(ProvisionError) as raised:
+    with pytest.raises(UnavailableError) as raised:
         PumpkinAdapter().release(TARGET, version, FakeGitHub())
     assert str(raised.value) == said
 
@@ -60,7 +60,7 @@ def test_a_page_that_is_no_list_of_git_refs_is_not_blamed_on_pumpkin() -> None:
         f"{TAGS_URL} did not answer with GitHub's list of git refs (is a proxy in the way?), "
         "so the nightly's commit is unknown.\n"
         "Build it yourself and install it with:\n"
-        "  uv run mscts adapter install pumpkin --from <file>"
+        "  mscts adapter install pumpkin --from <file>"
     )
     with pytest.raises(ProvisionError) as raised:
         PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=b"<html>Access denied</html>"))

@@ -87,6 +87,11 @@ cannot be installed at all.
 4. **A version that can no longer be downloaded fails**, naming `--from`
    (and building from source); mscts never installs a different build
    instead. There is no mirror and no build-from-source step.
+
+   Adapters report these two refusals with the facts only
+   (`UnsupportedError`: what was asked for and what it is;
+   `UnavailableError`: the latest build instead), and mscts words them
+   once, the same for every Adapter (#158).
 5. **A checksum the publisher itself publishes is still checked** (Mojang's
    sha1 and size), as an integrity check. A build whose commit the
    publisher names must be that commit: Pumpkin's binary names its own

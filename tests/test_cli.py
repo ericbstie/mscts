@@ -75,10 +75,10 @@ def test_an_unpublished_version_fails_saying_how_to_build_it(
     assert code == 1
     assert out == f"downloading {TAGS_URL} ...\n"
     assert err == (
-        "mscts: pumpkin@8f3c2a1 is not available: Pumpkin only publishes its latest nightly "
-        "(now 4426d11).\n"
+        "mscts: pumpkin@8f3c2a1 is not available for download. "
+        "The latest is pumpkin nightly 4426d11.\n"
         "Build it yourself and install it with:\n"
-        "  uv run mscts adapter install pumpkin --from <file>\n"
+        "  mscts adapter install pumpkin --from <file>\n"
     )
 
 

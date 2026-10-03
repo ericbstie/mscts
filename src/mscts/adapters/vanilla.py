@@ -20,6 +20,7 @@ from mscts.adapters.base import (
     PrepareError,
     ProvisionError,
     Release,
+    UnsupportedError,
 )
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
@@ -390,8 +391,8 @@ class VanillaAdapter:
         """
         wanted = target.minecraft_version
         if version is not None and version != wanted:
-            msg = f"{self.name}@{version} is not supported: this mscts tests Minecraft {wanted}."
-            raise ProvisionError(msg)
+            asked = f"{self.name}@{version}"
+            raise UnsupportedError(asked, target=target)
         url, sha1 = _version_url(fetch(MANIFEST_URL).body, wanted)
         body = fetch(url).body
         actual = hashlib.sha1(body, usedforsecurity=False).hexdigest()  # Mojang's own check
@@ -414,18 +415,12 @@ class VanillaAdapter:
             msg = f"{binary} is not a vanilla server jar: {error!r}"
             raise ProvisionError(msg) from error
         if version != target.minecraft_version:
-            msg = (
-                f"{binary} is not supported: it is vanilla {version}, "
-                f"and this mscts tests Minecraft {target.minecraft_version}."
-            )
-            raise ProvisionError(msg)
+            raise UnsupportedError(str(binary), target=target, actual=f"vanilla {version}")
         if protocol != target.protocol_version:
-            msg = (
-                f"{binary} is not supported: it is vanilla {version} speaking protocol "
-                f"{protocol}, and this mscts tests Minecraft {target.minecraft_version} "
-                f"(protocol {target.protocol_version})."
+            speaking = (
+                f"vanilla {version} speaking protocol {protocol} (not {target.protocol_version})"
             )
-            raise ProvisionError(msg)
+            raise UnsupportedError(str(binary), target=target, actual=speaking)
         return Build(version=version)
 
     def _java_launcher(self, target: Target) -> Path:

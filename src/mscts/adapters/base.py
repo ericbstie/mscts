@@ -35,6 +35,39 @@ class Build:
         return self.version if self.commit is None else f"{self.version} {self.commit[:7]}"
 
 
+def install_command(adapter: str, *, version: str | None = None, path: str | None = None) -> str:
+    """The exact `mscts adapter install` command line for a build or a `--from` file."""
+    if path is not None:
+        return f"mscts adapter install {adapter} --from {path}"
+    return f"mscts adapter install {adapter}" + (f"@{version}" if version else "")
+
+
+def build_it_yourself(adapter: str) -> str:
+    """How to install a build of `adapter` that cannot be downloaded: mscts's one wording."""
+    return f"Build it yourself and install it with:\n  {install_command(adapter, path='<file>')}"
+
+
+class UnsupportedError(ProvisionError):
+    """A build not for the Target: the Adapter reports it, mscts words it."""
+
+    def __init__(self, subject: str, *, target: Target, actual: str | None = None) -> None:
+        """`subject` (`vanilla@26.4`, a file) is not for `target`; it is `actual` if known."""
+        it = "" if actual is None else f"it is {actual}, and "
+        tested = f"this mscts tests Minecraft {target.minecraft_version}."
+        super().__init__(f"{subject} is not supported: {it}{tested}")
+
+
+class UnavailableError(ProvisionError):
+    """A build that cannot be downloaded: the Adapter reports it, mscts words it."""
+
+    def __init__(self, adapter: str, version: str, *, latest: Build) -> None:
+        """`<adapter>@<version>` cannot be downloaded; `latest` can."""
+        super().__init__(
+            f"{adapter}@{version} is not available for download. "
+            f"The latest is {adapter} {latest}.\n{build_it_yourself(adapter)}"
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class Release:
     """A build its publisher offers for download, and what the download must be (ADR-0008)."""

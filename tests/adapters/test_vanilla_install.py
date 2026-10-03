@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, manifest
 
-from mscts.adapters.base import Build, ProvisionError
+from mscts.adapters.base import Build, ProvisionError, UnsupportedError
 from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter
 from mscts.install import install_release
 from mscts.target import TARGET
@@ -93,9 +93,9 @@ def test_check_refuses_a_jar_for_another_protocol(tmp_path: Path) -> None:
     (tmp_path / "server.jar").write_bytes(fake_jar(protocol_version=778))
     said = (
         f"{tmp_path / 'server.jar'} is not supported: it is vanilla 26.3 speaking protocol "
-        "778, and this mscts tests Minecraft 26.3 (protocol 777)."
+        "778 (not 777), and this mscts tests Minecraft 26.3."
     )
-    with pytest.raises(ProvisionError) as raised:
+    with pytest.raises(UnsupportedError) as raised:
         VanillaAdapter().check(tmp_path / "server.jar", TARGET)
     assert str(raised.value) == said
 

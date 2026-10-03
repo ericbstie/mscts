@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from support.pumpkin import COMMIT, fake_pumpkin
 
-from mscts.adapters.base import Build, ProvisionError
+from mscts.adapters.base import Build, ProvisionError, UnsupportedError
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.target import TARGET
 
@@ -27,7 +27,7 @@ def test_check_refuses_a_build_for_another_minecraft_version(tmp_path: Path) -> 
         f"{tmp_path / 'pumpkin'} is not supported: it is Pumpkin 0.2.0+26.4-26.60, "
         "for Minecraft 26.4, and this mscts tests Minecraft 26.3."
     )
-    with pytest.raises(ProvisionError) as raised:
+    with pytest.raises(UnsupportedError) as raised:
         check(tmp_path, fake_pumpkin(version="0.2.0+26.4-26.60"))
     assert str(raised.value) == said
 

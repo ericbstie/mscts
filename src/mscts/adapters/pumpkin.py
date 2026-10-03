@@ -21,6 +21,9 @@ from mscts.adapters.base import (
     PrepareError,
     ProvisionError,
     Release,
+    UnavailableError,
+    UnsupportedError,
+    build_it_yourself,
 )
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
@@ -531,9 +534,7 @@ def ops_json(operators: tuple[str, ...]) -> str:
     return json.dumps(entries, indent=2, ensure_ascii=False)  # as serde_json's pretty printer
 
 
-_YOURSELF = (
-    "Build it yourself and install it with:\n  uv run mscts adapter install pumpkin --from <file>"
-)
+_YOURSELF = build_it_yourself("pumpkin")
 _SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}")  # too few characters to name a commit
 _ADVERTISEMENT = b"001e# service=git-upload-pack\n"  # how every ref advertisement starts
 _TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
@@ -575,13 +576,10 @@ class PumpkinAdapter:
                 f"characters of it, as in {self.name}@{commit[:_SHORT]}."
             )
             raise ProvisionError(msg)
+        nightly = Build(version="nightly", commit=commit)
         if version is not None and not (len(version) >= _SHORT and commit.startswith(version)):
-            msg = (
-                f"{self.name}@{version} is not available: Pumpkin only publishes its latest "
-                f"nightly (now {commit[:_SHORT]}).\n{_YOURSELF}"
-            )
-            raise ProvisionError(msg)
-        return Release(build=Build(version="nightly", commit=commit), url=NIGHTLY_URL)
+            raise UnavailableError(self.name, version, latest=nightly)
+        return Release(build=nightly, url=NIGHTLY_URL)
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version and commit `binary` names; ProvisionError unless it is for `target`.
@@ -598,11 +596,8 @@ class PumpkinAdapter:
             raise ProvisionError(msg)
         version, minecraft, short = names[1].decode(), names[2].decode(), names[3]
         if minecraft != target.minecraft_version:
-            msg = (
-                f"{binary} is not supported: it is Pumpkin {version}, for Minecraft {minecraft}, "
-                f"and this mscts tests Minecraft {target.minecraft_version}."
-            )
-            raise ProvisionError(msg)
+            actual = f"Pumpkin {version}, for Minecraft {minecraft}"
+            raise UnsupportedError(str(binary), target=target, actual=actual)
         full = re.search(re.escape(short) * 2 + rb"[0-9a-f]{33}", body)
         return Build(version=version, commit=None if full is None else full[0][7:].decode())
 

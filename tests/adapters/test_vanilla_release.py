@@ -3,7 +3,7 @@ import json
 import pytest
 from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, sha1
 
-from mscts.adapters.base import Build, ProvisionError, Release
+from mscts.adapters.base import Build, ProvisionError, Release, UnsupportedError
 from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter
 from mscts.target import TARGET
 
@@ -21,7 +21,7 @@ def test_the_target_s_release_is_the_server_jar_mojang_lists_for_it(version: str
 @pytest.mark.parametrize("version", ["26.4", "26.2", "1.21.8"])
 def test_another_version_is_not_supported_and_nothing_is_fetched(version: str) -> None:
     mojang = FakeMojang()
-    with pytest.raises(ProvisionError) as raised:
+    with pytest.raises(UnsupportedError) as raised:
         VanillaAdapter().release(TARGET, version, mojang)
     assert (
         str(raised.value) == f"vanilla@{version} is not supported: this mscts tests Minecraft 26.3."

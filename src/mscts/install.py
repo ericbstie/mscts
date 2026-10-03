@@ -27,6 +27,7 @@ from mscts.adapters.base import (
     ProvisionError,
     Release,
     Source,
+    install_command,
 )
 from mscts.adapters.fetch import https_get
 from mscts.target import Target
@@ -47,13 +48,6 @@ class Installed:
 def root_of(adapter: Adapter, target: Target, cache_dir: Path) -> Path:
     """Where `adapter`'s Installation for `target` lives in `cache_dir`."""
     return cache_dir.absolute() / adapter.name / target.minecraft_version
-
-
-def install_command(adapter: str, *, version: str | None = None, path: str | None = None) -> str:
-    """The exact `mscts adapter install` command line for a build or a `--from` file."""
-    if path is not None:
-        return f"mscts adapter install {adapter} --from {path}"
-    return f"mscts adapter install {adapter}" + (f"@{version}" if version else "")
 
 
 def _reinstall(adapter: Adapter, root: Path) -> str:
