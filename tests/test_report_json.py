@@ -2,6 +2,7 @@
 
 import json
 import math
+from dataclasses import replace
 from uuid import UUID
 
 import pytest
@@ -90,6 +91,22 @@ def test_a_server_object_shaped_like_a_tag_reads_back_as_that_object(tag: str) -
     report = _report(_divergence({tag: "ff"}, {tag: {tag: True}}))
 
     assert report_json.loads(report_json.dumps(report)) == report
+
+
+def test_a_server_object_with_a_tag_and_other_keys_is_written_as_it_is() -> None:
+    value = {"bytes": "ff", "text": "x"}
+    report = _report(_divergence(value, 1))
+
+    text = report_json.dumps(report)
+
+    divergence = json.loads(text)["results"][0]["verdicts"][0]["divergences"][0]
+    assert divergence["reference"] == value
+    assert report_json.loads(text) == report
+
+
+def test_a_time_json_cannot_write_is_refused() -> None:
+    with pytest.raises(ValueError, match="Out of range float values are not JSON compliant"):
+        report_json.dumps(replace(_report(), elapsed_s=math.inf))
 
 
 def test_a_tag_spells_its_value() -> None:
