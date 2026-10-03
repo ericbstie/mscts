@@ -46,24 +46,15 @@ the sha1 and size Mojang publishes, and stores it in the cache
 
 ## 3. Install a Candidate
 
-The Registry pins one Pumpkin nightly build by its sha256:
-
 ```sh
 uv run mscts adapter install pumpkin
 ```
 
-Pumpkin publishes every nightly at the same URL, so the pinned build is
-often gone by the time you read this. The install then fails with a sha256
-mismatch. Download the current build yourself and install it with `--from`:
-
-```sh
-curl -sSfL -o pumpkin-X64-Linux \
-  https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux
-uv run mscts adapter install pumpkin --from pumpkin-X64-Linux
-```
-
-A build installed with `--from` matches no Registry entry, so the Adapter
-listing and verbose Report name it by its sha256. See [Installing servers](/guide/installing-servers).
+This downloads Pumpkin's latest nightly build. mscts checks that it is a
+build for Minecraft 26.3 and records the commit it was made from, so every
+Report names the exact build it tested. Pumpkin publishes only its latest
+nightly. To test another commit, build it yourself and install the file with
+`--from`. See [Installing servers](/guide/installing-servers).
 
 Check what you have:
 
@@ -72,9 +63,9 @@ uv run mscts adapter list
 ```
 
 ```
-ADAPTER  VERSION           TARGET  STATE
-vanilla  26.3              26.3    installed
-pumpkin  nightly-b8382a8a  26.3    installed
+ADAPTER  VERSION          TARGET  STATE
+vanilla  26.3             26.3    installed
+pumpkin  nightly 4426d11  26.3    installed
 ```
 
 ## 4. Run the comparison

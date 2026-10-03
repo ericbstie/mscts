@@ -93,8 +93,9 @@ different repetitions are kept; identical differences are shown once.
 Group time is the sum of playing both sides and comparing them across
 all repetitions. It excludes Instance startup and shutdown, which remain
 in the final total. Skipped Groups say `not played`. The installed version
-comes from the verified Registry entry, or the binary's sha256 when no
-entry matches. It does not trust the version claimed in a status response.
+is the installed build: its version, its commit where the build names one,
+and the start of its sha256. It does not trust the version claimed in a
+status response.
 
 `--candidate vanilla` plays vanilla against a second vanilla server. That is
 a quick way to see a Self-check.

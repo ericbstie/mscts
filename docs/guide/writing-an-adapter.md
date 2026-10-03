@@ -3,14 +3,17 @@
 An Adapter is the only code in mscts that knows about a particular server.
 To compare a new server with vanilla, you write one Adapter. You never change a Group.
 
-An Adapter does not download, start or stop anything. It does two things:
+An Adapter does not install, start or stop anything. It does three things:
 
-- `check` confirms that a file is a server build it can run.
+- `release` says where to download the server's latest build for the
+  Minecraft version mscts tests, or the build a version names.
+- `check` reads which build a file is, and refuses one it cannot run.
 - `prepare` writes that server's complete native config for a ServerSpec
   and returns a `LaunchPlan`, the command that starts it.
 
-mscts owns everything else: installing the binary, launching the process,
-waiting for readiness, and stopping it.
+mscts owns everything else: downloading and verifying the binary,
+installing it, launching the process, waiting for readiness, and stopping
+it. Everything you write lives in your Adapter's own module.
 
 ::: info Work in progress
 This page describes the contract in
@@ -26,7 +29,7 @@ vanilla and Pumpkin Adapters are the best examples.
 from pathlib import Path
 from typing import Protocol
 
-from mscts.adapters.base import Installation, LaunchPlan
+from mscts.adapters.base import Build, Fetch, Installation, LaunchPlan, Release
 from mscts.spec import ServerSpec
 from mscts.target import Target
 
@@ -35,8 +38,11 @@ class Adapter(Protocol):
     name: str    # the name on the command line: "pumpkin"
     binary: str  # the one file an Installation holds: "server.jar"
 
-    def check(self, binary: Path, target: Target) -> None:
-        """Raise ProvisionError unless `binary` is a server this Adapter can run."""
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """The latest build for `target`, or the one `<name>@<version>` names."""
+
+    def check(self, binary: Path, target: Target) -> Build:
+        """The build `binary` is; ProvisionError unless this Adapter can run it."""
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete native config for `spec` into `workdir`."""
@@ -51,6 +57,20 @@ from mscts.net import Endpoint
 
 
 @dataclass(frozen=True, slots=True)
+class Build:
+    version: str               # "26.3", "nightly", "1.4.0"
+    commit: str | None = None  # the full commit, where the publisher names one
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    build: Build
+    url: str                   # HTTPS
+    sha1: str | None = None    # the publisher's own hash, where it publishes one
+    size: int | None = None    # bytes, where the publisher states it
+
+
+@dataclass(frozen=True, slots=True)
 class LaunchPlan:
     argv: tuple[str, ...]
     cwd: Path
@@ -62,28 +82,66 @@ class LaunchPlan:
 ## A minimal Adapter
 
 This sketch is for an imaginary server, `myserver`, that ships as one
-executable and reads `config.toml` from its working directory.
+executable and reads `config.toml` from its working directory. Its
+publisher describes the latest build in a small JSON file, and the
+executable holds the text `myserver <version> for Minecraft <version>`.
 
 ```python
+import json
+import re
 from pathlib import Path
 from types import MappingProxyType
 
-from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.base import (
+    Build,
+    Fetch,
+    Installation,
+    LaunchPlan,
+    PrepareError,
+    ProvisionError,
+    Release,
+)
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec, WorldPreset
 from mscts.target import Target
 
 BINARY = "myserver"
+# {"version": "1.4.0", "minecraft": "26.3", "url": "https://..."}
+LATEST = "https://myserver.example/releases/latest.json"
+NAMES = re.compile(rb"myserver ([\w.]+) for Minecraft ([\w.]+)")
 
 
 class MyServerAdapter:
     name = "myserver"
     binary = BINARY
 
-    def check(self, binary: Path, target: Target) -> None:
-        if binary.read_bytes()[:4] != b"\x7fELF":
-            msg = f"{binary} is not an ELF executable"
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        latest = json.loads(fetch(LATEST).body)
+        if latest["minecraft"] != target.minecraft_version:
+            msg = f"myserver has no build for Minecraft {target.minecraft_version} yet"
             raise ProvisionError(msg)
+        if version is not None and version != latest["version"]:
+            msg = (
+                f"myserver@{version} is not available: myserver only publishes its "
+                f"latest build (now {latest['version']})."
+            )
+            raise ProvisionError(msg)
+        return Release(build=Build(version=latest["version"]), url=latest["url"])
+
+    def check(self, binary: Path, target: Target) -> Build:
+        body = binary.read_bytes()
+        names = NAMES.search(body)
+        if body[:4] != b"\x7fELF" or names is None:
+            msg = f"{binary} is not a myserver build"
+            raise ProvisionError(msg)
+        version, minecraft = names[1].decode(), names[2].decode()
+        if minecraft != target.minecraft_version:
+            msg = (
+                f"{binary} is not supported: it is myserver {version}, for Minecraft "
+                f"{minecraft}, and this mscts tests Minecraft {target.minecraft_version}."
+            )
+            raise ProvisionError(msg)
+        return Build(version=version)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         if spec.world is not WorldPreset.FLAT:
@@ -110,7 +168,31 @@ class MyServerAdapter:
 A real Adapter writes every setting the server reads, not only the ones
 shown here. See the rules below.
 
-## Rules
+## Rules for `release` and `check`
+
+**Read only through `fetch`.** `release` gets every URL it reads through the
+`fetch` it is given, never by itself. mscts announces each download, and
+your tests pass a fake `fetch` so they never touch the network.
+
+**Name the build exactly.** Give the version your publisher uses, and the
+full commit when the publisher names one. Reports show both. If a release
+names a commit, the file must name the same one: mscts refuses a download
+that does not.
+
+**Pass on the publisher's own checksum.** If the publisher lists a sha1 and
+size for the file, as Mojang does, put them in the `Release`. mscts checks
+the download against them.
+
+**Only the Minecraft version mscts tests.** Refuse a build for any other
+version, in `release` when you can tell from the version, and always in
+`check`. Say which version it is and which one mscts tests.
+
+**Never substitute a build.** If the version asked for cannot be
+downloaded, raise `ProvisionError` saying so and how to get it, for example
+by building it and installing the file with `--from`. Never return a
+different build instead.
+
+## Rules for `prepare`
 
 **Write the complete config.** Do not leave any setting to the server's
 first-run defaults, because those can change between builds. The Pumpkin
@@ -154,17 +236,19 @@ then sends SIGTERM, then SIGKILL, waiting up to 30 seconds at each step.
 
 ## Register it
 
-1. Put the module in `src/mscts/adapters/<name>.py`.
-2. Add it to `ADAPTERS` in `src/mscts/cli.py`.
-3. Write unit tests for `check` and `prepare` that assert on the files
-   `prepare` writes and on each invariant.
-4. To let `mscts adapter install <name>` download a build, propose a
-   Registry entry in `src/mscts/data/registry.toml` with a pinned sha256.
-   Without one, people install your server with `--from`.
+1. Put everything you write in one module,
+   `src/mscts/adapters/<name>.py`: `release`, `check`, `prepare`, and any
+   URLs and data they need.
+2. Add one line to `ADAPTERS` in `src/mscts/cli.py`, the list of Adapters
+   the command knows. That is the only change outside your module.
+3. Write unit tests: `release` with a fake `fetch`, `check` on small
+   stand-in files, and `prepare` on the files it writes and on each
+   invariant.
 
 Then run it:
 
 ```sh
+uv run mscts adapter install myserver
 uv run mscts adapter install myserver --from ./myserver
 uv run mscts run --candidate myserver
 ```

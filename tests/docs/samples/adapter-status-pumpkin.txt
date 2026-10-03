@@ -1,0 +1,7 @@
+pumpkin 26.3: installed at /home/user/.cache/mscts/pumpkin/26.3
+  version:   nightly
+  commit:    4426d1113a211e6018a2db416e33b6b8a7802614
+  sha256:    b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e
+  size:      126447960 bytes
+  from:      https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux
+  installed: 2026-10-03T01:18:09+00:00

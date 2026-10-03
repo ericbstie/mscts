@@ -126,8 +126,8 @@ uv run mscts run --candidate pumpkin --verbose
 
 ```
 Running tests against pumpkin
-  Reference    vanilla 26.3
-  Candidate    pumpkin sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e
+  Reference    vanilla 26.3 (sha256 d052f14d…)
+  Candidate    pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
 - Server list description  status_response.description
@@ -139,14 +139,15 @@ Running tests against pumpkin
 - Server list player sample  status_response.players.sample
   vanilla leaves it out, pumpkin sends []
 Group times
-  status/basic 0.1 s
-  status/ping 0.2 s
-Took 50.5 s
+  status/basic 0 s
+  status/ping 0 s
+Took 16.7 s
 ```
 
-The installed version is the Registry version or the verified binary's
-sha256. A server's own status version can claim something else, so it
-never supplies this header. Without installation provenance, the header
+The installed version names the exact build tested: its version, its
+commit where the build names one, and the start of the sha256 of the
+verified file. A server's own status version can claim something else, so
+it never supplies this header. Without installation provenance, the header
 says `installed version unknown`.
 
 Identical differences from repetitions appear once; distinct values stay
