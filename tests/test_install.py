@@ -358,3 +358,21 @@ def test_pumpkin_at_nightly_installs_the_latest_nightly(tmp_path: Path) -> None:
     assert done.message == (
         f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root_of(tmp_path)}"
     )
+
+
+@pytest.mark.parametrize(
+    ("version", "asked"), [(None, "pumpkin's latest build"), ("4426d11", "pumpkin@4426d11")]
+)
+def test_a_nightly_for_another_minecraft_version_says_so_and_how_to_get_one(
+    tmp_path: Path, version: str | None, asked: str
+) -> None:
+    github = FakeGitHub(binary=fake_pumpkin(version="0.3.0+26.4-27.1"))
+    with pytest.raises(ProvisionError) as raised:
+        install_release(ADAPTER, TARGET, tmp_path, version, github)
+    assert str(raised.value) == (
+        f"{asked} ({NIGHTLY_URL}) is not supported: it is Pumpkin 0.3.0+26.4-27.1, "
+        "for Minecraft 26.4, and this mscts tests Minecraft 26.3.\n"
+        "Build it yourself and install it with:\n"
+        "  mscts adapter install pumpkin --from <file>"
+    )
+    assert list((tmp_path / "pumpkin").iterdir()) == []

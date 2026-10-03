@@ -65,6 +65,11 @@ A build for another Minecraft version is refused, whether you name it with
 mscts: vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.
 ```
 
+The same goes for a download. Once Pumpkin's nightly is built for a newer
+Minecraft version, `mscts adapter install pumpkin` says which version it
+is, installs nothing, and tells you to build a 26.3 one yourself and
+install it with `--from`.
+
 ## From a file you supply
 
 ```sh

@@ -774,7 +774,9 @@ def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetc
     # and size checked where it lists them; adapter.check in staging. Records the Release's
     # version with the commit the file names (the release's commit only finds the file; a
     # file naming none, where the release names one, is refused), and UnavailableError if
-    # that is not the build `version` names. Installed already:
+    # that is not the build `version` names. An UnsupportedError from check names what was
+    # asked ("pumpkin's latest build (<url>)"), never the staging path, plus the --from hint.
+    # Installed already:
     # a no-op when `version` is None or names the installed Build (its version, or 7+ first
     # characters of its commit), saying "To check for a newer build, delete <root> and install again.";
     # another version → ProvisionError naming the delete + `mscts adapter install <a>@<v>`, after

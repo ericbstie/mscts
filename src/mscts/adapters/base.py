@@ -52,6 +52,7 @@ class UnsupportedError(ProvisionError):
 
     def __init__(self, subject: str, *, target: Target, actual: str | None = None) -> None:
         """`subject` (`vanilla@26.4`, a file) is not for `target`; it is `actual` if known."""
+        self.target, self.actual = target, actual
         it = "" if actual is None else f"it is {actual}, and "
         tested = f"this mscts tests Minecraft {target.minecraft_version}."
         super().__init__(f"{subject} is not supported: {it}{tested}")

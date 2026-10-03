@@ -28,6 +28,7 @@ from mscts.adapters.base import (
     Release,
     Source,
     UnavailableError,
+    UnsupportedError,
     build_it_yourself,
     install_command,
 )
@@ -218,7 +219,10 @@ def install_release(
         _vacant(existing, adapter, version)
         return _downloaded_source(release, download, downloaded, installed_at)
 
-    _write(adapter, target, cache_dir, download.body, source)
+    try:
+        _write(adapter, target, cache_dir, download.body, source)
+    except UnsupportedError as error:  # it named the staging path, gone by now
+        raise _unsupported_download(adapter.name, version, release.url, error) from error
     return _done(adapter, target, cache_dir)
 
 
@@ -232,14 +236,27 @@ def _release(adapter: Adapter, target: Target, version: str | None, fetch: Fetch
     except ProvisionError:
         raise
     except Exception as error:  # a garbled page, or the Adapter's own bug: never a traceback
-        wanted = (
-            f"{adapter.name}'s latest build" if version is None else f"{adapter.name}@{version}"
-        )
         msg = (
-            f"{wanted} could not be found: {type(error).__name__}: {error}\n"
+            f"{_asked(adapter.name, version)} could not be found: {type(error).__name__}: "
+            f"{error}\n"
             f"Download the build another way, then run {yourself}"
         )
         raise ProvisionError(msg) from error
+
+
+def _asked(adapter: str, version: str | None) -> str:
+    """What the user asked to install, in words: `pumpkin's latest build`, `pumpkin@4426d11`."""
+    return f"{adapter}'s latest build" if version is None else f"{adapter}@{version}"
+
+
+def _unsupported_download(
+    adapter: str, version: str | None, url: str, error: UnsupportedError
+) -> ProvisionError:
+    """`error` about a downloaded file, said of what was asked for, and how to get another."""
+    asked = UnsupportedError(
+        f"{_asked(adapter, version)} ({url})", target=error.target, actual=error.actual
+    )
+    return ProvisionError(f"{asked}\n{build_it_yourself(adapter)}")
 
 
 def _download_failed(error: Exception, yourself: str) -> ProvisionError:
