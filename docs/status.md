@@ -16,7 +16,7 @@ and the milestones are in
 | Protocol | Handshake, status, login, configuration, and enough of play to join a world. A Bot joins vanilla in about 1.25 seconds. |
 | Groups | `status/basic` and `status/ping`. The status Self-check matches in 20 runs out of 20, with no Mask. |
 | Comparison | Gameplay and network traffic Divergences. Each rule in the canonical table cites the vanilla client code behind it. |
-| Report | Plain text on stdout, with Divergences by mechanic, median and p95 timings, and startup time. |
+| Report | A list of differences on stdout, and JSON and Markdown files with `--out DIR`. |
 
 The first comparison of Pumpkin found no gameplay difference in the
 server list ping, and four network traffic ones.
@@ -24,8 +24,7 @@ server list ping, and four network traffic ones.
 ## Next
 
 1. The `join/basic` Group in the Report.
-2. JSON and Markdown Report output with `--out DIR`, and an option to exit
-   non-zero on gameplay differences.
+2. An option to exit non-zero on gameplay differences.
 3. Alternating the order in which the two servers run, for fairer timings.
 4. `mscts selfcheck` as a command.
 5. An operator Bot for Fixtures, then world and block Groups.

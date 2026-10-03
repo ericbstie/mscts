@@ -173,3 +173,30 @@ Each Group's time adds all repetitions, playing both servers and comparing
 their Transcripts. It excludes starting and stopping Instances, which the
 final total includes. A skipped Group says `not played`. Older Report
 inputs without durations say `not recorded`.
+
+## Report files
+
+`mscts run --out DIR` also writes the Report into two files in `DIR`.
+
+`report.md` is the printed Report as Markdown. Its first line is a
+heading, and test case names and values are code. Like the printed
+Report, it has the header, values and Group times only with `--verbose`.
+
+`report.json` is the whole Report, with or without `--verbose`. Its keys
+are `target`, `reference`, `candidate`, `results`, `notes` and
+`elapsed_s`. `results` has one entry per Group, with each repetition's
+Verdict, every difference with both values, and each server's
+Measurements. Values are JSON where JSON can hold them. Any other value
+is an object with one key:
+
+- `{"absent": true}`: the server left the value out.
+- `{"bytes": "<hex>"}`: binary data.
+- `{"uuid": "<uuid>"}`: a UUID.
+- `{"float": "nan"}`, `{"float": "inf"}` or `{"float": "-inf"}`: a number
+  JSON cannot write.
+
+An object a server sent whose only key is one of these, or `dict`, is
+written inside `{"dict": ...}`, so it never reads as one of them.
+
+In Python, `mscts.report_json.loads` reads a `report.json` back into the
+Report mscts wrote.

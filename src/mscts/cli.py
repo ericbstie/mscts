@@ -14,7 +14,7 @@ from time import perf_counter
 from types import MappingProxyType
 from typing import override
 
-from mscts import install, registry, run
+from mscts import install, registry, report_json, run
 from mscts.adapters.base import Adapter, Installation, PrepareError, ProvisionError
 from mscts.adapters.fetch import Download, Fetch, https_get
 from mscts.adapters.pumpkin import PumpkinAdapter
@@ -22,7 +22,7 @@ from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
 from mscts.group import GROUPS, Group, GroupKind, resolve
 from mscts.registry import RegistryError
-from mscts.report import Report, render_text
+from mscts.report import Report, render_markdown, render_text
 from mscts.runner import RunnerError
 from mscts.target import TARGET
 
@@ -191,6 +191,7 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
     if repeat < 1:
         msg = f"--repeat must be at least 1, not {repeat}"
         raise _UsageError(msg)
+    out = None if arguments.out is None else _out_folder(Path(arguments.out))
     reference, candidate = _server(REFERENCE), _server(str(arguments.candidate))
     started = perf_counter()
     workdir = Path(tempfile.mkdtemp(prefix="mscts-run-"))
@@ -208,7 +209,34 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
     shutil.rmtree(workdir)
     report = Report.of(result, target=TARGET, notes=(), elapsed_s=perf_counter() - started)
     sys.stdout.write(render_text(report, verbose=arguments.verbose))
+    if out is not None:
+        _say(_write_report(report, out, verbose=arguments.verbose))
     return 0
+
+
+def _out_folder(folder: Path) -> Path:
+    """`folder`, made if it is not there yet: before the Run, so a bad --out costs no Run."""
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as error:
+        msg = f"cannot create the --out folder {folder}: {error.strerror}"
+        raise _UsageError(msg) from error
+    return folder
+
+
+def _write_report(report: Report, folder: Path, *, verbose: bool) -> str:
+    """Write report.json and report.md into `folder`, replacing any; say where they are."""
+    files = {
+        folder / "report.json": report_json.dumps(report),
+        folder / "report.md": render_markdown(report, verbose=verbose),
+    }
+    for path, text in files.items():
+        try:
+            path.write_text(text, encoding="utf-8")
+        except OSError as error:
+            msg = f"cannot write {path}: {error.strerror}"
+            raise _UsageError(msg) from error
+    return f"Report written to {' and '.join(map(str, files))}"
 
 
 _ACTIONS: Mapping[str, Callable[[argparse.Namespace, Fetch], int]] = MappingProxyType(
@@ -253,6 +281,11 @@ def _parser() -> argparse.ArgumentParser:
         "--verbose",
         action="store_true",
         help="show installed versions, values and Group times",
+    )
+    running.add_argument(
+        "--out",
+        metavar="DIR",
+        help="also write the Report to DIR/report.json and DIR/report.md, replacing them",
     )
     return parser
 
