@@ -6,11 +6,12 @@ server last said: each entity's type, position and data. It keeps no rotation, a
 an entity between packets as the client does.
 """
 
+import math
 import uuid
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import override
+from typing import cast, override
 
 from mscts.codec.registry_names import registry_names
 from mscts.net import ProtocolError
@@ -40,6 +41,15 @@ class Entity:
     data: Mapping[int, object] = field(default_factory=dict)
 
 
+type _Vec = tuple[float, float, float]
+
+_DELTA_SCALE = 4096.0
+"""`VecDeltaCodec.TRUNCATION_STEPS`: a move delta counts 4096ths of a block."""
+
+_RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z = 0x01, 0x02, 0x04
+"""The Teleport Flags bits that make an axis of `teleport_entity` add to the position."""
+
+
 @dataclass(slots=True)
 class _Tracked:
     """An entity as the tracker holds it, with its base for move deltas (`VecDeltaCodec`)."""
@@ -47,21 +57,14 @@ class _Tracked:
     id: int
     uuid: uuid.UUID
     type: str
-    x: float
-    y: float
-    z: float
+    position: _Vec
+    base: _Vec
     data: dict[int, object]
 
     def snapshot(self) -> Entity:
-        return Entity(
-            id=self.id,
-            uuid=self.uuid,
-            type=self.type,
-            x=self.x,
-            y=self.y,
-            z=self.z,
-            data=MappingProxyType(dict(self.data)),
-        )
+        x, y, z = self.position
+        data = MappingProxyType(dict(self.data))
+        return Entity(id=self.id, uuid=self.uuid, type=self.type, x=x, y=y, z=z, data=data)
 
 
 class Entities(Mapping[int, Entity]):
@@ -100,21 +103,94 @@ class EntityTracker:
         self.entities = Entities(self._tracked)
 
     def follow(self, name: str, fields: Mapping[str, object]) -> None:
-        """Apply one clientbound play packet's decoded `fields`; other packets change nothing."""
+        """Apply one clientbound play packet's decoded `fields`; other packets change nothing.
+
+        A packet for an entity id it does not track changes nothing either, as the client
+        ignores one for an id its level does not have.
+        """
         if name == "minecraft:add_entity":
             self._add(fields)
+            return
+        change = _CHANGES.get(name)
+        tracked = self._tracked.get(_int(fields, "entity_id")) if change else None
+        if change is not None and tracked is not None:
+            change(tracked, fields)
 
     def _add(self, fields: Mapping[str, object]) -> None:
         entity_id = _int(fields, "entity_id")
+        at = (_float(fields, "x"), _float(fields, "y"), _float(fields, "z"))
         self._tracked[entity_id] = _Tracked(
             id=entity_id,
             uuid=_get(fields, "entity_uuid", uuid.UUID),
             type=_type_name(_int(fields, "type")),
-            x=_float(fields, "x"),
-            y=_float(fields, "y"),
-            z=_float(fields, "z"),
+            position=at,
+            base=at,
             data={},
         )
+
+
+def _move(tracked: _Tracked, fields: Mapping[str, object]) -> None:
+    """`handleMoveEntity`: decode the delta against the base; end there, and make it the base."""
+    movement = _get(fields, "movement", Mapping)
+    if "linear" in movement:
+        end = _decoded(tracked.base, _get(movement, "linear", Mapping))
+    else:
+        end = tracked.base
+        for step in _get(movement, "stepped", list):
+            end = _decoded(end, step)
+    tracked.position = tracked.base = end
+
+
+def _sync(tracked: _Tracked, fields: Mapping[str, object]) -> None:
+    """`handleEntityPositionSync`: the path's end is the position and the base."""
+    path = _get(fields, "position", Mapping)
+    end = _get(path, "linear", Mapping) if "linear" in path else _get(path, "stepped", list)[-1]
+    tracked.position = tracked.base = (_float(end, "x"), _float(end, "y"), _float(end, "z"))
+
+
+def _teleport(tracked: _Tracked, fields: Mapping[str, object]) -> None:
+    """`calculateAbsolute`: a flagged axis adds to the position. The base stays."""
+    flags = _int(fields, "flags")
+    x, y, z = tracked.position
+    tracked.position = (
+        (x if flags & _RELATIVE_X else 0.0) + _float(fields, "x"),
+        (y if flags & _RELATIVE_Y else 0.0) + _float(fields, "y"),
+        (z if flags & _RELATIVE_Z else 0.0) + _float(fields, "z"),
+    )
+
+
+_CHANGES: dict[str, Callable[[_Tracked, Mapping[str, object]], None]] = {
+    "minecraft:move_entity_pos": _move,
+    "minecraft:move_entity_pos_rot": _move,
+    "minecraft:entity_position_sync": _sync,
+    "minecraft:teleport_entity": _teleport,
+}
+"""What each entity packet but `add_entity` does to the entity it names."""
+
+
+def _decoded(base: _Vec, delta: object) -> _Vec:
+    """`VecDeltaCodec.decode`: each axis that moved is round(base * 4096) + delta, over 4096."""
+    if not isinstance(delta, Mapping):
+        msg = f"expected a delta, got {delta!r}"
+        raise ProtocolError(msg)
+    axes = cast("Mapping[str, object]", delta)
+    return (
+        _axis(base[0], _int(axes, "x")),
+        _axis(base[1], _int(axes, "y")),
+        _axis(base[2], _int(axes, "z")),
+    )
+
+
+def _axis(base: float, delta: int) -> float:
+    if delta == 0:
+        return base
+    return (_java_round(base * _DELTA_SCALE) + delta) / _DELTA_SCALE
+
+
+def _java_round(value: float) -> int:
+    """Java's `Math.round`: the nearest integer, a half rounded up (floor of value + 0.5, exact)."""
+    floor = math.floor(value)
+    return floor + 1 if value - floor >= 0.5 else floor  # noqa: PLR2004 - the half
 
 
 def _type_name(type_id: int) -> str:

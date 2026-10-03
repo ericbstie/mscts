@@ -657,6 +657,11 @@ class EntityTracker:
     entities: Entities
     def follow(self, name: str, fields: Mapping[str, object]) -> None: ...
     # add_entity adds (replacing the id); other packets for an unknown id change nothing.
+    # move_entity_pos(_rot) decodes against the entity's base (VecDeltaCodec: an axis with a
+    # 0 delta keeps the base's value, any other is (Math.round(base * 4096) + delta) / 4096; a
+    # stepped delta step by step) and puts both the entity and the base at the end;
+    # entity_position_sync puts both at the path's end; teleport_entity adds each flagged
+    # axis to the position and replaces the others, and leaves the base.
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
