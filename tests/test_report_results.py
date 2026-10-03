@@ -4,8 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from mscts.compare import ABSENT, Divergence, Outcome, Verdict
+from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.report import CaseResult, Result, Totals, case_results, totals
+from mscts.transcript import Transcript
+from tests.compare.build import packet, transcript
 from tests.test_report import _field, _report, _result, _verdict
 
 
@@ -105,3 +107,46 @@ def test_totals_count_each_result_and_score_the_passes_among_what_was_scored() -
 
 def test_nothing_scored_has_no_score() -> None:
     assert totals([CaseResult("g/c", "", Result.ERROR, reasons="Error: x")]).score is None
+
+
+def test_leaving_a_packet_out_or_crashing_scores_no_higher_than_sending_it_wrong() -> None:
+    fields = {f"f{n}": n for n in range(20)}
+    wrong = {name: value + 1000 if value < 10 else value for name, value in fields.items()}
+
+    def play(group_id: str, *sent: dict[str, int]) -> Transcript:
+        return transcript(
+            *(("alice", packet("minecraft:foo", fields=one)) for one in sent), group_id=group_id
+        )
+
+    many = {f"g{n}": n for n in range(100)}
+    passing = compare(play("x/b", many), play("x/b", many), ())
+    sent_wrong = compare(play("x/a", fields), play("x/a", wrong), ())
+    left_out = compare(play("x/a", fields), play("x/a"), ())
+    failed = Divergence("alice", 0, "failed", "", None, ABSENT, "EOF", "")
+    crashed = replace(left_out, divergences=(failed, *left_out.divergences))
+
+    def score(verdict: Verdict) -> float:
+        result = totals(case_results(_report(_result(passing), _result(verdict)))).score
+        assert result is not None
+        return result
+
+    assert score(sent_wrong) == pytest.approx(110 / 120)
+    assert score(left_out) <= score(sent_wrong)
+    assert score(crashed) <= score(sent_wrong)
+
+
+def test_the_fields_of_a_packet_left_out_fail() -> None:
+    left_out = compare(
+        transcript(
+            ("alice", packet("minecraft:foo", fields={"a": 1, "b": {"c": 2}})), group_id="x/a"
+        ),
+        transcript(("alice", packet("minecraft:bar", fields={})), group_id="x/a"),
+        (),
+    )
+    lines = case_results(_report(_result(left_out)))
+    assert {line.test_case: line.result for line in lines if line.test_case} == {
+        "bar": Result.FAIL,
+        "foo": Result.FAIL,
+        "foo.a": Result.FAIL,
+        "foo.b.c": Result.FAIL,
+    }

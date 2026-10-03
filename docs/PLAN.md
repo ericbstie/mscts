@@ -1112,7 +1112,8 @@ class Verdict:
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
-    test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, sorted
+    test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, and each
+                                      # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
                                     # blocked or error. run.judge keeps compare's.
     @property
@@ -1898,8 +1899,11 @@ proves it necessary:
 
    A Verdict lists its test cases (`Verdict.test_cases`): the test case
    of every pair of leaves compared in matched packets, after Masks and
-   canonicalization, whether the two were equal or not, and the test
-   case of every Divergence. A dropped packet and a packet an
+   canonicalization, whether the two were equal or not, the test
+   case of every Divergence, and (#101) the test case of each unmasked
+   leaf of a reference packet the alignment left `missing`, as a match
+   with itself would name it, so leaving a packet out fails each field
+   sending it wrong would. A dropped packet and a packet an
    Observation window leaves out are in none, and neither is a pair of
    values at a masked path that are the same (two `MASKED`, or two
    None): a masked field is a test case only where it diverges. Each is the same, different in gameplay, or different in
@@ -1990,7 +1994,8 @@ class Totals:                       # failed counts not_tested; errors are not s
 NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
 def case_results(report: Report) -> tuple[CaseResult, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
-# repetitions: FAIL if it differs in gameplay in any repetition, PASS (marked
+# repetitions (a `missing` packet's Divergence makes its packet's test case and each of
+# its fields' differ): FAIL if it differs in gameplay in any repetition, PASS (marked
 # network_traffic_only) if it differs only in network traffic, else PASS. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else

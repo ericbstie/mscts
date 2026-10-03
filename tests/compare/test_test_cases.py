@@ -227,6 +227,23 @@ def test_test_cases_are_named_once_in_sorted_order_across_bots_and_packets() -> 
     assert verdict.test_cases == ("set_health.a", "set_health.z")
 
 
+def test_each_field_of_a_packet_the_candidate_left_out_is_a_test_case() -> None:
+    verdict = _verdict([_health(health=1.0, food=20, a=[1, 2])], [])
+    assert verdict.test_cases == (
+        "set_health",
+        "set_health.a[]",
+        "set_health.food",
+        "set_health.health",
+    )
+
+
+def test_a_masked_field_of_a_packet_the_candidate_left_out_is_no_test_case() -> None:
+    verdict = _verdict(
+        [_health(health=1.0, food=20)], [], Mask("minecraft:set_health", "food", "why")
+    )
+    assert verdict.test_cases == ("set_health", "set_health.health")
+
+
 def test_a_field_one_side_leaves_out_is_compared_as_a_whole() -> None:
     verdict = _verdict([_health(a={"b": 1, "c": 2})], [_health()])
     assert verdict.test_cases == ("set_health.a",)

@@ -413,8 +413,9 @@ class Verdict:
         divergences: Every difference, grouped by Bot in name order, then in stream
             order.
         detail: A human-readable note, e.g. why the Group is blocked.
-        test_cases: Every test case the Comparison compared, matched or not, sorted and
-            each once; none if the Verdict was made without one (`blocked`, `error`).
+        test_cases: Every test case the Comparison compared, matched or not, and each field
+            of a reference Packet the Candidate did not send (#101), sorted and each once;
+            none if the Verdict was made without one (`blocked`, `error`).
     """
 
     group_id: str
@@ -2364,6 +2365,7 @@ def _compare_streams(
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):
+            compared.update(_field_cases(reference[index]))
             yield _unmatched(bot, index, "missing", reference[index])
         for index in range(next_candidate, cand_index):
             yield _unmatched(bot, index, "unexpected", candidate[index])
@@ -2371,6 +2373,24 @@ def _compare_streams(
             matched = (reference[ref_index], candidate[cand_index])
             yield from _diff_matched(bot, ref_index, *matched, compared)
         next_reference, next_candidate = ref_index + 1, cand_index + 1
+
+
+def _field_cases(entry: _Normalized) -> set[str]:
+    """The test cases of a Packet's own fields, as a match with itself would compare them.
+
+    So each field of a reference Packet the Candidate did not send is a test case it fails,
+    and leaving a Packet out never scores better than sending it wrong (#101). A Packet
+    without fields is one test case, its packet's; a masked field is none.
+    """
+    state, name = entry.packet.state, entry.packet.name
+    if entry.fields is None:
+        return {_test_case(state, name, ())}
+    names: dict[_Path, str] = {}
+    for path, _, _ in _pairs(entry.fields, entry.fields, ()):
+        shape = tuple(0 if isinstance(step, int) else step for step in path)
+        if shape not in names and path not in entry.masked:
+            names[shape] = _test_case(state, name, shape)
+    return set(names.values())
 
 
 def _unmatched(

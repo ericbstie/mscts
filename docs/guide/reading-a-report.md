@@ -35,15 +35,18 @@ seconds.
 
 ## Score
 
-The score is the share of scored test cases that passed. `Score: 100%`
-means that in every repetition of every Group, the Candidate sent what
-vanilla sent, or something the vanilla client reads the same way. It
-covers only the test cases this Run compared: a Run of fewer Groups
-scores fewer test cases.
+The score is the share of scored test cases that passed. The goal is that
+a Candidate scoring 100% plays like vanilla, and the suite grows toward
+it. Today's score covers only the test cases mscts has so far, and only
+those of the Groups this Run played. It counts a test case that differs
+only in network traffic as passing.
 
-A test case fails if it differs in gameplay in any repetition. The score
-is rounded down to one decimal, so only a Run where every scored test case
-passes shows 100%. If no test case was scored, the score is `none`.
+A test case fails if it differs in gameplay in any repetition. Each field
+of a packet vanilla sent is a test case, so a Candidate that leaves a
+packet out, or stops before sending it, fails each of its fields, as if
+it had sent them all wrong. The score is rounded down to one decimal, so
+only a Run where every scored test case passes shows 100%. If no test
+case was scored, the score is `none`.
 
 The totals line counts the lines that passed and failed, then any that
 were not scored, such as `0 passed, 3 failed (1 not tested), 1 error (not
@@ -121,7 +124,9 @@ Took 41 s
 ```
 
 `Not tested` means a prerequisite did not match, or the Candidate lacks a
-command the Group needs, such as `/tick`. `Error` means mscts or vanilla
+command the Group needs, such as `/tick`. A prerequisite that differs only
+in network traffic does not match here either, even though its test cases
+pass. No shipped Group has a prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, closed the connection, did not answer in time,
 or still had players online from the Group before. If this happens while

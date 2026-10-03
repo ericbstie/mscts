@@ -112,15 +112,24 @@ def case_results(report: Report) -> tuple[CaseResult, ...]:
     """Each test case of each Group, in the order played, then the Group's own line if any."""
     results: list[CaseResult] = []
     for group in report.results:
+        divergences = [
+            divergence
+            for verdict in group.verdicts
+            for divergence in verdict.divergences
+            if divergence.test_case
+        ]
         found: dict[str, set[bool]] = {
-            name: set() for verdict in group.verdicts for name in verdict.test_cases
+            name: set()
+            for names in (
+                *(verdict.test_cases for verdict in group.verdicts),
+                (divergence.test_case for divergence in divergences),
+            )
+            for name in names
         }
-        for verdict in group.verdicts:
-            for divergence in verdict.divergences:
-                if divergence.test_case:
-                    found.setdefault(divergence.test_case, set()).add(
-                        divergence.observability is Observability.NETWORK_TRAFFIC
-                    )
+        for divergence in divergences:
+            traffic = divergence.observability is Observability.NETWORK_TRAFFIC
+            for name in _differing(divergence, found):
+                found[name].add(traffic)
         results.extend(_case_result(group.group_id, name, found[name]) for name in sorted(found))
         details = _group_details(group)
         if details:
@@ -129,6 +138,20 @@ def case_results(report: Report) -> tuple[CaseResult, ...]:
             reasons = "; ".join(reason for _, reason in details)
             results.append(CaseResult(group.group_id, "", result, reasons=reasons))
     return tuple(results)
+
+
+def _differing(divergence: Divergence, names: Iterable[str]) -> list[str]:
+    """The test cases among `names` that `divergence` makes differ.
+
+    A `missing` Packet's: the packet's test case and each of its fields', which the
+    Comparison lists for a Packet left out, so leaving a Packet out fails each field
+    sending it wrong would (#101). Any other Divergence's: its own test case.
+    """
+    case = divergence.test_case
+    if divergence.kind != "missing":
+        return [case]
+    fields = (f"{case}.", f"{case}[")
+    return [name for name in names if name == case or name.startswith(fields)]
 
 
 _GROUP_RESULTS = (Result.FAIL, Result.NOT_TESTED, Result.ERROR)
