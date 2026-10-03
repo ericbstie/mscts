@@ -34,6 +34,10 @@ tests, 79–83 s under load) and `mise run test:candidate` passes.
   the Adapter contract. The SessionStart hook runs `mise run
   install:reference` (explicit, loud). **M3a done** except M9's
   `adapter check`.
+  Each Adapter is one folder, `src/mscts/adapters/<name>/`, with its
+  tests in `tests/adapters/<name>/`; its import and its entry in
+  `cli.py`'s `ADAPTERS` are the only lines outside it, and a unit test
+  checks that (#155).
 - **M3's first Report: done (session 3).** `uv run mscts run --candidate
   pumpkin [--scenario GLOB] [--repeat N]` plays the status Scenarios on
   vanilla and Pumpkin (about 10 s) and prints a text Report: observable

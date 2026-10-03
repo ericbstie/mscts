@@ -13,7 +13,7 @@ An Adapter does not install, start or stop anything. It does three things:
 
 mscts owns everything else: downloading and verifying the binary,
 installing it, launching the process, waiting for readiness, and stopping
-it. Everything you write lives in your Adapter's own module.
+it. Everything you write lives in your Adapter's own folder.
 
 ::: info Work in progress
 This page describes the contract in
@@ -256,14 +256,26 @@ then sends SIGTERM, then SIGKILL, waiting up to 30 seconds at each step.
 
 ## Register it
 
-1. Put everything you write in one module,
-   `src/mscts/adapters/<name>.py`: `release`, `check`, `prepare`, and any
-   URLs and data they need.
-2. Add one line to `ADAPTERS` in `src/mscts/cli.py`, the list of Adapters
-   the command knows. That is the only change outside your module.
-3. Write unit tests: `release` with a fake `fetch`, `check` on small
-   stand-in files, and `prepare` on the files it writes and on each
-   invariant.
+1. Put everything you write in one folder, `src/mscts/adapters/<name>/`.
+   Its `__init__.py` holds the Adapter, or imports it from other modules
+   in the folder. Any data files the Adapter reads, such as a pinned
+   default config, go in the folder too.
+2. In `src/mscts/cli.py`, import your Adapter and add it to `ADAPTERS`,
+   which maps each Adapter name the command knows to its class. Those
+   two lines are the only change outside your folder.
+3. Write unit tests in `tests/adapters/<name>/`: `release` with a fake
+   `fetch`, `check` on small stand-in files, and `prepare` on the files
+   it writes and on each invariant.
+
+```text
+src/mscts/adapters/myserver/__init__.py   # the Adapter
+src/mscts/cli.py                          # an import, and an entry in ADAPTERS
+tests/adapters/myserver/test_myserver.py  # its tests
+```
+
+The unit tests check this layout for every Adapter in `ADAPTERS`. The
+vanilla and Pumpkin Adapters, in `src/mscts/adapters/vanilla/` and
+`src/mscts/adapters/pumpkin/`, follow it.
 
 Then run it:
 
