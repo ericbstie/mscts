@@ -7,13 +7,16 @@ else needs to be written when a Group is registered (#84).
 
 import dataclasses
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 
 import pytest
 
 import mscts.groups  # noqa: F401 - registers the shipped Groups
-from mscts.compare import Verdict
+from mscts.compare import Outcome, Verdict
 from mscts.group import GROUPS, Group
+from mscts.run import RunResult
 from mscts.spec import ServerSpec
+from mscts.timeline import timeline
 
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
@@ -55,6 +58,36 @@ def describe_unmatched(verdicts: Sequence[Verdict]) -> str:
     if len(verdicts) > MAX_VERDICTS:
         lines.append(f"... and {len(verdicts) - MAX_VERDICTS} more Verdicts that are not match")
     return "\n".join(lines)
+
+
+def keep_timelines_and_describe(result: RunResult, where: Path) -> str:
+    """Write the timelines of `result`'s plays that did not match, and describe its failure.
+
+    Each such play gets a file in `where` (`_keep_timelines`). The message is
+    `describe_unmatched` of the Verdicts that are not `match`, then each file's path.
+    """
+    not_matching = [verdict for verdict in result.verdicts if verdict.outcome is not Outcome.MATCH]
+    kept = _keep_timelines(result, where)
+    files = [f"  {path}" for path in kept]
+    heading = ["The timelines of the plays that did not match:"] if kept else []
+    return "\n".join([describe_unmatched(not_matching), *heading, *files])
+
+
+def _keep_timelines(result: RunResult, where: Path) -> list[Path]:
+    """Write a file in `where` for each play of `result` that kept its Transcripts; return them.
+
+    The file holds the play's timeline on the Reference, then on the Candidate, and is
+    named after the Group and the repetition (`status-basic.2.txt`).
+    """
+    where.mkdir(parents=True, exist_ok=True)
+    kept: list[Path] = []
+    for group in result.results:
+        for repetition, transcripts in enumerate(group.transcripts, start=1):
+            if transcripts is not None:
+                path = where / f"{group.group_id.replace('/', '-')}.{repetition}.txt"
+                path.write_text("\n\n".join(timeline(t) for t in transcripts) + "\n")
+                kept.append(path)
+    return kept
 
 
 def _describe(verdict: Verdict) -> list[str]:

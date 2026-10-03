@@ -20,11 +20,11 @@ from pathlib import Path
 
 import pytest
 from support.reference import attached, own_reference
-from support.selfcheck import describe_unmatched, needs_instances_of_their_own
+from support.selfcheck import keep_timelines_and_describe, needs_instances_of_their_own
 
-from mscts.compare import Outcome, Verdict
+from mscts.compare import Outcome
 from mscts.group import Group, resolve
-from mscts.run import run
+from mscts.run import RunResult, run_results
 from mscts.runner import Instance
 
 pytestmark = [
@@ -44,11 +44,12 @@ async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
     tmp_path: Path,
 ) -> None:
     groups = resolve([group_id])
-    verdicts = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
+    result = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
+    verdicts = result.verdicts
     assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * repeat
-    not_matching = [verdict for verdict in verdicts if verdict.outcome is not Outcome.MATCH]
-    if not_matching:
-        pytest.fail(describe_unmatched(not_matching), pytrace=False)
+    if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
+        message = keep_timelines_and_describe(result, tmp_path / "timelines")
+        pytest.fail(message, pytrace=False)
 
 
 async def _play(
@@ -57,10 +58,10 @@ async def _play(
     cache_dir: Path,
     workdir: Path,
     repeat: int,
-) -> list[Verdict]:
+) -> RunResult:
     """Play `groups` on the shared `pair`, or on Instances of the Run's own if they need to."""
     first, second = (attached(instance) for instance in pair)
     if not needs_instances_of_their_own(groups, first.spec):
-        return await run(groups, first, second, workdir=workdir, repeat=repeat)
+        return await run_results(groups, first, second, workdir=workdir, repeat=repeat)
     with own_reference(cache_dir) as server:
-        return await run(groups, server, server, workdir=workdir, repeat=repeat)
+        return await run_results(groups, server, server, workdir=workdir, repeat=repeat)
