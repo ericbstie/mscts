@@ -132,6 +132,7 @@ HOLDS_NO_ENTITY_ID: Mapping[str, str] = {
     "mscts.codec.schema._Float": "a number",
     "mscts.codec.schema._Int": "a number",
     "mscts.codec.schema._Long": "a number",
+    "mscts.codec.schema._Short": "a number",
     "mscts.codec.schema._UByte": "a number",
     "mscts.codec.schema._UShort": "a number",
     "mscts.codec.schema._VarInt": "a number",
