@@ -231,3 +231,26 @@ def test_status_names_the_build_of_an_installation_recorded_before_builds_were(
 def test_the_mscts_script_is_the_cli() -> None:
     pyproject = tomllib.loads(Path(__file__).parent.parent.joinpath("pyproject.toml").read_text())
     assert pyproject["project"]["scripts"] == {"mscts": "mscts.cli:main"}
+
+
+@pytest.mark.parametrize(
+    ("command", "said"),
+    [
+        (
+            ("adapter", "install"),
+            "ADAPTER[@VERSION]  vanilla or pumpkin; @VERSION installs one build, not the latest",
+        ),
+        (("adapter", "status"), "{vanilla,pumpkin}  the Adapter whose Installation to show"),
+    ],
+    ids=["install", "status"],
+)
+def test_each_positional_argument_says_what_it_is(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
+    said: str,
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+    with pytest.raises(SystemExit):
+        main([*command, "--help"])
+    assert f"\n  {said}\n" in capsys.readouterr().out

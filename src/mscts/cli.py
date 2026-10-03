@@ -224,11 +224,16 @@ def _parser() -> argparse.ArgumentParser:
     installing = actions.add_parser(
         "install", help="install the latest build, the build @VERSION names, or --from a file"
     )
-    installing.add_argument("adapter", type=_adapter_at, metavar="ADAPTER[@VERSION]")
+    installing.add_argument(
+        "adapter",
+        type=_adapter_at,
+        metavar="ADAPTER[@VERSION]",
+        help=f"{' or '.join(ADAPTERS)}; @VERSION installs one build, not the latest",
+    )
     installing.add_argument("--from", dest="from_path", metavar="PATH", help="a binary you supply")
     actions.add_parser("list", help="Adapters, and what is installed")
     status = actions.add_parser("status", help="what is installed, its sha256 and its source")
-    status.add_argument("adapter", choices=ADAPTERS)
+    status.add_argument("adapter", choices=ADAPTERS, help="the Adapter whose Installation to show")
     running = commands.add_parser(
         "run", help="play Groups against vanilla and a Candidate, and print the Report"
     )
