@@ -479,8 +479,8 @@ class _Instances:
         It waits first for both Instances to have no player online (the previous Group's
         Bots have left). If one has any after `SETTLE_TIMEOUT_S`, or its wait raised,
         `group` is not played on either, and its Verdict names the players still online
-        or what was raised: `error` if the Reference did, else `mismatch` if the
-        Candidate caused it, else `error` (a harness bug), see `_unsettled`.
+        or what was raised: `error` if the Reference did, else `mismatch` (only the
+        Candidate did), see `_unsettled`.
         """
         endpoints = await self._pair(group.spec)
         unsettled = await _unsettled(group, endpoints)

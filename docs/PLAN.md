@@ -1263,7 +1263,9 @@ def judge(group: Group, reference: Transcript | GroupError,
     # (it lacks a command Control needs) is `blocked`, detail "needs /<root>". `error` only
     # if the Reference failed (CommandMissing included) or compare raised: any Exception,
     # named in the detail ("the Comparison failed: OverflowError: ..."), so the Run goes on
-    # to the next Group (#174). Else compare(reference, candidate, masks).
+    # to the next Group (#174). Else compare(reference, candidate, masks). The trade: a
+    # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
+    # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,

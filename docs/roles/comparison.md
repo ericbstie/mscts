@@ -38,5 +38,6 @@ Newest first: one line per lesson, with the issue it came from.
 - #122: A canonical form that reads a registry takes it from the last configuration before the packet (`_Context.each`), never from a sum over the Transcript.
 - #116: An entity first added before the windows is named by its first add_entity (type and position after the Group's Masks; a player by UUID); a `remove_entities`, compared or not, ends a name or number. `_Numbers` follows the stream packet by packet.
 - #116: Mutant C7 (`_step_fits`) differs only for a string key at a list-element position (`remove_entities.entity_ids.count`); `paths.py` in the specialist's scratch lists every entity id path.
-- #114: Any wait the Run gathers uses `return_exceptions=True`. A harness bug there is `error`; only `CANDIDATE_FAILURES` are the Candidate's `mismatch`, as in `judge`.
+- #222: An exception from a Group or the settle wait on the Candidate alone is `mismatch`, whatever its type (the Reference ran the same code); `error` is only for the Reference failing or the Comparison raising. A harness bug that shows only on the Candidate now scores against it, so the Self-check and the reference tier are where harness bugs show.
+- #114: Any wait the Run gathers uses `return_exceptions=True`.
 - #114, #116: Changing a CONTEXT.md entry means changing its glossary entry in the same commit (`test_glossary`).

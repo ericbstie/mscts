@@ -168,8 +168,9 @@ need is missing, add it here in the same commit that introduces it.
   that breaks the protocol, no answer in time, a connection closed, reset
   or refused, players still online from the Group before, or a value the
   Group does not expect. Compliance scores leave `error` out, so a
-  Candidate must never score better by failing. The same holds while mscts waits for the players of
-  the Group before to leave; it then does not play the Group.
+  Candidate must never score better by failing. The same holds while
+  mscts waits for the players of the Group before to leave; it then does
+  not play the Group.
 - **Self-check**: a Comparison of Reference against Reference. It must
   always be `match`. Anything else is a missing Mask or a flaky Group,
   never a Reference bug.

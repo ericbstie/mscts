@@ -367,8 +367,9 @@ class Divergence:
             `unexpected`: a candidate Packet the alignment left unmatched.
             `field`: a difference between two matched Packets.
             `failed`: the Group failed on the Candidate, as `candidate` says (a
-            Candidate failure, `run.judge`; never made by `compare`). `bot` and `packet`
-            are "", `index` 0, `reference` ABSENT.
+            Candidate failure, `run.judge`; never made by `compare`). `bot` is the Bot
+            that failed, or "" when the Group's own script raised; `packet` is "",
+            `index` 0, `reference` ABSENT.
         packet: The packet name; "" for `bot` and `failed`.
         path: Where in the matched Packets they differ, or None for their whole
             payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
