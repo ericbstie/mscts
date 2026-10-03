@@ -64,13 +64,23 @@ ADRs and briefs. What the maintainer has asked for:
   - an elegant, honest developer experience;
   - installs are never hidden inside runs;
   - Adapters are easy for third parties to write and verify.
-- **Helper agent.** The maintainer also runs a non-Claude agent that
-  takes GitHub issues labelled `helper-ready`. The lead may delegate a
-  small, independent spec issue there by adding that label.
+- **Helper agent.** The maintainer also runs a non-Claude agent, in two
+  roles:
+  - *Implementer*: it takes small, independent tooling, docs and
+    platform issues labelled `helper-ready`, each with a `## Verify`
+    section saying what to run and see. The lead keeps at most 8 open.
+    Its PRs get the same review and rebase-with-check integration, and
+    the surprises in its PR description are logged as a retrospective.
+  - *Reviewer*: on PRs the lead labels `helper-review` (scrutiny::high
+    first), it posts one comment-only GitHub review whose summary starts
+    "Helper review:", one comment per finding with file:line and a
+    severity (blocking, should-fix, nit). It never pushes, merges or
+    resolves threads. Its reviews arrive under the maintainer's account;
+    the prefix tells them apart. The lead treats its findings like a
+    review bot's: verify, then fix or reply.
+
   Claude remains the primary worker; the process is not shaped around
-  the helper. Its PRs get the same review and rebase-with-check
-  integration, and the surprises in its PR description are logged as a
-  retrospective.
+  the helper.
 - **Autonomy:** within those decisions, the lead steers without asking,
   including batches, audits, refactors and process changes, and keeps
   the maintainer informed.
@@ -142,6 +152,13 @@ raises nothing.
      loosened, and that the vocabulary matches `CONTEXT.md`.
    - Rebase onto `main` with every commit re-checked:
      `git rebase main -x "mise run check"`.
+   - **Merge train.** When several PRs are ready, stack them: rebase each
+     onto the previous one's tip (the first onto `main`), every commit
+     re-checked, and push each. Run the live tiers the PRs need once, on
+     the last tip, and report the pass counts. Then merge the PRs in
+     stack order. If that run fails, run the tiers per PR to find which
+     one broke it, drop it from the train, and run the rest again. A
+     single ready PR is a train of one.
    - Merge the PR with a merge commit (never a squash or a rebase-merge),
      which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
@@ -670,6 +687,8 @@ Newest first. Every retrospective item gets a row.
 | Date | Change | Why |
 | --- | --- | --- |
 | 2026-10-02 | The old lead's brief-template rules move into `docs/roles/common.md`: a schema owns the regen lists, `HOLDS_NO_ENTITY_ID` and the fake placeholder packets; `TITLES` and the test case page change together; push early, every path inside the worktree; `--stress` only when briefed; sweep before docs | They lived only in the old lead's scratchpad (AT, AU, AV retrospectives) |
+| 2026-10-02 | Merge train: ready PRs are stacked and the live tiers run once on the stack's tip, then the PRs merge in order; per-PR runs only when a train fails (ADR-0009 amendment) | Maintainer: one unrelated merge made four PRs re-run 8 to 15 minute live tiers |
+| 2026-10-02 | The helper agent takes two roles: implementer on `helper-ready` tooling, docs and platform issues (at most 8 open), and comment-only reviewer on PRs labelled `helper-review`, scrutiny::high first | Maintainer: use the helper for high-scrutiny PRs and tooling tasks |
 | 2026-10-02 | The `ready` label is gone: an issue that is not ready carries `needs-triage`, and every other open issue is ready (ADR-0009 amendment) | Maintainer |
 | 2026-10-02 | PRs land with a merge commit, after the branch is rebased onto `main` with every commit re-checked (ADR-0009 amendment) | Maintainer: prefers regular merging |
 | 2026-10-02 | Lanes and review levels: long-lived specialists own a `lane:*` of issues end to end, with a handbook each (`docs/roles/`); core areas have one owner; each issue carries `scrutiny::low`, `scrutiny::medium` or `scrutiny::high`, set by the lead from `docs/RISK.md`, where an escaped bug raises its area one level and 5 clean merges lower it; a reviewer gives `scrutiny::high` PRs two independent reviews; the `spec` and `enabler` labels are gone (every issue is a spec); up to 5 agents at once. The common worker rules moved from the lead's scratchpad to `docs/roles/common.md` | Maintainer: longer-lived agents with roles, each taking 8–15 issues in one domain, and review rigor triaged by difficulty and raised where bugs are found; labels `scrutiny::low/medium/high`, without `spec` and `enabler`. The audit of 2026-10-02 found 5 high bugs in the timing and Compare code |
