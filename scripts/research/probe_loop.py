@@ -7,7 +7,7 @@ probe Group (`tests/support/probe.py`) PLAYS times on each in turn and judges th
 One line per play gives the Verdict and, for each side: when the watcher's first chunk
 batch and its chunk (0, 0) arrived, when the window opened and closed, the gaps between
 the barrier's answers (`award_stats`) inside the window for each Bot, how long each Bot's
-`sync` took, which Bots' `sync` was capped (`sync:capped`), and when the first
+`sync` took, and when the first
 `block_update` reached each Bot against the window's close. A play that does not match
 has both Transcripts saved in OUT_DIR as `play-<n>-<side>.jsonl` (the Marks, then the
 Events; a research format, not a public one). `--stress N` runs N busy-loop processes
@@ -39,7 +39,7 @@ from pathlib import Path
 
 from mscts import install
 from mscts.adapters.vanilla import VanillaAdapter
-from mscts.bot import SYNC_CAPPED, status_probe
+from mscts.bot import status_probe
 from mscts.cache import cache_dir
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome
 from mscts.group import Group
@@ -107,7 +107,6 @@ class Side:
         sync_ms: For each Bot, how long its `sync` took: from its first `client_command`
             after the window opened to its last `award_stats` inside it (None if either
             is missing).
-        capped: The Bots whose `sync` stopped at `SYNC_MAX_TRIPS`, as its Mark says.
         update_ms: For each Bot, when its first `block_update` after the window opened came.
     """
 
@@ -118,7 +117,6 @@ class Side:
     close_ms: float | None
     gaps_ms: dict[str, list[float]]
     sync_ms: dict[str, float | None]
-    capped: tuple[str, ...]
     update_ms: dict[str, float | None]
 
     def update_where(self, bot: str) -> str:
@@ -138,10 +136,9 @@ class Side:
             f"{bot}_update={self.update_where(bot)}({self.update_ms.get(bot)})"
             for bot in sorted(self.update_ms)
         )
-        capped = ",".join(self.capped) or "none"
         return (
             f"first_batch={self.first_batch_ms} chunk00={self.chunk00_ms} chunks={self.chunks} "
-            f"open={self.open_ms} close={self.close_ms} {gaps} {syncs} capped={capped} {updates}"
+            f"open={self.open_ms} close={self.close_ms} {gaps} {syncs} {updates}"
         )
 
 
@@ -199,11 +196,6 @@ def summarise(transcript: Transcript, *, bots: Sequence[str] = (CONTROL_PLAYER, 
         close_ms=ms(closed),
         gaps_ms=gaps,
         sync_ms=syncs,
-        capped=tuple(
-            m.label.removeprefix(f"{SYNC_CAPPED} ")
-            for m in transcript.marks
-            if m.label.startswith(f"{SYNC_CAPPED} ")
-        ),
         update_ms=updates,
     )
 

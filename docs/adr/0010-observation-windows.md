@@ -242,3 +242,8 @@ second request made `sync` return before the tick's `block_update`.
    answered twice, or a plugin that sends one unasked) is taken and passed
    over (audit H5). Taken as the answer, it made the barrier one round trip,
    and left the real answer queued to offset every later barrier.
+4. **No Mark.** With no retries there is no cap, so `SYNC_MAX_TRIPS` and
+   the `sync:capped` Mark go. No Mark replaces them: under the wait, a
+   pair's answers always arrive at least `TICK_GAP_S` apart, so their gap
+   cannot show a server with no tick. The Transcript still holds both
+   requests and both answers, with their times.

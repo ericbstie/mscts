@@ -58,16 +58,6 @@ apart; answers from different ticks, at least 5.4 ms (docs/research/2026-10-01-j
 A request sent this long after an answer arrived lands after that answer's pass.
 """
 
-SYNC_MAX_TRIPS = 6
-"""No longer used by `sync`, which always makes one pair (#115).
-
-Kept until #115 decides its Behaviour 2 and 4: `scripts/research/probe_loop.py` reads
-`SYNC_CAPPED`.
-"""
-
-SYNC_CAPPED = "sync:capped"
-"""The label of the Mark `sync` left at its cap. No longer left (#115); see `SYNC_MAX_TRIPS`."""
-
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
 

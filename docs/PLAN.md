@@ -558,8 +558,6 @@ def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
 TICK_GAP_S = 0.005                  # sync's wait from its first answer's arrival to its second request
-SYNC_MAX_TRIPS = 6                  # unused since #115 (sync is one pair); kept for probe_loop.py, pending #115
-SYNC_CAPPED = "sync:capped"         # the Mark sync left at its cap; no longer left (#115), see above
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...
     # As the 26.3 client does (javap): login_finished → login_acknowledged, then configuration
