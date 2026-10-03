@@ -70,6 +70,11 @@ every layout.
   `moved too quickly!` and teleports the player back to where it has it,
   with an absolute `player_position`. It runs only with the game rule
   `player_movement_check` on, its default.
+- `handleClientTickEnd` sets the player's known movement to zero only when
+  no movement packet came in that client tick (`receivedMovementThisTick`).
+  So the server takes the player to be still moving at its last step until
+  a client tick without one, which for a Bot is `tick()` after its last
+  move.
 - `handlePlayerInput` keeps the input and, once the client has loaded, sets
   the shift key from it. `handlePlayerCommand` ignores everything until the
   client has loaded; START_SPRINTING and STOP_SPRINTING set sprinting.

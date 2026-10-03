@@ -590,6 +590,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # rounds to binary32, takes pitch % 360 then holds it to -90..90, and ignores a
     # non-finite value (Entity setYRot / setXRot). jump holds the key for its tick only; the
     # next call releases it.
+    # The server keeps the player's known movement at its last step until a client tick
+    # with no movement (handleClientTickEnd), so a Bot moves to the server until a tick()
+    # after its last move. The Bot presses no direction keys, but forward while sprinting.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the

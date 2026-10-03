@@ -210,6 +210,17 @@ def test_move_reports_the_position_alone_when_the_rotation_is_unchanged() -> Non
     assert play(script)[1:] == [[pos(6.7, -60.0, 7.5), TICK_END]]
 
 
+def test_a_tick_after_a_move_sends_only_its_end() -> None:
+    # The tick that tells the server the player has stopped: no movement packet in it
+    # (ServerGamePacketListenerImpl.handleClientTickEnd then zeroes the known movement).
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        await bot.move(6.7, -60.0, 7.5)
+        await bot.tick()
+
+    assert play(script)[2:] == [[TICK_END]]
+
+
 def test_a_move_no_longer_than_the_threshold_is_not_reported() -> None:
     # sendPosition reports a move longer than 2.0E-4 blocks (strictly), along any axis.
     async def script(bot: Bot) -> None:
