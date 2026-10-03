@@ -7,7 +7,9 @@ and for the Reference itself failing.
 
 import contextlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import pytest
 
@@ -15,10 +17,10 @@ import mscts.run as run_module
 from mscts.codec.packets import Codec
 from mscts.codec.wire import Writer
 from mscts.compare import Divergence, Mask, Outcome, Verdict
-from mscts.group import CommandMissing, Group, GroupContext
+from mscts.group import GROUPS, CommandMissing, Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint, ProtocolError
-from mscts.run import GroupError, judge, run_group
+from mscts.run import GroupError, Server, judge, run_group, run_results
 from mscts.settle import PlayersStillOnline
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -251,6 +253,33 @@ def test_a_comparison_that_raises_value_error_is_an_error_naming_it(
 
     detail = "the Comparison failed: ValueError: a path the Comparison refuses"
     assert verdict == Verdict("status/basic", Outcome.ERROR, detail=detail)
+
+
+@pytest.mark.asyncio
+async def test_a_comparison_that_raises_anything_else_is_that_groups_error_and_the_run_goes_on(
+    fake_server: Callable[..., Server], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # #173's review: a Candidate's chunk made compare raise OverflowError, which ended the Run.
+    real = run_module.compare
+
+    def overflows_on_basic(reference: Transcript, candidate: Transcript, masks: object) -> Verdict:
+        if reference.group_id == "status/basic":
+            msg = "int too big to convert"
+            raise OverflowError(msg)
+        return real(reference, candidate, masks)  # ty: ignore[invalid-argument-type]
+
+    monkeypatch.setattr(run_module, "compare", overflows_on_basic)
+    groups = [GROUPS["status/basic"], GROUPS["status/ping"]]
+
+    result = await run_results(
+        groups, fake_server("vanilla"), fake_server("pumpkin"), workdir=tmp_path / "run"
+    )
+
+    basic, ping = result.verdicts
+    detail = "the Comparison failed: OverflowError: int too big to convert"
+    assert basic == Verdict("status/basic", Outcome.ERROR, detail=detail)
+    assert ping.group_id == "status/ping"
+    assert ping.outcome is not Outcome.ERROR, ping
 
 
 async def _needs_tick(context: GroupContext) -> None:  # noqa: ARG001 - a Script

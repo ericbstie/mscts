@@ -1192,7 +1192,9 @@ def judge(group: Group, reference: Transcript | GroupError,
     # Masks. CommandMissing on the Candidate (it lacks a command Control needs) is
     # `blocked`, detail "needs /<root>". `error` only if the Reference failed (CommandMissing
     # included), the Group raised anything else on the Candidate (a harness bug), or compare
-    # raised. Else compare(reference, candidate, masks).
+    # raised: any Exception, named in the detail ("the Comparison failed: OverflowError:
+    # ..."), so the Run goes on to the next Group (#174). Else compare(reference,
+    # candidate, masks).
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
