@@ -131,6 +131,10 @@ class EntityTracker:
         self._tracked: dict[int, _Tracked] = {}
         self.entities = Entities(self._tracked)
 
+    def clear(self) -> None:
+        """Forget every entity, as a new level does; `entities` stays the same view."""
+        self._tracked.clear()
+
     def follow(self, name: str, fields: Mapping[str, object]) -> None:
         """Apply one clientbound play packet's decoded `fields`; other packets change nothing.
 

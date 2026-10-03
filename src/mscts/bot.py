@@ -401,7 +401,8 @@ class Replies:
     A respawn selects slot 0 and keeps the slot last sent, so the next tick sends 0 if that
     differs. Play `set_held_slot` selects a hotbar slot. Every play packet goes to `tracker`,
     which follows the entity packets; a login, or a respawn into another dimension, brings a
-    new level and so a new tracker.
+    new level, so the tracker forgets every entity (cleared in place, so a view kept from
+    before shows the new level).
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
@@ -497,7 +498,7 @@ class Replies:
             self.entity_id = _field(fields, "entity_id", int)
             self.reported = _Reported()
             self.interaction = _Interaction()
-            self.tracker = EntityTracker()
+            self.tracker.clear()
         else:
             old = self.reported
             kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
@@ -507,7 +508,7 @@ class Replies:
             self.interaction.selected_slot = 0
             if dimension != self._dimension:
                 self.interaction.sequence = 0
-                self.tracker = EntityTracker()
+                self.tracker.clear()
         self._dimension = dimension
 
     def _select_slot(self, slot: int) -> None:
@@ -617,8 +618,9 @@ class Bot:
         """The entities the server has told the Bot about, by entity id, as the client tracks them.
 
         Each is where the server last put it: the Bot does not move an entity between packets as
-        the client does. A login, or a respawn into another dimension, forgets them all
-        (docs/research/2026-10-03-bot-entities.md).
+        the client does. A login, or a respawn into another dimension, forgets them all, in
+        this same view (docs/research/2026-10-03-bot-entities.md). It changes only as the Bot
+        reads packets: after `sync`, it holds everything the server sent before.
         """
         return self._replies.tracker.entities
 

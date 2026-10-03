@@ -325,3 +325,30 @@ def test_a_new_level_forgets_the_entities(
     # The entities belong to the ClientLevel: a new one comes with each play login, and with
     # a respawn into another dimension (ClientPacketListener.handleRespawn).
     assert known(ADDED, fresh) == kept
+
+
+@pytest.mark.parametrize(
+    "fresh",
+    [
+        ("minecraft:login", LOGIN),
+        ("minecraft:respawn", {**RESPAWN, "dimension_name": "minecraft:the_end", "data_kept": 0}),
+    ],
+    ids=["login", "respawn-elsewhere"],
+)
+def test_a_view_kept_from_before_a_new_level_forgets_the_entities_too(
+    fresh: tuple[str, Mapping[str, object]],
+) -> None:
+    # A Group may keep `bot.entities` across a portal or a respawn: it is the same view, and
+    # shows the new level's entities, not the old one's.
+    found: dict[int, Entity] = {}
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        view = bot.entities
+        await bot.tick()
+        await bot.sync()
+        found.update(view)
+
+    transcript = Transcript(group_id="test/entities", server="fake")
+    with_bot(CODEC, transcript, entity_server([], [ADDED, fresh]), use)
+    assert found == {}

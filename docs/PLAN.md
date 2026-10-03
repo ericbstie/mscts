@@ -662,6 +662,7 @@ class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each loo
 
 class EntityTracker:
     entities: Entities
+    def clear(self) -> None: ...      # forget every entity; `entities` stays the same view
     def follow(self, name: str, fields: Mapping[str, object]) -> None: ...
     # add_entity adds (replacing the id); other packets for an unknown id change nothing.
     # move_entity_pos(_rot) decodes against the entity's base (VecDeltaCodec: an axis with a
@@ -692,8 +693,9 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # starts at 0 again (a new ClientLevel), login also the held slots (a new
     # MultiPlayerGameMode); respawn → slot 0 selected (a new Inventory), the last sent slot
     # kept, so the next tick sends 0 if it differs; play set_held_slot (0-8) → selected, sent back on the next tick
-    # (no answer); every play packet → Replies.tracker (EntityTracker), a new one on play
-    # login or respawn into another dimension (a new ClientLevel; no answer);
+    # (no answer); every play packet → Replies.tracker (EntityTracker), cleared in place
+    # (EntityTracker.clear, so a kept Bot.entities view follows) on play login or respawn into
+    # another dimension (a new ClientLevel; no answer);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
