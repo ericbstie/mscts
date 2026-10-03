@@ -4,7 +4,7 @@ import itertools
 from collections.abc import Sequence
 
 from mscts.codec.packets import Packet
-from mscts.compare import _align, compare
+from mscts.compare import _align, _align_timed, compare
 from tests.compare.build import divergence, packet, transcript
 
 
@@ -143,3 +143,42 @@ def test_a_long_stream_with_one_difference_aligns_around_it() -> None:
     assert verdict.divergences == (
         divergence("missing", index=1500, packet="test:x", reference="", test_case="test:x"),
     )
+
+
+def _most_on_one_tick(
+    reference: Sequence[tuple[str, str]],
+    candidate: Sequence[tuple[str, str]],
+    reference_ticks: Sequence[int],
+    candidate_ticks: Sequence[int],
+) -> int:
+    """Of the longest alignments, the most pairs on one tick: by brute force, an oracle."""
+    longest = _longest_common_subsequence_length(reference, candidate)
+    best = 0
+    for picked in itertools.combinations(range(len(reference)), longest):
+        for paired in itertools.combinations(range(len(candidate)), longest):
+            if all(reference[i] == candidate[j] for i, j in zip(picked, paired, strict=True)):
+                same = sum(
+                    reference_ticks[i] == candidate_ticks[j]
+                    for i, j in zip(picked, paired, strict=True)
+                )
+                best = max(best, same)
+    return best
+
+
+def test_every_small_timed_alignment_is_longest_then_most_on_one_tick_and_mirrored() -> None:
+    # #229: ticks only break ties between the longest alignments.
+    streams = [
+        ([("play", name) for name, _ in entries], [tick for _, tick in entries])
+        for length in range(4)
+        for entries in itertools.product(itertools.product("ab", (1, 2)), repeat=length)
+    ]
+    for reference, reference_ticks in streams:
+        for candidate, candidate_ticks in streams:
+            pairs = _align_timed(reference, candidate, reference_ticks, candidate_ticks)
+            assert all(reference[i] == candidate[j] for i, j in pairs)
+            assert all(i < k and j < m for (i, j), (k, m) in itertools.pairwise(pairs))
+            assert len(pairs) == _longest_common_subsequence_length(reference, candidate)
+            same = sum(reference_ticks[i] == candidate_ticks[j] for i, j in pairs)
+            assert same == _most_on_one_tick(reference, candidate, reference_ticks, candidate_ticks)
+            mirrored = _align_timed(candidate, reference, candidate_ticks, reference_ticks)
+            assert mirrored == [(j, i) for i, j in pairs]

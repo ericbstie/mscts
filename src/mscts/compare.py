@@ -498,7 +498,10 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     In a tick-exact Group (its Transcript has `TICK_MARK` Marks), each play Packet holds the
     tick it arrived on (`_Ticks`), and the Packets are aligned as without ticks. Two matched
     Packets on different ticks are a `field` Divergence at `TICK_PATH`, with the two ticks
-    as its values and the packet's test case, then the Packets' differences.
+    as its values and the packet's test case, then the Packets' differences. When both
+    streams have ticks, the ticks break ties between the longest alignments
+    (`_align_timed`): the copy of a repeated packet on a tick the other side lacks is the
+    one left unmatched.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
     gameplay `field` Divergence per differing leaf, in path order. If they have a
@@ -2421,6 +2424,94 @@ def _longest_common_subsequence(
     return pairs
 
 
+def _align_timed(
+    reference: Sequence[_Key],
+    candidate: Sequence[_Key],
+    reference_ticks: Sequence[int | None],
+    candidate_ticks: Sequence[int | None],
+) -> list[tuple[int, int]]:
+    """`_align` for two streams that both have ticks (#229): ticks break the ties.
+
+    As many Packets are matched as `_align` matches, and of those alignments, the one with
+    the most pairs on the same tick. So of two copies of a packet, the one on the other
+    side's tick is matched, and the copy on a tick the other side has not is the one left
+    unmatched. The common prefix and suffix are those of equal keys on equal ticks; in
+    between, a pair is matched whenever matching it keeps an alignment that is best so;
+    otherwise the side whose skipping keeps one is skipped, and on a tie the smaller key
+    and tick, whichever side it is on, so swapping the sides mirrors the choice.
+    """
+    full_reference = [
+        (key, _tick_order(tick)) for key, tick in zip(reference, reference_ticks, strict=True)
+    ]
+    full_candidate = [
+        (key, _tick_order(tick)) for key, tick in zip(candidate, candidate_ticks, strict=True)
+    ]
+    shorter = min(len(reference), len(candidate))
+    prefix = 0
+    while prefix < shorter and full_reference[prefix] == full_candidate[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < shorter - prefix and full_reference[-1 - suffix] == full_candidate[-1 - suffix]:
+        suffix += 1
+    ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
+    middle = _best_timed_subsequence(
+        full_reference[prefix:ref_stop], full_candidate[prefix:cand_stop]
+    )
+    return [
+        *((index, index) for index in range(prefix)),
+        *((prefix + ref_index, prefix + cand_index) for ref_index, cand_index in middle),
+        *((ref_stop + offset, cand_stop + offset) for offset in range(suffix)),
+    ]
+
+
+def _tick_order(tick: int | None) -> int:
+    """A tick as `_align_timed` orders it: none (a Packet outside play) before tick 1."""
+    return 0 if tick is None else tick
+
+
+def _best_timed_subsequence(
+    reference: Sequence[tuple[_Key, int]], candidate: Sequence[tuple[_Key, int]]
+) -> list[tuple[int, int]]:
+    """Trace `_align_timed`'s middle: the most pairs, then the most of them on one tick.
+
+    Each entry is a key and its tick. A pair of equal keys scores `weight`, plus one
+    if their ticks are equal too; `weight` exceeds any count of equal ticks, so the number
+    of pairs always comes first.
+    """
+    rows, columns = len(reference), len(candidate)
+    weight = min(rows, columns) + 1
+    # best[i][j]: the best score of reference[i:] against candidate[j:].
+    best = [array("Q", [0]) * (columns + 1) for _ in range(rows + 1)]
+
+    def paired(i: int, j: int) -> int:
+        """The score of pairing reference[i] with candidate[j], or 0 if they cannot pair."""
+        if reference[i][0] != candidate[j][0]:
+            return 0
+        return weight + (reference[i][1] == candidate[j][1])
+
+    for i in range(rows - 1, -1, -1):
+        row, below = best[i], best[i + 1]
+        for j in range(columns - 1, -1, -1):
+            score = paired(i, j)
+            row[j] = max(below[j], row[j + 1], score + below[j + 1] if score else 0)
+    pairs: list[tuple[int, int]] = []
+    i = j = 0
+    while i < rows and j < columns:
+        score = paired(i, j)
+        if score and score + best[i + 1][j + 1] == best[i][j]:
+            pairs.append((i, j))
+            i, j = i + 1, j + 1
+        elif best[i + 1][j] > best[i][j + 1]:
+            i += 1
+        elif best[i][j + 1] > best[i + 1][j]:
+            j += 1
+        elif reference[i] < candidate[j]:
+            i += 1
+        else:
+            j += 1
+    return pairs
+
+
 # Diffing.
 
 
@@ -2430,7 +2521,15 @@ def _compare_streams(
     candidate: Sequence[_Normalized],
     compared: set[str],
 ) -> Iterator[Divergence]:
-    pairs = _align([_key(entry) for entry in reference], [_key(entry) for entry in candidate])
+    ref_keys, cand_keys = [_key(entry) for entry in reference], [_key(entry) for entry in candidate]
+    timed = any(e.tick is not None for e in reference) and any(
+        e.tick is not None for e in candidate
+    )
+    pairs = (
+        _align_timed(ref_keys, cand_keys, [e.tick for e in reference], [e.tick for e in candidate])
+        if timed
+        else _align(ref_keys, cand_keys)
+    )
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):

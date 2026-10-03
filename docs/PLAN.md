@@ -1929,6 +1929,11 @@ proves it necessary:
    tick is not part of the key, so a run of packets each a tick late still
    matches one for one; two matched packets on different ticks give one
    `field` Divergence at `TICK_PATH`, then the two packets' differences.
+   When both streams have ticks, they break ties (#229): of the longest
+   alignments, the one with the most pairs on the same tick, so the copy
+   of a repeated packet on a tick the other side lacks is the one left
+   unmatched (prefix and suffix match on key and tick; a tie skips the
+   smaller key and tick).
    A unit test checks every pair of
    key sequences up to length 4 over 3 keys: ordered, longest, and
    mirrored by a swap (an exhaustive run up to length 5 found no

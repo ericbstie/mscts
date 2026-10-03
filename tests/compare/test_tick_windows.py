@@ -71,18 +71,44 @@ def test_a_packet_after_the_last_step_is_on_the_tick_after_it() -> None:
     assert [(d.reference, d.candidate) for d in verdict.divergences] == [(2, 1)], verdict
 
 
-def test_an_extra_packet_aligns_as_without_ticks_then_shows_the_ticks() -> None:
-    # Packets align on what they are, not on their tick (review of #223): the first of the
-    # reference's two matches the candidate's one, a tick apart, and the second is missing.
+@pytest.mark.parametrize("second", [1, 2])
+def test_with_ticks_on_both_sides_the_copy_on_another_tick_goes_unmatched(second: int) -> None:
+    # #229: vanilla sends 1 on tick 1 and `second` on tick 2, the Candidate only `second`
+    # on tick 2. The first is missing, and the second matches on its own tick.
     verdict = compare(
-        transcript(OPEN, ("alice", block(1)), tick(1), ("alice", block(1)), tick(2), CLOSE),
-        transcript(OPEN, tick(1), ("alice", block(1)), tick(2), CLOSE),
+        transcript(OPEN, ("alice", block(1)), tick(1), ("alice", block(second)), tick(2), CLOSE),
+        transcript(OPEN, tick(1), ("alice", block(second)), tick(2), CLOSE),
         [],
     )
 
-    assert [(d.kind, d.index, d.path) for d in verdict.divergences] == [
-        ("field", 0, TICK_PATH),
-        ("missing", 1, None),
+    assert [(d.kind, d.index, d.reference) for d in verdict.divergences] == [
+        ("missing", 0, "01")
+    ], verdict
+
+
+def test_the_ticks_pick_the_copy_whichever_side_has_the_extra_one() -> None:
+    # Swapping the sides mirrors the choice: the Candidate's tick-1 copy is unexpected.
+    verdict = compare(
+        transcript(OPEN, tick(1), ("alice", block(2)), tick(2), CLOSE),
+        transcript(OPEN, ("alice", block(1)), tick(1), ("alice", block(2)), tick(2), CLOSE),
+        [],
+    )
+
+    assert [(d.kind, d.index, d.candidate) for d in verdict.divergences] == [
+        ("unexpected", 0, "01")
+    ], verdict
+
+
+def test_more_copies_than_ticks_still_match_as_many_as_they_can() -> None:
+    # The ticks only break ties: the number of matched packets comes first.
+    verdict = compare(
+        transcript(OPEN, ("alice", block(1)), ("alice", block(1)), tick(1), tick(2), CLOSE),
+        transcript(OPEN, ("alice", block(1)), tick(1), ("alice", block(1)), tick(2), CLOSE),
+        [],
+    )
+
+    assert [(d.kind, d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("field", 1, TICK_PATH, 1, 2)
     ], verdict
 
 
