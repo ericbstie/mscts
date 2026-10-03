@@ -79,6 +79,34 @@ What a player receives when it joins, up to the end of the first chunk batch: th
 
 The comparison ends when the first chunk batch is complete. Later batches, and the animals that walk into view, depend on timing.
 
+## Multiplayer (`players`)
+
+What a player sees of another player: their entry in the tab list, their body and the chat
+messages when they join and leave. A player called `ada` is in the world first, and `bob`
+joins, changes game mode or leaves next to her. Each window compares the tab list updates
+(`player_info_update`, `player_info_remove`), the other player's body appearing, changing and
+going away (`add_entity`, `set_entity_data`, `remove_entities`), and the server's chat messages
+(`system_chat`), for both players.
+
+Both players join at the world spawn (`gamerule respawn_radius 0`), with the check that repeats
+a joining player's first position off (`gamerule player_movement_check false`). No mob spawns
+(`gamerule spawn_mobs false`), the mobs already there are moved far away with `/tp`, and the
+world is frozen (`/tick freeze`). Once a Group is over, the rules are set back to vanilla's
+defaults and the world is unfrozen. The mobs stay where they were moved.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `players/join-seen` | exact | none | `bob` joins next to `ada`. Both are compared: what `ada` sees of `bob`, and what `bob` sees of `ada` as he joins. | none |
+| `players/leave-seen` | exact | none | `bob` leaves, and `ada` sees him go. | none |
+| `players/mode-seen` | exact | none | `bob`'s game mode is changed with `/gamemode` to creative, adventure, spectator and survival, in turn, each in a window of its own. | none |
+| `players/server-full` | exact | none | The server lets in one player. `ada` joins, then `bob` tries to join and is refused. The refusal message is compared. | none |
+
+The tab list shows each player's latency, so it is compared. Vanilla sends 0 for a player who
+joined less than 15 seconds earlier, which every player in these Groups did.
+
+Offline, a server makes each player's UUID from their name. A server that makes it another way
+shows the other player with another UUID, in the tab list and in their body.
+
 ## Planned
 
 | Mechanic | First Group | Needs |

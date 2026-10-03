@@ -14,6 +14,13 @@ broken block drops. A server that leaves it out shows no item. Where an
 item appears, how it moves and which way it faces are left out of the
 comparison, because vanilla draws them at random.
 
+## `add_entity.entity_uuid`
+
+**Entity UUID**
+
+The UUID of an entity that appears. For another player, it is that
+player's UUID, the same one their player list entry holds.
+
 ## `block_entity_data`
 
 **Block entity data**
@@ -322,12 +329,58 @@ makes the same player a different one.
 Whether the player can fly, is flying, takes no damage or builds
 instantly, and how fast it flies and walks.
 
+## `player_info_remove.uuids[]`
+
+**Player leaving the list**
+
+The UUID of a player the client takes off its list of players when they
+leave. The tab list stops showing them.
+
 ## `player_info_update`
 
 **Player list update**
 
 Adds a player to, or changes a player in, the client's list of players:
 their name, game mode, latency and whether the tab list shows them.
+
+## `player_info_update.actions[]`
+
+**Player list update part**
+
+Which parts of each player's entry an update sets, such as their name,
+game mode or latency. A server that sends other parts sets other things,
+or leaves out some that vanilla sets.
+
+## `player_info_update.players[].chat_session`
+
+**Player chat session**
+
+The key a player signs their chat messages with. Offline, vanilla has
+none, and still sends this part of the update to say so.
+
+## `player_info_update.players[].display_name`
+
+**Player list display name**
+
+The name the tab list shows in place of the player's own. Vanilla sends
+none for a player who just joined, and still sends this part of the
+update to say so.
+
+## `player_info_update.players[].name`
+
+**Player name in the list**
+
+The player's name, as the tab list shows it. Players are compared in the
+order the server sends them, so a server that sends them in another order
+differs here too.
+
+## `player_info_update.players[].uuid`
+
+**Player UUID in the list**
+
+The player's UUID in their player list entry. In offline mode vanilla
+makes it from the player's name. A server that makes it another way shows
+the same player with another UUID.
 
 ## `player_position`
 
@@ -453,12 +506,45 @@ joined.
 
 Where the world's spawn point is. The client points compasses at it.
 
+## `remove_entities`
+
+**Entities disappearing**
+
+A packet that tells the client entities are gone, such as the body of a
+player who left. A server that leaves it out leaves the entity in the
+world.
+
+## `remove_entities.entity_ids[]`
+
+**Entity disappearing**
+
+One entity the client removes. A player is named by their UUID.
+
 ## `set_entity_data`
 
 **Entity data**
 
 The data of an entity, such as which item a dropped item holds and how many.
 A different value shows the player a different item or count.
+
+## `set_entity_data.entries[].index`
+
+**Entity data field**
+
+Which of an entity's data fields an entry sets, such as a player's health.
+
+## `set_entity_data.entries[].serializer`
+
+**Entity data type**
+
+The type of the value an entity data entry holds. Each field has one
+type, so a different type usually comes with a different field.
+
+## `set_entity_data.entries[].value`
+
+**Entity data value**
+
+The value an entity data entry sets, such as a player's health.
 
 ## `set_entity_motion`
 
