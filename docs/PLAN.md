@@ -1127,9 +1127,9 @@ async def until_no_player_online(endpoint: Endpoint, *,
     # its own) every SETTLE_INTERVAL_S until `players.online` is 0. PlayersStillOnline once
     # deadline_s has passed with players still online. A status that cannot be read (refused,
     # closed, late, not a status, no integer players.online) counts as empty: whatever plays
-    # next meets the same failure and reports it. A poll is never cancelled (one cut off
-    # between connecting and closing leaks its socket): the deadline is checked between polls
-    # and each poll bounds itself by deadline_s, so a server that never answers costs two.
+    # next meets the same failure and reports it. The deadline is checked between polls, not
+    # by cancelling one, and each poll bounds itself by deadline_s, so a server that never
+    # answers costs two. A poll cancelled from outside still leaves no socket open (#133).
 ```
 
 Running Groups (`run.py`):
