@@ -1698,7 +1698,9 @@ def _in_palette_order(container: PalettedContainer, value: _Value) -> _Value:
     and one it read back from disk in entry order (`PalettedContainer.pack`), so the order is a
     spelling vanilla varies (docs/research/2026-10-03-vanilla-chunk-spellings.md). Each entry's
     index changes to match; the bits, each Long's unused high bits and any slots after the last
-    entry stay as sent. A container with an entry past its palette stays as it is. (Only a
+    entry stay as sent. A container with an entry past its palette stays as it is, and so does
+    a hash palette longer than its bits have slots for: the client reads one of any length
+    (`HashMapPalette.read`), but sorted, an entry's index might not fit its slot. (Only a
     list or hash palette is a list: the codec reads a single value as an int, and the global
     palette as None.)
     """
@@ -1708,11 +1710,12 @@ def _in_palette_order(container: PalettedContainer, value: _Value) -> _Value:
     if not (isinstance(bits, int) and isinstance(palette, list) and isinstance(data, bytes)):
         return value
     ids = [each for each in palette if isinstance(each, int)]
-    if len(ids) != len(palette):
+    width = max(bits, container.min_width)
+    if len(ids) != len(palette) or len(ids) > 1 << width:
         return value
     order = sorted(range(len(ids)), key=ids.__getitem__)
     indexes = {old: new for new, old in enumerate(order)}
-    reindexed = _reindexed(data, max(bits, container.min_width), container.entries, indexes)
+    reindexed = _reindexed(data, width, container.entries, indexes)
     if reindexed is None:
         return value
     ordered: list[_Value] = [*sorted(ids)]
@@ -1723,7 +1726,8 @@ def _reindexed(data: bytes, width: int, entries: int, indexes: Mapping[int, int]
     """`data` with each index replaced by `indexes`' for it.
 
     `data` is `entries` of `width` bits, packed as the client reads them (the codec reads as
-    many Longs as they take). None if an index has none in `indexes`.
+    many Longs as they take). None if an index has none in `indexes`, or its new one does not
+    fit `width` bits.
     """
     per_long, mask = _LONG_BITS // width, (1 << width) - 1
     longs: list[bytes] = []
@@ -1732,7 +1736,7 @@ def _reindexed(data: bytes, width: int, entries: int, indexes: Mapping[int, int]
         for slot in range(min(per_long, entries - number * per_long)):
             shift = slot * width
             index = indexes.get(word >> shift & mask)
-            if index is None:
+            if index is None or index > mask:
                 return None
             word = word & ~(mask << shift) | index << shift
         longs.append(word.to_bytes(_LONG_BYTES, "big"))

@@ -201,6 +201,35 @@ def test_the_same_biomes_in_another_palette_order_are_no_difference() -> None:
     assert verdict.divergences == ()
 
 
+LONG_PALETTE = list(range(100, 140))
+"""40 ids: more than a hash palette of 5 bits has slots for. The client reads any number
+(`HashMapPalette.read` has no bound), and so does the codec."""
+
+
+def test_a_hash_palette_longer_than_its_bits_allow_stays_as_sent() -> None:
+    # Sorted, the Candidate's entries would need 6 bits in slots of 5: the container is left
+    # as sent, so this is still network traffic only (#173's review).
+    descending = LONG_PALETTE[::-1]
+    values = [descending[index % 32] for index in range(4096)]
+    reference = paletted(values, LONG_PALETTE, bits=6, width=6)
+    candidate = paletted(values, descending, bits=5, width=5)
+
+    verdict = _verdict(chunk(overworld(reference)), chunk(overworld(candidate)))
+
+    assert _network_traffic_only(verdict)
+
+
+def test_a_hash_palette_whose_sorted_index_would_not_fit_a_long_does_not_raise() -> None:
+    # 300 ids at 8 bits, every entry the first: sorted, it would be index 299, past a slot
+    # and, in the top slot of a Long, past the Long.
+    reference = paletted([400] * 4096, [400], bits=8, width=8)
+    candidate = paletted([400] * 4096, list(range(400, 100, -1)), bits=8, width=8)
+
+    verdict = _verdict(chunk(overworld(reference)), chunk(overworld(candidate)))
+
+    assert _network_traffic_only(verdict)
+
+
 def test_a_section_of_one_block_as_a_palette_is_network_traffic_only() -> None:
     sections = overworld(FLAT_BOTTOM)
     sections[5] = section(paletted([AIR] * 4096, [AIR], bits=4, width=4), block_count=0)

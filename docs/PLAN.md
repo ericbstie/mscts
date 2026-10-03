@@ -1541,8 +1541,10 @@ proves it necessary:
      set and one it read back from disk in entry order
      (`PalettedContainer.pack`;
      `docs/research/2026-10-03-vanilla-chunk-spellings.md`). A container
-     with an entry past its palette stays as sent, and so do the bits and
-     the slots after the last entry. An entry that indexes past its palette is
+     with an entry past its palette stays as sent, and so does a hash
+     palette longer than its bits have slots for (the client reads one of
+     any length, but sorted, an index might not fit), and so do the bits
+     and the slots after the last entry. An entry that indexes past its palette is
      a value of its own: the client reads it, and fails only when it
      looks it up (`valueFor`). Evidence
      (`docs/research/2026-10-02-chunks-light.md`, `javap` on the 26.3

@@ -77,9 +77,13 @@ sky mask with 2048 zero bytes.
 The Comparison writes each copy of a chunk's fields, and of a light update's,
 this way before it diffs them:
 
-- A list or hash palette whose entries all index into it is put in ascending
-  order of id, and each entry's index is
-  changed to match. The bits, unused bits and any packing left after the last
+- A list or hash palette whose entries all index into it, and that has no more
+  values than its bits have slots for, is put in ascending order of id. (A
+  hash palette can be longer: the client's `HashMapPalette.read` reads a count
+  and that many ids with no bound, but sorted, an entry's index might then not
+  fit its slot. Vanilla does not send one: its palette gets more bits when it fills,
+  `onResize`, *inferred*.)
+  Each entry's index is changed to match. The bits, unused bits and any packing left after the last
   entry stay as sent.
 - A sky light section 0 sent as an array of 2048 zero bytes is written as an
   empty section: bit 0 leaves the sky mask (written as `BitSet.toByteArray()`
