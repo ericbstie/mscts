@@ -56,7 +56,7 @@ test needs it:
 | --- | --- |
 | `target.py` | `Target`, `TARGET` (the pinned 26.3 / 777) |
 | `cache.py` | `cache_dir()`: the download cache shared by every worktree and session |
-| `install.py` | Installations: `installed`, `install_entry`, `install_from` (ADR-0008) |
+| `install.py` | Installations: `installed`, `install_release`, `install_from`, `require` (ADR-0008) |
 | `codec/wire.py` | primitive wire types: `Reader`, `Writer` |
 | `codec/framing.py` | length-prefixed frames and the compression envelope |
 | `codec/schema.py` | the schema mechanism: `WireType`, `Schema`, the field types |
