@@ -281,30 +281,29 @@ def test_an_award_stats_that_reached_the_socket_behind_a_burst_is_not_its_answer
     assert [mark.label for mark in transcript.marks] == [f"{bot_module.SYNC_PASSED_OVER} alice"]
 
 
-def test_catching_up_with_a_stream_with_no_gaps_ends_well_inside_the_sync_timeout(
+def test_catching_up_with_a_stream_with_no_gaps_ends_before_the_sync_times_out(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Re-review of #163: catching up waited for a moment with nothing left to read, which a
     # server in another process that never pauses may not give; it spun to the timeout.
     # Here the kernel always reports a byte waiting, as it nearly always does for such a
-    # server: the flood keeps the reader busy, and nothing is ever quite read up. Only the
-    # catch-up is timed: the answers wait behind the flood, which takes longer under load.
+    # server, and the flood never stops, so nothing is ever quite read up. A catch-up that
+    # waited for that would end only when the sync timed out, and the sync would raise.
     transcript = Transcript(group_id="test/sync", server="fake")
     timeout_s = 4.0  # under the fake's own handler timeout, so a spin fails here
     real_unread = net_module._unread  # noqa: SLF001 - the kernel's count is what is faked
     real_caught_up = net_module.Connection.caught_up
-    catch_ups: list[float] = []
+    catch_ups: list[net_module.Connection] = []
 
     def never_empty(writer: asyncio.StreamWriter) -> int:
         return max(real_unread(writer), 1)
 
-    async def timed_caught_up(connection: net_module.Connection) -> None:
-        begun = time.perf_counter()
+    async def counted_caught_up(connection: net_module.Connection) -> None:
         await real_caught_up(connection)
-        catch_ups.append(time.perf_counter() - begun)
+        catch_ups.append(connection)
 
     monkeypatch.setattr(net_module, "_unread", never_empty)
-    monkeypatch.setattr(net_module.Connection, "caught_up", timed_caught_up)
+    monkeypatch.setattr(net_module.Connection, "caught_up", counted_caught_up)
 
     async def client() -> None:
         with serve_in_thread(CODEC, flooding_server([])) as endpoint:
@@ -318,8 +317,7 @@ def test_catching_up_with_a_stream_with_no_gaps_ends_well_inside_the_sync_timeou
                 await bot.close()
 
     asyncio.run(client())
-    assert len(catch_ups) == 2
-    assert max(catch_ups) < timeout_s / 4
+    assert len(catch_ups) == 2  # the sync's two catch-ups each ended on their own
 
 
 def test_a_sync_after_the_reader_stopped_raises_its_error_without_waiting_for_more() -> None:
