@@ -252,11 +252,14 @@ def judge(
     - The Comparison raised, but compares the Reference's Transcript with itself without
       raising: `mismatch`, led by a `failed` Divergence naming the exception, from no Bot.
       The Reference's data is fine, so the Candidate sent what made it raise (#239).
+    - Either `mismatch` above lists each test case of the Reference's Transcript compared
+      with itself, besides what the Comparison found, so the Report fails every test case
+      the Reference's play has (#262).
     - The Candidate does not have a command the Group's Control needs (`CommandMissing`):
       `blocked`, naming it (`needs /tick`).
-    - The Reference failed, or the Comparison raised on the Reference's own data (it
-      raises comparing it with itself too): `error`, the harness or the Reference having
-      failed.
+    - The Reference failed, or the Comparison raises comparing the Reference's Transcript
+      with itself, which a Candidate failure always does (#262): `error`, the harness or
+      the Reference having failed.
       Any exception from the Comparison is caught, whatever its type, so that one Group's
       bug does not end the Run; the detail names it, and the log keeps its traceback.
       `MemoryError` and `RecursionError` are caught too and become that Group's `error`;
@@ -274,27 +277,43 @@ def judge(
         verdict = compare(reference, transcript, group.masks)
     except Exception as exc:  # any Comparison bug is this Group's error (#174)
         LOG.warning("the Comparison of %s failed", group.id, exc_info=exc)
-        what = f"the Comparison failed: {type(exc).__name__}: {exc}"
-        own = _itself(reference, group)
-        if own is None:
-            return _error(group, what)
-        first = str(candidate) if isinstance(candidate, GroupError) else what
-        return Verdict(
-            group_id=group.id,
-            outcome=Outcome.MISMATCH,
-            divergences=(*_group_failed(candidate), _failed(bot="", what=what)),
-            detail=f"the Candidate failed: {first}",
-            test_cases=own.test_cases,
-        )
+        return _comparison_raised(group, reference, candidate, exc)
     if not isinstance(candidate, GroupError):
         return verdict
+    return _group_raised(group, reference, candidate, verdict)
+
+
+def _comparison_raised(
+    group: Group, reference: Transcript, candidate: Transcript | GroupError, exc: Exception
+) -> Verdict:
+    """`judge`'s Verdict when the Comparison raised `exc`: the Candidate's failure, or `error`."""
+    what = _comparison_failed(exc)
     own = _itself(reference, group)
+    if isinstance(own, Exception):
+        return _error(group, what)
+    first = str(candidate) if isinstance(candidate, GroupError) else what
+    return Verdict(
+        group_id=group.id,
+        outcome=Outcome.MISMATCH,
+        divergences=(*_group_failed(candidate), _failed(bot="", what=what)),
+        detail=f"the Candidate failed: {first}",
+        test_cases=own.test_cases,
+    )
+
+
+def _group_raised(
+    group: Group, reference: Transcript, candidate: GroupError, verdict: Verdict
+) -> Verdict:
+    """`judge`'s Verdict when the Group raised on the Candidate, `verdict` the Comparison's."""
+    own = _itself(reference, group)
+    if isinstance(own, Exception):  # the Reference's data or mscts, as above (#262)
+        return _error(group, _comparison_failed(own))
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
         divergences=(*_group_failed(candidate), *verdict.divergences),
         detail=f"the Candidate failed: {candidate}",
-        test_cases=tuple(sorted({*verdict.test_cases, *(own.test_cases if own else ())})),
+        test_cases=tuple(sorted({*verdict.test_cases, *own.test_cases})),
     )
 
 
@@ -727,8 +746,8 @@ def _error(group: Group, detail: str) -> Verdict:
     return Verdict(group_id=group.id, outcome=Outcome.ERROR, detail=detail)
 
 
-def _itself(reference: Transcript, group: Group) -> Verdict | None:
-    """The Reference's Transcript compared with itself; None if the Comparison raises on it.
+def _itself(reference: Transcript, group: Group) -> Verdict | Exception:
+    """The Reference's Transcript compared with itself, or what the Comparison raised on it.
 
     Its test cases are each one the Reference's play has, which a Candidate that failed the
     whole Group fails (#262).
@@ -737,7 +756,12 @@ def _itself(reference: Transcript, group: Group) -> Verdict | None:
         return compare(reference, reference, group.masks)
     except Exception as exc:  # raising here is the answer: the Reference's data is odd
         LOG.warning("the Comparison of %s fails on the Reference alone", group.id, exc_info=exc)
-        return None
+        return exc
+
+
+def _comparison_failed(exc: Exception) -> str:
+    """What the Comparison raised, as a Verdict's detail or a `failed` Divergence says it."""
+    return f"the Comparison failed: {type(exc).__name__}: {exc}"
 
 
 def _group_failed(candidate: Transcript | GroupError) -> tuple[Divergence, ...]:

@@ -8,7 +8,7 @@ and for the Reference itself failing.
 import contextlib
 import json
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -120,6 +120,32 @@ async def test_a_candidate_failure_is_a_mismatch_that_says_what_happened(mode: M
     own = compare(reference, reference, ()).test_cases
     assert len(own) > 1
     assert set(own) <= set(verdict.test_cases)
+    assert verdict.test_cases == tuple(sorted(set(verdict.test_cases)))
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_failure_against_a_reference_the_comparison_cannot_take_is_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference = await _play(BASIC, status_server(_status_json(), []))
+    candidate = await _play(BASIC, _silent)
+    assert isinstance(reference, Transcript)
+    assert isinstance(candidate, GroupError)
+    real = run_module.compare
+
+    def odd_reference(ref: Transcript, cand: Transcript, masks: Sequence[Mask]) -> Verdict:
+        if cand is ref:
+            msg = "the Reference alone"
+            raise RuntimeError(msg)
+        return real(ref, cand, masks)
+
+    monkeypatch.setattr(run_module, "compare", odd_reference)
+
+    verdict = judge(BASIC, reference, candidate)
+
+    # As when the Comparison raises: the Reference's data or mscts is at fault (#239).
+    detail = "the Comparison failed: RuntimeError: the Reference alone"
+    assert verdict == Verdict("status/basic", Outcome.ERROR, detail=detail)
 
 
 @pytest.mark.asyncio
