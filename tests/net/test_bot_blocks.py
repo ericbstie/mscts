@@ -199,12 +199,14 @@ def test_a_slot_the_server_selects_is_sent_back_on_the_next_tick() -> None:
     assert ticks == [[("minecraft:set_carried_item", {"slot": 5}), TICK_END], [TICK_END]]
 
 
-def test_a_slot_outside_the_hotbar_from_the_server_is_ignored() -> None:
+@pytest.mark.parametrize("slot", [-1, 9])
+def test_a_slot_outside_the_hotbar_from_the_server_is_ignored(slot: int) -> None:
     async def script(bot: Bot) -> None:
         await bot.sync()
         await bot.tick()
 
-    assert acts(script, after_first_tick=("minecraft:set_held_slot", {"slot": 9})) == [[TICK_END]]
+    ticks = acts(script, after_first_tick=("minecraft:set_held_slot", {"slot": slot}))
+    assert ticks == [[TICK_END]]
 
 
 @pytest.mark.parametrize("slot", [-1, 9])
