@@ -1,6 +1,6 @@
 """Tick windows: a tick-exact Group compares what each Bot received on each tick."""
 
-from mscts.codec.packets import Packet
+from mscts.codec.packets import Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, Outcome, compare
 from mscts.transcript import Transcript
 from tests.compare.build import divergence, packet, transcript
@@ -111,3 +111,52 @@ def test_ticks_count_on_across_windows() -> None:
     verdict = compare(play(late=False), play(late=True), [])
 
     assert [(d.reference, d.candidate) for d in verdict.divergences] == [(1, 2)], verdict
+
+
+def test_a_packet_stamped_at_a_ticks_end_is_on_the_next_tick() -> None:
+    # A Mark is stamped a nanosecond after the barrier's answer: what arrives at its time
+    # is after it.
+    def play(at: int) -> Transcript:
+        result = transcript(OPEN, tick(1), CLOSE)
+        end = next(mark.t_ns for mark in result.marks if mark.label == tick(1))
+        result.record("alice", block(1), t_ns=end + at)
+        return result
+
+    verdict = compare(play(0), play(-1), [])
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [(2, 1)], verdict
+
+
+def test_repeated_packets_late_on_both_sides_pair_in_order() -> None:
+    verdict = compare(
+        transcript(OPEN, ("alice", block(1)), ("alice", block(2)), tick(1), tick(2), CLOSE),
+        transcript(OPEN, tick(1), ("alice", block(1)), ("alice", block(2)), tick(2), CLOSE),
+        [],
+    )
+
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (0, TICK_PATH, 1, 2),
+        (1, TICK_PATH, 1, 2),
+    ], verdict
+
+
+def test_a_side_with_no_tick_marks_pairs_nothing_by_tick() -> None:
+    # A Transcript with no tick Marks has no ticks: its packets are never "late".
+    stepped = transcript(OPEN, tick(1), ("alice", block(1)), CLOSE)
+    unstepped = transcript(OPEN, ("alice", block(1)), CLOSE)
+
+    for reference, candidate in ((stepped, unstepped), (unstepped, stepped)):
+        verdict = compare(reference, candidate, [])
+        assert sorted(d.kind for d in verdict.divergences) == ["missing", "unexpected"], verdict
+
+
+def test_only_play_packets_have_a_tick() -> None:
+    # A Bot that joins between steps: its login is compared whole, whatever the tick.
+    login = packet("minecraft:hello", b"\x01", state=State.LOGIN)
+    verdict = compare(
+        transcript(OPEN, ("bob", login), tick(1), CLOSE),
+        transcript(OPEN, tick(1), ("bob", login), CLOSE),
+        [],
+    )
+
+    assert verdict.outcome is Outcome.MATCH, verdict

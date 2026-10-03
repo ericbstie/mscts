@@ -973,9 +973,9 @@ class _Ticks:
                 continue
             k = int(label.removeprefix(TICK_MARK))
             if rest == [bot]:
-                own.setdefault(k, mark.t_ns)
+                own[k] = mark.t_ns
             elif not rest:
-                unnamed.setdefault(k, mark.t_ns)
+                unnamed[k] = mark.t_ns
         ends = {**unnamed, **own}
         return cls(ends=sorted(ends.values())) if ends else None
 
