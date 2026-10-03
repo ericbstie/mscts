@@ -176,6 +176,18 @@ def test_a_side_with_no_tick_marks_compares_without_ticks() -> None:
         assert verdict.outcome is Outcome.MATCH, verdict
 
 
+def test_the_tick_path_is_one_no_field_of_a_packet_can_have() -> None:
+    # Review of #223, LOW 4: a top-level field called `tick` must not read as the tick.
+    def play(value: int) -> Transcript:
+        late = packet("minecraft:block_update", b"", fields={"tick": value})
+        return transcript(OPEN, ("alice", late), tick(1), CLOSE)
+
+    (field,) = compare(play(1), play(2), []).divergences
+
+    assert field.path == "tick", field
+    assert field.path != TICK_PATH
+
+
 def test_only_play_packets_have_a_tick() -> None:
     # A Bot that joins between steps: its login is compared whole, whatever the tick.
     login = packet("minecraft:hello", b"\x01", state=State.LOGIN)

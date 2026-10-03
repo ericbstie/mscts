@@ -1192,9 +1192,10 @@ class Verdict:
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
-TICK_PATH = "tick"                  # #23: the path of the field Divergence of a packet
+TICK_PATH = "(tick)"                # #23: the path of the field Divergence of a packet
                                     # a tick-exact Group got on different ticks; the Report
-                                    # shows it before the values ("tick: vanilla sends 1, ...")
+                                    # shows it before the values ("(tick): vanilla sends 1, ...");
+                                    # no field path holds a parenthesis
 TICK_MARK = "tick:"                 # #23: "tick:<k>" ends tick k of a tick-exact Group:
                                     # for one Bot with its name after it ("tick:3 alice"),
                                     # without for every Bot with no Mark of its own

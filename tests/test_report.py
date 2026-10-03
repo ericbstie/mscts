@@ -463,4 +463,4 @@ def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
         candidate=2,
     )
     text = render_text(_report(_result(_verdict(late))), verbose=True)
-    assert "Single block change\n  tick: vanilla sends 1, pumpkin sends 2\n" in text, text
+    assert "Single block change\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text

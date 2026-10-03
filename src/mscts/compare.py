@@ -114,10 +114,12 @@ for each Bot with the Bot's name after a space (`tick:3 alice`), and one with no
 Bot that has no Mark of its own for that tick.
 """
 
-TICK_PATH = "tick"
+TICK_PATH = "(tick)"
 """The path of the `field` Divergence of a packet a tick-exact Group got on different ticks.
 
-Its values are the two ticks, counting from 1 since the freeze (`TICK_MARK`).
+Its values are the two ticks, counting from 1 since the freeze (`TICK_MARK`). No field's path
+can be it: a path joins identifier keys with dots and puts any other key, and every index, in
+brackets, so it never holds a parenthesis.
 """
 
 OBSERVE_CLOSE = "observe:close"
