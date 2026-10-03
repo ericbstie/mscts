@@ -9,8 +9,7 @@ import pytest
 from support.pumpkin import fake_pumpkin
 
 from mscts import install, registry
-from mscts.adapters.base import Installation, ProvisionError, Source
-from mscts.adapters.fetch import Download
+from mscts.adapters.base import Download, Installation, ProvisionError, Source
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.install import install_entry, install_from, installed
 from mscts.registry import Entry, Registry

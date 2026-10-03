@@ -13,8 +13,7 @@ from typing import TextIO
 
 import pytest
 
-from mscts.adapters.base import ProvisionError
-from mscts.adapters.fetch import Download
+from mscts.adapters.base import Download, ProvisionError
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "javap.py"
 _MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"

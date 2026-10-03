@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mscts.adapters.base import Build, Installation, LaunchPlan
+from mscts.adapters.base import Build, Fetch, Installation, LaunchPlan, Release
 from mscts.bot import status_probe
 from mscts.net import Endpoint
 from mscts.run import Attached
@@ -31,6 +31,10 @@ class FakeAdapter:
     description: str | None = None
     prepared: list[ServerSpec] = field(default_factory=list)
     binary: str = "status_fake.py"
+
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """No fake server is downloaded."""
+        raise NotImplementedError((target, version, fetch))
 
     def check(self, binary: Path, target: Target) -> Build:
         """Every file is a fake server: nothing to check."""

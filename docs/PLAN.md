@@ -83,9 +83,9 @@ test needs it:
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `spec.py` | `ServerSpec` and its enums |
-| `adapters/base.py` | `Adapter`, `Build`, `Installation`, `LaunchPlan` |
-| `adapters/fetch.py` | `https_get` → `Download(url, body)`: HTTPS on every hop, redirects followed |
-| `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
+| `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read) |
+| `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
+| `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server: vanilla's `MANIFEST_URL` (Mojang's version manifest), Pumpkin's `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit) |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
@@ -671,6 +671,15 @@ class Build:                        # one build of a server, named as its publis
     # str(): "26.3", or "nightly 4426d11" (the commit's first 7 characters)
 
 @frozen
+class Release:                      # a build its publisher offers for download
+    build: Build
+    url: str                        # HTTPS
+    sha1: str | None = None         # the publisher's own hash, where it publishes one (Mojang)
+    size: int | None = None         # bytes, where the publisher states it
+
+type Fetch = Callable[[str], Download]  # fetch.https_get, or a fake in tests
+
+@frozen
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
     sha256: str                     # of the binary; every use verifies the binary by it
     size: int
@@ -701,10 +710,21 @@ class PrepareError(RuntimeError): ...     # prepare cannot produce a LaunchPlan 
 class Adapter(Protocol):
     name: str
     binary: str                     # the one file an Installation holds: "server.jar", "pumpkin"
-    # No provision: an Adapter never downloads (ADR-0008). install.py owns Installations, so
-    # a third-party Adapter is name + binary + check + prepare, and gets `mscts adapter
-    # install`, --from, the prompt and verification for free. Runs and tests call
+    # No provision: an Adapter never installs (ADR-0008). It says where its builds are
+    # (release) and what a file is (check); install.py owns Installations, so a third-party
+    # Adapter is name + binary + release + check + prepare, and gets `mscts adapter install`,
+    # --from, the prompt and verification for free. Runs and tests call
     # install.require(adapter, target, cache_dir).
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release: ...
+        # The latest build for target (version None), or the one `<name>@<version>` names,
+        # read only through `fetch`. ProvisionError, naming what works, otherwise: vanilla:
+        # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3." (nothing fetched),
+        # else the jar Mojang's version manifest lists for target (its version JSON checked
+        # by the manifest's sha1); Pumpkin: the nightly, Build("nightly", <the commit the
+        # `nightly` tag names>), and `version` must be 7+ first characters of that commit, else
+        # "pumpkin@<v> is not available: Pumpkin only publishes its latest nightly (now
+        # <short>).\nBuild it yourself and install it with:\n  uv run mscts adapter install
+        # pumpkin --from <file>".
     def check(self, binary: Path, target: Target) -> Build: ...
         # The Build the file names, or ProvisionError unless `binary` is a server it can run
         # for target. A build for another Minecraft version is refused: "<binary> is not

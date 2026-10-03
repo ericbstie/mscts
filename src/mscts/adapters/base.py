@@ -1,9 +1,10 @@
-"""The Adapter contract: check a binary, prepare a LaunchPlan (ADR-0004).
+"""The Adapter contract: find a release, check a binary, prepare a LaunchPlan (ADR-0004).
 
-Installations are install.py's (ADR-0008): an Adapter never downloads anything.
+Installations are install.py's (ADR-0008): an Adapter says where its builds are, and reads
+what it needs through the `fetch` it is given, but never installs anything.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, override
@@ -32,6 +33,28 @@ class Build:
     def __str__(self) -> str:
         """`26.3`, or `nightly 4426d11`: how Reports and commands name this build."""
         return self.version if self.commit is None else f"{self.version} {self.commit[:7]}"
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    """A build its publisher offers for download, and what the download must be (ADR-0008)."""
+
+    build: Build
+    url: str  # HTTPS
+    sha1: str | None = None  # the publisher's own hash, where it publishes one (Mojang)
+    size: int | None = None  # bytes, where the publisher states it
+
+
+@dataclass(frozen=True, slots=True)
+class Download:
+    """The body of a fetched URL, and the URL it finally came from."""
+
+    url: str  # the final URL, after every redirect
+    body: bytes
+
+
+type Fetch = Callable[[str], Download]
+"""How an Adapter and install.py read a URL: fetch.https_get, or a fake in tests."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +96,14 @@ class Adapter(Protocol):
 
     name: str
     binary: str  # the one file an Installation holds besides SOURCE.json ("server.jar")
+
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """The latest build for `target`, or the build `version` names (`<name>@<version>`).
+
+        ProvisionError, naming what would work, if that build is not for `target` or cannot
+        be downloaded.
+        """
+        ...
 
     def check(self, binary: Path, target: Target) -> Build:
         """The Build `binary` names; ProvisionError unless this Adapter can run it for `target`.

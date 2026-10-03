@@ -10,13 +10,25 @@ import zipfile
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
+from typing import cast
 
-from mscts.adapters.base import Build, Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.base import (
+    Build,
+    Fetch,
+    Installation,
+    LaunchPlan,
+    PrepareError,
+    ProvisionError,
+    Release,
+)
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
 
 JAR = "server.jar"
+# Every version Mojang publishes, each with the URL and sha1 of its version JSON, which names
+# the server jar's URL, sha1 and size (docs/research/2026-10-03-install.md).
+MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 # A fixed max heap, so the Reference's memory (and GC timing) does not depend on the
 # host: the JVM default is a quarter of physical RAM.
 HEAP = "-Xmx1G"
@@ -333,8 +345,31 @@ def resolve_java(target: Target, java: Path | str | None = None) -> Path:
     return resolved
 
 
+def _json_field(where: str, document: object, *path: str) -> object:
+    """The value at `path` in a JSON `document` from `where`; ProvisionError if it has none."""
+    value = document
+    for key in path:
+        if not isinstance(value, Mapping) or key not in value:
+            msg = f"{where} has no {'.'.join(path)}"
+            raise ProvisionError(msg)
+        value = cast("Mapping[str, object]", value)[key]
+    return value
+
+
+def _version_url(manifest: bytes, version: str) -> tuple[str, str]:
+    """The URL and sha1 of `version`'s version JSON, as Mojang's manifest lists them."""
+    listed = _json_field(MANIFEST_URL, json.loads(manifest), "versions")
+    for entry in listed if isinstance(listed, list) else []:
+        if _json_field(MANIFEST_URL, entry, "id") == version:
+            url = _json_field(MANIFEST_URL, entry, "url")
+            sha1 = _json_field(MANIFEST_URL, entry, "sha1")
+            return str(url), str(sha1)
+    msg = f"{MANIFEST_URL} lists no {version}"
+    raise ProvisionError(msg)
+
+
 class VanillaAdapter:
-    """Checks a vanilla server jar and prepares it for a ServerSpec."""
+    """Finds and checks a vanilla server jar, and prepares it for a ServerSpec."""
 
     name = "vanilla"
     binary = JAR
@@ -346,6 +381,30 @@ class VanillaAdapter:
         looked up at prepare time.
         """
         self._java = java
+
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """The server jar Mojang publishes for `target`, the only vanilla version mscts tests.
+
+        Read from Mojang's version manifest, and checked by the sha1 it lists for the
+        version JSON, which gives the jar's URL, sha1 and size.
+        """
+        wanted = target.minecraft_version
+        if version is not None and version != wanted:
+            msg = f"{self.name}@{version} is not supported: this mscts tests Minecraft {wanted}."
+            raise ProvisionError(msg)
+        url, sha1 = _version_url(fetch(MANIFEST_URL).body, wanted)
+        body = fetch(url).body
+        actual = hashlib.sha1(body, usedforsecurity=False).hexdigest()  # Mojang's own check
+        if actual != sha1:
+            msg = f"{url} is not the version JSON {MANIFEST_URL} lists: sha1 {actual}, not {sha1}"
+            raise ProvisionError(msg)
+        server = _json_field(url, json.loads(body), "downloads", "server")
+        return Release(
+            build=Build(version=wanted),
+            url=str(_json_field(url, server, "url")),
+            sha1=str(_json_field(url, server, "sha1")),
+            size=int(str(_json_field(url, server, "size"))),
+        )
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version `binary` names; ProvisionError unless it is a server jar for `target`."""

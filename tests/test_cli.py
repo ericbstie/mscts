@@ -6,7 +6,7 @@ import pytest
 from support.pumpkin import fake_pumpkin
 
 from mscts import registry
-from mscts.adapters.fetch import Download
+from mscts.adapters.base import Download
 from mscts.cli import main
 from mscts.registry import Entry, Registry
 

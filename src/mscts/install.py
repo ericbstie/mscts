@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import TextIO
 
 from mscts import registry
-from mscts.adapters.base import Adapter, Installation, ProvisionError, Source
-from mscts.adapters.fetch import Download, Fetch, https_get
+from mscts.adapters.base import Adapter, Download, Fetch, Installation, ProvisionError, Source
+from mscts.adapters.fetch import https_get
 from mscts.registry import Entry, Registry, RegistryError
 from mscts.target import Target
 

@@ -13,14 +13,28 @@ from pathlib import Path
 from types import MappingProxyType
 
 from mscts.adapters import nbt
-from mscts.adapters.base import Build, Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.base import (
+    Build,
+    Fetch,
+    Installation,
+    LaunchPlan,
+    PrepareError,
+    ProvisionError,
+    Release,
+)
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
 
 # The Linux x86-64 binary.
 BINARY = "pumpkin"
+# Pumpkin publishes only its latest nightly, at one URL, built from the commit its `nightly`
+# tag names. The tag is read from GitHub's ref advertisement, as `git ls-remote` reads it
+# (docs/research/2026-10-03-install.md).
+NIGHTLY_URL = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
+TAGS_URL = "https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack"
 _ELF_MAGIC = b"\x7fELF"
+_SHORT = 7  # characters of a short commit, as Pumpkin and git print one
 # What a build says it is, as the compiler folds `/pumpkin`'s "{} (Commit: {}/{})" into one
 # string: its version, whose part after "+" is its Minecraft version, and its short commit
 # ("unknown" if built without a checkout). The full commit follows a second copy of the
@@ -517,11 +531,43 @@ def ops_json(operators: tuple[str, ...]) -> str:
     return json.dumps(entries, indent=2, ensure_ascii=False)  # as serde_json's pretty printer
 
 
+_YOURSELF = (
+    "Build it yourself and install it with:\n  uv run mscts adapter install pumpkin --from <file>"
+)
+_TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
+
+
+def _nightly_commit(refs: bytes) -> str:
+    """The commit the `nightly` tag names in a ref advertisement (peeled, if annotated)."""
+    tags = {bytes(match[2]): str(match[1].decode()) for match in _TAG.finditer(refs)}
+    commit = tags.get(b"refs/tags/nightly^{}", tags.get(b"refs/tags/nightly"))
+    if commit is None:
+        msg = f"{TAGS_URL} has no nightly tag, so the nightly's commit is unknown.\n{_YOURSELF}"
+        raise ProvisionError(msg)
+    return commit
+
+
 class PumpkinAdapter:
-    """Checks a Pumpkin build and prepares it for a ServerSpec."""
+    """Finds and checks a Pumpkin build, and prepares it for a ServerSpec."""
 
     name = "pumpkin"
     binary = BINARY
+
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """The nightly, the only build Pumpkin publishes; `version` must name its commit.
+
+        A commit is named by its first 7 or more characters. The nightly's Minecraft
+        version shows only in the binary, so `check` refuses one for another `target`.
+        """
+        del target
+        commit = _nightly_commit(fetch(TAGS_URL).body)
+        if version is not None and not (len(version) >= _SHORT and commit.startswith(version)):
+            msg = (
+                f"{self.name}@{version} is not available: Pumpkin only publishes its latest "
+                f"nightly (now {commit[:_SHORT]}).\n{_YOURSELF}"
+            )
+            raise ProvisionError(msg)
+        return Release(build=Build(version="nightly", commit=commit), url=NIGHTLY_URL)
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version and commit `binary` names; ProvisionError unless it is for `target`.

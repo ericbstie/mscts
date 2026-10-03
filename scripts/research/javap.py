@@ -12,8 +12,8 @@ from pathlib import Path
 from subprocess import run as _run
 
 from mscts import cache
-from mscts.adapters.base import PrepareError, ProvisionError
-from mscts.adapters.fetch import Fetch, https_get
+from mscts.adapters.base import Fetch, PrepareError, ProvisionError
+from mscts.adapters.fetch import https_get
 from mscts.adapters.vanilla import resolve_java
 from mscts.registry import Entry
 from mscts.target import TARGET

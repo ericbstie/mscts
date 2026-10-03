@@ -3,27 +3,14 @@
 import http.client
 import ssl
 import urllib.request
-from collections.abc import Callable
-from dataclasses import dataclass
 from typing import IO, override
 from urllib.parse import urlsplit
 
-from mscts.adapters.base import ProvisionError
+from mscts.adapters.base import Download, ProvisionError
 
 # How many redirects one fetch may follow. A GitHub release asset takes one.
 MAX_REDIRECTS = 5
 _FETCH_TIMEOUT_S = 60
-
-
-@dataclass(frozen=True, slots=True)
-class Download:
-    """The body of a fetched URL, and the URL it finally came from."""
-
-    url: str  # the final URL, after every redirect
-    body: bytes
-
-
-type Fetch = Callable[[str], Download]
 
 
 def _require_https(url: str, what: str) -> None:

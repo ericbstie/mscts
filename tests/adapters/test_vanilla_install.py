@@ -6,8 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mscts.adapters.base import Build, ProvisionError
-from mscts.adapters.fetch import Download
+from mscts.adapters.base import Build, Download, ProvisionError
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.install import install_entry
 from mscts.registry import Entry

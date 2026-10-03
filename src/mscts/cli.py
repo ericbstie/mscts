@@ -15,8 +15,15 @@ from types import MappingProxyType
 from typing import override
 
 from mscts import install, registry, run
-from mscts.adapters.base import Adapter, Installation, PrepareError, ProvisionError
-from mscts.adapters.fetch import Download, Fetch, https_get
+from mscts.adapters.base import (
+    Adapter,
+    Download,
+    Fetch,
+    Installation,
+    PrepareError,
+    ProvisionError,
+)
+from mscts.adapters.fetch import https_get
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
