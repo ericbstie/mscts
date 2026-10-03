@@ -43,6 +43,22 @@ otherwise. The entity packet layouts are #20's schemas
 - **`remove_entities`** (`handleRemoveEntities`): each id is removed.
 - A packet for an id the level does not have is ignored.
 
+## A summoned zombie, live
+
+- A zombie in a peaceful world is discarded on its first tick
+  (`Mob.checkDespawn`: `isAllowedInPeaceful` is false for it), so a live
+  test that summons one boots its own Reference at easy difficulty.
+  **verified** (server jar).
+- In daylight a zombie catches fire unless its head slot holds an item. A
+  damageable item loses durability instead, and an unbreakable one
+  (`minecraft:unbreakable`) is not damageable, so nothing changes
+  (`Mob.burnUndead`). **verified** (server jar).
+- **Verified live** (`tests/reference/test_bot_entities_reference.py`, one
+  run): a zombie summoned at (2.5, -60, 0.5) with `NoAI` and an unbreakable
+  helmet, two blocks from the Bot, reaches it as one `add_entity` inside the
+  summon's window. `Bot.entities.find("zombie", near=...)` returns it at
+  exactly that position, with the packet's entity id.
+
 ## Where a Bot differs from a real client
 
 - The Bot keeps where the server last put each entity: the end of the last
