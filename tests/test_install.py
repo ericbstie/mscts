@@ -268,19 +268,38 @@ def test_an_unrecorded_installation_is_refused_naming_the_fix(tmp_path: Path) ->
         installed(ADAPTER, TARGET, tmp_path)
 
 
-def test_an_installation_recorded_before_builds_were_reads_its_build_from_the_binary(
+def test_a_download_recorded_before_builds_were_reads_its_label_and_the_binarys_commit(
     tmp_path: Path,
 ) -> None:
     root_of(tmp_path).mkdir(parents=True)
     (root_of(tmp_path) / "pumpkin").write_bytes(NIGHTLY)
-    legacy = {"sha256": SHA256, "size": len(NIGHTLY), "entry": "pumpkin nightly-b8382a8a"}
+    entry = f"pumpkin nightly-{SHA256[:8]}"  # a Registry entry: its label, then the sha256
+    legacy = {"sha256": SHA256, "size": len(NIGHTLY), "entry": entry, "url": NIGHTLY_URL}
     (root_of(tmp_path) / "SOURCE.json").write_text(json.dumps(legacy))
     found = installed(ADAPTER, TARGET, tmp_path)
     assert found is not None
     assert found.source == Source(
-        sha256=SHA256, size=len(NIGHTLY), version="0.2.0+26.3-26.51", commit=COMMIT
+        sha256=SHA256, size=len(NIGHTLY), version="nightly", commit=COMMIT, url=NIGHTLY_URL
     )
     assert json.loads((root_of(tmp_path) / "SOURCE.json").read_text()) == legacy  # unchanged
+
+
+def test_a_file_recorded_before_builds_were_reads_its_build_from_the_binary(
+    tmp_path: Path,
+) -> None:
+    root_of(tmp_path).mkdir(parents=True)
+    (root_of(tmp_path) / "pumpkin").write_bytes(NIGHTLY)
+    legacy = {"sha256": SHA256, "size": len(NIGHTLY), "from_path": "/home/eric/pumpkin"}
+    (root_of(tmp_path) / "SOURCE.json").write_text(json.dumps(legacy))
+    found = installed(ADAPTER, TARGET, tmp_path)
+    assert found is not None
+    assert found.source == Source(
+        sha256=SHA256,
+        size=len(NIGHTLY),
+        version="0.2.0+26.3-26.51",
+        commit=COMMIT,
+        from_path="/home/eric/pumpkin",
+    )
 
 
 def test_nothing_installed_is_none(tmp_path: Path) -> None:

@@ -66,8 +66,21 @@ def describe(source: Source) -> str:
     return f"{build}, from {origin} (sha256 {source.sha256})"
 
 
-def _read_source(root: Path, adapter: Adapter) -> Source:
-    """The Source recorded in `root`/SOURCE.json."""
+@dataclasses.dataclass(frozen=True)
+class _Record:
+    """A SOURCE.json as read: its Source, and whether it was written before Builds were."""
+
+    source: Source
+    before_builds: bool
+
+
+def _read_record(root: Path, adapter: Adapter) -> _Record:
+    """The record in `root`/SOURCE.json.
+
+    One written before Builds were has no version, and names a Registry entry for a download:
+    "<adapter> <label>", where a pumpkin label ends in its sha256's first 8 digits. That label,
+    without them, is its version.
+    """
     try:
         recorded: object = json.loads((root / SOURCE).read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
@@ -82,7 +95,18 @@ def _read_source(root: Path, adapter: Adapter) -> Source:
     for field in ("version", "commit", "url", "final_url", "from_path", "installed_at"):
         value = fields.get(field)
         optional[field] = value if isinstance(value, str) else None
-    return Source(sha256=sha256, size=size, **optional)
+    before_builds = "version" not in fields
+    if before_builds:
+        optional["version"] = _entry_label(fields.get("entry"), adapter, sha256)
+    return _Record(Source(sha256=sha256, size=size, **optional), before_builds=before_builds)
+
+
+def _entry_label(entry: object, adapter: Adapter, sha256: str) -> str | None:
+    """The label of the Registry entry `entry` ("pumpkin nightly-b8382a8a" names "nightly")."""
+    if not isinstance(entry, str) or not entry.startswith(f"{adapter.name} "):
+        return None
+    label = entry.removeprefix(f"{adapter.name} ")
+    return label.removesuffix(f"-{sha256[:8]}") or None
 
 
 def _sha256_of(path: Path) -> str:
@@ -94,12 +118,14 @@ def installed(adapter: Adapter, target: Target, cache_dir: Path) -> Installation
     """`adapter`'s Installation for `target`, verified by its recorded sha256; None if absent.
 
     ProvisionError, naming the fix, if it is there but unrecorded or its binary changed. One
-    recorded before Builds were names the Build its binary names (read, never written).
+    recorded before Builds were takes its version from its Registry entry's label (a download)
+    or its binary (a `--from` file), and its commit from its binary; it is never rewritten.
     """
     root = root_of(adapter, target, cache_dir)
     if not root.exists():
         return None
-    source = _read_source(root, adapter)
+    record = _read_record(root, adapter)
+    source = record.source
     binary = root / adapter.binary
     actual = _sha256_of(binary) if binary.is_file() else "missing"
     if actual != source.sha256:
@@ -108,9 +134,10 @@ def installed(adapter: Adapter, target: Target, cache_dir: Path) -> Installation
             f"{_reinstall(adapter, root)}"
         )
         raise ProvisionError(msg)
-    if source.version is None:
+    if record.before_builds:
         build = adapter.check(binary, target)
-        source = dataclasses.replace(source, version=build.version, commit=build.commit)
+        version = source.version or build.version
+        source = dataclasses.replace(source, version=version, commit=build.commit)
     return Installation(adapter=adapter.name, target=target, root=root, source=source)
 
 

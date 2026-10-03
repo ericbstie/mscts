@@ -223,11 +223,11 @@ def test_status_names_the_build_of_an_installation_recorded_before_builds_were(
     root = cache / "pumpkin/26.3"
     root.mkdir(parents=True)
     (root / "pumpkin").write_bytes(BUILD)
-    legacy = {"sha256": SHA256, "size": len(BUILD), "entry": "pumpkin nightly-b8382a8a"}
+    legacy = {"sha256": SHA256, "size": len(BUILD), "entry": f"pumpkin nightly-{SHA256[:8]}"}
     (root / "SOURCE.json").write_text(json.dumps(legacy))
     code, out, _ = run(capsys, "adapter", "status", "pumpkin")
     assert code == 0
-    assert out.splitlines()[1:3] == ["  version:   0.2.0+26.3-26.51", f"  commit:    {COMMIT}"]
+    assert out.splitlines()[1:3] == ["  version:   nightly", f"  commit:    {COMMIT}"]
 
 
 def test_the_mscts_script_is_the_cli() -> None:

@@ -1,12 +1,13 @@
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, manifest
 
-from mscts.adapters.base import Build, ProvisionError, UnsupportedError
+from mscts.adapters.base import Build, ProvisionError, Source, UnsupportedError
 from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter
-from mscts.install import install_release
+from mscts.install import install_release, installed
 from mscts.target import TARGET
 
 PUBLISHED = fake_jar()
@@ -114,3 +115,15 @@ def test_check_refuses_a_jar_for_another_minecraft_version(tmp_path: Path) -> No
     with pytest.raises(ProvisionError) as raised:
         VanillaAdapter().check(tmp_path / "server.jar", TARGET)
     assert str(raised.value) == said
+
+
+def test_a_download_recorded_before_builds_were_reads_its_label(tmp_path: Path) -> None:
+    root = tmp_path / "vanilla/26.3"
+    root.mkdir(parents=True)
+    (root / "server.jar").write_bytes(PUBLISHED)
+    sha256 = hashlib.sha256(PUBLISHED).hexdigest()
+    legacy = {"sha256": sha256, "size": len(PUBLISHED), "entry": "vanilla 26.3", "url": JAR_URL}
+    (root / "SOURCE.json").write_text(json.dumps(legacy))
+    found = installed(VanillaAdapter(), TARGET, tmp_path)
+    assert found is not None
+    assert found.source == Source(sha256=sha256, size=len(PUBLISHED), version="26.3", url=JAR_URL)
