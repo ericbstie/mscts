@@ -63,6 +63,11 @@ their bytes differ, but the vanilla client decodes both to the same thing.
 They stay in the list because a server developer may want to match
 vanilla byte for byte. Compliance scores exclude them.
 
+In a chunk, mscts shows a section's palette with its ids in ascending
+order, and its packed data to match, rather than as the server sent
+them. Vanilla itself sends the same section with its palette in
+different orders, so that order is not compared.
+
 Vanilla omits `enforceSecureChat`, `favicon` and `players.sample` in this
 response. Pumpkin sends `true`, `null` and `[]`, respectively. Vanilla's
 own key is `enforcesSecureChat`, with an `s`. The client never reads a key

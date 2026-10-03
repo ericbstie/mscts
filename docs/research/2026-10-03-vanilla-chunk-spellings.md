@@ -45,7 +45,10 @@ and the plays after it (Instances reused, chunks saved) all agreed.
 
 The biome containers are the same class and are packed the same way, so their
 palette order varies for the same reason. Neither recorded run had a biome
-palette of more than one value.
+palette of more than one value. `chunks_biomes` carries the same biome
+containers, but the Comparison gives it no canonical form yet (any other
+encoding there is a gameplay Divergence, and no Group receives it), so this
+note covers `level_chunk_with_light` only.
 
 `pack` also drops values no entry uses, and picks the bits for the palette's
 size (`getConfigurationForPaletteSize`). Neither showed in the measurement: the

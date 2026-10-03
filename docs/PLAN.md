@@ -1533,8 +1533,9 @@ proves it necessary:
      palette, or a list palette sent with fewer bits than the client
      reads it at) is network traffic only, and a block state or biome
      that differs is a gameplay Divergence at `sections[<i>].block_states`
-     or `sections[<i>].biomes`. The order of a list or hash palette is
-     no Divergence at all (#172): every copy of the fields, raw ones too,
+     or `sections[<i>].biomes`. The order of a list or hash palette in
+     a chunk's sections is no Divergence at all (#172; not in
+     `chunks_biomes`, which has no canonical form, below): every copy of the fields, raw ones too,
      has each such palette in ascending order of id and its entries'
      indexes changed to match (`compare._ONE_SPELLING`), since vanilla
      sends a container it holds in memory in the order its values were
