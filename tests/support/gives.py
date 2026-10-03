@@ -17,9 +17,11 @@ from mscts.codec.items import SLOT
 from mscts.codec.packets import Packet
 from mscts.codec.schema import SHORT, VAR_INT, Schema
 from mscts.codec.wire import WireError
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.runner import Instance
 from mscts.target import TARGET
-from mscts.transcript import Transcript
+from mscts.transcript import Mark, Transcript
+from support.window import window_since
 from support.wire import read_all
 
 OPERATOR = "mscts_op"
@@ -84,16 +86,19 @@ async def given_slots(
     none), then until the Bot's barrier (`sync`) answers, for whatever else the command
     sent. The barrier alone is not enough: Pumpkin runs a command after the tick it was
     sent in, so the barrier can answer first. The payloads are the transcript's, so a stack
-    the Codec cannot decode is the caller's to report.
+    the Codec cannot decode is the caller's to report. The command and what it caused are
+    an Observation window, read by its Marks.
     """
-    first = len(transcript.events)
+    opened = transcript.now_ns()
+    transcript.marks.append(Mark(t_ns=opened, label=OBSERVE_OPEN))
     await bot.command(f"give {OPERATOR} minecraft:{argument}")
     with contextlib.suppress(TimeoutError):
         await bot.expect("minecraft:container_set_slot", timeout_s=wait_s, where=_a_stack)
     await bot.sync()
+    transcript.marks.append(Mark(t_ns=transcript.now_ns(), label=f"{OBSERVE_CLOSE} {OPERATOR}"))
     return [
         event.packet.payload
-        for event in transcript.events[first:]
+        for event in window_since(transcript, OPERATOR, opened)
         if event.packet.name == "minecraft:container_set_slot"
     ]
 
