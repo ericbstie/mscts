@@ -149,9 +149,11 @@ A window can be narrowed to named packets. Status, login and
 configuration packets are compared whole, and so is every packet of a
 Group with no window. Before a window opens, and when it closes, each
 Bot in play first passes the **barrier** (`Bot.sync`). It asks the server for its
-statistics three times, each 5 ms after the last answer arrived. Each
-later answer comes from a later tick, so by then the server has sent
-everything caused by what the Bot sent before. Each Bot's window ends
+statistics three times, each 5 ms after the last answer arrived. The
+last answer comes from a later tick than the first, so by then the
+server has sent everything caused by what the Bot sent before. Two
+`award_stats` the server sends unasked during one barrier can still
+end it early (ADR-0010). Each Bot's window ends
 at its own barrier's last answer, whatever the other Bots are still
 waiting for, and a Bot made after the window ends is outside it. A
 barrier covers what its own Bot sent, so a window that must hold

@@ -278,15 +278,29 @@ An `award_stats` that reaches the Bot after a request is taken as its
 answer, whether the server sent it unasked or flow control held it back.
 The next request is then sent 5 ms after that stray, and can land in the
 same pass as the first: the real answers come from one tick, and `sync`
-returns before that tick's changes. The Bot cannot tell such a stray from
-an answer before `sync` returns, since the surplus answer is still to come.
+returns before that tick's changes.
 
 1. **`Bot.sync` sends `SYNC_REQUESTS` (3) requests,** each `TICK_GAP_S`
-   after the last answer arrived. With one stray among the answers, two
-   of them are still a pass apart, so the barrier still proves a tick.
-   Two strays in one sync can still end it a pass early.
-2. **It costs up to one tick per sync,** on every server, vanilla
-   included: the third request waits for the next pass.
+   after the last answer arrived. With one late `award_stats` among the
+   answers, two of them are still a pass apart, so the barrier still
+   proves a tick. Two late `award_stats` in one sync (two strays, or a
+   stray and a surplus answer that flow control held back) can still end
+   it a pass early.
+2. **Detecting the stray instead was rejected.** After a stray at the
+   first request, the surplus answer arrives within microseconds, and a
+   5 ms check would see it. But after a stray at the second request it
+   comes up to a tick later, so seeing it needs a wait of about a tick on
+   every sync: what the third request costs anyway.
+3. **It costs about one tick per barrier,** on every server that answers
+   once per tick, vanilla and Pumpkin included: the third request is sent
+   about 5 ms after the pass that answered the second, and waits for the
+   next pass, about 45 ms on vanilla. Nearly every barrier pays it. The
+   review of #218 estimated the cost from how often the unit fakes call
+   `sync`, not from live runs. Per repetition of both sides, it estimated
+   about 0.8 s for `join/basic`, 4.5 s for `blocks/setblock`, 6 s for
+   `blocks/fill` and 13 s for `blocks/clone`, and about 2 minutes for a
+   default `mscts run` over every Group. A correct barrier is worth that
+   time.
 
 ## Amendment (2026-10-03, #117): each Bot's window ends at its own barrier
 
