@@ -14,12 +14,12 @@ each level requires).
 
 | Area | Files | Level | Clean merges since the last escape | Why |
 | --- | --- | --- | --- | --- |
-| timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | high | 0 | Five escapes since 2026-09-26, then audit 2026-10-02 H1, H5 (`docs/audits/2026-10-02-timing-compare.md`); two socket leaks on cancel since (#127, #133). The audit these call is folded into the review of #115 and #117, which rework the barrier and windows |
-| comparison core | `compare.py`, `measure.py`, `test_cases.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 0 | Audit 2026-10-02 H2, H3, H4 |
+| timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | high | 0 | Five escapes since 2026-09-26, then audit 2026-10-02 H1, H5 (`docs/audits/2026-10-02-timing-compare.md`); a socket leak on cancel since (#127; #133 turned out not to leak). The audit these call is folded into the review of #115 and #117, which rework the barrier and windows |
+| comparison core | `compare.py`, `measure.py`, `test_cases.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 2 | Audit 2026-10-02 H2, H3, H4 |
 | codec | `codec/*` | medium | 0 | Audit K MD1, MD4 (2026-09-26); none since |
 | platform | `runner.py`, `adapters/*`, `install.py`, `registry.py`, `spec.py`, `cli.py`, `report.py` | medium | 1 | Audit K H1; orphaned Instances (#3) |
 | Groups | `groups/*`, `tests/group/*` | medium | 0 | A Group's `tick freeze` would have leaked into later Groups (caught) |
-| tooling and docs | `scripts/*`, `docs/*`, `.github/*`, test fakes | medium | 0 | Raised 2026-10-03: flaky probe test (#123), fake server hang (#126), `commit_green` let a ty-red commit through (#150) |
+| tooling and docs | `scripts/*`, `docs/*`, `.github/*`, test fakes | medium | 2 | Raised 2026-10-03: flaky probe test (#123), fake server hang (#126), `commit_green` let a ty-red commit through (#150) |
 
 Tick-exact and statistical Groups are raised to high: they rest on the
 timing core and on statistics that are new ground.
@@ -50,7 +50,7 @@ Newest first. "Escaped" means it was on `main`.
 | 2026-10-03 | tooling and docs | `commit_green` let a commit that `ty` rejects through | #122's worker | yes | #150 |
 | 2026-10-02 | core: comparison | Chunks reordered across `light_update` and `forget_level_chunk` (#122 ordering review, high) | review | no | fixed before merge |
 | 2026-10-02 | core: comparison | A harness bug in the Candidate's settle wait counted as the Candidate's `mismatch` (#128 reviews) | review | no | fixed before merge |
-| 2026-10-02 | core: timing | Cancelling a Run mid settle wait can leak a poll's socket | #128's review | yes | #133 |
+| 2026-10-02 | core: timing | Cancelling a Run mid settle wait can leak a poll's socket: not a bug, a test now shows no socket is left open at any cancel point | #128's review | no | #133 (PR #159) |
 | 2026-10-02 | core: timing | A second cancel during `Connection.close` leaked the socket | timing specialist (#123) | yes | fixed in #132 |
 | 2026-10-02 | tooling and docs | The fake server hung on a client that gave up connecting | timing specialist (#123) | yes | fixed in #135 |
 | 2026-10-02 | tooling and docs | A cancelled-probe unit test failed 4 in 50 under stress | flake hunt | yes | fixed in #125 |
