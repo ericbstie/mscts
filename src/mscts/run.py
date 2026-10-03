@@ -117,6 +117,10 @@ class GroupResult:
         candidate: The Candidate's Measurements in each repetition, likewise.
         elapsed_s: Seconds playing both sides and comparing, per repetition; zero
             when blocked. Instance startup and shutdown are excluded.
+        transcripts: The Reference's and the Candidate's Transcript in each repetition
+            whose Verdict is not `match`, to diagnose it (#162); None in the others, and
+            in one where neither side was played. Only for diagnosis: no Report shows
+            them, `report.json` does not hold them, and equality ignores them.
     """
 
     group_id: str
@@ -124,6 +128,9 @@ class GroupResult:
     reference: tuple[tuple[Measurement, ...], ...]
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = ()
+    transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = dataclasses.field(
+        default=(), compare=False, repr=False
+    )
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -165,12 +172,17 @@ class RunResult:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class _Play:
-    """One Group played once: its Verdict, and each side's Measurements."""
+    """One Group played once: its Verdict, each side's Measurements, and its Transcripts.
+
+    The Transcripts (the Reference's, then the Candidate's) are kept only when the
+    Verdict is not `match`.
+    """
 
     verdict: Verdict
     reference: tuple[Measurement, ...] = ()
     candidate: tuple[Measurement, ...] = ()
     elapsed_s: float = 0.0
+    transcripts: tuple[Transcript, Transcript] | None = None
 
 
 def status_version(transcript: Transcript) -> str | None:
@@ -367,6 +379,7 @@ async def run_results(
                 reference=tuple(play.reference for play in played),
                 candidate=tuple(play.candidate for play in played),
                 elapsed_s=tuple(play.elapsed_s for play in played),
+                transcripts=tuple(play.transcripts for play in played),
             )
             for group_id, played in plays.items()
         ),
@@ -485,11 +498,13 @@ class _Instances:
             if self._versions[role] is None:
                 self._versions[role] = status_version(transcript)
         reference, candidate = transcripts
+        verdict = judge(group, *attempts)
         return _Play(
-            judge(group, *attempts),
+            verdict,
             reference=tuple(measurements(reference)),
             candidate=tuple(measurements(candidate)),
             elapsed_s=perf_counter() - started,
+            transcripts=None if verdict.outcome is Outcome.MATCH else (reference, candidate),
         )
 
     def summaries(self) -> tuple[SideSummary, SideSummary]:

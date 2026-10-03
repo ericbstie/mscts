@@ -1943,6 +1943,9 @@ class GroupResult:
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition; blocked 0
+    transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = ()
+                                      # (reference, candidate) per repetition whose Verdict
+                                      # is not match, else None (#162)
 
 @frozen
 class SideSummary:

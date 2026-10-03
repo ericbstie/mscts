@@ -96,6 +96,38 @@ async def test_a_blocked_group_has_no_measurements(fake_server: MakeServer, tmp_
     assert ping.elapsed_s == (0.0,)
 
 
+@pytest.mark.asyncio
+async def test_a_play_that_does_not_match_keeps_both_sides_transcripts(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # #162: a flaky play can only be diagnosed from what each side sent, and when.
+    result = await run_results(
+        [BASIC, PING],
+        fake_server("one"),
+        fake_server("two", description="not vanilla"),
+        workdir=tmp_path / "run",
+    )
+
+    basic, ping = result.results
+    [kept] = basic.transcripts
+    assert kept is not None
+    reference, candidate = kept
+    assert (reference.server, candidate.server) == ("one", "two")
+    assert reference.events
+    assert ping.transcripts == (None,), "a blocked play played nothing"
+
+
+@pytest.mark.asyncio
+async def test_a_play_that_matches_keeps_no_transcripts(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    result = await run_results(
+        [BASIC], fake_server("one"), fake_server("two"), workdir=tmp_path / "run", repeat=2
+    )
+
+    assert result.results[0].transcripts == (None, None)
+
+
 def _status(json_response: object) -> Transcript:
     transcript = Transcript(group_id="status/basic", server="x")
     packet = Packet(
