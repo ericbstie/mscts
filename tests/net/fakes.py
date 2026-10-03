@@ -509,8 +509,8 @@ def flooding_server(seen: list[Packet]) -> Handler:
 def scheduled_server(
     seen: list[Packet],
     *,
-    stray_after_s: float | None = None,
-    burst_after_s: float | None = None,
+    stray_on: threading.Event | None = None,
+    burst_on: threading.Event | None = None,
     strays_at: Collection[int] = (),
     effect_after_request: int = 1,
 ) -> Handler:
@@ -520,15 +520,16 @@ def scheduled_server(
     whoever asks: a request that arrives during a pass (`PASS_S`) is answered at once,
     any other waits for the next pass. So the first request always waits a tick, however
     long the join took. The tick of the first pass that answers sends a `block_update`
-    `EFFECT_AFTER_PASS_S` after the pass. With `stray_after_s`, an `award_stats` nobody
-    asked for is sent that long after the join; with `burst_after_s`, `BURST_FRAMES`
-    `change_difficulty` frames in one write. For each request numbered in `strays_at`
-    (counted from 1), an `award_stats` nobody asked for is sent as soon as it arrives,
-    before it waits for its pass: a Candidate that sends one when a statistic changes
-    (#169). The `block_update` also waits until request number `effect_after_request` has
-    arrived, and goes after its stray. By default that is the first request, which has
-    always arrived by then; a later one makes a tick whose effect comes after that
-    request, however the Bot's own waits stretch. Every
+    `EFFECT_AFTER_PASS_S` after the pass. With `stray_on`, an `award_stats` nobody asked
+    for is sent once the test sets that Event; with `burst_on`, `BURST_FRAMES`
+    `change_difficulty` frames in one write, likewise. The test's own steps order them, so
+    neither can arrive while the Bot's loop still runs and reads it at once (#246). For
+    each request numbered in `strays_at` (counted from 1), an `award_stats` nobody asked
+    for is sent as soon as it arrives, before it waits for its pass: a Candidate that
+    sends one when a statistic changes (#169). The `block_update` also waits until request
+    number `effect_after_request` has arrived, and goes after its stray. By default that is
+    the first request, which has always arrived by then; a later one makes a tick whose
+    effect comes after that request, however the Bot's own waits stretch. Every
     serverbound Packet goes into `seen`. A client that leaves while an answer is still due
     ends the handler.
     """
@@ -540,8 +541,8 @@ def scheduled_server(
                 await _answer_on_schedule(
                     peer,
                     seen,
-                    stray_after_s,
-                    burst_after_s,
+                    stray_on,
+                    burst_on,
                     strays_at=strays_at,
                     effect_after_request=effect_after_request,
                 )
@@ -553,18 +554,26 @@ BURST_FRAMES = 200
 """How many frames `scheduled_server`'s burst holds: far more bytes than a stray's."""
 
 
+async def _send_once_set(peer: Peer, event: threading.Event, frame: bytes) -> None:
+    """Write `frame` to `peer` once the test's thread has set `event`."""
+    # A threading.Event set from another thread cannot be awaited, so it is polled.
+    while not event.is_set():  # noqa: ASYNC110
+        await asyncio.sleep(0.001)
+    with suppress(ConnectionError):  # the client may have left already
+        await peer.write(frame)
+
+
 async def _answer_on_schedule(  # noqa: PLR0913 - scheduled_server's options, passed on
     peer: Peer,
     seen: list[Packet],
-    stray_after_s: float | None,
-    burst_after_s: float | None,
+    stray_on: threading.Event | None,
+    burst_on: threading.Event | None,
     *,
     strays_at: Collection[int],
     effect_after_request: int,
 ) -> None:
     """`scheduled_server`'s play: answer each statistics request at its pass, until EOF."""
     loop = asyncio.get_running_loop()
-    joined = loop.time()
     first_pass: float | None = None
     sends: list[asyncio.Task[None]] = []
     arrived: defaultdict[int, asyncio.Event] = defaultdict(asyncio.Event)  # by request number
@@ -574,12 +583,12 @@ async def _answer_on_schedule(  # noqa: PLR0913 - scheduled_server's options, pa
         with suppress(ConnectionError):  # the client may have left already
             await peer.write(frame)
 
-    if burst_after_s is not None:
+    if burst_on is not None:
         burst = peer.raw_frame("minecraft:change_difficulty", b"\x00\x01") * BURST_FRAMES
-        sends.append(loop.create_task(send_at(joined + burst_after_s, burst)))
-    if stray_after_s is not None:
+        sends.append(loop.create_task(_send_once_set(peer, burst_on, burst)))
+    if stray_on is not None:
         stray = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
-        sends.append(loop.create_task(send_at(joined + stray_after_s, stray)))
+        sends.append(loop.create_task(_send_once_set(peer, stray_on, stray)))
     effect_due = True
     requests = 0
     answer = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)

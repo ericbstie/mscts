@@ -1,6 +1,7 @@
 """Bot.sync (the barrier), Bot.drain, and which Bots are in play."""
 
 import asyncio
+import threading
 import time
 
 import pytest
@@ -73,6 +74,17 @@ def block_until_bytes_wait_in_the_kernel(bot: Bot) -> None:
     while net_module._unread(writer) == 0:  # noqa: SLF001
         assert time.monotonic() < deadline, "nothing reached the Bot's socket"
         time.sleep(0.001)
+
+
+async def until_the_transport_read_the_kernel_empty(bot: Bot) -> None:
+    """Let the Bot's loop run, a turn at a time, until its socket's receive buffer is empty.
+
+    The transport has then moved what waited there into the stream's buffer.
+    """
+    writer = bot._connection._writer  # noqa: SLF001 - the socket is what is watched
+    # The kernel's count cannot be awaited, and each turn is the transport's chance to read.
+    while net_module._unread(writer) > 0:  # noqa: SLF001, ASYNC110
+        await asyncio.sleep(0)
 
 
 def test_sync_asks_for_statistics_sync_requests_times_each_after_the_last_answer() -> None:
@@ -283,14 +295,16 @@ def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_an
     # Stamped after the request, it was taken as the answer, and the real one, at the next
     # pass, with the second request's: one pass, before the tick's block_update.
     transcript = Transcript(group_id="test/sync", server="fake")
+    stray = threading.Event()
 
     async def client() -> list[str]:
-        with serve_in_thread(CODEC, scheduled_server([], stray_after_s=0.005)) as endpoint:
+        with serve_in_thread(CODEC, scheduled_server([], stray_on=stray)) as endpoint:
             bot = await Bot.connect(
                 endpoint, TARGET, name="alice", transcript=transcript, timeout_s=5.0
             )
             try:
                 await bot.join()
+                stray.set()
                 block_until_bytes_wait_in_the_kernel(bot)  # the stray, while the loop is busy
                 for _ in range(turns):
                     await asyncio.sleep(0)
@@ -308,8 +322,11 @@ def test_an_award_stats_that_reached_the_socket_behind_a_burst_is_not_its_answer
     # unread in the stream's buffer and the stray behind it still in the kernel, so the
     # reader needs a second turn for the stray; counting the burst twice ended the wait
     # after the first, and the stray, stamped after the request, was taken as its answer.
+    # #246: the fake sends each only when told, so neither arrives while the loop runs and
+    # the transport reads them together.
     transcript = Transcript(group_id="test/sync", server="fake")
-    server = scheduled_server([], burst_after_s=0.002, stray_after_s=0.015)
+    burst, stray = threading.Event(), threading.Event()
+    server = scheduled_server([], burst_on=burst, stray_on=stray)
 
     async def client() -> list[str]:
         with serve_in_thread(CODEC, server) as endpoint:
@@ -318,9 +335,10 @@ def test_an_award_stats_that_reached_the_socket_behind_a_burst_is_not_its_answer
             )
             try:
                 await bot.join()
+                burst.set()
                 block_until_bytes_wait_in_the_kernel(bot)  # the burst, while the loop is busy
-                for _ in range(2):  # the transport moves it to the stream's buffer, unread
-                    await asyncio.sleep(0)
+                await until_the_transport_read_the_kernel_empty(bot)  # into the stream, unread
+                stray.set()
                 block_until_bytes_wait_in_the_kernel(bot)  # the stray, behind it
                 await bot.sync()
                 return received(transcript)
