@@ -77,8 +77,8 @@ sky mask with 2048 zero bytes.
 The Comparison writes each copy of a chunk's fields, and of a light update's,
 this way before it diffs them:
 
-- A list or hash palette whose values are all different, and whose entries all
-  index into it, is put in ascending order of id, and each entry's index is
+- A list or hash palette whose entries all index into it is put in ascending
+  order of id, and each entry's index is
   changed to match. The bits, unused bits and any packing left after the last
   entry stay as sent.
 - A sky light section 0 sent as an array of 2048 zero bytes is written as an

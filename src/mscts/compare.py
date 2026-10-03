@@ -1698,21 +1698,18 @@ def _in_palette_order(container: PalettedContainer, value: _Value) -> _Value:
     and one it read back from disk in entry order (`PalettedContainer.pack`), so the order is a
     spelling vanilla varies (docs/research/2026-10-03-vanilla-chunk-spellings.md). Each entry's
     index changes to match; the bits, each Long's unused high bits and any slots after the last
-    entry stay as sent. A palette that has a value twice, or an entry past it, stays as it is.
+    entry stay as sent. A container with an entry past its palette stays as it is. (Only a
+    list or hash palette is a list: the codec reads a single value as an int, and the global
+    palette as None.)
     """
     if not isinstance(value, dict):
         return value
     bits, palette, data = value.get("bits"), value.get("palette"), value.get("data")
-    if not (
-        isinstance(bits, int)
-        and 1 <= bits <= container.list_max
-        and isinstance(palette, list)
-        and all(isinstance(each, int) for each in palette)
-        and len(set(palette)) == len(palette)
-        and isinstance(data, bytes)
-    ):
+    if not (isinstance(bits, int) and isinstance(palette, list) and isinstance(data, bytes)):
         return value
     ids = [each for each in palette if isinstance(each, int)]
+    if len(ids) != len(palette):
+        return value
     order = sorted(range(len(ids)), key=ids.__getitem__)
     indexes = {old: new for new, old in enumerate(order)}
     reindexed = _reindexed(data, max(bits, container.min_width), container.entries, indexes)
@@ -1725,12 +1722,10 @@ def _in_palette_order(container: PalettedContainer, value: _Value) -> _Value:
 def _reindexed(data: bytes, width: int, entries: int, indexes: Mapping[int, int]) -> bytes | None:
     """`data` with each index replaced by `indexes`' for it.
 
-    `data` is `entries` of `width` bits, packed as the client reads them. None if it is not as
-    long as they take, or an index has none in `indexes`.
+    `data` is `entries` of `width` bits, packed as the client reads them (the codec reads as
+    many Longs as they take). None if an index has none in `indexes`.
     """
     per_long, mask = _LONG_BITS // width, (1 << width) - 1
-    if len(data) != _LONG_BYTES * -(-entries // per_long):
-        return None
     longs: list[bytes] = []
     for number, start in enumerate(range(0, len(data), _LONG_BYTES)):
         word = int.from_bytes(data[start : start + _LONG_BYTES], "big")

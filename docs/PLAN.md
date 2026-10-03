@@ -1540,9 +1540,9 @@ proves it necessary:
      sends a container it holds in memory in the order its values were
      set and one it read back from disk in entry order
      (`PalettedContainer.pack`;
-     `docs/research/2026-10-03-vanilla-chunk-spellings.md`). A palette
-     with a value twice, or an entry past it, stays as sent, and so do
-     the bits and the slots after the last entry. An entry that indexes past its palette is
+     `docs/research/2026-10-03-vanilla-chunk-spellings.md`). A container
+     with an entry past its palette stays as sent, and so do the bits and
+     the slots after the last entry. An entry that indexes past its palette is
      a value of its own: the client reads it, and fails only when it
      looks it up (`valueFor`). Evidence
      (`docs/research/2026-10-02-chunks-light.md`, `javap` on the 26.3
