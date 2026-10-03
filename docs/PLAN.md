@@ -1046,10 +1046,12 @@ class GroupContext:
                                     # freeze. Vanilla sends nothing when a step ends
                                     # (docs/research/2026-10-03-tick-step.md). ValueError:
                                     # ticks < 1, or not frozen
-    async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises);
-                                    # then #184: Bot.refuse_queued_disconnect on every Bot
-    async def close(self) -> None: ...   # unfreezes if still frozen (logged, not raised), then
-                                    # closes every Bot; idempotent
+    async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises,
+                                    # setting left_frozen: #228); then #184:
+                                    # Bot.refuse_queued_disconnect on every Bot
+    async def close(self) -> None: ...   # unfreezes if still frozen (logged, not raised, and
+                                    # sets left_frozen: #228), then closes every Bot; idempotent
+    left_frozen: bool               # #228: end() or close() could not unfreeze the world
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
                                     # it is; "" if none (the script itself raised it)
@@ -1310,6 +1312,7 @@ STOP_TIMEOUT_S = 30.0               # each stop step
 class GroupError(Exception):        # the Group raised against one Instance; __cause__ is
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
     bot: str = ""                   # the Bot it came out of (GroupContext.raised_by)
+    left_frozen: bool = False       # #228: GroupContext.left_frozen: the Instance is unusable
 
 @frozen
 class Server:                       # one side of a Run
@@ -1371,6 +1374,12 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Candidate failed: the wait ...". A BaseException that is not an Exception (a
     # cancellation from inside a wait) is raised once both waits are done. The wait is
     # not part of `elapsed_s`.
+    # #228: an Instance a Group left frozen (GroupError.left_frozen) plays no later Group,
+    # decided before the wait. The Reference's: each is `error`, "the Reference is
+    # unusable: <group id> left its world frozen" (the Candidate's likewise,
+    # after a "; " if both are). Only the Candidate's: each is `mismatch`, led by a
+    # `failed` Divergence "<group id> left its world frozen", so the Score
+    # counts it (an `error` is not scored, and would reward breaking the world).
     # NotImplementedError for a statistical Group (M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError

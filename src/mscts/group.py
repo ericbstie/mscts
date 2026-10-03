@@ -207,6 +207,8 @@ class GroupContext:
 
     Attributes:
         endpoint: Where the Instance is reached.
+        left_frozen: The Group froze the world, and `end` or `close` could not unfreeze
+            it: the Instance is not fit for another Group (#228).
     """
 
     def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None:
@@ -218,6 +220,7 @@ class GroupContext:
         self._unconnected: tuple[str, Exception] | None = None
         self._observing = False
         self._ticks: int | None = None  # the ticks stepped since the freeze; None: not frozen
+        self.left_frozen = False
         self._control = OperatorBot(self._connect, transcript, timeout_s=timeout_s)
 
     @property
@@ -420,9 +423,9 @@ class GroupContext:
 
         Called once the Group's script has completed, before the Bots close (`run_group`).
         A world left frozen would spoil every later Group on the Instance, so an unfreeze
-        that fails fails the Group. A disconnect nothing took (it came after the last
-        barrier, drain or `expect`) fails its Bot (`Bot.refuse_queued_disconnect`), so a
-        Candidate that kicks a Bot late does not pass.
+        that fails fails the Group and sets `left_frozen`. A disconnect nothing took (it
+        came after the last barrier, drain or `expect`) fails its Bot
+        (`Bot.refuse_queued_disconnect`), so a Candidate that kicks a Bot late does not pass.
 
         Raises:
             TimeoutError: The server did not answer `tick unfreeze` in time.
@@ -430,7 +433,11 @@ class GroupContext:
         """
         if self._ticks is not None:
             self._ticks = None
-            await self._control.run("tick unfreeze")
+            try:
+                await self._control.run("tick unfreeze")
+            except BaseException:
+                self.left_frozen = True
+                raise
         for bot in self._bots.values():
             await bot.refuse_queued_disconnect()
 
@@ -439,13 +446,15 @@ class GroupContext:
 
         The world is still frozen only if the Group failed before `end`, so a failure to
         unfreeze here is logged, not raised: the Group's own error says more, and has
-        failed the Group already. Calling it again does nothing.
+        failed the Group already. It sets `left_frozen`, so the Run plays no other Group
+        on the Instance. Calling it again does nothing.
         """
         if self._ticks is not None:
             self._ticks = None
             try:
                 await self._control.run("tick unfreeze")
             except Exception as error:
+                self.left_frozen = True
                 LOG.warning("could not unfreeze the world after the Group", exc_info=error)
         for bot in self._bots.values():
             await bot.close()

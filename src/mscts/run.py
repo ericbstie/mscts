@@ -48,13 +48,18 @@ class GroupError(Exception):
     Attributes:
         transcript: Everything recorded until it raised.
         bot: The name of the Bot it came out of, or "" if none raised it.
+        left_frozen: The Group froze the world and it could not be unfrozen
+            (`GroupContext.left_frozen`): the Instance is unusable (#228).
     """
 
-    def __init__(self, transcript: Transcript, description: str, *, bot: str = "") -> None:
+    def __init__(
+        self, transcript: Transcript, description: str, *, bot: str = "", left_frozen: bool = False
+    ) -> None:
         """Record that the Group of `transcript` failed, as `description` says."""
         super().__init__(description)
         self.transcript = transcript
         self.bot = bot
+        self.left_frozen = left_frozen
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -218,7 +223,9 @@ async def run_group(
         await context.end()
     except Exception as exc:
         description = _describe(exc, timeout_s)
-        raise GroupError(transcript, description, bot=context.raised_by(exc)) from exc
+        bot = context.raised_by(exc)
+        await context.close()  # first: it tries to unfreeze, and says if it could not
+        raise GroupError(transcript, description, bot=bot, left_frozen=context.left_frozen) from exc
     finally:
         await context.close()
     return transcript
@@ -468,6 +475,7 @@ class _Instances:
         self._pairs: dict[ServerSpec, tuple[Endpoint, Endpoint]] = {}
         self._startup: tuple[list[Measurement], list[Measurement]] = ([], [])
         self._versions: list[str | None] = [None, None]
+        self._unusable: dict[Endpoint, str] = {}  # why no Group may play there any more
 
     async def start(self, group: Group) -> None:
         """Make sure the Instances `group` plays against are up."""
@@ -483,6 +491,9 @@ class _Instances:
         Candidate did), see `_unsettled`.
         """
         endpoints = await self._pair(group.spec)
+        unusable = self._unusable_verdict(group, endpoints)
+        if unusable is not None:
+            return _Play(unusable)
         unsettled = await _unsettled(group, endpoints)
         if unsettled is not None:
             return _Play(unsettled)
@@ -498,6 +509,9 @@ class _Instances:
         for role, transcript in enumerate(transcripts):
             if self._versions[role] is None:
                 self._versions[role] = status_version(transcript)
+        for endpoint, attempt in zip(endpoints, attempts, strict=True):
+            if isinstance(attempt, GroupError) and attempt.left_frozen:
+                self._unusable[endpoint] = f"{group.id} left its world frozen"
         reference, candidate = transcripts
         verdict = judge(group, *attempts)
         return _Play(
@@ -511,6 +525,34 @@ class _Instances:
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
         return self._keep_transcripts and verdict.outcome is not Outcome.MATCH
+
+    def _unusable_verdict(self, group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
+        """The Verdict `group` gets unplayed if a side is unusable (#228), or None.
+
+        A side a failed Group left frozen (`GroupError.left_frozen`) would make every later
+        Group compare against a frozen world, so no later Group plays on either side:
+
+        - The Reference is unusable: `error`, "the Reference is unusable: <group> left
+          its world frozen", and the same for the Candidate after a "; " if it is
+          too.
+        - Only the Candidate is: `mismatch`, led by a `failed` Divergence saying so, as for
+          any Candidate failure (`judge`), so the Score counts it: an `error`, which the
+          Score leaves out, would score a Candidate that broke its world better.
+        """
+        reference, candidate = (self._unusable.get(endpoint) for endpoint in endpoints)
+        if reference is not None:
+            detail = f"the Reference is unusable: {reference}"
+            if candidate is not None:
+                detail += f"; the Candidate is unusable: {candidate}"
+            return _error(group, detail)
+        if candidate is None:
+            return None
+        return Verdict(
+            group_id=group.id,
+            outcome=Outcome.MISMATCH,
+            divergences=(_failed(bot="", what=candidate),),
+            detail=f"the Candidate failed: {candidate}",
+        )
 
     def summaries(self) -> tuple[SideSummary, SideSummary]:
         """What the Run learned about the Reference and the Candidate, in that order."""
