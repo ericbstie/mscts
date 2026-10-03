@@ -136,8 +136,10 @@ A proposal:
   entities, that is a separate issue. Every test that needs it links to
   it.
 
-A test issue is labelled `test`, and `needs-triage` until every issue it
-needs has landed. Game rules and commands are named as vanilla 26.3 names them:
+A test issue is labelled `test`, and `needs-triage` until the tech lead
+has sized it and checked its spec. If it needs other issues first, the
+lead names them in a **Blocked by** line at the top of its description;
+it is ready once they are closed. Game rules and commands are named as vanilla 26.3 names them:
 `advance_time`, not `doDaylightCycle`.
 
 ## Repository layout

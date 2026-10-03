@@ -72,6 +72,13 @@ each issue's commits stay together behind their merge. Labels are now
 `needs-triage` nor `needs-decision` is ready. `spec`, `enabler` and
 `ready` are gone.
 
+Amended 2026-10-03: `needs-triage` means not yet assessed. The tech lead
+sizes the issue, sets its lane and scrutiny and makes sure the spec is
+complete, then removes the label. Being blocked is not a label: a blocked
+issue names its blockers in a **Blocked by** line at the top of its
+description, and is ready once they are closed, so nothing is relabelled
+as dependencies land.
+
 ## Amendment (2026-10-02): a merge train runs the live tiers once
 
 Each PR must pass its live tiers on a branch rebased onto `main` before it
