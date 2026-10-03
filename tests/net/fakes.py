@@ -460,6 +460,66 @@ async def _answer_in_passes(peer: Peer, seen: list[Packet]) -> None:
         await asyncio.gather(*effects, return_exceptions=True)
 
 
+def scheduled_server(seen: list[Packet], *, stray_after_s: float | None = None) -> Handler:
+    """Join like vanilla, then answer statistics requests in passes on a fixed schedule.
+
+    Passes come `TICK_S` apart, the first one `TICK_S` after the join, whoever asks: a
+    request that arrives during a pass (`PASS_S`) is answered at once, any other waits
+    for the next pass. The tick of the first pass that answers sends a `block_update`
+    `EFFECT_AFTER_PASS_S` after the pass. With `stray_after_s`, an `award_stats` nobody
+    asked for is sent that long after the join. Every serverbound Packet goes into
+    `seen`. A client that leaves while an answer is still due ends the handler.
+    """
+    join = _Join(seen, JoinScript())
+
+    async def handler(peer: Peer) -> None:
+        if await join.login(peer) and await join.configure(peer) and await join.play(peer):
+            with suppress(ConnectionError):
+                await _answer_on_schedule(peer, seen, stray_after_s)
+
+    return handler
+
+
+async def _answer_on_schedule(peer: Peer, seen: list[Packet], stray_after_s: float | None) -> None:
+    """`scheduled_server`'s play: answer each statistics request at its pass, until EOF."""
+    loop = asyncio.get_running_loop()
+    joined = loop.time()
+    first_pass = joined + TICK_S
+    sends: list[asyncio.Task[None]] = []
+
+    async def send_at(t: float, frame: bytes) -> None:
+        await asyncio.sleep(t - loop.time())
+        with suppress(ConnectionError):  # the client may have left already
+            await peer.write(frame)
+
+    if stray_after_s is not None:
+        stray = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
+        sends.append(loop.create_task(send_at(joined + stray_after_s, stray)))
+    effect_due = True
+    try:
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name != "minecraft:client_command":
+                continue
+            now = loop.time()
+            ticks, into = divmod(max(now - first_pass, 0.0), TICK_S)
+            this_pass = first_pass + ticks * TICK_S
+            if now < first_pass or into > PASS_S:
+                this_pass = first_pass if now < first_pass else this_pass + TICK_S
+                await asyncio.sleep(this_pass - now)
+            if effect_due:
+                effect_due = False
+                update = peer.raw_frame("minecraft:block_update", BLOCK_UPDATE)
+                sends.append(
+                    loop.create_task(send_at(this_pass + PASS_S + EFFECT_AFTER_PASS_S, update))
+                )
+            await answer_at_once(peer, 0)
+    finally:
+        for task in sends:
+            task.cancel()
+        await asyncio.gather(*sends, return_exceptions=True)
+
+
 @asynccontextmanager
 async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
     """Listen on a free localhost port, running `handler` for each connection.

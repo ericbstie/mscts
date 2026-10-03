@@ -21,6 +21,7 @@ from tests.net.fakes import (
     answer_like_vanilla_after,
     never_answer,
     play_server,
+    scheduled_server,
     serve_in_thread,
     status_server,
     ticking_server,
@@ -165,6 +166,21 @@ def test_a_bot_whose_loop_stalls_after_a_pairs_second_request_does_not_take_one_
                 await bot.close()
 
     assert "minecraft:block_update" in asyncio.run(client())
+
+
+def test_a_request_answered_at_a_later_pass_still_waits_tick_gap_from_its_answer() -> None:
+    # Review A of #163: on a fixed schedule the first request waits for the next pass. A
+    # wait counted from when it was sent is over by then, so the second request would
+    # land in that same pass, before the tick's block_update.
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def use(bot: Bot) -> list[str]:
+        await bot.join()
+        await bot.sync()
+        return received(transcript)
+
+    names, _ = with_bot(CODEC, transcript, scheduled_server([]), use, timeout_s=5.0)
+    assert "minecraft:block_update" in names
 
 
 def test_an_award_stats_that_arrived_before_the_request_is_not_its_answer() -> None:
