@@ -1,10 +1,13 @@
-"""Entity ids: each Bot's are numbered in the order it first hears of them (#21).
+"""Entity ids: each Bot's are named by their spawn, or numbered as it hears of them (#21, #116).
 
 Vanilla gives entity ids from a counter and mobs random UUIDs, so two servers that send the
-same entities send other numbers for them. A Comparison replaces each id by `#<n>`, the n-th
-entity in the Bot's compared packets (without windows, its own player, from `login`, is #1),
-and each UUID of an entity that is not a player by `#<n>`, the n-th such UUID. So the same
-entities compare equal, and a packet about another entity is still a Divergence.
+same entities send other numbers for them. A Comparison replaces the id of an entity whose
+`add_entity` came before the window (outside the windows) by its type and its position at
+the first such add_entity, `pig@(1.5, -60.0, 7.5)` after the Masks (a player's by
+`player <uuid>`); any other id by `#<n>`, the n-th entity in the Bot's compared packets
+(without windows, its own player, from `login`, is #1); and each UUID of an entity that is
+not a player by `#<n>`, the n-th such UUID. So the same entities compare equal, and a
+packet about another entity is still a Divergence.
 """
 
 import re
@@ -29,6 +32,7 @@ from tests.compare.build import divergence, packet, transcript
 
 ENTITY_TYPES = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
 PLAYER, PIG = ENTITY_TYPES.index("minecraft:player"), ENTITY_TYPES.index("minecraft:pig")
+COW = ENTITY_TYPES.index("minecraft:cow")
 
 
 def login(entity_id: int) -> Packet:
@@ -38,8 +42,27 @@ def login(entity_id: int) -> Packet:
 def spawn(
     entity_id: int, *, x: float = 4.5, kind: int = PIG, uuid_: uuid.UUID | None = None
 ) -> Packet:
-    fields = {"entity_id": entity_id, "entity_uuid": uuid_ or uuid.uuid4(), "type": kind, "x": x}
+    fields = {
+        "entity_id": entity_id,
+        "entity_uuid": uuid_ or uuid.uuid4(),
+        "type": kind,
+        "x": x,
+        "y": -60.0,
+        "z": 7.5,
+    }
     return packet("minecraft:add_entity", fields=fields)
+
+
+def hurt(entity_id: int) -> Packet:
+    return packet("minecraft:hurt_animation", fields={"entity_id": entity_id, "yaw": 0.0})
+
+
+def swing(entity_id: int) -> Packet:
+    return packet("minecraft:animate", fields={"entity_id": entity_id, "action": 0})
+
+
+def removed(*entity_ids: int) -> Packet:
+    return packet("minecraft:remove_entities", fields={"entity_ids": list(entity_ids)})
 
 
 def metadata(entity_id: int, health: float = 10.0) -> Packet:
@@ -204,15 +227,302 @@ def test_entities_heard_of_before_a_window_do_not_shift_the_numbers_inside_it() 
     assert "add_entity.entity_id" in verdict.test_cases
 
 
-def test_inside_a_window_the_first_entity_it_names_is_number_one() -> None:
-    # Was: an entity heard of before a window kept its number; now nothing before it counts.
-    def window(*entity_ids: int) -> Transcript:
-        updates = [("alice", metadata(entity_id)) for entity_id in entity_ids]
+PIG_AT = "pig@(1.5, -60.0, 7.5)"
+COW_AT = "cow@(3.5, -60.0, 7.5)"
+
+
+def _farm(*hurt_ids: int) -> Transcript:
+    """A pig (5) and a cow (6) spawned before the window, and each of `hurt_ids` hurt in it."""
+    return transcript(
+        ("alice", login(1)),
+        ("alice", spawn(5, x=1.5)),
+        ("alice", spawn(6, x=3.5, kind=COW)),
+        OBSERVE_OPEN,
+        *(("alice", hurt(entity_id)) for entity_id in hurt_ids),
+        OBSERVE_CLOSE,
+    )
+
+
+def test_an_action_inside_a_window_on_another_entity_spawned_before_it_is_a_divergence() -> None:
+    verdict = compare(_farm(5), _farm(6), [])
+
+    assert verdict.outcome is Outcome.MISMATCH
+    assert verdict.divergences == (
+        divergence(
+            "field",
+            index=0,
+            packet="minecraft:hurt_animation",
+            path="entity_id",
+            reference=PIG_AT,
+            candidate=COW_AT,
+            test_case="hurt_animation.entity_id",
+        ),
+    )
+
+
+def test_a_missing_entity_spawned_before_the_window_shifts_no_other_entitys_name() -> None:
+    # The Candidate never spawned the pig, so it never swings it; the cow is the same cow.
+    reference = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(5, x=1.5)),
+        ("alice", spawn(6, x=3.5, kind=COW)),
+        OBSERVE_OPEN,
+        ("alice", swing(5)),
+        ("alice", hurt(6)),
+        OBSERVE_CLOSE,
+    )
+    candidate = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(5, x=3.5, kind=COW)),
+        OBSERVE_OPEN,
+        ("alice", hurt(5)),
+        OBSERVE_CLOSE,
+    )
+
+    verdict = compare(reference, candidate, [])
+
+    assert [(d.kind, d.packet) for d in verdict.divergences] == [("missing", "minecraft:animate")]
+    assert "hurt_animation.entity_id" not in verdict.differing  # the score counts it as the same
+
+
+def test_a_remove_entities_before_the_window_ends_the_name_too() -> None:
+    # The Reference's client forgot the pig before the window; the Candidate's did not.
+    def pig_then_hurt(*before: Packet) -> Transcript:
         return transcript(
-            ("alice", login(1)), ("alice", spawn(5)), OBSERVE_OPEN, *updates, OBSERVE_CLOSE
+            ("alice", login(1)),
+            ("alice", spawn(5, x=1.5)),
+            *(("alice", item) for item in before),
+            OBSERVE_OPEN,
+            ("alice", hurt(5)),
+            OBSERVE_CLOSE,
         )
 
-    verdict = compare(window(5, 6, 5), window(8, 9, 9), [])
+    verdict = compare(pig_then_hurt(removed(5)), pig_then_hurt(), [])
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("entity_id", "#1", PIG_AT)
+    ]
+
+
+def test_only_an_add_entity_names_an_entity() -> None:
+    reference = transcript(
+        ("alice", login(1)), ("alice", metadata(9)), OBSERVE_OPEN, ("alice", hurt(9)), OBSERVE_CLOSE
+    )
+    candidate = transcript(("alice", login(1)), OBSERVE_OPEN, ("alice", hurt(9)), OBSERVE_CLOSE)
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_an_entity_type_outside_the_registry_is_named_by_its_number() -> None:
+    def odd(x: float) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5, x=x, kind=9999)),
+            OBSERVE_OPEN,
+            ("alice", hurt(5)),
+            OBSERVE_CLOSE,
+        )
+
+    verdict = compare(odd(1.5), odd(2.5), [])
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        ("9999@(1.5, -60.0, 7.5)", "9999@(2.5, -60.0, 7.5)")
+    ]
+
+
+def _hurt_one_spawned_before(*spawns: Packet, hurt_id: int = 5) -> Transcript:
+    """`spawns` before the window, and `hurt_id` hurt inside it."""
+    return transcript(
+        ("alice", login(1)),
+        *(("alice", item) for item in spawns),
+        OBSERVE_OPEN,
+        ("alice", hurt(hurt_id)),
+        OBSERVE_CLOSE,
+    )
+
+
+def test_a_mask_on_add_entitys_position_masks_it_in_the_name_too() -> None:
+    # An item a block drops spawns at a random position: the Group masks add_entity's x.
+    mask = Mask("minecraft:add_entity", "x", reason="a test: drawn at random")
+    reference = _hurt_one_spawned_before(spawn(5, x=1.25))
+    candidate = _hurt_one_spawned_before(spawn(5, x=2.75))
+    assert compare(reference, candidate, [mask]).outcome is Outcome.MATCH
+
+    cow = _hurt_one_spawned_before(spawn(5, x=2.75, kind=COW))
+    verdict = compare(reference, cow, [mask])
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        ("pig@(<masked>, -60.0, 7.5)", "cow@(<masked>, -60.0, 7.5)")
+    ]
+
+
+def test_an_entity_keeps_the_name_of_its_first_add_entity_before_the_window() -> None:
+    # Vanilla sends add_entity again only after remove_entities or a client world reset, but
+    # a Candidate may resend it, at another position, with no remove in between.
+    reference = _hurt_one_spawned_before(spawn(5, x=1.5), spawn(5, x=2.5))
+    candidate = _hurt_one_spawned_before(spawn(5, x=1.5))
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_a_player_spawned_before_the_window_is_named_by_its_uuid() -> None:
+    # Where a player joins is random or shared, so its position cannot tell two apart.
+    bob, carol = uuid.UUID(int=1), uuid.UUID(int=2)
+    spawns = (spawn(5, kind=PLAYER, uuid_=bob), spawn(6, kind=PLAYER, uuid_=carol))
+
+    verdict = compare(
+        _hurt_one_spawned_before(*spawns), _hurt_one_spawned_before(*spawns, hurt_id=6), []
+    )
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        (f"player {bob}", f"player {carol}")
+    ]
+
+
+def test_a_player_that_joined_before_the_window_at_a_random_position_is_the_same_player() -> None:
+    bob = uuid.UUID(int=1)
+    reference = _hurt_one_spawned_before(spawn(5, x=3.5, kind=PLAYER, uuid_=bob))
+    candidate = _hurt_one_spawned_before(spawn(5, x=-12.5, kind=PLAYER, uuid_=bob))
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_entities_that_would_share_a_name_are_told_apart_in_first_heard_order() -> None:
+    # A Mask can hide all that tells two names apart: two players whose UUIDs are masked.
+    mask = Mask("minecraft:add_entity", "entity_uuid", reason="a test: masked")
+    spawns = (spawn(5, kind=PLAYER), spawn(6, kind=PLAYER))
+
+    verdict = compare(
+        _hurt_one_spawned_before(*spawns), _hurt_one_spawned_before(*spawns, hurt_id=6), [mask]
+    )
+
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [
+        ("player <masked>", "player <masked> #2")
+    ]
+
+
+def test_a_star_mask_on_add_entity_leaves_its_entities_unnamed() -> None:
+    # The Group compares no add_entity at all, so neither type nor position may tell.
+    mask = Mask("minecraft:add_entity", "*", reason="a test: not this Group's subject")
+    reference = _hurt_one_spawned_before(spawn(5, x=1.5))
+    candidate = _hurt_one_spawned_before(spawn(5, x=3.5, kind=COW))
+
+    assert compare(reference, candidate, [mask]).outcome is Outcome.MATCH
+
+
+def test_minus_zero_and_zero_are_the_same_position_in_a_name() -> None:
+    reference = _hurt_one_spawned_before(spawn(5, x=-0.0))
+    candidate = _hurt_one_spawned_before(spawn(5, x=0.0))
+
+    assert compare(reference, candidate, []).outcome is Outcome.MATCH
+
+
+def test_a_position_in_a_name_is_not_rounded() -> None:
+    reference = _hurt_one_spawned_before(spawn(5, x=1.5))
+    candidate = _hurt_one_spawned_before(spawn(5, x=1.5000000000000002))
+
+    assert [(d.reference, d.candidate) for d in compare(reference, candidate, []).divergences] == [
+        (PIG_AT, "pig@(1.5000000000000002, -60.0, 7.5)")
+    ]
+
+
+def test_an_id_first_seen_in_remove_entities_takes_no_number() -> None:
+    # The Reference removes an entity the Bot never heard of: that shifts no other number.
+    reference = transcript(
+        ("alice", login(1)),
+        OBSERVE_OPEN,
+        ("alice", removed(7)),
+        ("alice", spawn(5)),
+        ("alice", hurt(5)),
+        OBSERVE_CLOSE,
+    )
+    candidate = transcript(
+        ("alice", login(1)),
+        OBSERVE_OPEN,
+        ("alice", spawn(8)),
+        ("alice", hurt(8)),
+        OBSERVE_CLOSE,
+    )
+
+    verdict = compare(reference, candidate, [])
+
+    assert [(d.kind, d.packet) for d in verdict.divergences] == [
+        ("missing", "minecraft:remove_entities")
+    ]
+
+
+def test_ids_first_seen_in_remove_entities_compare_equal_whatever_their_value() -> None:
+    def forget(entity_id: int) -> Transcript:
+        return transcript(("alice", login(1)), OBSERVE_OPEN, ("alice", removed(entity_id)))
+
+    assert compare(forget(7), forget(9), []).outcome is Outcome.MATCH
+
+    # But removing an entity the Bot did hear of is another thing.
+    def spawn_then_forget(entity_id: int) -> Transcript:
+        return transcript(
+            ("alice", login(1)), OBSERVE_OPEN, ("alice", spawn(5)), ("alice", removed(entity_id))
+        )
+
+    verdict = compare(spawn_then_forget(7), spawn_then_forget(5), [])
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [("#?", "#1")]
+
+
+def test_an_id_reused_after_remove_entities_is_a_new_entity() -> None:
+    # Vanilla never reuses an id; the client reads the reuse as a new entity all the same.
+    def pigs(second: int) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5)),
+            ("alice", hurt(5)),
+            ("alice", removed(5)),
+            ("alice", spawn(second)),
+            ("alice", hurt(second)),
+        )
+
+    verdict = compare(pigs(6), pigs(5), [])
+
+    assert verdict.outcome is Outcome.MATCH, verdict
+
+
+def test_remove_entities_ends_a_name_given_before_the_window() -> None:
+    def farm(second: int) -> Transcript:
+        return transcript(
+            ("alice", login(1)),
+            ("alice", spawn(5, x=1.5)),
+            OBSERVE_OPEN,
+            ("alice", removed(5)),
+            ("alice", spawn(second, x=2.5)),
+            ("alice", hurt(second)),
+            OBSERVE_CLOSE,
+        )
+
+    verdict = compare(farm(6), farm(5), [])
+
+    assert verdict.outcome is Outcome.MATCH, verdict
+
+
+def test_inside_a_window_the_first_entity_spawned_in_it_is_number_one() -> None:
+    # An entity spawned before the window is named (above); one spawned inside it is
+    # numbered, and nothing before the window counts.
+    reference = transcript(
+        ("alice", login(1)),
+        ("alice", spawn(3)),
+        OBSERVE_OPEN,
+        ("alice", spawn(5, x=1.5)),
+        ("alice", spawn(6, x=2.5)),
+        ("alice", metadata(5)),
+        OBSERVE_CLOSE,
+    )
+    candidate = transcript(
+        ("alice", login(1)),
+        OBSERVE_OPEN,
+        ("alice", spawn(8, x=1.5)),
+        ("alice", spawn(9, x=2.5)),
+        ("alice", metadata(9)),
+        OBSERVE_CLOSE,
+    )
+
+    verdict = compare(reference, candidate, [])
+
     assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
         (2, "entity_id", "#1", "#2")
     ]
@@ -230,9 +540,6 @@ def test_each_bot_numbers_the_entities_it_hears_of_itself() -> None:
 
 
 def test_a_list_of_entity_ids_is_numbered_element_by_element() -> None:
-    def removed(*entity_ids: int) -> Packet:
-        return packet("minecraft:remove_entities", fields={"entity_ids": list(entity_ids)})
-
     reference = transcript(
         ("alice", login(1)), ("alice", spawn(3)), ("alice", spawn(4)), ("alice", removed(3, 4))
     )
@@ -327,6 +634,9 @@ def test_a_mask_on_an_entity_id_is_refused(name: str, path: str) -> None:
         ("minecraft:login", "*"),
         ("minecraft:add_entity", "x"),
         ("minecraft:set_entity_data", "entries"),
+        ("minecraft:set_entity_data", "entries[*].value"),
+        # A key where a list of entity ids has its elements is no entity id (mutant C7).
+        ("minecraft:remove_entities", "entity_ids.count"),
         ("minecraft:level_particles", "particle"),
         ("test:entity", "entity_id"),
     ],

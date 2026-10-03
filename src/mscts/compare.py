@@ -16,14 +16,17 @@ left out on purpose:
   are. The order of a Bot's stream is compared; when its Packets arrived is not.
 - The interleaving of different Bots' Packets is timing too, so each Bot is compared
   on its own.
-- Entity ids and the random UUIDs of mobs: vanilla gives ids from a counter, so each is
-  compared as the order in which its entity first appears in the Bot's compared Packets
+- Entity ids and the random UUIDs of mobs: vanilla gives ids from a counter, so an
+  entity spawned outside the windows is compared as its type and its position at its
+  first add_entity there (a player as its UUID), and any
+  other as the order in which it first appears in the Bot's compared Packets
   (`ENTITY_UUIDS`).
 - Control's Bot (`CONTROL_PLAYER`) sets the world up, as an operator: what it receives
   is the servers' answers to that, not what the Group tests.
 """
 
 import bisect
+import dataclasses
 import json
 import re
 import struct
@@ -136,6 +139,9 @@ class Mask:
         path: The field path, spelled as Divergence paths are (e.g. `entity_id`,
             `players.sample[0].name`), where `[*]` is every index of a list
             (`players.sample[*].name`); or `*` (WHOLE_PACKET) for the whole packet.
+            A path that is an entity id is refused, but a path to a value that holds
+            one (`set_entity_data` / `entries`), or `*`, hides the id with the rest:
+            its reason is the only guard that nothing a player sees is hidden with it.
         reason: Why it is nondeterministic.
     """
 
@@ -149,7 +155,7 @@ class Mask:
         Raises:
             ValueError: The packet name or the reason is empty, the path is malformed or
                 not spelled as a Divergence path would be, or it is an entity id (or a
-                list of them), which every Comparison numbers instead (#21).
+                list of them), which every Comparison names or numbers instead (#21).
         """
         if not self.packet:
             msg = "a Mask needs a packet name"
@@ -160,8 +166,9 @@ class Mask:
         if self.path != WHOLE_PACKET and _is_entity_id(self.packet, _mask_steps(self)):
             msg = (
                 f"{self.packet} {self.path}: an entity id needs no Mask; every Comparison "
-                "numbers entities in the order each Bot first hears of them, so the same "
-                "entities compare equal on both servers (#21)"
+                "names each entity by its type and where it spawned, or numbers it in the "
+                "order each Bot first hears of it, so the same entities compare equal on "
+                "both servers (#21)"
             )
             raise ValueError(msg)
 
@@ -391,16 +398,19 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     the play Packets they do not observe are left out (`_Windows.observes`); the
     Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
-    JSON is parsed, and its text components written one way); each entity id, and each
-    of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the n-th in the Packets left in
-    the stream, so nothing left out or dropped counts (`_Numbers`); and in the Packets of
-    a Mask's name, the value at its path is MASKED on both sides, wherever present, unless
-    it is None: a Mask hides a value, never whether it is there, so a field or a list
-    element one side lacks is still a Divergence, and a masked field is no test case
-    where it does not diverge. The Masks are one for each of the `RANDOM_FIELDS`, then
-    `masks`. Indices count the
-    normalized stream, so they do not shift when a re-run has more or fewer Packets left
-    out or dropped; paths and values are those of the sorted, canonical, numbered form.
+    JSON is parsed, and its text components written one way); each entity id whose
+    `add_entity` was left out of the windows becomes its type and its position at the
+    first such `add_entity` (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is
+    `player <uuid>`), and every other entity id but one first seen in a
+    `remove_entities`, and each of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the
+    n-th in the Packets left in the stream, so nothing left out or dropped counts
+    (`_Numbers`); and in the Packets of a Mask's name, the value at its path is MASKED on
+    both sides, wherever present, unless it is None: a Mask hides a value, never whether
+    it is there, so a field or a list element one side lacks is still a Divergence, and a
+    masked field is no test case where it does not diverge. The Masks are one for each of
+    the `RANDOM_FIELDS`, then `masks`. Indices count the normalized stream, so they do not
+    shift when a re-run has more or fewer Packets left out or dropped; paths and values
+    are those of the sorted, canonical, numbered form.
 
     Each Bot's two streams are aligned on their packet keys (State and name), leaving
     as few Packets unmatched as possible; swapping the sides mirrors the alignment.
@@ -588,20 +598,25 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
 
     If the Transcript has Observation windows, its play Packets are only those inside
     one of them (`_Windows.observes`). Entity ids are numbered over these Packets only
-    (`_Numbers.of`): how many entities a Bot heard of before a window is timing, so what
-    is not compared never shifts the numbers of what is.
+    (`_Numbers.take`): how many entities a Bot heard of before a window is timing, so what
+    is not compared never shifts the numbers of what is. An entity whose `add_entity` was
+    left out of the windows is named by it instead (`_Numbers.spawned`), and any
+    `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
     """
     windows = _Windows.of(transcript)
-    taken = [
-        event.packet
-        for event in transcript.events
-        if event.bot == bot
-        and event.packet.direction is Direction.CLIENTBOUND
-        and event.packet.name not in masks.dropped
-        and (windows is None or windows.observes(event))
-    ]
-    numbers = _Numbers.of(taken)
-    return [_normalize(packet, masks, numbers) for packet in taken]
+    numbers = _Numbers(ids={}, uuids={})
+    stream: list[_Normalized] = []
+    for event in transcript.events:
+        packet = event.packet
+        if event.bot != bot or packet.direction is not Direction.CLIENTBOUND:
+            continue
+        if windows is not None and not windows.observes(event):
+            numbers.spawned(packet, masks)
+        elif packet.name not in masks.dropped:
+            numbers.take(packet)
+            stream.append(_normalize(packet, masks, numbers))
+        numbers.removed(packet)
+    return stream
 
 
 @dataclass(frozen=True, slots=True)
@@ -653,8 +668,11 @@ class _Windows:
 # (`ENTITY_UUIDS`), becomes `#<n>` in the order it first appears there, after Canonicalization
 # and before the Masks. Vanilla gives ids from a counter and mobs random UUIDs, so the same
 # entities on two servers compare equal only by their order. Packets left out of the
-# Comparison (outside the windows) take no number: how many arrived is timing. The Codec says
-# where a packet's entity ids are.
+# Comparison (outside the windows) take no number: how many arrived is timing. But an entity
+# whose add_entity came outside the windows is named by its type and its position at the
+# first such add_entity (#116; a player by its UUID, as where a player joins is not fixed),
+# which the Group's setup fixes, so an action inside a window on the wrong one of two such
+# entities is still a Divergence. The Codec says where a packet's entity ids are.
 
 
 @dataclass(frozen=True, slots=True)
@@ -722,48 +740,100 @@ def _replaced(value: _Value, trie: _Trie, number: Callable[[_Value], _Value]) ->
     return value
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _Numbers:
-    """The numbers of the entities in a Bot's compared Packets: `#1` is the first.
+    """The names of the entities in a Bot's stream so far, `_stream` feeding it in order.
+
+    An entity spawned outside the windows is named by its `add_entity` (`spawned`); any
+    other entity id, and each entity UUID, is numbered by first appearance in the compared
+    Packets (`take`): `#1` is the first.
 
     Attributes:
-        ids: Each entity id's number.
+        ids: Each entity id's name or number.
         uuids: Each entity UUID's number, counted on their own.
+        numbered: How many entity ids have taken a number.
+        names: How many entities have taken each name, before its suffix.
     """
 
     ids: dict[int, str]
     uuids: dict[UUID, str]
+    numbered: int = 0
+    names: dict[str, int] = dataclasses.field(default_factory=dict)
 
-    @classmethod
-    def of(cls, packets: Iterable[Packet]) -> Self:
-        """Number the entity ids and UUIDs in `packets`, a Bot's compared stream, in order.
+    def spawned(self, packet: Packet, masks: _Masks) -> None:
+        """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.
+
+        The name is the entity's type and its position at its first `add_entity` before the
+        window (`pig@(1.5, -60.0, 7.5)`), which the Group's own setup fixes, however many
+        other entities arrived first. A later `add_entity` for the id keeps the first name,
+        unless a `remove_entities` ended it in between (`removed`): vanilla sends one again
+        only after that, or after the client's world is reset. A player is named by its
+        UUID instead (`player <uuid>`): where a player joins is not fixed by the Group. The
+        fields go through the Group's Masks first, so a masked axis reads MASKED; a `*`
+        Mask on `add_entity` names nothing, so its entities are numbered like the rest. A
+        name an earlier entity already took gets a suffix, ` #2` for the second, in the
+        order the Bot heard of them, so a Mask never makes two entities one.
+        """
+        if packet.name != _ADD_ENTITY or packet.fields is None or packet.name in masks.dropped:
+            return
+        entity_id = packet.fields.get("entity_id")
+        if type(entity_id) is int and entity_id not in self.ids:
+            fields = _copy(packet, packet.fields)
+            _hide_all(fields, masks.paths.get(packet.name, ()))
+            name = (
+                f"player {fields.get('entity_uuid')}" if _is_player(fields) else _spawn_name(fields)
+            )
+            taken = self.names.get(name, 0) + 1
+            self.names[name] = taken
+            self.ids[entity_id] = name if taken == 1 else f"{name} #{taken}"
+
+    def take(self, packet: Packet) -> None:
+        """Number the entity ids and UUIDs in `packet`, the next compared one, not yet known.
 
         Without windows, the first is the Bot's own player, from `login`. An id of None (no
-        entity) is not an entity, and neither is the UUID of a player (`ENTITY_UUIDS`).
+        entity) is not an entity, and neither is the UUID of a player (`ENTITY_UUIDS`). An id
+        first seen in a `remove_entities` takes no number: the entity is gone, and a number
+        would shift every later one.
         """
-        numbers = cls(ids={}, uuids={})
-        for packet in packets:
-            if packet.fields is None:
-                continue
-            ids, uuids = _entity_tries(packet.state, packet.name)
-            for found in _found(packet.fields, ids):
-                if type(found) is int:
-                    numbers.ids.setdefault(found, f"#{len(numbers.ids) + 1}")
-            if not _is_player(packet.fields):
-                for found in _found(packet.fields, uuids):
-                    if isinstance(found, UUID):
-                        numbers.uuids.setdefault(found, f"#{len(numbers.uuids) + 1}")
-        return numbers
+        if packet.fields is None or packet.name == _REMOVE_ENTITIES:
+            return
+        ids, uuids = _entity_tries(packet.state, packet.name)
+        for found in _found(packet.fields, ids):
+            if type(found) is int and found not in self.ids:
+                self.numbered += 1
+                self.ids[found] = f"#{self.numbered}"
+        if not _is_player(packet.fields):
+            for found in _found(packet.fields, uuids):
+                if isinstance(found, UUID):
+                    self.uuids.setdefault(found, f"#{len(self.uuids) + 1}")
+
+    def removed(self, packet: Packet) -> None:
+        """End the name or number of each id `packet` removes, if it is a `remove_entities`.
+
+        Compared or not: the client forgets the entities either way, so a later `add_entity`
+        with one of the ids is a new entity.
+        """
+        if packet.name != _REMOVE_ENTITIES or packet.fields is None:
+            return
+        ids, _ = _entity_tries(packet.state, packet.name)
+        for found in _found(packet.fields, ids):
+            if type(found) is int:
+                self.ids.pop(found, None)
 
     def apply(self, packet: Packet, fields: dict[str, _Value]) -> None:
         """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields.
 
         A player's UUID took no number, so it stays as it is, unless an entity that is not
-        a player had it too: then it shows that entity's number.
+        a player had it too: then it shows that entity's number. An id a `remove_entities`
+        removes that the Bot never heard of shows `#?` (`_UNKNOWN_ENTITY`): its value is the
+        server's counter, which is timing.
         """
         ids, uuids = _entity_tries(packet.state, packet.name)
+        # `take` has given every other id of the packet a name or number already.
         _replaced(
-            fields, ids, lambda value: self.ids.get(value, value) if type(value) is int else value
+            fields,
+            ids,
+            lambda value: self.ids.get(value, _UNKNOWN_ENTITY) if type(value) is int else value,
         )
         _replaced(
             fields,
@@ -825,6 +895,33 @@ def _step_fits(step: _MaskStep, key: Step) -> bool:
     if isinstance(key, Each):
         return isinstance(step, Each) or type(step) is int
     return step == key
+
+
+_ADD_ENTITY = "minecraft:add_entity"
+_REMOVE_ENTITIES = "minecraft:remove_entities"
+_UNKNOWN_ENTITY = "#?"
+"""An id a `remove_entities` removes that the Bot had not heard of: it took no number."""
+
+
+def _spawn_name(fields: Mapping[str, object]) -> str:
+    """An entity's name from its `add_entity` `fields`: its type and position there.
+
+    For example `pig@(1.5, -60.0, 7.5)`. A type id outside the registry is written as the
+    number, a masked axis as MASKED, and -0.0 as 0.0.
+    """
+    kind = fields.get("type")
+    names = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
+    if type(kind) is int and 0 <= kind < len(names):
+        kind = names[kind].removeprefix("minecraft:")
+    position = ", ".join(_axis(fields.get(axis)) for axis in ("x", "y", "z"))
+    return f"{kind}@({position})"
+
+
+def _axis(value: object) -> str:
+    """One axis of a position in a name: MASKED as is, -0.0 as 0.0, else its repr."""
+    if value == MASKED:
+        return MASKED
+    return repr(value + 0.0) if type(value) is float else repr(value)
 
 
 def _is_player(fields: Mapping[str, object]) -> bool:

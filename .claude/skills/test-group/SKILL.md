@@ -41,6 +41,20 @@ it reads it into):
 - a Group that spawns or counts entities turns natural spawning off in
   its Fixture (`gamerule spawn_mobs false`; 26.3 rule names are
   snake_case), and tags what it summons so it removes only those;
+- entities a Group spawns before its window are told apart by type and
+  position at their first `add_entity` before the window
+  (`pig@(1.5, -60.0, 7.5)`, #116): spawn two of one type at different
+  positions. Names that would be equal (one type at one position, or
+  positions a Mask hides) get ` #2`, ` #3` in the order the Bot heard
+  of them, which can be hash order for one tick's spawns, so do not
+  rely on it. An entity that spawns at a random position (a dropped
+  item) takes a Mask on that `add_entity` axis, which hides it in the
+  name too;
+- an entity named by its position must not move before the window:
+  run `tick freeze` while the Fixture sets it up, or summon a mob with
+  `NoAI:1b` and any other entity with `NoGravity:1b` and no `Motion`
+  (`NoAI` is for mobs only), or its first `add_entity` can carry a
+  position it drifted to;
 - anything else is the Group not being deterministic yet: the window
   reaches timing (later chunk batches, a barrier that waits ticks) or
   world state that drifts between Instances (the default flat world
