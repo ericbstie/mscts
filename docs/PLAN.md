@@ -1942,6 +1942,13 @@ def loads(text: str) -> Report: ...
 class ReportJsonError(ValueError): ...
 
 def render_text(report: Report, *, verbose: bool = False) -> str: ...
+def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
+# report.md (#190): what render_text says, as Markdown. "# <first line>"; the verbose
+# header as "Label: value" lines joined by hard breaks; each entry "- <title> `<name>`",
+# its verbose values nested ("  - "), with values and paths as code spans; "## Group
+# times" and a list; the total last. Blocks are separated by a blank line. Text mscts did
+# not write is shown as it is: code spans fence it with more backticks than it holds, and
+# prose escapes \ ` * _ [ ] < > & | ~. Both renderers write one _Document.
 # case_titles.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
