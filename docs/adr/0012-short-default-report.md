@@ -51,8 +51,8 @@ fault is mscts's or the Reference's.
 score: `35 passed, 5 failed (1 not tested), 1 error (not scored)` and
 `Score: 87.5% (35 of 40 test cases pass)`. The score is rounded down, so
 only a Run where every scored test case passes shows 100%. The detailed
-option adds the values under each line that differs. `report.md` carries
-the same lines and totals.
+option adds the values under each line that differs. `report.md` and
+`report.json` carry the same lines and totals.
 
 `_LISTED` in `report.py` is the one place that decides which lines are
 listed, and `NETWORK_TRAFFIC_ONLY_PASSES` the one place that applies

@@ -231,8 +231,37 @@ Took 13.3 s
 ```
 
 `report.json` is the whole Report, with or without `--verbose`. Its keys
-are `target`, `reference`, `candidate`, `results`, `notes` and
-`elapsed_s`. `results` has one entry per Group, with each repetition's
+are `target`, `reference`, `candidate`, `test_cases`, `totals`,
+`results`, `notes` and `elapsed_s`. `test_cases` has one entry per line
+of the Report, and `totals` counts them, with the score as a fraction of
+1, or `null` if no test case was scored:
+
+```json
+...
+  "test_cases": [
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.description",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+...
+  "totals": {
+    "passed": 19,
+    "failed": 0,
+    "not_tested": 0,
+    "errors": 0,
+    "scored": 19,
+    "score": 1.0
+  },
+...
+```
+
+A `result` is `pass`, `fail`, `not tested` or `error`. A Group's own line
+has an empty `test_case` and its reasons.
+
+`results` has one entry per Group, with each repetition's
 Verdict, every difference with both values, and each server's
 Measurements. The same Run wrote this, among its other differences:
 
@@ -276,4 +305,5 @@ An object a server sent whose only key is one of these, or `dict`, is
 written inside `{"dict": ...}`, so it never reads as one of them.
 
 In Python, `mscts.report_json.loads` reads a `report.json` back into the
-Report mscts wrote.
+Report mscts wrote. It ignores `test_cases` and `totals`, which follow
+from `results`.

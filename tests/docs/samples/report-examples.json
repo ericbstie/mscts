@@ -28,6 +28,37 @@
     ],
     "installed_version": null
   },
+  "test_cases": [
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.players.max",
+      "result": "fail",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status:pong_response.timestamp",
+      "result": "fail",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "join/basic",
+      "test_case": "",
+      "result": "not tested",
+      "network_traffic_only": false,
+      "reasons": "Not tested: prerequisite status/basic was mismatch"
+    }
+  ],
+  "totals": {
+    "passed": 0,
+    "failed": 3,
+    "not_tested": 1,
+    "errors": 0,
+    "scored": 3,
+    "score": 0.0
+  },
   "results": [
     {
       "group_id": "status/basic",

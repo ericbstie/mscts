@@ -1,7 +1,9 @@
 """report.json: the whole Report as JSON, and the Report back from it (#190).
 
 The file is the Report's fields, nested as in `Report`: `target`, `reference`, `candidate`,
-`results`, `notes` and `elapsed_s`. A Divergence's values are JSON where JSON can hold
+`results`, `notes` and `elapsed_s`. After `candidate` come `test_cases`, each line the
+Report lists (#101), and their `totals` with the score. Both follow from `results`, so
+`loads` ignores them. A Divergence's values are JSON where JSON can hold
 them. Each other value is an object with a single tag key: `{"absent": true}` for a side
 that leaves the value out, `{"bytes": "<hex>"}`, `{"uuid": "<uuid>"}`, and
 `{"float": "nan"}` (or `"inf"`, `"-inf"`). An object the server sent whose only key is
@@ -26,7 +28,7 @@ from mscts.compare import (
     Verdict,
 )
 from mscts.measure import Measurement
-from mscts.report import Report
+from mscts.report import CaseResult, Report, Totals, case_results, totals
 from mscts.run import GroupResult, SideSummary
 from mscts.target import Target
 
@@ -62,6 +64,7 @@ def _no_constant(name: str) -> object:
 
 def _report(report: Report) -> dict[str, object]:
     target = report.target
+    lines = case_results(report)
     return {
         "target": {
             "minecraft_version": target.minecraft_version,
@@ -70,9 +73,32 @@ def _report(report: Report) -> dict[str, object]:
         },
         "reference": _side(report.reference),
         "candidate": _side(report.candidate),
+        "test_cases": [_case_result(line) for line in lines],
+        "totals": _totals(totals(lines)),
         "results": [_result(result) for result in report.results],
         "notes": list(report.notes),
         "elapsed_s": report.elapsed_s,
+    }
+
+
+def _case_result(line: CaseResult) -> dict[str, object]:
+    return {
+        "group_id": line.group_id,
+        "test_case": line.test_case,
+        "result": str(line.result),
+        "network_traffic_only": line.network_traffic_only,
+        "reasons": line.reasons,
+    }
+
+
+def _totals(counts: Totals) -> dict[str, object]:
+    return {
+        "passed": counts.passed,
+        "failed": counts.failed,
+        "not_tested": counts.not_tested,
+        "errors": counts.errors,
+        "scored": counts.scored,
+        "score": counts.score,
     }
 
 

@@ -28,6 +28,149 @@
     ],
     "installed_version": "nightly 4426d11 (sha256 b8382a8a…)"
   },
+  "test_cases": [
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.description",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.description.text",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.enforceSecureChat",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.favicon",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.players.max",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.players.online",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.players.sample",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.version.name",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/basic",
+      "test_case": "status_response.version.protocol",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status:pong_response.timestamp",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.description",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.description.text",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.enforceSecureChat",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.favicon",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.players.max",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.players.online",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.players.sample",
+      "result": "pass",
+      "network_traffic_only": true,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.version.name",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    },
+    {
+      "group_id": "status/ping",
+      "test_case": "status_response.version.protocol",
+      "result": "pass",
+      "network_traffic_only": false,
+      "reasons": ""
+    }
+  ],
+  "totals": {
+    "passed": 19,
+    "failed": 0,
+    "not_tested": 0,
+    "errors": 0,
+    "scored": 19,
+    "score": 1.0
+  },
   "results": [
     {
       "group_id": "status/basic",

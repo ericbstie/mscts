@@ -1999,7 +1999,9 @@ def totals(results: Iterable[CaseResult]) -> Totals: ...
 
 # report_json.py: report.json, the whole Report (#190). dumps(report) -> str: the Report's
 # fields nested as in Report (target, reference, candidate, results, notes, elapsed_s),
-# indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
+# with test_cases (each case_results line: group_id, test_case, result, network_traffic_only,
+# reasons) and totals (passed, failed, not_tested, errors, scored, score: fraction or null)
+# after candidate (#101); loads ignores both, as they follow from results. Indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
 # with one tag key: {"absent": true}, {"bytes": hex}, {"uuid": str}, {"float": "nan" |
 # "inf" | "-inf"}; a server object whose only key is a tag (or "dict") is {"dict": {...}}.
 # Any other value type is a TypeError. loads(text) -> Report reads it back, equal to the
