@@ -41,6 +41,10 @@ says otherwise. The wiki is revision 3810839.
   action on the same tick.
 - `handleSetHeldSlot` selects the slot but leaves `carriedIndex`, so the
   next tick sends the slot back.
+- `handleRespawn` makes a new `LocalPlayer`, whose new `Inventory` selects
+  slot 0, and copies no slot over. The `MultiPlayerGameMode` stays, and
+  `carriedIndex` with it, so the next tick sends slot 0 if that differs.
+  A play `login` makes a new `MultiPlayerGameMode` too, so both start at 0.
 - `BlockStatePredictionHandler.startPredicting` adds 1 to the sequence, and
   the predicted packet carries the new value: the first is 1. The handler
   belongs to the `ClientLevel`, which is new with each play `login`, and
@@ -115,5 +119,3 @@ as Compare does.
   client would, and `stop_digging` on the tick it tests.
 - `place` sends `use_item_on` only: the Bot cannot tell that the use did
   nothing, so it never goes on to `use_item`.
-- A respawn makes a new player with a new inventory. The Bot keeps the
-  selected and last sent slots across one.

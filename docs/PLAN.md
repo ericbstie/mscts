@@ -659,7 +659,8 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # (a new LocalPlayer; respawn with data_kept bit 1 keeps its keys and sprinting; no
     # answer); play login, or respawn into another dimension → the block-change sequence
     # starts at 0 again (a new ClientLevel), login also the held slots (a new
-    # MultiPlayerGameMode); play set_held_slot (0-8) → selected, sent back on the next tick
+    # MultiPlayerGameMode); respawn → slot 0 selected (a new Inventory), the last sent slot
+    # kept, so the next tick sends 0 if it differs; play set_held_slot (0-8) → selected, sent back on the next tick
     # (no answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.

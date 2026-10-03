@@ -266,6 +266,22 @@ def test_a_login_starts_the_held_slots_again() -> None:
     assert ticks[-1][0] == ("minecraft:set_carried_item", {"slot": 3})
 
 
+@pytest.mark.parametrize("data_kept", [0, 3])
+def test_a_respawn_selects_slot_0_and_sends_it(data_kept: int) -> None:
+    # handleRespawn makes a new LocalPlayer, whose Inventory selects slot 0, and copies no
+    # slot over. The MultiPlayerGameMode stays, and its carriedIndex with it, so the next
+    # tick sends slot 0.
+    async def script(bot: Bot) -> None:
+        await bot.hold(3)
+        await bot.sync()
+        await bot.tick()
+
+    respawn = ("minecraft:respawn", {**RESPAWN, "data_kept": data_kept})
+    ticks = ticks_sent(joined(script, after_first_tick=respawn), NAMES)
+    # First in the tick: the fresh player's pose follows it.
+    assert ticks[-1][0] == ("minecraft:set_carried_item", {"slot": 0})
+
+
 ACTIONS: list[tuple[str, Callable[[Bot], Awaitable[None]]]] = [
     ("hold", lambda bot: bot.hold(1)),
     ("dig", lambda bot: bot.dig(0, 0, 0, Face.UP)),

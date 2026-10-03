@@ -391,7 +391,8 @@ class Replies:
     `reported` starts again from a fresh player's; a respawn that keeps entity data
     (`data_kept` bit 1) keeps the keys and sprinting last reported. A login, or a respawn into
     another dimension, starts the block-change sequence again; a login also the held slots.
-    Play `set_held_slot` selects a hotbar slot.
+    A respawn selects slot 0 and keeps the slot last sent, so the next tick sends 0 if that
+    differs. Play `set_held_slot` selects a hotbar slot.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
@@ -468,8 +469,9 @@ class Replies:
         `LocalPlayer`, so `reported` starts again; a respawn that keeps entity data keeps the
         keys and sprinting last reported, and one into another dimension brings a new level,
         whose block-change sequence starts at 0 (`ClientPacketListener.handleLogin`,
-        `handleRespawn`). A held slot from the server is selected if it is in the hotbar
-        (`handleSetHeldSlot`), and the next tick sends it back.
+        `handleRespawn`). A respawn's new player selects slot 0 (a new `Inventory`), while the
+        `MultiPlayerGameMode` keeps the slot last sent. A held slot from the server is
+        selected if it is in the hotbar (`handleSetHeldSlot`), and the next tick sends it back.
         """
         if name == "minecraft:set_held_slot":
             slot = _field(fields, "slot", int)
@@ -487,6 +489,7 @@ class Replies:
             self.reported = (
                 _Reported(keys=old.keys, sprinting=old.sprinting) if kept else _Reported()
             )
+            self.interaction.selected_slot = 0
             if dimension != self._dimension:
                 self.interaction.sequence = 0
         self._dimension = dimension

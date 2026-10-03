@@ -47,7 +47,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
 | `await bot.jump()` | Presses the jump key for one tick, as the vanilla client reports it. It does not move the Bot. Send the jump's positions with `move`. |
 | `await bot.tick()` | Sends what the vanilla client sends on a tick when the player does nothing. |
-| `await bot.hold(slot)` | Selects a hotbar slot, from 0 to 8. |
+| `await bot.hold(slot)` | Selects a hotbar slot, from 0 to 8. After a respawn, slot 0 is selected again, as in the vanilla client. |
 | `await bot.dig(x, y, z, face)` | Starts breaking a block from one face and swings the arm. In creative, this breaks the block. |
 | `await bot.stop_digging(x, y, z, face)` | Finishes breaking a block and swings the arm. The Bot does not time the breaking: send this at the tick you want to test. |
 | `await bot.cancel_digging(x, y, z)` | Stops breaking a block before it breaks. |
