@@ -1,4 +1,4 @@
-# ADR-0001: Black-box differential testing over the wire protocol
+# ADR-0001: Black-box differential testing through the network protocol
 
 Status: accepted (2026-09-25)
 
@@ -6,7 +6,7 @@ Status: accepted (2026-09-25)
 
 The suite must stay as server-agnostic as possible. Candidates differ in
 language, config format, console and admin APIs. The only interface they
-all implement is the Java Edition wire protocol at one protocol version.
+all implement is the Java Edition network protocol at one protocol version.
 "Compliance" means behaving like vanilla, so vanilla is the natural oracle.
 Testing only through that protocol also keeps the suite from depending on
 any server's internals, and it tests exactly what a player's client sees.
