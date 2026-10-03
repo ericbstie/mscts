@@ -27,6 +27,12 @@ _RESPAWN_RADIUS = "gamerule respawn_radius"
 both Instances spawn the player at the same place, so they send the same chunks (measured on
 #30: 20 of 20 plays, with no `setworldspawn`, which could not be undone)."""
 
+_REGENERATION = "gamerule natural_health_regeneration"
+"""In peaceful, while it is on, a player's saturation goes up by 1 every 20 of its ticks
+online (`ServerPlayer.tickRegeneration`). The player's data is saved, so how long one play's
+player stayed would change what the next play's `set_health` sends
+(docs/research/2026-10-03-peaceful-saturation.md)."""
+
 
 @group("join/basic")
 async def basic(context: GroupContext) -> None:
@@ -36,6 +42,8 @@ async def basic(context: GroupContext) -> None:
         undo.push_async_callback(context.control.run, f"{_MOVEMENT_CHECK} true")
         await context.control.run(f"{_RESPAWN_RADIUS} 0")
         undo.push_async_callback(context.control.run, f"{_RESPAWN_RADIUS} 10")
+        await context.control.run(f"{_REGENERATION} false")
+        undo.push_async_callback(context.control.run, f"{_REGENERATION} true")
         # The player joins alone: Control rejoins to undo the rules once the window is over.
         await context.control.leave()
         await until_no_player_online(context.endpoint)

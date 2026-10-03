@@ -20,8 +20,16 @@ from tests.group.test_control import playing
 GROUP_ID = "join/basic"
 ALICE, CONTROL = "alice", "control"
 BATCH_FINISHED = "minecraft:chunk_batch_finished"
-SET_UP = ("gamerule player_movement_check false", "gamerule respawn_radius 0")
-UNDO = ("gamerule respawn_radius 10", "gamerule player_movement_check true")
+SET_UP = (
+    "gamerule player_movement_check false",
+    "gamerule respawn_radius 0",
+    "gamerule natural_health_regeneration false",
+)
+UNDO = (
+    "gamerule natural_health_regeneration true",
+    "gamerule respawn_radius 10",
+    "gamerule player_movement_check true",
+)
 """What Control ends with: each setting put back, the last made first."""
 
 

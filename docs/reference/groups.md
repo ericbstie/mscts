@@ -58,7 +58,7 @@ What a player receives when it joins, up to the end of the first chunk batch: th
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `join/basic` | exact | none | One player joins alone and receives the first chunk batch. The player spawns exactly at the world spawn (`gamerule respawn_radius 0`), and the check that repeats its first position is off (`gamerule player_movement_check false`). Both rules are put back afterwards. | `join.to_first_chunk` |
+| `join/basic` | exact | none | One player joins alone and receives the first chunk batch. The player spawns exactly at the world spawn (`gamerule respawn_radius 0`), the check that repeats its first position is off (`gamerule player_movement_check false`), and so is natural regeneration (`gamerule natural_health_regeneration false`), which in peaceful raises the player's saturation for as long as it stays online. The rules are put back afterwards. | `join.to_first_chunk` |
 
 The comparison ends when the first chunk batch is complete. Later batches, and the animals that walk into view, depend on timing.
 
