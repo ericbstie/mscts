@@ -81,7 +81,10 @@ ends, each Bot waits until a tick has passed on the server since it
 received everything the Bot sent. Its window ends there, whatever the other
 Bots are still waiting for (a window with `until` waits for nothing: see
 below). Each Bot also waits the same way before the window opens, so what
-your setup changed reaches every Bot before the window, not only Control.
+your setup changed reaches every Bot before the window, not only Control,
+provided the setup waited for its feedback (`context.control.run` does). A
+command a Bot sends without waiting for its feedback can still land inside
+the window.
 A Bot you make after the window ends is outside it. A few
 packets the server sends on a clock rather than because of anything a Group
 did (keep-alives, the time of day and vanilla's player latency updates)

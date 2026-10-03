@@ -897,7 +897,9 @@ class GroupContext:
                 ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: on entry, every Bot in play
                                     # and not disconnected passes Bot.sync (all at once, so
-                                    # what setup caused has arrived at every Bot; #141), then
+                                    # what setup caused has arrived at every Bot, if the
+                                    # setup waited for its feedback, as Control.run does;
+                                    # #141), then
                                     # Marks OBSERVE_OPEN (then the names, each after a space);
                                     # when the body completes, every Bot in play and not
                                     # disconnected passes Bot.sync again (all at once; the

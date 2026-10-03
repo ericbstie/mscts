@@ -280,7 +280,9 @@ class GroupContext:
         """Compare only what the Bots receive inside the block: an Observation window.
 
         On entry, every Bot in play passes the barrier (`Bot.sync`), all at once, so what
-        the setup before the window caused has arrived at every Bot, not only at Control's;
+        the setup before the window caused has arrived at every Bot, not only at Control's,
+        provided the setup waited for its feedback (`Control.run` does: the server runs a
+        chat command between ticks, after the barrier's pass);
         then the window gets its `observe:open` Mark, followed by `names`, each after a
         space. When the body completes, every Bot in play passes the barrier again, all at
         once. Each Bot's window ends at its own barrier: it gets the Mark `observe:close

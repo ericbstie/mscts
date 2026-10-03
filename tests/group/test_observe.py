@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
+from tests.group.test_control import text
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
@@ -33,6 +35,7 @@ from tests.net.fakes import (
 CODEC = Codec.for_target(TARGET)
 REQUEST, ANSWER = "minecraft:client_command", "minecraft:award_stats"
 BLOCK_UPDATE = "minecraft:block_update"
+SYSTEM_CHAT = "minecraft:system_chat"
 BLOCK = bytes.fromhex("0000004000001fc4")
 """A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
 _UNUSED = Endpoint(host="127.0.0.1", port=1)
@@ -323,25 +326,31 @@ async def test_a_bot_the_group_closed_in_the_window_is_neither_synced_nor_draine
 
 
 LATE_S = 0.02
-"""How long after `setup` the fake sends what setup changed: still in flight at the open."""
+"""How long after `setup` the fake sends what setup changed to the other Bots."""
 
 
 def late_setup_server() -> Handler:
-    """Join like vanilla, answer the barrier a tick apart, and answer `setup` late.
+    """Join like vanilla, answer the barrier a tick apart, and answer `setup` like Control.
 
-    A Bot that runs the command `setup` gets a `block_update` `LATE_S` later.
+    The Bot that runs the command `setup` gets its feedback at once; every other Bot gets
+    the `block_update` it caused `LATE_S` later, still on its way when the feedback lands.
     """
+    peers: list[Peer] = []
+    late: set[asyncio.Task[int]] = set()
 
     async def then(peer: Peer) -> None:
+        peers.append(peer)
         requests = 0
-        late: set[asyncio.Task[int]] = set()
         async for packet in peer.packets():
             if packet.name == REQUEST:
                 requests += 1
                 await answer_each_tick(peer, requests)
             elif (packet.fields or {}).get("command") == "setup":
-                update = peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01")
-                late.add(asyncio.create_task(write_later(peer, update)))
+                await peer.write(peer.frame(SYSTEM_CHAT, content=text("done"), overlay=False))
+                for other in peers:
+                    if other is not peer:
+                        update = other.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01")
+                        late.add(asyncio.create_task(write_later(other, update)))
         await asyncio.gather(*late)
 
     return join_server([], JoinScript(then=then))
@@ -356,11 +365,13 @@ async def write_later(peer: Peer, frame: bytes) -> int:
 async def test_what_setup_caused_arrives_before_the_window_opens_at_every_bot() -> None:
     # #141: setup passes the barrier on Control only, so a packet setup caused that was
     # still on its way to another Bot could land inside the window on one Instance only.
+    # Setup waits for its feedback, as `Control.run` does: the barrier covers no more.
     transcript = Transcript(group_id="test/observe", server="fake")
     async with playing(late_setup_server(), transcript) as context:
         await joined(context, "alice")
         bob = await joined(context, "bob")
         await bob.command("setup")
+        await bob.expect(SYSTEM_CHAT, timeout_s=2.0)
         async with context.observe():
             pass
 
@@ -368,6 +379,23 @@ async def test_what_setup_caused_arrives_before_the_window_opens_at_every_bot() 
     (update,) = arrivals(transcript, BLOCK_UPDATE)
     assert update < opened
     assert "block_update.block_state" not in compare(transcript, transcript, []).test_cases
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_took_its_kick_before_a_window_passes_no_barrier_at_its_open() -> None:
+    # Review of #181, P3: the barrier before the open skips such a Bot, as the closing one
+    # does, so a Group that kicks a Bot during setup does not fail at the next window.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(kicking_server(), transcript) as context:
+        alice = await joined(context, "alice")
+        await joined(context, "bob")
+        await alice.command("kick")
+        await alice.expect("minecraft:disconnect", timeout_s=2.0)
+        async with context.observe():
+            pass
+
+    answers = Counter(e.bot for e in transcript.events if e.packet.name == ANSWER)
+    assert answers == {"bob": 4}, answers  # bob passed the opening and the closing barrier
 
 
 @pytest.mark.asyncio
