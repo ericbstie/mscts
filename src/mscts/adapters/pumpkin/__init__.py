@@ -61,11 +61,11 @@ def _toml_value(value: object) -> TomlValue:
 def pumpkin_defaults() -> Toml:
     """Every key Pumpkin writes to pumpkin.toml, at the value it writes on its first run.
 
-    Read from `data/pumpkin.toml`, the nightly's own first-run file, verbatim (see
-    `data/SOURCE.md`). Pinned, so a changed default can never change a Candidate
+    Read from `pumpkin.toml` beside this module, the nightly's own first-run file, verbatim (see
+    `SOURCE.md`). Pinned, so a changed default can never change a Candidate
     Instance silently. A new copy on each call.
     """
-    pristine = resources.files("mscts.adapters").joinpath("data", "pumpkin.toml")
+    pristine = resources.files(__name__).joinpath("pumpkin.toml")
     document = _toml_value(tomllib.loads(pristine.read_text(encoding="utf-8")))
     if not isinstance(document, dict):  # a TOML document is always a table
         raise TypeError(pristine)
