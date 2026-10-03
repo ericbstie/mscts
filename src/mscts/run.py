@@ -9,7 +9,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
 
-import mscts.groups  # noqa: F401 - importing it registers the shipped Groups
+import mscts.compare
+import mscts.groups  # importing it registers the shipped Groups
 from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
@@ -301,11 +302,18 @@ def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
 
 
 def _passed(verdict: Verdict) -> bool:
-    """Whether `verdict` is a `match`, or a `mismatch` only in network traffic (ADR-0007)."""
+    """Whether `verdict` is a `match`, or a `mismatch` only in network traffic (ADR-0007).
+
+    The second only while network traffic passes (`NETWORK_TRAFFIC_ONLY_PASSES`), as the
+    Score decides it.
+    """
     if verdict.outcome is Outcome.MATCH:
         return True
     return (
-        verdict.outcome is Outcome.MISMATCH and bool(verdict.divergences) and not verdict.gameplay
+        mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES
+        and verdict.outcome is Outcome.MISMATCH
+        and bool(verdict.divergences)
+        and not verdict.gameplay
     )
 
 

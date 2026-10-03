@@ -1227,6 +1227,8 @@ class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
 class Observability(StrEnum):       # ADR-0007; values "gameplay", "network traffic"
     GAMEPLAY, NETWORK_TRAFFIC
+NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied: the Report's
+                                    # test cases and Score, and run.blocked (#221), read it
 
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
 MASKED = "<masked>"                 # what a field Mask shows in place of a value (not None),
@@ -2183,7 +2185,6 @@ type Line = CaseResult | GroupLine
 class Totals:                       # failed counts not_tested; errors are not scored
     passed: int; failed: int; not_tested: int; errors: int
     # scored = passed + failed; score = passed / scored, or None if 0
-NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
 def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of

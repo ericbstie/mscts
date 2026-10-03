@@ -364,6 +364,15 @@ class Observability(StrEnum):
     NETWORK_TRAFFIC = "network traffic"
 
 
+NETWORK_TRAFFIC_ONLY_PASSES: bool = True
+"""Whether a test case that differs only in network traffic passes (ADR-0007).
+
+The one place that decides it: the Report's test cases and Score (`report`), and
+whether a prerequisite passed (`run.blocked`), both read it here, as
+`mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES`.
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class Divergence:
     """One difference a Comparison found for one Bot.

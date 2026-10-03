@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+import mscts.compare
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
 from mscts.group import Group, GroupContext
@@ -179,6 +180,21 @@ def test_a_prerequisite_that_differs_only_in_network_traffic_does_not_block() ->
     basic = Verdict("status/basic", Outcome.MISMATCH, differs)
 
     assert blocked(PING, {"status/basic": basic}) is None
+
+
+def test_a_network_traffic_prerequisite_blocks_if_network_traffic_does_not_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The one switch for ADR-0007's rule decides blocking as it decides the Score.
+    monkeypatch.setattr(mscts.compare, "NETWORK_TRAFFIC_ONLY_PASSES", False)
+    differs = (_sample(Observability.NETWORK_TRAFFIC),)
+    basic = Verdict("status/basic", Outcome.MISMATCH, differs)
+
+    verdict = blocked(PING, {"status/basic": basic})
+
+    assert verdict == Verdict(
+        "status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was mismatch"
+    )
 
 
 def test_a_prerequisite_with_a_gameplay_difference_too_blocks() -> None:

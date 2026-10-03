@@ -6,6 +6,7 @@ from uuid import UUID
 
 import pytest
 
+import mscts.compare
 from mscts.compare import (
     ABSENT,
     TICK_PATH,
@@ -15,7 +16,7 @@ from mscts.compare import (
     Outcome,
     Verdict,
 )
-from mscts.report import Report, render_markdown, render_text
+from mscts.report import LineResult, Report, render_markdown, render_text, report_lines
 from mscts.run import GroupResult, SideSummary
 from mscts.target import TARGET
 
@@ -106,6 +107,16 @@ def test_a_network_traffic_difference_passes_and_says_so() -> None:
         "✓ status/basic/status_response.favicon Server list icon (network traffic only)\n"
         + PASSED_ONE
     )
+
+
+def test_a_network_traffic_difference_fails_if_network_traffic_does_not_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The switch lives with Verdict, where run.blocked reads it too (#221).
+    monkeypatch.setattr(mscts.compare, "NETWORK_TRAFFIC_ONLY_PASSES", False)
+    report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
+    lines = report_lines(report)
+    assert [line.result for line in lines] == [LineResult.FAIL], lines
 
 
 def test_each_test_case_is_listed_once_per_group_across_repetitions_and_values() -> None:
