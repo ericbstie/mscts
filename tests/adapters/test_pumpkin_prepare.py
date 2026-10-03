@@ -4,7 +4,7 @@ from types import MappingProxyType
 
 import pytest
 
-from mscts.adapters import pumpkin
+from mscts.adapters import fixture_world, nbt, pumpkin
 from mscts.adapters.base import Adapter, Installation, LaunchPlan, PrepareError
 from mscts.adapters.pumpkin import Limit, PumpkinAdapter, ops_json, pumpkin_toml
 from mscts.net import Endpoint
@@ -91,6 +91,10 @@ def test_prepare_writes_the_complete_config_and_world_save(
         "data/banned-ips.json": b"[]",
         "world/level.dat": GOLDEN_LEVEL,
         "world/data/minecraft/world_gen_settings.dat": GOLDEN_WORLD_GEN,
+        # The Fixture world's game rules (ADR-0013): tests/adapters/test_fixture_world.py.
+        "world/data/minecraft/game_rules.dat": nbt.encode(
+            fixture_world.game_rules(pumpkin.WORLD_DATA_VERSION)
+        ),
     }
 
 

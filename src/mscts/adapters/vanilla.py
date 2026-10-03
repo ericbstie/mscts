@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 
+from mscts.adapters import fixture_world, nbt
 from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
@@ -117,7 +118,7 @@ VANILLA_DEFAULTS: Mapping[str, str] = MappingProxyType(
         "hardcore": "false",
         "initial-disabled-packs": "",
         "initial-enabled-packs": "vanilla",
-        "level-name": "world",
+        "level-name": fixture_world.WORLD_FOLDER,
         "log-ips": "true",
         "management-server-allowed-origins": "",
         "management-server-host": "localhost",
@@ -243,6 +244,17 @@ def java_properties(entries: Mapping[str, str]) -> str:
         for key, value in sorted(entries.items())
     )
     return "\n".join(lines) + "\n"
+
+
+WORLD_DATA_VERSION = 5023
+"""The DataVersion vanilla 26.3 stamps on its saves (its own game_rules.dat, verified live)."""
+
+
+def _write_game_rules(workdir: Path) -> None:
+    """Write the Fixture world's game rules (ADR-0013) where vanilla reads them on start."""
+    path = workdir / fixture_world.GAME_RULES_DAT
+    path.parent.mkdir(parents=True)
+    path.write_bytes(nbt.gzipped(fixture_world.game_rules(WORLD_DATA_VERSION)))
 
 
 def offline_uuid(name: str) -> uuid.UUID:
@@ -378,6 +390,7 @@ class VanillaAdapter:
         )
         # Control's Bot first: an operator on every Instance (ServerSpec.all_operators).
         (workdir / "ops.json").write_text(ops_json(spec.all_operators), encoding="utf-8")
+        _write_game_rules(workdir)
         jar = installation.root.absolute() / JAR
         # Documented order: HEAP, then NO_NETWORK (established first), then
         # HOST_INDEPENDENCE, then -jar. The two tables are independent of each other, but a

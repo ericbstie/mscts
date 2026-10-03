@@ -27,9 +27,7 @@ loot leaves nothing behind when the probe kills it."""
 
 async def _pigs(context: GroupContext) -> None:
     """Control summons the pigs inside a window; the watcher sees them spawn."""
-    # Vanilla spawns animals near players at random: one that spawns inside the window
-    # would be a difference between the two Instances.
-    await context.control.run("gamerule spawn_mobs false")
+    # No animal spawns inside the window on its own: mob spawning is off (ADR-0013).
     watcher = await context.bot("watcher")
     await watcher.join()
     await context.control.run("tick freeze")
