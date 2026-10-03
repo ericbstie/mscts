@@ -7,6 +7,7 @@ and for the Reference itself failing.
 
 import contextlib
 import json
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -253,6 +254,50 @@ def test_a_comparison_that_raises_value_error_is_an_error_naming_it(
 
     detail = "the Comparison failed: ValueError: a path the Comparison refuses"
     assert verdict == Verdict("status/basic", Outcome.ERROR, detail=detail)
+
+
+def _raises(error: BaseException) -> Callable[..., Verdict]:
+    """A `compare` that raises `error`."""
+
+    def comparison(*_: object) -> Verdict:
+        raise error
+
+    return comparison
+
+
+def test_a_comparison_that_raises_a_runtime_error_is_an_error_naming_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(run_module, "compare", _raises(RuntimeError("a Comparison bug")))
+
+    verdict = judge(BASIC, Transcript(BASIC.id, "vanilla"), Transcript(BASIC.id, "pumpkin"))
+
+    detail = "the Comparison failed: RuntimeError: a Comparison bug"
+    assert verdict == Verdict("status/basic", Outcome.ERROR, detail=detail)
+
+
+def test_an_interrupt_during_the_comparison_ends_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(run_module, "compare", _raises(KeyboardInterrupt()))
+
+    with pytest.raises(KeyboardInterrupt):
+        judge(BASIC, Transcript(BASIC.id, "vanilla"), Transcript(BASIC.id, "pumpkin"))
+
+
+def test_a_comparison_that_raises_logs_its_traceback(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    error = OverflowError("int too big to convert")
+    monkeypatch.setattr(run_module, "compare", _raises(error))
+
+    with caplog.at_level(logging.WARNING, logger="mscts.run"):
+        judge(BASIC, Transcript(BASIC.id, "vanilla"), Transcript(BASIC.id, "pumpkin"))
+
+    (record,) = caplog.records
+    assert record.getMessage() == "the Comparison of status/basic failed"
+    assert record.exc_info is not None
+    assert record.exc_info[1] is error
 
 
 @pytest.mark.asyncio

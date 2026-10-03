@@ -18,6 +18,9 @@ def test_mscts_run_against_pumpkin_prints_a_report(
     assert code == 0, err
     assert out.startswith("Running tests against pumpkin\n"), out
     assert out.splitlines()[-1].startswith("Took "), out
+    # A Comparison that raises is that Group's `error`, and the Run goes on (#174), so only
+    # this tier sees a Comparison bug a Candidate's packets set off.
+    assert "Error: the Comparison failed" not in out, out
 
     if verbose:
         assert "  Reference    vanilla 26.3\n" in out, out
