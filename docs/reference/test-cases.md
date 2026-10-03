@@ -521,7 +521,7 @@ value puts the same changes at a different height.
 
 **Known pack ID**
 
-The ID of a data pack the server tells the client it has. The client skips sending the registry data of packs it also has.
+The ID of a data pack the server tells the client it has. The server leaves out the registry data of each pack the client says it has too.
 
 ## `select_known_packs.known_packs[].namespace`
 
@@ -533,7 +533,7 @@ The namespace of a data pack the server tells the client it has, such as `minecr
 
 **Known pack version**
 
-The version of a data pack the server tells the client it has. A different version can make the client ask for registry data it would otherwise skip.
+The version of a data pack the server tells the client it has. A pack only counts as known to both when the versions match, so a different version can make the server send registry data it would otherwise leave out.
 
 ## `server_data`
 
