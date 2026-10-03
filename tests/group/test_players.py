@@ -145,6 +145,12 @@ async def test_bob_leaves_inside_the_window_after_both_joined() -> None:
     ((opened, closed),) = windows(transcript)
     assert opened.label == WINDOW
     assert hello_at(transcript, BOB) < opened.t_ns
+    bob_requests = [
+        event.t_ns
+        for event in transcript.events
+        if event.bot == BOB and event.packet.name == "minecraft:client_command"
+    ]
+    assert bob_requests, "bob is in play when the window opens: its barrier covers him"
     assert last_at(transcript, BOB) < closed.t_ns, "bob left inside the window"
     ada_requests = [
         event.t_ns
