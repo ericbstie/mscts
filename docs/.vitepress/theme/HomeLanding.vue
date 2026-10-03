@@ -2,7 +2,7 @@
   <div class="ms-home">
     <section class="ms-hero">
       <div>
-        <h1>Measure how close your server is to <span>vanilla</span>.</h1>
+        <h1>Minecraft Server Compliancy Test Suite — mscts</h1>
         <p class="ms-intro">
           mscts is a test suite to objectively measure how closely a custom
           Minecraft server mimics the behavior of a vanilla Minecraft server.
@@ -44,6 +44,26 @@ Took 22 s</pre>
 
     <section class="ms-section">
       <h2>What is tested?</h2>
+      <p>
+        mscts checks what a server sends to a player, and compares it with
+        what vanilla sends. Today it covers:
+      </p>
+      <ul>
+        <li>
+          The server list: the description, player count and ping a player
+          sees before joining.
+        </li>
+        <li>
+          Changing blocks with <code>/setblock</code>, <code>/fill</code> and
+          <code>/clone</code>: the blocks that change, the items they drop,
+          and the server's reply.
+        </li>
+      </ul>
+      <p>
+        The next planned changes are related to world joining. Redstone and
+        random mechanics are planned after that.
+        <a :href="withBase('/reference/groups')">See everything mscts checks today.</a>
+      </p>
     </section>
 
     <section class="ms-section">
