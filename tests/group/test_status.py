@@ -1,13 +1,18 @@
 import json
+from dataclasses import dataclass, field
 
 import pytest
 
 from mscts.codec.packets import Codec, Packet
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, Group, GroupContext, GroupKind, resolve
 from mscts.groups import status
+from mscts.net import Endpoint
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.net.fakes import VANILLA_STATUS, serve, status_server
+from tests.group.test_blocks import BlocksServer
+from tests.group.test_control import playing
+from tests.net.fakes import VANILLA_STATUS, Peer, serve, status_server
 
 
 async def _play(group: Group) -> tuple[Transcript, list[Packet]]:
@@ -40,6 +45,79 @@ def test_status_ping_runs_even_when_the_status_differs() -> None:
     assert GROUPS["status/ping"].requires == ()
     assert GROUPS["status/basic"].requires == ()
     assert [each.id for each in resolve(["status/ping"])] == ["status/ping"]
+
+
+def test_status_with_player_is_registered_as_exact_with_no_masks_or_prerequisites() -> None:
+    group = GROUPS["status/with-player"]
+
+    assert group.run is status.with_player
+    assert group.kind is GroupKind.EXACT
+    assert (group.masks, group.requires) == ((), ())
+
+
+def test_the_wait_is_the_status_cache_interval_plus_one_second() -> None:
+    # MinecraftServer.STATUS_EXPIRE_TIME_NANOS is 5 * NANOSECONDS_PER_SECOND (javap, 26.3).
+    assert status.STATUS_CACHE_S == 5
+    assert status.CACHE_WAIT_S == status.STATUS_CACHE_S + 1
+
+
+@dataclass
+class _JoinThenStatus:
+    """A fake server: the first connection joins like vanilla, later ones answer the status."""
+
+    joined: BlocksServer = field(default_factory=BlocksServer)
+    status_seen: list[Packet] = field(default_factory=list)
+    connections: int = 0
+
+    async def __call__(self, peer: Peer) -> None:
+        self.connections += 1
+        if self.connections == 1:
+            await self.joined(peer)
+        else:
+            await status_server(json.dumps(VANILLA_STATUS), self.status_seen)(peer)
+
+
+async def _play_with_player(monkeypatch: pytest.MonkeyPatch) -> tuple[Transcript, list[Endpoint]]:
+    monkeypatch.setattr(status, "CACHE_WAIT_S", 0.3)
+    settled: list[Endpoint] = []
+
+    async def until_no_player_online(endpoint: Endpoint) -> None:
+        settled.append(endpoint)
+
+    monkeypatch.setattr(status, "until_no_player_online", until_no_player_online)
+    transcript = Transcript(group_id="status/with-player", server="fake")
+    async with playing(_JoinThenStatus(), transcript) as context:
+        await GROUPS["status/with-player"].run(context)
+    return transcript, settled
+
+
+@pytest.mark.asyncio
+async def test_status_with_player_joins_before_the_window_and_asks_for_the_status_inside_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript, _ = await _play_with_player(monkeypatch)
+
+    (opened,) = [mark for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
+    (closed,) = [mark for mark in transcript.marks if mark.label == OBSERVE_CLOSE]
+    player = [event for event in transcript.events if event.bot == "player"]
+    asked = [e for e in transcript.events if e.packet.name == "minecraft:status_request"]
+    answered = [e for e in transcript.events if e.packet.name == "minecraft:status_response"]
+    assert {event.bot for event in answered} == {"status"}
+    assert opened.label == f"{OBSERVE_OPEN} {status.PLAY_PACKET}", "no play packet of the join"
+    (login,) = [e for e in player if e.packet.name == "minecraft:login_finished"]
+    assert login.t_ns < opened.t_ns
+    (ask,), (answer,) = asked, answered
+    assert opened.t_ns < ask.t_ns < answer.t_ns < closed.t_ns
+    assert ask.t_ns - opened.t_ns >= 0.3e9, "it waits for the status cache first"
+
+
+@pytest.mark.asyncio
+async def test_status_with_player_lets_the_player_leave_before_the_next_group(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, settled = await _play_with_player(monkeypatch)
+
+    assert len(settled) == 1, "once the player has gone"
 
 
 @pytest.mark.asyncio

@@ -14,12 +14,18 @@ handshake, a `status_request`, and then a `ping_request` whose
 | --- | --- | --- | --- | --- |
 | `status/basic` | exact | none | Asks for the status once. | none |
 | `status/ping` | exact | none | Asks for the status, then pings with a fixed payload. | `status.rtt` |
+| `status/with-player` | exact | none | Joins one player, then asks for the status, to compare the online count and the player sample. | none |
 
 `status/ping` sends the fixed Long `20260926` as its ping payload. The
 vanilla client sends its clock, but a Group must send the same bytes
 every run.
 
-Neither Group has a Mask. Nothing in a status exchange is an identifier
+`status/with-player` waits 6 seconds after the join before it asks:
+vanilla builds its status again every 5 seconds, and the wait is that
+interval and one second. A server whose status lasts longer shows no
+player, and the Report shows that as a difference.
+
+No status Group has a Mask. Nothing in a status exchange is an identifier
 without gameplay meaning, so every difference in it is a Divergence.
 
 ## Blocks (`blocks`)
