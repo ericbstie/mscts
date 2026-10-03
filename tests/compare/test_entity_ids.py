@@ -426,6 +426,22 @@ def test_an_id_first_seen_in_remove_entities_takes_no_number() -> None:
     ]
 
 
+def test_ids_first_seen_in_remove_entities_compare_equal_whatever_their_value() -> None:
+    def forget(entity_id: int) -> Transcript:
+        return transcript(("alice", login(1)), OBSERVE_OPEN, ("alice", removed(entity_id)))
+
+    assert compare(forget(7), forget(9), []).outcome is Outcome.MATCH
+
+    # But removing an entity the Bot did hear of is another thing.
+    def spawn_then_forget(entity_id: int) -> Transcript:
+        return transcript(
+            ("alice", login(1)), OBSERVE_OPEN, ("alice", spawn(5)), ("alice", removed(entity_id))
+        )
+
+    verdict = compare(spawn_then_forget(7), spawn_then_forget(5), [])
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [("#?", "#1")]
+
+
 def test_an_id_reused_after_remove_entities_is_a_new_entity() -> None:
     # Vanilla never reuses an id; the client reads the reuse as a new entity all the same.
     def pigs(second: int) -> Transcript:

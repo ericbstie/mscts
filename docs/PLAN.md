@@ -1490,7 +1490,8 @@ proves it necessary:
    id is a new entity, so a Candidate that gives a removed entity's id
    to a new one shows no difference vanilla would not (#116). An id
    first seen in a `remove_entities` takes no number: the entity is
-   gone, and a number would shift every later one.
+   gone, and a number would shift every later one. It is written `#?`
+   there, as its value is the server's counter.
 3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream

@@ -152,8 +152,9 @@ saw it, such as `"pig@(1.5, -60.0, 7.5)"`; a masked position reads
 `<masked>`, as in `"pig@(<masked>, -60.0, 7.5)"`, and -0.0 is written 0.0.
 A player spawned then is written `"player <uuid>"`. If such an entity has
 another type or position on the two servers, the difference shows as
-`<packet>.entity_id` on each packet about that entity. Any other entity id is written `"#<n>"`: the
-n-th entity in what mscts compared for that Bot.
+`<packet>.entity_id` on each packet about that entity. Any other entity id
+is written `"#<n>"`: the n-th entity in what mscts compared for that Bot.
+An entity removed before the Bot heard of it is written `"#?"`.
 The UUID of an entity that is not a player is written the same way,
 counted on its own.
 

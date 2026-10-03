@@ -815,11 +815,20 @@ class _Numbers:
         """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields.
 
         A player's UUID took no number, so it stays as it is, unless an entity that is not
-        a player had it too: then it shows that entity's number.
+        a player had it too: then it shows that entity's number. An id a `remove_entities`
+        removes that the Bot never heard of shows `#?` (`_UNKNOWN_ENTITY`): its value is the
+        server's counter, which is timing.
         """
         ids, uuids = _entity_tries(packet.state, packet.name)
+        unknown = _UNKNOWN_ENTITY if packet.name == _REMOVE_ENTITIES else None
         _replaced(
-            fields, ids, lambda value: self.ids.get(value, value) if type(value) is int else value
+            fields,
+            ids,
+            lambda value: (
+                self.ids.get(value, value if unknown is None else unknown)
+                if type(value) is int
+                else value
+            ),
         )
         _replaced(
             fields,
@@ -885,6 +894,8 @@ def _step_fits(step: _MaskStep, key: Step) -> bool:
 
 _ADD_ENTITY = "minecraft:add_entity"
 _REMOVE_ENTITIES = "minecraft:remove_entities"
+_UNKNOWN_ENTITY = "#?"
+"""An id a `remove_entities` removes that the Bot had not heard of: it took no number."""
 
 
 def _spawn_name(fields: Mapping[str, object]) -> str:
