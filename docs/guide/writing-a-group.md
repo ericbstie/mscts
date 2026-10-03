@@ -40,6 +40,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.status()` | Sends the status handshake and request, and returns the parsed status JSON. |
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
+| `await bot.respawn()` | Respawns the Bot after it died, as the respawn button does, and returns once the Bot has loaded the world again. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.move(x, y, z, on_ground=True)` | Moves the Bot, and sends the position update the vanilla client would send, if any. |

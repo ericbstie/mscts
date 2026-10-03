@@ -1,4 +1,4 @@
-"""Bot actions on entities: what the vanilla client sends for each.
+"""Bot actions on entities, and respawning: what the vanilla client sends for each.
 
 The rules are `Minecraft.startAttack` and `startUseItem`, `MultiPlayerGameMode.attack` and
 `interact`, and `LpVec3.write` (26.3 client, javap; docs/research/2026-10-03-bot-entities.md).
@@ -13,13 +13,25 @@ from collections.abc import Awaitable, Callable, Mapping
 import pytest
 
 from mscts.bot import Bot
+from mscts.codec.packets import Packet
 from mscts.entities import Entity
 from mscts.net import ProtocolError
 from mscts.transcript import Transcript
-from tests.net.fakes import status_server, with_bot
+from tests.net.fakes import (
+    EMPTY_CHUNK,
+    Handler,
+    JoinScript,
+    Peer,
+    answer_each_tick,
+    join_server,
+    status_server,
+    with_bot,
+)
 from tests.net.test_bot_blocks import PUNCH
 from tests.net.test_bot_move import (
     CODEC,
+    LOGIN,
+    RESPAWN,
     TICK_END,
     TICK_PACKETS,
     Sent,
@@ -107,6 +119,7 @@ def test_interact_refuses_a_location_that_is_not_finite(bad: float) -> None:
 ACTIONS: list[tuple[str, Callable[[Bot], Awaitable[None]]]] = [
     ("attack", lambda bot: bot.attack(ZOMBIE)),
     ("interact", lambda bot: bot.interact(ZOMBIE)),
+    ("respawn", lambda bot: bot.respawn()),
 ]
 
 
@@ -124,3 +137,66 @@ def test_entity_actions_refuse_a_bot_that_is_not_in_play(
 
     with_bot(CODEC, transcript, status_server("{}", []), use)
     assert transcript.events == []
+
+
+PERFORM_RESPAWN = 0
+RESPAWNED_AT = {"x": 0.5, "y": -60.0, "z": 0.5, "yaw": 0.0, "pitch": 0.0}
+
+
+def dying_server(seen: list[Packet]) -> Handler:
+    """Join like vanilla; answer a respawn request as `PlayerList.respawn` does, and `sync`.
+
+    The respawn is the `respawn` packet, the teleport to the spawn, then one chunk batch.
+    """
+
+    async def then(peer: Peer) -> None:
+        requests = 0
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name != "minecraft:client_command":
+                continue
+            if packet.fields == {"action": PERFORM_RESPAWN}:
+                await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
+                await peer.send(
+                    "minecraft:player_position",
+                    teleport_id=2,
+                    velocity_x=0.0,
+                    velocity_y=0.0,
+                    velocity_z=0.0,
+                    flags=0,
+                    **RESPAWNED_AT,
+                )
+                await peer.send("minecraft:chunk_batch_start")
+                await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
+                await peer.send("minecraft:chunk_batch_finished", batch_size=1)
+            else:
+                requests += 1
+                await answer_each_tick(peer, requests)
+
+    def login_frame(peer: Peer) -> bytes:
+        return peer.frame("minecraft:login", **LOGIN)
+
+    return join_server(seen, JoinScript(after_batch=login_frame, then=then))
+
+
+def test_respawn_asks_then_says_it_has_loaded_once_the_first_batch_is_in() -> None:
+    # handleRespawn makes the client wait for its level to load again (setClientLoaded
+    # false, startWaitingForNewLevel), and the server ignores attacks and interactions
+    # until it says so (hasClientLoaded). As at the join, the Bot says so right after it
+    # acknowledged the first chunk batch after the respawn.
+    seen: list[Packet] = []
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        await bot.respawn()
+        await bot.sync()
+
+    with_bot(CODEC, Transcript(group_id="test/respawn", server="fake"), dying_server(seen), use)
+    [asked] = [packet for packet in seen if packet.fields == {"action": PERFORM_RESPAWN}]
+    after = seen[seen.index(asked) :]
+    assert [(packet.name, packet.fields) for packet in after[:4]] == [
+        ("minecraft:client_command", {"action": PERFORM_RESPAWN}),
+        ("minecraft:accept_teleportation", {"teleport_id": 2, **RESPAWNED_AT}),
+        ("minecraft:chunk_batch_received", {"chunks_per_tick": 9.0}),
+        ("minecraft:player_loaded", {}),
+    ]

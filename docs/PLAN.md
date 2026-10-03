@@ -528,6 +528,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
+    async def respawn(self) -> None: ...                               # PERFORM_RESPAWN → player_loaded
     async def expect(self, name: str, *, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
@@ -565,6 +566,11 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # player_loaded: it returns once the server's first chunk batch has finished, Replies having
     # answered the rest. player_loaded goes once, right after that batch's chunk_batch_received:
     # the vanilla client's moment depends on its renderer, and none could be ready earlier.
+    # respawn (#27): on a Bot in play (else ProtocolError, nothing sent), client_command
+    # PERFORM_RESPAWN (0), then expect(play respawn), then expect(chunk_batch_finished), then
+    # player_loaded, as join does: the client waits to load its world again after a respawn
+    # (handleRespawn), and the server ignores attack and interact until it has
+    # (hasClientLoaded). A server ignores the request from a live player → TimeoutError.
     # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
@@ -707,7 +713,7 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # another dimension (a new ClientLevel; no answer);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
-    # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
+    # else is answered (not yet: custom_query). join and respawn, not Replies, send player_loaded.
 
 PROBE_TIMEOUT_S = 1.0               # bot.py, since it reuses Bot.status (net cannot import bot)
 def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S

@@ -86,6 +86,10 @@ name. Compare reads only `observe:` Marks, so it changes no Verdict.
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
+_PERFORM_RESPAWN = 0
+"""The `client_command` action the client sends from the death screen's respawn button
+(`ServerboundClientCommandPacket.Action`: PERFORM_RESPAWN 0, REQUEST_STATS 1; 26.3 javap)."""
+
 
 def offline_uuid(name: str) -> uuid.UUID:
     """The UUID an offline-mode server gives the player called `name`.
@@ -711,6 +715,28 @@ class Bot:
             # soon as the first batch has arrived and been acknowledged (Replies answered it
             # before expect returned): the batch starts with the player's own chunk, so no
             # client could be ready earlier (docs/research/2026-09-26-join.md).
+            await self._connection.send("minecraft:player_loaded")
+
+    async def respawn(self) -> None:
+        """Respawn a dead player, and return once the Bot has said it loaded the world again.
+
+        Sends `client_command` PERFORM_RESPAWN, as the death screen's button does, takes each
+        packet until the server's `respawn` and then the first `chunk_batch_finished` after it,
+        and sends `player_loaded`. The client waits for its world to load again after a
+        respawn (`ClientPacketListener.handleRespawn`), and until it says so, the server
+        ignores its attacks and interactions (`hasClientLoaded`); as at the join, the Bot says
+        so once the first chunk batch has arrived and been acknowledged.
+
+        Raises:
+            ProtocolError: The Bot is not in play, or the server disconnected it.
+            TimeoutError: The respawn and its first chunk batch did not come within
+                `timeout_s`: the server ignores the request while the player is alive.
+        """
+        self._require_play("respawn")
+        async with self._operation(self._timeout_s):
+            await self._connection.send("minecraft:client_command", action=_PERFORM_RESPAWN)
+            await self.expect("minecraft:respawn", timeout_s=self._timeout_s)
+            await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
             await self._connection.send("minecraft:player_loaded")
 
     async def expect(
