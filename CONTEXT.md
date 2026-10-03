@@ -99,10 +99,11 @@ need is missing, add it here in the same commit that introduces it.
   A window can be narrowed to named packets. Status, login and
   configuration packets are compared whole, and so is every packet of a
   Group with no window. When a window closes, each Bot in play first
-  passes the **barrier** (`Bot.sync`: it asks the server for its
-  statistics until two answers arrive at least 5 ms apart, which shows a
-  tick has passed since the server received what the Bot sent before),
-  then takes what has already arrived (the **drain**). A window can
+  passes the **barrier** (`Bot.sync`). It asks the server for its
+  statistics, waits 5 ms after the answer arrives, and asks again. The
+  second answer comes from a later tick, so by then the server has sent
+  everything caused by what the Bot sent before. The Bot then takes what
+  has already arrived (the **drain**). A window can
   instead end at a packet's arrival (`until`): no barrier, and it closes
   when the first packet of that name arrived at a Bot. _Avoid_: phase,
   section.

@@ -372,6 +372,10 @@ class Bot:
         in the Bot's own loop can only lengthen. Every packet taken is recorded, and the
         Bot's Replies have already answered each (docs/research/2026-10-01-join-chunks.md).
 
+        It covers what the server does in its packet pass and the tick after. A chat
+        command is not run there (vanilla queues it as a server task, between ticks), so
+        wait for a command's feedback before calling it, as `OperatorBot.run` does.
+
         Raises:
             ProtocolError: The Bot is not in play, or the server disconnected it.
             TimeoutError: The answers had not arrived within `timeout_s`.
