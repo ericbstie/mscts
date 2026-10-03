@@ -13,7 +13,9 @@ client decodes both forms identically, so no player can ever notice them.
 
 Until now, Canonicalization erased such differences entirely. That is at
 odds with ADR-0006's goal of surfacing every difference. But counting
-them like gameplay differences would bury the catalogue in noise.
+them like gameplay differences would bury the catalogue in noise, and
+would penalize choices the protocol allows. Hiding them would remove
+information a server developer may want.
 
 ## Decision
 

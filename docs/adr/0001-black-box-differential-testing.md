@@ -8,6 +8,8 @@ The suite must stay as server-agnostic as possible. Candidates differ in
 language, config format, console and admin APIs. The only interface they
 all implement is the Java Edition wire protocol at one protocol version.
 "Compliance" means behaving like vanilla, so vanilla is the natural oracle.
+Testing only through that protocol also keeps the suite from depending on
+any server's internals, and it tests exactly what a player's client sees.
 
 We also considered server hooks: RCON, stdin console, and vanilla's
 JSON-RPC management API. The rule was to adopt them only if they are both
