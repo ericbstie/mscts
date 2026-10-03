@@ -93,7 +93,7 @@ def _adapter_at(argument: str) -> tuple[str, str | None]:
     """`<adapter>` or `<adapter>@<version>`, split; a usage error unless the Adapter is known."""
     name, at, version = argument.partition("@")
     if name not in ADAPTERS:
-        msg = f"{name!r} is no Adapter; the known Adapters are {', '.join(ADAPTERS)}"
+        msg = f"{name!r} is not an Adapter; the known Adapters are {', '.join(ADAPTERS)}"
         raise argparse.ArgumentTypeError(msg)
     if at and not version:
         msg = f"{argument} names no version: name one after the @, or leave the @ out"

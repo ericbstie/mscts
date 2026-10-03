@@ -131,7 +131,9 @@ def test_an_unknown_adapter_is_a_usage_error(
     with pytest.raises(SystemExit) as exited:
         main(["adapter", "install", argument])
     assert exited.value.code == 2
-    assert "the known Adapters are vanilla, pumpkin" in capsys.readouterr().err
+    name = argument.partition("@")[0]
+    said = f"{name!r} is not an Adapter; the known Adapters are vanilla, pumpkin"
+    assert said in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("cache")
