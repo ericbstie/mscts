@@ -60,6 +60,13 @@ different block.
 The z coordinate of the block that changes. A different value changes a
 different block.
 
+## `change_difficulty`
+
+**Difficulty**
+
+The world's difficulty and whether it is locked, which the client shows
+in its settings.
+
 ## `chunk_batch_finished`
 
 **End of a chunk batch**
@@ -84,6 +91,84 @@ different count is network traffic only.
 The packet before a batch of chunks. One only one server sent is
 network traffic only, as for the end of a batch.
 
+## `commands.nodes[]`
+
+**Command node**
+
+One node of the command tree the server sends when a player joins: a
+literal word, an argument, or the root. The client uses the tree to
+suggest, complete and check the commands a player types, so a node
+vanilla sends and another server leaves out is a command, or part of
+one, the client does not know. Each node's fields have their own test
+cases, below.
+
+## `commands.nodes[].children[]`
+
+**Command node child**
+
+The position, in the list of nodes, of a node that can follow this one.
+Positions depend on the order the server lists its nodes in, so a server
+that lists the same tree in another order differs here too.
+
+## `commands.nodes[].flags`
+
+**Command node flags**
+
+What kind of node it is (root, literal or argument), whether a command
+can end there, whether it redirects, and whether it asks the server for
+suggestions.
+
+## `commands.nodes[].name`
+
+**Command node name**
+
+The word of a literal node, such as `gamerule`, or the name of an
+argument, such as `targets`.
+
+## `commands.nodes[].parser`
+
+**Command argument type**
+
+The type of an argument node, such as `minecraft:entity` or
+`brigadier:string`. The client parses and checks what a player types
+with it.
+
+## `commands.nodes[].properties`
+
+**Command argument properties**
+
+The settings of an argument's type, such as whether a string argument
+takes one word or the rest of the line.
+
+## `commands.nodes[].redirect_node`
+
+**Command redirect**
+
+The node this one continues at, as `/execute` loops back to its own
+options, or an alias such as `/tell` points to `/msg`.
+
+## `commands.nodes[].suggestions_type`
+
+**Command suggestions source**
+
+Where the client gets suggestions for an argument, such as asking the
+server as the player types.
+
+## `container_set_content`
+
+**Inventory contents**
+
+Every slot of a container the player has open; at a join, the player's
+own inventory.
+
+## `configuration:custom_payload.data`
+
+**Configuration plugin message data**
+
+The data of a plugin message sent while the player is being configured.
+Vanilla sends one on the `minecraft:brand` channel, the server's name,
+which the client shows on its debug screen.
+
 ## `forget_level_chunk`
 
 **Chunk unloaded**
@@ -91,6 +176,19 @@ network traffic only, as for the end of a batch.
 The server tells the client to unload the chunk at a position, shown
 like `chunk 3 -2`. A server that unloads another chunk, or leaves one
 loaded, shows the player a different world.
+
+## `game_event`
+
+**Game event**
+
+A change of game state the client applies, such as the game mode
+changing or the client being told to wait for the chunks around it.
+
+## `initialize_border`
+
+**World border**
+
+The world border's centre, size and warning distances.
 
 ## `level_chunk_with_light`
 
@@ -189,6 +287,106 @@ sky light a chunk is sent with.
 A later change to the block light of a chunk section, compared like the
 block light a chunk is sent with.
 
+## `login.enforces_secure_chat`
+
+**Secure chat required**
+
+Whether the server requires signed chat messages. The client tells the
+player when a server does not.
+
+## `login.is_flat`
+
+**Flat world flag**
+
+Whether the world is a flat world. The client then draws the horizon at
+the bottom of the world, not at sea level.
+
+## `login.sea_level`
+
+**Sea level**
+
+The world's sea level. In vanilla's flat world it is -63.
+
+## `login_finished.profile.uuid`
+
+**Player UUID at login**
+
+The player's UUID, which the server sends when the login succeeds. In
+offline mode vanilla makes it from the player's name, so another UUID
+makes the same player a different one.
+
+## `player_abilities`
+
+**Player abilities**
+
+Whether the player can fly, is flying, takes no damage or builds
+instantly, and how fast it flies and walks.
+
+## `player_info_update`
+
+**Player list update**
+
+Adds a player to, or changes a player in, the client's list of players:
+their name, game mode, latency and whether the tab list shows them.
+
+## `player_position`
+
+**Player position**
+
+Where the server puts the player, and which way it faces. The client
+moves the player there and confirms it.
+
+## `play:post_effects`
+
+**Screen effects**
+
+The screen effects the server applies, as the `/posteffect` command sets
+them. At a join vanilla sends none.
+
+## `recipe_book_add`
+
+**Recipes in the recipe book**
+
+Recipes the client adds to the player's recipe book.
+
+## `recipe_book_settings`
+
+**Recipe book settings**
+
+Whether each recipe book is open and filtered.
+
+## `registry_data.entries[]`
+
+**Registry entry**
+
+One entry of a registry the server sends while the player is configured,
+such as one biome or one cow variant. An entry vanilla sends and another
+server leaves out is one the client does not have.
+
+## `registry_data.entries[].data`
+
+**Registry entry data**
+
+The contents of a registry entry. Vanilla sends none for an entry that a
+data pack both servers share already has, and the client then takes it
+from that pack.
+
+## `registry_data.entries[].entry_id`
+
+**Registry entry name**
+
+The name of a registry entry, such as `minecraft:plains`. The client
+numbers entries in the order they come, so another order gives other
+numbers.
+
+## `registry_data.registry_id`
+
+**Registry name**
+
+Which registry a `registry_data` holds, such as
+`minecraft:worldgen/biome`. A difference here usually means the servers
+send their registries in a different order.
+
 ## `section_blocks_update`
 
 **Block changes in a section**
@@ -242,12 +440,50 @@ Which chunk section the changes are in, counted in sections of 16 blocks
 from the world's origin: section -4 holds y from -64 to -49. A different
 value puts the same changes at a different height.
 
+## `server_data`
+
+**Server description in play**
+
+The server's description and icon, sent again once the player has
+joined.
+
+## `set_default_spawn_position`
+
+**World spawn point**
+
+Where the world's spawn point is. The client points compasses at it.
+
 ## `set_entity_data`
 
 **Entity data**
 
 The data of an entity, such as which item a dropped item holds and how many.
 A different value shows the player a different item or count.
+
+## `set_entity_motion`
+
+**Entity velocity**
+
+How fast and in which direction an entity moves. The client moves the
+entity with it until the next update.
+
+## `set_experience`
+
+**Experience**
+
+The player's experience bar, level and total experience.
+
+## `set_health`
+
+**Health and food**
+
+The player's health, food level and saturation.
+
+## `set_held_slot`
+
+**Selected hotbar slot**
+
+Which hotbar slot the player is holding.
 
 ## `status_response.description`
 
@@ -350,3 +586,56 @@ sent in another.
 The message's text component. mscts compares its bytes, so the same
 message written another way also differs here. The translation key in the
 bytes, such as `commands.setblock.success`, says what the message is.
+
+## `ticking_state`
+
+**Tick rate and freeze state**
+
+How many times a second the server ticks, and whether `/tick freeze` has
+stopped it. The client ticks at that rate too.
+
+## `ticking_step`
+
+**Tick steps**
+
+How many ticks `/tick step` has left to run while the game is frozen.
+
+## `update_advancements`
+
+**Advancements**
+
+The advancements the player can see and how far they have got with each.
+
+## `update_attributes`
+
+**Entity attributes**
+
+An entity's attributes, such as its movement speed or how far a player
+can reach, with their modifiers.
+
+## `update_recipes`
+
+**Recipe data**
+
+What the client needs to show recipes: the sets of items some recipe
+screens accept, and the stonecutter's recipes.
+
+## `configuration:update_tags.tagged_registries[].tags[]`
+
+**Tag**
+
+One tag the server sends, such as `minecraft:logs`: a named list of
+blocks, items or other entries that recipes, block behaviour and
+commands refer to.
+
+## `configuration:update_tags.tagged_registries[].tags[].entries[]`
+
+**Tag member**
+
+One entry of a tag, by its number in its registry.
+
+## `configuration:update_tags.tagged_registries[].tags[].tag_name`
+
+**Tag name**
+
+The name of a tag, such as `minecraft:logs`.

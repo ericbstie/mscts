@@ -13,6 +13,7 @@ from mscts.group import GROUPS, GroupKind
 from mscts.groups import join
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import ServerSpec
+from mscts.test_cases import TITLES
 from mscts.transcript import Transcript
 from tests.group.test_blocks import BlocksServer, sent
 from tests.group.test_control import playing
@@ -138,3 +139,54 @@ async def test_control_puts_the_rules_back_when_the_join_fails(
             await GROUPS[GROUP_ID].run(context)
 
     assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, *UNDO]
+
+
+SHOWN_TO_PUMPKIN = (
+    "change_difficulty",
+    "commands.nodes[]",
+    "commands.nodes[].children[]",
+    "commands.nodes[].flags",
+    "commands.nodes[].name",
+    "commands.nodes[].parser",
+    "commands.nodes[].properties",
+    "commands.nodes[].redirect_node",
+    "commands.nodes[].suggestions_type",
+    "configuration:custom_payload.data",
+    "configuration:update_tags.tagged_registries[].tags[]",
+    "configuration:update_tags.tagged_registries[].tags[].entries[]",
+    "configuration:update_tags.tagged_registries[].tags[].tag_name",
+    "container_set_content",
+    "game_event",
+    "initialize_border",
+    "login.enforces_secure_chat",
+    "login.is_flat",
+    "login.sea_level",
+    "login_finished.profile.uuid",
+    "play:post_effects",
+    "player_abilities",
+    "player_info_update",
+    "player_position",
+    "recipe_book_add",
+    "recipe_book_settings",
+    "registry_data.entries[]",
+    "registry_data.entries[].data",
+    "registry_data.entries[].entry_id",
+    "registry_data.registry_id",
+    "server_data",
+    "set_default_spawn_position",
+    "set_entity_motion",
+    "set_experience",
+    "set_health",
+    "set_held_slot",
+    "ticking_state",
+    "ticking_step",
+    "update_advancements",
+    "update_attributes",
+    "update_recipes",
+)
+"""The untitled test cases the Pumpkin Report of `join/basic` showed (#30, nightly b8382a8a).
+The others it compares are titled in an issue of their own."""
+
+
+def test_the_test_cases_pumpkins_report_shows_have_titles() -> None:
+    assert sorted(set(SHOWN_TO_PUMPKIN) - TITLES.keys()) == []
