@@ -1,0 +1,852 @@
+{
+  "target": {
+    "minecraft_version": "26.3",
+    "protocol_version": 777,
+    "java_major": 25
+  },
+  "reference": {
+    "name": "vanilla",
+    "version": "26.3",
+    "startup": [
+      {
+        "name": "instance.startup",
+        "unit": "ms",
+        "value": 11874.205597
+      }
+    ],
+    "installed_version": "26.3 (sha256 d052f14d…)"
+  },
+  "candidate": {
+    "name": "pumpkin",
+    "version": "26.3",
+    "startup": [
+      {
+        "name": "instance.startup",
+        "unit": "ms",
+        "value": 167.651191
+      }
+    ],
+    "installed_version": "nightly 4426d11 (sha256 b8382a8a…)"
+  },
+  "results": [
+    {
+      "group_id": "status/basic",
+      "verdicts": [
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        }
+      ],
+      "reference": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "candidate": [
+        [],
+        [],
+        [],
+        [],
+        []
+      ],
+      "elapsed_s": [
+        0.005772468997747637,
+        0.007217548998596612,
+        0.004456517999642529,
+        0.004257667998899706,
+        0.005975780994049273
+      ]
+    },
+    {
+      "group_id": "status/ping",
+      "verdicts": [
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp",
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp",
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp",
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp",
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        },
+        {
+          "group_id": "status/ping",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.description",
+              "reference": "mscts",
+              "candidate": {
+                "text": "mscts"
+              },
+              "test_case": "status_response.description",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.favicon",
+              "reference": {
+                "absent": true
+              },
+              "candidate": null,
+              "test_case": "status_response.favicon",
+              "observability": "network traffic"
+            },
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.players.sample",
+              "reference": {
+                "absent": true
+              },
+              "candidate": [],
+              "test_case": "status_response.players.sample",
+              "observability": "network traffic"
+            }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp",
+            "status_response.description",
+            "status_response.description.text",
+            "status_response.enforceSecureChat",
+            "status_response.favicon",
+            "status_response.players.max",
+            "status_response.players.online",
+            "status_response.players.sample",
+            "status_response.version.name",
+            "status_response.version.protocol"
+          ]
+        }
+      ],
+      "reference": [
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 1.032113
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 2.648185
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.489345
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.63618
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.615061
+          }
+        ]
+      ],
+      "candidate": [
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.302714
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.147769
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.164045
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.14467
+          }
+        ],
+        [
+          {
+            "name": "status.rtt",
+            "unit": "ms",
+            "value": 0.162032
+          }
+        ]
+      ],
+      "elapsed_s": [
+        0.01348388099722797,
+        0.007461265995516442,
+        0.01172285299981013,
+        0.005448124997201376,
+        0.004962282997439615
+      ]
+    }
+  ],
+  "notes": [],
+  "elapsed_s": 13.294076957994548
+}

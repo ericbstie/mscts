@@ -184,13 +184,56 @@ inputs without durations say `not recorded`.
 `report.md` is the printed Report as Markdown. Its first line is a
 heading, and test case names and values are code. Like the printed
 Report, it has the header, values and Group times only with `--verbose`.
+The default Run against Pumpkin wrote:
+
+```md
+# Running tests against pumpkin
+
+Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
+
+- Server list description `status_response.description`
+- Unused secure chat flag `status_response.enforceSecureChat`
+- Server list icon `status_response.favicon`
+- Server list player sample `status_response.players.sample`
+
+Took 13.3 s
+```
 
 `report.json` is the whole Report, with or without `--verbose`. Its keys
 are `target`, `reference`, `candidate`, `results`, `notes` and
 `elapsed_s`. `results` has one entry per Group, with each repetition's
 Verdict, every difference with both values, and each server's
-Measurements. Values are JSON where JSON can hold them. Any other value
-is an object with one key:
+Measurements. The same Run wrote this, among its other differences:
+
+```json
+...
+  "results": [
+    {
+      "group_id": "status/basic",
+      "verdicts": [
+        {
+          "group_id": "status/basic",
+          "outcome": "mismatch",
+          "divergences": [
+...
+            {
+              "bot": "status",
+              "index": 0,
+              "kind": "field",
+              "packet": "minecraft:status_response",
+              "path": "json_response.enforceSecureChat",
+              "reference": {
+                "absent": true
+              },
+              "candidate": true,
+              "test_case": "status_response.enforceSecureChat",
+              "observability": "network traffic"
+            },
+...
+```
+
+Values are JSON where JSON can hold them. Any other value is an object
+with one key:
 
 - `{"absent": true}`: the server left the value out.
 - `{"bytes": "<hex>"}`: binary data.
