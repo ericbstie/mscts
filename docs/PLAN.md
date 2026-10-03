@@ -995,8 +995,8 @@ class Mask:
     # message gives the spelling), so a path copied from a Divergence is always valid.
     # Also a path that is an entity id of the clientbound packet in any State, or a
     # list of them (`Codec.entity_id_paths`; a list index fits EACH, and a Variant is
-    # no step of a path): every Comparison numbers those instead, and the message says
-    # so (#21). A path around one (`set_entity_data` / `entries`) is still a Mask.
+    # no step of a path): every Comparison names or numbers those instead, and the message
+    # says so (#21, #116). A path around one (`set_entity_data` / `entries`) is still a Mask.
 
 class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
