@@ -1,4 +1,4 @@
-from mscts.codec.registry_names import registry_names
+from mscts.codec.registry_names import block_state_count, registry_names
 from mscts.target import TARGET
 
 # These ids are the 26.3 server jar's `minecraft:data_component_type` protocol ids, from
@@ -63,6 +63,12 @@ def test_slot_display_names_are_the_registry_in_protocol_id_order() -> None:
         "minecraft:with_remainder",
         "minecraft:composite",
     )
+
+
+def test_block_state_count_is_the_states_of_the_block_report() -> None:
+    # 26.3's blocks.json: 35,723 states, ids 0 to 35,722, so a direct block container has
+    # 16 bits per entry (docs/research/2026-10-02-chunks-light.md).
+    assert block_state_count(TARGET.minecraft_version) == 35_723
 
 
 def test_consume_effect_names_are_the_registry_in_protocol_id_order() -> None:

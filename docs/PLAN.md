@@ -72,13 +72,14 @@ test needs it:
 | `codec/schemas/play/entities.py` | the entity packets' schemas: spawn, movement, metadata, attributes, events, removal |
 | `codec/schemas/play/commands.py` | `chat_command`, `system_chat` and `commands`: the command tree as `CommandNode`s (every 26.3 parser, its id read through `registry_names`), and `root_literals(tree)`, the commands a player may run |
 | `codec/schemas/play/blocks.py` | the block packets' schemas: `block_update`, `section_blocks_update` (its blocks decode to `{x, y, z, state}`), `block_entity_data`, `block_event`, `block_destruction` |
+| `codec/schemas/play/chunks.py` | the chunk packets' schemas: `level_chunk_with_light` (its sections decoded, each block state and biome container a `PalettedContainer`: `{bits, palette, data}`), `light_update`, `forget_level_chunk`, `set_chunk_cache_center`, `set_chunk_cache_radius`, `chunks_biomes` |
 | `codec/schemas/play/recipes.py` | `update_recipes`: the property sets (each item set a recipe takes as input) and the stonecutter's recipes, each an ingredient holder set and a slot display (all 11 types of `minecraft:slot_display`, read through `registry_names`) |
 | `codec/schemas/play/advancements.py` | `update_advancements`: the advancements to add (each an id, a parent, a display whose background texture follows only if its flags say so, requirements, and x and y), the ids to remove, and each advancement's progress by criterion, with when it was obtained |
 | `codec/schemas/play/world_events.py` | the world event packets' schemas: `level_event`, `sound` and `sound_entity` (a `SOUND_EVENT`, a `SOUND_SOURCE` category and a random seed), `level_particles`, `game_event`, `explode` (its block particles a weighted list) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
-| `codec/data/26.3/` | generated `packets.json` and `registry_names.json` (the data component, consume effect, command argument parser, entity type and slot display names in protocol id order). Committed, regenerated and checked by `mise run regen:packets` |
-| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id |
+| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type and slot display names in protocol id order) and `block_states.json` (how many block states there are). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `spec.py` | `ServerSpec` and its enums |
@@ -108,12 +109,15 @@ decision. Signatures are Python 3.13. `@frozen` means
 - `codec.framing`: `FrameDecoder`, `FrameError`, `MAX_DATA_LENGTH`, `encode_frame` — frame encoding
   and decoding.
 - `codec.packets`: `PacketIds`, `Schemas` — Codec lookup table types.
-- `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `compare_or_write`,
-  `data_generator_argv`, `fresh_data`, `packets_json_path`, `regenerate`, `registry_names_json`,
-  `registry_names_path`, `run_data_generator` — Mojang data regeneration.
+- `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `block_states_json`,
+  `block_states_path`, `compare_or_write`, `data_generator_argv`, `fresh_data`,
+  `packets_json_path`, `regenerate`, `registry_names_json`, `registry_names_path`,
+  `run_data_generator` — Mojang data regeneration.
 - `codec.schemas.login`: `GAME_PROFILE` — login packet schema.
 - `codec.schemas.play`: `merge_submodules` — Play schema assembly.
 - `codec.schemas.play.commands`: `PROPERTIES`, `commands_schema` — command argument schemas.
+- `codec.schemas.play.chunks`: `PalettedContainer` (`read`, `write`, `values(container)`: the id
+  at each entry), `BLOCK_STATES`, `BIOMES`, `SECTION`, `LIGHT_DATA` — chunk and light schemas.
 
 ```python
 @frozen
@@ -1016,16 +1020,17 @@ class Divergence:
     kind: Literal["bot", "missing", "unexpected", "field", "failed"]
     packet: str                     # the packet name ("" for bot and failed)
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
-    reference: object               # the packet's value, or ABSENT
-    candidate: object
+    reference: object               # the packet's value, or ABSENT (a chunk, light update
+    candidate: object               # or forgotten chunk one side has: "chunk <x> <z>", step 4)
     test_case: str                  # the test case it was found in (test_case(): the
                                     # packet's for missing, unexpected and a whole payload;
                                     # the path's, the raw one for network traffic, for any
                                     # other field one); "" for bot and failed (Group-level)
     observability: Observability = Observability.GAMEPLAY
     # network traffic: a `field` Divergence between raw values whose canonical forms are
-    #   equal (path and values are the raw ones); gameplay: every other Divergence, so every
-    #   bot, missing, unexpected and failed one (run.judge's `failed` keeps the default).
+    #   equal (path and values are the raw ones), or a missing or unexpected
+    #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
+    #   so every bot and failed one (run.judge's `failed` keeps the default).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
     #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
@@ -1223,7 +1228,10 @@ proves it necessary:
 
 1. Take clientbound packets per Bot, in order. A packet's key is its
    (State, name): same-named packets of different States (`disconnect`,
-   `custom_payload`) are different packets. Not compared, on purpose:
+   `custom_payload`) are different packets; the key of a packet about
+   one chunk (`level_chunk_with_light`, `light_update`,
+   `forget_level_chunk`) adds its position (step 4). Not compared, on
+   purpose:
    - serverbound packets. They are the Group's own actions and the
      Bot's automatic answers. They differ between Instances by design
      (the handshake names each Instance's own Endpoint), and any
@@ -1328,13 +1336,80 @@ proves it necessary:
      HashMap::new, ...)`, and `AdvancementProgress.STREAM_CODEC` the
      criteria the same way), so a repeated id or criterion ends with its
      last value. The added advancements are read into a list.
+     `play` / `minecraft:level_chunk_with_light` (#22): `heightmaps` is
+     sorted by the type the client reads (an id it does not know reads as
+     0, `WORLD_SURFACE_WG`: `Heightmap$Types` decodes through
+     `ByIdMap.continuous` with `OutOfBoundsStrategy.ZERO`), and
+     `block_entities` by position (y, z, x), both stably. Vanilla sends
+     both in hash order (#30: two Instances sent the heightmaps in another
+     order; `javap` on 26.3: `ClientboundLevelChunkPacketData` collects
+     the heightmaps with `Collectors.toMap`, a `HashMap` keyed by the
+     enum, and iterates `LevelChunk.getBlockEntities()`, an
+     `Object2ObjectOpenHashMap` keyed by `BlockPos`). The client reads
+     the heightmaps into an `EnumMap` (`ByteBufCodecs.map(EnumMap::new,
+     ...)`), so a type sent twice ends with its last value, and keeps
+     block entities in a map keyed by `BlockPos`:
+     `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
+     those sent for one position keep their order.
+   - the order of packets about different chunks, and where they fall
+     among packets whose handling reads no chunk. A *chunk packet* is a
+     `level_chunk_with_light`, `light_update` or `forget_level_chunk`:
+     the client applies each to the chunk at its position (a chunk with
+     `ClientChunkCache.replaceWithPacketData`, light with
+     `ClientLevel.queueLightUpdate`, a forgotten chunk with
+     `ClientChunkCache.drop` and `queueLightRemoval`). A *run* is the packets
+     between two that are neither chunk packets nor in
+     `compare._CHUNK_NEUTRAL`:
+     `chunk_batch_start` and `chunk_batch_finished` (their handlers feed
+     only `ChunkBatchSizeCalculator`), the heartbeat packets and
+     `pong_response`, and the entity packets whose handlers set the
+     entity's fields (`add_entity`, `move_entity_pos`, `move_entity_pos_rot`,
+     `move_entity_rot`, `rotate_head`, `set_entity_motion`,
+     `update_attributes`, `remove_entities`, `bundle_delimiter`; an
+     entity's chunk being loaded decides only whether it ticks, and
+     either order ends with the same). The `move_entity_*` handlers do
+     read blocks once (`Entity.setOnGround` → `checkSupportingBlock`, the
+     block the entity stands on until it next moves); keeping them
+     neutral is an accepted trade-off, since ending runs there brings
+     back false mismatches between racing batches. Each run becomes its chunk
+     packets, sorted by position, x then z, stably, so the packets about
+     one chunk keep their order, then its other packets in their order
+     (`compare._by_position`), so a neutral packet lands in the same place
+     whether it came before the run's first chunk or after it (#122's
+     re-review); indices count the sorted stream. So a
+     chunk never moves across a packet about its own position, nor
+     across any packet whose effect on the client depends on the order:
+     every other packet ends a run, among them `entity_position_sync` and
+     `teleport_entity` (their handlers snap or interpolate by
+     `ClientLevel.isTickingEntity`), `set_entity_data` (a sleeping
+     entity's position comes from the bed block there,
+     `LivingEntity.setPosToBed`), `entity_event`, the block packets and
+     `chunks_biomes`. The runs are found in a Bot's whole clientbound
+     stream, before windows, their narrowing or a `*` Mask leave anything
+     out, since the client applies every packet in turn. Vanilla sends a
+     batch's chunks nearest first, those at one distance in the
+     iteration order of a `LongOpenHashSet` of pending chunks, and which
+     of them are ready for a batch races between two Instances (`javap`
+     on the 26.3 server: `PlayerChunkSender.sendNextChunks`); it sends the
+     light updates of one tick in the iteration order of
+     `ServerChunkCache.chunkHoldersToBroadcast`, a `ReferenceOpenHashSet`
+     (`docs/research/2026-10-02-chunks-light.md`). So which chunks a batch
+     holds is network traffic: a `chunk_batch_start` or
+     `chunk_batch_finished` only one side sent is a network traffic
+     Divergence, and so is another `batch_size`, which the canonical form
+     of `chunk_batch_finished` leaves out (step 2). The client feeds it
+     only to the rate it asks the server for
+     (`ChunkBatchSizeCalculator.onBatchFinished`, then
+     `chunk_batch_received`).
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
    and it is a classifier, not an eraser (ADR-0007): the raw fields are
    diffed too, and a raw difference whose canonical values (before the
    Masks) are equal at its path is reported as a **network traffic** `field`
-   Divergence, with the raw path and values. A raw field holding JSON
+   Divergence, with the raw path and values. Where the canonical form is
+   shaped unlike the raw fields (a chunk's sections), the canonical value
+   compared is the one the raw path is part of (`compare._COVERS`). A raw field holding JSON
    text (`_JSON_TEXT`: the status `json_response`) is diffed as its parsed,
    not yet canonical JSON value, so such a Divergence has its JSON path
    and values (`json_response.enforceSecureChat`, absent vs `true`);
@@ -1432,6 +1507,94 @@ proves it necessary:
      no default, so their absence is significant; `players.max`,
      `players.online`, `version.name` and `version.protocol` are
      required (`fieldOf`).
+   - `play` / `minecraft:level_chunk_with_light` (#22): `heightmaps`
+     become the ones the client keeps, the last sent of each type it
+     reads (an unknown id as 0), by type: it puts them into an `EnumMap`,
+     so a type sent twice, or an unknown id where vanilla sends 0, is
+     network traffic only. Each section's
+     `block_states` and `biomes` become the id at each entry: one id if
+     every entry has it, else all of them, packed so that two are equal
+     exactly when their ids are. So the palette that spelled them (a
+     single value, a list or hash palette in any order, the global
+     palette, or a list palette sent with fewer bits than the client
+     reads it at) is network traffic only, and a block state or biome
+     that differs is a gameplay Divergence at `sections[<i>].block_states`
+     or `sections[<i>].biomes`. An entry that indexes past its palette is
+     a value of its own: the client reads it, and fails only when it
+     looks it up (`valueFor`). Evidence
+     (`docs/research/2026-10-02-chunks-light.md`, `javap` on the 26.3
+     client): `LevelChunk.replaceWithPacketData` reads each section with
+     `LevelChunkSection.read`, which keeps the counts as sent and reads
+     each container with `PalettedContainer.read`; that reads the palette
+     the bits pick (`Strategy.getConfigurationForBitCount`) and unpacks
+     the entries at the palette's width, so the client keeps the id at
+     each entry, not its spelling. A raw difference inside a section's
+     container is network traffic only when the two containers hold the
+     same ids (`compare._COVERS` names the canonical value a raw path is
+     part of). A gameplay Divergence of a container shows, on each side,
+     the chunk and the first three positions that differ, in world
+     coordinates, with that side's id there (`chunk 2 -1: 37 -62 -9 is
+     10`), then how many more differ; a biome cell is named by its lowest
+     block. y counts from -64 when both sides send 24 sections and from 0
+     when both send 16 (the heights of the vanilla dimension types, from
+     the 26.3 server jar's `data/minecraft/dimension_type`); otherwise it
+     counts from the world's bottom, and the text says so. Against a
+     container that is not ids (one the client cannot read), each side
+     is said whole: `all 41`, `ids 3 to 41` (and `entries past the
+     palette` if it has any), or what is wrong with it.
+     A direct biome container is read as the client reads it, which the
+     codec cannot do alone: the client reads its entries at `Mth.ceillog2`
+     of the biomes the server sent it (`Strategy.<init>`,
+     `Configuration$Global`), whatever bits per entry are sent, but the
+     codec reads one packet at a time and reads it at the bits sent. So
+     the Comparison takes that width from the same Bot's `registry_data`
+     for `minecraft:worldgen/biome` in the same Transcript: the entries of
+     every such packet in the last configuration before the chunk, counted
+     (`compare._Context`; each configuration has a new
+     `RegistryDataCollector`, whose `ContentsCollector.append` adds the
+     entries of each packet for a registry). Data as long as that
+     width takes is read at that width, so the bits sent are network
+     traffic and the biomes compare as above. Data of another length is
+     not what the client reads (it reads that many Longs and the rest of
+     the packet is shifted): it is a value of its own, a gameplay
+     Divergence that shows the bits, the width the client reads and the
+     data (`chunk 0 0, y -64 to -49: 6 bits per entry where the client
+     reads 7: …`). A Transcript with no such `registry_data` (one recorded
+     from play, without configuration) is read at the bits sent. The
+     vanilla server writes its storage's bits, so a direct container's
+     byte is that width.
+     Its `light`, and the `data` of a `play` / `minecraft:light_update`,
+     become what the client applies to each light section in each layer
+     (`light.sky[<i>]`, `light.block[<i>]`): the next array if the mask
+     has the section's bit, else an empty section if the empty mask has
+     it, else nothing sent, which leaves the client's light as it was
+     (`ClientPacketListener.readSectionList`; light section `i` is world
+     section `i - 1`). So the mask wins over the empty mask, and bits past
+     the light section count, and arrays past the mask's bits, are never
+     read: network traffic only. The count is the sections plus two
+     (`LevelLightEngine.getLightSectionCount`); a `light_update` does not
+     say how high its level is, so it is 256, the most any level has
+     (`DimensionType`'s height is at most `Y_SIZE`, `(1 <<
+     BlockPos.PACKED_Y_LENGTH) - 32` = 4064 blocks). So every copy of a
+     chunk keeps at most 254 sections, and of its light, or a light
+     update's, at most 256 arrays a layer; the rest become one value
+     that counts them (`19746 more sections`, `compare._CAPS`): the
+     client reads no more (`LevelChunk.replaceWithPacketData` reads one
+     section for each section of its level), and a chunk of 20,000
+     sections is then a few hundred Divergences, not 60,000. An empty section
+     and an array of 2048 zero bytes are equal for block light, and for
+     sky light only in light section 0, below the world:
+     `SkyLightEngine.setLightEnabled` fills an empty stored sky section
+     with 15 within the world, and no other client code tells the two
+     apart (`docs/research/2026-10-02-chunks-light.md`). A section not
+     sent never equals one sent, empty or not, so Pumpkin's explicit sky
+     arrays where vanilla names no section are a gameplay difference. A
+     mask bit with no array left, or an array of another length, is a
+     value of its own: the client fails. A gameplay Divergence of a light
+     section shows the positions that differ, with each side's level, when
+     both sides send an array, and otherwise what each side's section is
+     (`chunk 0 0, y -32 to -17: not sent` against `all 15`; `no such
+     light section` past a side's light section count).
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡
@@ -1556,7 +1719,12 @@ proves it necessary:
    compared by raw payload. A Self-check failure on such a packet is the
    signal to write its schema and a Mask.
 
-   The alignment is a **longest common subsequence** of the packet keys,
+   The alignment is a **longest common subsequence** of the packet keys
+   (State and name, and the position of a chunk, light update or
+   forgotten chunk: two at different positions are never one packet sent
+   two ways, so each is `missing` or `unexpected`, and shows
+   `chunk <x> <z>` rather than its fields; a chunk the codec cannot
+   read has the position of its first two Ints, if it has 8 bytes),
    so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
    mirrors it: match the common prefix and suffix as they stand (so of
@@ -1866,7 +2034,28 @@ then record the answer in an ADR:
   `player_info_update` none yet. Until this is decided, a window that can
   catch them names the packets it tests.
 - How should chunk data be compared: decode the palette into block states,
-  or compare raw?
+  or compare raw? **Decided (#22):** decode. The codec decodes each
+  section's paletted containers (`codec/schemas/play/chunks.py`), and
+  the Comparison compares the block state at each position, the biome of
+  each cell and the light of each light section as the client keeps them
+  (Comparison semantics, steps 1 and 2), so another encoding is network
+  traffic only. Considered and not encoded:
+  - a section past the level's section count, which the client never
+    reads, still differs from none, since the Comparison does not know
+    the level's height; vanilla and Pumpkin sent exactly the level's
+    sections in the recorded joins. Past 254 sections, the most any
+    level has, the rest are one value that counts them;
+  - a `light_update`'s bits from the level's light section count up to
+    256 are compared, for the same reason;
+  - a chunk whose sections buffer ends with bytes that are not a whole
+    section, which the client never reads, is one the codec refuses, so
+    it is compared by payload (at the position of its first two Ints);
+  - `chunks_biomes` has no canonical form: its biome containers are
+    compared as sent, so another encoding of the same biomes is a
+    gameplay Divergence (no Group receives it yet);
+  - a chunk's block and fluid counts are compared as sent: the client
+    keeps them, and the light engine reads a block count of 0 as an
+    empty section.
 - Transcripts record a frame when the Bot *takes* it (stamped when it
   arrived, by the Connection's background reader), so they do not depend
   on TCP segmentation, but packets never taken are absent. Should

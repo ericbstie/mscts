@@ -159,6 +159,26 @@ CORE_PACK = {"namespace": "minecraft", "id": "core", "version": "26.3"}
 SPAWN = {"x": 6.5, "y": -60.0, "z": 7.5, "yaw": -90.0, "pitch": 0.0}
 """A join teleport's pose (vanilla's is random per fresh world: never assert on it live)."""
 
+_AIR = {"bits": 0, "palette": 0, "data": b""}
+EMPTY_CHUNK = {
+    "chunk_x": 0,
+    "chunk_z": 0,
+    # WORLD_SURFACE, MOTION_BLOCKING and MOTION_BLOCKING_NO_LEAVES: every column at the bottom
+    "heightmaps": [{"type": kind, "data": [0] * 37} for kind in (1, 4, 5)],
+    "sections": [{"block_count": 0, "fluid_count": 0, "block_states": _AIR, "biomes": _AIR}] * 24,
+    "block_entities": [],
+    "light": {
+        "sky_light_mask": b"",
+        "block_light_mask": b"",
+        "empty_sky_light_mask": b"",
+        "empty_block_light_mask": b"",
+        "sky_light_arrays": [],
+        "block_light_arrays": [],
+    },
+}
+"""The overworld chunk 0 0 with nothing in it: 24 sections of air, and no light to send
+(docs/research/2026-10-02-chunks-light.md)."""
+
 
 @dataclass
 class JoinScript:
@@ -292,7 +312,7 @@ class _Join:
         )
         await self.expect(peer, "minecraft:accept_teleportation")
         await peer.send("minecraft:chunk_batch_start")
-        await peer.write(peer.raw_frame("minecraft:level_chunk_with_light", bytes(300)))
+        await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
         await peer.send("minecraft:chunk_batch_finished", batch_size=1)
         await self.expect(peer, "minecraft:chunk_batch_received")
         # Vanilla takes player_loaded whenever it comes; waiting for it here pins where

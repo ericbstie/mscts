@@ -4,20 +4,22 @@
 (`reports/packets.json`), copied verbatim. `registry_names.json` is derived
 from the same run's `reports/registries.json`: for each registry the codec
 needs (`regen.REGISTRY_NAME_LISTS`), the entry names in protocol id order, so
-a name's position is its id. Do not edit either by hand.
+a name's position is its id. `block_states.json` is the number of block states
+in the same run's `reports/blocks.json`, whose ids run from 0 to that number
+less one. Do not edit any of them by hand.
 
 | | |
 | --- | --- |
 | Target | 26.3 / protocol 777 (`version.json` in the jar: `protocol_version` 777, `java_version` 25) |
 | Server jar | `downloads.server` of 26.3 in the piston-meta version manifest, sha1 `33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c` |
-| Generated | 2026-09-25 (`packets.json`), 2026-10-02 (`registry_names.json`), with Temurin 25 |
+| Generated | 2026-09-25 (`packets.json`), 2026-10-02 (`registry_names.json`, `block_states.json`), with Temurin 25 |
 | packets.json sha1 | `57d738152562d40d7ba3fc4f106431ec4858de40` |
 
 Generator command (from the `protocol-research` skill):
 
 ```sh
 java -DbundlerMainClass=net.minecraft.data.Main -jar server.jar --reports --output <dir>
-# → <dir>/reports/packets.json and <dir>/reports/registries.json
+# → <dir>/reports/packets.json, registries.json and blocks.json
 ```
 
 The report was generated twice from the same jar, independently, and the two

@@ -32,7 +32,7 @@ import re
 import struct
 from array import array
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
 from types import MappingProxyType
@@ -42,6 +42,8 @@ from uuid import UUID
 from mscts.codec.entity_ids import EACH, Each, EntityIdPath, Step, Variant
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.registry_names import registry_names
+from mscts.codec.schemas.play.chunks import BIOMES, BLOCK_STATES, PalettedContainer
+from mscts.codec.wire import WireError
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
@@ -219,6 +221,18 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "or criterion keeps its last value. The added advancements are read into a list, "
             "and keep their order."
         ),
+        "minecraft:level_chunk_with_light": (
+            "heightmaps, sorted by the type the client reads (an id it does not know reads as "
+            "0, WORLD_SURFACE_WG), and block_entities, sorted by position (y, z, x). Vanilla "
+            "sends both in hash order: ClientboundLevelChunkPacketData collects the heightmaps "
+            "with Collectors.toMap, a HashMap keyed by the Heightmap$Types enum, in an order "
+            "fixed per boot, and iterates the chunk's block entities, an "
+            "Object2ObjectOpenHashMap keyed by BlockPos. The client reads the heightmaps into "
+            "an EnumMap (ClientboundLevelChunkPacketData.STREAM_CODEC: ByteBufCodecs.map("
+            "EnumMap::new, ...)), so a type sent twice keeps the last, and keeps the block "
+            "entities in a map keyed by BlockPos (LevelChunk.replaceWithPacketData), loading "
+            "those sent for one position in turn."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
@@ -322,17 +336,21 @@ class Divergence:
         path: Where in the matched Packets they differ, or None for their whole
             payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
         reference: The value in the reference, or ABSENT. For `bot`, the number of
-            the Bot's Events.
+            the Bot's Events. For a gameplay difference in a chunk's blocks, biomes or
+            light, a text that names the chunk and the first positions that differ, with
+            the reference's value at each, or says what its light section is (PLAN,
+            Comparison semantics).
         candidate: The value in the candidate, or ABSENT. For `bot`, the number of
-            the Bot's Events.
+            the Bot's Events. For a chunk, as `reference` with the candidate's values.
         test_case: The test case it was found in (`test_case`): its packet's, for
             `missing`, `unexpected` and a `field` Divergence of the whole payload; its
             path's for any other `field` one, the raw path for network traffic. "" for
             `bot` and `failed`, which are about the Group, not one field.
         observability: `network traffic`: a `field` Divergence between raw values whose
             canonical forms are equal, so the vanilla client reads both alike; its path
-            and values are the raw ones. `gameplay`: every other Divergence, including
-            every `bot`, `missing`, `unexpected` and `failed` one.
+            and values are the raw ones; or a `missing` or `unexpected` `chunk_batch_start`
+            or `chunk_batch_finished`, which leave the client's world as it is. `gameplay`:
+            every other Divergence, including every `bot` and `failed` one.
     """
 
     bot: str
@@ -394,11 +412,15 @@ class Verdict:
 def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask]) -> Verdict:
     """Diff the Candidate's Transcript of a Group against the Reference's.
 
-    Each Bot's stream is normalized first: if the Transcript has Observation windows,
-    the play Packets they do not observe are left out (`_Windows.observes`); the
-    Packets a `*` Mask names are dropped; the lists of the Packets `UNORDERED` names are
+    Each Bot's stream is normalized first: the chunks in a row are sorted by position
+    (`_by_position`); then, if the Transcript has Observation windows, the play Packets they
+    do not observe are left out (`_Windows.observes`); the Packets a `*` Mask names are
+    dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
-    JSON is parsed, and its text components written one way); each entity id whose
+    JSON is parsed, and its text components written one way, and a chunk's sections hold
+    the id at each entry of their containers, and its light what the client applies to each
+    light section; a direct biome container's width is checked against the biomes the Bot's
+    configuration sent, `_Context`); each entity id whose
     `add_entity` was left out of the windows becomes its type and its position at the
     first such `add_entity` (`pig@(1.5, -60.0, 7.5)`, read after the Masks; a player's is
     `player <uuid>`), and every other entity id but one first seen in a
@@ -412,15 +434,18 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     shift when a re-run has more or fewer Packets left out or dropped; paths and values
     are those of the sorted, canonical, numbered form.
 
-    Each Bot's two streams are aligned on their packet keys (State and name), leaving
-    as few Packets unmatched as possible; swapping the sides mirrors the alignment.
-    Between two matched pairs, `missing` Divergences come before `unexpected` ones.
+    Each Bot's two streams are aligned on their packet keys (State and name, and the position
+    of a packet about one chunk), leaving as few Packets unmatched as possible; swapping the
+    sides mirrors the alignment. Between two matched pairs, `missing` Divergences come before
+    `unexpected` ones. An unmatched chunk, light update or forgotten chunk shows
+    `chunk <x> <z>`, any other Packet its value.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
     gameplay `field` Divergence per differing leaf, in path order. If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
-    and values, when the unmasked canonical values at that path are equal; otherwise the
+    and values, when the unmasked canonical values at that path (for a chunk, the canonical
+    value that path is part of, `_COVERS`) are equal; otherwise the
     gameplay Divergences under it (or a Mask) account for it. JSON text in a raw field
     (`_JSON_TEXT`) is diffed as its parsed value, at JSON paths, and as the whole text only
     when the parsed values are equal. A packet's network traffic
@@ -602,21 +627,180 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     is not compared never shifts the numbers of what is. An entity whose `add_entity` was
     left out of the windows is named by it instead (`_Numbers.spawned`), and any
     `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
+    All of this runs over the Bot's Packets once its chunk packets are put in order
+    (`_by_position`). The sort moves only chunk packets, which carry no entity ids, so it
+    changes no entity's name or number.
     """
     windows = _Windows.of(transcript)
+    events = _by_position(
+        [
+            event
+            for event in transcript.events
+            if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
+        ]
+    )
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
-    for event in transcript.events:
+    for event, context in zip(events, _Context.each(events), strict=True):
         packet = event.packet
-        if event.bot != bot or packet.direction is not Direction.CLIENTBOUND:
-            continue
         if windows is not None and not windows.observes(event):
             numbers.spawned(packet, masks)
         elif packet.name not in masks.dropped:
             numbers.take(packet)
-            stream.append(_normalize(packet, masks, numbers))
+            stream.append(_normalize(packet, masks, numbers, context))
         numbers.removed(packet)
     return stream
+
+
+_CHUNK_PACKETS = frozenset(
+    {"minecraft:level_chunk_with_light", "minecraft:light_update", "minecraft:forget_level_chunk"}
+)
+"""The play packets about one chunk, which the client applies to the chunk at their position:
+`ClientChunkCache.replaceWithPacketData` and the light queue, `ClientLevel.queueLightUpdate`, and
+`ClientChunkCache.drop` with `queueLightRemoval`."""
+
+
+_CHUNK_NEUTRAL = frozenset(
+    {
+        "minecraft:chunk_batch_start",
+        "minecraft:chunk_batch_finished",
+        *HEARTBEAT,
+        "minecraft:pong_response",
+        "minecraft:bundle_delimiter",
+        "minecraft:add_entity",
+        "minecraft:move_entity_pos",
+        "minecraft:move_entity_pos_rot",
+        "minecraft:move_entity_rot",
+        "minecraft:rotate_head",
+        "minecraft:set_entity_motion",
+        "minecraft:update_attributes",
+        "minecraft:remove_entities",
+    }
+)
+"""The play packets a run of chunk packets goes across: a chunk packet has the same effect, or
+nearly, on either side of one (javap on the 26.3 client, docs/research/2026-10-02-chunks-
+light.md). A batch's start and end feed only `ChunkBatchSizeCalculator`; the heartbeat packets
+and `pong_response` touch the clock, the stats and the ping monitor; and the entity handlers set
+the entity's fields, while its chunk being loaded decides only whether it ticks
+(`TransientEntitySectionManager`), which either order ends with the same. One exception is
+accepted: a `move_entity_*` handler ends in `Entity.setOnGround`, whose `checkSupportingBlock`
+reads the blocks under the entity (`Level.findSupportingBlock`). That only sets which block the
+entity stands on until it next moves, and ending runs there would bring back false mismatches
+where two vanilla servers split chunks into batches differently."""
+
+
+def _by_position(events: Sequence[Event]) -> list[Event]:
+    """A Bot's clientbound `events`, with the chunk packets of each run sorted by position.
+
+    A run is the packets between two packets that are neither about one chunk
+    (`_CHUNK_PACKETS`) nor ones whose handling reads no chunk (`_CHUNK_NEUTRAL`), in the whole
+    stream: before the windows, their narrowing or a Mask leave anything out, since the client
+    applies every packet in turn. It becomes its chunk packets, sorted by position, x then z,
+    stably, so those about one chunk keep their order, then its other packets in their order:
+    so a neutral packet is in the same place whether it came before a run's first chunk or
+    after it. The server
+    sends the chunks at one distance from the player in the iteration order of a hash set, and
+    which of them are ready for a batch races (`PlayerChunkSender.sendNextChunks`); it sends the
+    light updates of a tick in the order of an identity hash set
+    (`ServerChunkCache.chunkHoldersToBroadcast`); and the client keeps chunks and their light by
+    position (docs/research/2026-10-02-chunks-light.md).
+    """
+    result: list[Event] = []
+    chunks: list[Event] = []
+    positions: list[tuple[int, int]] = []
+    held: list[Event] = []  # the run's other packets so far
+
+    def end_run() -> None:
+        order = sorted(range(len(chunks)), key=positions.__getitem__)
+        result.extend(chunks[index] for index in order)
+        result.extend(held)
+        chunks.clear()
+        positions.clear()
+        held.clear()
+
+    for event in events:
+        if (at := _position(event.packet)) is not None:
+            chunks.append(event)
+            positions.append(at)
+        elif _neutral(event.packet):
+            held.append(event)
+        else:
+            end_run()
+            result.append(event)
+    end_run()
+    return result
+
+
+def _neutral(packet: Packet) -> bool:
+    """Whether `packet` is a play packet a run of chunk packets goes across (`_CHUNK_NEUTRAL`)."""
+    return packet.state is State.PLAY and packet.name in _CHUNK_NEUTRAL
+
+
+def _position(packet: Packet) -> tuple[int, int] | None:
+    """The chunk (x, z) of a play packet about one chunk (`_CHUNK_PACKETS`); else None.
+
+    A chunk the codec could not read has the position of its first two Ints, which the client
+    reads first (`ClientboundLevelChunkWithLightPacket`), if it has 8 bytes.
+    """
+    if packet.state is not State.PLAY or packet.name not in _CHUNK_PACKETS:
+        return None
+    if packet.fields is None:
+        if packet.name != _CHUNK or len(packet.payload) < _CHUNK_POSITION_BYTES:
+            return None
+        x, z = struct.unpack(">ii", packet.payload[:_CHUNK_POSITION_BYTES])
+        return x, z
+    x, z = packet.fields.get("chunk_x"), packet.fields.get("chunk_z")
+    return (x, z) if type(x) is int and type(z) is int else None
+
+
+_CHUNK = "minecraft:level_chunk_with_light"
+_CHUNK_POSITION_BYTES = 8
+
+
+_BIOMES_REGISTRY = "minecraft:worldgen/biome"
+
+
+@dataclass(frozen=True, slots=True)
+class _Context:
+    """What a canonical form needs from the rest of a Bot's Transcript.
+
+    Attributes:
+        biomes: How many biomes the server sent the Bot in configuration (the entries of
+            its `registry_data` for `minecraft:worldgen/biome`), or None if it sent none.
+    """
+
+    biomes: int | None
+
+    @classmethod
+    def each(cls, events: Sequence[Event]) -> list[Self]:
+        """The context of each of a Bot's clientbound `events`, compared or not, in their order.
+
+        The biomes are those of the last configuration before the Event: the client collects
+        each configuration's registries afresh (`ClientConfigurationPacketListenerImpl.<init>`
+        makes a new `RegistryDataCollector`), and appends the entries of every `registry_data`
+        for one registry (`RegistryDataCollector$ContentsCollector.append`).
+        """
+        contexts: list[Self] = []
+        biomes: int | None = None
+        counts: list[int] | None = None  # in the configuration the Bot is in, if it is in one
+        for event in events:
+            packet = event.packet
+            if packet.state is not State.CONFIGURATION:
+                if counts is not None:
+                    # A configuration that sends no biomes gives None, not the earlier count.
+                    # What the client does then is out of scope: no server leaves them out.
+                    biomes, counts = (sum(counts) if counts else None), None
+            else:
+                counts = [] if counts is None else counts
+                if (
+                    packet.name == "minecraft:registry_data"
+                    and packet.fields is not None
+                    and packet.fields.get("registry_id") == _BIOMES_REGISTRY
+                    and isinstance(entries := packet.fields.get("entries"), list)
+                ):
+                    counts.append(len(cast("list[object]", entries)))
+            contexts.append(cls(biomes=biomes))
+        return contexts
 
 
 @dataclass(frozen=True, slots=True)
@@ -940,10 +1124,11 @@ def _player_type() -> int:
 # Normalization: copies of the fields, in the value model, with Masks applied.
 
 
-def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
+def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Context) -> _Normalized:
     """Copy `packet`'s fields; sort, canonicalize, number the entities, and apply the Masks.
 
-    Sorting is `UNORDERED`'s, and the numbers are `numbers`'.
+    Sorting is `UNORDERED`'s, the numbers are `numbers`', and the canonical form may use
+    `context`.
     """
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
@@ -958,8 +1143,8 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
     parsed = _copy(packet, packet.fields)
     if (json_text := _JSON_TEXT.get((packet.state, packet.name))) is not None:
         parsed = _parsed(parsed, json_text)
-    unmasked = canonical(_copy(packet, packet.fields))
-    fields = canonical(_copy(packet, packet.fields))
+    unmasked = canonical(_copy(packet, packet.fields), context)
+    fields = canonical(_copy(packet, packet.fields), context)
     for copy in (raw, parsed, unmasked, fields):
         numbers.apply(packet, copy)
     for copy in (raw, parsed):
@@ -973,6 +1158,8 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers) -> _Normalized:
 def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
     """A copy of `fields`, `packet`'s, in the value model, sorted if `UNORDERED` names it."""
     copy = _plain_mapping(fields.items(), packet.name, ())
+    if (cap := _CAPS.get((packet.state, packet.name))) is not None:
+        copy = cap(copy)
     sort = _SORTS.get(packet.name)
     return copy if sort is None else sort(copy)
 
@@ -1121,6 +1308,52 @@ def _sort_key(item: _Value, key: str) -> _Value:
     return item.get(key) if isinstance(item, dict) else None
 
 
+_HEIGHTMAP_TYPES = 6
+"""How many `Heightmap$Types` the client has: it reads any other id as the first, 0
+(`ByIdMap.continuous` with `OutOfBoundsStrategy.ZERO`)."""
+
+
+def _sorted_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `heightmaps` by the type the client reads, and `block_entities` by position.
+
+    The sorts are stable, so a type sent twice keeps the order of its values (the client
+    keeps the last one), and so do block entities sent for one position (the client loads
+    each in turn).
+    """
+    result = dict(fields)
+    if "heightmaps" in fields:
+        result["heightmaps"] = _sorted_on(fields["heightmaps"], _heightmap_type)
+    if "block_entities" in fields:
+        result["block_entities"] = _sorted_on(fields["block_entities"], _block_position)
+    return result
+
+
+def _sorted_on(items: _Value, key: Callable[[_Value], tuple[int, ...] | None]) -> _Value:
+    """`items` stably sorted by `key` of each one; unchanged unless no key is None."""
+    if not isinstance(items, list):
+        return items
+    keys = [key(item) for item in items]
+    known = [each for each in keys if each is not None]
+    if len(known) != len(items):
+        return items
+    return [items[index] for index in sorted(range(len(items)), key=known.__getitem__)]
+
+
+def _heightmap_type(item: _Value) -> tuple[int, ...] | None:
+    kind = item.get("type") if isinstance(item, dict) else None
+    if type(kind) is not int:
+        return None
+    return (kind if 0 <= kind < _HEIGHTMAP_TYPES else 0,)
+
+
+def _block_position(item: _Value) -> tuple[int, ...] | None:
+    if not isinstance(item, dict):
+        return None
+    position = [item.get(axis) for axis in ("y", "z", "x")]
+    numbers = [each for each in position if type(each) is int]
+    return tuple(numbers) if len(numbers) == len(position) else None
+
+
 def _sorting(field: str, key: str | None) -> Callable[[dict[str, _Value]], dict[str, _Value]]:
     """Sort the list `field` of a packet's fields, as `_sorted_by` does with `key`."""
 
@@ -1137,6 +1370,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:update_attributes": _sorting("attributes", "attribute"),
         "minecraft:update_recipes": _sorted_update_recipes,
         "minecraft:update_advancements": _sorted_update_advancements,
+        "minecraft:level_chunk_with_light": _sorted_level_chunk,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""
@@ -1169,7 +1403,7 @@ def _parsed(fields: dict[str, _Value], json_text: str) -> dict[str, _Value]:
     return {**fields, json_text: value}
 
 
-def _canonical_status_response(fields: dict[str, _Value]) -> dict[str, _Value]:
+def _canonical_status_response(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
     """Parse `json_response` into its JSON value: the members the client reads, canonical.
 
     It stays the raw string, and is compared as one, unless it is strict JSON.
@@ -1291,10 +1525,524 @@ def _nesting(value: object) -> int:
     return deepest
 
 
-_CANONICAL: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
-    MappingProxyType({(State.STATUS, "minecraft:status_response"): _canonical_status_response})
+# Chunks (#22): a chunk's blocks and biomes as the vanilla client keeps them, whatever palette
+# the server spelled them with (docs/research/2026-10-02-chunks-light.md).
+
+
+_CONTAINERS: Mapping[str, tuple[PalettedContainer, int]] = MappingProxyType(
+    {"block_states": (BLOCK_STATES, 16), "biomes": (BIOMES, 4)}
 )
-"""The canonical form of each clientbound packet that has one, by (State, name)."""
+"""A section's paletted containers, by field, each with how many entries are on its side: a
+section is 16 blocks, or 4 biome cells, wide, deep and high."""
+
+
+def _canonical_level_chunk(fields: dict[str, _Value], context: _Context) -> dict[str, _Value]:
+    """A chunk's sections and light as the client keeps them.
+
+    Each section's block states and biomes become the id at each entry (`_entries`,
+    `_biome_entries`), and the light what the client applies (`_canonical_light`), for two
+    light sections more than sections. The client keeps the id at each position, not the
+    palette that spelled it: `LevelChunkSection.read` reads each container with
+    `PalettedContainer.read`, which unpacks its entries at the width the palette is read at.
+    """
+    if "heightmaps" in fields:
+        fields = {**fields, "heightmaps": _kept_heightmaps(fields["heightmaps"])}
+    sections = fields.get("sections")
+    if not isinstance(sections, list):
+        return fields
+    result = {
+        **fields,
+        "sections": [_canonical_section(section, context.biomes) for section in sections],
+    }
+    if "light" in fields:
+        light_sections = min(len(sections), _SECTIONS_MAX) + _LIGHT_MARGIN
+        result["light"] = _canonical_light(fields["light"], light_sections)
+    return result
+
+
+def _kept_heightmaps(heightmaps: _Value) -> _Value:
+    """The heightmaps the client keeps: for each type it reads, the last one sent, by type.
+
+    The client reads an unknown type as 0 and puts each into an `EnumMap`
+    (`ClientboundLevelChunkPacketData`, `ByteBufCodecs.map`), so a later one of a type
+    replaces an earlier one. Heightmaps of no known type stay as they are.
+    """
+    if not isinstance(heightmaps, list):
+        return heightmaps
+    kept: dict[int, _Value] = {}
+    for item in heightmaps:
+        kind = _heightmap_type(item)
+        if kind is None or not isinstance(item, dict):
+            return heightmaps
+        kept[kind[0]] = {**item, "type": kind[0]}
+    return [kept[kind] for kind in sorted(kept)]
+
+
+def _canonical_section(section: _Value, biomes: int | None) -> _Value:
+    if not isinstance(section, dict):
+        return section
+    result = dict(section)
+    if isinstance(states := section.get("block_states"), dict):
+        result["block_states"] = _entries(BLOCK_STATES, states)
+    if isinstance(cells := section.get("biomes"), dict):
+        result["biomes"] = _biome_entries(cells, biomes)
+    return result
+
+
+def _biome_entries(value: dict[str, _Value], biomes: int | None) -> _Value:
+    """A biome container's ids (`_entries`) as the client reads them.
+
+    The client reads a direct biome container at `Mth.ceillog2` of the biomes the server sent
+    it (`Strategy.<init>`, `Configuration$Global`), whatever bits per entry are sent; the
+    codec reads it at the bits sent. If the Transcript has the biomes, a direct container
+    whose data is as long as that width takes is read at that width, so its ids are the ones
+    the client reads and the bits sent are network traffic. Data of another length cannot be
+    what the client reads: the container is then a value of its own, the bits, the width the
+    client reads, and the data.
+    """
+    bits, data = value.get("bits"), value.get("data")
+    if biomes is not None and value.get("palette") is None and isinstance(data, bytes):
+        width = (biomes - 1).bit_length()
+        if bits == width:
+            return _entries(BIOMES, value)
+        if width and len(data) == _LONG_BYTES * -(-BIOMES.entries // (_LONG_BITS // width)):
+            return _entries(replace(BIOMES, id_count=biomes), value)
+        return f"{bits} bits per entry where the client reads {width}: {data.hex()}"
+    return _entries(BIOMES, value)
+
+
+_LONG_BITS = 64
+_LONG_BYTES = 8
+"""A packed Long's bits and bytes: a container's data is whole Longs (`SimpleBitStorage`)."""
+
+
+def _entries(container: PalettedContainer, value: dict[str, _Value]) -> _Value:
+    """A container's ids, entry by entry: one id if every entry has it, else `_packed_ids`.
+
+    A container `PalettedContainer.values` cannot read stays as it is.
+    """
+    try:
+        ids = container.values(value)
+    except (KeyError, WireError):
+        return value
+    first = ids[0]
+    if first is not None and ids.count(first) == len(ids):
+        return first
+    return _packed_ids(ids)
+
+
+def _packed_ids(ids: Sequence[int | None]) -> bytes:
+    """`ids` one after the other, as bytes that are equal exactly when the ids are.
+
+    Each is its id plus 1 (0 for an entry past its palette), in as many big-endian bytes as
+    the largest one needs.
+    """
+    numbers = [0 if each is None else each + 1 for each in ids]
+    size = max(1, -(-max(numbers).bit_length() // 8))
+    return b"".join(number.to_bytes(size, "big") for number in numbers)
+
+
+def _unpacked_ids(data: bytes, entries: int) -> list[int | None]:
+    """The `entries` ids `_packed_ids` packed into `data`."""
+    size = len(data) // entries
+    numbers = (
+        int.from_bytes(data[start : start + size], "big") for start in range(0, len(data), size)
+    )
+    return [None if number == 0 else number - 1 for number in numbers]
+
+
+_LIGHT_LAYERS: Mapping[str, str] = MappingProxyType(
+    {
+        "sky_light_mask": "sky",
+        "empty_sky_light_mask": "sky",
+        "sky_light_arrays": "sky",
+        "block_light_mask": "block",
+        "empty_block_light_mask": "block",
+        "block_light_arrays": "block",
+    }
+)
+"""The fields of light data (`LIGHT_DATA`), each with the layer of the canonical form it
+is part of."""
+
+_LIGHT_BYTES = 2048
+"""How many bytes a light array has: `new DataLayer(byte[])` refuses any other length."""
+
+_LIGHT_MARGIN = 2
+"""How many more light sections a level has than sections: one below it, one above it
+(`LevelLightEngine.getLightSectionCount`)."""
+
+_LIGHT_SECTIONS_MAX = 256
+"""The most light sections a level has: `DimensionType`'s height is at most `Y_SIZE`,
+`(1 << BlockPos.PACKED_Y_LENGTH) - 32`, 4064 blocks, so 254 sections, and the margin."""
+
+_SECTIONS_MAX = _LIGHT_SECTIONS_MAX - _LIGHT_MARGIN
+"""The most sections a level has: 254."""
+
+_EMPTY = "empty"
+"""A light section sent empty, where the client's light is not the same as an array of 0s."""
+
+
+def _capped(items: _Value, most: int, what: str) -> _Value:
+    """`items`' first `most` elements, then one that counts the rest (`19746 more sections`)."""
+    if not isinstance(items, list) or len(items) <= most:
+        return items
+    return [*items[:most], f"{len(items) - most} more {what}"]
+
+
+def _capped_light(light: _Value) -> _Value:
+    """Light data with at most `_LIGHT_SECTIONS_MAX` arrays in each layer (`_capped`).
+
+    A mask has a bit for each array the client takes, and no bit from the light section count
+    up is read (`_canonical_light`), so no array past the 256th is.
+    """
+    if not isinstance(light, dict):
+        return light
+    return {
+        key: _capped(value, _LIGHT_SECTIONS_MAX, "arrays") if key.endswith("_arrays") else value
+        for key, value in light.items()
+    }
+
+
+def _capped_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A chunk with at most `_SECTIONS_MAX` sections and `_capped_light` light.
+
+    The client reads one section for each section of its level and never the bytes after
+    them (`LevelChunk.replaceWithPacketData`), so a chunk of more sections than any level has
+    is compared as that many and a count of the rest: one value, not one for each.
+    """
+    result = dict(fields)
+    if "sections" in fields:
+        result["sections"] = _capped(fields["sections"], _SECTIONS_MAX, "sections")
+    if "light" in fields:
+        result["light"] = _capped_light(fields["light"])
+    return result
+
+
+def _capped_light_update(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A light update with `_capped_light` data."""
+    return {**fields, "data": _capped_light(fields["data"])} if "data" in fields else fields
+
+
+def _canonical_light(light: _Value, sections: int) -> _Value:
+    """Light data as the client applies it: the light each light section gets, by layer.
+
+    For each of the `sections` light sections, that is the next array if the mask has its bit
+    (an array the client cannot take shows what is wrong), else an empty section if the empty
+    mask has it, else None: the client keeps the light it had
+    (`ClientPacketListener.readSectionList`). Bits from `sections` up
+    are never read, and neither are the arrays past the mask's bits. An empty section is an
+    array of 0s for block light, and for sky light in light section 0, below the world: no
+    client code tells them apart there (docs/research/2026-10-02-chunks-light.md). Light data
+    not decoded by the codec stays as it is.
+    """
+    if not isinstance(light, dict):
+        return light
+    sky, block = (_light_layer(light, layer, sections) for layer in ("sky", "block"))
+    if sky is None or block is None:
+        return light
+    return {"sky": sky, "block": block}
+
+
+def _light_layer(light: dict[str, _Value], layer: str, sections: int) -> list[_Value] | None:
+    mask = light.get(f"{layer}_light_mask")
+    empty = light.get(f"empty_{layer}_light_mask")
+    arrays = light.get(f"{layer}_light_arrays")
+    if not (isinstance(mask, bytes) and isinstance(empty, bytes) and isinstance(arrays, list)):
+        return None
+    sent, emptied = int.from_bytes(mask, "little"), int.from_bytes(empty, "little")
+    left = iter(arrays)
+    result: list[_Value] = []
+    for index in range(sections):
+        value: _Value = None
+        if sent >> index & 1:
+            value = next(left, "no array left")
+            if isinstance(value, bytes) and len(value) != _LIGHT_BYTES:
+                value = f"an array of {len(value)} bytes"
+        elif emptied >> index & 1:
+            value = bytes(_LIGHT_BYTES) if layer == "block" or index == 0 else _EMPTY
+        result.append(value)
+    return result
+
+
+def _canonical_light_update(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+    """The light data as the client applies it (`_canonical_light`).
+
+    Over as many light sections as any level has: a light update does not say how high its
+    level is.
+    """
+    if "data" not in fields:
+        return fields
+    return {**fields, "data": _canonical_light(fields["data"], _LIGHT_SECTIONS_MAX)}
+
+
+def _canonical_batch_finished(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+    """No `batch_size`: the client feeds it only to the rate it asks the server for.
+
+    (`ClientPacketListener.handleChunkBatchFinished`: `ChunkBatchSizeCalculator.onBatchFinished`,
+    then `chunk_batch_received` with `getDesiredChunksPerTick`.) Which chunks a batch holds races
+    between two vanilla Instances, and the client keeps each chunk by its position.
+    """
+    return {key: value for key, value in fields.items() if key != "batch_size"}
+
+
+_BATCH_PACKETS = frozenset(
+    {(State.PLAY, "minecraft:chunk_batch_start"), (State.PLAY, "minecraft:chunk_batch_finished")}
+)
+"""The packets that mark a chunk batch: the client's world does not change with them, so one that
+only one side sent is network traffic (`_canonical_batch_finished`)."""
+
+
+def _chunk_cover(path: _Path) -> _Path:
+    """The path of the canonical value that the raw value at `path` is part of.
+
+    For a chunk or a light update: a section's container, or a layer of its light.
+    """
+    match path:
+        case ("sections", int(), "block_states" | "biomes", *_):
+            return path[:3]
+        case ("light" | "data", str() as key, *_) if key in _LIGHT_LAYERS:
+            return (path[0], _LIGHT_LAYERS[key])
+    return path
+
+
+# What a gameplay Divergence of a chunk shows: the chunk, and the positions that differ.
+
+
+_SECTION_BOTTOMS: Mapping[int, int] = MappingProxyType({24: -64, 16: 0})
+"""The lowest y of the vanilla dimension types with that many sections: the overworld and
+overworld_caves are 384 blocks high from -64, the nether and the end 256 from 0 (the 26.3
+server jar's `data/minecraft/dimension_type`)."""
+
+_SHOWN_POSITIONS = 3
+"""How many differing positions a Divergence names; it counts the rest."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Place:
+    """Where a chunk is in the world, for what its Divergences show.
+
+    Attributes:
+        x: The chunk's x.
+        z: The chunk's z.
+        bottom: The y of its lowest block, if both sides have the section count of a vanilla
+            dimension type with the same lowest y (`_SECTION_BOTTOMS`); None counts y from the
+            world's bottom.
+    """
+
+    x: int
+    z: int
+    bottom: int | None
+
+    @classmethod
+    def of(cls, fields: tuple[dict[str, _Value], dict[str, _Value]]) -> Self | None:
+        """The place of two matched chunks, from the reference's position; None if unknown."""
+        x, z = fields[0].get("chunk_x"), fields[0].get("chunk_z")
+        if type(x) is not int or type(z) is not int:
+            return None
+        bottoms = {
+            _SECTION_BOTTOMS.get(len(sections))
+            if isinstance(sections := side.get("sections"), list)
+            else None
+            for side in fields
+        }
+        return cls(x=x, z=z, bottom=bottoms.pop() if len(bottoms) == 1 else None)
+
+    def label(self) -> str:
+        """`chunk <x> <z>`, saying so if y counts from the world's bottom."""
+        note = "" if self.bottom is not None else " (y from the world's bottom)"
+        return f"chunk {self.x} {self.z}{note}"
+
+    def position(self, section: int, entry: int, side: int) -> str:
+        """`x y z` in the world of `entry` of `section`, a cube of `side` entries a side.
+
+        An entry stands for its lowest corner: a biome cell is 4 blocks a side.
+        """
+        shift, scale = side.bit_length() - 1, 16 // side
+        x, z, y = entry & (side - 1), entry >> shift & (side - 1), entry >> 2 * shift
+        bottom = (self.bottom or 0) + 16 * section
+        return f"{16 * self.x + scale * x} {bottom + scale * y} {16 * self.z + scale * z}"
+
+    def listed(self, section: int, side: int, values: list[tuple[int, str]]) -> str:
+        """The first `_SHOWN_POSITIONS` entries of `values` with their values, and a count."""
+        named = ", ".join(
+            f"{self.position(section, entry, side)} is {value}"
+            for entry, value in values[:_SHOWN_POSITIONS]
+        )
+        more = len(values) - _SHOWN_POSITIONS
+        return f"{self.label()}: {named}" + (f" and {more} more" if more > 0 else "")
+
+    def summed(self, section: int, text: str) -> str:
+        """`text` about the whole of `section`, after the heights it spans."""
+        bottom = (self.bottom or 0) + 16 * section
+        return f"{self.label()}, y {bottom} to {bottom + 15}: {text}"
+
+
+type _Sides = tuple[dict[str, _Value], dict[str, _Value]]
+"""The reference's and the candidate's fields of two matched Packets."""
+
+
+def _shown_chunk(
+    path: _Path, reference: _Value | Absent, candidate: _Value | Absent, fields: _Sides
+) -> tuple[object, object]:
+    """What a gameplay Divergence of a chunk, or of a light update, shows on each side.
+
+    For a section's block states or biomes, or a light section, the first positions that
+    differ, each with the side's id or light level there, and how many more differ; or, for
+    a container or a light section that is not ids or an array on both sides, what each
+    side's is. Anything else shows its values.
+    """
+    match path:
+        case ("sections", int() as section, str() as field) if field in _CONTAINERS:
+            return _shown_section(section, field, (reference, candidate), fields)
+        case ("light" | "data", "sky" | "block", int() as index):
+            return _shown_light(index - 1, (reference, candidate), fields)
+    return reference, candidate
+
+
+def _shown_section(
+    section: int, field: str, values: tuple[_Value | Absent, _Value | Absent], fields: _Sides
+) -> tuple[object, object]:
+    container, side = _CONTAINERS[field]
+    reference, candidate = (_ids(value, container.entries) for value in values)
+    place = _Place.of(fields)
+    if place is None:
+        return values
+    if reference is None or candidate is None:
+        texts = [_container_text(value, container.entries) for value in values]
+        if texts[0] is None or texts[1] is None:
+            return values
+        return place.summed(section, texts[0]), place.summed(section, texts[1])
+    differing = [
+        entry for entry in range(container.entries) if reference[entry] != candidate[entry]
+    ]
+    return (
+        place.listed(section, side, [(entry, _id_text(reference[entry])) for entry in differing]),
+        place.listed(section, side, [(entry, _id_text(candidate[entry])) for entry in differing]),
+    )
+
+
+def _ids(value: _Value | Absent, entries: int) -> list[int | None] | None:
+    """The id at each entry of a canonical container; None if it is not one."""
+    if type(value) is int:
+        return [value] * entries
+    if isinstance(value, bytes):
+        return _unpacked_ids(value, entries)
+    return None
+
+
+def _id_text(value: int | None) -> str:
+    return "past the palette" if value is None else str(value)
+
+
+def _container_text(value: _Value | Absent, entries: int) -> str | None:
+    """A canonical container said whole; None if it is not one.
+
+    "all 41", "ids 3 to 41" (with "and entries past the palette" if it has any), or what is
+    wrong with it.
+    """
+    if type(value) is int:
+        return f"all {value}"
+    if isinstance(value, str):
+        return value
+    if not isinstance(value, bytes):
+        return None
+    ids = _unpacked_ids(value, entries)
+    known = sorted({each for each in ids if each is not None})
+    if not known:
+        return "every entry past the palette"
+    text = f"id {known[0]}" if len(known) == 1 else f"ids {known[0]} to {known[-1]}"
+    return text + (" and entries past the palette" if None in ids else "")
+
+
+def _shown_light(
+    section: int, values: tuple[_Value | Absent, _Value | Absent], fields: _Sides
+) -> tuple[object, object]:
+    """What a light section's Divergence shows.
+
+    `section` is the world section it lights: -1 for the one below the world.
+    """
+    place = _Place.of(fields)
+    if place is None:
+        return values
+    reference, candidate = values
+    if isinstance(reference, bytes) and isinstance(candidate, bytes):
+        ref_levels, cand_levels = _levels(reference), _levels(candidate)
+        differing = [entry for entry, level in enumerate(ref_levels) if level != cand_levels[entry]]
+        return (
+            place.listed(section, 16, [(entry, str(ref_levels[entry])) for entry in differing]),
+            place.listed(section, 16, [(entry, str(cand_levels[entry])) for entry in differing]),
+        )
+    return place.summed(section, _light_text(reference)), place.summed(
+        section, _light_text(candidate)
+    )
+
+
+def _levels(data: bytes) -> list[int]:
+    """The light level at each entry of a light array: 4 bits each, low ones first (`DataLayer`)."""
+    levels: list[int] = []
+    for byte in data:
+        levels.extend((byte & 15, byte >> 4))
+    return levels
+
+
+def _light_text(value: _Value | Absent) -> str:
+    """A light section said whole: "all 15", "levels 0 to 15", "empty", "not sent", ....
+
+    ABSENT is past the side's light sections: "no such light section".
+    """
+    if isinstance(value, bytes):
+        found = set(_levels(value))
+        return f"all {min(found)}" if len(found) == 1 else f"levels {min(found)} to {max(found)}"
+    if isinstance(value, str):
+        return value
+    return "no such light section" if value is ABSENT else "not sent"
+
+
+_CANONICAL: Mapping[
+    tuple[State, str], Callable[[dict[str, _Value], _Context], dict[str, _Value]]
+] = MappingProxyType(
+    {
+        (State.STATUS, "minecraft:status_response"): _canonical_status_response,
+        (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
+        (State.PLAY, "minecraft:light_update"): _canonical_light_update,
+        (State.PLAY, "minecraft:chunk_batch_finished"): _canonical_batch_finished,
+    }
+)
+"""The canonical form of each clientbound packet that has one, by (State, name), from its
+fields and its Bot's `_Context`."""
+
+_CAPS: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
+    MappingProxyType(
+        {
+            (State.PLAY, "minecraft:level_chunk_with_light"): _capped_level_chunk,
+            (State.PLAY, "minecraft:light_update"): _capped_light_update,
+        }
+    )
+)
+"""For a packet whose lists can be longer than the client ever reads: every copy of its fields
+cut to what can be read, and one value that counts the rest (`_capped`)."""
+
+_COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
+    {
+        (State.PLAY, "minecraft:level_chunk_with_light"): _chunk_cover,
+        (State.PLAY, "minecraft:light_update"): _chunk_cover,
+    }
+)
+"""For a packet in `_CANONICAL` whose canonical form is not shaped as it came: the path of the
+canonical value each raw path is part of. A raw difference is network traffic only if that
+value is the same on both sides (`_network_traffic`)."""
+
+_SHOWN: Mapping[
+    tuple[State, str],
+    Callable[[_Path, _Value | Absent, _Value | Absent, _Sides], tuple[object, object]],
+] = MappingProxyType(
+    {
+        (State.PLAY, "minecraft:level_chunk_with_light"): _shown_chunk,
+        (State.PLAY, "minecraft:light_update"): _shown_chunk,
+    }
+)
+"""For a packet whose gameplay Divergences show something other than their canonical values:
+what they show, from the path, the two values and both sides' fields."""
 
 _JSON_TEXT: Mapping[tuple[State, str], str] = MappingProxyType(
     {(State.STATUS, "minecraft:status_response"): "json_response"}
@@ -1308,12 +2056,20 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 # Alignment.
 
 
-type _Key = tuple[str, str]
-"""What a Packet is aligned on: its State and name."""
+type _Key = tuple[str, ...]
+"""What a Packet is aligned on (`_key`): its State, its name and, for a packet about one chunk,
+its position (`chunk x z`; empty for any other Packet). The client keeps a chunk and its light by
+position, so two such packets at different positions are never one Packet sent two ways."""
 
 
 def _key(entry: _Normalized) -> _Key:
-    return (entry.packet.state.value, entry.packet.name)
+    return (entry.packet.state.value, entry.packet.name, _place_text(entry.packet))
+
+
+def _place_text(packet: Packet) -> str:
+    """`chunk <x> <z>` for a packet about one chunk (`_position`), else the empty string."""
+    at = _position(packet)
+    return "" if at is None else f"chunk {at[0]} {at[1]}"
 
 
 def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[int, int]]:
@@ -1404,15 +2160,26 @@ def _compare_streams(
 def _unmatched(
     bot: str, index: int, kind: Literal["missing", "unexpected"], entry: _Normalized
 ) -> Divergence:
+    """A Packet one side has: its value, or where it is for one about a chunk (`chunk x z`).
+
+    It is network traffic for a packet that marks a chunk batch (`_BATCH_PACKETS`), else gameplay.
+    """
+    state, name = entry.packet.state, entry.packet.name
+    value = _place_text(entry.packet) or entry.value
     return Divergence(
         bot=bot,
         index=index,
         kind=kind,
-        packet=entry.packet.name,
+        packet=name,
         path=None,
-        reference=entry.value if kind == "missing" else ABSENT,
-        candidate=entry.value if kind == "unexpected" else ABSENT,
-        test_case=_test_case(entry.packet.state, entry.packet.name, ()),
+        reference=value if kind == "missing" else ABSENT,
+        candidate=value if kind == "unexpected" else ABSENT,
+        test_case=_test_case(state, name, ()),
+        observability=(
+            Observability.NETWORK_TRAFFIC
+            if (state, name) in _BATCH_PACKETS
+            else Observability.GAMEPLAY
+        ),
     )
 
 
@@ -1436,12 +2203,17 @@ def _diff_matched(
         # Name each shape once: a list of 10,000 entries is 10,000 pairs but one name.
         names: dict[_Path, str] = {}
         masked = reference.masked | candidate.masked
+        shown = _SHOWN.get((state, name))
+        sides = (reference.fields, candidate.fields)
         for path, ref_value, cand_value in _pairs(reference.fields, candidate.fields, ()):
             shape = tuple(0 if isinstance(step, int) else step for step in path)
             if shape not in names:
                 names[shape] = _test_case(state, name, shape)
             if not _same(ref_value, cand_value):
-                differences.append((path, names[shape], ref_value, cand_value))
+                values = (ref_value, cand_value)
+                if shown is not None:
+                    values = shown(path, ref_value, cand_value, sides)
+                differences.append((path, names[shape], *values))
                 compared.add(names[shape])
             elif not (masked and path in masked):
                 compared.add(names[shape])
@@ -1476,7 +2248,9 @@ def _network_traffic(
     """Yield the raw differences whose unmasked canonical values are equal, in path order.
 
     A raw difference inside JSON text is taken at each JSON path where the parsed values
-    differ; only when they are equal (a JSON spelling) is it the whole text.
+    differ; only when they are equal (a JSON spelling) is it the whole text. The canonical
+    values compared are those at the raw path, or, for a packet in `_COVERS`, at the path of
+    the canonical value the raw one is part of.
     """
     if (
         reference.raw is None
@@ -1487,12 +2261,14 @@ def _network_traffic(
         or candidate.unmasked is None
     ):
         return
+    cover = _COVERS.get((reference.packet.state, reference.packet.name))
     for raw_path, raw_ref, raw_cand in _diff(reference.raw, candidate.raw, ()):
         parsed = (_at(reference.parsed, raw_path), _at(candidate.parsed, raw_path))
         found = list(_diff(*parsed, raw_path)) or [(raw_path, raw_ref, raw_cand)]
         for path, ref_value, cand_value in found:
-            canonical = (_at(reference.unmasked, path), _at(candidate.unmasked, path))
-            if next(_diff(*canonical, path), None) is None:
+            covering = path if cover is None else cover(path)
+            canonical = (_at(reference.unmasked, covering), _at(candidate.unmasked, covering))
+            if next(_diff(*canonical, covering), None) is None:
                 yield path, ref_value, cand_value
 
 
