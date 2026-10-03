@@ -16,6 +16,7 @@ from mscts.net import ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
+from tests.net import fakes
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
@@ -33,6 +34,10 @@ AWARD_STATS = "minecraft:award_stats"
 SETBLOCK = "setblock 1 -60 1 minecraft:stone"
 FEEDBACK = "Changed the block at 1, -60, 1"
 MARKER = "tellraw @s "
+PLAY_TIMEOUT_S = 60.0
+"""How long a fake serves a Bot: a whole play, which takes blocks/clone 2 to 4 s when the
+host is idle and more than twice that under load (#209). It is below pytest's timeout, so
+a hung fake still fails with where it hung."""
 
 
 def tree(*roots: str, root_index: int = 0) -> dict[str, object]:
@@ -145,7 +150,7 @@ async def playing(
     handler: Handler, transcript: Transcript, *, timeout_s: float = 2.0
 ) -> AsyncIterator[GroupContext]:
     """A GroupContext against a fake server running `handler`, closed however the body ends."""
-    async with serve(CODEC, handler) as endpoint:
+    async with serve(CODEC, handler, timeout_s=PLAY_TIMEOUT_S) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=timeout_s)
         try:
             yield context
@@ -167,6 +172,20 @@ def received(transcript: Transcript, bot: str = "control") -> list[Event]:
         for event in transcript.events
         if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_play_outlasts_the_budget_of_one_fake_exchange(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A Group's Bots stay connected for the whole play, which on a loaded host takes
+    # longer than a fake gives one exchange (#209): here, a play 4 times that budget.
+    monkeypatch.setattr(fakes, "HANDLER_TIMEOUT_S", TICK_S)
+    transcript = Transcript(group_id="test/control", server="fake")
+    async with playing(ControlServer(), transcript) as context:
+        await context.control.run(SETBLOCK)
+        await asyncio.sleep(4 * TICK_S)
+        await context.control.run("tick freeze")
 
 
 @pytest.mark.asyncio
