@@ -139,9 +139,9 @@ def test_swing_punches() -> None:
     assert acts(script) == [[PUNCH, TICK_END]]
 
 
-def test_an_action_comes_after_the_held_slot_and_before_the_movement() -> None:
-    # Minecraft.tick: gameMode.tick (the held slot), handleKeybinds (the action), then
-    # LocalPlayer.sendChanges (the keys and the movement), then client_tick_end.
+def test_hold_sends_a_slot_only_when_it_changed() -> None:
+    # ensureHasSentCarriedItem sends the selected slot only when it differs from the one
+    # last sent; the keys go in their own tick (LocalPlayer.sendChanges).
     async def script(bot: Bot) -> None:
         await bot.hold(4)
         await bot.sneak(sneaking=True)
@@ -154,7 +154,7 @@ def test_an_action_comes_after_the_held_slot_and_before_the_movement() -> None:
     ]
 
 
-def test_the_held_slot_goes_with_the_next_action_once() -> None:
+def test_an_action_after_hold_sends_no_slot_again() -> None:
     async def script(bot: Bot) -> None:
         await bot.hold(2)
         await bot.hold(0)
@@ -165,6 +165,25 @@ def test_the_held_slot_goes_with_the_next_action_once() -> None:
         [("minecraft:set_carried_item", {"slot": 2}), TICK_END],
         [("minecraft:set_carried_item", {"slot": 0}), TICK_END],
         [("minecraft:use_item", {"hand": 0, "sequence": 1, **rotation}), TICK_END],
+    ]
+
+
+def test_the_held_slot_goes_before_the_action_in_the_same_tick() -> None:
+    # Minecraft.tick: gameMode.tick sends the held slot (ensureHasSentCarriedItem), then
+    # handleKeybinds the action, then client_tick_end.
+    async def script(bot: Bot) -> None:
+        await bot.sync()
+        await bot.place(3, -61, -2, Face.UP)
+
+    ticks = acts(script, after_first_tick=("minecraft:set_held_slot", {"slot": 5}))
+    middle = {"cursor_x": 0.5, "cursor_y": 0.5, "cursor_z": 0.5}
+    hit = {"pos": BLOCK, "face": 1, **middle, "inside_block": False, "world_border_hit": False}
+    assert ticks == [
+        [
+            ("minecraft:set_carried_item", {"slot": 5}),
+            ("minecraft:use_item_on", {"hand": 0, **hit, "sequence": 1}),
+            TICK_END,
+        ]
     ]
 
 
