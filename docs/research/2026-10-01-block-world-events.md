@@ -139,7 +139,7 @@ The recorded payloads are in `tests/codec/schemas/test_play_blocks.py` and
 ## What Pumpkin sends for the same commands
 
 **verified (live)**, the same Control commands against Pumpkin, through
-`tests/adapters/test_pumpkin_block_events.py` and two probe runs (the first one
+`tests/adapters/pumpkin/test_pumpkin_block_events.py` and two probe runs (the first one
 stalled, see `fill … destroy`). Every packet of #29 that Pumpkin sent decodes
 strictly and encodes back to its bytes, so the schemas hold for a Candidate as
 well as the Reference. What differs is behaviour, which is what the Groups

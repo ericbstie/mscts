@@ -261,8 +261,8 @@ then sends SIGTERM, then SIGKILL, waiting up to 30 seconds at each step.
    in the folder. Any data files the Adapter reads, such as a pinned
    default config, go in the folder too.
 2. In `src/mscts/cli.py`, import your Adapter and add it to `ADAPTERS`,
-   the list of Adapters the command knows. That is the only change
-   outside your folder.
+   which maps each Adapter name the command knows to its class. Those
+   two lines are the only change outside your folder.
 3. Write unit tests in `tests/adapters/<name>/`: `release` with a fake
    `fetch`, `check` on small stand-in files, and `prepare` on the files
    it writes and on each invariant.
