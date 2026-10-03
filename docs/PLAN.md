@@ -551,6 +551,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def use_item(self, *, off_hand: bool = False) -> None: ...
     async def release_item(self) -> None: ...
     async def swing(self) -> None: ...                                  # punch
+    async def attack(self, entity: Entity) -> None: ...                # attack, + punch
+    async def interact(self, entity: Entity, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                       *, off_hand: bool = False) -> None: ...         # interact
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -622,6 +625,12 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # has no swing packet with a hand). START, STOP, use_item_on and use_item carry the next
     # block-change sequence (BlockStatePredictionHandler: +1, then sent, from 0 per level).
     # The Bot times no breaking: a Group sends stop_digging at the tick it tests.
+    # attack / interact (#27): one client tick each, as above. attack: attack with the
+    # entity's id, then punch (Minecraft.startAttack, MultiPlayerGameMode.attack); interact:
+    # interact (the entity's id, hand, `at` relative to the entity's position as LpVec3.write
+    # encodes it, sneaking = the sneak key held), no punch (MultiPlayerGameMode.interact).
+    # interact refuses a NaN or infinite `at` (ValueError, nothing sent). Like place, it does
+    # not go on to use_item when the use does nothing.
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
