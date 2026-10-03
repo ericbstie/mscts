@@ -67,6 +67,6 @@ def report_from_sample(path: Path) -> Report:
         sides[0],
         sides[1],
         tuple(results),
-        tuple(data["notes"]),
+        tuple(data.get("notes", ())),
         data["elapsed_s"],
     )

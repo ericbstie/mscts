@@ -41,10 +41,6 @@ DEFAULT_GROUPS = "status/*"
 DEFAULT_REPEAT = 5
 """How many times `mscts run` plays each Group unless `--repeat` says otherwise."""
 
-_NO_OUT = "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
-RUN_NOTES = (_NO_OUT,)
-"""What every `mscts run` Report says it leaves out."""
-
 
 class _UsageError(Exception):
     """A command line the command cannot act on; its message names the fix."""
@@ -210,7 +206,7 @@ def _run(arguments: argparse.Namespace, _fetch: Fetch) -> int:
         shutil.rmtree(workdir)
         raise
     shutil.rmtree(workdir)
-    report = Report.of(result, target=TARGET, notes=RUN_NOTES, elapsed_s=perf_counter() - started)
+    report = Report.of(result, target=TARGET, notes=(), elapsed_s=perf_counter() - started)
     sys.stdout.write(render_text(report, verbose=arguments.verbose))
     return 0
 

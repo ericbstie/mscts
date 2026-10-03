@@ -43,8 +43,7 @@ Report:
 uv run mscts run --candidate pumpkin > report.txt
 ```
 
-The Report is plain text for now. JSON and Markdown output (`--out DIR`) are
-planned.
+The Report is plain text.
 
 ## Exit codes
 

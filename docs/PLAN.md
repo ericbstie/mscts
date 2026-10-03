@@ -1863,8 +1863,7 @@ proves it necessary:
 
 ### Measurements and Report
 
-- `cli`: `ADAPTERS`, `DEFAULT_GROUPS`, `DEFAULT_REPEAT`, `REFERENCE`, `RUN_NOTES` — CLI defaults and
-  Run notes.
+- `cli`: `ADAPTERS`, `DEFAULT_GROUPS`, `DEFAULT_REPEAT`, `REFERENCE` — CLI defaults.
 
 ```python
 @frozen
