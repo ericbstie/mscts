@@ -5,7 +5,12 @@ after a Group that joined Bots (a Run before the next Group, a Group after its C
 left) waits first. The fakes answer each status request from a script of counts.
 """
 
+import asyncio
+import contextlib
 import dataclasses
+import os
+import stat
+from pathlib import Path
 from time import perf_counter
 
 import pytest
@@ -132,3 +137,80 @@ async def test_a_status_that_never_answers_ends_at_the_deadline() -> None:
         await until_no_player_online(endpoint, deadline_s=DEADLINE_S)
 
     assert perf_counter() - begun < 3 * DEADLINE_S
+
+
+TURNS_TO_A_STATUS_WAIT = 30
+"""More event loop turns than a poll takes from its start to waiting for the status answer."""
+
+
+def _open_sockets() -> int:
+    """How many sockets this process has open (`/dev/fd`, on Linux and macOS)."""
+    return sum(1 for fd in Path("/dev/fd").iterdir() if _is_socket(int(fd.name)))
+
+
+def _is_socket(fd: int) -> bool:
+    """Whether `fd` is an open socket; False if it is gone (the listing's own fd)."""
+    try:
+        return stat.S_ISSOCK(os.fstat(fd).st_mode)
+    except OSError:
+        return False
+
+
+async def _until_sockets_open_are(count: int, *, within_s: float) -> int:
+    """Wait until this process has `count` sockets open, or `within_s` passes; return the count.
+
+    A closed transport closes its socket on a later turn of the event loop.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + within_s
+    while True:
+        now = _open_sockets()
+        if now == count or loop.time() >= deadline:
+            return now
+        await asyncio.sleep(0.001)
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(30)
+async def test_a_poll_cancelled_at_any_turn_of_connecting_or_asking_leaves_no_socket_open() -> None:
+    """#133: a Run cancelled mid settle wait cancels a poll wherever it is.
+
+    Cancelled after 0, 1, 2 ... turns of the event loop, the poll is cut off while it
+    connects, once it has, and while it waits for a status the server never sends. Each
+    time, once the server has let go of what it accepted, no socket is left open.
+    """
+    asked = 0  # connections that sent something: the poll got as far as asking
+
+    async def until_the_client_closes(
+        reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        nonlocal asked
+        with contextlib.suppress(ConnectionError):
+            if await reader.read(1024):
+                asked += 1
+                while await reader.read(1024):
+                    pass  # and never answer
+        writer.close()
+
+    server = await asyncio.start_server(until_the_client_closes, HOST, 0)
+    endpoint = Endpoint(host=HOST, port=server.sockets[0].getsockname()[1])
+    before = _open_sockets()  # the listening socket included
+    leaks: list[int] = []
+    try:
+        for turns in range(TURNS_TO_A_STATUS_WAIT):
+            poll = asyncio.create_task(until_no_player_online(endpoint, deadline_s=5.0))
+            for _ in range(turns):
+                await asyncio.sleep(0)
+            poll.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await poll
+            # A leaked client socket holds its server side open too.
+            if await _until_sockets_open_are(before, within_s=1.0) != before:
+                leaks.append(turns)
+    finally:
+        server.close()
+        server.abort_clients()
+        await server.wait_closed()
+
+    assert leaks == []
+    assert asked > 0, "no poll got as far as asking: TURNS_TO_A_STATUS_WAIT is too few"

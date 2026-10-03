@@ -77,9 +77,11 @@ async def until_no_player_online(
     empty: refused, closed, late, not a status, or without an integer `players.online`.
     Whatever plays next meets the same failure and reports it.
 
-    A poll is never cancelled from outside, because one cut off between connecting and
-    closing leaks its socket. The deadline is checked between polls, and each poll bounds
-    itself by `deadline_s` too, so a server that never answers costs at most two.
+    The deadline is checked between polls, not by cancelling one, and each poll bounds
+    itself by `deadline_s` too, so a server that never answers costs at most two. A poll
+    cancelled from outside (a Run cut short) still leaves no socket open: asyncio closes a
+    socket cut off while it connects, and the poll closes its Bot in a `finally` once it
+    has connected.
 
     Raises:
         PlayersStillOnline: The last status still said so after `deadline_s` seconds.
