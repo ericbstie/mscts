@@ -14,12 +14,12 @@ each level requires).
 
 | Area | Files | Level | Clean merges since the last escape | Why |
 | --- | --- | --- | --- | --- |
-| timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | high | 1 | Five escapes since 2026-09-26, then audit 2026-10-02 H1, H5 (`docs/audits/2026-10-02-timing-compare.md`); a socket leak on cancel since (#127; #133 turned out not to leak). The audit these call is folded into the reviews of #115 (PR #163, merged) and #117 (PR #179) |
-| comparison core | `compare.py`, `measure.py`, `case_titles.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 3 | Audit 2026-10-02 H2, H3, H4; vanilla's own chunk encodings read as Divergences (#172, found by #30's measurement). The independent review of PR #173 stood in for the audit |
+| timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | high | 3 | Five escapes since 2026-09-26, then audit 2026-10-02 H1, H5 (`docs/audits/2026-10-02-timing-compare.md`); a socket leak on cancel since (#127). The audit these called was folded into the reviews of #115 (PR #163) and #117 (PR #179). A late disconnect gave `match` (#184, escaped); the adversarial review of PR #189 stood in for the audit it calls. Clean since: #179, #181, #189 |
+| comparison core | `compare.py`, `measure.py`, `case_titles.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 4 | Audit 2026-10-02 H2, H3, H4; vanilla's own chunk encodings read as Divergences (#172, found by #30's measurement). The independent review of PR #173 stood in for the audit |
 | codec | `codec/*` | medium | 0 | Audit K MD1, MD4 (2026-09-26); none since |
-| platform | `runner.py`, `adapters/*`, `install.py`, `registry.py`, `spec.py`, `cli.py`, `report.py` | medium | 1 | Audit K H1; orphaned Instances (#3) |
-| Groups | `groups/*`, `tests/group/*` | high | 1 | Raised 2026-10-03: `blocks/clone` gave `mismatch` on vanilla against vanilla (#170) |
-| tooling and docs | `scripts/*`, `docs/*`, `.github/*`, test fakes | medium | 2 | Raised 2026-10-03: flaky probe test (#123), fake server hang (#126), `commit_green` let a ty-red commit through (#150) |
+| platform | `runner.py`, `adapters/*`, `install.py`, `registry.py`, `spec.py`, `cli.py`, `report.py` | high | 2 | Audit K H1; orphaned Instances (#3). Raised 2026-10-03: the Fixture world let mobs spawn near the spawn, so their sounds reached one Instance's joining player only (#183; fixed for one probe in #199, for every Group in #200). Clean since: #192, #194 |
+| Groups | `groups/*`, `tests/group/*` | high | 2 | Raised 2026-10-03: `blocks/clone` gave `mismatch` on vanilla against vanilla (#170) |
+| tooling and docs | `scripts/*`, `docs/*`, `.github/*`, test fakes | medium | 2 | Raised 2026-10-03: flaky probe test (#123), fake server hang (#126), `commit_green` let a ty-red commit through (#150). Raised again for the flaky live-lock tests (#171, logged late), then lowered after 5 clean merges (#185, #186, #187, #142, #196). Clean since: #198, #202 |
 
 Tick-exact and statistical Groups are raised to high: they rest on the
 timing core and on statistics that are new ground.
@@ -42,6 +42,9 @@ Newest first. "Escaped" means it was on `main`.
 
 | Date | Area | Bug | Found by | Escaped | Follow-up |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-03 | core: timing | A disconnect still queued when a Group ended gave `match`: the end never looked for it (#184) | lead | yes | fixed in #189 |
+| 2026-10-03 | core: platform | Mobs spawned near the Fixture world's spawn; their sounds reached a joining player before any chunks, on one Instance only, a false `mismatch` (#183) | reference tier flake, cause found by the timing specialist | yes | #199 (one probe), #200 (every Group) |
+| 2026-10-03 | tooling and docs | Two live-lock unit tests (signals, killed wrapper) failed once each under load (#171) | check runs during #122 and #189 rebases | yes | #171 |
 | 2026-10-03 | core: timing | A kick drained quietly after the barrier made later windows skip that Bot (`mismatch` became `match`); a Bot that joined after a window stayed inside it (#179 review H1, H2) | review | no | fixed before merge |
 | 2026-10-03 | Groups | `join/basic` turned regeneration back on while its player was online, so saved saturation drifted: 18 of 40 Self-check plays mismatched (#176 review) | review | no | fixed before merge |
 | 2026-10-03 | Groups | `blocks/clone` Self-check mismatched: the builder's random spawn put it under a cloned block on one Instance only, so it crawled and choked there | Self-check | yes | #170 (PR #180) |
