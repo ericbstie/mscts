@@ -20,6 +20,7 @@ from tests.group.test_control import text
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
+    Answer,
     Handler,
     JoinScript,
     Peer,
@@ -576,6 +577,60 @@ async def test_a_candidate_that_kicks_a_bot_after_the_last_window_mismatches() -
     failed = verdict.divergences[0]
     assert (failed.kind, failed.bot) == ("failed", "alice"), verdict
     assert "disconnected alice" in str(failed.candidate), verdict
+
+
+async def kick_then_update(peer: Peer, request: int) -> None:
+    """As `kick_after_the_last_barrier`, but a block_update follows the disconnect."""
+    if request > 4:
+        return
+    await answer_at_once(peer, request)
+    if request == 4:
+        await asyncio.sleep(0.1)  # after the window's drain
+        kick = peer.raw_frame("minecraft:disconnect", KICKED)
+        await peer.write(kick + peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
+        await asyncio.sleep(0.3)  # the end comes later
+        await peer.close()
+
+
+@pytest.mark.asyncio
+async def test_a_packet_after_the_late_disconnect_does_not_hide_it() -> None:
+    # Review of #189, Q7: a Candidate may flush queued updates after its disconnect.
+    group = Group(id="test/observe", run=_observe_then_clean_up)
+    async with serve(CODEC, play_server([], kick_then_update)) as endpoint:
+        with pytest.raises(GroupError, match="disconnected alice"):
+            await run_group(group, endpoint, server="candidate", timeout_s=2.0)
+
+
+def kick_the_second_bot_late() -> Answer:
+    """Answer every Bot; kick only the second Bot to join, after its closing barrier."""
+    peers: list[Peer] = []
+
+    async def answer(peer: Peer, request: int) -> None:
+        if peer not in peers:
+            peers.append(peer)
+        if peers.index(peer) == 1:
+            await kick_after_the_last_barrier(peer, request)
+        else:
+            await answer_at_once(peer, request)
+
+    return answer
+
+
+async def _two_bots_observe_then_clean_up(context: GroupContext) -> None:
+    await joined(context, "alice")
+    await joined(context, "bob")
+    async with context.observe():
+        pass
+    await asyncio.sleep(0.2)  # cleanup that touches neither Bot
+
+
+@pytest.mark.asyncio
+async def test_the_groups_end_checks_every_bot() -> None:
+    # Review of #189, Q8: the Bot kicked late is not the first one the Group made.
+    group = Group(id="test/observe", run=_two_bots_observe_then_clean_up)
+    async with serve(CODEC, play_server([], kick_the_second_bot_late())) as endpoint:
+        with pytest.raises(GroupError, match="disconnected bob"):
+            await run_group(group, endpoint, server="candidate", timeout_s=2.0)
 
 
 async def _take_a_kick(context: GroupContext) -> None:
