@@ -2,8 +2,9 @@
 
 #30's measurement: closed by the barrier, a join's window held 1 to 6 chunk batches and the
 mobs that wander into view, so it never matched. Closed at the first `chunk_batch_finished`,
-every side holds the same play packets up to it. This plays a Group 20 times on each of two
-vanilla Instances of the test's own (the Group changes game rules and the world spawn) and
+every side holds the same play packets up to it, once no mob is near the spawn to send its
+sounds (#183). This plays a Group 20 times on each of two vanilla Instances of the test's
+own (the Group changes game rules, the world spawn and the mobs) and
 compares the windows as Compare takes them: the packet names, their counts and the chunk
 positions. It asserts no `match` Verdict: the contents still differ until #106 and #22 (hash
 orders, a clock value, light encoding).
@@ -35,9 +36,22 @@ _CHUNK = "minecraft:level_chunk_with_light"
 _MOVEMENT_CHECK = "gamerule player_movement_check"
 """The game rule whose check makes a join repeat its first `player_position` (by javap,
 `ServerGamePacketListenerImpl.shouldCheckPlayerMovement`)."""
+_SPAWN_MOBS = "gamerule spawn_mobs"
+"""The game rule that lets passive mobs spawn near players, every 400 ticks (#183)."""
 
 type Window = tuple[Counter[str], list[tuple[int, int]]]
 """A window's play packet names with their counts, and the positions of its chunks."""
+
+
+async def _clear_the_mobs(context: GroupContext) -> None:
+    """Stop mobs spawning, and kill every entity but the players.
+
+    A mob within 16 blocks of the spawn reaches a joining player with its sounds before
+    the first chunk batch, inside the join window, on one Instance only
+    (docs/research/2026-10-03-join-sounds.md).
+    """
+    await context.control.run(f"{_SPAWN_MOBS} false")
+    await context.control.run("kill @e[type=!minecraft:player]")
 
 
 async def _join_until_the_first_batch(context: GroupContext) -> None:
@@ -47,6 +61,7 @@ async def _join_until_the_first_batch(context: GroupContext) -> None:
         # A fresh world spawns the player somewhere random: pin it, so the chunks are the same.
         await context.control.run("gamerule respawn_radius 0")
         await context.control.run("setworldspawn 0 -60 0")
+        await _clear_the_mobs(context)
         await context.control.leave()
         await until_no_player_online(context.endpoint)
         bot = await context.bot("alice")
@@ -54,19 +69,21 @@ async def _join_until_the_first_batch(context: GroupContext) -> None:
             await bot.join()
     finally:
         await context.control.run(f"{_MOVEMENT_CHECK} true")
+        await context.control.run(f"{_SPAWN_MOBS} true")
 
 
 JOIN_UNTIL = Group(id="probe/join-until", run=_join_until_the_first_batch)
 """A probe Group, not registered: the join #30 compares."""
 
 
-async def _query_the_rule(context: GroupContext) -> None:
-    said = await context.control.run(_MOVEMENT_CHECK)
-    assert any(b"true" in packet.payload for packet in said), said
+async def _query_the_rules(context: GroupContext) -> None:
+    for rule in (_MOVEMENT_CHECK, _SPAWN_MOBS):
+        said = await context.control.run(rule)
+        assert any(b"true" in packet.payload for packet in said), (rule, said)
 
 
-QUERY = Group(id="probe/query-rule", run=_query_the_rule)
-"""A probe Group, not registered: it asks Control for the game rule's value."""
+QUERY = Group(id="probe/query-rules", run=_query_the_rules)
+"""A probe Group, not registered: it asks Control for the values of the game rules."""
 
 
 def window_of(transcript: Transcript) -> Window:
@@ -122,7 +139,7 @@ async def test_a_join_inside_a_window_closed_by_a_packet_holds_the_same_packets_
                 differing.append(f"play {number}: names {one[0] - other[0]} / {other[0] - one[0]}")
             if one[1] != other[1] or not one[1]:
                 differing.append(f"play {number}: chunks {one[1]} / {other[1]}")
-        # The Group undid its Fixture, on both: Control rejoined and set the rule back.
+        # The Group undid its Fixture, on both: Control rejoined and set the rules back.
         for endpoint in (first.endpoint, second.endpoint):
             await play(QUERY, endpoint)
 
