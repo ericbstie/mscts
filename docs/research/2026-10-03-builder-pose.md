@@ -39,13 +39,32 @@ unless a line says *inferred*.
 ## Which blocks were in the way
 
 The Groups set blocks at y -60 to -58, the height of a standing player on the
-flat world (feet at -60, head below -58.2):
+flat world (feet at -60, eyes at -58.38):
 
 - `blocks/setblock`: x 1 to 14 at z 2.
 - `blocks/clone`: x 2 to 10, z 8 to 11.
 
 Both are inside the area the builder can join in. `blocks/fill` sets blocks at y
 -50 to -46, above any player on the ground.
+
+**Verified live** (base f4c8335, one vanilla Instance): 50 Bots stood at the
+centre of each of those cells, as the spawn search puts a player
+(`Vec3.atBottomCenterOf`), while the builder, out of the way, played every
+`blocks/setblock` and `blocks/clone` case. Only three Bots were sent a pose or
+health of their own:
+
+| Bot's cell | What the server sent it | Why (*inferred* from the blocks) |
+| --- | --- | --- |
+| x 4, z 10 | pose 3 or 0, 28 times; health 19.0, twice | under the source's stairs at `4 -59 10`; an overlapping clone puts dirt at its feet |
+| x 10, z 10 | pose 3 or 0, 15 times | under the stairs' copy, `10 -59 10` |
+| x 5, z 11 | pose 3 or 0, 4 times | under the stairs' copy in an overlapping clone, `5 -59 11` |
+
+Of those 49 packets, 12 came inside an Observation window and 37 outside. So
+whether a play differs depends on the tick each change lands in, and on where
+each Instance's builder joined. In a first probe, the builder stood with a
+block at its feet (x 3, z 9: dirt, with the chest above) and was sent nothing: no pose fits, so `updatePlayerPose`
+returns before it changes the pose. No Bot in the `blocks/setblock` row was
+sent anything.
 
 ## The fix
 
