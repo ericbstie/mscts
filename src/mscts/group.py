@@ -370,6 +370,19 @@ class GroupContext:
         finally:
             self._observing = False
 
+    async def end(self) -> None:
+        """Refuse a disconnect still queued for any Bot, once the Group's script has completed.
+
+        A disconnect nothing took (it came after the last barrier, drain or `expect`) fails
+        its Bot (`Bot.refuse_queued_disconnect`), so a Candidate that kicks a Bot late does
+        not pass. `run_group` calls it before closing the Bots.
+
+        Raises:
+            ProtocolError: The server disconnected a Bot; the Bot's `failure`.
+        """
+        for bot in self._bots.values():
+            await bot.refuse_queued_disconnect()
+
     async def close(self) -> None:
         """Close every Bot. Calling it again does nothing."""
         for bot in self._bots.values():

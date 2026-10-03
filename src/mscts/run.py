@@ -201,15 +201,18 @@ async def run_group(
 ) -> Transcript:
     """Play `group` against the Instance at `endpoint`, and return its Transcript.
 
-    `server` is the Adapter's name, for the Transcript. Every Bot is closed at the end.
+    `server` is the Adapter's name, for the Transcript. Every Bot is closed at the end,
+    once a disconnect still queued for any of them has failed it (`GroupContext.end`).
 
     Raises:
-        GroupError: The Group raised; the error holds the Transcript so far.
+        GroupError: The Group raised, or a Bot had a disconnect nothing took; the error
+            holds the Transcript so far.
     """
     transcript = Transcript(group_id=group.id, server=server)
     context = GroupContext(endpoint, transcript, timeout_s=timeout_s)
     try:
         await group.run(context)
+        await context.end()
     except Exception as exc:
         description = _describe(exc, timeout_s)
         raise GroupError(transcript, description, bot=context.raised_by(exc)) from exc

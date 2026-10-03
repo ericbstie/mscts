@@ -517,6 +517,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
     # connect opens the Connection with answer=Replies(): from then on the Bot answers by itself.
+    # The Bot keeps both (AnsweredConnection(connection, replies)); Replies.saw_disconnect says
+    # whether the server's disconnect has arrived, taken or not.
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
@@ -524,6 +526,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def drain(self) -> None: ...                                 # take what has arrived
+    async def refuse_queued_disconnect(self) -> None: ...              # drain if a disconnect waits
     async def send(self, name: str, /, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
     async def close(self) -> None: ...                                 # idempotent
@@ -558,6 +561,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
     # nothing left to take, raises as recv does. A disconnect it takes → ProtocolError, as
     # in expect (a Group that tests a kick takes the disconnect itself, with expect).
+    # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
+    # disconnect, catches up with the socket (Connection.caught_up), then drains only if its
+    # Replies have seen the server's disconnect (Replies.saw_disconnect), so the drain refuses
+    # it; otherwise it takes and records nothing. GroupContext.end calls it on every Bot.
 
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
 
@@ -940,6 +947,7 @@ class GroupContext:
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
                                     # CANDIDATE_FAILURES), and no close Mark
+    async def end(self) -> None: ...     # #184: Bot.refuse_queued_disconnect on every Bot
     async def close(self) -> None: ...   # closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
@@ -1204,7 +1212,8 @@ type Side = Server | Attached
 
 async def run_group(group: Group, endpoint: Endpoint, *, server: str,
                     timeout_s: float = GROUP_TIMEOUT_S) -> Transcript: ...
-    # one Instance; closes every Bot however it ends; GroupError if the Group raised
+    # one Instance; closes every Bot however it ends; GroupError if the Group raised, or if
+    # GroupContext.end (called once the Group completes, before closing) refused a disconnect
 CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError,
                       PlayersStillOnline)
 def judge(group: Group, reference: Transcript | GroupError,

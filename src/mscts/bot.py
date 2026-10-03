@@ -137,14 +137,19 @@ class Replies:
     - play `start_configuration` → `configuration_acknowledged`.
 
     Every other packet gets no answer.
+
+    Attributes:
+        saw_disconnect: Whether the server's disconnect has arrived, taken or not.
     """
 
     def __init__(self) -> None:
         """Start with the player at the origin, facing yaw 0 and pitch 0."""
         self._pose = _Pose()
+        self.saw_disconnect = False
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
+        self.saw_disconnect |= _ends_the_session(packet)
         fields = packet.fields or {}
         match packet.state, packet.name:
             case State.LOGIN, "minecraft:login_finished":
@@ -190,6 +195,14 @@ class Replies:
                 pass
 
 
+@dataclass(frozen=True, slots=True)
+class AnsweredConnection:
+    """An open Connection and the Replies it was opened with (`Connection.open(answer=...)`)."""
+
+    connection: Connection
+    replies: Replies
+
+
 class Bot:
     """One client connection driven by a Group.
 
@@ -205,17 +218,18 @@ class Bot:
 
     def __init__(
         self,
-        connection: Connection,
+        answered: AnsweredConnection,
         endpoint: Endpoint,
         target: Target,
         *,
         name: str,
         timeout_s: float,
     ) -> None:
-        """Drive an open Connection to `endpoint`. Use `connect` to make one."""
+        """Drive an open Connection to `endpoint`, and its answer. Use `connect` to make one."""
         self.name = name
         self.failure: Exception | None = None
-        self._connection = connection
+        self._connection = answered.connection
+        self._replies = answered.replies  # sees each packet as it arrives, taken or not
         self._endpoint = endpoint
         self._target = target
         self._timeout_s = timeout_s
@@ -241,11 +255,13 @@ class Bot:
             TimeoutError: It did not connect within `timeout_s`.
         """
         codec = Codec.for_target(target)
+        replies = Replies()
         async with asyncio.timeout(timeout_s):
             connection = await Connection.open(
-                endpoint, codec, bot=name, transcript=transcript, answer=Replies()
+                endpoint, codec, bot=name, transcript=transcript, answer=replies
             )
-        return cls(connection, endpoint, target, name=name, timeout_s=timeout_s)
+        answered = AnsweredConnection(connection=connection, replies=replies)
+        return cls(answered, endpoint, target, name=name, timeout_s=timeout_s)
 
     @property
     def closed(self) -> bool:
@@ -457,6 +473,22 @@ class Bot:
         except Exception as error:
             self.failure = error
             raise
+
+    async def refuse_queued_disconnect(self) -> None:
+        """Take what has arrived (`drain`) if the server's disconnect is among it, untaken.
+
+        A Group's end calls it before closing its Bots, so a disconnect nothing took still
+        fails the Bot. It does nothing, and records nothing, if no such disconnect has
+        reached the socket, or the Bot is closed or its `expect` returned the disconnect.
+
+        Raises:
+            ProtocolError: The server disconnected the Bot; the Bot's `failure`.
+        """
+        if self._closed or self._disconnected:
+            return
+        await self._connection.caught_up()
+        if self._replies.saw_disconnect:
+            await self.drain()
 
     async def close(self) -> None:
         """Close the Bot's Connection. Calling it again does nothing."""
