@@ -84,7 +84,7 @@ test needs it:
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read) |
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
-| `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server: vanilla's `MANIFEST_URL` (Mojang's version manifest), Pumpkin's `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit) |
+| `adapters/<name>/` | one folder per server, registered by an import and one entry in `cli.py`'s `ADAPTERS`; its tests in `tests/adapters/<name>/`. `adapters/vanilla/`: `MANIFEST_URL` (Mojang's version manifest). `adapters/pumpkin/`: `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit), and its pinned first-run `pumpkin.toml` with `SOURCE.md` |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `adapters/fixture_world.py` | what every Adapter writes into the Fixture world: its game rules (ADR-0013) |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
@@ -787,7 +787,7 @@ class Adapter(Protocol):
 # - invariants live in one visibly named table, applied last;
 # - a ServerSpec value the server cannot honour is refused with PrepareError naming the
 #   field, before anything is written, never approximated. The fields a server honours
-#   only for some values live in one named table (adapters/pumpkin.py LIMITS), and so does
+#   only for some values live in one named table (adapters/pumpkin/ LIMITS), and so does
 #   every range its config types can hold: a value it cannot read back is refused too.
 #   (Pumpkin's LIMITS today: `world` honoured for the WorldPresets it can write a save for,
 #   FLAT; every Difficulty is honoured.)
