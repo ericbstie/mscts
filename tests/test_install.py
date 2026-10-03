@@ -187,6 +187,22 @@ def test_a_concurrent_install_that_finishes_first_wins(tmp_path: Path) -> None:
     assert sorted(p.name for p in (tmp_path / "pumpkin").iterdir()) == ["26.3"]
 
 
+def test_a_concurrent_install_that_wins_is_the_one_reported(tmp_path: Path) -> None:
+    theirs = write(tmp_path / "theirs", fake_pumpkin(tail=b"theirs"))
+    github = FakeGitHub()
+
+    def slower(url: str) -> Download:
+        if url == NIGHTLY_URL:
+            install_from(ADAPTER, TARGET, tmp_path / "cache", theirs)  # another session
+        return github(url)
+
+    done = install_release(ADAPTER, TARGET, tmp_path / "cache", None, slower)
+    assert done.message == (
+        f"installed {theirs} (pumpkin 0.2.0+26.3-26.51 4426d11, sha256 "
+        f"{hashlib.sha256(theirs.read_bytes()).hexdigest()}) into {root_of(tmp_path / 'cache')}"
+    )
+
+
 def test_an_installation_whose_binary_changed_is_refused_naming_the_fix(tmp_path: Path) -> None:
     install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub())
     (root_of(tmp_path) / "pumpkin").write_bytes(NIGHTLY + b"!")

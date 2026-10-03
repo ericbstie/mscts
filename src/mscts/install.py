@@ -256,8 +256,7 @@ def install_release(
         )
 
     _write(adapter, target, cache_dir, download.body, source)
-    what = f"installed {adapter.name} {release.build} from {release.url}"
-    return _done(adapter, target, cache_dir, what)
+    return _done(adapter, target, cache_dir)
 
 
 def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) -> Installed:
@@ -270,7 +269,7 @@ def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) 
     except OSError as error:
         msg = f"cannot read {path}: {error}"
         raise ProvisionError(msg) from error
-    named = adapter.check(path, target)  # its errors name the user's file, and come first
+    adapter.check(path, target)  # its errors name the user's file, and come first
     sha256 = hashlib.sha256(body).hexdigest()
     root = root_of(adapter, target, cache_dir)
     existing = installed(adapter, target, cache_dir)
@@ -299,15 +298,22 @@ def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) 
         )
 
     _write(adapter, target, cache_dir, body, source)
-    what = f"installed {path} ({adapter.name} {named}, sha256 {sha256})"
-    return _done(adapter, target, cache_dir, what)
+    return _done(adapter, target, cache_dir)
 
 
-def _done(adapter: Adapter, target: Target, cache_dir: Path, what: str) -> Installed:
+def _done(adapter: Adapter, target: Target, cache_dir: Path) -> Installed:
+    """The Installation now there, described by its own record: another install may have won."""
     installation = installed(adapter, target, cache_dir)
-    if installation is None:  # only if someone deleted it this very moment
+    source = None if installation is None else installation.source
+    if installation is None or source is None:  # only if someone deleted it this very moment
         msg = f"{root_of(adapter, target, cache_dir)} vanished while installing it"
         raise ProvisionError(msg)
+    if source.from_path is not None:
+        what = (
+            f"installed {source.from_path} ({adapter.name} {source.build}, sha256 {source.sha256})"
+        )
+    else:
+        what = f"installed {adapter.name} {source.build} from {source.url}"
     return Installed(installation, changed=True, message=f"{what} into {installation.root}")
 
 
