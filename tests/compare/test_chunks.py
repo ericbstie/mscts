@@ -1089,6 +1089,19 @@ def test_sky_light_below_the_world_as_another_array_still_differs() -> None:
     assert [d.path for d in verdict.gameplay] == ["light.sky[0]"]
 
 
+@pytest.mark.parametrize("mask", ["sky_light_mask", "empty_sky_light_mask"])
+def test_a_mask_sent_with_a_trailing_zero_byte_stays_network_traffic(mask: str) -> None:
+    # `BitSet.toByteArray()` writes none; the codec keeps one as sent (#173's review).
+    reference = light(sky={0: EMPTY, 1: FULL})
+    candidate = light(sky={0: DARK, 1: FULL})
+    candidate[mask] = bytes(candidate[mask]) + b"\x00"  # ty: ignore[invalid-argument-type]
+
+    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+
+    assert [d.path for d in verdict.divergences] == [f"light.{mask}"]
+    assert verdict.gameplay == ()
+
+
 def test_sky_light_in_the_world_empty_and_an_array_of_zeros_differ_in_gameplay() -> None:
     # SkyLightEngine.setLightEnabled fills an empty stored sky section with 15 the next time
     # the client applies the chunk's light; an array of zeros stays dark.

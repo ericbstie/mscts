@@ -86,9 +86,10 @@ this way before it diffs them:
   Each entry's index is changed to match. The bits, unused bits and any packing left after the last
   entry stay as sent.
 - A sky light section 0 sent as an array of 2048 zero bytes is written as an
-  empty section: bit 0 leaves the sky mask (written as `BitSet.toByteArray()`
-  writes it, no trailing zero byte), the array goes, and bit 0 is set in the
-  empty sky mask.
+  empty section: bit 0 leaves the sky mask, the array goes, and bit 0 is set in
+  the empty sky mask. Each mask keeps as many zero bytes after its last bit as
+  it was sent with (`BitSet.toByteArray()` writes none), so a mask sent with
+  them is still network traffic.
 
 Every other spelling stays network traffic: a palette with values no entry uses
 or with another number of bits, block light sent empty against zeros, and an

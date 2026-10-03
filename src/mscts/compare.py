@@ -1769,8 +1769,10 @@ def _sky_below_the_world_empty(light: _Value) -> _Value:
 
     Vanilla sends either for the light section below the world, depending on whether its
     light engine has made an array for it, and the client keeps the same light either way
-    (docs/research/2026-10-03-vanilla-chunk-spellings.md). Bit 0 leaves the sky mask, written
-    as `BitSet.toByteArray()` writes it, the array goes, and bit 0 joins the empty sky mask.
+    (docs/research/2026-10-03-vanilla-chunk-spellings.md). Bit 0 leaves the sky mask, the
+    array goes, and bit 0 joins the empty sky mask. Each mask keeps as many zero bytes after
+    its last bit as it was sent with (`BitSet.toByteArray()` writes none, and the codec keeps
+    them), so they stay network traffic.
     """
     if not isinstance(light, dict):
         return light
@@ -1781,18 +1783,28 @@ def _sky_below_the_world_empty(light: _Value) -> _Value:
     sent = int.from_bytes(mask, "little")
     if not (sent & 1 and arrays and arrays[0] == bytes(_LIGHT_BYTES)):
         return light
-    emptied = int.from_bytes(empty, "little") | 1
     return {
         **light,
-        "sky_light_mask": _bit_set_bytes(sent & ~1),
-        "empty_sky_light_mask": _bit_set_bytes(emptied),
+        "sky_light_mask": _with_bit_0(mask, set_it=False),
+        "empty_sky_light_mask": _with_bit_0(empty, set_it=True),
         "sky_light_arrays": arrays[1:],
     }
 
 
-def _bit_set_bytes(number: int) -> bytes:
-    """`number`'s bits as `BitSet.toByteArray()` writes them: lowest byte first, no zero last."""
-    return number.to_bytes((number.bit_length() + 7) // 8, "little")
+def _with_bit_0(bit_set: bytes, *, set_it: bool) -> bytes:
+    """`bit_set`, lowest byte first, with bit 0 set or cleared.
+
+    As many bytes long as its bits need, plus the zero bytes it was sent with after them.
+    """
+    number = int.from_bytes(bit_set, "little")
+    extra = len(bit_set) - _bytes_for(number)
+    changed = number | 1 if set_it else number & ~1
+    return changed.to_bytes(_bytes_for(changed) + extra, "little")
+
+
+def _bytes_for(number: int) -> int:
+    """How many bytes `BitSet.toByteArray()` writes for `number`: none after its last bit."""
+    return (number.bit_length() + 7) // 8
 
 
 def _section_in_palette_order(section: _Value) -> _Value:
