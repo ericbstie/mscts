@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
+from mscts import report_json
 from mscts.report import render_text
-from tests.docs.replay import report_from_sample
 
 ROOT = Path(__file__).resolve().parents[2]
 SAMPLES = Path(__file__).with_name("samples")
@@ -25,9 +25,15 @@ def test_every_stored_output_records_its_capture_command() -> None:
 def test_stored_report_output_matches_the_renderer(sample: Path) -> None:
     verbose = " --verbose" in sample.with_suffix(".command").read_text().splitlines()[0]
     assert (
-        render_text(report_from_sample(sample), verbose=verbose)
+        render_text(report_json.loads(sample.read_text()), verbose=verbose)
         == sample.with_suffix(".txt").read_text()
     )
+
+
+@pytest.mark.parametrize("sample", sorted(SAMPLES.glob("*.json")), ids=lambda path: path.stem)
+def test_each_stored_report_input_is_a_report_json(sample: Path) -> None:
+    text = sample.read_text()
+    assert report_json.dumps(report_json.loads(text)) == text
 
 
 def _matches(excerpt: str, output: str) -> bool:

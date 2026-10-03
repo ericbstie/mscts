@@ -13,7 +13,8 @@
         "unit": "ms",
         "value": 23719.983328
       }
-    ]
+    ],
+    "installed_version": null
   },
   "candidate": {
     "name": "pumpkin",
@@ -24,7 +25,8 @@
         "unit": "ms",
         "value": 75.937704
       }
-    ]
+    ],
+    "installed_version": null
   },
   "results": [
     {
@@ -33,10 +35,6 @@
         {
           "group_id": "status/basic",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status_response.players.max"
-          ],
           "divergences": [
             {
               "bot": "status",
@@ -49,15 +47,15 @@
               "test_case": "status_response.players.max",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
           ]
         },
         {
           "group_id": "status/basic",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status_response.players.max"
-          ],
           "divergences": [
             {
               "bot": "status",
@@ -70,15 +68,15 @@
               "test_case": "status_response.players.max",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
           ]
         },
         {
           "group_id": "status/basic",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status_response.players.max"
-          ],
           "divergences": [
             {
               "bot": "status",
@@ -91,15 +89,15 @@
               "test_case": "status_response.players.max",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
           ]
         },
         {
           "group_id": "status/basic",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status_response.players.max"
-          ],
           "divergences": [
             {
               "bot": "status",
@@ -112,15 +110,15 @@
               "test_case": "status_response.players.max",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
           ]
         },
         {
           "group_id": "status/basic",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status_response.players.max"
-          ],
           "divergences": [
             {
               "bot": "status",
@@ -133,6 +131,10 @@
               "test_case": "status_response.players.max",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status_response.players.max"
           ]
         }
       ],
@@ -149,7 +151,8 @@
         [],
         [],
         []
-      ]
+      ],
+      "elapsed_s": []
     },
     {
       "group_id": "status/ping",
@@ -157,10 +160,6 @@
         {
           "group_id": "status/ping",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status:pong_response.timestamp"
-          ],
           "divergences": [
             {
               "bot": "ping",
@@ -173,15 +172,15 @@
               "test_case": "status:pong_response.timestamp",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp"
           ]
         },
         {
           "group_id": "status/ping",
           "outcome": "mismatch",
-          "detail": "",
-          "test_cases": [
-            "status:pong_response.timestamp"
-          ],
           "divergences": [
             {
               "bot": "ping",
@@ -194,34 +193,38 @@
               "test_case": "status:pong_response.timestamp",
               "observability": "gameplay"
             }
+          ],
+          "detail": "",
+          "test_cases": [
+            "status:pong_response.timestamp"
           ]
         },
         {
           "group_id": "status/ping",
           "outcome": "match",
+          "divergences": [],
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
-          ],
-          "divergences": []
+          ]
         },
         {
           "group_id": "status/ping",
           "outcome": "match",
+          "divergences": [],
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
-          ],
-          "divergences": []
+          ]
         },
         {
           "group_id": "status/ping",
           "outcome": "match",
+          "divergences": [],
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
-          ],
-          "divergences": []
+          ]
         }
       ],
       "reference": [
@@ -297,7 +300,8 @@
             "value": 0.370687
           }
         ]
-      ]
+      ],
+      "elapsed_s": []
     },
     {
       "group_id": "join/basic",
@@ -305,37 +309,37 @@
         {
           "group_id": "join/basic",
           "outcome": "blocked",
+          "divergences": [],
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": [],
-          "divergences": []
+          "test_cases": []
         },
         {
           "group_id": "join/basic",
           "outcome": "blocked",
+          "divergences": [],
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": [],
-          "divergences": []
+          "test_cases": []
         },
         {
           "group_id": "join/basic",
           "outcome": "blocked",
+          "divergences": [],
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": [],
-          "divergences": []
+          "test_cases": []
         },
         {
           "group_id": "join/basic",
           "outcome": "blocked",
+          "divergences": [],
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": [],
-          "divergences": []
+          "test_cases": []
         },
         {
           "group_id": "join/basic",
           "outcome": "blocked",
+          "divergences": [],
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": [],
-          "divergences": []
+          "test_cases": []
         }
       ],
       "reference": [
@@ -351,7 +355,8 @@
         [],
         [],
         []
-      ]
+      ],
+      "elapsed_s": []
     }
   ],
   "notes": [],

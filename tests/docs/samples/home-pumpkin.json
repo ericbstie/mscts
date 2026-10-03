@@ -13,7 +13,8 @@
         "unit": "ms",
         "value": 20546.915251
       }
-    ]
+    ],
+    "installed_version": null
   },
   "candidate": {
     "name": "pumpkin",
@@ -24,7 +25,8 @@
         "unit": "ms",
         "value": 67.002111
       }
-    ]
+    ],
+    "installed_version": null
   },
   "results": [
     {
@@ -394,7 +396,8 @@
         [],
         [],
         []
-      ]
+      ],
+      "elapsed_s": []
     },
     {
       "group_id": "status/ping",
@@ -828,7 +831,8 @@
             "value": 2.758798
           }
         ]
-      ]
+      ],
+      "elapsed_s": []
     }
   ],
   "notes": [],

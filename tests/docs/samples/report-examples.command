@@ -1,2 +1,3 @@
-mise exec -- uv run python -c "from pathlib import Path; from tests.docs.replay import report_from_sample; from mscts.report import render_text; print(render_text(report_from_sample(Path('tests/docs/samples/report-examples.json'))), end='')"
+mise exec -- uv run python -c "from pathlib import Path; from mscts import report_json; from mscts.report import render_text; print(render_text(report_json.loads(Path('tests/docs/samples/report-examples.json').read_text())), end='')"
 Rendered 2026-10-02 from illustrative Report inputs; not a live Candidate run.
+Inputs rewritten as report.json 2026-10-03 (#190); the rendered text is unchanged.
