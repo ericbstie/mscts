@@ -161,14 +161,16 @@ need is missing, add it here in the same commit that introduces it.
   check, test (for one compared field).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Group did not match), or `error` (the harness failed, or
-  the Reference itself could not run the Group). A failure the
-  Candidate caused (a frame that does not decode, an answer that breaks
-  the protocol, no answer in time, a connection closed, reset or refused,
-  or players still online from the Group before) is a `mismatch`, led by
-  a `failed` Divergence that says what happened, never an `error`:
-  compliance scores leave `error` out, so a Candidate must never score
-  better by failing. The same holds while mscts waits for the players of
-  the Group before to leave; it then does not play the Group.
+  the Reference itself could not run the Group). A Group that fails on
+  the Candidate and not on the Reference is a `mismatch`, led by a
+  `failed` Divergence that says what happened, never an `error`. That
+  holds whatever the failure: a frame that does not decode, an answer
+  that breaks the protocol, no answer in time, a connection closed, reset
+  or refused, players still online from the Group before, or a value the
+  Group does not expect. Compliance scores leave `error` out, so a
+  Candidate must never score better by failing. The same holds while
+  mscts waits for the players of the Group before to leave; it then does
+  not play the Group.
 - **Self-check**: a Comparison of Reference against Reference. It must
   always be `match`. Anything else is a missing Mask or a flaky Group,
   never a Reference bug.

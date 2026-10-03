@@ -982,7 +982,7 @@ class GroupContext:
                                     # ProtocolError naming the
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
-                                    # CANDIDATE_FAILURES), and no close Mark
+                                    # exception a Group raises), and no close Mark
     async def end(self) -> None: ...     # #184: Bot.refuse_queued_disconnect on every Bot
     async def close(self) -> None: ...   # closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
@@ -1254,19 +1254,18 @@ async def run_group(group: Group, endpoint: Endpoint, *, server: str,
                     timeout_s: float = GROUP_TIMEOUT_S) -> Transcript: ...
     # one Instance; closes every Bot however it ends; GroupError if the Group raised, or if
     # GroupContext.end (called once the Group completes, before closing) refused a disconnect
-CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError,
-                      PlayersStillOnline)
 def judge(group: Group, reference: Transcript | GroupError,
           candidate: Transcript | GroupError) -> Verdict: ...
-    # The Verdict rule (audit H3): a Candidate failure (its GroupError's cause is one of
-    # CANDIDATE_FAILURES) is `mismatch`: a `failed` Divergence first, then what compare
-    # finds in the Transcripts so far (e.g. the undecodable frame, by payload), whatever the
-    # Masks. CommandMissing on the Candidate (it lacks a command Control needs) is
-    # `blocked`, detail "needs /<root>". `error` only if the Reference failed (CommandMissing
-    # included), the Group raised anything else on the Candidate (a harness bug), or compare
-    # raised: any Exception, named in the detail ("the Comparison failed: OverflowError:
-    # ..."), so the Run goes on to the next Group (#174). Else compare(reference,
-    # candidate, masks).
+    # The Verdict rule (audit H3): a Candidate failure (a GroupError on the Candidate and
+    # none on the Reference, whatever its cause's type, #222) is `mismatch`: a `failed`
+    # Divergence first, then what compare finds in the Transcripts so far (e.g. the
+    # undecodable frame, by payload), whatever the Masks. CommandMissing on the Candidate
+    # (it lacks a command Control needs) is `blocked`, detail "needs /<root>". `error` only
+    # if the Reference failed (CommandMissing included) or compare raised: any Exception,
+    # named in the detail ("the Comparison failed: OverflowError: ..."), so the Run goes on
+    # to the next Group (#174). Else compare(reference, candidate, masks). The trade: a
+    # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
+    # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
@@ -1289,11 +1288,10 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # "the Candidate failed: ...". A wait that raises anything else (#114) is never raised
     # out of the Run, and the other side's wait runs to its end (gather with
     # return_exceptions): on the Reference it is `error`, "the Reference failed: the wait
-    # for no player online failed: <Type>: <message>"; on the Candidate, one of
-    # CANDIDATE_FAILURES is `mismatch` as above, with "the wait for no player online
-    # failed: <Type>: <message>" as the `failed` Divergence's candidate and after "the
-    # Candidate failed: ", and anything else is a harness bug, `error`, "the harness failed
-    # on the Candidate: the wait for no player online failed: ...", as in judge. If both
+    # for no player online failed: <Type>: <message>"; on the Candidate alone it is
+    # `mismatch` as above, whatever its type (#222, as in judge), with "the wait for no
+    # player online failed: <Type>: <message>" as the `failed` Divergence's candidate and
+    # after "the Candidate failed: ". If both
     # sides fail, the detail joins both sentences with "; ": "the Reference had ...; the
     # Candidate failed: the wait ...". A BaseException that is not an Exception (a
     # cancellation from inside a wait) is raised once both waits are done. The wait is

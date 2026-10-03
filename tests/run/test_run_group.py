@@ -127,19 +127,6 @@ async def test_a_reference_that_fails_is_an_error_naming_it() -> None:
     assert verdict.detail == "the Reference failed: TimeoutError: no answer"
 
 
-@pytest.mark.asyncio
-async def test_a_harness_failure_on_the_candidate_is_an_error_naming_it() -> None:
-    reference = await _against(BASIC, _vanilla())
-    candidate = GroupError(Transcript("status/basic", "fake"), "ProcessLookupError")
-    candidate.__cause__ = ProcessLookupError()  # not something the Candidate did
-
-    verdict = judge(BASIC, reference, candidate)
-
-    assert verdict.outcome is Outcome.ERROR
-    assert verdict.divergences == ()
-    assert verdict.detail == "the harness failed on the Candidate: ProcessLookupError"
-
-
 def test_a_comparison_the_harness_cannot_make_is_an_error() -> None:
     odd = Packet(
         state=State.STATUS,
