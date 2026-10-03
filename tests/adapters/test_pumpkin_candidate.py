@@ -5,7 +5,6 @@ import pytest
 
 from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
-from mscts.registry import official
 from mscts.target import TARGET
 
 pytestmark = pytest.mark.candidate
@@ -21,8 +20,7 @@ def test_require_gives_the_installed_build_verified_and_recorded(cache_dir: Path
         hashlib.sha256(binary).hexdigest(),
         len(binary),
     )
-    # It names a Registry entry only if it is that entry's build.
-    if installation.source.entry is not None:
-        entry = official().resolve("pumpkin", TARGET)
-        assert installation.source.entry == str(entry)
-        assert entry.matches(binary)
+    # It names the commit the binary itself names.
+    named = PumpkinAdapter().check(installation.root / "pumpkin", TARGET)
+    assert installation.source.build is not None
+    assert installation.source.commit == named.commit

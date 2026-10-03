@@ -1,42 +1,22 @@
 import hashlib
+import json
 import tomllib
 from pathlib import Path
 
 import pytest
+from support.pumpkin import COMMIT, FakeGitHub, fake_pumpkin
 
-from mscts import registry
-from mscts.adapters.fetch import Download
+from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL
 from mscts.cli import main
-from mscts.registry import Entry, Registry
 
-URL = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
-BUILD = b"\x7fELF\x02\x01\x01\x00 a pinned build"
+BUILD = fake_pumpkin()
 SHA256 = hashlib.sha256(BUILD).hexdigest()
-ENTRY = Entry(
-    adapter="pumpkin",
-    version="nightly-test",
-    target="26.3",
-    url=URL,
-    sha256=SHA256,
-    note="The nightly URL moves: a mismatch means the nightly moved.",
-)
-
-
-class FakeGitHub:
-    def __init__(self, body: bytes = BUILD) -> None:
-        self.body = body
-        self.fetched: list[str] = []
-
-    def __call__(self, url: str) -> Download:
-        self.fetched.append(url)
-        return Download(url=url, body=self.body)
 
 
 @pytest.fixture
 def cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """An empty cache and a Registry of ENTRY alone (and no vanilla entry)."""
+    """An empty cache."""
     monkeypatch.setenv("MSCTS_CACHE", str(tmp_path / "cache"))
-    monkeypatch.setattr(registry, "official", lambda: Registry(entries=(ENTRY,)))
     return tmp_path / "cache"
 
 
@@ -48,7 +28,7 @@ def run(
     return code, out, err
 
 
-def test_install_downloads_saying_so_and_says_what_it_did(
+def test_install_downloads_the_latest_build_saying_so_and_says_what_it_did(
     cache: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     github = FakeGitHub()
@@ -56,9 +36,20 @@ def test_install_downloads_saying_so_and_says_what_it_did(
     root = cache / "pumpkin/26.3"
     assert (code, err) == (0, "")
     assert out == (
-        f"downloading {URL} ...\ninstalled pumpkin nightly-test from {URL} into {root}\n"
+        f"downloading {TAGS_URL} ...\ndownloading {NIGHTLY_URL} ...\n"
+        f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root}\n"
     )
-    assert github.fetched == [URL]
+    assert github.fetched == [TAGS_URL, NIGHTLY_URL]
+
+
+def test_install_at_a_version_installs_that_build(
+    cache: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code, out, _ = run(capsys, "adapter", "install", f"pumpkin@{COMMIT[:7]}")
+    assert code == 0
+    assert out.endswith(
+        f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {cache}/pumpkin/26.3\n"
+    )
 
 
 def test_a_second_install_is_a_no_op_that_says_so(
@@ -66,15 +57,36 @@ def test_a_second_install_is_a_no_op_that_says_so(
 ) -> None:
     run(capsys, "adapter", "install", "pumpkin")
     github = FakeGitHub()
-    code, out, _ = run(
-        capsys, "adapter", "install", "pumpkin", "--version", "nightly-test", fetch=github
-    )
+    code, out, _ = run(capsys, "adapter", "install", "pumpkin@4426d11", fetch=github)
+    root = cache / "pumpkin/26.3"
     assert code == 0
     assert out == (
-        f"pumpkin nightly-test is already installed at {cache / 'pumpkin/26.3'} "
-        f"(sha256 {SHA256}): nothing to do\n"
+        f"pumpkin nightly 4426d11 is already installed at {root} (sha256 {SHA256}): "
+        f"nothing to do. To check for a newer build, delete {root} and install again.\n"
     )
     assert github.fetched == []
+
+
+@pytest.mark.usefixtures("cache")
+def test_an_unpublished_version_fails_saying_how_to_build_it(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code, out, err = run(capsys, "adapter", "install", "pumpkin@8f3c2a1")
+    assert code == 1
+    assert out == f"downloading {TAGS_URL} ...\ndownloading {NIGHTLY_URL} ...\n"
+    assert err == (
+        "mscts: pumpkin@8f3c2a1 is not available for download. "
+        "The latest is pumpkin nightly 4426d11.\n"
+        "Build it yourself and install it with:\n"
+        "  mscts adapter install pumpkin --from <file>\n"
+    )
+
+
+@pytest.mark.usefixtures("cache")
+def test_another_minecraft_version_is_not_supported(capsys: pytest.CaptureFixture[str]) -> None:
+    code, out, err = run(capsys, "adapter", "install", "vanilla@26.4")
+    assert (code, out) == (1, "")
+    assert err == "mscts: vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.\n"
 
 
 def test_install_from_a_file(
@@ -88,71 +100,65 @@ def test_install_from_a_file(
     )
     assert code == 0
     assert out == (
-        f"installed {supplied} (sha256 {SHA256}; the Registry entry pumpkin nightly-test) "
+        f"installed {supplied} (pumpkin 0.2.0+26.3-26.51 4426d11, sha256 {SHA256}) "
         f"into {cache / 'pumpkin/26.3'}\n"
     )
     assert github.fetched == []
 
 
-def test_a_moved_nightly_fails_naming_the_fix(
-    cache: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    code, _, err = run(capsys, "adapter", "install", "pumpkin", fetch=FakeGitHub(b"\x7fELF newer"))
-    assert code == 1
-    assert err.startswith(f"mscts: {URL} is not pumpkin nightly-test: sha256 ")
-    assert "the nightly moved" in err
-    assert "`mscts adapter install pumpkin --from <file>`" in err
-    assert not cache.exists() or not (cache / "pumpkin/26.3").exists()
-
-
 @pytest.mark.usefixtures("cache")
-def test_an_unknown_version_fails_naming_the_entries(capsys: pytest.CaptureFixture[str]) -> None:
-    code, _, err = run(capsys, "adapter", "install", "pumpkin", "--version", "nightly-old")
+def test_a_version_and_a_file_are_exclusive(capsys: pytest.CaptureFixture[str]) -> None:
+    code, _, err = run(capsys, "adapter", "install", "pumpkin@4426d11", "--from", "f")
     assert (code, err) == (
         1,
-        "mscts: pumpkin has no registry entry nightly-old; its entries: nightly-test\n",
+        "mscts: pumpkin@4426d11 --from f: name a version or a file, not both\n",
     )
 
 
 @pytest.mark.usefixtures("cache")
-def test_version_and_from_are_exclusive(capsys: pytest.CaptureFixture[str]) -> None:
+def test_an_at_without_a_version_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exited:
-        main(["adapter", "install", "pumpkin", "--version", "v", "--from", "f"])
+        main(["adapter", "install", "pumpkin@"])
     assert exited.value.code == 2
-    assert "not allowed with argument" in capsys.readouterr().err
+    assert "pumpkin@ names no version" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("argument", ["minestom", "minestom@1", "@26.3"])
+@pytest.mark.usefixtures("cache")
+def test_an_unknown_adapter_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str], argument: str
+) -> None:
+    with pytest.raises(SystemExit) as exited:
+        main(["adapter", "install", argument])
+    assert exited.value.code == 2
+    name = argument.partition("@")[0]
+    said = f"{name!r} is not an Adapter; the known Adapters are vanilla, pumpkin"
+    assert said in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("cache")
-def test_list_shows_every_adapter_entry_and_install_state(
+def test_the_version_option_is_gone(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exited:
+        main(["adapter", "install", "pumpkin", "--version", "4426d11"])
+    assert exited.value.code == 2
+    assert "unrecognized arguments: --version" in capsys.readouterr().err
+
+
+@pytest.mark.usefixtures("cache")
+def test_list_shows_every_adapter_and_what_is_installed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     code, out, _ = run(capsys, "adapter", "list")
     assert code == 0
     assert out.splitlines() == [
-        "ADAPTER  VERSION       TARGET  STATE",
-        "vanilla  -             -       no Registry entry; install one with --from",
-        "pumpkin  nightly-test  26.3    not installed",
+        "ADAPTER  VERSION  TARGET  STATE",
+        "vanilla  -        26.3    not installed",
+        "pumpkin  -        26.3    not installed",
     ]
     run(capsys, "adapter", "install", "pumpkin")
-    assert run(capsys, "adapter", "list")[1].splitlines()[2] == (
-        "pumpkin  nightly-test  26.3    installed"
-    )
-
-
-@pytest.mark.usefixtures("cache")
-def test_list_shows_a_from_build_that_is_no_entry(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    supplied = tmp_path / "mine"
-    supplied.write_bytes(b"\x7fELF my build")
-    run(capsys, "adapter", "install", "pumpkin", "--from", str(supplied))
-    sha256 = hashlib.sha256(b"\x7fELF my build").hexdigest()
-    assert run(capsys, "adapter", "list")[1].splitlines()[2:] == [
-        "pumpkin  nightly-test  26.3    not installed",
-        (
-            f"pumpkin  -             26.3    installed: no Registry entry, from {supplied} "
-            f"(sha256 {sha256})"
-        ),
+    assert run(capsys, "adapter", "list")[1].splitlines()[1:] == [
+        "vanilla  -                26.3    not installed",
+        "pumpkin  nightly 4426d11  26.3    installed",
     ]
 
 
@@ -168,22 +174,36 @@ def test_status_of_nothing_installed_names_the_install_command(
 
 
 def test_status_says_what_is_installed_its_sha256_and_source(
-    cache: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    cache: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    supplied = tmp_path / "pumpkin-X64-Linux"
-    supplied.write_bytes(BUILD)
-    run(capsys, "adapter", "install", "pumpkin", "--from", str(supplied))
+    run(capsys, "adapter", "install", "pumpkin")
     code, out, _ = run(capsys, "adapter", "status", "pumpkin")
     lines = out.splitlines()
     assert code == 0
-    assert lines[:5] == [
+    assert lines[:6] == [
         f"pumpkin 26.3: installed at {cache / 'pumpkin/26.3'}",
-        "  entry:     pumpkin nightly-test",
+        "  version:   nightly",
+        f"  commit:    {COMMIT}",
         f"  sha256:    {SHA256}",
         f"  size:      {len(BUILD)} bytes",
-        f"  from:      {supplied}",
+        f"  from:      {NIGHTLY_URL}",
     ]
-    assert lines[5].startswith("  installed: 20")
+    assert lines[6].startswith("  installed: 20")
+
+
+def test_status_of_a_build_without_a_commit_leaves_the_commit_out(
+    cache: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    supplied = tmp_path / "mine"
+    supplied.write_bytes(fake_pumpkin(commit="unknown"))
+    run(capsys, "adapter", "install", "pumpkin", "--from", str(supplied))
+    lines = run(capsys, "adapter", "status", "pumpkin")[1].splitlines()
+    assert lines[1:3] == [
+        "  version:   0.2.0+26.3-26.51",
+        f"  sha256:    {hashlib.sha256(supplied.read_bytes()).hexdigest()}",
+    ]
+    assert lines[4] == f"  from:      {supplied}"
+    assert cache.exists()
 
 
 def test_status_of_a_changed_binary_fails_naming_the_fix(
@@ -197,22 +217,42 @@ def test_status_of_a_changed_binary_fails_naming_the_fix(
     assert "unusable: see `mscts adapter status pumpkin`" in run(capsys, "adapter", "list")[1]
 
 
-def test_status_says_when_it_records_a_legacy_installation(
+def test_status_names_the_build_of_an_installation_recorded_before_builds_were(
     cache: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = cache / "pumpkin/26.3"
     root.mkdir(parents=True)
-    (root / "pumpkin").write_bytes(BUILD)  # installed before SOURCE.json existed
+    (root / "pumpkin").write_bytes(BUILD)
+    legacy = {"sha256": SHA256, "size": len(BUILD), "entry": f"pumpkin nightly-{SHA256[:8]}"}
+    (root / "SOURCE.json").write_text(json.dumps(legacy))
     code, out, _ = run(capsys, "adapter", "status", "pumpkin")
     assert code == 0
-    assert out.startswith(
-        f"recorded {root / 'SOURCE.json'}: {root / 'pumpkin'} predates recorded sources "
-        f"and hash-matches the Registry entry pumpkin nightly-test\n"
-    )
-    run(capsys, "adapter", "status", "pumpkin")
-    assert "recorded" not in capsys.readouterr().out  # once only
+    assert out.splitlines()[1:3] == ["  version:   nightly", f"  commit:    {COMMIT}"]
 
 
 def test_the_mscts_script_is_the_cli() -> None:
     pyproject = tomllib.loads(Path(__file__).parent.parent.joinpath("pyproject.toml").read_text())
     assert pyproject["project"]["scripts"] == {"mscts": "mscts.cli:main"}
+
+
+@pytest.mark.parametrize(
+    ("command", "said"),
+    [
+        (
+            ("adapter", "install"),
+            "ADAPTER[@VERSION]  vanilla or pumpkin; @VERSION installs one build, not the latest",
+        ),
+        (("adapter", "status"), "{vanilla,pumpkin}  the Adapter whose Installation to show"),
+    ],
+    ids=["install", "status"],
+)
+def test_each_positional_argument_says_what_it_is(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    command: tuple[str, ...],
+    said: str,
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+    with pytest.raises(SystemExit):
+        main([*command, "--help"])
+    assert f"\n  {said}\n" in capsys.readouterr().out

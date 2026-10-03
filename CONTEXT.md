@@ -17,10 +17,10 @@ need is missing, add it here in the same commit that introduces it.
 - **Candidate**: the custom server implementation being measured
   (Pumpkin, Minestom, …). _Avoid_: SUT, implementation, custom server (in
   code).
-- **Adapter**: the only server-specific code. It checks that a binary is
-  a server it can run and turns a ServerSpec into a LaunchPlan. It never
-  downloads or installs anything. Reference and every Candidate each have
-  one.
+- **Adapter**: the only server-specific code. It says where its server's
+  latest build for the Target is downloaded from, reads which build a binary
+  is and checks that it can run it, and turns a ServerSpec into a LaunchPlan.
+  It never installs anything. Reference and every Candidate each have one.
 - **ServerSpec**: a server-agnostic, declarative description of how a
   server must be configured (the host and port of its Endpoint, view
   distance, world preset, operators, …). Offline mode, no encryption, no
@@ -29,15 +29,10 @@ need is missing, add it here in the same commit that introduces it.
   is always a loopback address (127.0.0.0/8), and each Instance gets one of
   its own.
 - **Installation**: the binaries installed for an Adapter and a Target,
-  cached on disk, with a recorded source (a registry entry or `--from`
-  file) and sha256. It is created only by `mscts adapter install`, or
-  after an explicit prompt (ADR-0008).
-- **Registry**: the maintainer-approved list of installable servers, each
-  pinned by version and checksum. It never trusts a name alone. One
-  **entry** is (adapter, version label, Target, URL, sha256 and/or the
-  publisher's hash), named `<adapter> <version>` (`pumpkin
-  nightly-b8382a8a`). A floating URL such as Pumpkin's nightly is only an
-  entry for the one build its sha256 pins.
+  cached on disk, with the build they are (its version, and its commit where
+  the publisher names one), their sha256 and their source (the URL the
+  Adapter gave, or a `--from` file). It is created only by
+  `mscts adapter install`, or after an explicit prompt (ADR-0008).
 - **LaunchPlan**: the argv, cwd, env and stop method an Adapter produces.
   It contains no process handling.
 - **Instance**: one running server process started from a LaunchPlan and

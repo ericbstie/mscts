@@ -25,15 +25,15 @@ tests, 79–83 s under load) and `mise run test:candidate` passes.
 - **G5 holds again** (reference tier 79–83 s under load): the Self-check
   reuses the session Reference as an Attached side. The margin is thin;
   Next item 1 parallelizes the tier.
-- **M3a (installs): mostly done.** A Registry pinned by checksum
-  (`src/mscts/data/registry.toml`), `mscts adapter install/list/status`
-  with `--from`, sources recorded in SOURCE.json. Pumpkin nightly-48cba7ee
-  is installed in this container's shared cache via `--from`, and
-  `mise run test:candidate` passes. `install.require` asks on a TTY and otherwise fails naming the
+- **M3a (installs): mostly done.** `mscts adapter install` installs
+  the latest build for 26.3, or `<adapter>@<version>`, from where each
+  Adapter says its builds are (#156; the Registry is gone), and
+  `install/list/status` with `--from`, the build and its source recorded
+  in SOURCE.json. `mise run test:candidate` passes. `install.require` asks on a TTY and otherwise fails naming the
   command; nothing installs inside a Run or test. `provision` is gone from
   the Adapter contract. The SessionStart hook runs `mise run
-  install:reference` (explicit, loud). **M3a done** except the registry
-  review flow and M9's `adapter check`.
+  install:reference` (explicit, loud). **M3a done** except M9's
+  `adapter check`.
 - **M3's first Report: done (session 3).** `uv run mscts run --candidate
   pumpkin [--scenario GLOB] [--repeat N]` plays the status Scenarios on
   vanilla and Pumpkin (about 10 s) and prints a text Report: observable

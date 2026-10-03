@@ -12,7 +12,7 @@ and the milestones are in
 | --- | --- |
 | Target | Minecraft 26.3, protocol 777. One Target at a time. |
 | Candidates | Pumpkin. Its Adapter writes Pumpkin's config and a flat world save with the spec's seed and difficulty. |
-| Installs | `mscts adapter install`, `list` and `status`, a Registry pinned by checksum, and `--from` for builds you supply. |
+| Installs | `mscts adapter install` (the latest build, or `<adapter>@<version>`), `list` and `status`, and `--from` for builds you supply. |
 | Protocol | Handshake, status, login, configuration, and enough of play to join a world. A Bot joins vanilla in about 1.25 seconds. |
 | Groups | `status/basic` and `status/ping`. The status Self-check matches in 20 runs out of 20, with no Mask. |
 | Comparison | Gameplay and network traffic Divergences. Each rule in the canonical table cites the vanilla client code behind it. |

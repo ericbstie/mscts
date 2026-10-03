@@ -1,6 +1,6 @@
-vanilla 26.3: installed at /root/.cache/mscts/vanilla/26.3
-  entry:     vanilla 26.3
+vanilla 26.3: installed at /home/user/.cache/mscts/vanilla/26.3
+  version:   26.3
   sha256:    d052f14d7a173734fba553711e5b570162e2f2a313267ee31a21b975a679be64
   size:      62294556 bytes
   from:      https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar
-  installed: 2026-10-02T00:21:02+00:00
+  installed: 2026-10-03T01:18:05+00:00

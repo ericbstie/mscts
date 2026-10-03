@@ -10,7 +10,6 @@ from mscts import install
 from mscts.adapters.base import Installation
 from mscts.adapters.fetch import https_get
 from mscts.adapters.vanilla import VanillaAdapter
-from mscts.registry import official
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
@@ -25,7 +24,7 @@ SERVER_JAR_SHA1 = "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c"
 SERVER_JAR_SIZE = 62294556
 
 
-def test_the_registry_pins_the_jar_mojangs_manifest_publishes() -> None:
+def test_the_release_is_the_jar_mojangs_manifest_publishes() -> None:
     manifest = json.loads(https_get(MANIFEST_URL).body)
     (listed,) = [v for v in manifest["versions"] if v["id"] == TARGET.minecraft_version]
     document = https_get(listed["url"]).body
@@ -33,8 +32,12 @@ def test_the_registry_pins_the_jar_mojangs_manifest_publishes() -> None:
     version = json.loads(document)
     assert version["javaVersion"]["majorVersion"] == TARGET.java_major
     server = version["downloads"]["server"]
-    entry = official().resolve("vanilla", TARGET)
-    assert (entry.url, entry.sha1, entry.size) == (server["url"], server["sha1"], server["size"])
+    release = VanillaAdapter().release(TARGET, None, https_get)
+    assert (release.url, release.sha1, release.size) == (
+        server["url"],
+        server["sha1"],
+        server["size"],
+    )
 
 
 def test_the_installed_jar_is_the_published_26_3_jar(cache_dir: Path) -> None:

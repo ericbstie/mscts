@@ -136,7 +136,7 @@ class SideSummary:
             none was a status JSON naming a version.
         startup: One `instance.startup` Measurement per Instance the Run launched for
             it, launch to ready; none for an Attached side.
-        installed_version: The verified Registry version or sha256, or None for
+        installed_version: Its Installation's Build and short sha256, else its sha256; None for
             an Attached side or an Installation without recorded provenance.
     """
 
@@ -550,8 +550,8 @@ def _installed_version(side: Side) -> str | None:
     if isinstance(side, Attached) or side.installation.source is None:
         return None
     source = side.installation.source
-    if source.entry is not None:
-        return source.entry.removeprefix(f"{side.name} ")
+    if source.build is not None:
+        return f"{source.build} (sha256 {source.sha256[:8]}…)"
     return f"sha256 {source.sha256}"
 
 

@@ -13,14 +13,34 @@ from pathlib import Path
 from types import MappingProxyType
 
 from mscts.adapters import nbt
-from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.base import (
+    Build,
+    Fetch,
+    Installation,
+    LaunchPlan,
+    PrepareError,
+    ProvisionError,
+    Release,
+    UnsupportedError,
+)
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
 
-# The Linux x86-64 binary. Which build, from where, is the Registry's (data/registry.toml).
+# The Linux x86-64 binary.
 BINARY = "pumpkin"
+# Pumpkin publishes only its latest nightly, at one URL, built from the commit its `nightly`
+# tag names. The tag is read from GitHub's ref advertisement, as `git ls-remote` reads it
+# (docs/research/2026-10-03-install.md).
+NIGHTLY_URL = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
+TAGS_URL = "https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack"
 _ELF_MAGIC = b"\x7fELF"
+_SHORT = 7  # characters of a short commit, as Pumpkin and git print one
+# What a build says it is, as the compiler folds `/pumpkin`'s "{} (Commit: {}/{})" into one
+# string: its version, whose part after "+" is its Minecraft version, and its short commit
+# ("unknown" if built without a checkout). The full commit follows a second copy of the
+# short one (docs/research/2026-10-03-install.md).
+_NAMES = re.compile(rb"(\d+\.\d+\.\d+\+(\d+(?:\.\d+)*)-[\w.]+) \(Commit: ([0-9a-f]{7}|unknown)/")
 
 type TomlValue = bool | int | float | str | list[TomlValue] | Toml
 type Toml = dict[str, TomlValue]  # a TOML table, in Pumpkin's own key order
@@ -512,19 +532,80 @@ def ops_json(operators: tuple[str, ...]) -> str:
     return json.dumps(entries, indent=2, ensure_ascii=False)  # as serde_json's pretty printer
 
 
+_NIGHTLY = "nightly"  # the only build Pumpkin publishes, and `pumpkin@nightly` names it
+# too few characters to name a commit, in either case
+_SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}", re.IGNORECASE)
+_ADVERTISEMENT = b"001e# service=git-upload-pack\n"  # how every ref advertisement starts
+_TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
+
+
+def _nightly_commit(refs: bytes) -> str:
+    """The commit the `nightly` tag names in a ref advertisement (peeled, if annotated)."""
+    if not refs.startswith(_ADVERTISEMENT):  # a proxy's or an error page, not GitHub's answer
+        msg = (
+            f"{TAGS_URL} did not answer with GitHub's list of git refs (is a proxy in the way?), "
+            "so the nightly's commit is unknown."
+        )
+        raise ProvisionError(msg)
+    tags = {bytes(match[2]): str(match[1].decode()) for match in _TAG.finditer(refs)}
+    commit = tags.get(b"refs/tags/nightly^{}", tags.get(b"refs/tags/nightly"))
+    if commit is None:
+        msg = f"{TAGS_URL} has no nightly tag, so the nightly's commit is unknown."
+        raise ProvisionError(msg)
+    return commit
+
+
+def _refuse_too_short(adapter: str, version: str) -> None:
+    """ProvisionError if `version` is a commit too short to name one (fewer than 7 characters)."""
+    if _SHORT_HEX.fullmatch(version):
+        msg = (
+            f"{adapter}@{version} is too short to name a commit: name at least {_SHORT} "
+            "characters of it."
+        )
+        raise ProvisionError(msg)
+
+
 class PumpkinAdapter:
-    """Checks a Pumpkin build and prepares it for a ServerSpec."""
+    """Finds and checks a Pumpkin build, and prepares it for a ServerSpec."""
 
     name = "pumpkin"
     binary = BINARY
+    latest_aliases = frozenset({_NIGHTLY})  # `pumpkin@nightly` is plain `pumpkin`
 
-    def check(self, binary: Path, target: Target) -> None:  # noqa: ARG002 (any Target)
-        """Raise ProvisionError unless `binary` is an ELF executable, as every Pumpkin build is."""
-        with binary.open("rb") as file:
-            head = file.read(16)
-        if not head.startswith(_ELF_MAGIC):
-            msg = f"{binary} is not an ELF executable: {head!r}"
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """The nightly, the only build Pumpkin publishes, at the commit its tag names.
+
+        Whatever `version` names, the nightly is the only file to look at: whether it is that
+        build, only the file says (install checks it). The tag's commit may be ahead of the
+        file's for a few minutes. A commit shorter than 7 characters is refused unfetched.
+        The nightly's Minecraft version shows only in the binary, so `check` refuses one for
+        another `target`.
+        """
+        del target
+        if version is not None:
+            _refuse_too_short(self.name, version)
+        commit = _nightly_commit(fetch(TAGS_URL).body)
+        return Release(build=Build(version=_NIGHTLY, commit=commit), url=NIGHTLY_URL)
+
+    def check(self, binary: Path, target: Target) -> Build:
+        """The version and commit `binary` names; ProvisionError unless it is for `target`.
+
+        Every Pumpkin build is an ELF executable that names its version and commit.
+        """
+        body = binary.read_bytes()
+        if not body.startswith(_ELF_MAGIC):
+            msg = f"{binary} is not an ELF executable: {body[:16]!r}"
             raise ProvisionError(msg)
+        names = _NAMES.search(body)
+        if names is None:
+            msg = f"{binary} names no Pumpkin version: is it a Pumpkin build?"
+            raise ProvisionError(msg)
+        version, minecraft, short = names[1].decode(), names[2].decode(), names[3]
+        if minecraft != target.minecraft_version:
+            actual = f"Pumpkin {version}, for Minecraft {minecraft}"
+            raise UnsupportedError(str(binary), target=target, actual=actual)
+        full = re.search(re.escape(short) * 2 + rb"[0-9a-f]{33}", body)
+        return Build(version=version, commit=None if full is None else full[0][7:].decode())
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete Pumpkin config and world save for `spec` into `workdir`.

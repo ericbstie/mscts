@@ -1,0 +1,1 @@
+mscts: vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.

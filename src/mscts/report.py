@@ -53,9 +53,12 @@ def render_text(report: Report, *, verbose: bool = False) -> str:
         for divergence in verdict.divergences
         if divergence.test_case
     )
-    lines = [f"Running tests against {report.candidate.name}"]
+    candidate = report.candidate
+    lines = [f"Running tests against {candidate.name}"]
     if verbose:
         lines.extend(_header(report))
+    elif candidate.installed_version is not None:  # the exact build tested (#156)
+        lines.append(f"Candidate: {candidate.name} {candidate.installed_version}")
     for name in cases:
         title = TITLES.get(name)
         lines.append(f"- {title}  {name}" if title else f"- {name}")

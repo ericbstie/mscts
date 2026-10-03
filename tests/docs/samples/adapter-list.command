@@ -1,3 +1,3 @@
 mise exec -- uv run mscts adapter list
-Captured 2026-10-02 on issue-130-repin-pumpkin (off main 6a05cc6), cloud Linux container, Java 25.
-Pumpkin installed from the Registry entry nightly-b8382a8a.
+Captured 2026-10-03 on issue-156-npm-install, cloud Linux container, Java 25, into a fresh cache (XDG_CACHE_HOME=/home/user/.cache).
+vanilla and pumpkin installed with `mscts adapter install` just before.

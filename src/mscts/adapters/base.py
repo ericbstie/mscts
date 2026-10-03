@@ -1,12 +1,13 @@
-"""The Adapter contract: check a binary, prepare a LaunchPlan (ADR-0004).
+"""The Adapter contract: find a release, check a binary, prepare a LaunchPlan (ADR-0004).
 
-Installations are install.py's (ADR-0008): an Adapter never downloads anything.
+Installations are install.py's (ADR-0008): an Adapter says where its builds are, and reads
+what it needs through the `fetch` it is given, but never installs anything.
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, override
 
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec
@@ -22,16 +23,91 @@ class PrepareError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class Build:
+    """One build of a server, named as its publisher names it (ADR-0008)."""
+
+    version: str  # "26.3"; Pumpkin's own "0.2.0+26.3-26.51"; "nightly"
+    commit: str | None = None  # the full commit it was built from, where the publisher names one
+
+    @override
+    def __str__(self) -> str:
+        """`26.3`, or `nightly 4426d11`: how Reports and commands name this build."""
+        return self.version if self.commit is None else f"{self.version} {self.commit[:7]}"
+
+
+def install_command(adapter: str, *, version: str | None = None, path: str | None = None) -> str:
+    """The exact `mscts adapter install` command line for a build or a `--from` file."""
+    if path is not None:
+        return f"mscts adapter install {adapter} --from {path}"
+    return f"mscts adapter install {adapter}" + (f"@{version}" if version else "")
+
+
+def build_it_yourself(adapter: str) -> str:
+    """How to install a build of `adapter` that cannot be downloaded: mscts's one wording."""
+    return f"Build it yourself and install it with:\n  {install_command(adapter, path='<file>')}"
+
+
+class UnsupportedError(ProvisionError):
+    """A build not for the Target: the Adapter reports it, mscts words it."""
+
+    def __init__(self, subject: str, *, target: Target, actual: str | None = None) -> None:
+        """`subject` (`vanilla@26.4`, a file) is not for `target`; it is `actual` if known."""
+        self.target, self.actual = target, actual
+        it = "" if actual is None else f"it is {actual}, and "
+        tested = f"this mscts tests Minecraft {target.minecraft_version}."
+        super().__init__(f"{subject} is not supported: {it}{tested}")
+
+
+class UnavailableError(ProvisionError):
+    """A build that cannot be downloaded: the Adapter reports it, mscts words it."""
+
+    def __init__(self, adapter: str, version: str, *, latest: Build) -> None:
+        """`<adapter>@<version>` cannot be downloaded; `latest` can."""
+        super().__init__(
+            f"{adapter}@{version} is not available for download. "
+            f"The latest is {adapter} {latest}.\n{build_it_yourself(adapter)}"
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    """A build its publisher offers for download, and what the download must be (ADR-0008)."""
+
+    build: Build
+    url: str  # HTTPS
+    sha1: str | None = None  # the publisher's own hash, where it publishes one (Mojang)
+    size: int | None = None  # bytes, where the publisher states it
+
+
+@dataclass(frozen=True, slots=True)
+class Download:
+    """The body of a fetched URL, and the URL it finally came from."""
+
+    url: str  # the final URL, after every redirect
+    body: bytes
+
+
+type Fetch = Callable[[str], Download]
+"""How an Adapter and install.py read a URL: fetch.https_get, or a fake in tests."""
+
+
+@dataclass(frozen=True, slots=True)
 class Source:
     """Where an Installation's binary came from, as its SOURCE.json records it (ADR-0008)."""
 
     sha256: str  # of the installed binary; every later use verifies the binary by it
     size: int
-    entry: str | None = None  # the Registry entry it hash-matches ("pumpkin nightly-b8382a8a")
-    url: str | None = None  # the URL it was downloaded from (the entry's)
+    version: str | None = None  # its Build's (None only in a SOURCE.json written before #156)
+    commit: str | None = None  # its Build's
+    url: str | None = None  # the URL it was downloaded from (its Release's)
     final_url: str | None = None  # where that URL finally redirected to
     from_path: str | None = None  # the `--from` file it was copied from
     installed_at: str | None = None  # ISO 8601, UTC
+
+    @property
+    def build(self) -> Build | None:
+        """The Build it records, if it records one."""
+        return None if self.version is None else Build(version=self.version, commit=self.commit)
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,9 +136,23 @@ class Adapter(Protocol):
 
     name: str
     binary: str  # the one file an Installation holds besides SOURCE.json ("server.jar")
+    # Versions that mean the latest build, as no version does: Pumpkin's {"nightly"}.
+    latest_aliases: frozenset[str]
 
-    def check(self, binary: Path, target: Target) -> None:
-        """Raise ProvisionError unless `binary` is a server this Adapter can run for `target`."""
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        """The latest build for `target`, or the build `version` names (`<name>@<version>`).
+
+        Facts only, never CLI text: UnsupportedError if that build is not for `target`,
+        UnavailableError if it cannot be downloaded, else ProvisionError saying what is
+        wrong. mscts words the refusals and adds how to install a build from a file.
+        """
+        ...
+
+    def check(self, binary: Path, target: Target) -> Build:
+        """The Build `binary` names; ProvisionError unless this Adapter can run it for `target`.
+
+        A build for another Minecraft version: UnsupportedError, with what the build is.
+        """
         ...
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:

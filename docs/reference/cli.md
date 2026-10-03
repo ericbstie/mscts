@@ -18,22 +18,30 @@ Choose `install`, `list` or `status` to manage server Installations.
 ## `mscts adapter install`
 
 ```
-mscts adapter install <adapter> [--version VERSION | --from PATH]
+mscts adapter install <adapter>[@<version>] [--from PATH]
 ```
 
-Installs a server build into the cache. Running it again when the build is
-already installed and verified does nothing and says so.
+Installs a server build into the cache. With no version, it installs the
+latest build for the Minecraft version mscts tests (26.3). Running it again
+when a build is already installed does nothing and says so. To get a newer
+build, delete the installed one first; the message names its folder.
 
 | Argument | Description |
 | --- | --- |
 | `<adapter>` | `vanilla` or `pumpkin`. |
-| `--version VERSION` | The Registry entry to install. Defaults to the entry for the current Target. |
-| `--from PATH` | Install a file you supply instead of downloading. mscts hashes it and records its path. |
+| `@<version>` | The build to install. For vanilla, a Minecraft version (only `26.3` works). For Pumpkin, the commit of its nightly build, at least 7 characters, or `nightly` for the latest. |
+| `--from PATH` | Install a file you supply instead of downloading. mscts checks that it is a build for 26.3, hashes it and records its path. |
 
-`--version` and `--from` cannot be combined.
+A version and `--from` cannot be combined. A build for another Minecraft
+version is refused, and so is a Pumpkin commit that is not its latest
+nightly: Pumpkin publishes only that one. Build an older commit yourself
+and install the file with `--from`.
 
 ```sh
 uv run mscts adapter install vanilla
+uv run mscts adapter install vanilla@26.3
+uv run mscts adapter install pumpkin
+uv run mscts adapter install pumpkin@4426d11
 uv run mscts adapter install pumpkin --from ./pumpkin-X64-Linux
 ```
 
@@ -43,9 +51,8 @@ uv run mscts adapter install pumpkin --from ./pumpkin-X64-Linux
 mscts adapter list
 ```
 
-Lists every Adapter, every Registry entry, and what is installed. A build
-installed with `--from` that matches no entry gets its own row. A broken
-Installation shows as `unusable` and points to `mscts adapter status`.
+Lists every Adapter, the build installed for it and whether it is installed.
+A broken Installation shows as `unusable` and points to `mscts adapter status`.
 
 ## `mscts adapter status`
 
@@ -53,9 +60,10 @@ Installation shows as `unusable` and points to `mscts adapter status`.
 mscts adapter status <adapter>
 ```
 
-Shows where the Adapter's Installation lives, the Registry entry it matches,
-its sha256 and size, where it came from, and when it was installed. Exits
-with code 1 if nothing is installed, and prints the install command.
+Shows where the Adapter's Installation lives, its version, its commit (when
+the build names one), its sha256 and size, where it came from, and when it
+was installed. Exits with code 1 if nothing is installed, and prints the
+install command.
 
 ## `mscts run`
 
@@ -66,8 +74,8 @@ mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose]
 Starts vanilla and the Candidate, plays the chosen Groups against both,
 stops both and prints the Report to stdout. Progress goes to stderr.
 
-The Report starts with `Running tests against <adapter name>`, lists each
-differing test case once, then gives the total Run time in seconds. Known
+The Report starts with `Running tests against <adapter name>` and the
+exact build of the Candidate it tested, lists each differing test case once, then gives the total Run time in seconds. Known
 test cases have a [title](/reference/test-cases); others keep just their
 name. Gameplay and network traffic differences share the list. Skipped or
 failed Groups follow it with their reasons. If nothing differed and no
@@ -85,8 +93,9 @@ different repetitions are kept; identical differences are shown once.
 Group time is the sum of playing both sides and comparing them across
 all repetitions. It excludes Instance startup and shutdown, which remain
 in the final total. Skipped Groups say `not played`. The installed version
-comes from the verified Registry entry, or the binary's sha256 when no
-entry matches. It does not trust the version claimed in a status response.
+is the installed build: its version, its commit where the build names one,
+and the start of its sha256. It does not trust the version claimed in a
+status response.
 
 `--candidate vanilla` plays vanilla against a second vanilla server. That is
 a quick way to see a Self-check.

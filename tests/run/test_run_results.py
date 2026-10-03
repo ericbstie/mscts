@@ -145,15 +145,15 @@ async def test_group_time_covers_both_plays_and_comparison_per_repetition(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("entry", ["two nightly-abc", None], ids=["registry", "local-file"])
+@pytest.mark.parametrize("version", ["nightly", None], ids=["build", "no-build"])
 async def test_installed_version_comes_from_source_instead_of_status(
-    entry: str | None, fake_server: MakeServer, tmp_path: Path
+    version: str | None, fake_server: MakeServer, tmp_path: Path
 ) -> None:
     candidate = fake_server("two")
-    source = Source(sha256="a" * 64, size=1, entry=entry)
+    source = Source(sha256="a" * 64, size=1, version=version, commit="abcdef12" * 5)
     candidate = replace(candidate, installation=replace(candidate.installation, source=source))
     result = await run_results([BASIC], fake_server("one"), candidate, workdir=tmp_path / "run")
     assert result.candidate.version == "26.3"
-    expected = "nightly-abc" if entry else f"sha256 {'a' * 64}"
+    expected = f"nightly abcdef1 (sha256 {'a' * 8}…)" if version else f"sha256 {'a' * 64}"
     assert result.candidate.installed_version == expected
     assert result.reference.installed_version is None

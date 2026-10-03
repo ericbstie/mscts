@@ -25,10 +25,10 @@ The custom server implementation being measured
 
 ### Adapter
 
-The only server-specific code. It checks that a binary is
-a server it can run and turns a ServerSpec into a LaunchPlan. It never
-downloads or installs anything. Reference and every Candidate each have
-one.
+The only server-specific code. It says where its server's
+latest build for the Target is downloaded from, reads which build a binary
+is and checks that it can run it, and turns a ServerSpec into a LaunchPlan.
+It never installs anything. Reference and every Candidate each have one.
 
 ### ServerSpec
 
@@ -43,18 +43,10 @@ its own.
 ### Installation
 
 The binaries installed for an Adapter and a Target,
-cached on disk, with a recorded source (a registry entry or `--from`
-file) and sha256. It is created only by `mscts adapter install`, or
-after an explicit prompt (ADR-0008).
-
-### Registry
-
-The maintainer-approved list of installable servers, each
-pinned by version and checksum. It never trusts a name alone. One
-**entry** is (adapter, version label, Target, URL, sha256 and/or the
-publisher's hash), named `<adapter> <version>` (`pumpkin
-nightly-b8382a8a`). A floating URL such as Pumpkin's nightly is only an
-entry for the one build its sha256 pins.
+cached on disk, with the build they are (its version, and its commit where
+the publisher names one), their sha256 and their source (the URL the
+Adapter gave, or a `--from` file). It is created only by
+`mscts adapter install`, or after an explicit prompt (ADR-0008).
 
 ### LaunchPlan
 

@@ -4,34 +4,71 @@ mscts never downloads a server during a Run. You install each server once,
 with `mscts adapter install`, and every Run after that verifies the installed
 file by its sha256 before it launches it.
 
-## From the Registry
-
-The Registry is a list of server builds, each pinned by a checksum. It lives
-in [`src/mscts/data/registry.toml`](https://github.com/ericbstie/mscts/blob/main/src/mscts/data/registry.toml).
-The maintainer approves each entry.
+## The latest build
 
 ```sh
 uv run mscts adapter install vanilla
-uv run mscts adapter install pumpkin --version nightly-b8382a8a
+uv run mscts adapter install pumpkin
 ```
 
-Without `--version`, mscts picks the entry for the current Target. It prints
-the URL before it downloads anything, then checks the file against the
-entry's hash. If the file is already installed and verified, the command
-does nothing and says so.
+Each command installs the latest build of that server for Minecraft 26.3,
+the version this mscts tests. It prints every URL before it downloads it:
 
-Current entries:
+```
+downloading https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack ...
+downloading https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux ...
+installed pumpkin nightly 4426d11 from https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux into /home/user/.cache/mscts/pumpkin/26.3
+```
 
-| Adapter | Version | Source |
-| --- | --- | --- |
-| `vanilla` | `26.3` | Mojang's server jar, checked by the sha1 and size Mojang publishes |
-| `pumpkin` | `nightly-b8382a8a` | One build of Pumpkin's Linux x86-64 nightly, pinned 2026-10-02 by sha256 |
+| Server | Where the latest build comes from |
+| --- | --- |
+| `vanilla` | The 26.3 server jar in Mojang's version list, checked by the sha1 and size Mojang publishes. |
+| `pumpkin` | Pumpkin's nightly build for Linux x86-64. mscts finds it through Pumpkin's `nightly` tag, and records the commit the file itself names. |
 
-::: warning Pumpkin's nightly moves
-Pumpkin publishes every nightly at the same URL. Once a newer build replaces
-the pinned one, a Registry install fails with a sha256 mismatch. Install the
-new build with `--from` instead, or ask for a new pin.
-:::
+If a build is already installed, the command does nothing and says so:
+
+```
+pumpkin nightly 4426d11 is already installed at /home/user/.cache/mscts/pumpkin/26.3 (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e): nothing to do. To check for a newer build, delete /home/user/.cache/mscts/pumpkin/26.3 and install again.
+```
+
+## A specific build
+
+Name the version after `@`:
+
+```sh
+uv run mscts adapter install vanilla@26.3
+uv run mscts adapter install pumpkin@4426d11
+```
+
+For vanilla, the version is the Minecraft version. For Pumpkin, it is the
+commit a nightly build was made from, at least its first 7 characters,
+or `nightly` for the latest one (the same as no version).
+
+Pumpkin publishes only its latest nightly, so an older commit cannot be
+downloaded. mscts downloads the nightly to read which commit it is, and if
+it is not the one you named, installs nothing and says how to get it:
+
+```
+downloading https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack ...
+downloading https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux ...
+mscts: pumpkin@8f3c2a1 is not available for download. The latest is pumpkin nightly 4426d11.
+Build it yourself and install it with:
+  mscts adapter install pumpkin --from <file>
+```
+
+## Only Minecraft 26.3
+
+A build for another Minecraft version is refused, whether you name it with
+`@` or supply it with `--from`, and nothing is installed:
+
+```
+mscts: vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.
+```
+
+The same goes for a download. Once Pumpkin's nightly is built for a newer
+Minecraft version, `mscts adapter install pumpkin` says which version it
+is, installs nothing, and tells you to build a 26.3 one yourself and
+install it with `--from`.
 
 ## From a file you supply
 
@@ -39,10 +76,10 @@ new build with `--from` instead, or ask for a new pin.
 uv run mscts adapter install pumpkin --from ./pumpkin-X64-Linux
 ```
 
-mscts asks the Adapter to check that the file is a server it can run for the
-Target, hashes it, copies it into the cache and records where it came from.
-If the file's hash matches a Registry entry, the Installation records that
-entry. Otherwise Reports name the build by its sha256.
+mscts asks the Adapter to check that the file is a server it can run for
+26.3 and which build it is, hashes the file, copies it into the cache and
+records where it came from. A Pumpkin binary names its own version and
+commit, so a build you made yourself shows both too.
 
 ## See what is installed
 
@@ -51,32 +88,34 @@ uv run mscts adapter list
 ```
 
 ```
-ADAPTER  VERSION           TARGET  STATE
-vanilla  26.3              26.3    installed
-pumpkin  nightly-b8382a8a  26.3    installed
+ADAPTER  VERSION          TARGET  STATE
+vanilla  26.3             26.3    installed
+pumpkin  nightly 4426d11  26.3    installed
 ```
 
 ```sh
-uv run mscts adapter status vanilla
+uv run mscts adapter status pumpkin
 ```
 
 ```
-vanilla 26.3: installed at /root/.cache/mscts/vanilla/26.3
-  entry:     vanilla 26.3
-  sha256:    d052f14d7a173734fba553711e5b570162e2f2a313267ee31a21b975a679be64
-  size:      62294556 bytes
-  from:      https://piston-data.mojang.com/v1/objects/33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c/server.jar
-  installed: 2026-10-02T00:21:02+00:00
+pumpkin 26.3: installed at /home/user/.cache/mscts/pumpkin/26.3
+  version:   nightly
+  commit:    4426d1113a211e6018a2db416e33b6b8a7802614
+  sha256:    b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e
+  size:      126447960 bytes
+  from:      https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux
+  installed: 2026-10-03T01:18:09+00:00
 ```
 
 `status` exits with code 1 when the Adapter has nothing installed, and prints
-the command that installs it.
+the command that installs it. Every Report names the same build: its
+version, its commit, and the start of its sha256.
 
 ## When a Run needs a missing server
 
 If you start a Run and a server is not installed, mscts asks on a terminal
-whether to download the Registry entry or let you supply a file. Without a
-terminal, as in CI, it fails at once and prints the exact install command.
+whether to download its latest build or let you supply a file. Without a
+terminal, as in CI, it fails at once and prints the exact install commands.
 It never waits for input that cannot come.
 
 ## The cache
@@ -88,5 +127,5 @@ Installations live in one cache per user, shared by every checkout:
 3. Otherwise `~/.cache/mscts`.
 
 Each Installation is a directory `<adapter>/<minecraft version>/` holding the
-server binary and a `SOURCE.json` file that records its sha256, size, the
-Registry entry it matches, and the URL or path it came from.
+server binary and a `SOURCE.json` file that records its version and commit,
+its sha256 and size, and the URL or path it came from.
