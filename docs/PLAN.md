@@ -1955,7 +1955,18 @@ class Report:                       # report.py
     notes: tuple[str, ...]          # plain remarks, e.g. what the Report leaves out
     elapsed_s: float               # launch through shutdown, excluding install prompts
     # Report.of(run_result, *, target, notes, elapsed_s); repeat (property)
-    # later: compliance = matches / (groups − errors); to_json(), to_markdown()
+    # later: compliance = matches / (groups − errors)
+
+# report_json.py: report.json, the whole Report (#190). dumps(report) -> str: the Report's
+# fields nested as in Report (target, reference, candidate, results, notes, elapsed_s),
+# indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
+# with one tag key: {"absent": true}, {"bytes": hex}, {"uuid": str}, {"float": "nan" |
+# "inf" | "-inf"}; a server object whose only key is a tag (or "dict") is {"dict": {...}}.
+# Any other value type is a TypeError. loads(text) -> Report reads it back, equal to the
+# Report written; ReportJsonError (a ValueError) names where malformed text differs.
+def dumps(report: Report) -> str: ...
+def loads(text: str) -> Report: ...
+class ReportJsonError(ValueError): ...
 
 def render_text(report: Report, *, verbose: bool = False) -> str: ...
 # case_titles.py: TITLES: Mapping[str, str], test case name → short title.
