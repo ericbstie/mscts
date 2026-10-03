@@ -784,6 +784,8 @@ class _Context:
             packet = event.packet
             if packet.state is not State.CONFIGURATION:
                 if counts is not None:
+                    # A configuration that sends no biomes gives None, not the earlier count.
+                    # What the client does then is out of scope: no server leaves them out.
                     biomes, counts = (sum(counts) if counts else None), None
             else:
                 counts = [] if counts is None else counts

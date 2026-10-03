@@ -520,18 +520,22 @@ def test_a_direct_biome_container_packed_at_another_width_that_fits_is_read_at_t
     assert str(difference.candidate).startswith("chunk 0 0: 4 -64 0 is ")
 
 
-def test_a_direct_biome_container_whose_data_does_not_fit_is_a_gameplay_difference() -> None:
-    # 6 bits take 7 Longs: the client would read 8, and so the rest of the chunk differently.
-    cells = direct([PLAINS] * 64, bits=6)
+@pytest.mark.parametrize("bits", [6, 16], ids=["shorter", "longer"])
+def test_a_direct_biome_container_whose_data_does_not_fit_is_a_gameplay_difference(
+    bits: int,
+) -> None:
+    # 6 bits take 7 Longs and 16 bits take 16: the client reads 8, and so the rest of the chunk
+    # differently.
+    cells = direct([PLAINS] * 64, bits=bits)
 
     verdict = compare(_joined(chunk()), _joined(chunk(overworld(FLAT_BOTTOM, biomes=cells))), [])
 
-    data = _packed([PLAINS] * 64, 6).hex()
+    data = _packed([PLAINS] * 64, bits).hex()
     assert [(d.path, d.reference, d.candidate) for d in verdict.gameplay] == [
         (
             "sections[0].biomes",
             "chunk 0 0, y -64 to -49: all 41",
-            f"chunk 0 0, y -64 to -49: 6 bits per entry where the client reads 7: {data}",
+            f"chunk 0 0, y -64 to -49: {bits} bits per entry where the client reads 7: {data}",
         )
     ]
 
