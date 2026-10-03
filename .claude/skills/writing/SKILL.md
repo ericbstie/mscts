@@ -72,11 +72,27 @@ Any session that writes user-facing text follows this skill all the same.
   offline belong elsewhere, if anywhere.
 - **State requirements firmly and formally.** "requires", not "needs"
   (reads like a suggestion) or "must have" (too informal).
+- **Use the headings readers already know.** A plain, conventional
+  title ("Roadmap") over an open-ended phrase ("What works today").
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Home page, "What works today"
+
+- Before: the heading "What works today".
+- After: "Roadmap".
+- Why: "a bit open-ended and unclear, especially for being a title", and
+  it "gives me this AI vibe"; the maintainer is used to just "Roadmap".
+
+### Home page, "Gameplay and network traffic test cases"
+
+- Before: a section explaining gameplay and network traffic differences,
+  with two cards.
+- After: removed.
+- Why: not given.
 
 ### Home page, "Why use this tool?"
 

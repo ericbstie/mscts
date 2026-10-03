@@ -75,39 +75,7 @@ Took 22 s</pre>
     </section>
 
     <section class="ms-section">
-      <h2>Gameplay and network traffic test cases</h2>
-      <p>
-        Two servers can send the same information in different formats, and
-        the vanilla client can end up with exactly the same result from
-        both. mscts only treats two formats as equal where we have read
-        vanilla Minecraft's own decoding code and written down a rule for
-        that exact case. Anything without such a rule counts as a gameplay
-        difference.
-      </p>
-      <div class="ms-split">
-        <div class="ms-card">
-          <span class="ms-tag gameplay">gameplay</span>
-          <p>
-            The vanilla client ends up with something different, so a player
-            could notice it. A missing message, a different player limit in
-            the server list, or a server that closes the connection all land
-            here.
-          </p>
-        </div>
-        <div class="ms-card">
-          <span class="ms-tag network-traffic">network traffic</span>
-          <p>
-            The servers send the same thing in different formats. Vanilla
-            sends its server description as the text <code>"mscts"</code>, and
-            Pumpkin sends <code>{"text": "mscts"}</code>. The vanilla client
-            reads both as the same text.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <section class="ms-section">
-      <h2>What works today</h2>
+      <h2>Roadmap</h2>
       <p>
         Today mscts compares how vanilla and Pumpkin answer the server list,
         and prints a text Report. Bots can join the game; comparing what
