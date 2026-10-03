@@ -167,3 +167,33 @@ def test_login_death_location_is_a_dimension_and_a_position() -> None:
     fields = {**LOGIN, "death_location": death}
     encoded = CODEC.encode(State.PLAY, CLIENTBOUND, "minecraft:login", fields)
     assert CODEC.decode(State.PLAY, CLIENTBOUND, encoded).fields == fields
+
+
+def test_respawn_is_the_spawn_info_then_the_data_kept() -> None:
+    # ClientboundRespawnPacket: CommonPlayerSpawnInfo, as in login, then one byte.
+    fields = {
+        "dimension_type": 2,
+        "dimension_name": "minecraft:the_end",
+        "hashed_seed": -1,
+        "game_mode": 1,
+        "previous_game_mode": 0,
+        "is_debug": False,
+        "is_flat": False,
+        "death_location": None,
+        "portal_cooldown": 0,
+        "sea_level": 63,
+        "data_kept": 3,
+    }
+    respawn_id = CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:respawn")
+    data = (
+        bytes([respawn_id, 0x02])
+        + string("minecraft:the_end")
+        + b"\xff" * 8
+        + b"\x01\x00"
+        + b"\x00\x00"
+        + b"\x00"  # no death location
+        + b"\x00"
+        + bytes([63])
+        + b"\x03"
+    )
+    round_trip(CLIENTBOUND, "minecraft:respawn", fields, data)

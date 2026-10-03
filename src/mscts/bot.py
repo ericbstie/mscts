@@ -108,6 +108,10 @@ _FORWARD, _JUMP, _SNEAK, _SPRINT = 0x01, 0x10, 0x20, 0x40
 _START_SPRINTING, _STOP_SPRINTING = 1, 2
 """`ServerboundPlayerCommandPacket.Action` ordinals."""
 
+_KEEP_ENTITY_DATA = 0x02
+"""`ClientboundRespawnPacket.KEEP_ENTITY_DATA`: the new player keeps the last sent input and
+sprinting (`ClientPacketListener.handleRespawn`)."""
+
 type _Send = tuple[str, dict[str, object]]
 """A packet to send: its name and fields."""
 
@@ -309,13 +313,17 @@ class Replies:
     - play `chunk_batch_finished` → `chunk_batch_received` at `CHUNKS_PER_TICK`;
     - play `start_configuration` → `configuration_acknowledged`.
 
-    Every other packet gets no answer. Play `login` names the player's entity id.
+    Every other packet gets no answer. Play `login` names the player's entity id. A play
+    `login` or `respawn` makes a new player, as the client makes a new `LocalPlayer`, so
+    `reported` starts again from a fresh player's; a respawn that keeps entity data
+    (`data_kept` bit 1) keeps the keys and sprinting last reported.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
         pose: Where the player is and faces: the last teleport's pose, or where the Bot
             moved since.
         entity_id: The player's entity id from play's `login`, or None before it arrives.
+        reported: What the client last reported of its player, which a tick compares with.
     """
 
     def __init__(self) -> None:
@@ -323,6 +331,7 @@ class Replies:
         self.pose = _Pose()
         self.saw_disconnect = False
         self.entity_id: int | None = None
+        self.reported = _Reported()
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
@@ -351,8 +360,8 @@ class Replies:
                 await connection.send(
                     "minecraft:keep_alive", keep_alive_id=fields.get("keep_alive_id")
                 )
-            case State.PLAY, "minecraft:login":
-                self.entity_id = _field(fields, "entity_id", int)
+            case State.PLAY, "minecraft:login" | "minecraft:respawn":
+                self._new_player(packet.name, fields)
             case State.PLAY, "minecraft:player_position":
                 self.pose.teleport(fields)
                 await connection.send(
@@ -372,6 +381,20 @@ class Replies:
                 await connection.send("minecraft:configuration_acknowledged")
             case _:
                 pass
+
+    def _new_player(self, name: str, fields: Mapping[str, object]) -> None:
+        """Start `reported` again, as the client makes a new `LocalPlayer` for a login or respawn.
+
+        A login also names the player's entity id. A respawn that keeps entity data keeps the
+        keys and sprinting last reported (`ClientPacketListener.handleRespawn`).
+        """
+        if name == "minecraft:login":
+            self.entity_id = _field(fields, "entity_id", int)
+            self.reported = _Reported()
+            return
+        old = self.reported
+        kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
+        self.reported = _Reported(keys=old.keys, sprinting=old.sprinting) if kept else _Reported()
 
 
 @dataclass(frozen=True, slots=True)
@@ -415,7 +438,6 @@ class Bot:
         self._closed = False
         self._disconnected = False  # expect returned the server's disconnect
         self._controls = _Controls()
-        self._reported = _Reported()
 
     @classmethod
     async def connect(
@@ -673,12 +695,14 @@ class Bot:
         What it reports is kept only once every packet has gone, so a tick that failed to
         send is reported again by the next.
         """
-        reported = copy.deepcopy(self._reported)
+        before = self._replies.reported
+        reported = copy.deepcopy(before)
         sends = _client_tick(self._replies.pose, self._controls, reported, self._replies.entity_id)
         async with self._operation(self._timeout_s):
             for name, fields in sends:
                 await self._connection.send(name, **fields)
-        self._reported = reported
+        if self._replies.reported is before:  # else a fresh player arrived while it sent
+            self._replies.reported = reported
 
     def _require_play(self, operation: str) -> None:
         """Raise ProtocolError, naming `operation`, unless the Bot is in play."""

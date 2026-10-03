@@ -17,6 +17,7 @@ from collections.abc import Mapping
 
 from mscts.codec.schema import (
     BOOL,
+    BYTE,
     DOUBLE,
     ENTITY_ID_INT,
     FLOAT,
@@ -29,10 +30,28 @@ from mscts.codec.schema import (
     PrefixedArray,
     PrefixedOptional,
     Schema,
+    WireType,
 )
 from mscts.codec.schemas import configuration
 
 _KEEP_ALIVE = Schema(keep_alive_id=LONG)
+
+_SPAWN_INFO: Mapping[str, WireType[object]] = {
+    # `CommonPlayerSpawnInfo`, in login and respawn alike.
+    "dimension_type": VAR_INT,
+    "dimension_name": IDENTIFIER,
+    "hashed_seed": LONG,
+    "game_mode": VAR_INT,
+    "previous_game_mode": VAR_INT,  # 0: none, else the game mode + 1
+    "is_debug": BOOL,
+    "is_flat": BOOL,
+    # "Has death location", then the two Optional fields it governs: one composite.
+    "death_location": PrefixedOptional(
+        Schema(death_dimension_name=IDENTIFIER, death_location=POSITION)
+    ),
+    "portal_cooldown": VAR_INT,
+    "sea_level": VAR_INT,
+}
 
 SERVERBOUND: Mapping[str, Schema] = {
     # Confirm Teleportation: in 26.3 it echoes the pose the teleport resulted in.
@@ -59,22 +78,13 @@ CLIENTBOUND: Mapping[str, Schema] = {
         reduced_debug_info=BOOL,
         enable_respawn_screen=BOOL,
         do_limited_crafting=BOOL,
-        dimension_type=VAR_INT,
-        dimension_name=IDENTIFIER,
-        hashed_seed=LONG,
-        game_mode=VAR_INT,
-        previous_game_mode=VAR_INT,  # 0: none, else the game mode + 1
-        is_debug=BOOL,
-        is_flat=BOOL,
-        # "Has death location", then the two Optional fields it governs: one composite.
-        death_location=PrefixedOptional(
-            Schema(death_dimension_name=IDENTIFIER, death_location=POSITION)
-        ),
-        portal_cooldown=VAR_INT,
-        sea_level=VAR_INT,
+        **_SPAWN_INFO,
         online_mode=BOOL,
         enforces_secure_chat=BOOL,
     ),
+    # Respawn: the spawn info, then which data the new player keeps (`ClientboundRespawnPacket`:
+    # bit 0 attribute modifiers, bit 1 entity data, 3 all).
+    "minecraft:respawn": Schema(**_SPAWN_INFO, data_kept=BYTE),
     # Synchronize Player Position. Flags is the Teleport Flags bit field (wiki Data types):
     # bit 0-2 relative x/y/z, 3 yaw, 4 pitch, 5-7 velocity x/y/z, 8 rotate velocity.
     "minecraft:player_position": Schema(

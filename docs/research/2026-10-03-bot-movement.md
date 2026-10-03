@@ -118,3 +118,12 @@ every layout.
   reports only what `sprint`, `sneak` and `jump` hold.
 - A Bot does not know its food level, whether it uses an item, or whether it
   is under water, so it does not refuse a sprint that those would stop.
+- A second play `login`, or a `respawn`, makes a new `LocalPlayer`
+  (`ClientPacketListener.handleLogin`, `handleRespawn`): its last reported
+  position, rotation, reminder and on-ground start fresh, and its last sent
+  input and sprinting too unless the respawn keeps entity data
+  (`data_kept` bit 1, `KEEP_ENTITY_DATA`). A Bot does the same. After a
+  respawn the real client sends nothing from `sendChanges` until it has
+  loaded again and sent `player_loaded`, and its new player is not
+  sprinting. A Bot sends no `player_loaded` after a respawn and keeps the
+  keys and sprinting its Group set.

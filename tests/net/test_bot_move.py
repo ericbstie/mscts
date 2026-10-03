@@ -82,6 +82,7 @@ def moving_server(
     login: bool = True,
     teleport_to: Mapping[str, float] | None = None,
     correct_to: Mapping[str, float] | None = None,
+    after_first_tick: tuple[str, Mapping[str, object]] | None = None,
 ) -> Handler:
     """Join like vanilla, then answer statistics requests a tick apart, as `play_server` does.
 
@@ -90,11 +91,13 @@ def moving_server(
     With `teleport_to`, a teleport there follows the Bot's `player_loaded`.
     With `correct_to`, the first position the Bot sends is answered with an absolute
     `player_position` to that place, as vanilla corrects a move it refuses.
+    With `after_first_tick`, that packet answers the Bot's first `client_tick_end`.
     """
 
     async def then(peer: Peer) -> None:
         requests = 0
         corrected = correct_to is None
+        ticked = False
         if teleport_to is not None:
             await peer.send("minecraft:player_position", **_teleport(teleport_to))
         async for packet in peer.packets():
@@ -105,6 +108,10 @@ def moving_server(
             elif not corrected and packet.name == "minecraft:move_player_pos":
                 corrected = True
                 await peer.send("minecraft:player_position", **_teleport(correct_to or {}))
+            elif not ticked and packet.name == "minecraft:client_tick_end":
+                ticked = True
+                if after_first_tick is not None:
+                    await peer.send(after_first_tick[0], **after_first_tick[1])
 
     def login_frame(peer: Peer) -> bytes:
         return peer.frame("minecraft:login", **LOGIN) if login else b""
@@ -141,6 +148,7 @@ def play(
     login: bool = True,
     teleport_to: Mapping[str, float] | None = None,
     correct_to: Mapping[str, float] | None = None,
+    after_first_tick: tuple[str, Mapping[str, object]] | None = None,
 ) -> list[Sent]:
     """Join a Bot on `moving_server`, run `script`, then wait until the server has read it."""
     seen: list[Packet] = []
@@ -150,7 +158,13 @@ def play(
         await script(bot)
         await bot.sync()
 
-    handler = moving_server(seen, login=login, teleport_to=teleport_to, correct_to=correct_to)
+    handler = moving_server(
+        seen,
+        login=login,
+        teleport_to=teleport_to,
+        correct_to=correct_to,
+        after_first_tick=after_first_tick,
+    )
     with_bot(CODEC, Transcript(group_id="test/move", server="fake"), handler, use)
     return ticks_sent(seen)
 
@@ -445,6 +459,57 @@ def test_a_tick_that_failed_to_send_is_not_taken_as_reported(
         await bot.tick()
 
     assert play(script)[1:] == [[pos(6.7, -60.0, 7.5), TICK_END]]
+
+
+RESPAWN = {
+    key: LOGIN[key]
+    for key in (
+        "dimension_type",
+        "dimension_name",
+        "hashed_seed",
+        "game_mode",
+        "previous_game_mode",
+        "is_debug",
+        "is_flat",
+        "death_location",
+        "portal_cooldown",
+        "sea_level",
+    )
+}
+KEEP_ENTITY_DATA = 0x02
+SPRINT_START = [
+    ("minecraft:player_input", {"flags": 0x41}),
+    ("minecraft:player_command", {"entity_id": ENTITY_ID, "action": 1, "jump_boost": 0}),
+    ("minecraft:move_player_pos_rot", {**SPAWN_POSITION, **SPAWN_ROTATION, "flags": ON_GROUND}),
+    TICK_END,
+]
+
+
+async def sprint_then_tick(bot: Bot) -> None:
+    await bot.sprint(sprinting=True)
+    await bot.sync()  # what answered the first tick has arrived
+    await bot.tick()
+
+
+@pytest.mark.parametrize(
+    "fresh_player",
+    [("minecraft:login", LOGIN), ("minecraft:respawn", {**RESPAWN, "data_kept": 0})],
+    ids=["login", "respawn"],
+)
+def test_a_fresh_player_has_reported_nothing(
+    fresh_player: tuple[str, Mapping[str, object]],
+) -> None:
+    # A second play login, or a respawn, makes a new LocalPlayer (ClientPacketListener
+    # handleLogin, handleRespawn; 26.3 javap): it last reported a pose of 0, off the ground,
+    # no keys and not sprinting, so its next tick reports everything again.
+    assert play(sprint_then_tick, after_first_tick=fresh_player) == [SPRINT_START, SPRINT_START]
+
+
+def test_a_respawn_that_keeps_entity_data_keeps_the_keys_and_the_sprint() -> None:
+    # With KEEP_ENTITY_DATA, the new player takes the old one's last sent input and
+    # sprinting; its position and rotation are still a fresh player's.
+    kept = ("minecraft:respawn", {**RESPAWN, "data_kept": KEEP_ENTITY_DATA})
+    assert play(sprint_then_tick, after_first_tick=kept) == [SPRINT_START, SPRINT_START[2:]]
 
 
 MOVES: list[tuple[str, Callable[[Bot], Awaitable[None]]]] = [

@@ -620,7 +620,9 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # same id; play player_position → accept_teleportation with the pose it results in (flagged
     # parts add to the tracked pose, rotation summed in binary32, pitch clamped to ±90, a
     # non-finite rotation ignored), which becomes Replies.pose; play login → Replies.entity_id
-    # (no answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
+    # (no answer); play login or respawn → Replies.reported starts again as a fresh player's
+    # (a new LocalPlayer; respawn with data_kept bit 1 keeps its keys and sprinting; no
+    # answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
 
