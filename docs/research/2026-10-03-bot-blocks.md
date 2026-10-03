@@ -117,5 +117,8 @@ as Compare does.
   own tick, which is the tick after a real client's key press.
 - The Bot does not time breaking. A Group calls `swing` on each tick the
   client would, and `stop_digging` on the tick it tests.
+- `dig` sends no ABORT for a block still being broken. In survival, a real
+  client's `startDestroyBlock` sends one first when it starts on another
+  block; a Group calls `cancel_digging` itself.
 - `place` sends `use_item_on` only: the Bot cannot tell that the use did
   nothing, so it never goes on to `use_item`.
