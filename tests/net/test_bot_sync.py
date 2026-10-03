@@ -151,16 +151,22 @@ def test_each_request_is_sent_no_sooner_than_5_ms_after_the_last_answer_arrived(
     assert bot_module.TICK_GAP_S == 0.005
 
 
+def test_sync_sends_three_requests() -> None:
+    # Every other test reads the constant, so a fourth request, a tick more per barrier,
+    # would pass them all (review of #218, L-4; ADR-0010, #169 amendment).
+    assert bot_module.SYNC_REQUESTS == 3
+
+
 def test_the_fakes_tick_is_longer_than_the_tick_gap() -> None:
     assert bot_module.TICK_GAP_S < TICK_S  # a vanilla-like tick is seen as one
 
 
-def test_a_bot_whose_loop_stalls_after_a_pairs_second_request_does_not_take_one_pass_for_a_tick(
+def test_a_bot_whose_loop_stalls_after_each_later_request_does_not_take_one_pass_for_a_tick(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Audit 2026-10-02 H1. The fake runs in its own thread, so it keeps time while the
-    # Bot's loop is blocked; a pair sent back to back lands in one 3 ms pass, and the
-    # stall stamps the second answer late, as if a tick had passed.
+    # Bot's loop is blocked; requests sent back to back land in one 3 ms pass, and a stall
+    # after each request but the first stamps its answer late, as if a tick had passed.
     transcript = Transcript(group_id="test/sync", server="fake")
     real_send = Connection.send
     requests = 0
@@ -170,7 +176,7 @@ def test_a_bot_whose_loop_stalls_after_a_pairs_second_request_does_not_take_one_
         await real_send(self, name, **fields)
         if name == REQUEST:
             requests += 1
-            if requests % SYNC_REQUESTS == 0:
+            if requests % SYNC_REQUESTS != 1:
                 # The loop is busy: another Bot decoding, GC, the OS. Blocking it is the
                 # point.
                 time.sleep(STALL_S)  # noqa: ASYNC251
@@ -207,10 +213,29 @@ def test_a_request_answered_at_a_later_pass_still_waits_tick_gap_from_its_answer
     assert "minecraft:block_update" in names
 
 
-def test_an_award_stats_sent_unasked_after_the_request_does_not_end_the_barrier_early() -> None:
-    # #169: the stray is taken as the first answer. The second request then reaches the
-    # server before its pass, both are answered in that pass, and a pair would end before
-    # the tick's block_update.
+@pytest.mark.parametrize(
+    "strays_at",
+    [
+        {1},
+        {2},
+        {3},
+        pytest.param(
+            {1, 3},
+            marks=pytest.mark.xfail(
+                strict=True, reason="two late award_stats in one sync: the known limit (#169)"
+            ),
+        ),
+    ],
+    ids=["first", "second", "third", "first-and-third"],
+)
+def test_an_award_stats_sent_unasked_after_a_request_does_not_end_the_barrier_early(
+    strays_at: set[int],
+) -> None:
+    # #169: a stray is taken as the answer to the request it followed. At the first, the
+    # second request reaches the server before its pass, both are answered in that pass,
+    # and a pair would end before the tick's block_update. At the second, the surplus
+    # answer comes up to a tick later: only a third request, not a short wait for that
+    # surplus, keeps the barrier (review of #218, M-1).
     transcript = Transcript(group_id="test/sync", server="fake")
 
     async def use(bot: Bot) -> list[str]:
@@ -218,7 +243,7 @@ def test_an_award_stats_sent_unasked_after_the_request_does_not_end_the_barrier_
         await bot.sync()
         return received(transcript)
 
-    server = scheduled_server([], stray_on_request=True)
+    server = scheduled_server([], strays_at=strays_at)
     names, _ = with_bot(CODEC, transcript, server, use, timeout_s=5.0)
     assert "minecraft:block_update" in names
 
