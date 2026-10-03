@@ -108,7 +108,10 @@ inside a chunk both servers sent have the test cases below.
 
 The block at each position of one 16-block-high section of a chunk.
 Servers can encode the same blocks in different ways; that difference is
-network traffic only. A different block is shown at its position in the
+network traffic only. The order of a section's palette, the list of
+blocks its positions refer to, is not compared at all, because vanilla
+itself sends the same section with its palette in different orders. A
+different block is shown at its position in the
 world, with each server's block state id there, such as
 `chunk 2 -1: 37 -62 -9 is 10`. The first three positions that differ are
 named and the rest counted.
@@ -119,7 +122,7 @@ named and the rest counted.
 
 The biome of each 4×4×4 cell of a chunk section, shown like blocks, at
 the cell's lowest corner. Another encoding of the same biomes is network
-traffic only. One encoding packs each biome at a bit width that depends
+traffic only, and the order of the palette is not compared. One encoding packs each biome at a bit width that depends
 on how many biomes the server listed when the player joined, and the
 client reads it at that width whatever width the server names. mscts
 compares the biomes the client reads. If the data does not fit that
@@ -136,7 +139,8 @@ client already had. Index 0 is the section below the world. A different
 level is shown at its position in the world; otherwise each server's
 section is described, such as `not sent` or `all 15`. Below the world, an
 empty section and a section of level 0 everywhere are the same to the
-client. Elsewhere the client later fills an empty section with full sky
+client, and vanilla itself sends either one, so that difference is not
+compared at all. Elsewhere the client later fills an empty section with full sky
 light, so the two differ.
 
 ## `level_chunk_with_light.light.block[]`

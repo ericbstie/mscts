@@ -1190,10 +1190,16 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
 
 
 def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
-    """A copy of `fields`, `packet`'s, in the value model, sorted if `UNORDERED` names it."""
+    """A copy of `fields`, `packet`'s, in the value model.
+
+    Cut to what the client reads (`_CAPS`), in one spelling (`_ONE_SPELLING`), and sorted if
+    `UNORDERED` names it.
+    """
     copy = _plain_mapping(fields.items(), packet.name, ())
     if (cap := _CAPS.get((packet.state, packet.name))) is not None:
         copy = cap(copy)
+    if (spelling := _ONE_SPELLING.get((packet.state, packet.name))) is not None:
+        copy = spelling(copy)
     sort = _SORTS.get(packet.name)
     return copy if sort is None else sort(copy)
 
@@ -1685,6 +1691,132 @@ def _unpacked_ids(data: bytes, entries: int) -> list[int | None]:
     return [None if number == 0 else number - 1 for number in numbers]
 
 
+def _in_palette_order(container: PalettedContainer, value: _Value) -> _Value:
+    """A list or hash palette container with its palette in ascending order of id.
+
+    Vanilla sends a container it holds in memory with its values in the order they were set,
+    and one it read back from disk in entry order (`PalettedContainer.pack`), so the order is a
+    spelling vanilla varies (docs/research/2026-10-03-vanilla-chunk-spellings.md). Each entry's
+    index changes to match; the bits, each Long's unused high bits and any slots after the last
+    entry stay as sent. A container with an entry past its palette stays as it is, and so does
+    a hash palette longer than its bits have slots for: the client reads one of any length
+    (`HashMapPalette.read`), but sorted, an entry's index might not fit its slot. (Only a
+    list or hash palette is a list: the codec reads a single value as an int, and the global
+    palette as None.)
+    """
+    if not isinstance(value, dict):
+        return value
+    bits, palette, data = value.get("bits"), value.get("palette"), value.get("data")
+    if not (isinstance(bits, int) and isinstance(palette, list) and isinstance(data, bytes)):
+        return value
+    ids = [each for each in palette if isinstance(each, int)]
+    width = max(bits, container.min_width)
+    if len(ids) != len(palette) or len(ids) > 1 << width:
+        return value
+    order = sorted(range(len(ids)), key=ids.__getitem__)
+    indexes = {old: new for new, old in enumerate(order)}
+    reindexed = _reindexed(data, width, container.entries, indexes)
+    if reindexed is None:
+        return value
+    ordered: list[_Value] = [*sorted(ids)]
+    return {**value, "palette": ordered, "data": reindexed}
+
+
+def _reindexed(data: bytes, width: int, entries: int, indexes: Mapping[int, int]) -> bytes | None:
+    """`data` with each index replaced by `indexes`' for it.
+
+    `data` is `entries` of `width` bits, packed as the client reads them (the codec reads as
+    many Longs as they take). None if an index has none in `indexes`, or its new one does not
+    fit `width` bits.
+    """
+    per_long, mask = _LONG_BITS // width, (1 << width) - 1
+    longs: list[bytes] = []
+    for number, start in enumerate(range(0, len(data), _LONG_BYTES)):
+        word = int.from_bytes(data[start : start + _LONG_BYTES], "big")
+        for slot in range(min(per_long, entries - number * per_long)):
+            shift = slot * width
+            index = indexes.get(word >> shift & mask)
+            if index is None or index > mask:
+                return None
+            word = word & ~(mask << shift) | index << shift
+        longs.append(word.to_bytes(_LONG_BYTES, "big"))
+    return b"".join(longs)
+
+
+def _one_spelling_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A chunk in one of the spellings vanilla varies between its own runs.
+
+    Each section's containers are `_in_palette_order`, and its light has
+    `_sky_below_the_world_empty`.
+    """
+    result = dict(fields)
+    if isinstance(sections := fields.get("sections"), list):
+        result["sections"] = [_section_in_palette_order(each) for each in sections]
+    if "light" in fields:
+        result["light"] = _sky_below_the_world_empty(fields["light"])
+    return result
+
+
+def _one_spelling_light_update(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A light update whose data has `_sky_below_the_world_empty`."""
+    if "data" not in fields:
+        return fields
+    return {**fields, "data": _sky_below_the_world_empty(fields["data"])}
+
+
+def _sky_below_the_world_empty(light: _Value) -> _Value:
+    """Light data with sky light section 0 sent as an empty section, not an array of zeros.
+
+    Vanilla sends either for the light section below the world, depending on whether its
+    light engine has made an array for it, and the client keeps the same light either way
+    (docs/research/2026-10-03-vanilla-chunk-spellings.md). Bit 0 leaves the sky mask, the
+    array goes, and bit 0 joins the empty sky mask. Each mask keeps as many zero bytes after
+    its last bit as it was sent with (`BitSet.toByteArray()` writes none, and the codec keeps
+    them), so they stay network traffic.
+    """
+    if not isinstance(light, dict):
+        return light
+    mask, empty = light.get("sky_light_mask"), light.get("empty_sky_light_mask")
+    arrays = light.get("sky_light_arrays")
+    if not (isinstance(mask, bytes) and isinstance(empty, bytes) and isinstance(arrays, list)):
+        return light
+    sent = int.from_bytes(mask, "little")
+    if not (sent & 1 and arrays and arrays[0] == bytes(_LIGHT_BYTES)):
+        return light
+    return {
+        **light,
+        "sky_light_mask": _with_bit_0(mask, set_it=False),
+        "empty_sky_light_mask": _with_bit_0(empty, set_it=True),
+        "sky_light_arrays": arrays[1:],
+    }
+
+
+def _with_bit_0(bit_set: bytes, *, set_it: bool) -> bytes:
+    """`bit_set`, lowest byte first, with bit 0 set or cleared.
+
+    As many bytes long as its bits need, plus the zero bytes it was sent with after them.
+    """
+    number = int.from_bytes(bit_set, "little")
+    extra = len(bit_set) - _bytes_for(number)
+    changed = number | 1 if set_it else number & ~1
+    return changed.to_bytes(_bytes_for(changed) + extra, "little")
+
+
+def _bytes_for(number: int) -> int:
+    """How many bytes `BitSet.toByteArray()` writes for `number`: none after its last bit."""
+    return (number.bit_length() + 7) // 8
+
+
+def _section_in_palette_order(section: _Value) -> _Value:
+    if not isinstance(section, dict):
+        return section
+    result = dict(section)
+    for key, (container, _) in _CONTAINERS.items():
+        if key in section:
+            result[key] = _in_palette_order(container, section[key])
+    return result
+
+
 _LIGHT_LAYERS: Mapping[str, str] = MappingProxyType(
     {
         "sky_light_mask": "sky",
@@ -2055,6 +2187,17 @@ _CAPS: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value
 )
 """For a packet whose lists can be longer than the client ever reads: every copy of its fields
 cut to what can be read, and one value that counts the rest (`_capped`)."""
+
+_ONE_SPELLING: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
+    MappingProxyType(
+        {
+            (State.PLAY, "minecraft:level_chunk_with_light"): _one_spelling_level_chunk,
+            (State.PLAY, "minecraft:light_update"): _one_spelling_light_update,
+        }
+    )
+)
+"""For a packet that vanilla spells two ways between its own runs, where the client keeps the
+same either way: every copy of its fields in one of them, so neither is a Divergence."""
 
 _COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
     {

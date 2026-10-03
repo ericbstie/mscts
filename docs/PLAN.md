@@ -1533,7 +1533,19 @@ proves it necessary:
      palette, or a list palette sent with fewer bits than the client
      reads it at) is network traffic only, and a block state or biome
      that differs is a gameplay Divergence at `sections[<i>].block_states`
-     or `sections[<i>].biomes`. An entry that indexes past its palette is
+     or `sections[<i>].biomes`. The order of a list or hash palette in
+     a chunk's sections is no Divergence at all (#172; not in
+     `chunks_biomes`, which has no canonical form, below): every copy of the fields, raw ones too,
+     has each such palette in ascending order of id and its entries'
+     indexes changed to match (`compare._ONE_SPELLING`), since vanilla
+     sends a container it holds in memory in the order its values were
+     set and one it read back from disk in entry order
+     (`PalettedContainer.pack`;
+     `docs/research/2026-10-03-vanilla-chunk-spellings.md`). A container
+     with an entry past its palette stays as sent, and so does a hash
+     palette longer than its bits have slots for (the client reads one of
+     any length, but sorted, an index might not fit), and so do the bits
+     and the slots after the last entry. An entry that indexes past its palette is
      a value of its own: the client reads it, and fails only when it
      looks it up (`valueFor`). Evidence
      (`docs/research/2026-10-02-chunks-light.md`, `javap` on the 26.3
@@ -1600,7 +1612,12 @@ proves it necessary:
      sky light only in light section 0, below the world:
      `SkyLightEngine.setLightEnabled` fills an empty stored sky section
      with 15 within the world, and no other client code tells the two
-     apart (`docs/research/2026-10-02-chunks-light.md`). A section not
+     apart (`docs/research/2026-10-02-chunks-light.md`). Below the world
+     it is no Divergence at all (#172): vanilla sends either, so every
+     copy of the fields, raw ones too, has sky light section 0 sent as
+     2048 zero bytes written as an empty section instead
+     (`compare._ONE_SPELLING`;
+     `docs/research/2026-10-03-vanilla-chunk-spellings.md`). A section not
      sent never equals one sent, empty or not, so Pumpkin's explicit sky
      arrays where vanilla names no section are a gameplay difference. A
      mask bit with no array left, or an array of another length, is a
