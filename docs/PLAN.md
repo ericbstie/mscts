@@ -1979,20 +1979,25 @@ class Report:                       # report.py
     # later: compliance = matches / (groups − errors)
 
 # report.py, #101: each test case of each Group passes or fails.
-class Result(StrEnum): PASS; FAIL; NOT_TESTED; ERROR
+class LineResult(StrEnum): PASS; FAIL; NOT_TESTED; ERROR
 @frozen
-class CaseResult:                   # one line of a Report
+class CaseResult:                   # a test case's line
     group_id: str
-    test_case: str                  # "" for the Group's own line
-    result: Result
+    test_case: str
+    result: LineResult              # PASS or FAIL
     network_traffic_only: bool = False
-    reasons: str = ""               # the Group line's "Not tested: …; Error: …"
+@frozen
+class GroupLine:                    # a Group's own line
+    group_id: str
+    result: LineResult              # FAIL, NOT_TESTED or ERROR
+    reasons: str                    # "Not tested: …; Error: …"
+type Line = CaseResult | GroupLine
 @frozen
 class Totals:                       # failed counts not_tested; errors are not scored
     passed: int; failed: int; not_tested: int; errors: int
     # scored = passed + failed; score = passed / scored, or None if 0
 NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
-def case_results(report: Report) -> tuple[CaseResult, ...]: ...
+def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of
 # its fields' differ): FAIL if it differs in gameplay in any repetition, PASS (marked
@@ -2000,12 +2005,12 @@ def case_results(report: Report) -> tuple[CaseResult, ...]: ...
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
 # NOT_TESTED if blocked, else ERROR.
-def totals(results: Iterable[CaseResult]) -> Totals: ...
+def totals(results: Iterable[Line]) -> Totals: ...
 
 # report_json.py: report.json, the whole Report (#190). dumps(report) -> str: the Report's
 # fields nested as in Report (target, reference, candidate, results, notes, elapsed_s),
-# with test_cases (each case_results line: group_id, test_case, result, network_traffic_only,
-# reasons) and totals (passed, failed, not_tested, errors, scored, score: fraction or null)
+# with lines (each report_lines line: group_id, result, then test_case and
+# network_traffic_only, or a Group line's reasons) and totals (passed, failed, not_tested, errors, scored, score: fraction or null)
 # after candidate (#101); loads ignores both, as they follow from results. Indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
 # with one tag key: {"absent": true}, {"bytes": hex}, {"uuid": str}, {"float": "nan" |
 # "inf" | "-inf"}; a server object whose only key is a tag (or "dict") is {"dict": {...}}.
@@ -2031,10 +2036,10 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # Unknown test cases are still reported; the table never filters Comparisons.
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>";
 # #156: then "Candidate: <adapter name> <installed_version>" when the build is known;
-# #101 (amends ADR-0012): one line per case_results line whose result is in _LISTED
+# #101 (amends ADR-0012): one line per report_lines line whose result is in _LISTED
 # (every result today): "<✓|✗> <group>/<test case> <title>" (bare name when untitled),
 # " (network traffic only)" when it passed that way; a Group line is
-# "✗ <group> <reasons>". Then "<p> passed, <f> failed[ (<n> not tested)][, <e> error[s]
+# "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then "<p> passed, <f> failed[ (<n> not tested)][, <e> error[s]
 # (not scored)]", "Score: <percent>% (<p> of <scored> test case[s] pass[es])" with the
 # percent rounded down to tenths (".0" dropped), or "Score: none (no test case was
 # scored)", and last "Took <seconds> s", rounded to tenths, including launch and

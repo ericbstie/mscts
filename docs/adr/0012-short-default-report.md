@@ -44,8 +44,8 @@ traffic passes, as ADR-0007 scores it, and its line ends
 A Group with no test cases to list (blocked, error, or a Candidate
 failure before the comparison) has one ✗ line naming its reasons, such as
 `✗ join/basic Not tested: …`, and counts as one test case. A blocked or
-failed Group fails. An error Group is listed but not scored, because the
-fault is mscts's or the Reference's.
+failed Group fails. An error Group is listed, marked `!` rather than ✗,
+but not scored, because the fault is mscts's or the Reference's.
 
 `No differences.` is gone. Before the total time come the totals and a
 score: `35 passed, 5 failed (1 not tested), 1 error (not scored)` and

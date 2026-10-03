@@ -66,19 +66,16 @@ def test_a_report_reads_back_as_the_same_report() -> None:
 def test_report_json_carries_each_line_and_the_totals_of_the_report() -> None:
     data = json.loads(report_json.dumps(_report(_divergence("mscts", {"text": "mscts"}))))
 
-    assert data["test_cases"] == [
+    assert data["lines"] == [
         {
             "group_id": "status/basic",
             "test_case": "status_response.players.sample[]",
             "result": "pass",
             "network_traffic_only": True,
-            "reasons": "",
         },
         {
             "group_id": "join/basic",
-            "test_case": "",
             "result": "not tested",
-            "network_traffic_only": False,
             "reasons": "Not tested: prerequisite status/basic was mismatch",
         },
     ]
@@ -90,7 +87,7 @@ def test_report_json_carries_each_line_and_the_totals_of_the_report() -> None:
         "scored": 2,
         "score": 0.5,
     }
-    assert list(data)[3:5] == ["test_cases", "totals"], list(data)
+    assert list(data)[3:5] == ["lines", "totals"], list(data)
 
 
 def test_a_report_with_nothing_scored_has_a_null_score() -> None:
@@ -102,7 +99,7 @@ def test_a_report_with_nothing_scored_has_a_null_score() -> None:
 def test_the_lines_and_totals_are_worked_out_again_not_read_back() -> None:
     report = _report()
     data = json.loads(report_json.dumps(report))
-    del data["test_cases"]
+    del data["lines"]
     data["totals"] = "anything"
 
     assert report_json.loads(json.dumps(data)) == report

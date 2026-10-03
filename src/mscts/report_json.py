@@ -1,10 +1,10 @@
 """report.json: the whole Report as JSON, and the Report back from it (#190).
 
 The file is the Report's fields, nested as in `Report`: `target`, `reference`, `candidate`,
-`results`, `notes` and `elapsed_s`. After `candidate` come `test_cases`, each line the
-Report lists (#101), and their `totals` with the score. Both follow from `results`, so
-`loads` ignores them. A Divergence's values are JSON where JSON can hold
-them. Each other value is an object with a single tag key: `{"absent": true}` for a side
+`results`, `notes` and `elapsed_s`. After `candidate` come `lines`, each test case of each
+Group and each Group's own line (#101), and their `totals` with the score. Both follow
+from `results`, so `loads` ignores them. A Divergence's values are JSON where JSON can
+hold them. Each other value is an object with a single tag key: `{"absent": true}` for a side
 that leaves the value out, `{"bytes": "<hex>"}`, `{"uuid": "<uuid>"}`, and
 `{"float": "nan"}` (or `"inf"`, `"-inf"`). An object the server sent whose only key is
 one of those tags, or `dict`, is written as `{"dict": {...}}`, so it never reads back as
@@ -28,7 +28,7 @@ from mscts.compare import (
     Verdict,
 )
 from mscts.measure import Measurement
-from mscts.report import CaseResult, Report, Totals, case_results, totals
+from mscts.report import GroupLine, Line, Report, Totals, report_lines, totals
 from mscts.run import GroupResult, SideSummary
 from mscts.target import Target
 
@@ -64,7 +64,7 @@ def _no_constant(name: str) -> object:
 
 def _report(report: Report) -> dict[str, object]:
     target = report.target
-    lines = case_results(report)
+    lines = report_lines(report)
     return {
         "target": {
             "minecraft_version": target.minecraft_version,
@@ -73,7 +73,7 @@ def _report(report: Report) -> dict[str, object]:
         },
         "reference": _side(report.reference),
         "candidate": _side(report.candidate),
-        "test_cases": [_case_result(line) for line in lines],
+        "lines": [_line(line) for line in lines],
         "totals": _totals(totals(lines)),
         "results": [_result(result) for result in report.results],
         "notes": list(report.notes),
@@ -81,13 +81,14 @@ def _report(report: Report) -> dict[str, object]:
     }
 
 
-def _case_result(line: CaseResult) -> dict[str, object]:
+def _line(line: Line) -> dict[str, object]:
+    if isinstance(line, GroupLine):
+        return {"group_id": line.group_id, "result": str(line.result), "reasons": line.reasons}
     return {
         "group_id": line.group_id,
         "test_case": line.test_case,
         "result": str(line.result),
         "network_traffic_only": line.network_traffic_only,
-        "reasons": line.reasons,
     }
 
 

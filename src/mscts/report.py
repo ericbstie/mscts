@@ -49,7 +49,7 @@ class Report:
         return max((len(result.verdicts) for result in self.results), default=0)
 
 
-class Result(StrEnum):
+class LineResult(StrEnum):
     """How one line of a Report came out."""
 
     PASS = "pass"  # noqa: S105  # nosec B105
@@ -60,21 +60,39 @@ class Result(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CaseResult:
-    """One line of a Report: a test case, or a Group that has no test case to show for it.
+    """One line of a Report: how one test case of one Group came out.
 
     Attributes:
-        group_id: The Group it belongs to.
-        test_case: The test case's name, or "" for the Group's own line.
-        result: Whether it passed. NOT_TESTED fails too; ERROR is left out of the score.
+        group_id: The Group.
+        test_case: The test case's name.
+        result: PASS or FAIL.
         network_traffic_only: True if it differs, but only in network traffic.
-        reasons: Why the Group's own line is there, such as `Not tested: …`; else "".
     """
 
     group_id: str
     test_case: str
-    result: Result
+    result: LineResult
     network_traffic_only: bool = False
-    reasons: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class GroupLine:
+    """One line of a Report for a Group itself: why it failed, or was not compared.
+
+    Attributes:
+        group_id: The Group.
+        result: FAIL if the Candidate failed or a Bot's packet count differed, else
+            NOT_TESTED if it was blocked, else ERROR, which is left out of the score.
+        reasons: Each distinct reason, joined by "; ", such as `Not tested: needs /tick`.
+    """
+
+    group_id: str
+    result: LineResult
+    reasons: str
+
+
+type Line = CaseResult | GroupLine
+"""One line of a Report."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,9 +126,9 @@ NETWORK_TRAFFIC_ONLY_PASSES: bool = True
 """Whether a test case that differs only in network traffic passes (ADR-0007)."""
 
 
-def case_results(report: Report) -> tuple[CaseResult, ...]:
+def report_lines(report: Report) -> tuple[Line, ...]:
     """Each test case of each Group, in the order played, then the Group's own line if any."""
-    results: list[CaseResult] = []
+    results: list[Line] = []
     for group in report.results:
         divergences = [
             divergence
@@ -136,7 +154,7 @@ def case_results(report: Report) -> tuple[CaseResult, ...]:
             kinds = {kind for kind, _ in details}
             result = next(kind for kind in _GROUP_RESULTS if kind in kinds)
             reasons = "; ".join(reason for _, reason in details)
-            results.append(CaseResult(group.group_id, "", result, reasons=reasons))
+            results.append(GroupLine(group.group_id, result, reasons))
     return tuple(results)
 
 
@@ -154,28 +172,28 @@ def _differing(divergence: Divergence, names: Iterable[str]) -> list[str]:
     return [name for name in names if name == case or name.startswith(fields)]
 
 
-_GROUP_RESULTS = (Result.FAIL, Result.NOT_TESTED, Result.ERROR)
+_GROUP_RESULTS = (LineResult.FAIL, LineResult.NOT_TESTED, LineResult.ERROR)
 """A Group line's result: the first of these that any of its reasons has."""
 
 
 def _case_result(group_id: str, name: str, traffic: set[bool]) -> CaseResult:
     """`traffic` holds, for each way the test case differs, whether it is network traffic."""
     if not traffic:
-        return CaseResult(group_id, name, Result.PASS)
+        return CaseResult(group_id, name, LineResult.PASS)
     if traffic == {True}:
-        result = Result.PASS if NETWORK_TRAFFIC_ONLY_PASSES else Result.FAIL
+        result = LineResult.PASS if NETWORK_TRAFFIC_ONLY_PASSES else LineResult.FAIL
         return CaseResult(group_id, name, result, network_traffic_only=True)
-    return CaseResult(group_id, name, Result.FAIL)
+    return CaseResult(group_id, name, LineResult.FAIL)
 
 
-def totals(results: Iterable[CaseResult]) -> Totals:
+def totals(results: Iterable[Line]) -> Totals:
     """How many of `results` came out each way."""
     counts = Counter(result.result for result in results)
     return Totals(
-        passed=counts[Result.PASS],
-        failed=counts[Result.FAIL] + counts[Result.NOT_TESTED],
-        not_tested=counts[Result.NOT_TESTED],
-        errors=counts[Result.ERROR],
+        passed=counts[LineResult.PASS],
+        failed=counts[LineResult.FAIL] + counts[LineResult.NOT_TESTED],
+        not_tested=counts[LineResult.NOT_TESTED],
+        errors=counts[LineResult.ERROR],
     )
 
 
@@ -190,14 +208,19 @@ type _Line = tuple[str | _Literal, ...]
 """One line of a Report: plain text and literals, written one after the other."""
 
 
-_LISTED = frozenset(Result)
+_LISTED = frozenset(LineResult)
 """The results a Report lists a line for (ADR-0012, amended by #101: all of them).
 
 The totals and the score count every line, listed or not.
 """
 
-_PASSED = "✓"
-_FAILED = "✗"
+_MARKS = {
+    LineResult.PASS: "✓",
+    LineResult.FAIL: "✗",
+    LineResult.NOT_TESTED: "✗",
+    LineResult.ERROR: "!",
+}
+"""Each line's mark: `!` for an error, which is not scored, so neither passes nor fails."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,7 +228,7 @@ class _Entry:
     """One listed line: a test case, or a Group without test cases to show for it.
 
     Attributes:
-        mark: ✓ if it passed, else ✗.
+        mark: ✓ if it passed, ! if it is an error, else ✗ (`_MARKS`).
         name: `<group>/<test case>`, or the Group id for the Group's own line.
         label: The test case's title, or the Group's reasons; "" if it has neither.
         values: The verbose lines under it.
@@ -314,7 +337,7 @@ def _plain(line: _Line) -> str:
 
 def _document(report: Report, *, verbose: bool) -> _Document:
     """What the Report says: the verbose header, values and Group times only if `verbose`."""
-    lines = case_results(report)
+    lines = report_lines(report)
     groups = {result.group_id: result for result in report.results}
     entries = tuple(
         _entry(report, groups[line.group_id], line, verbose=verbose)
@@ -333,19 +356,15 @@ def _document(report: Report, *, verbose: bool) -> _Document:
     )
 
 
-def _entry(report: Report, group: GroupResult, line: CaseResult, *, verbose: bool) -> _Entry:
-    if line.test_case:
-        name = f"{line.group_id}/{line.test_case}"
-        traffic = " (network traffic only)" if line.network_traffic_only else ""
-        label = f"{TITLES.get(line.test_case, '')}{traffic}".strip()
+def _entry(report: Report, group: GroupResult, line: Line, *, verbose: bool) -> _Entry:
+    if isinstance(line, GroupLine):
+        name, label, case = line.group_id, line.reasons, ""
     else:
-        name, label = line.group_id, line.reasons
-    return _Entry(
-        _PASSED if line.result is Result.PASS else _FAILED,
-        name,
-        label,
-        _values(report, group, line.test_case) if verbose else (),
-    )
+        name, case = f"{line.group_id}/{line.test_case}", line.test_case
+        traffic = " (network traffic only)" if line.network_traffic_only else ""
+        label = f"{TITLES.get(case, '')}{traffic}".strip()
+    values = _values(report, group, case) if verbose else ()
+    return _Entry(_MARKS[line.result], name, label, values)
 
 
 def _totals_lines(counts: Totals) -> tuple[str, str]:
@@ -365,26 +384,29 @@ def _totals_lines(counts: Totals) -> tuple[str, str]:
     return totals_line, f"Score: {percent}% ({counts.passed} of {counts.scored} {cases})"
 
 
-def _group_details(result: GroupResult) -> list[tuple[Result, str]]:
+def _group_details(result: GroupResult) -> list[tuple[LineResult, str]]:
     """Why the Group gets its own line, each reason once with how it makes the line come out."""
-    details: dict[tuple[Result, str], None] = {}
+    details: dict[tuple[LineResult, str], None] = {}
     for verdict in result.verdicts:
         if verdict.outcome is Outcome.BLOCKED:
-            details[Result.NOT_TESTED, f"Not tested: {verdict.detail}"] = None
+            details[LineResult.NOT_TESTED, f"Not tested: {verdict.detail}"] = None
         elif verdict.outcome is Outcome.ERROR:
-            details[Result.ERROR, f"Error: {verdict.detail}"] = None
+            details[LineResult.ERROR, f"Error: {verdict.detail}"] = None
         for divergence in verdict.divergences:
             if not divergence.test_case:
-                details[Result.FAIL, _group_difference(divergence)] = None
+                details[LineResult.FAIL, _group_difference(divergence)] = None
     return list(details)
 
 
 def _group_difference(divergence: Divergence) -> str:
     if divergence.kind == "failed":
         return f"Candidate failed: {divergence.candidate}"
+    reference, candidate = (
+        0 if count is ABSENT else count for count in (divergence.reference, divergence.candidate)
+    )
     return (
-        f"Bot {divergence.bot!r} exchanged {divergence.reference} packets with the Reference, "
-        f"{divergence.candidate} with the Candidate"
+        f"Bot {divergence.bot!r} exchanged {reference} packets with the Reference, "
+        f"{candidate} with the Candidate"
     )
 
 

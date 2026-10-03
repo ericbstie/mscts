@@ -159,7 +159,7 @@ def test_a_group_without_test_cases_to_list_has_one_line_with_its_reasons() -> N
         "Running tests against pumpkin\n"
         "✗ redstone/timing Not tested: needs /tick\n"
         "✗ status/basic/status_response.players.max Player limit\n"
-        "✗ status/error Error: the Reference did not start\n"
+        "! status/error Error: the Reference did not start\n"
         "✗ join/basic Candidate failed: disconnected during join\n"
         "0 passed, 3 failed (1 not tested), 1 error (not scored)\n"
         "Score: 0% (0 of 3 test cases pass)\n"
@@ -171,7 +171,7 @@ def test_a_report_with_nothing_scored_has_no_score() -> None:
     report = _report(_result(Verdict("status/basic", Outcome.ERROR, detail="failed")))
     assert render_text(report) == (
         "Running tests against pumpkin\n"
-        "✗ status/basic Error: failed\n"
+        "! status/basic Error: failed\n"
         "0 passed, 0 failed, 1 error (not scored)\n"
         "Score: none (no test case was scored)\n"
         "Took 41 s\n"
@@ -190,7 +190,7 @@ def test_a_group_lists_distinct_failure_details_once_in_one_line() -> None:
     error = Verdict("status/basic", Outcome.ERROR, detail="first reason")
     other = replace(error, detail="second reason")
     text = render_text(_report(_result(error, error, other)))
-    assert "✗ status/basic Error: first reason; Error: second reason\n" in text, text
+    assert "! status/basic Error: first reason; Error: second reason\n" in text, text
 
 
 def test_a_bot_difference_without_a_test_case_still_names_its_group() -> None:

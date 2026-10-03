@@ -3,4 +3,4 @@ Captured 2026-10-03 on issue-190-run-out rebased onto main 16af262, cloud Linux 
 vanilla 26.3 and pumpkin nightly 4426d11 installed by `mscts adapter install`; stdout only.
 The .json and .md are the report.json and report.md this run wrote.
 Text re-rendered 2026-10-03 from the same report.json for one line per test case (#101).
-report.json rewritten 2026-10-03 through report_json.dumps, adding test_cases and totals (#101).
+report.json rewritten 2026-10-03 through report_json.dumps, adding lines and totals (#101).

@@ -136,8 +136,8 @@ line.
 
 The line names each distinct reason from the Group's repetitions once. It
 counts as one test case: a failing one, unless every reason is an `Error`.
-Then the line is not scored, because the fault lies with mscts or
-vanilla, not the Candidate. A Group the Candidate failed after comparing
+Then the line is marked `!` instead of ✗ and is not scored, because the
+fault lies with mscts or vanilla, not the Candidate. A Group the Candidate failed after comparing
 some test cases keeps their lines too.
 
 ## Total time
@@ -236,20 +236,20 @@ Took 13.3 s
 ```
 
 `report.json` is the whole Report, with or without `--verbose`. Its keys
-are `target`, `reference`, `candidate`, `test_cases`, `totals`,
-`results`, `notes` and `elapsed_s`. `test_cases` has one entry per line
-of the Report, and `totals` counts them, with the score as a fraction of
-1, or `null` if no test case was scored:
+are `target`, `reference`, `candidate`, `lines`, `totals`,
+`results`, `notes` and `elapsed_s`. `lines` has one entry for each test
+case of each Group and one for each Group's own line. `totals` counts
+them, with the score as a fraction of 1, or `null` if no test case was
+scored:
 
 ```json
 ...
-  "test_cases": [
+  "lines": [
     {
       "group_id": "status/basic",
       "test_case": "status_response.description",
       "result": "pass",
-      "network_traffic_only": true,
-      "reasons": ""
+      "network_traffic_only": true
     },
 ...
   "totals": {
@@ -264,7 +264,7 @@ of the Report, and `totals` counts them, with the score as a fraction of
 ```
 
 A `result` is `pass`, `fail`, `not tested` or `error`. A Group's own line
-has an empty `test_case` and its reasons.
+has its `reasons` instead of a `test_case`.
 
 `results` has one entry per Group, with each repetition's
 Verdict, every difference with both values, and each server's
@@ -310,5 +310,5 @@ An object a server sent whose only key is one of these, or `dict`, is
 written inside `{"dict": ...}`, so it never reads as one of them.
 
 In Python, `mscts.report_json.loads` reads a `report.json` back into the
-Report mscts wrote. It ignores `test_cases` and `totals`, which follow
+Report mscts wrote. It ignores `lines` and `totals`, which follow
 from `results`.

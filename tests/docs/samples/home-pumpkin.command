@@ -3,4 +3,4 @@ Captured 2026-10-03 on issue-156-npm-install, cloud Linux container, Java 25, in
 Default stdout only; inputs recorded during the same real run, which stopped both servers.
 Inputs rewritten as report.json 2026-10-03 (#190); the rendered text is unchanged.
 Text re-rendered 2026-10-03 from the same report.json for one line per test case (#101).
-report.json rewritten 2026-10-03 through report_json.dumps, adding test_cases and totals (#101).
+report.json rewritten 2026-10-03 through report_json.dumps, adding lines and totals (#101).
