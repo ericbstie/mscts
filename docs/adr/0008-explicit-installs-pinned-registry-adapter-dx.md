@@ -1,6 +1,7 @@
 # ADR-0008: Explicit installs, a pinned registry, and Adapters as a first-class extension point
 
-Status: accepted (2026-09-26)
+Status: accepted (2026-09-26). Amended 2026-10-03 (#156): decision 3 is
+replaced, below.
 
 ## Context
 
@@ -60,3 +61,42 @@ a download hidden inside a test run is surprising. The user's priorities:
 - `Adapter.provision` splits into resolving a registry entry and fetching
   it. Fetching is replaceable, which is how `--from` works, and the
   cache records the source of every Installation.
+
+## Amendment (2026-10-03): latest by default, `@` for one build (#156)
+
+Decision 3 (a committed registry, each build pinned by checksum) is
+replaced. Pinning a build nobody reviewed adds no safety, and Pumpkin
+deletes each nightly once the next one is out, so a pinned nightly soon
+cannot be installed at all.
+
+1. **Installing works like npm.** `mscts adapter install <adapter>`
+   installs the latest build for the Target, and
+   `mscts adapter install <adapter>@<version>` the build that version
+   names; `--version` is gone. `--from <file>` stays for any other build.
+2. **Each Adapter owns its download information**, in its own module: an
+   Adapter's `release` finds its latest build for the Target (vanilla: the
+   jar Mojang's version manifest lists; Pumpkin: the nightly, at the
+   commit its `nightly` tag names), and its `check` reads which build a
+   file is. `src/mscts/data/registry.toml` and `src/mscts/registry.py` are
+   gone. `cli.py` keeps a static list of Adapters; there is no dynamic
+   discovery.
+3. **Only the Target's Minecraft version installs.** `@<version>` and
+   `--from` refuse a build for another Minecraft version, and install
+   nothing: `vanilla@26.4 is not supported: this mscts tests Minecraft
+   26.3.`
+4. **A version that can no longer be downloaded fails**, naming `--from`
+   (and building from source); mscts never installs a different build
+   instead. There is no mirror and no build-from-source step.
+5. **A checksum the publisher itself publishes is still checked** (Mojang's
+   sha1 and size), as an integrity check. A build whose commit the
+   publisher names must be that commit: Pumpkin's binary names its own
+   commit, and it must match the tag's.
+6. **Reports name the exact build**: its version, its commit where the
+   publisher gives one (a Pumpkin nightly always does), and the sha256 of
+   the file tested: `pumpkin nightly 4426d11 (sha256 b8382a8a…)`.
+
+Unchanged: installs are explicit and idempotent (an installed build is
+never replaced silently; to get a newer one, delete it and install again),
+the honest prompt (decision 2), and Adapters as an extension point
+(decision 4). Where to read a Pumpkin nightly's commit is recorded in
+`docs/research/2026-10-03-install.md`.
