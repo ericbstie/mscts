@@ -309,3 +309,10 @@ def test_the_root_is_absolute(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.chdir(tmp_path)
     done = install_release(ADAPTER, TARGET, Path("cache"), None, FakeGitHub())
     assert done.installation.root == tmp_path / "cache/pumpkin/26.3"
+
+
+def test_pumpkin_at_nightly_installs_the_latest_nightly(tmp_path: Path) -> None:
+    done = install_release(ADAPTER, TARGET, tmp_path, "nightly", FakeGitHub())
+    assert done.message == (
+        f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root_of(tmp_path)}"
+    )

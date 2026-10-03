@@ -17,7 +17,7 @@ def test_the_latest_build_is_the_nightly_at_the_commit_its_tag_names() -> None:
     assert github.fetched == [TAGS_URL]
 
 
-@pytest.mark.parametrize("version", [COMMIT[:7], COMMIT[:10], COMMIT])
+@pytest.mark.parametrize("version", ["nightly", COMMIT[:7], COMMIT[:10], COMMIT])
 def test_the_nightly_s_commit_names_the_nightly(version: str) -> None:
     assert PumpkinAdapter().release(TARGET, version, FakeGitHub()) == NIGHTLY
 

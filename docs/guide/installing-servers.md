@@ -41,7 +41,8 @@ uv run mscts adapter install pumpkin@4426d11
 ```
 
 For vanilla, the version is the Minecraft version. For Pumpkin, it is the
-commit a nightly build was made from, at least its first 7 characters.
+commit a nightly build was made from, at least its first 7 characters,
+or `nightly` for the latest one (the same as no version).
 
 Pumpkin publishes only its latest nightly, so an older commit cannot be
 downloaded. mscts then installs nothing, and says how to get it:

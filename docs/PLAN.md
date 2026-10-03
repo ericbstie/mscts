@@ -707,8 +707,8 @@ class Adapter(Protocol):
         # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3." (nothing fetched),
         # else the jar Mojang's version manifest lists for target (its version JSON checked
         # by the manifest's sha1); Pumpkin: the nightly, Build("nightly", <the commit the
-        # `nightly` tag names>), and `version` must be 7+ first characters of that commit, else
-        # UnavailableError(latest=that Build).
+        # `nightly` tag names>), and `version` must be "nightly" (the same as None) or 7+ first
+        # characters of that commit, else UnavailableError(latest=that Build).
     def check(self, binary: Path, target: Target) -> Build: ...
         # The Build the file names, or ProvisionError unless `binary` is a server it can run
         # for target. A build for another Minecraft version: UnsupportedError, "<binary> is not

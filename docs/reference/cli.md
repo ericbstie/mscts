@@ -29,7 +29,7 @@ build, delete the installed one first; the message names its folder.
 | Argument | Description |
 | --- | --- |
 | `<adapter>` | `vanilla` or `pumpkin`. |
-| `@<version>` | The build to install. For vanilla, a Minecraft version (only `26.3` works). For Pumpkin, the commit of its nightly build, at least 7 characters. |
+| `@<version>` | The build to install. For vanilla, a Minecraft version (only `26.3` works). For Pumpkin, the commit of its nightly build, at least 7 characters, or `nightly` for the latest. |
 | `--from PATH` | Install a file you supply instead of downloading. mscts checks that it is a build for 26.3, hashes it and records its path. |
 
 A version and `--from` cannot be combined. A build for another Minecraft

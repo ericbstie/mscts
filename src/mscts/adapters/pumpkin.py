@@ -535,6 +535,7 @@ def ops_json(operators: tuple[str, ...]) -> str:
 
 
 _YOURSELF = build_it_yourself("pumpkin")
+_NIGHTLY = "nightly"  # the only build Pumpkin publishes, and `pumpkin@nightly` names it
 _SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}")  # too few characters to name a commit
 _ADVERTISEMENT = b"001e# service=git-upload-pack\n"  # how every ref advertisement starts
 _TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
@@ -556,6 +557,18 @@ def _nightly_commit(refs: bytes) -> str:
     return commit
 
 
+def _require_commit(adapter: str, version: str, commit: str) -> None:
+    """ProvisionError unless `<adapter>@<version>` names `commit` by its first 7+ characters."""
+    if _SHORT_HEX.fullmatch(version):
+        msg = (
+            f"{adapter}@{version} is too short to name a commit: name at least {_SHORT} "
+            f"characters of it, as in {adapter}@{commit[:_SHORT]}."
+        )
+        raise ProvisionError(msg)
+    if len(version) < _SHORT or not commit.startswith(version):
+        raise UnavailableError(adapter, version, latest=Build(version=_NIGHTLY, commit=commit))
+
+
 class PumpkinAdapter:
     """Finds and checks a Pumpkin build, and prepares it for a ServerSpec."""
 
@@ -563,23 +576,16 @@ class PumpkinAdapter:
     binary = BINARY
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The nightly, the only build Pumpkin publishes; `version` must name its commit.
+        """The nightly, the only build Pumpkin publishes; `version` is "nightly" or its commit.
 
         A commit is named by its first 7 or more characters. The nightly's Minecraft
         version shows only in the binary, so `check` refuses one for another `target`.
         """
         del target
         commit = _nightly_commit(fetch(TAGS_URL).body)
-        if version is not None and _SHORT_HEX.fullmatch(version):
-            msg = (
-                f"{self.name}@{version} is too short to name a commit: name at least {_SHORT} "
-                f"characters of it, as in {self.name}@{commit[:_SHORT]}."
-            )
-            raise ProvisionError(msg)
-        nightly = Build(version="nightly", commit=commit)
-        if version is not None and not (len(version) >= _SHORT and commit.startswith(version)):
-            raise UnavailableError(self.name, version, latest=nightly)
-        return Release(build=nightly, url=NIGHTLY_URL)
+        if version is not None and version != _NIGHTLY:
+            _require_commit(self.name, version, commit)
+        return Release(build=Build(version=_NIGHTLY, commit=commit), url=NIGHTLY_URL)
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version and commit `binary` names; ProvisionError unless it is for `target`.
