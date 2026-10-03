@@ -7,8 +7,9 @@ Server-agnostic by design: see `docs/adr/0001-black-box-differential-testing.md`
 
 ## Start here
 
-- Open GitHub issues without `not-ready` or `needs-decision`: the
-  queue. Each is a spec (ADR-0009).
+- Open GitHub issues without `needs-triage` or `needs-decision`, and
+  without an open issue in a **Blocked by** line: the queue. Each is a
+  spec (ADR-0009).
 - `docs/PROGRESS.md`: where things stand, and the log.
 - `docs/PROCESS.md`: the tech-lead/worker operating model, retrospective log and process changelog.
 - `docs/PLAN.md`: goals, the exact interfaces, tiers and milestones.

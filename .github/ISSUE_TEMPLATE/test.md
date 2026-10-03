@@ -1,7 +1,7 @@
 ---
 name: Test proposal
 about: A new Group that plays one mechanic against vanilla and a Candidate
-labels: test, not-ready
+labels: test, needs-triage
 ---
 
 <!-- A test is a Group: actions played against both servers. Its test cases are

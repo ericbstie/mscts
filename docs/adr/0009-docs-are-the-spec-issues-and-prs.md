@@ -66,11 +66,18 @@ it, then merges the PR with a merge commit instead of a rebase-merge. Every
 commit on `main`, the merge commits included, still passes
 `mise run check`, so `git bisect run mise run check` keeps working, and
 each issue's commits stay together behind their merge. Labels are now
-`not-ready` (not ready: incomplete, or waiting on another issue),
+`needs-triage` (not ready: incomplete, or waiting on another issue),
 `needs-decision`, `opus` or `sonnet`, a `lane:*` and a `scrutiny::*`
 (docs/PROCESS.md, Lanes and review levels). An open issue with neither
-`not-ready` nor `needs-decision` is ready. `spec`, `enabler` and
+`needs-triage` nor `needs-decision` is ready. `spec`, `enabler` and
 `ready` are gone.
+
+Amended 2026-10-03: `needs-triage` means not yet assessed. The tech lead
+sizes the issue, sets its lane and scrutiny and makes sure the spec is
+complete, then removes the label. Being blocked is not a label: a blocked
+issue names its blockers in a **Blocked by** line at the top of its
+description, and is ready once they are closed, so nothing is relabelled
+as dependencies land.
 
 ## Amendment (2026-10-02): a merge train runs the live tiers once
 

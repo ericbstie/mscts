@@ -12,8 +12,11 @@ This file is owned by the tech lead. It changes only through the
 ## Roles
 
 **Tech lead (the main session).**
-- Owns the queue (open GitHub issues without `not-ready` or
-  `needs-decision`, ADR-0009),
+- Owns the queue (open GitHub issues without `needs-triage`,
+  `needs-decision` or an open blocker, ADR-0009), and triages new issues:
+  sizes each (`opus` or `sonnet`), sets its `lane:*` and `scrutiny::*`,
+  makes sure the spec is complete, names any blockers in a **Blocked by**
+  line at the top of its description, then removes `needs-triage`,
   `docs/PROGRESS.md`, `docs/PLAN.md`, the ADRs, this file, and the skills.
 - Writes spec issues with the maintainer, briefs workers on them, chooses
   the model, and spawns workers.
@@ -102,8 +105,6 @@ fully (the enabler, the Group, its docs).
 
 | Lane | Hard part | Handbook |
 | --- | --- | --- |
-| 2026-10-03 | Workers run only the live tests their change adds or touches, open draft PRs, and leave the full live tiers to the merge train | Maintainer: speed up; the full tiers queued on one live lock behind every worker, then ran again in the train |
-| 2026-10-03 | `needs-triage` is renamed `not-ready`, with the description "Not ready: waits on other issues or an incomplete spec" | The old name read as a job for the maintainer (#213) |
 | `lane:timing` | What happens on which tick, and in what order | `docs/roles/timing.md` |
 | `lane:comparison` | What counts as a difference: decoding, canonical forms, what the client ends up seeing | `docs/roles/comparison.md` |
 | `lane:statistics` | Randomness: compare distributions over many runs | `docs/roles/statistics.md` |
@@ -138,7 +139,7 @@ raises nothing.
 ## Cycle
 
 1. **Plan a batch.** Give each running specialist its lane's next ready
-   issue (no `not-ready` or `needs-decision`) (at most 5 agents at once, the reviewer included). Issues that
+   issue (no `needs-triage` or `needs-decision`, and nothing open in its **Blocked by** line) (at most 5 agents at once, the reviewer included). Issues that
    run in parallel have disjoint "Owns" lists (files, modules and doc
    sections). Skip any labelled `needs-decision`. Check each issue's
    `scrutiny::*` label against `docs/RISK.md`.
@@ -165,8 +166,8 @@ raises nothing.
      which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
      may need a follow-up issue.
-   - Remove `not-ready` from every issue whose Needs have now all
-     landed, once its spec is complete.
+   - Triage any new issue that carries `needs-triage`. Blocked issues need
+     no relabelling: they become ready when their blockers close.
 4. **Risk and handbook.** Log any bug found in `docs/RISK.md` and update
    the levels. Commit the specialist's proposed handbook lines to its
    `docs/roles/<lane>.md`.
@@ -688,6 +689,8 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-03 | `needs-triage` means not yet assessed: the lead sizes the issue, sets its lane and scrutiny, and makes sure the spec is complete, then removes the label. A blocked issue names its blockers in a **Blocked by** line at the top of its description instead of carrying a label, and is ready once they are closed | Maintainer: the label hid his own untriaged issues among blocked ones, and relabelling as blockers closed was manual work |
+| 2026-10-03 | Workers run only the live tests their change adds or touches, open draft PRs, and leave the full live tiers to the merge train | Maintainer: speed up; the full tiers queued on one live lock behind every worker, then ran again in the train |
 | 2026-10-03 | Code is written and reviewed by the `function-design` skill (`.claude/skills/function-design/`, copied from the maintainer's `ericbstie/skills`): honest functions with IO, clocks and randomness passed in from the top, one level of abstraction per body, signatures designed for the caller. Workers apply it to what they write or change; reviewers flag its smells | Maintainer: use the principles of his function-design skill to decide how the code is written |
 | 2026-10-03 | Workers also apply the maintainer's `unslop` (prose) and `minimal-increment` (code) skills, copied into `.claude/skills/`. The project wins where they differ: the issue is the scope answer, tests and user-visible docs are always in scope, and the writing skill's voice wins for docs, the Report and CLI text | Maintainer: fold his other two skills into the handbook where they don't conflict |
 | 2026-10-02 | The old lead's brief-template rules move into `docs/roles/common.md`: a schema owns the regen lists, `HOLDS_NO_ENTITY_ID` and the fake placeholder packets; `TITLES` and the test case page change together; push early, every path inside the worktree; `--stress` only when briefed; sweep before docs | They lived only in the old lead's scratchpad (AT, AU, AV retrospectives) |
