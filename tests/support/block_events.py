@@ -13,6 +13,7 @@ from mscts.codec.wire import Writer
 from mscts.group import CommandMissing, GroupContext
 from mscts.target import TARGET
 from mscts.transcript import Transcript
+from support.window import window_since
 
 WATCHER = "watcher"
 """The Bot whose packets are looked at."""
@@ -120,31 +121,29 @@ async def play(context: GroupContext, transcript: Transcript) -> tuple[Played, .
         await context.control.run(command)
     played = []
     for scenario in SCENARIOS:
-        first = len(transcript.events)
+        since = transcript.now_ns()
         try:
             for command in scenario.setup:
                 await context.control.run(command)
-            first = len(transcript.events)
             async with context.observe(*sorted(PACKETS)):
                 for command in scenario.commands:
                     await context.control.run(command)
         except CommandMissing as missing:
-            played.append(Played(scenario, _watched(transcript, first), missing=missing.root))
+            played.append(Played(scenario, _watched(transcript, since), missing=missing.root))
             continue
         except CodecError as refused:
-            played.append(Played(scenario, _watched(transcript, first), error=str(refused)))
+            played.append(Played(scenario, _watched(transcript, since), error=str(refused)))
             break
-        played.append(Played(scenario, _watched(transcript, first)))
+        played.append(Played(scenario, _watched(transcript, since)))
     return tuple(played)
 
 
-def _watched(transcript: Transcript, first: int) -> tuple[Packet, ...]:
+def _watched(transcript: Transcript, since_ns: int) -> tuple[Packet, ...]:
+    """The packets of `PACKETS` the watcher received in the window that opened since."""
     return tuple(
         event.packet
-        for event in transcript.events[first:]
-        if event.bot == WATCHER
-        and event.packet.direction is Direction.CLIENTBOUND
-        and event.packet.name in PACKETS
+        for event in window_since(transcript, WATCHER, since_ns)
+        if event.packet.direction is Direction.CLIENTBOUND and event.packet.name in PACKETS
     )
 
 
