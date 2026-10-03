@@ -9,6 +9,7 @@ game rule is on), so an operator Bot would receive Control's answers too.
 
 import asyncio
 import contextlib
+import functools
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
@@ -16,9 +17,9 @@ from types import MappingProxyType
 from typing import Protocol
 
 from mscts.bot import Bot
-from mscts.codec.packets import Direction, Packet, State
+from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.schemas.play.commands import root_literals
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
+from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN, Mask
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.target import TARGET
@@ -299,8 +300,9 @@ class GroupContext:
                 barrier.
 
         Raises:
-            ValueError: A window is open already (windows do not nest), or a name is not
-                one word.
+            ValueError: A window is open already (windows do not nest), or a name (in
+                `names` or `until`) is not a packet the Target's server sends in play,
+                or is a heartbeat packet (`HEARTBEAT`), which no window compares.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
             ProtocolError: The server disconnected a Bot before its barrier's answer; or
                 no `until` packet arrived inside the window.
@@ -308,10 +310,8 @@ class GroupContext:
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
             raise ValueError(msg)
-        for name in names:
-            if name.split() != [name]:
-                msg = f"a packet name is one word, not {name!r}"
-                raise ValueError(msg)
+        for name in (*names, *(() if until is None else (until,))):
+            _check_observable(name)
         self._observing = True
         try:
             opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
@@ -379,6 +379,26 @@ class GroupContext:
                         barriers.create_task(bot.sync())
         except ExceptionGroup as errors:
             raise errors.exceptions[0] from None
+
+
+@functools.cache
+def _play_names() -> frozenset[str]:
+    """The names of the packets the Target's server sends in play."""
+    return frozenset(Codec.for_target(TARGET).names(State.PLAY, Direction.CLIENTBOUND))
+
+
+def _check_observable(name: str) -> None:
+    """Raise ValueError unless a window can compare packet `name` (audit 2026-10-02, MD1).
+
+    A window narrowed to, or ended by, a name the server never sends would compare
+    nothing on either side, and match.
+    """
+    if name not in _play_names():
+        msg = f"{name!r} is not a packet the server sends in play, e.g. 'minecraft:block_update'"
+        raise ValueError(msg)
+    if name in HEARTBEAT:
+        msg = f"{name!r} is a heartbeat packet, which no window compares: {HEARTBEAT[name]}"
+        raise ValueError(msg)
 
 
 type Script = Callable[[GroupContext], Awaitable[None]]

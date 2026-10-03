@@ -99,14 +99,45 @@ async def test_a_narrowed_window_names_its_packets_in_its_open_mark() -> None:
     ]
 
 
+NOT_A_PLAY_PACKET = [
+    # Audit 2026-10-02, MD1: each was accepted, and a window narrowed to it compared nothing.
+    "minecraft:block_updat",
+    "block_update",
+    "",
+    "minecraft:block update",
+    "minecraft:a\tb",
+    "minecraft:client_command",  # serverbound
+    "minecraft:login_finished",  # not in play
+]
+HEARTBEATS = ["minecraft:set_time", "minecraft:keep_alive", "minecraft:award_stats"]
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("name", ["", "minecraft:block update", "minecraft:a\tb"])
-async def test_a_packet_name_is_one_word(name: str) -> None:
+@pytest.mark.parametrize("name", NOT_A_PLAY_PACKET)
+async def test_observe_refuses_a_name_that_is_not_a_clientbound_play_packet(name: str) -> None:
     transcript = Transcript(group_id="test/observe", server="fake")
     context = GroupContext(_UNUSED, transcript, timeout_s=1.0)
 
-    with pytest.raises(ValueError, match="a packet name is one word"):
+    with pytest.raises(ValueError, match="not a packet the server sends in play"):
         async with context.observe(BLOCK_UPDATE, name):
+            pass
+    with pytest.raises(ValueError, match="not a packet the server sends in play"):
+        async with context.observe(BLOCK_UPDATE, until=name):
+            pass
+    assert transcript.marks == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", HEARTBEATS)
+async def test_observe_refuses_a_heartbeat_packet(name: str) -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+    context = GroupContext(_UNUSED, transcript, timeout_s=1.0)
+
+    with pytest.raises(ValueError, match="a heartbeat packet"):
+        async with context.observe(name):
+            pass
+    with pytest.raises(ValueError, match="a heartbeat packet"):
+        async with context.observe(until=name):
             pass
     assert transcript.marks == []
 

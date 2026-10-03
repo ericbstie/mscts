@@ -900,7 +900,8 @@ class GroupContext:
                                     # drains. A body that raises gets neither, so its window
                                     # runs to the Transcript's end. ValueError, nothing
                                     # marked: a window already open (no nesting), or a name
-                                    # that is not one word.
+                                    # (in names or until) that is not in
+                                    # Codec.names(PLAY, CLIENTBOUND) or is in HEARTBEAT.
                                     # With `until` (a packet name): no barrier. Every Bot not
                                     # closed drains, then OBSERVE_CLOSE is stamped 1 ns after
                                     # the Event.t_ns (the arrival, never the time a Bot took
