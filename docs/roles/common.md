@@ -68,8 +68,11 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
 - `scripts/research/javap.py` and `scripts/research/layout.py` read the
   cached 26.3 jar. Vanilla and Pumpkin are installed in the shared cache.
 - Live work: setup commands go through `context.control.run(...)` before
-  an Observation window (`context.observe(...)`). Run
-  `mise run test:reference` and `mise run test:candidate` before the PR.
+  an Observation window (`context.observe(...)`). Before the PR, run only
+  the live tests your change adds or touches, by path
+  (`mise run test:reference -- tests/...::test_name`, and the same for
+  `test:candidate`), and open the PR as a draft. The lead's merge train
+  runs the full live tiers once, on the train's tip.
   Candidate tests assert observable outcomes, never a field a Candidate may
   legitimately get wrong.
 - Live-tier mise tasks share `<cache>/live-tier.lock` (#138). A second

@@ -102,6 +102,7 @@ fully (the enabler, the Group, its docs).
 
 | Lane | Hard part | Handbook |
 | --- | --- | --- |
+| 2026-10-03 | Workers run only the live tests their change adds or touches, open draft PRs, and leave the full live tiers to the merge train | Maintainer: speed up; the full tiers queued on one live lock behind every worker, then ran again in the train |
 | 2026-10-03 | `needs-triage` is renamed `not-ready`, with the description "Not ready: waits on other issues or an incomplete spec" | The old name read as a job for the maintainer (#213) |
 | `lane:timing` | What happens on which tick, and in what order | `docs/roles/timing.md` |
 | `lane:comparison` | What counts as a difference: decoding, canonical forms, what the client ends up seeing | `docs/roles/comparison.md` |
