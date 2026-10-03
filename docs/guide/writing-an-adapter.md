@@ -37,6 +37,7 @@ from mscts.target import Target
 class Adapter(Protocol):
     name: str    # the name on the command line: "pumpkin"
     binary: str  # the one file an Installation holds: "server.jar"
+    latest_aliases: frozenset[str]  # versions that mean the latest build: {"nightly"}
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         """The latest build for `target`, or the one `<name>@<version>` names."""
@@ -116,6 +117,7 @@ NAMES = re.compile(rb"myserver ([\w.]+) for Minecraft ([\w.]+)")
 class MyServerAdapter:
     name = "myserver"
     binary = BINARY
+    latest_aliases = frozenset({"latest"})  # `myserver@latest` is plain `myserver`
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         latest = json.loads(fetch(LATEST).body)

@@ -701,6 +701,8 @@ class Adapter(Protocol):
     # Adapter is name + binary + release + check + prepare, and gets `mscts adapter install`,
     # --from, the prompt and verification for free. Runs and tests call
     # install.require(adapter, target, cache_dir).
+    latest_aliases: frozenset[str]  # versions meaning the latest build, as None does: Pumpkin's
+                                    # {"nightly"}; install_release maps them to None first
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release: ...
         # The latest build for target (version None), or the one `<name>@<version>` names,
         # read only through `fetch`. Otherwise UnsupportedError or UnavailableError: vanilla:

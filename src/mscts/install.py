@@ -206,6 +206,7 @@ def install_release(
     With another build installed, the Adapter's refusal of `version` comes first, then
     ProvisionError naming how to replace it. What is recorded is what the file names.
     """
+    version = None if version in adapter.latest_aliases else version
     existing = installed(adapter, target, cache_dir)
     unchanged = None if existing is None else _unchanged(existing, adapter, version)
     if unchanged is not None:

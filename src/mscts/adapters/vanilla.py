@@ -374,6 +374,7 @@ class VanillaAdapter:
 
     name = "vanilla"
     binary = JAR
+    latest_aliases = frozenset[str]()
 
     def __init__(self, *, java: Path | None = None) -> None:
         """Launch with the `java` launcher.

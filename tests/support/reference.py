@@ -75,6 +75,7 @@ class _Tagged:
     name: str = VanillaAdapter.name
     vanilla: VanillaAdapter = dataclasses.field(default_factory=VanillaAdapter)
     binary: str = "server.jar"
+    latest_aliases: frozenset[str] = frozenset[str]()
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         return self.vanilla.release(target, version, fetch)

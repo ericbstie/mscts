@@ -136,6 +136,8 @@ class Adapter(Protocol):
 
     name: str
     binary: str  # the one file an Installation holds besides SOURCE.json ("server.jar")
+    # Versions that mean the latest build, as no version does: Pumpkin's {"nightly"}.
+    latest_aliases: frozenset[str]
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         """The latest build for `target`, or the build `version` names (`<name>@<version>`).

@@ -376,3 +376,15 @@ def test_a_nightly_for_another_minecraft_version_says_so_and_how_to_get_one(
         "  mscts adapter install pumpkin --from <file>"
     )
     assert list((tmp_path / "pumpkin").iterdir()) == []
+
+
+@pytest.mark.parametrize("version", [None, "nightly"])
+def test_pumpkin_at_nightly_is_plain_pumpkin_over_a_from_install(
+    tmp_path: Path, version: str | None
+) -> None:
+    install_from(ADAPTER, TARGET, tmp_path / "cache", write(tmp_path / "pk", NIGHTLY))
+    github = FakeGitHub()
+    done = install_release(ADAPTER, TARGET, tmp_path / "cache", version, github)
+    assert not done.changed
+    assert done.message.startswith("pumpkin 0.2.0+26.3-26.51 4426d11 is already installed at ")
+    assert github.fetched == []

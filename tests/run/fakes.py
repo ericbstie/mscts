@@ -31,6 +31,7 @@ class FakeAdapter:
     description: str | None = None
     prepared: list[ServerSpec] = field(default_factory=list)
     binary: str = "status_fake.py"
+    latest_aliases: frozenset[str] = frozenset[str]()
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         """No fake server is downloaded."""

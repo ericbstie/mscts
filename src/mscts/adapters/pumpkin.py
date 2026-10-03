@@ -571,6 +571,7 @@ class PumpkinAdapter:
 
     name = "pumpkin"
     binary = BINARY
+    latest_aliases = frozenset({_NIGHTLY})  # `pumpkin@nightly` is plain `pumpkin`
 
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         """The nightly, the only build Pumpkin publishes, at the commit its tag names.
