@@ -127,9 +127,8 @@ async with context.observe(until="minecraft:chunk_batch_finished"):
 ```
 
 A joining player hears every mob within 16 blocks of where it spawns,
-even before the server has sent it any chunks. Before a join window,
-stop mobs spawning (`gamerule spawn_mobs false`) and kill every mob near
-the spawn with `context.control.run`.
+even before the server has sent it any chunks. Mob spawning is already
+off, so only the mobs your Group spawns are there.
 
 A Group with no window compares everything its Bots receive. With one,
 what a Bot receives before it is in the world (the status, logging in and
@@ -196,6 +195,11 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 Both runs must send the same bytes, so a Group must not depend on the
 clock, randomness, or the order of unrelated events. `status/ping` sends a
 fixed payload for this reason, where the vanilla client sends its clock.
+
+Mobs do not spawn on their own: every server starts with the
+`spawn_mobs` game rule off. A Group that tests natural spawning turns it
+on with `await context.control.run("gamerule spawn_mobs true")`, and off
+again when it is done.
 
 Vanilla also sends some packets on a clock that a window still compares,
 because the same packets carry real changes too: every player's latency,
