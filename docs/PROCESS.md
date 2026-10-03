@@ -686,6 +686,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-03 | Code is written and reviewed by the `function-design` skill (`.claude/skills/function-design/`, copied from the maintainer's `ericbstie/skills`): honest functions with IO, clocks and randomness passed in from the top, one level of abstraction per body, signatures designed for the caller. Workers apply it to what they write or change; reviewers flag its smells | Maintainer: use the principles of his function-design skill to decide how the code is written |
 | 2026-10-02 | The old lead's brief-template rules move into `docs/roles/common.md`: a schema owns the regen lists, `HOLDS_NO_ENTITY_ID` and the fake placeholder packets; `TITLES` and the test case page change together; push early, every path inside the worktree; `--stress` only when briefed; sweep before docs | They lived only in the old lead's scratchpad (AT, AU, AV retrospectives) |
 | 2026-10-02 | Merge train: ready PRs are stacked and the live tiers run once on the stack's tip, then the PRs merge in order; per-PR runs only when a train fails (ADR-0009 amendment) | Maintainer: one unrelated merge made four PRs re-run 8 to 15 minute live tiers |
 | 2026-10-02 | The helper agent takes two roles: implementer on `helper-ready` tooling, docs and platform issues (at most 8 open), and comment-only reviewer on PRs labelled `helper-review`, scrutiny::high first | Maintainer: use the helper for high-scrutiny PRs and tooling tasks |

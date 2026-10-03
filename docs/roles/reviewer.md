@@ -16,6 +16,10 @@ concrete failure scenario, a proposed fix):
    numbering) or invented? Does every Candidate-caused failure end as
    `mismatch`?
 
+Every review also checks the diff against the `function-design` skill:
+a smell from its list is a finding (LOW unless it hides a bug), with the
+rule it breaks and the change that fixes it.
+
 Reproduce each high finding with a throwaway probe against the repo's
 fakes before reporting it.
 

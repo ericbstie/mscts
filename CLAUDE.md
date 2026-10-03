@@ -26,7 +26,8 @@ process changes. Workers follow the Worker contract in `docs/PROCESS.md`.
 ## How to work
 
 Use the `red-green` skill for every change: one failing test, the minimum
-code, `mise run check`, one commit, repeat. Use the `protocol-research`
+code, `mise run check`, one commit, repeat. Use the `function-design`
+skill for every function you write, change or review. Use the `protocol-research`
 skill before encoding any protocol or server fact. Use the `writing`
 skill before writing or rewording any user-facing text, and update it
 whenever the maintainer gives feedback on such text.

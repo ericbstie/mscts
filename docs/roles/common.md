@@ -5,7 +5,10 @@ directory (`<scratch>` below) in the brief.
 
 Read CLAUDE.md, docs/PROCESS.md (Worker contract, Worker report, Lanes and
 review levels), your lane's handbook in this directory, and the red-green,
-protocol-research and writing skills (.claude/skills/) before starting.
+protocol-research, function-design and writing skills (.claude/skills/)
+before starting. Every function you write or change follows
+function-design; existing code is brought to it only where your issue
+already changes it.
 Read your issue and its comments first (GitHub MCP tools, loaded with
 ToolSearch; repo ericbstie/mscts; no `gh`).
 
