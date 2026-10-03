@@ -238,6 +238,12 @@ def judge(
       `blocked`, naming it (`needs /tick`).
     - The Reference failed, the Group raised anything else on the Candidate, or the
       Comparison itself raised: `error`, the harness or the Reference having failed.
+      Any exception from the Comparison is caught, whatever its type, so that one Group's
+      bug does not end the Run; the detail names it, and the log keeps its traceback.
+      `MemoryError` and `RecursionError` are caught too and become that Group's `error`;
+      an interrupt (`KeyboardInterrupt`, `SystemExit`) still ends the Run. The Self-check
+      and the reference tier fail on any `error`, and the candidate tier on one from the
+      Comparison, so a harness bug still shows (#174).
     """
     if isinstance(reference, GroupError):
         return _error(group, f"the Reference failed: {reference}")
@@ -251,7 +257,8 @@ def judge(
     transcript = candidate.transcript if isinstance(candidate, GroupError) else candidate
     try:
         verdict = compare(reference, transcript, group.masks)
-    except (TypeError, ValueError) as exc:
+    except Exception as exc:  # any Comparison bug is this Group's error (#174)
+        LOG.warning("the Comparison of %s failed", group.id, exc_info=exc)
         return _error(group, f"the Comparison failed: {type(exc).__name__}: {exc}")
     if not isinstance(candidate, GroupError):
         return verdict
