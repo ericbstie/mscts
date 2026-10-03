@@ -12,7 +12,7 @@ from importlib import resources
 from pathlib import Path
 from types import MappingProxyType
 
-from mscts.adapters import nbt
+from mscts.adapters import fixture_world, nbt
 from mscts.adapters.base import (
     Build,
     Fetch,
@@ -627,6 +627,9 @@ class PumpkinAdapter:
         # The world save, which alone carries the world type and the difficulty.
         files[LEVEL_DAT] = nbt.gzipped(level_dat(spec))
         files[WORLD_GEN_SETTINGS] = nbt.gzipped(world_gen_settings(spec))
+        files[fixture_world.GAME_RULES_DAT] = nbt.gzipped(
+            fixture_world.game_rules(WORLD_DATA_VERSION)
+        )
         workdir.mkdir(parents=True, exist_ok=True)
         if any(workdir.iterdir()):
             # Pumpkin keeps its world, player data, bans and operators there: a reused

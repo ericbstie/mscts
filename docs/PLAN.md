@@ -86,6 +86,7 @@ test needs it:
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server: vanilla's `MANIFEST_URL` (Mojang's version manifest), Pumpkin's `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit) |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
+| `adapters/fixture_world.py` | what every Adapter writes into the Fixture world: its game rules (ADR-0013) |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
 | `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve`; `Control`, `OperatorBot`, `CommandMissing` |
@@ -751,6 +752,9 @@ class Adapter(Protocol):
 #   (DataVersion 4903), carrying the spec's world, seed and difficulty; golden-tested, each
 #   value Pumpkin's own new-world value or vanilla's for the spec, every substitution
 #   documented in level_dat().
+# - the Fixture world has natural mob spawning off from the first tick (ADR-0013): prepare
+#   writes fixture_world.game_rules() to fixture_world.GAME_RULES_DAT, stamped with the
+#   server's DataVersion; tests/adapters/test_fixture_world.py checks every Adapter.
 # - an Installation is written only by install.py (one rename, complete or not at all), is
 #   never refreshed, and records its Source; install.py fetches only through the `fetch` it
 #   is given (https_get by default), so unit tests stay hermetic.
@@ -762,6 +766,10 @@ class Adapter(Protocol):
 # with U+0000 or outside the BMP or over 65535 bytes.
 def encode(root: Compound) -> bytes: ...   # the root compound, named ""
 def gzipped(root: Compound) -> bytes: ...  # one gzip member, mtime 0: the bytes depend on root alone
+
+# adapters/fixture_world.py: the Fixture world's game rules, the same for every Adapter (ADR-0013)
+GAME_RULES_DAT = "world/data/minecraft/game_rules.dat"  # under the server's cwd
+def game_rules(data_version: int) -> Compound: ...  # minecraft:spawn_mobs false; others default
 
 # install.py: Installations (ADR-0008)
 @frozen
