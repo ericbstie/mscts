@@ -675,6 +675,8 @@ class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each loo
     # types there are), two or more without near, or two or more equally near: which comes
     # first would depend on the server's ids.
 
+def java_round(value: float) -> int: ...  # Java's Math.round: half up, exact (VecDeltaCodec, LpVec3)
+
 class EntityTracker:
     entities: Entities
     def clear(self) -> None: ...      # forget every entity; `entities` stays the same view

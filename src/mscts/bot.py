@@ -17,7 +17,7 @@ from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.schemas.configuration import CLIENT_INFORMATION
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
-from mscts.entities import Entities, Entity, EntityTracker
+from mscts.entities import Entities, Entity, EntityTracker, java_round
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
 from mscts.transcript import Mark, Transcript
@@ -389,7 +389,7 @@ def _lp_vec3(vector: tuple[float, float, float]) -> dict[str, int]:
     if largest < _LP_VEC3_ZERO_BELOW:
         return {"scale": 0, "x": 0, "y": 0, "z": 0}
     scale = math.ceil(largest)
-    x, y, z = (math.floor((axis / scale * 0.5 + 0.5) * _LP_VEC3_QUANTA + 0.5) for axis in held)
+    x, y, z = (java_round((axis / scale * 0.5 + 0.5) * _LP_VEC3_QUANTA) for axis in held)
     return {"scale": scale, "x": x, "y": y, "z": z}
 
 
