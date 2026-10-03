@@ -112,13 +112,15 @@ def test_another_installed_build_is_never_replaced_silently(tmp_path: Path) -> N
 
 
 # A commit is named by 7 or more of its first characters: 4426 names no build.
-@pytest.mark.parametrize("version", ["8f3c2a1", COMMIT[:4]])
+@pytest.mark.parametrize(
+    ("version", "said"), [("8f3c2a1", "is not available"), (COMMIT[:4], "is too short")]
+)
 def test_a_build_that_cannot_be_installed_says_so_over_an_installed_one(
-    tmp_path: Path, version: str
+    tmp_path: Path, version: str, said: str
 ) -> None:
     install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub())
     github = FakeGitHub()
-    with pytest.raises(ProvisionError, match=rf"^pumpkin@{version} is not available: "):
+    with pytest.raises(ProvisionError, match=rf"^pumpkin@{version} {said}"):
         install_release(ADAPTER, TARGET, tmp_path, version, github)
     assert github.fetched == [TAGS_URL]
 

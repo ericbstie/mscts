@@ -22,13 +22,24 @@ def test_the_nightly_s_commit_names_the_nightly(version: str) -> None:
     assert PumpkinAdapter().release(TARGET, version, FakeGitHub()) == NIGHTLY
 
 
-@pytest.mark.parametrize("version", ["8f3c2a1", COMMIT[:6], "0.2.0+26.3-26.51"])
+@pytest.mark.parametrize("version", ["8f3c2a1", "0.2.0+26.3-26.51"])
 def test_any_other_build_is_not_available_and_says_how_to_build_it(version: str) -> None:
     said = (
         f"pumpkin@{version} is not available: Pumpkin only publishes its latest nightly "
         "(now 4426d11).\n"
         "Build it yourself and install it with:\n"
         "  uv run mscts adapter install pumpkin --from <file>"
+    )
+    with pytest.raises(ProvisionError) as raised:
+        PumpkinAdapter().release(TARGET, version, FakeGitHub())
+    assert str(raised.value) == said
+
+
+@pytest.mark.parametrize("version", [COMMIT[:6], COMMIT[:1], "8f3c2a"])
+def test_fewer_than_7_characters_of_a_commit_are_too_short_to_name_one(version: str) -> None:
+    said = (
+        f"pumpkin@{version} is too short to name a commit: name at least 7 characters of it, "
+        "as in pumpkin@4426d11."
     )
     with pytest.raises(ProvisionError) as raised:
         PumpkinAdapter().release(TARGET, version, FakeGitHub())

@@ -534,6 +534,7 @@ def ops_json(operators: tuple[str, ...]) -> str:
 _YOURSELF = (
     "Build it yourself and install it with:\n  uv run mscts adapter install pumpkin --from <file>"
 )
+_SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}")  # too few characters to name a commit
 _TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
 
 
@@ -561,6 +562,12 @@ class PumpkinAdapter:
         """
         del target
         commit = _nightly_commit(fetch(TAGS_URL).body)
+        if version is not None and _SHORT_HEX.fullmatch(version):
+            msg = (
+                f"{self.name}@{version} is too short to name a commit: name at least {_SHORT} "
+                f"characters of it, as in {self.name}@{commit[:_SHORT]}."
+            )
+            raise ProvisionError(msg)
         if version is not None and not (len(version) >= _SHORT and commit.startswith(version)):
             msg = (
                 f"{self.name}@{version} is not available: Pumpkin only publishes its latest "
