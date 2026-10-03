@@ -154,6 +154,6 @@ async def test_installed_version_comes_from_source_instead_of_status(
     candidate = replace(candidate, installation=replace(candidate.installation, source=source))
     result = await run_results([BASIC], fake_server("one"), candidate, workdir=tmp_path / "run")
     assert result.candidate.version == "26.3"
-    expected = "nightly abcdef1" if version else f"sha256 {'a' * 64}"
+    expected = f"nightly abcdef1 (sha256 {'a' * 8}…)" if version else f"sha256 {'a' * 64}"
     assert result.candidate.installed_version == expected
     assert result.reference.installed_version is None

@@ -1918,7 +1918,8 @@ class SideSummary:
     version: str | None             # version.name of its first status_response (lenient)
     startup: tuple[Measurement, ...]  # instance.startup (ms, ready_ns - launched_ns) per
                                       # launched Instance; none for an Attached side
-    installed_version: str | None = None # its Installation's Build, or sha256; unknown without Source
+    installed_version: str | None = None # "nightly 4426d11 (sha256 b8382a8a…)": its Installation's
+                                         # Build and short sha256; the full sha256 without a Build
 
 @frozen
 class RunResult:
