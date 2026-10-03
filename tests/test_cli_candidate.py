@@ -29,4 +29,5 @@ def test_mscts_run_against_pumpkin_prints_a_report(
         assert "Group times\n  status/basic " in out, out
         assert "  status/ping " in out, out
     else:
+        assert out.splitlines()[1].startswith("Candidate: pumpkin nightly "), out
         assert "Group times" not in out, out

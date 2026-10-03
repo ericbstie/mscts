@@ -25,6 +25,13 @@ version, Target and repetitions, the two values for each difference,
 and time per Group. It does not restore Notes, the legend or the
 per-measurement timing table.
 
+## Amendment (#156, 2026-10-03)
+
+The default Report's second line names the exact Candidate build tested:
+`Candidate: <adapter name> <build> (sha256 <first 8>…)`, for example
+`Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)`. The detailed
+option shows it in its own header instead, next to the Reference.
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains

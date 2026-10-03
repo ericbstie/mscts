@@ -1945,6 +1945,7 @@ def render_text(report: Report, *, verbose: bool = False) -> str: ...
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>";
+# #156: then "Candidate: <adapter name> <installed_version>" when the build is known;
 # one plain line per differing test case, deduplicated across Groups and repetitions,
 # with its TITLES title and name, or its bare name when unknown. Gameplay and network
 # traffic share the list. Then blocked, error and failed Groups, with id and reason;

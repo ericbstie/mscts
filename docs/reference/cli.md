@@ -74,8 +74,8 @@ mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose]
 Starts vanilla and the Candidate, plays the chosen Groups against both,
 stops both and prints the Report to stdout. Progress goes to stderr.
 
-The Report starts with `Running tests against <adapter name>`, lists each
-differing test case once, then gives the total Run time in seconds. Known
+The Report starts with `Running tests against <adapter name>` and the
+exact build of the Candidate it tested, lists each differing test case once, then gives the total Run time in seconds. Known
 test cases have a [title](/reference/test-cases); others keep just their
 name. Gameplay and network traffic differences share the list. Skipped or
 failed Groups follow it with their reasons. If nothing differed and no

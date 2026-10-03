@@ -241,10 +241,9 @@ def test_verbose_group_times_total_all_repetitions_and_mark_blocked_groups() -> 
     assert "How to read this" not in text
 
 
-def test_default_output_is_unchanged_when_verbose_data_is_available() -> None:
+def test_default_output_leaves_group_times_to_verbose() -> None:
     result = replace(_result(_verdict()), elapsed_s=(0.25,))
     report = _report(result)
-    report = replace(report, candidate=replace(report.candidate, installed_version="nightly-abc"))
     assert render_text(report) == "Running tests against pumpkin\nNo differences.\nTook 41 s\n"
 
 
@@ -254,3 +253,23 @@ def test_verbose_renders_uuid_and_nested_binary_values() -> None:
     text = render_text(_report(_result(_verdict(field))), verbose=True)
     assert '"data": [{"bytes": "00ff"}]' in text, text
     assert '"id": "12345678-1234-5678-1234-567812345678"' in text, text
+
+
+BUILT = SideSummary("pumpkin", "26.3", (), "nightly 4426d11 (sha256 b8382a8a…)")
+
+
+def test_the_default_output_names_the_candidate_s_exact_build() -> None:
+    report = replace(_report(_result(_verdict())), candidate=BUILT)
+    assert render_text(report) == (
+        "Running tests against pumpkin\n"
+        "Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
+        "No differences.\n"
+        "Took 41 s\n"
+    )
+
+
+def test_the_verbose_output_names_the_candidate_s_build_once() -> None:
+    report = replace(_report(_result(_verdict())), candidate=BUILT)
+    text = render_text(report, verbose=True)
+    assert text.count("nightly 4426d11") == 1, text
+    assert "  Candidate    pumpkin nightly 4426d11 (sha256 b8382a8a…)\n" in text, text
