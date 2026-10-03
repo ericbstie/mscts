@@ -106,6 +106,7 @@ async def test_a_play_that_does_not_match_keeps_both_sides_transcripts(
         fake_server("one"),
         fake_server("two", description="not vanilla"),
         workdir=tmp_path / "run",
+        keep_transcripts=True,
     )
 
     basic, ping = result.results
@@ -118,11 +119,33 @@ async def test_a_play_that_does_not_match_keeps_both_sides_transcripts(
 
 
 @pytest.mark.asyncio
+async def test_a_run_keeps_no_transcripts_unless_asked(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Review of #226: a long Run against a Candidate that differs everywhere would hold
+    # every play's Transcripts to its end, and the CLI never reads them.
+    result = await run_results(
+        [BASIC],
+        fake_server("one"),
+        fake_server("two", description="not vanilla"),
+        workdir=tmp_path / "run",
+        repeat=2,
+    )
+
+    assert result.results[0].transcripts == (None, None)
+
+
+@pytest.mark.asyncio
 async def test_a_play_that_matches_keeps_no_transcripts(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
     result = await run_results(
-        [BASIC], fake_server("one"), fake_server("two"), workdir=tmp_path / "run", repeat=2
+        [BASIC],
+        fake_server("one"),
+        fake_server("two"),
+        workdir=tmp_path / "run",
+        repeat=2,
+        keep_transcripts=True,
     )
 
     assert result.results[0].transcripts == (None, None)

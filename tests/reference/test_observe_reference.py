@@ -31,6 +31,7 @@ async def test_a_group_that_sets_a_block_inside_a_window_self_checks_20_of_20(
             reference,
             workdir=tmp_path / "selfcheck",
             repeat=_REPEAT,
+            keep_transcripts=True,
         )
 
     verdicts = result.verdicts

@@ -81,7 +81,12 @@ async def test_status_basic_right_after_a_group_that_joined_bots_matches_20_of_2
     groups = (SETBLOCK_OBSERVED, *resolve(["status/basic"]))
     with own_reference(cache_dir) as reference:
         result = await run_results(
-            groups, reference, reference, workdir=tmp_path / "run", repeat=_REPEAT
+            groups,
+            reference,
+            reference,
+            workdir=tmp_path / "run",
+            repeat=_REPEAT,
+            keep_transcripts=True,
         )
 
     verdicts = result.verdicts

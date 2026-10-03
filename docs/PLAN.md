@@ -1933,7 +1933,8 @@ class Stats:
 
 def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 
-# run.py: run_results(groups, reference, candidate, *, workdir, repeat=1) -> RunResult
+# run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
+#                     keep_transcripts=False) -> RunResult
 # plays exactly as run() does (run() returns its .verdicts); a blocked repetition measures
 # nothing on either side.
 @frozen
@@ -1943,7 +1944,8 @@ class GroupResult:
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition; blocked 0
-    transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = ()
+    transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = ()  # only with
+                                      # run_results(..., keep_transcripts=True), off by default
                                       # (reference, candidate) per repetition whose Verdict
                                       # is not match, else None (#162)
 

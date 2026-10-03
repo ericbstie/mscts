@@ -118,8 +118,9 @@ class GroupResult:
         elapsed_s: Seconds playing both sides and comparing, per repetition; zero
             when blocked. Instance startup and shutdown are excluded.
         transcripts: The Reference's and the Candidate's Transcript in each repetition
-            whose Verdict is not `match`, to diagnose it (#162); None in the others, and
-            in one where neither side was played. Only for diagnosis: no Report shows
+            whose Verdict is not `match`, if the Run was asked to keep them
+            (`keep_transcripts`), to diagnose it (#162); None in the others, in one where
+            neither side was played, and in every one otherwise. No Report shows
             them, `report.json` does not hold them, and equality ignores them.
     """
 
@@ -318,18 +319,21 @@ async def run(
     return list(result.verdicts)
 
 
-async def run_results(
+async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options of one Run
     groups: Sequence[Group],
     reference: Side,
     candidate: Side,
     *,
     workdir: Path,
     repeat: int = 1,
+    keep_transcripts: bool = False,
 ) -> RunResult:
     """Play each Group against the Reference and the Candidate, `repeat` times.
 
     Returns, for each Group in the order given, its Verdict and each side's
-    Measurements for every repetition; and for each side its `instance.startup`
+    Measurements for every repetition, and, with `keep_transcripts`, both sides'
+    Transcripts of each repetition that did not match (`GroupResult.transcripts`, kept
+    until the Run ends, so off by default); and for each side its `instance.startup`
     Measurements and the version its status_response named. A Group is `blocked`,
     and not played (so it measures nothing), unless each of its prerequisites matched
     earlier in the same repetition (so list them first).
@@ -350,7 +354,9 @@ async def run_results(
     _check(groups, (reference, candidate))
     plays: dict[str, list[_Play]] = {group.id: [] for group in groups}
     async with contextlib.AsyncExitStack() as stack:
-        instances = _Instances(stack, reference, candidate, workdir)
+        instances = _Instances(
+            stack, reference, candidate, workdir, keep_transcripts=keep_transcripts
+        )
         for repetition in range(1, repeat + 1):
             done: dict[str, Verdict] = {}
             for group in groups:
@@ -455,13 +461,21 @@ class _Instances:
     """The Instance pairs of one Run, one per distinct ServerSpec, started on demand.
 
     It also keeps what the Run learns about each side: the startup Measurement of each
-    Instance it launched, and the version the side's first status_response named.
+    Instance it launched, and the version the side's first status_response named. With
+    `keep_transcripts`, a play that does not match keeps both sides' Transcripts.
     """
 
     def __init__(
-        self, stack: contextlib.AsyncExitStack, reference: Side, candidate: Side, workdir: Path
+        self,
+        stack: contextlib.AsyncExitStack,
+        reference: Side,
+        candidate: Side,
+        workdir: Path,
+        *,
+        keep_transcripts: bool,
     ) -> None:
         self._stack = stack
+        self._keep_transcripts = keep_transcripts
         self._sides = (reference, candidate)
         self._workdir = workdir
         self._pairs: dict[ServerSpec, tuple[Endpoint, Endpoint]] = {}
@@ -504,8 +518,12 @@ class _Instances:
             reference=tuple(measurements(reference)),
             candidate=tuple(measurements(candidate)),
             elapsed_s=perf_counter() - started,
-            transcripts=None if verdict.outcome is Outcome.MATCH else (reference, candidate),
+            transcripts=(reference, candidate) if self._kept(verdict) else None,
         )
+
+    def _kept(self, verdict: Verdict) -> bool:
+        """Whether the play judged `verdict` keeps its Transcripts."""
+        return self._keep_transcripts and verdict.outcome is not Outcome.MATCH
 
     def summaries(self) -> tuple[SideSummary, SideSummary]:
         """What the Run learned about the Reference and the Candidate, in that order."""

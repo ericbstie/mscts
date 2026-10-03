@@ -59,7 +59,12 @@ async def test_a_group_that_summons_pigs_inside_a_window_self_checks_20_of_20(
 ) -> None:
     with own_reference(cache_dir) as reference:
         result = await run_results(
-            [PIGS], reference, reference, workdir=tmp_path / "selfcheck", repeat=_REPEAT
+            [PIGS],
+            reference,
+            reference,
+            workdir=tmp_path / "selfcheck",
+            repeat=_REPEAT,
+            keep_transcripts=True,
         )
 
     verdicts = result.verdicts

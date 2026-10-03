@@ -62,6 +62,10 @@ async def _play(
     """Play `groups` on the shared `pair`, or on Instances of the Run's own if they need to."""
     first, second = (attached(instance) for instance in pair)
     if not needs_instances_of_their_own(groups, first.spec):
-        return await run_results(groups, first, second, workdir=workdir, repeat=repeat)
+        return await run_results(
+            groups, first, second, workdir=workdir, repeat=repeat, keep_transcripts=True
+        )
     with own_reference(cache_dir) as server:
-        return await run_results(groups, server, server, workdir=workdir, repeat=repeat)
+        return await run_results(
+            groups, server, server, workdir=workdir, repeat=repeat, keep_transcripts=True
+        )
