@@ -1747,12 +1747,53 @@ def _reindexed(data: bytes, width: int, entries: int, indexes: Mapping[int, int]
 def _one_spelling_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
     """A chunk in one of the spellings vanilla varies between its own runs.
 
-    Each section's containers are `_in_palette_order`.
+    Each section's containers are `_in_palette_order`, and its light has
+    `_sky_below_the_world_empty`.
     """
-    sections = fields.get("sections")
-    if not isinstance(sections, list):
+    result = dict(fields)
+    if isinstance(sections := fields.get("sections"), list):
+        result["sections"] = [_section_in_palette_order(each) for each in sections]
+    if "light" in fields:
+        result["light"] = _sky_below_the_world_empty(fields["light"])
+    return result
+
+
+def _one_spelling_light_update(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A light update whose data has `_sky_below_the_world_empty`."""
+    if "data" not in fields:
         return fields
-    return {**fields, "sections": [_section_in_palette_order(each) for each in sections]}
+    return {**fields, "data": _sky_below_the_world_empty(fields["data"])}
+
+
+def _sky_below_the_world_empty(light: _Value) -> _Value:
+    """Light data with sky light section 0 sent as an empty section, not an array of zeros.
+
+    Vanilla sends either for the light section below the world, depending on whether its
+    light engine has made an array for it, and the client keeps the same light either way
+    (docs/research/2026-10-03-vanilla-chunk-spellings.md). Bit 0 leaves the sky mask, written
+    as `BitSet.toByteArray()` writes it, the array goes, and bit 0 joins the empty sky mask.
+    """
+    if not isinstance(light, dict):
+        return light
+    mask, empty = light.get("sky_light_mask"), light.get("empty_sky_light_mask")
+    arrays = light.get("sky_light_arrays")
+    if not (isinstance(mask, bytes) and isinstance(empty, bytes) and isinstance(arrays, list)):
+        return light
+    sent = int.from_bytes(mask, "little")
+    if not (sent & 1 and arrays and arrays[0] == bytes(_LIGHT_BYTES)):
+        return light
+    emptied = int.from_bytes(empty, "little") | 1
+    return {
+        **light,
+        "sky_light_mask": _bit_set_bytes(sent & ~1),
+        "empty_sky_light_mask": _bit_set_bytes(emptied),
+        "sky_light_arrays": arrays[1:],
+    }
+
+
+def _bit_set_bytes(number: int) -> bytes:
+    """`number`'s bits as `BitSet.toByteArray()` writes them: lowest byte first, no zero last."""
+    return number.to_bytes((number.bit_length() + 7) // 8, "little")
 
 
 def _section_in_palette_order(section: _Value) -> _Value:
@@ -2140,6 +2181,7 @@ _ONE_SPELLING: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str
     MappingProxyType(
         {
             (State.PLAY, "minecraft:level_chunk_with_light"): _one_spelling_level_chunk,
+            (State.PLAY, "minecraft:light_update"): _one_spelling_light_update,
         }
     )
 )

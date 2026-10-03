@@ -139,7 +139,8 @@ client already had. Index 0 is the section below the world. A different
 level is shown at its position in the world; otherwise each server's
 section is described, such as `not sent` or `all 15`. Below the world, an
 empty section and a section of level 0 everywhere are the same to the
-client. Elsewhere the client later fills an empty section with full sky
+client, and vanilla itself sends either one, so that difference is not
+compared at all. Elsewhere the client later fills an empty section with full sky
 light, so the two differ.
 
 ## `level_chunk_with_light.light.block[]`

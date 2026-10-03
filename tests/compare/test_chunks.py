@@ -9,7 +9,7 @@ are built through the Target's real Codec, or are what vanilla and Pumpkin sent.
 """
 
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -1039,12 +1039,25 @@ def test_block_light_empty_and_an_array_of_zeros_are_network_traffic_only() -> N
     assert _network_traffic_only(_verdict(_lit(block={1: EMPTY}), _lit(block={1: DARK})))
 
 
-def test_sky_light_below_the_world_empty_and_an_array_of_zeros_are_network_traffic_only() -> None:
-    # What two vanilla Instances sent in #30. The client never fills light section 0 with sky.
-    reference = _lit(sky={0: EMPTY, 1: FULL, 2: FULL})
-    candidate = _lit(sky={0: DARK, 1: FULL, 2: FULL})
+@pytest.mark.parametrize("name", [CHUNK, "minecraft:light_update"])
+def test_sky_light_below_the_world_empty_and_an_array_of_zeros_are_no_difference(
+    name: str,
+) -> None:
+    # What two vanilla Instances sent in #30 (#172). The client never fills light section 0
+    # with sky light, and vanilla sends either one.
+    make: Callable[[dict[str, object]], Packet] = (
+        light_update if name != CHUNK else (lambda data: chunk(light_data=data))
+    )
+    reference = make(light(sky={0: EMPTY, 1: FULL, 2: FULL}))
+    candidate = make(light(sky={0: DARK, 1: FULL, 2: FULL}))
 
-    assert _network_traffic_only(_verdict(reference, candidate))
+    assert _verdict(reference, candidate).divergences == ()
+
+
+def test_sky_light_below_the_world_as_another_array_still_differs() -> None:
+    verdict = _verdict(_lit(sky={0: EMPTY, 1: FULL}), _lit(sky={0: FULL, 1: FULL}))
+
+    assert [d.path for d in verdict.gameplay] == ["light.sky[0]"]
 
 
 def test_sky_light_in_the_world_empty_and_an_array_of_zeros_differ_in_gameplay() -> None:
