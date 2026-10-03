@@ -627,6 +627,9 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     is not compared never shifts the numbers of what is. An entity whose `add_entity` was
     left out of the windows is named by it instead (`_Numbers.spawned`), and any
     `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
+    All of this runs over the Bot's Packets once its chunk packets are put in order
+    (`_by_position`). The sort moves only chunk packets, which carry no entity ids, so it
+    changes no entity's name or number.
     """
     windows = _Windows.of(transcript)
     events = _by_position(

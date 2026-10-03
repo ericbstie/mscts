@@ -8,6 +8,7 @@ empty section, or nothing, by the rules docs/research/2026-10-02-chunks-light.md
 are built through the Target's real Codec, or are what vanilla and Pumpkin sent.
 """
 
+import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 
@@ -842,6 +843,52 @@ def test_a_packet_whose_handling_reads_no_chunk_may_come_before_or_after_the_fir
     # The batch packets keep their order among the other neutral ones: where a batch starts
     # around such a packet is network traffic only.
     assert compare(played(reference), played(candidate), []).gameplay == ()
+
+
+def _spawned(entity_id: int, x: float) -> Packet:
+    fields = {
+        "entity_id": entity_id,
+        "entity_uuid": uuid.uuid4(),
+        "type": 0,
+        "x": x,
+        "y": -60.0,
+        "z": 7.5,
+    }
+    return packet("minecraft:add_entity", fields=fields)
+
+
+def _aimed_at(entity_id: int) -> Packet:
+    entries = [{"index": 9, "serializer": "float", "value": 10.0}]
+    return packet("minecraft:set_entity_data", fields={"entity_id": entity_id, "entries": entries})
+
+
+def test_an_entity_spawned_among_chunks_takes_its_number_where_the_sort_puts_it() -> None:
+    # Entities are numbered in the order the sorted stream hears of them (#116). A run puts its
+    # add_entity after its chunks, whether it came before the first chunk or after it, and keeps
+    # it in order among the run's other packets: the same entity takes the same number.
+    def played(login_id: int, *packets: Packet) -> Transcript:
+        return _batch_of(packet("minecraft:login", fields={"entity_id": login_id}), *packets)
+
+    reference = played(
+        1, START, _spawned(5, 1.5), LIT_A, LIT_B, _finished(2), _spawned(6, 2.5), _aimed_at(5)
+    )
+    candidate = played(
+        40, START, LIT_B, _spawned(9, 1.5), LIT_A, _finished(2), _spawned(3, 2.5), _aimed_at(3)
+    )
+
+    # The stream: login, chunk 0 0, chunk 1 0, the batch's start, the first entity, the batch's
+    # end, the second entity, then the data, aimed at the first entity on one side only.
+    assert compare(reference, candidate, []).divergences == (
+        divergence(
+            "field",
+            index=7,
+            packet="minecraft:set_entity_data",
+            path="entity_id",
+            reference="#2",
+            candidate="#3",
+            test_case="set_entity_data.entity_id",
+        ),
+    )
 
 
 @pytest.mark.parametrize(
