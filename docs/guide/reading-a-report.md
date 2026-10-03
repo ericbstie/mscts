@@ -18,7 +18,7 @@ Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 ...
 36 passed, 10 failed
 Score: 78.2% (36 of 46 test cases pass)
-Took 84.3 s
+Took 89.5 s
 ```
 
 The first line names the Candidate's Adapter. The second names the exact
@@ -279,8 +279,16 @@ A `result` is `pass`, `fail`, `not tested` or `error`. A Group's own line
 has its `reasons` instead of a `test_case`.
 
 `results` has one entry per Group, with each repetition's
-Verdict, every difference with both values, and each server's
-Measurements. The same Run wrote this, among its other differences:
+Verdict, its differences with both values, and each server's
+Measurements. A Verdict keeps at most 20 differences of one test case, and
+its `omitted` counts the ones it left out. Without that limit, a default
+Run against Pumpkin wrote an 88 MB file, almost all of it the elements of
+one tag list. A difference past the 20 stays if it is the first of its test
+case with its kind, observability and kind of value, so the lines and the
+score read the same. A difference of a Group itself is never left out. The
+printed Report and `report.md` are not cut short, but the values a verbose
+Report reads from a `report.json` are the stored ones. A Run of the first
+two Groups wrote this, among its other differences:
 
 ```json
 ...
@@ -306,6 +314,40 @@ Measurements. The same Run wrote this, among its other differences:
               "test_case": "status_response.enforceSecureChat",
               "observability": "network traffic"
             },
+...
+```
+
+The default Run also played `status/with-player`. Its first Verdict stored
+the first difference it found, the player's UUID, and left out 35,282
+others:
+
+```json
+...
+      "group_id": "status/with-player",
+      "verdicts": [
+        {
+          "group_id": "status/with-player",
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "player",
+              "index": 1,
+              "kind": "field",
+              "packet": "minecraft:login_finished",
+              "path": "profile.uuid",
+              "reference": {
+                "uuid": "b1033201-7292-3cac-9bf0-2059ac139adc"
+              },
+              "candidate": {
+                "uuid": "cdb59355-f3ba-2939-77fc-0945fb85f118"
+              },
+              "test_case": "login_finished.profile.uuid",
+              "observability": "gameplay"
+            },
+...
+          ],
+          "omitted": 35282,
+          "detail": "",
 ...
 ```
 

@@ -1,0 +1,54 @@
+# Running tests against pumpkin
+
+Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
+
+- ✓ `status/basic/status_response.description` Server list description (network traffic only)
+- ✓ `status/basic/status_response.description.text` Server list description text
+- ✓ `status/basic/status_response.enforceSecureChat` Unused secure chat flag (network traffic only)
+- ✓ `status/basic/status_response.favicon` Server list icon (network traffic only)
+- ✓ `status/basic/status_response.players.max` Player limit
+- ✓ `status/basic/status_response.players.online` Online players
+- ✓ `status/basic/status_response.players.sample` Server list player sample (network traffic only)
+- ✓ `status/basic/status_response.version.name` Server version name
+- ✓ `status/basic/status_response.version.protocol` Protocol version
+- ✓ `status/ping/status:pong_response.timestamp` Server list ping response
+- ✓ `status/ping/status_response.description` Server list description (network traffic only)
+- ✓ `status/ping/status_response.description.text` Server list description text
+- ✓ `status/ping/status_response.enforceSecureChat` Unused secure chat flag (network traffic only)
+- ✓ `status/ping/status_response.favicon` Server list icon (network traffic only)
+- ✓ `status/ping/status_response.players.max` Player limit
+- ✓ `status/ping/status_response.players.online` Online players
+- ✓ `status/ping/status_response.players.sample` Server list player sample (network traffic only)
+- ✓ `status/ping/status_response.version.name` Server version name
+- ✓ `status/ping/status_response.version.protocol` Protocol version
+- ✓ `status/with-player/configuration:custom_payload.channel`
+- ✗ `status/with-player/configuration:custom_payload.data` Configuration plugin message data
+- ✓ `status/with-player/configuration:update_tags.tagged_registries[].registry`
+- ✗ `status/with-player/configuration:update_tags.tagged_registries[].tags[]` Tag
+- ✗ `status/with-player/configuration:update_tags.tagged_registries[].tags[].entries[]` Tag member
+- ✗ `status/with-player/configuration:update_tags.tagged_registries[].tags[].tag_name` Tag name
+- ✓ `status/with-player/login_compression.threshold`
+- ✓ `status/with-player/login_finished.profile.username`
+- ✗ `status/with-player/login_finished.profile.uuid` Player UUID at login
+- ✗ `status/with-player/registry_data.entries[]` Registry entry
+- ✗ `status/with-player/registry_data.entries[].data` Registry entry data
+- ✗ `status/with-player/registry_data.entries[].entry_id` Registry entry name
+- ✗ `status/with-player/registry_data.registry_id` Registry name
+- ✓ `status/with-player/select_known_packs.known_packs[].id`
+- ✓ `status/with-player/select_known_packs.known_packs[].namespace`
+- ✓ `status/with-player/select_known_packs.known_packs[].version`
+- ✓ `status/with-player/status_response.description` Server list description (network traffic only)
+- ✓ `status/with-player/status_response.description.text` Server list description text
+- ✓ `status/with-player/status_response.enforceSecureChat` Unused secure chat flag (network traffic only)
+- ✓ `status/with-player/status_response.favicon` Server list icon (network traffic only)
+- ✓ `status/with-player/status_response.players.max` Player limit
+- ✓ `status/with-player/status_response.players.online` Online players
+- ✗ `status/with-player/status_response.players.sample[].id` Server list player UUID
+- ✓ `status/with-player/status_response.players.sample[].name`
+- ✓ `status/with-player/status_response.version.name` Server version name
+- ✓ `status/with-player/status_response.version.protocol` Protocol version
+- ✓ `status/with-player/update_enabled_features.feature_flags[]`
+
+36 passed, 10 failed\
+Score: 78.2% (36 of 46 test cases pass)\
+Took 89.5 s

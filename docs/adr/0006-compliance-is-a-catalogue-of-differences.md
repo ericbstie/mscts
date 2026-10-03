@@ -78,3 +78,22 @@ Two things in the plan worked against this:
   until the Bot-built fallback exists.
 - Masks need a gameplay-relevance justification in their `reason`.
   Reviews and audits reject a Mask that hides player-observable behaviour.
+
+## Amendment (2026-10-03, #254): report.json keeps 20 Divergences of a test case
+
+The Report lists every test case that differs, and the printed Report is not
+cut short. `report.json` also keeps each Divergence with both values, but not
+without limit: a default Run against Pumpkin wrote an 88 MB file. Five
+repetitions held 35,423 Divergences each, 33,579 of them the elements of one
+tag list that Pumpkin orders differently from vanilla.
+
+So a Verdict in `report.json` keeps the first 20 Divergences of each test
+case, and `omitted` counts the others. A Divergence past the 20 stays if it is
+the first of its test case with its kind, observability and kind of value, so
+the lines and the score that follow from the Divergences come out the same. A
+Group's own differences, which have no test case, are never left out. Nothing
+about which test cases differ, or how, is lost; only repeats of the same
+difference in one test case.
+
+One Divergence for each shifted list element is itself a finding, and the
+Comparison may change it (a separate issue).

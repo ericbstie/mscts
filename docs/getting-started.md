@@ -95,7 +95,7 @@ Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 ...
 36 passed, 10 failed
 Score: 78.2% (36 of 46 test cases pass)
-Took 84.3 s
+Took 89.5 s
 ```
 
 Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
