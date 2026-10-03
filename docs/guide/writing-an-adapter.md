@@ -175,7 +175,9 @@ your tests pass a fake `fetch` so they never touch the network.
 **Name the build exactly.** Give the version your publisher uses, and the
 full commit when the publisher names one. Reports show both. The commit a
 release names only finds the file: mscts records the commit `check` reads
-from the file itself, and refuses a file that names none.
+from the file itself. Where the release names a commit, it refuses a
+download that names none. A `--from` file that names none installs
+without one.
 
 **Pass on the publisher's own checksum.** If the publisher lists a sha1 and
 size for the file, as Mojang does, put them in the `Release`. mscts checks
