@@ -538,6 +538,16 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def sneak(self, sneaking: bool) -> None: ...                 # holds the sneak key
     async def jump(self) -> None: ...                                  # the jump key, for this tick only
     async def tick(self) -> None: ...                                  # a tick with no change
+    async def hold(self, slot: int) -> None: ...                       # hotbar slot 0-8
+    async def dig(self, x: int, y: int, z: int, face: Face) -> None: ...  # start breaking, + punch
+    async def stop_digging(self, x: int, y: int, z: int, face: Face) -> None: ...  # finish, + punch
+    async def cancel_digging(self, x: int, y: int, z: int) -> None: ...   # abort, face down
+    async def place(self, x: int, y: int, z: int, face: Face,
+                    cursor: tuple[float, float, float] = (0.5, 0.5, 0.5), *,
+                    off_hand: bool = False) -> None: ...                 # use_item_on
+    async def use_item(self, *, off_hand: bool = False) -> None: ...
+    async def release_item(self) -> None: ...
+    async def swing(self) -> None: ...                                  # punch
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -595,6 +605,21 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # The server keeps the player's known movement at its last step until a client tick
     # with no movement (handleClientTickEnd), so a Bot moves to the server until a tick()
     # after its last move. The Bot presses no direction keys, but forward while sprinting.
+    # hold / dig / stop_digging / cancel_digging / place / use_item / release_item / swing
+    # (#26): on a Bot in play (else ProtocolError), each is one client tick like the above,
+    # with set_carried_item first if the selected slot differs from the one last sent
+    # (MultiPlayerGameMode.tick → ensureHasSentCarriedItem; hold refuses a slot outside 0-8,
+    # ValueError), then the action (handleKeybinds), then the movement packets and
+    # client_tick_end. dig: player_action START_DESTROY_BLOCK (0) then punch
+    # (Minecraft.startAttack); stop_digging: STOP_DESTROY_BLOCK (3) then punch (the last tick
+    # of continueDestroyBlock); cancel_digging: ABORT_DESTROY_BLOCK (2), face down, sequence 0
+    # (stopDestroyBlock); place: use_item_on (hand, the block, face, cursor, inside and world
+    # border false); use_item: use_item (hand, sequence, the pose's yaw and pitch);
+    # release_item: RELEASE_USE_ITEM (6) at 0 0 0, face down, sequence 0; swing: punch (26.3
+    # has no swing packet with a hand). START, STOP, use_item_on and use_item carry the next
+    # block-change sequence (BlockStatePredictionHandler: +1, then sent, from 0 per level).
+    # The Bot times no breaking: a Group sends stop_digging at the tick it tests.
+    # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
@@ -611,6 +636,9 @@ class Position:                     # Bot.position: where its player is and face
     z: float
     yaw: float                      # degrees
     pitch: float                    # degrees, -90 (up) to 90 (down)
+
+class Face(IntEnum):                # a block face: Direction.get3DDataValue
+    DOWN = 0; UP = 1; NORTH = 2; SOUTH = 3; WEST = 4; EAST = 5
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
@@ -629,7 +657,10 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # non-finite rotation ignored), which becomes Replies.pose; play login → Replies.entity_id
     # (no answer); play login or respawn → Replies.reported starts again as a fresh player's
     # (a new LocalPlayer; respawn with data_kept bit 1 keeps its keys and sprinting; no
-    # answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
+    # answer); play login, or respawn into another dimension → the block-change sequence
+    # starts at 0 again (a new ClientLevel), login also the held slots (a new
+    # MultiPlayerGameMode); play set_held_slot (0-8) → selected, sent back on the next tick
+    # (no answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
 
