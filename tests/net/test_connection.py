@@ -389,6 +389,37 @@ def test_close_aborts_a_socket_that_does_not_finish_closing(
     assert aborted == [True]
 
 
+@pytest.mark.parametrize("turns", [1, 2, 3], ids=["turns-1", "turns-2", "turns-3"])
+def test_close_cancelled_while_it_runs_still_closes_the_socket(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    turns: int,
+) -> None:
+    # A close in a `finally` can be cancelled again (a deadline and a Ctrl-C at once).
+    # `turns` loop iterations in, close is waiting for its reader, or for the socket.
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> bool:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript
+            )
+            [writer] = stream_writers
+            closing = asyncio.create_task(connection.close())
+            for _ in range(turns):
+                await asyncio.sleep(0)
+            closing.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await closing
+            closed = writer.transport.is_closing()
+            writer.close()  # so that a leak fails this assertion, not a later test
+            return closed
+
+    assert asyncio.run(client()) is True
+
+
 def test_recv_returns_and_records_a_clientbound_packet(
     toy_codec: Codec, transcript: Transcript
 ) -> None:

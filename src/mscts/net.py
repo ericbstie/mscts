@@ -264,15 +264,18 @@ class Connection:
 
         A `recv` still waiting raises ConnectionClosedError. If the socket has not
         finished closing within a second (a server that stops reading can hold unsent
-        bytes back), it is aborted.
+        bytes back), it is aborted. Cancelled while it waits, it still closes the socket,
+        and raises CancelledError.
         """
         if self._closed:
             return
         self._closed = True
         self._reading.cancel()
-        await asyncio.wait({self._reading})
-        self._arrivals.put_nowait(_End(ConnectionClosedError("the connection is closed")))
-        self._writer.close()
+        try:
+            await asyncio.wait({self._reading})
+        finally:
+            self._arrivals.put_nowait(_End(ConnectionClosedError("the connection is closed")))
+            self._writer.close()
         with contextlib.suppress(ConnectionError):
             try:
                 async with asyncio.timeout(_CLOSE_TIMEOUT_S):
