@@ -4,7 +4,8 @@ Status: accepted (2026-10-01). Refines ADR-0006's Masks rule (item 2) for
 heartbeat packets and the barrier's packets. Amended 2026-10-01 (#17):
 Control's barrier, below. Amended 2026-10-02 (#88): the barrier ends only
 after a tick has passed, below. Amended 2026-10-02 (#105): a window can
-end at a packet's arrival, below.
+end at a packet's arrival, below. Amended 2026-10-03 (#165): the latency
+broadcast is a heartbeat packet, below.
 
 ## Context
 
@@ -186,3 +187,24 @@ depends on timing.
    one behind the barrier. A Group whose window holds a join sets its
    Fixture, leaves (so the joining Bot does not see Control's player),
    waits with `mscts.settle`, and rejoins Control to undo the Fixture.
+
+## Amendment (2026-10-03, #165): the latency broadcast is a heartbeat packet
+
+Item 3 kept vanilla's latency-only `player_info_update` compared, because
+leaving `player_info_update` out by name would hide the player list
+changes Groups test. A join-until window, which names no packets, then held
+one on one side only: it arrives every 601 ticks on the server's own
+counter, so whether it falls inside a window is timing
+(`docs/research/2026-10-03-latency-broadcast.md`).
+
+1. **A heartbeat packet can be told apart by its first bytes.**
+   `compare.HEARTBEAT_PAYLOADS` maps a packet name and the bytes its
+   payload starts with to the reason, beside `compare.HEARTBEAT`, and
+   `compare.is_heartbeat` says whether a packet is either. A
+   `player_info_update` starts with its set of actions, one byte; `0x10`
+   is `UPDATE_LATENCY` alone, which only `PlayerList.tick` sends.
+2. **Every other `player_info_update` is still compared.** A join, a game
+   mode change or a listing change sets other actions, so its first byte
+   differs.
+3. The position resend (`move_entity_pos` every 60 ticks) stays compared,
+   as item 3 says, until PLAN.md's open question on it is decided.
