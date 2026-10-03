@@ -3,7 +3,7 @@
 import re
 from pathlib import Path
 
-from mscts.test_cases import TITLES
+from mscts.case_titles import TITLES
 
 ROOT = Path(__file__).resolve().parents[2]
 

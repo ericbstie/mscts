@@ -2,7 +2,7 @@
 
 **Lane:** what counts as a difference: decoding world data, canonical
 forms, what the client ends up seeing. **Model:** opus.
-**Owns the core areas:** `compare.py`, `measure.py`, `test_cases.py`,
+**Owns the core areas:** `compare.py`, `measure.py`, `case_titles.py`,
 `codec/*` (with `codec/entity_ids.py`), and the Verdict rules in `run.py`.
 Other lanes ask the lead for changes there.
 

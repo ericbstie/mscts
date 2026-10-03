@@ -111,7 +111,7 @@ Platform, tooling and docs issues stay with the helper and the lead.
 
 **Core areas have one owner.** The timing specialist owns `net.py`,
 `bot.py`, `settle.py`, `group.py` and `transcript.py`; the comparison
-specialist owns `compare.py`, `measure.py`, `test_cases.py`, `codec/*` and
+specialist owns `compare.py`, `measure.py`, `case_titles.py`, `codec/*` and
 the Verdict rules in `run.py`. Another lane that needs a change there asks
 the lead, who routes it.
 

@@ -1922,7 +1922,7 @@ class Report:                       # report.py
     # later: compliance = matches / (groups − errors); to_json(), to_markdown()
 
 def render_text(report: Report, *, verbose: bool = False) -> str: ...
-# test_cases.py: TITLES: Mapping[str, str], test case name → short title.
+# case_titles.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>";

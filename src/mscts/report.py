@@ -5,10 +5,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
+from mscts.case_titles import TITLES
 from mscts.compare import ABSENT, Divergence, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
 from mscts.target import Target
-from mscts.test_cases import TITLES
 
 
 @dataclass(frozen=True, slots=True)
