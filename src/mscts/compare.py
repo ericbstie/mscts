@@ -2385,10 +2385,17 @@ def _field_cases(entry: _Normalized) -> set[str]:
     state, name = entry.packet.state, entry.packet.name
     if entry.fields is None:
         return {_test_case(state, name, ())}
+    return _leaf_cases(state, name, entry.fields, (), entry.masked)
+
+
+def _leaf_cases(
+    state: State, name: str, value: _Value | Absent, path: _Path, masked: frozenset[_Path]
+) -> set[str]:
+    """The test cases of the leaves of `value`, at `path` in a Packet: none where masked."""
     names: dict[_Path, str] = {}
-    for path, _, _ in _pairs(entry.fields, entry.fields, ()):
-        shape = tuple(0 if isinstance(step, int) else step for step in path)
-        if shape not in names and path not in entry.masked:
+    for leaf, _, _ in _pairs(value, value, path):
+        shape = tuple(0 if isinstance(step, int) else step for step in leaf)
+        if shape not in names and leaf not in masked:
             names[shape] = _test_case(state, name, shape)
     return set(names.values())
 
@@ -2477,7 +2484,10 @@ def _diff_matched(
     """Diff two matched Packets, adding the test case of each pair compared to `compared`.
 
     Two Packets compared by payload are one test case, the packet's. A pair at a path a
-    Mask found a value at counts only if it differs: a masked field is no test case.
+    Mask found a value at counts only if it differs: a masked field is no test case. A
+    reference list or mapping the Candidate sent as something else, or left out, adds the
+    test case of each of its unmasked leaves too, so replacing it never scores better than
+    sending each leaf wrong (#225).
     """
     state, name = reference.packet.state, reference.packet.name
     differences: list[tuple[_Path | None, str, object, object]] = []
@@ -2503,6 +2513,8 @@ def _diff_matched(
                     values = shown(path, ref_value, cand_value, sides)
                 differences.append((path, names[shape], *values))
                 compared.add(names[shape])
+                # A reference compound replaced or left out whole: each of its leaves (#225).
+                compared.update(_leaf_cases(state, name, ref_value, path, masked))
             elif not (masked and path in masked):
                 compared.add(names[shape])
     for path, case, ref_value, cand_value in differences:

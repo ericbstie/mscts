@@ -1903,7 +1903,9 @@ proves it necessary:
    case of every Divergence, and (#101) the test case of each unmasked
    leaf of a reference packet the alignment left `missing`, as a match
    with itself would name it, so leaving a packet out fails each field
-   sending it wrong would. A dropped packet and a packet an
+   sending it wrong would. Likewise (#225) a reference list or mapping
+   the candidate sent as something else, or left out, adds the test case
+   of each of its unmasked leaves. A dropped packet and a packet an
    Observation window leaves out are in none, and neither is a pair of
    values at a masked path that are the same (two `MASKED`, or two
    None): a masked field is a test case only where it diverges. Each is the same, different in gameplay, or different in
@@ -2000,7 +2002,8 @@ NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
 def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of
-# its fields' differ): FAIL if it differs in gameplay in any repetition, PASS (marked
+# its fields' differ, and so does a gameplay `field` Divergence whose reference is a list
+# or mapping, for its test case and each of its leaves', #225): FAIL if it differs in gameplay in any repetition, PASS (marked
 # network_traffic_only) if it differs only in network traffic, else PASS. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else

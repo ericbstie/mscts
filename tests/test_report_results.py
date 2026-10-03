@@ -1,5 +1,6 @@
 """Each test case of each Group passes or fails, and the passes make the score (#101)."""
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 import pytest
@@ -120,6 +121,55 @@ def test_totals_count_each_result_and_score_the_passes_among_what_was_scored() -
 
 def test_nothing_scored_has_no_score() -> None:
     assert totals([GroupLine("g/c", LineResult.ERROR, "Error: x")]).score is None
+
+
+@pytest.mark.parametrize(
+    "replaced", [{}, {"a": 0}, {"a": []}], ids=["left-out", "scalar", "empty-list"]
+)
+def test_replacing_a_compound_field_scores_no_higher_than_sending_each_leaf_wrong(
+    replaced: dict[str, object],
+) -> None:
+    compound = {"a": {f"k{n}": n for n in range(10)}}
+    wrong = {"a": {f"k{n}": n + 1000 for n in range(10)}}
+
+    def play(group_id: str, fields: Mapping[str, object]) -> Transcript:
+        return transcript(("alice", packet("minecraft:foo", fields=fields)), group_id=group_id)
+
+    many = {f"g{n}": n for n in range(100)}
+    passing = compare(play("x/b", many), play("x/b", many), ())
+
+    def score(fields: Mapping[str, object]) -> float:
+        verdict = compare(play("x/a", compound), play("x/a", fields), ())
+        result = totals(report_lines(_report(_result(passing), _result(verdict)))).score
+        assert result is not None
+        return result
+
+    assert score(wrong) == pytest.approx(100 / 110)
+    assert score(replaced) <= score(wrong)
+
+
+def test_the_leaves_of_a_replaced_compound_fail_and_its_siblings_do_not() -> None:
+    verdict = compare(
+        transcript(
+            ("alice", packet("minecraft:foo", fields={"a": {"b": 1}, "ab": 2})), group_id="x/a"
+        ),
+        transcript(("alice", packet("minecraft:foo", fields={"a": 0, "ab": 2})), group_id="x/a"),
+        (),
+    )
+    assert report_lines(_report(_result(verdict))) == (
+        CaseResult("x/a", "foo.a", LineResult.FAIL),
+        CaseResult("x/a", "foo.a.b", LineResult.FAIL),
+        CaseResult("x/a", "foo.ab", LineResult.PASS),
+    )
+
+
+def test_a_compound_sent_in_another_format_marks_only_its_own_test_case() -> None:
+    traffic = replace(_field("x.a", traffic=True), reference={"b": 1}, candidate="b")
+    verdict = replace(_verdict(traffic), test_cases=("x.a", "x.a.b"))
+    assert report_lines(_report(_result(verdict))) == (
+        CaseResult("status/basic", "x.a", LineResult.PASS, network_traffic_only=True),
+        CaseResult("status/basic", "x.a.b", LineResult.PASS),
+    )
 
 
 def test_leaving_a_packet_out_or_crashing_scores_no_higher_than_sending_it_wrong() -> None:
