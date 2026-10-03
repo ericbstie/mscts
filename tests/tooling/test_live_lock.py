@@ -6,6 +6,7 @@ import select
 import signal
 import subprocess
 import sys
+import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -77,6 +78,22 @@ def line(stream: IO[str] | None) -> str:
     return stream.readline().strip()
 
 
+def until_the_wrapper_names_its_command(tmp_path: Path, wrapper: subprocess.Popen[str]) -> int:
+    """Wait until the lock file names a pid other than the wrapper's own, and return it.
+
+    The wrapper writes its own pid, starts the command, then writes the command's pid. The
+    command can print `started` before that second write (#171), so `started` alone does not
+    say which pid a waiter will name.
+    """
+    lock = tmp_path / "cache" / "live-tier.lock"
+    deadline = time.monotonic() + 5
+    while not (named := lock.read_text().strip()).isdigit() or named == str(wrapper.pid):
+        assert wrapper.poll() is None, "the wrapper exited before naming its command"
+        assert time.monotonic() < deadline, f"the lock file still names {named or 'nobody'}"
+        time.sleep(0.01)
+    return int(named)
+
+
 def finish(process: subprocess.Popen[str]) -> int:
     assert process.stdin is not None
     process.stdin.close()
@@ -89,7 +106,8 @@ def test_a_second_live_tier_waits_then_runs_when_the_holder_exits(
 ) -> None:
     with command(tmp_path, child=prefix + CHILD) as first:
         assert line(first.stdout) == "started"
-        holder = int((tmp_path / "child.pid").read_text())
+        holder = until_the_wrapper_names_its_command(tmp_path, first)
+        assert holder == int((tmp_path / "child.pid").read_text())
         with command(tmp_path) as second:
             assert second.stdout is not None
             assert second.stderr is not None
@@ -126,11 +144,12 @@ def test_the_commands_terminating_signal_passes_through(tmp_path: Path, terminat
 def test_the_bypass_runs_while_another_live_tier_holds_the_lock(tmp_path: Path) -> None:
     with command(tmp_path) as first:
         assert line(first.stdout) == "started"
-        holder = (tmp_path / "child.pid").read_text()
+        holder = until_the_wrapper_names_its_command(tmp_path, first)
+        assert holder == int((tmp_path / "child.pid").read_text())
         with command(tmp_path, bypass=True) as second:
             assert line(second.stdout) == "started"
             assert first.poll() is None
-            assert (tmp_path / "cache" / "live-tier.lock").read_text().strip() == holder
+            assert (tmp_path / "cache" / "live-tier.lock").read_text().strip() == str(holder)
             assert finish(second) == 0
             assert second.stderr is not None
             assert second.stderr.read() == ""
@@ -154,7 +173,8 @@ subprocess.Popen([sys.executable, '-I', '-S', '-c', {CHILD!r}, '0'], close_fds=F
 def test_killing_the_wrapper_keeps_the_lock_until_its_command_exits(tmp_path: Path) -> None:
     with command(tmp_path) as first:
         assert line(first.stdout) == "started"
-        holder = int((tmp_path / "child.pid").read_text())
+        holder = until_the_wrapper_names_its_command(tmp_path, first)
+        assert holder == int((tmp_path / "child.pid").read_text())
         first.kill()
         assert first.wait(timeout=5) == -signal.SIGKILL
         with (
@@ -189,6 +209,7 @@ while True:
 """
     with command(tmp_path, child=child) as first:
         assert line(first.stdout) == "started"
+        holder = until_the_wrapper_names_its_command(tmp_path, first)
         if to_group:
             os.killpg(first.pid, termination)
         else:
@@ -197,7 +218,7 @@ while True:
         assert first.stderr is not None
         assert stopped == "stopping", first.stderr.read()
         with command(tmp_path) as second:
-            assert line(second.stderr).startswith("waiting for another live tier to finish (pid ")
+            assert line(second.stderr) == f"waiting for another live tier to finish (pid {holder})"
             assert finish(first) == 23
             assert line(second.stdout) == "started"
             assert finish(second) == 0
