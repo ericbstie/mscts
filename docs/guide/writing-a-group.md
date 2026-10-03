@@ -42,9 +42,36 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
+| `await bot.move(x, y, z, on_ground=True)` | Moves the Bot, and sends the position update the vanilla client would send, if any. |
+| `await bot.look(yaw, pitch)` | Sends one rotation update. |
+| `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
+| `await bot.jump()` | Presses the jump key for one tick, as the vanilla client reports it. It does not move the Bot. Send the jump's positions with `move`. |
+| `await bot.tick()` | Sends what the vanilla client sends on a tick when the player does nothing. |
+| `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
 | `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent before, so everything it sent because of that has arrived. Needs a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
+
+A Bot does not simulate physics, so a Group gives every position itself.
+Each call to `move`, `look`, `sprint`, `sneak`, `jump` or `tick` is one tick
+of the vanilla client. The Bot sends what changed, then the packet that ends
+the client's tick. A position that has not changed is sent again every 20
+calls, as the vanilla client sends it every 20 ticks. The Bot presses no
+direction keys, except forward while it sprints. No call waits for the
+server. To move once per server tick, `await bot.sync()` between calls:
+
+<!-- not run: A fragment of a Group's function; it needs a Bot that has joined. -->
+```python
+for step in range(1, 26):
+    await bot.move(0.5 + 0.2 * step, -60.0, 0.5)
+    await bot.sync()
+```
+
+When the server refuses a move, it sends the Bot back, and `bot.position`
+then says where it put the Bot.
+
+The server takes the player to be moving until a client tick without a move.
+To stop the Bot, call `await bot.tick()` after its last move.
 
 `context.control` is an operator Bot that sets up the world before the part
 of the Group that is compared.

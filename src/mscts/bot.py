@@ -2,13 +2,14 @@
 
 import asyncio
 import contextlib
+import copy
 import hashlib
 import json
 import math
 import struct
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Self, cast
 
 from mscts.codec.packets import Codec, Packet, State
@@ -47,6 +48,7 @@ _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
 """Teleport Flags bits (wiki Data types; vanilla's `Relative`): which parts add to the pose."""
 
 _PITCH_LIMIT = 90.0
+_FULL_TURN = 360.0
 
 TICK_GAP_S = 0.005
 """How long `sync` waits after its first answer arrived before it asks again.
@@ -86,6 +88,35 @@ def _binary32(value: float) -> float:
         return math.copysign(math.inf, value)
 
 
+_MOVED = 2.0e-4
+"""How far the player must have moved for the client to report its position.
+
+`LocalPlayer.sendPosition` (26.3 javap) reports it when `Mth.lengthSquared` of the change
+since the last report is above `Mth.square(2.0E-4)`.
+"""
+
+_POSITION_REMINDER_TICKS = 20
+"""`LocalPlayer.POSITION_REMINDER_INTERVAL`: the client reports its position on the 20th tick
+without a report, moved or not."""
+
+_ON_GROUND = 0x01
+"""The movement packets' flag for on ground (`ServerboundMovePlayerPacket.packFlags`: bit 0;
+bit 1, horizontal collision, a Bot never sets)."""
+
+_FORWARD, _JUMP, _SNEAK, _SPRINT = 0x01, 0x10, 0x20, 0x40
+"""The keys of `player_input` a Bot holds (`Input`'s stream codec: forward, jump, shift, sprint)."""
+
+_START_SPRINTING, _STOP_SPRINTING = 1, 2
+"""`ServerboundPlayerCommandPacket.Action` ordinals."""
+
+_KEEP_ENTITY_DATA = 0x02
+"""`ClientboundRespawnPacket.KEEP_ENTITY_DATA`: the new player keeps the last sent input and
+sprinting (`ClientPacketListener.handleRespawn`)."""
+
+type _Send = tuple[str, dict[str, object]]
+"""A packet to send: its name and fields."""
+
+
 @dataclass(slots=True)
 class _Pose:
     """Where the Bot's player is and faces, as the vanilla client would have it."""
@@ -100,21 +131,169 @@ class _Pose:
         """Apply a player_position, as `PositionMoveRotation.calculateAbsolute` does.
 
         Each flagged part adds to the current value, the others replace it; rotation is
-        summed in binary32 and pitch clamped to -90..90. As in `Entity.setYRot` and
-        `setXRot`, a rotation that is not finite leaves the old one.
+        summed in binary32, then turned to as `turn` does.
         """
         flags = _field(fields, "flags", int)
         self.x = (self.x if flags & _RELATIVE_X else 0.0) + _field(fields, "x", float)
         self.y = (self.y if flags & _RELATIVE_Y else 0.0) + _field(fields, "y", float)
         self.z = (self.z if flags & _RELATIVE_Z else 0.0) + _field(fields, "z", float)
-        yaw = _binary32((self.yaw if flags & _RELATIVE_YAW else 0.0) + _field(fields, "yaw", float))
-        pitch = _binary32(
-            (self.pitch if flags & _RELATIVE_PITCH else 0.0) + _field(fields, "pitch", float)
+        self.turn(
+            _binary32((self.yaw if flags & _RELATIVE_YAW else 0.0) + _field(fields, "yaw", float)),
+            _binary32(
+                (self.pitch if flags & _RELATIVE_PITCH else 0.0) + _field(fields, "pitch", float)
+            ),
         )
+
+    def turn(self, yaw: float, pitch: float) -> None:
+        """Face `yaw` and `pitch`, each rounded to binary32, as the client's floats hold them.
+
+        As in `Entity.setYRot` and `setXRot`, a rotation that is not finite leaves the old
+        one, and pitch is taken modulo 360 (with the sign of the dividend), then held to -90..90.
+        """
+        yaw, pitch = _binary32(yaw), _binary32(pitch)
         if math.isfinite(yaw):
             self.yaw = yaw
         if math.isfinite(pitch):
+            # Java's float remainder: exact, with the dividend's sign, as math.fmod.
+            pitch = math.fmod(pitch, _FULL_TURN)
             self.pitch = max(-_PITCH_LIMIT, min(pitch, _PITCH_LIMIT))
+
+
+@dataclass(frozen=True, slots=True)
+class Position:
+    """Where a Bot's player is and faces, as its client has it (`Bot.position`).
+
+    Attributes:
+        x: Its x, in blocks.
+        y: Its feet's y, in blocks.
+        z: Its z, in blocks.
+        yaw: Its yaw, in degrees.
+        pitch: Its pitch, in degrees, from -90 (up) to 90 (down).
+    """
+
+    x: float
+    y: float
+    z: float
+    yaw: float
+    pitch: float
+
+
+@dataclass(slots=True)
+class _Controls:
+    """What the player does besides where it is: its feet on the ground, the keys it holds."""
+
+    on_ground: bool = True
+    keys: int = 0  # the player_input flags
+    sprinting: bool = False
+
+
+@dataclass(slots=True)
+class _Reported:
+    """What the client last reported, which it keeps so that it sends only changes.
+
+    `LocalPlayer`'s `xLast`, `yLast`, `zLast`, `yRotLast`, `xRotLast`, `lastOnGround`,
+    `positionReminder`, `lastSentInput` and `wasSprinting`; a fresh player's are 0, false,
+    0, `Input.EMPTY` and false (26.3 javap: its constructor, `MultiPlayerGameMode.createPlayer`).
+    A correction from the server changes none of them (`ClientPacketListener.handleMovePlayer`).
+    """
+
+    pose: _Pose = field(default_factory=_Pose)
+    on_ground: bool = False
+    ticks_since_position: int = 0
+    keys: int = 0
+    sprinting: bool = False
+
+
+def _client_tick(
+    pose: _Pose, controls: _Controls, reported: _Reported, entity_id: int | None
+) -> list[_Send]:
+    """What the vanilla client sends on one tick for `pose` and `controls`; updates `reported`.
+
+    `Minecraft.tick` (26.3 javap) has `LocalPlayer.sendChanges` send the Input if it
+    changed, then (`sendPosition`) a sprint command if sprinting changed, then the
+    movement packet, and ends with `client_tick_end`. `entity_id` is the player's, which a
+    sprint command carries.
+    """
+    return [
+        *_input_change(controls, reported),
+        *_sprint_change(controls, reported, entity_id),
+        *_movement(pose, controls, reported),
+        ("minecraft:client_tick_end", {}),
+    ]
+
+
+def _input_change(controls: _Controls, reported: _Reported) -> list[_Send]:
+    """`player_input` with the keys held, if they changed since the last one sent."""
+    if controls.keys == reported.keys:
+        return []
+    reported.keys = controls.keys
+    return [("minecraft:player_input", {"flags": controls.keys})]
+
+
+def _sprint_change(controls: _Controls, reported: _Reported, entity_id: int | None) -> list[_Send]:
+    """`player_command` starting or stopping sprinting, if that changed since the last one."""
+    if controls.sprinting == reported.sprinting:
+        return []
+    reported.sprinting = controls.sprinting
+    action = _START_SPRINTING if controls.sprinting else _STOP_SPRINTING
+    return [
+        ("minecraft:player_command", {"entity_id": entity_id, "action": action, "jump_boost": 0})
+    ]
+
+
+def _movement(pose: _Pose, controls: _Controls, reported: _Reported) -> list[_Send]:
+    """The movement packet `LocalPlayer.sendPosition` picks, if any, and what it reports.
+
+    The position goes if it moved more than `_MOVED` or on the `_POSITION_REMINDER_TICKS`th
+    tick since it last went, the rotation if it changed, both in one packet if both do;
+    with neither, the flags alone if on ground changed.
+    """
+    reported.ticks_since_position += 1
+    moved = (
+        _moved_squared(pose, reported.pose) > _MOVED * _MOVED
+        or reported.ticks_since_position >= _POSITION_REMINDER_TICKS
+    )
+    turned = (pose.yaw, pose.pitch) != (reported.pose.yaw, reported.pose.pitch)
+    landed_or_left = controls.on_ground != reported.on_ground
+    flags = _ON_GROUND if controls.on_ground else 0
+    sends = _movement_packet(pose, flags, moved=moved, turned=turned, flags_only=landed_or_left)
+    _remember(reported, pose, controls, moved=moved, turned=turned)
+    return sends
+
+
+def _moved_squared(pose: _Pose, last: _Pose) -> float:
+    """`Mth.lengthSquared` of the move from `last` to `pose`."""
+    dx, dy, dz = pose.x - last.x, pose.y - last.y, pose.z - last.z
+    return dx * dx + dy * dy + dz * dz
+
+
+def _movement_packet(
+    pose: _Pose, flags: int, *, moved: bool, turned: bool, flags_only: bool
+) -> list[_Send]:
+    """The one movement packet for what changed, or none."""
+    position = {"x": pose.x, "y": pose.y, "z": pose.z}
+    rotation = {"yaw": pose.yaw, "pitch": pose.pitch}
+    if moved and turned:
+        return [("minecraft:move_player_pos_rot", {**position, **rotation, "flags": flags})]
+    if moved:
+        return [("minecraft:move_player_pos", {**position, "flags": flags})]
+    if turned:
+        return [("minecraft:move_player_rot", {**rotation, "flags": flags})]
+    if flags_only:
+        return [("minecraft:move_player_status_only", {"flags": flags})]
+    return []
+
+
+def _remember(
+    reported: _Reported, pose: _Pose, controls: _Controls, *, moved: bool, turned: bool
+) -> None:
+    """Keep what this tick reported, as the end of `LocalPlayer.sendPosition` does."""
+    if moved:
+        reported.pose.x, reported.pose.y, reported.pose.z = pose.x, pose.y, pose.z
+        reported.ticks_since_position = 0
+    if turned:
+        reported.pose.yaw, reported.pose.pitch = pose.yaw, pose.pitch
+    reported.on_ground = controls.on_ground
 
 
 class Replies:
@@ -132,20 +311,30 @@ class Replies:
     - configuration `code_of_conduct` → `accept_code_of_conduct`;
     - configuration `finish_configuration` → `finish_configuration`;
     - `keep_alive` (configuration and play) → the same id back;
-    - play `player_position` → `accept_teleportation` with the pose it results in;
+    - play `player_position` → `accept_teleportation` with the pose it results in, which
+      becomes `pose`;
     - play `chunk_batch_finished` → `chunk_batch_received` at `CHUNKS_PER_TICK`;
     - play `start_configuration` → `configuration_acknowledged`.
 
-    Every other packet gets no answer.
+    Every other packet gets no answer. Play `login` names the player's entity id. A play
+    `login` or `respawn` makes a new player, as the client makes a new `LocalPlayer`, so
+    `reported` starts again from a fresh player's; a respawn that keeps entity data
+    (`data_kept` bit 1) keeps the keys and sprinting last reported.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
+        pose: Where the player is and faces: the last teleport's pose, or where the Bot
+            moved since.
+        entity_id: The player's entity id from play's `login`, or None before it arrives.
+        reported: What the client last reported of its player, which a tick compares with.
     """
 
     def __init__(self) -> None:
         """Start with the player at the origin, facing yaw 0 and pitch 0."""
-        self._pose = _Pose()
+        self.pose = _Pose()
         self.saw_disconnect = False
+        self.entity_id: int | None = None
+        self.reported = _Reported()
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
@@ -174,16 +363,18 @@ class Replies:
                 await connection.send(
                     "minecraft:keep_alive", keep_alive_id=fields.get("keep_alive_id")
                 )
+            case State.PLAY, "minecraft:login" | "minecraft:respawn":
+                self._new_player(packet.name, fields)
             case State.PLAY, "minecraft:player_position":
-                self._pose.teleport(fields)
+                self.pose.teleport(fields)
                 await connection.send(
                     "minecraft:accept_teleportation",
                     teleport_id=fields.get("teleport_id"),
-                    x=self._pose.x,
-                    y=self._pose.y,
-                    z=self._pose.z,
-                    yaw=self._pose.yaw,
-                    pitch=self._pose.pitch,
+                    x=self.pose.x,
+                    y=self.pose.y,
+                    z=self.pose.z,
+                    yaw=self.pose.yaw,
+                    pitch=self.pose.pitch,
                 )
             case State.PLAY, "minecraft:chunk_batch_finished":
                 await connection.send(
@@ -193,6 +384,20 @@ class Replies:
                 await connection.send("minecraft:configuration_acknowledged")
             case _:
                 pass
+
+    def _new_player(self, name: str, fields: Mapping[str, object]) -> None:
+        """Start `reported` again, as the client makes a new `LocalPlayer` for a login or respawn.
+
+        A login also names the player's entity id. A respawn that keeps entity data keeps the
+        keys and sprinting last reported (`ClientPacketListener.handleRespawn`).
+        """
+        if name == "minecraft:login":
+            self.entity_id = _field(fields, "entity_id", int)
+            self.reported = _Reported()
+            return
+        old = self.reported
+        kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
+        self.reported = _Reported(keys=old.keys, sprinting=old.sprinting) if kept else _Reported()
 
 
 @dataclass(frozen=True, slots=True)
@@ -235,6 +440,7 @@ class Bot:
         self._timeout_s = timeout_s
         self._closed = False
         self._disconnected = False  # expect returned the server's disconnect
+        self._controls = _Controls()
 
     @classmethod
     async def connect(
@@ -280,6 +486,12 @@ class Bot:
     def in_play(self) -> bool:
         """Whether the Bot has joined and is not closed: what `sync` needs."""
         return not self._closed and self._connection.state is State.PLAY
+
+    @property
+    def position(self) -> Position:
+        """Where the player is and faces: the last teleport's pose, or where it moved since."""
+        pose = self._replies.pose
+        return Position(x=pose.x, y=pose.y, z=pose.z, yaw=pose.yaw, pitch=pose.pitch)
 
     async def status(self) -> Mapping[str, object]:
         """Ask for the server's status, and return the parsed status JSON.
@@ -383,6 +595,123 @@ class Bot:
             raise ProtocolError(msg)
         async with self._operation(self._timeout_s):
             await self._connection.send("minecraft:chat_command", command=command)
+
+    async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None:
+        """Move the player to `x`, `y`, `z`, on the ground or not, in one client tick.
+
+        The Bot does not simulate physics: the Group gives each position, as a vanilla
+        client sends one each tick it moves. One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+            ValueError: A coordinate is NaN or infinite; nothing is sent.
+        """
+        self._require_play("move")
+        if not all(math.isfinite(coordinate) for coordinate in (x, y, z)):
+            msg = f"move needs finite coordinates, not {x}, {y}, {z}"
+            raise ValueError(msg)
+        pose = self._replies.pose
+        pose.x, pose.y, pose.z = x, y, z
+        self._controls.on_ground = on_ground
+        await self._tick()
+
+    async def look(self, yaw: float, pitch: float) -> None:
+        """Turn the player to `yaw` and `pitch`, in degrees, in one client tick.
+
+        Each is rounded to a float, and pitch held to -90..90, as the client holds them; a
+        value that is not finite leaves that one as it was. One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("look")
+        self._replies.pose.turn(yaw, pitch)
+        await self._tick()
+
+    async def sprint(self, sprinting: bool) -> None:  # noqa: FBT001 - #25: bot.sprint(True)
+        """Start or stop sprinting, in one client tick, holding or releasing forward and sprint.
+
+        A client sprints only while it holds forward, and cannot start while it sneaks
+        (`LocalPlayer.canStartSprinting`, `shouldStopRunSprinting`), so the Bot holds both
+        keys while it sprints. The tick reports the keys, then the sprint command naming the
+        player's entity id (from play's `login`). One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play, the server has not sent its `login`, or
+                the player sneaks and `sprinting` is True.
+        """
+        self._require_play("sprint")
+        if self._replies.entity_id is None:
+            msg = "sprint needs the player's entity id, and no login has arrived"
+            raise ProtocolError(msg)
+        if sprinting and self._controls.keys & _SNEAK:
+            msg = "sprint needs a player that is not sneaking"
+            raise ProtocolError(msg)
+        self._controls.keys = _held(self._controls.keys, _FORWARD | _SPRINT, held=sprinting)
+        self._controls.sprinting = sprinting
+        await self._tick()
+
+    async def sneak(self, sneaking: bool) -> None:  # noqa: FBT001 - #25: bot.sneak(True)
+        """Start or stop sneaking, in one client tick, holding or releasing the sneak key.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("sneak")
+        self._controls.keys = _held(self._controls.keys, _SNEAK, held=sneaking)
+        await self._tick()
+
+    async def jump(self) -> None:
+        """Press the jump key for one client tick: the next call releases it.
+
+        It does not make the player jump: the Group moves it up and down with `move`.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("jump")
+        self._controls.keys |= _JUMP
+        try:
+            await self._tick()
+        finally:
+            self._controls.keys &= ~_JUMP
+
+    async def tick(self) -> None:
+        """Send what the vanilla client sends on a tick in which the player does nothing.
+
+        Every movement call is one such tick, with its change: the keys held if they changed
+        (`player_input`), a sprint command if sprinting changed (`player_command`), the
+        movement packet the change calls for (position, rotation, both, or on-ground alone),
+        and `client_tick_end`. The position also goes on the 20th tick without one, as the
+        client reminds the server. Nothing waits for the server's tick: to move once per
+        server tick, call `sync` between calls.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("tick")
+        await self._tick()
+
+    async def _tick(self) -> None:
+        """Send one client tick for the pose and controls as they are now.
+
+        What it reports is kept only once every packet has gone, so a tick that failed to
+        send is reported again by the next.
+        """
+        before = self._replies.reported
+        reported = copy.deepcopy(before)
+        sends = _client_tick(self._replies.pose, self._controls, reported, self._replies.entity_id)
+        async with self._operation(self._timeout_s):
+            for name, fields in sends:
+                await self._connection.send(name, **fields)
+        if self._replies.reported is before:  # else a fresh player arrived while it sent
+            self._replies.reported = reported
+
+    def _require_play(self, operation: str) -> None:
+        """Raise ProtocolError, naming `operation`, unless the Bot is in play."""
+        if not self.in_play:
+            msg = f"{operation} needs a Bot in play, not one in {self._connection.state}"
+            raise ProtocolError(msg)
 
     async def sync(self) -> None:
         """Return once the server has sent everything caused by what it received before.
@@ -578,6 +907,11 @@ def status_probe(
         return True
 
     return probe
+
+
+def _held(keys: int, key: int, *, held: bool) -> int:
+    """`keys` with `key` held or released."""
+    return keys | key if held else keys & ~key
 
 
 def _field[T](fields: Mapping[str, object], name: str, kind: type[T]) -> T:
