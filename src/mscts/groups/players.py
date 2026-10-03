@@ -12,9 +12,9 @@ masked (ADR-0006). Vanilla starts every player's latency at 0
 player joined (`ServerCommonPacketListenerImpl.keepConnectionAlive`), so every latency these
 Groups see is 0 on vanilla (26.3 javap, #67).
 
-Both players join at the world spawn (`gamerule respawn_radius 0`), and the world is frozen
-with no mob near the spawn, so nothing but the Group changes what they see. Every setting is
-put back afterwards: every Group is played on the same two Instances.
+Both players join at the world spawn (`gamerule respawn_radius 0`), and the world is frozen.
+No mob spawns in a Fixture world (ADR-0013), so nothing but the Group changes what they see.
+Every setting is put back afterwards: every Group is played on the same two Instances.
 """
 
 import contextlib
@@ -42,22 +42,14 @@ PACKETS = (
 """The packets a window compares: the tab list, the other player's body and the chat."""
 
 _RULES = (
-    ("spawn_mobs", "false", "true"),
     ("respawn_radius", "0", "10"),
     ("player_movement_check", "false", "true"),
 )
 """Each game rule the Groups set, its value while they play, and vanilla's default after.
 
-No mob spawns while they play. Both players join at the world spawn, so each sees the other
+Both players join at the world spawn, so each sees the other
 at the same place on both Instances (#30). A join can repeat its first `player_position`, a
 race with the first tick, unless the movement check is off (docs/research/2026-09-26-join.md).
-"""
-
-_MOBS_AWAY = "tp @e[type=!minecraft:player] 2000 -60 2000"
-"""Move every mob the world already has out of the players' sight, before the world freezes.
-
-Where a mob stands depends on how long it has wandered, which differs between Instances, and
-each joining player would see the mobs near the spawn.
 """
 
 _GAME_MODES = ("creative", "adventure", "spectator", "survival")
@@ -66,7 +58,7 @@ _GAME_MODES = ("creative", "adventure", "spectator", "survival")
 
 @contextlib.asynccontextmanager
 async def _still_world(control: Control) -> AsyncIterator[None]:
-    """Set the rules, move the mobs away and freeze the world; on the way out, undo each.
+    """Set the rules and freeze the world; on the way out, undo each.
 
     Each undo runs even if another fails, and after the body however it ended.
     """
@@ -74,7 +66,6 @@ async def _still_world(control: Control) -> AsyncIterator[None]:
         for rule, value, default in _RULES:
             await control.run(f"gamerule {rule} {value}")
             undo.push_async_callback(control.run, f"gamerule {rule} {default}")
-        await control.run(_MOBS_AWAY)
         await control.run("tick freeze")
         undo.push_async_callback(control.run, "tick unfreeze")
         yield

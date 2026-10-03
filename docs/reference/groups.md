@@ -89,10 +89,9 @@ going away (`add_entity`, `set_entity_data`, `remove_entities`), and the server'
 (`system_chat`), for both players.
 
 Both players join at the world spawn (`gamerule respawn_radius 0`), with the check that repeats
-a joining player's first position off (`gamerule player_movement_check false`). No mob spawns
-(`gamerule spawn_mobs false`), the mobs already there are moved far away with `/tp`, and the
-world is frozen (`/tick freeze`). Once a Group is over, the rules are set back to vanilla's
-defaults and the world is unfrozen. The mobs stay where they were moved.
+a joining player's first position off (`gamerule player_movement_check false`), and the world
+is frozen (`/tick freeze`). Once a Group is over, the rules are set back to vanilla's defaults
+and the world is unfrozen.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
