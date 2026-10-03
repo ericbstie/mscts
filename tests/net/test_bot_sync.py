@@ -125,6 +125,8 @@ def test_the_second_request_is_sent_no_sooner_than_5_ms_after_the_first_answer_a
 
     _, answered, asked, _ = [t_ns for _, t_ns in barrier_times(transcript)]
     assert asked - answered >= 5_000_000
+    # The gap is a lower bound, which load can stretch past a shorter wait: pin the value.
+    assert bot_module.TICK_GAP_S == 0.005
 
 
 def test_the_fakes_tick_is_longer_than_the_tick_gap() -> None:

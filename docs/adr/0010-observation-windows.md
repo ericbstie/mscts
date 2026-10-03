@@ -235,8 +235,10 @@ second request made `sync` return before the tick's `block_update`.
    `tickServer`), and sends `award_stats` there while flushing is on, so a
    request that arrives after the drain waits for the next tick. The
    second request reaches the server at least 5 ms plus a round trip after
-   the server handled the first. A server whose pass, stalled, runs longer
-   than that can still take the second request in the first one's pass.
+   the server handled the first. A server whose pass runs longer than that
+   can still take the second request in the first one's pass: a pass that
+   handles a long queue of packets from many Bots, or one held up by a
+   garbage-collection pause.
    The 5 ms is a threshold on the server's pass, not on the Bot.
 
    The proof covers what the server does in its packet pass and the tick
