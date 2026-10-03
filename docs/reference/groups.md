@@ -100,8 +100,10 @@ and the world is unfrozen.
 | `players/mode-seen` | exact | none | `bob`'s game mode is changed with `/gamemode` to creative, adventure, spectator and survival, in turn, each in a window of its own. | none |
 | `players/server-full` | exact | none | The server lets in one player. `ada` joins, then `bob` tries to join and is refused. The refusal message is compared. | none |
 
-The tab list shows each player's latency, so it is compared. Vanilla sends 0 for a player who
-joined less than 15 seconds earlier, which every player in these Groups did.
+The tab list shows each player's latency, so it is compared. Vanilla sends 0 until it first
+measures a player's latency, 15 seconds after they join, so `bob`'s latency in
+`players/join-seen` is 0. About every 30 seconds, vanilla also sends every player's latency on
+its own. That update is never compared, because it comes at a different time on each server.
 
 Offline, a server makes each player's UUID from their name. A server that makes it another way
 shows the other player with another UUID, in the tab list and in their body.

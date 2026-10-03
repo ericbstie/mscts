@@ -4,6 +4,9 @@ Every test plays a Group against a fake server and reads the Transcript for what
 sent and the Marks. What a server answers is never asserted.
 """
 
+import asyncio
+import time
+import uuid
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import override
@@ -14,7 +17,7 @@ from mscts.codec.packets import Direction, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import players
-from mscts.net import ProtocolError
+from mscts.net import Endpoint, ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Mark, Transcript
 from tests.group.test_blocks import BlocksServer, sent
@@ -22,6 +25,7 @@ from tests.group.test_control import playing, tree
 from tests.net.fakes import JoinScript, Peer, join_server
 
 ADA, BOB, CONTROL = "ada", "bob", "control"
+BOB_UUID = uuid.UUID("8e289159-2034-3a16-96b9-9fa637848b3b")
 COMPARED = (
     "minecraft:player_info_update",
     "minecraft:player_info_remove",
@@ -52,10 +56,14 @@ class PlayersServer(BlocksServer):
     """A fake server that lets in `places` connections, refusing later ones as vanilla does.
 
     The ones it lets in join like vanilla and get their commands answered (`BlocksServer`).
+    When bob's connection ends, ada is told he left (`player_info_remove`), `remove_after_s`
+    later, as vanilla does on its next tick.
     """
 
     places: int | None = None
+    remove_after_s: float = 0.0
     _connections: int = field(default=0, init=False)
+    _peers: dict[str, Peer] = field(default_factory=dict, init=False)
 
     @override
     async def __call__(self, peer: Peer) -> None:
@@ -64,9 +72,24 @@ class PlayersServer(BlocksServer):
         if self.places is not None and self._connections > self.places:
             script = JoinScript(disconnect_in=State.LOGIN)
         else:
-            script = JoinScript(commands=COMMANDS, then=self._play)
+            script = JoinScript(commands=COMMANDS, then=self._together)
         with suppress(ConnectionError):
             await join_server(self.seen, script)(peer)
+
+    async def _together(self, peer: Peer) -> None:
+        """Play one player, and tell ada when bob has gone."""
+        player = self._player()
+        self._peers[player] = peer
+        try:
+            await self._play(peer)
+        finally:
+            del self._peers[player]
+            if player == BOB:
+                await asyncio.sleep(self.remove_after_s)
+                watcher = self._peers.get(ADA)
+                if watcher is not None:
+                    with suppress(ConnectionError):
+                        await watcher.send("minecraft:player_info_remove", uuids=[BOB_UUID])
 
 
 async def play(group_id: str, server: PlayersServer | None = None) -> Transcript:
@@ -99,6 +122,25 @@ def last_at(transcript: Transcript, bot: str) -> int:
     return max(event.t_ns for event in transcript.events if event.bot == bot)
 
 
+def ada_closed(transcript: Transcript) -> int:
+    """When ada's window closed: her own close Mark."""
+    (at,) = [mark.t_ns for mark in transcript.marks if mark.label == f"{OBSERVE_CLOSE} {ADA}"]
+    return at
+
+
+@pytest.fixture(autouse=True)
+def settled(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """When the Group waited for no player to be online, instead of polling the fake."""
+    waits: list[int] = []
+
+    async def until_no_player_online(endpoint: Endpoint) -> None:
+        del endpoint
+        waits.append(time.monotonic_ns())
+
+    monkeypatch.setattr(players, "until_no_player_online", until_no_player_online)
+    return waits
+
+
 def test_the_four_groups_are_exact_with_no_masks_or_prerequisites() -> None:
     default = ServerSpec(host="127.0.0.1", port=25566)
     ids = [group_id for group_id in GROUPS if group_id.startswith("players/")]
@@ -118,7 +160,9 @@ def test_the_four_groups_are_exact_with_no_masks_or_prerequisites() -> None:
 
 
 @pytest.mark.asyncio
-async def test_bob_joins_inside_the_window_after_ada_and_with_control_gone() -> None:
+async def test_ada_joins_once_control_has_gone_and_bob_joins_inside_the_window(
+    settled: list[int],
+) -> None:
     transcript = await play("players/join-seen")
 
     ((opened, closed),) = windows(transcript)
@@ -131,14 +175,20 @@ async def test_bob_joins_inside_the_window_after_ada_and_with_control_gone() -> 
     controls = [
         e for e in transcript.events if e.bot == CONTROL and e.packet.name == "minecraft:hello"
     ]
-    assert len(controls) == 2, "Control leaves before bob joins, and rejoins to undo"
-    assert controls[0].t_ns < hello_at(transcript, ADA)
+    assert len(controls) == 2, "Control leaves before ada joins, and rejoins to undo"
     assert controls[1].t_ns > closed.t_ns
+    control_gone = max(
+        e.t_ns for e in transcript.events if e.bot == CONTROL and e.t_ns < opened.t_ns
+    )
+    (waited,) = [at - transcript.start_ns for at in settled]
+    assert control_gone < waited < hello_at(transcript, ADA), (
+        "the server has removed Control before ada joins, so bob never sees it leave"
+    )
 
 
 @pytest.mark.asyncio
 async def test_bob_leaves_inside_the_window_after_both_joined() -> None:
-    transcript = await play("players/leave-seen")
+    transcript = await play("players/leave-seen", PlayersServer(remove_after_s=0.3))
 
     ((opened, closed),) = windows(transcript)
     assert opened.label == WINDOW
@@ -156,6 +206,13 @@ async def test_bob_leaves_inside_the_window_after_both_joined() -> None:
         if event.bot == ADA and event.packet.name == "minecraft:client_command"
     ]
     assert max(ada_requests) > last_at(transcript, BOB), "ada's barrier is after bob left"
+    removed = [
+        event.t_ns
+        for event in transcript.events
+        if event.bot == ADA and event.packet.name == "minecraft:player_info_remove"
+    ]
+    assert len(removed) == 1
+    assert removed[0] < ada_closed(transcript), "ada waits to see bob go, however late"
     control = sent(transcript, CONTROL)
     assert [command for t, command in control if t < opened.t_ns] == list(SET_UP)
     assert [command for t, command in control if t > closed.t_ns] == list(UNDO)
@@ -205,7 +262,9 @@ async def test_bob_is_refused_inside_the_window_when_ada_has_the_only_place() ->
     transcript = await play("players/server-full", server)
 
     ((opened, closed),) = windows(transcript)
-    assert opened.label == WINDOW
+    assert opened.label == f"{OBSERVE_OPEN} minecraft:system_chat", (
+        "the world is not frozen: only a chat message is compared in play"
+    )
     assert hello_at(transcript, ADA) < opened.t_ns < hello_at(transcript, BOB)
     refusals = [
         event

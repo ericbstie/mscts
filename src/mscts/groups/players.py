@@ -9,8 +9,9 @@ gets when the server is full.
 The tab list shows each player's latency, measured by the server, so it is compared, not
 masked (ADR-0006). Vanilla starts every player's latency at 0
 (`CommonListenerCookie.createInitial`) and measures it first with a keep-alive 15 s after the
-player joined (`ServerCommonPacketListenerImpl.keepConnectionAlive`), so every latency these
-Groups see is 0 on vanilla (26.3 javap, #67).
+player joined (`ServerCommonPacketListenerImpl.keepConnectionAlive`), so the second player's
+latency is 0 when it joins in `players/join-seen` (26.3 javap, #67). The latency update vanilla
+sends on a clock is a heartbeat packet, which no window compares (`compare.HEARTBEAT_PAYLOADS`).
 
 Both players join at the world spawn (`gamerule respawn_radius 0`), and the world is frozen.
 No mob spawns in a Fixture world (ADR-0013), so nothing but the Group changes what they see.
@@ -22,7 +23,9 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 
 from mscts.group import Control, GroupContext, group
+from mscts.groups.blocks import FEEDBACK_TIMEOUT_S
 from mscts.net import ProtocolError
+from mscts.settle import until_no_player_online
 from mscts.spec import ServerSpec
 
 FIRST = "ada"
@@ -75,11 +78,13 @@ async def _still_world(control: Control) -> AsyncIterator[None]:
 async def join_seen(context: GroupContext) -> None:
     """The second player joins next to the first, and each sees the other."""
     async with _still_world(context.control):
+        # Control leaves, so the second player sees only the first one: Control rejoins to
+        # undo the rules once the window is over. A server removes a closed player a tick
+        # later, so the first player joins only once it has, and never sees Control go.
+        await context.control.leave()
+        await until_no_player_online(context.endpoint)
         first = await context.bot(FIRST)
         await first.join()
-        # Control leaves, so the second player sees only the first one join it: Control
-        # rejoins to undo the rules once the window is over.
-        await context.control.leave()
         second = await context.bot(SECOND)
         async with context.observe(*PACKETS):
             await second.join()
@@ -95,6 +100,9 @@ async def leave_seen(context: GroupContext) -> None:
         await second.join()
         async with context.observe(*PACKETS):
             await second.close()
+            # The server removes the player a tick later: a barrier covers only what the
+            # first player itself sent, so it waits to see the second one go.
+            await first.expect("minecraft:player_info_remove", timeout_s=FEEDBACK_TIMEOUT_S)
 
 
 @group("players/mode-seen")
@@ -121,13 +129,16 @@ def _one_player(spec: ServerSpec) -> ServerSpec:
 async def server_full(context: GroupContext) -> None:
     """The first player takes the only place; the second tries to join and is refused.
 
-    The refusal is compared as the second player's `login_disconnect`. A server that lets it
-    in instead sends it the login, and that is the Divergence.
+    The refusal is compared as the second player's `login_disconnect`: a window compares
+    every packet before play. A server that lets it in instead sends it the login, and that
+    is the Divergence. In play, the window compares only `system_chat` (a join message, if
+    the server let the second player in), because the world is not frozen here: Control
+    would take the only place.
     """
     first = await context.bot(FIRST)
     await first.join()
     second = await context.bot(SECOND)
-    async with context.observe(*PACKETS):
+    async with context.observe("minecraft:system_chat"):
         with contextlib.suppress(ProtocolError):  # the refusal, which the Transcript holds
             await second.join()
         # Closed inside the window: the server has closed its side, and the end of the
