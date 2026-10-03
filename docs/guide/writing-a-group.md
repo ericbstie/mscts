@@ -126,6 +126,11 @@ async with context.observe(until="minecraft:chunk_batch_finished"):
     await bot.join()
 ```
 
+A joining player hears every mob within 16 blocks of where it spawns,
+even before the server has sent it any chunks. Before a join window,
+stop mobs spawning (`gamerule spawn_mobs false`) and kill every mob near
+the spawn with `context.control.run`.
+
 A Group with no window compares everything its Bots receive. With one,
 what a Bot receives before it is in the world (the status, logging in and
 configuration) is still compared whole.
