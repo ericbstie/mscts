@@ -36,6 +36,9 @@ _CHUNK = "minecraft:level_chunk_with_light"
 _MOVEMENT_CHECK = "gamerule player_movement_check"
 """The game rule whose check makes a join repeat its first `player_position` (by javap,
 `ServerGamePacketListenerImpl.shouldCheckPlayerMovement`)."""
+_SPAWN_MOBS = "gamerule spawn_mobs"
+"""Off in every Fixture world (ADR-0013); the server falls back to on, silently, if it
+cannot read the file the Adapter wrote."""
 
 type Window = tuple[Counter[str], list[tuple[int, int]]]
 """A window's play packet names with their counts, and the positions of its chunks."""
@@ -62,12 +65,13 @@ JOIN_UNTIL = Group(id="probe/join-until", run=_join_until_the_first_batch)
 
 
 async def _query_the_rules(context: GroupContext) -> None:
-    said = await context.control.run(_MOVEMENT_CHECK)
-    assert any(b"true" in packet.payload for packet in said), said
+    for rule, value in ((_MOVEMENT_CHECK, b"true"), (_SPAWN_MOBS, b"false")):
+        said = await context.control.run(rule)
+        assert any(value in packet.payload for packet in said), (rule, said)
 
 
 QUERY = Group(id="probe/query-rules", run=_query_the_rules)
-"""A probe Group, not registered: it asks Control for the value of the game rule."""
+"""A probe Group, not registered: it asks Control for the values of the game rules."""
 
 
 def window_of(transcript: Transcript) -> Window:
@@ -123,7 +127,8 @@ async def test_a_join_inside_a_window_closed_by_a_packet_holds_the_same_packets_
                 differing.append(f"play {number}: names {one[0] - other[0]} / {other[0] - one[0]}")
             if one[1] != other[1] or not one[1]:
                 differing.append(f"play {number}: chunks {one[1]} / {other[1]}")
-        # The Group undid its Fixture, on both: Control rejoined and set the rule back.
+        # The Group undid its Fixture, on both: Control rejoined and set the rule back. And
+        # the Instance honoured the Adapter's game_rules.dat: mob spawning is still off.
         for endpoint in (first.endpoint, second.endpoint):
             await play(QUERY, endpoint)
 
