@@ -75,18 +75,21 @@ Starts vanilla and the Candidate, plays the chosen Groups against both,
 stops both and prints the Report to stdout. Progress goes to stderr.
 
 The Report starts with `Running tests against <adapter name>` and the
-exact build of the Candidate it tested, lists each differing test case once, then gives the total Run time in seconds. Known
+exact build of the Candidate it tested. Then it lists each test case of
+each Group on a line of its own, marked ✓ if it passed or ✗ if not. Known
 test cases have a [title](/reference/test-cases); others keep just their
-name. Gameplay and network traffic differences share the list. Skipped or
-failed Groups follow it with their reasons. If nothing differed and no
-Group was skipped or failed, the Report says `No differences.`.
+name. A test case that differs only in network traffic passes, marked
+`(network traffic only)`. A Group with no test cases to list has one line
+with its reasons. The Report ends with the totals, the score and the total
+Run time in seconds. [Reading a Report](/guide/reading-a-report) explains
+each line.
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
 | `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
-| `-v`, `--verbose` | off | Add installed versions, Target, repetitions, both values for each difference, and time per Group. |
+| `-v`, `--verbose` | off | Add installed versions, Target, repetitions, both values under each test case that differs, and time per Group. |
 | `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |
 
 Verbose values appear directly under their test case. Distinct values from

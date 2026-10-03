@@ -1,30 +1,54 @@
 # Reading a Report
 
-A Report lists every difference mscts found between vanilla and the
-Candidate. It does not grade the Candidate or hide differences the
-Candidate considers intentional.
+A Report lists every test case mscts compared, each marked ✓ if the
+Candidate passed it or ✗ if not. Then it gives the totals and a score. It
+does not hide differences the Candidate considers intentional.
 
 A default Run against Pumpkin produced this Report:
 
 ```
 Running tests against pumpkin
 Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
-- Server list description  status_response.description
-- Unused secure chat flag  status_response.enforceSecureChat
-- Server list icon  status_response.favicon
-- Server list player sample  status_response.players.sample
+✓ status/basic/status_response.description Server list description (network traffic only)
+✓ status/basic/status_response.description.text Server list description text
+✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
+✓ status/basic/status_response.favicon Server list icon (network traffic only)
+...
+19 passed, 0 failed
+Score: 100% (19 of 19 test cases pass)
 Took 26.1 s
 ```
 
 The first line names the Candidate's Adapter. The second names the exact
 build tested: its version, its commit where the publisher names one, and
-the start of the file's sha256. Each difference line has a [test case title](/reference/test-cases), then its name. A test
-case without a title keeps just its name. Each name appears once across
-all Groups and repetitions, even if several values differed.
+the start of the file's sha256.
 
-Gameplay and network traffic differences share the list. If nothing
-differed and no Group was skipped or failed, it says `No differences.`.
-The final line is the total Run time in seconds.
+Each line after that is one test case of one Group, in the order the
+Groups were played. It starts with ✓ or ✗, then the Group id and the test
+case name joined by `/`, then the [test case title](/reference/test-cases).
+A test case without a title keeps just its name. A test case that two
+Groups compare has a line in each, but only one per Group, however many
+repetitions or values differed.
+
+The last three lines are the totals, the score and the total Run time in
+seconds.
+
+## Score
+
+The score is the share of scored test cases that passed. `Score: 100%`
+means that in every repetition of every Group, the Candidate sent what
+vanilla sent, or something the vanilla client reads the same way. It
+covers only the test cases this Run compared: a Run of fewer Groups
+scores fewer test cases.
+
+A test case fails if it differs in gameplay in any repetition. The score
+is rounded down to one decimal, so only a Run where every scored test case
+passes shows 100%. If no test case was scored, the score is `none`.
+
+The totals line counts the lines that passed and failed, then any that
+were not scored, such as `0 passed, 3 failed (1 not tested), 1 error (not
+scored)`. [Skipped or failed Groups](#skipped-or-failed-groups) says which
+lines count how.
 
 ## Test cases
 
@@ -34,7 +58,7 @@ inside `players` in the status response. Every line in the Report
 keeps the name of its test case, after its title when one is known.
 
 - `[]` stands for any element of a list, so all the elements share one test
-  case: `status_response.players.sample[].name`. The default Report lists the test case once.
+  case: `status_response.players.sample[].name`. The Report lists the test case once per Group.
 - Repeats of a packet share one test case too, so a name is the same in
   every run.
 - A key that is not a plain word is written as a quoted string in
@@ -50,20 +74,20 @@ keeps the name of its test case, after its title when one is known.
 A value that a Mask hides, such as a sound's random seed, is not a test
 case, unless one server leaves it out.
 
-Each test case is identical, different, or different in network traffic
-only. One that is different in any Group or any run counts as different.
-A network traffic difference belongs to the test case of the value as it
-was sent. When Pumpkin sends the description `{"text": "mscts"}` for
-vanilla's `"mscts"`, `status_response.description` is different in
-network traffic only, and `status_response.description.text`, the text a
-player reads, is identical.
+In each Group, a test case is identical, different in network traffic
+only, or different. A network traffic difference belongs to the test case
+of the value as it was sent. When Pumpkin sends the description
+`{"text": "mscts"}` for vanilla's `"mscts"`, `status_response.description`
+is different in network traffic only, and
+`status_response.description.text`, the text a player reads, is
+identical.
 
 ## Network traffic differences
 
-The four differences in the Pumpkin example are network traffic:
-their bytes differ, but the vanilla client decodes both to the same thing.
-They stay in the list because a server developer may want to match
-vanilla byte for byte. Compliance scores exclude them.
+The test cases marked `(network traffic only)` in the Pumpkin example
+pass: their bytes differ, but the vanilla client decodes both to the same
+thing. The Report marks them because a server developer may want to match
+vanilla byte for byte. `--verbose` shows their values.
 
 In a chunk, mscts shows a section's palette with its ids in ascending
 order, and its packed data to match, rather than as the server sent
@@ -83,14 +107,16 @@ other difference counts as gameplay until a rule proves otherwise.
 
 ## Skipped or failed Groups
 
-After the test cases, the Report names any Group it could not compare,
-with its reason. This example is rendered from illustrative Report inputs:
+A Group with no test cases to list has one line of its own: its id and
+its reasons. This example is rendered from illustrative Report inputs:
 
 ```
 Running tests against pumpkin
-- Player limit  status_response.players.max
-- Server list ping response  status:pong_response.timestamp
-- Not tested: prerequisite status/basic was mismatch  join/basic
+✗ status/basic/status_response.players.max Player limit
+✗ status/ping/status:pong_response.timestamp Server list ping response
+✗ join/basic Not tested: prerequisite status/basic was mismatch
+0 passed, 3 failed (1 not tested)
+Score: 0% (0 of 3 test cases pass)
 Took 41 s
 ```
 
@@ -100,10 +126,14 @@ failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, closed the connection, did not answer in time,
 or still had players online from the Group before. If this happens while
 mscts waits for the players of the Group before to leave, it does not
-play the Group. Different packet counts for a Bot also name the Group.
+play the Group. Different packet counts for a Bot also give the Group a
+line.
 
-A Group appears once, with each distinct reason from its repetitions.
-Skipped or failed Groups never produce a misleading `No differences.`.
+The line names each distinct reason from the Group's repetitions once. It
+counts as one test case: a failing one, unless every reason is an `Error`.
+Then the line is not scored, because the fault lies with mscts or
+vanilla, not the Candidate. A Group the Candidate failed after comparing
+some test cases keeps their lines too.
 
 ## Total time
 
@@ -119,8 +149,8 @@ those Measurements in the Run result.
 
 ## Verbose values and Group times
 
-Add `-v` or `--verbose` to see both values below each difference and the
-installed versions at the top:
+Add `-v` or `--verbose` to see both values below each test case that
+differs, and the installed versions at the top:
 
 ```sh
 uv run mscts run --candidate pumpkin --verbose
@@ -132,17 +162,17 @@ Running tests against pumpkin
   Candidate    pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
-- Server list description  status_response.description
+✓ status/basic/status_response.description Server list description (network traffic only)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-- Unused secure chat flag  status_response.enforceSecureChat
+✓ status/basic/status_response.description.text Server list description text
+✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
   vanilla leaves it out, pumpkin sends true
-- Server list icon  status_response.favicon
-  vanilla leaves it out, pumpkin sends null
-- Server list player sample  status_response.players.sample
-  vanilla leaves it out, pumpkin sends []
+...
 Group times
   status/basic 0 s
   status/ping 0 s
+19 passed, 0 failed
+Score: 100% (19 of 19 test cases pass)
 Took 16.7 s
 ```
 
@@ -153,7 +183,7 @@ it never supplies this header. Without installation provenance, the header
 says `installed version unknown`.
 
 Identical differences from repetitions appear once; distinct values stay
-under the same test case. List values also name their element's path.
+under the same line. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts
@@ -191,11 +221,12 @@ The default Run against Pumpkin wrote:
 
 Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 
-- Server list description `status_response.description`
-- Unused secure chat flag `status_response.enforceSecureChat`
-- Server list icon `status_response.favicon`
-- Server list player sample `status_response.players.sample`
+- ✓ `status/basic/status_response.description` Server list description (network traffic only)
+- ✓ `status/basic/status_response.description.text` Server list description text
+...
 
+19 passed, 0 failed\
+Score: 100% (19 of 19 test cases pass)\
 Took 13.3 s
 ```
 

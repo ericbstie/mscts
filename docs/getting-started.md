@@ -81,17 +81,21 @@ Report to stdout, so `> report.txt` captures only the Report.
 ```
 Running tests against pumpkin
 Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
-- Server list description  status_response.description
-- Unused secure chat flag  status_response.enforceSecureChat
-- Server list icon  status_response.favicon
-- Server list player sample  status_response.players.sample
+✓ status/basic/status_response.description Server list description (network traffic only)
+✓ status/basic/status_response.description.text Server list description text
+✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
+✓ status/basic/status_response.favicon Server list icon (network traffic only)
+...
+19 passed, 0 failed
+Score: 100% (19 of 19 test cases pass)
 Took 26.1 s
 ```
 
-Pumpkin sends four status values in a different form from vanilla. These are
-network traffic differences: the vanilla client decodes each pair to the
-same thing, so none of them count against Pumpkin.
-[Reading a Report](/guide/reading-a-report) explains the list and the test case names.
+Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
+sends four status values in a different form from vanilla. The vanilla
+client decodes each pair to the same thing, so these test cases pass, marked
+"network traffic only".
+[Reading a Report](/guide/reading-a-report) explains the lines, the totals and the score.
 
 ## Next
 

@@ -2011,9 +2011,11 @@ class ReportJsonError(ValueError): ...
 def render_text(report: Report, *, verbose: bool = False) -> str: ...
 def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # report.md (#190): what render_text says, as Markdown. "# <first line>"; the build line
-# (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks; each entry "- <title> `<name>`",
+# (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks;
+# each line "- <✓|✗> `<group>/<test case>` <title>" (no list when there is no line),
 # its verbose values nested ("  - "), with values and paths as code spans; "## Group
-# times" and a list; the total last. Blocks are separated by a blank line. Text mscts did
+# times" and a list; the totals, score and total time last, one paragraph joined by hard
+# breaks. Blocks are separated by a blank line. Text mscts did
 # not write is shown as it is: code spans fence it with more backticks than it holds, and
 # prose escapes \ ` * _ [ ] < > & | ~ and shows a line break as \n or \r, so server text
 # never starts a line of its own. Both renderers write one _Document.
@@ -2022,15 +2024,16 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # Unknown test cases are still reported; the table never filters Comparisons.
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>";
 # #156: then "Candidate: <adapter name> <installed_version>" when the build is known;
-# one plain line per differing test case, deduplicated across Groups and repetitions,
-# with its TITLES title and name, or its bare name when unknown. Gameplay and network
-# traffic share the list. Then blocked, error and failed Groups, with id and reason;
-# Group-level bot differences are retained too. "No differences." only if the list
-# is empty and every Group was compared. Last line "Took <seconds> s", rounded to
-# tenths, including launch and shutdown. No values, section headings, Notes, legend,
-# counts or per-Measurement timing table.
+# #101 (amends ADR-0012): one line per case_results line whose result is in _LISTED
+# (every result today): "<✓|✗> <group>/<test case> <title>" (bare name when untitled),
+# " (network traffic only)" when it passed that way; a Group line is
+# "✗ <group> <reasons>". Then "<p> passed, <f> failed[ (<n> not tested)][, <e> error[s]
+# (not scored)]", "Score: <percent>% (<p> of <scored> test case[s] pass[es])" with the
+# percent rounded down to tenths (".0" dropped), or "Score: none (no test case was
+# scored)", and last "Took <seconds> s", rounded to tenths, including launch and
+# shutdown. No section headings, Notes, legend or per-Measurement timing table.
 # #10: verbose adds installed versions, Target and repetitions at the top, distinct
-# pairs of actual values directly under each difference, and total time per Group
+# pairs of actual values directly under each line that differs, and total time per Group
 # across repetitions (play both sides + Comparison; excludes startup/shutdown).
 # Blocked Groups say "not played"; older results without durations say "not recorded".
 ```

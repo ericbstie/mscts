@@ -58,8 +58,9 @@ def test_a_run_prints_the_report_and_says_what_it_does(
     code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "2")
 
     assert code == 0
-    assert out.startswith("Running tests against pumpkin\nNo differences.\nTook "), out
-    assert len(out.splitlines()) == 3
+    assert out.startswith("Running tests against pumpkin\n✓ status/basic/"), out
+    assert "✗" not in out, out
+    assert "\nScore: 100% (11 of 11 test cases pass)\nTook " in out, out
     assert err.index("starting vanilla and pumpkin ...") < err.index("running status/basic")
     assert "running status/ping" in err
     assert "mscts Report" not in err
@@ -75,9 +76,9 @@ def test_a_run_with_divergences_still_exits_0(
     assert code == 0
     assert out.startswith(
         "Running tests against pumpkin\n"
-        "- Server list description text  status_response.description.text\nTook "
+        "✗ status/basic/status_response.description.text Server list description text\n"
     ), out
-    assert len(out.splitlines()) == 3
+    assert "\n9 passed, 2 failed\n" in out, out
 
 
 def test_the_cli_measures_the_total_run_time(
@@ -90,7 +91,7 @@ def test_the_cli_measures_the_total_run_time(
     code, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
 
     assert code == 0
-    assert out == "Running tests against pumpkin\nNo differences.\nTook 41.2 s\n"
+    assert out.endswith("\nTook 41.2 s\n"), out
 
 
 def test_the_group_glob_picks_the_groups(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:

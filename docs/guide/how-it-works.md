@@ -67,8 +67,8 @@ closes the connection, stops answering, still has players online from the
 Group before, or sends a value that makes the Group fail when it did not fail
 on vanilla, the Verdict is `mismatch`, led by a `failed` Divergence that says what
 happened. It is never `error`.
-Compliance scores leave `error` out, so a Candidate must not be able to
-score better by crashing.
+The Report's score leaves `error` out, so a Candidate cannot score
+better by crashing.
 
 ## Gameplay and network traffic differences
 
@@ -87,8 +87,7 @@ So every Divergence is one of two kinds:
 The rules that decide this form the **canonical table**. Each rule rewrites
 a value into one canonical form, and each one cites the client code that
 proves the two forms are equal. mscts still reports network traffic
-differences alongside gameplay differences, but compliance scores count
-only gameplay ones.
+differences, but a test case that differs only in network traffic passes.
 
 A difference is only network traffic where such a rule says so. Today the
 canonical table covers the server list answer. Any other difference counts
