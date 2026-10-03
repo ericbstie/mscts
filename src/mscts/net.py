@@ -2,6 +2,9 @@
 
 import asyncio
 import contextlib
+import fcntl
+import sys
+import termios
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Self
@@ -130,6 +133,7 @@ class Connection:
         self._closed = False
         self._answer: Answer | None = None
         self._last_arrival_ns: int | None = None
+        self._stamped_bytes = 0  # every byte the reader has read, each stamped as it was
         self._reading = asyncio.get_running_loop().create_task(
             self._read_forever(), name=f"mscts Connection reader ({bot})"
         )
@@ -184,6 +188,23 @@ class Connection:
         `recv` took the Packet, so it holds when the caller was busy meanwhile.
         """
         return self._last_arrival_ns
+
+    async def caught_up(self) -> None:
+        """Return once the reader has stamped every byte that had reached the socket on entry.
+
+        The backlog is what waits then in the kernel's receive buffer (FIONREAD, on Linux
+        and macOS) and in the stream's buffer. So whatever arrived before this was called
+        is stamped before any time taken after it returns, however busy the event loop
+        was. Bytes that arrive meanwhile are not waited for, so a stream with no gaps
+        ends it too. It also returns once the reader has ended.
+        """
+        # asyncio has no public view of what its StreamReader holds (CPython: `_buffer`).
+        held = len(getattr(self._reader, "_buffer", b""))
+        target = self._stamped_bytes + held + _unread(self._writer)
+        while True:
+            if self._reading.done() or self._stamped_bytes >= target:
+                return
+            await asyncio.sleep(0)  # a turn of the loop: the transport reads, the reader stamps
 
     async def send(self, name: str, /, **fields: object) -> None:
         """Encode serverbound packet `name` with `fields` in the current State, and send it.
@@ -289,6 +310,7 @@ class Connection:
             while True:
                 chunk = await self._reader.read(_READ_SIZE)
                 t_ns = self._transcript.now_ns()
+                self._stamped_bytes += len(chunk)
                 if not chunk:
                     self._arrivals.put_nowait(self._end_of_stream())
                     return
@@ -367,6 +389,18 @@ class Connection:
         if self._closed:
             msg = "the connection is closed"
             raise ConnectionClosedError(msg)
+
+
+def _unread(writer: asyncio.StreamWriter) -> int:
+    """How many received bytes wait in the socket's kernel buffer (0 once it is closed)."""
+    sock = writer.get_extra_info("socket")
+    if sock is None or sock.fileno() < 0:
+        return 0
+    try:
+        answer = fcntl.ioctl(sock.fileno(), termios.FIONREAD, b"\0" * 4)
+    except OSError:
+        return 0
+    return int.from_bytes(answer, sys.byteorder, signed=True)
 
 
 def _state_after(packet: Packet) -> State:

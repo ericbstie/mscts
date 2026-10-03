@@ -106,9 +106,10 @@ def test_a_block_update_after_the_close_or_never_is_told_apart_from_one_inside(
     assert "watcher_update=none(None)" in side.line()
 
 
-def test_summarise_times_each_bots_sync_and_names_the_bots_whose_sync_was_capped(
+def test_summarise_times_each_bots_sync_and_has_no_capped_column(
     probe_loop: types.ModuleType,
 ) -> None:
+    """`sync` is one pair since #115 and leaves no Mark, so there is nothing capped to name."""
     transcript = _blank()
     record = transcript.record
     request = _packet("minecraft:client_command", direction=Direction.SERVERBOUND)
@@ -119,25 +120,20 @@ def test_summarise_times_each_bots_sync_and_names_the_bots_whose_sync_was_capped
         record("control", packet, t_ns=t_ms * _MS)
     for t_ms, packet in [(103, request), (104, answer), (104, request), (105, answer)]:
         record("watcher", packet, t_ns=t_ms * _MS)
-    transcript.marks.append(Mark(t_ns=160 * _MS, label="sync:capped watcher"))
     transcript.marks.append(Mark(t_ns=170 * _MS, label="observe:close"))
 
     side = probe_loop.summarise(transcript)
 
     assert side.sync_ms == {"control": 51.0, "watcher": 2.0}
-    assert side.capped == ("watcher",)
     assert "control_sync=51.0" in side.line()
-    assert "capped=watcher" in side.line()
+    assert not hasattr(side, "capped")
+    assert "capped=" not in side.line()
 
 
-def test_a_side_with_no_capped_sync_says_so_and_a_bot_that_never_synced_has_no_time(
-    probe_loop: types.ModuleType,
-) -> None:
+def test_a_bot_that_never_synced_has_no_time(probe_loop: types.ModuleType) -> None:
     side = probe_loop.summarise(_transcript(watcher_update=True, control_update_ms=165))
 
-    assert side.capped == ()
     assert side.sync_ms == {"control": None, "watcher": None}
-    assert "capped=none" in side.line()
     assert "control_sync=None" in side.line()
 
 

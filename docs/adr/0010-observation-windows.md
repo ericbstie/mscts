@@ -208,3 +208,65 @@ counter, so whether it falls inside a window is timing
    differs.
 3. The position resend (`move_entity_pos` every 60 ticks) stays compared,
    as item 3 says, until PLAN.md's open question on it is decided.
+
+## Amendment (2026-10-03, #115): the barrier proves a tick by its wait
+
+The #88 amendment's proof was the gap between a pair's two answers, as the
+Bot's reader stamped them. A stall in the Bot's own loop (a GC pause,
+another Bot's reader decoding a chunk burst) stamps the second answer late,
+so a pair answered in one pass can look a tick apart (audit 2026-10-02 H1).
+Against a fake that keeps time in its own thread, a 12 ms stall after the
+second request made `sync` return before the tick's `block_update`.
+
+1. **The barrier is one pair, and the proof is the wait between its
+   requests.** `Bot.sync` sends a request, takes its answer, waits until
+   `TICK_GAP_S` (5 ms) has passed since that answer arrived, and only then
+   sends the second request. A pass lasts under 5 ms (answers from one pass
+   came 0.1 to 3.6 ms apart), so the second request lands after the pass
+   that answered the first, and its answer comes from a later tick, after
+   that tick sent what it changed. A stall can only lengthen the wait, so
+   it never turns a one-pass pair into a tick. This replaces the #88
+   amendment's items 1 to 4: item 2's objection holds for the gap as a
+   proof, not for the wait.
+2. **It rests on vanilla's pass.** A server that answers on its network
+   thread, with no tick between, gets the same wait and proves nothing by
+   it, as it did under the #88 cap. Vanilla answers `client_command` in
+   its packet pass (`processQueuedPackets` drains the whole queue before
+   `tickServer`), and sends `award_stats` there while flushing is on, so a
+   request that arrives after the drain waits for the next tick. The
+   second request reaches the server at least 5 ms plus a round trip after
+   the server handled the first. A server whose pass runs longer than that
+   can still take the second request in the first one's pass: a pass that
+   handles a long queue of packets from many Bots, or one held up by a
+   garbage-collection pause.
+   The 5 ms is a threshold on the server's pass, not on the Bot.
+
+   The proof covers what the server does in its packet pass and the tick
+   after it. A chat command is not run there: vanilla queues it as a
+   server task, run between ticks. So a Group that sends a command waits
+   for its feedback before the window closes, as `Control.run` and
+   `blocks._play` do; only then does the barrier cover what the command
+   changed.
+3. **A request takes only an answer stamped after it was sent.** An
+   `award_stats` stamped before the request went out (a server that
+   answered twice, or a plugin that sends one unasked) is taken, passed
+   over, and leaves the Mark `sync:passed-over <Bot name>` (audit H5).
+   Taken as the answer, it made the barrier one round trip, and left the
+   real answer queued to offset every later barrier. Before it stamps the
+   request, the Bot's reader stamps the backlog: every byte waiting then
+   in the kernel's buffer and the stream's. So a stray that arrived while
+   the Bot's loop was busy is still stamped before the request, as long as
+   it fit in the Bot's receive buffer. Bytes that arrive meanwhile are not
+   waited for, so a server that never pauses cannot hold the barrier up.
+   A stray that reaches the socket after the request is sent is taken as
+   its answer, and so is one whose frame was still partly in transit. So
+   is one the server sent earlier but TCP flow control held back: while
+   the loop is busy, a large burst fills the Bot's receive window, and
+   what follows waits in the server's send buffer, where FIONREAD cannot
+   see it. The fix covers what reached the Bot before, not a server that
+   sends statistics unasked at any moment; #169 tracks that case.
+4. **No cap Mark.** With no retries there is no cap, so `SYNC_MAX_TRIPS`
+   and the `sync:capped` Mark go. No Mark replaces that one: under the wait, a
+   pair's answers always arrive at least `TICK_GAP_S` apart, so their gap
+   cannot show a server with no tick. The Transcript still holds both
+   requests and both answers, with their times.
