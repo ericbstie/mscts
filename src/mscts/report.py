@@ -9,7 +9,7 @@ from enum import StrEnum
 from uuid import UUID
 
 from mscts.case_titles import TITLES
-from mscts.compare import ABSENT, Divergence, Observability, Outcome
+from mscts.compare import ABSENT, TICK_PATH, Divergence, Observability, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
 from mscts.target import Target
 
@@ -452,9 +452,9 @@ def _values(report: Report, group: GroupResult, test_case: str) -> tuple[_Line, 
 
 
 def _difference_values(report: Report, divergence: Divergence) -> _Line:
-    path: _Line = (
-        (_Literal(divergence.path), ": ") if divergence.path and "[" in divergence.path else ()
-    )
+    # A list element's path says which element; the tick path says the values are ticks.
+    shown = divergence.path and ("[" in divergence.path or divergence.path == TICK_PATH)
+    path: _Line = (_Literal(divergence.path), ": ") if shown else ()
     return (
         *path,
         f"{report.reference.name} ",

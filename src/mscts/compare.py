@@ -114,6 +114,12 @@ for each Bot with the Bot's name after a space (`tick:3 alice`), and one with no
 Bot that has no Mark of its own for that tick.
 """
 
+TICK_PATH = "tick"
+"""The path of the `field` Divergence of a packet a tick-exact Group got on different ticks.
+
+Its values are the two ticks, counting from 1 since the freeze (`TICK_MARK`).
+"""
+
 OBSERVE_CLOSE = "observe:close"
 """The label of the Mark that closes an Observation window.
 
@@ -490,8 +496,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     In a tick-exact Group (its Transcript has `TICK_MARK` Marks), a play Packet's key holds
     the tick it arrived on too (`_Ticks`). Between two matched pairs, the n-th `missing`
     and the n-th `unexpected` Packet that differ only in their tick are one Packet sent on
-    another tick: a `field` Divergence at path `tick`, with values `tick <a>` and
-    `tick <b>`, and the packet's test case, then the two Packets' differences, as for a
+    another tick: a `field` Divergence at path `TICK_PATH`, with the two ticks as its
+    values, and the packet's test case, then the two Packets' differences, as for a
     matched pair.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
@@ -2532,9 +2538,9 @@ def _diff_late(
         index=index,
         kind="field",
         packet=name,
-        path="tick",
-        reference=f"tick {reference.tick}",
-        candidate=f"tick {candidate.tick}",
+        path=TICK_PATH,
+        reference=reference.tick,
+        candidate=candidate.tick,
         test_case=_test_case(state, name, ()),
     )
     yield from _diff_matched(bot, index, reference, candidate, compared)

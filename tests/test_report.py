@@ -6,7 +6,15 @@ from uuid import UUID
 
 import pytest
 
-from mscts.compare import ABSENT, Divergence, DivergenceKind, Observability, Outcome, Verdict
+from mscts.compare import (
+    ABSENT,
+    TICK_PATH,
+    Divergence,
+    DivergenceKind,
+    Observability,
+    Outcome,
+    Verdict,
+)
 from mscts.report import Report, render_markdown, render_text
 from mscts.run import GroupResult, SideSummary
 from mscts.target import TARGET
@@ -443,3 +451,16 @@ def test_the_report_has_no_colour_unless_asked() -> None:
     report = _report(_result(_compared("a")), _result(_verdict(_field("b"))))
     assert "\x1b" not in render_text(report)
     assert "\x1b" not in render_markdown(report)
+
+
+def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
+    # #23: a tick-exact Group's packet sent on another tick.
+    late = replace(
+        _field("block_update"),
+        packet="minecraft:block_update",
+        path=TICK_PATH,
+        reference=1,
+        candidate=2,
+    )
+    text = render_text(_report(_result(_verdict(late))), verbose=True)
+    assert "Single block change\n  tick: vanilla sends 1, pumpkin sends 2\n" in text, text

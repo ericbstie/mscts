@@ -1,7 +1,7 @@
 """Tick windows: a tick-exact Group compares what each Bot received on each tick."""
 
 from mscts.codec.packets import Packet
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Outcome, compare
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, Outcome, compare
 from mscts.transcript import Transcript
 from tests.compare.build import divergence, packet, transcript
 
@@ -38,9 +38,9 @@ def test_a_packet_one_tick_late_is_a_divergence_naming_both_ticks() -> None:
         divergence(
             "field",
             packet="minecraft:block_update",
-            path="tick",
-            reference="tick 1",
-            candidate="tick 2",
+            path=TICK_PATH,
+            reference=1,
+            candidate=2,
             test_case="block_update",
         ),
     ), verdict
@@ -54,7 +54,7 @@ def test_a_packet_late_and_different_shows_the_ticks_then_the_difference() -> No
     )
 
     assert [(d.kind, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
-        ("field", "tick", "tick 1", "tick 2"),
+        ("field", TICK_PATH, 1, 2),
         ("field", None, "01", "02"),
     ], verdict
 
@@ -66,9 +66,7 @@ def test_a_packet_after_the_last_step_is_on_the_tick_after_it() -> None:
         [],
     )
 
-    assert [(d.reference, d.candidate) for d in verdict.divergences] == [("tick 2", "tick 1")], (
-        verdict
-    )
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [(2, 1)], verdict
 
 
 def test_a_packet_on_a_tick_the_other_side_has_not_is_missing_there() -> None:
@@ -100,9 +98,9 @@ def test_a_bot_with_no_tick_mark_of_its_own_ends_its_tick_at_the_unnamed_one() -
         [],
     )
 
-    assert [(d.bot, d.reference, d.candidate) for d in verdict.divergences] == [
-        ("bob", "tick 1", "tick 2")
-    ], verdict
+    assert [(d.bot, d.reference, d.candidate) for d in verdict.divergences] == [("bob", 1, 2)], (
+        verdict
+    )
 
 
 def test_ticks_count_on_across_windows() -> None:
@@ -112,6 +110,4 @@ def test_ticks_count_on_across_windows() -> None:
 
     verdict = compare(play(late=False), play(late=True), [])
 
-    assert [(d.reference, d.candidate) for d in verdict.divergences] == [("tick 1", "tick 2")], (
-        verdict
-    )
+    assert [(d.reference, d.candidate) for d in verdict.divergences] == [(1, 2)], verdict

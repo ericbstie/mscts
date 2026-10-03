@@ -244,7 +244,36 @@ value itself.
 
 ## Group kinds
 
-Every Group today is `exact`, compared packet by packet. Two more kinds
-are planned. `tick-exact` Groups will freeze the world and step it tick by
-tick, for mechanics such as redstone. `statistical` Groups will run many
-times and compare distributions, for random mechanics such as mob spawning.
+Groups are `exact` unless they say otherwise, and are compared packet by
+packet. A `tick-exact` Group freezes the world and moves it on one tick at a
+time, so that what happens on each tick is compared, whatever the servers'
+speed:
+
+```python
+from mscts.group import GroupContext, GroupKind, group
+
+
+@group("redstone/repeater-delay", kind=GroupKind.TICK_EXACT)
+async def repeater_delay(context: GroupContext) -> None:
+    observer = await context.bot("observer")
+    await observer.join()
+    await context.control.run("tp observer 0.5 -60 14.5")
+    await context.freeze()
+    await context.control.run("setblock 2 -60 4 minecraft:repeater[facing=west,delay=2]")
+    async with context.observe("minecraft:block_update", "minecraft:section_blocks_update"):
+        await context.control.run("setblock 1 -60 4 minecraft:redstone_block")
+        await context.step(8)
+    await context.control.run("fill 1 -60 4 2 -60 4 minecraft:air")
+```
+
+`await context.freeze()` freezes the world with `/tick freeze`. mscts
+unfreezes it when the Group ends, even if the Group failed.
+`await context.step(n)` moves the world on `n` ticks, one `/tick step 1` at
+a time, and returns once the server has finished them. Inside a window,
+packets are compared tick by tick: the same packet arriving one tick later
+on the Candidate is a difference. With `--verbose`, the Report shows the
+tick each server sent it on. A
+Candidate without `/tick` is reported as blocked, naming the command.
+
+`statistical` Groups are planned. They will run many times and compare
+distributions, for random mechanics such as mob spawning.

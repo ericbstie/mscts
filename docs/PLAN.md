@@ -1163,8 +1163,8 @@ class Divergence:
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
     # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
-    # field: a difference between two matched packets, or (path "tick", values "tick <a>"
-    #   and "tick <b>", the packet's test case) one packet a tick-exact Group got on
+    # field: a difference between two matched packets, or (path TICK_PATH, the two ticks
+    #   as int values, the packet's test case) one packet a tick-exact Group got on
     #   different ticks (#23), followed by the two packets' differences;
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
@@ -1192,6 +1192,9 @@ class Verdict:
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
+TICK_PATH = "tick"                  # #23: the path of the field Divergence of a packet
+                                    # a tick-exact Group got on different ticks; the Report
+                                    # shows it before the values ("tick: vanilla sends 1, ...")
 TICK_MARK = "tick:"                 # #23: "tick:<k>" ends tick k of a tick-exact Group:
                                     # for one Bot with its name after it ("tick:3 alice"),
                                     # without for every Bot with no Mark of its own
@@ -1912,7 +1915,8 @@ proves it necessary:
    `tick:<k>` Marks before its arrival (its own, else the unnamed one), plus
    one. Between two matched pairs, the n-th `missing` and the n-th
    `unexpected` packet whose keys differ only in the tick become one `field`
-   Divergence at path `tick`, then the two packets' differences. A unit test checks every pair of
+   Divergence at path `tick`, then the two packets' differences.
+   A unit test checks every pair of
    key sequences up to length 4 over 3 keys: ordered, longest, and
    mirrored by a swap (an exhaustive run up to length 5 found no
    exception either). Not `difflib.SequenceMatcher`: it matches the
