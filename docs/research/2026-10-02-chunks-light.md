@@ -275,11 +275,12 @@ chunks differed, as it should.
 
 ### The rule
 
-A *run* goes from a chunk packet to the last chunk packet before any packet that
-is neither a chunk packet nor one of those that read no chunk (the batch
-packets, the heartbeat packets, `pong_response`, `bundle_delimiter` and the entity
-packets above that set fields). Each run becomes its chunk packets, sorted
-stably by position, then its other packets in their order. Runs are found in the
+A *run* is the packets between two that are neither chunk packets nor among
+those treated as reading no chunk (the batch packets, the heartbeat packets,
+`pong_response`, `bundle_delimiter` and the entity packets above that set
+fields). Each run becomes its chunk packets, sorted stably by position, then its
+other packets in their order, so such a packet lands in the same place whether
+it came before the run's first chunk or after it. Runs are found in the
 Bot's whole stream, before windows or Masks leave anything out. So a chunk never
 moves across a packet for its own position, nor across any packet whose effect
 can depend on the order (`entity_position_sync`, `teleport_entity`,

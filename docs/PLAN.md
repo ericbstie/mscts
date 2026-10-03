@@ -1357,9 +1357,9 @@ proves it necessary:
      the client applies each to the chunk at its position (a chunk with
      `ClientChunkCache.replaceWithPacketData`, light with
      `ClientLevel.queueLightUpdate`, a forgotten chunk with
-     `ClientChunkCache.drop` and `queueLightRemoval`). A *run* goes from a
-     chunk packet to the last chunk packet before any packet that is
-     neither a chunk packet nor in `compare._CHUNK_NEUTRAL`:
+     `ClientChunkCache.drop` and `queueLightRemoval`). A *run* is the packets
+     between two that are neither chunk packets nor in
+     `compare._CHUNK_NEUTRAL`:
      `chunk_batch_start` and `chunk_batch_finished` (their handlers feed
      only `ChunkBatchSizeCalculator`), the heartbeat packets and
      `pong_response`, and the entity packets whose handlers read no chunk
@@ -1370,7 +1370,9 @@ proves it necessary:
      either order ends with the same). Each run becomes its chunk
      packets, sorted by position, x then z, stably, so the packets about
      one chunk keep their order, then its other packets in their order
-     (`compare._by_position`); indices count the sorted stream. So a
+     (`compare._by_position`), so a neutral packet lands in the same place
+     whether it came before the run's first chunk or after it (#122's
+     re-review); indices count the sorted stream. So a
      chunk never moves across a packet about its own position, nor
      across any packet whose effect on the client depends on the order:
      every other packet ends a run, among them `entity_position_sync` and

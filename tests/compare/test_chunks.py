@@ -815,6 +815,32 @@ def test_chunks_are_sorted_across_a_packet_whose_handling_reads_no_chunk(name: s
 
 
 @pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        (["attr", LIT_A, LIT_B], [LIT_A, "attr", LIT_B]),
+        (["attr", START, LIT_A, "finished"], [START, LIT_A, "attr", "finished"]),
+    ],
+    ids=["before the first chunk or after it", "before a batch or inside it"],
+)
+def test_a_packet_whose_handling_reads_no_chunk_may_come_before_or_after_the_first_chunk(
+    reference: list[Packet | str], candidate: list[Packet | str]
+) -> None:
+    # The re-review of #122, finding 1: a run began only at a chunk, so such a packet before the
+    # first chunk stayed put and one after it moved behind the chunks.
+    named = {
+        "attr": packet("minecraft:update_attributes", fields={}),
+        "finished": _finished(1),
+    }
+
+    def played(items: list[Packet | str]) -> Transcript:
+        return _batch_of(*(named[item] if isinstance(item, str) else item for item in items))
+
+    # The batch packets keep their order among the other neutral ones: where a batch starts
+    # around such a packet is network traffic only.
+    assert compare(played(reference), played(candidate), []).gameplay == ()
+
+
+@pytest.mark.parametrize(
     "name",
     [
         # Its handler snaps the entity, or interpolates it, by whether its chunk is loaded
@@ -850,12 +876,13 @@ def test_a_chunk_only_one_side_sent_is_a_divergence_naming_its_position() -> Non
     reference = _batch(chunk(at=(0, 0)), chunk(at=(3, -2)))
     candidate = _batch(chunk(at=(1, 1)), chunk(at=(0, 0)))
 
+    # The batch's start is neutral, so it goes after the batch's chunks: chunk 0 0 is packet 0.
     assert compare(reference, candidate, []).divergences == (
         divergence(
-            "missing", index=2, packet=CHUNK, reference="chunk 3 -2", test_case=CHUNK_TEST_CASE
+            "missing", index=1, packet=CHUNK, reference="chunk 3 -2", test_case=CHUNK_TEST_CASE
         ),
         divergence(
-            "unexpected", index=2, packet=CHUNK, candidate="chunk 1 1", test_case=CHUNK_TEST_CASE
+            "unexpected", index=1, packet=CHUNK, candidate="chunk 1 1", test_case=CHUNK_TEST_CASE
         ),
     )
 
@@ -875,7 +902,7 @@ def test_a_chunk_the_codec_cannot_read_is_matched_by_the_position_it_starts_with
     verdict = compare(reference, candidate, [])
 
     payloads, unexpected = verdict.gameplay
-    assert (payloads.kind, payloads.path, payloads.index) == ("field", None, 2)
+    assert (payloads.kind, payloads.path, payloads.index) == ("field", None, 1)
     assert (unexpected.kind, unexpected.candidate) == ("unexpected", "chunk 2 0")
 
 

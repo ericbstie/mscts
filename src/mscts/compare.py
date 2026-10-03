@@ -685,11 +685,13 @@ the entity's fields, while its chunk being loaded decides only whether it ticks
 def _by_position(events: Sequence[Event]) -> list[Event]:
     """A Bot's clientbound `events`, with the chunk packets of each run sorted by position.
 
-    A run goes from a packet about one chunk (`_CHUNK_PACKETS`) to the last such packet before
-    anything but packets whose handling reads no chunk (`_CHUNK_NEUTRAL`), in the whole stream:
-    before the windows, their narrowing or a Mask leave anything out, since the client applies
-    every packet in turn. It becomes its chunk packets, sorted by position, x then z, stably, so
-    those about one chunk keep their order, then its other packets in their order. The server
+    A run is the packets between two packets that are neither about one chunk
+    (`_CHUNK_PACKETS`) nor ones whose handling reads no chunk (`_CHUNK_NEUTRAL`), in the whole
+    stream: before the windows, their narrowing or a Mask leave anything out, since the client
+    applies every packet in turn. It becomes its chunk packets, sorted by position, x then z,
+    stably, so those about one chunk keep their order, then its other packets in their order:
+    so a neutral packet is in the same place whether it came before a run's first chunk or
+    after it. The server
     sends the chunks at one distance from the player in the iteration order of a hash set, and
     which of them are ready for a batch races (`PlayerChunkSender.sendNextChunks`); it sends the
     light updates of a tick in the order of an identity hash set
@@ -713,7 +715,7 @@ def _by_position(events: Sequence[Event]) -> list[Event]:
         if (at := _position(event.packet)) is not None:
             chunks.append(event)
             positions.append(at)
-        elif chunks and _neutral(event.packet):
+        elif _neutral(event.packet):
             held.append(event)
         else:
             end_run()
