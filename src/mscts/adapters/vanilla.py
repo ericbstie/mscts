@@ -132,7 +132,7 @@ VANILLA_DEFAULTS: Mapping[str, str] = MappingProxyType(
         "hardcore": "false",
         "initial-disabled-packs": "",
         "initial-enabled-packs": "vanilla",
-        "level-name": "world",
+        "level-name": fixture_world.WORLD_FOLDER,
         "log-ips": "true",
         "management-server-allowed-origins": "",
         "management-server-host": "localhost",
