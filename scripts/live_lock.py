@@ -6,6 +6,7 @@ The command inherits a copy so it keeps the lock if the wrapper is killed (#138)
 """
 
 import argparse
+import contextlib
 import fcntl
 import os
 import signal
@@ -45,6 +46,15 @@ def _write_pid(descriptor: int, pid: int) -> None:
     os.ftruncate(descriptor, len(holder))
 
 
+def _signal_group(process: subprocess.Popen[bytes], number: int) -> None:
+    """Signal the command's whole group: `uv run` ignores SIGINT and waits for its child.
+
+    The command is in its own session, so a terminal's Ctrl-C never reaches it directly.
+    """
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, number)
+
+
 def _run_command(command: list[str], descriptor: int | None = None) -> int:
     process: subprocess.Popen[bytes] | None = None
     pending: list[int] = []
@@ -53,7 +63,7 @@ def _run_command(command: list[str], descriptor: int | None = None) -> int:
         if process is None:
             pending.append(number)
         else:
-            process.send_signal(number)
+            _signal_group(process, number)
 
     previous = {
         number: signal.signal(number, forward) for number in (signal.SIGINT, signal.SIGTERM)
@@ -66,7 +76,7 @@ def _run_command(command: list[str], descriptor: int | None = None) -> int:
             if descriptor is not None:
                 _write_pid(descriptor, process.pid)
             for number in pending:
-                process.send_signal(number)
+                _signal_group(process, number)
             return process.wait()
     finally:
         for number, handler in previous.items():
@@ -93,6 +103,7 @@ def main() -> None:
             _write_pid(descriptor, os.getpid())
             code = _run_command(command, descriptor)
         finally:
+            os.ftruncate(descriptor, 0)  # a waiter must never name a finished holder's pid
             fcntl.flock(descriptor, fcntl.LOCK_UN)
             os.close(descriptor)
     if code < 0:

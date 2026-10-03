@@ -232,3 +232,36 @@ sys.exit(23)
             os.kill(process.pid, signal.SIGCONT)
         assert line(process.stdout) == "signal 1"
         assert finish(process) == 23
+
+
+def test_a_finished_holder_leaves_no_pid_for_a_waiter_to_name(tmp_path: Path) -> None:
+    with command(tmp_path) as process:
+        assert line(process.stdout) == "started"
+        assert finish(process) == 0
+    assert (tmp_path / "cache" / "live-tier.lock").read_text() == ""
+
+
+def test_an_interrupt_reaches_a_grandchild_behind_a_parent_that_ignores_it(
+    tmp_path: Path,
+) -> None:
+    """`uv run pytest` is this shape: uv ignores Ctrl-C and waits, pytest must still get it."""
+    child = r"""
+import signal, subprocess, sys
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+grandchild = (
+    "import os, signal, sys\n"
+    "signal.signal(signal.SIGINT, signal.default_int_handler)\n"
+    "try:\n"
+    "    os.write(1, b'started\\n')\n"
+    "    signal.pause()\n"
+    "except KeyboardInterrupt:\n"
+    "    os.write(1, b'interrupted\\n')\n"
+)
+subprocess.run([sys.executable, "-I", "-S", "-c", grandchild])
+sys.exit(23)
+"""
+    with command(tmp_path, child=child) as process:
+        assert line(process.stdout) == "started"
+        process.send_signal(signal.SIGINT)
+        assert line(process.stdout) == "interrupted"
+        assert process.wait(timeout=5) == 23
