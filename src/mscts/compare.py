@@ -829,15 +829,11 @@ class _Numbers:
         server's counter, which is timing.
         """
         ids, uuids = _entity_tries(packet.state, packet.name)
-        unknown = _UNKNOWN_ENTITY if packet.name == _REMOVE_ENTITIES else None
+        # `take` has given every other id of the packet a name or number already.
         _replaced(
             fields,
             ids,
-            lambda value: (
-                self.ids.get(value, value if unknown is None else unknown)
-                if type(value) is int
-                else value
-            ),
+            lambda value: self.ids.get(value, _UNKNOWN_ENTITY) if type(value) is int else value,
         )
         _replaced(
             fields,
