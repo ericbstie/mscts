@@ -71,15 +71,35 @@ def test_an_error_group_is_one_line_left_out_of_the_score() -> None:
     )
 
 
-def test_a_candidate_failure_fails_its_group_besides_the_test_cases_it_compared() -> None:
-    failed = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected", "")
-    verdict = replace(_verdict(failed, group_id="join/basic"), test_cases=("a",))
+FAILED = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected", "")
+"""A Candidate failure of a whole Group: it names no test case."""
+
+
+def test_a_candidate_failure_fails_its_group_and_each_of_its_test_cases() -> None:
+    verdict = replace(_verdict(FAILED, group_id="join/basic"), test_cases=("a",))
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
     blocked = Verdict("join/basic", Outcome.BLOCKED, detail="needs /tick")
     reasons = "Candidate failed: disconnected; Error: vanilla stopped; Not tested: needs /tick"
     assert report_lines(_report(_result(verdict, error, blocked))) == (
-        CaseResult("join/basic", "a", LineResult.PASS),
+        CaseResult("join/basic", "a", LineResult.FAIL),
         GroupLine("join/basic", LineResult.FAIL, reasons),
+    )
+
+
+def test_a_candidate_failure_fails_the_test_cases_of_the_groups_other_repetitions() -> None:
+    failed = _verdict(FAILED)  # no test case: the Group was not compared in this one (#262)
+    report = _report(_result(_compared("a", "b"), failed, _compared("a")))
+    assert report_lines(report) == (
+        CaseResult("status/basic", "a", LineResult.FAIL),
+        CaseResult("status/basic", "b", LineResult.FAIL),
+        GroupLine("status/basic", LineResult.FAIL, "Candidate failed: disconnected"),
+    )
+
+
+def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line() -> None:
+    failed = _verdict(FAILED)
+    assert report_lines(_report(_result(failed, failed))) == (
+        GroupLine("status/basic", LineResult.FAIL, "Candidate failed: disconnected"),
     )
 
 
