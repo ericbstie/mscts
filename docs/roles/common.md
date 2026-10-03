@@ -56,6 +56,9 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
   `mise run test:reference` and `mise run test:candidate` before the PR.
   Candidate tests assert observable outcomes, never a field a Candidate may
   legitimately get wrong.
+- Live-tier mise tasks share `<cache>/live-tier.lock` (#138). A second
+  waits for the holder; `MSCTS_LIVE_LOCK=0` bypasses it on a machine known
+  to have enough capacity. The unit tier takes no lock.
 - Rebase onto main only before opening the PR
   (`git rebase main --exec "mise run check"`), and report commit hashes
   only in the final report. A timing claim compares clean main and your

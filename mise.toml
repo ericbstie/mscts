@@ -49,15 +49,15 @@ run = "uv run mscts adapter install vanilla"
 
 [tasks."test:reference"]
 description = "reference tier (live vanilla Instance)"
-run = "uv run pytest -m reference"
+run = "uv run python scripts/live_lock.py -- uv run pytest -m reference"
 
 [tasks."test:selfcheck"]
 description = "Self-check tier: every registered Group against two live vanilla Instances"
-run = "uv run pytest -m selfcheck"
+run = "uv run python scripts/live_lock.py -- uv run pytest -m selfcheck"
 
 [tasks."test:candidate"]
 description = "candidate tier (live Candidate Instance)"
-run = "uv run pytest -m candidate"
+run = "uv run python scripts/live_lock.py -- uv run pytest -m candidate"
 
 [tasks."test:statistical"]
 description = "statistical tier (opt-in, slow; ADR-0006)"
