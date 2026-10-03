@@ -1,7 +1,10 @@
 """`mscts run` end to end: live vanilla against the installed Pumpkin."""
 
+from pathlib import Path
+
 import pytest
 
+from mscts import report_json
 from mscts.cli import main
 
 pytestmark = pytest.mark.candidate
@@ -9,15 +12,24 @@ pytestmark = pytest.mark.candidate
 
 @pytest.mark.parametrize("verbose", [False, True], ids=["default", "verbose"])
 def test_mscts_run_against_pumpkin_prints_a_report(
-    capsys: pytest.CaptureFixture[str], *, verbose: bool
+    capsys: pytest.CaptureFixture[str], tmp_path: Path, *, verbose: bool
 ) -> None:
     options = ["--verbose"] if verbose else []
-    code = main(["run", "--candidate", "pumpkin", "--repeat", "1", *options])
+    code = main(
+        ["run", "--candidate", "pumpkin", "--repeat", "1", "--out", str(tmp_path), *options]
+    )
 
     out, err = capsys.readouterr()
     assert code == 0, err
     assert out.startswith("Running tests against pumpkin\n"), out
-    assert out.splitlines()[-1].startswith("Took "), out
+    lines = out.splitlines()
+    assert lines[-2].startswith("Took "), out
+    assert lines[-1] == f"Report written to {tmp_path / 'report.json'} and {tmp_path / 'report.md'}"
+    # Every value a real Candidate's Comparison holds is one report.json can write and read.
+    report = report_json.loads((tmp_path / "report.json").read_text())
+    assert report.candidate.name == "pumpkin"
+    markdown = (tmp_path / "report.md").read_text()
+    assert markdown.startswith("# Running tests against pumpkin\n"), markdown
     # A Comparison that raises is that Group's `error`, and the Run goes on (#174), so only
     # this tier sees a Comparison bug a Candidate's packets set off.
     assert "Error: the Comparison failed" not in out, out

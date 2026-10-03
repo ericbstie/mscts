@@ -70,7 +70,7 @@ async def test_the_wait_is_no_part_of_the_time_a_group_took(
     assert elapsed_s < 2 * interval_s * 0.9, "the Group's time includes the wait"
 
 
-SAID = "2 players still online after waiting 0.3 s: watcher, control"
+SAID = "2 players still online after waiting 0.3 s: 'watcher', 'control'"
 """What a status that never empties, at `DEADLINE_S`, comes to as a sentence."""
 
 

@@ -60,7 +60,7 @@ with code 1 if nothing is installed, and prints the install command.
 ## `mscts run`
 
 ```
-mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
 ```
 
 Starts vanilla and the Candidate, plays the chosen Groups against both,
@@ -79,6 +79,7 @@ Group was skipped or failed, the Report says `No differences.`.
 | `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
 | `-v`, `--verbose` | off | Add installed versions, Target, repetitions, both values for each difference, and time per Group. |
+| `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |
 
 Verbose values appear directly under their test case. Distinct values from
 different repetitions are kept; identical differences are shown once.
@@ -87,6 +88,23 @@ all repetitions. It excludes Instance startup and shutdown, which remain
 in the final total. Skipped Groups say `not played`. The installed version
 comes from the verified Registry entry, or the binary's sha256 when no
 entry matches. It does not trust the version claimed in a status response.
+
+`--out DIR` creates `DIR` if needed and writes two files into it:
+`report.json`, the whole Report with every value, and `report.md`, the
+printed Report as Markdown. The names are fixed, so a `report.json` and
+`report.md` already in `DIR` are replaced. To keep two Runs side by side,
+give each its own folder. The Report is still printed, followed by one
+line:
+
+```
+Report written to reports/report.json and reports/report.md
+```
+
+If `DIR` cannot be created, `mscts run` exits with code 1 before it
+starts any server. If a file cannot be written, it prints the Report,
+then exits with code 1 and names the file. Both files are written in full
+before either replaces an earlier one. See [Reading a Report](/guide/reading-a-report#report-files)
+for what the files hold.
 
 `--candidate vanilla` plays vanilla against a second vanilla server. That is
 a quick way to see a Self-check.

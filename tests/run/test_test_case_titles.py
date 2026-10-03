@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from mscts import report_json
 from mscts.case_titles import TITLES
 from mscts.group import GROUPS
 from mscts.run import Server, run_results
-from tests.docs.replay import report_from_sample
 
 
 @pytest.mark.asyncio
@@ -29,7 +29,7 @@ async def test_every_status_test_case_from_fake_servers_has_a_title(
 
 def test_every_status_test_case_in_the_stored_live_run_has_a_title() -> None:
     sample = Path(__file__).resolve().parents[1] / "docs/samples/run-pumpkin.json"
-    report = report_from_sample(sample)
+    report = report_json.loads(sample.read_text())
     cases = {
         name
         for group in report.results

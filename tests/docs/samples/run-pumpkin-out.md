@@ -1,0 +1,8 @@
+# Running tests against pumpkin
+
+- Server list description `status_response.description`
+- Unused secure chat flag `status_response.enforceSecureChat`
+- Server list icon `status_response.favicon`
+- Server list player sample `status_response.players.sample`
+
+Took 13.4 s

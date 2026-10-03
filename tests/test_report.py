@@ -6,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from mscts.compare import ABSENT, Divergence, DivergenceKind, Observability, Outcome, Verdict
-from mscts.report import Report, render_text
+from mscts.report import Report, render_markdown, render_text
 from mscts.run import GroupResult, SideSummary
 from mscts.target import TARGET
 
@@ -254,3 +254,88 @@ def test_verbose_renders_uuid_and_nested_binary_values() -> None:
     text = render_text(_report(_result(_verdict(field))), verbose=True)
     assert '"data": [{"bytes": "00ff"}]' in text, text
     assert '"id": "12345678-1234-5678-1234-567812345678"' in text, text
+
+
+def test_markdown_is_the_default_report_with_a_heading_and_names_as_code() -> None:
+    report = _report(
+        _result(_verdict(_field("status_response.description"), _field("new.field"))),
+        _result(Verdict("join/basic", Outcome.BLOCKED, detail="needs /tick")),
+    )
+    assert render_markdown(report) == (
+        "# Running tests against pumpkin\n"
+        "\n"
+        "- Server list description `status_response.description`\n"
+        "- `new.field`\n"
+        "- Not tested: needs /tick `join/basic`\n"
+        "\n"
+        "Took 41 s\n"
+    )
+
+
+def test_markdown_says_no_differences_plainly() -> None:
+    assert render_markdown(_report(_result(_verdict()))) == (
+        "# Running tests against pumpkin\n\nNo differences.\n\nTook 41 s\n"
+    )
+
+
+def test_verbose_markdown_keeps_the_header_values_and_group_times() -> None:
+    field = replace(_field("list[].name"), path="list[2].name", candidate=ABSENT)
+    report = _report(_result(_verdict(field)))
+    report = replace(report, candidate=replace(report.candidate, installed_version="nightly-abc"))
+    assert render_markdown(report, verbose=True) == (
+        "# Running tests against pumpkin\n"
+        "\n"
+        "Reference: vanilla (installed version unknown)\\\n"
+        "Candidate: pumpkin nightly-abc\\\n"
+        "Target: Minecraft 26.3 (protocol 777)\\\n"
+        "Repetitions: 1 of each group\n"
+        "\n"
+        "- `list[].name`\n"
+        '  - `list[2].name`: vanilla sends `"reference value"`, pumpkin leaves it out\n'
+        "\n"
+        "## Group times\n"
+        "\n"
+        "- status/basic not recorded\n"
+        "\n"
+        "Took 41 s\n"
+    )
+
+
+def test_markdown_shows_server_text_as_it_is() -> None:
+    field = replace(_field("new.field"), reference="`a``b`", candidate=b"")
+    failed = Divergence("joiner", 0, "failed", "", None, ABSENT, "closed: <b>*now*</b> [x]_\\", "")
+    report = _report(_result(_verdict(field)), _result(_verdict(failed, group_id="join/basic")))
+    text = render_markdown(report, verbose=True)
+    assert '  - vanilla sends ```"`a``b`"```, pumpkin sends bytes ``\n' in text, text
+    assert (
+        "- Candidate failed: closed: \\<b\\>\\*now\\*\\</b\\> \\[x\\]\\_\\\\ `join/basic`\n" in text
+    ), text
+
+
+def test_markdown_shows_a_line_break_in_server_text_without_breaking_the_line() -> None:
+    forged = "x\n\n# pumpkin passes\r\nNo differences."
+    failed = Divergence("joiner", 0, "failed", "", None, ABSENT, forged, "")
+    text = render_markdown(_report(_result(_verdict(failed, group_id="join/basic"))))
+    assert text == (
+        "# Running tests against pumpkin\n"
+        "\n"
+        "- Candidate failed: x\\\\n\\\\n# pumpkin passes\\\\r\\\\nNo differences. `join/basic`\n"
+        "\n"
+        "Took 41 s\n"
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "code"),
+    [
+        ("`p[0]`", "`` `p[0]` ``"),
+        ("p[0]`", "`` p[0]` ``"),
+        (" p[0] ", "`  p[0]  `"),
+        ("p[0]", "`p[0]`"),
+    ],
+    ids=["backticks", "trailing-backtick", "spaces", "plain"],
+)
+def test_markdown_code_keeps_its_edges(path: str, code: str) -> None:
+    field = replace(_field("p[]"), path=path)
+    text = render_markdown(_report(_result(_verdict(field))), verbose=True)
+    assert f"  - {code}: vanilla sends" in text, text
