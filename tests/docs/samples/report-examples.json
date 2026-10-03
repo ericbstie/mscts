@@ -354,8 +354,6 @@
       ]
     }
   ],
-  "notes": [
-    "Only this terminal Report is written: `--out DIR` (JSON, Markdown) is not built yet."
-  ],
+  "notes": [],
   "elapsed_s": 41.0
 }

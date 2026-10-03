@@ -9,6 +9,7 @@ import pytest
 
 from mscts import cli, install
 from mscts.adapters.base import Adapter, Installation, ProvisionError
+from mscts.report import Report, render_text
 from mscts.target import Target
 from tests.run.fakes import FakeAdapter
 
@@ -198,3 +199,21 @@ def test_verbose_cli_adds_header_values_and_group_times(
     assert "  Candidate    pumpkin (installed version unknown)\n" in out, out
     assert '  vanilla sends "mscts", pumpkin sends "not vanilla"\n' in out, out
     assert "Group times\n  status/basic " in out, out
+
+
+def test_a_run_report_carries_no_note_about_unbuilt_output(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes()
+    shown: list[Report] = []
+
+    def spy(report: Report, *, verbose: bool) -> str:
+        shown.append(report)
+        return render_text(report, verbose=verbose)
+
+    monkeypatch.setattr(cli, "render_text", spy)
+
+    code, _, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+
+    assert code == 0
+    assert [report.notes for report in shown] == [()]
