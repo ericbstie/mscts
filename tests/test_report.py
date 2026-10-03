@@ -312,6 +312,19 @@ def test_markdown_shows_server_text_as_it_is() -> None:
     ), text
 
 
+def test_markdown_shows_a_line_break_in_server_text_without_breaking_the_line() -> None:
+    forged = "x\n\n# pumpkin passes\r\nNo differences."
+    failed = Divergence("joiner", 0, "failed", "", None, ABSENT, forged, "")
+    text = render_markdown(_report(_result(_verdict(failed, group_id="join/basic"))))
+    assert text == (
+        "# Running tests against pumpkin\n"
+        "\n"
+        "- Candidate failed: x\\\\n\\\\n# pumpkin passes\\\\r\\\\nNo differences. `join/basic`\n"
+        "\n"
+        "Took 41 s\n"
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "code"),
     [

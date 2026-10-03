@@ -1948,7 +1948,8 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # its verbose values nested ("  - "), with values and paths as code spans; "## Group
 # times" and a list; the total last. Blocks are separated by a blank line. Text mscts did
 # not write is shown as it is: code spans fence it with more backticks than it holds, and
-# prose escapes \ ` * _ [ ] < > & | ~. Both renderers write one _Document.
+# prose escapes \ ` * _ [ ] < > & | ~ and shows a line break as \n or \r, so server text
+# never starts a line of its own. Both renderers write one _Document.
 # case_titles.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
