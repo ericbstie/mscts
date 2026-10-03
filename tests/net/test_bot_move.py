@@ -13,7 +13,7 @@ import pytest
 
 from mscts.bot import Bot, Position
 from mscts.codec.packets import Codec, Packet
-from mscts.net import ProtocolError
+from mscts.net import Connection, ConnectionClosedError, ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import (
@@ -420,6 +420,31 @@ def test_a_correction_moves_the_bot_and_the_next_tick_reports_where_it_is() -> N
     ticks = play(script, correct_to={"x": 6.0, "z": 7.0})
     assert positions == [Position(x=6.0, y=-60.0, z=7.0, **SPAWN_ROTATION)]
     assert ticks[1:] == [[pos(30.0, -60.0, 7.5), TICK_END], [pos(6.0, -60.0, 7.0), TICK_END]]
+
+
+def test_a_tick_that_failed_to_send_is_not_taken_as_reported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The client keeps what it last reported only once it has sent it: a move whose packet
+    # never went is reported again by the next tick.
+    send = Connection.send
+    failed: list[str] = []
+
+    async def fail_the_first_move(self: Connection, name: str, /, **fields: object) -> None:
+        if name == "minecraft:move_player_pos" and not failed:
+            failed.append(name)
+            msg = "lost"
+            raise ConnectionClosedError(msg)
+        await send(self, name, **fields)
+
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        monkeypatch.setattr(Connection, "send", fail_the_first_move)
+        with pytest.raises(ConnectionClosedError):
+            await bot.move(6.7, -60.0, 7.5)
+        await bot.tick()
+
+    assert play(script)[1:] == [[pos(6.7, -60.0, 7.5), TICK_END]]
 
 
 MOVES: list[tuple[str, Callable[[Bot], Awaitable[None]]]] = [

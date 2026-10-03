@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import copy
 import hashlib
 import json
 import math
@@ -667,13 +668,17 @@ class Bot:
         await self._tick()
 
     async def _tick(self) -> None:
-        """Send one client tick for the pose and controls as they are now."""
-        sends = _client_tick(
-            self._replies.pose, self._controls, self._reported, self._replies.entity_id
-        )
+        """Send one client tick for the pose and controls as they are now.
+
+        What it reports is kept only once every packet has gone, so a tick that failed to
+        send is reported again by the next.
+        """
+        reported = copy.deepcopy(self._reported)
+        sends = _client_tick(self._replies.pose, self._controls, reported, self._replies.entity_id)
         async with self._operation(self._timeout_s):
             for name, fields in sends:
                 await self._connection.send(name, **fields)
+        self._reported = reported
 
     def _require_play(self, operation: str) -> None:
         """Raise ProtocolError, naming `operation`, unless the Bot is in play."""
