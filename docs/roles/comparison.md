@@ -33,3 +33,10 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 ## Log
 
 Newest first: one line per lesson, with the issue it came from.
+
+- #122: Chunk packets are put in order in runs across neutral packets (the javap list is in the research note); batch packets and `batch_size` are network traffic; a chunk copy shows at most 254 sections and 256 light arrays per layer.
+- #122: A canonical form that reads a registry takes it from the last configuration before the packet (`_Context.each`), never from a sum over the Transcript.
+- #116: An entity first added before the windows is named by its first add_entity (type and position after the Group's Masks; a player by UUID); a `remove_entities`, compared or not, ends a name or number. `_Numbers` follows the stream packet by packet.
+- #116: Mutant C7 (`_step_fits`) differs only for a string key at a list-element position (`remove_entities.entity_ids.count`); `paths.py` in the specialist's scratch lists every entity id path.
+- #114: Any wait the Run gathers uses `return_exceptions=True`. A harness bug there is `error`; only `CANDIDATE_FAILURES` are the Candidate's `mismatch`, as in `judge`.
+- #114, #116: Changing a CONTEXT.md entry means changing its glossary entry in the same commit (`test_glossary`).
