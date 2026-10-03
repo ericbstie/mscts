@@ -1,6 +1,7 @@
 """Live tiers wait for the shared lock, pass exit codes through and allow a bypass (#138)."""
 
 import fcntl
+import importlib.util
 import os
 import select
 import signal
@@ -8,7 +9,7 @@ import subprocess
 import sys
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO
@@ -260,6 +261,32 @@ def test_a_finished_holder_leaves_no_pid_for_a_waiter_to_name(tmp_path: Path) ->
         assert line(process.stdout) == "started"
         assert finish(process) == 0
     assert (tmp_path / "cache" / "live-tier.lock").read_text() == ""
+
+
+def test_a_signal_that_arrives_before_the_command_starts_reaches_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #211: the wrapper keeps such a signal and forwards it once the command has started.
+    # Only the moment between its handlers going in and the command starting has no
+    # command yet, so the signal arrives there, from inside the wrapper itself.
+    spec = importlib.util.spec_from_file_location("live_lock", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    live_lock = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(live_lock)
+    real_popen = subprocess.Popen
+
+    def signalled_first(
+        args: list[str], *, start_new_session: bool, pass_fds: Sequence[int]
+    ) -> subprocess.Popen[bytes]:
+        signal.raise_signal(signal.SIGTERM)
+        return real_popen(args, start_new_session=start_new_session, pass_fds=pass_fds)
+
+    monkeypatch.setattr(live_lock.subprocess, "Popen", signalled_first)
+    # Without the signal, the command ends by itself, so a dropped one fails, not hangs.
+    sleeper = [sys.executable, "-I", "-S", "-c", "import time; time.sleep(5)"]
+
+    assert live_lock._run_command(sleeper) == -signal.SIGTERM  # noqa: SLF001
 
 
 def test_an_interrupt_reaches_a_grandchild_behind_a_parent_that_ignores_it(
