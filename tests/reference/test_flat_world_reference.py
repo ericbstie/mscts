@@ -1,7 +1,7 @@
 """The Reference's flat world at the default ServerSpec, as a joining Bot sees it.
 
 Pins the facts in support.chunks that the Pumpkin Adapter's world save is checked against
-(tests/adapters/test_pumpkin_world.py), on the session's shared Reference. The join may send
+(tests/adapters/pumpkin/test_pumpkin_world.py), on the session's shared Reference. The join may send
 the first `player_position` again, so only what it repeats is asserted (docs/research/
 2026-09-26-join.md, "More than one `player_position` at join").
 """
