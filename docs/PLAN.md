@@ -609,31 +609,6 @@ def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S
 - `runner`: `PROC` — Linux process information.
 
 ```python
-# registry.py: the Registry (ADR-0008), committed as src/mscts/data/registry.toml
-@frozen
-class Entry:
-    adapter: str                    # "pumpkin"
-    version: str                    # the --version label: "26.3", "nightly-b8382a8a"
-    target: str                     # the Target's Minecraft version it speaks
-    url: str                        # HTTPS only
-    sha256: str | None = None       # at least one of sha256 / sha1
-    sha1: str | None = None         # the publisher's hash (Mojang's)
-    size: int | None = None
-    note: str = ""                  # a pinned nightly says here that its URL moves
-    def matches(self, body: bytes) -> bool: ...  # every pinned hash (and size) agrees
-    # str(entry) == "pumpkin nightly-b8382a8a"
-
-@frozen
-class Registry:
-    entries: tuple[Entry, ...]
-    def resolve(self, adapter: str, target: Target, version: str | None = None) -> Entry: ...
-    # `version`, else the adapter's only entry for target; RegistryError naming the choices
-
-class RegistryError(ValueError): ...
-def parse(text: str) -> Registry: ...  # strict: unknown key, missing key or hash, bad hex,
-                                       # non-HTTPS url, duplicate (adapter, version) → RegistryError
-def official() -> Registry: ...        # the committed data/registry.toml
-
 class WorldPreset(StrEnum): FLAT                                # VOID only once verified on the Reference
 class GameMode(StrEnum):    SURVIVAL, CREATIVE, ADVENTURE, SPECTATOR
 class Difficulty(StrEnum):  PEACEFUL, EASY, NORMAL, HARD
@@ -683,11 +658,13 @@ type Fetch = Callable[[str], Download]  # fetch.https_get, or a fake in tests
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
     sha256: str                     # of the binary; every use verifies the binary by it
     size: int
-    entry: str | None = None        # the Registry entry it hash-matches, "pumpkin nightly-b8382a8a"
-    url: str | None = None          # downloaded from (the entry's URL) ...
+    version: str | None = None      # its Build's; None only in a SOURCE.json from before #156,
+    commit: str | None = None       # whose Build installed() reads from the binary (adapter.check)
+    url: str | None = None          # downloaded from (its Release's URL) ...
     final_url: str | None = None    # ... which redirected here
     from_path: str | None = None    # or copied from this `--from` file (absolute)
     installed_at: str | None = None # ISO 8601, UTC
+    build: Build | None             # property: Build(version, commit), None without a version
 
 @frozen
 class Installation:
@@ -784,17 +761,19 @@ class Installed:
 def installed(adapter, target, cache_dir) -> Installation | None: ...
     # verified by the recorded sha256; None if absent; ProvisionError naming the fix
     # ("delete <root> and run `mscts adapter install <adapter>` again") if unrecorded or changed
-    # A legacy Installation (binary, no SOURCE.json) whose binary hash-matches a Registry entry
-    # gets a SOURCE.json naming that entry only, and says so: a WARNING on the `mscts.install`
-    # logger ("recorded <root>/SOURCE.json: <binary> predates recorded sources and
-    # hash-matches the Registry entry <entry>"); the CLI prints it as its own output.
-def install_entry(adapter, target, cache_dir, entry: Entry, fetch: Fetch) -> Installed: ...
-    # downloads entry.url; entry.matches(body) or ProvisionError with the actual sha256, the
-    # entry's note ("the nightly moved") and the `--from` command. Another build installed
-    # already → ProvisionError naming the delete + install command; never replaced silently
-def install_from(adapter, target, cache_dir, path: Path, registry: Registry) -> Installed: ...
-    # records the file's sha256 and path, and an entry only if the file hash-matches it
+def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetch) -> Installed: ...
+    # adapter.release(target, version, fetch), then fetch(release.url): the publisher's sha1
+    # and size checked where it lists them; adapter.check in staging, and a Release with a
+    # commit must be the commit the file names (the nightly tag moves before its binary is
+    # uploaded: "try again in a few minutes"). Records the Release's Build. Installed already:
+    # a no-op when `version` is None or names the installed Build (its version, or 7+ first
+    # characters of its commit), saying "For a newer build, delete <root> and install again.";
+    # another version → ProvisionError naming the delete + `mscts adapter install <a>@<v>`,
+    # nothing fetched. A failed fetch (OSError) → ProvisionError naming the --from command.
+def install_from(adapter, target, cache_dir, path: Path) -> Installed: ...
+    # records the file's sha256, path and the Build adapter.check reads from it
 def install_command(adapter: str, *, version=None, path=None) -> str: ...  # the exact command line
+                                    # `mscts adapter install pumpkin@4426d11`, `... --from <file>`
 @frozen
 class Terminal:
     stdin: TextIO                   # asked only if stdin.isatty()
@@ -803,13 +782,12 @@ def require(adapter, target, cache_dir, *, terminal: Terminal | None = None,
             fetch: Fetch = https_get) -> Installation: ...
     # The one way a Run or a test gets an Installation (ADR-0008 §2): installed(...) if there;
     # else, only with a terminal whose stdin is a TTY, asks "<adapter> <version> is not
-    # installed. Download <entry> (Y) or provision it yourself (N)?" (entry: registry.official()
-    # .resolve). Y: install_entry, announcing "downloading <url> ..." and printing its message.
+    # installed. Download its latest build (Y) or provision it yourself (N)?". Y:
+    # install_release, announcing each "downloading <url> ..." and printing its message.
     # N: prints and raises ProvisionError naming `mscts adapter install <a> --from <file>`.
     # Anything else re-asks ("Please answer y or n."); end of input refuses, naming both
     # commands. No terminal (the default) or no TTY: ProvisionError at once naming
-    # `mscts adapter install <a>` and the --from form; stdin is never read. No registry entry:
-    # ProvisionError naming the --from form only.
+    # `mscts adapter install <a>` and the --from form; stdin is never read.
 
 @frozen
 class Instance:
@@ -1940,7 +1918,7 @@ class SideSummary:
     version: str | None             # version.name of its first status_response (lenient)
     startup: tuple[Measurement, ...]  # instance.startup (ms, ready_ns - launched_ns) per
                                       # launched Instance; none for an Attached side
-    installed_version: str | None = None # Registry version or sha256; unknown without Source
+    installed_version: str | None = None # its Installation's Build, or sha256; unknown without Source
 
 @frozen
 class RunResult:
@@ -1983,17 +1961,22 @@ CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:
 would do; an error is one `mscts: <message>` line on stderr naming its fix, exit 1:
 
 ```
-mscts adapter install <adapter> [--version V | --from PATH]
-    # the Target's Registry entry (or --version V): "downloading <url> ...", then
-    # "installed <entry> from <url> into <root>", or "<entry> is already installed at <root>
-    # (sha256 …): nothing to do". --from: "installed <path> (sha256 …; the Registry entry
-    # <entry> | no Registry entry, …) into <root>". Another build installed: refused, naming
-    # the delete-and-install command. A download that is not the entry: its sha256, the
-    # entry's note ("the nightly moved") and the --from command.
-mscts adapter list                  # ADAPTER VERSION TARGET STATE, one row per Registry entry,
-                                    # plus a row for an installed build that is no entry
-mscts adapter status <adapter>      # root, entry, sha256, size, from, installed; exit 1 and
-                                    # the install command when nothing is installed
+mscts adapter install <adapter>[@<version>] [--from PATH]
+    # install.install_release: the latest build for the Target, or the one @<version> names
+    # (ADAPTERS is a static map of names to Adapters; an unknown name is a usage error, exit
+    # 2). "downloading <url> ..." for every fetch, then "installed <adapter> <build> from <url>
+    # into <root>", or "<adapter> <build> is already installed at <root> (sha256 …): nothing
+    # to do. For a newer build, delete <root> and install again.". --from: install_from,
+    # "installed <path> (<adapter> <build>, sha256 …) into <root>". @<version> with --from:
+    # "name a version or a file, not both". The Adapter's own refusals as they are:
+    # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.", "pumpkin@8f3c2a1 is
+    # not available: …".
+mscts adapter list                  # ADAPTER VERSION TARGET STATE, one row per Adapter: its
+                                    # installed Build or "-", and installed | not installed |
+                                    # unusable: see `mscts adapter status <a>`
+mscts adapter status <adapter>      # root, version, commit (if any), sha256, size, from,
+                                    # installed; exit 1 and the install command when nothing is
+                                    # installed
 mscts selfcheck [--group GLOB] [--repeat N]
 mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
     # --group: fnmatch over the registered exact Group ids, prerequisites added
@@ -2101,11 +2084,12 @@ Group, with no declared deviations (ADR-0006). Also a compliance
 score, `blocked` counts per missing command, and history across Candidate
 versions.
 
-**M3a — Installs and the registry (ADR-0008).**
-- `mscts adapter install <adapter> [--version]` / `--from <path>`, plus
+**M3a — Installs (ADR-0008).**
+- `mscts adapter install <adapter>[@<version>]` / `--from <path>`, plus
   `list` and `status`, all idempotent;
 - the honest TTY prompt, and a non-TTY failure naming the command;
-- a committed registry pinned by checksum.
+- each Adapter finds its own latest build (#156; this replaced a committed
+  registry pinned by checksum).
 
 **M9 — Adapter DX (ADR-0008).** An Adapter authoring guide with a
 template, and `mscts adapter check <adapter>`, a conformance kit that

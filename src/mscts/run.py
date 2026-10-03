@@ -550,8 +550,8 @@ def _installed_version(side: Side) -> str | None:
     if isinstance(side, Attached) or side.installation.source is None:
         return None
     source = side.installation.source
-    if source.entry is not None:
-        return source.entry.removeprefix(f"{side.name} ")
+    if source.build is not None:
+        return str(source.build)
     return f"sha256 {source.sha256}"
 
 

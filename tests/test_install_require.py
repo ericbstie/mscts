@@ -5,14 +5,19 @@ from pathlib import Path
 from typing import override
 
 import pytest
-from support.pumpkin import fake_pumpkin
+from support.pumpkin import FakeGitHub, fake_pumpkin
 
-from mscts import install, registry
+from mscts import install
 from mscts.adapters.base import ProvisionError
-from mscts.install import Terminal, install_entry, install_from, require
-from mscts.registry import Registry
+from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL, PumpkinAdapter
+from mscts.install import Terminal, install_from, install_release, require
 from mscts.target import TARGET
-from tests.test_install import ADAPTER, ENTRY, REGISTRY, URL, FakeGitHub, root_of
+
+ADAPTER = PumpkinAdapter()
+
+
+def root_of(cache: Path) -> Path:
+    return cache / "pumpkin/26.3"
 
 
 class Keyboard(io.StringIO):
@@ -35,25 +40,19 @@ class Unreadable(io.StringIO):
         raise AssertionError(size)
 
 
-@pytest.fixture(autouse=True)
-def official(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(registry, "official", lambda: REGISTRY)
-
-
 def ask(typed: str) -> tuple[Terminal, io.StringIO]:
     shown = io.StringIO()
     return Terminal(stdin=Keyboard(typed), stdout=shown), shown
 
 
 QUESTION = (
-    "pumpkin 26.3 is not installed. "
-    "Download pumpkin nightly-test (Y) or provision it yourself (N)? "
+    "pumpkin 26.3 is not installed. Download its latest build (Y) or provision it yourself (N)? "
 )
 FROM = "`mscts adapter install pumpkin --from <file>`"
 
 
 def test_an_installed_installation_is_returned_without_asking(tmp_path: Path) -> None:
-    done = install_entry(ADAPTER, TARGET, tmp_path, ENTRY, FakeGitHub())
+    done = install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub())
     terminal, shown = ask("")
     github = FakeGitHub()
     assert require(ADAPTER, TARGET, tmp_path, terminal=terminal, fetch=github) == (
@@ -65,21 +64,21 @@ def test_an_installed_installation_is_returned_without_asking(tmp_path: Path) ->
 def test_a_from_installation_is_used_as_it_is(tmp_path: Path) -> None:
     supplied = tmp_path / "pumpkin"
     supplied.write_bytes(fake_pumpkin(tail=b"my own build"))
-    done = install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, REGISTRY)
+    done = install_from(ADAPTER, TARGET, tmp_path / "cache", supplied)
     github = FakeGitHub()
     assert require(ADAPTER, TARGET, tmp_path / "cache", fetch=github) == done.installation
     assert github.fetched == []
 
 
-def test_yes_downloads_the_entry_and_says_so(tmp_path: Path) -> None:
+def test_yes_downloads_the_latest_build_and_says_so(tmp_path: Path) -> None:
     terminal, shown = ask("y\n")
     github = FakeGitHub()
     installation = require(ADAPTER, TARGET, tmp_path, terminal=terminal, fetch=github)
-    assert github.fetched == [URL]
+    assert github.fetched == [TAGS_URL, NIGHTLY_URL]
     assert installation.root == root_of(tmp_path)
     assert shown.getvalue() == (
-        f"{QUESTION}downloading {URL} ...\n"
-        f"installed pumpkin nightly-test from {URL} into {root_of(tmp_path)}\n"
+        f"{QUESTION}downloading {TAGS_URL} ...\ndownloading {NIGHTLY_URL} ...\n"
+        f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root_of(tmp_path)}\n"
     )
 
 
@@ -124,7 +123,7 @@ def test_without_a_tty_it_fails_at_once_naming_both_commands(
         require(ADAPTER, TARGET, tmp_path, terminal=terminal, fetch=github)
     assert str(raised.value) == (
         "pumpkin 26.3 is not installed, and without a terminal nothing is installed "
-        "unasked. Install pumpkin nightly-test with `mscts adapter install pumpkin`, "
+        "unasked. Install its latest build with `mscts adapter install pumpkin`, "
         f"or provision it yourself with {FROM}"
     )
     assert github.fetched == []
@@ -133,17 +132,11 @@ def test_without_a_tty_it_fails_at_once_naming_both_commands(
         assert terminal.stdout.getvalue() == ""
 
 
-def test_with_no_registry_entry_only_the_from_command_is_offered(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setattr(registry, "official", lambda: Registry(entries=()))
-    terminal, shown = ask("y\n")
-    with pytest.raises(ProvisionError) as raised:
-        require(ADAPTER, TARGET, tmp_path, terminal=terminal, fetch=FakeGitHub())
-    assert str(raised.value).startswith("pumpkin 26.3 is not installed, and no registry entry")
-    assert str(raised.value).endswith(f"provision it yourself with {FROM}")
-    assert shown.getvalue() == ""
-
-
 def test_the_from_command_is_the_exact_command_line() -> None:
     assert f"`{install.install_command('pumpkin', path='<file>')}`" == FROM
+
+
+def test_a_version_command_names_it_after_an_at() -> None:
+    assert install.install_command("pumpkin", version="4426d11") == (
+        "mscts adapter install pumpkin@4426d11"
+    )

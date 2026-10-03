@@ -1,30 +1,11 @@
 import pytest
-from support.pumpkin import COMMIT
+from support.pumpkin import COMMIT, FakeGitHub, refs
 
-from mscts.adapters.base import Build, Download, ProvisionError, Release
+from mscts.adapters.base import Build, ProvisionError, Release
 from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL, PumpkinAdapter
 from mscts.target import TARGET
 
-# The start of GitHub's ref advertisement (pkt-lines), as `git ls-remote` reads it.
-REFS = (
-    b"001e# service=git-upload-pack\n0000"
-    b"015b1859221e7ad1227f43277f74507f921c0acec83f HEAD\0multi_ack symref=HEAD:refs/heads/master\n"
-    b"003f1859221e7ad1227f43277f74507f921c0acec83f refs/heads/master\n"
-    b"003f" + COMMIT.encode() + b" refs/tags/nightly\n"
-    b"0000"
-)
-
-
-class FakeGitHub:
-    """A fetch that serves the ref advertisement and records every URL asked."""
-
-    def __init__(self, refs: bytes = REFS) -> None:
-        self.refs = refs
-        self.fetched: list[str] = []
-
-    def __call__(self, url: str) -> Download:
-        self.fetched.append(url)
-        return Download(url=url, body=self.refs)
+REFS = refs()
 
 
 NIGHTLY = Release(build=Build(version="nightly", commit=COMMIT), url=NIGHTLY_URL)
@@ -59,9 +40,9 @@ def test_an_annotated_tag_names_the_commit_it_points_to() -> None:
         b"003f" + b"f" * 40 + b" refs/tags/nightly\n"
         b"0042" + COMMIT.encode() + b" refs/tags/nightly^{}\n0000"
     )
-    assert PumpkinAdapter().release(TARGET, None, FakeGitHub(annotated)) == NIGHTLY
+    assert PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=annotated)) == NIGHTLY
 
 
 def test_no_nightly_tag_is_an_error_naming_the_from_command() -> None:
     with pytest.raises(ProvisionError, match=r"no nightly tag(.|\n)*--from <file>"):
-        PumpkinAdapter().release(TARGET, None, FakeGitHub(REFS.replace(b"nightly", b"other")))
+        PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=REFS.replace(b"nightly", b"other")))

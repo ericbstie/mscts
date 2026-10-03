@@ -18,22 +18,30 @@ Choose `install`, `list` or `status` to manage server Installations.
 ## `mscts adapter install`
 
 ```
-mscts adapter install <adapter> [--version VERSION | --from PATH]
+mscts adapter install <adapter>[@<version>] [--from PATH]
 ```
 
-Installs a server build into the cache. Running it again when the build is
-already installed and verified does nothing and says so.
+Installs a server build into the cache. With no version, it installs the
+latest build for the Minecraft version mscts tests (26.3). Running it again
+when a build is already installed does nothing and says so. To get a newer
+build, delete the installed one first; the message names its folder.
 
 | Argument | Description |
 | --- | --- |
 | `<adapter>` | `vanilla` or `pumpkin`. |
-| `--version VERSION` | The Registry entry to install. Defaults to the entry for the current Target. |
-| `--from PATH` | Install a file you supply instead of downloading. mscts hashes it and records its path. |
+| `@<version>` | The build to install. For vanilla, a Minecraft version (only `26.3` works). For Pumpkin, the commit of its nightly build, at least 7 characters. |
+| `--from PATH` | Install a file you supply instead of downloading. mscts checks that it is a build for 26.3, hashes it and records its path. |
 
-`--version` and `--from` cannot be combined.
+A version and `--from` cannot be combined. A build for another Minecraft
+version is refused, and so is a Pumpkin commit that is not its latest
+nightly: Pumpkin publishes only that one. Build an older commit yourself
+and install the file with `--from`.
 
 ```sh
 uv run mscts adapter install vanilla
+uv run mscts adapter install vanilla@26.3
+uv run mscts adapter install pumpkin
+uv run mscts adapter install pumpkin@4426d11
 uv run mscts adapter install pumpkin --from ./pumpkin-X64-Linux
 ```
 
@@ -43,9 +51,8 @@ uv run mscts adapter install pumpkin --from ./pumpkin-X64-Linux
 mscts adapter list
 ```
 
-Lists every Adapter, every Registry entry, and what is installed. A build
-installed with `--from` that matches no entry gets its own row. A broken
-Installation shows as `unusable` and points to `mscts adapter status`.
+Lists every Adapter, the build installed for it and whether it is installed.
+A broken Installation shows as `unusable` and points to `mscts adapter status`.
 
 ## `mscts adapter status`
 
@@ -53,9 +60,10 @@ Installation shows as `unusable` and points to `mscts adapter status`.
 mscts adapter status <adapter>
 ```
 
-Shows where the Adapter's Installation lives, the Registry entry it matches,
-its sha256 and size, where it came from, and when it was installed. Exits
-with code 1 if nothing is installed, and prints the install command.
+Shows where the Adapter's Installation lives, its version, its commit (when
+the build names one), its sha256 and size, where it came from, and when it
+was installed. Exits with code 1 if nothing is installed, and prints the
+install command.
 
 ## `mscts run`
 

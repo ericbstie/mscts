@@ -8,6 +8,7 @@ import re
 import sys
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 from subprocess import run as _run
 
@@ -15,7 +16,6 @@ from mscts import cache
 from mscts.adapters.base import Fetch, PrepareError, ProvisionError
 from mscts.adapters.fetch import https_get
 from mscts.adapters.vanilla import resolve_java
-from mscts.registry import Entry
 from mscts.target import TARGET
 
 _MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
@@ -36,23 +36,28 @@ def _string(fields: dict[str, object], key: str) -> str:
     return value
 
 
-def _entry(side: str, metadata: bytes) -> Entry:
+@dataclass(frozen=True, slots=True)
+class _Artifact:
+    """A jar Mojang publishes, by its URL and the sha1 and size it lists."""
+
+    url: str
+    sha1: str
+    size: int
+
+    def matches(self, body: bytes) -> bool:
+        """Whether `body` has the sha1 and size Mojang lists (its integrity check)."""
+        sha1 = hashlib.sha1(body, usedforsecurity=False).hexdigest()
+        return len(body) == self.size and sha1 == self.sha1
+
+
+def _entry(metadata: bytes) -> _Artifact:
     fields = _object(json.loads(metadata))
     sha1 = _string(fields, "sha1")
     size = fields.get("size")
     if re.fullmatch(r"[0-9a-f]{40}", sha1) is None or type(size) is not int or size <= 0:
         msg = "Mojang download metadata needs a sha1 and positive size"
         raise ProvisionError(msg)
-    # Entry's shape is borrowed for its hash check only: this is not a Registry entry,
-    # and `adapter` holds the jar side ("client" or "server"), not an Adapter's name.
-    return Entry(
-        adapter=side,
-        version=TARGET.minecraft_version,
-        target=TARGET.minecraft_version,
-        url=_string(fields, "url"),
-        sha1=sha1,
-        size=size,
-    )
+    return _Artifact(url=_string(fields, "url"), sha1=sha1, size=size)
 
 
 def _version(fetch: Fetch) -> dict[str, object]:
@@ -100,7 +105,7 @@ def cached_jar(side: str, fetch: Fetch = https_get) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     metadata_path = root / f"{side}.json"
     metadata = metadata_path.read_bytes() if metadata_path.exists() else _metadata(side, fetch)
-    entry = _entry(side, metadata)
+    entry = _entry(metadata)
     jar = root / f"{side}.jar"
     body = jar.read_bytes() if jar.exists() else fetch(entry.url).body
     if not entry.matches(body):
@@ -113,7 +118,7 @@ def cached_jar(side: str, fetch: Fetch = https_get) -> Path:
     return jar
 
 
-def _library_entries(fetch: Fetch) -> dict[str, Entry]:
+def _library_entries(fetch: Fetch) -> dict[str, _Artifact]:
     root = cache.cache_dir() / "research" / TARGET.minecraft_version
     root.mkdir(parents=True, exist_ok=True)
     metadata_path = root / "libraries.json"
@@ -124,13 +129,13 @@ def _library_entries(fetch: Fetch) -> dict[str, Entry]:
     if not isinstance(libraries, list):
         msg = "Mojang version metadata has no libraries list"
         raise ProvisionError(msg)
-    artifacts: dict[str, Entry] = {}
+    artifacts: dict[str, _Artifact] = {}
     for library in libraries:
         fields = _object(library)
         downloads = _object(fields.get("downloads"))
         if "artifact" in downloads:
             name = _string(fields, "name")
-            artifacts[name] = _entry(name, json.dumps(downloads["artifact"]).encode())
+            artifacts[name] = _entry(json.dumps(downloads["artifact"]).encode())
     if not metadata_path.exists():
         _write(metadata_path, json.dumps(libraries).encode())
     return artifacts
@@ -141,7 +146,7 @@ def cached_libraries(patterns: list[str], fetch: Fetch = https_get) -> list[Path
     if not patterns:
         return []
     artifacts = _library_entries(fetch)
-    selected: dict[str, Entry] = {}
+    selected: dict[str, _Artifact] = {}
     for pattern in patterns:
         matches = [name for name in artifacts if pattern in name]
         if len(matches) != 1:

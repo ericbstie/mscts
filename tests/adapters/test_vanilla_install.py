@@ -1,94 +1,47 @@
-import hashlib
-import io
-import json
-import zipfile
 from pathlib import Path
 
 import pytest
+from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar
 
-from mscts.adapters.base import Build, Download, ProvisionError
-from mscts.adapters.vanilla import VanillaAdapter
-from mscts.install import install_entry
-from mscts.registry import Entry
+from mscts.adapters.base import Build, ProvisionError
+from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter
+from mscts.install import install_release
 from mscts.target import TARGET
 
-JAR_URL = "https://piston-data.example/v1/objects/def/server.jar"
+PUBLISHED = fake_jar()
 
 
-ZIP_DATE = (2026, 1, 1, 0, 0, 0)
-
-
-def fake_jar(protocol_version: int = 777, version: str = "26.3") -> bytes:
-    """A tiny stand-in for the server jar: a zip whose version.json names the protocol.
-
-    Its entries carry a fixed date, so the bytes never depend on the clock: pytest-xdist
-    workers collecting at different seconds must see the same parametrized tests.
-    """
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as jar:
-        about = {"id": version, "protocol_version": protocol_version, "java_version": 25}
-        jar.writestr(zipfile.ZipInfo("version.json", ZIP_DATE), json.dumps(about))
-        jar.writestr(
-            zipfile.ZipInfo("net/minecraft/bundler/Main.class", ZIP_DATE), b"\xca\xfe\xba\xbe"
-        )
-    return buffer.getvalue()
-
-
-def entry_for(jar: bytes) -> Entry:
-    """A vanilla Registry entry pinning `jar` as Mojang pins a jar: by sha1 and size."""
-    return Entry(
-        adapter="vanilla",
-        version="26.3",
-        target="26.3",
-        url=JAR_URL,
-        sha1=hashlib.sha1(jar, usedforsecurity=False).hexdigest(),
-        size=len(jar),
-    )
-
-
-class FakeMojang:
-    """A fetch that serves one jar and records every URL it was asked for."""
-
-    def __init__(self, jar: bytes) -> None:
-        self.jar = jar
-        self.fetched: list[str] = []
-
-    def __call__(self, url: str) -> Download:
-        self.fetched.append(url)
-        return Download(url=url, body=self.jar)
-
-
-PINNED = fake_jar()
-ENTRY = entry_for(PINNED)
-
-
-def test_install_entry_installs_the_pinned_jar_into_the_cache(tmp_path: Path) -> None:
-    mojang = FakeMojang(PINNED)
-    done = install_entry(VanillaAdapter(), TARGET, tmp_path, ENTRY, mojang)
+@pytest.mark.parametrize("version", [None, "26.3"])
+def test_install_release_installs_the_published_jar_into_the_cache(
+    tmp_path: Path, version: str | None
+) -> None:
+    mojang = FakeMojang()
+    done = install_release(VanillaAdapter(), TARGET, tmp_path, version, mojang)
     installation = done.installation
     assert (installation.adapter, installation.target) == ("vanilla", TARGET)
     assert installation.root == tmp_path / "vanilla/26.3"
     assert installation.source is not None
-    assert installation.source.entry == "vanilla 26.3"
-    assert (installation.root / "server.jar").read_bytes() == PINNED
-    assert mojang.fetched == [JAR_URL]
+    assert installation.source.build == Build(version="26.3")
+    assert (installation.root / "server.jar").read_bytes() == PUBLISHED
+    assert mojang.fetched == [MANIFEST_URL, VERSION_URL, JAR_URL]
+    assert done.message == f"installed vanilla 26.3 from {JAR_URL} into {installation.root}"
 
 
 @pytest.mark.parametrize(
     "served",
     [
         # Same size, different bytes from those the published sha1 names.
-        PINNED[:-1] + bytes([PINNED[-1] ^ 0xFF]),
-        PINNED + b"\0",
+        PUBLISHED[:-1] + bytes([PUBLISHED[-1] ^ 0xFF]),
+        PUBLISHED + b"\0",
     ],
     ids=["same-size-other-bytes", "one-byte-longer"],
 )
-def test_install_entry_rejects_a_download_that_is_not_the_pinned_jar(
+def test_install_release_rejects_a_download_that_is_not_the_published_jar(
     tmp_path: Path, served: bytes
 ) -> None:
-    assert served != PINNED
+    assert served != PUBLISHED
     with pytest.raises(ProvisionError, match=r"is not vanilla 26\.3"):
-        install_entry(VanillaAdapter(), TARGET, tmp_path, ENTRY, FakeMojang(served))
+        install_release(VanillaAdapter(), TARGET, tmp_path, None, FakeMojang(served, jar=PUBLISHED))
     assert not (tmp_path / "vanilla/26.3").exists()
 
 

@@ -63,11 +63,17 @@ class Source:
 
     sha256: str  # of the installed binary; every later use verifies the binary by it
     size: int
-    entry: str | None = None  # the Registry entry it hash-matches ("pumpkin nightly-b8382a8a")
-    url: str | None = None  # the URL it was downloaded from (the entry's)
+    version: str | None = None  # its Build's (None only in a SOURCE.json written before #156)
+    commit: str | None = None  # its Build's
+    url: str | None = None  # the URL it was downloaded from (its Release's)
     final_url: str | None = None  # where that URL finally redirected to
     from_path: str | None = None  # the `--from` file it was copied from
     installed_at: str | None = None  # ISO 8601, UTC
+
+    @property
+    def build(self) -> Build | None:
+        """The Build it records, if it records one."""
+        return None if self.version is None else Build(version=self.version, commit=self.commit)
 
 
 @dataclass(frozen=True, slots=True)
