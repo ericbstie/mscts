@@ -421,7 +421,9 @@ class VanillaAdapter:
             raise ProvisionError(msg)
         if protocol != target.protocol_version:
             msg = (
-                f"{binary} speaks protocol {protocol}, but the Target is {target.protocol_version}"
+                f"{binary} is not supported: it is vanilla {version} speaking protocol "
+                f"{protocol}, and this mscts tests Minecraft {target.minecraft_version} "
+                f"(protocol {target.protocol_version})."
             )
             raise ProvisionError(msg)
         return Build(version=version)

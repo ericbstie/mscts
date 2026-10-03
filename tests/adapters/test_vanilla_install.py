@@ -83,17 +83,21 @@ def test_install_release_rejects_a_download_of_another_size_than_listed(tmp_path
     assert not (tmp_path / "vanilla/26.3").exists()
 
 
-@pytest.mark.parametrize(
-    ("jar", "error"),
-    [(fake_jar(protocol_version=778), "speaks protocol 778"), (b"PK not a zip", "not a vanilla")],
-    ids=["protocol-778", "not-a-zip"],
-)
-def test_check_refuses_a_jar_that_is_not_a_server_for_the_target(
-    tmp_path: Path, jar: bytes, error: str
-) -> None:
-    (tmp_path / "server.jar").write_bytes(jar)
-    with pytest.raises(ProvisionError, match=error):
+def test_check_refuses_a_file_that_is_no_jar(tmp_path: Path) -> None:
+    (tmp_path / "server.jar").write_bytes(b"PK not a zip")
+    with pytest.raises(ProvisionError, match="not a vanilla"):
         VanillaAdapter().check(tmp_path / "server.jar", TARGET)
+
+
+def test_check_refuses_a_jar_for_another_protocol(tmp_path: Path) -> None:
+    (tmp_path / "server.jar").write_bytes(fake_jar(protocol_version=778))
+    said = (
+        f"{tmp_path / 'server.jar'} is not supported: it is vanilla 26.3 speaking protocol "
+        "778, and this mscts tests Minecraft 26.3 (protocol 777)."
+    )
+    with pytest.raises(ProvisionError) as raised:
+        VanillaAdapter().check(tmp_path / "server.jar", TARGET)
+    assert str(raised.value) == said
 
 
 def test_check_names_the_version_a_jar_says_it_is(tmp_path: Path) -> None:
