@@ -8,6 +8,7 @@ an entity between packets as the client does.
 
 import math
 import uuid
+from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -88,6 +89,34 @@ class Entities(Mapping[int, Entity]):
     def __len__(self) -> int:
         """How many entities are tracked."""
         return len(self._tracked)
+
+    def find(self, type: str, *, near: tuple[float, float, float] | None = None) -> Entity:  # noqa: A002 - the issue's name
+        """The entity of `type` (`minecraft:zombie`, or `zombie`), nearest to `near` if given.
+
+        A script picks an entity by what it is, since its id differs from server to server.
+
+        Raises:
+            LookupError: No entity has the type (the message counts what there is); or more
+                than one does and `near` is not given; or more than one is nearest to `near`.
+        """
+        name = type if ":" in type else f"minecraft:{type}"
+        everything = [self[entity_id] for entity_id in self]
+        matching = [entity for entity in everything if entity.type == name]
+        if not matching:
+            msg = f"no {name} among {len(everything)} entities{_counted(everything)}"
+            raise LookupError(msg)
+        if near is None:
+            if len(matching) > 1:
+                at = " and ".join(_at(entity) for entity in matching)
+                msg = f"{len(matching)} {name}, at {at}: give near= to pick one"
+                raise LookupError(msg)
+            return matching[0]
+        nearest = min(_distance(entity, near) for entity in matching)
+        closest = [entity for entity in matching if _distance(entity, near) == nearest]
+        if len(closest) > 1:
+            msg = f"{len(closest)} {name} are nearest to {near}"
+            raise LookupError(msg)
+        return closest[0]
 
 
 class EntityTracker:
@@ -203,6 +232,23 @@ def _java_round(value: float) -> int:
     """Java's `Math.round`: the nearest integer, a half rounded up (floor of value + 0.5, exact)."""
     floor = math.floor(value)
     return floor + 1 if value - floor >= 0.5 else floor  # noqa: PLR2004 - the half
+
+
+def _counted(entities: list[Entity]) -> str:
+    """`: 2 minecraft:pig, 1 minecraft:item`, the types in `entities` by count; "" for none."""
+    counts = Counter(entity.type for entity in entities)
+    listed = ", ".join(f"{count} {name}" for name, count in sorted(counts.items()))
+    return f": {listed}" if listed else ""
+
+
+def _at(entity: Entity) -> str:
+    return f"({entity.x}, {entity.y}, {entity.z})"
+
+
+def _distance(entity: Entity, point: tuple[float, float, float]) -> float:
+    """The squared distance from `entity` to `point`, as `Vec3.distanceToSqr`."""
+    x, y, z = point
+    return (entity.x - x) ** 2 + (entity.y - y) ** 2 + (entity.z - z) ** 2
 
 
 def _type_name(type_id: int) -> str:

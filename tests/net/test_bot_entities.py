@@ -7,6 +7,8 @@ is fed the decoded fields of recorded packets, as the Bot's reader feeds it.
 import uuid
 from collections.abc import Mapping
 
+import pytest
+
 from mscts.codec.registry_names import registry_names
 from mscts.entities import Entity, EntityTracker
 from mscts.target import TARGET
@@ -201,6 +203,46 @@ def test_an_entity_taken_from_the_view_does_not_change_later() -> None:
     tracker.follow(*data(41, (9, 1.0)))
 
     assert (before.x, dict(before.data)) == (1.5, {})
+
+
+def test_find_returns_the_only_entity_of_a_type() -> None:
+    tracker = tracked(added(41, ZOMBIE, 1.5, -60.0, 2.5), added(42, PIG, 0.5, -60.0, 0.5))
+
+    assert tracker.entities.find("minecraft:zombie").id == 41
+    assert tracker.entities.find("pig").id == 42
+
+
+def test_find_near_a_point_returns_the_nearest_of_the_type() -> None:
+    tracker = tracked(
+        added(41, ZOMBIE, 1.5, -60.0, 2.5),
+        added(42, ZOMBIE, 9.5, -60.0, 9.5),
+        added(43, PIG, 9.5, -60.0, 9.0),
+    )
+
+    assert tracker.entities.find("zombie", near=(10.0, -60.0, 10.0)).id == 42
+
+
+def test_find_names_what_was_there_when_no_entity_has_the_type() -> None:
+    tracker = tracked(added(42, PIG, 0.5, -60.0, 0.5), added(43, PIG, 1.5, -60.0, 0.5))
+
+    with pytest.raises(LookupError, match=r"no minecraft:zombie among 2 entities: 2 minecraft:pig"):
+        tracker.entities.find("zombie")
+
+
+def test_find_without_near_refuses_two_of_the_type() -> None:
+    tracker = tracked(added(41, ZOMBIE, 1.5, -60.0, 2.5), added(42, ZOMBIE, 9.5, -60.0, 9.5))
+
+    message = r"2 minecraft:zombie, at \(1.5, -60.0, 2.5\) and \(9.5, -60.0, 9.5\): give near="
+    with pytest.raises(LookupError, match=message):
+        tracker.entities.find("zombie")
+
+
+def test_find_near_refuses_two_of_the_type_at_the_same_distance() -> None:
+    # Which is first differs from server to server (the ids do), so neither is picked.
+    tracker = tracked(added(41, ZOMBIE, 1.0, -60.0, 0.0), added(42, ZOMBIE, -1.0, -60.0, 0.0))
+
+    with pytest.raises(LookupError, match=r"2 minecraft:zombie are nearest to \(0.0, -60.0, 0.0\)"):
+        tracker.entities.find("zombie", near=(0.0, -60.0, 0.0))
 
 
 def test_a_type_id_outside_the_registry_is_named_by_its_number() -> None:

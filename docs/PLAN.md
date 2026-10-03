@@ -652,6 +652,11 @@ class Entity:                       # one entity, as the server last described i
     data: Mapping[int, object]      # its entity data so far, by index
 
 class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each lookup a snapshot
+    def find(self, type: str, *, near: tuple[float, float, float] | None = None) -> Entity: ...
+    # type "minecraft:zombie" or "zombie". The only entity of the type, or with near the one
+    # nearest to it (squared distance). LookupError: none of the type (the message counts the
+    # types there are), two or more without near, or two or more equally near: which comes
+    # first would depend on the server's ids.
 
 class EntityTracker:
     entities: Entities
