@@ -195,3 +195,22 @@ async def test_a_candidate_that_never_finishes_a_step_fails() -> None:
     verdict = judge(PROBE, reference, candidate)
     assert verdict.outcome is Outcome.MISMATCH, verdict
     assert verdict.divergences[0].kind == "failed", verdict
+
+
+@pytest.mark.asyncio
+async def test_a_server_that_does_not_unfreeze_fails_the_group() -> None:
+    # Review of #223, LOW 2: a world left frozen would spoil every later Group on the
+    # Instance, so a failed unfreeze fails this one: the Reference's error, a Candidate's
+    # failure.
+    def hang_on_unfreeze(command: str) -> None:
+        if command == "tick unfreeze":
+            stuck.answers_markers = False
+
+    stuck = ControlServer(on_command=hang_on_unfreeze)
+    failed = await played(stuck)
+
+    assert isinstance(failed, GroupError), failed
+    assert isinstance(failed.__cause__, TimeoutError)
+    reference = await played(ControlServer())
+    assert judge(PROBE, failed, reference).outcome is Outcome.ERROR
+    assert steps(commands_sent(stuck.seen)).count("tick unfreeze") == 1

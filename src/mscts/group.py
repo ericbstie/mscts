@@ -371,8 +371,9 @@ class GroupContext:
         """Freeze the world, through Control (`tick freeze`), for a tick-exact Group.
 
         Returns once the server has run the command (`Control.run`). The world stays
-        frozen until the Group ends: `close` unfreezes it (`tick unfreeze`), however the
-        Group ended, so the next Group does not start in a frozen world.
+        frozen until the Group ends: `end` unfreezes it (`tick unfreeze`), and a failure to
+        fails the Group; if the Group failed first, `close` tries. So the next Group does
+        not start in a frozen world.
 
         Raises:
             ValueError: The Group has frozen the world already.
@@ -415,23 +416,30 @@ class GroupContext:
             self._mark_each(f"{TICK_MARK}{self._ticks}", ends)
 
     async def end(self) -> None:
-        """Refuse a disconnect still queued for any Bot, once the Group's script has completed.
+        """Unfreeze the world if the Group froze it, then refuse a disconnect still queued.
 
-        A disconnect nothing took (it came after the last barrier, drain or `expect`) fails
-        its Bot (`Bot.refuse_queued_disconnect`), so a Candidate that kicks a Bot late does
-        not pass. `run_group` calls it before closing the Bots.
+        Called once the Group's script has completed, before the Bots close (`run_group`).
+        A world left frozen would spoil every later Group on the Instance, so an unfreeze
+        that fails fails the Group. A disconnect nothing took (it came after the last
+        barrier, drain or `expect`) fails its Bot (`Bot.refuse_queued_disconnect`), so a
+        Candidate that kicks a Bot late does not pass.
 
         Raises:
+            TimeoutError: The server did not answer `tick unfreeze` in time.
             ProtocolError: The server disconnected a Bot; the Bot's `failure`.
         """
+        if self._ticks is not None:
+            self._ticks = None
+            await self._control.run("tick unfreeze")
         for bot in self._bots.values():
             await bot.refuse_queued_disconnect()
 
     async def close(self) -> None:
-        """Unfreeze the world if the Group froze it, then close every Bot.
+        """Unfreeze the world if it is still frozen, then close every Bot.
 
-        Calling it again does nothing. A failure to unfreeze is logged, not raised: the
-        Group has ended, and its own error, if any, says more.
+        The world is still frozen only if the Group failed before `end`, so a failure to
+        unfreeze here is logged, not raised: the Group's own error says more, and has
+        failed the Group already. Calling it again does nothing.
         """
         if self._ticks is not None:
             self._ticks = None

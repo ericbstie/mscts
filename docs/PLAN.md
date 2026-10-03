@@ -1034,8 +1034,9 @@ class GroupContext:
                                     # Divergence, the Reference's an `error`, as for every
                                     # exception a Group raises), and no close Mark
     async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
-                                    # Group froze already. close() unfreezes, however the
-                                    # Group ended (a failure to is logged, not raised)
+                                    # Group froze already. end() unfreezes (a failure fails
+                                    # the Group); after a failed Group, close() tries, and
+                                    # logs a failure
     async def step(self, ticks: int = 1) -> None: ...   # #23: per tick, control.run(
                                     # "tick step 1") (marker, then barrier), then every Bot in
                                     # play passes Bot.sync at once, then Marks
@@ -1045,8 +1046,10 @@ class GroupContext:
                                     # freeze. Vanilla sends nothing when a step ends
                                     # (docs/research/2026-10-03-tick-step.md). ValueError:
                                     # ticks < 1, or not frozen
-    async def end(self) -> None: ...     # #184: Bot.refuse_queued_disconnect on every Bot
-    async def close(self) -> None: ...   # unfreezes if frozen, then closes every Bot; idempotent
+    async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises);
+                                    # then #184: Bot.refuse_queued_disconnect on every Bot
+    async def close(self) -> None: ...   # unfreezes if still frozen (logged, not raised), then
+                                    # closes every Bot; idempotent
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
                                     # it is; "" if none (the script itself raised it)
