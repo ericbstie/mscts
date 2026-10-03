@@ -14,9 +14,9 @@ first.
 
 1. Orient. Read `docs/PROGRESS.md`, the retrospective log in
    `docs/PROCESS.md`, and `git log --oneline -20`. List the open issues
-   (`needs-triage`, `needs-decision`, and the rest: ready) and open PRs with the GitHub MCP tools.
+   (`not-ready`, `needs-decision`, and the rest: ready) and open PRs with the GitHub MCP tools.
    Run `mise run check`.
-2. Plan a batch of 1–3 ready issues (no `needs-triage`) whose "Owns" lists are disjoint
+2. Plan a batch of 1–3 ready issues (no `not-ready`) whose "Owns" lists are disjoint
    (ADR-0009). Relay `needs-decision` issues to the maintainer.
 3. Spawn each worker with the Agent tool:
    `isolation: "worktree"`, `run_in_background: true`,

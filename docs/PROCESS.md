@@ -12,7 +12,7 @@ This file is owned by the tech lead. It changes only through the
 ## Roles
 
 **Tech lead (the main session).**
-- Owns the queue (open GitHub issues without `needs-triage` or
+- Owns the queue (open GitHub issues without `not-ready` or
   `needs-decision`, ADR-0009),
   `docs/PROGRESS.md`, `docs/PLAN.md`, the ADRs, this file, and the skills.
 - Writes spec issues with the maintainer, briefs workers on them, chooses
@@ -102,6 +102,7 @@ fully (the enabler, the Group, its docs).
 
 | Lane | Hard part | Handbook |
 | --- | --- | --- |
+| 2026-10-03 | `needs-triage` is renamed `not-ready`, with the description "Not ready: waits on other issues or an incomplete spec" | The old name read as a job for the maintainer (#213) |
 | `lane:timing` | What happens on which tick, and in what order | `docs/roles/timing.md` |
 | `lane:comparison` | What counts as a difference: decoding, canonical forms, what the client ends up seeing | `docs/roles/comparison.md` |
 | `lane:statistics` | Randomness: compare distributions over many runs | `docs/roles/statistics.md` |
@@ -136,7 +137,7 @@ raises nothing.
 ## Cycle
 
 1. **Plan a batch.** Give each running specialist its lane's next ready
-   issue (no `needs-triage` or `needs-decision`) (at most 5 agents at once, the reviewer included). Issues that
+   issue (no `not-ready` or `needs-decision`) (at most 5 agents at once, the reviewer included). Issues that
    run in parallel have disjoint "Owns" lists (files, modules and doc
    sections). Skip any labelled `needs-decision`. Check each issue's
    `scrutiny::*` label against `docs/RISK.md`.
@@ -163,7 +164,7 @@ raises nothing.
      which closes the issue.
    - Read the issue's comments: a scope change the worker recorded there
      may need a follow-up issue.
-   - Remove `needs-triage` from every issue whose Needs have now all
+   - Remove `not-ready` from every issue whose Needs have now all
      landed, once its spec is complete.
 4. **Risk and handbook.** Log any bug found in `docs/RISK.md` and update
    the levels. Commit the specialist's proposed handbook lines to its

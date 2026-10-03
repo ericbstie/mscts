@@ -136,7 +136,7 @@ A proposal:
   entities, that is a separate issue. Every test that needs it links to
   it.
 
-A test issue is labelled `test`, and `needs-triage` until every issue it
+A test issue is labelled `test`, and `not-ready` until every issue it
 needs has landed. Game rules and commands are named as vanilla 26.3 names them:
 `advance_time`, not `doDaylightCycle`.
 

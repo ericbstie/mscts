@@ -66,10 +66,10 @@ it, then merges the PR with a merge commit instead of a rebase-merge. Every
 commit on `main`, the merge commits included, still passes
 `mise run check`, so `git bisect run mise run check` keeps working, and
 each issue's commits stay together behind their merge. Labels are now
-`needs-triage` (not ready: incomplete, or waiting on another issue),
+`not-ready` (not ready: incomplete, or waiting on another issue),
 `needs-decision`, `opus` or `sonnet`, a `lane:*` and a `scrutiny::*`
 (docs/PROCESS.md, Lanes and review levels). An open issue with neither
-`needs-triage` nor `needs-decision` is ready. `spec`, `enabler` and
+`not-ready` nor `needs-decision` is ready. `spec`, `enabler` and
 `ready` are gone.
 
 ## Amendment (2026-10-02): a merge train runs the live tiers once

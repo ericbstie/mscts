@@ -143,7 +143,7 @@ Their PRs are reviewed and integrated like a worker branch.
 
 ## Next
 
-The queue is the open GitHub issues without `needs-triage` (ADR-0009).
+The queue is the open GitHub issues without `not-ready` (ADR-0009).
 New work goes there. The items below are migrated to issues as they are
 picked up; until then, they are still the backlog.
 
