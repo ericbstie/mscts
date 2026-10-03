@@ -332,6 +332,27 @@ def test_a_report_file_that_cannot_be_encoded_fails_naming_it(
     assert err.splitlines()[-1].startswith(said), err
 
 
+def test_a_failed_report_file_leaves_both_earlier_files_as_they_were(
+    fakes: Fakes,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fakes()
+    folder = tmp_path / "reports"
+    folder.mkdir()
+    (folder / "report.json").write_text("an earlier Run")
+    (folder / "report.md").write_text("an earlier Run")
+    monkeypatch.setattr(cli, "render_markdown", _lone_surrogate)
+
+    code, _, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1", "--out", str(folder))
+
+    assert code == 1
+    assert (folder / "report.json").read_text() == "an earlier Run"
+    assert (folder / "report.md").read_text() == "an earlier Run"
+    assert sorted(path.name for path in folder.iterdir()) == ["report.json", "report.md"]
+
+
 def test_a_run_report_carries_no_note_about_unbuilt_output(
     fakes: Fakes, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
