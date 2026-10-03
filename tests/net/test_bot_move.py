@@ -76,12 +76,17 @@ type Sent = list[tuple[str, Mapping[str, object] | None]]
 
 
 def moving_server(
-    seen: list[Packet], *, login: bool = True, correct_to: Mapping[str, float] | None = None
+    seen: list[Packet],
+    *,
+    login: bool = True,
+    teleport_to: Mapping[str, float] | None = None,
+    correct_to: Mapping[str, float] | None = None,
 ) -> Handler:
     """Join like vanilla, then answer statistics requests a tick apart, as `play_server` does.
 
     With `login`, the `login` naming the player's entity id comes with the first chunk batch
     (vanilla sends it before the join teleport; the Bot only needs it before it sprints).
+    With `teleport_to`, a teleport there follows the Bot's `player_loaded`.
     With `correct_to`, the first position the Bot sends is answered with an absolute
     `player_position` to that place, as vanilla corrects a move it refuses.
     """
@@ -89,6 +94,8 @@ def moving_server(
     async def then(peer: Peer) -> None:
         requests = 0
         corrected = correct_to is None
+        if teleport_to is not None:
+            await peer.send("minecraft:player_position", **_teleport(teleport_to))
         async for packet in peer.packets():
             seen.append(packet)
             if packet.name == "minecraft:client_command":
@@ -131,6 +138,7 @@ def play(
     script: Callable[[Bot], Awaitable[None]],
     *,
     login: bool = True,
+    teleport_to: Mapping[str, float] | None = None,
     correct_to: Mapping[str, float] | None = None,
 ) -> list[Sent]:
     """Join a Bot on `moving_server`, run `script`, then wait until the server has read it."""
@@ -141,7 +149,7 @@ def play(
         await script(bot)
         await bot.sync()
 
-    handler = moving_server(seen, login=login, correct_to=correct_to)
+    handler = moving_server(seen, login=login, teleport_to=teleport_to, correct_to=correct_to)
     with_bot(CODEC, Transcript(group_id="test/move", server="fake"), handler, use)
     return ticks_sent(seen)
 
@@ -188,16 +196,32 @@ def test_move_reports_the_position_alone_when_the_rotation_is_unchanged() -> Non
 
 
 def test_a_move_no_longer_than_the_threshold_is_not_reported() -> None:
-    # sendPosition reports a move longer than 2.0E-4 blocks (strictly).
+    # sendPosition reports a move longer than 2.0E-4 blocks (strictly), along any axis.
     async def script(bot: Bot) -> None:
         await bot.move(0.0, 0.0, 0.0)
         await bot.look(0.0, 0.0)
         await bot.move(2.0e-4, 0.0, 0.0)
-        await bot.move(0.0, 0.0, 2.0e-4)
-        await bot.move(0.0, 2.1e-4, 0.0)
+        await bot.move(0.0, 0.0, 2.1e-4)
+        await bot.move(0.0, 2.1e-4, 2.1e-4)
 
     ticks = play(script)
-    assert ticks[2:] == [[TICK_END], [TICK_END], [pos(0.0, 2.1e-4, 0.0), TICK_END]]
+    assert ticks[2:] == [
+        [TICK_END],
+        [pos(0.0, 0.0, 2.1e-4), TICK_END],
+        [pos(0.0, 2.1e-4, 2.1e-4), TICK_END],
+    ]
+
+
+def test_a_fresh_client_last_reported_itself_off_the_ground() -> None:
+    # A player put at the origin facing yaw 0 and pitch 0 has nothing to report on its first
+    # tick but its feet: LocalPlayer.lastOnGround starts false.
+    async def script(bot: Bot) -> None:
+        await bot.sync()  # the teleport has arrived
+        await bot.tick()
+
+    origin = {"x": 0.0, "y": 0.0, "z": 0.0, "yaw": 0.0, "pitch": 0.0}
+    status = ("minecraft:move_player_status_only", {"flags": ON_GROUND})
+    assert play(script, teleport_to=origin) == [[status, TICK_END]]
 
 
 def test_a_move_off_the_ground_says_so_in_the_flags() -> None:
