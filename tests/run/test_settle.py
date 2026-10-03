@@ -8,6 +8,8 @@ left) waits first. The fakes answer each status request from a script of counts.
 import asyncio
 import contextlib
 import dataclasses
+import os
+import stat
 from pathlib import Path
 from time import perf_counter
 
@@ -142,20 +144,16 @@ TURNS_TO_A_STATUS_WAIT = 30
 
 
 def _open_sockets() -> int:
-    """How many sockets this process has open (Linux)."""
-    return sum(
-        1
-        for fd in Path("/proc/self/fd").iterdir()
-        if (link := _link(fd)) is not None and link.startswith("socket:")
-    )
+    """How many sockets this process has open (`/dev/fd`, on Linux and macOS)."""
+    return sum(1 for fd in Path("/dev/fd").iterdir() if _is_socket(int(fd.name)))
 
 
-def _link(path: Path) -> str | None:
-    """Where the symlink at `path` points, or None if it is gone (the listing's own fd)."""
+def _is_socket(fd: int) -> bool:
+    """Whether `fd` is an open socket; False if it is gone (the listing's own fd)."""
     try:
-        return str(path.readlink())
+        return stat.S_ISSOCK(os.fstat(fd).st_mode)
     except OSError:
-        return None
+        return False
 
 
 async def _until_sockets_open_are(count: int, *, within_s: float) -> int:
