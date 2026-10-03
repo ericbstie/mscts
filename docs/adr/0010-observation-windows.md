@@ -231,3 +231,8 @@ second request made `sync` return before the tick's `block_update`.
 2. **It rests on vanilla's pass.** A server that answers on its network
    thread, with no tick between, gets the same wait and proves nothing by
    it, as it did under the #88 cap.
+3. **A request takes only an answer that arrived after it was sent.** An
+   `award_stats` stamped before the request went out (a server that
+   answered twice, or a plugin that sends one unasked) is taken and passed
+   over (audit H5). Taken as the answer, it made the barrier one round trip,
+   and left the real answer queued to offset every later barrier.

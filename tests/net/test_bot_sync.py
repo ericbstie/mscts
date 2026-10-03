@@ -152,6 +152,20 @@ def test_a_bot_whose_loop_stalls_after_a_pairs_second_request_does_not_take_one_
     assert "minecraft:block_update" in asyncio.run(client())
 
 
+def test_an_award_stats_that_arrived_before_the_request_is_not_its_answer() -> None:
+    # Audit 2026-10-02 H5: a Candidate that answers twice, or a plugin, sends one unasked.
+    # It arrives with the join's last chunk batch, before the barrier's first request.
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def use(bot: Bot) -> list[str]:
+        await bot.join()
+        await bot.sync()
+        return received(transcript)
+
+    names, _ = with_bot(CODEC, transcript, ticking_server([], stray=True), use, timeout_s=5.0)
+    assert "minecraft:block_update" in names
+
+
 def test_sync_takes_everything_the_server_sent_before_its_last_answer() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 

@@ -397,10 +397,21 @@ class Bot:
             await asyncio.sleep(remaining_ns / 1e9)
 
     async def _ask_for_statistics(self) -> int:
-        """Request the statistics, take packets until the answer, and return when it arrived."""
+        """Request the statistics, take packets until the answer, and return when it arrived.
+
+        An `award_stats` that arrived before the request was sent is not its answer (a
+        server that answered twice, or sent one unasked): it is taken and passed over.
+        """
+        asked_ns = self._connection.transcript.now_ns()
+
+        def arrived_since_asked(_: Packet) -> bool:
+            # `where` runs on the Packet `recv` just returned, so this is its arrival.
+            return cast("int", self._connection.last_arrival_ns) > asked_ns
+
         await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
-        await self.expect("minecraft:award_stats", timeout_s=self._timeout_s)
-        # `expect` returned a Packet, so `recv` did, and has set the arrival time.
+        await self.expect(
+            "minecraft:award_stats", timeout_s=self._timeout_s, where=arrived_since_asked
+        )
         return cast("int", self._connection.last_arrival_ns)
 
     async def drain(self) -> None:

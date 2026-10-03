@@ -412,41 +412,52 @@ def ticking_server(seen: list[Packet], *, stray: bool = False) -> Handler:
     answered at once, as vanilla answers every packet that arrives during its pass; any
     other waits for the next pass. With `stray`, an `award_stats` nobody asked for
     arrives with the join's `chunk_batch_finished`. Every serverbound Packet goes into
-    `seen`.
+    `seen`. A client that leaves while an answer is still due ends the handler: a lost
+    connection is not the fake's failure.
     """
-
-    async def then(peer: Peer) -> None:
-        loop = asyncio.get_running_loop()
-        first: float | None = None
-        effects: list[asyncio.Task[None]] = []
-
-        async def effect() -> None:
-            await asyncio.sleep(PASS_S + EFFECT_AFTER_PASS_S)
-            await peer.write(peer.raw_frame("minecraft:block_update", BLOCK_UPDATE))
-
-        try:
-            async for packet in peer.packets():
-                seen.append(packet)
-                if packet.name != "minecraft:client_command":
-                    continue
-                now = loop.time()
-                if first is None:
-                    first = now
-                    effects.append(loop.create_task(effect()))
-                else:
-                    ticks, into = divmod(now - first, TICK_S)
-                    if into > PASS_S:
-                        await asyncio.sleep(first + (ticks + 1) * TICK_S - now)
-                await answer_at_once(peer, 0)
-        finally:
-            for task in effects:
-                task.cancel()
-            await asyncio.gather(*effects, return_exceptions=True)
 
     def stray_answer(peer: Peer) -> bytes:
         return peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
 
-    return join_server(seen, JoinScript(after_batch=stray_answer if stray else None, then=then))
+    join = _Join(seen, JoinScript(after_batch=stray_answer if stray else None))
+
+    async def handler(peer: Peer) -> None:
+        if await join.login(peer) and await join.configure(peer) and await join.play(peer):
+            with suppress(ConnectionError):
+                await _answer_in_passes(peer, seen)
+
+    return handler
+
+
+async def _answer_in_passes(peer: Peer, seen: list[Packet]) -> None:
+    """`ticking_server`'s play: answer each statistics request in its pass, until EOF."""
+    loop = asyncio.get_running_loop()
+    first: float | None = None
+    effects: list[asyncio.Task[None]] = []
+
+    async def effect() -> None:
+        await asyncio.sleep(PASS_S + EFFECT_AFTER_PASS_S)
+        with suppress(ConnectionError):  # the client may have left already
+            await peer.write(peer.raw_frame("minecraft:block_update", BLOCK_UPDATE))
+
+    try:
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name != "minecraft:client_command":
+                continue
+            now = loop.time()
+            if first is None:
+                first = now
+                effects.append(loop.create_task(effect()))
+            else:
+                ticks, into = divmod(now - first, TICK_S)
+                if into > PASS_S:
+                    await asyncio.sleep(first + (ticks + 1) * TICK_S - now)
+            await answer_at_once(peer, 0)
+    finally:
+        for task in effects:
+            task.cancel()
+        await asyncio.gather(*effects, return_exceptions=True)
 
 
 @asynccontextmanager
