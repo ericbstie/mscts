@@ -149,10 +149,15 @@ def _markdown(line: _Line) -> str:
 _SPECIAL = frozenset("\\`*_[]<>&|~")
 """The characters Markdown could read as formatting inside a line."""
 
+_LINE_BREAKS = {"\n": "\\\\n", "\r": "\\\\r"}
+"""Each line break as Markdown that shows it as `\\n` or `\\r`, so the line goes on."""
+
 
 def _escape(text: str) -> str:
-    """`text` as Markdown that shows it as it is."""
-    return "".join(f"\\{char}" if char in _SPECIAL else char for char in text)
+    """`text` as Markdown that shows it as it is, on one line."""
+    return "".join(
+        f"\\{char}" if char in _SPECIAL else _LINE_BREAKS.get(char, char) for char in text
+    )
 
 
 def _code(text: str) -> str:
