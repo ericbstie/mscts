@@ -11,6 +11,7 @@ from mscts.cli import ADAPTERS, REFERENCE
 
 SRC = Path(mscts.__file__).parent
 ADAPTERS_DIR = SRC / "adapters"
+TESTS = Path(__file__).parent
 
 
 @pytest.mark.parametrize("name", sorted(ADAPTERS))
@@ -20,6 +21,12 @@ def test_an_adapter_is_the_folder_named_for_it(name: str) -> None:
     module = importlib.import_module(type(adapter).__module__)
     assert module.__file__ is not None
     assert Path(module.__file__).parent == ADAPTERS_DIR / name
+
+
+@pytest.mark.parametrize("name", sorted(ADAPTERS))
+def test_an_adapters_tests_are_the_folder_named_for_it(name: str) -> None:
+    assert sorted((TESTS / name).glob("test_*.py")) != []
+    assert sorted(TESTS.glob(f"test_{name}_*.py")) == []
 
 
 def test_no_adapter_data_sits_outside_its_folder() -> None:
