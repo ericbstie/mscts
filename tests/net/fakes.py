@@ -12,11 +12,12 @@ import struct
 import threading
 import time
 import uuid
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from collections import defaultdict
+from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 
-from mscts.bot import Bot
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.wire import Writer
@@ -356,14 +357,14 @@ async def answer_at_once(peer: Peer, request: int) -> None:  # noqa: ARG001 - an
 def answer_like_vanilla_after(shared: int, *, tick_s: float = TICK_S) -> Answer:
     """Answer the first `shared` requests at once, as one packet pass would, then like vanilla.
 
-    Vanilla answers a request at the start of a tick. A Bot's barrier sends its second
-    request as soon as the first answer arrives, so vanilla answers the pair a tick
-    apart: from the request after the first `shared`, every first of a pair at once and
-    every second `tick_s` later.
+    Vanilla answers a request at the start of a tick. A Bot's barrier sends each request
+    soon after the last answer arrived, so vanilla answers them a tick apart: from the
+    request after the first `shared`, the first of each barrier's `SYNC_REQUESTS` at once
+    and each of the others `tick_s` later.
     """
 
     async def answer(peer: Peer, request: int) -> None:
-        if request > shared and (request - shared) % 2 == 0:
+        if request > shared and (request - shared - 1) % SYNC_REQUESTS != 0:
             await asyncio.sleep(tick_s)
         await answer_at_once(peer, request)
 
@@ -371,7 +372,7 @@ def answer_like_vanilla_after(shared: int, *, tick_s: float = TICK_S) -> Answer:
 
 
 answer_each_tick = answer_like_vanilla_after(0)
-"""An Answer like vanilla's on a quiet machine: a barrier's two answers come a tick apart."""
+"""An Answer like vanilla's on a quiet machine: a barrier's answers come a tick apart."""
 
 
 async def never_answer(peer: Peer, request: int) -> None:
@@ -510,23 +511,40 @@ def scheduled_server(
     *,
     stray_after_s: float | None = None,
     burst_after_s: float | None = None,
+    strays_at: Collection[int] = (),
+    effect_after_request: int = 1,
 ) -> Handler:
     """Join like vanilla, then answer statistics requests in passes on a fixed schedule.
 
-    Passes come `TICK_S` apart, the first one `TICK_S` after the join, whoever asks: a
-    request that arrives during a pass (`PASS_S`) is answered at once, any other waits
-    for the next pass. The tick of the first pass that answers sends a `block_update`
+    Passes come `TICK_S` apart, the first one `TICK_S` after the first request arrived,
+    whoever asks: a request that arrives during a pass (`PASS_S`) is answered at once,
+    any other waits for the next pass. So the first request always waits a tick, however
+    long the join took. The tick of the first pass that answers sends a `block_update`
     `EFFECT_AFTER_PASS_S` after the pass. With `stray_after_s`, an `award_stats` nobody
     asked for is sent that long after the join; with `burst_after_s`, `BURST_FRAMES`
-    `change_difficulty` frames in one write. Every serverbound Packet goes into `seen`.
-    A client that leaves while an answer is still due ends the handler.
+    `change_difficulty` frames in one write. For each request numbered in `strays_at`
+    (counted from 1), an `award_stats` nobody asked for is sent as soon as it arrives,
+    before it waits for its pass: a Candidate that sends one when a statistic changes
+    (#169). The `block_update` also waits until request number `effect_after_request` has
+    arrived, and goes after its stray. By default that is the first request, which has
+    always arrived by then; a later one makes a tick whose effect comes after that
+    request, however the Bot's own waits stretch. Every
+    serverbound Packet goes into `seen`. A client that leaves while an answer is still due
+    ends the handler.
     """
     join = _Join(seen, JoinScript())
 
     async def handler(peer: Peer) -> None:
         if await join.login(peer) and await join.configure(peer) and await join.play(peer):
             with suppress(ConnectionError):
-                await _answer_on_schedule(peer, seen, stray_after_s, burst_after_s)
+                await _answer_on_schedule(
+                    peer,
+                    seen,
+                    stray_after_s,
+                    burst_after_s,
+                    strays_at=strays_at,
+                    effect_after_request=effect_after_request,
+                )
 
     return handler
 
@@ -535,14 +553,21 @@ BURST_FRAMES = 200
 """How many frames `scheduled_server`'s burst holds: far more bytes than a stray's."""
 
 
-async def _answer_on_schedule(
-    peer: Peer, seen: list[Packet], stray_after_s: float | None, burst_after_s: float | None
+async def _answer_on_schedule(  # noqa: PLR0913 - scheduled_server's options, passed on
+    peer: Peer,
+    seen: list[Packet],
+    stray_after_s: float | None,
+    burst_after_s: float | None,
+    *,
+    strays_at: Collection[int],
+    effect_after_request: int,
 ) -> None:
     """`scheduled_server`'s play: answer each statistics request at its pass, until EOF."""
     loop = asyncio.get_running_loop()
     joined = loop.time()
-    first_pass = joined + TICK_S
+    first_pass: float | None = None
     sends: list[asyncio.Task[None]] = []
+    arrived: defaultdict[int, asyncio.Event] = defaultdict(asyncio.Event)  # by request number
 
     async def send_at(t: float, frame: bytes) -> None:
         await asyncio.sleep(t - loop.time())
@@ -556,28 +581,53 @@ async def _answer_on_schedule(
         stray = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
         sends.append(loop.create_task(send_at(joined + stray_after_s, stray)))
     effect_due = True
+    requests = 0
+    answer = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
     try:
         async for packet in peer.packets():
             seen.append(packet)
             if packet.name != "minecraft:client_command":
                 continue
+            requests += 1
+            if requests in strays_at:
+                await peer.write(answer)
+            arrived[requests].set()
             now = loop.time()
-            ticks, into = divmod(max(now - first_pass, 0.0), TICK_S)
-            this_pass = first_pass + ticks * TICK_S
-            if now < first_pass or into > PASS_S:
-                this_pass = first_pass if now < first_pass else this_pass + TICK_S
-                await asyncio.sleep(this_pass - now)
+            if first_pass is None:
+                first_pass = now + TICK_S
+            this_pass = _pass_for(now, first_pass)
             if effect_due:
                 effect_due = False
                 update = peer.raw_frame("minecraft:block_update", BLOCK_UPDATE)
-                sends.append(
-                    loop.create_task(send_at(this_pass + PASS_S + EFFECT_AFTER_PASS_S, update))
-                )
-            await answer_at_once(peer, 0)
+                effect_at = this_pass + PASS_S + EFFECT_AFTER_PASS_S
+                allowed = arrived[effect_after_request]
+                sends.append(loop.create_task(_send_when_due(peer, effect_at, allowed, update)))
+            # Answered in its own task, so the next request is read as it arrives.
+            sends.append(loop.create_task(send_at(this_pass, answer)))
     finally:
         for task in sends:
             task.cancel()
         await asyncio.gather(*sends, return_exceptions=True)
+
+
+async def _send_when_due(peer: Peer, t: float, allowed: asyncio.Event, frame: bytes) -> None:
+    """Write `frame` to `peer` at loop time `t`, or once `allowed` is set if that is later."""
+    await allowed.wait()
+    await asyncio.sleep(t - asyncio.get_running_loop().time())
+    with suppress(ConnectionError):  # the client may have left already
+        await peer.write(frame)
+
+
+def _pass_for(arrived: float, first_pass: float) -> float:
+    """When the pass that handles a request that `arrived` then runs, on `first_pass`'s schedule.
+
+    One that arrives during a pass (`PASS_S`) is handled in it; any other, at the next.
+    """
+    if arrived < first_pass:
+        return first_pass
+    ticks, into = divmod(arrived - first_pass, TICK_S)
+    this_pass = first_pass + ticks * TICK_S
+    return this_pass if into <= PASS_S else this_pass + TICK_S
 
 
 @asynccontextmanager

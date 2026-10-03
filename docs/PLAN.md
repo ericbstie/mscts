@@ -555,15 +555,17 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command
     # (String 32767) and returns at once; what the server answers arrives like any packet.
     # sync, the barrier: returns once the server has sent everything caused by what it
-    # received before. On a Bot in play (else ProtocolError, nothing sent): a pair is
-    # client_command (REQUEST_STATS) then expect(award_stats), twice: one pair, always.
+    # received before. On a Bot in play (else ProtocolError, nothing sent): client_command
+    # (REQUEST_STATS) then expect(award_stats), SYNC_REQUESTS (3) times, always.
     # Vanilla handles a request at the start of a tick, before that tick sends what
     # changed, but a request that arrives while a tick's pass over the queue runs is
     # handled in that pass, and a pass lasts under TICK_GAP_S (0.005)
-    # (docs/research/2026-10-01-join-chunks.md). So the second request is sent only once
-    # TICK_GAP_S has passed since the first answer arrived (Connection.last_arrival_ns):
-    # it lands after that pass, and its answer comes from a later tick. The wait is the
-    # proof (ADR-0010, #115 amendment); a stall in the Bot's loop only lengthens it.
+    # (docs/research/2026-10-01-join-chunks.md). So each request after the first is sent
+    # only once TICK_GAP_S has passed since the last answer arrived
+    # (Connection.last_arrival_ns): it lands after that pass, and its answer comes from a
+    # later tick. The wait is the proof (ADR-0010, #115 amendment); a stall in the Bot's
+    # loop only lengthens it. Two requests are the barrier; the third keeps it when one
+    # award_stats sent unasked is taken as an answer (ADR-0010, #169 amendment).
     # Observation windows call it when they close, and Control calls it after each
     # command's marker (OperatorBot).
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
@@ -612,7 +614,8 @@ class Position:                     # Bot.position: where its player is and face
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
-TICK_GAP_S = 0.005                  # sync's wait from its first answer's arrival to its second request
+TICK_GAP_S = 0.005                  # sync's wait from an answer's arrival to its next request
+SYNC_REQUESTS = 3                   # how many statistics requests sync sends (#169)
 SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...

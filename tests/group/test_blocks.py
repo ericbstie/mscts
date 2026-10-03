@@ -14,7 +14,7 @@ from typing import Self
 
 import pytest
 
-from mscts.bot import TICK_GAP_S
+from mscts.bot import SYNC_REQUESTS, TICK_GAP_S
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
@@ -84,8 +84,8 @@ class BlocksServer:
                     self.seen.append(packet)
                     if packet.name == CLIENT_COMMAND:
                         requests += 1
-                        if requests % 2 == 0:
-                            await asyncio.sleep(TICK_S)  # a barrier's second answer, a tick on
+                        if (requests - 1) % SYNC_REQUESTS != 0:
+                            await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
                         await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS))
                     elif packet.name == CHAT_COMMAND:
                         command = str((packet.fields or {})["command"])

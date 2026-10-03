@@ -11,10 +11,11 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 ## What this lane knows
 
-- The barrier (`Bot.sync()`) is two statistics round trips that must
-  arrive a tick apart (ADR-0010 and its amendments). Under load vanilla can
-  answer both in one pass; a stall in our own event loop can fake the gap
-  (audit 2026-10-02 H1, #115).
+- The barrier (`Bot.sync()`) is `SYNC_REQUESTS` (3) statistics round trips,
+  each sent 5 ms after the last answer (ADR-0010 and its amendments). Two
+  would prove a tick; the third covers one unasked `award_stats` (#169).
+  Under load vanilla can answer two in one pass; a stall in our own event
+  loop can fake a gap (audit 2026-10-02 H1, #115).
 - A change to a barrier or a window is done when its Self-check passes 20
   of 20 five times in a row under `repeat.py --stress`, with a javap account
   of every queue it crosses.
@@ -27,7 +28,7 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
   contract.
 - Never cancel a Bot operation from outside: bound it with its `timeout_s`
   (a cancelled status poll leaked its socket).
-- A fake server answers like the real one by default (a pair of answers a
+- A fake server answers like the real one by default (a barrier's answers a
   tick apart), or fakes hide timing bugs.
 - `repeat.py --stress` runs at most the default `--stress-workers`
   (nproc), unless an issue says otherwise: more slows every other agent on

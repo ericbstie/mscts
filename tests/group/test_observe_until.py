@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from mscts.bot import Bot
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
@@ -120,7 +120,9 @@ async def test_the_window_closes_when_the_first_such_packet_arrived_not_when_it_
     assert closed.t_ns == first + 1, "just after the arrival (see the burst test)"
     assert exit_ns - closed.t_ns > 4 * GAP_S * 1e9, "the Mark is the arrival, not the time taken"
     names = [packet.name for packet in seen]
-    assert names.count(REQUEST) == 2, "the barrier before the window opens, none at its end"
+    assert names.count(REQUEST) == SYNC_REQUESTS, (
+        "the barrier before the window opens, none at its end"
+    )
 
 
 @pytest.mark.asyncio

@@ -264,12 +264,43 @@ second request made `sync` return before the tick's `block_update`.
    the loop is busy, a large burst fills the Bot's receive window, and
    what follows waits in the server's send buffer, where FIONREAD cannot
    see it. The fix covers what reached the Bot before, not a server that
-   sends statistics unasked at any moment; #169 tracks that case.
+   sends statistics unasked at any moment; the #169 amendment covers one
+   such `award_stats`.
 4. **No cap Mark.** With no retries there is no cap, so `SYNC_MAX_TRIPS`
    and the `sync:capped` Mark go. No Mark replaces that one: under the wait, a
    pair's answers always arrive at least `TICK_GAP_S` apart, so their gap
    cannot show a server with no tick. The Transcript still holds both
    requests and both answers, with their times.
+
+## Amendment (2026-10-03, #169): a third request
+
+An `award_stats` that reaches the Bot after a request is taken as its
+answer, whether the server sent it unasked or flow control held it back.
+The next request is then sent 5 ms after that stray, and can land in the
+same pass as the first: the real answers come from one tick, and `sync`
+returns before that tick's changes.
+
+1. **`Bot.sync` sends `SYNC_REQUESTS` (3) requests,** each `TICK_GAP_S`
+   after the last answer arrived. With one late `award_stats` among the
+   answers, two of them are still a pass apart, so the barrier still
+   proves a tick. Two late `award_stats` in one sync (two strays, or a
+   stray and a surplus answer that flow control held back) can still end
+   it a pass early.
+2. **Detecting the stray instead was rejected.** After a stray at the
+   first request, the surplus answer arrives within microseconds, and a
+   5 ms check would see it. But after a stray at the second request it
+   comes up to a tick later, so seeing it needs a wait of about a tick on
+   every sync: what the third request costs anyway.
+3. **It costs about one tick per barrier,** on every server that answers
+   once per tick, vanilla and Pumpkin included: the third request is sent
+   about 5 ms after the pass that answered the second, and waits for the
+   next pass, about 45 ms on vanilla. Nearly every barrier pays it. The
+   review of #218 estimated the cost from how often the unit fakes call
+   `sync`, not from live runs. Per repetition of both sides, it estimated
+   about 0.8 s for `join/basic`, 4.5 s for `blocks/setblock`, 6 s for
+   `blocks/fill` and 13 s for `blocks/clone`, and about 2 minutes for a
+   default `mscts run` over every Group. A correct barrier is worth that
+   time.
 
 ## Amendment (2026-10-03, #117): each Bot's window ends at its own barrier
 

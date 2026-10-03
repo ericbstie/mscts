@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import Outcome
 from mscts.group import CommandMissing, Group, GroupContext
@@ -121,8 +122,8 @@ class ControlServer:
             self.seen.append(packet)
             if packet.name == "minecraft:client_command":
                 self._requests += 1
-                if self._requests % 2 == 0:
-                    await asyncio.sleep(TICK_S)  # a barrier's second answer comes a tick later
+                if (self._requests - 1) % SYNC_REQUESTS != 0:
+                    await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
                 straggler = self.after_answer.get(self._requests)
                 said = b"" if straggler is None else chat(peer, straggler)
                 await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + said)
@@ -224,8 +225,8 @@ async def test_run_returns_what_the_server_said_but_the_markers_answer(
 
 @pytest.mark.asyncio
 async def test_run_returns_what_arrived_until_the_barrier_ended() -> None:
-    # Requests 1 and 2 are the barrier after the join; 3 is the first of the run's.
-    handler = ControlServer(after_answer={3: "said during the barrier"})
+    # The first SYNC_REQUESTS are the barrier after the join; the next is the run's first.
+    handler = ControlServer(after_answer={SYNC_REQUESTS + 1: "said during the barrier"})
     transcript = Transcript(group_id="test/control", server="fake")
     async with playing(handler, transcript) as context:
         said = await context.control.run(SETBLOCK)
@@ -263,16 +264,16 @@ async def test_run_returns_after_the_barrier_that_follows_the_markers_answer() -
     names = [event.packet.name for event in events]
     marker = names.index(SYSTEM_CHAT, names.index(SYSTEM_CHAT) + 1)
     assert events[marker].packet.payload.find(b"mscts-barrier-1") > 0
-    assert names[marker + 1 :] == [AWARD_STATS, AWARD_STATS]
+    assert names[marker + 1 :] == [AWARD_STATS] * SYNC_REQUESTS
 
 
 @pytest.mark.asyncio
 async def test_what_arrived_before_the_command_is_not_its_answer() -> None:
     joined = "control joined the game"
     straggler = "said after a barrier"
-    # Request 4 ends the first run's barrier: what comes with its answer is not taken
+    # This request ends the first run's barrier: what comes with its answer is not taken
     # before the second run.
-    handler = ControlServer(after_join=(joined,), after_answer={4: straggler})
+    handler = ControlServer(after_join=(joined,), after_answer={2 * SYNC_REQUESTS: straggler})
     transcript = Transcript(group_id="test/control", server="fake")
     async with playing(handler, transcript) as context:
         first = await context.control.run(SETBLOCK)
@@ -389,7 +390,7 @@ async def test_leave_closes_the_bot_and_the_next_run_joins_a_new_one_behind_the_
         for packet in seen
         if packet.name in {"minecraft:hello", CLIENT_COMMAND, CHAT_COMMAND}
     ]
-    hello, barrier = "minecraft:hello", [CLIENT_COMMAND, CLIENT_COMMAND]
+    hello, barrier = "minecraft:hello", [CLIENT_COMMAND] * SYNC_REQUESTS
     run = [CHAT_COMMAND, CHAT_COMMAND, *barrier]  # the command, its marker, the barrier
     assert steps == [hello, *barrier, *run, hello, *barrier, *run]
     assert commands_sent(seen) == [

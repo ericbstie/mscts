@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
-from mscts.bot import Bot
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
@@ -190,7 +190,7 @@ async def test_a_body_that_raises_gets_no_closing_barrier_and_no_close_mark() ->
 
     assert labels(transcript) == [OBSERVE_OPEN]
     requests = [packet.name for packet in seen].count(REQUEST)
-    assert requests == 2, "the barrier before the window opens, none at its end"
+    assert requests == SYNC_REQUESTS, "the barrier before the window opens, none at its end"
 
 
 @pytest.mark.asyncio
@@ -209,7 +209,8 @@ async def test_every_bot_in_play_passes_the_barrier_before_the_window_closes() -
             for event in transcript.events
             if event.bot == bot and event.packet.name == ANSWER
         ]
-        assert len(answers) == 4, bot  # a barrier before the window opens, and one at its end
+        # A barrier before the window opens, and one at its end.
+        assert len(answers) == 2 * SYNC_REQUESTS, bot
         assert answers[-1] <= closed, bot
 
 
@@ -222,7 +223,7 @@ async def test_each_bots_window_ends_at_its_own_barriers_last_answer() -> None:
 
     async def one_bot_slow(peer: Peer, request: int) -> None:
         nonlocal second_requests
-        if request != 4:  # the closing barrier's second request
+        if request != CLOSING_LAST:
             await answer_at_once(peer, request)
             return
         second_requests += 1
@@ -255,7 +256,7 @@ async def test_what_the_server_sends_before_the_barriers_answer_is_in_the_window
     transcript = Transcript(group_id="test/observe", server="fake")
 
     async def late(peer: Peer, request: int) -> None:
-        if request == 4:  # the second request of the barrier at the window's end
+        if request == CLOSING_LAST:
             await asyncio.sleep(0.2)
             await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
         await answer_at_once(peer, request)
@@ -278,8 +279,8 @@ async def test_the_drain_takes_what_arrived_after_the_barrier_without_waiting() 
     transcript = Transcript(group_id="test/observe", server="fake")
 
     async def with_a_straggler(peer: Peer, request: int) -> None:
-        if request % 2 == 0:
-            await asyncio.sleep(TICK_S)  # a barrier's second answer comes a tick later
+        if request % SYNC_REQUESTS == 0:
+            await asyncio.sleep(TICK_S)  # a barrier's last answer comes a tick later
         answer = peer.raw_frame(ANSWER, NO_STATISTICS)
         straggler = peer.raw_frame(BLOCK_UPDATE, BLOCK + bytes([request]))
         await peer.write(answer + straggler)
@@ -292,7 +293,7 @@ async def test_the_drain_takes_what_arrived_after_the_barrier_without_waiting() 
 
     _, closed = window(transcript)
     blocks = arrivals(transcript, BLOCK_UPDATE)
-    assert len(blocks) == 4  # a straggler after each answer, of both barriers
+    assert len(blocks) == 2 * SYNC_REQUESTS  # a straggler after each answer, of both barriers
     assert blocks[-1] <= closed
     assert took < 1.0, f"closing the window took {took:.2f} s"
 
@@ -323,7 +324,9 @@ async def test_a_bot_the_group_closed_in_the_window_is_neither_synced_nor_draine
 
     assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE, OBSERVE_CLOSE]
     requests = [packet.name for packet in seen].count(REQUEST)
-    assert requests == 2, "the barrier before the window opened, while the Bot was in play"
+    assert requests == SYNC_REQUESTS, (
+        "the barrier before the window opened, while the Bot was in play"
+    )
 
 
 LATE_S = 0.02
@@ -396,7 +399,8 @@ async def test_a_bot_that_took_its_kick_before_a_window_passes_no_barrier_at_its
             pass
 
     answers = Counter(e.bot for e in transcript.events if e.packet.name == ANSWER)
-    assert answers == {"bob": 4}, answers  # bob passed the opening and the closing barrier
+    # bob passed the opening and the closing barrier.
+    assert answers == {"bob": 2 * SYNC_REQUESTS}, answers
 
 
 @pytest.mark.asyncio
@@ -457,7 +461,7 @@ async def test_a_bot_the_server_disconnected_does_not_fail_the_windows_end() -> 
         f"{OBSERVE_CLOSE} bob",
     ]
     bobs_answers = [e for e in transcript.events if e.bot == "bob" and e.packet.name == ANSWER]
-    assert len(bobs_answers) == 4  # bob passed both his barriers as usual
+    assert len(bobs_answers) == 2 * SYNC_REQUESTS  # bob passed both his barriers as usual
 
 
 @pytest.mark.asyncio
@@ -473,6 +477,11 @@ async def test_a_disconnect_the_group_did_not_take_fails_the_bots_barrier() -> N
     async with playing(kicking_server(), transcript) as context:
         with pytest.raises(ProtocolError, match="disconnected alice"):
             await kick_untaken(context)
+
+
+CLOSING_LAST = 2 * SYNC_REQUESTS
+"""The last request of the barrier at a first window's end: the barrier before it opens
+sends the first `SYNC_REQUESTS`."""
 
 
 async def kick_at_the_barrier(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
@@ -500,14 +509,11 @@ async def test_a_candidate_that_disconnects_a_bot_the_reference_keeps_fails() ->
 
 
 async def kick_after_the_first_barrier(peer: Peer, request: int) -> None:
-    """Answer; after the first closing barrier's second answer, disconnect, and close later.
-
-    Requests 1 and 2 are the barrier before the window opens, 3 and 4 the one at its end.
-    """
-    if request > 4:
+    """Answer; after the first closing barrier's last answer, disconnect, and close later."""
+    if request > CLOSING_LAST:
         return
     await answer_at_once(peer, request)
-    if request == 4:
+    if request == CLOSING_LAST:
         await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
         await asyncio.sleep(0.3)  # the end comes later
         await peer.close()
@@ -543,11 +549,11 @@ async def test_a_candidate_that_kicks_a_bot_just_after_its_barrier_mismatches(wi
 
 
 async def kick_after_the_last_barrier(peer: Peer, request: int) -> None:
-    """Answer; 100 ms after the closing barrier's second answer, disconnect, and close later."""
-    if request > 4:
+    """Answer; 100 ms after the closing barrier's last answer, disconnect, and close later."""
+    if request > CLOSING_LAST:
         return
     await answer_at_once(peer, request)
-    if request == 4:
+    if request == CLOSING_LAST:
         await asyncio.sleep(0.1)  # after the window's drain
         await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
         await asyncio.sleep(0.3)  # the end comes later
@@ -581,10 +587,10 @@ async def test_a_candidate_that_kicks_a_bot_after_the_last_window_mismatches() -
 
 async def kick_then_update(peer: Peer, request: int) -> None:
     """As `kick_after_the_last_barrier`, but a block_update follows the disconnect."""
-    if request > 4:
+    if request > CLOSING_LAST:
         return
     await answer_at_once(peer, request)
-    if request == 4:
+    if request == CLOSING_LAST:
         await asyncio.sleep(0.1)  # after the window's drain
         kick = peer.raw_frame("minecraft:disconnect", KICKED)
         await peer.write(kick + peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
@@ -672,9 +678,9 @@ async def test_a_kick_the_group_took_does_not_fail_its_end() -> None:
 
 
 async def straggle_after_the_last_barrier(peer: Peer, request: int) -> None:
-    """Answer; 100 ms after the closing barrier's second answer, send a block_update."""
+    """Answer; 100 ms after the closing barrier's last answer, send a block_update."""
     await answer_at_once(peer, request)
-    if request == 4:
+    if request == CLOSING_LAST:
         await asyncio.sleep(0.1)  # after the window's drain
         await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
 
@@ -705,7 +711,7 @@ async def test_a_disconnect_that_reached_the_socket_unread_is_refused() -> None:
 
     async def kick_then_tell(peer: Peer, request: int) -> None:
         await answer_at_once(peer, request)
-        if request == 4:
+        if request == CLOSING_LAST:
             await asyncio.sleep(0.1)
             await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
             kicked.set()
