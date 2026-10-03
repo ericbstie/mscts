@@ -162,6 +162,7 @@ checked. So take every disconnect your Group causes.
 | Window option | What it does |
 | --- | --- |
 | `context.observe("minecraft:block_update", ...)` | Compares only the packets named. |
+| `context.observe(play=False)` | Compares no play packet, only the login, configuration and status packets. Use it when the play packets vary and the Group tests something else, as `status/with-player` does. It takes no names and no `until`. |
 | `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, or at the Bot you name with `bot=`, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block going until the packet has arrived (a Bot's `join` does for a join's packets): if none had when the block ended, the Group fails and says which. With more than one Bot, name the Bot: when the window ends for the others then depends on timing. |
 
 A packet name must be one the server sends in play, with its namespace

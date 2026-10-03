@@ -20,7 +20,7 @@ from typing import Protocol
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.schemas.play.commands import root_literals
-from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Mask
+from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN, TICK_MARK, Mask
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.target import TARGET
@@ -282,7 +282,7 @@ class GroupContext:
 
     @contextlib.asynccontextmanager
     async def observe(
-        self, *names: str, until: str | None = None, bot: Bot | None = None
+        self, *names: str, until: str | None = None, bot: Bot | None = None, play: bool = True
     ) -> AsyncIterator[None]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
@@ -321,6 +321,9 @@ class GroupContext:
         reader stamps a frame when it reads its own socket, and the readers run one after
         another, so a packet that reached one Bot's socket first can be stamped later.
 
+        With `play=False`, the window compares no play packet, only the packets of the other
+        States (login, configuration, status), for a Group whose play packets vary.
+
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
                 none for every packet.
@@ -329,18 +332,24 @@ class GroupContext:
                 barrier.
             bot: The Bot whose `until` packet ends the window; None for any Bot but
                 Control.
+            play: False for a window that compares no play packet; then neither `names` nor
+                `until` can be given.
 
         Raises:
             ValueError: A window is open already (windows do not nest), or a name (in
                 `names` or `until`) is not a packet the Target's server sends in play,
                 or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
-                `bot` is given without `until`, or is not one of this Group's Bots.
+                `bot` is given without `until`, or is not one of this Group's Bots; or
+                `play` is False and `names` or `until` is given.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
             ProtocolError: The server disconnected a Bot, and the barrier or the drain
                 took the disconnect; or no `until` packet arrived inside the window.
         """
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
+            raise ValueError(msg)
+        if not play and (names or until is not None):
+            msg = "play=False compares no play packet: give no names and no until with it"
             raise ValueError(msg)
         for name in (*names, *(() if until is None else (until,))):
             _check_observable(name)
@@ -355,7 +364,7 @@ class GroupContext:
             # What setup caused may still be on its way to a Bot that is not Control: the
             # barrier first, so it arrives before the window opens on every Instance.
             await self._sync()
-            opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
+            opened = self._mark(" ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,)))))
             yield
             if until is None:
                 self._mark_each(OBSERVE_CLOSE, await self._sync())

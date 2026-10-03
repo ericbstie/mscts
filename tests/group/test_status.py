@@ -5,7 +5,7 @@ import pytest
 
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Packet
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN
 from mscts.group import GROUPS, Group, GroupContext, GroupKind, resolve
 from mscts.groups import status
 from mscts.net import Endpoint
@@ -109,7 +109,7 @@ async def test_status_with_player_joins_before_the_window_and_asks_for_the_statu
     asked = [e for e in transcript.events if e.packet.name == "minecraft:status_request"]
     answered = [e for e in transcript.events if e.packet.name == "minecraft:status_response"]
     assert {event.bot for event in answered} == {"status"}
-    assert opened.label == f"{OBSERVE_OPEN} {status.PLAY_PACKET}", "no play packet of the join"
+    assert opened.label == f"{OBSERVE_OPEN} {OBSERVE_NO_PLAY}", "no play packet of the join"
     (login,) = [e for e in player if e.packet.name == "minecraft:login_finished"]
     assert login.t_ns < opened.t_ns
     (ask,), (answer,) = asked, answered
