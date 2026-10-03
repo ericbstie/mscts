@@ -301,3 +301,10 @@ MD2).
    Bot's arrival, which its own reader orders. The close Mark still names
    no Bot, so the other Bots' cut is timing; a Group with more than one Bot
    names the Bot. Without `bot`, the #105 rule stands.
+3. **A Bot that took the server's disconnect passes no barrier and is not
+   drained** (audit L2). A Bot the server kicked is still in play by its
+   send State, so a Group that tests a kick failed at the window's end. The
+   rule keys on the disconnect the Group took, not on the connection having
+   ended: a Candidate that disconnects a Bot the Reference keeps leaves the
+   disconnect untaken, or closes with none, and that Bot's barrier still
+   fails as the Candidate's `mismatch`.

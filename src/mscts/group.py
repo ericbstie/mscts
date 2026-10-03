@@ -283,10 +283,12 @@ class GroupContext:
         body completes, every Bot in play passes the barrier (`Bot.sync`), all at once.
         Each Bot's window ends at its own barrier: it gets the Mark `observe:close <Bot
         name>` a nanosecond after its barrier's last answer arrived, whatever the other
-        Bots are still waiting for (a Bot not in play gets it once every barrier has
+        Bots are still waiting for (a Bot that passes none gets it once every barrier has
         returned). Then every Bot not closed takes what has already arrived, without
-        waiting (`Bot.drain`). A body that raises gets neither: its window runs to the
-        end of the Transcript.
+        waiting (`Bot.drain`). A Bot that has taken the server's disconnect
+        (`Bot.disconnected`, as a Group that tests a kick does) passes no barrier and
+        takes nothing. A body that raises gets neither: its window runs to the end of the
+        Transcript.
 
         With `until`, there is no barrier. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
@@ -390,15 +392,21 @@ class GroupContext:
         return min(arrivals)
 
     async def _drain(self) -> None:
-        """Take what has already arrived at every Bot not closed, without waiting."""
+        """Take what has already arrived at every Bot not closed, without waiting.
+
+        A Bot that has taken the server's disconnect is skipped: the server sends it
+        nothing more, and draining would raise.
+        """
         for bot in self._bots.values():
-            if not bot.closed:
+            if not bot.closed and not bot.disconnected:
                 await bot.drain()
 
     async def _sync(self) -> dict[str, int]:
         """Pass the barrier on every Bot in play at once; raise the first Bot's error.
 
-        Returns when each Bot's barrier's last answer arrived, by the Bot's name.
+        A Bot that has taken the server's disconnect passes none: one the Group did not
+        take is still queued, so that Bot's barrier takes it and fails. Returns when each
+        Bot's barrier's last answer arrived, by the Bot's name.
         """
 
         async def barrier(bot: Bot) -> int:
@@ -417,7 +425,7 @@ class GroupContext:
                 tasks = {
                     name: barriers.create_task(barrier(bot))
                     for name, bot in self._bots.items()
-                    if bot.in_play
+                    if bot.in_play and not bot.disconnected
                 }
         except ExceptionGroup as errors:
             raise errors.exceptions[0] from None

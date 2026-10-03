@@ -29,6 +29,15 @@ _STATE_AFTER_SENDING: Mapping[tuple[State, str], State] = {
 }
 """The acks after which what the Connection *sends* is in a new State."""
 
+_DISCONNECTS = frozenset(
+    {
+        (State.LOGIN, "minecraft:login_disconnect"),
+        (State.CONFIGURATION, "minecraft:disconnect"),
+        (State.PLAY, "minecraft:disconnect"),
+    }
+)
+"""The clientbound packets with which a server ends the session, then closes the connection."""
+
 _STATE_AFTER_RECEIVING: Mapping[tuple[State, str], State] = {
     (State.LOGIN, "minecraft:login_finished"): State.CONFIGURATION,
     (State.CONFIGURATION, "minecraft:finish_configuration"): State.PLAY,
@@ -134,6 +143,7 @@ class Connection:
         self._answer: Answer | None = None
         self._last_arrival_ns: int | None = None
         self._stamped_bytes = 0  # every byte the reader has read, each stamped as it was
+        self._disconnected = False  # recv has returned the server's disconnect
         self._reading = asyncio.get_running_loop().create_task(
             self._read_forever(), name=f"mscts Connection reader ({bot})"
         )
@@ -188,6 +198,15 @@ class Connection:
         `recv` took the Packet, so it holds when the caller was busy meanwhile.
         """
         return self._last_arrival_ns
+
+    @property
+    def disconnected(self) -> bool:
+        """Whether `recv` has returned the server's disconnect.
+
+        That is `login_disconnect` or `disconnect`: the server ends the session with it,
+        and closes the connection.
+        """
+        return self._disconnected
 
     async def caught_up(self) -> None:
         """Return once the reader has stamped every byte that had reached the socket on entry.
@@ -273,6 +292,7 @@ class Connection:
         if isinstance(item, _End):
             self._end = item
             raise item.error
+        self._disconnected |= (item.packet.state, item.packet.name) in _DISCONNECTS
         self._transcript.record(self._bot, item.packet, t_ns=item.t_ns)
         self._last_arrival_ns = item.t_ns
         if item.error is not None:

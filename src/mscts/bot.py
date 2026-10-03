@@ -252,6 +252,14 @@ class Bot:
         return self._closed
 
     @property
+    def disconnected(self) -> bool:
+        """Whether the Bot has taken the server's disconnect: the server sends it no more.
+
+        A Group that tests a kick takes it (`expect`); `sync` and `drain` would raise.
+        """
+        return self._connection.disconnected
+
+    @property
     def in_play(self) -> bool:
         """Whether the Bot has joined and is not closed: what `sync` needs."""
         return not self._closed and self._connection.state is State.PLAY

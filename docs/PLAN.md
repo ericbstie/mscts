@@ -462,6 +462,8 @@ class Connection:                   # one TCP connection; owns framing, compress
     transcript: Transcript          # read-only: the Transcript it records to
     last_arrival_ns: int | None     # read-only: when the Packet recv last returned arrived, as the
                                     # Transcript stamps it (not when it was taken); None before the first
+    disconnected: bool              # (property) recv has returned the server's disconnect
+                                    # (login_disconnect, or disconnect)
     async def caught_up(self) -> None: ...  # once the reader has stamped the backlog on entry
                                     # (FIONREAD + the stream buffer; later bytes not waited for),
                                     # or has ended; sync awaits it before stamping a request
@@ -511,6 +513,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                                     # came from
     closed: bool                    # (property) close was called
     in_play: bool                   # (property) joined, and not closed: what sync needs
+    disconnected: bool              # (property) Connection.disconnected: the Bot took the
+                                    # server's disconnect (a Group that tests a kick)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -894,12 +898,15 @@ class GroupContext:
                 ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: Marks OBSERVE_OPEN (then the
                                     # names, each after a space) on entry; when the body
-                                    # completes, every Bot in play passes Bot.sync (all at
-                                    # once; the first error raises, as that Bot's failure),
-                                    # then a Mark "OBSERVE_CLOSE <Bot name>" per Bot, 1 ns
-                                    # after its barrier's last answer's arrival (a Bot not in
-                                    # play: once every barrier returned), then every Bot not
-                                    # closed drains. A body that raises gets neither, so its window
+                                    # completes, every Bot in play and not disconnected passes
+                                    # Bot.sync (all at once; the first error raises, as that
+                                    # Bot's failure), then a Mark "OBSERVE_CLOSE <Bot name>"
+                                    # per Bot, 1 ns after its barrier's last answer's arrival
+                                    # (a Bot that passed none: once every barrier returned),
+                                    # then every Bot neither closed nor disconnected drains
+                                    # (Bot.disconnected: the Group took the server's
+                                    # disconnect, so a kick it tests is no error; one it did
+                                    # not take fails that Bot's barrier). A body that raises gets neither, so its window
                                     # runs to the Transcript's end. ValueError, nothing
                                     # marked: a window already open (no nesting), or a name
                                     # (in names or until) that is not in

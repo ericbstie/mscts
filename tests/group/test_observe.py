@@ -11,7 +11,7 @@ from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
-from mscts.net import Endpoint
+from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -19,8 +19,10 @@ from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
     Handler,
+    JoinScript,
     Peer,
     answer_at_once,
+    join_server,
     never_answer,
     play_server,
     serve,
@@ -310,6 +312,83 @@ async def test_a_bot_the_group_closed_is_neither_synced_nor_drained() -> None:
 
     assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE]
     assert REQUEST not in [packet.name for packet in seen]
+
+
+def kicking_server() -> Handler:
+    """Join like vanilla, answer the barrier at once, and disconnect a Bot that runs `kick`."""
+
+    async def then(peer: Peer) -> None:
+        requests = 0
+        async for packet in peer.packets():
+            if packet.name == REQUEST:
+                requests += 1
+                await answer_at_once(peer, requests)
+            elif (packet.fields or {}).get("command") == "kick":
+                await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+                await peer.close()
+                return
+
+    return join_server([], JoinScript(then=then))
+
+
+KICKED = bytes.fromhex("08 0004") + b"kick"
+"""A disconnect's reason: an NBT String text component."""
+
+
+@pytest.mark.asyncio
+async def test_a_bot_the_server_disconnected_does_not_fail_the_windows_end() -> None:
+    # Audit 2026-10-02, L2: a kicked Bot is still in play by its send State, so the barrier
+    # and the drain raised ConnectionClosedError for a Group that tests a kick.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(kicking_server(), transcript) as context:
+        alice = await joined(context, "alice")
+        await joined(context, "bob")
+        async with context.observe():
+            await alice.command("kick")
+            await alice.expect("minecraft:disconnect", timeout_s=2.0)
+
+    assert sorted(labels(transcript)[1:]) == [f"{OBSERVE_CLOSE} alice", f"{OBSERVE_CLOSE} bob"]
+    bobs_answers = [e for e in transcript.events if e.bot == "bob" and e.packet.name == ANSWER]
+    assert len(bobs_answers) == 2  # bob passed his barrier as usual
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_the_group_did_not_take_fails_the_bots_barrier() -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+
+    async def kick_untaken(context: GroupContext) -> None:
+        alice = await joined(context, "alice")
+        async with context.observe():
+            await alice.command("kick")
+            await asyncio.sleep(0.1)  # the disconnect and the end arrive, untaken
+
+    async with playing(kicking_server(), transcript) as context:
+        with pytest.raises(ProtocolError, match="disconnected alice"):
+            await kick_untaken(context)
+
+
+async def kick_at_the_barrier(peer: Peer, request: int) -> None:  # noqa: ARG001 - an Answer
+    """Disconnect the Bot instead of answering its barrier."""
+    await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+    await peer.close()
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_disconnects_a_bot_the_reference_keeps_fails() -> None:
+    # The disconnect is still queued, untaken by the Group, so the barrier takes it and
+    # fails: only a kick the Group took itself is skipped.
+    async with serve(CODEC, play_server([])) as endpoint:
+        reference = await run_group(OBSERVING, endpoint, server="vanilla", timeout_s=2.0)
+    async with serve(CODEC, play_server([], kick_at_the_barrier)) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(OBSERVING, endpoint, server="candidate", timeout_s=2.0)
+
+    verdict = judge(OBSERVING, reference, caught.value)
+
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+    failed = verdict.divergences[0]
+    assert (failed.kind, failed.bot) == ("failed", "alice"), verdict
+    assert "disconnected alice" in str(failed.candidate), verdict
 
 
 async def _join_and_observe(context: GroupContext) -> None:
