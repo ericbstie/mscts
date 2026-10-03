@@ -142,7 +142,7 @@ async def test_a_candidate_that_never_empties_gives_a_mismatch_with_a_failed_div
 
 
 RAISED = "the wait for no player online failed: RuntimeError: an unexpected failure"
-"""What a settle poll that raises RuntimeError (a harness bug) comes to as a sentence."""
+"""What a settle poll that raises an unexpected RuntimeError comes to as a sentence."""
 
 CLOSED = "the wait for no player online failed: ConnectionError: the server closed it"
 """What a settle poll that raises ConnectionError (a Candidate failure) comes to."""
@@ -205,8 +205,8 @@ def _closed() -> BaseException:
 async def test_a_candidate_whose_settle_poll_fails_gets_a_mismatch_and_the_run_goes_on(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    # A failure the poll does not catch itself, but that the Candidate causes
-    # (CANDIDATE_FAILURES): until_no_player_online is replaced, so it reaches the Run.
+    # A failure the poll does not catch itself, but that the Candidate causes:
+    # until_no_player_online is replaced, so it reaches the Run.
     verdicts, happened = await _play_with_a_raising_poll(
         ("Candidate",), monkeypatch, tmp_path, _closed
     )
@@ -240,14 +240,16 @@ async def test_a_candidate_whose_settle_poll_fails_gets_a_mismatch_and_the_run_g
 
 
 @pytest.mark.asyncio
-async def test_a_harness_bug_in_the_candidates_settle_poll_is_an_error_and_the_run_goes_on(
+async def test_an_unexpected_exception_in_the_candidates_settle_poll_alone_is_a_mismatch(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    # #222: the Reference's poll ran the same code without raising, so the Candidate caused it.
     verdicts, _ = await _play_with_a_raising_poll(("Candidate",), monkeypatch, tmp_path)
 
     first, second = verdicts
-    detail = f"the harness failed on the Candidate: {RAISED}"
-    assert first == Verdict(group_id="test/first", outcome=Outcome.ERROR, detail=detail)
+    assert first.outcome is Outcome.MISMATCH
+    assert [divergence.candidate for divergence in first.divergences] == [RAISED]
+    assert first.detail == f"the Candidate failed: {RAISED}"
     assert second.outcome is Outcome.MATCH
 
 
