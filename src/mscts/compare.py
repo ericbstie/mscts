@@ -484,7 +484,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     with dots and puts list indices in brackets (`players.sample[0].name`); any other
     key is a JSON string in brackets (`m["a.b"]`). If either Packet has no fields, the
     two are compared by payload, with path None and hex values. A `missing` or
-    `unexpected` Packet's value is its normalized fields, or its payload as hex.
+    `unexpected` Packet's value is its normalized fields, or its payload as hex. Payload
+    hex is cut to `PAYLOAD_SHOWN_BYTES` and a count of the rest (`_shown_payload`).
 
     Raises:
         ValueError: The Transcripts are of different Groups.
@@ -592,7 +593,7 @@ class _Normalized:
     @property
     def value(self) -> object:
         """What a `missing` or `unexpected` Divergence shows: fields, else payload hex."""
-        return self.packet.payload.hex() if self.fields is None else self.fields
+        return _shown_payload(self.packet.payload) if self.fields is None else self.fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -2214,6 +2215,26 @@ def _unmatched(
     )
 
 
+PAYLOAD_SHOWN_BYTES = 256
+"""How many bytes of a payload a Divergence shows, as hex, before it counts the rest.
+
+A packet compared by its payload (it has no fields: the Codec could not decode it) can be
+tens of kilobytes, such as a chunk; shown whole, one would swamp a Report. The Comparison
+itself still compares every byte.
+"""
+
+
+def _shown_payload(payload: bytes) -> str:
+    """`payload` as a Divergence shows it: hex, cut to `PAYLOAD_SHOWN_BYTES` and a count.
+
+    For example `0001…ff (257 more bytes)`.
+    """
+    if len(payload) <= PAYLOAD_SHOWN_BYTES:
+        return payload.hex()
+    rest = len(payload) - PAYLOAD_SHOWN_BYTES
+    return f"{payload[:PAYLOAD_SHOWN_BYTES].hex()} ({rest} more bytes)"
+
+
 def _diff_matched(
     bot: str, index: int, reference: _Normalized, candidate: _Normalized, compared: set[str]
 ) -> Iterator[Divergence]:
@@ -2228,7 +2249,10 @@ def _diff_matched(
         whole = _test_case(state, name, ())
         compared.add(whole)
         if reference.packet.payload != candidate.packet.payload:
-            payloads = (reference.packet.payload.hex(), candidate.packet.payload.hex())
+            payloads = (
+                _shown_payload(reference.packet.payload),
+                _shown_payload(candidate.packet.payload),
+            )
             differences.append((None, whole, *payloads))
     else:
         # Name each shape once: a list of 10,000 entries is 10,000 pairs but one name.

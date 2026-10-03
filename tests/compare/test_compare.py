@@ -77,6 +77,42 @@ def test_a_differing_payload_is_a_field_divergence_with_hex_values() -> None:
     )
 
 
+def test_a_long_payload_shows_its_first_256_bytes_and_counts_the_rest() -> None:
+    # One refused chunk is tens of kilobytes; its whole hex would swamp a Report.
+    long = bytes(range(256)) * 2
+    reference = transcript(("alice", packet("test:b", long + b"\x01")))
+    candidate = transcript(("alice", packet("test:b", long + b"\x02\x03")))
+    shown = f"{bytes(range(256)).hex()} (257 more bytes)"
+
+    (difference,) = compare(reference, candidate, []).divergences
+
+    assert (difference.reference, difference.candidate) == (
+        shown,
+        f"{bytes(range(256)).hex()} (258 more bytes)",
+    )
+
+
+def test_a_long_payload_missing_or_unexpected_is_capped_too() -> None:
+    long = packet("test:b", bytes(300))
+    shown = f"{bytes(256).hex()} (44 more bytes)"
+
+    verdict = compare(transcript(("alice", long)), transcript(("bob", long)), [])
+
+    assert [(d.kind, d.reference, d.candidate) for d in verdict.divergences if d.kind != "bot"] == [
+        ("missing", shown, ABSENT),
+        ("unexpected", ABSENT, shown),
+    ]
+
+
+def test_a_payload_of_256_bytes_is_shown_whole() -> None:
+    reference = transcript(("alice", packet("test:b", bytes(256))))
+    candidate = transcript(("alice", packet("test:b", bytes(255) + b"\x01")))
+
+    (difference,) = compare(reference, candidate, []).divergences
+
+    assert difference.candidate == (bytes(255) + b"\x01").hex()
+
+
 def test_a_packet_only_the_reference_received_is_missing() -> None:
     reference = transcript(("alice", A), ("alice", B))
     candidate = transcript(("alice", A))

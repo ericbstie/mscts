@@ -148,9 +148,11 @@ Identical differences from repetitions appear once; distinct values stay
 under the same test case. List values also name their element's path.
 Missing values say `leaves it out`; `null` remains a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
-value, binary data is written as `{"bytes": "<hex>"}`. An entity spawned
-before the compared part is written by its type and where the client first
-saw it, such as `"pig@(1.5, -60.0, 7.5)"`; a masked position reads
+value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts
+could not read is compared byte by byte and shown in hexadecimal: its first
+256 bytes, then how many more it has, such as `(257 more bytes)`. An entity
+spawned before the compared part is written by its type and where the client
+first saw it, such as `"pig@(1.5, -60.0, 7.5)"`; a masked position reads
 `<masked>`, as in `"pig@(<masked>, -60.0, 7.5)"`, and -0.0 is written 0.0.
 A player spawned then is written `"player <uuid>"`. If such an entity has
 another type or position on the two servers, the difference shows as
