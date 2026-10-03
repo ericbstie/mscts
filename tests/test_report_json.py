@@ -281,13 +281,32 @@ def test_report_json_stores_20_divergences_of_a_test_case_and_counts_the_rest() 
 
 
 def test_the_cap_is_per_test_case() -> None:
-    found = [_plain("a", index) for index in range(25)] + [_plain("b", 99)]
+    found = [_plain("a", index) for index in range(25)] + [
+        _plain("b", index) for index in range(21)
+    ]
 
     stored, omitted = _stored(found)
 
-    assert [each["test_case"] for each in stored].count("b") == 1
-    assert len(stored) == 21
-    assert omitted == 5
+    kept = [each["test_case"] for each in stored]
+    assert (kept.count("a"), kept.count("b")) == (20, 20), "each keeps its first 20"
+    assert [each["index"] for each in stored if each["test_case"] == "b"] == list(range(20))
+    assert omitted == 6
+
+
+def test_a_gameplay_difference_of_one_test_case_does_not_keep_another_one_past_the_cap() -> None:
+    # `a` shows a gameplay difference first. `b` has 20 network traffic ones, then its only
+    # gameplay one, which must stay: the way is per test case, so `a`'s does not count for `b`.
+    found = [
+        _plain("a", 0, traffic=False),
+        *(_plain("b", index) for index in range(20)),
+        _plain("b", 20, traffic=False),
+    ]
+
+    read_back = report_json.loads(report_json.dumps(_report(*found)))
+
+    lines = json.loads(report_json.dumps(read_back))["lines"]
+    results = {line["test_case"]: line["result"] for line in lines if "test_case" in line}
+    assert (results["a"], results["b"]) == ("fail", "fail")
 
 
 def test_a_verdict_with_nothing_to_leave_out_says_omitted_0() -> None:
@@ -352,9 +371,27 @@ def test_a_report_json_with_divergences_left_out_reads_back_as_it_was_written() 
     assert report_json.dumps(report) == text
 
 
-def test_a_report_json_without_omitted_is_malformed() -> None:
-    with pytest.raises(report_json.ReportJsonError, match="has no 'omitted'"):
-        report_json.loads(_broken(("results", 0, "verdicts", 0, "omitted"), _DELETE))
+def test_a_report_json_from_before_the_cap_left_nothing_out() -> None:
+    # It kept every Divergence, so a missing `omitted` is 0.
+    text = _broken(("results", 0, "verdicts", 0, "omitted"), _DELETE)
+
+    verdict = report_json.loads(text).results[0].verdicts[0]
+
+    assert verdict.omitted == 0
+    assert len(verdict.divergences) == 1
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (-1, r"verdicts\[0\]\.omitted is -1, not 0 or more"),
+        (1.5, r"verdicts\[0\]\.omitted is not an integer"),
+        ("2", r"verdicts\[0\]\.omitted is not an integer"),
+    ],
+)
+def test_an_omitted_that_is_not_a_count_is_malformed(value: object, message: str) -> None:
+    with pytest.raises(report_json.ReportJsonError, match=message):
+        report_json.loads(_broken(("results", 0, "verdicts", 0, "omitted"), value))
 
 
 def test_a_replaced_list_is_kept_however_many_single_values_differed_first() -> None:

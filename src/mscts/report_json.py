@@ -254,6 +254,16 @@ class _Object:
         value = self.raw(key)
         return None if value is None else _typed(value, str, f"{self._where}.{key}")
 
+    def count(self, key: str, *, missing: int) -> int:
+        """The non-negative integer at `key`, or `missing` if the object has no such key."""
+        if key not in self._data:
+            return missing
+        value = self.integer(key)
+        if value < 0:
+            msg = f"{self._where}.{key} is {value}, not 0 or more"
+            raise ReportJsonError(msg)
+        return value
+
     def integer(self, key: str) -> int:
         value = self.raw(key)
         if isinstance(value, bool) or not isinstance(value, int):
@@ -370,7 +380,8 @@ def _read_verdict(data: _Object) -> Verdict:
         tuple(_read_divergence(divergence) for divergence in data.objects("divergences")),
         data.text("detail"),
         data.texts("test_cases"),
-        data.integer("omitted"),
+        # A report.json from before #254 kept every Divergence, so it left out none.
+        data.count("omitted", missing=0),
     )
 
 
