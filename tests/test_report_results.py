@@ -99,6 +99,16 @@ def test_a_candidate_failure_fails_the_test_cases_of_the_groups_other_repetition
     )
 
 
+def test_a_candidate_failure_fails_a_test_case_that_differs_only_in_network_traffic() -> None:
+    traffic = replace(_verdict(_field("a", traffic=True)), test_cases=("a", "b"))
+    report = _report(_result(traffic, _verdict(FAILED)))
+    assert report_lines(report) == (
+        CaseResult("status/basic", "a", LineResult.FAIL, network_traffic_only=False),
+        CaseResult("status/basic", "b", LineResult.FAIL),
+        GroupLine("status/basic", LineResult.FAIL, "Candidate failed: disconnected"),
+    )
+
+
 def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line() -> None:
     failed = _verdict(FAILED)
     assert report_lines(_report(_result(failed, failed))) == (
