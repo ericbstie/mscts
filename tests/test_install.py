@@ -413,3 +413,10 @@ def test_install_from_records_the_time_its_clock_gives(tmp_path: Path) -> None:
     supplied = write(tmp_path / "pk", NIGHTLY)
     install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, now=lambda: FIXED)
     assert recorded(tmp_path / "cache")["installed_at"] == "2026-10-03T12:00:01+00:00"
+
+
+def test_a_commit_in_capitals_names_the_same_build(tmp_path: Path) -> None:
+    done = install_release(ADAPTER, TARGET, tmp_path, COMMIT[:7].upper(), FakeGitHub())
+    assert done.changed
+    again = install_release(ADAPTER, TARGET, tmp_path, COMMIT[:9].upper(), FakeGitHub())
+    assert not again.changed

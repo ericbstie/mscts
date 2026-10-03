@@ -533,7 +533,8 @@ def ops_json(operators: tuple[str, ...]) -> str:
 
 
 _NIGHTLY = "nightly"  # the only build Pumpkin publishes, and `pumpkin@nightly` names it
-_SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}")  # too few characters to name a commit
+# too few characters to name a commit, in either case
+_SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}", re.IGNORECASE)
 _ADVERTISEMENT = b"001e# service=git-upload-pack\n"  # how every ref advertisement starts
 _TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
 

@@ -30,7 +30,7 @@ def test_any_other_version_is_still_the_nightly_to_look_at(version: str) -> None
     assert github.fetched == [TAGS_URL]
 
 
-@pytest.mark.parametrize("version", [COMMIT[:6], COMMIT[:1], "8f3c2a"])
+@pytest.mark.parametrize("version", [COMMIT[:6], COMMIT[:1], "8f3c2a", "4426D1"])
 def test_fewer_than_7_characters_of_a_commit_are_too_short_to_name_one(version: str) -> None:
     said = f"pumpkin@{version} is too short to name a commit: name at least 7 characters of it."
     github = FakeGitHub()

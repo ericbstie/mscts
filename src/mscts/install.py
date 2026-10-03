@@ -156,9 +156,13 @@ def _stamp(moment: datetime.datetime) -> str:
 
 
 def _names(build: Build, version: str) -> bool:
-    """Whether `<adapter>@<version>` names `build`: its version, or a commit's first 7+."""
+    """Whether `<adapter>@<version>` names `build`: its version, or a commit's first 7+.
+
+    A commit is hex, so the case it is typed in does not matter.
+    """
     commit = build.commit or ""
-    return version == build.version or (len(version) >= _SHORT and commit.startswith(version))
+    typed = version.lower()
+    return version == build.version or (len(version) >= _SHORT and commit.startswith(typed))
 
 
 def _unchanged(existing: Installation, adapter: Adapter, version: str | None) -> Installed | None:
