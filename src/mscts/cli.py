@@ -55,6 +55,10 @@ class _UsageError(Exception):
     """A command line the command cannot act on; its message names the fix."""
 
 
+class _OutputError(Exception):
+    """A finished Run's Report that could not be written to a file; the message names it."""
+
+
 def _say(text: str) -> None:
     sys.stdout.write(text + "\n")
 
@@ -204,7 +208,7 @@ def _run(arguments: argparse.Namespace, _world: _World) -> int:
     if repeat < 1:
         msg = f"--repeat must be at least 1, not {repeat}"
         raise _UsageError(msg)
-    out = None if arguments.out is None else _out_folder(Path(arguments.out))
+    out = None if arguments.out is None else _made_out_folder(Path(arguments.out))
     reference, candidate = _server(REFERENCE), _server(str(arguments.candidate))
     started = perf_counter()
     workdir = Path(tempfile.mkdtemp(prefix="mscts-run-"))
@@ -227,7 +231,7 @@ def _run(arguments: argparse.Namespace, _world: _World) -> int:
     return 0
 
 
-def _out_folder(folder: Path) -> Path:
+def _made_out_folder(folder: Path) -> Path:
     """`folder`, made if it is not there yet: before the Run, so a bad --out costs no Run."""
     try:
         folder.mkdir(parents=True, exist_ok=True)
@@ -278,7 +282,7 @@ def _failing_as_unwritable(path: Path, write: Callable[[], object]) -> None:
         write()
     except (OSError, TypeError, ValueError) as error:
         msg = f"cannot write {path}: {_reason(error)}"
-        raise _UsageError(msg) from error
+        raise _OutputError(msg) from error
 
 
 def _reason(error: Exception) -> str:
@@ -357,6 +361,6 @@ def main(
         command = str(arguments.command)
         action = str(arguments.action) if command == "adapter" else command
         return _ACTIONS[action](arguments, _World(fetch=fetch, now=now))
-    except (ProvisionError, PrepareError, _UsageError) as error:
+    except (ProvisionError, PrepareError, _UsageError, _OutputError) as error:
         sys.stderr.write(f"mscts: {error}\n")
         return 1
