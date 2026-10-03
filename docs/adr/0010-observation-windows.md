@@ -284,14 +284,25 @@ MD2).
 1. **A window that ends at the barrier closes for each Bot at its own
    barrier.** Each Bot gets the Mark `observe:close <Bot name>`, stamped a
    nanosecond after its barrier's last answer arrived (a packet stamped at
-   a Mark's time is after it, so the answer is inside). Compare closes a
-   Bot's window at its own close Mark, or at a close Mark that names no
-   Bot. The barrier proves the server had sent everything caused by what
-   it received before, by that answer; what arrives at the Bot after it is
-   timing. A Bot not in play, which passes no barrier, gets its Mark once
-   every barrier has returned. The drain still follows, and what it takes
-   is outside the window.
-2. **`observe(until=..., bot=...)` ends the window at that Bot's first
+   a Mark's time is after it, so the answer is inside). The barrier proves
+   the server had sent everything caused by what this Bot sent before, by
+   that answer; what arrives at the Bot after it is timing. A Bot that
+   passes no barrier (not in play, closed, or one whose `expect` returned
+   the server's disconnect) gets its Mark once every barrier has returned.
+   The drain still follows, and what it takes is outside the window.
+
+   A barrier covers what its own Bot sent, not what another Bot did. So a
+   Group whose window must hold the effect of another Bot's action at this
+   Bot waits, in the window's body, for that action's feedback before the
+   window closes, as `Control.run` waits for a command's. Otherwise this
+   Bot's window can close before the effect reaches it.
+2. **Once every barrier has returned, a close Mark that names no Bot
+   (`observe:close`) is stamped too.** Compare closes a Bot's window at its
+   own close Mark when that window has one, and otherwise at the first
+   close Mark that names no Bot. A Bot that the Group makes after the
+   window closed has no Mark of its own, and this one ends its window, so
+   what it receives after is not compared.
+3. **`observe(until=..., bot=...)` ends the window at that Bot's first
    `until` packet.** The #105 amendment's close is the earliest arrival
    over all the Bots, but each Bot's reader stamps a frame when it reads
    its own socket, and the readers run one after another: another Bot's
@@ -301,10 +312,13 @@ MD2).
    Bot's arrival, which its own reader orders. The close Mark still names
    no Bot, so the other Bots' cut is timing; a Group with more than one Bot
    names the Bot. Without `bot`, the #105 rule stands.
-3. **A Bot that took the server's disconnect passes no barrier and is not
-   drained** (audit L2). A Bot the server kicked is still in play by its
-   send State, so a Group that tests a kick failed at the window's end. The
-   rule keys on the disconnect the Group took, not on the connection having
-   ended: a Candidate that disconnects a Bot the Reference keeps leaves the
-   disconnect untaken, or closes with none, and that Bot's barrier still
-   fails as the Candidate's `mismatch`.
+4. **A Bot passes no barrier and is not drained only if the Group's own
+   `expect` returned the server's disconnect** (audit L2). A Bot the
+   server kicked is still in play by its send State, so a Group that tests
+   a kick failed at the window's end. The rule keys on the disconnect the
+   Group took, not on any disconnect the Bot received or on the connection
+   having ended. A disconnect that the barrier or the drain takes fails
+   that Bot with a ProtocolError, kept as its `failure`. So a Candidate
+   that disconnects a Bot the Reference keeps gets a `mismatch`, wherever
+   the disconnect lands: before the barrier's answer, after it, or between
+   two windows.

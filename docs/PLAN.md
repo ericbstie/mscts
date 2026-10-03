@@ -462,8 +462,6 @@ class Connection:                   # one TCP connection; owns framing, compress
     transcript: Transcript          # read-only: the Transcript it records to
     last_arrival_ns: int | None     # read-only: when the Packet recv last returned arrived, as the
                                     # Transcript stamps it (not when it was taken); None before the first
-    disconnected: bool              # (property) recv has returned the server's disconnect
-                                    # (login_disconnect, or disconnect)
     async def caught_up(self) -> None: ...  # once the reader has stamped the backlog on entry
                                     # (FIONREAD + the stream buffer; later bytes not waited for),
                                     # or has ended; sync awaits it before stamping a request
@@ -513,8 +511,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                                     # came from
     closed: bool                    # (property) close was called
     in_play: bool                   # (property) joined, and not closed: what sync needs
-    disconnected: bool              # (property) Connection.disconnected: the Bot took the
-                                    # server's disconnect (a Group that tests a kick)
+    disconnected: bool              # (property) expect has returned the server's disconnect
+                                    # (a Group that tests a kick takes it so)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -558,7 +556,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # command's marker (OperatorBot).
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
-    # nothing left to take, raises as recv does.
+    # nothing left to take, raises as recv does. A disconnect it takes → ProtocolError, as
+    # in expect (a Group that tests a kick takes the disconnect itself, with expect).
 
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
 
@@ -903,10 +902,14 @@ class GroupContext:
                                     # Bot's failure), then a Mark "OBSERVE_CLOSE <Bot name>"
                                     # per Bot, 1 ns after its barrier's last answer's arrival
                                     # (a Bot that passed none: once every barrier returned),
-                                    # then every Bot neither closed nor disconnected drains
-                                    # (Bot.disconnected: the Group took the server's
-                                    # disconnect, so a kick it tests is no error; one it did
-                                    # not take fails that Bot's barrier). A body that raises gets neither, so its window
+                                    # then an unnamed OBSERVE_CLOSE at that same time (it ends
+                                    # the window of a Bot made later), then every Bot neither
+                                    # closed nor disconnected drains (Bot.disconnected: the
+                                    # Group's expect returned the server's disconnect, so a
+                                    # kick it tests is no error; one the barrier or the drain
+                                    # takes fails that Bot). A barrier covers what its own
+                                    # Bot sent: a window that must hold another Bot's effect
+                                    # waits for that effect's feedback before closing. A body that raises gets neither, so its window
                                     # runs to the Transcript's end. ValueError, nothing
                                     # marked: a window already open (no nesting), or a name
                                     # (in names or until) that is not in
@@ -1076,7 +1079,8 @@ OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window;
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
 OBSERVE_CLOSE = "observe:close"     # the Mark that closes it: for one Bot with its name
-                                    # after it ("observe:close alice"), for all without
+                                    # after it ("observe:close alice"), without for every Bot
+                                    # with no close Mark of its own in that window
 HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
                                     # compares (keep_alive, set_time, award_stats; evidence in
                                     # docs/research/2026-09-30-observation-window.md)
@@ -1274,9 +1278,11 @@ proves it necessary:
      in the Transcript;
    - in a Transcript with **Observation windows**, the play packets they
      do not observe. A window opens at an `observe:open` Mark and ends, for
-     a Bot, at the next `observe:open` Mark, `observe:close` Mark naming no
-     Bot, or `observe:close <that Bot>` Mark, or at the end of the
-     Transcript if none follows (the Group raised inside it). It observes
+     a Bot, at its first `observe:close <that Bot>` Mark before the next
+     `observe:open` Mark; with none, at its first `observe:close` Mark
+     naming no Bot; with neither, at the next `observe:open` Mark, or at
+     the end of the Transcript if none follows (the Group raised inside
+     it). It observes
      every play packet that arrived (`t_ns`) at or after its open Mark and
      before its end, except the heartbeat packets (`compare.is_heartbeat`),
      and only the packets it names if its open Mark names any. Status,

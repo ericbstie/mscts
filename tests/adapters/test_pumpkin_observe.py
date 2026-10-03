@@ -46,6 +46,7 @@ async def test_the_probe_group_completes_against_pumpkin(cache_dir: Path, tmp_pa
 
     labels = [mark.label for mark in transcript.marks]
     assert labels[0] == f"{OBSERVE_OPEN} minecraft:block_update"
-    assert sorted(labels[1:]) == [f"{OBSERVE_CLOSE} {bot}" for bot in sorted(("control", WATCHER))]
+    closes = [f"{OBSERVE_CLOSE} {bot}" for bot in ("control", WATCHER)]
+    assert sorted(labels[1:]) == sorted((OBSERVE_CLOSE, *closes))
     answers = [e.bot for e in transcript.events if e.packet.name == "minecraft:award_stats"]
     assert sorted(set(answers)) == ["control", WATCHER], answers

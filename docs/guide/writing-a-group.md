@@ -80,11 +80,21 @@ compared. Set the world up before it and clean up after it. When the block
 ends, each Bot waits until a tick has passed on the server since it
 received everything the Bot sent. Its window ends there, whatever the other
 Bots are still waiting for (a window with `until` waits for nothing: see
-below). A few
+below). A Bot you make after the window ends is outside it. A few
 packets the server sends on a clock rather than because of anything a Group
 did (keep-alives, the time of day and vanilla's player latency updates)
 are never compared inside a window.
 Groups of their own compare the keep-alives and the time of day.
+
+Each Bot's wait covers only what that Bot sent. When one Bot's action
+causes something another Bot receives, and the window must hold it, wait
+inside the block for the action's feedback (its chat message or block
+update) before the block ends. Otherwise the other Bot's window can end
+before it arrives.
+
+To test a kick, take the server's disconnect inside the window with
+`await bot.expect("minecraft:disconnect", timeout_s=...)`. That Bot then
+skips the wait. A disconnect the Group did not take fails the Group.
 
 | Window option | What it does |
 | --- | --- |
@@ -92,8 +102,9 @@ Groups of their own compare the keep-alives and the time of day.
 | `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, or at the Bot you name with `bot=`, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block going until the packet has arrived (a Bot's `join` does for a join's packets): if none had when the block ended, the Group fails and says which. With more than one Bot, name the Bot: when the window ends for the others then depends on timing. |
 
 A packet name must be one the server sends in play, with its namespace
-(`minecraft:block_update`). Keep-alives and the time of day are never
-compared, so they can't be named. Any other name stops the Group with an
+(`minecraft:block_update`). Keep-alives, the time of day and the
+statistics a Bot asks for while it waits (`minecraft:award_stats`) are
+never compared, so they can't be named. Any other name stops the Group with an
 error.
 
 Use `until` when what the server keeps sending after the part you compare

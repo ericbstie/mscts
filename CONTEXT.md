@@ -104,7 +104,10 @@ need is missing, add it here in the same commit that introduces it.
   second answer comes from a later tick, so by then the server has sent
   everything caused by what the Bot sent before. Each Bot's window ends
   at its own barrier's second answer, whatever the other Bots are still
-  waiting for. The Bot then takes what has already arrived (the
+  waiting for, and a Bot made after the window ends is outside it. A
+  barrier covers what its own Bot sent, so a window that must hold
+  what another Bot's action causes waits for that action's feedback
+  before it ends. The Bot then takes what has already arrived (the
   **drain**), outside its window. A window can
   instead end at a packet's arrival (`until`): no barrier, and it closes
   when the first packet of that name arrived at a Bot, or at the Bot

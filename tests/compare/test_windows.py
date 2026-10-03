@@ -59,6 +59,38 @@ def test_a_close_mark_that_names_a_bot_closes_the_window_for_that_bot_only() -> 
     assert [d.bot for d in verdict.divergences] == ["bob"], verdict
 
 
+def test_a_bot_with_no_close_mark_of_its_own_is_closed_by_the_unnamed_one() -> None:
+    # Review of #179, HIGH 2: carol joined after the window, so it has no close Mark of its
+    # own; the unnamed one stamped after the Bots' own closes ends her window.
+    def play(state: int) -> Transcript:
+        return transcript(
+            OPEN, ("alice", block(1)), f"{CLOSE} alice", CLOSE, ("carol", block(state))
+        )
+
+    verdict = compare(play(1), play(2), [])
+
+    assert verdict.divergences == (), verdict
+
+
+def test_a_bots_own_close_mark_wins_over_an_earlier_unnamed_one() -> None:
+    def play(state: int) -> Transcript:
+        return transcript(OPEN, CLOSE, ("alice", block(state)), f"{CLOSE} alice")
+
+    verdict = compare(play(1), play(2), [])
+
+    assert [d.bot for d in verdict.divergences] == ["alice"], verdict
+
+
+@pytest.mark.parametrize("close", [f"{CLOSE} alice", CLOSE])
+def test_the_first_of_two_close_marks_of_a_kind_ends_the_window(close: str) -> None:
+    def play(state: int) -> Transcript:
+        return transcript(OPEN, ("alice", block(1)), close, ("alice", block(state)), close)
+
+    verdict = compare(play(1), play(2), [])
+
+    assert verdict.divergences == (), verdict
+
+
 def test_a_packet_inside_the_window_is_compared_and_counted_from_the_window() -> None:
     verdict = compare(
         transcript(("alice", chat("setup")), OPEN, ("alice", block(1)), CLOSE),

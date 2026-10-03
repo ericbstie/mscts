@@ -111,7 +111,8 @@ OBSERVE_CLOSE = "observe:close"
 
 A window that ends at the barrier gets one per Bot, with the Bot's name after a space
 (`observe:close alice`): it closes the window for that Bot only. One with no name closes
-it for every Bot.
+it for every Bot that has no close Mark of its own in that window: then also a Bot made
+after the window closed.
 """
 
 HEARTBEAT: Mapping[str, str] = MappingProxyType(
@@ -860,18 +861,33 @@ class _Windows:
         """Index the windows of `transcript` as `bot` sees them; None if it has none.
 
         A close Mark that names a Bot (`observe:close alice`) closes the window for that
-        Bot only; one that names none closes it for every Bot.
+        Bot only; one that names none closes it for every Bot that has no close Mark of
+        its own in that window (one that joined after the window closed, say).
         """
         times: list[int] = []
         names: list[frozenset[str] | None] = []
+        own: int | None = None  # the window's first close Mark naming `bot`
+        unnamed: int | None = None  # the window's first close Mark naming no Bot
+
+        def close() -> None:
+            nonlocal own, unnamed
+            closed = own if own is not None else unnamed
+            if closed is not None:
+                times.append(closed)
+                names.append(None)
+            own = unnamed = None
+
         for mark in sorted(transcript.marks, key=lambda mark: mark.t_ns):
             label, *rest = mark.label.split(" ")
             if label == OBSERVE_OPEN:
+                close()
                 times.append(mark.t_ns)
                 names.append(frozenset(rest))
-            elif label == OBSERVE_CLOSE and rest in ([], [bot]):
-                times.append(mark.t_ns)
-                names.append(None)
+            elif label == OBSERVE_CLOSE and rest == [bot] and own is None:
+                own = mark.t_ns
+            elif label == OBSERVE_CLOSE and not rest and unnamed is None:
+                unnamed = mark.t_ns
+        close()
         return cls(times=times, names=names) if times else None
 
     def observes(self, event: Event) -> bool:

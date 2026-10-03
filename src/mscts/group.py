@@ -284,11 +284,17 @@ class GroupContext:
         Each Bot's window ends at its own barrier: it gets the Mark `observe:close <Bot
         name>` a nanosecond after its barrier's last answer arrived, whatever the other
         Bots are still waiting for (a Bot that passes none gets it once every barrier has
-        returned). Then every Bot not closed takes what has already arrived, without
-        waiting (`Bot.drain`). A Bot that has taken the server's disconnect
-        (`Bot.disconnected`, as a Group that tests a kick does) passes no barrier and
-        takes nothing. A body that raises gets neither: its window runs to the end of the
+        returned). Once every barrier has returned, the Mark `observe:close` ends the
+        window for any Bot the Group makes later. Then every Bot not closed takes what
+        has already arrived, without waiting (`Bot.drain`). A Bot whose `expect` returned
+        the server's disconnect (`Bot.disconnected`, as a Group that tests a kick does)
+        passes no barrier and takes nothing; a disconnect the barrier or the drain takes
+        fails the Bot. A body that raises gets neither: its window runs to the end of the
         Transcript.
+
+        A barrier covers what the Bot itself sent. A window that must hold what another
+        Bot's action causes at this Bot waits, in its body, for that action's feedback
+        before it closes, as `OperatorBot.run` does for a command.
 
         With `until`, there is no barrier. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
@@ -319,8 +325,8 @@ class GroupContext:
                 or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
                 `bot` is given without `until`, or is not one of this Group's Bots.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
-            ProtocolError: The server disconnected a Bot before its barrier's answer; or
-                no `until` packet arrived inside the window.
+            ProtocolError: The server disconnected a Bot, and the barrier or the drain
+                took the disconnect; or no `until` packet arrived inside the window.
         """
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
@@ -344,6 +350,8 @@ class GroupContext:
                     # A packet stamped at a Mark's time is after it: the answer is inside.
                     at = ends[name] + 1 if name in ends else now
                     self._mark(f"{OBSERVE_CLOSE} {name}", t_ns=at)
+                # A Bot the Group makes later has no Mark of its own: this one ends its window.
+                self._mark(OBSERVE_CLOSE, t_ns=now)
                 await self._drain()
             else:
                 await self._drain()
@@ -394,8 +402,8 @@ class GroupContext:
     async def _drain(self) -> None:
         """Take what has already arrived at every Bot not closed, without waiting.
 
-        A Bot that has taken the server's disconnect is skipped: the server sends it
-        nothing more, and draining would raise.
+        A Bot whose `expect` returned the server's disconnect is skipped: the server sends
+        it nothing more. A disconnect the drain takes fails the Bot (`Bot.drain`).
         """
         for bot in self._bots.values():
             if not bot.closed and not bot.disconnected:
@@ -404,8 +412,8 @@ class GroupContext:
     async def _sync(self) -> dict[str, int]:
         """Pass the barrier on every Bot in play at once; raise the first Bot's error.
 
-        A Bot that has taken the server's disconnect passes none: one the Group did not
-        take is still queued, so that Bot's barrier takes it and fails. Returns when each
+        A Bot whose `expect` returned the server's disconnect passes none: one the Group
+        did not take is still queued, so that Bot's barrier takes it and fails. Returns when each
         Bot's barrier's last answer arrived, by the Bot's name.
         """
 
