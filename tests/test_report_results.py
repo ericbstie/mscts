@@ -26,6 +26,11 @@ def test_each_compared_test_case_of_each_group_has_a_result_in_play_order() -> N
     )
 
 
+def test_test_cases_compared_in_different_repetitions_are_listed_once_and_sorted() -> None:
+    report = _report(_result(_compared("b"), _compared("a", "b")))
+    assert [line.test_case for line in case_results(report)] == ["a", "b"]
+
+
 def test_a_test_case_that_differs_in_any_repetition_fails() -> None:
     report = _report(_result(_compared("a"), _verdict(_field("a")), _compared("a")))
     assert case_results(report) == (CaseResult("status/basic", "a", Result.FAIL),)
