@@ -8,6 +8,7 @@ Instance, an orphan, anything) makes a Group run against the wrong server, and
 import asyncio
 import dataclasses
 import os
+import signal
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -59,15 +60,37 @@ async def test_a_socket_shared_with_another_process_is_not_the_instance_s_own(
     plan = fake_plan("--reuseport")
     host, port = plan.endpoint.host, plan.endpoint.port
     impostor = await asyncio.start_server(_hang_up, host, port, reuse_port=True)
+    answered = killed = False
     async with impostor:
 
         async def once_both_listen(endpoint: Endpoint) -> bool:
-            return "listening" in _console(plan) and await tcp_probe(endpoint)
+            # Called again after an answer, it was refused. Then the Instance is killed,
+            # so the wait ends there, not at a deadline a slow start could reach (#160).
+            nonlocal answered, killed
+            if answered:
+                if not killed:
+                    os.kill(_pid(plan), signal.SIGKILL)
+                    killed = True
+                return False
+            answered = "listening" in _console(plan) and await tcp_probe(endpoint)
+            return answered
 
         with pytest.raises(RunnerError) as caught:
-            async with running(plan, ready=once_both_listen, ready_timeout=0.3):
+            async with running(plan, ready=once_both_listen, ready_timeout=_SLOW_START_S):
                 pytest.fail("ready, although the impostor listens at the Endpoint too")
+    assert answered
     assert f"held by pid {os.getpid()} (" in caught.value.reason
+
+
+_SLOW_START_S = 30.0
+"""A readiness deadline no slow start reaches: the shared-socket test ends at a refusal."""
+
+
+def _pid(plan: LaunchPlan) -> int:
+    """The fake Instance's pid, from the `pid=` line it writes first to its console."""
+    lines = _console(plan).splitlines()
+    (pid,) = (int(line.removeprefix("pid=")) for line in lines if line.startswith("pid="))
+    return pid
 
 
 @pytest.mark.asyncio
