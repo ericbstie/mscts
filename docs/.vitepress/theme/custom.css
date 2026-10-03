@@ -193,6 +193,40 @@
 .ms-term .muted {
   color: var(--ms-term-muted);
 }
+
+/* Report marks, coloured as `mscts run` colours them on a terminal: in the home
+   terminal, and in plain code blocks (config.mts wraps each mark in a span). */
+:root {
+  --ms-mark-pass: #2f7d1f;
+  --ms-mark-fail: #c62f2f;
+  --ms-mark-error: #8a5d00;
+}
+.dark {
+  --ms-mark-pass: #8cc96b;
+  --ms-mark-fail: #f07167;
+  --ms-mark-error: #e0b46c;
+}
+.vp-code span.ms-pass,
+.dark .vp-code span.ms-pass {
+  color: var(--ms-mark-pass);
+}
+.vp-code span.ms-fail,
+.dark .vp-code span.ms-fail {
+  color: var(--ms-mark-fail);
+}
+.vp-code span.ms-error,
+.dark .vp-code span.ms-error {
+  color: var(--ms-mark-error);
+}
+.ms-term .ms-pass {
+  color: var(--ms-term-accent);
+}
+.ms-term .ms-fail {
+  color: #f07167;
+}
+.ms-term .ms-error {
+  color: var(--ms-term-warn);
+}
 .ms-term .head {
   color: #fff;
   font-weight: 600;

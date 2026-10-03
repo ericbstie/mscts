@@ -207,9 +207,9 @@ def _spy_on_reports(monkeypatch: pytest.MonkeyPatch) -> list[Report]:
     """The Reports `mscts run` prints, in order, as it prints them."""
     shown: list[Report] = []
 
-    def spy(report: Report, *, verbose: bool) -> str:
+    def spy(report: Report, *, verbose: bool, color: bool) -> str:
         shown.append(report)
-        return render_text(report, verbose=verbose)
+        return render_text(report, verbose=verbose, color=color)
 
     monkeypatch.setattr(cli, "render_text", spy)
     return shown
@@ -364,3 +364,47 @@ def test_a_run_report_carries_no_note_about_unbuilt_output(
 
     assert code == 0
     assert [report.notes for report in shown] == [()]
+
+
+def test_a_run_colours_the_marks_when_asked(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fakes()
+
+    code = cli.main(["run", "--candidate", "pumpkin", "--repeat", "1"], color=True)
+
+    out, _ = capsys.readouterr()
+    assert code == 0
+    assert "\x1b[32m✓\x1b[0m status/basic/" in out, out
+
+
+def test_a_piped_run_is_plain(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:
+    fakes()
+
+    _, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+
+    assert "\x1b" not in out, out
+
+
+class _Stream:
+    def __init__(self, *, terminal: bool) -> None:
+        self.terminal = terminal
+
+    def isatty(self) -> bool:
+        return self.terminal
+
+
+@pytest.mark.parametrize(
+    ("terminal", "environ", "expected"),
+    [
+        (True, {}, True),
+        (False, {}, False),
+        (True, {"NO_COLOR": "1"}, False),
+        (True, {"NO_COLOR": ""}, True),
+    ],
+    ids=["terminal", "piped", "no-color", "empty-no-color"],
+)
+def test_colour_is_for_a_terminal_without_no_color(
+    *, terminal: bool, environ: dict[str, str], expected: bool
+) -> None:
+    assert cli._wants_color(_Stream(terminal=terminal), environ) is expected  # noqa: SLF001

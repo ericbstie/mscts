@@ -1,5 +1,6 @@
 """The default Report: a line per test case, then totals, score and Run time (#9, #101)."""
 
+import re
 from dataclasses import replace
 from uuid import UUID
 
@@ -422,3 +423,23 @@ def test_markdown_code_keeps_its_edges(path: str, code: str) -> None:
     field = replace(_field("p[]"), path=path)
     text = render_markdown(_report(_result(_verdict(field))), verbose=True)
     assert f"  - {code}: vanilla sends" in text, text
+
+
+def test_colour_marks_a_pass_green_a_failure_red_and_an_error_yellow() -> None:
+    error = Verdict("status/error", Outcome.ERROR, detail="failed")
+    report = _report(
+        _result(_compared("a")),
+        _result(_verdict(_field("b"), group_id="status/ping")),
+        _result(error),
+    )
+    text = render_text(report, color=True)
+    assert "\x1b[32m✓\x1b[0m status/basic/a\n" in text, text
+    assert "\x1b[31m✗\x1b[0m status/ping/b\n" in text, text
+    assert "\x1b[33m!\x1b[0m status/error Error: failed\n" in text, text
+    assert re.sub("\x1b\\[[0-9]+m", "", text) == render_text(report)
+
+
+def test_the_report_has_no_colour_unless_asked() -> None:
+    report = _report(_result(_compared("a")), _result(_verdict(_field("b"))))
+    assert "\x1b" not in render_text(report)
+    assert "\x1b" not in render_markdown(report)

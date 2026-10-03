@@ -262,8 +262,15 @@ class _Document:
     closing: tuple[str, ...]
 
 
-def render_text(report: Report, *, verbose: bool = False) -> str:
-    """A first line, a line per test case, the totals, the score and the total time."""
+_COLORS = {"✓": "32", "✗": "31", "!": "33"}
+"""Each mark's ANSI colour on a terminal: green, red and yellow."""
+
+
+def render_text(report: Report, *, verbose: bool = False, color: bool = False) -> str:
+    """A first line, a line per test case, the totals, the score and the total time.
+
+    With `color`, for a terminal, each mark is in its colour (`_COLORS`).
+    """
     document = _document(report, verbose=verbose)
     lines = [document.title]
     if document.build is not None:
@@ -271,7 +278,8 @@ def render_text(report: Report, *, verbose: bool = False) -> str:
     lines.extend(f"  {label:<13}{value}" for label, value in document.facts)
     for entry in document.entries:
         label = f" {entry.label}" if entry.label else ""
-        lines.append(f"{entry.mark} {entry.name}{label}")
+        mark = f"\x1b[{_COLORS[entry.mark]}m{entry.mark}\x1b[0m" if color else entry.mark
+        lines.append(f"{mark} {entry.name}{label}")
         lines.extend(f"  {_plain(line)}" for line in entry.values)
     if document.times is not None:
         lines.append(_GROUP_TIMES)

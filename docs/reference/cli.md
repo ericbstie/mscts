@@ -84,6 +84,10 @@ with its reasons. The Report ends with the totals, the score and the total
 Run time in seconds. [Reading a Report](/guide/reading-a-report) explains
 each line.
 
+On a terminal, ✓ is green, ✗ red and `!` yellow. Set `NO_COLOR` to any
+value to turn the colours off. Output sent to a file or another program,
+`report.md` and `report.json` have no colours.
+
 | Option | Default | Description |
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
