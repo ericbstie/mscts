@@ -150,12 +150,12 @@ The line names each distinct reason from the Group's repetitions once. It
 counts as one test case: a failing one, unless every reason is an `Error`.
 Then the line is marked `!` instead of ✗ and is not scored, because the
 fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
-failed also fails each of its test cases: each one vanilla's play of the
-Group has, in any repetition. So a Candidate that crashes, or sends
-something mscts cannot compare, never scores better than one that sends
-every value wrong. If the Group was never played (the Candidate still had
-players online from the Group before in every repetition), its line is
-all that fails.
+failed also fails each test case that vanilla's play of it has in any
+repetition. So a Candidate that crashes, or sends something mscts cannot
+compare, never scores better than one that sends every value wrong. If
+the Group was never played, because the Candidate still had players
+online from the Group before in every repetition, its line is all that
+fails.
 
 ## Total time
 

@@ -78,8 +78,11 @@ Candidate was left unusable) fails every test case the Group has in any
 repetition, besides the Group's own line. Where the Group was played,
 those include each test case of the Reference's play, which the
 Comparison of the Reference with itself lists. So a Candidate that
-crashes or sends garbage fails at least as many lines as one that sends
-every value wrong, and one more. If the Group has no test case in any
+crashes, or sends what the Comparison cannot take, fails at least as
+many lines as one that sends every value wrong, and one more. If the
+Comparison raises comparing the Reference with itself, the fault is the
+Reference's data or mscts's, and the Group is an `error`, however the
+Candidate failed. If the Group has no test case in any
 repetition (it was never played, because the Candidate was left
 unusable before each repetition), its own line is all that fails.
 

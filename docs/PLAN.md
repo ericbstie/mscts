@@ -1439,7 +1439,8 @@ def judge(group: Group, reference: Transcript | GroupError,
     # also if the Reference failed (CommandMissing included). Else compare(reference,
     # candidate, masks). A Candidate failure's Verdict lists the test cases of
     # compare(reference, reference, masks) besides what compare found (#262), which the
-    # Report fails. The trade: a
+    # Report fails; if that self-comparison raises, it is `error` naming it, whichever
+    # way the Candidate failed. The trade: a
     # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
     # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
