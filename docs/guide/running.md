@@ -11,7 +11,7 @@ plays the chosen Groups against each, stops both, and prints a Report.
 
 `--group` takes a glob over Group ids. The default is `status/*`, which includes
 `status/with-player`: it joins a player and waits 6 seconds before it asks for the
-status, so a default run takes a few seconds longer for each repetition.
+status. Each repetition of it takes about 14 seconds.
 
 ```sh
 uv run mscts run --candidate pumpkin --group 'status/ping'

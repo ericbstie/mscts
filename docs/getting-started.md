@@ -77,7 +77,7 @@ uv run mscts run --candidate pumpkin
 mscts starts both servers, plays every `status/*` Group five times against
 each, stops them and prints the Report. One of those Groups,
 `status/with-player`, joins a player and waits 6 seconds before it asks for
-the status, so a Run takes a little longer. Progress goes to stderr and the
+the status. It adds about 14 seconds to each repetition. Progress goes to stderr and the
 Report to stdout, so `> report.txt` captures only the Report.
 
 ```

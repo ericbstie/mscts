@@ -934,9 +934,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 ### Groups, Transcripts, Comparison
 
 - `compare`: `DivergenceKind` — Divergence classification.
-- `groups.status`: `PING_PAYLOAD` — status ping payload; `STATUS_CACHE_S` — how long vanilla
-  keeps its built status; `CACHE_WAIT_S` — how long `status/with-player` waits after the join
-  (the cache interval plus one second); `PLAY_PACKET` — the one play packet its window compares;
+- `groups.status`: `PING_PAYLOAD` — status ping payload; `STATUS_CACHE_S` — the longest vanilla
+  keeps a built status (a join drops it sooner); `CACHE_WAIT_S` — how long `status/with-player`
+  waits after the join (that interval plus one second, a margin for a lazy cache); `PLAY_PACKET` — the one play packet its window compares;
   `with_player` — the `status/with-player` script.
 - `groups.blocks`: `BUILDER` — the operator Bot that runs each command itself; `BUILDER_AT` —
   where Control puts it, clear of every block the Groups set; `FEEDBACK_TIMEOUT_S`

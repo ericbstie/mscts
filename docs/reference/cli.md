@@ -91,7 +91,7 @@ value to turn the colours off. Output sent to a file or another program,
 | Option | Default | Description |
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
-| `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds. |
+| `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds, about 14 seconds for each repetition. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
 | `-v`, `--verbose` | off | Add installed versions, Target, repetitions, both values under each test case that differs, and time per Group. |
 | `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |

@@ -57,7 +57,7 @@ def test_status_with_player_is_registered_as_exact_with_no_masks_or_prerequisite
 
 
 def test_the_wait_is_the_status_cache_interval_plus_one_second() -> None:
-    # MinecraftServer.STATUS_EXPIRE_TIME_NANOS is 5 * NANOSECONDS_PER_SECOND (javap, 26.3).
+    # STATUS_EXPIRE_TIME_NANOS is 5 seconds: docs/research/2026-10-03-status-sample.md.
     assert status.STATUS_CACHE_S == 5
     assert status.CACHE_WAIT_S == status.STATUS_CACHE_S + 1
 

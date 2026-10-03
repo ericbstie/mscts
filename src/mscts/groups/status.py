@@ -19,12 +19,14 @@ PING_PAYLOAD = 20_260_926
 """The Long `status/ping` sends. The vanilla client sends its clock; a Group must not."""
 
 STATUS_CACHE_S = 5
-"""How long vanilla keeps the status it built: `MinecraftServer.tickServer` builds it again
-once `STATUS_EXPIRE_TIME_NANOS`, 5 seconds (javap, 26.3), have passed."""
+"""How long vanilla keeps a built status at most: `STATUS_EXPIRE_TIME_NANOS` is 5 seconds
+(docs/research/2026-10-03-status-sample.md). A join drops it sooner, so vanilla lists a new
+player from the next tick."""
 
 CACHE_WAIT_S = STATUS_CACHE_S + 1
-"""How long `status/with-player` waits after the join: the cache interval and one second.
-A Candidate whose cache lasts longer shows an empty list, and that is a difference to report."""
+"""How long `status/with-player` waits after the join: vanilla's longest cache and one
+second. Vanilla needs only a tick, so the rest is a margin for a Candidate that builds its
+status lazily. A Candidate that takes longer shows no player, and that is a difference."""
 
 PLAY_PACKET = "minecraft:player_chat"
 """The one play packet the window of `status/with-player` compares. Nothing sends it there:
@@ -59,8 +61,10 @@ async def with_player(context: GroupContext) -> None:
     configuration packets, and the status, are compared; its play packets are not (the join
     position varies without a Fixture, and `join/basic` compares them with it pinned).
 
-    A Candidate whose status cache lasts longer than vanilla's shows no player here. That is
-    a difference to report, so the wait does not grow to hide it.
+    Vanilla drops its cached status when a player joins and lists the player from the next
+    tick (docs/research/2026-10-03-status-sample.md). The wait is a margin for a Candidate
+    that caches its status lazily. One whose status still lacks the player after it shows no
+    player, which is a difference to report, so the wait does not grow to hide it.
     """
     async with contextlib.AsyncExitStack() as undo:
         player = await context.bot("player")
