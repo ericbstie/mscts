@@ -1163,7 +1163,9 @@ class Divergence:
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
     # missing: a reference packet the alignment left unmatched (candidate is ABSENT);
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
-    # field: a difference between two matched packets;
+    # field: a difference between two matched packets, or (path "tick", values "tick <a>"
+    #   and "tick <b>", the packet's test case) one packet a tick-exact Group got on
+    #   different ticks (#23), followed by the two packets' differences;
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
@@ -1905,7 +1907,12 @@ proves it necessary:
    them, trace from the front, matching equal keys, otherwise skipping
    the key whose skipping keeps the longer subsequence, and on a tie
    the smaller key, whichever side it is on. Between two matched pairs,
-   `missing` comes before `unexpected`. A unit test checks every pair of
+   `missing` comes before `unexpected`. In a tick-exact Group (#23), a play
+   packet's key also holds the tick it arrived on: the number of the Bot's
+   `tick:<k>` Marks before its arrival (its own, else the unnamed one), plus
+   one. Between two matched pairs, the n-th `missing` and the n-th
+   `unexpected` packet whose keys differ only in the tick become one `field`
+   Divergence at path `tick`, then the two packets' differences. A unit test checks every pair of
    key sequences up to length 4 over 3 keys: ordered, longest, and
    mirrored by a swap (an exhaustive run up to length 5 found no
    exception either). Not `difflib.SequenceMatcher`: it matches the
