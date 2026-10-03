@@ -1451,7 +1451,8 @@ proves it necessary:
    `minecraft:`, then `x`, `y` and `z` as Python writes floats, with
    -0.0 written 0.0 and no rounding). The `add_entity`'s fields go
    through the Group's Masks first, so an axis a Mask hides (an item
-   dropped at a random position) reads `<masked>` in the name. A player
+   dropped at a random position) reads `<masked>` in the name, and a `*`
+   Mask on `add_entity` names no entity (each is numbered). A player
    is named by its UUID instead, `player <uuid>`: where a player joins
    is random or shared, and its UUID comes from its name or account.
    The Group's own setup fixes the type and position (with NoAI or

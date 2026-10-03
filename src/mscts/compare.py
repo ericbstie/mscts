@@ -766,9 +766,10 @@ class _Numbers:
         restarts, at the position then, so a later one keeps the first name, unless a
         `remove_entities` ended it in between (`removed`). A player is named by its UUID
         instead (`player <uuid>`): where a player joins is not fixed by the Group. The
-        fields go through the Group's Masks first, so a masked axis reads MASKED.
+        fields go through the Group's Masks first, so a masked axis reads MASKED; a `*`
+        Mask on `add_entity` names nothing, so its entities are numbered like the rest.
         """
-        if packet.name != _ADD_ENTITY or packet.fields is None:
+        if packet.name != _ADD_ENTITY or packet.fields is None or packet.name in masks.dropped:
             return
         entity_id = packet.fields.get("entity_id")
         if type(entity_id) is int and entity_id not in self.ids:

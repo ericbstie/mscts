@@ -385,6 +385,15 @@ def test_a_player_that_joined_before_the_window_at_a_random_position_is_the_same
     assert compare(reference, candidate, []).outcome is Outcome.MATCH
 
 
+def test_a_star_mask_on_add_entity_leaves_its_entities_unnamed() -> None:
+    # The Group compares no add_entity at all, so neither type nor position may tell.
+    mask = Mask("minecraft:add_entity", "*", reason="a test: not this Group's subject")
+    reference = _hurt_one_spawned_before(spawn(5, x=1.5))
+    candidate = _hurt_one_spawned_before(spawn(5, x=3.5, kind=COW))
+
+    assert compare(reference, candidate, [mask]).outcome is Outcome.MATCH
+
+
 def test_minus_zero_and_zero_are_the_same_position_in_a_name() -> None:
     reference = _hurt_one_spawned_before(spawn(5, x=-0.0))
     candidate = _hurt_one_spawned_before(spawn(5, x=0.0))
