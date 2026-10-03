@@ -2018,7 +2018,11 @@ mscts adapter status <adapter>      # root, version, commit (if any), sha256, si
 mscts selfcheck [--group GLOB] [--repeat N]
 mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
     # --group: fnmatch over the registered exact Group ids, prerequisites added
-    # (default status/*); --repeat default 5; --out not implemented yet.
+    # (default status/*); --repeat default 5. --out DIR: made (parents too) before the
+    # Run, else exit 1 "cannot create the --out folder DIR: <strerror>"; after the Report,
+    # writes DIR/report.json (report_json.dumps) and DIR/report.md (render_markdown, same
+    # verbose), replacing both, then says "Report written to DIR/report.json and
+    # DIR/report.md".
     # Plays in a fresh temp dir, removed afterwards (kept, and named, when an Instance could
     # not start). Progress ("starting vanilla and pumpkin ...", "running status/basic (1 of
     # 5) ...", run.LOG at INFO) on stderr; the Report (render_text) on stdout; exit 0 when
