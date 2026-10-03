@@ -4,7 +4,9 @@ import argparse
 import asyncio
 import contextlib
 import fnmatch
+import functools
 import logging
+import os
 import shutil
 import sys
 import tempfile
@@ -225,18 +227,47 @@ def _out_folder(folder: Path) -> Path:
 
 
 def _write_report(report: Report, folder: Path, *, verbose: bool) -> str:
-    """Write report.json and report.md into `folder`, replacing any; say where they are."""
+    """Write report.json and report.md into `folder`, replacing any; say where they are.
+
+    Both are written to temporary files first, and replace the earlier pair only once
+    both are written, so a file that cannot be made leaves the earlier pair as it was.
+    """
     files: dict[Path, Callable[[], str]] = {
         folder / "report.json": lambda: report_json.dumps(report),
         folder / "report.md": lambda: render_markdown(report, verbose=verbose),
     }
-    for path, render in files.items():
-        try:
-            path.write_text(render(), encoding="utf-8")
-        except (OSError, TypeError, ValueError) as error:
-            msg = f"cannot write {path}: {_reason(error)}"
-            raise _UsageError(msg) from error
+    staged: dict[Path, Path] = {}
+    try:
+        for path, render in files.items():
+            staged[path] = _staged(path, render)
+        for path, temporary in staged.items():
+            _failing_as_unwritable(path, functools.partial(temporary.replace, path))
+    finally:
+        for temporary in staged.values():
+            temporary.unlink(missing_ok=True)
     return f"Report written to {' and '.join(map(str, files))}"
+
+
+def _staged(path: Path, render: Callable[[], str]) -> Path:
+    """A temporary file beside `path` holding `render()`'s text, for `path` to replace."""
+    descriptor, name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    os.close(descriptor)
+    temporary = Path(name)
+    try:
+        _failing_as_unwritable(path, lambda: temporary.write_text(render(), encoding="utf-8"))
+    except BaseException:
+        temporary.unlink()
+        raise
+    return temporary
+
+
+def _failing_as_unwritable(path: Path, write: Callable[[], object]) -> None:
+    """Do `write`; a failure to make, encode or write `path` says so, naming it."""
+    try:
+        write()
+    except (OSError, TypeError, ValueError) as error:
+        msg = f"cannot write {path}: {_reason(error)}"
+        raise _UsageError(msg) from error
 
 
 def _reason(error: Exception) -> str:

@@ -102,7 +102,8 @@ Report written to reports/report.json and reports/report.md
 
 If `DIR` cannot be created, `mscts run` exits with code 1 before it
 starts any server. If a file cannot be written, it prints the Report,
-then exits with code 1 and names the file. See [Reading a Report](/guide/reading-a-report#report-files)
+then exits with code 1 and names the file. Both files are written in full
+before either replaces an earlier one. See [Reading a Report](/guide/reading-a-report#report-files)
 for what the files hold.
 
 `--candidate vanilla` plays vanilla against a second vanilla server. That is
