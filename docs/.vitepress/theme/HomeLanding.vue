@@ -44,6 +44,26 @@ Took 22 s</pre>
 
     <section class="ms-section">
       <h2>What is tested?</h2>
+      <p>
+        mscts checks what a server sends to a player, and compares it with
+        what vanilla sends. Today it covers:
+      </p>
+      <ul>
+        <li>
+          The server list: the description, player count and ping a player
+          sees before joining.
+        </li>
+        <li>
+          Changing blocks with <code>/setblock</code>, <code>/fill</code> and
+          <code>/clone</code>: the blocks that change, the items they drop,
+          and the server's reply.
+        </li>
+      </ul>
+      <p>
+        Joining a world is next. Later come redstone, checked tick by tick,
+        and random mechanics such as mob spawning, compared over many runs
+        (<a :href="withBase('/reference/groups')">see everything checked today</a>).
+      </p>
     </section>
 
     <section class="ms-section">
