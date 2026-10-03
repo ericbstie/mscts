@@ -48,5 +48,8 @@ async def basic(context: GroupContext) -> None:
         await context.control.leave()
         await until_no_player_online(context.endpoint)
         bot = await context.bot(_PLAYER)
+        # alice has left before regeneration is on again, so it never feeds her.
+        undo.push_async_callback(until_no_player_online, context.endpoint)
+        undo.push_async_callback(bot.close)
         async with context.observe(until=_FIRST_BATCH), context.span("join.to_first_chunk"):
             await bot.join()

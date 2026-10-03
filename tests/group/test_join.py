@@ -86,7 +86,7 @@ async def test_control_sets_the_rules_leaves_and_puts_them_back_after_alice_join
     assert [command for t, command in control if t < opened.t_ns] == list(SET_UP)
     assert [command for t, command in control if t > closed.t_ns] == list(UNDO)
     assert joined(server) == [CONTROL, ALICE, CONTROL], "alice joins alone"
-    assert len(settled) == 1, "once Control has left, until the server says it is empty"
+    assert len(settled) == 2, "once Control has left, and once alice has"
 
 
 @pytest.mark.asyncio
@@ -121,16 +121,62 @@ async def test_the_join_is_timed_as_join_to_first_chunk() -> None:
 
 
 @pytest.mark.asyncio
+async def test_alice_has_left_the_server_before_regeneration_is_turned_back_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    steps: list[str] = []
+    real_join, real_close, real_command = Bot.join, Bot.close, Bot.command
+
+    async def logged_join(bot: Bot) -> None:
+        steps.append(f"{bot.name} joins")
+        await real_join(bot)
+
+    async def logged_close(bot: Bot) -> None:
+        if not bot.closed:
+            steps.append(f"{bot.name} closes")
+        await real_close(bot)
+
+    async def logged_command(bot: Bot, command: str) -> None:
+        if not command.startswith("tellraw"):
+            steps.append(command)
+        await real_command(bot, command)
+
+    async def until_no_player_online(_: Endpoint) -> None:
+        steps.append("no player online")
+
+    monkeypatch.setattr(Bot, "join", logged_join)
+    monkeypatch.setattr(Bot, "close", logged_close)
+    monkeypatch.setattr(Bot, "command", logged_command)
+    monkeypatch.setattr(join, "until_no_player_online", until_no_player_online)
+
+    await play()
+
+    # Peaceful raises a player's saturation every second while regeneration is on (#176).
+    assert steps == [
+        "control joins",
+        *SET_UP,
+        "control closes",
+        "no player online",
+        "alice joins",
+        "alice closes",
+        "no player online",
+        "control joins",
+        *UNDO,
+        "control closes",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_control_puts_the_rules_back_when_the_join_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     real_join = Bot.join
 
     async def failing_join(bot: Bot) -> None:
+        await real_join(bot)
         if bot.name == ALICE:
             msg = "the server disconnected alice"
             raise ProtocolError(msg)
-        await real_join(bot)
 
     monkeypatch.setattr(Bot, "join", failing_join)
     transcript = Transcript(group_id=GROUP_ID, server="fake")
