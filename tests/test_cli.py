@@ -115,6 +115,14 @@ def test_a_version_and_a_file_are_exclusive(capsys: pytest.CaptureFixture[str]) 
     )
 
 
+@pytest.mark.usefixtures("cache")
+def test_an_at_without_a_version_is_a_usage_error(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exited:
+        main(["adapter", "install", "pumpkin@"])
+    assert exited.value.code == 2
+    assert "pumpkin@ names no version" in capsys.readouterr().err
+
+
 @pytest.mark.parametrize("argument", ["minestom", "minestom@1", "@26.3"])
 @pytest.mark.usefixtures("cache")
 def test_an_unknown_adapter_is_a_usage_error(

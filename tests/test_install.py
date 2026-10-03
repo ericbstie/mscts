@@ -95,15 +95,17 @@ def test_installing_the_installed_build_again_is_a_no_op_that_says_so(
     assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
 
 
-def test_another_installed_build_is_never_replaced_silently(tmp_path: Path) -> None:
+# A commit is named by 7 or more of its first characters: 4426 names no build.
+@pytest.mark.parametrize("version", ["8f3c2a1", COMMIT[:4]])
+def test_another_installed_build_is_never_replaced_silently(tmp_path: Path, version: str) -> None:
     install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub())
     github = FakeGitHub()
     with pytest.raises(ProvisionError) as raised:
-        install_release(ADAPTER, TARGET, tmp_path, "8f3c2a1", github)
+        install_release(ADAPTER, TARGET, tmp_path, version, github)
     assert str(raised.value) == (
         f"pumpkin 26.3 is already installed at {root_of(tmp_path)}: pumpkin nightly 4426d11, "
-        f"from {NIGHTLY_URL} (sha256 {SHA256}). To install pumpkin@8f3c2a1 instead, delete "
-        f"{root_of(tmp_path)} and run `mscts adapter install pumpkin@8f3c2a1`"
+        f"from {NIGHTLY_URL} (sha256 {SHA256}). To install pumpkin@{version} instead, delete "
+        f"{root_of(tmp_path)} and run `mscts adapter install pumpkin@{version}`"
     )
     assert github.fetched == []
 

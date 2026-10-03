@@ -95,7 +95,10 @@ def _adapter_at(argument: str) -> tuple[str, str | None]:
     if name not in ADAPTERS:
         msg = f"{name!r} is no Adapter; the known Adapters are {', '.join(ADAPTERS)}"
         raise argparse.ArgumentTypeError(msg)
-    return name, version if at else None
+    if at and not version:
+        msg = f"{argument} names no version: name one after the @, or leave the @ out"
+        raise argparse.ArgumentTypeError(msg)
+    return name, version or None
 
 
 def _install(arguments: argparse.Namespace, fetch: Fetch) -> int:

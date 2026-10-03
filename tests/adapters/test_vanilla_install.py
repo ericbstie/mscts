@@ -1,7 +1,8 @@
+import json
 from pathlib import Path
 
 import pytest
-from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar
+from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, manifest
 
 from mscts.adapters.base import Build, ProvisionError
 from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter
@@ -42,6 +43,17 @@ def test_install_release_rejects_a_download_that_is_not_the_published_jar(
     assert served != PUBLISHED
     with pytest.raises(ProvisionError, match=r"is not vanilla 26\.3"):
         install_release(VanillaAdapter(), TARGET, tmp_path, None, FakeMojang(served, jar=PUBLISHED))
+    assert not (tmp_path / "vanilla/26.3").exists()
+
+
+def test_install_release_rejects_a_download_of_another_size_than_listed(tmp_path: Path) -> None:
+    mojang = FakeMojang()
+    listed = json.loads(mojang.bodies[VERSION_URL])
+    listed["downloads"]["server"]["size"] += 1
+    mojang.bodies[VERSION_URL] = json.dumps(listed).encode()
+    mojang.bodies[MANIFEST_URL] = manifest(mojang.bodies[VERSION_URL])
+    with pytest.raises(ProvisionError, match=r"is not vanilla 26\.3"):
+        install_release(VanillaAdapter(), TARGET, tmp_path, None, mojang)
     assert not (tmp_path / "vanilla/26.3").exists()
 
 
