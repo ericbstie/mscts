@@ -843,6 +843,16 @@ class _Context:
         return contexts
 
 
+def window_takes(transcript: Transcript, event: Event) -> bool | None:
+    """Whether the Comparison takes `event`, a clientbound Packet of `transcript`, by its windows.
+
+    None if `transcript` has no Observation windows as the event's Bot sees them: then every
+    Packet is compared. Otherwise as `_Windows.observes` says.
+    """
+    windows = _Windows.of(transcript, event.bot)
+    return None if windows is None else windows.observes(event)
+
+
 @dataclass(frozen=True, slots=True)
 class _Windows:
     """A Transcript's Observation windows: its `observe:` Marks, in time order.

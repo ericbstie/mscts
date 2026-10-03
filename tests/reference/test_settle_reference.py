@@ -18,12 +18,12 @@ from pathlib import Path
 import pytest
 from support.probe import SETBLOCK_OBSERVED
 from support.reference import own_reference
-from support.selfcheck import describe_unmatched
+from support.selfcheck import keep_timelines_and_describe
 
 from mscts.bot import Bot
 from mscts.compare import Outcome
 from mscts.group import resolve
-from mscts.run import run
+from mscts.run import run_results
 from mscts.runner import Instance
 from mscts.settle import until_no_player_online
 from mscts.target import TARGET
@@ -80,9 +80,16 @@ async def test_status_basic_right_after_a_group_that_joined_bots_matches_20_of_2
 ) -> None:
     groups = (SETBLOCK_OBSERVED, *resolve(["status/basic"]))
     with own_reference(cache_dir) as reference:
-        verdicts = await run(groups, reference, reference, workdir=tmp_path / "run", repeat=_REPEAT)
+        result = await run_results(
+            groups,
+            reference,
+            reference,
+            workdir=tmp_path / "run",
+            repeat=_REPEAT,
+            keep_transcripts=True,
+        )
 
+    verdicts = result.verdicts
     assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * _REPEAT
-    not_matching = [verdict for verdict in verdicts if verdict.outcome is not Outcome.MATCH]
-    if not_matching:
-        pytest.fail(describe_unmatched(not_matching), pytrace=False)
+    if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
+        pytest.fail(keep_timelines_and_describe(result, tmp_path / "timelines"), pytrace=False)

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from support.reference import own_reference
+from support.selfcheck import keep_timelines_and_describe
 
 from mscts.compare import Outcome
 from mscts.group import Group, GroupContext
@@ -58,13 +59,18 @@ async def test_a_group_that_summons_pigs_inside_a_window_self_checks_20_of_20(
 ) -> None:
     with own_reference(cache_dir) as reference:
         result = await run_results(
-            [PIGS], reference, reference, workdir=tmp_path / "selfcheck", repeat=_REPEAT
+            [PIGS],
+            reference,
+            reference,
+            workdir=tmp_path / "selfcheck",
+            repeat=_REPEAT,
+            keep_transcripts=True,
         )
 
     verdicts = result.verdicts
     assert len(verdicts) == _REPEAT
-    not_matching = [v for v in verdicts if v.outcome is not Outcome.MATCH]
-    assert not_matching == [], not_matching
+    if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
+        pytest.fail(keep_timelines_and_describe(result, tmp_path / "timelines"), pytrace=False)
     # It compared the pigs' ids and UUIDs, numbered, and their metadata.
     cases = set(verdicts[0].test_cases)
     for case in ("add_entity.entity_id", "add_entity.entity_uuid", "set_entity_data.entity_id"):

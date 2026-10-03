@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from support.probe import SETBLOCK_OBSERVED
 from support.reference import own_reference
+from support.selfcheck import keep_timelines_and_describe
 
 from mscts.compare import Outcome
 from mscts.run import run_results
@@ -30,12 +31,13 @@ async def test_a_group_that_sets_a_block_inside_a_window_self_checks_20_of_20(
             reference,
             workdir=tmp_path / "selfcheck",
             repeat=_REPEAT,
+            keep_transcripts=True,
         )
 
     verdicts = result.verdicts
     assert len(verdicts) == _REPEAT
-    not_matching = [v for v in verdicts if v.outcome is not Outcome.MATCH]
-    assert not_matching == [], not_matching
+    if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
+        pytest.fail(keep_timelines_and_describe(result, tmp_path / "timelines"), pytrace=False)
     # Of play, it compared what the command did, and nothing the server sent on a clock,
     # nor anything Control received (its feedback is a system_chat).
     # A test case is `<packet>.<field path>` once the packet decodes, so look at the packets.

@@ -64,6 +64,15 @@ what the Candidate does, from
 `uv run mscts run --candidate pumpkin --group '<mechanic>/*'`. No test pins
 what a Candidate does.
 
+When a play does not match, in this tier or in the `reference` tier's
+20-out-of-20 Self-checks, the failure message also names a file for it,
+under the test's temporary directory. The file lists the packets each Bot
+sent and received on both servers, in time order, in milliseconds since the
+play started. For each packet received, it says whether an Observation
+window compared it. For each `award_stats`, it says how long after the
+Bot's previous one it arrived. This shows where a play that fails only
+sometimes went differently.
+
 ## How changes are made
 
 - **One failing test first.** Write one test that fails, write the least

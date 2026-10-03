@@ -4,9 +4,28 @@ pytest cuts a Verdict's repr after a few dozen characters, which hides the one t
 author needs, the field that differs between two vanilla Instances.
 """
 
-from support.selfcheck import MAX_DIVERGENCES, MAX_VERDICTS, describe_unmatched
+from pathlib import Path
 
-from mscts.compare import ABSENT, Divergence, DivergenceKind, Outcome, Verdict
+from support.selfcheck import (
+    MAX_DIVERGENCES,
+    MAX_VERDICTS,
+    describe_unmatched,
+    keep_timelines_and_describe,
+)
+
+from mscts.compare import (
+    ABSENT,
+    OBSERVE_CLOSE,
+    OBSERVE_OPEN,
+    Divergence,
+    DivergenceKind,
+    Outcome,
+    Verdict,
+)
+from mscts.run import GroupResult, RunResult, SideSummary
+from mscts.timeline import timeline
+from mscts.transcript import Transcript
+from tests.compare.build import transcript
 
 
 def divergence(
@@ -59,6 +78,42 @@ def test_differences_past_the_first_few_are_counted_not_listed() -> None:
 
     assert len(lines) == 1 + MAX_DIVERGENCES + 1
     assert lines[-1] == "  ... and 2 more differences"
+
+
+def played(*kept: tuple[Transcript, Transcript] | None) -> RunResult:
+    """A Run of `status/basic`, a repetition per item of `kept`: its Transcripts, if any."""
+    verdicts = tuple(
+        Verdict(group_id="status/basic", outcome=Outcome.MATCH if k is None else Outcome.ERROR)
+        for k in kept
+    )
+    side = SideSummary(name="vanilla", version="26.3", startup=())
+    group = GroupResult(
+        group_id="status/basic",
+        verdicts=verdicts,
+        reference=((),) * len(kept),
+        candidate=((),) * len(kept),
+        transcripts=kept,
+    )
+    return RunResult(results=(group,), reference=side, candidate=side)
+
+
+def test_a_failure_keeps_each_unmatched_plays_timelines_and_names_their_file(
+    tmp_path: Path,
+) -> None:
+    # #162: a flaky play can be diagnosed from where each packet arrived.
+    reference = transcript(OBSERVE_OPEN, group_id="status/basic", server="vanilla")
+    candidate = transcript(OBSERVE_CLOSE, group_id="status/basic", server="other")
+
+    message = keep_timelines_and_describe(played(None, (reference, candidate)), tmp_path)
+
+    kept = tmp_path / "status-basic.2.txt"
+    assert kept.read_text() == f"{timeline(reference)}\n\n{timeline(candidate)}\n"
+    assert message.splitlines() == [
+        "status/basic: error",
+        "The timelines of the plays that did not match:",
+        f"  {kept}",
+    ]
+    assert list(tmp_path.iterdir()) == [kept], "a play that matched keeps nothing"
 
 
 def test_verdicts_past_the_first_few_are_counted_not_listed() -> None:
