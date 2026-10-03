@@ -36,7 +36,8 @@ changes is in the chunk the builder is sent when it joins, the one that holds x 
 Vanilla puts a player who joins at a random place near the world spawn, so the builder could
 stand where a command sets a block. It would then crawl and take damage, and the server would
 tell it so. To keep that out of the comparison, the builder is moved with `/tp` to x 0.5, y -60,
-z 14.5 before the first window, away from every block a Group changes.
+z 14.5 before the first window, away from every block a Group changes. So the blocks Groups
+require `/tp`: on a server without it, all three are `blocked`.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

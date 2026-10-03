@@ -32,6 +32,9 @@ every block the Groups set.
 Vanilla joins a player at a random place within `respawn_radius` (10) of the world spawn, once
 per world. A block set where the builder stands makes it crawl (pose) and choke (health), on
 one Instance only (docs/research/2026-10-03-builder-pose.md).
+
+This holds only while PACKETS leaves out `player_position` (which the teleport sends,
+before the first window) and `set_health`.
 """
 
 PACKETS = (
