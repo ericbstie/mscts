@@ -45,8 +45,9 @@ only in network traffic as passing.
 
 A test case fails if it differs in gameplay in any repetition. Each field
 of a packet vanilla sent is a test case, so a Candidate that leaves a
-packet out, or stops before sending it, fails each of its fields, as if
-it had sent them all wrong. The same holds for a value that holds others,
+packet out, stops before sending it, or sends it so that it does not
+decode, fails each of its fields, as if it had sent them all wrong. The
+same holds for a value that holds others,
 such as the `players` of a status response: a Candidate that leaves it
 out, or sends something else in its place, fails each value inside it,
 an empty list or object included. Copies of a packet share its test

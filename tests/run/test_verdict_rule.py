@@ -17,7 +17,7 @@ import pytest
 import mscts.run as run_module
 from mscts.codec.packets import Codec
 from mscts.codec.wire import Writer
-from mscts.compare import Divergence, Mask, Outcome, Verdict
+from mscts.compare import Divergence, Mask, Outcome, Verdict, compare
 from mscts.group import GROUPS, CommandMissing, Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint, ProtocolError
@@ -126,7 +126,10 @@ async def test_the_undecodable_frame_is_a_divergence_showing_both_payloads() -> 
 
     verdict = judge(BASIC, reference, candidate)
 
-    assert verdict.test_cases == ("status_response",)  # kept from the Comparison
+    # Kept from the Comparison: the packet's, and each field vanilla sent in it (#230).
+    fields = compare(reference, reference, ()).test_cases
+    assert verdict.test_cases == tuple(sorted({"status_response", *fields}))
+    assert len(verdict.test_cases) > 1
     [_, payload] = verdict.divergences
     reference_payload = reference.events[-1].packet.payload
     assert payload == divergence(

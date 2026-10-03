@@ -2096,7 +2096,10 @@ proves it necessary:
    with itself would name it, so leaving a packet out fails each field
    sending it wrong would. Likewise (#225) a reference list or mapping
    the candidate sent as something else, or left out, adds the test case
-   of each of its unmasked leaves. In both, an empty list or mapping
+   of each of its unmasked leaves. Likewise (#230) a reference packet
+   with fields matched to a candidate packet that did not decode adds the
+   test case of each of its unmasked leaves, and the Report fails them for
+   that packet's Divergence. In all three, an empty list or mapping
    counts as a leaf. A dropped packet and a packet an
    Observation window leaves out are in none, and neither is a pair of
    values at a masked path that are the same (two `MASKED`, or two

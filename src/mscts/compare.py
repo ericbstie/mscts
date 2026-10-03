@@ -2718,13 +2718,16 @@ def _diff_matched(
     Mask found a value at counts only if it differs: a masked field is no test case. A
     reference list or mapping the Candidate sent as something else, or left out, adds the
     test case of each of its unmasked leaves too, so replacing it never scores better than
-    sending each leaf wrong (#225).
+    sending each leaf wrong (#225). Likewise a reference Packet with fields that the
+    Candidate sent undecodable: the test case of each of its fields, so a Packet that
+    does not decode never scores better than one sent wrong (#230).
     """
     state, name = reference.packet.state, reference.packet.name
     differences: list[tuple[_Path | None, str, object, object]] = []
     if reference.fields is None or candidate.fields is None:
         whole = _test_case(state, name, ())
         compared.add(whole)
+        compared.update(_field_cases(reference))  # the packet's alone, if it has no fields
         if reference.packet.payload != candidate.packet.payload:
             payloads = _shown_payloads(reference.packet.payload, candidate.packet.payload)
             differences.append((None, whole, *payloads))

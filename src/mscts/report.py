@@ -162,13 +162,17 @@ def _differing(divergence: Divergence, names: Iterable[str]) -> list[str]:
     Comparison lists for a Packet left out, so leaving a Packet out fails each field
     sending it wrong would (#101). Likewise a gameplay `field` Divergence whose reference
     value is a list or mapping the Candidate replaced or left out: its test case and each
-    of its leaves' (#225). Any other Divergence's: its own test case.
+    of its leaves' (#225). And a `field` Divergence of a whole Packet (no path), such as
+    one the Candidate sent that did not decode: its packet's test case and each of its
+    fields', which the Comparison lists for it (#230). Any other Divergence's: its own
+    test case.
     """
     case = divergence.test_case
     replaced = divergence.observability is Observability.GAMEPLAY and isinstance(
         divergence.reference, dict | list
     )
-    if divergence.kind != "missing" and not replaced:
+    whole = divergence.kind == "field" and divergence.path is None
+    if divergence.kind != "missing" and not replaced and not whole:
         return [case]
     fields = (f"{case}.", f"{case}[")
     return [name for name in names if name == case or name.startswith(fields)]
