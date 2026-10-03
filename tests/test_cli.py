@@ -62,7 +62,7 @@ def test_a_second_install_is_a_no_op_that_says_so(
     assert code == 0
     assert out == (
         f"pumpkin nightly 4426d11 is already installed at {root} (sha256 {SHA256}): "
-        f"nothing to do. For a newer build, delete {root} and install again.\n"
+        f"nothing to do. To check for a newer build, delete {root} and install again.\n"
     )
     assert github.fetched == []
 

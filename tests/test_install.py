@@ -90,7 +90,7 @@ def test_installing_the_installed_build_again_is_a_no_op_that_says_so(
     root = root_of(tmp_path)
     assert done.message == (
         f"pumpkin nightly 4426d11 is already installed at {root} (sha256 {SHA256}): "
-        f"nothing to do. For a newer build, delete {root} and install again."
+        f"nothing to do. To check for a newer build, delete {root} and install again."
     )
     after = binary.stat()
     assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)

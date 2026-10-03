@@ -165,7 +165,7 @@ def _unchanged(existing: Installation, adapter: Adapter, version: str | None) ->
         return None
     message = (
         f"{adapter.name} {build} is already installed at {root} (sha256 {source.sha256}): "
-        f"nothing to do. For a newer build, delete {root} and install again."
+        f"nothing to do. To check for a newer build, delete {root} and install again."
     )
     return Installed(existing, changed=False, message=message)
 

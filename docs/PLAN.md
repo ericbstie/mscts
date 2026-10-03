@@ -766,7 +766,7 @@ def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetc
     # commit must be the commit the file names (the nightly tag moves before its binary is
     # uploaded: "try again in a few minutes"). Records the Release's Build. Installed already:
     # a no-op when `version` is None or names the installed Build (its version, or 7+ first
-    # characters of its commit), saying "For a newer build, delete <root> and install again.";
+    # characters of its commit), saying "To check for a newer build, delete <root> and install again.";
     # another version → ProvisionError naming the delete + `mscts adapter install <a>@<v>`, after
     # the Adapter's refusal of <v> first (vanilla@26.4 is not supported), never the binary.
     # A failed fetch (OSError, or an http.client.HTTPException such as a body
@@ -1968,7 +1968,7 @@ mscts adapter install <adapter>[@<version>] [--from PATH]
     # (ADAPTERS is a static map of names to Adapters; an unknown name is a usage error, exit
     # 2). "downloading <url> ..." for every fetch, then "installed <adapter> <build> from <url>
     # into <root>", or "<adapter> <build> is already installed at <root> (sha256 …): nothing
-    # to do. For a newer build, delete <root> and install again.". --from: install_from,
+    # to do. To check for a newer build, delete <root> and install again.". --from: install_from,
     # "installed <path> (<adapter> <build>, sha256 …) into <root>". @<version> with --from:
     # "name a version or a file, not both". The Adapter's own refusals as they are:
     # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3.", "pumpkin@8f3c2a1 is

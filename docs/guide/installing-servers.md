@@ -28,7 +28,7 @@ installed pumpkin nightly 4426d11 from https://github.com/Pumpkin-MC/Pumpkin/rel
 If a build is already installed, the command does nothing and says so:
 
 ```
-pumpkin nightly 4426d11 is already installed at /home/user/.cache/mscts/pumpkin/26.3 (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e): nothing to do. For a newer build, delete /home/user/.cache/mscts/pumpkin/26.3 and install again.
+pumpkin nightly 4426d11 is already installed at /home/user/.cache/mscts/pumpkin/26.3 (sha256 b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e): nothing to do. To check for a newer build, delete /home/user/.cache/mscts/pumpkin/26.3 and install again.
 ```
 
 ## A specific build
