@@ -224,6 +224,17 @@ def install_release(
             f"Download the build another way (e.g. curl), then run {yourself}"
         )
         raise ProvisionError(msg) from error
+    except ProvisionError:
+        raise
+    except Exception as error:  # a garbled page, or the Adapter's own bug: never a traceback
+        wanted = (
+            f"{adapter.name}'s latest build" if version is None else f"{adapter.name}@{version}"
+        )
+        msg = (
+            f"{wanted} could not be found: {type(error).__name__}: {error}\n"
+            f"Download the build another way, then run {yourself}"
+        )
+        raise ProvisionError(msg) from error
     _published(adapter, release, download)
 
     def source(build: Build) -> Source:

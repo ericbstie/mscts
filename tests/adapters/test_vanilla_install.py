@@ -53,6 +53,25 @@ def test_another_version_is_not_supported_even_with_26_3_installed(tmp_path: Pat
     assert str(raised.value) == "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3."
 
 
+@pytest.mark.parametrize(
+    ("version", "wanted"), [(None, "vanilla's latest build"), ("26.3", "vanilla@26.3")]
+)
+def test_a_garbled_manifest_names_the_adapter_and_the_from_command(
+    tmp_path: Path, version: str | None, wanted: str
+) -> None:
+    mojang = FakeMojang()
+    mojang.bodies[MANIFEST_URL] = b"<html>The proxy says no</html>"
+    with pytest.raises(ProvisionError) as raised:
+        install_release(VanillaAdapter(), TARGET, tmp_path, version, mojang)
+    assert str(raised.value) == (
+        f"{wanted} could not be found: JSONDecodeError: "
+        "Expecting value: line 1 column 1 (char 0)\n"
+        "Download the build another way, then run "
+        "`mscts adapter install vanilla --from <file>`"
+    )
+    assert not (tmp_path / "vanilla").exists()
+
+
 def test_install_release_rejects_a_download_of_another_size_than_listed(tmp_path: Path) -> None:
     mojang = FakeMojang()
     listed = json.loads(mojang.bodies[VERSION_URL])
