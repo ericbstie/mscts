@@ -2,7 +2,7 @@
 
 What is compared is, for every Bot, the ordered stream of the clientbound Packets it
 received. If the Group has Observation windows (`GroupContext.observe`), a Bot's play
-Packets are compared only inside them, less the heartbeat packets (`HEARTBEAT`); its
+Packets are compared only inside them, less the heartbeat packets (`is_heartbeat`); its
 status, login and configuration Packets are still compared whole. Everything else is
 left out on purpose:
 
@@ -125,11 +125,42 @@ HEARTBEAT: Mapping[str, str] = MappingProxyType(
         ),
     }
 )
-"""The play packets an Observation window never compares, each with the reason.
+"""The play packets an Observation window never compares by name, each with the reason.
+Others are heartbeat packets by their first bytes (`HEARTBEAT_PAYLOADS`).
 
 Evidence: docs/research/2026-09-30-observation-window.md. The barrier's request,
 `client_command`, is serverbound, and nothing serverbound is compared.
 """
+
+
+HEARTBEAT_PAYLOADS: Mapping[tuple[str, bytes], str] = MappingProxyType(
+    {
+        ("minecraft:player_info_update", b"\x10"): (
+            "Only UPDATE_LATENCY: vanilla sends it for every player on a clock (every 601 "
+            "ticks, even with the world frozen) whatever a Group does, and no other code sends "
+            "that action alone. Its first byte is the set of actions, one bit each, so 0x10 is "
+            "that one action and nothing else."
+        ),
+    }
+)
+"""The play packets whose name alone does not make them heartbeat packets, but whose payload
+starts with the given bytes does, each with the reason. A packet of the same name with other
+bytes is compared, so the effects a Group tests under that name stay compared.
+
+Evidence: docs/research/2026-10-03-latency-broadcast.md.
+"""
+
+
+def is_heartbeat(packet: Packet) -> bool:
+    """Whether `packet`, a play packet, is a heartbeat packet no window compares.
+
+    It is one if `HEARTBEAT` names it, or if `HEARTBEAT_PAYLOADS` names it with the bytes its
+    payload starts with.
+    """
+    return packet.name in HEARTBEAT or any(
+        packet.name == name and packet.payload.startswith(start)
+        for name, start in HEARTBEAT_PAYLOADS
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -834,12 +865,12 @@ class _Windows:
         A packet of any State but play is always taken. A play packet is taken if it
         arrived at or after an open Mark and before the next Mark (a window that never
         closed runs to the end), the window's names include it, if it has any, and it
-        is not a heartbeat packet (`HEARTBEAT`).
+        is not a heartbeat packet (`is_heartbeat`).
         """
         packet = event.packet
         if packet.state is not State.PLAY:
             return True
-        if packet.name in HEARTBEAT:
+        if is_heartbeat(packet):
             return False
         latest = bisect.bisect_right(self.times, event.t_ns) - 1
         if latest < 0:

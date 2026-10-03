@@ -149,8 +149,10 @@ computed, or an Observation window found.
 The part of a Group whose play packets are
 compared: what a Bot receives inside `async with context.observe():`,
 found by when each packet arrived. It never compares the **heartbeat
-packets** (`compare.HEARTBEAT`, each with its reason): packets a server
-sends on a clock whatever a Group does (keep-alives, the time of day).
+packets** (`compare.HEARTBEAT` by name and `compare.HEARTBEAT_PAYLOADS`
+by name and first bytes, each with its reason): packets a server sends
+on a clock whatever a Group does (keep-alives, the time of day,
+vanilla's player latency updates).
 A window can be narrowed to named packets. Status, login and
 configuration packets are compared whole, and so is every packet of a
 Group with no window. When a window closes, each Bot in play first

@@ -19,7 +19,7 @@ from support.chunks import OVERWORLD_SECTIONS, decode_chunk
 from support.reference import booted
 
 from mscts.codec.packets import Direction, State
-from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, is_heartbeat
 from mscts.group import Group, GroupContext
 from mscts.net import Endpoint
 from mscts.run import run_group
@@ -72,7 +72,7 @@ QUERY = Group(id="probe/query-rule", run=_query_the_rule)
 def window_of(transcript: Transcript) -> Window:
     """What Compare takes of alice's play packets: those stamped inside the Group's one window.
 
-    Without the packets Compare never compares in a window (keep-alives and the time).
+    Without the packets Compare never compares in a window (`is_heartbeat`).
     """
     (opened,) = (mark for mark in transcript.marks if mark.label == OBSERVE_OPEN)
     (closed,) = (mark for mark in transcript.marks if mark.label == OBSERVE_CLOSE)
@@ -82,7 +82,7 @@ def window_of(transcript: Transcript) -> Window:
         if event.bot == "alice"
         and event.packet.direction is Direction.CLIENTBOUND
         and event.packet.state is State.PLAY
-        and event.packet.name not in HEARTBEAT
+        and not is_heartbeat(event.packet)
         and opened.t_ns <= event.t_ns < closed.t_ns
     ]
     chunks = [

@@ -1066,6 +1066,15 @@ OBSERVE_CLOSE = "observe:close"     # the Mark that closes it
 HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
                                     # compares (keep_alive, set_time, award_stats; evidence in
                                     # docs/research/2026-09-30-observation-window.md)
+HEARTBEAT_PAYLOADS: Mapping[tuple[str, bytes], str] # (packet name, first payload bytes) ->
+                                    # reason: the play packets a window never compares
+                                    # when their payload starts with those bytes, though
+                                    # their name alone does not make them heartbeat
+                                    # packets: vanilla's latency-only player_info_update
+                                    # (actions byte 0x10; docs/research/
+                                    # 2026-10-03-latency-broadcast.md)
+def is_heartbeat(packet: Packet) -> bool: ... # HEARTBEAT names it, or HEARTBEAT_PAYLOADS
+                                    # names it with the bytes its payload starts with
 UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any State) whose
                                     # unordered lists every Comparison sorts first, stably, by
                                     # the key of the client's map or set, so their order is no
@@ -1247,7 +1256,7 @@ proves it necessary:
      the next `observe:open` or `observe:close` Mark, or at the end of the
      Transcript if none follows (the Group raised inside it). It observes
      every play packet that arrived (`t_ns`) at or after its open Mark and
-     before its end, except the heartbeat packets (`compare.HEARTBEAT`),
+     before its end, except the heartbeat packets (`compare.is_heartbeat`),
      and only the packets it names if its open Mark names any. Status,
      login and configuration packets are compared whole, and a Transcript
      with no window is compared whole. Each side is windowed by its own
@@ -2028,11 +2037,13 @@ then record the answer in an ADR:
 - How do Groups for the time of day compare `set_time`, which no window
   compares (ADR-0010)? And should a position resend that carries no
   movement (vanilla's `move_entity_pos` for every tracked entity every 60
-  ticks) or a latency-only `player_info_update` (every 601 ticks) be
-  heartbeat packets? Telling them from a real move or player list change
-  needs those packets' schemas: `move_entity_pos` has one since #20,
-  `player_info_update` none yet. Until this is decided, a window that can
-  catch them names the packets it tests.
+  ticks) be a heartbeat packet? Telling it from a real move needs the
+  packet's schema, which `move_entity_pos` has since #20. Until this is
+  decided, a window that can catch one names the packets it tests.
+  **Decided for the latency-only `player_info_update` (every 601 ticks;
+  #165, ADR-0010 amendment):** it is a heartbeat packet
+  (`compare.HEARTBEAT_PAYLOADS`), told apart by its first byte, the set of
+  actions, with no schema.
 - How should chunk data be compared: decode the palette into block states,
   or compare raw? **Decided (#22):** decode. The codec decodes each
   section's paletted containers (`codec/schemas/play/chunks.py`), and

@@ -5,7 +5,14 @@ from dataclasses import replace
 import pytest
 
 from mscts.codec.packets import Packet, State
-from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
+from mscts.compare import (
+    HEARTBEAT,
+    HEARTBEAT_PAYLOADS,
+    OBSERVE_CLOSE,
+    OBSERVE_OPEN,
+    Outcome,
+    compare,
+)
 from tests.compare.build import divergence, packet, transcript
 
 OPEN, CLOSE = OBSERVE_OPEN, OBSERVE_CLOSE
@@ -67,6 +74,64 @@ def test_every_heartbeat_packet_has_a_reason() -> None:
     assert HEARTBEAT
     for name, reason in HEARTBEAT.items():
         assert name.startswith("minecraft:"), name
+        assert reason.strip(), name
+
+
+PLAYER = bytes(range(16))
+"""A player's UUID, as `player_info_update` writes it in each entry."""
+
+
+def player_info(actions: int, *values: int) -> Packet:
+    """A `player_info_update` with the `actions` byte and one entry for PLAYER of `values`."""
+    return packet("minecraft:player_info_update", bytes([actions, 1, *PLAYER, *values]))
+
+
+LATENCY = 0x10
+"""The actions byte of UPDATE_LATENCY alone (`PlayerList.tick`, every 601 ticks)."""
+
+
+def test_a_latency_only_player_info_update_inside_the_window_is_not_compared() -> None:
+    verdict = compare(
+        transcript(OPEN, ("alice", player_info(LATENCY, 3)), ("alice", block(1)), CLOSE),
+        transcript(OPEN, ("alice", block(1)), ("alice", player_info(LATENCY, 9)), CLOSE),
+        [],
+    )
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert verdict.test_cases == ("block_update",)
+
+
+@pytest.mark.parametrize(
+    "actions",
+    [0x04, 0x14, 0x1D, 0xFF],
+    ids=["game mode", "game mode and latency", "a player joining", "every action"],
+)
+def test_a_player_info_update_with_another_action_is_still_compared(actions: int) -> None:
+    verdict = compare(
+        transcript(OPEN, ("alice", player_info(actions, 1, 3)), ("alice", block(1)), CLOSE),
+        transcript(OPEN, ("alice", block(1)), CLOSE),
+        [],
+    )
+    assert [(d.kind, d.packet) for d in verdict.divergences] == [
+        ("missing", "minecraft:player_info_update")
+    ], verdict
+
+
+def test_another_packet_that_starts_with_the_same_byte_is_still_compared() -> None:
+    verdict = compare(
+        transcript(OPEN, ("alice", block(LATENCY)), ("alice", chat("a")), CLOSE),
+        transcript(OPEN, ("alice", chat("a")), CLOSE),
+        [],
+    )
+    assert [(d.kind, d.packet) for d in verdict.divergences] == [
+        ("missing", "minecraft:block_update")
+    ], verdict
+
+
+def test_every_heartbeat_payload_has_a_reason() -> None:
+    assert set(HEARTBEAT_PAYLOADS) == {("minecraft:player_info_update", bytes([LATENCY]))}
+    for (name, start), reason in HEARTBEAT_PAYLOADS.items():
+        assert name not in HEARTBEAT, name
+        assert start, name
         assert reason.strip(), name
 
 

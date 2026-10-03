@@ -81,8 +81,9 @@ ends, each Bot first waits until a tick has passed on the server since it
 received everything the Bot sent, then takes what has arrived (a window
 with `until` waits for nothing: see below). A few
 packets the server sends on a clock rather than because of anything a Group
-did (keep-alives and the time of day) are never compared inside a window.
-Groups of their own compare them.
+did (keep-alives, the time of day and vanilla's player latency updates)
+are never compared inside a window.
+Groups of their own compare the keep-alives and the time of day.
 
 | Window option | What it does |
 | --- | --- |
