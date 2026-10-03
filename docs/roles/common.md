@@ -9,6 +9,19 @@ protocol-research, function-design and writing skills (.claude/skills/)
 before starting. Every function you write or change follows
 function-design; existing code is brought to it only where your issue
 already changes it.
+
+Also read and apply the maintainer's `unslop` and `minimal-increment`
+skills (.claude/skills/). Where they differ from this project's process,
+the project wins:
+
+- minimal-increment: your issue is the scope answer, so don't ask anyone
+  which parts are in scope. Tests are always in scope (red-green), and so
+  are docs for anything a user sees (ADR-0009). Its "what could be done
+  next" ending goes in your Worker report.
+- unslop: its list of patterns applies to all prose. Its "adding soul"
+  advice (opinions, "I", some mess) doesn't apply to the docs, the Report
+  or CLI text, where the writing skill's "be humble and honest, let the
+  reader decide" wins.
 Read your issue and its comments first (GitHub MCP tools, loaded with
 ToolSearch; repo ericbstie/mscts; no `gh`).
 

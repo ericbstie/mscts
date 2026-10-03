@@ -30,7 +30,9 @@ code, `mise run check`, one commit, repeat. Use the `function-design`
 skill for every function you write, change or review. Use the `protocol-research`
 skill before encoding any protocol or server fact. Use the `writing`
 skill before writing or rewording any user-facing text, and update it
-whenever the maintainer gives feedback on such text.
+whenever the maintainer gives feedback on such text. Use the `unslop`
+skill on all prose and the `minimal-increment` skill on all code, as
+adapted in `docs/roles/common.md`.
 
 The docs site is the spec for what users see, and always matches the
 code (ADR-0009). Each issue is worked on its own `issue-<n>-<slug>`
