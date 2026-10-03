@@ -346,8 +346,13 @@ def test_markdown_shows_server_text_as_it_is() -> None:
 
 @pytest.mark.parametrize(
     ("path", "code"),
-    [("`p[0]`", "`` `p[0]` ``"), (" p[0] ", "`  p[0]  `"), ("p[0]", "`p[0]`")],
-    ids=["backticks", "spaces", "plain"],
+    [
+        ("`p[0]`", "`` `p[0]` ``"),
+        ("p[0]`", "`` p[0]` ``"),
+        (" p[0] ", "`  p[0]  `"),
+        ("p[0]", "`p[0]`"),
+    ],
+    ids=["backticks", "trailing-backtick", "spaces", "plain"],
 )
 def test_markdown_code_keeps_its_edges(path: str, code: str) -> None:
     field = replace(_field("p[]"), path=path)
