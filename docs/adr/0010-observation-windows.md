@@ -291,3 +291,13 @@ MD2).
    timing. A Bot not in play, which passes no barrier, gets its Mark once
    every barrier has returned. The drain still follows, and what it takes
    is outside the window.
+2. **`observe(until=..., bot=...)` ends the window at that Bot's first
+   `until` packet.** The #105 amendment's close is the earliest arrival
+   over all the Bots, but each Bot's reader stamps a frame when it reads
+   its own socket, and the readers run one after another: another Bot's
+   packet that reached its socket first can be stamped later, and a Bot
+   still taking its own later chunk batches can end the window with its
+   own `chunk_batch_finished` (audit L1). Naming the Bot makes the end one
+   Bot's arrival, which its own reader orders. The close Mark still names
+   no Bot, so the other Bots' cut is timing; a Group with more than one Bot
+   names the Bot. Without `bot`, the #105 rule stands.

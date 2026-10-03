@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
@@ -270,6 +271,56 @@ async def test_the_earliest_arrival_at_any_bot_closes_it_whichever_was_recorded_
 
     assert earlier < later
     assert transcript.marks[-1] == Mark(t_ns=earlier + 1, label=OBSERVE_CLOSE)
+
+
+async def _joined(context: GroupContext, name: str) -> Bot:
+    bot = await context.bot(name)
+    await bot.join()
+    return bot
+
+
+@pytest.mark.asyncio
+async def test_until_with_bot_ends_the_window_at_that_bots_packet() -> None:
+    # Audit 2026-10-02, L1: across Bots, arrival order is the order the readers ran, so
+    # another Bot's packet stamped earlier must not end the window of the Bot named.
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        alice = await _joined(context, "alice")
+        await _joined(context, "bob")
+        async with context.observe(until=DIFFICULTY, bot=alice):
+            _heard_by(transcript, "bob", DIFFICULTY, at=transcript.now_ns())
+            arrival = transcript.now_ns()
+            _heard_by(transcript, "alice", DIFFICULTY, at=arrival)
+
+    assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
+
+
+@pytest.mark.asyncio
+async def test_until_with_bot_fails_when_only_another_bot_got_the_packet() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        alice = await _joined(context, "alice")
+        await _joined(context, "bob")
+        with pytest.raises(ProtocolError, match=f"no {DIFFICULTY} arrived at alice"):
+            async with context.observe(until=DIFFICULTY, bot=alice):
+                _heard_by(transcript, "bob", DIFFICULTY, at=transcript.now_ns())
+
+
+@pytest.mark.asyncio
+async def test_bot_needs_until_and_one_of_the_groups_bots() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(server([]), transcript) as context:
+        alice = await _joined(context, "alice")
+        with pytest.raises(ValueError, match="bot= names the Bot whose until packet"):
+            async with context.observe(bot=alice):
+                pass
+        async with playing(server([]), Transcript(group_id="other", server="fake")) as other:
+            stranger = await _joined(other, "carol")
+            with pytest.raises(ValueError, match="not one of this Group's Bots"):
+                async with context.observe(until=DIFFICULTY, bot=stranger):
+                    pass
+
+    assert transcript.marks == []
 
 
 @pytest.mark.asyncio

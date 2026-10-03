@@ -890,7 +890,7 @@ class GroupContext:
                                                  # CONTROL_PLAYER (Control's Bot)
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
-    def observe(self, *names: str, until: str | None = None
+    def observe(self, *names: str, until: str | None = None, bot: Bot | None = None
                 ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: Marks OBSERVE_OPEN (then the
                                     # names, each after a space) on entry; when the body
@@ -908,10 +908,12 @@ class GroupContext:
                                     # closed drains, then OBSERVE_CLOSE is stamped 1 ns after
                                     # the Event.t_ns (the arrival, never the time a Bot took
                                     # the packet; #88) of the first clientbound play packet
-                                    # of that name any Bot but Control received at or after
-                                    # the open Mark (Control's receipts are never compared;
-                                    # the earliest arrival over the Bots, whatever order
-                                    # they were recorded in). The body must last until it
+                                    # of that name `bot` (if given), else any Bot but Control,
+                                    # received at or after the open Mark (Control's receipts
+                                    # are never compared; the earliest arrival over the Bots,
+                                    # whatever order they were recorded in). ValueError:
+                                    # `bot` without `until`, or not one of this Group's Bots.
+                                    # The body must last until it
                                     # has arrived: one that ends sooner fails as below.
                                     # Compare puts a packet stamped at a Mark's time
                                     # after the Mark, so the extra nanosecond keeps that

@@ -107,7 +107,8 @@ need is missing, add it here in the same commit that introduces it.
   waiting for. The Bot then takes what has already arrived (the
   **drain**), outside its window. A window can
   instead end at a packet's arrival (`until`): no barrier, and it closes
-  when the first packet of that name arrived at a Bot. _Avoid_: phase,
+  when the first packet of that name arrived at a Bot, or at the Bot
+  named with `bot=`. _Avoid_: phase,
   section.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (keep-alive ids, teleport ids) from

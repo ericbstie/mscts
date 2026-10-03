@@ -274,7 +274,9 @@ class GroupContext:
         self._mark(f"{name}:end")
 
     @contextlib.asynccontextmanager
-    async def observe(self, *names: str, until: str | None = None) -> AsyncIterator[None]:
+    async def observe(
+        self, *names: str, until: str | None = None, bot: Bot | None = None
+    ) -> AsyncIterator[None]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
         Marks `observe:open` on entry, followed by `names`, each after a space. When the
@@ -295,17 +297,25 @@ class GroupContext:
         must last until the packet has arrived (`Bot.join` does, for a join's packets): a
         body that ends sooner fails with the ProtocolError below.
 
+        With `bot` too, only that Bot's `until` packet ends the window. Without it, with
+        more than one Bot, where the window ends for the others is timing: each Bot's
+        reader stamps a frame when it reads its own socket, and the readers run one after
+        another, so a packet that reached one Bot's socket first can be stamped later.
+
         Args:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
                 none for every packet.
             until: The name of the packet whose arrival ends the window, e.g.
                 `minecraft:chunk_batch_finished`; None for a window that ends at the
                 barrier.
+            bot: The Bot whose `until` packet ends the window; None for any Bot but
+                Control.
 
         Raises:
             ValueError: A window is open already (windows do not nest), or a name (in
                 `names` or `until`) is not a packet the Target's server sends in play,
-                or is a heartbeat packet (`HEARTBEAT`), which no window compares.
+                or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
+                `bot` is given without `until`, or is not one of this Group's Bots.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
             ProtocolError: The server disconnected a Bot before its barrier's answer; or
                 no `until` packet arrived inside the window.
@@ -315,6 +325,12 @@ class GroupContext:
             raise ValueError(msg)
         for name in (*names, *(() if until is None else (until,))):
             _check_observable(name)
+        if bot is not None and until is None:
+            msg = "bot= names the Bot whose until packet ends the window: give until too"
+            raise ValueError(msg)
+        if bot is not None and self._bots.get(bot.name) is not bot:
+            msg = f"{bot.name!r} is not one of this Group's Bots"
+            raise ValueError(msg)
         self._observing = True
         try:
             opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
@@ -332,7 +348,8 @@ class GroupContext:
                 # Compare puts a packet stamped at a Mark's time after the Mark, so the Mark
                 # goes a nanosecond after the arrival. A Connection stamps the frames of one
                 # read a nanosecond apart, so that is just before the next frame.
-                self._mark(OBSERVE_CLOSE, t_ns=self._arrival_of(until, since=opened) + 1)
+                arrival = self._arrival_of(until, since=opened, bot=bot)
+                self._mark(OBSERVE_CLOSE, t_ns=arrival + 1)
         finally:
             self._observing = False
 
@@ -347,12 +364,12 @@ class GroupContext:
         self._transcript.marks.append(Mark(t_ns=at, label=label))
         return at
 
-    def _arrival_of(self, name: str, *, since: int) -> int:
-        """When the first play packet `name` arrived at a Bot but Control, at or after `since`.
+    def _arrival_of(self, name: str, *, since: int, bot: Bot | None) -> int:
+        """When the first play packet `name` arrived at `bot`, at or after `since`.
 
-        Control's receipts are never compared, so they cannot end a window. A Bot records
-        a frame when it takes it, so this is the earliest arrival over all the Bots,
-        whatever order they were recorded in.
+        With no `bot`, at any Bot but Control: Control's receipts are never compared, so
+        they cannot end a window. A Bot records a frame when it takes it, so this is the
+        earliest arrival over all the Bots, whatever order they were recorded in.
 
         Raises:
             ProtocolError: None did.
@@ -361,13 +378,14 @@ class GroupContext:
             event.t_ns
             for event in self._transcript.events
             if event.t_ns >= since
-            and event.bot != CONTROL_PLAYER
+            and (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
             and event.packet.name == name
             and event.packet.state is State.PLAY
             and event.packet.direction is Direction.CLIENTBOUND
         ]
         if not arrivals:
-            msg = f"no {name} arrived at any Bot after the Observation window opened"
+            at = "any Bot" if bot is None else bot.name
+            msg = f"no {name} arrived at {at} after the Observation window opened"
             raise ProtocolError(msg)
         return min(arrivals)
 

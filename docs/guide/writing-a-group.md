@@ -89,7 +89,7 @@ Groups of their own compare the keep-alives and the time of day.
 | Window option | What it does |
 | --- | --- |
 | `context.observe("minecraft:block_update", ...)` | Compares only the packets named. |
-| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block going until the packet has arrived (a Bot's `join` does for a join's packets): if none had when the block ended, the Group fails and says which. |
+| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, or at the Bot you name with `bot=`, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block going until the packet has arrived (a Bot's `join` does for a join's packets): if none had when the block ended, the Group fails and says which. With more than one Bot, name the Bot: when the window ends for the others then depends on timing. |
 
 A packet name must be one the server sends in play, with its namespace
 (`minecraft:block_update`). Keep-alives and the time of day are never

@@ -164,7 +164,8 @@ at its own barrier's second answer, whatever the other Bots are still
 waiting for. The Bot then takes what has already arrived (the
 **drain**), outside its window. A window can
 instead end at a packet's arrival (`until`): no barrier, and it closes
-when the first packet of that name arrived at a Bot.
+when the first packet of that name arrived at a Bot, or at the Bot
+named with `bot=`.
 
 ### Mask
 
