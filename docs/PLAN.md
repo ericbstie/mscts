@@ -1434,11 +1434,12 @@ def judge(group: Group, reference: Transcript | GroupError,
     # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
     # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
-    # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
+    # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` passed:
+    # a `match`, or a `mismatch` with Divergences, none gameplay (ADR-0007, #221)
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
               workdir: Path, repeat: int = 1) -> list[Verdict]: ...
     # one Verdict per Group per repetition, repetition after repetition, in the order
-    # given; a Group is blocked (not played) unless its prerequisites matched earlier in
+    # given; a Group is blocked (not played) unless its prerequisites passed earlier in
     # the same repetition. One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.

@@ -3,7 +3,7 @@ import json
 import pytest
 
 from mscts.codec.packets import Codec, Direction, Packet, State
-from mscts.compare import Outcome, Verdict
+from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
 from mscts.group import Group, GroupContext
 from mscts.groups import status
 from mscts.run import GroupError, blocked, judge, run_group
@@ -155,6 +155,40 @@ def test_a_group_whose_prerequisite_did_not_match_is_blocked(outcome: Outcome) -
 
     assert verdict == Verdict(
         "status/ping", Outcome.BLOCKED, detail=f"prerequisite status/basic was {outcome}"
+    )
+
+
+def _sample(observability: Observability) -> Divergence:
+    """Pumpkin's `players.sample: []`, where vanilla leaves it out."""
+    return Divergence(
+        bot="status",
+        index=0,
+        kind="field",
+        packet="minecraft:status_response",
+        path="players.sample",
+        reference=ABSENT,
+        candidate=[],
+        test_case="status_response.players.sample",
+        observability=observability,
+    )
+
+
+def test_a_prerequisite_that_differs_only_in_network_traffic_does_not_block() -> None:
+    # #221: the Score counts its test cases as passing (ADR-0007), so it passed.
+    differs = (_sample(Observability.NETWORK_TRAFFIC),)
+    basic = Verdict("status/basic", Outcome.MISMATCH, differs)
+
+    assert blocked(PING, {"status/basic": basic}) is None
+
+
+def test_a_prerequisite_with_a_gameplay_difference_too_blocks() -> None:
+    differs = (_sample(Observability.NETWORK_TRAFFIC), _sample(Observability.GAMEPLAY))
+    basic = Verdict("status/basic", Outcome.MISMATCH, differs)
+
+    verdict = blocked(PING, {"status/basic": basic})
+
+    assert verdict == Verdict(
+        "status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was mismatch"
     )
 
 

@@ -283,17 +283,30 @@ def judge(
 
 
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
-    """A `blocked` Verdict if a prerequisite of `group` has no `match` in `verdicts`."""
+    """A `blocked` Verdict if a prerequisite of `group` did not pass in `verdicts`.
+
+    A prerequisite passed if it is a `match`, or a `mismatch` whose Divergences are all
+    network traffic, which the Score counts as passing (ADR-0007, #221).
+    """
     for prerequisite in group.requires:
         verdict = verdicts.get(prerequisite)
         if verdict is None:
             detail = f"prerequisite {prerequisite} was not run"
-        elif verdict.outcome is not Outcome.MATCH:
+        elif not _passed(verdict):
             detail = f"prerequisite {prerequisite} was {verdict.outcome}"
         else:
             continue
         return Verdict(group_id=group.id, outcome=Outcome.BLOCKED, detail=detail)
     return None
+
+
+def _passed(verdict: Verdict) -> bool:
+    """Whether `verdict` is a `match`, or a `mismatch` only in network traffic (ADR-0007)."""
+    if verdict.outcome is Outcome.MATCH:
+        return True
+    return (
+        verdict.outcome is Outcome.MISMATCH and bool(verdict.divergences) and not verdict.gameplay
+    )
 
 
 async def run(
