@@ -1,5 +1,6 @@
 """`mscts run`: a Run of the Reference against a Candidate, with fake Adapters."""
 
+import dataclasses
 import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -278,6 +279,57 @@ def test_a_report_file_that_cannot_be_written_fails_after_printing_the_report(
     assert out.startswith("Running tests against pumpkin\n"), out
     assert "Report written" not in out
     assert err.endswith(f"\nmscts: cannot write {tmp_path / 'report.md'}: Is a directory\n"), err
+
+
+def _refuse(_: Report) -> str:
+    msg = "Out of range float values are not JSON compliant: inf"
+    raise ValueError(msg)
+
+
+def _lone_surrogate(_: Report, *, verbose: bool) -> str:
+    del verbose
+    return "a name with a lone surrogate: " + chr(0xD800)
+
+
+@dataclasses.dataclass(frozen=True)
+class Unwritable:
+    """A report file whose text cannot be made or encoded, and the reason mscts gives."""
+
+    module: object
+    name: str
+    fake: object
+    file: str
+    reason: str
+
+
+UNWRITABLE = {
+    "json-refuses-a-value": Unwritable(
+        report_json, "dumps", _refuse, "report.json", "Out of range float values"
+    ),
+    "md-cannot-be-encoded": Unwritable(
+        cli, "render_markdown", _lone_surrogate, "report.md", "'utf-8' codec can't encode"
+    ),
+}
+
+
+@pytest.mark.parametrize("case", UNWRITABLE.values(), ids=UNWRITABLE.keys())
+def test_a_report_file_that_cannot_be_encoded_fails_naming_it(
+    fakes: Fakes,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: Unwritable,
+) -> None:
+    fakes()
+    monkeypatch.setattr(case.module, case.name, case.fake)
+
+    code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "1", "--out", str(tmp_path))
+
+    assert code == 1
+    assert out.startswith("Running tests against pumpkin\n"), out
+    assert "Report written" not in out
+    said = f"mscts: cannot write {tmp_path / case.file}: {case.reason}"
+    assert err.splitlines()[-1].startswith(said), err
 
 
 def test_a_run_report_carries_no_note_about_unbuilt_output(
