@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from time import perf_counter
 from types import MappingProxyType
-from typing import override
+from typing import Protocol, override
 
 from mscts import install, report_json, run
 from mscts.adapters.base import (
@@ -110,10 +110,17 @@ def _adapter_at(argument: str) -> tuple[str, str | None]:
 
 @dataclass(frozen=True, slots=True)
 class _World:
-    """What a command reads from outside: the network and the clock, passed in at the top."""
+    """What a command reads from outside, passed in at the top.
+
+    Attributes:
+        fetch: The network.
+        now: The clock.
+        color: Whether stdout is a terminal that wants colour (`_wants_color`).
+    """
 
     fetch: Fetch
     now: install.Clock
+    color: bool = False
 
 
 def _install(arguments: argparse.Namespace, world: _World) -> int:
@@ -202,7 +209,7 @@ def _server(name: str) -> run.Server:
     return run.Server(adapter, install.require(adapter, TARGET, cache_dir(), terminal=terminal))
 
 
-def _run(arguments: argparse.Namespace, _world: _World) -> int:
+def _run(arguments: argparse.Namespace, world: _World) -> int:
     groups = _groups(str(arguments.group))
     repeat = int(arguments.repeat)
     if repeat < 1:
@@ -225,7 +232,7 @@ def _run(arguments: argparse.Namespace, _world: _World) -> int:
         raise
     shutil.rmtree(workdir)
     report = Report.of(result, target=TARGET, notes=(), elapsed_s=perf_counter() - started)
-    sys.stdout.write(render_text(report, verbose=arguments.verbose))
+    sys.stdout.write(render_text(report, verbose=arguments.verbose, color=world.color))
     if out is not None:
         _say(_write_report(report, out, verbose=arguments.verbose))
     return 0
@@ -346,21 +353,38 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+class _Terminal(Protocol):
+    def isatty(self) -> bool: ...
+
+
+def _wants_color(stdout: _Terminal, environ: Mapping[str, str]) -> bool:
+    """Whether to colour the Report: stdout is a terminal and NO_COLOR is unset or empty.
+
+    https://no-color.org: a NO_COLOR with any value but "" turns colour off.
+    """
+    return stdout.isatty() and not environ.get("NO_COLOR")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     fetch: Fetch = https_get,
     now: install.Clock = install.utc_now,
+    color: bool | None = None,
 ) -> int:
     """Run the `mscts` command; return its exit code (1: a failure, whose message says why).
 
-    The network (`fetch`) and the clock (`now`) are read only through these.
+    The network (`fetch`) and the clock (`now`) are read only through these. `color`
+    says whether the Report's marks are coloured; None works it out from stdout and the
+    environment (`_wants_color`).
     """
+    if color is None:
+        color = _wants_color(sys.stdout, os.environ)
     arguments = _parser().parse_args(argv)
     try:
         command = str(arguments.command)
         action = str(arguments.action) if command == "adapter" else command
-        return _ACTIONS[action](arguments, _World(fetch=fetch, now=now))
+        return _ACTIONS[action](arguments, _World(fetch=fetch, now=now, color=color))
     except (ProvisionError, PrepareError, _UsageError, _OutputError) as error:
         sys.stderr.write(f"mscts: {error}\n")
         return 1

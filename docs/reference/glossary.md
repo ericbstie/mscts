@@ -216,9 +216,8 @@ One difference found by a Comparison. It is
 player could notice it) or **network traffic** (the servers send the
 same thing in different formats, and a vanilla client ends up with the
 same result): its `observability`. Network traffic Divergences are
-listed alongside gameplay differences and excluded from compliance scores
-(ADR-0007, ADR-0012);
-`Verdict.gameplay` is what scores count.
+listed alongside gameplay differences, and a test case that differs
+only in network traffic passes (ADR-0007, ADR-0012).
 
 ### Test case
 
@@ -243,7 +242,7 @@ the Candidate and not on the Reference is a `mismatch`, led by a
 holds whatever the failure: a frame that does not decode, an answer
 that breaks the protocol, no answer in time, a connection closed, reset
 or refused, players still online from the Group before, or a value the
-Group does not expect. Compliance scores leave `error` out, so a
+Group does not expect. The Score leaves `error` out, so a
 Candidate must never score better by failing. The same holds while
 mscts waits for the players of the Group before to leave; it then does
 not play the Group.
@@ -267,6 +266,15 @@ Candidate, repeated N times. It produces a **Report**. Each side of a
 Run either launches its own Instances (a Server) or is **Attached**: an
 Instance someone else launched and stops, which the Run only plays
 against, and only for Groups of the ServerSpec it was launched from.
+
+### Score
+
+The share of a Report's scored lines that passed, as in
+`Score: 87.5% (35 of 40 test cases pass)` (#101). Each line is one test
+case of one Group, which fails if it differs in gameplay in any
+repetition, or one Group with no test cases to list: a blocked Group or
+a Candidate failure fails, an `error` is not scored. It is rounded
+down, so only a Run where every scored line passes scores 100%.
 
 ## Development
 

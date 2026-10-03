@@ -1112,7 +1112,8 @@ class Verdict:
     outcome: Outcome
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
-    test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, sorted
+    test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, and each
+                                      # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
                                     # blocked or error. run.judge keeps compare's.
     @property
@@ -1898,8 +1899,11 @@ proves it necessary:
 
    A Verdict lists its test cases (`Verdict.test_cases`): the test case
    of every pair of leaves compared in matched packets, after Masks and
-   canonicalization, whether the two were equal or not, and the test
-   case of every Divergence. A dropped packet and a packet an
+   canonicalization, whether the two were equal or not, the test
+   case of every Divergence, and (#101) the test case of each unmasked
+   leaf of a reference packet the alignment left `missing`, as a match
+   with itself would name it, so leaving a packet out fails each field
+   sending it wrong would. A dropped packet and a packet an
    Observation window leaves out are in none, and neither is a pair of
    values at a masked path that are the same (two `MASKED`, or two
    None): a masked field is a test case only where it diverges. Each is the same, different in gameplay, or different in
@@ -1974,9 +1978,40 @@ class Report:                       # report.py
     # Report.of(run_result, *, target, notes, elapsed_s); repeat (property)
     # later: compliance = matches / (groups − errors)
 
+# report.py, #101: each test case of each Group passes or fails.
+class LineResult(StrEnum): PASS; FAIL; NOT_TESTED; ERROR
+@frozen
+class CaseResult:                   # a test case's line
+    group_id: str
+    test_case: str
+    result: LineResult              # PASS or FAIL
+    network_traffic_only: bool = False
+@frozen
+class GroupLine:                    # a Group's own line
+    group_id: str
+    result: LineResult              # FAIL, NOT_TESTED or ERROR
+    reasons: str                    # "Not tested: …; Error: …"
+type Line = CaseResult | GroupLine
+@frozen
+class Totals:                       # failed counts not_tested; errors are not scored
+    passed: int; failed: int; not_tested: int; errors: int
+    # scored = passed + failed; score = passed / scored, or None if 0
+NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
+def report_lines(report: Report) -> tuple[Line, ...]: ...
+# Groups in play order; each Group's compared test cases sorted, each once across
+# repetitions (a `missing` packet's Divergence makes its packet's test case and each of
+# its fields' differ): FAIL if it differs in gameplay in any repetition, PASS (marked
+# network_traffic_only) if it differs only in network traffic, else PASS. Then one
+# Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
+# packet count differed: FAIL if the Candidate failed or a count differed, else
+# NOT_TESTED if blocked, else ERROR.
+def totals(results: Iterable[Line]) -> Totals: ...
+
 # report_json.py: report.json, the whole Report (#190). dumps(report) -> str: the Report's
 # fields nested as in Report (target, reference, candidate, results, notes, elapsed_s),
-# indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
+# with lines (each report_lines line: group_id, result, then test_case and
+# network_traffic_only, or a Group line's reasons) and totals (passed, failed, not_tested, errors, scored, score: fraction or null)
+# after candidate (#101); loads ignores both, as they follow from results. Indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
 # with one tag key: {"absent": true}, {"bytes": hex}, {"uuid": str}, {"float": "nan" |
 # "inf" | "-inf"}; a server object whose only key is a tag (or "dict") is {"dict": {...}}.
 # Any other value type is a TypeError. loads(text) -> Report reads it back, equal to the
@@ -1985,12 +2020,15 @@ def dumps(report: Report) -> str: ...
 def loads(text: str) -> Report: ...
 class ReportJsonError(ValueError): ...
 
-def render_text(report: Report, *, verbose: bool = False) -> str: ...
+def render_text(report: Report, *, verbose: bool = False, color: bool = False) -> str: ...
+# color (#101): each mark in its ANSI colour, ✓ green (32), ✗ red (31), ! yellow (33).
 def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # report.md (#190): what render_text says, as Markdown. "# <first line>"; the build line
-# (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks; each entry "- <title> `<name>`",
+# (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks;
+# each line "- <✓|✗> `<group>/<test case>` <title>" (no list when there is no line),
 # its verbose values nested ("  - "), with values and paths as code spans; "## Group
-# times" and a list; the total last. Blocks are separated by a blank line. Text mscts did
+# times" and a list; the totals, score and total time last, one paragraph joined by hard
+# breaks. Blocks are separated by a blank line. Text mscts did
 # not write is shown as it is: code spans fence it with more backticks than it holds, and
 # prose escapes \ ` * _ [ ] < > & | ~ and shows a line break as \n or \r, so server text
 # never starts a line of its own. Both renderers write one _Document.
@@ -1999,21 +2037,23 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # Unknown test cases are still reported; the table never filters Comparisons.
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>";
 # #156: then "Candidate: <adapter name> <installed_version>" when the build is known;
-# one plain line per differing test case, deduplicated across Groups and repetitions,
-# with its TITLES title and name, or its bare name when unknown. Gameplay and network
-# traffic share the list. Then blocked, error and failed Groups, with id and reason;
-# Group-level bot differences are retained too. "No differences." only if the list
-# is empty and every Group was compared. Last line "Took <seconds> s", rounded to
-# tenths, including launch and shutdown. No values, section headings, Notes, legend,
-# counts or per-Measurement timing table.
+# #101 (amends ADR-0012): one line per report_lines line whose result is in _LISTED
+# (every result today): "<✓|✗> <group>/<test case> <title>" (bare name when untitled),
+# " (network traffic only)" when it passed that way; a Group line is
+# "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then "<p> passed, <f> failed[ (<n> not tested)][, <e> error[s]
+# (not scored)]", "Score: <percent>% (<p> of <scored> test case[s] pass[es])" with the
+# percent rounded down to tenths (".0" dropped), or "Score: none (no test case was
+# scored)", and last "Took <seconds> s", rounded to tenths, including launch and
+# shutdown. No section headings, Notes, legend or per-Measurement timing table.
 # #10: verbose adds installed versions, Target and repetitions at the top, distinct
-# pairs of actual values directly under each difference, and total time per Group
+# pairs of actual values directly under each line that differs, and total time per Group
 # across repetitions (play both sides + Comparison; excludes startup/shutdown).
 # Blocked Groups say "not played"; older results without durations say "not recorded".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
-`main(argv=None, *, fetch=https_get) -> int`). Every command says exactly what it did or
+`main(argv=None, *, fetch=https_get, now=utc_now, color=None) -> int`; color None means
+stdout is a terminal and NO_COLOR is unset or empty, per no-color.org). Every command says exactly what it did or
 would do; an error is one `mscts: <message>` line on stderr naming its fix, exit 1:
 
 ```

@@ -63,6 +63,48 @@ def test_a_report_reads_back_as_the_same_report() -> None:
     assert report_json.loads(report_json.dumps(report)) == report
 
 
+def test_report_json_carries_each_line_and_the_totals_of_the_report() -> None:
+    data = json.loads(report_json.dumps(_report(_divergence("mscts", {"text": "mscts"}))))
+
+    assert data["lines"] == [
+        {
+            "group_id": "status/basic",
+            "test_case": "status_response.players.sample[]",
+            "result": "pass",
+            "network_traffic_only": True,
+        },
+        {
+            "group_id": "join/basic",
+            "result": "not tested",
+            "reasons": "Not tested: prerequisite status/basic was mismatch",
+        },
+    ]
+    assert data["totals"] == {
+        "passed": 1,
+        "failed": 1,
+        "not_tested": 1,
+        "errors": 0,
+        "scored": 2,
+        "score": 0.5,
+    }
+    assert list(data)[3:5] == ["lines", "totals"], list(data)
+
+
+def test_a_report_with_nothing_scored_has_a_null_score() -> None:
+    report = replace(_report(), results=())
+
+    assert json.loads(report_json.dumps(report))["totals"]["score"] is None
+
+
+def test_the_lines_and_totals_are_worked_out_again_not_read_back() -> None:
+    report = _report()
+    data = json.loads(report_json.dumps(report))
+    del data["lines"]
+    data["totals"] = "anything"
+
+    assert report_json.loads(json.dumps(data)) == report
+
+
 def test_report_json_is_indented_json_ending_in_a_newline() -> None:
     text = report_json.dumps(_report())
 

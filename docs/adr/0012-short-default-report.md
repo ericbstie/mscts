@@ -32,6 +32,32 @@ The default Report's second line names the exact Candidate build tested:
 `Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)`. The detailed
 option shows it in its own header instead, next to the Reference.
 
+## Amendment (#101, 2026-10-03)
+
+The Report lists every test case, not only the differing ones: one line
+per test case per Group, in the order played,
+`<✓ or ✗> <group>/<test case> <title>`. A test case passes unless it
+differs in gameplay in any repetition. One that differs only in network
+traffic passes, as ADR-0007 scores it, and its line ends
+`(network traffic only)`.
+
+A Group with no test cases to list (blocked, error, or a Candidate
+failure before the comparison) has one ✗ line naming its reasons, such as
+`✗ join/basic Not tested: …`, and counts as one test case. A blocked or
+failed Group fails. An error Group is listed, marked `!` rather than ✗,
+but not scored, because the fault is mscts's or the Reference's.
+
+`No differences.` is gone. Before the total time come the totals and a
+score: `35 passed, 5 failed (1 not tested), 1 error (not scored)` and
+`Score: 87.5% (35 of 40 test cases pass)`. The score is rounded down, so
+only a Run where every scored test case passes shows 100%. The detailed
+option adds the values under each line that differs. `report.md` and
+`report.json` carry the same lines and totals.
+
+`_LISTED` in `report.py` is the one place that decides which lines are
+listed, and `NETWORK_TRAFFIC_ONLY_PASSES` the one place that applies
+ADR-0007's rule.
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains

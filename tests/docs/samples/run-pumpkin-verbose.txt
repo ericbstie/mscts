@@ -3,15 +3,36 @@ Running tests against pumpkin
   Candidate    pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
-- Server list description  status_response.description
+✓ status/basic/status_response.description Server list description (network traffic only)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-- Unused secure chat flag  status_response.enforceSecureChat
+✓ status/basic/status_response.description.text Server list description text
+✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
   vanilla leaves it out, pumpkin sends true
-- Server list icon  status_response.favicon
+✓ status/basic/status_response.favicon Server list icon (network traffic only)
   vanilla leaves it out, pumpkin sends null
-- Server list player sample  status_response.players.sample
+✓ status/basic/status_response.players.max Player limit
+✓ status/basic/status_response.players.online Online players
+✓ status/basic/status_response.players.sample Server list player sample (network traffic only)
   vanilla leaves it out, pumpkin sends []
+✓ status/basic/status_response.version.name Server version name
+✓ status/basic/status_response.version.protocol Protocol version
+✓ status/ping/status:pong_response.timestamp Server list ping response
+✓ status/ping/status_response.description Server list description (network traffic only)
+  vanilla sends "mscts", pumpkin sends {"text": "mscts"}
+✓ status/ping/status_response.description.text Server list description text
+✓ status/ping/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
+  vanilla leaves it out, pumpkin sends true
+✓ status/ping/status_response.favicon Server list icon (network traffic only)
+  vanilla leaves it out, pumpkin sends null
+✓ status/ping/status_response.players.max Player limit
+✓ status/ping/status_response.players.online Online players
+✓ status/ping/status_response.players.sample Server list player sample (network traffic only)
+  vanilla leaves it out, pumpkin sends []
+✓ status/ping/status_response.version.name Server version name
+✓ status/ping/status_response.version.protocol Protocol version
 Group times
   status/basic 0 s
   status/ping 0 s
+19 passed, 0 failed
+Score: 100% (19 of 19 test cases pass)
 Took 16.7 s

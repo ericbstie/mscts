@@ -23,6 +23,7 @@ def test_mscts_run_against_pumpkin_prints_a_report(
     assert code == 0, err
     assert out.startswith("Running tests against pumpkin\n"), out
     lines = out.splitlines()
+    assert lines[-3].startswith("Score: "), out
     assert lines[-2].startswith("Took "), out
     assert lines[-1] == f"Report written to {tmp_path / 'report.json'} and {tmp_path / 'report.md'}"
     # Every value a real Candidate's Comparison holds is one report.json can write and read.

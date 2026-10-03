@@ -3,6 +3,8 @@ import { defineConfig } from "vitepress";
 const repo = "https://github.com/ericbstie/mscts";
 // Served as a GitHub Pages project site, at https://ericbstie.github.io/mscts/.
 const base = "/mscts/";
+// The class of each Report mark, coloured as `mscts run` colours it on a terminal.
+const MARKS: Record<string, string> = { "✓": "ms-pass", "✗": "ms-fail", "!": "ms-error" };
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -31,6 +33,18 @@ export default defineConfig({
   ],
   markdown: {
     theme: { light: "github-light", dark: "github-dark" },
+    config(md) {
+      // A plain code block is terminal output: colour each Report mark as a terminal shows it.
+      const fence = md.renderer.rules.fence!;
+      md.renderer.rules.fence = (tokens, idx, options, env, self) => {
+        const html = fence(tokens, idx, options, env, self);
+        if (tokens[idx].info.trim() !== "") return html;
+        return html.replace(
+          /(<span class="line"><span[^>]*>)([✓✗!]) /g,
+          (_, line, mark) => `${line}<span class="${MARKS[mark]}">${mark}</span> `,
+        );
+      };
+    },
   },
   themeConfig: {
     logo: "/logo.svg",
