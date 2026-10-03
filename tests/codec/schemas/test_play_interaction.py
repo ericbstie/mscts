@@ -78,6 +78,24 @@ def test_punch_has_no_fields() -> None:
     round_trip(SERVERBOUND, "minecraft:punch", {}, bytes([0x2E]))
 
 
+def test_attack_is_the_entity_id() -> None:
+    round_trip(SERVERBOUND, "minecraft:attack", {"entity_id": 300}, bytes([0x01, 0xAC, 0x02]))
+
+
+def test_interact_is_the_entity_the_hand_where_on_it_and_whether_sneaking() -> None:
+    # Where on the entity is an LpVec3 (Vec3.LP_STREAM_CODEC): (0, 1, 0) has scale 1, and the
+    # quanta 16383, 32766 and 16383 (LpVec3.pack: round((v / scale * 0.5 + 0.5) * 32766)).
+    location = {"scale": 1, "x": 16383, "y": 32766, "z": 16383}
+    packed = 16383 << 33 | 32766 << 18 | 16383 << 3 | 1
+    fields = {"entity_id": 7, "hand": 1, "location": location, "sneaking": True}
+    data = (
+        bytes([0x1A, 0x07, 0x01, packed & 0xFF, packed >> 8 & 0xFF])
+        + (packed >> 16).to_bytes(4, "big")
+        + bytes([0x01])
+    )
+    round_trip(SERVERBOUND, "minecraft:interact", fields, data)
+
+
 def test_block_changed_ack_is_the_sequence() -> None:
     data = bytes([CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:block_changed_ack"), 0x05])
     round_trip(CLIENTBOUND, "minecraft:block_changed_ack", {"sequence": 5}, data)
