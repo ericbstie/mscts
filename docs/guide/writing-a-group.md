@@ -99,9 +99,11 @@ before it arrives.
 
 To test a kick, take the server's disconnect inside the window with
 `await bot.expect("minecraft:disconnect", timeout_s=...)`. That Bot then
-skips the wait. A disconnect the Group did not take fails the Group: a
-later wait or the Bot's next `expect` takes it, or else the Group's end
-does, before it closes the Bots. A Bot you closed yourself is not checked.
+skips the wait. A disconnect the Group did not take fails the Group if a
+later wait or the Bot's next `expect` takes it. Otherwise, the Group's
+end takes it before closing the Bots, but only if it has arrived by
+then; one still on its way is missed. A Bot you closed yourself is not
+checked. So take every disconnect your Group causes.
 
 | Window option | What it does |
 | --- | --- |
