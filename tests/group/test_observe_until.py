@@ -283,7 +283,7 @@ async def test_the_window_is_over_after_a_missing_packet() -> None:
             pass
 
     labels = [mark.label for mark in transcript.marks]
-    assert labels == [OBSERVE_OPEN, OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels == [OBSERVE_OPEN, OBSERVE_OPEN]  # no Bot, so no Bot's window to close
 
 
 async def _wait_for_a_block(context: GroupContext) -> None:

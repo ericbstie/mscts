@@ -33,6 +33,8 @@ BLOCK_UPDATE = "minecraft:block_update"
 BLOCK = bytes.fromhex("0000004000001fc4")
 """A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
 _UNUSED = Endpoint(host="127.0.0.1", port=1)
+ALICE_CLOSE = f"{OBSERVE_CLOSE} alice"
+"""The close Mark of alice's window."""
 
 
 @asynccontextmanager
@@ -58,10 +60,10 @@ def labels(transcript: Transcript) -> list[str]:
     return [mark.label for mark in transcript.marks]
 
 
-def window(transcript: Transcript) -> tuple[int, int]:
-    """The open and close times of the Transcript's only window."""
-    opened, closed = transcript.marks
-    assert (opened.label.split()[0], closed.label) == (OBSERVE_OPEN, OBSERVE_CLOSE)
+def window(transcript: Transcript, bot: str = "alice") -> tuple[int, int]:
+    """The open and close times of the Transcript's only window, as `bot` sees it."""
+    (opened,) = [m for m in transcript.marks if m.label.split()[0] == OBSERVE_OPEN]
+    (closed,) = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {bot}"]
     return opened.t_ns, closed.t_ns
 
 
@@ -82,7 +84,7 @@ async def test_a_window_marks_where_it_opens_and_where_it_closes() -> None:
             inside = labels(transcript)
 
     assert inside == [OBSERVE_OPEN]
-    assert labels(transcript) == [OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE]
 
 
 @pytest.mark.asyncio
@@ -95,7 +97,7 @@ async def test_a_narrowed_window_names_its_packets_in_its_open_mark() -> None:
 
     assert labels(transcript) == [
         f"{OBSERVE_OPEN} {BLOCK_UPDATE} minecraft:system_chat",
-        OBSERVE_CLOSE,
+        ALICE_CLOSE,
     ]
 
 
@@ -159,10 +161,10 @@ async def test_windows_do_not_nest_and_one_may_follow_another() -> None:
 
     assert labels(transcript) == [
         OBSERVE_OPEN,
-        OBSERVE_CLOSE,
+        ALICE_CLOSE,
         OBSERVE_OPEN,
         OBSERVE_OPEN,
-        OBSERVE_CLOSE,
+        ALICE_CLOSE,
     ]
 
 
@@ -189,8 +191,8 @@ async def test_every_bot_in_play_passes_the_barrier_before_the_window_closes() -
         async with context.observe():
             pass
 
-    _, closed = window(transcript)
     for bot in ("alice", "bob"):
+        _, closed = window(transcript, bot)
         answers = [
             event.t_ns
             for event in transcript.events
@@ -198,6 +200,43 @@ async def test_every_bot_in_play_passes_the_barrier_before_the_window_closes() -
         ]
         assert len(answers) == 2, bot
         assert answers[-1] <= closed, bot
+
+
+@pytest.mark.asyncio
+async def test_each_bots_window_ends_at_its_own_barriers_last_answer() -> None:
+    # Audit 2026-10-02, MD2: one close Mark for every Bot, stamped once the slowest barrier
+    # had returned, let a Bot whose barrier ended early take what arrived meanwhile.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    second_requests = 0
+
+    async def one_bot_slow(peer: Peer, request: int) -> None:
+        nonlocal second_requests
+        if request != 2:
+            await answer_at_once(peer, request)
+            return
+        second_requests += 1
+        if second_requests == 1:  # the first Bot to ask twice: done, then a straggler
+            await answer_at_once(peer, request)
+            await asyncio.sleep(0.03)
+            await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
+        else:  # the other: its barrier runs on past the straggler
+            await asyncio.sleep(0.15)
+            await answer_at_once(peer, request)
+
+    async with playing(play_server([], one_bot_slow), transcript) as context:
+        await joined(context, "alice")
+        await joined(context, "bob")
+        async with context.observe():
+            pass
+
+    (straggler,) = [e for e in transcript.events if e.packet.name == BLOCK_UPDATE]
+    (closed,) = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {straggler.bot}"]
+    last_answer = max(
+        e.t_ns for e in transcript.events if e.bot == straggler.bot and e.packet.name == ANSWER
+    )
+    assert closed.t_ns == last_answer + 1
+    assert closed.t_ns < straggler.t_ns
+    assert "block_update.block_state" not in compare(transcript, transcript, []).test_cases
 
 
 @pytest.mark.asyncio
@@ -256,7 +295,7 @@ async def test_a_bot_not_in_play_is_not_synced() -> None:
         async with context.observe():
             pass
 
-    assert labels(transcript) == [OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE]
     assert seen == []
 
 
@@ -269,7 +308,7 @@ async def test_a_bot_the_group_closed_is_neither_synced_nor_drained() -> None:
         async with context.observe():
             await bot.close()
 
-    assert labels(transcript) == [OBSERVE_OPEN, OBSERVE_CLOSE]
+    assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE]
     assert REQUEST not in [packet.name for packet in seen]
 
 

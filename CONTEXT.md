@@ -102,8 +102,10 @@ need is missing, add it here in the same commit that introduces it.
   passes the **barrier** (`Bot.sync`). It asks the server for its
   statistics, waits 5 ms after the answer arrives, and asks again. The
   second answer comes from a later tick, so by then the server has sent
-  everything caused by what the Bot sent before. The Bot then takes what
-  has already arrived (the **drain**). A window can
+  everything caused by what the Bot sent before. Each Bot's window ends
+  at its own barrier's second answer, whatever the other Bots are still
+  waiting for. The Bot then takes what has already arrived (the
+  **drain**), outside its window. A window can
   instead end at a packet's arrival (`until`): no barrier, and it closes
   when the first packet of that name arrived at a Bot. _Avoid_: phase,
   section.

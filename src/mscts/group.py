@@ -278,10 +278,13 @@ class GroupContext:
         """Compare only what the Bots receive inside the block: an Observation window.
 
         Marks `observe:open` on entry, followed by `names`, each after a space. When the
-        body completes, every Bot in play passes the barrier (`Bot.sync`), all at once;
-        then the window gets its `observe:close` Mark, and every Bot not closed takes
-        what has already arrived, without waiting (`Bot.drain`). A body that raises gets
-        neither: its window runs to the end of the Transcript.
+        body completes, every Bot in play passes the barrier (`Bot.sync`), all at once.
+        Each Bot's window ends at its own barrier: it gets the Mark `observe:close <Bot
+        name>` a nanosecond after its barrier's last answer arrived, whatever the other
+        Bots are still waiting for (a Bot not in play gets it once every barrier has
+        returned). Then every Bot not closed takes what has already arrived, without
+        waiting (`Bot.drain`). A body that raises gets neither: its window runs to the
+        end of the Transcript.
 
         With `until`, there is no barrier. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
@@ -317,8 +320,12 @@ class GroupContext:
             opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
             yield
             if until is None:
-                await self._sync()
-                self._mark(OBSERVE_CLOSE)
+                ends = await self._sync()
+                now = self._transcript.now_ns()
+                for name in self._bots:
+                    # A packet stamped at a Mark's time is after it: the answer is inside.
+                    at = ends[name] + 1 if name in ends else now
+                    self._mark(f"{OBSERVE_CLOSE} {name}", t_ns=at)
                 await self._drain()
             else:
                 await self._drain()
@@ -370,15 +377,37 @@ class GroupContext:
             if not bot.closed:
                 await bot.drain()
 
-    async def _sync(self) -> None:
-        """Pass the barrier on every Bot in play at once; raise the first Bot's error."""
+    async def _sync(self) -> dict[str, int]:
+        """Pass the barrier on every Bot in play at once; raise the first Bot's error.
+
+        Returns when each Bot's barrier's last answer arrived, by the Bot's name.
+        """
+
+        async def barrier(bot: Bot) -> int:
+            await bot.sync()
+            # The last packet sync took is its last answer, the Bot's latest award_stats.
+            return next(
+                event.t_ns
+                for event in reversed(self._transcript.events)
+                if event.bot == bot.name
+                and event.packet.name == _ANSWER
+                and event.packet.direction is Direction.CLIENTBOUND
+            )
+
         try:
             async with asyncio.TaskGroup() as barriers:
-                for bot in self._bots.values():
-                    if bot.in_play:
-                        barriers.create_task(bot.sync())
+                tasks = {
+                    name: barriers.create_task(barrier(bot))
+                    for name, bot in self._bots.items()
+                    if bot.in_play
+                }
         except ExceptionGroup as errors:
             raise errors.exceptions[0] from None
+        return {name: task.result() for name, task in tasks.items()}
+
+
+_ANSWER = "minecraft:award_stats"
+"""The barrier's answer (`Bot.sync`)."""
 
 
 @functools.cache

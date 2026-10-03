@@ -13,6 +13,7 @@ from mscts.compare import (
     Outcome,
     compare,
 )
+from mscts.transcript import Transcript
 from tests.compare.build import divergence, packet, transcript
 
 OPEN, CLOSE = OBSERVE_OPEN, OBSERVE_CLOSE
@@ -39,6 +40,23 @@ def test_a_packet_outside_the_window_is_not_compared() -> None:
     )
     assert verdict.outcome is Outcome.MATCH, verdict
     assert verdict.test_cases == ("block_update",)
+
+
+def test_a_close_mark_that_names_a_bot_closes_the_window_for_that_bot_only() -> None:
+    # #117: each Bot's window ends at its own barrier, so bob's later packet is inside his
+    # window and outside alice's.
+    def play(state: int) -> Transcript:
+        return transcript(
+            OPEN,
+            f"{CLOSE} alice",
+            ("alice", block(state)),
+            ("bob", block(state)),
+            f"{CLOSE} bob",
+        )
+
+    verdict = compare(play(1), play(2), [])
+
+    assert [d.bot for d in verdict.divergences] == ["bob"], verdict
 
 
 def test_a_packet_inside_the_window_is_compared_and_counted_from_the_window() -> None:

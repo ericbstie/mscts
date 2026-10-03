@@ -77,9 +77,10 @@ becomes a `failed` Divergence. A timeout on vanilla makes the Verdict
 
 Only what a Bot receives inside `async with context.observe():` is
 compared. Set the world up before it and clean up after it. When the block
-ends, each Bot first waits until a tick has passed on the server since it
-received everything the Bot sent, then takes what has arrived (a window
-with `until` waits for nothing: see below). A few
+ends, each Bot waits until a tick has passed on the server since it
+received everything the Bot sent. Its window ends there, whatever the other
+Bots are still waiting for (a window with `until` waits for nothing: see
+below). A few
 packets the server sends on a clock rather than because of anything a Group
 did (keep-alives, the time of day and vanilla's player latency updates)
 are never compared inside a window.

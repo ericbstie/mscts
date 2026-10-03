@@ -270,3 +270,24 @@ second request made `sync` return before the tick's `block_update`.
    pair's answers always arrive at least `TICK_GAP_S` apart, so their gap
    cannot show a server with no tick. The Transcript still holds both
    requests and both answers, with their times.
+
+## Amendment (2026-10-03, #117): each Bot's window ends at its own barrier
+
+Item 4 ran every Bot's barrier at once and closed the window with one Mark,
+stamped once the slowest barrier had returned. A Bot whose barrier ended
+first kept taking packets into its window while another Bot's barrier ran
+on, and every Bot did for as long as the loop took to reach the Mark. What
+arrives then (vanilla's `move_entity_pos` resend every 60 ticks, a mob
+walking into view) depends on timing, not on the Group (audit 2026-10-02,
+MD2).
+
+1. **A window that ends at the barrier closes for each Bot at its own
+   barrier.** Each Bot gets the Mark `observe:close <Bot name>`, stamped a
+   nanosecond after its barrier's last answer arrived (a packet stamped at
+   a Mark's time is after it, so the answer is inside). Compare closes a
+   Bot's window at its own close Mark, or at a close Mark that names no
+   Bot. The barrier proves the server had sent everything caused by what
+   it received before, by that answer; what arrives at the Bot after it is
+   timing. A Bot not in play, which passes no barrier, gets its Mark once
+   every barrier has returned. The drain still follows, and what it takes
+   is outside the window.

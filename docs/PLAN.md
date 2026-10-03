@@ -896,8 +896,10 @@ class GroupContext:
                                     # names, each after a space) on entry; when the body
                                     # completes, every Bot in play passes Bot.sync (all at
                                     # once; the first error raises, as that Bot's failure),
-                                    # then the OBSERVE_CLOSE Mark, then every Bot not closed
-                                    # drains. A body that raises gets neither, so its window
+                                    # then a Mark "OBSERVE_CLOSE <Bot name>" per Bot, 1 ns
+                                    # after its barrier's last answer's arrival (a Bot not in
+                                    # play: once every barrier returned), then every Bot not
+                                    # closed drains. A body that raises gets neither, so its window
                                     # runs to the Transcript's end. ValueError, nothing
                                     # marked: a window already open (no nesting), or a name
                                     # (in names or until) that is not in
@@ -1064,7 +1066,8 @@ class Verdict:
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
                                     # "observe:open minecraft:block_update"
-OBSERVE_CLOSE = "observe:close"     # the Mark that closes it
+OBSERVE_CLOSE = "observe:close"     # the Mark that closes it: for one Bot with its name
+                                    # after it ("observe:close alice"), for all without
 HEARTBEAT: Mapping[str, str]        # packet name -> reason: the play packets a window never
                                     # compares (keep_alive, set_time, award_stats; evidence in
                                     # docs/research/2026-09-30-observation-window.md)
@@ -1261,8 +1264,9 @@ proves it necessary:
      received: it sets the world up as an operator, and its Events stay
      in the Transcript;
    - in a Transcript with **Observation windows**, the play packets they
-     do not observe. A window opens at an `observe:open` Mark and ends at
-     the next `observe:open` or `observe:close` Mark, or at the end of the
+     do not observe. A window opens at an `observe:open` Mark and ends, for
+     a Bot, at the next `observe:open` Mark, `observe:close` Mark naming no
+     Bot, or `observe:close <that Bot>` Mark, or at the end of the
      Transcript if none follows (the Group raised inside it). It observes
      every play packet that arrived (`t_ns`) at or after its open Mark and
      before its end, except the heartbeat packets (`compare.is_heartbeat`),

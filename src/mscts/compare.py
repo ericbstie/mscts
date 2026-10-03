@@ -107,7 +107,12 @@ A window narrowed to some packets has their names after it, each after a space:
 """
 
 OBSERVE_CLOSE = "observe:close"
-"""The label of the Mark that closes an Observation window."""
+"""The label of the Mark that closes an Observation window.
+
+A window that ends at the barrier gets one per Bot, with the Bot's name after a space
+(`observe:close alice`): it closes the window for that Bot only. One with no name closes
+it for every Bot.
+"""
 
 HEARTBEAT: Mapping[str, str] = MappingProxyType(
     {
@@ -665,7 +670,7 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     (`_by_position`). The sort moves only chunk packets, which carry no entity ids, so it
     changes no entity's name or number.
     """
-    windows = _Windows.of(transcript)
+    windows = _Windows.of(transcript, bot)
     events = _by_position(
         [
             event
@@ -851,15 +856,22 @@ class _Windows:
     names: Sequence[frozenset[str] | None]
 
     @classmethod
-    def of(cls, transcript: Transcript) -> Self | None:
-        """Index the windows of `transcript`; None if it has none."""
+    def of(cls, transcript: Transcript, bot: str) -> Self | None:
+        """Index the windows of `transcript` as `bot` sees them; None if it has none.
+
+        A close Mark that names a Bot (`observe:close alice`) closes the window for that
+        Bot only; one that names none closes it for every Bot.
+        """
         times: list[int] = []
         names: list[frozenset[str] | None] = []
         for mark in sorted(transcript.marks, key=lambda mark: mark.t_ns):
-            label, *narrowed = mark.label.split(" ")
-            if label in {OBSERVE_OPEN, OBSERVE_CLOSE}:
+            label, *rest = mark.label.split(" ")
+            if label == OBSERVE_OPEN:
                 times.append(mark.t_ns)
-                names.append(frozenset(narrowed) if label == OBSERVE_OPEN else None)
+                names.append(frozenset(rest))
+            elif label == OBSERVE_CLOSE and rest in ([], [bot]):
+                times.append(mark.t_ns)
+                names.append(None)
         return cls(times=times, names=names) if times else None
 
     def observes(self, event: Event) -> bool:

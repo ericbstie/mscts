@@ -153,10 +153,13 @@ def sent(transcript: Transcript, bot: str) -> list[tuple[int, str]]:
 
 
 def read(transcript: Transcript) -> Play:
-    """The windows of `transcript` (each opened and closed) and Control's commands after them."""
+    """The windows of `transcript` (each opened and closed) and Control's commands after them.
+
+    A window closes where the builder's does: each Bot's ends at its own barrier.
+    """
     builder, control = sent(transcript, blocks.BUILDER), sent(transcript, CONTROL)
     opens = [mark for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
-    closes = [mark for mark in transcript.marks if mark.label == OBSERVE_CLOSE]
+    closes = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {blocks.BUILDER}"]
     assert len(opens) == len(closes), transcript.marks
     heard = [
         event.t_ns
