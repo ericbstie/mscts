@@ -508,12 +508,14 @@ class Connection:                   # one TCP connection; owns framing, compress
 class Bot:                          # what Groups use; answers keep_alive / teleports / chunk batches itself
     name: str
     failure: Exception | None       # what its last failed operation (status, ping, join,
-                                    # expect, command, sync, drain) raised: which Bot a Group's failure
-                                    # came from
+                                    # expect, command, a movement, sync, drain) raised: which Bot a
+                                    # Group's failure came from
     closed: bool                    # (property) close was called
     in_play: bool                   # (property) joined, and not closed: what sync needs
     disconnected: bool              # (property) expect has returned the server's disconnect
                                     # (a Group that tests a kick takes it so)
+    position: Position              # (property) where the player is and faces: the last
+                                    # teleport's pose, or where it moved since (a copy)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -530,6 +532,12 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def refuse_queued_disconnect(self) -> None: ...              # drain if a disconnect waits
     async def send(self, name: str, /, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
+    async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None: ...
+    async def look(self, yaw: float, pitch: float) -> None: ...
+    async def sprint(self, sprinting: bool) -> None: ...               # holds the sprint key, + the command
+    async def sneak(self, sneaking: bool) -> None: ...                 # holds the sneak key
+    async def jump(self) -> None: ...                                  # the jump key, for this tick only
+    async def tick(self) -> None: ...                                  # a tick with no change
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -562,12 +570,39 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
     # nothing left to take, raises as recv does. A disconnect it takes → ProtocolError, as
     # in expect (a Group that tests a kick takes the disconnect itself, with expect).
+    # move / look / sprint / sneak / jump / tick (#25): on a Bot in play (else ProtocolError,
+    # nothing sent or changed), each is one scripted client tick, sent at once with no wait
+    # (a Group paces them, e.g. with sync between): the change, then what the 26.3 client
+    # sends on a tick (Minecraft.tick, LocalPlayer.sendChanges / sendPosition, javap), in
+    # order: player_input if the keys held changed (jump 0x10, sneak 0x20, sprint 0x40);
+    # player_command START_SPRINTING (1) / STOP_SPRINTING (2) with the player's entity id
+    # (play login; sprint refuses before it) if sprinting changed; then one movement packet:
+    # move_player_pos_rot if the position moved more than 2.0E-4 (squared length, strictly)
+    # or 20 ticks passed since the last position report, and the rotation changed;
+    # move_player_pos or move_player_rot if only one did; move_player_status_only if neither
+    # but on-ground changed; else none; then client_tick_end (vanilla kicks a second position
+    # in one client tick: ServerGamePacketListenerImpl.receivedPositionThisTick). What was
+    # last reported starts as a fresh LocalPlayer's (pose 0, off the ground, no keys, not
+    # sprinting); a correction (player_position) moves the pose but not what was reported,
+    # so the next tick reports the corrected position. A Bot starts on the ground; look
+    # rounds to binary32, holds pitch to -90..90 and ignores a non-finite value (Entity
+    # setYRot / setXRot). jump holds the key for its tick only; the next call releases it.
+    # The Bot simulates no physics: the Group gives each position. Horizontal collision is
+    # never reported.
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
     # disconnect, catches up with the socket (Connection.caught_up), then drains only if its
     # Replies have seen the server's disconnect (Replies.saw_disconnect), so the drain refuses
     # it; otherwise it takes and records nothing. GroupContext.end calls it on every Bot.
 
 def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD5 v3 of "OfflinePlayer:" + name
+
+@frozen
+class Position:                     # Bot.position: where its player is and faces
+    x: float
+    y: float                        # the feet
+    z: float
+    yaw: float                      # degrees
+    pitch: float                    # degrees, -90 (up) to 90 (down)
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
@@ -582,7 +617,8 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # finish_configuration → finish_configuration; keep_alive (configuration and play) → the
     # same id; play player_position → accept_teleportation with the pose it results in (flagged
     # parts add to the tracked pose, rotation summed in binary32, pitch clamped to ±90, a
-    # non-finite rotation ignored); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
+    # non-finite rotation ignored), which becomes Replies.pose; play login → Replies.entity_id
+    # (no answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
 

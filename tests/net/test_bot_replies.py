@@ -113,13 +113,19 @@ def test_a_chunk_batch_is_acknowledged_at_a_fixed_rate() -> None:
     ("state", "name"),
     [
         (State.CONFIGURATION, "minecraft:registry_data"),
-        (State.PLAY, "minecraft:login"),
         (State.PLAY, "minecraft:chunk_batch_start"),
         (State.LOGIN, "minecraft:login_compression"),
     ],
 )
 def test_other_packets_get_no_answer(state: State, name: str) -> None:
     assert answers(Replies(), arrived(state, name)) == []
+
+
+def test_login_names_the_player_and_gets_no_answer() -> None:
+    replies = Replies()
+    assert replies.entity_id is None
+    assert answers(replies, arrived(State.PLAY, "minecraft:login", entity_id=300)) == []
+    assert replies.entity_id == 300
 
 
 def test_an_absolute_teleport_is_confirmed_with_the_pose_it_sets() -> None:
