@@ -29,7 +29,27 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
   (a cancelled status poll leaked its socket).
 - A fake server answers like the real one by default (a pair of answers a
   tick apart), or fakes hide timing bugs.
+- `repeat.py --stress` runs at most the default `--stress-workers`
+  (nproc), unless an issue says otherwise: more slows every other agent on
+  the host.
 
 ## Log
 
 Newest first: one line per lesson, with the issue it came from.
+
+- #126: asyncio accepts a connection in one loop turn and attaches it to
+  the `Server` in a task of its own the next; attached after
+  `Server.close`, it leaks (`_attach` asserts the server is open). A fake
+  stops reading its listener (`loop.remove_reader`), waits two turns, then
+  closes. Find such windows by stepping a raw client k loop turns, k = 0..7.
+- #127: `Connection.close` closes its writer in a `finally`, so a second
+  cancel during the reader wait no longer leaks the socket.
+- #123: a test that cancels after a fixed sleep races connect under load:
+  wait on an Event the fake sets at the state the test needs. Map
+  cancellation points by cancelling after k loop turns against a plain
+  blocking listener, and check bytes received, EOF, leftover tasks and
+  ResourceWarnings at each k.
+- #123: once connected, a Bot sends packets back to back without yielding
+  (`StreamWriter.drain` yields only when the transport is closing or
+  paused), so "cancelled between two sends" needs a paused or closing
+  socket.

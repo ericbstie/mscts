@@ -374,24 +374,47 @@ async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
     A handler that raises fails the test from inside the `async with` body. Leaving
     the body waits for every handler to finish, so a handler's last checks always run.
     A single error, from the body or a handler, comes out as itself rather than
-    inside an ExceptionGroup, so `pytest.raises` around `serve` works.
+    inside an ExceptionGroup, so `pytest.raises` around `serve` works. A connection that
+    reaches the fake after the body has left is closed, with no handler.
     """
     try:
         async with asyncio.TaskGroup() as handlers:
 
             def on_connect(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+                if not server.is_serving():
+                    # Handed over after the body left, which `_stop_accepting` makes rare:
+                    # the TaskGroup may have finished, so close it, or wait_closed waits
+                    # for it forever.
+                    writer.close()
+                    return
                 handlers.create_task(_run(handler, Peer(reader, writer, codec)))
 
             server = await asyncio.start_server(on_connect, HOST, 0)
             try:
                 yield Endpoint(host=HOST, port=server.sockets[0].getsockname()[1])
             finally:
+                await _stop_accepting(server)
                 server.close()
     except ExceptionGroup as group:
         if len(group.exceptions) == 1:
             raise group.exceptions[0] from None
         raise
     await server.wait_closed()
+
+
+async def _stop_accepting(server: asyncio.Server) -> None:
+    """Stop taking connections, and let asyncio hand over the ones it has taken.
+
+    asyncio accepts a connection in one loop turn and attaches it to the server in a task
+    of its own, the next. A connection it attaches after `Server.close` leaks (`_attach`
+    asserts the server is open). Once the listener is no longer read, no accept can be
+    scheduled, and two turns finish the ones that were: the accept, then the attach.
+    """
+    loop = asyncio.get_running_loop()
+    for sock in server.sockets:
+        loop.remove_reader(sock.fileno())
+    for _ in range(2):
+        await asyncio.sleep(0)
 
 
 @asynccontextmanager
