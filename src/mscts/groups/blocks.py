@@ -25,6 +25,18 @@ BUILDER = "builder"
 FEEDBACK_TIMEOUT_S = 10.0
 """How long the builder waits for a command's feedback: `run.GROUP_TIMEOUT_S`, a Bot's bound."""
 
+BUILDER_AT = "0.5 -60 14.5"
+"""Where the builder stands for every case: on the flat world, in chunk (0, 0), and clear of
+every block the Groups set.
+
+Vanilla joins a player at a random place within `respawn_radius` (10) of the world spawn, once
+per world. A block set where the builder stands makes it crawl (pose) and choke (health), on
+one Instance only (docs/research/2026-10-03-builder-pose.md).
+
+This holds only while PACKETS leaves out `player_position` (which the teleport sends,
+before the first window) and `set_health`.
+"""
+
 PACKETS = (
     "minecraft:block_update",
     "minecraft:section_blocks_update",
@@ -105,6 +117,7 @@ async def _play(context: GroupContext, cases: tuple[_Case, ...], clear: str) -> 
     """
     builder = await context.bot(BUILDER)
     await builder.join()
+    await context.control.run(f"tp {BUILDER} {BUILDER_AT}")
     async with _frozen(context.control, clear):
         for case in cases:
             for command in case.setup:

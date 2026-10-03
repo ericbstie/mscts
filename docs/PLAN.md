@@ -842,7 +842,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 
 - `compare`: `DivergenceKind` — Divergence classification.
 - `groups.status`: `PING_PAYLOAD` — status ping payload.
-- `groups.blocks`: `BUILDER` — the operator Bot that runs each command itself; `FEEDBACK_TIMEOUT_S`
+- `groups.blocks`: `BUILDER` — the operator Bot that runs each command itself; `BUILDER_AT` —
+  where Control puts it, clear of every block the Groups set; `FEEDBACK_TIMEOUT_S`
   — how long it waits for a command's feedback; `PACKETS` — what a window compares;
   `DROP_MASKS` — the random fields of a dropped item's `add_entity`; `setblock`, `fill` and
   `clone` — the `blocks/setblock`, `blocks/fill` and `blocks/clone` scripts.
