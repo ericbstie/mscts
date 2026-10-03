@@ -2,7 +2,7 @@
   <div class="ms-home">
     <section class="ms-hero">
       <div>
-        <h1>Measure how close your server is to <span>vanilla</span>.</h1>
+        <h1>Minecraft Server Compliancy Test Suite — mscts</h1>
         <p class="ms-intro">
           mscts is a test suite to objectively measure how closely a custom
           Minecraft server mimics the behavior of a vanilla Minecraft server.

@@ -80,6 +80,13 @@ Any session that writes user-facing text follows this skill all the same.
 
 ## Examples
 
+### Home page hero title
+
+- Before: "Measure how close your server is to vanilla."
+- After: "Minecraft Server Compliancy Test Suite — mscts", with the
+  description under it unchanged. The maintainer chose the wording.
+- Why: not given.
+
 ### Home page, "What works today"
 
 - Before: the heading "What works today".
