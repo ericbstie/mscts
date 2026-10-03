@@ -943,8 +943,13 @@ def test_recv_after_close_raises(toy_codec: Codec, transcript: Transcript) -> No
 def test_last_arrival_is_the_stamp_of_the_packet_recv_last_returned(
     toy_codec: Codec, transcript: Transcript
 ) -> None:
+    first_taken = asyncio.Event()
+
     async def server(peer: Peer) -> None:
         await peer.send("test:reply", value=1)
+        # The second frame goes 20 ms after the client took the first, so it arrives at
+        # least 20 ms after the first was stamped, however late the client's loop ran (#149).
+        await first_taken.wait()
         await asyncio.sleep(0.02)
         await peer.send("test:empty")
         await peer.eof()
@@ -957,6 +962,7 @@ def test_last_arrival_is_the_stamp_of_the_packet_recv_last_returned(
             seen = [connection.last_arrival_ns]
             await connection.recv(timeout_s=1)
             seen.append(connection.last_arrival_ns)
+            first_taken.set()
             await connection.recv(timeout_s=1)
             seen.append(connection.last_arrival_ns)
             return seen
@@ -966,7 +972,8 @@ def test_last_arrival_is_the_stamp_of_the_packet_recv_last_returned(
     assert first is not None
     assert second is not None
     assert (first, second) == tuple(event.t_ns for event in transcript.events)
-    assert second - first >= 15_000_000  # the two frames came 20 ms apart
+    # The second was sent 20 ms after the first was taken; 1 ms spares the clocks' rounding.
+    assert second - first >= 19_000_000
 
 
 def test_a_connection_gives_the_transcript_it_records_to(
