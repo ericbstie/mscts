@@ -44,7 +44,9 @@ only in network traffic as passing.
 A test case fails if it differs in gameplay in any repetition. Each field
 of a packet vanilla sent is a test case, so a Candidate that leaves a
 packet out, or stops before sending it, fails each of its fields, as if
-it had sent them all wrong. The score is rounded down to one decimal, so
+it had sent them all wrong. Copies of a packet share its test cases, so
+if vanilla sends a packet more often than the Candidate, every field of
+that packet fails, even in the copies that matched. The score is rounded down to one decimal, so
 only a Run where every scored test case passes shows 100%. If no test
 case was scored, the score is `none`.
 
