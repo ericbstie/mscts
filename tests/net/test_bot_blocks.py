@@ -251,6 +251,19 @@ def test_the_sequence_starts_again_with_a_new_level(
     assert first_sequence_after(ticks) == sequence
 
 
+def test_a_login_starts_the_held_slots_again() -> None:
+    # A play login brings a new MultiPlayerGameMode (carriedIndex 0) and a new LocalPlayer
+    # (slot 0 selected), so holding the old slot again sends it again.
+    async def script(bot: Bot) -> None:
+        await bot.hold(3)
+        await bot.sync()
+        await bot.hold(3)
+
+    ticks = ticks_sent(joined(script, after_first_tick=("minecraft:login", LOGIN)), NAMES)
+    # First in the tick: the fresh player's pose follows it.
+    assert ticks[-1][0] == ("minecraft:set_carried_item", {"slot": 3})
+
+
 ACTIONS: list[tuple[str, Callable[[Bot], Awaitable[None]]]] = [
     ("hold", lambda bot: bot.hold(1)),
     ("dig", lambda bot: bot.dig(0, 0, 0, Face.UP)),
