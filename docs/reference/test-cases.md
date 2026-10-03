@@ -161,6 +161,18 @@ options, or an alias such as `/tell` points to `/msg`.
 Where the client gets suggestions for an argument, such as asking the
 server as the player types.
 
+## `configuration:custom_payload.channel`
+
+**Configuration plugin message channel**
+
+The channel a plugin message names in the configuration phase. It says which mod or plugin the message data is for.
+
+## `configuration:update_tags.tagged_registries[].registry`
+
+**Tagged registry name**
+
+The name of the registry a group of tags belongs to, such as `minecraft:block`. A different name means the tags apply to another registry.
+
 ## `container_set_content`
 
 **Inventory contents**
@@ -313,6 +325,18 @@ the bottom of the world, not at sea level.
 **Sea level**
 
 The world's sea level. In vanilla's flat world it is -63.
+
+## `login_compression.threshold`
+
+**Compression threshold**
+
+The packet size from which the server compresses what it sends. A negative value turns compression off. A different threshold changes network traffic only, not what a player sees.
+
+## `login_finished.profile.username`
+
+**Player name at login**
+
+The name the server gives the player when login finishes. The client shows it as the player's name.
 
 ## `login_finished.profile.uuid`
 
@@ -493,6 +517,24 @@ Which chunk section the changes are in, counted in sections of 16 blocks
 from the world's origin: section -4 holds y from -64 to -49. A different
 value puts the same changes at a different height.
 
+## `select_known_packs.known_packs[].id`
+
+**Known pack ID**
+
+The ID of a data pack the server tells the client it has. The client skips sending the registry data of packs it also has.
+
+## `select_known_packs.known_packs[].namespace`
+
+**Known pack namespace**
+
+The namespace of a data pack the server tells the client it has, such as `minecraft`.
+
+## `select_known_packs.known_packs[].version`
+
+**Known pack version**
+
+The version of a data pack the server tells the client it has. A different version can make the client ask for registry data it would otherwise skip.
+
 ## `server_data`
 
 **Server description in play**
@@ -638,6 +680,12 @@ tools use it to tell players apart, so a server that derives offline UUIDs
 differently lists another one for the same name. It is the same UUID as in
 `login_finished.profile.uuid`.
 
+## `status_response.players.sample[].name`
+
+**Server list player name**
+
+The name the server lists for a player in the sample, shown when a player hovers over the server's player count.
+
 ## `status_response.version.name`
 
 **Server version name**
@@ -707,6 +755,12 @@ The advancements the player can see and how far they have got with each.
 
 An entity's attributes, such as its movement speed or how far a player
 can reach, with their modifiers.
+
+## `update_enabled_features.feature_flags[]`
+
+**Enabled feature flag**
+
+A feature flag the server enables, such as `minecraft:vanilla`. Flags switch groups of game features on, so a different set changes what the client lets a player use.
 
 ## `update_recipes`
 
