@@ -230,7 +230,13 @@ second request made `sync` return before the tick's `block_update`.
    proof, not for the wait.
 2. **It rests on vanilla's pass.** A server that answers on its network
    thread, with no tick between, gets the same wait and proves nothing by
-   it, as it did under the #88 cap.
+   it, as it did under the #88 cap. Vanilla answers `client_command` in
+   its packet pass (`processQueuedPackets` drains the whole queue before
+   `tickServer`), and sends `award_stats` there while flushing is on, so a
+   request that arrives after the drain waits for the next tick. A server
+   that stalls inside its pass for longer than 5 ms, less the round trip,
+   can still take the second request in the first one's pass. The 5 ms is
+   a threshold on the server's pass, not on the Bot.
 3. **A request takes only an answer that arrived after it was sent.** An
    `award_stats` stamped before the request went out (a server that
    answered twice, or a plugin that sends one unasked) is taken and passed
