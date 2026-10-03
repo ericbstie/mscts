@@ -602,13 +602,14 @@ async def test_a_packet_after_the_late_disconnect_does_not_hide_it() -> None:
 
 
 def kick_the_second_bot_late() -> Answer:
-    """Answer every Bot; kick only the second Bot to join, after its closing barrier."""
-    peers: list[Peer] = []
+    """Answer every Bot; kick only bob, the second Bot to join, after its closing barrier.
+
+    bob is picked by name, not as the second Bot to ask: both ask at the same barrier, so
+    either may ask first (#233).
+    """
 
     async def answer(peer: Peer, request: int) -> None:
-        if peer not in peers:
-            peers.append(peer)
-        if peers.index(peer) == 1:
+        if peer.name == "bob":
             await kick_after_the_last_barrier(peer, request)
         else:
             await answer_at_once(peer, request)
@@ -629,6 +630,27 @@ async def test_the_groups_end_checks_every_bot() -> None:
     # Review of #189, Q8: the Bot kicked late is not the first one the Group made.
     group = Group(id="test/observe", run=_two_bots_observe_then_clean_up)
     async with serve(CODEC, play_server([], kick_the_second_bot_late())) as endpoint:
+        with pytest.raises(GroupError, match="disconnected bob"):
+            await run_group(group, endpoint, server="candidate", timeout_s=2.0)
+
+
+def alice_asks_late(answer: Answer) -> Answer:
+    """`answer`, but alice's first request reaches it 100 ms late: bob's comes first."""
+
+    async def late(peer: Peer, request: int) -> None:
+        if peer.name == "alice" and request == 1:
+            await asyncio.sleep(0.1)
+        await answer(peer, request)
+
+    return late
+
+
+@pytest.mark.asyncio
+async def test_the_second_bot_to_join_is_kicked_whichever_asks_first() -> None:
+    # #233: the fake took "the second Bot" to be the second to ask, so alice was kicked.
+    group = Group(id="test/observe", run=_two_bots_observe_then_clean_up)
+    answer = alice_asks_late(kick_the_second_bot_late())
+    async with serve(CODEC, play_server([], answer)) as endpoint:
         with pytest.raises(GroupError, match="disconnected bob"):
             await run_group(group, endpoint, server="candidate", timeout_s=2.0)
 

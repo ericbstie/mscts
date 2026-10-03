@@ -38,12 +38,14 @@ class Peer:
     `state` is the State it reads and writes in: an intention it receives moves it on,
     and a handler moves it on by hand for the later transitions. Frames are compressed
     both ways once `compress` has been called, as vanilla does after login_compression.
+    `name` is the player name its login gave, or "" before then.
     """
 
     def __init__(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, codec: Codec
     ) -> None:
         self.state = State.HANDSHAKE
+        self.name = ""
         self._reader = reader
         self._writer = writer
         self._codec = codec
@@ -257,6 +259,7 @@ class _Join:
         await self.expect(peer, "minecraft:intention")
         hello = await self.expect(peer, "minecraft:hello")
         assert hello.fields is not None
+        peer.name = str(hello.fields["name"])
         if self.script.disconnect_in is State.LOGIN:
             await peer.write(peer.raw_frame("minecraft:login_disconnect", b'\x06"kick"'))
             return False
