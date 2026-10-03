@@ -569,8 +569,13 @@ async def _answer_on_schedule(
 
 
 @asynccontextmanager
-async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
+async def serve(
+    codec: Codec, handler: Handler, *, timeout_s: float | None = None
+) -> AsyncIterator[Endpoint]:
     """Listen on a free localhost port, running `handler` for each connection.
+
+    A handler still running `timeout_s` after its connection came (by default
+    HANDLER_TIMEOUT_S, one exchange's worth) fails the test instead of hanging it.
 
     A handler that raises fails the test from inside the `async with` body. Leaving
     the body waits for every handler to finish, so a handler's last checks always run.
@@ -588,7 +593,8 @@ async def serve(codec: Codec, handler: Handler) -> AsyncIterator[Endpoint]:
                     # for it forever.
                     writer.close()
                     return
-                handlers.create_task(_run(handler, Peer(reader, writer, codec)))
+                peer = Peer(reader, writer, codec)
+                handlers.create_task(_run(handler, peer, timeout_s or HANDLER_TIMEOUT_S))
 
             server = await asyncio.start_server(on_connect, HOST, 0)
             try:
@@ -719,9 +725,9 @@ def free_port() -> int:
     return port
 
 
-async def _run(handler: Handler, peer: Peer) -> None:
+async def _run(handler: Handler, peer: Peer, timeout_s: float) -> None:
     try:
-        async with asyncio.timeout(HANDLER_TIMEOUT_S):
+        async with asyncio.timeout(timeout_s):
             await handler(peer)
     finally:
         await peer.close()
