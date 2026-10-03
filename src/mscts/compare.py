@@ -493,12 +493,10 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     `unexpected` ones. An unmatched chunk, light update or forgotten chunk shows
     `chunk <x> <z>`, any other Packet its value.
 
-    In a tick-exact Group (its Transcript has `TICK_MARK` Marks), a play Packet's key holds
-    the tick it arrived on too (`_Ticks`). Between two matched pairs, the n-th `missing`
-    and the n-th `unexpected` Packet that differ only in their tick are one Packet sent on
-    another tick: a `field` Divergence at path `TICK_PATH`, with the two ticks as its
-    values, and the packet's test case, then the two Packets' differences, as for a
-    matched pair.
+    In a tick-exact Group (its Transcript has `TICK_MARK` Marks), each play Packet holds the
+    tick it arrived on (`_Ticks`), and the Packets are aligned as without ticks. Two matched
+    Packets on different ticks are a `field` Divergence at `TICK_PATH`, with the two ticks
+    as its values and the packet's test case, then the Packets' differences.
 
     Two matched Packets with fields are diffed field by field (see `_diff`), giving one
     gameplay `field` Divergence per differing leaf, in path order. If they have a
@@ -2343,18 +2341,12 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 type _Key = tuple[str, ...]
 """What a Packet is aligned on (`_key`): its State, its name and, for a packet about one chunk,
 its position (`chunk x z`; empty for any other Packet). The client keeps a chunk and its light by
-position, so two such packets at different positions are never one Packet sent two ways. In a
-tick-exact Group, a play Packet's tick too (empty for none): the same packet on another tick is a
-difference (#23)."""
+position, so two such packets at different positions are never one Packet sent two ways. Not its
+tick in a tick-exact Group: two matched Packets on different ticks are a Divergence of their own
+(`_diff_ticks`), so a run of packets each a tick late still matches one for one (#23)."""
 
 
 def _key(entry: _Normalized) -> _Key:
-    tick = "" if entry.tick is None else str(entry.tick)
-    return (*_untimed_key(entry), tick)
-
-
-def _untimed_key(entry: _Normalized) -> _Key:
-    """`_key` without the tick: what two Packets on different ticks are paired on."""
     return (entry.packet.state.value, entry.packet.name, _place_text(entry.packet))
 
 
@@ -2439,26 +2431,14 @@ def _compare_streams(
     pairs = _align([_key(entry) for entry in reference], [_key(entry) for entry in candidate])
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
-        late = _on_other_ticks(
-            range(next_reference, ref_index),
-            range(next_candidate, cand_index),
-            reference,
-            candidate,
-        )
         for index in range(next_reference, ref_index):
-            if index in late:
-                yield from _diff_late(
-                    bot, index, reference[index], candidate[late[index]], compared
-                )
-            else:
-                compared.update(_field_cases(reference[index]))
-                yield _unmatched(bot, index, "missing", reference[index])
-        paired = set(late.values())
+            compared.update(_field_cases(reference[index]))
+            yield _unmatched(bot, index, "missing", reference[index])
         for index in range(next_candidate, cand_index):
-            if index not in paired:
-                yield _unmatched(bot, index, "unexpected", candidate[index])
+            yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):
             matched = (reference[ref_index], candidate[cand_index])
+            yield from _diff_ticks(bot, ref_index, *matched)
             yield from _diff_matched(bot, ref_index, *matched, compared)
         next_reference, next_candidate = ref_index + 1, cand_index + 1
 
@@ -2504,34 +2484,16 @@ def _leaves(value: _Value | Absent, path: _Path) -> Iterator[_Path]:
         yield path
 
 
-def _on_other_ticks(
-    missing: range,
-    unexpected: range,
-    reference: Sequence[_Normalized],
-    candidate: Sequence[_Normalized],
-) -> dict[int, int]:
-    """Pair the unmatched Packets of one gap that differ only in their tick, in order.
-
-    Returns the candidate index for each reference index paired. Only Packets with a tick
-    pair (a tick-exact Group's play Packets): the n-th unmatched reference Packet of a key
-    (`_untimed_key`) pairs with the n-th unmatched candidate Packet of that key.
-    """
-    waiting: dict[_Key, list[int]] = {}
-    for index in unexpected:
-        if candidate[index].tick is not None:
-            waiting.setdefault(_untimed_key(candidate[index]), []).append(index)
-    paired: dict[int, int] = {}
-    for index in missing:
-        queue = waiting.get(_untimed_key(reference[index]))
-        if reference[index].tick is not None and queue:
-            paired[index] = queue.pop(0)
-    return paired
-
-
-def _diff_late(
-    bot: str, index: int, reference: _Normalized, candidate: _Normalized, compared: set[str]
+def _diff_ticks(
+    bot: str, index: int, reference: _Normalized, candidate: _Normalized
 ) -> Iterator[Divergence]:
-    """A Packet both sides sent on different ticks: the ticks, then how the two differ."""
+    """The ticks of two matched Packets, if both have one and they differ (#23).
+
+    One `field` Divergence at `TICK_PATH`, with the two ticks, and the packet's test case;
+    the Packets' own differences follow it (`_diff_matched`).
+    """
+    if reference.tick is None or candidate.tick is None or reference.tick == candidate.tick:
+        return
     state, name = reference.packet.state, reference.packet.name
     yield Divergence(
         bot=bot,
@@ -2543,7 +2505,6 @@ def _diff_late(
         candidate=candidate.tick,
         test_case=_test_case(state, name, ()),
     )
-    yield from _diff_matched(bot, index, reference, candidate, compared)
 
 
 def _unmatched(

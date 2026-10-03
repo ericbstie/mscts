@@ -1910,12 +1910,12 @@ proves it necessary:
    them, trace from the front, matching equal keys, otherwise skipping
    the key whose skipping keeps the longer subsequence, and on a tie
    the smaller key, whichever side it is on. Between two matched pairs,
-   `missing` comes before `unexpected`. In a tick-exact Group (#23), a play
-   packet's key also holds the tick it arrived on: the number of the Bot's
-   `tick:<k>` Marks before its arrival (its own, else the unnamed one), plus
-   one. Between two matched pairs, the n-th `missing` and the n-th
-   `unexpected` packet whose keys differ only in the tick become one `field`
-   Divergence at path `tick`, then the two packets' differences.
+   `missing` comes before `unexpected`. In a tick-exact Group (#23), each play
+   packet holds the tick it arrived on: the number of the Bot's `tick:<k>`
+   Marks before its arrival (its own, else the unnamed one), plus one. The
+   tick is not part of the key, so a run of packets each a tick late still
+   matches one for one; two matched packets on different ticks give one
+   `field` Divergence at `TICK_PATH`, then the two packets' differences.
    A unit test checks every pair of
    key sequences up to length 4 over 3 keys: ordered, longest, and
    mirrored by a swap (an exhaustive run up to length 5 found no

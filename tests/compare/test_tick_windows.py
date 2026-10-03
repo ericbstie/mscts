@@ -1,5 +1,7 @@
 """Tick windows: a tick-exact Group compares what each Bot received on each tick."""
 
+import pytest
+
 from mscts.codec.packets import Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, Outcome, compare
 from mscts.transcript import Transcript
@@ -69,15 +71,38 @@ def test_a_packet_after_the_last_step_is_on_the_tick_after_it() -> None:
     assert [(d.reference, d.candidate) for d in verdict.divergences] == [(2, 1)], verdict
 
 
-def test_a_packet_on_a_tick_the_other_side_has_not_is_missing_there() -> None:
-    # The packet on tick 2 matches; the one on tick 1 has no partner, late or not.
+def test_an_extra_packet_aligns_as_without_ticks_then_shows_the_ticks() -> None:
+    # Packets align on what they are, not on their tick (review of #223): the first of the
+    # reference's two matches the candidate's one, a tick apart, and the second is missing.
     verdict = compare(
         transcript(OPEN, ("alice", block(1)), tick(1), ("alice", block(1)), tick(2), CLOSE),
         transcript(OPEN, tick(1), ("alice", block(1)), tick(2), CLOSE),
         [],
     )
 
-    assert [(d.kind, d.index) for d in verdict.divergences] == [("missing", 0)], verdict
+    assert [(d.kind, d.index, d.path) for d in verdict.divergences] == [
+        ("field", 0, TICK_PATH),
+        ("missing", 1, None),
+    ], verdict
+
+
+@pytest.mark.parametrize("count", [1, 3])
+def test_packets_all_one_tick_late_show_only_their_ticks(count: int) -> None:
+    # Review of #223, MEDIUM: a run of one packet type, each one tick late, must not be
+    # paired by tick (missing, a field difference, unexpected) but by order.
+    def play(lag: int) -> Transcript:
+        items: list[tuple[str, Packet] | str] = [OPEN]
+        for k in range(1, count + 2):
+            if 1 <= k - lag <= count:
+                items.append(("alice", block(k - lag)))
+            items.append(tick(k))
+        return transcript(*items, CLOSE)
+
+    verdict = compare(play(0), play(1), [])
+
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (index, TICK_PATH, index + 1, index + 2) for index in range(count)
+    ], verdict
 
 
 def test_a_bots_own_tick_mark_ends_its_tick_whatever_the_unnamed_one() -> None:
@@ -140,14 +165,15 @@ def test_repeated_packets_late_on_both_sides_pair_in_order() -> None:
     ], verdict
 
 
-def test_a_side_with_no_tick_marks_pairs_nothing_by_tick() -> None:
-    # A Transcript with no tick Marks has no ticks: its packets are never "late".
+def test_a_side_with_no_tick_marks_compares_without_ticks() -> None:
+    # A Transcript with no tick Marks has no ticks (the Group failed before its first step):
+    # its packets are never "late".
     stepped = transcript(OPEN, tick(1), ("alice", block(1)), CLOSE)
     unstepped = transcript(OPEN, ("alice", block(1)), CLOSE)
 
     for reference, candidate in ((stepped, unstepped), (unstepped, stepped)):
         verdict = compare(reference, candidate, [])
-        assert sorted(d.kind for d in verdict.divergences) == ["missing", "unexpected"], verdict
+        assert verdict.outcome is Outcome.MATCH, verdict
 
 
 def test_only_play_packets_have_a_tick() -> None:
