@@ -53,7 +53,7 @@ The maintainer-approved list of installable servers, each
 pinned by version and checksum. It never trusts a name alone. One
 **entry** is (adapter, version label, Target, URL, sha256 and/or the
 publisher's hash), named `<adapter> <version>` (`pumpkin
-nightly-48cba7ee`). A floating URL such as Pumpkin's nightly is only an
+nightly-b8382a8a`). A floating URL such as Pumpkin's nightly is only an
 entry for the one build its sha256 pins.
 
 ### LaunchPlan

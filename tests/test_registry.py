@@ -116,6 +116,6 @@ def test_the_committed_registry_pins_one_pumpkin_nightly_build_by_sha256() -> No
     pumpkin = registry.official().resolve("pumpkin", TARGET)
     assert (pumpkin.url, pumpkin.sha256) == (
         "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux",
-        "48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b",
+        "b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e",
     )
     assert "moves" in pumpkin.note  # a mismatch means the nightly moved

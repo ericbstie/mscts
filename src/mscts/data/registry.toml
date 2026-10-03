@@ -18,11 +18,11 @@ note = "the vanilla 26.3 server jar, by the sha1 and size Mojang publishes"
 
 [[entry]]
 adapter = "pumpkin"
-version = "nightly-48cba7ee"
+version = "nightly-b8382a8a"
 target = "26.3"
 url = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
-sha256 = "48cba7ee6e255f7d2150435f58228f1ec9cab477f1dee259f47cd24b8f304b0b"
+sha256 = "b8382a8af2afd0a2cab48133ed335a436a771f813823a39b8b2b9c68a2dd360e"
 note = """\
-one build of Pumpkin's rolling nightly (Linux x86-64), pinned 2026-09-26. The nightly \
+one build of Pumpkin's rolling nightly (Linux x86-64), pinned 2026-10-02. The nightly \
 URL moves with every new build, so a sha256 mismatch on download means the nightly has \
 moved on: install that build with --from, or ask the maintainer to pin it."""
