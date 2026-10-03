@@ -137,14 +137,19 @@ class Replies:
     - play `start_configuration` → `configuration_acknowledged`.
 
     Every other packet gets no answer.
+
+    Attributes:
+        disconnected: Whether the server's disconnect has arrived, taken or not.
     """
 
     def __init__(self) -> None:
         """Start with the player at the origin, facing yaw 0 and pitch 0."""
         self._pose = _Pose()
+        self.disconnected = False
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
+        self.disconnected |= _ends_the_session(packet)
         fields = packet.fields or {}
         match packet.state, packet.name:
             case State.LOGIN, "minecraft:login_finished":
@@ -221,6 +226,7 @@ class Bot:
         self._timeout_s = timeout_s
         self._closed = False
         self._disconnected = False  # expect returned the server's disconnect
+        self._replies: Replies | None = None  # the Connection's answer, if `connect` made it
 
     @classmethod
     async def connect(
@@ -241,11 +247,14 @@ class Bot:
             TimeoutError: It did not connect within `timeout_s`.
         """
         codec = Codec.for_target(target)
+        replies = Replies()
         async with asyncio.timeout(timeout_s):
             connection = await Connection.open(
-                endpoint, codec, bot=name, transcript=transcript, answer=Replies()
+                endpoint, codec, bot=name, transcript=transcript, answer=replies
             )
-        return cls(connection, endpoint, target, name=name, timeout_s=timeout_s)
+        bot = cls(connection, endpoint, target, name=name, timeout_s=timeout_s)
+        bot._replies = replies
+        return bot
 
     @property
     def closed(self) -> bool:
@@ -457,6 +466,22 @@ class Bot:
         except Exception as error:
             self.failure = error
             raise
+
+    async def refuse_queued_disconnect(self) -> None:
+        """Take what has arrived (`drain`) if the server's disconnect is among it, untaken.
+
+        A Group's end calls it before closing its Bots, so a disconnect nothing took still
+        fails the Bot. It does nothing, and records nothing, if no such disconnect has
+        reached the socket, or the Bot is closed or its `expect` returned the disconnect.
+
+        Raises:
+            ProtocolError: The server disconnected the Bot; the Bot's `failure`.
+        """
+        if self._closed or self._disconnected or self._replies is None:
+            return
+        await self._connection.caught_up()
+        if self._replies.disconnected:
+            await self.drain()
 
     async def close(self) -> None:
         """Close the Bot's Connection. Calling it again does nothing."""

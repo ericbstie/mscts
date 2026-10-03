@@ -541,6 +541,120 @@ async def test_a_candidate_that_kicks_a_bot_just_after_its_barrier_mismatches(wi
     assert "disconnected alice" in str(failed.candidate), verdict
 
 
+async def kick_after_the_last_barrier(peer: Peer, request: int) -> None:
+    """Answer; 100 ms after the closing barrier's second answer, disconnect, and close later."""
+    if request > 4:
+        return
+    await answer_at_once(peer, request)
+    if request == 4:
+        await asyncio.sleep(0.1)  # after the window's drain
+        await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+        await asyncio.sleep(0.3)  # the end comes later
+        await peer.close()
+
+
+async def _observe_then_clean_up(context: GroupContext) -> None:
+    await joined(context)
+    async with context.observe():
+        pass
+    await asyncio.sleep(0.2)  # cleanup that does not touch alice
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_kicks_a_bot_after_the_last_window_mismatches() -> None:
+    # #184: nothing took the disconnect, so it was never compared and failed nobody.
+    group = Group(id="test/observe", run=_observe_then_clean_up)
+    async with serve(CODEC, play_server([])) as endpoint:
+        reference = await run_group(group, endpoint, server="vanilla", timeout_s=2.0)
+    async with serve(CODEC, play_server([], kick_after_the_last_barrier)) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(group, endpoint, server="candidate", timeout_s=2.0)
+
+    verdict = judge(group, reference, caught.value)
+
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+    failed = verdict.divergences[0]
+    assert (failed.kind, failed.bot) == ("failed", "alice"), verdict
+    assert "disconnected alice" in str(failed.candidate), verdict
+
+
+async def _take_a_kick(context: GroupContext) -> None:
+    alice = await joined(context)
+    await alice.command("kick")
+    await alice.expect("minecraft:disconnect", timeout_s=2.0)
+    await asyncio.sleep(0.1)  # the end of the stream arrives too
+
+
+@pytest.mark.asyncio
+async def test_a_kick_the_group_took_does_not_fail_its_end() -> None:
+    group = Group(id="test/observe", run=_take_a_kick)
+    async with serve(CODEC, kicking_server()) as endpoint:
+        transcript = await run_group(group, endpoint, server="fake", timeout_s=2.0)
+
+    assert arrivals(transcript, "minecraft:disconnect")
+
+
+async def straggle_after_the_last_barrier(peer: Peer, request: int) -> None:
+    """Answer; 100 ms after the closing barrier's second answer, send a block_update."""
+    await answer_at_once(peer, request)
+    if request == 4:
+        await asyncio.sleep(0.1)  # after the window's drain
+        await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
+
+
+async def _observe_then_leave(context: GroupContext) -> None:
+    alice = await joined(context)
+    async with context.observe():
+        pass
+    await asyncio.sleep(0.2)  # the kick arrives
+    await alice.close()
+
+
+@pytest.mark.asyncio
+async def test_a_bot_the_group_closed_is_not_refused_at_its_end() -> None:
+    # As at a window's end: a Bot the Group closed itself is given up, and takes nothing.
+    group = Group(id="test/observe", run=_observe_then_leave)
+    async with serve(CODEC, play_server([], kick_after_the_last_barrier)) as endpoint:
+        transcript = await run_group(group, endpoint, server="fake", timeout_s=2.0)
+
+    assert arrivals(transcript, "minecraft:disconnect") == []
+
+
+@pytest.mark.asyncio
+async def test_a_disconnect_that_reached_the_socket_unread_is_refused() -> None:
+    # The Group ends as soon as the kick is written, before alice's reader has run: the
+    # end catches up with the socket first.
+    kicked = asyncio.Event()
+
+    async def kick_then_tell(peer: Peer, request: int) -> None:
+        await answer_at_once(peer, request)
+        if request == 4:
+            await asyncio.sleep(0.1)
+            await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+            kicked.set()
+
+    async def observe_until_kicked(context: GroupContext) -> None:
+        await joined(context)
+        async with context.observe():
+            pass
+        await kicked.wait()
+
+    group = Group(id="test/observe", run=observe_until_kicked)
+    async with serve(CODEC, play_server([], kick_then_tell)) as endpoint:
+        with pytest.raises(GroupError, match="disconnected alice"):
+            await run_group(group, endpoint, server="candidate", timeout_s=2.0)
+
+
+@pytest.mark.asyncio
+async def test_a_groups_end_takes_nothing_when_no_disconnect_is_queued() -> None:
+    # What arrives after the last window is timing: a Group with no window compares it all.
+    group = Group(id="test/observe", run=_observe_then_clean_up)
+    async with serve(CODEC, play_server([], straggle_after_the_last_barrier)) as endpoint:
+        transcript = await run_group(group, endpoint, server="fake", timeout_s=2.0)
+
+    assert arrivals(transcript, BLOCK_UPDATE) == []
+
+
 @pytest.mark.asyncio
 async def test_a_disconnect_the_group_took_is_inside_the_window_and_compared() -> None:
     transcript = Transcript(group_id="test/observe", server="fake")

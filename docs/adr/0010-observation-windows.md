@@ -320,8 +320,13 @@ MD2).
    having ended. A disconnect that the barrier or the drain takes fails
    that Bot with a ProtocolError, kept as its `failure`. So a Candidate
    that disconnects a Bot the Reference keeps gets a `mismatch` if a later
-   barrier, drain or `expect` takes the disconnect. A disconnect that
-   arrives after the Group's last drain is taken by nothing.
+   barrier, drain or `expect` takes the disconnect. One that arrives after
+   the Group's last drain fails the Bot at the Group's end (#184): before
+   `run_group` closes the Bots, each Bot not closed whose server's
+   disconnect has reached it untaken drains, and the drain refuses it
+   (`GroupContext.end`). A Bot with no such disconnect takes nothing
+   there, since what arrives after the last window is timing. A Bot the
+   Group closed itself is not checked.
 
 ## Amendment (2026-10-03, #141): a barrier before the window opens
 
