@@ -16,6 +16,9 @@ from tests.run.fakes import FakeAdapter
 
 type Fakes = Callable[..., None]
 
+PING_AND_BASIC = "status/[bp]*"
+"""The status Groups the fake servers answer: `status/with-player` needs a join."""
+
 
 @pytest.fixture
 def fakes(run_token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Callable[..., None]:
@@ -55,7 +58,9 @@ def test_a_run_prints_the_report_and_says_what_it_does(
 ) -> None:
     fakes()
 
-    code, out, err = _run(capsys, "--candidate", "pumpkin", "--repeat", "2")
+    code, out, err = _run(
+        capsys, "--candidate", "pumpkin", "--group", PING_AND_BASIC, "--repeat", "2"
+    )
 
     assert code == 0
     assert out.startswith("Running tests against pumpkin\n✓ status/basic/"), out
@@ -71,7 +76,9 @@ def test_a_run_with_divergences_still_exits_0(
 ) -> None:
     fakes(pumpkin_description="not vanilla")
 
-    code, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+    code, out, _ = _run(
+        capsys, "--candidate", "pumpkin", "--group", PING_AND_BASIC, "--repeat", "1"
+    )
 
     assert code == 0
     assert out.startswith(
@@ -88,7 +95,9 @@ def test_the_cli_measures_the_total_run_time(
     times = iter((10.0, 51.25))
     monkeypatch.setattr(cli, "perf_counter", lambda: next(times))
 
-    code, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+    code, out, _ = _run(
+        capsys, "--candidate", "pumpkin", "--group", PING_AND_BASIC, "--repeat", "1"
+    )
 
     assert code == 0
     assert out.endswith("\nTook 41.2 s\n"), out
@@ -181,7 +190,7 @@ def test_the_work_directory_is_removed_afterwards(
     monkeypatch.setattr(tempfile, "tempdir", str(tmp_path / "tmp"))
     (tmp_path / "tmp").mkdir()
 
-    code, _, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+    code, _, _ = _run(capsys, "--candidate", "pumpkin", "--group", PING_AND_BASIC, "--repeat", "1")
 
     assert code == 0
     assert list((tmp_path / "tmp").iterdir()) == []
@@ -360,7 +369,7 @@ def test_a_run_report_carries_no_note_about_unbuilt_output(
     fakes()
     shown = _spy_on_reports(monkeypatch)
 
-    code, _, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
+    code, _, _ = _run(capsys, "--candidate", "pumpkin", "--group", PING_AND_BASIC, "--repeat", "1")
 
     assert code == 0
     assert [report.notes for report in shown] == [()]

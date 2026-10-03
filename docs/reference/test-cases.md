@@ -543,6 +543,15 @@ names, so that difference is network traffic only. A nonempty sample's
 fields have their own test case names, such as
 `status_response.players.sample[].name`.
 
+## `status_response.players.sample[].id`
+
+**Server list player UUID**
+
+The UUID the server lists for a player in the sample. The client and other
+tools use it to tell players apart, so a server that derives offline UUIDs
+differently lists another one for the same name. It is the same UUID as in
+`login_finished.profile.uuid`.
+
 ## `status_response.version.name`
 
 **Server version name**

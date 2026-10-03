@@ -78,6 +78,7 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "status_response.players.max": "Player limit",
         "status_response.players.online": "Online players",
         "status_response.players.sample": "Server list player sample",
+        "status_response.players.sample[].id": "Server list player UUID",
         "status_response.version.name": "Server version name",
         "status_response.version.protocol": "Protocol version",
         "system_chat": "Chat message from the server",
