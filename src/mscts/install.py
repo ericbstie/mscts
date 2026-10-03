@@ -27,6 +27,8 @@ from mscts.adapters.base import (
     ProvisionError,
     Release,
     Source,
+    UnavailableError,
+    build_it_yourself,
     install_command,
 )
 from mscts.adapters.fetch import https_get
@@ -201,23 +203,32 @@ def install_release(
 
     A no-op if that build is installed already (with `version` None: whatever build is).
     With another build installed, the Adapter's refusal of `version` comes first, then
-    ProvisionError naming how to replace it.
+    ProvisionError naming how to replace it. What is recorded is what the file names.
     """
     existing = installed(adapter, target, cache_dir)
     unchanged = None if existing is None else _unchanged(existing, adapter, version)
     if unchanged is not None:
         return unchanged
+    release = _release(adapter, target, version, fetch)
+    _vacant(existing, adapter, version)
+    download = _verified_download(adapter, release, fetch)
+    installed_at = _now()
+
+    def source(build: Build) -> Source:
+        downloaded = _what_was_downloaded(adapter.name, release, build, version)
+        return _downloaded_source(release, download, downloaded, installed_at)
+
+    _write(adapter, target, cache_dir, download.body, source)
+    return _done(adapter, target, cache_dir)
+
+
+def _release(adapter: Adapter, target: Target, version: str | None, fetch: Fetch) -> Release:
+    """`adapter.release`, whose every failure is a ProvisionError naming `--from`."""
     yourself = f"`{install_command(adapter.name, path='<file>')}`"
     try:
-        release = adapter.release(target, version, fetch)
-        _vacant(existing, adapter, version)
-        download = fetch(release.url)
+        return adapter.release(target, version, fetch)
     except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
-        msg = (
-            f"downloading failed: {error}\n"
-            f"Download the build another way (e.g. curl), then run {yourself}"
-        )
-        raise ProvisionError(msg) from error
+        raise _download_failed(error, yourself) from error
     except ProvisionError:
         raise
     except Exception as error:  # a garbled page, or the Adapter's own bug: never a traceback
@@ -229,28 +240,61 @@ def install_release(
             f"Download the build another way, then run {yourself}"
         )
         raise ProvisionError(msg) from error
+
+
+def _download_failed(error: Exception, yourself: str) -> ProvisionError:
+    """The error for a download that failed with `error`, naming the `yourself` command."""
+    msg = (
+        f"downloading failed: {error}\n"
+        f"Download the build another way (e.g. curl), then run {yourself}"
+    )
+    return ProvisionError(msg)
+
+
+def _verified_download(adapter: Adapter, release: Release, fetch: Fetch) -> Download:
+    """`release`'s file, with the sha1 and size its publisher lists, if any."""
+    try:
+        download = fetch(release.url)
+    except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
+        yourself = f"`{install_command(adapter.name, path='<file>')}`"
+        raise _download_failed(error, yourself) from error
     _published(adapter, release, download)
+    return download
 
-    def source(build: Build) -> Source:
-        if release.build.commit is not None and build.commit != release.build.commit:
-            msg = (
-                f"{release.url} is not {adapter.name} {release.build}: it is {adapter.name} "
-                f"{build}. A new build may be being published: try again in a few minutes, "
-                f"or run {yourself}"
-            )
-            raise ProvisionError(msg)
-        return Source(
-            sha256=hashlib.sha256(download.body).hexdigest(),
-            size=len(download.body),
-            version=release.build.version,
-            commit=release.build.commit,
-            url=release.url,
-            final_url=download.url,
-            installed_at=_now(),
+
+def _what_was_downloaded(
+    adapter: str, release: Release, build: Build, version: str | None
+) -> Build:
+    """The build a downloaded file is: its release's name, and the commit the file names.
+
+    The release's commit only found the file. ProvisionError if the file names none where
+    its release does; UnavailableError if it is not the build `version` names.
+    """
+    if release.build.commit is not None and build.commit is None:
+        msg = (
+            f"{release.url} names no commit, so which {adapter} {release.build.version} it is "
+            f"cannot be told.\n{build_it_yourself(adapter)}"
         )
+        raise ProvisionError(msg)
+    downloaded = Build(version=release.build.version, commit=build.commit)
+    if version is not None and not _names(downloaded, version):
+        raise UnavailableError(adapter, version, latest=downloaded)
+    return downloaded
 
-    _write(adapter, target, cache_dir, download.body, source)
-    return _done(adapter, target, cache_dir)
+
+def _downloaded_source(
+    release: Release, download: Download, build: Build, installed_at: str
+) -> Source:
+    """What SOURCE.json records for `download` of `release`, the file being `build`."""
+    return Source(
+        sha256=hashlib.sha256(download.body).hexdigest(),
+        size=len(download.body),
+        version=build.version,
+        commit=build.commit,
+        url=release.url,
+        final_url=download.url,
+        installed_at=installed_at,
+    )
 
 
 def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) -> Installed:
@@ -258,41 +302,57 @@ def install_from(adapter: Adapter, target: Target, cache_dir: Path, path: Path) 
 
     A file the Adapter cannot run is refused first, naming `path`, whatever is installed.
     """
-    try:
-        body = path.read_bytes()
-    except OSError as error:
-        msg = f"cannot read {path}: {error}"
-        raise ProvisionError(msg) from error
+    body = _read(path)
     adapter.check(path, target)  # its errors name the user's file, and come first
-    sha256 = hashlib.sha256(body).hexdigest()
-    root = root_of(adapter, target, cache_dir)
     existing = installed(adapter, target, cache_dir)
     if existing is not None and existing.source is not None:
-        if existing.source.sha256 == sha256:
-            message = (
-                f"{adapter.name} {target.minecraft_version} is already installed at {root} "
-                f"with sha256 {sha256}: nothing to do"
-            )
-            return Installed(existing, changed=False, message=message)
-        msg = (
-            f"{adapter.name} {target.minecraft_version} is already installed at {root}: "
-            f"{adapter.name} {describe(existing.source)}. To install {path} instead, delete "
-            f"{root} and run `{install_command(adapter.name, path=str(path))}`"
-        )
-        raise ProvisionError(msg)
+        return _same_file(existing, adapter, path, hashlib.sha256(body).hexdigest())
+    installed_at = _now()
 
     def source(build: Build) -> Source:
-        return Source(
-            sha256=sha256,
-            size=len(body),
-            version=build.version,
-            commit=build.commit,
-            from_path=str(path.absolute()),
-            installed_at=_now(),
-        )
+        return _supplied_source(path, body, build, installed_at)
 
     _write(adapter, target, cache_dir, body, source)
     return _done(adapter, target, cache_dir)
+
+
+def _read(path: Path) -> bytes:
+    """The bytes of the file at `path`; ProvisionError, naming it, if it cannot be read."""
+    try:
+        return path.read_bytes()
+    except OSError as error:
+        msg = f"cannot read {path}: {error}"
+        raise ProvisionError(msg) from error
+
+
+def _same_file(existing: Installation, adapter: Adapter, path: Path, sha256: str) -> Installed:
+    """A no-op if `existing` holds the file at `path` (by `sha256`); else ProvisionError."""
+    root, source = existing.root, existing.source
+    if source is not None and source.sha256 == sha256:
+        message = (
+            f"{adapter.name} {existing.target.minecraft_version} is already installed at "
+            f"{root} with sha256 {sha256}: nothing to do"
+        )
+        return Installed(existing, changed=False, message=message)
+    described = "an unknown build" if source is None else describe(source)
+    msg = (
+        f"{adapter.name} {existing.target.minecraft_version} is already installed at {root}: "
+        f"{adapter.name} {described}. To install {path} instead, delete "
+        f"{root} and run `{install_command(adapter.name, path=str(path))}`"
+    )
+    raise ProvisionError(msg)
+
+
+def _supplied_source(path: Path, body: bytes, build: Build, installed_at: str) -> Source:
+    """What SOURCE.json records for the file at `path`, holding `body`, which is `build`."""
+    return Source(
+        sha256=hashlib.sha256(body).hexdigest(),
+        size=len(body),
+        version=build.version,
+        commit=build.commit,
+        from_path=str(path.absolute()),
+        installed_at=installed_at,
+    )
 
 
 def _done(adapter: Adapter, target: Target, cache_dir: Path) -> Installed:

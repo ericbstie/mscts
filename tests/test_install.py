@@ -7,7 +7,14 @@ from pathlib import Path
 import pytest
 from support.pumpkin import ASSET_URL, COMMIT, FakeGitHub, fake_pumpkin, refs
 
-from mscts.adapters.base import Build, Download, Installation, ProvisionError, Source
+from mscts.adapters.base import (
+    Build,
+    Download,
+    Installation,
+    ProvisionError,
+    Source,
+    UnavailableError,
+)
 from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL, PumpkinAdapter
 from mscts.install import install_from, install_release, installed
 from mscts.target import TARGET
@@ -125,15 +132,38 @@ def test_a_build_that_cannot_be_installed_says_so_over_an_installed_one(
     assert github.fetched == [TAGS_URL]
 
 
-def test_a_build_that_is_not_the_one_published_is_refused(tmp_path: Path) -> None:
-    # The tag moves before the new binary is uploaded: for a few minutes they disagree.
-    with pytest.raises(ProvisionError) as raised:
-        install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub(tags=refs(OTHER)))
+def test_the_file_s_own_commit_is_installed_and_reported_whatever_the_tag_says(
+    tmp_path: Path,
+) -> None:
+    # The tag moves before the new binary is uploaded: for a few minutes they disagree. The
+    # tag only finds the file; what was installed is what the file says it is.
+    done = install_release(ADAPTER, TARGET, tmp_path, None, FakeGitHub(tags=refs(OTHER)))
+    assert done.message == (
+        f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root_of(tmp_path)}"
+    )
+    assert (recorded(tmp_path)["version"], recorded(tmp_path)["commit"]) == ("nightly", COMMIT)
+    assert done.installation.source is not None
+    assert done.installation.source.build == Build(version="nightly", commit=COMMIT)
+
+
+def test_a_named_commit_the_file_is_not_is_unavailable(tmp_path: Path) -> None:
+    with pytest.raises(UnavailableError) as raised:
+        install_release(ADAPTER, TARGET, tmp_path, OTHER[:7], FakeGitHub(tags=refs(OTHER)))
     assert str(raised.value).startswith(
-        f"{NIGHTLY_URL} is not pumpkin nightly 8f3c2a1: it is pumpkin 0.2.0+26.3-26.51 4426d11."
+        "pumpkin@8f3c2a1 is not available for download. The latest is pumpkin nightly 4426d11."
+    )
+    assert list((tmp_path / "pumpkin").iterdir()) == []  # no staging directory left
+
+
+def test_a_file_that_names_no_commit_is_refused_when_its_label_names_one(tmp_path: Path) -> None:
+    github = FakeGitHub(binary=fake_pumpkin(commit="unknown"))
+    with pytest.raises(ProvisionError) as raised:
+        install_release(ADAPTER, TARGET, tmp_path, None, github)
+    assert str(raised.value).startswith(
+        f"{NIGHTLY_URL} names no commit, so which pumpkin nightly it is cannot be told."
     )
     assert "--from <file>" in str(raised.value)
-    assert list((tmp_path / "pumpkin").iterdir()) == []  # no staging directory left
+    assert list((tmp_path / "pumpkin").iterdir()) == []
 
 
 def test_a_download_that_is_not_an_elf_executable_is_refused(tmp_path: Path) -> None:

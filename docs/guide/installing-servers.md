@@ -23,7 +23,7 @@ installed pumpkin nightly 4426d11 from https://github.com/Pumpkin-MC/Pumpkin/rel
 | Server | Where the latest build comes from |
 | --- | --- |
 | `vanilla` | The 26.3 server jar in Mojang's version list, checked by the sha1 and size Mojang publishes. |
-| `pumpkin` | Pumpkin's nightly build for Linux x86-64. Its commit comes from Pumpkin's `nightly` tag, and the file must name the same commit. |
+| `pumpkin` | Pumpkin's nightly build for Linux x86-64. mscts finds it through Pumpkin's `nightly` tag, and records the commit the file itself names. |
 
 If a build is already installed, the command does nothing and says so:
 

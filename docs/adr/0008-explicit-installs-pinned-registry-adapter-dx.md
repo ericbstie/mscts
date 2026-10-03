@@ -93,9 +93,10 @@ cannot be installed at all.
    `UnavailableError`: the latest build instead), and mscts words them
    once, the same for every Adapter (#158).
 5. **A checksum the publisher itself publishes is still checked** (Mojang's
-   sha1 and size), as an integrity check. A build whose commit the
-   publisher names must be that commit: Pumpkin's binary names its own
-   commit, and it must match the tag's.
+   sha1 and size), as an integrity check. What is recorded comes
+   from the file, never from the label that found it: Pumpkin's binary
+   names its own commit, which may differ from the `nightly` tag's for a
+   few minutes a day, and a file that names no commit is refused (#158).
 6. **Reports name the exact build**: its version, its commit where the
    publisher gives one (a Pumpkin nightly always does), and the sha256 of
    the file tested: `pumpkin nightly 4426d11 (sha256 b8382a8a…)`.
