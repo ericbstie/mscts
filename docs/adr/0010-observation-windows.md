@@ -237,11 +237,18 @@ second request made `sync` return before the tick's `block_update`.
    that stalls inside its pass for longer than 5 ms, less the round trip,
    can still take the second request in the first one's pass. The 5 ms is
    a threshold on the server's pass, not on the Bot.
-3. **A request takes only an answer that arrived after it was sent.** An
+3. **A request takes only an answer stamped after it was sent.** An
    `award_stats` stamped before the request went out (a server that
-   answered twice, or a plugin that sends one unasked) is taken and passed
-   over (audit H5). Taken as the answer, it made the barrier one round trip,
-   and left the real answer queued to offset every later barrier.
+   answered twice, or a plugin that sends one unasked) is taken, passed
+   over, and leaves the Mark `sync:passed-over <Bot name>` (audit H5).
+   Taken as the answer, it made the barrier one round trip, and left the
+   real answer queued to offset every later barrier. Before it stamps the
+   request, the Bot's reader catches up with what reached the socket (the
+   kernel's buffer, the stream's and any frame not yet complete are
+   empty), so a stray that arrived while the Bot's loop was busy is still
+   stamped before the request. One that reaches the socket after the
+   request is sent is taken as its answer: the fix covers what arrived
+   before, not a server that sends statistics unasked at any moment.
 4. **No Mark.** With no retries there is no cap, so `SYNC_MAX_TRIPS` and
    the `sync:capped` Mark go. No Mark replaces them: under the wait, a
    pair's answers always arrive at least `TICK_GAP_S` apart, so their gap

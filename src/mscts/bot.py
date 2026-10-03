@@ -17,7 +17,7 @@ from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
-from mscts.transcript import Transcript
+from mscts.transcript import Mark, Transcript
 
 PROBE_TIMEOUT_S = 1.0
 """How long one readiness probe attempt waits, from connecting to the status answer."""
@@ -56,6 +56,13 @@ that arrives during the pass included, so two requests sent back to back can be 
 together, before that tick sends anything. Answers inside one pass came 0.1 to 3.6 ms
 apart; answers from different ticks, at least 5.4 ms (docs/research/2026-10-01-join-chunks.md).
 A request sent this long after an answer arrived lands after that answer's pass.
+"""
+
+SYNC_PASSED_OVER = "sync:passed-over"
+"""The label of the Mark `sync` leaves for an `award_stats` that came before its request.
+
+A server that answers twice, or sends statistics nobody asked for; followed by the Bot's
+name. Compare reads only `observe:` Marks, so it changes no Verdict.
 """
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
@@ -389,14 +396,24 @@ class Bot:
     async def _ask_for_statistics(self) -> int:
         """Request the statistics, take packets until the answer, and return when it arrived.
 
-        An `award_stats` that arrived before the request was sent is not its answer (a
-        server that answered twice, or sent one unasked): it is taken and passed over.
+        An `award_stats` stamped before the request was sent is not its answer (a server
+        that answered twice, or sent one unasked): it is taken, passed over, and leaves
+        the Mark `sync:passed-over <Bot name>`. The reader first catches up with what
+        reached the socket, so one that arrived before the request is stamped before it,
+        however busy the loop was.
         """
-        asked_ns = self._connection.transcript.now_ns()
+        transcript = self._connection.transcript
+        await self._connection.caught_up()
+        asked_ns = transcript.now_ns()
 
         def arrived_since_asked(_: Packet) -> bool:
             # `where` runs on the Packet `recv` just returned, so this is its arrival.
-            return cast("int", self._connection.last_arrival_ns) > asked_ns
+            arrived_ns = cast("int", self._connection.last_arrival_ns)
+            if arrived_ns > asked_ns:
+                return True
+            label = f"{SYNC_PASSED_OVER} {self.name}"
+            transcript.marks.append(Mark(t_ns=arrived_ns, label=label))
+            return False
 
         await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
         await self.expect(

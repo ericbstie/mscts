@@ -462,6 +462,9 @@ class Connection:                   # one TCP connection; owns framing, compress
     transcript: Transcript          # read-only: the Transcript it records to
     last_arrival_ns: int | None     # read-only: when the Packet recv last returned arrived, as the
                                     # Transcript stamps it (not when it was taken); None before the first
+    async def caught_up(self) -> None: ...  # once the reader has read and stamped every byte that
+                                    # reached the socket (FIONREAD 0, stream buffer and partial frame
+                                    # empty), or has ended; sync awaits it before stamping a request
     # The directions switch as the vanilla client switches them (26.3 javap: the terminal
     # packets, whose isTerminal() is true). Sending the intention moves both (intent 1 →
     # STATUS, 2 or 3 (transfer) → LOGIN, else ProtocolError). After that, what is *received*
@@ -558,6 +561,7 @@ def offline_uuid(name: str) -> UUID: ...  # UUIDUtil.createOfflinePlayerUUID: MD
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
 TICK_GAP_S = 0.005                  # sync's wait from its first answer's arrival to its second request
+SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...
     # As the 26.3 client does (javap): login_finished → login_acknowledged, then configuration

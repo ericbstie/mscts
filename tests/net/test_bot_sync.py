@@ -197,6 +197,30 @@ def test_an_award_stats_that_arrived_before_the_request_is_not_its_answer() -> N
     assert "minecraft:block_update" in names
 
 
+def test_an_award_stats_that_reached_the_socket_before_the_request_is_not_its_answer() -> None:
+    # Review A of #163, finding 1: the stray reaches the socket 5 ms after the join while
+    # the Bot's loop is blocked, so the reader has not stamped it when the request goes.
+    # Stamped after the request, it was taken as the answer, and the real one, at the next
+    # pass, with the second request's: one pass, before the tick's block_update.
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def client() -> list[str]:
+        with serve_in_thread(CODEC, scheduled_server([], stray_after_s=0.005)) as endpoint:
+            bot = await Bot.connect(
+                endpoint, TARGET, name="alice", transcript=transcript, timeout_s=5.0
+            )
+            try:
+                await bot.join()
+                time.sleep(0.02)  # noqa: ASYNC251 - the loop is busy: blocking it is the point
+                await bot.sync()
+                return received(transcript)
+            finally:
+                await bot.close()
+
+    assert "minecraft:block_update" in asyncio.run(client())
+    assert [mark.label for mark in transcript.marks] == [f"{bot_module.SYNC_PASSED_OVER} alice"]
+
+
 def test_sync_takes_everything_the_server_sent_before_its_last_answer() -> None:
     transcript = Transcript(group_id="test/sync", server="fake")
 

@@ -2,6 +2,9 @@
 
 import asyncio
 import contextlib
+import fcntl
+import sys
+import termios
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Self
@@ -185,6 +188,21 @@ class Connection:
         """
         return self._last_arrival_ns
 
+    async def caught_up(self) -> None:
+        """Return once the reader has read and stamped every byte that reached the socket.
+
+        Nothing is waiting in the kernel's receive buffer (FIONREAD, on Linux and macOS),
+        in the stream's buffer, or in a frame not yet complete. So whatever arrived before
+        this returns is stamped before any time taken after it, however busy the event
+        loop was meanwhile. It also returns once the reader has ended.
+        """
+        while True:
+            # asyncio has no public view of what its StreamReader holds (CPython: `_buffer`).
+            held = getattr(self._reader, "_buffer", b"")
+            if self._reading.done() or not (_unread(self._writer) or held or self._frames.buffered):
+                return
+            await asyncio.sleep(0)  # a turn of the loop: the transport reads, the reader stamps
+
     async def send(self, name: str, /, **fields: object) -> None:
         """Encode serverbound packet `name` with `fields` in the current State, and send it.
 
@@ -367,6 +385,18 @@ class Connection:
         if self._closed:
             msg = "the connection is closed"
             raise ConnectionClosedError(msg)
+
+
+def _unread(writer: asyncio.StreamWriter) -> int:
+    """How many received bytes wait in the socket's kernel buffer (0 once it is closed)."""
+    sock = writer.get_extra_info("socket")
+    if sock is None or sock.fileno() < 0:
+        return 0
+    try:
+        answer = fcntl.ioctl(sock.fileno(), termios.FIONREAD, b"\0" * 4)
+    except OSError:
+        return 0
+    return int.from_bytes(answer, sys.byteorder, signed=True)
 
 
 def _state_after(packet: Packet) -> State:
