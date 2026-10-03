@@ -37,6 +37,7 @@ CANDIDATE_FAILURES: tuple[type[Exception], ...] = (
     ProtocolError,  # an answer that breaks the protocol's sequence or content
     TimeoutError,  # no answer in time
     ConnectionError,  # the connection was closed, reset or refused
+    PlayersStillOnline,  # a closed Bot's player still listed, past the Group's wait (audit H4)
 )
 """What a Group raises when the Candidate caused it: a `mismatch`, never `error`."""
 
@@ -227,7 +228,8 @@ def judge(
     What `compare` finds, with the Group's Masks, except:
 
     - The Candidate failed in a way it caused (`CANDIDATE_FAILURES`: its output did not
-      decode, broke the protocol, never came, or its connection closed or was refused):
+      decode, broke the protocol, never came, its connection closed or was refused, or it
+      kept a closed Bot's player online past the Group's wait):
       `mismatch`, led by a `failed` Divergence that says what happened and names the
       Bot it came out of (`GroupError.bot`), then whatever
       the Comparison of the Transcripts so far finds. Never `error`, which a
@@ -451,9 +453,10 @@ class _Instances:
         """Play `group` on the Reference, then on the Candidate, and judge it.
 
         It waits first for both Instances to have no player online (the previous Group's
-        Bots have left). If one has any after `SETTLE_TIMEOUT_S`, `group` is not played
-        on either, and its Verdict names the players still online: `error` if the
-        Reference has any, else `mismatch` (the Candidate's failure), see `_unsettled`.
+        Bots have left). If one has any after `SETTLE_TIMEOUT_S`, or its wait raised,
+        `group` is not played on either, and its Verdict names the players still online
+        or what was raised: `error` if the Reference did, else `mismatch` if the
+        Candidate caused it, else `error` (a harness bug), see `_unsettled`.
         """
         endpoints = await self._pair(group.spec)
         unsettled = await _unsettled(group, endpoints)
@@ -545,38 +548,61 @@ def _installed_version(side: Side) -> str | None:
 async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
     """Wait for the Reference and the Candidate to have no player online; None if both do.
 
-    Both are waited on at once. If one still has players at the deadline, the Verdict
-    that `group` gets instead of being played:
+    Both are waited on at once, each wait to its end, so neither is left running when the
+    Run moves on. If one still has players at the deadline (`PlayersStillOnline`), or its
+    wait raised, the Verdict that `group` gets instead of being played:
 
     - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
-      2 players still online after waiting 2 s: watcher, control", and the same for the
-      Candidate after a "; " if it had too.
-    - Only the Candidate does: `mismatch` (a Candidate failure is never `error`, audit H3),
-      led by a `failed` Divergence that says who is still online.
+      2 players still online after waiting 2 s: watcher, control" (or "the Reference
+      failed: the wait for no player online failed: RuntimeError: ..."), and the same
+      for the Candidate after a "; " if it did too.
+    - Only the Candidate does, with one of `CANDIDATE_FAILURES`: `mismatch` (a Candidate
+      failure is never `error`, audit H3), led by a `failed` Divergence that says who is
+      still online, or what the wait raised.
+    - Only the Candidate's wait raised anything else, a harness bug: `error`, "the harness
+      failed on the Candidate: the wait for no player online failed: ...", as in `judge`.
+
+    Raises:
+        BaseException: A wait raised one that is not an Exception (a cancellation from
+            inside it, KeyboardInterrupt); raised once both waits are done.
     """
-    reference, candidate = await asyncio.gather(*(_left(endpoint) for endpoint in endpoints))
+    waits = (
+        until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S) for endpoint in endpoints
+    )
+    results = await asyncio.gather(*waits, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException) and not isinstance(result, Exception):
+            raise result
+    reference, candidate = (result if isinstance(result, Exception) else None for result in results)
     if reference is not None:
-        detail = f"the Reference had {reference}"
+        detail = f"the Reference {_unsettled_by(reference)}"
         if candidate is not None:
-            detail += f"; the Candidate had {candidate}"
+            detail += f"; the Candidate {_unsettled_by(candidate)}"
         return _error(group, detail)
-    if candidate is not None:
-        return Verdict(
-            group_id=group.id,
-            outcome=Outcome.MISMATCH,
-            divergences=(_failed(bot="", what=str(candidate)),),
-            detail=f"the Candidate failed: {candidate}",
-        )
-    return None
+    if candidate is None:
+        return None
+    if not isinstance(candidate, CANDIDATE_FAILURES):
+        return _error(group, f"the harness failed on the Candidate: {_left_what(candidate)}")
+    return Verdict(
+        group_id=group.id,
+        outcome=Outcome.MISMATCH,
+        divergences=(_failed(bot="", what=_left_what(candidate)),),
+        detail=f"the Candidate failed: {_left_what(candidate)}",
+    )
 
 
-async def _left(endpoint: Endpoint) -> PlayersStillOnline | None:
-    """Wait `SETTLE_TIMEOUT_S` for no player online at `endpoint`; who was left, if any."""
-    try:
-        await until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
-    except PlayersStillOnline as players:
-        return players
-    return None
+def _left_what(left: Exception) -> str:
+    """What a side's wait for no player online raised, as a sentence."""
+    if isinstance(left, PlayersStillOnline):
+        return str(left)
+    return f"the wait for no player online failed: {_describe(left, SETTLE_TIMEOUT_S)}"
+
+
+def _unsettled_by(left: Exception) -> str:
+    """What a side did, after its name, in an `error` Verdict: "had ..." or "failed: ..."."""
+    if isinstance(left, PlayersStillOnline):
+        return f"had {left}"
+    return f"failed: {_left_what(left)}"
 
 
 async def _attempt(group: Group, endpoint: Endpoint, *, server: str) -> Transcript | GroupError:

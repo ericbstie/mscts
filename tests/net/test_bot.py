@@ -142,6 +142,29 @@ def test_status_raises_unless_the_answer_is_a_json_object(
     with_bot(codec, transcript, status_server(json_response, []), raises)
 
 
+REFUSED_BY_JSON_LOADS = {
+    "a 5000-digit integer (ValueError)": "1" * 5000,
+    "16000 nested brackets (RecursionError)": "[" * 16000 + "]" * 16000,
+}
+"""Status JSON that `json.loads` refuses with no JSONDecodeError (audit H3).
+
+Both fit the status string's 32,767 characters.
+"""
+
+
+@pytest.mark.parametrize(
+    "json_response", REFUSED_BY_JSON_LOADS.values(), ids=REFUSED_BY_JSON_LOADS.keys()
+)
+def test_status_raises_protocol_error_on_json_that_json_loads_refuses_otherwise(
+    codec: Codec, transcript: Transcript, json_response: str
+) -> None:
+    async def raises(bot: Bot) -> None:
+        with pytest.raises(ProtocolError, match="status_response json_response is not JSON"):
+            await bot.status()
+
+    with_bot(codec, transcript, status_server(json_response, []), raises)
+
+
 def test_status_times_out_when_the_server_does_not_answer(
     codec: Codec, transcript: Transcript
 ) -> None:

@@ -546,7 +546,7 @@ def _json_object(packet: Packet, text: object) -> dict[str, object]:
         raise ProtocolError(msg)
     try:
         value: object = json.loads(text)
-    except json.JSONDecodeError as exc:
+    except (ValueError, RecursionError) as exc:  # a JSONDecodeError is a ValueError (audit H3)
         msg = f"{where} is not JSON: {exc}"
         raise ProtocolError(msg) from exc
     if not isinstance(value, dict):
