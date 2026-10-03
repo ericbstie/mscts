@@ -34,11 +34,31 @@ Evidence behind #165: a join-until window (`observe(until=
   on a clock) measured it live: about every 30 s, the world frozen too,
   on vanilla only. Pumpkin sent none.
 
+## Live — the join-until window
+
+**Verified** in this container: the join-until probe Group of
+`tests/reference/test_observe_until_reference.py`, played 60 times on one
+vanilla 26.3 Instance (a scratch probe, not committed), recording every
+`player_info_update` alice got.
+
+- Each window lasted 134.5 to 285.7 ms (median 139.7 ms) and held two
+  `player_info_update` packets with the actions byte `0xff` (every action,
+  `createPlayerInitializing`): one of 2 bytes, with no entry, and one of
+  32 bytes, alice's own.
+- In play 54, the window also held a third, 19 bytes long with the actions
+  byte `0x10`: one byte of actions, a count of 1, alice's UUID and a
+  one-byte latency. It arrived 155.8 ms after the window opened, just
+  before it closed. No other play saw one.
+- One broadcast every 601 ticks (about 30 s) against a window of about
+  0.15 s gives roughly 1 window in 200 holding one, so a 20-play run of
+  the reference test on two Instances (40 windows) catches one about 1 time
+  in 5. That fits #159's run (play 11 of 20) and this one (1 in 60).
+
 ## What this means
 
 The latency broadcast is a heartbeat packet: it arrives on the server's
 clock whatever a Group does, and its first byte tells it apart from every
 `player_info_update` a Group can cause (a join, a game mode or a listing
-change), all of which set other actions. It can join the heartbeat packets by its
-name and first byte, so a `player_info_update` with any other actions is
-still compared. No schema is needed for one byte.
+change), all of which set other actions. It joins the heartbeat packets by its
+name and first byte (`compare.HEARTBEAT_PAYLOADS`), so a
+`player_info_update` with any other actions is still compared. No schema is needed for one byte.
