@@ -3,6 +3,7 @@ import hashlib
 import http.client
 import json
 from pathlib import Path
+from typing import override
 
 import pytest
 from support.pumpkin import ASSET_URL, COMMIT, FakeGitHub, fake_pumpkin, refs
@@ -10,14 +11,16 @@ from support.pumpkin import ASSET_URL, COMMIT, FakeGitHub, fake_pumpkin, refs
 from mscts.adapters.base import (
     Build,
     Download,
+    Fetch,
     Installation,
     ProvisionError,
+    Release,
     Source,
     UnavailableError,
 )
 from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL, PumpkinAdapter
 from mscts.install import install_from, install_release, installed
-from mscts.target import TARGET
+from mscts.target import TARGET, Target
 
 NIGHTLY = fake_pumpkin()
 SHA256 = hashlib.sha256(NIGHTLY).hexdigest()
@@ -420,3 +423,20 @@ def test_a_commit_in_capitals_names_the_same_build(tmp_path: Path) -> None:
     assert done.changed
     again = install_release(ADAPTER, TARGET, tmp_path, COMMIT[:9].upper(), FakeGitHub())
     assert not again.changed
+
+
+class _ChecksummedPumpkin(PumpkinAdapter):
+    """A Pumpkin whose publisher lists a sha1, and whose label names another commit."""
+
+    @override
+    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
+        del target, version, fetch
+        build = Build(version="nightly", commit=OTHER)
+        return Release(build=build, url=NIGHTLY_URL, sha1="0" * 40, size=1)
+
+
+def test_a_checksum_mismatch_never_names_the_label_s_commit(tmp_path: Path) -> None:
+    with pytest.raises(ProvisionError) as raised:
+        install_release(_ChecksummedPumpkin(), TARGET, tmp_path, None, FakeGitHub())
+    assert str(raised.value).startswith(f"{NIGHTLY_URL} is not pumpkin nightly: sha1 "), raised
+    assert "8f3c2a1" not in str(raised.value)

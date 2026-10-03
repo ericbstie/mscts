@@ -203,7 +203,8 @@ def _published(adapter: Adapter, release: Release, download: Download) -> None:
     ):
         return
     msg = (
-        f"{release.url} is not {adapter.name} {release.build}: sha1 {sha1}, {len(body)} bytes, "
+        f"{release.url} is not {adapter.name} {release.build.version}: sha1 {sha1}, {len(body)} "
+        "bytes, "
         f"where its publisher lists sha1 {release.sha1}, {release.size} bytes.\n"
         f"To run that file anyway, save it and run "
         f"`{install_command(adapter.name, path='<file>')}`"
