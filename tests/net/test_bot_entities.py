@@ -4,14 +4,20 @@ The rules are the 26.3 client's (javap, docs/research/2026-10-03-bot-entities.md
 is fed the decoded fields of recorded packets, as the Bot's reader feeds it.
 """
 
+import dataclasses
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 
 import pytest
 
+from mscts.bot import Bot
+from mscts.codec.packets import Packet
 from mscts.codec.registry_names import registry_names
 from mscts.entities import Entity, EntityTracker
 from mscts.target import TARGET
+from mscts.transcript import Transcript
+from tests.net.fakes import Handler, JoinScript, Peer, answer_each_tick, join_server, with_bot
+from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN
 
 TYPES = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
 ZOMBIE = TYPES.index("minecraft:zombie")
@@ -30,7 +36,7 @@ def added(entity_id: int, kind: int, x: float, y: float, z: float) -> tuple[str,
             "x": x,
             "y": y,
             "z": z,
-            "velocity": {"x": 0.0, "y": 0.0, "z": 0.0},
+            "velocity": {"scale": 0, "x": 0, "y": 0, "z": 0},
             "pitch": 0,
             "yaw": 0,
             "head_yaw": 0,
@@ -249,3 +255,73 @@ def test_a_type_id_outside_the_registry_is_named_by_its_number() -> None:
     tracker = tracked(added(41, len(TYPES), 1.5, -60.0, 2.5))
 
     assert tracker.entities[41].type == f"#{len(TYPES)}"
+
+
+def entity_server(
+    seen: list[Packet], packets: Sequence[tuple[str, Mapping[str, object]]]
+) -> Handler:
+    """Join like vanilla, send `packets` after the Bot's first tick, and answer `sync`."""
+
+    async def then(peer: Peer) -> None:
+        requests = 0
+        sent = False
+        async for packet in peer.packets():
+            seen.append(packet)
+            if packet.name == "minecraft:client_command":
+                requests += 1
+                await answer_each_tick(peer, requests)
+            elif not sent and packet.name == "minecraft:client_tick_end":
+                sent = True
+                for name, fields in packets:
+                    await peer.send(name, **fields)
+
+    def login_frame(peer: Peer) -> bytes:
+        return peer.frame("minecraft:login", **LOGIN)
+
+    return join_server(seen, JoinScript(after_batch=login_frame, then=then))
+
+
+def known(*packets: tuple[str, Mapping[str, object]]) -> dict[int, Entity]:
+    """What a joined Bot's `entities` holds once `packets` have come after its first tick."""
+    found: dict[int, Entity] = {}
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        await bot.tick()
+        await bot.sync()
+        found.update(bot.entities)
+
+    transcript = Transcript(group_id="test/entities", server="fake")
+    with_bot(CODEC, transcript, entity_server([], packets), use)
+    return found
+
+
+ADDED = added(41, ZOMBIE, 1.5, -60.0, 2.5)
+ZOMBIE_41 = Entity(id=41, uuid=UUID, type="minecraft:zombie", x=1.5, y=-60.0, z=2.5, data={})
+
+
+def test_a_bot_tracks_the_entities_its_server_tells_it_about() -> None:
+    assert known(ADDED, moved(41, 4096, 0, 0)) == {41: dataclasses.replace(ZOMBIE_41, x=2.5)}
+
+
+@pytest.mark.parametrize(
+    ("fresh", "kept"),
+    [
+        (("minecraft:login", LOGIN), {}),
+        (
+            (
+                "minecraft:respawn",
+                {**RESPAWN, "dimension_name": "minecraft:the_end", "data_kept": 0},
+            ),
+            {},
+        ),
+        (("minecraft:respawn", {**RESPAWN, "data_kept": 0}), {41: ZOMBIE_41}),
+    ],
+    ids=["login", "respawn-elsewhere", "respawn-here"],
+)
+def test_a_new_level_forgets_the_entities(
+    fresh: tuple[str, Mapping[str, object]], kept: dict[int, Entity]
+) -> None:
+    # The entities belong to the ClientLevel: a new one comes with each play login, and with
+    # a respawn into another dimension (ClientPacketListener.handleRespawn).
+    assert known(ADDED, fresh) == kept

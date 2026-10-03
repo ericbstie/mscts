@@ -17,6 +17,7 @@ from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.schemas.configuration import CLIENT_INFORMATION
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
+from mscts.entities import Entities, EntityTracker
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
 from mscts.transcript import Mark, Transcript
@@ -398,7 +399,9 @@ class Replies:
     (`data_kept` bit 1) keeps the keys and sprinting last reported. A login, or a respawn into
     another dimension, starts the block-change sequence again; a login also the held slots.
     A respawn selects slot 0 and keeps the slot last sent, so the next tick sends 0 if that
-    differs. Play `set_held_slot` selects a hotbar slot.
+    differs. Play `set_held_slot` selects a hotbar slot. Every play packet goes to `tracker`,
+    which follows the entity packets; a login, or a respawn into another dimension, brings a
+    new level and so a new tracker.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
@@ -407,6 +410,7 @@ class Replies:
         entity_id: The player's entity id from play's `login`, or None before it arrives.
         reported: What the client last reported of its player, which a tick compares with.
         interaction: The block-change sequence and the hotbar slots selected and last sent.
+        tracker: The entities the server has told the Bot about, in this level.
     """
 
     def __init__(self) -> None:
@@ -416,12 +420,14 @@ class Replies:
         self.entity_id: int | None = None
         self.reported = _Reported()
         self.interaction = _Interaction()
+        self.tracker = EntityTracker()
         self._dimension: str | None = None
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
         self.saw_disconnect |= _ends_the_session(packet)
         fields = packet.fields or {}
+        self._track(packet, fields)
         match packet.state, packet.name:
             case State.LOGIN, "minecraft:login_finished":
                 # The ack moves the outbound state on, so the brand and the client
@@ -470,6 +476,11 @@ class Replies:
             case _:
                 pass
 
+    def _track(self, packet: Packet, fields: Mapping[str, object]) -> None:
+        """Give a play packet to `tracker`, which follows the entity packets among them."""
+        if packet.state is State.PLAY:
+            self.tracker.follow(packet.name, fields)
+
     def _new_player(self, name: str, fields: Mapping[str, object]) -> None:
         """Start again with the new player a login or a respawn brings (26.3 javap).
 
@@ -486,6 +497,7 @@ class Replies:
             self.entity_id = _field(fields, "entity_id", int)
             self.reported = _Reported()
             self.interaction = _Interaction()
+            self.tracker = EntityTracker()
         else:
             old = self.reported
             kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
@@ -495,6 +507,7 @@ class Replies:
             self.interaction.selected_slot = 0
             if dimension != self._dimension:
                 self.interaction.sequence = 0
+                self.tracker = EntityTracker()
         self._dimension = dimension
 
     def _select_slot(self, slot: int) -> None:
@@ -598,6 +611,16 @@ class Bot:
         """Where the player is and faces: the last teleport's pose, or where it moved since."""
         pose = self._replies.pose
         return Position(x=pose.x, y=pose.y, z=pose.z, yaw=pose.yaw, pitch=pose.pitch)
+
+    @property
+    def entities(self) -> Entities:
+        """The entities the server has told the Bot about, by entity id, as the client tracks them.
+
+        Each is where the server last put it: the Bot does not move an entity between packets as
+        the client does. A login, or a respawn into another dimension, forgets them all
+        (docs/research/2026-10-03-bot-entities.md).
+        """
+        return self._replies.tracker.entities
 
     async def status(self) -> Mapping[str, object]:
         """Ask for the server's status, and return the parsed status JSON.
