@@ -48,10 +48,23 @@ def test_fewer_than_7_characters_of_a_commit_are_too_short_to_name_one(version: 
 
 def test_an_annotated_tag_names_the_commit_it_points_to() -> None:
     annotated = (
+        b"001e# service=git-upload-pack\n0000"
         b"003f" + b"f" * 40 + b" refs/tags/nightly\n"
         b"0042" + COMMIT.encode() + b" refs/tags/nightly^{}\n0000"
     )
     assert PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=annotated)) == NIGHTLY
+
+
+def test_a_page_that_is_no_list_of_git_refs_is_not_blamed_on_pumpkin() -> None:
+    said = (
+        f"{TAGS_URL} did not answer with GitHub's list of git refs (is a proxy in the way?), "
+        "so the nightly's commit is unknown.\n"
+        "Build it yourself and install it with:\n"
+        "  uv run mscts adapter install pumpkin --from <file>"
+    )
+    with pytest.raises(ProvisionError) as raised:
+        PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=b"<html>Access denied</html>"))
+    assert str(raised.value) == said
 
 
 def test_no_nightly_tag_is_an_error_naming_the_from_command() -> None:

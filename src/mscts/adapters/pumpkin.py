@@ -535,11 +535,18 @@ _YOURSELF = (
     "Build it yourself and install it with:\n  uv run mscts adapter install pumpkin --from <file>"
 )
 _SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}")  # too few characters to name a commit
+_ADVERTISEMENT = b"001e# service=git-upload-pack\n"  # how every ref advertisement starts
 _TAG = re.compile(rb"([0-9a-f]{40}) (refs/tags/nightly(?:\^\{\})?)\n")
 
 
 def _nightly_commit(refs: bytes) -> str:
     """The commit the `nightly` tag names in a ref advertisement (peeled, if annotated)."""
+    if not refs.startswith(_ADVERTISEMENT):  # a proxy's or an error page, not GitHub's answer
+        msg = (
+            f"{TAGS_URL} did not answer with GitHub's list of git refs (is a proxy in the way?), "
+            f"so the nightly's commit is unknown.\n{_YOURSELF}"
+        )
+        raise ProvisionError(msg)
     tags = {bytes(match[2]): str(match[1].decode()) for match in _TAG.finditer(refs)}
     commit = tags.get(b"refs/tags/nightly^{}", tags.get(b"refs/tags/nightly"))
     if commit is None:
