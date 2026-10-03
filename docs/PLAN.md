@@ -1113,7 +1113,10 @@ def compare(reference: Transcript, candidate: Transcript,
     # first, then its network traffic ones.
     # A packet's value (for missing / unexpected) is its fields, or its payload as hex.
     # Payload hex shows at most PAYLOAD_SHOWN_BYTES (256) bytes, then `(N more bytes)`
-    # (#151); every byte is still compared.
+    # (#151); every byte is still compared. Those are the first bytes, except in a `field`
+    # Divergence of two payloads both longer than that: both then start PAYLOAD_LEAD_BYTES
+    # (16) before the first byte that differs, down to a multiple of 16, after
+    # `(N bytes before)`.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
 
@@ -1765,8 +1768,11 @@ proves it necessary:
    one). A value outside the model is a harness bug, so it raises
    TypeError rather than becoming a Divergence. If either packet has no
    fields, the pair is compared by payload, byte for byte; a Divergence
-   shows each payload's first 256 bytes as hex and counts the rest
-   (`… (N more bytes)`, #151). `compare` never mutates its
+   shows 256 bytes of each payload as hex and counts the rest
+   (`… (N more bytes)`, #151): the first 256, or, if both payloads are
+   longer, the same 256 of each from 16 bytes before the first that
+   differs, down to a multiple of 16 (`(N bytes before) …`), so the
+   difference is in view. `compare` never mutates its
    inputs: it diffs copies.
 5. **Test cases** (#8). Every field the Comparison compares is a test
    case, named from vanilla's own packet id and the field's path

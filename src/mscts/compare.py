@@ -485,7 +485,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     key is a JSON string in brackets (`m["a.b"]`). If either Packet has no fields, the
     two are compared by payload, with path None and hex values. A `missing` or
     `unexpected` Packet's value is its normalized fields, or its payload as hex. Payload
-    hex is cut to `PAYLOAD_SHOWN_BYTES` and a count of the rest (`_shown_payload`).
+    hex is cut to `PAYLOAD_SHOWN_BYTES` and a count of the rest (`_shown_payload`); two
+    long payloads that differ show the bytes around the first difference
+    (`_shown_payloads`).
 
     Raises:
         ValueError: The Transcripts are of different Groups.
@@ -2224,15 +2226,47 @@ itself still compares every byte.
 """
 
 
-def _shown_payload(payload: bytes) -> str:
-    """`payload` as a Divergence shows it: hex, cut to `PAYLOAD_SHOWN_BYTES` and a count.
+PAYLOAD_LEAD_BYTES = 16
+"""How many bytes before the first difference two long payloads' shown bytes start, at least.
 
-    For example `0001…ff (257 more bytes)`.
+The start is also a multiple of it, so the bytes shown line up with offsets a reader counts.
+"""
+
+
+def _shown_payload(payload: bytes, start: int = 0) -> str:
+    """`payload` as a Divergence shows it: hex, cut to `PAYLOAD_SHOWN_BYTES` and counts.
+
+    The bytes shown begin at `start`. For example `0001…ff (257 more bytes)`, or
+    `(576 bytes before) 0000…00 (168 more bytes)`.
     """
     if len(payload) <= PAYLOAD_SHOWN_BYTES:
         return payload.hex()
-    rest = len(payload) - PAYLOAD_SHOWN_BYTES
-    return f"{payload[:PAYLOAD_SHOWN_BYTES].hex()} ({rest} more bytes)"
+    end = start + PAYLOAD_SHOWN_BYTES
+    shown = payload[start:end].hex()
+    before = f"({start} bytes before) " if start else ""
+    rest = len(payload) - end
+    return f"{before}{shown} ({rest} more bytes)" if rest > 0 else f"{before}{shown}"
+
+
+def _shown_payloads(reference: bytes, candidate: bytes) -> tuple[str, str]:
+    """Two differing payloads as a `field` Divergence shows them (`_shown_payload`).
+
+    If both are longer than `PAYLOAD_SHOWN_BYTES`, both show the same bytes, from
+    `PAYLOAD_LEAD_BYTES` before the first that differs, down to a multiple of it, so the
+    difference is in view; else each shows its first bytes.
+    """
+    if min(len(reference), len(candidate)) <= PAYLOAD_SHOWN_BYTES:
+        return _shown_payload(reference), _shown_payload(candidate)
+    first = next(
+        (
+            index
+            for index, pair in enumerate(zip(reference, candidate, strict=False))
+            if pair[0] != pair[1]
+        ),
+        min(len(reference), len(candidate)),
+    )
+    start = max(0, first - PAYLOAD_LEAD_BYTES) // PAYLOAD_LEAD_BYTES * PAYLOAD_LEAD_BYTES
+    return _shown_payload(reference, start), _shown_payload(candidate, start)
 
 
 def _diff_matched(
@@ -2249,10 +2283,7 @@ def _diff_matched(
         whole = _test_case(state, name, ())
         compared.add(whole)
         if reference.packet.payload != candidate.packet.payload:
-            payloads = (
-                _shown_payload(reference.packet.payload),
-                _shown_payload(candidate.packet.payload),
-            )
+            payloads = _shown_payloads(reference.packet.payload, candidate.packet.payload)
             differences.append((None, whole, *payloads))
     else:
         # Name each shape once: a list of 10,000 entries is 10,000 pairs but one name.

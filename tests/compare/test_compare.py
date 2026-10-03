@@ -80,15 +80,92 @@ def test_a_differing_payload_is_a_field_divergence_with_hex_values() -> None:
 def test_a_long_payload_shows_its_first_256_bytes_and_counts_the_rest() -> None:
     # One refused chunk is tens of kilobytes; its whole hex would swamp a Report.
     long = bytes(range(256)) * 2
-    reference = transcript(("alice", packet("test:b", long + b"\x01")))
-    candidate = transcript(("alice", packet("test:b", long + b"\x02\x03")))
-    shown = f"{bytes(range(256)).hex()} (257 more bytes)"
+    reference = transcript(("alice", packet("test:b", b"\x01" + long)))
+    candidate = transcript(("alice", packet("test:b", b"\x02" + long + b"\x03")))
 
     (difference,) = compare(reference, candidate, []).divergences
 
     assert (difference.reference, difference.candidate) == (
-        shown,
-        f"{bytes(range(256)).hex()} (258 more bytes)",
+        f"01{bytes(range(255)).hex()} (257 more bytes)",
+        f"02{bytes(range(255)).hex()} (258 more bytes)",
+    )
+
+
+def test_long_payloads_that_differ_late_show_bytes_from_just_before_the_difference() -> None:
+    # Their first 256 bytes are the same; shown, they would read as equal.
+    reference = bytearray(1000)
+    candidate = bytearray(1000)
+    reference[600], candidate[600] = 1, 2
+
+    (difference,) = compare(
+        transcript(("alice", packet("test:b", bytes(reference)))),
+        transcript(("alice", packet("test:b", bytes(candidate)))),
+        [],
+    ).divergences
+
+    # 16 bytes before the difference, 584, down to a multiple of 16: from byte 576 to 832.
+    assert (difference.reference, difference.candidate) == (
+        f"(576 bytes before) {reference[576:832].hex()} (168 more bytes)",
+        f"(576 bytes before) {candidate[576:832].hex()} (168 more bytes)",
+    )
+
+
+def test_a_long_payload_that_goes_on_past_the_other_shows_where_the_other_ends() -> None:
+    reference = bytes(600)
+    candidate = bytes(600) + b"\x01"
+
+    (difference,) = compare(
+        transcript(("alice", packet("test:b", reference))),
+        transcript(("alice", packet("test:b", candidate))),
+        [],
+    ).divergences
+
+    assert (difference.reference, difference.candidate) == (
+        f"(576 bytes before) {bytes(24).hex()}",
+        f"(576 bytes before) {candidate[576:].hex()}",
+    )
+
+
+def test_shown_bytes_that_reach_the_end_count_nothing_after_them() -> None:
+    reference = bytes(512)
+    candidate = bytes(272) + b"\x01" + bytes(239)
+
+    (difference,) = compare(
+        transcript(("alice", packet("test:b", reference))),
+        transcript(("alice", packet("test:b", candidate))),
+        [],
+    ).divergences
+
+    assert difference.candidate == f"(256 bytes before) {candidate[256:].hex()}"
+
+
+def test_a_difference_near_the_start_of_long_payloads_shows_their_first_256_bytes() -> None:
+    reference = bytes(500)
+    candidate = bytes(10) + b"\x01" + bytes(489)
+
+    (difference,) = compare(
+        transcript(("alice", packet("test:b", reference))),
+        transcript(("alice", packet("test:b", candidate))),
+        [],
+    ).divergences
+
+    assert difference.candidate == f"{candidate[:256].hex()} (244 more bytes)"
+
+
+def test_a_long_payload_against_a_short_one_shows_each_from_its_start() -> None:
+    # The short one is shown whole, so the difference is in view already.
+    reference = bytes(600)
+    candidate = bytes(200) + b"\x01"
+
+    (difference,) = compare(
+        transcript(("alice", packet("test:b", reference))),
+        transcript(("alice", packet("test:b", candidate))),
+        [],
+    ).divergences
+
+    assert (difference.reference, difference.candidate) == (
+        f"{bytes(256).hex()} (344 more bytes)",
+        candidate.hex(),
     )
 
 
