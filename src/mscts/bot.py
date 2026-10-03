@@ -48,6 +48,7 @@ _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
 """Teleport Flags bits (wiki Data types; vanilla's `Relative`): which parts add to the pose."""
 
 _PITCH_LIMIT = 90.0
+_FULL_TURN = 360.0
 
 TICK_GAP_S = 0.005
 """How long `sync` waits after its first answer arrived before it asks again.
@@ -147,12 +148,14 @@ class _Pose:
         """Face `yaw` and `pitch`, each rounded to binary32, as the client's floats hold them.
 
         As in `Entity.setYRot` and `setXRot`, a rotation that is not finite leaves the old
-        one, and pitch is held to -90..90.
+        one, and pitch is taken modulo 360 (with the sign of the dividend), then held to -90..90.
         """
         yaw, pitch = _binary32(yaw), _binary32(pitch)
         if math.isfinite(yaw):
             self.yaw = yaw
         if math.isfinite(pitch):
+            # Java's float remainder: exact, with the dividend's sign, as math.fmod.
+            pitch = math.fmod(pitch, _FULL_TURN)
             self.pitch = max(-_PITCH_LIMIT, min(pitch, _PITCH_LIMIT))
 
 

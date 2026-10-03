@@ -297,6 +297,20 @@ def test_look_turns_as_the_client_does() -> None:
     ]
 
 
+def test_look_takes_pitch_modulo_360_before_holding_it() -> None:
+    # Entity.setXRot: clamp(xRot % 360, -90, 90), with Java's remainder (the sign of the
+    # dividend), so 400 is 40 and -370 is -10 (26.3 javap).
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        await bot.look(0.0, 400.0)
+        await bot.look(0.0, -370.0)
+
+    assert play(script)[1:] == [
+        [("minecraft:move_player_rot", {"yaw": 0.0, "pitch": 40.0, "flags": 1}), TICK_END],
+        [("minecraft:move_player_rot", {"yaw": 0.0, "pitch": -10.0, "flags": 1}), TICK_END],
+    ]
+
+
 def test_sneak_sends_the_input_with_the_sneak_key_held_then_released() -> None:
     async def script(bot: Bot) -> None:
         await bot.tick()

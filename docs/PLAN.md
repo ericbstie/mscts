@@ -587,8 +587,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # last reported starts as a fresh LocalPlayer's (pose 0, off the ground, no keys, not
     # sprinting); a correction (player_position) moves the pose but not what was reported,
     # so the next tick reports the corrected position. A Bot starts on the ground; look
-    # rounds to binary32, holds pitch to -90..90 and ignores a non-finite value (Entity
-    # setYRot / setXRot). jump holds the key for its tick only; the next call releases it.
+    # rounds to binary32, takes pitch % 360 then holds it to -90..90, and ignores a
+    # non-finite value (Entity setYRot / setXRot). jump holds the key for its tick only; the
+    # next call releases it.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
