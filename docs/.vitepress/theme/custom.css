@@ -329,3 +329,14 @@
     font-size: 11px;
   }
 }
+
+/* Text links on the home page: green like the buttons, and underlined. */
+.ms-home a:not(.ms-button) {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ms-home a:not(.ms-button):hover {
+  color: var(--vp-c-brand-2);
+}
