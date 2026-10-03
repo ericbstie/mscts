@@ -1,5 +1,6 @@
 import datetime
 import hashlib
+import http.client
 import json
 from pathlib import Path
 
@@ -142,6 +143,20 @@ def test_a_failed_fetch_leaves_nothing_behind_and_names_the_fix(
 
     with pytest.raises(ProvisionError, match=r"connection reset(.|\n)*--from <file>"):
         install_release(ADAPTER, TARGET, tmp_path, None, flaky)
+    assert not root_of(tmp_path).exists()
+
+
+def test_a_download_cut_off_midway_names_the_fix(tmp_path: Path) -> None:
+    github = FakeGitHub()
+
+    def cut_off(url: str) -> Download:
+        if url == NIGHTLY_URL:
+            partial = b"partial"
+            raise http.client.IncompleteRead(partial, 100)
+        return github(url)
+
+    with pytest.raises(ProvisionError, match=r"IncompleteRead(.|\n)*--from <file>"):
+        install_release(ADAPTER, TARGET, tmp_path, None, cut_off)
     assert not root_of(tmp_path).exists()
 
 

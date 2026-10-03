@@ -9,6 +9,7 @@ refreshed: to change it, delete it and install again.
 import dataclasses
 import datetime
 import hashlib
+import http.client
 import json
 import shutil
 import tempfile
@@ -205,7 +206,7 @@ def install_release(
     try:
         release = adapter.release(target, version, fetch)
         download = fetch(release.url)
-    except OSError as error:  # urllib's URLError and TLS failures are OSErrors
+    except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
         msg = (
             f"downloading failed: {error}\n"
             f"Download the build another way (e.g. curl), then run {yourself}"

@@ -769,7 +769,8 @@ def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetc
     # a no-op when `version` is None or names the installed Build (its version, or 7+ first
     # characters of its commit), saying "For a newer build, delete <root> and install again.";
     # another version → ProvisionError naming the delete + `mscts adapter install <a>@<v>`,
-    # nothing fetched. A failed fetch (OSError) → ProvisionError naming the --from command.
+    # nothing fetched. A failed fetch (OSError, or an http.client.HTTPException such as a body
+    # cut off midway) → ProvisionError naming the --from command.
 def install_from(adapter, target, cache_dir, path: Path) -> Installed: ...
     # records the file's sha256, path and the Build adapter.check reads from it
 def install_command(adapter: str, *, version=None, path=None) -> str: ...  # the exact command line
