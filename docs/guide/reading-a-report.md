@@ -14,9 +14,11 @@ Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 ✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
 ✓ status/basic/status_response.favicon Server list icon (network traffic only)
 ...
-19 passed, 0 failed
-Score: 100% (19 of 19 test cases pass)
-Took 26.1 s
+✗ status/with-player/login_finished.profile.uuid Player UUID at login
+...
+36 passed, 10 failed
+Score: 78.2% (36 of 46 test cases pass)
+Took 84.3 s
 ```
 
 The first line names the Candidate's Adapter. The second names the exact
@@ -163,7 +165,7 @@ Add `-v` or `--verbose` to see both values below each test case that
 differs, and the installed versions at the top:
 
 ```sh
-uv run mscts run --candidate pumpkin --verbose
+uv run mscts run --candidate pumpkin --group 'status/[bp]*' --verbose
 ```
 
 ```
@@ -226,7 +228,7 @@ inputs without durations say `not recorded`.
 `report.md` is the printed Report as Markdown. Its first line is a
 heading, and test case names and values are code. Like the printed
 Report, it has the header, values and Group times only with `--verbose`.
-The default Run against Pumpkin wrote:
+A Run of `status/basic` and `status/ping` against Pumpkin wrote:
 
 ```md
 # Running tests against pumpkin

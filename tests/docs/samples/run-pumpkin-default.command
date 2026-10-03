@@ -1,5 +1,6 @@
-mise exec -- uv run mscts run --candidate pumpkin
-Captured 2026-10-03 on issue-32-status-with-players, cloud Linux container, Java 25.
-The default Groups now include status/with-player (#32). The run was made with --out so the
-Report was kept; this is its stdout without the `Report written to` line. Its report.json is
-not stored: with the join's Divergences it is about 2.3 million lines.
+mise exec -- uv run mscts run --candidate pumpkin --out reports/
+Captured 2026-10-03 on issue-32-status-with-players rebased onto main 2e84ba8, cloud Linux
+container, Java 25. The default Groups include status/with-player (#32).
+This is the stdout of the run without its `Report written to` line, rendered again from
+the report.json it wrote. That file is not stored: with the join's Divergences it is
+88 MB.

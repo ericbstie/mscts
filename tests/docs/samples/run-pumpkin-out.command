@@ -4,3 +4,5 @@ vanilla 26.3 and pumpkin nightly 4426d11 installed by `mscts adapter install`; s
 The .json and .md are the report.json and report.md this run wrote.
 Text re-rendered 2026-10-03 from the same report.json for one line per test case (#101).
 report.json rewritten 2026-10-03 through report_json.dumps, adding lines and totals (#101).
+Played the Groups the default held then, status/basic and status/ping. #32 added
+status/with-player to the default; `--group 'status/[bp]*'` plays the same two.

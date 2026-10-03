@@ -77,8 +77,8 @@ uv run mscts run --candidate pumpkin
 mscts starts both servers, plays every `status/*` Group five times against
 each, stops them and prints the Report. One of those Groups,
 `status/with-player`, joins a player and waits 6 seconds before it asks for
-the status. It adds about 14 seconds to each repetition. Progress goes to stderr and the
-Report to stdout, so `> report.txt` captures only the Report.
+the status. It adds about 14 seconds to each repetition. Progress goes to stderr and
+the Report to stdout, so `> report.txt` captures only the Report.
 
 ```
 Running tests against pumpkin
@@ -88,15 +88,26 @@ Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 ✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
 ✓ status/basic/status_response.favicon Server list icon (network traffic only)
 ...
-19 passed, 0 failed
-Score: 100% (19 of 19 test cases pass)
-Took 26.1 s
+✗ status/with-player/login_finished.profile.uuid Player UUID at login
+...
+✗ status/with-player/status_response.players.sample[].id Server list player UUID
+✓ status/with-player/status_response.players.sample[].name
+...
+36 passed, 10 failed
+Score: 78.2% (36 of 46 test cases pass)
+Took 84.3 s
 ```
 
 Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
 sends four status values in a different form from vanilla. The vanilla
 client decodes each pair to the same thing, so these test cases pass, marked
 "network traffic only".
+
+The ten ✗ lines are all from `status/with-player`, which joins a player. Two
+are the player's UUID, which Pumpkin makes differently from vanilla: at
+login, and in the server list sample. The other eight, the plugin message,
+registry and tag lines, are differences in what Pumpkin sends while the
+player joins.
 [Reading a Report](/guide/reading-a-report) explains the lines, the totals and the score.
 
 ## Next
