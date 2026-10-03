@@ -48,13 +48,18 @@ class GroupError(Exception):
     Attributes:
         transcript: Everything recorded until it raised.
         bot: The name of the Bot it came out of, or "" if none raised it.
+        left_frozen: The Group froze the world and it could not be unfrozen
+            (`GroupContext.left_frozen`): the Instance is unusable (#228).
     """
 
-    def __init__(self, transcript: Transcript, description: str, *, bot: str = "") -> None:
+    def __init__(
+        self, transcript: Transcript, description: str, *, bot: str = "", left_frozen: bool = False
+    ) -> None:
         """Record that the Group of `transcript` failed, as `description` says."""
         super().__init__(description)
         self.transcript = transcript
         self.bot = bot
+        self.left_frozen = left_frozen
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -218,7 +223,9 @@ async def run_group(
         await context.end()
     except Exception as exc:
         description = _describe(exc, timeout_s)
-        raise GroupError(transcript, description, bot=context.raised_by(exc)) from exc
+        bot = context.raised_by(exc)
+        await context.close()  # first: it tries to unfreeze, and says if it could not
+        raise GroupError(transcript, description, bot=bot, left_frozen=context.left_frozen) from exc
     finally:
         await context.close()
     return transcript
@@ -468,6 +475,7 @@ class _Instances:
         self._pairs: dict[ServerSpec, tuple[Endpoint, Endpoint]] = {}
         self._startup: tuple[list[Measurement], list[Measurement]] = ([], [])
         self._versions: list[str | None] = [None, None]
+        self._unusable: dict[Endpoint, str] = {}  # why no Group may play there any more
 
     async def start(self, group: Group) -> None:
         """Make sure the Instances `group` plays against are up."""
@@ -483,6 +491,9 @@ class _Instances:
         Candidate did), see `_unsettled`.
         """
         endpoints = await self._pair(group.spec)
+        unusable = self._unusable_detail(endpoints)
+        if unusable is not None:
+            return _Play(_error(group, unusable))
         unsettled = await _unsettled(group, endpoints)
         if unsettled is not None:
             return _Play(unsettled)
@@ -498,6 +509,9 @@ class _Instances:
         for role, transcript in enumerate(transcripts):
             if self._versions[role] is None:
                 self._versions[role] = status_version(transcript)
+        for endpoint, attempt in zip(endpoints, attempts, strict=True):
+            if isinstance(attempt, GroupError) and attempt.left_frozen:
+                self._unusable[endpoint] = f"{group.id} failed and left its world frozen"
         reference, candidate = transcripts
         verdict = judge(group, *attempts)
         return _Play(
@@ -511,6 +525,19 @@ class _Instances:
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
         return self._keep_transcripts and verdict.outcome is not Outcome.MATCH
+
+    def _unusable_detail(self, endpoints: Sequence[Endpoint]) -> str | None:
+        """Why a Group cannot play on `endpoints` (Reference, then Candidate), or None.
+
+        An Instance a failed Group left frozen (`GroupError.left_frozen`) would make every
+        later Group compare against a frozen world, so they are `error` instead (#228).
+        """
+        details = [
+            f"the {role} is unusable: {self._unusable[endpoint]}"
+            for role, endpoint in zip(("Reference", "Candidate"), endpoints, strict=True)
+            if endpoint in self._unusable
+        ]
+        return "; ".join(details) or None
 
     def summaries(self) -> tuple[SideSummary, SideSummary]:
         """What the Run learned about the Reference and the Candidate, in that order."""

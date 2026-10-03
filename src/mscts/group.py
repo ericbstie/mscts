@@ -207,6 +207,8 @@ class GroupContext:
 
     Attributes:
         endpoint: Where the Instance is reached.
+        left_frozen: The Group froze the world, failed, and `close` could not unfreeze
+            it: the Instance is not fit for another Group (#228).
     """
 
     def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None:
@@ -218,6 +220,7 @@ class GroupContext:
         self._unconnected: tuple[str, Exception] | None = None
         self._observing = False
         self._ticks: int | None = None  # the ticks stepped since the freeze; None: not frozen
+        self.left_frozen = False
         self._control = OperatorBot(self._connect, transcript, timeout_s=timeout_s)
 
     @property
@@ -439,13 +442,15 @@ class GroupContext:
 
         The world is still frozen only if the Group failed before `end`, so a failure to
         unfreeze here is logged, not raised: the Group's own error says more, and has
-        failed the Group already. Calling it again does nothing.
+        failed the Group already. It sets `left_frozen`, so the Run plays no other Group
+        on the Instance. Calling it again does nothing.
         """
         if self._ticks is not None:
             self._ticks = None
             try:
                 await self._control.run("tick unfreeze")
             except Exception as error:
+                self.left_frozen = True
                 LOG.warning("could not unfreeze the world after the Group", exc_info=error)
         for bot in self._bots.values():
             await bot.close()
