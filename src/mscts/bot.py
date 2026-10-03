@@ -101,8 +101,8 @@ _ON_GROUND = 0x01
 """The movement packets' flag for on ground (`ServerboundMovePlayerPacket.packFlags`: bit 0;
 bit 1, horizontal collision, a Bot never sets)."""
 
-_JUMP, _SNEAK, _SPRINT = 0x10, 0x20, 0x40
-"""The keys of `player_input` a Bot holds (`Input`'s stream codec: jump, shift, sprint)."""
+_FORWARD, _JUMP, _SNEAK, _SPRINT = 0x01, 0x10, 0x20, 0x40
+"""The keys of `player_input` a Bot holds (`Input`'s stream codec: forward, jump, shift, sprint)."""
 
 _START_SPRINTING, _STOP_SPRINTING = 1, 2
 """`ServerboundPlayerCommandPacket.Action` ordinals."""
@@ -599,19 +599,25 @@ class Bot:
         await self._tick()
 
     async def sprint(self, sprinting: bool) -> None:  # noqa: FBT001 - #25: bot.sprint(True)
-        """Start or stop sprinting, in one client tick, holding or releasing the sprint key.
+        """Start or stop sprinting, in one client tick, holding or releasing forward and sprint.
 
-        The tick reports the key, then the sprint command naming the player's entity id
-        (from play's `login`). One call is one tick (see `tick`).
+        A client sprints only while it holds forward, and cannot start while it sneaks
+        (`LocalPlayer.canStartSprinting`, `shouldStopRunSprinting`), so the Bot holds both
+        keys while it sprints. The tick reports the keys, then the sprint command naming the
+        player's entity id (from play's `login`). One call is one tick (see `tick`).
 
         Raises:
-            ProtocolError: The Bot is not in play, or the server has not sent its `login`.
+            ProtocolError: The Bot is not in play, the server has not sent its `login`, or
+                the player sneaks and `sprinting` is True.
         """
         self._require_play("sprint")
         if self._replies.entity_id is None:
             msg = "sprint needs the player's entity id, and no login has arrived"
             raise ProtocolError(msg)
-        self._controls.keys = _held(self._controls.keys, _SPRINT, held=sprinting)
+        if sprinting and self._controls.keys & _SNEAK:
+            msg = "sprint needs a player that is not sneaking"
+            raise ProtocolError(msg)
+        self._controls.keys = _held(self._controls.keys, _FORWARD | _SPRINT, held=sprinting)
         self._controls.sprinting = sprinting
         await self._tick()
 

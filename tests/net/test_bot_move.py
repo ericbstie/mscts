@@ -290,7 +290,7 @@ def test_sprint_sends_the_input_then_the_command_then_the_movement() -> None:
     rotated = {**SPAWN_POSITION, **SPAWN_ROTATION, "flags": ON_GROUND}
     assert play(script) == [
         [
-            ("minecraft:player_input", {"flags": 0x40}),
+            ("minecraft:player_input", {"flags": 0x41}),  # forward and sprint
             ("minecraft:player_command", start),
             ("minecraft:move_player_pos_rot", rotated),
             TICK_END,
@@ -303,16 +303,35 @@ def test_sprint_sends_the_input_then_the_command_then_the_movement() -> None:
     ]
 
 
-def test_sprinting_while_sneaking_holds_both_keys() -> None:
+def test_sprint_holds_forward_as_a_sprinting_client_must() -> None:
+    # LocalPlayer.canStartSprinting needs a forward impulse, and shouldStopRunSprinting stops
+    # sprinting once it goes (26.3 javap): no client sprints without holding forward.
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        await bot.sprint(sprinting=True)
+        await bot.sprint(sprinting=True)
+        await bot.sneak(sneaking=True)
+        await bot.sneak(sneaking=False)
+
+    ticks = play(script)
+    assert ticks[1][0] == ("minecraft:player_input", {"flags": 0x41})
+    assert ticks[2:] == [
+        [TICK_END],
+        [("minecraft:player_input", {"flags": 0x61}), TICK_END],  # sneaking stops no sprint
+        [("minecraft:player_input", {"flags": 0x41}), TICK_END],
+    ]
+
+
+def test_sprint_refuses_a_sneaking_player() -> None:
+    # canStartSprinting refuses while isMovingSlowly, which crouching is (26.3 javap).
     async def script(bot: Bot) -> None:
         await bot.tick()
         await bot.sneak(sneaking=True)
-        await bot.sprint(sprinting=True)
-        await bot.sprint(sprinting=True)
+        with pytest.raises(ProtocolError, match="sprint needs a player that is not sneaking"):
+            await bot.sprint(sprinting=True)
+        await bot.tick()
 
-    ticks = play(script)
-    assert ticks[2][0] == ("minecraft:player_input", {"flags": 0x60})
-    assert ticks[3] == [TICK_END]
+    assert play(script)[1:] == [[("minecraft:player_input", {"flags": 0x20}), TICK_END], [TICK_END]]
 
 
 def test_sprint_refuses_before_the_server_named_the_player() -> None:

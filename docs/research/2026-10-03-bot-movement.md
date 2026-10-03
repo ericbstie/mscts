@@ -94,3 +94,27 @@ every layout.
   at (0.5, -60, 0.5) by Control walks 25 steps of 0.2 blocks, one per server
   tick, with no `player_position` back; then a move 20 blocks up in one packet
   gets an absolute `player_position` back to where it stood.
+
+## Sprinting
+
+- `LocalPlayer.canStartSprinting` needs `hasForwardImpulse`, sprinting to be
+  possible (not mobility-restricted, enough food or flying, not in shallow
+  water), not `isSlowDueToUsingItem`, and not `isMovingSlowly` (crouching or
+  crawling) unless under water. `shouldStopRunSprinting` stops sprinting once
+  the forward impulse goes. Crouching alone does not stop a sprint already
+  started. So no 26.3 client sends START_SPRINTING without holding forward.
+  A Bot that sprints holds forward and sprint (`0x41`), and refuses to start
+  while it sneaks.
+
+## Where a Bot differs from a real client
+
+- A real client ticks every 50 ms whether or not its player does anything,
+  so it sends `client_tick_end` every 50 ms and reports its position again
+  every 20 ticks (one second) when idle. A Bot counts its calls instead: it
+  sends a tick only when a Group calls, and the 20-tick reminder comes on the
+  20th call without a position.
+- A real client that moves sideways holds the keys that move it. A Bot's
+  `move` holds no key: the Group gives the position, and `player_input`
+  reports only what `sprint`, `sneak` and `jump` hold.
+- A Bot does not know its food level, whether it uses an item, or whether it
+  is under water, so it does not refuse a sprint that those would stop.

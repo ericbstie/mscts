@@ -44,7 +44,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.move(x, y, z, on_ground=True)` | Sends one position update, as the vanilla client does each tick it moves. |
 | `await bot.look(yaw, pitch)` | Sends one rotation update. |
-| `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. |
+| `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
 | `await bot.jump()` | Presses the jump key for one tick, as the vanilla client reports it. It does not move the Bot. Send the jump's positions with `move`. |
 | `await bot.tick()` | Sends what the vanilla client sends on a tick when the player does nothing. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move or the server's last teleport. |

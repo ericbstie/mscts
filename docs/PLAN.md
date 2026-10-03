@@ -534,7 +534,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None: ...
     async def look(self, yaw: float, pitch: float) -> None: ...
-    async def sprint(self, sprinting: bool) -> None: ...               # holds the sprint key, + the command
+    async def sprint(self, sprinting: bool) -> None: ...               # holds forward and sprint, + the command
     async def sneak(self, sneaking: bool) -> None: ...                 # holds the sneak key
     async def jump(self) -> None: ...                                  # the jump key, for this tick only
     async def tick(self) -> None: ...                                  # a tick with no change
@@ -574,7 +574,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # nothing sent or changed), each is one scripted client tick, sent at once with no wait
     # (a Group paces them, e.g. with sync between): the change, then what the 26.3 client
     # sends on a tick (Minecraft.tick, LocalPlayer.sendChanges / sendPosition, javap), in
-    # order: player_input if the keys held changed (jump 0x10, sneak 0x20, sprint 0x40);
+    # order: player_input if the keys held changed (forward 0x01, jump 0x10, sneak 0x20,
+    # sprint 0x40; sprint holds forward with sprint, as no client sprints without it, and
+    # refuses to start while sneaking: LocalPlayer.canStartSprinting / shouldStopRunSprinting);
     # player_command START_SPRINTING (1) / STOP_SPRINTING (2) with the player's entity id
     # (play login; sprint refuses before it) if sprinting changed; then one movement packet:
     # move_player_pos_rot if the position moved more than 2.0E-4 (squared length, strictly)
