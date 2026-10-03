@@ -94,7 +94,8 @@ before it arrives.
 
 To test a kick, take the server's disconnect inside the window with
 `await bot.expect("minecraft:disconnect", timeout_s=...)`. That Bot then
-skips the wait. A disconnect the Group did not take fails the Group.
+skips the wait. A disconnect the Group did not take fails the Group if a
+later wait, or the Bot's next `expect`, takes it.
 
 | Window option | What it does |
 | --- | --- |

@@ -91,6 +91,26 @@ def test_the_first_of_two_close_marks_of_a_kind_ends_the_window(close: str) -> N
     assert verdict.divergences == (), verdict
 
 
+def test_each_barrier_window_closes_at_its_own_close_marks() -> None:
+    # Review of #179, R8: a Bot's close Mark from one window must not close the next.
+    def play(between: int, inside: int) -> Transcript:
+        return transcript(
+            OPEN,
+            ("alice", block(1)),
+            f"{CLOSE} alice",
+            CLOSE,
+            ("alice", block(between)),
+            OPEN,
+            ("alice", block(inside)),
+            f"{CLOSE} alice",
+            CLOSE,
+            ("alice", block(between)),
+        )
+
+    assert compare(play(1, 1), play(2, 1), []).divergences == ()
+    assert [d.bot for d in compare(play(1, 1), play(1, 2), []).divergences] == ["alice"]
+
+
 def test_a_packet_inside_the_window_is_compared_and_counted_from_the_window() -> None:
     verdict = compare(
         transcript(("alice", chat("setup")), OPEN, ("alice", block(1)), CLOSE),

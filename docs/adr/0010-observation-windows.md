@@ -319,6 +319,6 @@ MD2).
    Group took, not on any disconnect the Bot received or on the connection
    having ended. A disconnect that the barrier or the drain takes fails
    that Bot with a ProtocolError, kept as its `failure`. So a Candidate
-   that disconnects a Bot the Reference keeps gets a `mismatch`, wherever
-   the disconnect lands: before the barrier's answer, after it, or between
-   two windows.
+   that disconnects a Bot the Reference keeps gets a `mismatch` if a later
+   barrier, drain or `expect` takes the disconnect. A disconnect that
+   arrives after the Group's last drain is taken by nothing.
