@@ -195,6 +195,14 @@ class Replies:
                 pass
 
 
+@dataclass(frozen=True, slots=True)
+class AnsweredConnection:
+    """An open Connection and the Replies it was opened with (`Connection.open(answer=...)`)."""
+
+    connection: Connection
+    replies: Replies
+
+
 class Bot:
     """One client connection driven by a Group.
 
@@ -210,23 +218,23 @@ class Bot:
 
     def __init__(
         self,
-        connection: Connection,
+        line: AnsweredConnection,
         endpoint: Endpoint,
         target: Target,
         *,
         name: str,
         timeout_s: float,
     ) -> None:
-        """Drive an open Connection to `endpoint`. Use `connect` to make one."""
+        """Drive an open Connection to `endpoint`, and its answer. Use `connect` to make one."""
         self.name = name
         self.failure: Exception | None = None
-        self._connection = connection
+        self._connection = line.connection
+        self._replies = line.replies  # sees each packet as it arrives, taken or not
         self._endpoint = endpoint
         self._target = target
         self._timeout_s = timeout_s
         self._closed = False
         self._disconnected = False  # expect returned the server's disconnect
-        self._replies: Replies | None = None  # the Connection's answer, if `connect` made it
 
     @classmethod
     async def connect(
@@ -252,9 +260,8 @@ class Bot:
             connection = await Connection.open(
                 endpoint, codec, bot=name, transcript=transcript, answer=replies
             )
-        bot = cls(connection, endpoint, target, name=name, timeout_s=timeout_s)
-        bot._replies = replies
-        return bot
+        line = AnsweredConnection(connection=connection, replies=replies)
+        return cls(line, endpoint, target, name=name, timeout_s=timeout_s)
 
     @property
     def closed(self) -> bool:
@@ -477,7 +484,7 @@ class Bot:
         Raises:
             ProtocolError: The server disconnected the Bot; the Bot's `failure`.
         """
-        if self._closed or self._disconnected or self._replies is None:
+        if self._closed or self._disconnected:
             return
         await self._connection.caught_up()
         if self._replies.disconnected:

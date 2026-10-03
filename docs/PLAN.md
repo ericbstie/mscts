@@ -517,6 +517,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
     # connect opens the Connection with answer=Replies(): from then on the Bot answers by itself.
+    # The Bot keeps both (AnsweredConnection(connection, replies)); Replies.disconnected says
+    # whether the server's disconnect has arrived, taken or not.
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
