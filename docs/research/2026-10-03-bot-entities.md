@@ -43,6 +43,49 @@ otherwise. The entity packet layouts are #20's schemas
 - **`remove_entities`** (`handleRemoveEntities`): each id is removed.
 - A packet for an id the level does not have is ignored.
 
+## Attacking, interacting and respawning
+
+- **Attack** (`Minecraft.startAttack` on an entity hit,
+  `MultiPlayerGameMode.attack`): the held slot if it changed
+  (`ensureHasSentCarriedItem`), then `attack` with the entity id
+  (`ServerboundAttackPacket`: one VarInt). `startAttack` then swings, and
+  sends `punch`. An item with a `piercing_weapon` component sends
+  `piercingAttack` instead; a fist has none.
+- **Interact** (`Minecraft.startUseItem` on an entity hit,
+  `MultiPlayerGameMode.interact`): the held slot if it changed, then
+  `interact` (`ServerboundInteractPacket`): the entity id (VarInt), the hand
+  (`InteractionHand.STREAM_CODEC`, a VarInt id: main 0, off 1), the hit
+  location minus the entity's position (`Vec3.LP_STREAM_CODEC`, which is
+  `LpVec3`), and `isShiftKeyDown()`, which for a `LocalPlayer` is the sneak
+  key (`ClientInput.keyPresses.shift`). A success predicted by the client
+  swings without a packet. A result that is neither success nor fail lets
+  `startUseItem` go on to `useItem` for the same hand.
+- **`LpVec3.write`**: each axis is held to ±1.7179869183E10 (NaN becomes 0).
+  If the largest absolute axis is below 3.051944088384301E-5, it writes one
+  zero byte. Otherwise the scale is that axis rounded up
+  (`Mth.ceilLong`), and each quantum is
+  `Math.round((v / scale * 0.5 + 0.5) * 32766)`.
+- **Respawn**: the death screen's button sends `client_command`
+  PERFORM_RESPAWN (ordinal 0). `handleRespawn` calls
+  `setClientLoaded(false)` and `startWaitingForNewLevel`, so the client
+  sends `player_loaded` again once its world has loaded, as at the join.
+- **The server** (`ServerGamePacketListenerImpl`, server jar):
+  - `handleClientCommand` PERFORM_RESPAWN does nothing while the player's
+    health is above 0. Otherwise it calls `PlayerList.respawn` and
+    `restartClientLoadTimerAfterRespawn`.
+  - `PlayerList.respawn` makes a new `ServerPlayer` with the old entity id.
+    It sends `respawn`, the teleport, the spawn position, the difficulty,
+    the experience, the effects and the level info. Then
+    `addRespawnedPlayer` puts the player back in the chunk map, which
+    queues its chunks.
+  - `handleAttack` and `handleInteract` return at once until the client
+    has loaded (`hasClientLoaded`), so attacks after a respawn need
+    `player_loaded` first, or the server's timeout.
+  - Both refuse an entity out of reach (`isWithinAttackRange` and
+    `isWithinEntityInteractionRange`, each with 3.0 to spare) or outside
+    the world border. `handleInteract` also sets the player's sneaking
+    from the packet.
+
 ## A summoned zombie, live
 
 - A zombie in a peaceful world is discarded on its first tick
@@ -58,6 +101,14 @@ otherwise. The entity packet layouts are #20's schemas
   helmet, two blocks from the Bot, reaches it as one `add_entity` inside the
   summon's window. `Bot.entities.find("zombie", near=...)` returns it at
   exactly that position, with the packet's entity id.
+
+- **Verified live** (`tests/reference/test_bot_entity_actions_reference.py`,
+  one run each): the Bot's `attack` on that zombie, two blocks away with an
+  empty hand, brings one `damage_event` inside the window. It names the
+  zombie, with the Bot's entity id as both the cause and the direct source.
+  After Control kills the Bot, `respawn()` returns, and the same attack
+  brings the same `damage_event`. Since the server ignores attacks until
+  the client has loaded, this shows the server took the `player_loaded`.
 
 ## Where a Bot differs from a real client
 
