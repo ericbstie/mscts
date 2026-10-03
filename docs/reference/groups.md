@@ -33,6 +33,11 @@ The world is frozen and random ticks are off while a Group runs, so nothing chan
 the command. Both settings are put back afterwards, and so are the blocks. Every block a Group
 changes is in the chunk the builder is sent when it joins, the one that holds x and z from 0 to 15.
 
+Vanilla puts a player who joins at a random place near the world spawn, so the builder could
+stand where a command sets a block. It would then crawl and take damage, and the server would
+tell it so. To keep that out of the comparison, the builder is moved with `/tp` to x 0.5, y -60,
+z 14.5 before the first window, away from every block a Group changes.
+
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `blocks/setblock` | exact | none | Runs `/setblock` in each mode (`destroy`, `keep`, `replace`, `strict`), on air and on a block. Then it sets a block with states, a sign with text, a chest with an item, and the block that is already there. Last, it reads the chest back with `/data get block`. | none |
