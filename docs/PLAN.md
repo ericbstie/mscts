@@ -1277,6 +1277,7 @@ class Verdict:
                                       # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
                                     # blocked or error. run.judge keeps compare's.
+    omitted: int = 0                # Divergences a report.json left out (#254); 0 from compare
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
                                     # order: what compliance scores count. A Verdict whose
@@ -2206,6 +2207,13 @@ def totals(results: Iterable[Line]) -> Totals: ...
 # "inf" | "-inf"}; a server object whose only key is a tag (or "dict") is {"dict": {...}}.
 # Any other value type is a TypeError. loads(text) -> Report reads it back, equal to the
 # Report written; ReportJsonError (a ValueError) names where malformed text differs.
+# A Verdict keeps at most MAX_PER_TEST_CASE (20) Divergences of a test case in the file
+# (#254, ADR-0006): the first 20 in order, then any later one that is the first of its test
+# case with its kind, observability and kind of value (a list or mapping): the lines read
+# nothing else from a Divergence. A Divergence of no test case is never left out. Each
+# verdict has `omitted` (after divergences), the count left out, which Verdict.omitted
+# holds when read back; dumps(loads(text)) == text.
+MAX_PER_TEST_CASE: int
 def dumps(report: Report) -> str: ...
 def loads(text: str) -> Report: ...
 class ReportJsonError(ValueError): ...

@@ -3,12 +3,13 @@
 import json
 import math
 from dataclasses import replace
+from typing import Any, cast
 from uuid import UUID
 
 import pytest
 
 from mscts import report_json
-from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict
+from mscts.compare import ABSENT, Divergence, DivergenceKind, Observability, Outcome, Verdict
 from mscts.measure import Measurement
 from mscts.report import Report
 from mscts.run import GroupResult, SideSummary
@@ -245,3 +246,123 @@ def test_text_that_is_not_json_is_a_malformed_report(text: str) -> None:
 def test_json_that_is_not_an_object_is_a_malformed_report() -> None:
     with pytest.raises(report_json.ReportJsonError, match="the report is not an object"):
         report_json.loads("[]")
+
+
+# The cap on what report.json stores per test case (#254).
+
+
+def _plain(
+    case: str, index: int, *, kind: DivergenceKind = "field", traffic: bool = True
+) -> Divergence:
+    """The `index`-th Divergence of a test case: a list element that differs."""
+    return replace(
+        _divergence(index, index + 1),
+        index=index,
+        kind=kind,
+        test_case=case,
+        observability=Observability.NETWORK_TRAFFIC if traffic else Observability.GAMEPLAY,
+    )
+
+
+def _stored(divergences: list[Divergence]) -> tuple[list[dict[str, object]], int]:
+    """The divergences report.json stores for a Verdict that has `divergences`, and its count."""
+    text = report_json.dumps(_report(*divergences))
+    verdict: dict[str, Any] = json.loads(text)["results"][0]["verdicts"][0]
+    return cast("list[dict[str, object]]", verdict["divergences"]), int(verdict["omitted"])
+
+
+def test_report_json_stores_20_divergences_of_a_test_case_and_counts_the_rest() -> None:
+    found = [_plain("tags[]", index) for index in range(25)]
+
+    stored, omitted = _stored(found)
+
+    assert [each["index"] for each in stored] == list(range(20)), "the first 20, in order"
+    assert omitted == 5
+
+
+def test_the_cap_is_per_test_case() -> None:
+    found = [_plain("a", index) for index in range(25)] + [_plain("b", 99)]
+
+    stored, omitted = _stored(found)
+
+    assert [each["test_case"] for each in stored].count("b") == 1
+    assert len(stored) == 21
+    assert omitted == 5
+
+
+def test_a_verdict_with_nothing_to_leave_out_says_omitted_0() -> None:
+    stored, omitted = _stored([_plain("a", 1)])
+
+    assert len(stored) == 1
+    assert omitted == 0
+
+
+def test_a_difference_the_first_20_do_not_show_is_kept() -> None:
+    # 20 network traffic differences, then a gameplay one: the test case must still fail.
+    found = [_plain("a", index) for index in range(20)] + [_plain("a", 20, traffic=False)]
+    full = report_json.dumps(_report(*found))
+
+    stored, omitted = _stored(found)
+
+    assert len(stored) == 21
+    assert omitted == 0
+    lines = json.loads(full)["lines"]
+    assert json.loads(report_json.dumps(report_json.loads(full)))["lines"] == lines
+    assert lines[0]["result"] == "fail"
+
+
+def test_a_missing_packet_is_kept_however_many_fields_differed_first() -> None:
+    # A `missing` Divergence also fails each field of its packet, so it is never left out.
+    found = [_plain("a", index) for index in range(20)] + [_plain("a", 20, kind="missing")]
+
+    stored, _ = _stored(found)
+
+    assert stored[-1]["kind"] == "missing"
+
+
+def test_a_difference_of_the_group_itself_is_never_left_out() -> None:
+    found = [_plain("", index, kind="bot", traffic=False) for index in range(25)]
+
+    stored, omitted = _stored(found)
+
+    assert len(stored) == 25
+    assert omitted == 0
+
+
+def test_the_lines_and_totals_come_out_the_same_with_the_divergences_left_out() -> None:
+    found = [_plain("a", index) for index in range(25)] + [_plain("b", 1, traffic=False)]
+    report = _report(*found)
+
+    read_back = report_json.loads(report_json.dumps(report))
+
+    assert report_json.dumps(read_back) == report_json.dumps(report)
+    assert (
+        json.loads(report_json.dumps(read_back))["lines"]
+        == (json.loads(report_json.dumps(report))["lines"])
+    )
+
+
+def test_a_report_json_with_divergences_left_out_reads_back_as_it_was_written() -> None:
+    text = report_json.dumps(_report(*[_plain("a", index) for index in range(25)]))
+
+    report = report_json.loads(text)
+
+    verdict = report.results[0].verdicts[0]
+    assert (len(verdict.divergences), verdict.omitted) == (20, 5)
+    assert report_json.dumps(report) == text
+
+
+def test_a_report_json_without_omitted_is_malformed() -> None:
+    with pytest.raises(report_json.ReportJsonError, match="has no 'omitted'"):
+        report_json.loads(_broken(("results", 0, "verdicts", 0, "omitted"), _DELETE))
+
+
+def test_a_replaced_list_is_kept_however_many_single_values_differed_first() -> None:
+    # A gameplay Divergence whose reference is a list fails each of its leaves too (#225).
+    found = [_plain("a", index, traffic=False) for index in range(20)]
+    replaced = replace(_plain("a", 20, traffic=False), reference=[1, 2], candidate=ABSENT)
+
+    stored, omitted = _stored([*found, replaced])
+
+    assert len(stored) == 21
+    assert omitted == 0

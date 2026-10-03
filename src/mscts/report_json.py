@@ -9,6 +9,10 @@ that leaves the value out, `{"bytes": "<hex>"}`, `{"uuid": "<uuid>"}`, and
 `{"float": "nan"}` (or `"inf"`, `"-inf"`). An object the server sent whose only key is
 one of those tags, or `dict`, is written as `{"dict": {...}}`, so it never reads back as
 a tag.
+
+A Verdict keeps at most `MAX_PER_TEST_CASE` Divergences of a test case (#254): a default Run
+against Pumpkin wrote 88 MB without it, 35,000 Divergences in a Verdict, nearly all of them
+the elements of one list. Each Verdict's `omitted` counts those left out.
 """
 
 import json
@@ -31,6 +35,9 @@ from mscts.measure import Measurement
 from mscts.report import GroupLine, Line, Report, Totals, report_lines, totals
 from mscts.run import GroupResult, SideSummary
 from mscts.target import Target
+
+MAX_PER_TEST_CASE = 20
+"""How many Divergences of one test case a Verdict keeps in report.json (#254, ADR-0006)."""
 
 _TAGS = frozenset({"absent", "bytes", "uuid", "float", "dict"})
 _NON_FINITE = frozenset({"nan", "inf", "-inf"})
@@ -127,13 +134,41 @@ def _result(result: GroupResult) -> dict[str, object]:
 
 
 def _verdict(verdict: Verdict) -> dict[str, object]:
+    stored = _stored(verdict.divergences)
     return {
         "group_id": verdict.group_id,
         "outcome": verdict.outcome.value,
-        "divergences": [_divergence(divergence) for divergence in verdict.divergences],
+        "divergences": [_divergence(divergence) for divergence in stored],
+        "omitted": verdict.omitted + len(verdict.divergences) - len(stored),
         "detail": verdict.detail,
         "test_cases": list(verdict.test_cases),
     }
+
+
+def _stored(divergences: tuple[Divergence, ...]) -> tuple[Divergence, ...]:
+    """The Divergences report.json stores: all but the surplus of a test case (#254).
+
+    The first `MAX_PER_TEST_CASE` of each test case stay, in order. Past them a Divergence
+    stays only if it is the first of its test case with its kind, observability and kind of
+    value (a list or mapping, which a replaced value fans out over its leaves). That is all
+    the Report's lines read from a Divergence, so they and the totals come out the same.
+    A Divergence of no test case is a Group's own difference and always stays.
+    """
+    seen: dict[str, int] = {}
+    shown: set[tuple[str, str, Observability, bool]] = set()
+    stored: list[Divergence] = []
+    for divergence in divergences:
+        case = divergence.test_case
+        way = (case, divergence.kind, divergence.observability, _holds_values(divergence))
+        seen[case] = seen.get(case, 0) + 1
+        if not case or seen[case] <= MAX_PER_TEST_CASE or way not in shown:
+            stored.append(divergence)
+        shown.add(way)
+    return tuple(stored)
+
+
+def _holds_values(divergence: Divergence) -> bool:
+    return isinstance(divergence.reference, dict | list)
 
 
 def _divergence(divergence: Divergence) -> dict[str, object]:
@@ -335,6 +370,7 @@ def _read_verdict(data: _Object) -> Verdict:
         tuple(_read_divergence(divergence) for divergence in data.objects("divergences")),
         data.text("detail"),
         data.texts("test_cases"),
+        data.integer("omitted"),
     )
 
 

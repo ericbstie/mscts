@@ -75,6 +75,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.players.max"
@@ -96,6 +97,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.players.max"
@@ -117,6 +119,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.players.max"
@@ -138,6 +141,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.players.max"
@@ -159,6 +163,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.players.max"
@@ -200,6 +205,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
@@ -221,6 +227,7 @@
               "observability": "gameplay"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
@@ -230,6 +237,7 @@
           "group_id": "status/ping",
           "outcome": "match",
           "divergences": [],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
@@ -239,6 +247,7 @@
           "group_id": "status/ping",
           "outcome": "match",
           "divergences": [],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
@@ -248,6 +257,7 @@
           "group_id": "status/ping",
           "outcome": "match",
           "divergences": [],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp"
@@ -337,6 +347,7 @@
           "group_id": "join/basic",
           "outcome": "blocked",
           "divergences": [],
+          "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
           "test_cases": []
         },
@@ -344,6 +355,7 @@
           "group_id": "join/basic",
           "outcome": "blocked",
           "divergences": [],
+          "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
           "test_cases": []
         },
@@ -351,6 +363,7 @@
           "group_id": "join/basic",
           "outcome": "blocked",
           "divergences": [],
+          "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
           "test_cases": []
         },
@@ -358,6 +371,7 @@
           "group_id": "join/basic",
           "outcome": "blocked",
           "divergences": [],
+          "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
           "test_cases": []
         },
@@ -365,6 +379,7 @@
           "group_id": "join/basic",
           "outcome": "blocked",
           "divergences": [],
+          "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
           "test_cases": []
         }

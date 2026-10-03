@@ -213,6 +213,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.description",
@@ -283,6 +284,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.description",
@@ -353,6 +355,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.description",
@@ -423,6 +426,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.description",
@@ -493,6 +497,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status_response.description",
@@ -589,6 +594,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
@@ -660,6 +666,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
@@ -731,6 +738,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
@@ -802,6 +810,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
@@ -873,6 +882,7 @@
               "observability": "network traffic"
             }
           ],
+          "omitted": 0,
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
