@@ -89,11 +89,12 @@ test needs it:
 | `adapters/fixture_world.py` | what every Adapter writes into the Fixture world: its game rules (ADR-0013) |
 | `runner.py` | `running(plan)` → `Instance`: launch, readiness (with ownership), stop, process stats; `free_endpoint` |
 | `transcript.py` | `Transcript`, `Event`, `Mark`, JSON-lines (de)serialization |
+| `timeline.py` | `timeline(transcript)` → text: each Event and Mark in time order, whether a window takes each received Packet, and each `award_stats` gap; the live tiers write it for a play that did not match (#162) |
 | `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve`; `Control`, `OperatorBot`, `CommandMissing` |
 | `groups/*.py` | the Groups themselves (`import mscts.groups` registers them) |
 | `settle.py` | `until_no_player_online(endpoint, *, deadline_s)`: polls an Instance's status until no player is online, `PlayersStillOnline` if it never is. `run` waits with it before each Group |
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
-| `compare.py` | `Mask`, canonicalization, `compare` → `Verdict` |
+| `compare.py` | `Mask`, canonicalization, `compare` → `Verdict`; `window_takes` |
 | `measure.py` | `Measurement`, span extraction, stats |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
 
@@ -1161,6 +1162,10 @@ ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields th
                                     # entity's UUID, which every Comparison numbers by first
                                     # appearance, but not a player's (#21):
                                     # minecraft:add_entity.entity_uuid
+
+def window_takes(transcript: Transcript, event: Event) -> bool | None: ...
+    # Whether the Comparison takes a clientbound Event by the windows its Bot sees;
+    # None if it sees none (then every Packet is compared). For timeline (#162).
 
 def compare(reference: Transcript, candidate: Transcript,
             masks: Sequence[Mask]) -> Verdict: ...
