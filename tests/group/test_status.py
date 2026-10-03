@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from mscts.bot import Bot
 from mscts.codec.packets import Codec, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, Group, GroupContext, GroupKind, resolve
@@ -77,12 +78,17 @@ class _JoinThenStatus:
             await status_server(json.dumps(VANILLA_STATUS), self.status_seen)(peer)
 
 
-async def _play_with_player(monkeypatch: pytest.MonkeyPatch) -> tuple[Transcript, list[Endpoint]]:
+async def _play_with_player(
+    monkeypatch: pytest.MonkeyPatch, steps: list[str] | None = None
+) -> tuple[Transcript, list[Endpoint]]:
+    """Play the Group on the fake; return its Transcript and where it waited for no player."""
     monkeypatch.setattr(status, "CACHE_WAIT_S", 0.3)
     settled: list[Endpoint] = []
 
     async def until_no_player_online(endpoint: Endpoint) -> None:
         settled.append(endpoint)
+        if steps is not None:
+            steps.append("no player online")
 
     monkeypatch.setattr(status, "until_no_player_online", until_no_player_online)
     transcript = Transcript(group_id="status/with-player", server="fake")
@@ -115,9 +121,20 @@ async def test_status_with_player_joins_before_the_window_and_asks_for_the_statu
 async def test_status_with_player_lets_the_player_leave_before_the_next_group(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _, settled = await _play_with_player(monkeypatch)
+    steps: list[str] = []
+    real_close = Bot.close
+
+    async def logged_close(bot: Bot) -> None:
+        if not bot.closed:
+            steps.append(f"{bot.name} closes")
+        await real_close(bot)
+
+    monkeypatch.setattr(Bot, "close", logged_close)
+    _, settled = await _play_with_player(monkeypatch, steps)
 
     assert len(settled) == 1, "once the player has gone"
+    # The Group closes the player itself, before it waits: `context.close` comes too late.
+    assert steps[:2] == ["player closes", "no player online"]
 
 
 @pytest.mark.asyncio
