@@ -226,17 +226,22 @@ def _out_folder(folder: Path) -> Path:
 
 def _write_report(report: Report, folder: Path, *, verbose: bool) -> str:
     """Write report.json and report.md into `folder`, replacing any; say where they are."""
-    files = {
-        folder / "report.json": report_json.dumps(report),
-        folder / "report.md": render_markdown(report, verbose=verbose),
+    files: dict[Path, Callable[[], str]] = {
+        folder / "report.json": lambda: report_json.dumps(report),
+        folder / "report.md": lambda: render_markdown(report, verbose=verbose),
     }
-    for path, text in files.items():
+    for path, render in files.items():
         try:
-            path.write_text(text, encoding="utf-8")
-        except OSError as error:
-            msg = f"cannot write {path}: {error.strerror}"
+            path.write_text(render(), encoding="utf-8")
+        except (OSError, TypeError, ValueError) as error:
+            msg = f"cannot write {path}: {_reason(error)}"
             raise _UsageError(msg) from error
     return f"Report written to {' and '.join(map(str, files))}"
+
+
+def _reason(error: Exception) -> str:
+    """Why writing a file failed: the system's words, or the error's own."""
+    return error.strerror if isinstance(error, OSError) and error.strerror else str(error)
 
 
 _ACTIONS: Mapping[str, Callable[[argparse.Namespace, Fetch], int]] = MappingProxyType(
