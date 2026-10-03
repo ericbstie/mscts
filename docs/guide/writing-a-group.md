@@ -55,7 +55,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), and stops. |
 | `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
-| `bot.entities` | The entities the server has told the Bot about, by entity id: each one's type, UUID, position and entity data. A login, or a respawn into another dimension, clears them. |
+| `bot.entities` | The entities the server has told this Bot about: their type, position and data, as the vanilla client would track them. They change only as the Bot reads packets, so after a summon, call `await bot.sync()` before you look. A login, or a respawn into another dimension, clears them. |
 | `bot.entities.find(type, near=None)` | Returns the entity of a type, such as `"zombie"`. Entity ids differ from server to server, so find entities this way. When several have the type, give `near=(x, y, z)` to get the nearest one. It raises `LookupError` when it can't pick one. |
 | `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent before, so everything it sent because of that has arrived. Needs a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
