@@ -12,6 +12,7 @@ import struct
 import threading
 import time
 import uuid
+from collections import defaultdict
 from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
@@ -511,6 +512,7 @@ def scheduled_server(
     stray_after_s: float | None = None,
     burst_after_s: float | None = None,
     strays_at: Collection[int] = (),
+    effect_after_request: int = 1,
 ) -> Handler:
     """Join like vanilla, then answer statistics requests in passes on a fixed schedule.
 
@@ -523,7 +525,10 @@ def scheduled_server(
     `change_difficulty` frames in one write. For each request numbered in `strays_at`
     (counted from 1), an `award_stats` nobody asked for is sent as soon as it arrives,
     before it waits for its pass: a Candidate that sends one when a statistic changes
-    (#169). Every
+    (#169). The `block_update` also waits until request number `effect_after_request` has
+    arrived, and goes after its stray. By default that is the first request, which has
+    always arrived by then; a later one makes a tick whose effect comes after that
+    request, however the Bot's own waits stretch. Every
     serverbound Packet goes into `seen`. A client that leaves while an answer is still due
     ends the handler.
     """
@@ -533,7 +538,12 @@ def scheduled_server(
         if await join.login(peer) and await join.configure(peer) and await join.play(peer):
             with suppress(ConnectionError):
                 await _answer_on_schedule(
-                    peer, seen, stray_after_s, burst_after_s, strays_at=strays_at
+                    peer,
+                    seen,
+                    stray_after_s,
+                    burst_after_s,
+                    strays_at=strays_at,
+                    effect_after_request=effect_after_request,
                 )
 
     return handler
@@ -543,19 +553,21 @@ BURST_FRAMES = 200
 """How many frames `scheduled_server`'s burst holds: far more bytes than a stray's."""
 
 
-async def _answer_on_schedule(
+async def _answer_on_schedule(  # noqa: PLR0913 - scheduled_server's options, passed on
     peer: Peer,
     seen: list[Packet],
     stray_after_s: float | None,
     burst_after_s: float | None,
     *,
     strays_at: Collection[int],
+    effect_after_request: int,
 ) -> None:
     """`scheduled_server`'s play: answer each statistics request at its pass, until EOF."""
     loop = asyncio.get_running_loop()
     joined = loop.time()
     first_pass: float | None = None
     sends: list[asyncio.Task[None]] = []
+    arrived: defaultdict[int, asyncio.Event] = defaultdict(asyncio.Event)  # by request number
 
     async def send_at(t: float, frame: bytes) -> None:
         await asyncio.sleep(t - loop.time())
@@ -579,6 +591,7 @@ async def _answer_on_schedule(
             requests += 1
             if requests in strays_at:
                 await peer.write(answer)
+            arrived[requests].set()
             now = loop.time()
             if first_pass is None:
                 first_pass = now + TICK_S
@@ -586,15 +599,23 @@ async def _answer_on_schedule(
             if effect_due:
                 effect_due = False
                 update = peer.raw_frame("minecraft:block_update", BLOCK_UPDATE)
-                sends.append(
-                    loop.create_task(send_at(this_pass + PASS_S + EFFECT_AFTER_PASS_S, update))
-                )
+                effect_at = this_pass + PASS_S + EFFECT_AFTER_PASS_S
+                allowed = arrived[effect_after_request]
+                sends.append(loop.create_task(_send_when_due(peer, effect_at, allowed, update)))
             # Answered in its own task, so the next request is read as it arrives.
             sends.append(loop.create_task(send_at(this_pass, answer)))
     finally:
         for task in sends:
             task.cancel()
         await asyncio.gather(*sends, return_exceptions=True)
+
+
+async def _send_when_due(peer: Peer, t: float, allowed: asyncio.Event, frame: bytes) -> None:
+    """Write `frame` to `peer` at loop time `t`, or once `allowed` is set if that is later."""
+    await allowed.wait()
+    await asyncio.sleep(t - asyncio.get_running_loop().time())
+    with suppress(ConnectionError):  # the client may have left already
+        await peer.write(frame)
 
 
 def _pass_for(arrived: float, first_pass: float) -> float:

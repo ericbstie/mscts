@@ -214,13 +214,14 @@ def test_a_request_answered_at_a_later_pass_still_waits_tick_gap_from_its_answer
 
 
 @pytest.mark.parametrize(
-    "strays_at",
+    ("strays_at", "effect_after_request"),
     [
-        {1},
-        {2},
-        {3},
+        ({1}, 1),
+        ({2}, 1),
+        ({3}, 1),
         pytest.param(
             {1, 3},
+            SYNC_REQUESTS,
             marks=pytest.mark.xfail(
                 strict=True, reason="two late award_stats in one sync: the known limit (#169)"
             ),
@@ -229,13 +230,15 @@ def test_a_request_answered_at_a_later_pass_still_waits_tick_gap_from_its_answer
     ids=["first", "second", "third", "first-and-third"],
 )
 def test_an_award_stats_sent_unasked_after_a_request_does_not_end_the_barrier_early(
-    strays_at: set[int],
+    strays_at: set[int], effect_after_request: int
 ) -> None:
     # #169: a stray is taken as the answer to the request it followed. At the first, the
     # second request reaches the server before its pass, both are answered in that pass,
     # and a pair would end before the tick's block_update. At the second, the surplus
     # answer comes up to a tick later: only a third request, not a short wait for that
-    # surplus, keeps the barrier (review of #218, M-1).
+    # surplus, keeps the barrier (review of #218, M-1). The limit's tick sends its effect
+    # only after the last request: on the clock, a Bot stalled past the first pass would
+    # see its surplus answer before its second request, pass it over, and pass (train 19).
     transcript = Transcript(group_id="test/sync", server="fake")
 
     async def use(bot: Bot) -> list[str]:
@@ -243,7 +246,7 @@ def test_an_award_stats_sent_unasked_after_a_request_does_not_end_the_barrier_ea
         await bot.sync()
         return received(transcript)
 
-    server = scheduled_server([], strays_at=strays_at)
+    server = scheduled_server([], strays_at=strays_at, effect_after_request=effect_after_request)
     names, _ = with_bot(CODEC, transcript, server, use, timeout_s=5.0)
     assert "minecraft:block_update" in names
 
