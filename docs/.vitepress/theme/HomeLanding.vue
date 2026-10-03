@@ -60,9 +60,9 @@ Took 22 s</pre>
         </li>
       </ul>
       <p>
-        Joining a world is next. Later come redstone, checked tick by tick,
-        and random mechanics such as mob spawning, compared over many runs
-        (<a :href="withBase('/reference/groups')">see everything checked today</a>).
+        The next planned changes are related to world joining. Redstone and
+        random mechanics are planned after that.
+        <a :href="withBase('/reference/groups')">See everything mscts checks today.</a>
       </p>
     </section>
 

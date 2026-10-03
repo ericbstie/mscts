@@ -74,11 +74,28 @@ Any session that writes user-facing text follows this skill all the same.
   (reads like a suggestion) or "must have" (too informal).
 - **Use the headings readers already know.** A plain, conventional
   title ("Roadmap") over an open-ended phrase ("What works today").
+- **End each sentence clearly.** No trailing phrases tacked on with
+  commas ("…, checked tick by tick, and …, compared over many runs") that
+  leave the reader unsure whether the sentence is over. Split it, or
+  drop what the reader doesn't need there.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Home page, "What is tested?", what comes next
+
+- Before: "Joining a world is next. Later come redstone, checked tick by
+  tick, and random mechanics such as mob spawning, compared over many
+  runs (see everything checked today)."
+- After: "The next planned changes are related to world joining.
+  Redstone and random mechanics are planned after that." The
+  maintainer suggested the rewording.
+- Why: "very open-ended and it's a little bit hard to understand when
+  the sentence is finished or not. Depending on the intonation, that
+  sentence could be continued." "Tick by tick" and "compared over many
+  runs" aren't necessary there.
 
 ### Home page hero title
 
