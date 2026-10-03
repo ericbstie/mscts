@@ -674,12 +674,16 @@ _CHUNK_NEUTRAL = frozenset(
         "minecraft:remove_entities",
     }
 )
-"""The play packets whose handling on the client reads no chunk, so that a chunk packet has the
-same effect on either side of one (javap on the 26.3 client, docs/research/2026-10-02-chunks-
-light.md): a batch's start and end feed only `ChunkBatchSizeCalculator`; the heartbeat packets
+"""The play packets a run of chunk packets goes across: a chunk packet has the same effect, or
+nearly, on either side of one (javap on the 26.3 client, docs/research/2026-10-02-chunks-
+light.md). A batch's start and end feed only `ChunkBatchSizeCalculator`; the heartbeat packets
 and `pong_response` touch the clock, the stats and the ping monitor; and the entity handlers set
 the entity's fields, while its chunk being loaded decides only whether it ticks
-(`TransientEntitySectionManager`), which either order ends with the same."""
+(`TransientEntitySectionManager`), which either order ends with the same. One exception is
+accepted: a `move_entity_*` handler ends in `Entity.setOnGround`, whose `checkSupportingBlock`
+reads the blocks under the entity (`Level.findSupportingBlock`). That only sets which block the
+entity stands on until it next moves, and ending runs there would bring back false mismatches
+where two vanilla servers split chunks into batches differently."""
 
 
 def _by_position(events: Sequence[Event]) -> list[Event]:

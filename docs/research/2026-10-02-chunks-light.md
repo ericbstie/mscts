@@ -257,7 +257,13 @@ each update is queued for its own position.
   entity's fields. Whether its chunk is loaded decides only whether it ticks:
   `TransientEntitySectionManager.addEntity` takes a section's status from the
   ticking chunks, and `startTicking` / `stopTicking` update the sections that
-  exist, so either order ends the same.
+  exist, so either order ends the same. One exception (#122's re-review): a
+  `move_entity_*` handler ends in `Entity.setOnGround`, whose
+  `checkSupportingBlock` reads the blocks under the entity
+  (`Level.findSupportingBlock`). It only sets the block the entity stands on
+  until it next moves. The rule below still treats these packets as reading no
+  chunk: ending runs there would bring back false mismatches where two vanilla
+  servers split chunks into batches differently. That trade-off is accepted.
 - `entity_position_sync` and `teleport_entity` call `ClientLevel.isTickingEntity`:
   the entity snaps or moves smoothly depending on whether its chunk is loaded.
 - `set_entity_data` can read a block: `LivingEntity.onSyncedDataUpdated`, on the

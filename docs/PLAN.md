@@ -1362,12 +1362,16 @@ proves it necessary:
      `compare._CHUNK_NEUTRAL`:
      `chunk_batch_start` and `chunk_batch_finished` (their handlers feed
      only `ChunkBatchSizeCalculator`), the heartbeat packets and
-     `pong_response`, and the entity packets whose handlers read no chunk
-     (`add_entity`, `move_entity_pos`, `move_entity_pos_rot`,
+     `pong_response`, and the entity packets whose handlers set the
+     entity's fields (`add_entity`, `move_entity_pos`, `move_entity_pos_rot`,
      `move_entity_rot`, `rotate_head`, `set_entity_motion`,
      `update_attributes`, `remove_entities`, `bundle_delimiter`; an
      entity's chunk being loaded decides only whether it ticks, and
-     either order ends with the same). Each run becomes its chunk
+     either order ends with the same). The `move_entity_*` handlers do
+     read blocks once (`Entity.setOnGround` → `checkSupportingBlock`, the
+     block the entity stands on until it next moves); keeping them
+     neutral is an accepted trade-off, since ending runs there brings
+     back false mismatches between racing batches. Each run becomes its chunk
      packets, sorted by position, x then z, stably, so the packets about
      one chunk keep their order, then its other packets in their order
      (`compare._by_position`), so a neutral packet lands in the same place
