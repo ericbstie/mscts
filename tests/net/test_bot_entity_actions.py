@@ -89,6 +89,15 @@ def test_interact_sends_where_on_the_entity_the_hand_and_the_sneak_key() -> None
     assert entity_acts(script)[1] == interact(location, hand=1, sneaking=True)
 
 
+def test_interact_rounds_the_scale_up() -> None:
+    # Mth.ceilLong: a largest axis of 1.2 gives scale 2, not the nearest integer 1.
+    async def script(bot: Bot) -> None:
+        await bot.interact(ZOMBIE, at=(0.2, 1.2, 0.0))
+
+    location = {"scale": 2, "x": 18021, "y": 26213, "z": 16383}
+    assert entity_acts(script) == [interact(location)]
+
+
 def test_interact_rounds_half_a_quantum_up_as_java_does() -> None:
     # (0.5 * 0.5 + 0.5) * 32766 is 24574.5: Math.round gives 24575, where Python's round
     # would give the even 24574.
