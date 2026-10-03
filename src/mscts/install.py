@@ -154,23 +154,31 @@ def _names(build: Build, version: str) -> bool:
     return version == build.version or (len(version) >= _SHORT and commit.startswith(version))
 
 
-def _already(existing: Installation, adapter: Adapter, version: str | None) -> Installed:
-    """A no-op if `version` (None: any) names the installed build; else ProvisionError."""
+def _unchanged(existing: Installation, adapter: Adapter, version: str | None) -> Installed | None:
+    """A no-op if `version` (None: any) names the installed build, else None."""
     root, source = existing.root, existing.source
     build = None if source is None else source.build
     if source is None or build is None:  # only an Installation built by hand (tests)
         msg = f"{root} records no build; {_reinstall(adapter, root)}"
         raise ProvisionError(msg)
-    if version is None or _names(build, version):
-        message = (
-            f"{adapter.name} {build} is already installed at {root} (sha256 {source.sha256}): "
-            f"nothing to do. For a newer build, delete {root} and install again."
-        )
-        return Installed(existing, changed=False, message=message)
+    if version is not None and not _names(build, version):
+        return None
+    message = (
+        f"{adapter.name} {build} is already installed at {root} (sha256 {source.sha256}): "
+        f"nothing to do. For a newer build, delete {root} and install again."
+    )
+    return Installed(existing, changed=False, message=message)
+
+
+def _vacant(existing: Installation | None, adapter: Adapter, version: str | None) -> None:
+    """ProvisionError, naming the fix, if another build is installed: never replaced silently."""
+    if existing is None or existing.source is None:
+        return
+    root = existing.root
     msg = (
         f"{adapter.name} {existing.target.minecraft_version} is already installed at {root}: "
-        f"{adapter.name} {describe(source)}. To install {adapter.name}@{version} instead, "
-        f"delete {root} and run `{install_command(adapter.name, version=version)}`"
+        f"{adapter.name} {describe(existing.source)}. To install {adapter.name}@{version} "
+        f"instead, delete {root} and run `{install_command(adapter.name, version=version)}`"
     )
     raise ProvisionError(msg)
 
@@ -198,13 +206,17 @@ def install_release(
     """Download the latest build for `target` (or `version`'s) into the cache, verified.
 
     A no-op if that build is installed already (with `version` None: whatever build is).
+    With another build installed, the Adapter's refusal of `version` comes first, then
+    ProvisionError naming how to replace it.
     """
     existing = installed(adapter, target, cache_dir)
-    if existing is not None:
-        return _already(existing, adapter, version)
+    unchanged = None if existing is None else _unchanged(existing, adapter, version)
+    if unchanged is not None:
+        return unchanged
     yourself = f"`{install_command(adapter.name, path='<file>')}`"
     try:
         release = adapter.release(target, version, fetch)
+        _vacant(existing, adapter, version)
         download = fetch(release.url)
     except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
         msg = (

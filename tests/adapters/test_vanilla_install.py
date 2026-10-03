@@ -46,6 +46,13 @@ def test_install_release_rejects_a_download_that_is_not_the_published_jar(
     assert not (tmp_path / "vanilla/26.3").exists()
 
 
+def test_another_version_is_not_supported_even_with_26_3_installed(tmp_path: Path) -> None:
+    install_release(VanillaAdapter(), TARGET, tmp_path, None, FakeMojang())
+    with pytest.raises(ProvisionError) as raised:
+        install_release(VanillaAdapter(), TARGET, tmp_path, "26.4", FakeMojang())
+    assert str(raised.value) == "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3."
+
+
 def test_install_release_rejects_a_download_of_another_size_than_listed(tmp_path: Path) -> None:
     mojang = FakeMojang()
     listed = json.loads(mojang.bodies[VERSION_URL])
