@@ -9,7 +9,7 @@ import pytest
 from mscts import install
 from mscts.adapters.base import Installation
 from mscts.adapters.fetch import https_get
-from mscts.adapters.vanilla import VanillaAdapter
+from mscts.adapters.vanilla import WORLD_DATA_VERSION, VanillaAdapter
 from mscts.registry import official
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
@@ -51,10 +51,16 @@ def test_the_installed_jar_is_the_published_26_3_jar(cache_dir: Path) -> None:
     )
     with zipfile.ZipFile(installation.root / "server.jar") as archive:
         version = json.loads(archive.read("version.json"))
-    assert (version["id"], version["protocol_version"], version["java_version"]) == (
+    assert (
+        version["id"],
+        version["protocol_version"],
+        version["java_version"],
+        version["world_version"],  # the DataVersion vanilla stamps on what it saves
+    ) == (
         TARGET.minecraft_version,
         TARGET.protocol_version,
         TARGET.java_major,
+        WORLD_DATA_VERSION,
     )
 
 

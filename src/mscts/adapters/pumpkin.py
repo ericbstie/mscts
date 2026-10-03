@@ -96,6 +96,7 @@ INVARIANTS: Mapping[str, TomlValue] = MappingProxyType(
         "enforce_whitelist": False,
         "spawn_protection": 0,  # the default (16) stops non-operators building at spawn
         "use_favicon": False,  # no server icon (the default is Pumpkin's)
+        "default_level_name": fixture_world.WORLD_FOLDER,  # the world folder it reads
         "commands.use_console": True,  # the LaunchPlan stops Pumpkin with `stop` on stdin
         # No outbound (non-loopback) connection. Verified with strace: with these, Pumpkin
         # connects nowhere but its own loopback listener and never opens the resolver's
@@ -315,8 +316,8 @@ class Limit:
 WORLD_DATA_VERSION = 4903
 WORLD_LEVEL_VERSION = 19133
 # Where Pumpkin reads them, under its cwd (pumpkin.toml keeps the default world path).
-LEVEL_DAT = "world/level.dat"
-WORLD_GEN_SETTINGS = "world/data/minecraft/world_gen_settings.dat"
+LEVEL_DAT = f"{fixture_world.WORLD_FOLDER}/level.dat"
+WORLD_GEN_SETTINGS = f"{fixture_world.WORLD_FOLDER}/data/minecraft/world_gen_settings.dat"
 
 # Each WorldPreset's overworld generator, exactly as vanilla 26.3 writes it into
 # world_gen_settings.dat for the same ServerSpec (VanillaAdapter's level-type and

@@ -8,7 +8,10 @@ that tests natural spawning turns it on itself.
 
 from mscts.adapters import nbt
 
-GAME_RULES_DAT = "world/data/minecraft/game_rules.dat"
+WORLD_FOLDER = "world"
+"""The Fixture world's folder, under the server's cwd: every Adapter names it in its config."""
+
+GAME_RULES_DAT = f"{WORLD_FOLDER}/data/minecraft/game_rules.dat"
 """Where vanilla 26.3 and Pumpkin read a world's game rules, under the server's cwd.
 
 Vanilla loads it as the saved data `minecraft:game_rules` when it starts, new world or

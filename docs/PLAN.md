@@ -750,7 +750,8 @@ def encode(root: Compound) -> bytes: ...   # the root compound, named ""
 def gzipped(root: Compound) -> bytes: ...  # one gzip member, mtime 0: the bytes depend on root alone
 
 # adapters/fixture_world.py: the Fixture world's game rules, the same for every Adapter (ADR-0013)
-GAME_RULES_DAT = "world/data/minecraft/game_rules.dat"  # under the server's cwd
+WORLD_FOLDER = "world"  # the world folder every Adapter names in its config, under its cwd
+GAME_RULES_DAT = f"{WORLD_FOLDER}/data/minecraft/game_rules.dat"
 def game_rules(data_version: int) -> Compound: ...  # minecraft:spawn_mobs false; others default
 
 # install.py: Installations (ADR-0008)
