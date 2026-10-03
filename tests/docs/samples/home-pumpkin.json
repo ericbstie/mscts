@@ -11,9 +11,10 @@
       {
         "name": "instance.startup",
         "unit": "ms",
-        "value": 20546.915251
+        "value": 19814.771744
       }
-    ]
+    ],
+    "installed_version": "26.3 (sha256 d052f14d\u2026)"
   },
   "candidate": {
     "name": "pumpkin",
@@ -22,9 +23,10 @@
       {
         "name": "instance.startup",
         "unit": "ms",
-        "value": 67.002111
+        "value": 52.458755
       }
-    ]
+    ],
+    "installed_version": "nightly 4426d11 (sha256 b8382a8a\u2026)"
   },
   "results": [
     {
@@ -394,6 +396,13 @@
         [],
         [],
         []
+      ],
+      "elapsed_s": [
+        0.015194750001683133,
+        0.005219546999796876,
+        0.005655287000990938,
+        0.011297114000626607,
+        0.004529740999714704
       ]
     },
     {
@@ -760,35 +769,35 @@
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 2.290506
+            "value": 1.722468
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.162477
+            "value": 0.734924
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.379605
+            "value": 0.848365
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 2.221913
+            "value": 3.473014
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 2.67189
+            "value": 0.589179
           }
         ]
       ],
@@ -797,40 +806,47 @@
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 0.364142
+            "value": 0.205529
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 0.337908
+            "value": 0.169812
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 1.643154
+            "value": 0.149252
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 0.335751
+            "value": 0.17411
           }
         ],
         [
           {
             "name": "status.rtt",
             "unit": "ms",
-            "value": 2.758798
+            "value": 0.171635
           }
         ]
+      ],
+      "elapsed_s": [
+        0.011443208999480703,
+        0.007172096000431338,
+        0.005597675999524654,
+        0.00985433800087776,
+        0.009066832999451435
       ]
     }
   ],
   "notes": [],
-  "elapsed_s": 22.020978391000426
+  "elapsed_s": 26.12480299699928
 }

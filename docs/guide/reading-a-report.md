@@ -8,15 +8,17 @@ A default Run against Pumpkin produced this Report:
 
 ```
 Running tests against pumpkin
+Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 - Server list description  status_response.description
 - Unused secure chat flag  status_response.enforceSecureChat
 - Server list icon  status_response.favicon
 - Server list player sample  status_response.players.sample
-Took 22.7 s
+Took 26.1 s
 ```
 
-The first line names the Candidate's Adapter. Each following difference
-line has a [test case title](/reference/test-cases), then its name. A test
+The first line names the Candidate's Adapter. The second names the exact
+build tested: its version, its commit where the publisher names one, and
+the start of the file's sha256. Each difference line has a [test case title](/reference/test-cases), then its name. A test
 case without a title keeps just its name. Each name appears once across
 all Groups and repetitions, even if several values differed.
 

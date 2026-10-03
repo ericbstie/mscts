@@ -187,6 +187,13 @@ the download against them.
 version, in `release` when you can tell from the version, and always in
 `check`. Say which version it is and which one mscts tests.
 
+**Raise `ProvisionError` for what you expect.** A missing build, a build
+for another version, a page that is not what you asked for: say what is
+wrong and how to get the build. If anything else goes wrong in `release`,
+such as a page that does not parse, mscts says the build could not be
+found, gives the error and names `--from`, so a user never sees a
+traceback.
+
 **Never substitute a build.** If the version asked for cannot be
 downloaded, raise `ProvisionError` saying so and how to get it, for example
 by building it and installing the file with `--from`. Never return a
