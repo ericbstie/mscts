@@ -59,8 +59,8 @@ file holds.
 
 | Code | Meaning |
 | --- | --- |
-| `0` | The Run finished and printed a Report, whatever it found. |
-| `1` | mscts could not run. The message on stderr says why and names the fix. |
+| `0` | The Run finished and printed a Report, whatever it found, and wrote any `--out` files. |
+| `1` | mscts could not run, or could not write an `--out` file after printing the Report. The message on stderr says why. |
 | `2` | The command line was invalid. |
 
 A Run that finds differences still exits 0. An option to exit non-zero on
