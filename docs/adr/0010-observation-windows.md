@@ -322,3 +322,26 @@ MD2).
    that disconnects a Bot the Reference keeps gets a `mismatch` if a later
    barrier, drain or `expect` takes the disconnect. A disconnect that
    arrives after the Group's last drain is taken by nothing.
+
+## Amendment (2026-10-03, #141): a barrier before the window opens
+
+Setup runs through `Control.run`, which passes the barrier on Control's Bot
+only. The other Bots took only what had already arrived, so a packet setup
+caused that was still on its way to another Bot could arrive after the open
+Mark on one Instance and before it on the other.
+
+1. **Every Bot in play passes the barrier before the open Mark is
+   stamped**, all at once, as at the close, and for `until` windows too.
+   It skips the same Bots as the closing barrier (#117 item 4), and a
+   disconnect it takes fails the Bot before any Mark is written. What it
+   takes is stamped before the open, so it is outside the window.
+2. **It covers setup that waited for its feedback.** Vanilla runs a chat
+   command as a server task between ticks, so a command a Bot sends
+   without waiting for its feedback can be answered by the barrier's pass
+   first and change the world after it. `Control.run` waits for its
+   marker, so setup through Control is covered. A Group that sets up with
+   its own Bot's command waits for that command's feedback before the
+   window opens.
+3. **It costs one barrier per window**: the 5 ms wait plus up to a tick,
+   about 50 ms. The pair on Control, which `Control.run` has just synced,
+   is part of it.

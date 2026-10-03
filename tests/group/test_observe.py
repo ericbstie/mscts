@@ -2,6 +2,7 @@
 
 import asyncio
 import time
+from collections import Counter
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -15,6 +16,7 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
+from tests.group.test_control import text
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
@@ -22,6 +24,7 @@ from tests.net.fakes import (
     JoinScript,
     Peer,
     answer_at_once,
+    answer_each_tick,
     join_server,
     never_answer,
     play_server,
@@ -32,6 +35,7 @@ from tests.net.fakes import (
 CODEC = Codec.for_target(TARGET)
 REQUEST, ANSWER = "minecraft:client_command", "minecraft:award_stats"
 BLOCK_UPDATE = "minecraft:block_update"
+SYSTEM_CHAT = "minecraft:system_chat"
 BLOCK = bytes.fromhex("0000004000001fc4")
 """A block position: `block_update` decodes strictly, so a stand-in needs a position and a state."""
 _UNUSED = Endpoint(host="127.0.0.1", port=1)
@@ -174,7 +178,7 @@ async def test_windows_do_not_nest_and_one_may_follow_another() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_body_that_raises_gets_no_barrier_and_no_close_mark() -> None:
+async def test_a_body_that_raises_gets_no_closing_barrier_and_no_close_mark() -> None:
     transcript = Transcript(group_id="test/observe", server="fake")
     seen: list[Packet] = []
     async with playing(play_server(seen), transcript) as context:
@@ -184,7 +188,8 @@ async def test_a_body_that_raises_gets_no_barrier_and_no_close_mark() -> None:
                 raise LookupError
 
     assert labels(transcript) == [OBSERVE_OPEN]
-    assert REQUEST not in [packet.name for packet in seen]
+    requests = [packet.name for packet in seen].count(REQUEST)
+    assert requests == 2, "the barrier before the window opens, none at its end"
 
 
 @pytest.mark.asyncio
@@ -203,7 +208,7 @@ async def test_every_bot_in_play_passes_the_barrier_before_the_window_closes() -
             for event in transcript.events
             if event.bot == bot and event.packet.name == ANSWER
         ]
-        assert len(answers) == 2, bot
+        assert len(answers) == 4, bot  # a barrier before the window opens, and one at its end
         assert answers[-1] <= closed, bot
 
 
@@ -216,11 +221,11 @@ async def test_each_bots_window_ends_at_its_own_barriers_last_answer() -> None:
 
     async def one_bot_slow(peer: Peer, request: int) -> None:
         nonlocal second_requests
-        if request != 2:
+        if request != 4:  # the closing barrier's second request
             await answer_at_once(peer, request)
             return
         second_requests += 1
-        if second_requests == 1:  # the first Bot to ask twice: done, then a straggler
+        if second_requests == 1:  # the first Bot to ask for it: done, then a straggler
             await answer_at_once(peer, request)
             await asyncio.sleep(0.03)
             await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
@@ -249,7 +254,7 @@ async def test_what_the_server_sends_before_the_barriers_answer_is_in_the_window
     transcript = Transcript(group_id="test/observe", server="fake")
 
     async def late(peer: Peer, request: int) -> None:
-        if request == 2:
+        if request == 4:  # the second request of the barrier at the window's end
             await asyncio.sleep(0.2)
             await peer.write(peer.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01"))
         await answer_at_once(peer, request)
@@ -286,7 +291,7 @@ async def test_the_drain_takes_what_arrived_after_the_barrier_without_waiting() 
 
     _, closed = window(transcript)
     blocks = arrivals(transcript, BLOCK_UPDATE)
-    assert len(blocks) == 2
+    assert len(blocks) == 4  # a straggler after each answer, of both barriers
     assert blocks[-1] <= closed
     assert took < 1.0, f"closing the window took {took:.2f} s"
 
@@ -305,7 +310,9 @@ async def test_a_bot_not_in_play_is_not_synced() -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_bot_the_group_closed_is_neither_synced_nor_drained() -> None:
+async def test_a_bot_the_group_closed_in_the_window_is_neither_synced_nor_drained_at_its_end() -> (
+    None
+):
     transcript = Transcript(group_id="test/observe", server="fake")
     seen: list[Packet] = []
     async with playing(play_server(seen), transcript) as context:
@@ -314,7 +321,81 @@ async def test_a_bot_the_group_closed_is_neither_synced_nor_drained() -> None:
             await bot.close()
 
     assert labels(transcript) == [OBSERVE_OPEN, ALICE_CLOSE, OBSERVE_CLOSE]
-    assert REQUEST not in [packet.name for packet in seen]
+    requests = [packet.name for packet in seen].count(REQUEST)
+    assert requests == 2, "the barrier before the window opened, while the Bot was in play"
+
+
+LATE_S = 0.02
+"""How long after `setup` the fake sends what setup changed to the other Bots."""
+
+
+def late_setup_server() -> Handler:
+    """Join like vanilla, answer the barrier a tick apart, and answer `setup` like Control.
+
+    The Bot that runs the command `setup` gets its feedback at once; every other Bot gets
+    the `block_update` it caused `LATE_S` later, still on its way when the feedback lands.
+    """
+    peers: list[Peer] = []
+    late: set[asyncio.Task[int]] = set()
+
+    async def then(peer: Peer) -> None:
+        peers.append(peer)
+        requests = 0
+        async for packet in peer.packets():
+            if packet.name == REQUEST:
+                requests += 1
+                await answer_each_tick(peer, requests)
+            elif (packet.fields or {}).get("command") == "setup":
+                await peer.write(peer.frame(SYSTEM_CHAT, content=text("done"), overlay=False))
+                for other in peers:
+                    if other is not peer:
+                        update = other.raw_frame(BLOCK_UPDATE, BLOCK + b"\x01")
+                        late.add(asyncio.create_task(write_later(other, update)))
+        await asyncio.gather(*late)
+
+    return join_server([], JoinScript(then=then))
+
+
+async def write_later(peer: Peer, frame: bytes) -> int:
+    await asyncio.sleep(LATE_S)
+    return await peer.write(frame)
+
+
+@pytest.mark.asyncio
+async def test_what_setup_caused_arrives_before_the_window_opens_at_every_bot() -> None:
+    # #141: setup passes the barrier on Control only, so a packet setup caused that was
+    # still on its way to another Bot could land inside the window on one Instance only.
+    # Setup waits for its feedback, as `Control.run` does: the barrier covers no more.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(late_setup_server(), transcript) as context:
+        await joined(context, "alice")
+        bob = await joined(context, "bob")
+        await bob.command("setup")
+        await bob.expect(SYSTEM_CHAT, timeout_s=2.0)
+        async with context.observe():
+            pass
+
+    opened = next(m.t_ns for m in transcript.marks if m.label.split()[0] == OBSERVE_OPEN)
+    (update,) = arrivals(transcript, BLOCK_UPDATE)
+    assert update < opened
+    assert "block_update.block_state" not in compare(transcript, transcript, []).test_cases
+
+
+@pytest.mark.asyncio
+async def test_a_bot_that_took_its_kick_before_a_window_passes_no_barrier_at_its_open() -> None:
+    # Review of #181, P3: the barrier before the open skips such a Bot, as the closing one
+    # does, so a Group that kicks a Bot during setup does not fail at the next window.
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(kicking_server(), transcript) as context:
+        alice = await joined(context, "alice")
+        await joined(context, "bob")
+        await alice.command("kick")
+        await alice.expect("minecraft:disconnect", timeout_s=2.0)
+        async with context.observe():
+            pass
+
+    answers = Counter(e.bot for e in transcript.events if e.packet.name == ANSWER)
+    assert answers == {"bob": 4}, answers  # bob passed the opening and the closing barrier
 
 
 @pytest.mark.asyncio
@@ -375,7 +456,7 @@ async def test_a_bot_the_server_disconnected_does_not_fail_the_windows_end() -> 
         f"{OBSERVE_CLOSE} bob",
     ]
     bobs_answers = [e for e in transcript.events if e.bot == "bob" and e.packet.name == ANSWER]
-    assert len(bobs_answers) == 2  # bob passed his barrier as usual
+    assert len(bobs_answers) == 4  # bob passed both his barriers as usual
 
 
 @pytest.mark.asyncio
@@ -418,11 +499,14 @@ async def test_a_candidate_that_disconnects_a_bot_the_reference_keeps_fails() ->
 
 
 async def kick_after_the_first_barrier(peer: Peer, request: int) -> None:
-    """Answer; after the first barrier's second answer, disconnect the Bot, and close later."""
-    if request > 2:
+    """Answer; after the first closing barrier's second answer, disconnect, and close later.
+
+    Requests 1 and 2 are the barrier before the window opens, 3 and 4 the one at its end.
+    """
+    if request > 4:
         return
     await answer_at_once(peer, request)
-    if request == 2:
+    if request == 4:
         await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
         await asyncio.sleep(0.3)  # the end comes later
         await peer.close()

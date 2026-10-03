@@ -98,8 +98,8 @@ need is missing, add it here in the same commit that introduces it.
   vanilla's player latency updates).
   A window can be narrowed to named packets. Status, login and
   configuration packets are compared whole, and so is every packet of a
-  Group with no window. When a window closes, each Bot in play first
-  passes the **barrier** (`Bot.sync`). It asks the server for its
+  Group with no window. Before a window opens, and when it closes, each
+  Bot in play first passes the **barrier** (`Bot.sync`). It asks the server for its
   statistics, waits 5 ms after the answer arrives, and asks again. The
   second answer comes from a later tick, so by then the server has sent
   everything caused by what the Bot sent before. Each Bot's window ends
