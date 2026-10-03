@@ -188,11 +188,11 @@ or the file) and, when you know it, what the build is. mscts words the
 message, the same for every Adapter.
 
 **Raise `ProvisionError` for anything else you expect,** such as a page
-that is not what you asked for: say what is wrong. If anything else goes
-wrong in `release`,
-such as a page that does not parse, mscts says the build could not be
-found, gives the error and names `--from`, so a user never sees a
-traceback.
+that is not what you asked for. Say only what is wrong, never what to
+type: mscts adds how to install a build from a file. If anything else goes
+wrong in `release`, such as a page that does not parse, mscts says the
+build could not be found, gives the error and names `--from`, so a user
+never sees a traceback.
 
 **Never substitute a build.** If the version asked for cannot be
 downloaded, raise `UnavailableError` with the latest build that can. mscts

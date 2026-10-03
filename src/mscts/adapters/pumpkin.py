@@ -22,7 +22,6 @@ from mscts.adapters.base import (
     ProvisionError,
     Release,
     UnsupportedError,
-    build_it_yourself,
 )
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
@@ -533,7 +532,6 @@ def ops_json(operators: tuple[str, ...]) -> str:
     return json.dumps(entries, indent=2, ensure_ascii=False)  # as serde_json's pretty printer
 
 
-_YOURSELF = build_it_yourself("pumpkin")
 _NIGHTLY = "nightly"  # the only build Pumpkin publishes, and `pumpkin@nightly` names it
 _SHORT_HEX = re.compile(f"[0-9a-f]{{1,{_SHORT - 1}}}")  # too few characters to name a commit
 _ADVERTISEMENT = b"001e# service=git-upload-pack\n"  # how every ref advertisement starts
@@ -545,13 +543,13 @@ def _nightly_commit(refs: bytes) -> str:
     if not refs.startswith(_ADVERTISEMENT):  # a proxy's or an error page, not GitHub's answer
         msg = (
             f"{TAGS_URL} did not answer with GitHub's list of git refs (is a proxy in the way?), "
-            f"so the nightly's commit is unknown.\n{_YOURSELF}"
+            "so the nightly's commit is unknown."
         )
         raise ProvisionError(msg)
     tags = {bytes(match[2]): str(match[1].decode()) for match in _TAG.finditer(refs)}
     commit = tags.get(b"refs/tags/nightly^{}", tags.get(b"refs/tags/nightly"))
     if commit is None:
-        msg = f"{TAGS_URL} has no nightly tag, so the nightly's commit is unknown.\n{_YOURSELF}"
+        msg = f"{TAGS_URL} has no nightly tag, so the nightly's commit is unknown."
         raise ProvisionError(msg)
     return commit
 

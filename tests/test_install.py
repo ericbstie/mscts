@@ -388,3 +388,14 @@ def test_pumpkin_at_nightly_is_plain_pumpkin_over_a_from_install(
     assert not done.changed
     assert done.message.startswith("pumpkin 0.2.0+26.3-26.51 4426d11 is already installed at ")
     assert github.fetched == []
+
+
+def test_an_adapter_s_refusal_from_release_gets_the_from_hint(tmp_path: Path) -> None:
+    github = FakeGitHub(tags=refs().replace(b"nightly", b"other"))
+    with pytest.raises(ProvisionError) as raised:
+        install_release(ADAPTER, TARGET, tmp_path, None, github)
+    assert str(raised.value) == (
+        f"{TAGS_URL} has no nightly tag, so the nightly's commit is unknown.\n"
+        "Build it yourself and install it with:\n"
+        "  mscts adapter install pumpkin --from <file>"
+    )

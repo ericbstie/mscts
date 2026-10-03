@@ -142,15 +142,16 @@ class Adapter(Protocol):
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
         """The latest build for `target`, or the build `version` names (`<name>@<version>`).
 
-        ProvisionError, naming what would work, if that build is not for `target` or cannot
-        be downloaded.
+        Facts only, never CLI text: UnsupportedError if that build is not for `target`,
+        UnavailableError if it cannot be downloaded, else ProvisionError saying what is
+        wrong. mscts words the refusals and adds how to install a build from a file.
         """
         ...
 
     def check(self, binary: Path, target: Target) -> Build:
         """The Build `binary` names; ProvisionError unless this Adapter can run it for `target`.
 
-        A build for another Minecraft version is refused, naming both versions.
+        A build for another Minecraft version: UnsupportedError, with what the build is.
         """
         ...
 

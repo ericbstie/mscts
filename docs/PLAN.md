@@ -705,7 +705,8 @@ class Adapter(Protocol):
                                     # {"nightly"}; install_release maps them to None first
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release: ...
         # The latest build for target (version None), or the one `<name>@<version>` names,
-        # read only through `fetch`. Otherwise UnsupportedError or UnavailableError: vanilla:
+        # read only through `fetch`. Facts only: install.py adds the --from hint to any other
+    # ProvisionError. Otherwise UnsupportedError or UnavailableError: vanilla:
         # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3." (nothing fetched),
         # else the jar Mojang's version manifest lists for target (its version JSON checked
         # by the manifest's sha1); Pumpkin: the nightly, Build("nightly", <the commit the

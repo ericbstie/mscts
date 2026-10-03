@@ -52,15 +52,16 @@ def test_an_annotated_tag_names_the_commit_it_points_to() -> None:
 def test_a_page_that_is_no_list_of_git_refs_is_not_blamed_on_pumpkin() -> None:
     said = (
         f"{TAGS_URL} did not answer with GitHub's list of git refs (is a proxy in the way?), "
-        "so the nightly's commit is unknown.\n"
-        "Build it yourself and install it with:\n"
-        "  mscts adapter install pumpkin --from <file>"
+        "so the nightly's commit is unknown."
     )
     with pytest.raises(ProvisionError) as raised:
         PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=b"<html>Access denied</html>"))
     assert str(raised.value) == said
 
 
-def test_no_nightly_tag_is_an_error_naming_the_from_command() -> None:
-    with pytest.raises(ProvisionError, match=r"no nightly tag(.|\n)*--from <file>"):
+def test_no_nightly_tag_is_an_error_of_facts_only() -> None:
+    with pytest.raises(ProvisionError) as raised:
         PumpkinAdapter().release(TARGET, None, FakeGitHub(tags=REFS.replace(b"nightly", b"other")))
+    assert str(raised.value) == (
+        f"{TAGS_URL} has no nightly tag, so the nightly's commit is unknown."
+    )

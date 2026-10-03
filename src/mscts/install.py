@@ -228,14 +228,20 @@ def install_release(
 
 
 def _release(adapter: Adapter, target: Target, version: str | None, fetch: Fetch) -> Release:
-    """`adapter.release`, whose every failure is a ProvisionError naming `--from`."""
+    """`adapter.release`, whose every failure is a ProvisionError naming `--from`.
+
+    An Adapter gives the facts; mscts adds the hint (UnavailableError words its own).
+    """
     yourself = f"`{install_command(adapter.name, path='<file>')}`"
     try:
         return adapter.release(target, version, fetch)
     except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
         raise _download_failed(error, yourself) from error
-    except ProvisionError:
+    except (UnsupportedError, UnavailableError):
         raise
+    except ProvisionError as error:
+        msg = f"{error}\n{build_it_yourself(adapter.name)}"
+        raise ProvisionError(msg) from error
     except Exception as error:  # a garbled page, or the Adapter's own bug: never a traceback
         msg = (
             f"{_asked(adapter.name, version)} could not be found: {type(error).__name__}: "
