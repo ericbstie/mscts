@@ -32,10 +32,24 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 - `repeat.py --stress` runs at most the default `--stress-workers`
   (nproc), unless an issue says otherwise: more slows every other agent on
   the host.
+- Live tiers assume a load average of at most about the CPU count. Above
+  that, a Reference timeout is the host's fault, not a Verdict: a Bot
+  operation's 10 s bound stays fixed, because scaling it with the load
+  would let a hanging Candidate score better (#134).
 
 ## Log
 
 Newest first: one line per lesson, with the issue it came from.
+
+- #129: what crosses a window's edges is measured per window with
+  `scripts/research/probe_window_edges.py`: setup packets inside the
+  window, the command's packets after the close, and the margin before
+  the open. On `main`, a setup change reached the builder at least 31.6 ms
+  before the open at a load of 11 to 17; the barrier before the open
+  (#141) makes that 123 ms, and stamps it before the open by construction.
+- #129: `section_blocks_update.blocks` comes from a fresh
+  `ShortOpenHashSet` per section and broadcast, so its order is set by the
+  positions changed; it varies only if a broadcast merges other changes.
 
 - #126: asyncio accepts a connection in one loop turn and attaches it to
   the `Server` in a task of its own the next; attached after
