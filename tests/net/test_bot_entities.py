@@ -140,3 +140,70 @@ def test_a_teleport_leaves_the_base_so_a_later_move_decodes_against_the_old_one(
     )
 
     assert position(tracker, 41) == (2.5, -60.0, 2.5)
+
+
+def data(entity_id: int, *entries: tuple[int, object]) -> tuple[str, dict[str, object]]:
+    """A `set_entity_data` setting each `(index, value)`, all as floats on the wire."""
+    items = [{"index": index, "serializer": "float", "value": value} for index, value in entries]
+    return ("minecraft:set_entity_data", {"entity_id": entity_id, "entries": items})
+
+
+def test_entity_data_sets_each_index_and_keeps_the_others() -> None:
+    # SynchedEntityData.assignValues: each entry by its index.
+    tracker = tracked(
+        added(41, ZOMBIE, 1.5, -60.0, 2.5), data(41, (9, 20.0), (5, 1.0)), data(41, (9, 15.0))
+    )
+
+    assert tracker.entities[41].data == {9: 15.0, 5: 1.0}
+
+
+def removed(*entity_ids: int) -> tuple[str, dict[str, object]]:
+    return ("minecraft:remove_entities", {"entity_ids": list(entity_ids)})
+
+
+def test_removed_entities_are_no_longer_tracked() -> None:
+    tracker = tracked(
+        added(41, ZOMBIE, 1.5, -60.0, 2.5), added(42, PIG, 0.5, -60.0, 0.5), removed(41, 99)
+    )
+
+    assert list(tracker.entities) == [42]
+
+
+def test_an_add_with_a_known_id_replaces_the_entity() -> None:
+    # ClientLevel.addEntity removes the entity that had the id first.
+    tracker = tracked(
+        added(41, ZOMBIE, 1.5, -60.0, 2.5), data(41, (9, 20.0)), added(41, PIG, 0.5, -60.0, 0.5)
+    )
+
+    assert tracker.entities[41] == Entity(
+        id=41, uuid=UUID, type="minecraft:pig", x=0.5, y=-60.0, z=0.5, data={}
+    )
+
+
+def test_a_packet_for_an_entity_not_tracked_changes_nothing() -> None:
+    tracker = tracked(
+        added(41, ZOMBIE, 1.5, -60.0, 2.5),
+        moved(7, 4096, 0, 0),
+        synced(7, {"linear": {"x": 1.0, "y": 2.0, "z": 3.0}}),
+        teleported(7, 1.0, 2.0, 3.0, 0),
+        data(7, (9, 1.0)),
+    )
+
+    assert dict(tracker.entities) == {
+        41: Entity(id=41, uuid=UUID, type="minecraft:zombie", x=1.5, y=-60.0, z=2.5, data={})
+    }
+
+
+def test_an_entity_taken_from_the_view_does_not_change_later() -> None:
+    tracker = tracked(added(41, ZOMBIE, 1.5, -60.0, 2.5))
+    before = tracker.entities[41]
+    tracker.follow(*moved(41, 4096, 0, 0))
+    tracker.follow(*data(41, (9, 1.0)))
+
+    assert (before.x, dict(before.data)) == (1.5, {})
+
+
+def test_a_type_id_outside_the_registry_is_named_by_its_number() -> None:
+    tracker = tracked(added(41, len(TYPES), 1.5, -60.0, 2.5))
+
+    assert tracker.entities[41].type == f"#{len(TYPES)}"

@@ -111,6 +111,10 @@ class EntityTracker:
         if name == "minecraft:add_entity":
             self._add(fields)
             return
+        if name == "minecraft:remove_entities":
+            for entity_id in _get(fields, "entity_ids", list):
+                self._tracked.pop(entity_id, None)
+            return
         change = _CHANGES.get(name)
         tracked = self._tracked.get(_int(fields, "entity_id")) if change else None
         if change is not None and tracked is not None:
@@ -159,11 +163,19 @@ def _teleport(tracked: _Tracked, fields: Mapping[str, object]) -> None:
     )
 
 
+def _set_data(tracked: _Tracked, fields: Mapping[str, object]) -> None:
+    """`SynchedEntityData.assignValues`: each entry's value by its index; the others stay."""
+    for entry in _get(fields, "entries", list):
+        item = cast("Mapping[str, object]", entry)
+        tracked.data[_int(item, "index")] = item.get("value")
+
+
 _CHANGES: dict[str, Callable[[_Tracked, Mapping[str, object]], None]] = {
     "minecraft:move_entity_pos": _move,
     "minecraft:move_entity_pos_rot": _move,
     "minecraft:entity_position_sync": _sync,
     "minecraft:teleport_entity": _teleport,
+    "minecraft:set_entity_data": _set_data,
 }
 """What each entity packet but `add_entity` does to the entity it names."""
 

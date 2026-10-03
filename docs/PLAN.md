@@ -662,6 +662,7 @@ class EntityTracker:
     # stepped delta step by step) and puts both the entity and the base at the end;
     # entity_position_sync puts both at the path's end; teleport_entity adds each flagged
     # axis to the position and replaces the others, and leaves the base.
+    # set_entity_data sets each entry's value by its index; remove_entities drops each id.
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
