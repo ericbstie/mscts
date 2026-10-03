@@ -11,7 +11,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
 
-from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.base import Build, Installation, LaunchPlan, PrepareError, ProvisionError
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
@@ -26,10 +26,11 @@ OPERATOR_LEVEL = 4
 JAVA_ENV = "MSCTS_JAVA"
 
 
-def _protocol_version(jar: Path) -> int:
-    """The protocol_version from the version.json inside a server jar."""
+def _version_json(jar: Path) -> tuple[str, int]:
+    """The version id and protocol_version from the version.json inside a server jar."""
     with zipfile.ZipFile(jar) as archive:
-        return int(json.loads(archive.read("version.json"))["protocol_version"])
+        about = json.loads(archive.read("version.json"))
+    return str(about["id"]), int(about["protocol_version"])
 
 
 # JVM system properties that cut every Reference Instance off from all networks except
@@ -346,18 +347,25 @@ class VanillaAdapter:
         """
         self._java = java
 
-    def check(self, binary: Path, target: Target) -> None:
-        """Raise ProvisionError unless `binary` is a server jar that speaks `target`'s protocol."""
+    def check(self, binary: Path, target: Target) -> Build:
+        """The version `binary` names; ProvisionError unless it is a server jar for `target`."""
         try:
-            protocol = _protocol_version(binary)
+            version, protocol = _version_json(binary)
         except (zipfile.BadZipFile, KeyError, ValueError) as error:
             msg = f"{binary} is not a vanilla server jar: {error!r}"
             raise ProvisionError(msg) from error
+        if version != target.minecraft_version:
+            msg = (
+                f"{binary} is not supported: it is vanilla {version}, "
+                f"and this mscts tests Minecraft {target.minecraft_version}."
+            )
+            raise ProvisionError(msg)
         if protocol != target.protocol_version:
             msg = (
                 f"{binary} speaks protocol {protocol}, but the Target is {target.protocol_version}"
             )
             raise ProvisionError(msg)
+        return Build(version=version)
 
     def _java_launcher(self, target: Target) -> Path:
         """The real, absolute path of a java launcher of `target`'s Java major version."""

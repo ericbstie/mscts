@@ -83,7 +83,7 @@ test needs it:
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `spec.py` | `ServerSpec` and its enums |
-| `adapters/base.py` | `Adapter`, `Installation`, `LaunchPlan` |
+| `adapters/base.py` | `Adapter`, `Build`, `Installation`, `LaunchPlan` |
 | `adapters/fetch.py` | `https_get` → `Download(url, body)`: HTTPS on every hop, redirects followed |
 | `adapters/vanilla.py`, `adapters/pumpkin.py` | one module per server |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
@@ -665,6 +665,12 @@ class ServerSpec:                   # invariants (not fields): offline, no encry
                                     # its server's offline UUID (Pumpkin: sha256(name)[:16])
 
 @frozen
+class Build:                        # one build of a server, named as its publisher names it
+    version: str                    # "26.3"; Pumpkin's own "0.2.0+26.3-26.51"; "nightly"
+    commit: str | None = None       # the full commit, where the publisher names one
+    # str(): "26.3", or "nightly 4426d11" (the commit's first 7 characters)
+
+@frozen
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
     sha256: str                     # of the binary; every use verifies the binary by it
     size: int
@@ -699,9 +705,13 @@ class Adapter(Protocol):
     # a third-party Adapter is name + binary + check + prepare, and gets `mscts adapter
     # install`, --from, the prompt and verification for free. Runs and tests call
     # install.require(adapter, target, cache_dir).
-    def check(self, binary: Path, target: Target) -> None: ...
-        # ProvisionError unless `binary` is a server it can run (vanilla: a jar speaking
-        # target.protocol_version; Pumpkin: an ELF executable). Runs before any install lands.
+    def check(self, binary: Path, target: Target) -> Build: ...
+        # The Build the file names, or ProvisionError unless `binary` is a server it can run
+        # for target. A build for another Minecraft version is refused: "<binary> is not
+        # supported: it is vanilla 26.4, and this mscts tests Minecraft 26.3." (vanilla: the
+        # jar's version.json id and protocol_version; Pumpkin: an ELF executable whose
+        # "<version> (Commit: <short>/" string names target.minecraft_version after "+", and
+        # the full commit, or None if built without one). Runs before any install lands.
     def prepare(self, installation: Installation, spec: ServerSpec,
                 workdir: Path) -> LaunchPlan: ...                             # writes COMPLETE native config
 

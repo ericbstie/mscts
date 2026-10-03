@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 
 import pytest
+from support.pumpkin import fake_pumpkin
 
 from mscts import install, registry
 from mscts.adapters.base import Installation, ProvisionError, Source
@@ -17,8 +18,8 @@ from mscts.target import TARGET
 
 URL = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
 ASSET_URL = "https://release-assets.githubusercontent.com/github-production-release-asset/1/2?sig=s"
-# A stand-in for the binary: an ELF header, then filler. Never run.
-FAKE_BINARY = b"\x7fELF\x02\x01\x01\x00" + bytes(range(256)) * 4
+# A stand-in for the binary. Never run.
+FAKE_BINARY = fake_pumpkin(tail=bytes(range(256)) * 4)
 ENTRY = Entry(
     adapter="pumpkin",
     version="nightly-test",
@@ -110,7 +111,7 @@ def test_installing_an_installed_entry_again_is_a_no_op_that_says_so(tmp_path: P
 def test_a_download_that_is_not_the_entry_says_the_nightly_moved_and_names_the_fix(
     tmp_path: Path,
 ) -> None:
-    moved = b"\x7fELF a newer nightly"
+    moved = fake_pumpkin(tail=b"a newer nightly")
     with pytest.raises(ProvisionError) as raised:
         install_entry(ADAPTER, TARGET, tmp_path, ENTRY, FakeGitHub(body=moved))
     message = str(raised.value)
@@ -251,7 +252,7 @@ def test_install_from_a_file_that_is_an_entry_records_both(tmp_path: Path) -> No
 
 
 def test_install_from_a_file_that_is_no_entry_never_claims_one(tmp_path: Path) -> None:
-    body = b"\x7fELF my own build"
+    body = fake_pumpkin(tail=b"my own build")
     supplied = write(tmp_path / "pumpkin", body)
     done = install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, REGISTRY)
     source = recorded(tmp_path / "cache")
@@ -270,7 +271,7 @@ def test_install_from_the_installed_file_again_is_a_no_op_that_says_so(tmp_path:
 
 def test_install_from_another_file_over_an_installation_names_the_fix(tmp_path: Path) -> None:
     install_from(ADAPTER, TARGET, tmp_path / "cache", write(tmp_path / "a", FAKE_BINARY), REGISTRY)
-    other = write(tmp_path / "b", b"\x7fELF another")
+    other = write(tmp_path / "b", fake_pumpkin(tail=b"another"))
     with pytest.raises(ProvisionError) as raised:
         install_from(ADAPTER, TARGET, tmp_path / "cache", other, REGISTRY)
     assert f"`mscts adapter install pumpkin --from {other}`" in str(raised.value)

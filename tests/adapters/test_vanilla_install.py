@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from mscts.adapters.base import ProvisionError
+from mscts.adapters.base import Build, ProvisionError
 from mscts.adapters.fetch import Download
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.install import install_entry
@@ -19,7 +19,7 @@ JAR_URL = "https://piston-data.example/v1/objects/def/server.jar"
 ZIP_DATE = (2026, 1, 1, 0, 0, 0)
 
 
-def fake_jar(protocol_version: int = 777) -> bytes:
+def fake_jar(protocol_version: int = 777, version: str = "26.3") -> bytes:
     """A tiny stand-in for the server jar: a zip whose version.json names the protocol.
 
     Its entries carry a fixed date, so the bytes never depend on the clock: pytest-xdist
@@ -27,8 +27,8 @@ def fake_jar(protocol_version: int = 777) -> bytes:
     """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as jar:
-        version = {"id": "26.3", "protocol_version": protocol_version, "java_version": 25}
-        jar.writestr(zipfile.ZipInfo("version.json", ZIP_DATE), json.dumps(version))
+        about = {"id": version, "protocol_version": protocol_version, "java_version": 25}
+        jar.writestr(zipfile.ZipInfo("version.json", ZIP_DATE), json.dumps(about))
         jar.writestr(
             zipfile.ZipInfo("net/minecraft/bundler/Main.class", ZIP_DATE), b"\xca\xfe\xba\xbe"
         )
@@ -104,3 +104,19 @@ def test_check_refuses_a_jar_that_is_not_a_server_for_the_target(
     (tmp_path / "server.jar").write_bytes(jar)
     with pytest.raises(ProvisionError, match=error):
         VanillaAdapter().check(tmp_path / "server.jar", TARGET)
+
+
+def test_check_names_the_version_a_jar_says_it_is(tmp_path: Path) -> None:
+    (tmp_path / "server.jar").write_bytes(fake_jar())
+    assert VanillaAdapter().check(tmp_path / "server.jar", TARGET) == Build(version="26.3")
+
+
+def test_check_refuses_a_jar_for_another_minecraft_version(tmp_path: Path) -> None:
+    (tmp_path / "server.jar").write_bytes(fake_jar(version="26.4"))
+    said = (
+        f"{tmp_path / 'server.jar'} is not supported: it is vanilla 26.4, "
+        "and this mscts tests Minecraft 26.3."
+    )
+    with pytest.raises(ProvisionError) as raised:
+        VanillaAdapter().check(tmp_path / "server.jar", TARGET)
+    assert str(raised.value) == said

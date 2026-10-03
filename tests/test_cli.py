@@ -3,6 +3,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from support.pumpkin import fake_pumpkin
 
 from mscts import registry
 from mscts.adapters.fetch import Download
@@ -10,7 +11,7 @@ from mscts.cli import main
 from mscts.registry import Entry, Registry
 
 URL = "https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux"
-BUILD = b"\x7fELF\x02\x01\x01\x00 a pinned build"
+BUILD = fake_pumpkin(tail=b"a pinned build")
 SHA256 = hashlib.sha256(BUILD).hexdigest()
 ENTRY = Entry(
     adapter="pumpkin",
@@ -97,7 +98,9 @@ def test_install_from_a_file(
 def test_a_moved_nightly_fails_naming_the_fix(
     cache: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    code, _, err = run(capsys, "adapter", "install", "pumpkin", fetch=FakeGitHub(b"\x7fELF newer"))
+    code, _, err = run(
+        capsys, "adapter", "install", "pumpkin", fetch=FakeGitHub(fake_pumpkin(tail=b"newer"))
+    )
     assert code == 1
     assert err.startswith(f"mscts: {URL} is not pumpkin nightly-test: sha256 ")
     assert "the nightly moved" in err
@@ -144,9 +147,9 @@ def test_list_shows_a_from_build_that_is_no_entry(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     supplied = tmp_path / "mine"
-    supplied.write_bytes(b"\x7fELF my build")
+    supplied.write_bytes(fake_pumpkin(tail=b"my build"))
     run(capsys, "adapter", "install", "pumpkin", "--from", str(supplied))
-    sha256 = hashlib.sha256(b"\x7fELF my build").hexdigest()
+    sha256 = hashlib.sha256(fake_pumpkin(tail=b"my build")).hexdigest()
     assert run(capsys, "adapter", "list")[1].splitlines()[2:] == [
         "pumpkin  nightly-test  26.3    not installed",
         (

@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from mscts.adapters.base import Installation, LaunchPlan
+from mscts.adapters.base import Build, Installation, LaunchPlan
 from mscts.bot import status_probe
 from mscts.net import Endpoint
 from mscts.run import Attached
@@ -32,8 +32,10 @@ class FakeAdapter:
     prepared: list[ServerSpec] = field(default_factory=list)
     binary: str = "status_fake.py"
 
-    def check(self, binary: Path, target: Target) -> None:
+    def check(self, binary: Path, target: Target) -> Build:
         """Every file is a fake server: nothing to check."""
+        del binary
+        return Build(version=target.minecraft_version)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         assert installation.adapter == self.name

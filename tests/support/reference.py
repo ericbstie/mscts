@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 from mscts import install
-from mscts.adapters.base import Installation, LaunchPlan
+from mscts.adapters.base import Build, Installation, LaunchPlan
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.bot import status_probe
 from mscts.net import Endpoint
@@ -76,8 +76,8 @@ class _Tagged:
     vanilla: VanillaAdapter = dataclasses.field(default_factory=VanillaAdapter)
     binary: str = "server.jar"
 
-    def check(self, binary: Path, target: Target) -> None:
-        self.vanilla.check(binary, target)
+    def check(self, binary: Path, target: Target) -> Build:
+        return self.vanilla.check(binary, target)
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         plan = self.vanilla.prepare(installation, spec, workdir)

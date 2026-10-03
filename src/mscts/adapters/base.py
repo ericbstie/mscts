@@ -6,7 +6,7 @@ Installations are install.py's (ADR-0008): an Adapter never downloads anything.
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, override
 
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec
@@ -19,6 +19,19 @@ class ProvisionError(RuntimeError):
 
 class PrepareError(RuntimeError):
     """prepare cannot produce a LaunchPlan that meets the Adapter contract."""
+
+
+@dataclass(frozen=True, slots=True)
+class Build:
+    """One build of a server, named as its publisher names it (ADR-0008)."""
+
+    version: str  # "26.3"; Pumpkin's own "0.2.0+26.3-26.51"; "nightly"
+    commit: str | None = None  # the full commit it was built from, where the publisher names one
+
+    @override
+    def __str__(self) -> str:
+        """`26.3`, or `nightly 4426d11`: how Reports and commands name this build."""
+        return self.version if self.commit is None else f"{self.version} {self.commit[:7]}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,8 +74,11 @@ class Adapter(Protocol):
     name: str
     binary: str  # the one file an Installation holds besides SOURCE.json ("server.jar")
 
-    def check(self, binary: Path, target: Target) -> None:
-        """Raise ProvisionError unless `binary` is a server this Adapter can run for `target`."""
+    def check(self, binary: Path, target: Target) -> Build:
+        """The Build `binary` names; ProvisionError unless this Adapter can run it for `target`.
+
+        A build for another Minecraft version is refused, naming both versions.
+        """
         ...
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:

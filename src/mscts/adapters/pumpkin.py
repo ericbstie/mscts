@@ -13,14 +13,19 @@ from pathlib import Path
 from types import MappingProxyType
 
 from mscts.adapters import nbt
-from mscts.adapters.base import Installation, LaunchPlan, PrepareError, ProvisionError
+from mscts.adapters.base import Build, Installation, LaunchPlan, PrepareError, ProvisionError
 from mscts.net import Endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import Target
 
-# The Linux x86-64 binary. Which build, from where, is the Registry's (data/registry.toml).
+# The Linux x86-64 binary.
 BINARY = "pumpkin"
 _ELF_MAGIC = b"\x7fELF"
+# What a build says it is, as the compiler folds `/pumpkin`'s "{} (Commit: {}/{})" into one
+# string: its version, whose part after "+" is its Minecraft version, and its short commit
+# ("unknown" if built without a checkout). The full commit follows a second copy of the
+# short one (docs/research/2026-10-03-install.md).
+_NAMES = re.compile(rb"(\d+\.\d+\.\d+\+(\d+(?:\.\d+)*)-[\w.]+) \(Commit: ([0-9a-f]{7}|unknown)/")
 
 type TomlValue = bool | int | float | str | list[TomlValue] | Toml
 type Toml = dict[str, TomlValue]  # a TOML table, in Pumpkin's own key order
@@ -518,13 +523,28 @@ class PumpkinAdapter:
     name = "pumpkin"
     binary = BINARY
 
-    def check(self, binary: Path, target: Target) -> None:  # noqa: ARG002 (any Target)
-        """Raise ProvisionError unless `binary` is an ELF executable, as every Pumpkin build is."""
-        with binary.open("rb") as file:
-            head = file.read(16)
-        if not head.startswith(_ELF_MAGIC):
-            msg = f"{binary} is not an ELF executable: {head!r}"
+    def check(self, binary: Path, target: Target) -> Build:
+        """The version and commit `binary` names; ProvisionError unless it is for `target`.
+
+        Every Pumpkin build is an ELF executable that names its version and commit.
+        """
+        body = binary.read_bytes()
+        if not body.startswith(_ELF_MAGIC):
+            msg = f"{binary} is not an ELF executable: {body[:16]!r}"
             raise ProvisionError(msg)
+        names = _NAMES.search(body)
+        if names is None:
+            msg = f"{binary} names no Pumpkin version: is it a Pumpkin build?"
+            raise ProvisionError(msg)
+        version, minecraft, short = names[1].decode(), names[2].decode(), names[3]
+        if minecraft != target.minecraft_version:
+            msg = (
+                f"{binary} is not supported: it is Pumpkin {version}, for Minecraft {minecraft}, "
+                f"and this mscts tests Minecraft {target.minecraft_version}."
+            )
+            raise ProvisionError(msg)
+        full = re.search(re.escape(short) * 2 + rb"[0-9a-f]{33}", body)
+        return Build(version=version, commit=None if full is None else full[0][7:].decode())
 
     def prepare(self, installation: Installation, spec: ServerSpec, workdir: Path) -> LaunchPlan:
         """Write the complete Pumpkin config and world save for `spec` into `workdir`.

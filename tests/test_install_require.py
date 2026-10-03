@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import override
 
 import pytest
+from support.pumpkin import fake_pumpkin
 
 from mscts import install, registry
 from mscts.adapters.base import ProvisionError
@@ -63,7 +64,7 @@ def test_an_installed_installation_is_returned_without_asking(tmp_path: Path) ->
 
 def test_a_from_installation_is_used_as_it_is(tmp_path: Path) -> None:
     supplied = tmp_path / "pumpkin"
-    supplied.write_bytes(b"\x7fELF my own build")
+    supplied.write_bytes(fake_pumpkin(tail=b"my own build"))
     done = install_from(ADAPTER, TARGET, tmp_path / "cache", supplied, REGISTRY)
     github = FakeGitHub()
     assert require(ADAPTER, TARGET, tmp_path / "cache", fetch=github) == done.installation
