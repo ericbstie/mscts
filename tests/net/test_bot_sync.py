@@ -111,6 +111,21 @@ def test_a_sync_whose_answers_come_a_tick_apart_ends_after_one_pair(wide_gap: fl
     assert transcript.marks == []
 
 
+def test_the_second_request_is_sent_no_sooner_than_5_ms_after_the_first_answer_arrived() -> None:
+    # Audit 2026-10-02 B2: the real TICK_GAP_S, not `wide_gap`. Answers from one vanilla
+    # pass came up to 3.6 ms apart, so a halved wait would let the pair share a pass.
+    transcript = Transcript(group_id="test/sync", server="fake")
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        await bot.sync()
+
+    with_bot(CODEC, transcript, play_server([], answer_at_once), use)
+
+    _, answered, asked, _ = [t_ns for _, t_ns in barrier_times(transcript)]
+    assert asked - answered >= 5_000_000
+
+
 def test_the_fakes_tick_is_longer_than_the_tick_gap() -> None:
     assert bot_module.TICK_GAP_S < TICK_S  # a vanilla-like tick is seen as one
 
