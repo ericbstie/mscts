@@ -81,6 +81,7 @@ test needs it:
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
+| `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read) |
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
@@ -639,6 +640,23 @@ class Position:                     # Bot.position: where its player is and face
 
 class Face(IntEnum):                # a block face: Direction.get3DDataValue
     DOWN = 0; UP = 1; NORTH = 2; SOUTH = 3; WEST = 4; EAST = 5
+
+# entities.py (#27): what a Bot knows of the entities around it, as ClientPacketListener
+# tracks them (docs/research/2026-10-03-bot-entities.md).
+@frozen
+class Entity:                       # one entity, as the server last described it
+    id: int                         # its entity id: it differs from server to server
+    uuid: UUID
+    type: str                       # "minecraft:zombie"; "#<id>" for an id outside the registry
+    x: float; y: float; z: float    # where the server last put it
+    data: Mapping[int, object]      # its entity data so far, by index
+
+class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each lookup a snapshot
+
+class EntityTracker:
+    entities: Entities
+    def follow(self, name: str, fields: Mapping[str, object]) -> None: ...
+    # add_entity adds (replacing the id); other packets for an unknown id change nothing.
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
