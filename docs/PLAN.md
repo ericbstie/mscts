@@ -1533,7 +1533,16 @@ proves it necessary:
      palette, or a list palette sent with fewer bits than the client
      reads it at) is network traffic only, and a block state or biome
      that differs is a gameplay Divergence at `sections[<i>].block_states`
-     or `sections[<i>].biomes`. An entry that indexes past its palette is
+     or `sections[<i>].biomes`. The order of a list or hash palette is
+     no Divergence at all (#172): every copy of the fields, raw ones too,
+     has each such palette in ascending order of id and its entries'
+     indexes changed to match (`compare._ONE_SPELLING`), since vanilla
+     sends a container it holds in memory in the order its values were
+     set and one it read back from disk in entry order
+     (`PalettedContainer.pack`;
+     `docs/research/2026-10-03-vanilla-chunk-spellings.md`). A palette
+     with a value twice, or an entry past it, stays as sent, and so do
+     the bits and the slots after the last entry. An entry that indexes past its palette is
      a value of its own: the client reads it, and fails only when it
      looks it up (`valueFor`). Evidence
      (`docs/research/2026-10-02-chunks-light.md`, `javap` on the 26.3

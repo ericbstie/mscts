@@ -1190,10 +1190,16 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
 
 
 def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
-    """A copy of `fields`, `packet`'s, in the value model, sorted if `UNORDERED` names it."""
+    """A copy of `fields`, `packet`'s, in the value model.
+
+    Cut to what the client reads (`_CAPS`), in one spelling (`_ONE_SPELLING`), and sorted if
+    `UNORDERED` names it.
+    """
     copy = _plain_mapping(fields.items(), packet.name, ())
     if (cap := _CAPS.get((packet.state, packet.name))) is not None:
         copy = cap(copy)
+    if (spelling := _ONE_SPELLING.get((packet.state, packet.name))) is not None:
+        copy = spelling(copy)
     sort = _SORTS.get(packet.name)
     return copy if sort is None else sort(copy)
 
@@ -1685,6 +1691,80 @@ def _unpacked_ids(data: bytes, entries: int) -> list[int | None]:
     return [None if number == 0 else number - 1 for number in numbers]
 
 
+def _in_palette_order(container: PalettedContainer, value: _Value) -> _Value:
+    """A list or hash palette container with its palette in ascending order of id.
+
+    Vanilla sends a container it holds in memory with its values in the order they were set,
+    and one it read back from disk in entry order (`PalettedContainer.pack`), so the order is a
+    spelling vanilla varies (docs/research/2026-10-03-vanilla-chunk-spellings.md). Each entry's
+    index changes to match; the bits, each Long's unused high bits and any slots after the last
+    entry stay as sent. A palette that has a value twice, or an entry past it, stays as it is.
+    """
+    if not isinstance(value, dict):
+        return value
+    bits, palette, data = value.get("bits"), value.get("palette"), value.get("data")
+    if not (
+        isinstance(bits, int)
+        and 1 <= bits <= container.list_max
+        and isinstance(palette, list)
+        and all(isinstance(each, int) for each in palette)
+        and len(set(palette)) == len(palette)
+        and isinstance(data, bytes)
+    ):
+        return value
+    ids = [each for each in palette if isinstance(each, int)]
+    order = sorted(range(len(ids)), key=ids.__getitem__)
+    indexes = {old: new for new, old in enumerate(order)}
+    reindexed = _reindexed(data, max(bits, container.min_width), container.entries, indexes)
+    if reindexed is None:
+        return value
+    ordered: list[_Value] = [*sorted(ids)]
+    return {**value, "palette": ordered, "data": reindexed}
+
+
+def _reindexed(data: bytes, width: int, entries: int, indexes: Mapping[int, int]) -> bytes | None:
+    """`data` with each index replaced by `indexes`' for it.
+
+    `data` is `entries` of `width` bits, packed as the client reads them. None if it is not as
+    long as they take, or an index has none in `indexes`.
+    """
+    per_long, mask = _LONG_BITS // width, (1 << width) - 1
+    if len(data) != _LONG_BYTES * -(-entries // per_long):
+        return None
+    longs: list[bytes] = []
+    for number, start in enumerate(range(0, len(data), _LONG_BYTES)):
+        word = int.from_bytes(data[start : start + _LONG_BYTES], "big")
+        for slot in range(min(per_long, entries - number * per_long)):
+            shift = slot * width
+            index = indexes.get(word >> shift & mask)
+            if index is None:
+                return None
+            word = word & ~(mask << shift) | index << shift
+        longs.append(word.to_bytes(_LONG_BYTES, "big"))
+    return b"".join(longs)
+
+
+def _one_spelling_level_chunk(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """A chunk in one of the spellings vanilla varies between its own runs.
+
+    Each section's containers are `_in_palette_order`.
+    """
+    sections = fields.get("sections")
+    if not isinstance(sections, list):
+        return fields
+    return {**fields, "sections": [_section_in_palette_order(each) for each in sections]}
+
+
+def _section_in_palette_order(section: _Value) -> _Value:
+    if not isinstance(section, dict):
+        return section
+    result = dict(section)
+    for key, (container, _) in _CONTAINERS.items():
+        if key in section:
+            result[key] = _in_palette_order(container, section[key])
+    return result
+
+
 _LIGHT_LAYERS: Mapping[str, str] = MappingProxyType(
     {
         "sky_light_mask": "sky",
@@ -2055,6 +2135,16 @@ _CAPS: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value
 )
 """For a packet whose lists can be longer than the client ever reads: every copy of its fields
 cut to what can be read, and one value that counts the rest (`_capped`)."""
+
+_ONE_SPELLING: Mapping[tuple[State, str], Callable[[dict[str, _Value]], dict[str, _Value]]] = (
+    MappingProxyType(
+        {
+            (State.PLAY, "minecraft:level_chunk_with_light"): _one_spelling_level_chunk,
+        }
+    )
+)
+"""For a packet that vanilla spells two ways between its own runs, where the client keeps the
+same either way: every copy of its fields in one of them, so neither is a Divergence."""
 
 _COVERS: Mapping[tuple[State, str], Callable[[_Path], _Path]] = MappingProxyType(
     {

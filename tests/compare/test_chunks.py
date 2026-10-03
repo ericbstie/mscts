@@ -147,12 +147,12 @@ def _gameplay(path: str, reference: str, candidate: str, test_case: str) -> Dive
 @pytest.mark.parametrize(
     "bottom",
     [
-        paletted(FLAT, [0, 9, 10, 88], bits=4, width=4),
+        paletted(FLAT, [88, 10, 9, 0, STONE], bits=4, width=4),
         paletted(FLAT, [88, 10, 9, 0], bits=2, width=4),
         paletted(FLAT, [9, 88, 0, 10], bits=5, width=5),
         direct(FLAT, bits=16),
     ],
-    ids=["another palette order", "fewer bits sent", "a hash palette", "the global palette"],
+    ids=["a value no entry uses", "fewer bits sent", "a hash palette", "the global palette"],
 )
 def test_the_same_blocks_under_another_palette_are_network_traffic_only(
     bottom: dict[str, object],
@@ -162,6 +162,43 @@ def test_the_same_blocks_under_another_palette_are_network_traffic_only(
     assert verdict.divergences
     assert verdict.gameplay == ()
     assert {str(d.path).split(".block_states")[0] for d in verdict.divergences} == {"sections[0]"}
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        (FLAT_BOTTOM, paletted(FLAT, [0, 88, 10, 9], bits=4, width=4)),
+        (
+            paletted(FLAT, [88, 10, 9, 0], bits=2, width=4),
+            paletted(FLAT, [0, 88, 10, 9], bits=2, width=4),
+        ),
+        (
+            paletted(FLAT, [88, 10, 9, 0], bits=5, width=5),
+            paletted(FLAT, [9, 88, 0, 10], bits=5, width=5),
+        ),
+    ],
+    ids=["a list palette", "a list palette sent with fewer bits", "a hash palette"],
+)
+def test_the_same_blocks_in_another_palette_order_are_no_difference(
+    reference: dict[str, object], candidate: dict[str, object]
+) -> None:
+    # Vanilla sends a section it holds in memory in the order its values were set (air first),
+    # and one it read back from disk in entry order (PalettedContainer.pack): #172.
+    verdict = _verdict(chunk(overworld(reference)), chunk(overworld(candidate)))
+
+    assert verdict.divergences == ()
+
+
+def test_the_same_biomes_in_another_palette_order_are_no_difference() -> None:
+    reference = paletted(TWO_BIOMES, [PLAINS, 3], bits=1, width=1)
+    candidate = paletted(TWO_BIOMES, [3, PLAINS], bits=1, width=1)
+
+    verdict = _verdict(
+        chunk(overworld(FLAT_BOTTOM, biomes=reference)),
+        chunk(overworld(FLAT_BOTTOM, biomes=candidate)),
+    )
+
+    assert verdict.divergences == ()
 
 
 def test_a_section_of_one_block_as_a_palette_is_network_traffic_only() -> None:
