@@ -78,11 +78,17 @@ probe. Since #200 (ADR-0013), every Adapter starts its server with
   `gamerule spawn_mobs false` is a gzipped compound
   `{data: {…, "minecraft:spawn_mobs": 0b, …}, DataVersion: 5023}`.
 - **verified (source, Pumpkin 4426d11)** `read_game_rules`
-  (`pumpkin-world/src/world_info/data_files.rs`) reads the `data` compound of
-  the same file, and keeps the default of every rule it leaves out.
-  `anvil.rs` prefers that file over `level.dat`. `spawn_mobs` gates both
-  natural spawning (`pumpkin/src/world/mod.rs`, the tick's spawn step) and
-  the mobs a new chunk generates with (`natural_spawner.rs`).
+  (`crates/pumpkin-world/src/world_info/data_files.rs`) reads the `data`
+  compound of the same file, and keeps the default of every rule it leaves
+  out. `crates/pumpkin-world/src/world_info/anvil.rs` prefers that file over
+  `level.dat`. On Pumpkin, `spawn_mobs` gates both natural spawning
+  (`crates/pumpkin/src/world/mod.rs`, the tick's spawn step) and the mobs a
+  new chunk generates with (`crates/pumpkin/src/world/natural_spawner.rs`).
+- **verified (javap)** On vanilla, `spawn_mobs` gates natural spawning
+  only. `ChunkStatusTasks.generateSpawn` calls
+  `ChunkGenerator.spawnOriginalMobs` without checking it. The flat world's
+  `FlatLevelSource.spawnOriginalMobs` does nothing, so a flat world
+  generates no mobs.
 - **verified (live)** Each Adapter wrote a `game_rules.dat` with only
   `minecraft:spawn_mobs` false (vanilla stamped 5023, Pumpkin 4903). On both
   servers, `gamerule spawn_mobs` answered `false`, and a Bot that stayed 30 s

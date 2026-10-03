@@ -123,11 +123,15 @@ protection 0, and without pausing when empty. None of these are ServerSpec
 fields. Your Adapter sets them every time.
 
 **Turn mob spawning off.** Every server must start with the
-`spawn_mobs` game rule off, so that no mob spawns from the first tick.
-Vanilla and Pumpkin read it from `world/data/minecraft/game_rules.dat`,
-not from their config. `mscts.adapters.fixture_world.game_rules()` builds
-that file: write it gzipped before the server starts. A unit test checks
-this for every Adapter in `ADAPTERS`.
+`spawn_mobs` game rule off, so that no mob spawns naturally from the first
+tick. Vanilla and Pumpkin read it from
+`world/data/minecraft/game_rules.dat`, not from their config.
+`mscts.adapters.fixture_world.game_rules()` builds that file. Write it
+gzipped to `fixture_world.GAME_RULES_DAT`, and name
+`fixture_world.WORLD_FOLDER` as the world folder in the server's config. A
+unit test checks the file for every Adapter in `ADAPTERS`. A server that
+cannot read the file starts with spawning on and gives no error, so also
+ask a running server for `gamerule spawn_mobs` in a live test.
 
 **Bind exactly the Endpoint.** The ServerSpec's host is always a loopback
 address, and each server gets its own. The server must listen on that host
