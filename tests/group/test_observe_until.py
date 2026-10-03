@@ -120,7 +120,7 @@ async def test_the_window_closes_when_the_first_such_packet_arrived_not_when_it_
     assert closed.t_ns == first + 1, "just after the arrival (see the burst test)"
     assert exit_ns - closed.t_ns > 4 * GAP_S * 1e9, "the Mark is the arrival, not the time taken"
     names = [packet.name for packet in seen]
-    assert REQUEST not in names, "no barrier"
+    assert names.count(REQUEST) == 2, "the barrier before the window opens, none at its end"
 
 
 @pytest.mark.asyncio

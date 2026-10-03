@@ -895,11 +895,14 @@ class GroupContext:
                                     # (no end Mark if the body raises: no Measurement)
     def observe(self, *names: str, until: str | None = None, bot: Bot | None = None
                 ) -> AbstractAsyncContextManager[None]: ...
-                                    # an Observation window: Marks OBSERVE_OPEN (then the
-                                    # names, each after a space) on entry; when the body
-                                    # completes, every Bot in play and not disconnected passes
-                                    # Bot.sync (all at once; the first error raises, as that
-                                    # Bot's failure), then a Mark "OBSERVE_CLOSE <Bot name>"
+                                    # an Observation window: on entry, every Bot in play
+                                    # and not disconnected passes Bot.sync (all at once, so
+                                    # what setup caused has arrived at every Bot; #141), then
+                                    # Marks OBSERVE_OPEN (then the names, each after a space);
+                                    # when the body completes, every Bot in play and not
+                                    # disconnected passes Bot.sync again (all at once; the
+                                    # first error raises, as that Bot's failure), then a Mark
+                                    # "OBSERVE_CLOSE <Bot name>"
                                     # per Bot, 1 ns after its barrier's last answer's arrival
                                     # (a Bot that passed none: once every barrier returned),
                                     # then an unnamed OBSERVE_CLOSE at that same time (it ends

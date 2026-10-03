@@ -279,24 +279,26 @@ class GroupContext:
     ) -> AsyncIterator[None]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
-        Marks `observe:open` on entry, followed by `names`, each after a space. When the
-        body completes, every Bot in play passes the barrier (`Bot.sync`), all at once.
-        Each Bot's window ends at its own barrier: it gets the Mark `observe:close <Bot
-        name>` a nanosecond after its barrier's last answer arrived, whatever the other
+        On entry, every Bot in play passes the barrier (`Bot.sync`), all at once, so what
+        the setup before the window caused has arrived at every Bot, not only at Control's;
+        then the window gets its `observe:open` Mark, followed by `names`, each after a
+        space. When the body completes, every Bot in play passes the barrier again, all at
+        once. Each Bot's window ends at its own barrier: it gets the Mark `observe:close
+        <Bot name>` a nanosecond after its barrier's last answer arrived, whatever the other
         Bots are still waiting for (a Bot that passes none gets it once every barrier has
         returned). Once every barrier has returned, the Mark `observe:close` ends the
         window for any Bot the Group makes later. Then every Bot not closed takes what
         has already arrived, without waiting (`Bot.drain`). A Bot whose `expect` returned
         the server's disconnect (`Bot.disconnected`, as a Group that tests a kick does)
         passes no barrier and takes nothing; a disconnect the barrier or the drain takes
-        fails the Bot. A body that raises gets neither: its window runs to the end of the
-        Transcript.
+        fails the Bot. A body that raises gets no barrier at its end and no close Mark:
+        its window runs to the end of the Transcript.
 
         A barrier covers what the Bot itself sent. A window that must hold what another
         Bot's action causes at this Bot waits, in its body, for that action's feedback
         before it closes, as `OperatorBot.run` does for a command.
 
-        With `until`, there is no barrier. Every Bot not closed takes what has already
+        With `until`, there is no barrier at the end. Every Bot not closed takes what has already
         arrived, and the window closes when the first play packet called `until` arrived
         at any Bot but Control after the window opened. Its Mark is stamped a nanosecond
         after that arrival (not after the time the Bot took the packet). So the window
@@ -341,6 +343,9 @@ class GroupContext:
             raise ValueError(msg)
         self._observing = True
         try:
+            # What setup caused may still be on its way to a Bot that is not Control: the
+            # barrier first, so it arrives before the window opens on every Instance.
+            await self._sync()
             opened = self._mark(" ".join((OBSERVE_OPEN, *names)))
             yield
             if until is None:
