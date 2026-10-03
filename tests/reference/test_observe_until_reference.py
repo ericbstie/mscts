@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from support.chunks import OVERWORLD_SECTIONS, decode_chunk
 from support.reference import booted
+from support.selfcheck import keep_timeline
 
 from mscts.codec.packets import Direction, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, is_heartbeat
@@ -112,6 +113,7 @@ async def test_a_join_inside_a_window_closed_by_a_packet_holds_the_same_packets_
     cache_dir: Path, tmp_path: Path
 ) -> None:
     differing: list[str] = []
+    kept: list[Path] = []
     async with (
         booted(cache_dir, tmp_path / "first") as first,
         booted(cache_dir, tmp_path / "second") as second,
@@ -121,17 +123,31 @@ async def test_a_join_inside_a_window_closed_by_a_packet_holds_the_same_packets_
                 play(JOIN_UNTIL, first.endpoint), play(JOIN_UNTIL, second.endpoint)
             )
             one, other = (window_of(transcript) for transcript in transcripts)
-            if (one[0][_BATCH_FINISHED], other[0][_BATCH_FINISHED]) != (1, 1):
-                differing.append(f"play {number}: not exactly one chunk batch finished in each")
-            if one[0] != other[0]:
-                differing.append(f"play {number}: names {one[0] - other[0]} / {other[0] - one[0]}")
-            if one[1] != other[1] or not one[1]:
-                differing.append(f"play {number}: chunks {one[1]} / {other[1]}")
+            differences = _differences(one, other)
+            differing.extend(f"play {number}: {difference}" for difference in differences)
+            if differences:
+                name = f"probe-join-until.{number}.txt"
+                kept.append(keep_timeline(transcripts, tmp_path / "timelines" / name))
         # The Group undid its Fixture, on both: Control rejoined and set the rule back. And
         # the Instance honoured the Adapter's game_rules.dat: mob spawning is still off.
         for endpoint in (first.endpoint, second.endpoint):
             await play(QUERY, endpoint)
 
-    same = _REPEAT - len({line.split(":")[0] for line in differing})
+    same = _REPEAT - len(kept)
     LOG.info("the same window in %d of %d plays", same, _REPEAT)
-    assert differing == [], f"{same} of {_REPEAT}: {differing}"
+    files = "".join(f"\n  {path}" for path in kept)
+    assert differing == [], (
+        f"{same} of {_REPEAT}: {differing}\nThe timelines of the plays that differ:{files}"
+    )
+
+
+def _differences(one: Window, other: Window) -> list[str]:
+    """How two plays' windows differ, or what they both lack; empty if they are the same."""
+    differences = []
+    if (one[0][_BATCH_FINISHED], other[0][_BATCH_FINISHED]) != (1, 1):
+        differences.append("not exactly one chunk batch finished in each")
+    if one[0] != other[0]:
+        differences.append(f"names {one[0] - other[0]} / {other[0] - one[0]}")
+    if one[1] != other[1] or not one[1]:
+        differences.append(f"chunks {one[1]} / {other[1]}")
+    return differences
