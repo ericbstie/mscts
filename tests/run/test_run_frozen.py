@@ -86,9 +86,9 @@ async def test_a_group_after_one_that_left_the_reference_frozen_is_an_error(
 ) -> None:
     later = await _later(group, frozen, tmp_path, repeat=2)
 
-    detail = f"the Reference is unusable: {group.id} failed and left its world frozen"
+    detail = f"the Reference is unusable: {group.id} left its world frozen"
     if frozen == "both":
-        detail += f"; the Candidate is unusable: {group.id} failed and left its world frozen"
+        detail += f"; the Candidate is unusable: {group.id} left its world frozen"
     assert [(verdict.outcome, verdict.detail) for verdict in later] == [(Outcome.ERROR, detail)] * 2
 
 
@@ -101,7 +101,7 @@ async def test_a_group_after_one_that_left_the_candidate_frozen_fails_and_is_sco
     # world would score better than one that did not.
     later = await _later(group, "Candidate", tmp_path, repeat=2)
 
-    what = f"{group.id} failed and left its world frozen"
+    what = f"{group.id} left its world frozen"
     assert [(verdict.outcome, verdict.detail) for verdict in later] == [
         (Outcome.MISMATCH, f"the Candidate failed: {what}")
     ] * 2

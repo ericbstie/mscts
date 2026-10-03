@@ -511,7 +511,7 @@ class _Instances:
                 self._versions[role] = status_version(transcript)
         for endpoint, attempt in zip(endpoints, attempts, strict=True):
             if isinstance(attempt, GroupError) and attempt.left_frozen:
-                self._unusable[endpoint] = f"{group.id} failed and left its world frozen"
+                self._unusable[endpoint] = f"{group.id} left its world frozen"
         reference, candidate = transcripts
         verdict = judge(group, *attempts)
         return _Play(
@@ -532,8 +532,8 @@ class _Instances:
         A side a failed Group left frozen (`GroupError.left_frozen`) would make every later
         Group compare against a frozen world, so no later Group plays on either side:
 
-        - The Reference is unusable: `error`, "the Reference is unusable: <group> failed
-          and left its world frozen", and the same for the Candidate after a "; " if it is
+        - The Reference is unusable: `error`, "the Reference is unusable: <group> left
+          its world frozen", and the same for the Candidate after a "; " if it is
           too.
         - Only the Candidate is: `mismatch`, led by a `failed` Divergence saying so, as for
           any Candidate failure (`judge`), so the Score counts it: an `error`, which the

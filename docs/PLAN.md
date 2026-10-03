@@ -1376,9 +1376,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # not part of `elapsed_s`.
     # #228: an Instance a Group left frozen (GroupError.left_frozen) plays no later Group,
     # decided before the wait. The Reference's: each is `error`, "the Reference is
-    # unusable: <group id> failed and left its world frozen" (the Candidate's likewise,
+    # unusable: <group id> left its world frozen" (the Candidate's likewise,
     # after a "; " if both are). Only the Candidate's: each is `mismatch`, led by a
-    # `failed` Divergence "<group id> failed and left its world frozen", so the Score
+    # `failed` Divergence "<group id> left its world frozen", so the Score
     # counts it (an `error` is not scored, and would reward breaking the world).
     # NotImplementedError for a statistical Group (M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
