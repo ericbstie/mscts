@@ -357,6 +357,45 @@ async def test_a_command_the_reference_does_not_have_is_an_error() -> None:
     assert verdict == Verdict("test/needs-tick", Outcome.ERROR, detail=detail)
 
 
+async def _reads_version(context: GroupContext) -> None:
+    """A Group that trusts the status to name a version: an odd one makes it raise KeyError."""
+    bot = await context.bot("status")
+    reply = await bot.status()
+    reply["version"]
+
+
+READS_VERSION = Group(id="test/reads-version", run=_reads_version)
+NO_VERSION = json.dumps({key: value for key, value in VANILLA_STATUS.items() if key != "version"})
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_exception_on_the_candidate_alone_is_a_mismatch() -> None:
+    # #222: an exception type the Candidate is not expected to cause still scores against it.
+    reference = await _play(READS_VERSION, status_server(_status_json(), []))
+    candidate = await _play(READS_VERSION, status_server(NO_VERSION, []))
+    assert isinstance(reference, Transcript)
+    assert isinstance(candidate, GroupError)
+    assert isinstance(candidate.__cause__, KeyError)
+
+    verdict = judge(READS_VERSION, reference, candidate)
+
+    assert verdict.outcome is Outcome.MISMATCH
+    assert verdict.divergences[0] == _failed("KeyError: 'version'", bot="")  # the script raised
+    assert verdict.detail == "the Candidate failed: KeyError: 'version'"
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_exception_on_the_reference_is_an_error() -> None:
+    reference = await _play(READS_VERSION, status_server(NO_VERSION, []))
+    candidate = await _play(READS_VERSION, status_server(_status_json(), []))
+    assert isinstance(reference, GroupError)
+
+    verdict = judge(READS_VERSION, reference, candidate)
+
+    detail = "the Reference failed: KeyError: 'version'"
+    assert verdict == Verdict("test/reads-version", Outcome.ERROR, detail=detail)
+
+
 async def _mute(peer: Peer) -> None:
     """Take whatever each connection sends, answer nothing, until it closes."""
     with contextlib.suppress(EOFError):

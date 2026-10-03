@@ -63,9 +63,10 @@ and stops the orphaned process groups.
 | `error` | mscts itself failed, or vanilla could not run the Group. |
 
 When the Candidate breaks the protocol, sends a frame that does not decode,
-closes the connection, stops answering, or still has players online from the
-Group before, the Verdict is `mismatch`, led by a `failed` Divergence that
-says what happened. It is never `error`.
+closes the connection, stops answering, still has players online from the
+Group before, or sends a value that makes the Group fail when it did not fail
+on vanilla, the Verdict is `mismatch`, led by a `failed` Divergence that says what
+happened. It is never `error`.
 Compliance scores leave `error` out, so a Candidate must not be able to
 score better by crashing.
 

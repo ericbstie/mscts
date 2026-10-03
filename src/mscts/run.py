@@ -243,17 +243,18 @@ def judge(
 
     What `compare` finds, with the Group's Masks, except:
 
-    - The Candidate failed in a way it caused (`CANDIDATE_FAILURES`: its output did not
-      decode, broke the protocol, never came, its connection closed or was refused, or it
-      kept a closed Bot's player online past the Group's wait):
-      `mismatch`, led by a `failed` Divergence that says what happened and names the
-      Bot it came out of (`GroupError.bot`), then whatever
-      the Comparison of the Transcripts so far finds. Never `error`, which a
-      compliance score leaves out (audit H3).
+    - The Group raised on the Candidate and not on the Reference: `mismatch`, led by a
+      `failed` Divergence that says what happened and names the Bot it came out of
+      (`GroupError.bot`), then whatever the Comparison of the Transcripts so far finds.
+      The Reference ran the same code without raising, so the Candidate caused it,
+      whatever the exception's type: its output did not decode, broke the protocol,
+      never came, its connection closed or was refused, it kept a closed Bot's player
+      online past the Group's wait, or it sent a value the Group did not expect (#222).
+      Never `error`, which a compliance score leaves out (audit H3).
     - The Candidate does not have a command the Group's Control needs (`CommandMissing`):
       `blocked`, naming it (`needs /tick`).
-    - The Reference failed, the Group raised anything else on the Candidate, or the
-      Comparison itself raised: `error`, the harness or the Reference having failed.
+    - The Reference failed, or the Comparison itself raised: `error`, the harness or the
+      Reference having failed.
       Any exception from the Comparison is caught, whatever its type, so that one Group's
       bug does not end the Run; the detail names it, and the log keeps its traceback.
       `MemoryError` and `RecursionError` are caught too and become that Group's `error`;
@@ -266,10 +267,6 @@ def judge(
     if isinstance(candidate, GroupError) and isinstance(candidate.__cause__, CommandMissing):
         detail = f"needs /{candidate.__cause__.root}"
         return Verdict(group_id=group.id, outcome=Outcome.BLOCKED, detail=detail)
-    if isinstance(candidate, GroupError) and not isinstance(
-        candidate.__cause__, CANDIDATE_FAILURES
-    ):
-        return _error(group, f"the harness failed on the Candidate: {candidate}")
     transcript = candidate.transcript if isinstance(candidate, GroupError) else candidate
     try:
         verdict = compare(reference, transcript, group.masks)

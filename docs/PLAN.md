@@ -1258,15 +1258,14 @@ CANDIDATE_FAILURES = (CodecError, ProtocolError, TimeoutError, ConnectionError,
                       PlayersStillOnline)
 def judge(group: Group, reference: Transcript | GroupError,
           candidate: Transcript | GroupError) -> Verdict: ...
-    # The Verdict rule (audit H3): a Candidate failure (its GroupError's cause is one of
-    # CANDIDATE_FAILURES) is `mismatch`: a `failed` Divergence first, then what compare
-    # finds in the Transcripts so far (e.g. the undecodable frame, by payload), whatever the
-    # Masks. CommandMissing on the Candidate (it lacks a command Control needs) is
-    # `blocked`, detail "needs /<root>". `error` only if the Reference failed (CommandMissing
-    # included), the Group raised anything else on the Candidate (a harness bug), or compare
-    # raised: any Exception, named in the detail ("the Comparison failed: OverflowError:
-    # ..."), so the Run goes on to the next Group (#174). Else compare(reference,
-    # candidate, masks).
+    # The Verdict rule (audit H3): a Candidate failure (a GroupError on the Candidate and
+    # none on the Reference, whatever its cause's type, #222) is `mismatch`: a `failed`
+    # Divergence first, then what compare finds in the Transcripts so far (e.g. the
+    # undecodable frame, by payload), whatever the Masks. CommandMissing on the Candidate
+    # (it lacks a command Control needs) is `blocked`, detail "needs /<root>". `error` only
+    # if the Reference failed (CommandMissing included) or compare raised: any Exception,
+    # named in the detail ("the Comparison failed: OverflowError: ..."), so the Run goes on
+    # to the next Group (#174). Else compare(reference, candidate, masks).
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
     # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
