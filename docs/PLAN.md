@@ -1974,6 +1974,29 @@ class Report:                       # report.py
     # Report.of(run_result, *, target, notes, elapsed_s); repeat (property)
     # later: compliance = matches / (groups − errors)
 
+# report.py, #101: each test case of each Group passes or fails.
+class Result(StrEnum): PASS; FAIL; NOT_TESTED; ERROR
+@frozen
+class CaseResult:                   # one line of a Report
+    group_id: str
+    test_case: str                  # "" for the Group's own line
+    result: Result
+    network_traffic_only: bool = False
+    reasons: str = ""               # the Group line's "Not tested: …; Error: …"
+@frozen
+class Totals:                       # failed counts not_tested; errors are not scored
+    passed: int; failed: int; not_tested: int; errors: int
+    # scored = passed + failed; score = passed / scored, or None if 0
+NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
+def case_results(report: Report) -> tuple[CaseResult, ...]: ...
+# Groups in play order; each Group's compared test cases sorted, each once across
+# repetitions: FAIL if it differs in gameplay in any repetition, PASS (marked
+# network_traffic_only) if it differs only in network traffic, else PASS. Then one
+# Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
+# packet count differed: FAIL if the Candidate failed or a count differed, else
+# NOT_TESTED if blocked, else ERROR.
+def totals(results: Iterable[CaseResult]) -> Totals: ...
+
 # report_json.py: report.json, the whole Report (#190). dumps(report) -> str: the Report's
 # fields nested as in Report (target, reference, candidate, results, notes, elapsed_s),
 # indent 2, a final newline, strict JSON. A Divergence value JSON cannot hold is an object
