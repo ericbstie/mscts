@@ -1037,6 +1037,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   many barriers the Bot that must not be kicked floats for; `too_fast`, `into_blocks`, `flying` and
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
+- `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
+  through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
+  `chunks` Groups).
 - `run`: `status_version` — status version extraction.
 
 ```python
