@@ -500,8 +500,9 @@ class Connection:                   # one TCP connection; owns framing, compress
     # recv: TimeoutError leaves the Connection usable. Whatever stopped the reader is raised
     # once the frames before it are taken, and again by every later recv: CodecError for a
     # corrupt frame, an unknown packet id or a strict-decode failure, ConnectionClosedError
-    # when the server closes (the message says if that was mid-frame), ConnectionResetError on
-    # a reset, or the exception itself if the harness has a bug. A frame that fails to decode
+    # when the server closes or the connection is lost, e.g. reset or a write fails (the
+    # message says which, and if that was mid-frame; every frame that arrived before the loss
+    # is still taken), or the exception itself if the harness has a bug. A frame that fails to decode
     # is recorded before recv raises, as the Packet Codec.undecodable / undecodable_frame
     # builds (its bytes and decode_error), stamped on arrival like any frame; the reader then
     # stops, as the vanilla client disconnects on a frame it cannot decode.
