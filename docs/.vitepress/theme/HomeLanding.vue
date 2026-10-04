@@ -16,29 +16,27 @@
       <div class="ms-term" aria-label="A Report from mscts run, vanilla against Pumpkin">
         <div class="ms-term-bar"><i></i><i></i><i></i></div>
 <pre v-pre><span class="prompt">$</span> mscts run --candidate pumpkin
-Running tests against pumpkin
-Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
-<span class="ms-pass">✓</span> status/basic/status_response.description Server list description (network traffic only)
-<span class="ms-pass">✓</span> status/basic/status_response.description.text Server list description text
-<span class="ms-pass">✓</span> status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
-<span class="ms-pass">✓</span> status/basic/status_response.favicon Server list icon (network traffic only)
-<span class="ms-pass">✓</span> status/basic/status_response.players.max Player limit
-<span class="ms-pass">✓</span> status/basic/status_response.players.online Online players
-<span class="ms-pass">✓</span> status/basic/status_response.players.sample Server list player sample (network traffic only)
-<span class="ms-pass">✓</span> status/basic/status_response.version.name Server version name
-<span class="ms-pass">✓</span> status/basic/status_response.version.protocol Protocol version
-<span class="ms-pass">✓</span> status/ping/status:pong_response.timestamp Server list ping response
-<span class="ms-pass">✓</span> status/ping/status_response.description Server list description (network traffic only)
-<span class="ms-pass">✓</span> status/ping/status_response.description.text Server list description text
-<span class="ms-pass">✓</span> status/ping/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
-<span class="ms-pass">✓</span> status/ping/status_response.favicon Server list icon (network traffic only)
-<span class="ms-pass">✓</span> status/ping/status_response.players.max Player limit
-<span class="ms-pass">✓</span> status/ping/status_response.players.online Online players
-<span class="ms-pass">✓</span> status/ping/status_response.players.sample Server list player sample (network traffic only)
-<span class="ms-pass">✓</span> status/ping/status_response.version.name Server version name
-<span class="ms-pass">✓</span> status/ping/status_response.version.protocol Protocol version
-19 passed, 0 failed
-Score: 100% (19 of 19 test cases pass)
+Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
+<span class="ms-pass">✓</span> status/basic/status_response.description (network traffic only)
+<span class="ms-pass">✓</span> status/basic/status_response.description.text
+<span class="ms-pass">✓</span> status/basic/status_response.enforceSecureChat (network traffic only)
+<span class="ms-pass">✓</span> status/basic/status_response.favicon (network traffic only)
+<span class="ms-pass">✓</span> status/basic/status_response.players.max
+<span class="ms-pass">✓</span> status/basic/status_response.players.online
+<span class="ms-pass">✓</span> status/basic/status_response.players.sample (network traffic only)
+<span class="ms-pass">✓</span> status/basic/status_response.version.name
+<span class="ms-pass">✓</span> status/basic/status_response.version.protocol
+<span class="ms-pass">✓</span> status/ping/status:pong_response.timestamp
+<span class="ms-pass">✓</span> status/ping/status_response.description (network traffic only)
+<span class="ms-pass">✓</span> status/ping/status_response.description.text
+<span class="ms-pass">✓</span> status/ping/status_response.enforceSecureChat (network traffic only)
+<span class="ms-pass">✓</span> status/ping/status_response.favicon (network traffic only)
+<span class="ms-pass">✓</span> status/ping/status_response.players.max
+<span class="ms-pass">✓</span> status/ping/status_response.players.online
+<span class="ms-pass">✓</span> status/ping/status_response.players.sample (network traffic only)
+<span class="ms-pass">✓</span> status/ping/status_response.version.name
+<span class="ms-pass">✓</span> status/ping/status_response.version.protocol
+19 passed, 0 failed. (100%)
 Took 26.1 s</pre>
       </div>
     </section>

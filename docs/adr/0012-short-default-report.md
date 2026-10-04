@@ -96,3 +96,18 @@ Network traffic remains a distinct kind of Divergence and remains
 excluded from compliance scores. Only its placement in the terminal
 Report changes. The docs explain classification and test case names;
 the default Report leaves values to the detailed option.
+
+## Amendment (2026-10-04)
+
+The maintainer asked for a Report that says each thing once.
+
+- The first line names the exact Candidate build tested:
+  `Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)`. The
+  second line from #156 is gone, and so is the Candidate row of the
+  detailed header.
+- A test case line is `<✓ or ✗> <group>/<test case>`, without its title,
+  and still ends `(network traffic only)` when it passed that way.
+- The totals and the score share one line:
+  `35 passed, 5 failed (1 not tested). (87.5%)`. Errors, which are not
+  scored, follow on a line of their own: `1 error (not scored)`. With
+  nothing scored, the line has no percentage.

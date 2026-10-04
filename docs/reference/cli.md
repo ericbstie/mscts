@@ -74,14 +74,13 @@ mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--
 Starts vanilla and the Candidate, plays the chosen Groups against both,
 stops both and prints the Report to stdout. Progress goes to stderr.
 
-The Report starts with `Running tests against <adapter name>` and the
-exact build of the Candidate it tested. Then it lists each test case of
-each Group on a line of its own, marked ✓ if it passed or ✗ if not. Known
-test cases have a [title](/reference/test-cases); others keep just their
-name. A test case that differs only in network traffic passes, marked
+The Report starts with `Running tests against <adapter name> <build>`,
+the exact build of the Candidate it tested. Then it lists each test case
+of each Group on a line of its own, marked ✓ if it passed or ✗ if not. A
+test case that differs only in network traffic passes, marked
 `(network traffic only)`. A Group with no test cases to list has one line
-with its reasons. The Report ends with the totals, the score and the total
-Run time in seconds. [Reading a Report](/guide/reading-a-report) explains
+with its reasons. The Report ends with the totals and the score on one
+line, then the total Run time in seconds. [Reading a Report](/guide/reading-a-report) explains
 each line.
 
 On a terminal, ✓ is green, ✗ red and `!` yellow. Set `NO_COLOR` to any
@@ -93,14 +92,14 @@ value to turn the colours off. Output sent to a file or another program,
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
 | `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds, about 14 seconds for each repetition. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
-| `-v`, `--verbose` | off | Add installed versions, Target, repetitions, both values under each test case that differs, and time per Group. |
+| `-v`, `--verbose` | off | Add the Reference's installed version, Target, repetitions, both values under each test case that differs, and time per Group. |
 | `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |
 
 Verbose values appear directly under their test case. Distinct values from
 different repetitions are kept; identical differences are shown once.
 Group time is the sum of playing both sides and comparing them across
 all repetitions. It excludes Instance startup and shutdown, which remain
-in the final total. Skipped Groups say `not played`. The installed version
+in the final total. Skipped Groups say `not played`. An installed version
 is the installed build: its version, its commit where the build names one,
 and the start of its sha256. It does not trust the version claimed in a
 status response.

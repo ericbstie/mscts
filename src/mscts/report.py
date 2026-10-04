@@ -9,7 +9,6 @@ from enum import StrEnum
 from uuid import UUID
 
 import mscts.compare
-from mscts.case_titles import TITLES
 from mscts.compare import ABSENT, TICK_PATH, Divergence, Observability, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
 from mscts.target import Target
@@ -271,8 +270,6 @@ class _Document:
 
     Attributes:
         title: The first line.
-        build: The line naming the Candidate's exact build, when the verbose header,
-            which names it too, is not shown and the build is known; else None.
         facts: The verbose header's labelled values, or none.
         entries: Each listed line, in the order played.
         times: The verbose time of each Group (`status/basic 0.1 s`), or None.
@@ -280,7 +277,6 @@ class _Document:
     """
 
     title: str
-    build: str | None
     facts: tuple[tuple[str, str], ...]
     entries: tuple[_Entry, ...]
     times: tuple[str, ...] | None
@@ -298,8 +294,6 @@ def render_text(report: Report, *, verbose: bool = False, color: bool = False) -
     """
     document = _document(report, verbose=verbose)
     lines = [document.title]
-    if document.build is not None:
-        lines.append(document.build)
     lines.extend(f"  {label:<13}{value}" for label, value in document.facts)
     for entry in document.entries:
         label = f" {entry.label}" if entry.label else ""
@@ -316,8 +310,6 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str:
     """What render_text says, as Markdown: the first line a heading, names and values code."""
     document = _document(report, verbose=verbose)
     blocks = [f"# {_escape(document.title)}"]
-    if document.build is not None:
-        blocks.append(_escape(document.build))
     if document.facts:
         blocks.append(
             "\\\n".join(f"{_escape(label)}: {_escape(value)}" for label, value in document.facts)
@@ -380,8 +372,7 @@ def _document(report: Report, *, verbose: bool) -> _Document:
     candidate = report.candidate
     version = candidate.installed_version  # the exact build tested (#156)
     return _Document(
-        title=f"Running tests against {candidate.name}",
-        build=None if verbose or version is None else f"Candidate: {candidate.name} {version}",
+        title=f"Running tests against {candidate.name}{f' {version}' if version else ''}",
         facts=_header(report) if verbose else (),
         entries=entries,
         times=_group_times(report.results) if verbose else None,
@@ -394,27 +385,25 @@ def _entry(report: Report, group: GroupResult, line: Line, *, verbose: bool) -> 
         name, label, case = line.group_id, line.reasons, ""
     else:
         name, case = f"{line.group_id}/{line.test_case}", line.test_case
-        traffic = " (network traffic only)" if line.network_traffic_only else ""
-        label = f"{TITLES.get(case, '')}{traffic}".strip()
+        label = "(network traffic only)" if line.network_traffic_only else ""
     values = _values(report, group, case) if verbose else ()
     return _Entry(_MARKS[line.result], name, label, values)
 
 
-def _totals_lines(counts: Totals) -> tuple[str, str]:
-    """The totals line (`7 passed, 2 failed (1 not tested), 1 error (not scored)`) and score."""
-    not_tested = f" ({counts.not_tested} not tested)" if counts.not_tested else ""
+def _totals_lines(counts: Totals) -> tuple[str, ...]:
+    """The totals and score (`7 passed, 2 failed (1 not tested). (77.7%)`), then any errors."""
     errors = (
-        f", {counts.errors} error{'s' if counts.errors > 1 else ''} (not scored)"
+        (f"{counts.errors} error{'s' if counts.errors > 1 else ''} (not scored)",)
         if counts.errors
-        else ""
+        else ()
     )
-    totals_line = f"{counts.passed} passed, {counts.failed} failed{not_tested}{errors}"
+    not_tested = f" ({counts.not_tested} not tested)" if counts.not_tested else ""
+    totals = f"{counts.passed} passed, {counts.failed} failed{not_tested}."
     if not counts.scored:
-        return totals_line, "Score: none (no test case was scored)"
+        return totals, *errors
     tenths = counts.passed * 1000 // counts.scored  # rounded down: only all passing is 100%
     percent = f"{tenths // 10}.{tenths % 10}".removesuffix(".0")
-    cases = "test case passes" if counts.scored == 1 else "test cases pass"
-    return totals_line, f"Score: {percent}% ({counts.passed} of {counts.scored} {cases})"
+    return f"{totals} ({percent}%)", *errors
 
 
 def _group_details(result: GroupResult) -> list[tuple[LineResult, str]]:
@@ -453,7 +442,6 @@ def _header(report: Report) -> tuple[tuple[str, str], ...]:
     )
     return (
         ("Reference", side(report.reference)),
-        ("Candidate", side(report.candidate)),
         ("Target", target),
         ("Repetitions", f"{report.repeat} of each group"),
     )
