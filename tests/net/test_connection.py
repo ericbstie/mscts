@@ -20,6 +20,23 @@ from mscts.net import Connection, ConnectionClosedError, Endpoint, ProtocolError
 from mscts.transcript import Event, Transcript
 from tests.net.fakes import HANDLER_TIMEOUT_S, HOST, Peer, connected, serve, serve_in_thread
 
+type Send = Callable[[Connection, int], Awaitable[None]]
+"""Sends one `test:request` with the value given, one way or another."""
+
+
+async def send_one(connection: Connection, value: int) -> None:
+    """Send it with `send`."""
+    await connection.send("test:request", value=value)
+
+
+async def send_all_one(connection: Connection, value: int) -> None:
+    """Send it with `send_all`, a burst of one: its failure paths are `send`'s (#65)."""
+    await connection.send_all([("test:request", {"value": value})])
+
+
+SENDS = pytest.mark.parametrize("send", [send_one, send_all_one], ids=["send", "send_all"])
+"""Run a test once with `send` and once with `send_all`."""
+
 
 def test_open_connects_and_close_ends_the_connection(
     toy_codec: Codec, transcript: Transcript
@@ -189,7 +206,8 @@ def test_close_is_idempotent(toy_codec: Codec, transcript: Transcript) -> None:
     asyncio.run(client())
 
 
-def test_send_after_close_raises(toy_codec: Codec, transcript: Transcript) -> None:
+@SENDS
+def test_send_after_close_raises(toy_codec: Codec, transcript: Transcript, send: Send) -> None:
     async def server(peer: Peer) -> None:
         await peer.eof()
 
@@ -200,17 +218,24 @@ def test_send_after_close_raises(toy_codec: Codec, transcript: Transcript) -> No
         ):
             await connection.close()
             with pytest.raises(ConnectionClosedError, match="closed"):
-                await connection.send("test:request", value=7)
+                await send(connection, 7)
 
     asyncio.run(client())
     assert transcript.events == []
 
 
-def test_send_after_the_server_reset_the_connection_raises_and_records_nothing(
-    toy_codec: Codec, transcript: Transcript
+@SENDS
+def test_send_after_the_server_reset_the_connection_raises_and_writes_nothing(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    monkeypatch: pytest.MonkeyPatch,
+    send: Send,
 ) -> None:
     # asyncio's write() silently discards data once the connection is lost, so the
-    # Connection must refuse rather than record a Packet that never left.
+    # Connection must refuse before writing, rather than record a Packet that never left.
+    writes: list[bytes] = []
+
     async def server(peer: Peer) -> None:
         await peer.reset()
 
@@ -221,10 +246,13 @@ def test_send_after_the_server_reset_the_connection_raises_and_records_nothing(
         ):
             with pytest.raises(ConnectionClosedError, match="the connection was lost"):
                 await connection.recv(timeout_s=1)
+            [writer] = stream_writers
+            monkeypatch.setattr(writer, "write", writes.append)
             with pytest.raises(ConnectionClosedError, match="the connection was lost"):
-                await connection.send("test:request", value=7)
+                await send(connection, 7)
 
     asyncio.run(client())
+    assert writes == []
     assert transcript.events == []
 
 
@@ -284,6 +312,21 @@ def test_a_send_whose_write_fails_raises_records_nothing_and_keeps_the_state(
     assert transcript.events == []
 
 
+def test_a_send_all_whose_write_fails_raises_and_records_nothing(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # As for send: the reset is seen only once the write fails, while draining.
+    async def client() -> None:
+        with resetting_server() as (endpoint, reset):
+            async with connected(endpoint, toy_codec, transcript) as connection:
+                reset()
+                with pytest.raises(ConnectionClosedError, match="the connection was lost"):
+                    await send_all_one(connection, 7)
+
+    asyncio.run(client())
+    assert transcript.events == []
+
+
 def test_send_records_and_returns_only_once_the_write_has_drained(
     toy_codec: Codec,
     transcript: Transcript,
@@ -321,11 +364,13 @@ def test_send_records_and_returns_only_once_the_write_has_drained(
     assert asyncio.run(client()) == [False, False, True, True]
 
 
+@SENDS
 def test_a_send_cancelled_while_draining_still_records_its_queued_frame(
     toy_codec: Codec,
     transcript: Transcript,
     stream_writers: list[asyncio.StreamWriter],
     monkeypatch: pytest.MonkeyPatch,
+    send: Send,
 ) -> None:
     # The frame is already in the transport's buffer, so it goes out once the server reads:
     # leaving it out of the Transcript (or the State behind) would misreport the wire.
@@ -348,7 +393,7 @@ def test_a_send_cancelled_while_draining_still_records_its_queued_frame(
             monkeypatch.setattr(writer, "drain", never_drains)
             with pytest.raises(TimeoutError):
                 async with asyncio.timeout(0.05):
-                    await connection.send("test:request", value=1)
+                    await send(connection, 1)
 
     asyncio.run(client())
     assert [event.packet.fields for event in transcript.events] == [{"value": 1}]
@@ -1334,3 +1379,97 @@ def test_canary_asyncio_tells_the_protocol_a_write_failed_before_it_closes_the_s
     exc, fileno = asyncio.run(lost_with())
     assert isinstance(exc, ConnectionError)
     assert fileno >= 0
+
+
+def test_send_all_writes_every_frame_in_one_write_and_records_each_in_order(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #65: a burst goes out in one write, with no gap between its frames on our side.
+    received: list[Packet] = []
+    writes: list[bytes] = []
+
+    async def server(peer: Peer) -> None:
+        received.extend([await peer.recv() for _ in range(3)])
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            [writer] = stream_writers
+            write = writer.write
+
+            def spy(data: bytes) -> None:
+                writes.append(bytes(data))
+                write(data)
+
+            monkeypatch.setattr(writer, "write", spy)
+            await connection.send_all(
+                [
+                    ("test:request", {"value": 1}),
+                    ("test:hello", {"name": "a"}),
+                    ("test:request", {"value": 3}),
+                ]
+            )
+
+    asyncio.run(client())
+    assert len(writes) == 1
+    expected = [
+        ("test:request", {"value": 1}),
+        ("test:hello", {"name": "a"}),
+        ("test:request", {"value": 3}),
+    ]
+    assert [(p.name, p.fields) for p in received] == expected
+    assert [(e.packet.name, e.packet.fields) for e in transcript.events] == expected
+    assert len({event.t_ns for event in transcript.events}) == 1, "stamped before the write"
+
+
+def test_send_all_refuses_nothing_to_send_and_a_bad_packet_writing_nothing(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            with pytest.raises(ValueError, match="at least one packet"):
+                await connection.send_all([])
+            with pytest.raises(CodecError):
+                await connection.send_all(
+                    [("test:request", {"value": 1}), ("test:request", {"value": "x"})]
+                )
+
+    asyncio.run(client())
+    assert transcript.events == []
+
+
+def test_send_all_refuses_a_packet_that_changes_the_state(transcript: Transcript) -> None:
+    # A frame after a state change would need the next State's ids: send it on its own.
+    codec = Codec.load("26.3")
+
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(codec, server) as endpoint,
+            connected(endpoint, codec, transcript) as connection,
+        ):
+            intention = {
+                "protocol_version": 0,
+                "server_address": "localhost",
+                "server_port": 25565,
+                "intent": 1,
+            }
+            with pytest.raises(ValueError, match="changes the State"):
+                await connection.send_all([("minecraft:intention", intention)])
+
+    asyncio.run(client())
+    assert transcript.events == []

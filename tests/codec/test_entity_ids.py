@@ -158,6 +158,7 @@ HOLDS_NO_ENTITY_ID: Mapping[str, str] = {
     "mscts.codec.schemas.play.chunks._BlockEntity": "a block entity: position, type and NBT",
     "mscts.codec.schemas.play.commands.CommandNode": "the command tree",
     "mscts.codec.schemas.play.players._Actions": "which tab list actions a packet holds",
+    "mscts.codec.schemas.play.chat._FixedBytes": "a message signature, or a bit set, as bytes",
     "mscts.codec.schemas.play.advancements._Display": "text, an item stack and flags",
     "mscts.codec.equipment.EquipmentList": "equipment slots and item stacks",
     "mscts.codec.items._Slot": "an item stack: an item id, a count and data components",

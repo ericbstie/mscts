@@ -325,6 +325,12 @@ RANDOM_FIELDS: Mapping[str, str] = MappingProxyType(
             "seeds with System.nanoTime(), not with the world seed. The client uses it to "
             "pick the sound's variant."
         ),
+        "minecraft:player_chat.timestamp": (
+            "Vanilla reads it from its clock for a message from a player with no chat session, "
+            "as every Bot: SignedMessageBody.unsigned sets it to Instant.now() when the server "
+            "takes the message, and it is sent as milliseconds since the epoch. The client "
+            "uses it only to check a signed message's age; the message is still compared."
+        ),
         "minecraft:update_advancements.progress[*].criteria[*].obtained": (
             "Vanilla reads it from its clock: CriterionProgress.grant sets it to "
             "Instant.now() when the player obtains the criterion, and it is sent as "
