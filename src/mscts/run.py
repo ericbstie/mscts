@@ -235,13 +235,13 @@ async def run_group(
 
 
 def _first_failure(error: Exception) -> Exception:
-    """What made the Group fail first: `error`, or what it raised over if a command was missing.
+    """What made the Group fail first: `error`, or what each missing command was raised over.
 
-    A Group's undo stack runs as it raises, so a missing undo command such as `kill` would
-    otherwise hide what the Group itself raised first (review A, #288).
+    A Group's undo stack runs as it raises, so missing undo commands such as `fill` then
+    `kill` would otherwise hide what the Group itself raised first (reviews A and B, #288).
     """
-    if isinstance(error, CommandMissing) and isinstance(error.__context__, Exception):
-        return error.__context__
+    while isinstance(error, CommandMissing) and isinstance(error.__context__, Exception):
+        error = error.__context__
     return error
 
 
@@ -270,7 +270,7 @@ def judge(
       the Reference's play has (#262).
     - The Candidate does not have a command the Group's Control needs (`CommandMissing`),
       before or after the Group's windows: the first `mismatch` above, its `failed`
-      Divergence saying `requires /tick` (#284). Like any other Candidate failure, it fails
+      Divergence saying `missing /tick` (#284). Like any other Candidate failure, it fails
       every test case of the Reference's play, and keeps what the windows found.
     - The Reference failed, or the Comparison raises comparing the Reference's Transcript
       with itself, which a Candidate failure always does (#262): `error`, the harness or
@@ -839,14 +839,14 @@ def _group_failed(candidate: Transcript | GroupError) -> tuple[Divergence, ...]:
 
 
 def _candidate_failure(candidate: GroupError) -> str:
-    """What the Group raising on the Candidate says it did: "requires /tick" for a command missing.
+    """What the Group raising on the Candidate says it did: "missing /tick" for a command missing.
 
     Anything else, including a failure a missing undo command came after, is the GroupError's
     own description, such as "TimeoutError: ...".
     """
     cause = candidate.__cause__
     first = _first_failure(cause) if isinstance(cause, Exception) else cause
-    return f"requires /{first.root}" if isinstance(first, CommandMissing) else str(candidate)
+    return f"missing /{first.root}" if isinstance(first, CommandMissing) else str(candidate)
 
 
 def _failed(*, bot: str, what: str) -> Divergence:

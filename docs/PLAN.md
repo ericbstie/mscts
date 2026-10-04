@@ -1443,7 +1443,7 @@ def judge(group: Group, reference: Transcript | GroupError,
     # Divergence first, then what compare finds in the Transcripts so far (e.g. the
     # undecodable frame, by payload), whatever the Masks. CommandMissing on the Candidate
     # (it lacks a command Control needs, in setup or from an undo callback) is that
-    # `mismatch` too, its `failed` Divergence "requires /<root>" (#284). If compare
+    # `mismatch` too, its `failed` Divergence "missing /<root>" (#284). If compare
     # raised (any Exception, so the Run goes on to the next Group, #174), compare(reference,
     # reference, masks) decides: it does not raise, so the Candidate's data did, and it is
     # `mismatch` led by a `failed` Divergence from no Bot, "the Comparison failed:

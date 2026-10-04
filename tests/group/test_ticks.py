@@ -178,7 +178,7 @@ async def test_a_candidate_without_tick_fails_needing_it() -> None:
     assert isinstance(candidate.__cause__, CommandMissing)
     verdict = judge(PROBE, reference, candidate)
     assert verdict.outcome is Outcome.MISMATCH, verdict
-    assert verdict.detail == "the Candidate failed: requires /tick"
+    assert verdict.detail == "the Candidate failed: missing /tick"
 
 
 @pytest.mark.asyncio

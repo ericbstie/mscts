@@ -478,9 +478,9 @@ async def test_a_candidate_without_the_command_fails_the_group_needing_it() -> N
 
     assert (verdict.outcome, verdict.detail) == (
         Outcome.MISMATCH,
-        "the Candidate failed: requires /setblock",
+        "the Candidate failed: missing /setblock",
     ), verdict
     failed = verdict.divergences[0]
-    assert (failed.kind, failed.candidate) == ("failed", "requires /setblock"), verdict
+    assert (failed.kind, failed.candidate) == ("failed", "missing /setblock"), verdict
     own = compare(reference, reference, SETS_A_BLOCK.masks).test_cases
     assert set(own) <= set(verdict.test_cases)

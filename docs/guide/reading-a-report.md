@@ -138,7 +138,7 @@ Group has a prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
 vanilla's, closed the connection, did not answer in time, lacked a
-command the Group requires (`Candidate failed: requires /tick`), or still had
+command the Group requires (`Candidate failed: missing /tick`), or still had
 players online from the previous Group. In that last case, mscts plays the
 Group on vanilla only. If the Candidate's world stays frozen after a
 Group, mscts plays each later Group on vanilla only, and each of them

@@ -106,7 +106,7 @@ of the Group that is compared.
 command and waits until the server has answered it. What the server sends to
 it is recorded but never compared. If the Candidate lacks the
 command, the Candidate fails the Group, and its line names the command
-(`Candidate failed: requires /tick`). If the Group had already failed and
+(`Candidate failed: missing /tick`). If the Group had already failed and
 the command was only there to undo its changes, the line names that first
 failure instead.
 

@@ -44,7 +44,7 @@ class CommandMissing(Exception):  # noqa: N818 - PLAN's name: a fact about the s
     """The server has no command `root`, so Control did not send it.
 
     A Run reports a Group the Candidate raises it on as the Candidate's failure, naming the
-    command (`requires /tick`); on the Reference, it is an `error`.
+    command (`missing /tick`); on the Reference, it is an `error`.
 
     Attributes:
         root: The command's first word, e.g. `tick`.

@@ -385,8 +385,8 @@ async def test_a_command_the_candidate_does_not_have_fails_the_group_needing_it(
     assert verdict == Verdict(
         "test/needs-tick",
         Outcome.MISMATCH,
-        divergences=(_failed("requires /tick", bot=""),),
-        detail="the Candidate failed: requires /tick",
+        divergences=(_failed("missing /tick", bot=""),),
+        detail="the Candidate failed: missing /tick",
     )
 
 
@@ -460,8 +460,8 @@ def test_a_command_missing_after_the_windows_keeps_the_comparisons_divergences()
 
     verdict = judge(NEEDS_TICK, SETS_BLOCKS, _missing(EVERY_VALUE_WRONG, "kill"))
 
-    assert verdict.divergences == (_failed("requires /kill", bot=""), *wrong.divergences)
-    assert verdict.detail == "the Candidate failed: requires /kill"
+    assert verdict.divergences == (_failed("missing /kill", bot=""), *wrong.divergences)
+    assert verdict.detail == "the Candidate failed: missing /kill"
 
 
 @pytest.mark.asyncio
@@ -483,16 +483,17 @@ async def test_a_command_missing_from_an_undo_callback_is_the_groups_cause() -> 
 
 
 @pytest.mark.asyncio
-async def test_a_command_missing_from_an_undo_callback_does_not_hide_the_groups_failure() -> None:
-    # Review A #288: the Group failed first; the missing `kill` only came while undoing.
-    async def kill() -> None:
-        root = "kill"
-        raise CommandMissing(root)
-
+@pytest.mark.parametrize("undo_roots", [("kill",), ("kill", "fill")], ids=["one", "two"])
+async def test_missing_undo_commands_do_not_hide_the_groups_failure(
+    undo_roots: tuple[str, ...],
+) -> None:
+    # Review A and B #288: the Group failed first; each missing command came while
+    # undoing (blocks/setblock undoes with `fill`, then `kill`).
     async def fails_then_undoes(context: GroupContext) -> None:
         del context
         async with contextlib.AsyncExitStack() as undo:
-            undo.push_async_callback(kill)
+            for root in undo_roots:
+                undo.push_async_callback(_lacks, root)
             msg = "the block never changed"
             raise TimeoutError(msg)
 
@@ -505,6 +506,28 @@ async def test_a_command_missing_from_an_undo_callback_does_not_hide_the_groups_
     first = "TimeoutError: the block never changed"
     assert verdict.divergences == (_failed(first, bot=""),)
     assert verdict.detail == f"the Candidate failed: {first}"
+
+
+@pytest.mark.asyncio
+async def test_a_missing_undo_command_keeps_the_bot_the_groups_failure_came_out_of() -> None:
+    # Review B #288 (mutant M19): a Bot refused, then `kill` was missing while undoing.
+    async def refused_then_undoes(context: GroupContext) -> None:
+        async with contextlib.AsyncExitStack() as undo:
+            undo.push_async_callback(_lacks, "kill")
+            await context.bot("status")  # no server listens there
+
+    group = Group(id="test/refused-then-undoes", run=refused_then_undoes)
+    candidate = await _play(group, None)
+    assert isinstance(candidate, GroupError)
+
+    verdict = judge(group, Transcript(group.id, "vanilla"), candidate)
+
+    assert verdict.divergences[0].bot == "status"
+
+
+async def _lacks(root: str) -> None:
+    """An undo callback sending command `root`, which the server does not have."""
+    raise CommandMissing(root)
 
 
 @pytest.mark.asyncio

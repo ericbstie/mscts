@@ -196,9 +196,9 @@ async def test_a_command_missing_with_a_value_the_comparison_cannot_take_names_t
     verdict = judge(BASIC, reference, candidate)
 
     raised, comparison = verdict.divergences
-    assert raised.candidate == "requires /tick"
+    assert raised.candidate == "missing /tick"
     assert str(comparison.candidate).startswith("the Comparison failed: TypeError: ")
-    assert verdict.detail == "the Candidate failed: requires /tick"
+    assert verdict.detail == "the Candidate failed: missing /tick"
 
 
 def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:

@@ -60,7 +60,7 @@ need is missing, add it here in the same commit that introduces it.
   then a marker command, and returns once the server has answered the
   marker and the Bot has passed the barrier. What it receives is recorded but never
   compared, and a Candidate without one of its commands fails the Group
-  (`requires /tick`). Control can leave (its Bot closes), and its next command
+  (`missing /tick`). Control can leave (its Bot closes), and its next command
   joins a new one.
 - **Fixture**: world or player state established before the observed part
   of a Group.
