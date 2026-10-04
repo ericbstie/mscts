@@ -299,6 +299,7 @@ def mount(entity_id: int, kind: str) -> Mapping[int, Entity]:
     [
         ("minecraft:horse", 0, 2),
         ("minecraft:donkey", 5, 17),
+        ("minecraft:trader_llama", 3, 11),
         ("minecraft:camel_husk", 0, 2),
         ("minecraft:zombie_nautilus", 3, 2),
     ],
@@ -1199,6 +1200,14 @@ def test_a_cursed_stack_outside_the_armor_slots_is_taken_as_any_other() -> None:
     tracker.enchantments = ENCHANTMENTS
     tracker.follow(*set_slot(0, 9, enchanted(1), state_id=5))
     assert tracker.click(9, 0, "throw") == click_sent(9, [(9, None)], None, mode=4)
+
+
+def test_a_chests_slot_5_is_no_armor_slot_so_a_cursed_helmet_there_is_taken() -> None:
+    # Only InventoryMenu's slots 5 to 8 are ArmorSlots: slot 5 of a chest is a plain Slot.
+    tracker = holding({}, chest=True)
+    tracker.enchantments = ENCHANTMENTS
+    tracker.follow(*set_slot(CHEST, 5, enchanted(1), state_id=5))
+    assert tracker.click(5, 0, "throw") == in_chest(click_sent(5, [(5, None)], None, mode=4))
 
 
 def test_a_cursed_armor_slot_swaps_with_neither_the_cursor_nor_a_hotbar_key() -> None:
