@@ -1,4 +1,5 @@
 import json
+from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
 
@@ -11,6 +12,8 @@ from mscts.codec.regen import (
     compare_or_write,
     data_generator_argv,
     fresh_data,
+    items_json,
+    items_path,
     packets_json_path,
     registry_names_json,
     registry_names_path,
@@ -132,14 +135,81 @@ def test_block_states_json_rejects_a_report_without_integer_state_ids(report: ob
         block_states_json(json.dumps(report).encode())
 
 
+def _items(directory: Path, items: Mapping[str, Mapping[str, object]]) -> Path:
+    """The item component reports as the data generator writes them: a file per item."""
+    reports = directory / "minecraft" / "components" / "item"
+    reports.mkdir(parents=True)
+    for name, components in items.items():
+        (reports / f"{name}.json").write_text(json.dumps({"components": components}))
+    return directory
+
+
+_ITEMS: dict[str, Mapping[str, object]] = {
+    "stone": {"minecraft:max_stack_size": 64},
+    "diamond_sword": {"minecraft:max_stack_size": 1, "minecraft:damage": 0},
+    "diamond_helmet": {
+        "minecraft:max_stack_size": 1,
+        "minecraft:equippable": {"slot": "head", "asset_id": "minecraft:diamond"},
+    },
+    "ender_pearl": {"minecraft:max_stack_size": 16},
+    "shield": {"minecraft:max_stack_size": 1, "minecraft:equippable": {"slot": "offhand"}},
+}
+
+
+def test_items_path_is_the_committed_package_data() -> None:
+    resource = resources.files("mscts.codec").joinpath(
+        "data", TARGET.minecraft_version, "items.json"
+    )
+    assert items_path(TARGET) == Path(str(resource))
+
+
+def test_items_json_lists_the_stack_sizes_but_64_and_the_equipment_slots_by_name(
+    tmp_path: Path,
+) -> None:
+    text = items_json(_items(tmp_path, _ITEMS)).decode()
+    wanted = {
+        "max_stack_size": {
+            "minecraft:diamond_helmet": 1,
+            "minecraft:diamond_sword": 1,
+            "minecraft:ender_pearl": 16,
+            "minecraft:shield": 1,
+        },
+        "equippable": {"minecraft:diamond_helmet": "head", "minecraft:shield": "offhand"},
+    }
+    assert text == json.dumps(wanted, indent=2) + "\n"
+
+
+@pytest.mark.parametrize(
+    "components",
+    [
+        {},
+        {"minecraft:max_stack_size": "64"},
+        {"minecraft:max_stack_size": 1, "minecraft:equippable": {}},
+    ],
+    ids=["no stack size", "a text stack size", "an equippable without a slot"],
+)
+def test_items_json_rejects_an_item_report_it_cannot_read(
+    tmp_path: Path, components: dict[str, object]
+) -> None:
+    with pytest.raises(regen.RegenError, match="stone"):
+        items_json(_items(tmp_path, {"stone": components}))
+
+
+def test_items_json_rejects_a_report_with_no_items(tmp_path: Path) -> None:
+    with pytest.raises(regen.RegenError, match="components/item"):
+        items_json(tmp_path)
+
+
 def test_fresh_data_is_the_packet_report_and_the_registry_name_lists(tmp_path: Path) -> None:
     (tmp_path / "packets.json").write_bytes(b'{"packets": true}')
     (tmp_path / "registries.json").write_bytes(_report(_WANTED))
     (tmp_path / "blocks.json").write_bytes(_blocks([0, 1]))
+    _items(tmp_path, _ITEMS)
     assert fresh_data(TARGET, tmp_path) == {
         packets_json_path(TARGET): b'{"packets": true}',
         registry_names_path(TARGET): registry_names_json(_report(_WANTED)),
         block_states_path(TARGET): block_states_json(_blocks([0, 1])),
+        items_path(TARGET): items_json(tmp_path),
     }
 
 

@@ -1,4 +1,9 @@
-from mscts.codec.registry_names import block_state_count, registry_names
+from mscts.codec.registry_names import (
+    block_state_count,
+    equipment_slots,
+    max_stack_sizes,
+    registry_names,
+)
 from mscts.target import TARGET
 
 # These ids are the 26.3 server jar's `minecraft:data_component_type` protocol ids, from
@@ -106,3 +111,22 @@ def test_menu_names_are_the_registry_in_protocol_id_order() -> None:
     assert names[16] == "minecraft:hopper"
     assert names[20] == "minecraft:shulker_box"
     assert len(names) == 25
+
+
+def test_max_stack_sizes_are_the_item_reports_but_64() -> None:
+    # Each item's default max_stack_size (reports/minecraft/components/item), #28.
+    sizes = max_stack_sizes(TARGET.minecraft_version)
+    assert sizes["minecraft:diamond_sword"] == 1
+    assert sizes["minecraft:ender_pearl"] == 16
+    assert "minecraft:stone" not in sizes
+    assert set(sizes.values()) == {1, 16}
+
+
+def test_equipment_slots_are_the_item_reports_equippable_slots() -> None:
+    slots = equipment_slots(TARGET.minecraft_version)
+    assert slots["minecraft:diamond_helmet"] == "head"
+    assert slots["minecraft:carved_pumpkin"] == "head"
+    assert slots["minecraft:elytra"] == "chest"
+    assert slots["minecraft:iron_boots"] == "feet"
+    assert slots["minecraft:shield"] == "offhand"
+    assert "minecraft:stone" not in slots

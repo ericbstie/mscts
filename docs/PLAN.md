@@ -78,8 +78,8 @@ test needs it:
 | `codec/schemas/play/inventory.py` | the container packets' schemas: `open_screen`, `mount_screen_open` (its entity id an Int), `container_set_content`, `container_set_slot`, `container_set_data`, `container_close` (both ways), `set_cursor_item`, `set_player_inventory`, and the client's `container_click` (its changed slots each a `HASHED_SLOT`, at most 128) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
-| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order) and `block_states.json` (how many block states there are). Committed, regenerated and checked by `mise run regen:packets` |
-| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
+| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order) `block_states.json` (how many block states there are) and `items.json` (each item's stack size but 64, and each equippable item's slot). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette; `max_stack_sizes(version)` and `equipment_slots(version)`, the items' defaults by name |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
@@ -114,8 +114,8 @@ decision. Signatures are Python 3.13. `@frozen` means
   and decoding.
 - `codec.packets`: `PacketIds`, `Schemas` — Codec lookup table types.
 - `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `block_states_json`,
-  `block_states_path`, `compare_or_write`, `data_generator_argv`, `fresh_data`,
-  `packets_json_path`, `regenerate`, `registry_names_json`, `registry_names_path`,
+  `block_states_path`, `compare_or_write`, `data_generator_argv`, `fresh_data`, `items_json`,
+  `items_path`, `packets_json_path`, `regenerate`, `registry_names_json`, `registry_names_path`,
   `run_data_generator` — Mojang data regeneration.
 - `codec.schemas.login`: `GAME_PROFILE` — login packet schema.
 - `codec.schemas.play`: `merge_submodules` — Play schema assembly.
