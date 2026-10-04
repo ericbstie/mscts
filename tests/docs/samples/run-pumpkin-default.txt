@@ -48,4 +48,5 @@ Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 ✓ status/with-player/update_enabled_features.feature_flags[]
 36 passed, 10 failed
 Score: 78.2% (36 of 46 test cases pass)
-Took 84.3 s
+Took 89.5 s
+Report written to reports/report.json and reports/report.md

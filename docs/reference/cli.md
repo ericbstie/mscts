@@ -106,8 +106,9 @@ and the start of its sha256. It does not trust the version claimed in a
 status response.
 
 `--out DIR` creates `DIR` if needed and writes two files into it:
-`report.json`, the whole Report with every value, and `report.md`, the
-printed Report as Markdown. The names are fixed, so a `report.json` and
+`report.json`, the whole Report with both values of each difference, up to 20
+differences for each test case in each Verdict (`omitted` counts the rest), and
+`report.md`, the printed Report as Markdown. The names are fixed, so a `report.json` and
 `report.md` already in `DIR` are replaced. To keep two Runs side by side,
 give each its own folder. The Report is still printed, followed by one
 line:

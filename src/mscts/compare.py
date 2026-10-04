@@ -451,6 +451,9 @@ class Verdict:
         test_cases: Every test case the Comparison compared, matched or not, and each field
             of a reference Packet the Candidate did not send (#101), sorted and each once;
             none if the Verdict was made without one (`blocked`, `error`).
+        omitted: How many Divergences a report.json left out of `divergences` (#254): the
+            Verdict a Comparison makes has none left out, and a Verdict read back from a
+            report.json that capped them has the count that file gave.
     """
 
     group_id: str
@@ -458,6 +461,7 @@ class Verdict:
     divergences: tuple[Divergence, ...] = ()
     detail: str = ""
     test_cases: tuple[str, ...] = ()
+    omitted: int = 0
 
     @property
     def gameplay(self) -> tuple[Divergence, ...]:

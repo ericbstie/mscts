@@ -65,6 +65,12 @@ def _matches(excerpt: str, output: str) -> bool:
     return re.fullmatch(pattern, output) is not None
 
 
+def _without_written_line(output: str) -> str:
+    """`output` without the last line `mscts run --out` adds after the Report, if it has one."""
+    *lines, last = output.splitlines(keepends=True)
+    return "".join(lines) if last.startswith("Report written to ") else output
+
+
 _STORED = {"": "*.txt", "md": "*.md", "json": "*.json"}
 """Which stored samples a page's code block must match, by the block's language."""
 
@@ -82,9 +88,11 @@ def test_every_output_example_matches_a_stored_real_output() -> None:
         for language, example in blocks:
             if language not in _STORED:
                 continue
-            assert any(_matches(example, output) for output in outputs[language]), (
-                f"{page.relative_to(ROOT)}: output differs from stored samples:\n{example}"
-            )
+            assert any(
+                _matches(example, shown)
+                for output in outputs[language]
+                for shown in (output, _without_written_line(output))
+            ), f"{page.relative_to(ROOT)}: output differs from stored samples:\n{example}"
 
 
 def test_the_home_terminal_matches_the_stored_run_output() -> None:
