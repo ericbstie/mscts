@@ -1387,8 +1387,7 @@ def test_send_all_writes_every_frame_in_one_write_and_records_each_in_order(
     stream_writers: list[asyncio.StreamWriter],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # #65: a burst a server must see within one tick goes out in one write, so no gap
-    # between frames lets a tick fall in between.
+    # #65: a burst goes out in one write, with no gap between its frames on our side.
     received: list[Packet] = []
     writes: list[bytes] = []
 

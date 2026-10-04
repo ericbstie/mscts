@@ -891,9 +891,10 @@ class Bot:
     async def chat_at_once(self, *messages: str) -> None:
         """Say each of `messages` in chat, as `chat` does, all in one write, and return.
 
-        The frames leave together, with no gap in which the server could tick between them:
-        vanilla's spam kick counts the messages that arrive within a tick
-        (docs/research/2026-10-04-chat.md).
+        The frames all leave together, in one write. The server can still tick between two
+        of them, as vanilla handles each message in a task of its own. Vanilla's spam kick
+        adds 20 for each message and takes 1 off each tick, so messages sent together add
+        up (docs/research/2026-10-04-chat.md).
 
         Raises:
             ValueError: No message is given.

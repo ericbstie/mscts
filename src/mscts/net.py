@@ -314,8 +314,8 @@ class Connection:
     async def send_all(self, packets: Sequence[tuple[str, Mapping[str, object]]]) -> None:
         """Send each (name, fields) packet, in order, in one write, then drain as `send` does.
 
-        A burst that the server must read within one tick (a chat spam kick) goes out with
-        no gap between its frames in which a tick could fall. Every packet is stamped
+        A burst (a chat spam kick) goes out with no gap between its frames, though the
+        server can still tick between reading two of them. Every packet is stamped
         immediately before the write and recorded once it has drained, in order.
 
         Raises:

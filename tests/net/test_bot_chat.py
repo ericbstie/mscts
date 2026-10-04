@@ -75,7 +75,7 @@ def test_chat_and_signed_command_send_the_same_time_and_salt() -> None:
 def test_chat_at_once_says_each_message_as_chat_does_in_one_write(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # #65: vanilla's spam kick needs the messages within one tick, so no gap between them.
+    # #65: vanilla's spam kick counts messages sent close together: no gap between them.
     batches: list[int] = []
     send_all = Connection.send_all
 
