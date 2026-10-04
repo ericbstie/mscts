@@ -674,6 +674,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # screen), sent at once and not in a tick (LocalPlayer.closeContainer). click (#28): on a
     # Bot in play, InventoryTracker.click predicts the click, then container_click goes at
     # once, not in a tick (a mouse or key callback); a refused click sends nothing (ValueError).
+    # The Bot follows no game mode: click predicts a survival or adventure player, and drop
+    # sends what a spectator's client never would (the guide says so).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.

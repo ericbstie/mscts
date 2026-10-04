@@ -1221,7 +1221,9 @@ class Bot:
         the cursor's stack (`MultiPlayerGameMode.handleContainerInput`); the Bot does the same
         (`InventoryTracker.click`, which names the modes and buttons). It sends its prediction
         even when the server will disagree: the server's correction is what a Group compares.
-        It sends it at once, not in a tick, as the client sends a click.
+        It sends it at once, not in a tick, as the client sends a click. It predicts as a
+        survival or adventure player: the Bot does not follow its game mode, so in creative or
+        spectator what it sends is not what the client sends.
 
         Raises:
             ProtocolError: The Bot is not in play.
