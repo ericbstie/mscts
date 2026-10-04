@@ -131,7 +131,7 @@ _WALKER = "walker"
 _WALL = "fill 5 -60 1 5 -58 3 minecraft:stone"
 """A wall 3 blocks high across the lane at z = 2."""
 
-INTO_BLOCKS_WORLD = (
+_INTO_BLOCKS_WORLD = (
     _WALL,
     "fill 5 -60 5 5 -58 7 minecraft:stone",
     "fill 5 -60 6 5 -59 6 minecraft:air",
@@ -176,7 +176,7 @@ async def into_blocks(context: GroupContext) -> None:
     """A Bot walks into a wall, through a gap, up a full block and up onto a slab."""
     async with contextlib.AsyncExitStack() as undo:
         [walker] = await _join(context, undo, _WALKER)
-        await _frozen_world(context, undo, walker, INTO_BLOCKS_WORLD)
+        await _frozen_world(context, undo, walker, _INTO_BLOCKS_WORLD)
         await _play(context, walker, _INTO_BLOCKS_CASES, frozen=True)
 
 

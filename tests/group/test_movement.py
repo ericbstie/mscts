@@ -327,7 +327,11 @@ async def test_into_blocks_builds_its_blocks_once_the_world_is_frozen() -> None:
 
     frozen = result.first.index("tick freeze")
     assert result.first[frozen + 1 :] == (
-        *movement.INTO_BLOCKS_WORLD,
+        "fill 5 -60 1 5 -58 3 minecraft:stone",  # a wall across the lane at z = 2
+        "fill 5 -60 5 5 -58 7 minecraft:stone",  # a wall across the lane at z = 6 ...
+        "fill 5 -60 6 5 -59 6 minecraft:air",  # ... with a gap 1 block wide and 2 high
+        "setblock 5 -60 10 minecraft:stone",  # a full block at z = 10
+        "setblock 5 -60 13 minecraft:oak_slab[type=bottom]",  # a bottom slab at z = 13
         tp("walker", (4.5, -60.0, 2.5)),
     )
     assert result.first[frozen - 1] == tp("walker", (4.5, -60.0, 2.5))

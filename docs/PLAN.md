@@ -1033,8 +1033,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `players/join-seen`, `players/leave-seen`, `players/mode-seen` and `players/server-full`
   scripts.
 - `groups.movement`: `PACKETS` — what a window compares (`player_position`, `disconnect`);
-  `KICK_TIMEOUT_S` — how long the floating Bot waits to be kicked; `INTO_BLOCKS_WORLD` — the
-  blocks `movement/into-blocks` sets; `too_fast`, `into_blocks`, `flying` and
+  `KICK_TIMEOUT_S` — how long the floating Bot waits to be kicked; `too_fast`, `into_blocks`, `flying` and
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
 - `run`: `status_version` — status version extraction.
