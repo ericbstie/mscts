@@ -773,7 +773,6 @@ _CHUNK_NEUTRAL = frozenset(
     {
         "minecraft:chunk_batch_start",
         "minecraft:chunk_batch_finished",
-        *HEARTBEAT,
         "minecraft:pong_response",
         "minecraft:bundle_delimiter",
         "minecraft:add_entity",
@@ -788,8 +787,8 @@ _CHUNK_NEUTRAL = frozenset(
 )
 """The play packets a run of chunk packets goes across: a chunk packet has the same effect, or
 nearly, on either side of one (javap on the 26.3 client, docs/research/2026-10-02-chunks-
-light.md). A batch's start and end feed only `ChunkBatchSizeCalculator`; the heartbeat packets
-and `pong_response` touch the clock, the stats and the ping monitor; and the entity handlers set
+light.md), besides the heartbeat packets (`_neutral`). A batch's start and end feed only
+`ChunkBatchSizeCalculator`; `pong_response` touches the ping monitor; and the entity handlers set
 the entity's fields, while its chunk being loaded decides only whether it ticks
 (`TransientEntitySectionManager`), which either order ends with the same. One exception is
 accepted: a `move_entity_*` handler ends in `Entity.setOnGround`, whose `checkSupportingBlock`
@@ -841,8 +840,16 @@ def _by_position(events: Sequence[Event]) -> list[Event]:
 
 
 def _neutral(packet: Packet) -> bool:
-    """Whether `packet` is a play packet a run of chunk packets goes across (`_CHUNK_NEUTRAL`)."""
-    return packet.state is State.PLAY and packet.name in _CHUNK_NEUTRAL
+    """Whether `packet` is a play packet a run of chunk packets goes across.
+
+    One `_CHUNK_NEUTRAL` names, or a heartbeat packet (`is_heartbeat`). The heartbeat packets
+    come on the server's clock, so one can fall between two batches on one Instance only (#33),
+    and none reads a chunk: `keep_alive` and `set_time` touch the clock, and the latency
+    broadcast only sets each player's latency in the tab list
+    (`ClientPacketListener.applyPlayerInfoUpdate`, `PlayerInfo.setLatency`, javap on the 26.3
+    client).
+    """
+    return packet.state is State.PLAY and (packet.name in _CHUNK_NEUTRAL or is_heartbeat(packet))
 
 
 def _position(packet: Packet) -> tuple[int, int] | None:

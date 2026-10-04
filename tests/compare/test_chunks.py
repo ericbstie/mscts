@@ -1384,3 +1384,21 @@ def test_the_network_traffic_test_cases_of_batches_have_titles() -> None:
 
     cases = {d.test_case for d in verdict.divergences}
     assert cases == {name for name in TITLES if name.startswith("chunk_batch")}
+
+
+def test_chunks_are_sorted_across_the_latency_broadcast() -> None:
+    # What two vanilla Instances sent after a teleport (#33): the latency broadcast, which
+    # comes every 601 ticks, between two batches on one of them only.
+    latency = packet("minecraft:player_info_update", b"\x10\x00")
+
+    verdict = compare(_batch_of(LIT_A, latency, LIT_B), _batch_of(LIT_B, LIT_A, latency), [])
+
+    assert verdict.divergences == ()
+
+
+def test_a_player_info_update_with_more_than_the_latency_still_ends_a_run() -> None:
+    added = packet("minecraft:player_info_update", b"\x11\x00")
+
+    verdict = compare(_batch_of(LIT_A, added, LIT_B), _batch_of(LIT_B, added, LIT_A), [])
+
+    assert verdict.divergences != ()

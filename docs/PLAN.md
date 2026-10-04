@@ -1664,8 +1664,9 @@ proves it necessary:
      between two that are neither chunk packets nor in
      `compare._CHUNK_NEUTRAL`:
      `chunk_batch_start` and `chunk_batch_finished` (their handlers feed
-     only `ChunkBatchSizeCalculator`), the heartbeat packets and
-     `pong_response`, and the entity packets whose handlers set the
+     only `ChunkBatchSizeCalculator`), the heartbeat packets (with the
+     latency broadcast, `compare.is_heartbeat`, whose handler only sets
+     each player's latency) and `pong_response`, and the entity packets whose handlers set the
      entity's fields (`add_entity`, `move_entity_pos`, `move_entity_pos_rot`,
      `move_entity_rot`, `rotate_head`, `set_entity_motion`,
      `update_attributes`, `remove_entities`, `bundle_delimiter`; an
