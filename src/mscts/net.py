@@ -3,6 +3,8 @@
 import asyncio
 import contextlib
 import fcntl
+import os
+import socket
 import sys
 import termios
 from collections.abc import Awaitable, Callable, Mapping
@@ -81,9 +83,20 @@ class _Stream(asyncio.StreamReader):
     ahead of the bytes it already holds, so a server's last frames would be lost
     (#291). This one ends the stream after those bytes instead, and keeps the loss
     in `lost`.
+
+    When a write fails, asyncio also stops reading and closes the socket, dropping what
+    the socket still holds. It tells this reader first, while the socket is open, so this
+    one takes those bytes before it ends the stream.
     """
 
     lost: ConnectionError | None = None
+    _socket: socket.socket | None = None
+
+    @override
+    def set_transport(self, transport: asyncio.BaseTransport) -> None:
+        """Keep the transport's socket, to take what it still holds when the connection is lost."""
+        super().set_transport(transport)
+        self._socket = transport.get_extra_info("socket")
 
     @override
     def set_exception(self, exc: Exception) -> None:
@@ -93,7 +106,21 @@ class _Stream(asyncio.StreamReader):
             return
         if self.lost is None:
             self.lost = exc
+        self._take_what_the_socket_holds()
         self.feed_eof()
+
+    def _take_what_the_socket_holds(self) -> None:
+        """Feed what the socket still holds, to its end, without waiting for more."""
+        if self._socket is None or self._socket.fileno() < 0:
+            return
+        while True:
+            try:
+                data = os.read(self._socket.fileno(), _READ_SIZE)
+            except OSError:  # nothing more yet (it does not block), or the reset
+                return
+            if not data:  # the server's close
+                return
+            self.feed_data(data)
 
 
 @dataclass(frozen=True, slots=True)
