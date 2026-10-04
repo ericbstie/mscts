@@ -134,8 +134,7 @@ async def commands(context: GroupContext) -> None:
         for name in (SPEAKER, LISTENER):
             await context.control.run(f"team join {_TEAM} {name}")
         for command in _COMMANDS:
-            # An operator is told what other operators' commands did: take Control's now.
-            await speaker.drain()
+            # The window's opening barrier takes what Control's commands told the speaker.
             async with context.observe(*PACKETS):
                 if command.signed:
                     await speaker.signed_command(command.text)
@@ -171,15 +170,21 @@ TALKER, OPERATOR = "talker", "operator"
 LONG, SECTION, SPAMMER = "long", "section", "spammer"
 """The Bots vanilla kicks: for a message that is too long, for a `§` and for too many."""
 
-SPAM_MESSAGES = 10
-"""How many messages a Bot sends at once to be kicked for spam, unless it is an operator.
+SPAM_MESSAGES = 15
+"""How many messages a Bot sends at once, in one write, to be kicked for spam.
 
 Each message adds 20 to the player's count, and each tick takes 1 away; vanilla kicks a
 player who is not an operator once the count reaches 200 (`chat-spam-threshold-seconds` 10,
-26.3 javap). All sent at once, the messages reach the server within one tick, and the tenth
-is the kick. `/tick freeze` would not help: the count goes down with every tick of the
-server, frozen or not.
+26.3 javap). Ten messages within one tick are the kick, but a tick that falls inside the
+burst leaves the count at 199. Fifteen kick however the ticks fall, unless 100 ticks pass
+during the burst. `/tick freeze` would not help: the count goes down with every tick of the
+server, frozen or not. An operator is never kicked, so it sends the same.
 """
+
+_KICK_PACKETS = (_DISCONNECT, _SYSTEM_CHAT, "minecraft:player_info_remove")
+"""What the spam kick's window compares: the kick, the listener being told the Bot left, and
+the player list. How many messages got through before the kick depends on where the ticks
+fell, so the chat itself is not compared there."""
 
 
 @group("chat/limits", spec=_with_operator(OPERATOR))
@@ -192,29 +197,35 @@ async def limits(context: GroupContext) -> None:
         await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
     operator = await _joined(context, OPERATOR)
     async with context.observe(*PACKETS):
-        for number in range(SPAM_MESSAGES):
-            await operator.chat(f"Message {number + 1}")
+        await operator.chat_at_once(*_spam())
         for _ in range(SPAM_MESSAGES):
             await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
-    for name, messages in (
-        (LONG, ("x" * 257,)),
-        (SECTION, ("§cRed text",)),
-        (SPAMMER, tuple(f"Message {number + 1}" for number in range(SPAM_MESSAGES))),
+    for name, messages, packets in (
+        (LONG, ("x" * 257,), PACKETS),
+        (SECTION, ("§cRed text",), PACKETS),
+        (SPAMMER, _spam(), _KICK_PACKETS),
     ):
-        await _kicked(context, listener, name, messages)
+        await _kicked(context, listener, name, messages, packets)
+
+
+def _spam() -> tuple[str, ...]:
+    """The messages a Bot sends at once to spam: `Message 1` to `Message <SPAM_MESSAGES>`."""
+    return tuple(f"Message {number + 1}" for number in range(SPAM_MESSAGES))
 
 
 async def _kicked(
-    context: GroupContext, listener: Bot, name: str, messages: tuple[str, ...]
+    context: GroupContext,
+    listener: Bot,
+    name: str,
+    messages: tuple[str, ...],
+    packets: tuple[str, ...],
 ) -> None:
-    """Join a Bot called `name`, and in a window, send `messages` until the server kicks it.
+    """Join a Bot called `name`, and in a window comparing `packets`, send `messages` at once.
 
-    The window holds the Bot's kick and what the listener is sent: the messages, then that the
-    Bot left the game.
+    The window waits for the Bot's kick, then for the listener to be told the Bot left.
     """
     bot = await _joined(context, name)
-    async with context.observe(*PACKETS):
-        for message in messages:
-            await bot.chat(message)
+    async with context.observe(*packets):
+        await bot.chat_at_once(*messages)
         await bot.expect(_DISCONNECT, timeout_s=FEEDBACK_TIMEOUT_S)
         await listener.expect(_SYSTEM_CHAT, timeout_s=FEEDBACK_TIMEOUT_S)

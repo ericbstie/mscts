@@ -39,6 +39,12 @@ GROUP_IDS = ("chat/player", "chat/commands", "chat/join-leave", "chat/limits")
 KICK_REASON = bytes([0x08, 0x00, 0x04]) + b"kick"  # an NBT String text component
 LONGEST = 256
 """The longest message vanilla reads (26.3 javap)."""
+KICK_AT = 10
+"""The message that gets a player who is not an operator kicked, if all arrive within a tick."""
+LATE_S = 5 * TICK_S
+"""How late a slow server tells the others: after a barrier's answers, which come a tick apart."""
+KICK_PACKETS = ("minecraft:disconnect", SYSTEM_CHAT, "minecraft:player_info_remove")
+"""What the spam kick's window compares: not the chat, whose count before the kick varies."""
 
 
 def player_chat(peer: Peer, sender: str, message: str) -> bytes:
@@ -85,8 +91,12 @@ class ChatServer:
     them says or runs as a message command. A marker (`tellraw @s "<token>"`) gets its token
     back; `tellraw @a` is told to every player. A player who says a message longer than
     vanilla reads, or one with a `§`, is kicked, and so is one who is not in `operators` on
-    its `chat.SPAM_MESSAGES`-th message. `left` holds when each player left, by name. With
-    `disguised`, what a player says goes out as `disguised_chat`, as Pumpkin sends it; with
+    its `KICK_AT`-th message; what a kicked player sends after is ignored. With `late`, each
+    thing the others are told reaches them `LATE_S` after the one before, in order, so after
+    the barrier's answers (a server behind schedule). That a player joined comes late only
+    with `late_joins`: vanilla tells it before the joining player has its chunks, so before
+    its join returns. `left` holds when each player left, by name. With `disguised`, what
+    a player says goes out as `disguised_chat`, as Pumpkin sends it; with
     `commands_as_system`, a message command's goes out as `system_chat`, as Pumpkin sends
     `/teammsg`.
     """
@@ -94,9 +104,16 @@ class ChatServer:
     operators: tuple[str, ...] = ()
     disguised: bool = False
     commands_as_system: bool = False
+    late: bool = False
+    late_joins: bool = False
     seen: list[Packet] = field(default_factory=list)
     left: dict[str, int] = field(default_factory=dict)
     _players: dict[str, Peer] = field(default_factory=dict, init=False)
+    _kicked: set[str] = field(default_factory=set, init=False)
+    _queue: asyncio.Queue[tuple[list[Peer], Callable[[Peer], bytes]]] = field(
+        default_factory=asyncio.Queue, init=False
+    )
+    _teller: asyncio.Task[None] | None = field(default=None, init=False)
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -106,7 +123,9 @@ class ChatServer:
 
     async def _play(self, peer: Peer) -> None:
         if peer.name != CONTROL:
-            await self._tell_all(lambda other: system_chat(other, f"{peer.name} joined"))
+            await self._tell_all(
+                lambda other: system_chat(other, f"{peer.name} joined"), late=self.late_joins
+            )
             self._players[peer.name] = peer
         requests = messages = 0
         try:
@@ -140,11 +159,13 @@ class ChatServer:
             await self._tell_all(lambda other: system_chat(other, command))
 
     async def _chat(self, peer: Peer, message: str, count: int) -> None:
+        if peer.name in self._kicked:
+            return
         if len(message) > LONGEST or "§" in message:
             await self._kick(peer)
             return
         await self._say(peer, message)
-        if count >= chat.SPAM_MESSAGES and peer.name not in self.operators:
+        if count >= KICK_AT and peer.name not in self.operators:
             await self._kick(peer)
 
     async def _say(self, peer: Peer, message: str) -> None:
@@ -153,6 +174,7 @@ class ChatServer:
 
     async def _kick(self, peer: Peer) -> None:
         """Disconnect `peer` as vanilla does, and tell the others; it reads on until EOF."""
+        self._kicked.add(peer.name)
         await peer.write(peer.frame("minecraft:disconnect", reason=KICK_REASON))
         await self._leave(peer)
 
@@ -163,8 +185,23 @@ class ChatServer:
         self.left[peer.name] = time.monotonic_ns()
         await self._tell_all(lambda other: system_chat(other, f"{peer.name} left"))
 
-    async def _tell_all(self, frame: Callable[[Peer], bytes]) -> None:
-        for other in list(self._players.values()):
+    async def _tell_all(self, frame: Callable[[Peer], bytes], *, late: bool | None = None) -> None:
+        players = list(self._players.values())
+        if self.late if late is None else late:
+            if self._teller is None:
+                self._teller = asyncio.create_task(self._tell_late())
+            self._queue.put_nowait((players, frame))
+        else:
+            await self._tell(players, frame)
+
+    async def _tell_late(self) -> None:
+        while True:
+            players, frame = await self._queue.get()
+            await asyncio.sleep(LATE_S)
+            await self._tell(players, frame)
+
+    async def _tell(self, players: list[Peer], frame: Callable[[Peer], bytes]) -> None:
+        for other in players:
             with suppress(ConnectionError):  # it may be leaving
                 await other.write(frame(other))
 
@@ -219,7 +256,9 @@ def read(transcript: Transcript) -> Play:
     opens = [mark for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
     closes = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {chat.LISTENER}"]
     assert len(opens) == len(closes), transcript.marks
-    assert {mark.label for mark in opens} == {f"{OBSERVE_OPEN} {' '.join(chat.PACKETS)}"}
+    assert {mark.label for mark in opens} <= {
+        f"{OBSERVE_OPEN} {' '.join(packets)}" for packets in (chat.PACKETS, KICK_PACKETS)
+    }
     everything = said(transcript)
     windows = tuple(
         Window(
@@ -426,3 +465,47 @@ async def test_a_server_that_says_a_message_command_as_a_system_message_gets_eve
     result = await play("chat/commands", server)
 
     assert len(result.windows) == len((await play("chat/commands")).windows)
+
+
+def heard(result: Play, window: Window) -> int:
+    """How many chat packets the listener received inside `window`, up to its close."""
+    return sum(
+        event.bot == chat.LISTENER
+        and event.packet.direction is Direction.CLIENTBOUND
+        and event.packet.name in (PLAYER_CHAT, SYSTEM_CHAT, "minecraft:disguised_chat")
+        and window.opened <= event.t_ns <= window.closed
+        for event in result.transcript.events
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_each_window_waits_for_all_the_listener_is_told_when_the_server_is_late(
+    group_id: str,
+) -> None:
+    # The listener sent nothing, so its barrier does not cover what the others' actions
+    # send it: a window must wait for each message, or a slow server's lands after it.
+    prompt = await play(group_id)
+    joins = group_id == "chat/join-leave"  # the one Group that waits for a join to be told
+    server = ChatServer(operators=operators(group_id), late=True, late_joins=joins)
+    late = await play(group_id, server)
+
+    counts = [heard(late, window) for window in late.windows]
+    assert counts == [heard(prompt, window) for window in prompt.windows]
+    assert all(counts), counts
+
+
+@pytest.mark.asyncio
+async def test_limits_spams_in_one_write_and_compares_only_the_kick_in_the_spammers_window() -> (
+    None
+):
+    result = await play("chat/limits")
+
+    for bot in (chat.OPERATOR, chat.SPAMMER):
+        times = [s.t_ns for s in said(result.transcript) if s.bot == bot]
+        assert len(times) == chat.SPAM_MESSAGES
+        assert len(set(times)) == 1, "all in one write"
+    assert chat.SPAM_MESSAGES >= KICK_AT + 5, "a tick or more inside the burst still kicks"
+    opens = [m.label for m in result.transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    assert opens[-1] == f"{OBSERVE_OPEN} {' '.join(KICK_PACKETS)}"
+    assert set(opens[:-1]) == {f"{OBSERVE_OPEN} {' '.join(chat.PACKETS)}"}

@@ -190,7 +190,7 @@ server's name, which the client shows on its debug screen.
 
 ## `disguised_chat`
 
-**Chat message without a sender's signature**
+**Disguised chat message**
 
 A player's message that the server shows as from the player but sends
 as text, with no place for a signature, such as `/say` sent unsigned.
@@ -958,7 +958,7 @@ bytes, such as `commands.setblock.success`, says what the message is.
 
 ## `system_chat.overlay`
 
-**Message shown above the hotbar**
+**Whether a message shows above the hotbar**
 
 Whether the client shows the message above the hotbar instead of in the
 chat.

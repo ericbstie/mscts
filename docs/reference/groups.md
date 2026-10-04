@@ -89,16 +89,19 @@ command's message as a system message.
 | `chat/player` | exact | none | A Bot says a plain message, then a message with a link, and the listener receives each. | none |
 | `chat/commands` | exact | none | A Bot that is an operator runs `/me`, `/say`, `/msg listener ...`, `/tellraw @a` with gold bold text, and `/teammsg`, on a team with the listener. The team is removed afterwards. | none |
 | `chat/join-leave` | exact | none | A Bot joins, then leaves, while the listener is in the world. | none |
-| `chat/limits` | exact | none | A Bot says a message of 256 characters, the longest vanilla takes. An operator sends 10 messages at once. Then a Bot says a message of 257 characters, a Bot says a message with a `§`, and a Bot that is not an operator sends 10 messages at once, and each of these three is kicked. | none |
+| `chat/limits` | exact | none | A Bot says a message of 256 characters, the longest vanilla takes. An operator sends 15 messages at once. Then a Bot says a message of 257 characters, a Bot says a message with a `§`, and a Bot that is not an operator sends 15 messages at once, and each of these three is kicked. | none |
 
 Vanilla takes a message's time from its own clock, since the Bot has no keys to sign the time it
 sends. So no chat Group compares `timestamp` in `player_chat`; the message itself is still
 compared.
 
 Vanilla kicks a player who is not an operator for spam when the messages it sends add up too
-fast: each message counts 20, each tick takes 1 away, and the kick comes at 200. The 10 messages
-reach the server within one tick, so the tenth is the kick on every run. Freezing the world would
-not help, because the count goes down on every tick even then.
+fast: each message counts 20, each tick takes 1 away, and the kick comes at 200. Ten messages
+are enough only if no tick falls while they arrive. So the Bot sends 15, all in one write, and
+vanilla kicks it whichever message the ticks fall between. Which message is the kick can still
+differ between runs, so that case compares only the kick, the message that the Bot left, and the
+player list, not the chat before the kick. Freezing the world would not help, because the count
+goes down on every tick even then.
 
 The kicks are the last cases, so a server that never kicks makes the Bot wait out its timeout
 only after the rest are compared.

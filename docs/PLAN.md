@@ -1077,8 +1077,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `SPEAKER` — the Bot that speaks in `chat/player` and, as an operator, runs `chat/commands`;
   `JOINER` — the Bot that joins and leaves in `chat/join-leave`; `TALKER`, `OPERATOR` — the
   Bots of `chat/limits` that say the longest message and spam as an operator; `LONG`,
-  `SECTION`, `SPAMMER` — the Bots it kicks; `SPAM_MESSAGES` — how many messages at once
-  vanilla kicks a player who is not an operator for; `FEEDBACK_TIMEOUT_S` — how long a Bot
+  `SECTION`, `SPAMMER` — the Bots it kicks; `SPAM_MESSAGES` — how many messages a Bot sends
+  in one write to be kicked for spam, past the 10 that kick within one tick; `FEEDBACK_TIMEOUT_S` — how long a Bot
   waits for a message or its kick; `PACKETS` — what a window compares; `player`, `commands`,
   `join_leave` and `limits` — the `chat/player`, `chat/commands`, `chat/join-leave` and
   `chat/limits` scripts.
