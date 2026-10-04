@@ -1,6 +1,6 @@
 # Development guide
 
-mscts is Python 3.13, managed with [mise](https://mise.jdx.dev) and
+mscts uses Python 3.13, managed with [mise](https://mise.jdx.dev) and
 [uv](https://docs.astral.sh/uv/). Every commit on `main` passes
 `mise run check`.
 

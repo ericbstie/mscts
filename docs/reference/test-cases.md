@@ -635,7 +635,7 @@ server list.
 
 **Unused secure chat flag**
 
-Pumpkin sends this key without the `s` in vanilla's `enforcesSecureChat`.
+Pumpkin sends this key without the `s` that vanilla's `enforcesSecureChat` has.
 The vanilla client never reads it, so its presence changes only network
 traffic. It does not change what a player sees or how secure chat is read.
 

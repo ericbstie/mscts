@@ -1,7 +1,6 @@
 # Project status
 
-mscts is at an early stage. This page lists what works today and what comes next. The
-working log is
+mscts is at an early stage. The working log is
 [`docs/PROGRESS.md`](https://github.com/ericbstie/mscts/blob/main/docs/PROGRESS.md),
 and the milestones are in
 [`docs/PLAN.md`](https://github.com/ericbstie/mscts/blob/main/docs/PLAN.md).

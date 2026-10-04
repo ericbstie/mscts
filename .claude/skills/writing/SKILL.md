@@ -84,11 +84,34 @@ Any session that writes user-facing text follows this skill all the same.
   lines that name the same thing ("Running tests against pumpkin" then
   "Candidate: pumpkin …"). Keep the natural flow: this is not about
   cutting filler words or packing the text densely.
+- **Never say what you're about to say; just say it.** No sentence
+  that announces what a page or section will do ("This page takes you
+  from …", "This page lists them."). Start with the content itself.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Getting started, the opening
+
+- Before: "This page takes you from a clean checkout to a Report that
+  compares vanilla 26.3 with Pumpkin. It takes a few minutes, most of it
+  spent downloading. This page runs mscts from a checkout. To install the
+  `mscts` command from the latest GitHub Release instead, run:"
+- After: "To install the `mscts` command from the latest GitHub
+  Release, run:". The same sweep dropped "This page lists …" from the
+  status and design decisions pages.
+- Why: redundant and unnecessary prose. "Never say what you're about to
+  say — just say it." The download time comment is "totally
+  unnecessary".
+
+### Development guide, the language
+
+- Before: "mscts is Python 3.13, managed with mise and uv."
+- After: "mscts uses Python 3.13, managed with mise and uv." The
+  maintainer gave the correction.
+- Why: a grammatical error; mscts is not Python, it uses it.
 
 ### Report output, the first line and the totals
 

@@ -268,7 +268,7 @@ A set of Groups executed against the Reference and one
 Candidate, repeated N times. It produces a **Report**. Each side of a
 Run either launches its own Instances (a Server) or is **Attached**: an
 Instance someone else launched and stops, which the Run only plays
-against, and only for Groups of the ServerSpec it was launched from.
+against, and only for Groups that use the ServerSpec it was launched from.
 
 ### Score
 
