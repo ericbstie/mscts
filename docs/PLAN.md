@@ -535,7 +535,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
     async def respawn(self) -> None: ...                               # PERFORM_RESPAWN → player_loaded
-    async def expect(self, *names: str, timeout_s: float,
+    async def expect(self, name: str, /, *others: str, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def drain(self) -> None: ...                                 # take what has arrived
@@ -578,7 +578,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # (handleRespawn), and the server ignores attack and interact until it has
     # (hasClientLoaded). A server ignores the request from a live player → TimeoutError.
     # expect: takes (and so records) packets until one is called any of `names` (the first such
-    # ends it, #270) and `where` holds for it; ValueError for no name.
+    # ends it, #270) and `where` holds for it (it sees a packet of any of the names); ValueError for a name given twice.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
     # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command

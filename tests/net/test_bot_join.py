@@ -289,11 +289,11 @@ def test_expect_with_several_names_returns_whichever_arrives_first(
     assert taken(transcript)[-1] == (State.PLAY, first)
 
 
-def test_expect_needs_a_name(codec: Codec, transcript: Transcript) -> None:
+def test_expect_refuses_a_name_given_twice(codec: Codec, transcript: Transcript) -> None:
     async def raises(bot: Bot) -> None:
         await bot.join()
-        with pytest.raises(ValueError, match="at least one packet"):
-            await bot.expect(timeout_s=1)
+        with pytest.raises(ValueError, match="twice"):
+            await bot.expect(DIFFICULTY, BATCH_START, DIFFICULTY, timeout_s=1)
 
     with_bot(codec, transcript, join_server([]), raises)
 
