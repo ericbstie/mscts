@@ -269,7 +269,19 @@ each update is queued for its own position.
 - `set_entity_data` can read a block: `LivingEntity.onSyncedDataUpdated`, on the
   client, calls `setPosToBed`, which reads `level().getBlockState` at the bed.
   Of the 39 `onSyncedDataUpdated` overrides in the client's entity and player
-  classes, this is the only one that reads the world.
+  classes, this is the only one that reads the world. It runs only for
+  `SLEEPING_POS_ID`, entry 14 of a living entity's data (`Entity` has entries
+  0 to 7, `LivingEntity` 8 to 14). A pose (entry 6) calls `refreshDimensions`,
+  whose `fudgePositionAfterSizeChange` is skipped when `level.isClientSide`,
+  so it only resets the bounding box (`reapplyPosition`). The player's chain,
+  `LocalPlayer` to `AbstractClientPlayer`, `Player`, `Avatar`, `LivingEntity`,
+  `Entity`, overrides it only in `LocalPlayer` (item use, the elytra sound),
+  `LivingEntity` and `Entity` (#294).
+- `set_health` calls `LocalPlayer.hurtTo` (it sets the health) and
+  `FoodData.setFoodLevel` and `setSaturation`; `set_experience` calls
+  `LocalPlayer.setExperienceValues`. Neither reads a chunk (#294).
+- `award_stats` sets each statistic (`StatsCounter.setValue`) and tells an open
+  `StatsScreen`.
 - `entity_event` (`Entity.handleEntityEvent`, one override for each kind) is not
   traced.
 
@@ -290,5 +302,8 @@ it came before the run's first chunk or after it. Runs are found in the
 Bot's whole stream, before windows or Masks leave anything out. So a chunk never
 moves across a packet for its own position, nor across any packet whose effect
 can depend on the order (`entity_position_sync`, `teleport_entity`,
-`set_entity_data`, `entity_event`, or anything not in the list). Batch packets
+`set_entity_data` with entry 14, `entity_event`, or anything not in the list).
+Since #294, `set_health`, `set_experience` and `set_entity_data` without entry
+14 are in the list: Pumpkin sends them between its batches, where vanilla sends
+them before its view, so they split one run in two on Pumpkin only. Batch packets
 only one side sent, and another `batch_size`, are network traffic.

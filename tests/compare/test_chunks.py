@@ -929,6 +929,41 @@ def test_a_packet_whose_handling_reads_no_chunk_may_come_before_or_after_the_fir
     assert compare(played(reference), played(candidate), []).gameplay == ()
 
 
+def _data(index: int) -> Packet:
+    entries = [{"index": index, "serializer": "float", "value": 20.0}]
+    return packet("minecraft:set_entity_data", fields={"entity_id": 1, "entries": entries})
+
+
+@pytest.mark.parametrize(
+    "between",
+    [
+        packet("minecraft:set_health", fields={"health": 20.0, "food": 20, "saturation": 5.0}),
+        packet("minecraft:set_experience", fields={"progress": 0.0, "level": 0, "total": 0}),
+        _data(9),
+    ],
+    ids=["set_health", "set_experience", "set_entity_data"],
+)
+def test_one_run_on_one_side_matches_runs_split_by_a_packet_that_reads_no_chunk(
+    between: Packet,
+) -> None:
+    # Review B of #294, finding B1: vanilla sends these before its view, in one run; Pumpkin
+    # sends them between its batches, which split the run, so one chunk sorted on each side of
+    # the other. None of their handlers reads a chunk (javap on the 26.3 client).
+    reference = _batch_of(between, START, LIT_B, START, LIT_A)
+    candidate = _batch_of(START, LIT_B, between, START, LIT_A)
+
+    assert compare(reference, candidate, []).gameplay == ()
+
+
+def test_entity_data_with_a_sleeping_position_keeps_the_chunks_in_order() -> None:
+    # A sleeping entity's position is set from the bed block there (LivingEntity.setPosToBed).
+    between = _data(14)
+
+    verdict = compare(_batch_of(LIT_A, between, LIT_B), _batch_of(LIT_B, between, LIT_A), [])
+
+    assert verdict.gameplay
+
+
 def _spawned(entity_id: int, x: float) -> Packet:
     fields = {
         "entity_id": entity_id,
@@ -982,8 +1017,6 @@ def test_an_entity_spawned_among_chunks_takes_its_number_where_the_sort_puts_it(
         # (ClientLevel.isTickingEntity).
         "minecraft:entity_position_sync",
         "minecraft:teleport_entity",
-        # A sleeping entity's position is set from the bed block there (LivingEntity.setPosToBed).
-        "minecraft:set_entity_data",
         "minecraft:entity_event",
         "minecraft:block_update",
         "minecraft:chunks_biomes",
