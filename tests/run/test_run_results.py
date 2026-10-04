@@ -82,7 +82,9 @@ async def test_an_attached_side_has_no_startup_measurement(
 
 
 @pytest.mark.asyncio
-async def test_a_blocked_group_has_no_measurements(fake_server: MakeServer, tmp_path: Path) -> None:
+async def test_a_group_whose_prerequisite_the_candidate_failed_measures_the_reference_alone(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
     result = await run_results(
         [BASIC, PING],
         fake_server("one"),
@@ -91,9 +93,12 @@ async def test_a_blocked_group_has_no_measurements(fake_server: MakeServer, tmp_
     )
 
     ping = result.results[1]
-    assert ping.verdicts[0].outcome is Outcome.BLOCKED
-    assert ping.reference == ping.candidate == ((),)
-    assert ping.elapsed_s == (0.0,)
+    assert ping.verdicts[0].outcome is Outcome.MISMATCH
+    [[rtt]] = ping.reference
+    assert rtt.name == "status.rtt"
+    assert ping.candidate == ((),)
+    [elapsed_s] = ping.elapsed_s
+    assert elapsed_s > 0
 
 
 @pytest.mark.asyncio
@@ -115,7 +120,7 @@ async def test_a_play_that_does_not_match_keeps_both_sides_transcripts(
     reference, candidate = kept
     assert (reference.server, candidate.server) == ("one", "two")
     assert reference.events
-    assert ping.transcripts == (None,), "a blocked play played nothing"
+    assert ping.transcripts == (None,), "a blocked play did not play the Candidate"
 
 
 @pytest.mark.asyncio

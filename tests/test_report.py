@@ -109,7 +109,7 @@ def test_a_network_traffic_difference_passes_and_says_so() -> None:
 def test_a_network_traffic_difference_fails_if_network_traffic_does_not_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The switch lives with Verdict, where run.blocked reads it too (#221).
+    # The switch lives with Verdict, where run.prerequisite_verdict reads it too (#221).
     monkeypatch.setattr(mscts.compare, "NETWORK_TRAFFIC_ONLY_PASSES", False)
     report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
     lines = report_lines(report)
@@ -159,7 +159,7 @@ def test_a_whole_packet_difference_keeps_its_test_case_name(kind: DivergenceKind
 
 def test_a_group_without_test_cases_to_list_has_one_line_with_its_reasons() -> None:
     different = _verdict(_field("status_response.players.max"))
-    blocked = Verdict("redstone/timing", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    blocked = Verdict("redstone/timing", Outcome.BLOCKED, detail="prerequisite x was not run")
     error = Verdict("status/error", Outcome.ERROR, detail="the Reference did not start")
     failed = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected during join", "")
     text = render_text(
@@ -172,7 +172,7 @@ def test_a_group_without_test_cases_to_list_has_one_line_with_its_reasons() -> N
     )
     assert text == (
         "Running tests against pumpkin\n"
-        "✗ redstone/timing Not tested: prerequisite x was mismatch\n"
+        "✗ redstone/timing Not tested: prerequisite x was not run\n"
         "✗ status/basic/status_response.players.max\n"
         "! status/error Error: the Reference did not start\n"
         "✗ join/basic Candidate failed: disconnected during join\n"
@@ -289,12 +289,22 @@ def test_verbose_list_values_keep_the_element_path() -> None:
 
 def test_verbose_group_times_total_all_repetitions_and_mark_blocked_groups() -> None:
     played = replace(_result(_verdict(), _verdict()), elapsed_s=(0.4, 0.6))
-    blocked = _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch"))
+    blocked = _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run"))
     text = render_text(_report(played, blocked), verbose=True)
     assert "Group times\n  status/basic 1 s\n  join/basic not played\n" in text, text
     assert "Timings (ms)" not in text
     assert "Notes" not in text
     assert "How to read this" not in text
+
+
+def test_verbose_group_times_show_a_play_on_vanilla_alone() -> None:
+    # #266, #285: the Candidate failed a prerequisite, so only vanilla played the Group.
+    what = "prerequisite x was mismatch"
+    failed = Divergence("", 0, "failed", "", None, ABSENT, what, "")
+    unplayed = Verdict("join/basic", Outcome.MISMATCH, (failed,), f"the Candidate failed: {what}")
+    played = replace(_result(unplayed), elapsed_s=(0.5,))
+    text = render_text(_report(played), verbose=True)
+    assert "Group times\n  join/basic 0.5 s\n" in text, text
 
 
 def test_default_output_leaves_group_times_to_verbose() -> None:
@@ -343,14 +353,14 @@ def test_markdown_names_the_candidate_s_exact_build_in_the_heading() -> None:
 def test_markdown_is_the_default_report_with_a_heading_and_names_as_code() -> None:
     report = _report(
         _result(_verdict(_field("status_response.description"), _field("new.field", traffic=True))),
-        _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")),
+        _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")),
     )
     assert render_markdown(report) == (
         "# Running tests against pumpkin\n"
         "\n"
         "- ✓ `status/basic/new.field` (network traffic only)\n"
         "- ✗ `status/basic/status_response.description`\n"
-        "- ✗ `join/basic` Not tested: prerequisite x was mismatch\n"
+        "- ✗ `join/basic` Not tested: prerequisite x was not run\n"
         "\n"
         "1 passed, 2 failed (1 not tested). (33.3%)\\\n"
         "Took 41 s\n"

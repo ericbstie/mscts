@@ -128,6 +128,48 @@ was missing only while undoing what the Group changed, the line names
 that first failure instead. A command missing on the Reference is still
 an `error`. `blocked` now means only that a prerequisite did not pass.
 
+## Amendment (#285, 2026-10-04)
+
+A blocked Group was never played, so it was one `Not tested` line. A
+Candidate that sent one value of a prerequisite wrong then scored above
+one that passed the prerequisite and sent every value of the Groups that
+require it wrong.
+
+Now a Group whose prerequisite the Candidate failed (a `mismatch`) is
+still played on the Reference, as the #266 amendment does, and fails
+the same way. Its Verdict is a `mismatch` led by a `failed` Divergence,
+and its line reads `Candidate failed: prerequisite status/basic was
+mismatch`. It lists the test cases of the Reference's play, and the
+Candidate fails each of them, in every repetition, as for any Candidate
+failure. If that play fails, the Group is an `error`. A Group that
+requires this one sees a `mismatch`, and is played the same way.
+
+A first version kept such a Verdict `blocked`, with no Divergence, and
+its line `Not tested`. Review B found that the same situation then read
+`Candidate failed` under #266 and `Not tested` here, that `(n not
+tested)` no longer counted Groups played on neither side, and that a
+reader of report.json's `results` that knows only "a `failed`
+Divergence fails every test case" scored those test cases as passing.
+With the `failed` Divergence, that stays the one rule.
+
+If a prerequisite was not run, or is `blocked` itself, the Group is
+`blocked`: played on neither side, its own line `Not tested` and all
+that fails, as before. That holds per repetition: a repetition blocked
+this way lists no test cases and fails none, even when the Candidate
+matched the Group in another repetition (review A). `blocked` and `Not
+tested` now mean only this. A Run cannot reach it any more: `run_results`
+refuses a Group whose prerequisites are not listed before it, which
+would fail a line of an identical Candidate for the caller's mistake
+(the CLI and the Self-check order them with `resolve`). The Outcome
+stays, for a report.json written before.
+
+If a prerequisite is an `error`, the Group is an `error` too, and its
+line reads `Error: prerequisite status/basic was error`. It is played
+on neither side and is not scored. That was vanilla's or mscts's fault,
+so it costs the Candidate nothing (audit 2026-10-04, L2). The
+prerequisite that decides is the one named: an `error` before one not
+run or `blocked`, and either before one the Candidate failed (review B).
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains

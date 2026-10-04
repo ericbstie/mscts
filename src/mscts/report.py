@@ -102,7 +102,7 @@ class Totals:
     Attributes:
         passed: Lines that passed.
         failed: Lines that failed, counting those not tested.
-        not_tested: Of the failed lines, those not tested.
+        not_tested: Of the failed lines, the Group lines of a Group played on neither server.
         errors: Lines left out of the score because mscts or the Reference failed.
     """
 
@@ -163,9 +163,10 @@ def _candidate_failed(group: GroupResult) -> bool:
 
     Then each test case the Group has in any repetition fails, as if the Candidate had sent
     it wrong, so failing a whole Group never scores better than sending each value wrong
-    (#262). The Reference's own test cases are among them wherever the Reference played the
-    Group, which it does even when the Candidate's side is not compared (#266). With none in
-    any repetition, the Group's own line is all that fails.
+    (#262). The Reference's own test cases are among them where the Reference played the
+    Group, which it does even when the Candidate was not played: left frozen or unsettled
+    (#266), or having failed a prerequisite (#285). With none in any repetition, the
+    Group's own line is all that fails.
     """
     return any(
         divergence.kind == "failed"

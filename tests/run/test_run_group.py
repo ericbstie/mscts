@@ -7,7 +7,7 @@ from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict, compare
 from mscts.group import CommandMissing, Group, GroupContext
 from mscts.groups import status
-from mscts.run import GroupError, blocked, judge, run_group
+from mscts.run import GroupError, judge, prerequisite_verdict, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import VANILLA_STATUS, Handler, Peer, serve, status_server
@@ -201,16 +201,106 @@ async def test_a_command_missing_with_a_value_the_comparison_cannot_take_names_t
     assert verdict.detail == "the Candidate failed: missing /tick"
 
 
-def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:
-    assert blocked(PING, {"status/basic": Verdict("status/basic", Outcome.MATCH)}) is None
+def test_a_group_whose_prerequisite_matched_gets_no_verdict_of_its_prerequisites() -> None:
+    assert (
+        prerequisite_verdict(PING, {"status/basic": Verdict("status/basic", Outcome.MATCH)}) is None
+    )
 
 
-@pytest.mark.parametrize("outcome", [Outcome.MISMATCH, Outcome.BLOCKED, Outcome.ERROR])
-def test_a_group_whose_prerequisite_did_not_match_is_blocked(outcome: Outcome) -> None:
-    verdict = blocked(PING, {"status/basic": Verdict("status/basic", outcome)})
+def test_a_group_whose_prerequisite_the_candidate_failed_fails_too() -> None:
+    # Review B S-289-1, L-289-2: a `failed` Divergence, as for any whole-Group failure.
+    basic = Verdict("status/basic", Outcome.MISMATCH)
+
+    verdict = prerequisite_verdict(PING, {"status/basic": basic})
+
+    assert verdict == _prerequisite_failed("status/basic")
+
+
+def test_a_group_whose_prerequisite_was_blocked_is_blocked() -> None:
+    verdict = prerequisite_verdict(PING, {"status/basic": Verdict("status/basic", Outcome.BLOCKED)})
 
     assert verdict == Verdict(
-        "status/ping", Outcome.BLOCKED, detail=f"prerequisite status/basic was {outcome}"
+        "status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was blocked"
+    )
+
+
+@pytest.mark.parametrize("order", [("status/basic", "test/gone"), ("test/gone", "status/basic")])
+def test_a_prerequisite_not_run_is_named_before_one_the_candidate_failed(
+    order: tuple[str, ...],
+) -> None:
+    both = Group(id="test/both", run=status.ping, requires=order)
+
+    verdict = prerequisite_verdict(
+        both, {"status/basic": Verdict("status/basic", Outcome.MISMATCH)}
+    )
+
+    assert verdict == Verdict(
+        "test/both", Outcome.BLOCKED, detail="prerequisite test/gone was not run"
+    )
+
+
+@pytest.mark.parametrize("order", [("test/broken", "test/gone"), ("test/gone", "test/broken")])
+def test_an_error_prerequisite_is_named_before_one_not_run(order: tuple[str, ...]) -> None:
+    both = Group(id="test/both", run=status.ping, requires=order)
+
+    verdict = prerequisite_verdict(both, {"test/broken": Verdict("test/broken", Outcome.ERROR)})
+
+    assert verdict == Verdict(
+        "test/both", Outcome.ERROR, detail="prerequisite test/broken was error"
+    )
+
+
+def test_of_prerequisites_the_candidate_failed_the_first_listed_is_named() -> None:
+    both = Group(id="status/ping", run=status.ping, requires=("status/basic", "test/other"))
+    verdicts = {name: Verdict(name, Outcome.MISMATCH) for name in ("status/basic", "test/other")}
+
+    assert prerequisite_verdict(both, verdicts) == _prerequisite_failed("status/basic")
+
+
+def _prerequisite_failed(prerequisite: str) -> Verdict:
+    """status/ping's Verdict when the Candidate failed its `prerequisite`."""
+    what = f"prerequisite {prerequisite} was mismatch"
+    failed = Divergence(
+        bot="",
+        index=0,
+        kind="failed",
+        packet="",
+        path=None,
+        reference=ABSENT,
+        candidate=what,
+        test_case="",
+    )
+    return Verdict(
+        "status/ping", Outcome.MISMATCH, (failed,), detail=f"the Candidate failed: {what}"
+    )
+
+
+def test_a_group_whose_prerequisite_is_an_error_is_an_error() -> None:
+    # Audit L2: vanilla's or mscts's fault, which the Score leaves out.
+    verdict = prerequisite_verdict(PING, {"status/basic": Verdict("status/basic", Outcome.ERROR)})
+
+    assert verdict == Verdict(
+        "status/ping", Outcome.ERROR, detail="prerequisite status/basic was error"
+    )
+
+
+@pytest.mark.parametrize(
+    "order", [("status/basic", "test/broken"), ("test/broken", "status/basic")]
+)
+def test_an_error_prerequisite_is_named_before_one_the_candidate_failed(
+    order: tuple[str, ...],
+) -> None:
+    # Review B L-289-3: the `error` decides that the Group is not played.
+    both = Group(id="test/both", run=status.ping, requires=order)
+    verdicts = {
+        "status/basic": Verdict("status/basic", Outcome.MISMATCH),
+        "test/broken": Verdict("test/broken", Outcome.ERROR),
+    }
+
+    verdict = prerequisite_verdict(both, verdicts)
+
+    assert verdict == Verdict(
+        "test/both", Outcome.ERROR, detail="prerequisite test/broken was error"
     )
 
 
@@ -234,10 +324,10 @@ def test_a_prerequisite_that_differs_only_in_network_traffic_does_not_block() ->
     differs = (_sample(Observability.NETWORK_TRAFFIC),)
     basic = Verdict("status/basic", Outcome.MISMATCH, differs)
 
-    assert blocked(PING, {"status/basic": basic}) is None
+    assert prerequisite_verdict(PING, {"status/basic": basic}) is None
 
 
-def test_a_network_traffic_prerequisite_blocks_if_network_traffic_does_not_pass(
+def test_a_network_traffic_prerequisite_fails_if_network_traffic_does_not_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # The one switch for ADR-0007's rule decides blocking as it decides the Score.
@@ -245,11 +335,9 @@ def test_a_network_traffic_prerequisite_blocks_if_network_traffic_does_not_pass(
     differs = (_sample(Observability.NETWORK_TRAFFIC),)
     basic = Verdict("status/basic", Outcome.MISMATCH, differs)
 
-    verdict = blocked(PING, {"status/basic": basic})
+    verdict = prerequisite_verdict(PING, {"status/basic": basic})
 
-    assert verdict == Verdict(
-        "status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was mismatch"
-    )
+    assert verdict == _prerequisite_failed("status/basic")
 
 
 @pytest.mark.parametrize("outcome", [Outcome.BLOCKED, Outcome.ERROR])
@@ -259,26 +347,23 @@ def test_a_prerequisite_that_did_not_compare_blocks_whatever_its_divergences(
     differs = (_sample(Observability.NETWORK_TRAFFIC),)
     basic = Verdict("status/basic", outcome, differs)
 
-    verdict = blocked(PING, {"status/basic": basic})
+    verdict = prerequisite_verdict(PING, {"status/basic": basic})
 
-    assert verdict == Verdict(
-        "status/ping", Outcome.BLOCKED, detail=f"prerequisite status/basic was {outcome}"
-    )
+    assert verdict is not None
+    assert verdict.detail == f"prerequisite status/basic was {outcome}"
 
 
-def test_a_prerequisite_with_a_gameplay_difference_too_blocks() -> None:
+def test_a_prerequisite_with_a_gameplay_difference_too_fails() -> None:
     differs = (_sample(Observability.NETWORK_TRAFFIC), _sample(Observability.GAMEPLAY))
     basic = Verdict("status/basic", Outcome.MISMATCH, differs)
 
-    verdict = blocked(PING, {"status/basic": basic})
+    verdict = prerequisite_verdict(PING, {"status/basic": basic})
 
-    assert verdict == Verdict(
-        "status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was mismatch"
-    )
+    assert verdict == _prerequisite_failed("status/basic")
 
 
 def test_a_group_whose_prerequisite_did_not_run_is_blocked() -> None:
-    verdict = blocked(PING, {})
+    verdict = prerequisite_verdict(PING, {})
 
     assert verdict == Verdict(
         "status/ping", Outcome.BLOCKED, detail="prerequisite status/basic was not run"

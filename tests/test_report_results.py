@@ -55,15 +55,41 @@ def test_a_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -
 
 
 def test_a_blocked_group_is_one_failing_line_that_was_not_tested() -> None:
-    blocked = Verdict(
-        "join/basic", Outcome.BLOCKED, detail="prerequisite status/basic was mismatch"
-    )
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite status/basic was not run")
     assert report_lines(_report(_result(blocked, blocked))) == (
         GroupLine(
             "join/basic",
             LineResult.NOT_TESTED,
-            "Not tested: prerequisite status/basic was mismatch",
+            "Not tested: prerequisite status/basic was not run",
         ),
+    )
+
+
+def test_a_failed_prerequisite_fails_each_test_case_the_group_has_in_any_repetition() -> None:
+    # #285, review B: vanilla's play of the Group lists its test cases; the Candidate,
+    # never played, fails each, as if it had sent every value wrong.
+    what = "prerequisite status/basic was mismatch"
+    failed = replace(FAILED, bot="", candidate=what)
+    unplayed = replace(_verdict(failed, group_id="join/basic"), test_cases=("a",))
+    passed = _compared("a", "b", group_id="join/basic")
+
+    assert report_lines(_report(_result(unplayed, passed))) == (
+        CaseResult("join/basic", "a", LineResult.FAIL),
+        CaseResult("join/basic", "b", LineResult.FAIL),
+        GroupLine("join/basic", LineResult.FAIL, f"Candidate failed: {what}"),
+    )
+
+
+def test_a_blocked_verdict_fails_no_test_case() -> None:
+    # Review A B1: a `blocked` Verdict was played on neither server.
+    blocked = Verdict(
+        "join/basic", Outcome.BLOCKED, detail="prerequisite x was not run", test_cases=("a",)
+    )
+    passed = _compared("a", group_id="join/basic")
+
+    assert report_lines(_report(_result(blocked, passed))) == (
+        CaseResult("join/basic", "a", LineResult.PASS),
+        GroupLine("join/basic", LineResult.NOT_TESTED, "Not tested: prerequisite x was not run"),
     )
 
 
@@ -81,10 +107,10 @@ FAILED = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected", "")
 def test_a_candidate_failure_fails_its_group_and_each_of_its_test_cases() -> None:
     verdict = replace(_verdict(FAILED, group_id="join/basic"), test_cases=("a",))
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
     reasons = (
         "Candidate failed: disconnected; Error: vanilla stopped; "
-        "Not tested: prerequisite x was mismatch"
+        "Not tested: prerequisite x was not run"
     )
     assert report_lines(_report(_result(verdict, error, blocked))) == (
         CaseResult("join/basic", "a", LineResult.FAIL),
@@ -121,7 +147,7 @@ def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line()
 
 def test_a_group_that_was_not_tested_and_errored_is_not_tested() -> None:
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
     [line] = report_lines(_report(_result(error, blocked)))
     assert line.result is LineResult.NOT_TESTED
 
@@ -147,7 +173,7 @@ def test_totals_count_each_result_and_score_the_passes_among_what_was_scored() -
     lines = [
         *[CaseResult("g/a", str(n), LineResult.PASS) for n in range(7)],
         CaseResult("g/a", "x", LineResult.FAIL),
-        GroupLine("g/b", LineResult.NOT_TESTED, "Not tested: prerequisite x was mismatch"),
+        GroupLine("g/b", LineResult.NOT_TESTED, "Not tested: prerequisite x was not run"),
         GroupLine("g/c", LineResult.ERROR, "Error: vanilla stopped"),
     ]
     result = totals(lines)
@@ -219,6 +245,59 @@ def test_the_leaves_of_a_replaced_compound_fail_and_its_siblings_do_not() -> Non
         CaseResult("x/a", "foo.a.b", LineResult.FAIL),
         CaseResult("x/a", "foo.ab", LineResult.PASS),
     )
+
+
+def test_a_list_replaced_by_a_scalar_fails_each_of_its_elements_test_cases() -> None:
+    # Audit 2026-10-04 L4 (mutant P9): `foo.a[].b` is under `foo.a`, past a `[`.
+    verdict = compare(
+        transcript(
+            ("alice", packet("minecraft:foo", fields={"a": [{"b": 1}], "ab": 2})), group_id="x/a"
+        ),
+        transcript(("alice", packet("minecraft:foo", fields={"a": 0, "ab": 2})), group_id="x/a"),
+        (),
+    )
+    assert report_lines(_report(_result(verdict))) == (
+        CaseResult("x/a", "foo.a", LineResult.FAIL),
+        CaseResult("x/a", "foo.a[].b", LineResult.FAIL),
+        CaseResult("x/a", "foo.ab", LineResult.PASS),
+    )
+
+
+LIGHT_UPDATE = packet(
+    "minecraft:light_update",
+    fields={
+        "chunk_x": 3,
+        "chunk_z": 4,
+        "data": {
+            "sky_light_mask": b"",
+            "block_light_mask": b"",
+            "empty_sky_light_mask": b"",
+            "empty_block_light_mask": b"",
+            "sky_light_arrays": [],
+            "block_light_arrays": [],
+        },
+    },
+)
+
+
+def test_a_chunk_packet_left_out_fails_each_of_its_fields() -> None:
+    # Audit 2026-10-04 L4 (mutant P4): a missing chunk packet shows `chunk 3 4`, a string, so
+    # only its being `missing` fans it out to each field.
+    other = packet("minecraft:set_time", fields={"game_time": 1})
+    verdict = compare(
+        transcript(("alice", LIGHT_UPDATE), ("alice", other)),
+        transcript(("alice", other), server="pumpkin"),
+        (),
+    )
+    [missing] = [d for d in verdict.divergences if d.kind == "missing"]
+    assert missing.reference == "chunk 3 4"
+
+    lines = [
+        line for line in report_lines(_report(_result(verdict))) if isinstance(line, CaseResult)
+    ]
+    light = [line for line in lines if line.test_case.startswith("light_update")]
+    assert len(light) > 1
+    assert {line.result for line in light} == {LineResult.FAIL}
 
 
 def test_a_compound_sent_in_another_format_marks_only_its_own_test_case() -> None:

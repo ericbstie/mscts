@@ -1197,7 +1197,7 @@ type Script = Callable[[GroupContext], Awaitable[None]]
 class Group:
     id: str                         # "status/basic"
     run: Script
-    requires: tuple[str, ...] = ()  # Group ids that must `match` first, else `blocked`
+    requires: tuple[str, ...] = ()  # Group ids that must pass first (run.prerequisite_verdict)
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
     kind: GroupKind = GroupKind.EXACT
@@ -1235,7 +1235,8 @@ class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 class Observability(StrEnum):       # ADR-0007; values "gameplay", "network traffic"
     GAMEPLAY, NETWORK_TRAFFIC
 NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied: the Report's
-                                    # test cases and Score, and run.blocked (#221), read it
+                                    # test cases and Score, and run.prerequisite_verdict
+                                    # (#221), read it
 
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
 MASKED = "<masked>"                 # what a field Mask shows in place of a value (not None),
@@ -1283,7 +1284,7 @@ class Verdict:
     test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, and each
                                       # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
-                                    # blocked or error. run.judge keeps compare's.
+                                    # error or blocked. run.judge keeps compare's.
     omitted: int = 0                # Divergences a report.json left out (#254); 0 from compare
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
@@ -1455,18 +1456,26 @@ def judge(group: Group, reference: Transcript | GroupError,
     # way the Candidate failed. The trade: a
     # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
     # Self-check is what catches it.
-def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
-    # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` passed:
-    # a `match`, or a `mismatch` with Divergences, none gameplay (ADR-0007, #221)
+def prerequisite_verdict(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
+    # None if every `requires` passed: a `match`, or a `mismatch` with Divergences, none
+    # gameplay (ADR-0007, #221). Else, naming the prerequisite that decides: `error`
+    # ("prerequisite X was error", audit L2) if one is an `error`; `blocked` ("... was not
+    # run" / "was blocked") if one was not run or is blocked; else, each a `mismatch`, a
+    # `mismatch` led by a `failed` Divergence from no Bot, "prerequisite X was mismatch"
+    # (#285, review B), the detail "the Candidate failed: " and that.
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
               workdir: Path, repeat: int = 1) -> list[Verdict]: ...
     # one Verdict per Group per repetition, repetition after repetition, in the order
-    # given; a Group is blocked (not played) unless its prerequisites passed earlier in
-    # the same repetition. One Instance pair per distinct ServerSpec the Groups' `spec`
+    # given; a Group is not played on the Candidate unless its prerequisites passed
+    # earlier in the same repetition (prerequisite_verdict). #285: if that is a
+    # `mismatch`, it is played on the Reference alone, as for #266 below, and lists that
+    # play's test cases (the Report fails them); an `error` one is played on neither side.
+    # A Run makes no `blocked` Verdict: each prerequisite must be listed before (below).
+    # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
     # An Attached side is played at its endpoint for every Group, never started or
-    # stopped; the same code path otherwise (judge, blocked, repetitions).
+    # stopped; the same code path otherwise (judge, prerequisite_verdict, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
     # A side that is still not empty means the Group is not played there, and its
@@ -1500,8 +1509,10 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Reference raising, or that self-comparison raising, is `error` as in judge. Its
     # Measurements and `elapsed_s` are the Reference's play; no Transcripts are kept.
     # NotImplementedError for a statistical Group (M6b); ValueError for one
-    # listed twice, or whose `spec` does not give an Attached side's spec (host and port
-    # aside: it would run against the wrong config), before anything starts; RunnerError
+    # listed twice, listed before a Group it requires or requiring one not listed (resolve
+    # orders them; review B LOW-R2), or whose `spec` does not give an Attached side's spec
+    # (host and port aside: it would run against the wrong config), before anything
+    # starts; RunnerError
     # if an Instance cannot start.
 async def selfcheck(group_ids: Sequence[str], *, reference: Server, workdir: Path,
                     repeat: int = 20, attached: Attached | None = None) -> list[Verdict]: ...
@@ -2156,8 +2167,8 @@ def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 
 # run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
 #                     keep_transcripts=False) -> RunResult
-# plays exactly as run() does (run() returns its .verdicts); a blocked repetition measures
-# nothing on either side.
+# plays exactly as run() does (run() returns its .verdicts); a repetition the Candidate
+# was not played in measures nothing on it, and a blocked one nothing at all (#285).
 @frozen
 class GroupResult:
     group_id: str
@@ -2165,7 +2176,8 @@ class GroupResult:
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition (the
-                                      # Reference's alone if the Candidate's was not); blocked 0
+                                      # Reference's alone if the Candidate's was not); 0 if
+                                      # neither was
     transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = ()  # only with
                                       # run_results(..., keep_transcripts=True), off by default
                                       # (reference, candidate) per repetition whose Verdict
@@ -2220,8 +2232,9 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of
 # its fields' differ, and so does a gameplay `field` Divergence whose reference is a list
-# or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in any
-# repetition makes every test case of the Group differ, #262): FAIL if it differs in gameplay in any repetition, PASS (marked
+# or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in
+# any repetition makes every test case of the Group differ, #262, #266, #285): FAIL if it
+# differs in gameplay in any repetition, PASS (marked
 # network_traffic_only) if it differs only in network traffic, else PASS. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
@@ -2279,7 +2292,9 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # #10: verbose adds the Reference's installed version, Target and repetitions at the top, distinct
 # pairs of actual values directly under each line that differs, and total time per Group
 # across repetitions (play both sides + Comparison; excludes startup/shutdown).
-# Blocked Groups say "not played"; older results without durations say "not recorded".
+# Blocked Groups (only in an older report.json) say "not played"; one played on the
+# Reference alone shows that play's time (#266, #285); older results without durations
+# say "not recorded".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;
