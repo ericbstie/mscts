@@ -181,6 +181,16 @@ during the burst. `/tick freeze` would not help: the count goes down with every 
 server, frozen or not. An operator is never kicked, so it sends the same.
 """
 
+CHATTER = "chatter"
+"""A Bot that is not an operator and sends `UNDER_SPAM_MESSAGES` messages at once."""
+
+UNDER_SPAM_MESSAGES = 9
+"""How many messages the chatter sends at once, in one write, and is not kicked for.
+
+Nine messages add 180 to the player's count, under the 200 that vanilla kicks at, however the
+ticks fall. With the spammer's `SPAM_MESSAGES`, this pins the kick to the 10th to 15th message.
+"""
+
 _KICK_PACKETS = (_DISCONNECT, _SYSTEM_CHAT, "minecraft:player_info_remove")
 """What the spam kick's window compares: the kick, the listener being told the Bot left, and
 the player list. How many messages got through before the kick depends on where the ticks
@@ -189,7 +199,7 @@ fell, so the chat itself is not compared there."""
 
 @group("chat/limits", spec=_with_operator(OPERATOR))
 async def limits(context: GroupContext) -> None:
-    """Messages of 256 and 257 characters, a `§`, and too many messages, by a player and an op."""
+    """Messages of 256 and 257 characters, a `§`, and many at once, by players and an operator."""
     listener = await _joined(context, LISTENER)
     talker = await _joined(context, TALKER)
     async with context.observe(*PACKETS):
@@ -197,20 +207,25 @@ async def limits(context: GroupContext) -> None:
         await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
     operator = await _joined(context, OPERATOR)
     async with context.observe(*PACKETS):
-        await operator.chat_at_once(*_spam())
+        await operator.chat_at_once(*_numbered(SPAM_MESSAGES))
         for _ in range(SPAM_MESSAGES):
+            await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
+    chatter = await _joined(context, CHATTER)
+    async with context.observe(*PACKETS):
+        await chatter.chat_at_once(*_numbered(UNDER_SPAM_MESSAGES))
+        for _ in range(UNDER_SPAM_MESSAGES):
             await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
     for name, messages, packets in (
         (LONG, ("x" * 257,), PACKETS),
         (SECTION, ("§cRed text",), PACKETS),
-        (SPAMMER, _spam(), _KICK_PACKETS),
+        (SPAMMER, _numbered(SPAM_MESSAGES), _KICK_PACKETS),
     ):
         await _kicked(context, listener, name, messages, packets)
 
 
-def _spam() -> tuple[str, ...]:
-    """The messages a Bot sends at once to spam: `Message 1` to `Message <SPAM_MESSAGES>`."""
-    return tuple(f"Message {number + 1}" for number in range(SPAM_MESSAGES))
+def _numbered(count: int) -> tuple[str, ...]:
+    """The messages a Bot sends at once: `Message 1` to `Message <count>`."""
+    return tuple(f"Message {number + 1}" for number in range(count))
 
 
 async def _kicked(

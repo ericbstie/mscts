@@ -428,11 +428,27 @@ async def test_limits_says_the_longest_message_then_spams_as_an_operator() -> No
 
 
 @pytest.mark.asyncio
+async def test_limits_has_a_player_send_one_message_fewer_than_the_kick_at_once() -> None:
+    # Nine messages count 180, under vanilla's 200 however the ticks fall: no kick. With the
+    # spammer's 15, that pins the kick to the 10th to 15th message.
+    result = await play("chat/limits")
+
+    burst = result.windows[2]
+    assert [(s.bot, s.text) for s in burst.said] == [
+        (chat.CHATTER, f"Message {n}") for n in range(1, KICK_AT)
+    ]
+    assert len({s.t_ns for s in burst.said}) == 1, "all in one write"
+    assert chat.CHATTER not in operators("chat/limits")
+    assert received(result, chat.CHATTER, "minecraft:disconnect", burst) == 0
+    assert heard(result, burst) == KICK_AT - 1
+
+
+@pytest.mark.asyncio
 async def test_limits_ends_with_a_window_for_each_kick() -> None:
     # A Candidate may not kick at all, and the Bot then waits out its bound: the kicks last.
     result = await play("chat/limits")
 
-    kicks = result.windows[2:]
+    kicks = result.windows[3:]
     assert [[(s.bot, s.text) for s in w.said] for w in kicks] == [
         [(chat.LONG, "x" * (LONGEST + 1))],
         [(chat.SECTION, "§cRed text")],
