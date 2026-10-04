@@ -3,11 +3,13 @@
 import asyncio
 import contextlib
 import fcntl
+import os
+import socket
 import sys
 import termios
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from typing import Self
+from typing import Self, override
 
 from mscts.codec.framing import FrameDecoder, FrameError, encode_frame
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State, undecodable_frame
@@ -50,7 +52,7 @@ class Endpoint:
 
 
 class ConnectionClosedError(ConnectionError):
-    """The Connection is closed: the server closed it, or `close()` was called."""
+    """The Connection is closed: the server closed it, it was lost, or `close()` was called."""
 
 
 class ProtocolError(Exception):
@@ -72,6 +74,64 @@ class _Arrival:
     t_ns: int
     packet: Packet
     error: Exception | None = None
+
+
+class _Stream(asyncio.StreamReader):
+    """A StreamReader that still yields what arrived when the connection is lost.
+
+    asyncio's raises the loss (any OSError: a reset, a TCP timeout, or a failed write:
+    EPIPE) on the next read, ahead of the bytes it already holds, so a server's last
+    frames would be lost (#291). This one ends the stream after those bytes instead, and
+    keeps the loss in `lost`.
+
+    When a write fails, asyncio also stops reading and closes the socket, dropping what
+    the socket still holds. It tells this reader first, while the socket is open, so this
+    one takes those bytes before it ends the stream.
+
+    A loss after the stream has ended (the server closed it, then a write failed) is not
+    recorded: the server closed the connection, whatever was written after.
+    """
+
+    lost: OSError | None = None
+    _socket: socket.socket | None = None
+    _ended = False
+
+    @override
+    def feed_eof(self) -> None:
+        """End the stream, as asyncio does, and remember it has ended."""
+        self._ended = True
+        super().feed_eof()
+
+    @override
+    def set_transport(self, transport: asyncio.BaseTransport) -> None:
+        """Keep the transport's socket, to take what it still holds when the connection is lost."""
+        super().set_transport(transport)
+        self._socket = transport.get_extra_info("socket")
+
+    @override
+    def set_exception(self, exc: Exception) -> None:
+        """Record a lost connection and end the stream; set any other error as asyncio does."""
+        if not isinstance(exc, OSError):
+            super().set_exception(exc)
+            return
+        if self._ended:
+            return
+        self.lost = exc
+        self._take_what_the_socket_holds()
+        self.feed_eof()
+
+    def _take_what_the_socket_holds(self) -> None:
+        """Feed what the socket still holds, to its end, without waiting for more."""
+        if self._socket is None or self._socket.fileno() < 0:
+            return
+        while True:
+            try:
+                data = os.read(self._socket.fileno(), _READ_SIZE)
+            except OSError:  # nothing more yet (it does not block), or the reset
+                return
+            if not data:  # the server's close
+                return
+            self.feed_data(data)
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,14 +218,20 @@ class Connection:
         the vanilla client answers keep-alives, teleports and acks the same way, whether
         or not anyone is reading. The Packet is queued for `recv` once its answer has
         returned, so whoever takes it knows the answer was sent. If the connection is
-        lost, the answer's send fails and the reader reads on to the end of the stream.
+        lost, the answer's send fails and the reader reads on to the end of the stream:
+        every frame that arrived before the loss is still taken.
         Anything else an answer raises stops the reader, and `recv` raises it right
         after the Packet it was answering.
 
         Raises:
             OSError: The connection failed, e.g. ConnectionRefusedError.
         """
-        reader, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
+        # asyncio.open_connection, with a reader that keeps what arrived before a loss.
+        loop = asyncio.get_running_loop()
+        reader = _Stream(loop=loop)
+        protocol = asyncio.StreamReaderProtocol(reader, loop=loop)
+        transport, _ = await loop.create_connection(lambda: protocol, endpoint.host, endpoint.port)
+        writer = asyncio.StreamWriter(transport, protocol, reader, loop)
         connection = cls(reader, writer, codec, bot=bot, transcript=transcript)
         connection._answer = answer  # nothing has awaited since: the reader has not run yet
         return connection
@@ -259,9 +325,9 @@ class Connection:
                 its schema exactly. The frame is recorded first (a Packet with its bytes
                 and `decode_error`), and the reader has stopped, as vanilla's client
                 disconnects.
-            ConnectionClosedError: The Connection is closed, or the server closed it
-                (the message says if that was mid-frame).
-            ConnectionResetError: The server reset the connection.
+            ConnectionClosedError: The Connection is closed, the server closed it, or
+                the connection was lost, e.g. reset (the message says which, and if that
+                was mid-frame). It comes after every frame that arrived before it.
 
             Once the reader has stopped, every later call raises the same error.
         """
@@ -324,6 +390,8 @@ class Connection:
                         return
                     if arrival.error is not None:
                         return  # like vanilla's client, which disconnects on a bad frame
+        except ConnectionError as exc:  # a plain StreamReader raises the loss (_Stream ends)
+            self._arrivals.put_nowait(self._end_of_stream(exc))
         except Exception as exc:  # noqa: BLE001 - not swallowed: recv raises it
             # Whatever else stopped the reader (the server, or a harness bug) is raised
             # by recv, rather than lost in a task nobody awaits.
@@ -375,15 +443,20 @@ class Connection:
                 self._frames.compression_threshold = threshold
         self._receiving = _STATE_AFTER_RECEIVING.get((packet.state, packet.name), packet.state)
 
-    def _end_of_stream(self) -> _End:
-        if self._frames.buffered:
-            msg = (
-                "the server closed the connection mid-frame, "
-                f"{self._frames.buffered} byte(s) into it"
-            )
-        else:
+    def _end_of_stream(self, lost: OSError | None = None) -> _End:
+        if lost is None and isinstance(self._reader, _Stream):
+            lost = self._reader.lost
+        if lost is None:
             msg = "the server closed the connection"
-        return _End(ConnectionClosedError(msg))
+        elif lost.strerror:  # the system's reason, e.g. "Connection reset by peer"
+            msg = f"the connection was lost ({lost.strerror[0].lower()}{lost.strerror[1:]})"
+        else:
+            msg = "the connection was lost"
+        if self._frames.buffered:
+            msg += f" mid-frame, {self._frames.buffered} byte(s) into it"
+        error = ConnectionClosedError(msg)
+        error.__cause__ = lost
+        return _End(error)
 
     def _check_open(self) -> None:
         if self._closed:

@@ -9,7 +9,8 @@ import socket
 import struct
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
+from typing import override
 
 import pytest
 
@@ -17,7 +18,7 @@ from mscts import net
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State, UnknownPacketError
 from mscts.net import Connection, ConnectionClosedError, Endpoint, ProtocolError
 from mscts.transcript import Event, Transcript
-from tests.net.fakes import HOST, Peer, connected, serve
+from tests.net.fakes import HANDLER_TIMEOUT_S, HOST, Peer, connected, serve, serve_in_thread
 
 
 def test_open_connects_and_close_ends_the_connection(
@@ -218,7 +219,7 @@ def test_send_after_the_server_reset_the_connection_raises_and_records_nothing(
             serve(toy_codec, server) as endpoint,
             connected(endpoint, toy_codec, transcript) as connection,
         ):
-            with pytest.raises(ConnectionResetError):
+            with pytest.raises(ConnectionClosedError, match="the connection was lost"):
                 await connection.recv(timeout_s=1)
             with pytest.raises(ConnectionClosedError, match="the connection was lost"):
                 await connection.send("test:request", value=7)
@@ -1004,3 +1005,332 @@ def test_canary_asyncio_stream_reader_still_buffers_in_a_private_buffer_attribut
         return vars(asyncio.StreamReader()).get("_buffer")
 
     assert isinstance(asyncio.run(fresh_buffer()), bytearray)
+
+
+LATE_S = 0.2
+"""How long the answer to the first frame takes: long enough for the rest to arrive behind it."""
+
+
+def test_what_arrived_before_the_connection_was_lost_is_still_taken(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #291: a reader behind the socket still answers an earlier frame when the server has
+    # sent its last frame and closed. The answer's writes then fail (the second with EPIPE),
+    # and the stream is lost with that last frame unread: a kick whose disconnect is lost.
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1))
+        await asyncio.sleep(LATE_S / 4)
+        await peer.write(peer.frame("test:reply", value=2))
+        await peer.close()
+
+    async def answer(connection: Connection, packet: Packet) -> None:
+        if (packet.fields or {}).get("value") == 1:
+            await asyncio.sleep(LATE_S)  # the second frame and the close arrive meanwhile
+            for _ in range(3):  # the first write draws a reset, a later one fails
+                await connection.send("test:request", value=0)
+
+    async def client() -> list[object]:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript, answer=answer
+            )
+            try:
+                taken: list[object] = []
+                while True:
+                    try:
+                        packet = await connection.recv(timeout_s=2)
+                    except ConnectionClosedError as error:
+                        taken.append(type(error))
+                        return taken
+                    taken.append((packet.fields or {}).get("value"))
+            finally:
+                await connection.close()
+
+    assert asyncio.run(client()) == [1, 2, ConnectionClosedError]
+
+
+def test_what_arrived_before_a_reset_is_still_taken_and_then_it_is_closed(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #291: a reset that races the server's last frame, while the reader is still busy
+    # answering an earlier one, must not lose the frame that arrived before it.
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1))
+        await asyncio.sleep(LATE_S / 4)
+        await peer.write(peer.frame("test:reply", value=2))
+        await peer.reset()
+
+    async def answer(_connection: Connection, packet: Packet) -> None:
+        if (packet.fields or {}).get("value") == 1:
+            await asyncio.sleep(LATE_S)  # the second frame and the reset arrive meanwhile
+
+    async def client() -> list[object]:
+        async with serve(toy_codec, server) as endpoint:
+            connection = await Connection.open(
+                endpoint, toy_codec, bot="alice", transcript=transcript, answer=answer
+            )
+            try:
+                taken: list[object] = []
+                while True:
+                    try:
+                        packet = await connection.recv(timeout_s=2)
+                    except ConnectionClosedError as error:
+                        taken.append(str(error))
+                        return taken
+                    taken.append((packet.fields or {}).get("value"))
+            finally:
+                await connection.close()
+
+    assert asyncio.run(client()) == [
+        1,
+        2,
+        "the connection was lost (connection reset by peer)",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("loss", "message"),
+    [
+        (BrokenPipeError(32, "Broken pipe"), "the connection was lost (broken pipe)"),
+        (ConnectionError("no errno"), "the connection was lost"),
+    ],
+    ids=["errno", "no-errno"],
+)
+def test_a_plain_stream_that_fails_with_a_connection_error_ends_as_closed(
+    toy_codec: Codec, transcript: Transcript, loss: ConnectionError, message: str
+) -> None:
+    # A Connection wrapping asyncio's own stream pair sees the loss raised by read: the
+    # reader still ends with ConnectionClosedError, as send does when its write fails.
+    # The message names the system's reason in plain words, when there is one.
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> str:
+        async with serve(toy_codec, server) as endpoint:
+            _, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
+            reader = asyncio.StreamReader()
+            reader.set_exception(loss)
+            connection = Connection(reader, writer, toy_codec, bot="alice", transcript=transcript)
+            try:
+                with pytest.raises(ConnectionClosedError) as raised:
+                    await connection.recv(timeout_s=2)
+                assert raised.value.__cause__ is loss
+                return str(raised.value)
+            finally:
+                await connection.close()
+
+    assert asyncio.run(client()) == message
+
+
+def test_a_connection_that_timed_out_is_lost_not_a_recv_timeout(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review L1, mutant M4: a TCP timeout (ETIMEDOUT) is an OSError, not a
+    # ConnectionError. Raised as is, recv's TimeoutError would read as "no frame in time,
+    # the Connection is still usable", on this and every later call.
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> list[str]:
+        async with serve(toy_codec, server) as endpoint:
+            _, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
+            stream = net._Stream()  # noqa: SLF001 - how asyncio reports the loss to it
+            stream.set_exception(TimeoutError(110, "Connection timed out"))
+            connection = Connection(stream, writer, toy_codec, bot="alice", transcript=transcript)
+            seen: list[str] = []
+            try:
+                for _ in range(2):
+                    with pytest.raises(ConnectionClosedError) as raised:
+                        await connection.recv(timeout_s=2)
+                    seen.append(str(raised.value))
+            finally:
+                await connection.close()
+            return seen
+
+    assert asyncio.run(client()) == ["the connection was lost (connection timed out)"] * 2
+
+
+def test_an_error_that_is_not_a_lost_connection_is_raised_by_recv_as_it_is(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review mutant M10: anything else asyncio reports to the stream (a harness bug in
+    # the protocol) is no loss: recv raises it, rather than a closed connection.
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    bug = RuntimeError("a harness bug")
+
+    async def client() -> None:
+        async with serve(toy_codec, server) as endpoint:
+            _, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
+            stream = net._Stream()  # noqa: SLF001 - how asyncio reports the error to it
+            stream.set_exception(bug)
+            connection = Connection(stream, writer, toy_codec, bot="alice", transcript=transcript)
+            try:
+                with pytest.raises(RuntimeError) as raised:
+                    await connection.recv(timeout_s=2)
+                assert raised.value is bug
+            finally:
+                await connection.close()
+
+    asyncio.run(client())
+
+
+type Answer = Callable[[Connection, Packet], Awaitable[None]]
+
+
+async def _values_until_closed(
+    endpoint: Endpoint, codec: Codec, transcript: Transcript, answer: Answer
+) -> list[object]:
+    """The `value` of every frame recv takes, then the ConnectionClosedError's message."""
+    connection = await Connection.open(
+        endpoint, codec, bot="alice", transcript=transcript, answer=answer
+    )
+    try:
+        taken: list[object] = []
+        while True:
+            try:
+                packet = await connection.recv(timeout_s=2)
+            except ConnectionClosedError as error:
+                taken.append(str(error))
+                return taken
+            taken.append((packet.fields or {}).get("value"))
+    finally:
+        await connection.close()
+
+
+@pytest.mark.parametrize("ending", ["close", "reset"])
+def test_what_was_still_in_the_socket_when_a_write_failed_is_still_taken(
+    toy_codec: Codec, transcript: Transcript, ending: str
+) -> None:
+    # #292 review B1: the reader is busy answering frame 1 (its loop blocked) while frame
+    # 2 and the close or reset arrive, so they are still in the socket, unread, when the
+    # answer's write fails. asyncio then stops reading and closes the socket.
+    cue, done = threading.Event(), threading.Event()
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1))
+        assert await asyncio.to_thread(cue.wait, HANDLER_TIMEOUT_S)
+        await peer.write(peer.frame("test:reply", value=2))
+        await (peer.close() if ending == "close" else peer.reset())
+        done.set()
+
+    async def answer(connection: Connection, packet: Packet) -> None:
+        if (packet.fields or {}).get("value") == 1:
+            cue.set()
+            assert done.wait(HANDLER_TIMEOUT_S)  # blocks the loop: nothing is read meanwhile
+            time.sleep(0.05)  # noqa: ASYNC251 - loopback delivers it at once; still blocked
+            for _ in range(3):  # after a close, the first write draws a reset, a later one fails
+                await connection.send("test:request", value=0)
+
+    with serve_in_thread(toy_codec, server) as endpoint:
+        taken = asyncio.run(_values_until_closed(endpoint, toy_codec, transcript, answer))
+    assert taken[:-1] == [1, 2]
+
+
+BACKLOG_FRAMES = 14_000
+"""Frames of 10 bytes, past the 128 KiB a StreamReader holds before it stops reading."""
+
+
+def test_what_was_left_in_the_socket_by_a_full_stream_when_a_write_failed_is_still_taken(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review B1: while the reader answers frame 1, more than 128 KiB arrives, so
+    # asyncio stops reading and the last frame and the close stay in the socket. The
+    # answer's write then fails, and asyncio closes the socket.
+    cue, done = threading.Event(), threading.Event()
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1))
+        assert await asyncio.to_thread(cue.wait, HANDLER_TIMEOUT_S)
+        await peer.write(peer.frame("test:reply", value=2) * BACKLOG_FRAMES)
+        await asyncio.sleep(0.1)  # the client has read up to its limit and stopped
+        await peer.write(peer.frame("test:reply", value=3))
+        await peer.close()
+        done.set()
+
+    async def answer(connection: Connection, packet: Packet) -> None:
+        if (packet.fields or {}).get("value") == 1:
+            cue.set()
+            assert await asyncio.to_thread(done.wait, HANDLER_TIMEOUT_S)
+            await asyncio.sleep(0.05)  # the reset our first write draws arrives
+            for _ in range(3):
+                await connection.send("test:request", value=0)
+
+    with serve_in_thread(toy_codec, server) as endpoint:
+        taken = asyncio.run(_values_until_closed(endpoint, toy_codec, transcript, answer))
+    assert taken[:-1] == [1, *[2] * BACKLOG_FRAMES, 3]
+
+
+def test_a_server_that_closed_before_a_write_failed_is_reported_as_closed_not_lost(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review S1: the server closes cleanly and the reader sees it; only the answer's
+    # later write fails. The same server behaviour must read the same whatever we write.
+    cue, done = threading.Event(), threading.Event()
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1))
+        assert await asyncio.to_thread(cue.wait, HANDLER_TIMEOUT_S)
+        await peer.write(peer.frame("test:reply", value=2))
+        await peer.close()
+        done.set()
+
+    async def answer(connection: Connection, packet: Packet) -> None:
+        if (packet.fields or {}).get("value") == 1:
+            cue.set()
+            assert await asyncio.to_thread(done.wait, HANDLER_TIMEOUT_S)
+            await asyncio.sleep(0.05)  # the reader has seen the close
+            for _ in range(3):  # the first write draws a reset, a later one fails
+                await connection.send("test:request", value=0)
+
+    with serve_in_thread(toy_codec, server) as endpoint:
+        taken = asyncio.run(_values_until_closed(endpoint, toy_codec, transcript, answer))
+    assert taken == [1, 2, "the server closed the connection"]
+
+
+def test_canary_asyncio_tells_the_protocol_a_write_failed_before_it_closes_the_socket(
+    toy_codec: Codec,
+) -> None:
+    """`_Stream` reads what the socket still holds when told of a failed write.
+
+    That works only while the socket is open: asyncio calls `connection_lost` first, then
+    closes it, which it does not promise. If a CPython release swaps the two, the frames
+    a server sent last (a kick) would be lost again. This turns that change red here.
+    """
+
+    class Recording(asyncio.Protocol):
+        def __init__(self) -> None:
+            self.lost: asyncio.Future[tuple[Exception | None, int]] = (
+                asyncio.get_running_loop().create_future()
+            )
+            self.transport: asyncio.BaseTransport | None = None
+
+        @override
+        def connection_made(self, transport: asyncio.BaseTransport) -> None:
+            self.transport = transport
+
+        @override
+        def connection_lost(self, exc: Exception | None) -> None:
+            assert self.transport is not None
+            sock = self.transport.get_extra_info("socket")
+            self.lost.set_result((exc, sock.fileno()))
+
+    async def server(peer: Peer) -> None:
+        await peer.close()
+
+    async def lost_with() -> tuple[Exception | None, int]:
+        async with serve(toy_codec, server) as endpoint:
+            loop = asyncio.get_running_loop()
+            transport, protocol = await loop.create_connection(
+                Recording, endpoint.host, endpoint.port
+            )
+            assert isinstance(transport, asyncio.WriteTransport)
+            while not protocol.lost.done():  # until a write fails
+                transport.write(b"x")
+                await asyncio.sleep(0.01)
+            return await protocol.lost
+
+    exc, fileno = asyncio.run(lost_with())
+    assert isinstance(exc, ConnectionError)
+    assert fileno >= 0

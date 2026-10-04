@@ -5,6 +5,7 @@ import pytest
 
 from mscts.codec.packets import Codec, Direction, State
 from mscts.codec.schema import LONG, Schema, String
+from mscts.net import Connection
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
@@ -48,16 +49,21 @@ def transcript() -> Transcript:
 
 @pytest.fixture
 def stream_writers(monkeypatch: pytest.MonkeyPatch) -> list[asyncio.StreamWriter]:
-    """The StreamWriter of every connection `asyncio.open_connection` opens in the test."""
+    """The StreamWriter of every Connection made in the test."""
     writers: list[asyncio.StreamWriter] = []
-    open_connection = asyncio.open_connection
+    init = Connection.__init__
 
-    async def recording_open_connection(
-        host: str, port: int
-    ) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
-        reader, writer = await open_connection(host, port)
+    def recording_init(  # noqa: PLR0913 - Connection.__init__, as it is
+        connection: Connection,
+        reader: asyncio.StreamReader,
+        writer: asyncio.StreamWriter,
+        codec: Codec,
+        *,
+        bot: str,
+        transcript: Transcript,
+    ) -> None:
         writers.append(writer)
-        return reader, writer
+        init(connection, reader, writer, codec, bot=bot, transcript=transcript)
 
-    monkeypatch.setattr(asyncio, "open_connection", recording_open_connection)
+    monkeypatch.setattr(Connection, "__init__", recording_init)
     return writers
