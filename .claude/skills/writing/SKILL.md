@@ -66,7 +66,9 @@ Any session that writes user-facing text follows this skill all the same.
 - **Don't announce what the user will see anyway.** If running the
   command shows it, the page need not say it is shown.
 - **Only what is useful to the user.** Internal rules and project
-  promises (explicit installs) are not selling points.
+  promises (explicit installs, "every commit passes `mise run check`",
+  "the ADRs are the only place decisions live") are not selling points
+  and don't help a reader, so leave them out of the docs site.
 - **A section holds only what its heading promises.** Under "How it
   works", only how mscts tests compliancy; setup facts such as running
   offline belong elsewhere, if anywhere.
@@ -115,8 +117,9 @@ Any session that writes user-facing text follows this skill all the same.
 - After: "mscts is in its early development stage. Future milestones are
   documented in docs/PLAN.md." (the maintainer's wording); the other two
   sentences removed.
-- Why: "No need to show / tell about the working log." For the other
-  two: not given.
+- Why: "No need to show / tell about the working log." The other two
+  are internal project rules that don't help a reader; the maintainer
+  confirmed that reason.
 
 ### Development guide, the language
 
