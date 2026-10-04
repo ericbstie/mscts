@@ -12,8 +12,9 @@ up to the window's close.
 
 The batches themselves (`chunk_batch_start`, `chunk_batch_finished`) are not compared: which
 chunks go in which batch depends on how soon each is ready, and differed between two vanilla
-Instances. Nor is the order of the chunks between two other packets: the Comparison puts them
-in order of position, as the client keeps them (docs/research/2026-10-02-chunks-light.md).
+Instances (docs/research/2026-10-04-chunk-loading.md). Nor is the order of the chunks between
+two other packets: the Comparison puts them in order of position, as the client keeps them
+(docs/research/2026-10-02-chunks-light.md).
 """
 
 import contextlib
