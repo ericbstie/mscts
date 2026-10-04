@@ -97,8 +97,9 @@ no colours, and neither do `report.md` and `report.json`.
 
 Verbose values appear directly under their test case. Distinct values from
 different repetitions are kept; identical differences are shown once.
-A Group's time is the sum, over all repetitions, of playing both sides
-and comparing them. It excludes Instance startup and shutdown, which remain
+A Group's time is the sum, over all repetitions, of playing the sides each
+repetition played and comparing them. A repetition that played vanilla
+only counts that play. It excludes Instance startup and shutdown, which remain
 in the final total. Skipped Groups say `not played`. An installed version
 names the installed build: its version, its commit where the build names
 one, and the start of its sha256. mscts does not trust the version claimed
