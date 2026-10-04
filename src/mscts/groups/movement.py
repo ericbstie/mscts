@@ -13,8 +13,8 @@ check is on, a race with the server's first tick (docs/research/2026-09-26-join.
 correction carries the next teleport id, so one repeat would shift every id after it. Control
 then puts the Bot where each case starts with `/tp`, before its window.
 
-The speed check runs only while the world runs normally
-(`ServerGamePacketListenerImpl.handlePlayerPositionChange`, 26.3 javap: `runsNormally()`), so
+The speed check runs only while the world runs normally (`runsNormally()`; every check these
+Groups rely on is in docs/research/2026-10-04-movement-checks.md), so
 `movement/too-fast` and `movement/flying` play in a running world. The speed check measures a
 move from where the player was when the tick began (`firstGood*`, reset by `tickPlayer`) and
 counts the moves since then, the Bot's accept of the `/tp` among them; the window's opening
