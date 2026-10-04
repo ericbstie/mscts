@@ -5,11 +5,10 @@ Usage:
     python3 scripts/commit_green.py -- <git commit args...>
     (normally invoked as `mise run commit -- -F /abs/msg.txt [git commit args]`)
 
-Runs the check command (`mise run check` unless `--check-cmd` overrides it for a
-test), with its combined stdout+stderr captured straight to a temp file -- never
-through a pipe -- then prints that file's tail. `git commit <args>` runs only if
-the check exited 0; otherwise this prints the tail (the failing part) and exits
-with the check's own exit code, without ever calling `git commit`.
+Checks a captured copy of the index in a temporary checkout, without unstaged or
+untracked files. Runs `mise run check` unless `--check-cmd` overrides it for a test,
+captures its combined output to a file, and prints the tail. Git commits the captured
+index only after exit 0. A failed check leaves the original index and files unchanged.
 
 This exists because piping the check into a commit chain has twice let a red
 check through: `mise run check | tail && git commit` commits whenever `tail`
@@ -24,20 +23,20 @@ where `GIT_DIR` and friends point at the *rebasing* repository; a test the check
 runs (e.g. one that does its own `git init`/`git commit` in a tmp dir) must not
 inherit that and write into the real repository instead (see the incident this
 guards against, docs/PROCESS.md's retrospective log, 2026-09-26, lead). The
-`git commit` subprocess keeps the ambient environment, `GIT_*` included, exactly
-as inherited: under `git rebase -x`, that is what makes the commit land in the
-repository the rebase is actually rewriting, which is the legitimate use of
-`GIT_DIR` this tool must not break.
+commit keeps the original repository variables, including `GIT_DIR` under a rebase,
+and uses the captured index through `GIT_INDEX_FILE`. The original index lock stays
+held throughout, so another Git command cannot change what is staged while it checks.
 """
 
 import argparse
+import contextlib
 import os
 import shlex
 import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -200,7 +199,9 @@ def strip_git_env(env: Mapping[str, str]) -> dict[str, str]:
     return {key: value for key, value in env.items() if not key.startswith("GIT_")}
 
 
-def run_check(check_cmd: Sequence[str], out_path: Path, *, env: Mapping[str, str]) -> int:
+def run_check(
+    check_cmd: Sequence[str], out_path: Path, *, env: Mapping[str, str], cwd: Path | None = None
+) -> int:
     """Run `check_cmd`, its combined stdout+stderr captured to `out_path`; return its exit code.
 
     Writes straight to a file, never through a pipe: nothing here can launder the
@@ -208,9 +209,85 @@ def run_check(check_cmd: Sequence[str], out_path: Path, *, env: Mapping[str, str
     """
     with out_path.open("wb") as out:
         result = subprocess.run(  # noqa: S603 - argv is caller-controlled, no shell
-            list(check_cmd), stdout=out, stderr=subprocess.STDOUT, env=dict(env), check=False
+            list(check_cmd),
+            stdout=out,
+            stderr=subprocess.STDOUT,
+            env=dict(env),
+            cwd=cwd,
+            check=False,
         )
     return result.returncode
+
+
+def _git_output(git: str, args: Sequence[str], *, cwd: Path, env: Mapping[str, str]) -> str:
+    result = subprocess.run(  # noqa: S603 - fixed git launcher, no shell
+        [git, *args], cwd=cwd, env=dict(env), capture_output=True, text=True, check=False
+    )
+    if result.returncode:
+        msg = f"cannot prepare the index: {result.stderr.strip()}"
+        raise CommitError(msg)
+    return result.stdout.removesuffix("\n")
+
+
+@contextlib.contextmanager
+def _locked_index(index: Path) -> Iterator[None]:
+    """Keep other Git commands from staging while the captured index is checked (#150)."""
+    lock = index.with_name(f"{index.name}.lock")
+    try:
+        descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError as exc:
+        msg = f"index is already locked: {lock}"
+        raise CommitError(msg) from exc
+    try:
+        yield
+    finally:
+        os.close(descriptor)
+        lock.unlink(missing_ok=True)
+
+
+def _checkout_tree(
+    git: str, root: Path, destination: Path, tree: str, *, env: Mapping[str, str]
+) -> None:
+    """Check out the captured tree in its own Git repository without making a commit."""
+    _git_output(
+        git,
+        ("clone", "--shared", "--no-checkout", "--quiet", str(root), str(destination)),
+        cwd=root,
+        env=env,
+    )
+    _git_output(git, ("read-tree", tree), cwd=destination, env=env)
+    _git_output(git, ("checkout-index", "--all"), cwd=destination, env=env)
+
+
+def _write_import_guard(directory: Path, venv: Path) -> Path:
+    """Exclude the editable source path so an untracked package cannot override the index (#150)."""
+    sources: list[str] = []
+    for path in venv.glob("lib/python*/site-packages/mscts.pth"):
+        sources.extend(
+            str((path.parent / line).absolute())
+            for line in path.read_text().splitlines()
+            if line and not line.startswith(("#", "import ", "import\t"))
+        )
+    directory.mkdir()
+    (directory / "sitecustomize.py").write_text(
+        "import sys\n"
+        f"_editable = {sources!r}\n"
+        "sys.path[:] = [path for path in sys.path if path not in _editable]\n"
+    )
+    return directory
+
+
+def _check_environment(env: Mapping[str, str], snapshot: Path, venv: Path | None) -> dict[str, str]:
+    result = strip_git_env(env)
+    result["PYTHONPATH"] = str(snapshot / "src")
+    result["UV_PROJECT"] = str(snapshot)
+    result["UV_NO_SYNC"] = "1"
+    result["MISE_TRUSTED_CONFIG_PATHS"] = str(snapshot)
+    if venv is not None:
+        guard = _write_import_guard(snapshot.parent / "python", venv)
+        result["PYTHONPATH"] = os.pathsep.join((str(guard), result["PYTHONPATH"]))
+        result["UV_PROJECT_ENVIRONMENT"] = str(venv)
+    return result
 
 
 def tail_of(text: str, n: int) -> str:
@@ -253,8 +330,8 @@ def commit_if_green(
 
     `run_check_fn` runs the check and returns `(exit code, its full captured output)`;
     `run_git_commit_fn` runs `git commit`. Both do the actual subprocess work, with
-    whatever environment their caller bound in (`main` gives the check a `GIT_*`-stripped
-    environment and the commit the ambient one unchanged; tests inject fakes directly).
+    whatever environment their caller bound in (`main` removes `GIT_*` for the check
+    and selects the captured index for the commit; tests inject fakes directly).
     Returns the check's exit code if it failed (without ever calling `run_git_commit_fn`),
     otherwise `git commit`'s exit code.
     """
@@ -266,41 +343,56 @@ def commit_if_green(
     return run_git_commit_fn(git_args)
 
 
+def _commit_checked_index(args: Args, env: Mapping[str, str], cwd: Path) -> int:
+    git = shutil.which("git")
+    if git is None:
+        msg = "no `git` on PATH"
+        raise CommitError(msg)
+    root = Path(_git_output(git, ("rev-parse", "--show-toplevel"), cwd=cwd, env=env))
+    index = Path(
+        _git_output(
+            git, ("rev-parse", "--path-format=absolute", "--git-path", "index"), cwd=cwd, env=env
+        )
+    )
+    with _locked_index(index), tempfile.TemporaryDirectory(prefix="mscts-commit-index-") as name:
+        temporary = Path(name)
+        captured = temporary / "index"
+        if index.exists():
+            shutil.copyfile(index, captured)
+        commit_env = {**env, "GIT_INDEX_FILE": str(captured)}
+        tree = _git_output(git, ("write-tree",), cwd=cwd, env=commit_env)
+        snapshot = temporary / "tree"
+        _checkout_tree(git, root, snapshot, tree, env=strip_git_env(env))
+        venv = root / ".venv"
+        if venv.is_dir():
+            (snapshot / ".venv").symlink_to(venv, target_is_directory=True)
+        check_env = _check_environment(env, snapshot, venv if venv.is_dir() else None)
+
+        def run_check_fn(cmd: Sequence[str]) -> tuple[int, str]:
+            out_path = temporary / "check.log"
+            code = run_check(cmd, out_path, env=check_env, cwd=snapshot)
+            return code, out_path.read_text(errors="replace")
+
+        def run_git_commit_fn(git_args: Sequence[str]) -> int:
+            return run_git_commit(git_args, env=commit_env, cwd=cwd)
+
+        return commit_if_green(
+            args.check_cmd,
+            args.git_args,
+            tail_lines=args.tail_lines,
+            run_check_fn=run_check_fn,
+            run_git_commit_fn=run_git_commit_fn,
+        )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """Run what `argv` describes (`sys.argv[1:]` if None): the check, then maybe the commit."""
+    """Check and commit the index selected by `argv` (`sys.argv[1:]` if None)."""
     try:
         args = parse_args(sys.argv[1:] if argv is None else argv)
-    except CommitError as exc:
+        return _commit_checked_index(args, dict(os.environ), Path.cwd())
+    except (CommitError, OSError) as exc:
         print(f"commit_green: {exc}", file=sys.stderr)
         return 2
-
-    check_env = strip_git_env(os.environ)
-    commit_env = dict(os.environ)
-
-    def run_check_fn(cmd: Sequence[str]) -> tuple[int, str]:
-        fd, name = tempfile.mkstemp(prefix="mscts-commit-check-", suffix=".log")
-        os.close(fd)
-        out_path = Path(name)
-        try:
-            code = run_check(cmd, out_path, env=check_env)
-            return code, out_path.read_text(errors="replace")
-        finally:
-            out_path.unlink(missing_ok=True)
-
-    def run_git_commit_fn(git_args: Sequence[str]) -> int:
-        try:
-            return run_git_commit(git_args, env=commit_env)
-        except CommitError as exc:
-            print(f"commit_green: {exc}", file=sys.stderr)
-            return 2
-
-    return commit_if_green(
-        args.check_cmd,
-        args.git_args,
-        tail_lines=args.tail_lines,
-        run_check_fn=run_check_fn,
-        run_git_commit_fn=run_git_commit_fn,
-    )
 
 
 if __name__ == "__main__":
