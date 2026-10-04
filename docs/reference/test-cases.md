@@ -1027,3 +1027,542 @@ One entry of a tag, by its number in its registry.
 **Tag name**
 
 The name of a tag, such as `minecraft:logs`.
+
+## `commands.nodes[].properties.behavior`
+
+**Command string argument behaviour**
+
+Whether a string argument takes one word, a quoted phrase, or the rest of
+the line. A difference changes how the client reads and checks the command a
+player types.
+
+## `commands.nodes[].properties.flags`
+
+**Command argument flags**
+
+Settings whose meaning depends on the argument type. For a number they say
+whether a minimum or maximum is sent; for an entity they say whether it must
+be one entity or players only. A difference changes which arguments the
+client accepts.
+
+## `commands.nodes[].properties.max`
+
+**Command argument maximum**
+
+The largest value a number argument accepts, or no explicit maximum. A
+difference changes which numbers the client marks as valid while a player
+types a command.
+
+## `commands.nodes[].properties.min`
+
+**Command argument minimum**
+
+The smallest value an argument accepts, or no explicit minimum. For a time
+argument it is counted in ticks. A difference changes which values the
+client marks as valid while a player types a command.
+
+## `commands.root_index`
+
+**Command tree root**
+
+The position of the root in the list of command nodes. The client starts
+reading commands there. Another position can name the same root if the
+server lists its nodes in another order; a position that names another node
+changes the commands the client understands.
+
+## `entity_event.entity_id`
+
+**Entity receiving an event**
+
+Which entity receives an event, such as a hurt animation. mscts compares the
+entity each server refers to, rather than its server-assigned number. A
+difference applies the effect to another entity.
+
+## `entity_event.event_id`
+
+**Entity event type**
+
+Which event the client applies to the entity. Its meaning depends on the
+entity type, such as a hurt animation for a living entity. A difference can
+play another effect or none.
+
+## `game_event.event`
+
+**Game event type**
+
+Which change of game state the client applies. At a join this can tell the
+client to wait for the chunks around the player. Another event can change
+the game mode, weather or another part of the client state instead.
+
+## `game_event.value`
+
+**Game event value**
+
+The value carried by a game event, whose meaning depends on the event type.
+For a game mode change it selects the mode; for a rain level change it sets
+the strength. Some events ignore the value, so a difference does not always
+change what a player sees.
+
+## `level_chunk_with_light.chunk_x`
+
+**Chunk x**
+
+The chunk's x coordinate, counted in chunks of 16 blocks. A difference puts
+the chunk at another position east or west. Chunks are paired by position,
+so a chunk at another position can also be reported as missing or
+unexpected.
+
+## `level_chunk_with_light.chunk_z`
+
+**Chunk z**
+
+The chunk's z coordinate, counted in chunks of 16 blocks. A difference puts
+the chunk at another position south or north. Chunks are paired by position,
+so a chunk at another position can also be reported as missing or
+unexpected.
+
+## `level_chunk_with_light.heightmaps[].data[]`
+
+**Chunk heightmap data**
+
+One packed value in a heightmap, which records the heights of block columns.
+A difference can give the client other heights for its surface queries, even
+when the chunk contains the same blocks. The kind of surface is set by the
+heightmap type.
+
+## `level_chunk_with_light.heightmaps[].type`
+
+**Chunk heightmap type**
+
+Which kind of surface a heightmap records, such as the highest non-air block
+or the highest block that stops movement. mscts compares the types the
+client reads and sorts heightmaps by those types. A difference changes which
+surface the client can look up.
+
+## `level_chunk_with_light.sections[].block_count`
+
+**Non-air blocks in a chunk section**
+
+The number of non-air blocks in one chunk section. The client uses a zero
+count to treat a section as empty. A wrong zero can hide blocks even when
+their states are sent; another nonzero count does not by itself change those
+states.
+
+## `level_chunk_with_light.sections[].fluid_count`
+
+**Fluid blocks in a chunk section**
+
+The number of positions in a chunk section that contain fluid, including
+waterlogged blocks. The client uses the count to tell whether the section
+has fluid. A wrong zero can make it treat a section containing fluid as
+having none.
+
+## `login.death_location`
+
+**Last death location**
+
+The dimension and block position of the player's last death, or no recorded
+death. A recovery compass uses it to point to that location. A difference
+can point the compass elsewhere or leave it without a location.
+
+## `login.dimension_name`
+
+**Joined dimension**
+
+The name of the dimension the player joins, such as `minecraft:overworld`. The
+client uses it as the identity of its world. Another name can change whether
+a saved location, such as the last death position, belongs to that world.
+
+## `login.dimension_names[]`
+
+**Available dimension name**
+
+One dimension name the server advertises at join. The client uses the list
+in dimension suggestions for commands. A difference changes those
+suggestions; the list alone does not show whether the server can move a
+player to each dimension.
+
+## `login.dimension_type`
+
+**Joined dimension type**
+
+The joined dimension's type, by its entry in the dimension type registry.
+That entry sets properties such as the world's height, sky and ambient
+light. A difference can make the client display the same world with other
+properties.
+
+## `login.do_limited_crafting`
+
+**Limited crafting**
+
+Whether crafting is limited to recipes the player has unlocked. The client
+keeps this rule when showing available recipes, so a difference can make it
+offer recipes the server does not allow, or hide ones it allows.
+
+## `login.enable_respawn_screen`
+
+**Death screen enabled**
+
+Whether the client shows the death screen when the player dies. A difference
+changes whether the player sees that screen or immediately asks to respawn.
+
+## `login.entity_id`
+
+**Player entity at join**
+
+The entity id the client assigns to its own player. mscts gives
+corresponding entities the same names before comparing them, so another
+server-assigned number alone does not differ here. A wrong reference in a
+later packet can apply a change to another entity.
+
+## `login.game_mode`
+
+**Game mode at join**
+
+The player's game mode, such as survival or creative. The client uses it for
+controls and screens, so a difference changes how the player can interact
+with the world.
+
+## `login.hashed_seed`
+
+**Biome seed**
+
+The hashed seed the client uses to choose a biome near the edges of biome
+cells. A difference can move the boundaries of biome colours and effects
+even when the chunk supplies the same biomes. This is not the world
+generation seed.
+
+## `login.is_debug`
+
+**Debug world flag**
+
+Whether the joined world is a debug world. The client treats block states
+specially in that world. A difference can change the blocks it reads and
+displays even when the same chunk data arrives.
+
+## `login.is_hardcore`
+
+**Hardcore world flag**
+
+Whether the world is hardcore. The client changes its health icons and death
+screen for hardcore, so a difference changes what the player sees there.
+
+## `login.max_players`
+
+**Player limit at join**
+
+The maximum player count carried by the join packet. The 26.3 client
+does not read this field when handling the packet, so a different value
+here does not by itself change what a player sees. The player limit
+advertised in the server list is compared separately.
+
+## `login.online_mode`
+
+**Online mode at join**
+
+Whether the server declares online mode in the join packet. When true, the
+client prepares its key pair for signed chat. A difference changes that chat
+setup; this flag alone does not prove the server authenticated the player at
+login.
+
+## `login.portal_cooldown`
+
+**Portal cooldown at join**
+
+How many ticks remain before the player can use a portal again. The client
+stores this on the player, so a difference changes when it considers the
+cooldown over.
+
+## `login.previous_game_mode`
+
+**Previous game mode**
+
+The player's previous game mode, or none. The client remembers it when
+switching modes, so a difference can change which mode it offers to return
+to.
+
+## `login.reduced_debug_info`
+
+**Reduced debug information**
+
+Whether the client hides some debug information, including the player's
+exact coordinates. A difference changes the information available on the
+debug screen.
+
+## `login.simulation_distance`
+
+**Simulation distance at join**
+
+The server's simulation distance in chunks. The client uses it to decide how
+far from the player entities should tick. A difference can change local
+entity motion even within the chunks the client can see.
+
+## `login.view_distance`
+
+**View distance at join**
+
+The server's view distance in chunks. The client uses it to size its chunk
+cache and limit rendering alongside the player's own setting. A difference
+can change how much of the world it keeps and displays.
+
+## `set_entity_data.entity_id`
+
+**Entity receiving data**
+
+Which entity the following data updates. mscts compares corresponding
+entities rather than their server-assigned numbers. A difference applies the
+data to another entity, changing its appearance or state instead.
+
+## `set_experience.experience_bar`
+
+**Experience bar progress**
+
+How full the player's experience bar is, from 0 to 1. A difference changes
+the fill of the bar shown above the hotbar.
+
+## `set_experience.level`
+
+**Experience level**
+
+The player's experience level. A difference changes the number above the
+hotbar and the client's checks of whether the player has enough levels for
+an enchantment.
+
+## `set_experience.total_experience`
+
+**Total experience points**
+
+The player's total experience points, which the client stores alongside the
+bar and level. The ordinary experience display uses the other two fields, so
+a difference here alone need not change that display.
+
+## `set_health.food`
+
+**Food level**
+
+The player's food level, normally from 0 to 20. A difference changes the
+hunger icons and can change whether the client lets the player start
+sprinting.
+
+## `set_health.health`
+
+**Health**
+
+The player's health in health points, with two points per heart. A
+difference changes the hearts shown and can make the client treat the player
+as dead.
+
+## `set_health.saturation`
+
+**Food saturation**
+
+The player's food saturation, the reserve used before the food level falls.
+The client also uses zero saturation when drawing the hunger icons. A
+difference can change their animation even when the food level is the same.
+
+## `update_advancements.advancements[].display`
+
+**Advancement display**
+
+An advancement's title, description, icon, frame and display flags, or no
+display. A difference can change its entry in the advancement screen or its
+completion toast; an advancement without a display has no entry of its own.
+
+## `update_advancements.advancements[].id`
+
+**Advancement id**
+
+The name that identifies an advancement. The client uses it to connect
+progress and parent references to that advancement. A difference can leave
+those references pointing to another advancement or to none.
+
+## `update_advancements.advancements[].parent_id`
+
+**Advancement parent**
+
+The id of an advancement's parent, or none for a root. A difference changes
+where it belongs in the advancement tree and which entry it connects to on
+the screen.
+
+## `update_advancements.advancements[].requirements[][]`
+
+**Advancement requirements**
+
+The criteria required to complete an advancement. Each inner list offers
+alternatives; at least one criterion in each list must be met. A difference
+changes when the client considers the advancement complete and how it shows
+progress.
+
+## `update_advancements.advancements[].sends_telemetry_data`
+
+**Advancement telemetry flag**
+
+Whether the advancement is marked for telemetry when completed. A difference
+changes whether the client can report its completion, subject to the
+player's telemetry settings. It does not by itself change the advancement's
+display or requirements.
+
+## `update_advancements.advancements[].x`
+
+**Advancement x position**
+
+The advancement's horizontal position in its tree. A difference moves its
+entry on the advancement screen when it has a display.
+
+## `update_advancements.advancements[].y`
+
+**Advancement y position**
+
+The advancement's vertical position in its tree. A difference moves its
+entry on the advancement screen when it has a display.
+
+## `update_advancements.progress[].criteria[].criterion`
+
+**Advancement progress criterion**
+
+The name of a criterion whose completion state is updated. A difference
+applies that progress to another requirement and can change how much of the
+advancement the client considers complete.
+
+## `update_advancements.progress[].id`
+
+**Advancement receiving progress**
+
+The id of the advancement whose progress is updated. A difference can give
+another advancement that progress or leave it unapplied if the client does
+not know the id.
+
+## `update_advancements.reset`
+
+**Advancement reset**
+
+Whether the client clears its existing advancements before applying this
+update. A difference can leave old entries on the advancement screen or
+remove entries the server expected to keep.
+
+## `update_advancements.show_advancements`
+
+**Advancement notifications enabled**
+
+Whether this update allows notifications for completed advancements. A
+difference can show or suppress completion toasts while the advancement
+progress itself stays the same.
+
+## `update_attributes.attributes[].attribute`
+
+**Entity attribute name**
+
+Which attribute an entry updates, such as movement speed or interaction
+reach. A difference changes which property the client applies the base value
+and modifiers to.
+
+## `update_attributes.attributes[].base`
+
+**Entity attribute base value**
+
+The base value of an entity attribute before modifiers are applied. A
+difference can change the resulting value, such as how fast an entity moves
+or how far a player can reach.
+
+## `update_attributes.entity_id`
+
+**Entity receiving attributes**
+
+Which entity receives an attribute update. mscts compares corresponding
+entities rather than their server-assigned numbers. A difference applies
+properties such as speed or reach to another entity.
+
+## `update_recipes.property_sets[].items[]`
+
+**Recipe input item**
+
+One item in a recipe property set, by its item registry id. These sets tell
+the client which items some recipe slots accept. A difference can change
+whether a screen accepts an item in a slot.
+
+## `update_recipes.property_sets[].property_set_id`
+
+**Recipe property set name**
+
+Which recipe property set the following items belong to, such as the
+furnace's inputs. A difference can associate the same items with another
+kind of recipe slot.
+
+## `update_recipes.stonecutter_recipes[].ingredients.ids[]`
+
+**Stonecutter input item**
+
+One item registry id in the explicit list of ingredients for a stonecutter
+recipe. A difference can make the client offer that recipe for another input
+item or leave it out for an item it should accept.
+
+## `update_recipes.stonecutter_recipes[].slot_display.type`
+
+**Stonecutter result display type**
+
+How the client reads and draws a stonecutter recipe's result, such as a
+single item or an item stack. A difference can change the result shown on
+the recipe button.
+
+## `update_recipes.stonecutter_recipes[].slot_display.value.count`
+
+**Stonecutter result count**
+
+The item count in an item stack shown for a stonecutter recipe. A difference
+changes the quantity the client displays; it does not by itself prove which
+items the server gives when crafting.
+
+## `update_recipes.stonecutter_recipes[].slot_display.value.item`
+
+**Stonecutter result item**
+
+The item registry id in an item stack shown for a stonecutter recipe. A
+difference changes the item the client displays on that recipe's button.
+
+## `player_info_update.players[].game_mode`
+
+**Player game mode in the list**
+
+The game mode stored for a player in the client. Spectators are drawn
+differently in the player list and sorted after other players with the same
+list priority. A difference can change that display. An update for the
+client's own player also changes how it handles the game mode.
+
+## `player_info_update.players[].hat_visible`
+
+**Player hat in the list**
+
+Whether the player's skin hat layer is shown over its head in the player
+list. A difference can show or hide that layer when the list draws heads.
+
+## `player_info_update.players[].listed`
+
+**Player shown in the list**
+
+Whether the player belongs in the list shown by the Tab key. A difference
+can add or remove that entry while the player remains known to the client.
+The list's display limit can still keep an entry off the screen.
+
+## `player_info_update.players[].ping`
+
+**Player connection delay in the list**
+
+The player's reported connection delay in milliseconds. The client uses it
+to choose the connection icon in the player list. A difference can change
+that icon; it does not by itself change the actual connection delay.
+
+## `player_info_update.players[].priority`
+
+**Player list order**
+
+The priority used to sort players in the player list. Higher values come
+first, before the game mode, team and name decide the order of ties. A
+difference can move an entry in that list.
+
+## `set_held_slot.slot`
+
+**Selected hotbar slot number**
+
+The hotbar slot the client selects, numbered 0 to 8. A difference can make
+the player hold another item. Values outside that range are ignored by the
+26.3 client.
