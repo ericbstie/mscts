@@ -106,6 +106,18 @@ Any session that writes user-facing text follows this skill all the same.
   say — just say it." The download time comment is "totally
   unnecessary".
 
+### Status, design decisions and development guide openings
+
+- Before: "mscts is at an early stage. The working log is
+  docs/PROGRESS.md, and the milestones are in docs/PLAN.md."; "The ADRs
+  are the only place decisions live."; "Every commit on `main` passes
+  `mise run check`."
+- After: "mscts is in its early development stage. Future milestones are
+  documented in docs/PLAN.md." (the maintainer's wording); the other two
+  sentences removed.
+- Why: "No need to show / tell about the working log." For the other
+  two: not given.
+
 ### Development guide, the language
 
 - Before: "mscts is Python 3.13, managed with mise and uv."
