@@ -315,11 +315,10 @@ class GroupContext:
         arrived, and the window closes when the first play packet called `until` (or any of
         its names) arrived at any Bot but Control after the window opened. Its Mark is
         stamped a nanosecond after that arrival (not after the time the Bot took the
-        packet). So the window
-        holds the packet and everything that arrived before it, and none of what arrived
-        after it, not even a frame that came in the same read of the socket. The body
-        must last until the packet has arrived (`Bot.join` does, for a join's packets): a
-        body that ends sooner fails with the ProtocolError below.
+        packet). So the window holds the packet and everything that arrived before it, and
+        none of what arrived after it, not even a frame that came in the same read of the
+        socket. The body must last until the packet has arrived (`Bot.join` does, for a
+        join's packets): a body that ends sooner fails with the ProtocolError below.
 
         With `bot` too, only that Bot's `until` packet ends the window. Without it, with
         more than one Bot, where the window ends for the others is timing: each Bot's
@@ -359,7 +358,7 @@ class GroupContext:
         if not play and (names or until is not None):
             msg = "play=False compares no play packet: give no names and no until with it"
             raise ValueError(msg)
-        ends = (until,) if isinstance(until, str) else until
+        ends = None if until is None else (until,) if isinstance(until, str) else tuple(until)
         if ends == ():
             msg = "until needs the name of at least one packet"
             raise ValueError(msg)

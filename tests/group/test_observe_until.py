@@ -431,5 +431,8 @@ async def test_until_checks_each_name_and_needs_one() -> None:
     with pytest.raises(ValueError, match="at least one packet"):
         async with context.observe(until=()):
             pass
+    with pytest.raises(ValueError, match="at least one packet"):
+        async with context.observe(until=[]):  # ty: ignore[invalid-argument-type]
+            pass
 
     assert transcript.marks == []
