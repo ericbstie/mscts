@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from mscts import run
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
@@ -431,6 +432,18 @@ async def test_flying_fails_a_server_that_kicks_a_short_hover() -> None:
 
 
 @pytest.mark.asyncio
+async def test_flying_puts_survival_back_when_the_gamemode_command_times_out() -> None:
+    creative = "gamemode creative creative_flyer"
+    transcript = Transcript(group_id="movement/flying", server="fake")
+    async with playing(MovementServer(stall_after=creative), transcript) as context:
+        with pytest.raises(TimeoutError):
+            await GROUPS["movement/flying"].run(context)
+
+    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    assert control[-3:] == [creative, "gamemode survival creative_flyer", CHECK_ON]
+
+
+@pytest.mark.asyncio
 async def test_flying_reports_each_hover_move_in_the_air() -> None:
     transcript, _ = await play("movement/flying")
 
@@ -448,7 +461,7 @@ async def test_flying_reports_each_hover_move_in_the_air() -> None:
 async def test_flying_undoes_its_settings_when_the_flyer_is_never_kicked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(movement, "KICK_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.3)
     transcript = Transcript(group_id="movement/flying", server="fake")
     async with playing(MovementServer(kicks=()), transcript) as context:
         with pytest.raises(TimeoutError):

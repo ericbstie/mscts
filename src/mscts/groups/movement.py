@@ -28,15 +28,13 @@ Bot is sent when it joins (docs/guide/writing-a-group.md).
 import contextlib
 from dataclasses import dataclass
 
+from mscts import run  # run imports mscts.groups: read GROUP_TIMEOUT_S at call time
 from mscts.bot import Bot
 from mscts.group import GroupContext, GroupKind, group
 
 PACKETS = ("minecraft:player_position", "minecraft:disconnect")
 """The packets a window compares: the server sending the player back, and kicking it."""
 
-KICK_TIMEOUT_S = 10.0
-"""How long a floating Bot waits to be kicked: `run.GROUP_TIMEOUT_S`, a Bot's bound. Vanilla
-kicks it after 80 of its ticks in the air, 4 seconds at 20 ticks a second."""
 
 _MOVEMENT_CHECK = "gamerule player_movement_check"
 
@@ -157,14 +155,18 @@ onto the slab."""
 
 
 async def _frozen_world(
-    context: GroupContext, undo: contextlib.AsyncExitStack, bot: Bot, world: tuple[str, ...]
+    context: GroupContext,
+    undo: contextlib.AsyncExitStack,
+    bot: Bot,
+    world: tuple[str, ...],
+    start: _Point,
 ) -> None:
     """Freeze the world and set `world`'s blocks, clearing them on the way out.
 
-    The Bot is moved to where the first case starts first: it joined at a random place near
-    the world spawn, which a block could fill.
+    The Bot is moved to `start`, where the Group's first case starts, first: it joined near the
+    world spawn (at random, or where it last left), which a block could fill.
     """
-    await _tp(context, bot, _INTO_BLOCKS_CASES[0].start)
+    await _tp(context, bot, start)
     await context.freeze()
     undo.push_async_callback(context.control.run, _INTO_BLOCKS_CLEAR)
     for command in world:
@@ -176,7 +178,7 @@ async def into_blocks(context: GroupContext) -> None:
     """A Bot walks into a wall, through a gap, up a full block and up onto a slab."""
     async with contextlib.AsyncExitStack() as undo:
         [walker] = await _join(context, undo, _WALKER)
-        await _frozen_world(context, undo, walker, _INTO_BLOCKS_WORLD)
+        await _frozen_world(context, undo, walker, _INTO_BLOCKS_WORLD, _INTO_BLOCKS_CASES[0].start)
         await _play(context, walker, _INTO_BLOCKS_CASES, frozen=True)
 
 
@@ -198,7 +200,7 @@ async def before_teleport(context: GroupContext) -> None:
     """A Bot sends moves after the server has sent it back, before it accepts the teleport."""
     async with contextlib.AsyncExitStack() as undo:
         [walker] = await _join(context, undo, _WALKER)
-        await _frozen_world(context, undo, walker, (_WALL,))
+        await _frozen_world(context, undo, walker, (_WALL,), _BEFORE_TELEPORT_CASE.start)
         await _play(context, walker, (_BEFORE_TELEPORT_CASE,), frozen=True)
 
 
@@ -238,8 +240,9 @@ async def flying(context: GroupContext) -> None:
     """
     async with contextlib.AsyncExitStack() as undo:
         creative, lander, flyer = await _join(context, undo, _CREATIVE_FLYER, _LANDER, _FLYER)
-        await context.control.run(f"gamemode creative {_CREATIVE_FLYER}")
+        # Pushed first: a command that timed out may still have run.
         undo.push_async_callback(context.control.run, f"gamemode survival {_CREATIVE_FLYER}")
+        await context.control.run(f"gamemode creative {_CREATIVE_FLYER}")
         await _tp(context, creative, (2.5, -60.0, 2.5))
         await _tp(context, lander, (10.5, -60.0, 2.5))
         await _tp(context, flyer, (6.5, -60.0, 2.5))
@@ -252,4 +255,5 @@ async def flying(context: GroupContext) -> None:
                 await lander.sync()
             await lander.move(10.5, -60.0, 2.5)  # onto the grass: no longer floating
             await _hover(flyer, 6.5, 2.5)
-            await flyer.expect("minecraft:disconnect", timeout_s=KICK_TIMEOUT_S)
+            # Vanilla kicks after 80 ticks in the air, 4 s at 20 ticks a second.
+            await flyer.expect("minecraft:disconnect", timeout_s=run.GROUP_TIMEOUT_S)
