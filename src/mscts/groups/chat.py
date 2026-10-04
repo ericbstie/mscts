@@ -40,6 +40,10 @@ PACKETS = (
 
 _PLAYER_CHAT = "minecraft:player_chat"
 _SYSTEM_CHAT = "minecraft:system_chat"
+_SAID = (_PLAYER_CHAT, "minecraft:disguised_chat")
+"""What a window waits for when a player says something: vanilla sends `player_chat`. A
+server that sends `disguised_chat` instead ends the window too, so the Report shows the
+difference and the Group goes on (#270)."""
 _DISCONNECT = "minecraft:disconnect"
 
 
@@ -76,7 +80,7 @@ async def player(context: GroupContext) -> None:
     for message in _PLAYER_MESSAGES:
         async with context.observe(*PACKETS):
             await speaker.chat(message)
-            await listener.expect(_PLAYER_CHAT, timeout_s=FEEDBACK_TIMEOUT_S)
+            await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
 
 
 # `chat/commands`
@@ -92,24 +96,25 @@ class _Command:
     Attributes:
         text: The command, without its `/`.
         signed: Whether the vanilla client sends it signed: it has a message argument.
-        arrives_as: The packet vanilla sends the listener for it, which the window waits for.
+        arrives_as: The packets that bring it to the listener, of which the window waits for
+            the first.
     """
 
     text: str
     signed: bool
-    arrives_as: str
+    arrives_as: tuple[str, ...]
 
 
 _COMMANDS = (
-    _Command("me waves to everyone", signed=True, arrives_as=_PLAYER_CHAT),
-    _Command("say Hello from the speaker", signed=True, arrives_as=_PLAYER_CHAT),
-    _Command(f"msg {LISTENER} This is a whisper", signed=True, arrives_as=_PLAYER_CHAT),
+    _Command("me waves to everyone", signed=True, arrives_as=_SAID),
+    _Command("say Hello from the speaker", signed=True, arrives_as=_SAID),
+    _Command(f"msg {LISTENER} This is a whisper", signed=True, arrives_as=_SAID),
     _Command(
         'tellraw @a {"text":"Formatted text","color":"gold","bold":true}',
         signed=False,
-        arrives_as=_SYSTEM_CHAT,
+        arrives_as=(_SYSTEM_CHAT,),
     ),
-    _Command("teammsg Hello, team", signed=True, arrives_as=_PLAYER_CHAT),
+    _Command("teammsg Hello, team", signed=True, arrives_as=_SAID),
 )
 """What the speaker runs, each in a window of its own."""
 
@@ -132,7 +137,7 @@ async def commands(context: GroupContext) -> None:
                     await speaker.signed_command(command.text)
                 else:
                     await speaker.command(command.text)
-                await listener.expect(command.arrives_as, timeout_s=FEEDBACK_TIMEOUT_S)
+                await listener.expect(*command.arrives_as, timeout_s=FEEDBACK_TIMEOUT_S)
 
 
 # `chat/join-leave`
@@ -180,13 +185,13 @@ async def limits(context: GroupContext) -> None:
     talker = await _joined(context, TALKER)
     async with context.observe(*PACKETS):
         await talker.chat("x" * 256)
-        await listener.expect(_PLAYER_CHAT, timeout_s=FEEDBACK_TIMEOUT_S)
+        await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
     operator = await _joined(context, OPERATOR)
     async with context.observe(*PACKETS):
         for number in range(SPAM_MESSAGES):
             await operator.chat(f"Message {number + 1}")
         for _ in range(SPAM_MESSAGES):
-            await listener.expect(_PLAYER_CHAT, timeout_s=FEEDBACK_TIMEOUT_S)
+            await listener.expect(*_SAID, timeout_s=FEEDBACK_TIMEOUT_S)
     for name, messages in (
         (LONG, ("x" * 257,)),
         (SECTION, ("§cRed text",)),

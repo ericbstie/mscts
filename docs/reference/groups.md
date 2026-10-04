@@ -79,7 +79,9 @@ The Bots speak as the vanilla client does when it has no chat signing keys, as a
 player has none. They send their messages unsigned. A command with a message argument (`/me`,
 `/say`, `/msg`, `/teammsg`) is sent the way the client sends it, as a signed command with no
 signatures, and vanilla then sends `player_chat` for it. The same command sent unsigned would
-get `disguised_chat`.
+get `disguised_chat`. A server that sends `disguised_chat` where vanilla sends `player_chat`
+still has every case compared: the window waits for either one, and the Report shows the
+difference.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

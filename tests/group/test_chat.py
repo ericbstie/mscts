@@ -61,6 +61,17 @@ def player_chat(peer: Peer, sender: str, message: str) -> bytes:
     )
 
 
+def disguised_chat(peer: Peer, sender: str, message: str) -> bytes:
+    """A disguised_chat frame: `sender` said `message`, as Pumpkin sends a player's chat."""
+    return peer.frame(
+        "minecraft:disguised_chat",
+        message=text(message),
+        chat_type={"reference": 0},
+        sender_name=text(sender),
+        target_name=None,
+    )
+
+
 def system_chat(peer: Peer, message: str) -> bytes:
     """A system_chat frame saying `message`."""
     return peer.frame(SYSTEM_CHAT, content=text(message), overlay=False)
@@ -74,10 +85,12 @@ class ChatServer:
     them says or runs as a message command. A marker (`tellraw @s "<token>"`) gets its token
     back; `tellraw @a` is told to every player. A player who says a message longer than
     vanilla reads, or one with a `§`, is kicked, and so is one who is not in `operators` on
-    its `chat.SPAM_MESSAGES`-th message. `left` holds when each player left, by name.
+    its `chat.SPAM_MESSAGES`-th message. `left` holds when each player left, by name. With
+    `disguised`, what a player says goes out as `disguised_chat`, as Pumpkin sends it.
     """
 
     operators: tuple[str, ...] = ()
+    disguised: bool = False
     seen: list[Packet] = field(default_factory=list)
     left: dict[str, int] = field(default_factory=dict)
     _players: dict[str, Peer] = field(default_factory=dict, init=False)
@@ -129,7 +142,8 @@ class ChatServer:
             await self._kick(peer)
 
     async def _say(self, peer: Peer, message: str) -> None:
-        await self._tell_all(lambda other: player_chat(other, peer.name, message))
+        said = disguised_chat if self.disguised else player_chat
+        await self._tell_all(lambda other: said(other, peer.name, message))
 
     async def _kick(self, peer: Peer) -> None:
         """Disconnect `peer` as vanilla does, and tell the others; it reads on until EOF."""
@@ -383,3 +397,17 @@ async def test_limits_ends_with_a_window_for_each_kick() -> None:
         assert received(result, bot, "minecraft:disconnect", window) == 1
     assert chat.SPAMMER not in operators("chat/limits")
     assert all(s.t_ns < kicks[0].opened for s in result.outside)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_a_server_that_sends_disguised_chat_still_gets_every_window(group_id: str) -> None:
+    # Pumpkin answers a player's chat with disguised_chat, where vanilla sends player_chat:
+    # the window ends on either, so the Report shows the difference and the Group goes on.
+    disguised = await play(group_id, ChatServer(operators=operators(group_id), disguised=True))
+    vanilla = await play(group_id)
+
+    def cases(result: Play) -> list[list[tuple[str, str]]]:
+        return [[(s.bot, s.text) for s in window.said] for window in result.windows]
+
+    assert cases(disguised) == cases(vanilla)
