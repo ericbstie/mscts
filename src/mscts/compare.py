@@ -773,7 +773,6 @@ _CHUNK_NEUTRAL = frozenset(
     {
         "minecraft:chunk_batch_start",
         "minecraft:chunk_batch_finished",
-        *HEARTBEAT,
         "minecraft:pong_response",
         "minecraft:bundle_delimiter",
         "minecraft:add_entity",
@@ -784,18 +783,29 @@ _CHUNK_NEUTRAL = frozenset(
         "minecraft:set_entity_motion",
         "minecraft:update_attributes",
         "minecraft:remove_entities",
+        "minecraft:set_health",
+        "minecraft:set_experience",
     }
 )
 """The play packets a run of chunk packets goes across: a chunk packet has the same effect, or
 nearly, on either side of one (javap on the 26.3 client, docs/research/2026-10-02-chunks-
-light.md). A batch's start and end feed only `ChunkBatchSizeCalculator`; the heartbeat packets
-and `pong_response` touch the clock, the stats and the ping monitor; and the entity handlers set
+light.md), besides the heartbeat packets (`_neutral`). A batch's start and end feed only
+`ChunkBatchSizeCalculator`; `pong_response` touches the ping monitor; and the entity handlers set
 the entity's fields, while its chunk being loaded decides only whether it ticks
 (`TransientEntitySectionManager`), which either order ends with the same. One exception is
 accepted: a `move_entity_*` handler ends in `Entity.setOnGround`, whose `checkSupportingBlock`
 reads the blocks under the entity (`Level.findSupportingBlock`). That only sets which block the
 entity stands on until it next moves, and ending runs there would bring back false mismatches
-where two vanilla servers split chunks into batches differently."""
+where two vanilla servers split chunks into batches differently. `set_health` sets the
+player's health and food (`LocalPlayer.hurtTo`, `FoodData.setFoodLevel`), and
+`set_experience` its experience bar (`LocalPlayer.setExperienceValues`): Pumpkin sends both
+between its batches, where vanilla sends them before its view (#294)."""
+
+
+_SLEEPING_POS = 14
+"""The entity data index of a living entity's sleeping position, whose handler sets the
+entity's position from the bed block there (`LivingEntity.onSyncedDataUpdated`,
+`setPosToBed`, javap on the 26.3 client)."""
 
 
 def _by_position(events: Sequence[Event]) -> list[Event]:
@@ -841,8 +851,38 @@ def _by_position(events: Sequence[Event]) -> list[Event]:
 
 
 def _neutral(packet: Packet) -> bool:
-    """Whether `packet` is a play packet a run of chunk packets goes across (`_CHUNK_NEUTRAL`)."""
-    return packet.state is State.PLAY and packet.name in _CHUNK_NEUTRAL
+    """Whether `packet` is a play packet a run of chunk packets goes across.
+
+    One `_CHUNK_NEUTRAL` names, a heartbeat packet (`is_heartbeat`), or entity data without a
+    sleeping position (`_data_reading_no_chunk`). The heartbeat packets come on the server's
+    clock, or answer the barrier, so one can fall between two batches on one Instance only
+    (#33), and none reads a chunk: `keep_alive` and `set_time` touch the clock,
+    `award_stats` (the barrier's answer, not a clock packet) sets the Bot's statistics
+    (`StatsCounter.setValue`), and the latency broadcast only sets each player's latency in
+    the tab list (`ClientPacketListener.applyPlayerInfoUpdate`, `PlayerInfo.setLatency`, javap
+    on the 26.3 client).
+    """
+    return packet.state is State.PLAY and (
+        packet.name in _CHUNK_NEUTRAL or is_heartbeat(packet) or _data_reading_no_chunk(packet)
+    )
+
+
+def _data_reading_no_chunk(packet: Packet) -> bool:
+    """Whether `packet` is `set_entity_data` whose handling reads no chunk.
+
+    Of the client's `onSyncedDataUpdated` overrides only a living entity's sleeping position
+    (`_SLEEPING_POS`) reads a block (docs/research/2026-10-02-chunks-light.md; a pose's
+    `fudgePositionAfterSizeChange` is skipped on the client). Pumpkin sends the player's data
+    between its batches, where vanilla sends it before its view (#294). Data whose entries
+    cannot be read, or that hold a sleeping position, ends a run.
+    """
+    if packet.name != "minecraft:set_entity_data" or packet.fields is None:
+        return False
+    entries = packet.fields.get("entries")
+    return isinstance(entries, list) and all(
+        isinstance(entry, Mapping) and entry.get("index") != _SLEEPING_POS
+        for entry in cast("list[object]", entries)
+    )
 
 
 def _position(packet: Packet) -> tuple[int, int] | None:

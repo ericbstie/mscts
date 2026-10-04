@@ -929,6 +929,52 @@ def test_a_packet_whose_handling_reads_no_chunk_may_come_before_or_after_the_fir
     assert compare(played(reference), played(candidate), []).gameplay == ()
 
 
+def _data(*indices: int) -> Packet:
+    entries = [{"index": index, "serializer": "float", "value": 20.0} for index in indices]
+    return packet("minecraft:set_entity_data", fields={"entity_id": 1, "entries": entries})
+
+
+@pytest.mark.parametrize(
+    "between",
+    [
+        packet("minecraft:set_health", fields={"health": 20.0, "food": 20, "saturation": 5.0}),
+        packet("minecraft:set_experience", fields={"progress": 0.0, "level": 0, "total": 0}),
+        _data(9),
+    ],
+    ids=["set_health", "set_experience", "set_entity_data"],
+)
+def test_one_run_on_one_side_matches_runs_split_by_a_packet_that_reads_no_chunk(
+    between: Packet,
+) -> None:
+    # Review B of #294, finding B1: vanilla sends these before its view, in one run; Pumpkin
+    # sends them between its batches, which split the run, so one chunk sorted on each side of
+    # the other. None of their handlers reads a chunk (javap on the 26.3 client).
+    reference = _batch_of(between, START, LIT_B, START, LIT_A)
+    candidate = _batch_of(START, LIT_B, between, START, LIT_A)
+
+    assert compare(reference, candidate, []).gameplay == ()
+
+
+@pytest.mark.parametrize(
+    "between",
+    [
+        _data(14),
+        # A player lying down: its pose and its sleeping position come together (review C, L-C4).
+        _data(6, 14),
+        # Data the codec could not read: what it holds is unknown.
+        packet("minecraft:set_entity_data", b"\x01"),
+    ],
+    ids=["sleeping position", "pose and sleeping position", "undecodable"],
+)
+def test_entity_data_that_may_hold_a_sleeping_position_keeps_the_chunks_in_order(
+    between: Packet,
+) -> None:
+    # A sleeping entity's position is set from the bed block there (LivingEntity.setPosToBed).
+    verdict = compare(_batch_of(LIT_A, between, LIT_B), _batch_of(LIT_B, between, LIT_A), [])
+
+    assert verdict.gameplay
+
+
 def _spawned(entity_id: int, x: float) -> Packet:
     fields = {
         "entity_id": entity_id,
@@ -982,8 +1028,6 @@ def test_an_entity_spawned_among_chunks_takes_its_number_where_the_sort_puts_it(
         # (ClientLevel.isTickingEntity).
         "minecraft:entity_position_sync",
         "minecraft:teleport_entity",
-        # A sleeping entity's position is set from the bed block there (LivingEntity.setPosToBed).
-        "minecraft:set_entity_data",
         "minecraft:entity_event",
         "minecraft:block_update",
         "minecraft:chunks_biomes",
@@ -1384,3 +1428,21 @@ def test_the_network_traffic_test_cases_of_batches_have_titles() -> None:
 
     cases = {d.test_case for d in verdict.divergences}
     assert cases == {name for name in TITLES if name.startswith("chunk_batch")}
+
+
+def test_chunks_are_sorted_across_the_latency_broadcast() -> None:
+    # What two vanilla Instances sent after a teleport (#33): the latency broadcast, which
+    # comes every 601 ticks, between two batches on one of them only.
+    latency = packet("minecraft:player_info_update", b"\x10\x00")
+
+    verdict = compare(_batch_of(LIT_A, latency, LIT_B), _batch_of(LIT_B, LIT_A, latency), [])
+
+    assert verdict.divergences == ()
+
+
+def test_a_player_info_update_with_more_than_the_latency_still_ends_a_run() -> None:
+    added = packet("minecraft:player_info_update", b"\x11\x00")
+
+    verdict = compare(_batch_of(LIT_A, added, LIT_B), _batch_of(LIT_B, added, LIT_A), [])
+
+    assert verdict.divergences != ()

@@ -1664,13 +1664,17 @@ proves it necessary:
      between two that are neither chunk packets nor in
      `compare._CHUNK_NEUTRAL`:
      `chunk_batch_start` and `chunk_batch_finished` (their handlers feed
-     only `ChunkBatchSizeCalculator`), the heartbeat packets and
-     `pong_response`, and the entity packets whose handlers set the
+     only `ChunkBatchSizeCalculator`), the heartbeat packets (with the
+     latency broadcast, `compare.is_heartbeat`, whose handler only sets
+     each player's latency) and `pong_response`, and the entity packets whose handlers set the
      entity's fields (`add_entity`, `move_entity_pos`, `move_entity_pos_rot`,
      `move_entity_rot`, `rotate_head`, `set_entity_motion`,
      `update_attributes`, `remove_entities`, `bundle_delimiter`; an
      entity's chunk being loaded decides only whether it ticks, and
-     either order ends with the same). The `move_entity_*` handlers do
+     either order ends with the same), `set_health` and `set_experience`
+     (they set the player's health, food and experience bar), and
+     `set_entity_data` with no sleeping position (entry 14; #294, since
+     Pumpkin sends these three between its batches). The `move_entity_*` handlers do
      read blocks once (`Entity.setOnGround` → `checkSupportingBlock`, the
      block the entity stands on until it next moves); keeping them
      neutral is an accepted trade-off, since ending runs there brings
@@ -1684,8 +1688,8 @@ proves it necessary:
      across any packet whose effect on the client depends on the order:
      every other packet ends a run, among them `entity_position_sync` and
      `teleport_entity` (their handlers snap or interpolate by
-     `ClientLevel.isTickingEntity`), `set_entity_data` (a sleeping
-     entity's position comes from the bed block there,
+     `ClientLevel.isTickingEntity`), `set_entity_data` with a sleeping
+     position (the entity's position comes from the bed block there,
      `LivingEntity.setPosToBed`), `entity_event`, the block packets and
      `chunks_biomes`. The runs are found in a Bot's whole clientbound
      stream, before windows, their narrowing or a `*` Mask leave anything
