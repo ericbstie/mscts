@@ -445,7 +445,7 @@ class Endpoint:
     host: str
     port: int
 
-class ConnectionClosedError(ConnectionError): ...   # closed by the server, or by close()
+class ConnectionClosedError(ConnectionError): ...   # closed by the server or close(), or lost
 type Answer = Callable[[Connection, Packet], Awaitable[None]]
 class ProtocolError(Exception): ...  # breaks the protocol sequence: unknown intent, unexpected answer
 
@@ -500,9 +500,11 @@ class Connection:                   # one TCP connection; owns framing, compress
     # recv: TimeoutError leaves the Connection usable. Whatever stopped the reader is raised
     # once the frames before it are taken, and again by every later recv: CodecError for a
     # corrupt frame, an unknown packet id or a strict-decode failure, ConnectionClosedError
-    # when the server closes or the connection is lost, e.g. reset or a write fails (the
-    # message says which, and if that was mid-frame; every frame that arrived before the loss
-    # is still taken), or the exception itself if the harness has a bug. A frame that fails to decode
+    # when the server closes or the connection is lost: any OSError, e.g. a reset, a TCP
+    # timeout or a failed write (the message says which, with the system's reason, and if that
+    # was mid-frame; every frame that arrived before the loss is still taken, even the ones
+    # still in the socket; a write that fails after the server's close reads as the close),
+    # or the exception itself if the harness has a bug. A frame that fails to decode
     # is recorded before recv raises, as the Packet Codec.undecodable / undecodable_frame
     # builds (its bytes and decode_error), stamped on arrival like any frame; the reader then
     # stops, as the vanilla client disconnects on a frame it cannot decode.
