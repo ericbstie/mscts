@@ -18,8 +18,8 @@ and the milestones are in
 | Comparison | Gameplay and network traffic Divergences. Each rule in the canonical table cites the vanilla client code behind it. |
 | Report | A list of differences on stdout, and JSON and Markdown files with `--out DIR`. |
 
-The first comparison of Pumpkin found no gameplay differences in the
-server list ping and four network traffic differences.
+The first comparison of Pumpkin found no gameplay differences in
+`status/basic` and `status/ping`, and four network traffic differences.
 
 ## Next
 

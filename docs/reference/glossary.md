@@ -92,7 +92,7 @@ The channel used to set up Fixtures. By default it is an
 **Operator Bot** that sends vanilla command syntax: a Bot called
 `control`, which every Adapter makes an operator. It runs each command,
 then a marker command, and returns once the server has answered the
-marker and passed the barrier. What it receives is recorded but never
+marker and the Bot has passed the barrier. What it receives is recorded but never
 compared, and a Candidate that lacks one of its commands makes the Group
 `blocked`. Control can leave (its Bot closes), and its next command
 joins a new one.

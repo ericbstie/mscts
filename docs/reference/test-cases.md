@@ -444,9 +444,9 @@ server leaves out is one the client does not have.
 
 **Registry entry data**
 
-The contents of a registry entry. Vanilla sends none for an entry that a
-data pack both servers share already has, and the client then takes it
-from that pack.
+The contents of a registry entry. Vanilla sends none for an entry in a data
+pack that the server and the client both have at the same version, and
+the client then takes it from that pack.
 
 ## `registry_data.entries[].entry_id`
 
