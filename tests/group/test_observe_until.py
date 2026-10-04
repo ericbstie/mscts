@@ -378,3 +378,58 @@ async def test_a_reference_that_never_sends_the_packet_is_an_error() -> None:
 
     assert verdict.outcome is Outcome.ERROR, verdict
     assert BLOCK_UPDATE in (verdict.detail or ""), verdict
+
+
+HELD_SLOT = "minecraft:set_held_slot"
+
+
+def _heard_slot(transcript: Transcript, bot: str, *, at: int) -> None:
+    packet_id = CODEC.packet_id(State.PLAY, Direction.CLIENTBOUND, HELD_SLOT)
+    packet = CODEC.decode(State.PLAY, Direction.CLIENTBOUND, bytes([packet_id, 0]))
+    transcript.record(bot, packet, t_ns=at)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first", [DIFFICULTY, HELD_SLOT])
+async def test_until_several_names_closes_at_whichever_arrived_first(first: str) -> None:
+    # A server may carry the same thing in another packet (Pumpkin's disguised_chat for
+    # vanilla's player_chat, #270): the window ends on it too, and Compare shows the change.
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+    heard = {
+        DIFFICULTY: lambda at: _heard_by(transcript, "alice", DIFFICULTY, at=at),
+        HELD_SLOT: lambda at: _heard_slot(transcript, "alice", at=at),
+    }
+    second = HELD_SLOT if first == DIFFICULTY else DIFFICULTY
+
+    async with context.observe(until=(DIFFICULTY, HELD_SLOT)):
+        arrival = transcript.now_ns()
+        heard[first](arrival)
+        heard[second](transcript.now_ns())
+
+    assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
+
+
+@pytest.mark.asyncio
+async def test_until_several_names_fails_naming_each_when_none_arrived() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    with pytest.raises(ProtocolError, match=f"no {DIFFICULTY} or {HELD_SLOT} arrived"):
+        async with context.observe(until=(DIFFICULTY, HELD_SLOT)):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_until_checks_each_name_and_needs_one() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    with pytest.raises(ValueError, match="minecraft:hello"):
+        async with context.observe(until=(DIFFICULTY, "minecraft:hello")):
+            pass
+    with pytest.raises(ValueError, match="at least one packet"):
+        async with context.observe(until=()):
+            pass
+
+    assert transcript.marks == []

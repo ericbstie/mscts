@@ -41,7 +41,7 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
 | `await bot.respawn()` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. |
-| `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
+| `await bot.expect(name, ..., timeout_s=..., where=...)` | Reads packets until one with any of the names given arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.move(x, y, z, on_ground=True)` | Moves the Bot. If the vanilla client would send a position update, the Bot sends it too. |
 | `await bot.look(yaw, pitch)` | Sends one rotation update. |
@@ -168,12 +168,19 @@ checked. So take every disconnect your Group causes.
 | `context.observe("minecraft:block_update", ...)` | Compares only the packets named. |
 | `context.observe(play=False)` | Compares no play packets, only the login, configuration and status packets. Use it when the play packets vary and the Group tests something else, as `status/with-player` does. It takes no names and no `until`. |
 | `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, or at the Bot you name with `bot=`, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block open until the packet has arrived (a Bot's `join` does this for a join's packets). If none has arrived when the block ends, the Group fails and says which. With more than one Bot, name the Bot: when the window ends for the others then depends on timing. |
+| `context.observe(until=("minecraft:player_chat", "minecraft:disguised_chat"))` | The same, but the window ends when the first packet with any of those names arrives. |
 
 A packet name must be one the server sends in play, with its namespace
 (`minecraft:block_update`). Keep-alives, the time of day and the
 statistics a Bot asks for while it waits (`minecraft:award_stats`) are
 never compared, so they can't be named. Any other name stops the Group with an
 error.
+
+Give `until` or `bot.expect` several names when a server could send what you wait for
+in another packet. Vanilla answers a chat message with `minecraft:player_chat`, but
+another server might answer with `minecraft:disguised_chat`. If the Group waits for
+only one, it times out on that server and plays none of its later cases. If it waits for
+either, it goes on, and the Report shows the other packet as a difference.
 
 Use `until` when what the server keeps sending after the part you compare
 would differ between two runs, such as the later chunk batches after a join

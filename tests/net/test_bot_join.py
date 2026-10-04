@@ -270,6 +270,34 @@ def test_expect_takes_packets_until_one_has_the_name(codec: Codec, transcript: T
     ]
 
 
+BATCH_START = "minecraft:chunk_batch_start"
+
+
+@pytest.mark.parametrize("first", [DIFFICULTY, BATCH_START])
+def test_expect_with_several_names_returns_whichever_arrives_first(
+    codec: Codec, transcript: Transcript, first: str
+) -> None:
+    async def expect(bot: Bot) -> Packet:
+        await bot.join()
+        return await bot.expect(BATCH_START, DIFFICULTY, timeout_s=1)
+
+    frames = {DIFFICULTY: (DIFFICULTY, b"\x01\x00"), BATCH_START: (BATCH_START, b"")}
+    second = BATCH_START if first == DIFFICULTY else DIFFICULTY
+    script = play(frames[first], frames[second])
+    packet, _ = with_bot(codec, transcript, join_server([], script), expect)
+    assert packet.name == first
+    assert taken(transcript)[-1] == (State.PLAY, first)
+
+
+def test_expect_needs_a_name(codec: Codec, transcript: Transcript) -> None:
+    async def raises(bot: Bot) -> None:
+        await bot.join()
+        with pytest.raises(ValueError, match="at least one packet"):
+            await bot.expect(timeout_s=1)
+
+    with_bot(codec, transcript, join_server([]), raises)
+
+
 def test_expect_takes_packets_until_where_holds(codec: Codec, transcript: Transcript) -> None:
     async def expect(bot: Bot) -> Packet:
         await bot.join()

@@ -535,7 +535,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
     async def respawn(self) -> None: ...                               # PERFORM_RESPAWN → player_loaded
-    async def expect(self, name: str, *, timeout_s: float,
+    async def expect(self, *names: str, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def drain(self) -> None: ...                                 # take what has arrived
@@ -577,7 +577,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # player_loaded, as join does: the client waits to load its world again after a respawn
     # (handleRespawn), and the server ignores attack and interact until it has
     # (hasClientLoaded). A server ignores the request from a live player → TimeoutError.
-    # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
+    # expect: takes (and so records) packets until one is called any of `names` (the first such
+    # ends it, #270) and `where` holds for it; ValueError for no name.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
     # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command
@@ -1099,8 +1100,8 @@ class GroupContext:
                                                  # CONTROL_PLAYER (Control's Bot)
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
-    def observe(self, *names: str, until: str | None = None, bot: Bot | None = None,
-                play: bool = True
+    def observe(self, *names: str, until: str | tuple[str, ...] | None = None,
+                bot: Bot | None = None, play: bool = True
                 ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: on entry, every Bot in play
                                     # and not disconnected passes Bot.sync (all at once, so
@@ -1127,11 +1128,13 @@ class GroupContext:
                                     # marked: a window already open (no nesting), or a name
                                     # (in names or until) that is not in
                                     # Codec.names(PLAY, CLIENTBOUND) or is in HEARTBEAT.
-                                    # With `until` (a packet name): no barrier. Every Bot not
+                                    # With `until` (a packet name, or several: whichever
+                                    # arrives first ends it, #270; none is a ValueError):
+                                    # no barrier. Every Bot not
                                     # closed drains, then OBSERVE_CLOSE is stamped 1 ns after
                                     # the Event.t_ns (the arrival, never the time a Bot took
                                     # the packet; #88) of the first clientbound play packet
-                                    # of that name `bot` (if given), else any Bot but Control,
+                                    # of those names `bot` (if given), else any Bot but Control,
                                     # received at or after the open Mark (Control's receipts
                                     # are never compared; the earliest arrival over the Bots,
                                     # whatever order they were recorded in). ValueError:
