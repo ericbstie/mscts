@@ -78,6 +78,33 @@ def test_a_chat_message_may_be_longer_than_the_server_reads() -> None:
     assert CODEC.decode(State.PLAY, SERVERBOUND, data).fields == fields
 
 
+def test_signed_chat_command_is_the_command_then_each_argument_s_signature() -> None:
+    fields = {
+        "command": "say hi",
+        "timestamp": 1_790_000_000_000,
+        "salt": 7,
+        "argument_signatures": [{"argument_name": "message", "signature": SIGNATURE}],
+        "message_count": 0,
+        "acknowledged": bytes(3),
+        "checksum": 1,
+    }
+    data = (
+        bytes([0x08, 0x06])
+        + b"say hi"
+        + long(1_790_000_000_000)
+        + long(7)
+        + bytes([0x01, 0x07])
+        + b"message"
+        + SIGNATURE
+        + bytes([0x00])
+        + bytes(3)
+        + bytes([0x01])
+    )
+
+    assert CODEC.packet_id(State.PLAY, SERVERBOUND, "minecraft:chat_command_signed") == 0x08
+    round_trip(SERVERBOUND, "minecraft:chat_command_signed", fields, data)
+
+
 def player_chat_fields(**changes: object) -> dict[str, object]:
     fields: dict[str, object] = {
         "global_index": 3,

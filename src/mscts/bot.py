@@ -50,6 +50,31 @@ _CONFIGURATION_ANSWERS = {
 }
 """Configuration packets answered by a packet with no fields: what each is answered with."""
 
+CHAT_TIMESTAMP_MS = 1_790_000_000_000
+"""The time, in milliseconds since the epoch, that every `chat` and `signed_command` carries.
+
+The vanilla client sends its clock (`Instant.now()`); a Bot sends the same time every run.
+Vanilla takes an unsigned message's time from its own clock (`SignedMessageBody.unsigned`,
+26.3 javap), so this one reaches no other player.
+"""
+
+CHAT_SALT = 0
+"""The salt every `chat` and `signed_command` carries, where the vanilla client draws one.
+
+Only a signature uses it, and a Bot signs nothing; vanilla gives an unsigned message salt 0.
+"""
+
+_UNSIGNED_CHAT: Mapping[str, object] = {
+    "timestamp": CHAT_TIMESTAMP_MS,
+    "salt": CHAT_SALT,
+    "message_count": 0,
+    "acknowledged": bytes(3),
+    "checksum": 1,
+}
+"""What the 26.3 client with no chat session sends besides the text (javap): its time and
+salt, no message acknowledged since its last (`LastSeenMessagesTracker`: only signed messages
+are tracked), and the checksum of an empty last-seen set (`LastSeenMessages.computeChecksum`)."""
+
 _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
     1 << bit for bit in range(5)
 )
@@ -826,6 +851,42 @@ class Bot:
             raise ProtocolError(msg)
         async with self._operation(self._timeout_s):
             await self._connection.send("minecraft:chat_command", command=command)
+
+    async def signed_command(self, command: str) -> None:
+        """Run `command`, without its leading `/`, as the vanilla client runs a message command.
+
+        The vanilla client sends a command with a message argument (`/say`, `/me`, `/msg`,
+        `/teammsg`) as a `chat_command_signed`, signing each such argument; with no chat
+        session, as every Bot, it signs none. The Bot sends it so, with its fixed time and salt
+        (see `chat`), and returns at once.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("signed_command")
+        async with self._operation(self._timeout_s):
+            await self._connection.send(
+                "minecraft:chat_command_signed",
+                command=command,
+                argument_signatures=[],
+                **_UNSIGNED_CHAT,
+            )
+
+    async def chat(self, message: str) -> None:
+        """Say `message` in chat, as the vanilla client sends it with no chat session.
+
+        Sends a `chat` with no signature and returns at once. The vanilla client sends its clock
+        and a random salt; a Bot sends `CHAT_TIMESTAMP_MS` and `CHAT_SALT`, so every run sends
+        the same bytes.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("chat")
+        async with self._operation(self._timeout_s):
+            await self._connection.send(
+                "minecraft:chat", message=message, signature=None, **_UNSIGNED_CHAT
+            )
 
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None:
         """Move the player to `x`, `y`, `z`, on the ground or not, in one client tick.

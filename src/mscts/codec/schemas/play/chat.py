@@ -3,11 +3,13 @@
 `system_chat` and `chat_command` are in `commands.py`, with the rest of a command's travel.
 
 Field layouts: minecraft.wiki `Java_Edition_protocol/Packets`, revision 3790659 (2026-09-23,
-"26.3, protocol 777"), raw wikitext, "Chat Message", "Player Chat Message" and "Disguised Chat
-Message". Checked against the 26.3 jar with `javap`: `ServerboundChatPacket.STREAM_CODEC` is
-`stringUtf8(256)`, `INSTANT` (a Long of epoch milliseconds), a Long salt, an optional
-`MessageSignature` (256 bytes, no length) and `LastSeenMessages$Update` (a VarInt, a
-`fixedBitSet(20)` of 3 bytes and a Byte checksum). `ClientboundPlayerChatPacket` is a VarInt, a
+"26.3, protocol 777"), raw wikitext, "Chat Message", "Signed Chat Command", "Player Chat
+Message" and "Disguised Chat Message". Checked against the 26.3 jar with `javap`:
+`ServerboundChatPacket.STREAM_CODEC` is `stringUtf8(256)`, `INSTANT` (a Long of epoch
+milliseconds), a Long salt, an optional `MessageSignature` (256 bytes, no length) and
+`LastSeenMessages$Update` (a VarInt, a `fixedBitSet(20)` of 3 bytes and a Byte checksum).
+`ServerboundChatCommandSignedPacket` is a String, `INSTANT`, a Long, `ArgumentSignatures` (at
+most 8 entries) and `LastSeenMessages$Update`. `ClientboundPlayerChatPacket` is a VarInt, a
 UUID and a VarInt, the optional signature, `SignedMessageBody$Packed` (`stringUtf8(256)`,
 `INSTANT`, a Long, and at most 20 `MessageSignature$Packed`: a VarInt id + 1, or 0 and the
 whole signature), an optional text component, `FilterMask` and `ChatType$Bound` (a
@@ -83,6 +85,20 @@ SERVERBOUND: Mapping[str, Schema] = {
         timestamp=LONG,
         salt=LONG,
         signature=PrefixedOptional(_SIGNATURE),
+        message_count=VAR_INT,
+        acknowledged=_FixedBytes(3),
+        checksum=BYTE,
+    ),
+    # Signed Chat Command: a command with a message argument (`/say`, `/msg`), which the vanilla
+    # client sends this way, signing each such argument. A client with no chat session signs
+    # none, and the server takes each message as unsigned.
+    "minecraft:chat_command_signed": Schema(
+        command=String(32767),
+        timestamp=LONG,
+        salt=LONG,
+        argument_signatures=PrefixedArray(
+            Schema(argument_name=String(16), signature=_SIGNATURE), max_length=8
+        ),
         message_count=VAR_INT,
         acknowledged=_FixedBytes(3),
         checksum=BYTE,

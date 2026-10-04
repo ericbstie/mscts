@@ -542,6 +542,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def refuse_queued_disconnect(self) -> None: ...              # drain if a disconnect waits
     async def send(self, name: str, /, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
+    async def signed_command(self, command: str) -> None: ...          # chat_command_signed, no signature (#65)
+    async def chat(self, message: str) -> None: ...                    # chat, no signature (#65)
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None: ...
     async def look(self, yaw: float, pitch: float) -> None: ...
     async def sprint(self, sprinting: bool) -> None: ...               # holds forward and sprint, + the command
@@ -583,6 +585,13 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
     # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command
     # (String 32767) and returns at once; what the server answers arrives like any packet.
+    # chat / signed_command (#65): on a Bot in play (else ProtocolError, nothing sent), send
+    # play chat (the message) or chat_command_signed (the command, no argument signatures) as
+    # the 26.3 client does with no chat session (ClientPacketListener.sendChat / sendCommand,
+    # javap): CHAT_TIMESTAMP_MS and CHAT_SALT where the client sends its clock and a random
+    # salt, no signature, message_count 0, acknowledged 3 zero bytes, checksum 1 (an empty
+    # last-seen set's). The client sends a command with a message argument (/say, /me, /msg,
+    # /teammsg) as chat_command_signed, any other as chat_command; the Group picks.
     # sync, the barrier: returns once the server has sent everything caused by what it
     # received before. On a Bot in play (else ProtocolError, nothing sent): client_command
     # (REQUEST_STATS) then expect(award_stats), SYNC_REQUESTS (3) times, always.
@@ -698,6 +707,8 @@ class EntityTracker:
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
+CHAT_TIMESTAMP_MS = 1_790_000_000_000  # the time every chat and signed command of a Bot carries
+CHAT_SALT = 0                       # the salt they carry
 TICK_GAP_S = 0.005                  # sync's wait from an answer's arrival to its next request
 SYNC_REQUESTS = 3                   # how many statistics requests sync sends (#169)
 SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request

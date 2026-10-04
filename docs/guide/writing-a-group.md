@@ -43,6 +43,8 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.respawn()` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. |
 | `await bot.expect(name, ..., timeout_s=..., where=...)` | Reads packets until one with any of the names given arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
+| `await bot.signed_command(text)` | Runs a command with a message argument (`/say`, `/me`, `/msg`, `/teammsg`) the way the vanilla client sends one. The client signs each message argument, and a Bot, which has no chat signing keys, signs none. |
+| `await bot.chat(text)` | Says `text` in chat, the way the vanilla client says it without chat signing keys. |
 | `await bot.move(x, y, z, on_ground=True)` | Moves the Bot. If the vanilla client would send a position update, the Bot sends it too. |
 | `await bot.look(yaw, pitch)` | Sends one rotation update. |
 | `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
@@ -64,6 +66,10 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent, so everything the server sent in response has arrived. Requires a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
+
+The vanilla client sends the time with each chat message and signed
+command, and a random number for its signature. A Bot sends the same
+fixed values every time.
 
 A Bot does not simulate physics, so a Group gives every position itself.
 Each of these calls, from `move` to `swing`, is one tick of the vanilla
