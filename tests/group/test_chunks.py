@@ -342,8 +342,9 @@ async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None
     steps = [str(x) for x in chunks.WALK]
     barrier = ["sync"] * SYNC_REQUESTS
     # A step a tick: a barrier after each step but the last, which the wait for the new
-    # column, `HELD_SYNCS` barriers and the window's own barrier follow.
-    held = barrier * (chunks.HELD_SYNCS + 1)
+    # column, 3 barriers (about 9 ticks, as groups.md says) and the window's own barrier
+    # follow. The count is written out, not read from `chunks.HELD_SYNCS` (review C, L-C2).
+    held = barrier * 4
     assert inside == [steps[0], *barrier, steps[1], *barrier, steps[2], *held]
     west = chunks.view((-1, 0), 2) - chunks.view(chunks.SPAWN, 2)
     arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
