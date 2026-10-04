@@ -573,6 +573,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def interact(self, entity: Entity, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
                        *, off_hand: bool = False) -> None: ...         # interact
     async def drop(self, *, all: bool = False) -> None: ...            # player_action DROP_ITEM / DROP_ALL_ITEMS
+    async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None: ...  # container_click
     async def close_container(self) -> None: ...                       # container_close, outside a tick
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
@@ -670,7 +671,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # (MultiPlayerGameMode.dropItem); refused with a container open (ProtocolError: the client
     # reads the drop key only with no screen). close_container (#28): back to the inventory menu,
     # then container_close with the old menu's window id (0 with none open: the inventory
-    # screen), sent at once and not in a tick (LocalPlayer.closeContainer).
+    # screen), sent at once and not in a tick (LocalPlayer.closeContainer). click (#28): on a
+    # Bot in play, InventoryTracker.click predicts the click, then container_click goes at
+    # once, not in a tick (a mouse or key callback); a refused click sends nothing (ValueError).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
@@ -747,6 +750,25 @@ class InventoryTracker:
     def clear(self) -> None: ...      # a new player: nothing anywhere, no container open
     def close(self) -> None: ...      # back to the inventory menu (Player.closeContainer)
     def remove_from_selected(self, selected: int, *, whole: bool) -> None: ...  # one, or the stack
+    def click(self, slot: int, button: int, mode: str) -> dict[str, object]: ...  # container_click fields
+    # As AbstractContainerMenu.doClick on the client, in the menus laid out above, for a
+    # survival player (clone, and a drag of a stack to each slot, change nothing): pickup
+    # (button 0 all, 1 half; slot OUTSIDE drops the cursor), quick_move (the menu's
+    # quickMoveStack, repeated while it moves some), swap (button 0-8 or 40: that Inventory
+    # index), throw (button 0 one, 1 the stack), quick_craft (button = header | type << 2:
+    # start 0, add 1, end 2; type 0 even, 1 one each), pickup_all (from slot 0, or the end with
+    # button 1; full stacks last). Slot rules: armor slots take their equippable items, one;
+    # a shulker box's slots no shulker box; stack sizes from items.json. Returns window id,
+    # state id, slot, button, mode, the slots whose stack changed (ItemStack.matches) hashed
+    # in Int2ObjectOpenHashMap() order (fastutil: table 32, linear probing, grown past 3/4;
+    # key 0 first, then positions down), and the hashed cursor. ValueError, nothing changed:
+    # an unknown mode, a slot outside a Short or a button outside a Byte, a slot the click
+    # must name that the menu lacks, a menu other than the inventory's, a chest's, a
+    # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), the crafting result, a bundle, a
+    # swap whose slot stack would go back through Inventory.add, or a stack with a component
+    # patch (its hash needs the component's encoding).
+CLICK_MODES: Mapping[str, int]      # pickup 0, quick_move 1, swap 2, clone 3, throw 4, quick_craft 5, pickup_all 6
+OUTSIDE = -999                      # the slot of a click outside the menu
 
 def java_round(value: float) -> int: ...  # Java's Math.round: half up, exact (VecDeltaCodec, LpVec3)
 

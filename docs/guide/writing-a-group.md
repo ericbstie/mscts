@@ -61,6 +61,7 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.interact(entity, at=(0.0, 0.0, 0.0), off_hand=False)` | Uses the held item on an entity, as a right click does. `at` is the point on the entity, relative to its position. When the Bot sneaks, the server sees the sneak key held. |
 | `await bot.drop(all=False)` | Drops the held item (Q, or Ctrl+Q). With a container open it raises `ProtocolError`: close it first. |
 | `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
+| `await bot.click(slot, button=0, mode="pickup")` | Clicks a slot in the open container or the inventory, as the vanilla client reports it. |
 | `await bot.close_container()` | Closes the open container. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
 | `bot.entities` | The entities the server has told this Bot about: their type, position and data, as the vanilla client would track them. They change only as the Bot reads packets, so after a summon, call `await bot.sync()` before you look. A login, or a respawn into another dimension, clears them. |

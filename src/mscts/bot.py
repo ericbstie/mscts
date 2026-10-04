@@ -1195,6 +1195,26 @@ class Bot:
         async with self._operation(self._timeout_s):
             await self._connection.send("minecraft:container_close", window_id=window_id)
 
+    async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None:
+        """Click a slot of the open container or the inventory, as the vanilla client reports it.
+
+        The client changes the slots itself first, then sends `container_click` with the open
+        window's id and state id, the slot, button and mode, the slots whose stacks changed and
+        the cursor's stack (`MultiPlayerGameMode.handleContainerInput`); the Bot does the same
+        (`InventoryTracker.click`, which names the modes and buttons). It sends its prediction
+        even when the server will disagree: the server's correction is what a Group compares.
+        It sends it at once, not in a tick, as the client sends a click.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+            ValueError: The Bot cannot send or predict the click (see `InventoryTracker.click`);
+                nothing is sent.
+        """
+        self._require_play("click")
+        fields = self._replies.inventory.click(slot, button, mode)
+        async with self._operation(self._timeout_s):
+            await self._connection.send("minecraft:container_click", **fields)
+
     async def drop(self, *, all: bool = False) -> None:  # noqa: A002 - #28: bot.drop(all=True)
         """Drop one of the held items (Q), or the whole stack (Ctrl+Q), in one client tick.
 

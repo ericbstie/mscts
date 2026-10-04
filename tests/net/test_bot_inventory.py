@@ -9,7 +9,7 @@ player's `Inventory`, so a change through one shows in every menu.
 
 import dataclasses
 import uuid
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import pytest
@@ -17,7 +17,7 @@ import pytest
 from mscts.bot import Bot
 from mscts.codec.registry_names import registry_names
 from mscts.entities import Entity
-from mscts.inventory import Inventory, InventoryTracker, Stack
+from mscts.inventory import OUTSIDE, Inventory, InventoryTracker, Stack, _hash_map_order
 from mscts.net import ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -505,3 +505,413 @@ def test_a_horses_screen_is_the_window_drop_refuses_and_close_container_closes()
     view, sent = inventory_after([horse, mount_screen(CHEST, 0, HORSE)], script)
     assert sent == [("minecraft:container_close", {"window_id": CHEST})]
     assert view.window_id == 0
+
+
+# Clicks: AbstractContainerMenu.doClick and the menus' quickMoveStack (26.3 client, javap).
+# Each starts from slots as vanilla's server sends them (a set_content), and checks the
+# container_click the client would send: the changed slots in its Int2ObjectOpenHashMap's order.
+
+
+def item_id(name: str) -> int:
+    return registry_names(TARGET.minecraft_version, "minecraft:item").index(f"minecraft:{name}")
+
+
+def hashed(name: str, count: int) -> dict[str, object]:
+    """A `HASHED_SLOT` value with no component changed."""
+    return {"item": item_id(name), "count": count, "components": {"added": [], "removed": []}}
+
+
+def holding(
+    stacks: Mapping[int, tuple[str, int]],
+    *,
+    chest: bool = False,
+    carried: tuple[str, int] | None = None,
+) -> InventoryTracker:
+    """A tracker whose open menu (the inventory menu, or a chest's) holds `stacks` by slot."""
+    slots: list[dict[str, object] | None] = [None] * (63 if chest else 46)
+    for index, (name, count) in stacks.items():
+        slots[index] = slot(item_id(name), count)
+    cursor_stack = None if carried is None else slot(item_id(carried[0]), carried[1])
+    filled = content(CHEST if chest else 0, slots, state_id=5, carried=cursor_stack)
+    return followed(open_screen(CHEST, GENERIC_9X3), filled) if chest else followed(filled)
+
+
+def click_sent(
+    slot_number: int,
+    changed: Sequence[tuple[int, dict[str, object] | None]],
+    carried: dict[str, object] | None,
+    *,
+    button: int = 0,
+    mode: int = 0,
+) -> dict[str, object]:
+    """The container_click fields in the inventory menu, the changed slots in the client's order.
+
+    The order is `_hash_map_order`'s, which a test below pins to what fastutil gives in Java.
+    """
+    by_slot = dict(changed)
+    return {
+        "window_id": 0,
+        "state_id": 5,
+        "slot": slot_number,
+        "button": button,
+        "mode": mode,
+        "changed_slots": [
+            {"slot": index, "item": by_slot[index]} for index in _hash_map_order(sorted(by_slot))
+        ],
+        "carried_item": carried,
+    }
+
+
+def in_chest(sent: dict[str, object]) -> dict[str, object]:
+    """`sent` as clicked in the open chest: its window id."""
+    return {**sent, "window_id": CHEST}
+
+
+def test_a_left_click_takes_the_whole_stack() -> None:
+    tracker = holding({36: ("stone", 64)})
+    assert tracker.click(36, 0, "pickup") == click_sent(36, [(36, None)], hashed("stone", 64))
+    view = tracker.view()
+    assert (view.slots[36], view.carried, view.player[0]) == (None, stack("stone", 64), None)
+
+
+@pytest.mark.parametrize(("count", "taken"), [(64, 32), (5, 3), (1, 1)])
+def test_a_right_click_takes_half_rounded_up(count: int, taken: int) -> None:
+    tracker = holding({9: ("stone", count)})
+    left = None if count == taken else hashed("stone", count - taken)
+    sent = click_sent(9, [(9, left)], hashed("stone", taken), button=1)
+    assert tracker.click(9, 1, "pickup") == sent
+
+
+@pytest.mark.parametrize(("button", "placed"), [(0, 10), (1, 1)], ids=["left", "right"])
+def test_a_click_on_an_empty_slot_puts_down_all_or_one(button: int, placed: int) -> None:
+    tracker = holding({}, carried=("stone", 10))
+    left = None if placed == 10 else hashed("stone", 10 - placed)
+    sent = click_sent(20, [(20, hashed("stone", placed))], left, button=button)
+    assert tracker.click(20, button, "pickup") == sent
+
+
+def test_a_click_merges_the_cursor_into_the_same_item_up_to_its_stack_size() -> None:
+    tracker = holding({20: ("stone", 60)}, carried=("stone", 10))
+    sent = click_sent(20, [(20, hashed("stone", 64))], hashed("stone", 6))
+    assert tracker.click(20, 0, "pickup") == sent
+
+
+def test_a_click_with_another_item_swaps_it_with_the_cursor() -> None:
+    tracker = holding({20: ("stone", 60)}, carried=("diamond_sword", 1))
+    sent = click_sent(20, [(20, hashed("diamond_sword", 1))], hashed("stone", 60))
+    assert tracker.click(20, 0, "pickup") == sent
+
+
+def test_an_armor_slot_takes_only_its_own_armor() -> None:
+    # ArmorSlot.mayPlace: the item's equippable slot must be the slot's (5 is the head).
+    tracker = holding({}, carried=("diamond_helmet", 1))
+    assert tracker.click(6, 0, "pickup") == click_sent(6, [], hashed("diamond_helmet", 1))
+    sent = click_sent(5, [(5, hashed("diamond_helmet", 1))], None)
+    assert tracker.click(5, 0, "pickup") == sent
+    assert tracker.view().player[39] == stack("diamond_helmet", 1)
+
+
+def test_an_armor_slot_holds_one_carved_pumpkin_of_a_stack() -> None:
+    # ArmorSlot.getMaxStackSize is 1.
+    tracker = holding({}, carried=("carved_pumpkin", 5))
+    sent = click_sent(5, [(5, hashed("carved_pumpkin", 1))], hashed("carved_pumpkin", 4))
+    assert tracker.click(5, 0, "pickup") == sent
+
+
+@pytest.mark.parametrize(("button", "left"), [(0, None), (1, 9)], ids=["left", "right"])
+def test_a_click_outside_drops_the_cursor_or_one_of_it(button: int, left: int | None) -> None:
+    tracker = holding({}, carried=("stone", 10))
+    carried = None if left is None else hashed("stone", left)
+    sent = click_sent(OUTSIDE, [], carried, button=button)
+    assert tracker.click(OUTSIDE, button, "pickup") == sent
+
+
+def test_a_click_on_a_negative_slot_but_outside_changes_nothing() -> None:
+    tracker = holding({}, carried=("stone", 10))
+    assert tracker.click(-1, 0, "pickup") == click_sent(-1, [], hashed("stone", 10))
+
+
+def test_a_shift_click_moves_the_hotbar_into_the_chest_from_its_first_slot() -> None:
+    # ChestMenu.quickMoveStack: a player slot goes to the container's, merging first.
+    tracker = holding({54: ("stone", 64), 1: ("stone", 60)}, chest=True)
+    changed = [(0, hashed("stone", 60)), (1, hashed("stone", 64)), (54, None)]
+    sent = in_chest(click_sent(54, changed, None, mode=1))
+    assert tracker.click(54, 0, "quick_move") == sent
+
+
+def test_a_shift_click_moves_the_chest_into_the_player_from_the_last_slot() -> None:
+    # A container slot goes to the player's slots from the end: the hotbar's last first.
+    tracker = holding({0: ("stone", 64)}, chest=True)
+    sent = in_chest(click_sent(0, [(0, None), (62, hashed("stone", 64))], None, mode=1))
+    assert tracker.click(0, 0, "quick_move") == sent
+    assert tracker.view().player[8] == stack("stone", 64)
+
+
+def test_a_shift_click_that_fits_nowhere_changes_nothing() -> None:
+    full = dict.fromkeys(range(27), ("diamond_sword", 1))
+    tracker = holding({**full, 54: ("stone", 64)}, chest=True)
+    assert tracker.click(54, 0, "quick_move") == in_chest(click_sent(54, [], None, mode=1))
+
+
+@pytest.mark.parametrize(
+    ("start", "item", "end"),
+    [
+        (9, "diamond_helmet", 5),
+        (36, "shield", 45),
+        (9, "stone", 36),
+        (36, "stone", 9),
+        (5, "diamond_helmet", 9),
+        (45, "stone", 9),
+    ],
+    ids=["armor", "off-hand", "to-hotbar", "to-storage", "out-of-armor", "out-of-off-hand"],
+)
+def test_a_shift_click_in_the_inventory_menu_goes_where_the_client_puts_it(
+    start: int, item: str, end: int
+) -> None:
+    # InventoryMenu.quickMoveStack: armor to its empty armor slot, an off-hand item to the empty
+    # off hand, else the 27 to the hotbar and back; the armor and off hand to the 27 first.
+    tracker = holding({start: (item, 1)})
+    sent = click_sent(start, [(start, None), (end, hashed(item, 1))], None, mode=1)
+    assert tracker.click(start, 0, "quick_move") == sent
+
+
+def test_a_shift_click_merges_into_partial_stacks_before_an_empty_slot() -> None:
+    tracker = holding({9: ("stone", 30), 40: ("stone", 50)})
+    changed = [(9, None), (40, hashed("stone", 64)), (36, hashed("stone", 16))]
+    assert tracker.click(9, 0, "quick_move") == click_sent(9, changed, None, mode=1)
+
+
+def test_a_number_key_swaps_a_chest_slot_with_that_hotbar_slot() -> None:
+    # SWAP, button 3: the chest's slot 0 and Inventory index 3 (the chest menu's slot 57).
+    tracker = holding({57: ("diamond_sword", 1)}, chest=True)
+    changed = [(0, hashed("diamond_sword", 1)), (57, None)]
+    sent = in_chest(click_sent(0, changed, None, button=3, mode=2))
+    assert tracker.click(0, 3, "swap") == sent
+    assert tracker.view().player[3] is None
+
+
+def test_the_f_key_swaps_with_the_off_hand() -> None:
+    tracker = holding({9: ("stone", 5)})
+    sent = click_sent(9, [(9, None), (45, hashed("stone", 5))], None, button=40, mode=2)
+    assert tracker.click(9, 40, "swap") == sent
+
+
+def test_a_swap_with_a_button_that_is_no_key_changes_nothing() -> None:
+    tracker = holding({9: ("stone", 5)})
+    assert tracker.click(9, 9, "swap") == click_sent(9, [], None, button=9, mode=2)
+
+
+@pytest.mark.parametrize(("button", "left"), [(0, 63), (1, None)], ids=["one", "stack"])
+def test_q_over_a_slot_drops_one_or_the_stack(button: int, left: int | None) -> None:
+    tracker = holding({9: ("stone", 64)})
+    remaining = None if left is None else hashed("stone", left)
+    sent = click_sent(9, [(9, remaining)], None, button=button, mode=4)
+    assert tracker.click(9, button, "throw") == sent
+
+
+def test_q_with_a_stack_on_the_cursor_changes_nothing() -> None:
+    tracker = holding({9: ("stone", 64)}, carried=("dirt", 1))
+    assert tracker.click(9, 0, "throw") == click_sent(9, [], hashed("dirt", 1), mode=4)
+
+
+def test_a_double_click_gathers_the_item_full_stacks_last() -> None:
+    # PICKUP_ALL: from slot 0 forward, first skipping full stacks; up to the stack size.
+    stacks = {10: ("stone", 20), 11: ("stone", 64), 12: ("stone", 30)}
+    tracker = holding(stacks, carried=("stone", 10))
+    changed = [(10, None), (12, None), (11, hashed("stone", 60))]
+    sent = click_sent(20, changed, hashed("stone", 64), mode=6)
+    assert tracker.click(20, 0, "pickup_all") == sent
+
+
+def test_a_drag_spreads_the_cursor_evenly_and_keeps_the_rest() -> None:
+    # QUICK_CRAFT: start (button 0), each slot (button 1), end (button 2): 64 over 3 is 21 each.
+    tracker = holding({}, carried=("stone", 64))
+    carried = hashed("stone", 64)
+    assert tracker.click(OUTSIDE, 0, "quick_craft") == click_sent(OUTSIDE, [], carried, mode=5)
+    for index in (9, 10, 11):
+        sent = click_sent(index, [], carried, button=1, mode=5)
+        assert tracker.click(index, 1, "quick_craft") == sent
+    changed = [(index, hashed("stone", 21)) for index in (9, 10, 11)]
+    sent = click_sent(OUTSIDE, changed, hashed("stone", 1), button=2, mode=5)
+    assert tracker.click(OUTSIDE, 2, "quick_craft") == sent
+
+
+def test_a_right_drag_puts_one_in_each_slot() -> None:
+    tracker = holding({10: ("stone", 5)}, carried=("stone", 3))
+    for button, index in ((4, OUTSIDE), (5, 9), (5, 10)):
+        tracker.click(index, button, "quick_craft")
+    changed = [(9, hashed("stone", 1)), (10, hashed("stone", 6))]
+    sent = click_sent(OUTSIDE, changed, hashed("stone", 1), button=6, mode=5)
+    assert tracker.click(OUTSIDE, 6, "quick_craft") == sent
+
+
+def test_a_drag_over_one_slot_is_a_click_on_it() -> None:
+    tracker = holding({}, carried=("stone", 64))
+    for button, index in ((0, OUTSIDE), (1, 9)):
+        tracker.click(index, button, "quick_craft")
+    sent = click_sent(OUTSIDE, [(9, hashed("stone", 64))], None, button=2, mode=5)
+    assert tracker.click(OUTSIDE, 2, "quick_craft") == sent
+
+
+def test_another_click_during_a_drag_ends_it_and_does_nothing_else() -> None:
+    tracker = holding({}, carried=("stone", 64))
+    tracker.click(OUTSIDE, 0, "quick_craft")
+    tracker.click(9, 1, "quick_craft")
+    assert tracker.click(10, 0, "pickup") == click_sent(10, [], hashed("stone", 64))
+    sent = click_sent(OUTSIDE, [], hashed("stone", 64), button=2, mode=5)
+    assert tracker.click(OUTSIDE, 2, "quick_craft") == sent
+
+
+def test_a_middle_click_clone_changes_nothing_for_a_survival_player() -> None:
+    tracker = holding({9: ("stone", 5)})
+    assert tracker.click(9, 2, "clone") == click_sent(9, [], None, button=2, mode=3)
+
+
+@pytest.mark.parametrize(
+    ("stacks", "slot_number", "button", "mode", "match"),
+    [
+        ({}, 9, 0, "drag", "mode must be one of"),
+        ({}, 40_000, 0, "pickup", "Short"),
+        ({}, 9, 200, "pickup", "Byte"),
+        ({}, 0, 0, "pickup", "crafting result"),
+        ({}, OUTSIDE, 0, "swap", "not one of the menu's 46 slots"),
+        ({9: ("bundle", 1)}, 9, 0, "pickup", "bundle"),
+        ({5: ("diamond_helmet", 1), 36: ("carved_pumpkin", 5)}, 5, 0, "swap", "elsewhere"),
+    ],
+    ids=["mode", "slot", "button", "result", "swap-outside", "bundle", "swap-back"],
+)
+def test_a_click_the_bot_cannot_send_or_predict_is_refused_and_changes_nothing(
+    stacks: dict[int, tuple[str, int]], slot_number: int, button: int, mode: str, match: str
+) -> None:
+    # The last: pumpkins over a helmet in the head slot. The head takes one pumpkin and the
+    # helmet goes back through Inventory.add, which the Bot does not predict.
+    tracker = holding(stacks)
+    before = tracker.view()
+    with pytest.raises(ValueError, match=match):
+        tracker.click(slot_number, button, mode)
+    assert tracker.view() == before
+
+
+def test_a_stack_whose_components_change_cannot_be_hashed_so_the_click_is_refused() -> None:
+    patch = {"added": [{"type": "minecraft:damage", "value": 3}], "removed": []}
+    tracker = followed(player_slot(9, {**slot(SWORD, 1), "components": patch}))
+    before = tracker.view()
+    with pytest.raises(ValueError, match="hash"):
+        tracker.click(9, 0, "pickup")
+    assert tracker.view() == before
+
+
+def test_a_click_in_a_menu_the_bot_does_not_predict_is_refused() -> None:
+    tracker = followed(open_screen(CHEST, FURNACE), content(CHEST, [slot(STONE, 1), None, None]))
+    with pytest.raises(ValueError, match="furnace"):
+        tracker.click(0, 0, "pickup")
+
+
+RECORDED_ORDERS = {
+    (0, 54): [0, 54],
+    (36, 37): [37, 36],
+    (5, 36, 45): [36, 5, 45],
+    (1, 2, 3, 4, 9, 10, 11, 12, 13): [2, 4, 12, 13, 9, 11, 10, 1, 3],
+    tuple(range(30)): [
+        *(0, 29, 25, 4, 12, 13, 8, 9, 28, 24, 26, 18, 16, 17, 19),
+        *(23, 20, 22, 21, 2, 27, 6, 15, 14, 11, 10, 1, 3, 7, 5),
+    ],
+    tuple(range(9, 45)): [
+        *(33, 29, 25, 37, 12, 13, 9, 30, 28, 24, 18, 26, 16, 17, 19, 23, 20, 22),
+        *(21, 35, 39, 27, 15, 14, 10, 11, 31, 32, 34, 38, 36, 44, 42, 41, 40, 43),
+    ],
+}
+"""What `Int2ObjectOpenHashMap()` (fastutil 8.5.18, the 26.3 jar's) iterates in Java, given the
+keys in ascending order: the larger two past a rehash."""
+
+
+@pytest.mark.parametrize(
+    ("keys", "order"),
+    RECORDED_ORDERS.items(),
+    ids=[f"{len(keys)}-keys" for keys in RECORDED_ORDERS],
+)
+def test_the_changed_slots_come_in_the_clients_hash_map_order(
+    keys: tuple[int, ...], order: list[int]
+) -> None:
+    assert _hash_map_order(list(keys)) == order
+
+
+def test_a_bot_click_sends_its_prediction_alone() -> None:
+    # A click is a mouse callback between ticks: no client_tick_end follows it.
+    async def script(bot: Bot) -> None:
+        await bot.click(36)
+
+    view, sent = inventory_after([player_slot(0, slot(STONE, 64))], script)
+    fields = {
+        "window_id": 0,
+        "state_id": 0,
+        "slot": 36,
+        "button": 0,
+        "mode": 0,
+        "changed_slots": [{"slot": 36, "item": None}],
+        "carried_item": hashed("stone", 64),
+    }
+    assert sent == [("minecraft:container_click", fields)]
+    assert view.carried == stack("stone", 64)
+
+
+def test_the_changed_slots_of_25_keys_come_from_the_grown_table() -> None:
+    # The 25th key grows the table from 32 to 64 (fastutil: size++ >= maxFill, 24), recorded.
+    keys = [1, 2, 5, 7, 8, 9, 14, 15, 17, 18, 25, 28, 29, 31, 32, 37, 39, 42, 49, 52, 53, 54, 55]
+    keys += [58, 59]
+    order = [29, 25, 58, 37, 49, 54, 8, 9, 53, 28, 59, 17, 18, 2, 39, 15, 14, 55, 31, 52, 32]
+    order += [1, 7, 5, 42]
+    assert _hash_map_order(keys) == order
+
+
+def test_a_shulker_boxs_slots_refuse_a_shulker_box() -> None:
+    # ShulkerBoxSlot.mayPlace: Item.canFitInsideContainerItems, false for a ShulkerBoxBlock item.
+    slots: list[dict[str, object] | None] = [None] * 63
+    slots[54] = slot(item_id("red_shulker_box"), 1)
+    shulker_box = 20
+    tracker = followed(open_screen(CHEST, shulker_box), content(CHEST, slots, state_id=5))
+    assert tracker.click(54, 0, "quick_move") == in_chest(click_sent(54, [], None, mode=1))
+
+
+def test_a_drag_leaves_out_a_slot_once_each_dragged_slot_would_get_less_than_one() -> None:
+    # A slot joins the drag only while the cursor holds more items than the drag has slots.
+    tracker = holding({}, carried=("stone", 2))
+    for button, index in ((0, OUTSIDE), (1, 9), (1, 10), (1, 11)):
+        tracker.click(index, button, "quick_craft")
+    changed = [(9, hashed("stone", 1)), (10, hashed("stone", 1))]
+    sent = click_sent(OUTSIDE, changed, None, button=2, mode=5)
+    assert tracker.click(OUTSIDE, 2, "quick_craft") == sent
+
+
+def test_a_swap_into_an_armor_slot_takes_one_of_a_stack() -> None:
+    tracker = holding({36: ("carved_pumpkin", 5)})
+    changed = [(5, hashed("carved_pumpkin", 1)), (36, hashed("carved_pumpkin", 4))]
+    assert tracker.click(5, 0, "swap") == click_sent(5, changed, None, mode=2)
+
+
+def test_a_refused_drag_end_keeps_the_drag_for_the_next_click() -> None:
+    # A drag over one slot ends as a click on it, which the Bot refuses with a bundle; the drag
+    # it had is kept, so ending it again is refused again.
+    tracker = holding({}, carried=("bundle", 1))
+    for button, index in ((0, OUTSIDE), (1, 9)):
+        tracker.click(index, button, "quick_craft")
+    for _ in range(2):
+        with pytest.raises(ValueError, match="bundle"):
+            tracker.click(OUTSIDE, 2, "quick_craft")
+
+
+def test_a_slot_that_refuses_its_own_stack_gives_it_only_whole() -> None:
+    # Slot.tryRemove: a slot that may not take back what it holds (allowModification false;
+    # stone in the head slot, as a server may put it) gives nothing short of the whole stack.
+    tracker = holding({5: ("stone", 10)}, carried=("stone", 60))
+    assert tracker.click(5, 0, "pickup") == click_sent(5, [], hashed("stone", 60))
+
+
+def test_a_cursor_whose_components_differ_from_the_slots_swaps_rather_than_merges() -> None:
+    # isSameItemSameComponents: the patched stack would go into the slot, which the Bot cannot
+    # hash, so the click is refused; merged, nothing would need hashing.
+    patch = {"added": [{"type": "minecraft:custom_name", "value": "x"}], "removed": []}
+    filled = content(0, [None] * 46, carried={**slot(STONE, 10), "components": patch})
+    tracker = followed(filled, set_slot(0, 20, slot(STONE, 10)))
+    with pytest.raises(ValueError, match="hash"):
+        tracker.click(20, 0, "pickup")
