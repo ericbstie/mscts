@@ -26,6 +26,7 @@ Bot is sent when it joins (docs/guide/writing-a-group.md).
 """
 
 import contextlib
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from mscts import run  # run imports mscts.groups: read GROUP_TIMEOUT_S at call time
@@ -53,11 +54,17 @@ class _Case:
     ticks: tuple[tuple[_Point, ...], ...]
 
 
-async def _join(context: GroupContext, undo: contextlib.AsyncExitStack, *names: str) -> list[Bot]:
+async def _join(
+    context: GroupContext,
+    undo: contextlib.AsyncExitStack,
+    *names: str,
+    starts: Mapping[str, _Point] | None = None,
+) -> list[Bot]:
     """Join a Bot for each name with the movement check off, then turn the check on again.
 
     The check is on by default, so turning it on is also the undo, pushed on `undo` before
-    the check is turned off: a command that timed out may still have run.
+    the check is turned off: a command that timed out may still have run. A Bot named in
+    `starts` is moved there as soon as it has joined.
     """
     undo.push_async_callback(context.control.run, f"{_MOVEMENT_CHECK} true")
     await context.control.run(f"{_MOVEMENT_CHECK} false")
@@ -65,6 +72,8 @@ async def _join(context: GroupContext, undo: contextlib.AsyncExitStack, *names: 
     for name in names:
         bot = await context.bot(name)
         await bot.join()
+        if starts is not None and name in starts:
+            await _tp(context, bot, starts[name])
         bots.append(bot)
     await context.control.run(f"{_MOVEMENT_CHECK} true")
     return bots
@@ -221,6 +230,14 @@ kicks a floating player within a few ticks kicks it, and far below vanilla's 80.
 """
 
 
+_FLYING_STARTS = {
+    _CREATIVE_FLYER: (2.5, -60.0, 2.5),
+    _LANDER: (10.5, -60.0, 2.5),
+    _FLYER: (6.5, -60.0, 2.5),
+}
+"""Where each flying Bot stands, on the grass, before it rises."""
+
+
 async def _hover(bot: Bot, x: float, z: float) -> None:
     """Rise 1.5 blocks off the ground, then move once more in the air.
 
@@ -239,13 +256,14 @@ async def flying(context: GroupContext) -> None:
     too soon differ, and the creative Bot one that kicks a player allowed to fly.
     """
     async with contextlib.AsyncExitStack() as undo:
-        creative, lander, flyer = await _join(context, undo, _CREATIVE_FLYER, _LANDER, _FLYER)
+        # A Bot the last play left in the air (the kicked flyer; the creative Bot, back in
+        # survival) rejoins there, and vanilla kicks it 80 ticks later unless it is moved.
+        creative, lander, flyer = await _join(
+            context, undo, _CREATIVE_FLYER, _LANDER, _FLYER, starts=_FLYING_STARTS
+        )
         # Pushed first: a command that timed out may still have run.
         undo.push_async_callback(context.control.run, f"gamemode survival {_CREATIVE_FLYER}")
         await context.control.run(f"gamemode creative {_CREATIVE_FLYER}")
-        await _tp(context, creative, (2.5, -60.0, 2.5))
-        await _tp(context, lander, (10.5, -60.0, 2.5))
-        await _tp(context, flyer, (6.5, -60.0, 2.5))
         # The creative Bot rises first, so it has floated at least as long as the survival one
         # by the time that one is kicked: past vanilla's limit, without a clock.
         async with context.observe(*PACKETS):

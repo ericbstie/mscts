@@ -432,6 +432,27 @@ async def test_flying_fails_a_server_that_kicks_a_short_hover() -> None:
 
 
 @pytest.mark.asyncio
+async def test_flying_puts_each_bot_on_the_ground_as_soon_as_it_joins() -> None:
+    # A Bot left in the air by the last play (the kicked flyer, the creative Bot back in
+    # survival) rejoins there, and vanilla kicks it 80 ticks later unless it is moved
+    # (measured on vanilla, review B of #277, L2).
+    transcript, _ = await play("movement/flying")
+
+    order = [
+        str((event.packet.fields or {})["name"])
+        if event.packet.name == "minecraft:hello"
+        else str((event.packet.fields or {})["command"]).split()[1]
+        for event in transcript.events
+        if (event.packet.name == "minecraft:hello" and event.bot != CONTROL)
+        or (
+            event.packet.name == CHAT_COMMAND
+            and str((event.packet.fields or {})["command"]).startswith("tp ")
+        )
+    ]
+    assert order[:6] == [name for name in BOTS["movement/flying"] for _ in range(2)]
+
+
+@pytest.mark.asyncio
 async def test_flying_puts_survival_back_when_the_gamemode_command_times_out() -> None:
     creative = "gamemode creative creative_flyer"
     transcript = Transcript(group_id="movement/flying", server="fake")
