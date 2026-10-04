@@ -174,7 +174,7 @@ need is missing, add it here in the same commit that introduces it.
   or refused, a missing command that Control sends, players still online
   from the previous Group, or a value the Group does not expect. The Score
   leaves `error` out, so a Candidate must never score better by failing.
-  The same holds while mscts waits for the players of the Group before to
+  The same holds while mscts waits for the previous Group's players to
   leave, after a Group left the Candidate's world frozen (#266), and when
   the Candidate failed a prerequisite (#285). mscts then plays the Group
   on the Reference alone, and the Candidate fails each test case of that

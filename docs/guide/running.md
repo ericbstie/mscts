@@ -24,8 +24,8 @@ Report, mscts does not play the Group that requires it on the
 Candidate. It still plays that Group on vanilla, and the Candidate
 fails it and each of its test cases. If the prerequisite was an error,
 the Group is an error too.
-A glob that matches nothing fails and lists the Groups that exist. The [Group reference](/reference/groups) lists
-them too.
+A glob that matches nothing fails and lists the Groups that exist. The
+[Group reference](/reference/groups) lists them too.
 
 ## Choose how many repetitions
 
