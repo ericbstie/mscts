@@ -9,6 +9,7 @@ import asyncio
 import json
 from contextlib import suppress
 from dataclasses import dataclass, field
+from typing import cast
 
 import pytest
 
@@ -31,6 +32,7 @@ CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_comma
 AWARD_STATS, CHUNK = "minecraft:award_stats", "minecraft:level_chunk_with_light"
 MARKER = "tellraw @s "
 CONTROL, WALKER = "control", chunks.WALKER
+TELEPORT = f"tp {WALKER} {chunks.FAR_AT}"
 COMMANDS = tree("gamerule", "tick", "tp", "tellraw")
 SET_UP = ("gamerule player_movement_check false", "gamerule respawn_radius 0", "tick freeze")
 UNDO = (
@@ -49,13 +51,15 @@ class ChunksServer:
     """A fake server that joins like vanilla and sends the walker the chunks of its view.
 
     The join's first batch holds chunk (0, 0) (`join_server`); the rest of the view at
-    `distance` follows at once. A marker (`tellraw @s "<token>"`) gets its token back; no
+    `distance` follows at once. Control's teleport of the walker to `chunks.FAR_AT` sends the
+    walker the view around `chunks.FAR`. A marker (`tellraw @s "<token>"`) gets its token back; no
     other command gets feedback. Chunk `withheld` is never sent.
     """
 
     distance: int = chunks.VIEW_DISTANCE
     withheld: Chunk | None = None
     seen: list[Packet] = field(default_factory=list)
+    walker: Peer | None = None
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -66,6 +70,7 @@ class ChunksServer:
     async def _play(self, peer: Peer) -> None:
         hellos = [packet for packet in self.seen if packet.name == "minecraft:hello"]
         if (hellos[-1].fields or {})["name"] == WALKER:
+            self.walker = peer
             await self.send(peer, chunks.view(chunks.SPAWN, self.distance) - {(0, 0)})
         requests = 0
         async for packet in peer.packets():
@@ -79,6 +84,8 @@ class ChunksServer:
                 command = str((packet.fields or {})["command"])
                 if command.startswith(MARKER):
                     await peer.write(chat(peer, json.loads(command.removeprefix(MARKER))))
+                elif command == TELEPORT and self.walker is not None:
+                    await self.send(self.walker, chunks.view(chunks.FAR, self.distance))
 
     async def send(self, peer: Peer, positions: frozenset[Chunk]) -> None:
         """Send a chunk at each of `positions` but `withheld`, in one write."""
@@ -127,6 +134,12 @@ def received(transcript: Transcript, name: str) -> list[Event]:
     ]
 
 
+def position(event: Event) -> Chunk:
+    """Which chunk a `level_chunk_with_light` event carries."""
+    fields = event.packet.fields or {}
+    return cast("int", fields["chunk_x"]), cast("int", fields["chunk_z"])
+
+
 def joined(server: ChunksServer) -> list[str]:
     """The players who joined, in order."""
     return [str((p.fields or {})["name"]) for p in server.seen if p.name == "minecraft:hello"]
@@ -141,11 +154,12 @@ def test_a_view_is_vanillas_chunk_tracking_view() -> None:
 
 
 JOINS = ("chunks/join-view", "chunks/view-distance")
-DISTANCES = {"chunks/join-view": 2, "chunks/view-distance": 5}
+ALL = (*JOINS, "chunks/teleport")
+DISTANCES = {"chunks/join-view": 2, "chunks/view-distance": 5, "chunks/teleport": 2}
 
 
-@pytest.mark.parametrize("group_id", JOINS)
-def test_each_join_group_is_exact_requires_join_basic_and_sets_its_view_distance(
+@pytest.mark.parametrize("group_id", ALL)
+def test_each_group_is_exact_requires_join_basic_and_sets_its_view_distance(
     group_id: str,
 ) -> None:
     group = GROUPS[group_id]
@@ -157,7 +171,7 @@ def test_each_join_group_is_exact_requires_join_basic_and_sets_its_view_distance
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("group_id", JOINS)
+@pytest.mark.parametrize("group_id", ALL)
 async def test_control_sets_the_fixture_leaves_and_undoes_it_after_the_walker_joined(
     group_id: str, settled: list[Endpoint]
 ) -> None:
@@ -211,3 +225,33 @@ async def test_a_chunk_never_sent_fails_the_group_and_control_still_undoes_the_f
             await GROUPS["chunks/join-view"].run(context)
 
     assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, *UNDO]
+
+
+@pytest.mark.asyncio
+async def test_the_teleport_window_holds_control_teleporting_the_walker_once_it_had_its_view() -> (
+    None
+):
+    transcript = await play("chunks/teleport")
+
+    opened, closed = window(transcript)
+    assert [command for t, command in sent(transcript, CONTROL) if opened < t < closed] == [
+        TELEPORT
+    ]
+    arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
+    spawn, far = chunks.view(chunks.SPAWN, 2), chunks.view(chunks.FAR, 2)
+    assert max(arrived[chunk] for chunk in spawn) < opened, "the whole view before the window"
+    assert opened < min(arrived[chunk] for chunk in far)
+    assert max(arrived[chunk] for chunk in far) < closed
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_never_sent_after_the_teleport_fails_the_group_and_control_still_undoes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.2)
+    transcript = Transcript(group_id="chunks/teleport", server="fake")
+    with pytest.raises(TimeoutError):
+        async with playing(ChunksServer(withheld=(23, 3)), transcript) as context:
+            await GROUPS["chunks/teleport"].run(context)
+
+    assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, TELEPORT, *UNDO]

@@ -1,6 +1,6 @@
 """Chunk loading Groups: which chunks the world loads around a player, and which it forgets.
 
-A Bot called `walker` joins, and each window compares the chunks it is sent
+A Bot called `walker` joins or is teleported, and each window compares the chunks it is sent
 (`level_chunk_with_light`), the ones it is told to forget (`forget_level_chunk`) and where its
 view is centred (`set_chunk_cache_center`).
 
@@ -42,7 +42,7 @@ SENT_TIMEOUT_S = 10.0
 """How long the walker waits for its view: `run.GROUP_TIMEOUT_S`, a Bot's bound."""
 
 VIEW_DISTANCE = 2
-"""The view distance of `chunks/join-view`."""
+"""The view distance of `chunks/join-view` and `chunks/teleport`."""
 
 FAR_VIEW_DISTANCE = 5
 """The view distance of `chunks/view-distance`."""
@@ -52,6 +52,12 @@ SPAWN = (0, 0)
 
 SPAWN_AT = "0.5 -60 0.5"
 """Where a joining player is put, which the walker is put back to when the Group ends."""
+
+FAR = (20, 0)
+"""The chunk `chunks/teleport` moves the walker to, 20 chunks east of the spawn."""
+
+FAR_AT = "320.5 -60 0.5"
+"""Where in `FAR` the walker is teleported to."""
 
 _CHUNK = "minecraft:level_chunk_with_light"
 
@@ -144,3 +150,14 @@ async def join_view(context: GroupContext) -> None:
 async def view_distance(context: GroupContext) -> None:
     """The walker joins a server whose view distance is 5, and is sent its view."""
     await _join_view(context, FAR_VIEW_DISTANCE)
+
+
+@group("chunks/teleport", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
+async def teleport(context: GroupContext) -> None:
+    """Control teleports the walker 20 chunks east: it forgets its view and is sent a new one."""
+    async with _walker(context) as walker:
+        await walker.join()
+        await _until_sent(walker, view(SPAWN, VIEW_DISTANCE) - _nearest(SPAWN))
+        async with context.observe(*PACKETS):
+            await context.control.run(f"tp {WALKER} {FAR_AT}")
+            await _until_sent(walker, view(FAR, VIEW_DISTANCE))
