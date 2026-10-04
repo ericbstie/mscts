@@ -24,6 +24,8 @@ _WANTED = {
     "minecraft:consume_effect_type": ["minecraft:b", "minecraft:a"],
     "minecraft:data_component_type": ["minecraft:z", "minecraft:m", "minecraft:a"],
     "minecraft:entity_type": ["minecraft:m", "minecraft:a", "minecraft:z"],
+    "minecraft:item": ["minecraft:z", "minecraft:a", "minecraft:m"],
+    "minecraft:menu": ["minecraft:a", "minecraft:m", "minecraft:z", "minecraft:b"],
     "minecraft:slot_display": ["minecraft:a", "minecraft:z", "minecraft:m"],
 }
 
@@ -58,7 +60,7 @@ def test_registry_names_path_is_the_committed_package_data() -> None:
 
 
 def test_registry_names_json_lists_each_registry_in_protocol_id_order() -> None:
-    other = {"minecraft:item": ["minecraft:stone"]}  # a registry the codec does not need
+    other = {"minecraft:block": ["minecraft:stone"]}  # a registry the codec does not need
     names = json.loads(registry_names_json(_report({**_WANTED, **other})))
     assert names == _WANTED
 
