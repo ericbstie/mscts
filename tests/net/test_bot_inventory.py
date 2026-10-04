@@ -1174,3 +1174,36 @@ def test_the_enchantments_come_from_each_configurations_registry_data() -> None:
     assert replies.inventory.enchantments == ENCHANTMENTS
     answers(replies, registry("minecraft:binding_curse"), finish)
     assert replies.inventory.enchantments == ("minecraft:binding_curse",)
+
+
+def test_a_slot_that_refuses_its_own_stack_gives_it_whole_onto_a_cursor_with_just_the_room() -> (
+    None
+):
+    # Slot.tryRemove: without allowModification, a take short of the whole stack gives nothing,
+    # but 10 stone onto a cursor of 54 is the whole stack.
+    tracker = holding({5: ("stone", 10)}, carried=("stone", 54))
+    assert tracker.click(5, 0, "pickup") == click_sent(5, [(5, None)], hashed("stone", 64))
+
+
+def test_a_double_click_with_a_button_past_right_also_gathers_from_the_last_slot() -> None:
+    # PICKUP_ALL goes forward only for button 0.
+    tracker = holding({10: ("stone", 30), 12: ("stone", 40)}, carried=("stone", 10))
+    changed = [(10, hashed("stone", 16)), (12, None)]
+    sent = click_sent(20, changed, hashed("stone", 64), button=2, mode=6)
+    assert tracker.click(20, 2, "pickup_all") == sent
+
+
+def test_a_cursed_stack_outside_the_armor_slots_is_taken_as_any_other() -> None:
+    # Only ArmorSlot refuses: a cursed helmet in slot 9 is dropped (Q) as any stack is.
+    tracker = holding({})
+    tracker.enchantments = ENCHANTMENTS
+    tracker.follow(*set_slot(0, 9, enchanted(1), state_id=5))
+    assert tracker.click(9, 0, "throw") == click_sent(9, [(9, None)], None, mode=4)
+
+
+def test_a_cursed_armor_slot_swaps_with_neither_the_cursor_nor_a_hotbar_key() -> None:
+    # A plain helmet would fit the head slot, so without mayPickup each would swap.
+    tracker = wearing(1, {36: ("diamond_helmet", 1)}, carried=("diamond_helmet", 1))
+    assert tracker.click(5, 0, "pickup") == click_sent(5, [], hashed("diamond_helmet", 1))
+    sent = click_sent(5, [], hashed("diamond_helmet", 1), mode=2)
+    assert tracker.click(5, 0, "swap") == sent
