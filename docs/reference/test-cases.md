@@ -413,6 +413,20 @@ the same player with another UUID.
 Where the server puts the player, and which way it faces. The client
 moves the player there and confirms it.
 
+## `player_position.flags`
+
+**Relative player position parts**
+
+Which parts of the position and rotation the client adds to its own,
+rather than takes as they are. When vanilla sends a player back it sets
+none, so the client takes the whole position as given.
+
+## `player_position.pitch`
+
+**Player pitch**
+
+How far up or down the server makes the player look, in degrees.
+
 ## `player_position.teleport_id`
 
 **Teleport number**
@@ -421,6 +435,27 @@ The number the client sends back to confirm a teleport. The server
 counts its teleports of the player up from 1, so a different number
 means one server sent the player back, or teleported it, more often
 than the other.
+
+## `player_position.velocity_x`
+
+**Player velocity x**
+
+The player's speed along x after the teleport. When vanilla sends a
+player back it sends 0, so the player stops.
+
+## `player_position.velocity_y`
+
+**Player velocity y**
+
+The player's speed along y after the teleport. When vanilla sends a
+player back it sends 0, so the player stops.
+
+## `player_position.velocity_z`
+
+**Player velocity z**
+
+The player's speed along z after the teleport. When vanilla sends a
+player back it sends 0, so the player stops.
 
 ## `player_position.x`
 
@@ -434,6 +469,12 @@ a move, it is where the server still has the player.
 **Player position y**
 
 The y coordinate the server puts the player at, the height of its feet.
+
+## `player_position.yaw`
+
+**Player yaw**
+
+Which way the server turns the player, in degrees.
 
 ## `player_position.z`
 
