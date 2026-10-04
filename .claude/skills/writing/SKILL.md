@@ -86,6 +86,16 @@ Any session that writes user-facing text follows this skill all the same.
   lines that name the same thing ("Running tests against pumpkin" then
   "Candidate: pumpkin …"). Keep the natural flow: this is not about
   cutting filler words or packing the text densely.
+- **Every sentence is complete and meaningful.** No fragments ("Almost
+  all of it is one session"): if the fact matters, write it as a full
+  sentence; if a sentence carries no meaning, drop it.
+- **No label for what is already shown.** No heading or lead-in that
+  only names what follows: "What came out." over the results, "Graph"
+  over a graph, "Summary" over a summary.
+- **Keep it minimal, and let it flow.** Remove every redundant sentence;
+  blank space is fine. Don't condense the phrasing to get there. Vary
+  sentence length, some long and some short, and don't stress or
+  dramatise anything.
 - **Never say what you're about to say; just say it.** No sentence
   that announces what a page or section will do ("This page takes you
   from …", "This page lists them."). Start with the content itself.
@@ -94,6 +104,23 @@ Any session that writes user-facing text follows this skill all the same.
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Token spend infographic (outside the docs site)
+
+- Before: a section headed "What came out."; a lead-in "Every session
+  …, added up from …."; and "Almost all of it is one session."
+- After: the heading and the lead-in removed; the last kept, as a
+  complete sentence.
+- Why: "What came out." is "redundant and sounds like AI slop". The
+  lead-in gives "the vibe of a passive phrasing and/or a sentence
+  fragment" and "doesn't really convey any meaning". "Almost all of it
+  is one session" is meaningful but "an incomplete sentence". "Make sure
+  every sentence is complete and meaningful." Earlier in that thread:
+  remove all redundant text, "it's totally fine if parts of the page is
+  blank"; don't label what is shown; "do not condense the prose
+  phrasing"; "vary sentence lengths, some long some short"; "avoid
+  stressing or overdramatising anything. Keep it to the point and flow
+  naturally."
 
 ### Getting started, the opening
 
