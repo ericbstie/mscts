@@ -63,7 +63,12 @@ type _MaskPath = tuple[_MaskStep, ...]
 
 
 class Outcome(StrEnum):
-    """What a Verdict says about a Group."""
+    """What a Verdict says about a Group.
+
+    A Run makes no `blocked` Verdict any more: it refuses a Group whose prerequisites
+    are not listed before it (`run.run_results`). `blocked` stays for a report.json
+    written before, and for `run.prerequisite_verdict` called on its own.
+    """
 
     MATCH = "match"
     MISMATCH = "mismatch"

@@ -1469,8 +1469,8 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # given; a Group is not played on the Candidate unless its prerequisites passed
     # earlier in the same repetition (prerequisite_verdict). #285: if that is a
     # `mismatch`, it is played on the Reference alone, as for #266 below, and lists that
-    # play's test cases (the Report fails them); an `error` or `blocked` one is played on
-    # neither side.
+    # play's test cases (the Report fails them); an `error` one is played on neither side.
+    # A Run makes no `blocked` Verdict: each prerequisite must be listed before (below).
     # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
@@ -1509,8 +1509,10 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Reference raising, or that self-comparison raising, is `error` as in judge. Its
     # Measurements and `elapsed_s` are the Reference's play; no Transcripts are kept.
     # NotImplementedError for a statistical Group (M6b); ValueError for one
-    # listed twice, or whose `spec` does not give an Attached side's spec (host and port
-    # aside: it would run against the wrong config), before anything starts; RunnerError
+    # listed twice, listed before a Group it requires or requiring one not listed (resolve
+    # orders them; review B LOW-R2), or whose `spec` does not give an Attached side's spec
+    # (host and port aside: it would run against the wrong config), before anything
+    # starts; RunnerError
     # if an Instance cannot start.
 async def selfcheck(group_ids: Sequence[str], *, reference: Server, workdir: Path,
                     repeat: int = 20, attached: Attached | None = None) -> list[Verdict]: ...
@@ -2290,8 +2292,9 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # #10: verbose adds the Reference's installed version, Target and repetitions at the top, distinct
 # pairs of actual values directly under each line that differs, and total time per Group
 # across repetitions (play both sides + Comparison; excludes startup/shutdown).
-# Blocked Groups say "not played" (one played on the Reference alone shows that play's
-# time, #266, #285); older results without durations say "not recorded".
+# Blocked Groups (only in an older report.json) say "not played"; one played on the
+# Reference alone shows that play's time (#266, #285); older results without durations
+# say "not recorded".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;

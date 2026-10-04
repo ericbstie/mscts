@@ -53,11 +53,11 @@ rounded down to one decimal place, so only a Run where every scored test
 case passes shows 100%. If no test case was scored, the totals line has no
 score.
 
-The totals line counts the lines that passed and failed, and how many of
-the failed lines were not tested, then gives the score, such as `0 passed, 3
-failed (1 not tested). (0%)`. Errors are not scored, so they get a line
-of their own after it, such as `1 error (not scored)`. [Skipped or failed
-Groups](#skipped-or-failed-groups) says which lines count how.
+The totals line counts the lines that passed and failed, then gives the
+score, such as `0 passed, 3 failed. (0%)`. Errors are not scored, so
+they get a line of their own after it, such as `1 error (not scored)`.
+[Skipped or failed Groups](#skipped-or-failed-groups) says which lines
+count how.
 
 ## Test cases
 
@@ -139,10 +139,11 @@ passed. A Group passes when each of its test cases passes and it has no
 line of its own, so one that differs only in network traffic passes. If
 the Candidate failed a required Group, mscts still plays this one on
 vanilla, and it fails as `Candidate failed`, as in the example. If a
-required Group was an `Error`, this one is an `Error` too. If a required
-Group was not run, mscts plays this one on neither server: `Not tested`
-means that. The count in brackets on the totals line counts these
-lines. No shipped Group requires another yet.
+required Group was an `Error`, this one is an `Error` too. mscts always
+runs a required Group first. `Not tested`, and the count in brackets on
+the totals line, appear only when mscts reads a `report.json` written
+before that: a required Group was not run, and this one was played on
+neither server. No shipped Group requires another yet.
 
 `Error` means mscts or vanilla failed. `Candidate failed` means the
 Candidate broke the protocol, sent a frame that did not decode, sent a

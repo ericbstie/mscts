@@ -82,7 +82,7 @@ async def test_a_candidate_that_differs_fails_what_requires_it(
 
 
 @pytest.mark.asyncio
-async def test_a_group_blocked_by_the_candidate_fails_each_test_case_of_the_references_play(
+async def test_a_group_whose_prerequisite_the_candidate_failed_fails_vanillas_test_cases(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
     # #285, audit M1: sending every value of PING wrong fails each test case of the
@@ -166,16 +166,18 @@ async def test_an_identical_candidate_scores_full_marks_when_vanilla_fails_a_pre
 
 
 @pytest.mark.asyncio
-async def test_a_group_whose_prerequisite_was_not_run_is_played_on_neither_side(
-    fake_server: MakeServer, tmp_path: Path
+@pytest.mark.parametrize("groups", [[PING], [PING, BASIC]], ids=["missing", "after"])
+async def test_a_group_whose_prerequisite_is_not_listed_before_it_is_refused(
+    groups: list[Group], fake_server: MakeServer, tmp_path: Path
 ) -> None:
-    result = await run_results([PING], fake_server("one"), fake_server("two"), workdir=tmp_path)
+    # Review B LOW-R2: the caller's mistake, which would fail a line of an identical
+    # Candidate; `group.resolve` lists prerequisites first for the CLI and the Self-check.
+    reference, candidate = fake_server("one"), fake_server("two")
 
-    [ping] = result.results
-    assert ping.verdicts == (
-        Verdict(PING.id, Outcome.BLOCKED, detail="prerequisite status/basic was not run"),
-    )
-    assert ping.elapsed_s == (0.0,)
+    with pytest.raises(ValueError, match="status/ping requires status/basic"):
+        await run_results(groups, reference, candidate, workdir=tmp_path)
+
+    assert _adapter(reference).prepared == _adapter(candidate).prepared == [], "none started"
 
 
 @pytest.mark.asyncio
@@ -208,7 +210,7 @@ async def test_a_reference_error_in_one_repetition_fails_no_test_case_of_what_re
 
 
 @pytest.mark.asyncio
-async def test_only_the_reference_is_waited_on_for_a_group_blocked_by_the_candidate(
+async def test_only_the_reference_is_waited_on_for_a_group_whose_prerequisite_the_candidate_failed(
     monkeypatch: pytest.MonkeyPatch, fake_server: MakeServer, tmp_path: Path
 ) -> None:
     # Whatever the Candidate still has online, it is not played: waiting on it would

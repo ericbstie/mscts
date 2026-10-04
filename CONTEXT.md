@@ -161,11 +161,12 @@ need is missing, add it here in the same commit that introduces it.
   network traffic only: gameplay if any of its Divergences is. _Avoid_:
   check, test (for one compared field).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
-  prerequisite Group was not run, or is `blocked` itself, so the Group
-  was played on neither server), or `error` (the harness failed, the Reference itself could
-  not run the Group, or a prerequisite is an `error`). A prerequisite
-  passes if it is a `match`, or a `mismatch` only in network traffic.
-  A Group that fails on
+  prerequisite Group was not run, so the Group was played on neither
+  server; a Run refuses that now, so only an older report.json has it),
+  or `error` (the harness failed, the Reference itself could not run the
+  Group, or a prerequisite is an `error`). A prerequisite passes if it
+  is a `match`, or a `mismatch` only in network traffic. A Group that
+  fails on
   the Candidate and not on the Reference is a `mismatch`, led by a
   `failed` Divergence that says what happened, never an `error`. That
   holds whatever the failure: a frame that does not decode, an answer
@@ -197,9 +198,9 @@ need is missing, add it here in the same commit that introduces it.
   A Group whose prerequisite the Candidate failed is still played on the
   Reference, so its test cases are that play's. A blocked Group is played
   on neither server, and fails no test case. One whose prerequisite is
-  an `error` is an `error` too, so an identical Candidate scores 100%
-  whatever vanilla does (audit L2). A Group's own line fails for a
-  blocked Group or a Candidate failure; an `error` is not scored. The
+  an `error` is an `error` too, so vanilla failing a prerequisite costs
+  the Candidate nothing. A Group's own line fails for a blocked Group or
+  a Candidate failure; an `error` is not scored. The
   score is rounded down, so only a Run where every scored line passes
   scores 100%.
 

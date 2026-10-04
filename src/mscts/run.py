@@ -337,10 +337,11 @@ def prerequisite_verdict(group: Group, verdicts: Mapping[str, Verdict]) -> Verdi
     not pass, the one that decides is named (review B):
 
     - One is an `error`: `group` is an `error` too, played on neither side. That is the
-      Reference's or mscts's fault, which the Score leaves out, so an identical Candidate
-      still scores 100% (audit L2).
+      Reference's or mscts's fault, which the Score leaves out, so vanilla failing a
+      prerequisite costs the Candidate nothing (audit L2).
     - One was not run, or is `blocked` itself: `group` is `blocked`, played on neither
-      side, and fails only its own line.
+      side, and fails only its own line. `run_results` never gets here: it refuses a
+      Group whose prerequisites are not listed before it (`_check`).
     - Each is a `mismatch`, the Candidate's failure: `group` is a `mismatch` led by a
       `failed` Divergence naming it, as when the Candidate is left frozen (#266). The Run
       still plays it on the Reference and adds that play's test cases, which the Report
@@ -419,10 +420,10 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     until the Run ends, so off by default); and for each side its `instance.startup`
     Measurements and the version its status_response named. A Group is not played on
     the Candidate unless each of its prerequisites passed earlier in the same repetition
-    (so list them first; `prerequisite_verdict` says what it is then). If the Candidate
-    failed each that did not pass, it is still played on the Reference, and its
-    `mismatch` lists that play's test cases, which the Report fails (#285); otherwise
-    it is an `error` or `blocked`, played on neither side, and measures nothing.
+    (`prerequisite_verdict` says what it is then). If the Candidate failed each that did
+    not pass, it is still played on the Reference, and its `mismatch` lists that play's
+    test cases, which the Report fails (#285); otherwise it is an `error`, played on
+    neither side, and measures nothing. A Run makes no `blocked` Verdict.
 
     A Server side gets one Instance per distinct ServerSpec the Groups' `spec` make,
     launched in its own directory under `workdir` at an Endpoint of its own
@@ -433,8 +434,10 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
 
     Raises:
         NotImplementedError: A Group is `statistical`, which needs M6b.
-        ValueError: A Group is listed twice, or needs a ServerSpec an Attached side
-            was not launched from. Nothing was started.
+        ValueError: A Group is listed twice, or before a Group it requires, or a Group
+            it requires is not listed (`mscts.group.resolve` adds and orders them), or a
+            Group needs a ServerSpec an Attached side was not launched from. Nothing was
+            started.
         RunnerError: An Instance could not be launched or did not become ready.
     """
     _check(groups, (reference, candidate))
@@ -522,6 +525,13 @@ def _check(groups: Sequence[Group], sides: Sequence[Side]) -> None:
         if group.id in seen:
             msg = f"{group.id} is listed twice"
             raise ValueError(msg)
+        for prerequisite in group.requires:
+            if prerequisite not in seen:
+                msg = (
+                    f"{group.id} requires {prerequisite}, which is not listed before it "
+                    "(mscts.group.resolve lists each Group's prerequisites first)"
+                )
+                raise ValueError(msg)
         seen.add(group.id)
         for side in sides:
             if isinstance(side, Attached) and _spec_key(group.spec) != _spec_key(side.spec):

@@ -157,12 +157,16 @@ If a prerequisite was not run, or is `blocked` itself, the Group is
 that fails, as before. That holds per repetition: a repetition blocked
 this way lists no test cases and fails none, even when the Candidate
 matched the Group in another repetition (review A). `blocked` and `Not
-tested` now mean only this.
+tested` now mean only this. A Run cannot reach it any more: `run_results`
+refuses a Group whose prerequisites are not listed before it, which
+would fail a line of an identical Candidate for the caller's mistake
+(the CLI and the Self-check order them with `resolve`). The Outcome
+stays, for a report.json written before.
 
 If a prerequisite is an `error`, the Group is an `error` too, and its
 line reads `Error: prerequisite status/basic was error`. It is played
 on neither side and is not scored. That was vanilla's or mscts's fault,
-so an identical Candidate still scores 100% (audit 2026-10-04, L2). The
+so it costs the Candidate nothing (audit 2026-10-04, L2). The
 prerequisite that decides is the one named: an `error` before one not
 run or `blocked`, and either before one the Candidate failed (review B).
 

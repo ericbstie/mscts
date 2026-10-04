@@ -109,7 +109,7 @@ def test_a_network_traffic_difference_passes_and_says_so() -> None:
 def test_a_network_traffic_difference_fails_if_network_traffic_does_not_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # The switch lives with Verdict, where run.blocked reads it too (#221).
+    # The switch lives with Verdict, where run.prerequisite_verdict reads it too (#221).
     monkeypatch.setattr(mscts.compare, "NETWORK_TRAFFIC_ONLY_PASSES", False)
     report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
     lines = report_lines(report)
@@ -297,10 +297,12 @@ def test_verbose_group_times_total_all_repetitions_and_mark_blocked_groups() -> 
     assert "How to read this" not in text
 
 
-def test_verbose_group_times_show_the_reference_play_of_a_blocked_group() -> None:
-    # #285: a Group blocked by a prerequisite the Candidate failed is played on the Reference.
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
-    played = replace(_result(blocked), elapsed_s=(0.5,))
+def test_verbose_group_times_show_a_play_on_vanilla_alone() -> None:
+    # #266, #285: the Candidate failed a prerequisite, so only vanilla played the Group.
+    what = "prerequisite x was mismatch"
+    failed = Divergence("", 0, "failed", "", None, ABSENT, what, "")
+    unplayed = Verdict("join/basic", Outcome.MISMATCH, (failed,), f"the Candidate failed: {what}")
+    played = replace(_result(unplayed), elapsed_s=(0.5,))
     text = render_text(_report(played), verbose=True)
     assert "Group times\n  join/basic 0.5 s\n" in text, text
 

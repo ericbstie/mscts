@@ -201,7 +201,7 @@ async def test_a_command_missing_with_a_value_the_comparison_cannot_take_names_t
     assert verdict.detail == "the Candidate failed: missing /tick"
 
 
-def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:
+def test_a_group_whose_prerequisite_matched_gets_no_verdict_of_its_prerequisites() -> None:
     assert (
         prerequisite_verdict(PING, {"status/basic": Verdict("status/basic", Outcome.MATCH)}) is None
     )

@@ -486,9 +486,7 @@ def _sent(value: object) -> _Line:
 def _group_times(results: Sequence[GroupResult]) -> tuple[str, ...]:
     times = []
     for result in results:
-        if any(result.elapsed_s):  # a Group the Candidate did not play may be played on vanilla
-            duration = f"{_seconds(sum(result.elapsed_s))} s"
-        elif all(verdict.outcome is Outcome.BLOCKED for verdict in result.verdicts):
+        if all(verdict.outcome is Outcome.BLOCKED for verdict in result.verdicts):
             duration = "not played"
         elif result.elapsed_s:
             duration = f"{_seconds(sum(result.elapsed_s))} s"
