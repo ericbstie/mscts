@@ -117,9 +117,10 @@ floating in the air for too long. When it refuses a move, it sends the player ba
 only these two packets.
 
 A Bot does not simulate physics: each Group gives every position the Bot reports. Control moves
-the Bot to where each case starts with `/tp`. The Bots join with the check that repeats a join's
-first position turned off (`gamerule player_movement_check false`), and it is turned on again as
-soon as they have joined. A repeat would change the teleport number of every later teleport.
+the Bot to where each case starts with `/tp`. The Bots join with vanilla's speed check off
+(`gamerule player_movement_check false`), and it is turned on again as soon as they have joined.
+During a join, that check can send a player back to where it already is, which would change the
+teleport number of every later teleport.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
@@ -129,8 +130,9 @@ soon as they have joined. A repeat would change the teleport number of every lat
 | `movement/before-teleport` | tick-exact | none | A Bot walks into a wall, then sends three more moves before it accepts the teleport the server answers with. | none |
 
 Vanilla checks a move's speed only while the world runs normally, not while it is frozen. So
-`movement/too-fast` runs in a running world, and so does `movement/flying`: vanilla counts the
-ticks a player floats whether the world is frozen or not.
+`movement/too-fast` runs in a running world. `movement/flying` also runs in a running world.
+Freezing it would not change when vanilla kicks, because vanilla counts the ticks a player floats
+either way.
 
 The moves of one tick are sent back to back, and the server must take them in one tick. Vanilla
 reads what has arrived at the start of each tick, so if a tick starts while the moves are still
