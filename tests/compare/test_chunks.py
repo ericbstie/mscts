@@ -929,8 +929,8 @@ def test_a_packet_whose_handling_reads_no_chunk_may_come_before_or_after_the_fir
     assert compare(played(reference), played(candidate), []).gameplay == ()
 
 
-def _data(index: int) -> Packet:
-    entries = [{"index": index, "serializer": "float", "value": 20.0}]
+def _data(*indices: int) -> Packet:
+    entries = [{"index": index, "serializer": "float", "value": 20.0} for index in indices]
     return packet("minecraft:set_entity_data", fields={"entity_id": 1, "entries": entries})
 
 
@@ -955,10 +955,21 @@ def test_one_run_on_one_side_matches_runs_split_by_a_packet_that_reads_no_chunk(
     assert compare(reference, candidate, []).gameplay == ()
 
 
-def test_entity_data_with_a_sleeping_position_keeps_the_chunks_in_order() -> None:
+@pytest.mark.parametrize(
+    "between",
+    [
+        _data(14),
+        # A player lying down: its pose and its sleeping position come together (review C, L-C4).
+        _data(6, 14),
+        # Data the codec could not read: what it holds is unknown.
+        packet("minecraft:set_entity_data", b"\x01"),
+    ],
+    ids=["sleeping position", "pose and sleeping position", "undecodable"],
+)
+def test_entity_data_that_may_hold_a_sleeping_position_keeps_the_chunks_in_order(
+    between: Packet,
+) -> None:
     # A sleeping entity's position is set from the bed block there (LivingEntity.setPosToBed).
-    between = _data(14)
-
     verdict = compare(_batch_of(LIT_A, between, LIT_B), _batch_of(LIT_B, between, LIT_A), [])
 
     assert verdict.gameplay
