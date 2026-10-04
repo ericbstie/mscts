@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
 
+import mscts.compare
 from mscts.case_titles import TITLES
 from mscts.compare import ABSENT, TICK_PATH, Divergence, Observability, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
@@ -122,10 +123,6 @@ class Totals:
         return self.passed / self.scored if self.scored else None
 
 
-NETWORK_TRAFFIC_ONLY_PASSES: bool = True
-"""Whether a test case that differs only in network traffic passes (ADR-0007)."""
-
-
 def report_lines(report: Report) -> tuple[Line, ...]:
     """Each test case of each Group, in the order played, then the Group's own line if any."""
     results: list[Line] = []
@@ -186,7 +183,7 @@ def _case_result(group_id: str, name: str, traffic: set[bool]) -> CaseResult:
     if not traffic:
         return CaseResult(group_id, name, LineResult.PASS)
     if traffic == {True}:
-        result = LineResult.PASS if NETWORK_TRAFFIC_ONLY_PASSES else LineResult.FAIL
+        result = LineResult.PASS if mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES else LineResult.FAIL
         return CaseResult(group_id, name, result, network_traffic_only=True)
     return CaseResult(group_id, name, LineResult.FAIL)
 

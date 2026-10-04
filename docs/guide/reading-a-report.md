@@ -130,10 +130,11 @@ Score: 0% (0 of 3 test cases pass)
 Took 41 s
 ```
 
-`Not tested` means a prerequisite did not match, or the Candidate lacks a
-command the Group needs, such as `/tick`. A prerequisite that differs only
-in network traffic does not match here either, even though its test cases
-pass. No shipped Group has a prerequisite yet. `Error` means mscts or vanilla
+`Not tested` means a prerequisite did not pass, or the Candidate lacks a
+command the Group needs, such as `/tick`. A prerequisite passes when each
+of its test cases passes and it has no line of its own. So a prerequisite
+that differs only in network traffic passes. No shipped Group has a
+prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, closed the connection, did not answer in time,
 or still had players online from the Group before. If this happens while

@@ -9,7 +9,8 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
 
-import mscts.groups  # noqa: F401 - importing it registers the shipped Groups
+import mscts.compare
+import mscts.groups  # importing it registers the shipped Groups
 from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
@@ -283,17 +284,37 @@ def judge(
 
 
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
-    """A `blocked` Verdict if a prerequisite of `group` has no `match` in `verdicts`."""
+    """A `blocked` Verdict if a prerequisite of `group` did not pass in `verdicts`.
+
+    A prerequisite passed if it is a `match`, or a `mismatch` whose Divergences are all
+    network traffic, which the Score counts as passing (ADR-0007, #221).
+    """
     for prerequisite in group.requires:
         verdict = verdicts.get(prerequisite)
         if verdict is None:
             detail = f"prerequisite {prerequisite} was not run"
-        elif verdict.outcome is not Outcome.MATCH:
+        elif not _passed(verdict):
             detail = f"prerequisite {prerequisite} was {verdict.outcome}"
         else:
             continue
         return Verdict(group_id=group.id, outcome=Outcome.BLOCKED, detail=detail)
     return None
+
+
+def _passed(verdict: Verdict) -> bool:
+    """Whether `verdict` is a `match`, or a `mismatch` only in network traffic (ADR-0007).
+
+    The second only while network traffic passes (`NETWORK_TRAFFIC_ONLY_PASSES`), as the
+    Score decides it.
+    """
+    if verdict.outcome is Outcome.MATCH:
+        return True
+    return (
+        mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES
+        and verdict.outcome is Outcome.MISMATCH
+        and bool(verdict.divergences)
+        and not verdict.gameplay
+    )
 
 
 async def run(
@@ -329,8 +350,8 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     Transcripts of each repetition that did not match (`GroupResult.transcripts`, kept
     until the Run ends, so off by default); and for each side its `instance.startup`
     Measurements and the version its status_response named. A Group is `blocked`,
-    and not played (so it measures nothing), unless each of its prerequisites matched
-    earlier in the same repetition (so list them first).
+    and not played (so it measures nothing), unless each of its prerequisites passed (see
+    `blocked`) earlier in the same repetition (so list them first).
 
     A Server side gets one Instance per distinct ServerSpec the Groups' `spec` make,
     launched in its own directory under `workdir` at an Endpoint of its own

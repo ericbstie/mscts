@@ -11,6 +11,7 @@ from mscts.codec.packets import Codec, Packet, State
 from mscts.compare import (
     ABSENT,
     Divergence,
+    DivergenceKind,
     Mask,
     Observability,
     Outcome,
@@ -222,3 +223,22 @@ def test_gameplay_divergences_come_before_network_traffic_ones_in_a_packet() -> 
         ("z", GAMEPLAY),
         ("json_response", NETWORK_TRAFFIC),
     ]
+
+
+@pytest.mark.parametrize("kind", ["bot", "failed"])
+def test_a_divergence_about_the_whole_group_is_never_network_traffic(
+    kind: DivergenceKind,
+) -> None:
+    # #221: such a Divergence gives the Group a line of its own, which always fails.
+    with pytest.raises(ValueError, match=f"a {kind} Divergence is gameplay"):
+        Divergence(
+            bot="alice",
+            index=0,
+            kind=kind,
+            packet="",
+            path=None,
+            reference=ABSENT,
+            candidate="kicked",
+            test_case="",
+            observability=NETWORK_TRAFFIC,
+        )

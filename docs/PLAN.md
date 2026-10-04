@@ -1227,6 +1227,8 @@ class Outcome(StrEnum): MATCH, MISMATCH, BLOCKED, ERROR
 
 class Observability(StrEnum):       # ADR-0007; values "gameplay", "network traffic"
     GAMEPLAY, NETWORK_TRAFFIC
+NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied: the Report's
+                                    # test cases and Score, and run.blocked (#221), read it
 
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
 MASKED = "<masked>"                 # what a field Mask shows in place of a value (not None),
@@ -1251,7 +1253,8 @@ class Divergence:
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
     #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
-    #   so every bot and failed one (run.judge's `failed` keeps the default).
+    #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
+    #   raises ValueError for a bot or failed one that is network traffic, #221).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
     #   candidate are its Event counts, ABSENT on the other side. Its stream's Divergences
     #   follow, against an empty stream. (A Bot that only sent would otherwise go unseen.)
@@ -1434,11 +1437,12 @@ def judge(group: Group, reference: Transcript | GroupError,
     # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
     # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
-    # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` matched
+    # blocked ("prerequisite X was mismatch" / "was not run") unless every `requires` passed:
+    # a `match`, or a `mismatch` with Divergences, none gameplay (ADR-0007, #221)
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
               workdir: Path, repeat: int = 1) -> list[Verdict]: ...
     # one Verdict per Group per repetition, repetition after repetition, in the order
-    # given; a Group is blocked (not played) unless its prerequisites matched earlier in
+    # given; a Group is blocked (not played) unless its prerequisites passed earlier in
     # the same repetition. One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
@@ -2182,7 +2186,6 @@ type Line = CaseResult | GroupLine
 class Totals:                       # failed counts not_tested; errors are not scored
     passed: int; failed: int; not_tested: int; errors: int
     # scored = passed + failed; score = passed / scored, or None if 0
-NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied
 def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of

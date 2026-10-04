@@ -364,6 +364,15 @@ class Observability(StrEnum):
     NETWORK_TRAFFIC = "network traffic"
 
 
+NETWORK_TRAFFIC_ONLY_PASSES: bool = True
+"""Whether a test case that differs only in network traffic passes (ADR-0007).
+
+The one place that decides it: the Report's test cases and Score (`report`), and
+whether a prerequisite passed (`run.blocked`), both read it here, as
+`mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES`.
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class Divergence:
     """One difference a Comparison found for one Bot.
@@ -416,6 +425,16 @@ class Divergence:
     candidate: object
     test_case: str
     observability: Observability = Observability.GAMEPLAY
+
+    def __post_init__(self) -> None:
+        """Refuse a `bot` or `failed` Divergence that is network traffic.
+
+        It is about the whole Group and gives it a line of its own, which always fails;
+        a prerequisite passes only without one (`run.blocked`, #221).
+        """
+        if self.kind in {"bot", "failed"} and self.observability is not Observability.GAMEPLAY:
+            msg = f"a {self.kind} Divergence is gameplay, not {self.observability}"
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)

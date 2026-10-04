@@ -237,7 +237,8 @@ network traffic only: gameplay if any of its Divergences is.
 ### Verdict
 
 `match`, `mismatch` (has Divergences), `blocked` (a
-prerequisite Group did not match), or `error` (the harness failed, or
+prerequisite Group did not pass: it is not a `match`, nor a `mismatch`
+only in network traffic), or `error` (the harness failed, or
 the Reference itself could not run the Group). A Group that fails on
 the Candidate and not on the Reference is a `mismatch`, led by a
 `failed` Divergence that says what happened, never an `error`. That

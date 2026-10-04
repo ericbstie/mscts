@@ -55,8 +55,9 @@ option adds the values under each line that differs. `report.md` and
 `report.json` carry the same lines and totals.
 
 `_LISTED` in `report.py` is the one place that decides which lines are
-listed, and `NETWORK_TRAFFIC_ONLY_PASSES` the one place that applies
-ADR-0007's rule.
+listed, and `NETWORK_TRAFFIC_ONLY_PASSES` in `compare.py` the one place
+that applies ADR-0007's rule. The Report and the check of whether a
+prerequisite passed (#221) both read it.
 
 ## Consequences
 
