@@ -68,7 +68,10 @@ previous Group, or sends a value that makes the Group fail where it did not
 fail on vanilla, the Verdict is `mismatch`, led by a `failed` Divergence that says what
 happened. It is never `error`.
 The Report's score leaves `error` out, so a Candidate cannot score
-better by crashing.
+better by crashing. If the Candidate still has players online, or its
+world was left frozen, mscts plays the Group on vanilla only. The Report
+then fails each test case of vanilla's play, so a Candidate cannot score
+better by skipping a Group either.
 
 ## Gameplay and network traffic differences
 

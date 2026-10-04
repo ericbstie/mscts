@@ -247,8 +247,10 @@ that breaks the protocol, no answer in time, a connection closed, reset
 or refused, players still online from the previous Group, or a value the
 Group does not expect. The Score leaves `error` out, so a
 Candidate must never score better by failing. The same holds while
-mscts waits for the previous Group's players to leave; it then does
-not play the Group.
+mscts waits for the previous Group's players to leave, and after a
+Group left the Candidate's world frozen. mscts then plays the Group on
+the Reference alone, and the Candidate fails each test case of that
+play (#266).
 
 ### Self-check
 

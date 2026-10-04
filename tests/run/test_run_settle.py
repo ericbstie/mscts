@@ -19,8 +19,10 @@ from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint
-from mscts.run import run, run_results
+from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
+from mscts.run import Attached, GroupResult, run, run_results
 from tests.run.occupancy import Occupancy, attached, named, never_answer
+from tests.test_report import _report
 
 DEADLINE_S = 0.3
 """The deadline the tests that wait for it give a Run: short, so they stay fast."""
@@ -76,10 +78,10 @@ SAID = "2 players still online after waiting 0.3 s: 'watcher', 'control'"
 
 async def _play_with_stuck(
     stuck: tuple[str, ...], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> tuple[Verdict, list[int]]:
+) -> tuple[Verdict, list[str]]:
     """Run a Group on two fake servers, those in `stuck` never emptying.
 
-    Returns the Group's Verdict, and the ports it played on.
+    Returns the Group's Verdict, and the sides it played on, in order.
     """
     monkeypatch.setattr(run_module, "SETTLE_TIMEOUT_S", DEADLINE_S)
     sides = {
@@ -88,15 +90,16 @@ async def _play_with_stuck(
         else Occupancy(online=(0,))
         for role in ("Reference", "Candidate")
     }
-    played: list[int] = []
+    played: list[str] = []
 
     async def script(context: GroupContext) -> None:
-        played.append(context.endpoint.port)
+        played.append(names[context.endpoint.port])
 
     async with (
         attached("one", sides["Reference"].handler()) as one,
         attached("two", sides["Candidate"].handler()) as two,
     ):
+        names = {one.endpoint.port: "Reference", two.endpoint.port: "Candidate"}
         [verdict] = await run(
             [Group(id="test/settle", run=script)], one, two, workdir=tmp_path / "run"
         )
@@ -138,7 +141,88 @@ async def test_a_candidate_that_never_empties_gives_a_mismatch_with_a_failed_div
             test_case="",
         ),
     )
-    assert played == []
+    assert played == ["Reference"], "the Reference is played, the Candidate is not (#266)"
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)  # the deadline is what ends the wait: a hang is the failure
+async def test_a_candidate_that_never_empties_fails_each_test_case_of_the_references_play(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # #266: sending every value wrong fails each test case of the Reference's play, so
+    # leaving a player online must fail each of them too, and the Group's own line.
+    monkeypatch.setattr(run_module, "SETTLE_TIMEOUT_S", DEADLINE_S)
+    stuck = Occupancy(online=(2,), sample=named("watcher", "control"))
+    group = Group(id="status/basic", run=status.basic)
+    async with (
+        attached("one", Occupancy(online=(0,)).handler()) as one,
+        attached("two", stuck.handler()) as two,
+    ):
+        [verdict] = await run([group], one, two, workdir=tmp_path / "run")
+        own = await _reference_alone_test_cases(group, one, tmp_path / "own")
+
+    assert verdict.outcome is Outcome.MISMATCH
+    assert verdict.test_cases == own
+    lines = report_lines(_report(GroupResult(group.id, (verdict,), (), ())))
+    assert lines[-1] == GroupLine(group.id, LineResult.FAIL, f"Candidate failed: {SAID}")
+    assert totals(lines) == Totals(passed=0, failed=len(own) + 1, not_tested=0, errors=0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)  # the deadline is what ends the wait: a hang is the failure
+async def test_a_reference_that_fails_while_the_candidate_never_empties_is_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(run_module, "SETTLE_TIMEOUT_S", DEADLINE_S)
+
+    async def fails(context: GroupContext) -> None:
+        del context
+        msg = "vanilla stopped"
+        raise RuntimeError(msg)
+
+    async with (
+        attached("one", Occupancy(online=(0,)).handler()) as one,
+        attached("two", Occupancy(online=(2,)).handler()) as two,
+    ):
+        [verdict] = await run([Group(id="test/fails", run=fails)], one, two, workdir=tmp_path)
+
+    assert verdict == Verdict(
+        "test/fails", Outcome.ERROR, detail="the Reference failed: RuntimeError: vanilla stopped"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)  # the deadline is what ends the wait: a hang is the failure
+async def test_a_reference_the_comparison_cannot_take_while_the_candidate_never_empties_is_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(run_module, "SETTLE_TIMEOUT_S", DEADLINE_S)
+
+    def raises(*_: object) -> Verdict:
+        msg = "a harness bug"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(run_module, "compare", raises)
+    async with (
+        attached("one", Occupancy(online=(0,)).handler()) as one,
+        attached("two", Occupancy(online=(2,)).handler()) as two,
+    ):
+        [verdict] = await run(
+            [Group(id="status/basic", run=status.basic)], one, two, workdir=tmp_path
+        )
+
+    detail = "the Comparison failed: ValueError: a harness bug"
+    assert verdict == Verdict("status/basic", Outcome.ERROR, detail=detail)
+
+
+async def _reference_alone_test_cases(
+    group: Group, reference: Attached, workdir: Path
+) -> tuple[str, ...]:
+    """The test cases of `group` played on `reference` against itself."""
+    [verdict] = await run([group], reference, reference, workdir=workdir)
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert verdict.test_cases, "the Group must have test cases for this to show anything"
+    return verdict.test_cases
 
 
 RAISED = "the wait for no player online failed: RuntimeError: an unexpected failure"
@@ -232,6 +316,7 @@ async def test_a_candidate_whose_settle_poll_fails_gets_a_mismatch_and_the_run_g
     assert second.outcome is Outcome.MATCH
     assert happened == [
         "Reference settled",  # the other poll ran to its end before the Run went on
+        "Reference played",  # the Candidate is not compared, so the Reference alone (#266)
         "Candidate settled",
         "Reference settled",
         "Reference played",

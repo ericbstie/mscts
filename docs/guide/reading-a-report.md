@@ -139,22 +139,20 @@ prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
 vanilla's, closed the connection, did not answer in time, or still had
-players online from the previous Group. If this happens while mscts
-waits for the previous Group's players to leave, it does not play the
-Group. If the Candidate's world stays frozen after a Group, mscts plays
-none of the later Groups, and each of them fails as `Candidate failed`.
-Different packet counts for a Bot also give the Group a line of its own.
+players online from the previous Group. In that last case, mscts plays
+the Group on vanilla only. If the Candidate's world stays frozen after a
+Group, mscts plays each later Group on vanilla only, and each of them
+fails as `Candidate failed`. Different packet counts for a Bot also give
+the Group a line of its own.
 
 The line names each distinct reason from the Group's repetitions once. It
 counts as one failing test case, unless every reason is an `Error`. In
 that case the line is marked `!` instead of ✗ and is not scored, because the
 fault lies with mscts or vanilla, not the Candidate. When the Candidate
 fails a Group, each test case that vanilla's play of the Group has in any
-repetition fails too. So a Candidate that crashes, or sends something mscts cannot
-compare, never scores better than one that sends every value wrong. If
-the Group was never played because the Candidate still had players
-online from the previous Group in every repetition, only its line
-fails.
+repetition fails too, including a Group mscts played on vanilla only. So a
+Candidate that crashes, is left unable to play, or sends something mscts
+cannot compare never scores better than one that sends every value wrong.
 
 ## Total time
 
@@ -224,8 +222,9 @@ An entity removed before the Bot heard of it is written `"#?"`.
 The UUID of an entity that is not a player is written the same way,
 with a count of its own.
 
-Each Group's time is the sum, over all repetitions, of playing both
-servers and comparing their Transcripts. It excludes starting and stopping Instances, which the
+Each Group's time is the sum, over all repetitions, of playing the
+servers each repetition played and comparing their Transcripts. A
+repetition that played vanilla only counts that play. It excludes starting and stopping Instances, which the
 final total includes. A skipped Group says `not played`. Older Report
 inputs without durations say `not recorded`.
 
@@ -282,8 +281,10 @@ A `result` is `pass`, `fail`, `not tested` or `error`. A Group's own line
 has its `reasons` instead of a `test_case`.
 
 `results` has one entry per Group, with each repetition's
-Verdict, its differences with both values, and each server's
-Measurements. A Verdict keeps at most 20 differences of one test case, and
+Verdict, its differences with both values, each server's
+Measurements, and its time in seconds in `elapsed_s`. A repetition that
+played vanilla only has no Measurements of the Candidate, and its time is
+that play alone. A Verdict keeps at most 20 differences of one test case, and
 its `omitted` counts the ones it left out. Without that limit, a default
 Run against Pumpkin would write an 88 MB file, almost all of it the elements of
 one tag list. A difference beyond the first 20 is still kept if it is the first of its
