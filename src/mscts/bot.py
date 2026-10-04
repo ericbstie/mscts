@@ -369,6 +369,9 @@ def _remember(
 
 _PUNCH: _Send = ("minecraft:punch", {})
 
+_CHUNK_ARRIVES = "minecraft:level_chunk_with_light"
+_CHUNK_ARRIVES_OR_GOES = frozenset({_CHUNK_ARRIVES, "minecraft:forget_level_chunk"})
+
 
 def _carried_change(interaction: _Interaction) -> list[_Send]:
     """`set_carried_item` with the selected slot, if it differs from the one last sent."""
@@ -428,7 +431,9 @@ class Replies:
     differs. Play `set_held_slot` selects a hotbar slot. Every play packet goes to `tracker`,
     which follows the entity packets; a login, or a respawn into another dimension, brings a
     new level, so the tracker forgets every entity (cleared in place, so a view kept from
-    before shows the new level).
+    before shows the new level). A chunk joins `chunks` with `level_chunk_with_light` and
+    leaves it with `forget_level_chunk`; a new level starts with none, as its
+    `ClientChunkCache` does.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
@@ -438,6 +443,8 @@ class Replies:
         reported: What the client last reported of its player, which a tick compares with.
         interaction: The block-change sequence and the hotbar slots selected and last sent.
         tracker: The entities the server has told the Bot about, in this level.
+        chunks: The chunks (x, z) the server has sent in this level and not told the Bot to
+            forget.
     """
 
     def __init__(self) -> None:
@@ -448,6 +455,7 @@ class Replies:
         self.reported = _Reported()
         self.interaction = _Interaction()
         self.tracker = EntityTracker()
+        self.chunks: set[tuple[int, int]] = set()
         self._dimension: str | None = None
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
@@ -504,9 +512,20 @@ class Replies:
                 pass
 
     def _track(self, packet: Packet, fields: Mapping[str, object]) -> None:
-        """Give a play packet to `tracker`, which follows the entity packets among them."""
-        if packet.state is State.PLAY:
-            self.tracker.follow(packet.name, fields)
+        """Give a play packet to `tracker`, which follows the entity packets among them.
+
+        A chunk packet adds its chunk to `chunks`, or drops it. A chunk that does not decode
+        never comes here: the reader stops at it, and the Bot's next read raises CodecError.
+        """
+        if packet.state is not State.PLAY:
+            return
+        self.tracker.follow(packet.name, fields)
+        if packet.name in _CHUNK_ARRIVES_OR_GOES:
+            at = (_field(fields, "chunk_x", int), _field(fields, "chunk_z", int))
+            if packet.name == _CHUNK_ARRIVES:
+                self.chunks.add(at)
+            else:
+                self.chunks.discard(at)
 
     def _new_player(self, name: str, fields: Mapping[str, object]) -> None:
         """Start again with the new player a login or a respawn brings (26.3 javap).
@@ -525,6 +544,7 @@ class Replies:
             self.reported = _Reported()
             self.interaction = _Interaction()
             self.tracker.clear()
+            self.chunks.clear()
         else:
             old = self.reported
             kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
@@ -535,6 +555,7 @@ class Replies:
             if dimension != self._dimension:
                 self.interaction.sequence = 0
                 self.tracker.clear()
+                self.chunks.clear()
         self._dimension = dimension
 
     def _select_slot(self, slot: int) -> None:
@@ -649,6 +670,21 @@ class Bot:
         reads packets: after `sync`, it holds everything the server sent before.
         """
         return self._replies.tracker.entities
+
+    @property
+    def chunks(self) -> frozenset[tuple[int, int]]:
+        """The chunks (x, z) the server has sent the Bot and not told it to forget (a copy).
+
+        A login, or a respawn into another dimension, starts with none, as the client's level
+        does. Unlike the client, it keeps a chunk more than `max(2, d) + 3` chunks from the
+        view's centre in x or z, where `d` is the view distance the server sent: the client
+        drops one (`ClientChunkCache.calculateStorageRange`, `Storage.inRange`, measured from
+        `set_chunk_cache_center`). It also keeps the chunks held through a reconfiguration
+        (`handleConfigurationStart` clears the client's level). It changes
+        only as the Bot reads packets, whether or not a Group takes them, so it also holds the
+        chunks `join` or `sync` took.
+        """
+        return frozenset(self._replies.chunks)
 
     async def status(self) -> Mapping[str, object]:
         """Ask for the server's status, and return the parsed status JSON.

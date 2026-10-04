@@ -13,7 +13,15 @@ import threading
 import time
 import uuid
 from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable, Collection, Iterator, Mapping
+from collections.abc import (
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Collection,
+    Iterator,
+    Mapping,
+    Sequence,
+)
 from contextlib import asynccontextmanager, contextmanager, suppress
 from dataclasses import dataclass
 
@@ -196,6 +204,7 @@ class JoinScript:
         disconnect_in: The State in which to disconnect the client instead of going on.
         commands: The fields of a `commands` packet (the command tree) sent in play before
             the join teleport, as vanilla sends its own, or None to send none.
+        first_batch: The fields of each chunk in the first chunk batch, in order.
         after_batch: Frames written in the same write as the first `chunk_batch_finished`,
             so they arrive with it, before `Bot.join` returns; or None.
         then: Run last, before waiting for the client to close, or None.
@@ -206,6 +215,7 @@ class JoinScript:
     keep_alive_id: int | None = None
     disconnect_in: State | None = None
     commands: Mapping[str, object] | None = None
+    first_batch: Sequence[Mapping[str, object]] = (EMPTY_CHUNK,)
     after_batch: Callable[[Peer], bytes] | None = None
     then: Handler | None = None
 
@@ -320,8 +330,10 @@ class _Join:
         )
         await self.expect(peer, "minecraft:accept_teleportation")
         await peer.send("minecraft:chunk_batch_start")
-        await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
-        finished = peer.frame("minecraft:chunk_batch_finished", batch_size=1)
+        for fields in self.script.first_batch:
+            await peer.send("minecraft:level_chunk_with_light", **fields)
+        batch_size = len(self.script.first_batch)
+        finished = peer.frame("minecraft:chunk_batch_finished", batch_size=batch_size)
         after = self.script.after_batch
         await peer.write(finished + (b"" if after is None else after(peer)))
         await self.expect(peer, "minecraft:chunk_batch_received")

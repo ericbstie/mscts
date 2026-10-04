@@ -519,6 +519,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                                     # teleport's pose, or where it moved since (a copy)
     entities: Entities              # (property, #27) the entities its server told it about,
                                     # by entity id (Replies.tracker; below)
+    chunks: frozenset[tuple[int, int]]  # (property, #33) the chunks (x, z) its server sent
+                                    # and has not told it to forget, in this level (Replies.chunks;
+                                    # a copy)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -1037,6 +1040,19 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   many barriers the Bot that must not be kicked floats for; `too_fast`, `into_blocks`, `flying` and
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
+- `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
+  compares (the walker waits `run.GROUP_TIMEOUT_S` for its view); `HELD_SYNCS` — how
+  many barriers a window lasts after the walker holds its view; `VIEW_DISTANCE` and
+  `FAR_VIEW_DISTANCE` — the view distances the Groups set (2, and 5 for
+  `chunks/view-distance`); `SPAWN` and `SPAWN_AT` — the chunk and the place a joining player
+  is put; `FAR` and `FAR_AT` — the chunk and the place `chunks/teleport` moves the walker to;
+  `WALK` — the x of each step of `chunks/walk`; `Chunk` — a chunk's (x, z); `view` — the chunks
+  vanilla sends for a view centre and distance (`ChunkTrackingView`); `join_view`,
+  `view_distance`, `teleport` and `walk` — the `chunks/join-view`, `chunks/view-distance`,
+  `chunks/teleport` and `chunks/walk` scripts.
+- `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
+  through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
+  `players` and `chunks` Groups).
 - `run`: `status_version` — status version extraction.
 
 ```python
