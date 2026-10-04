@@ -59,13 +59,14 @@ process identities and stops the orphaned process groups.
 | --- | --- |
 | `match` | The Candidate sent what vanilla sent. |
 | `mismatch` | At least one difference, called a **Divergence**. |
-| `blocked` | A Group this one requires did not match, or the Candidate lacks a command this Group uses to set up the world, so mscts did not play it. |
+| `blocked` | A Group this one requires did not match, so mscts did not play it. |
 | `error` | mscts failed on vanilla or while comparing, or vanilla could not run the Group. |
 
 When the Candidate breaks the protocol, sends a frame that does not decode,
-closes the connection, stops answering, still has players online from the
-previous Group, or sends a value that makes the Group fail where it did not
-fail on vanilla, the Verdict is `mismatch`, led by a `failed` Divergence that says what
+closes the connection, stops answering, lacks a command the Group sets up
+the world with, still has players online from the previous Group, or sends a
+value that makes the Group fail where it did not fail on vanilla, the
+Verdict is `mismatch`, led by a `failed` Divergence that says what
 happened. It is never `error`.
 The Report's score leaves `error` out, so a Candidate cannot score
 better by crashing. If the Candidate still has players online, or its

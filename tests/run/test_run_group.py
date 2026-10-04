@@ -5,7 +5,7 @@ import pytest
 import mscts.compare
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.compare import ABSENT, Divergence, Observability, Outcome, Verdict, compare
-from mscts.group import Group, GroupContext
+from mscts.group import CommandMissing, Group, GroupContext
 from mscts.groups import status
 from mscts.run import GroupError, blocked, judge, run_group
 from mscts.target import TARGET
@@ -183,6 +183,22 @@ async def test_a_candidate_that_raised_and_sent_a_value_the_comparison_cannot_ta
     assert str(comparison.candidate).startswith("the Comparison failed: TypeError: ")
     assert verdict.detail == f"the Candidate failed: {candidate}"
     assert verdict.test_cases == compare(reference, reference, ()).test_cases
+
+
+@pytest.mark.asyncio
+async def test_a_command_missing_with_a_value_the_comparison_cannot_take_names_the_command() -> (
+    None
+):
+    reference = await _against(BASIC, _vanilla(), server="vanilla")
+    candidate = GroupError(_odd("fake"), "CommandMissing: the server has no /tick command")
+    candidate.__cause__ = CommandMissing("tick")
+
+    verdict = judge(BASIC, reference, candidate)
+
+    raised, comparison = verdict.divergences
+    assert raised.candidate == "missing /tick"
+    assert str(comparison.candidate).startswith("the Comparison failed: TypeError: ")
+    assert verdict.detail == "the Candidate failed: missing /tick"
 
 
 def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:

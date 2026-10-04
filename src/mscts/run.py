@@ -224,13 +224,25 @@ async def run_group(
         await group.run(context)
         await context.end()
     except Exception as exc:
-        description = _describe(exc, timeout_s)
-        bot = context.raised_by(exc)
+        first = _first_failure(exc)
+        description = _describe(first, timeout_s)
+        bot = context.raised_by(first)
         await context.close()  # first: it tries to unfreeze, and says if it could not
         raise GroupError(transcript, description, bot=bot, left_frozen=context.left_frozen) from exc
     finally:
         await context.close()
     return transcript
+
+
+def _first_failure(error: Exception) -> Exception:
+    """What made the Group fail first: `error`, or what each missing command was raised over.
+
+    A Group's undo stack runs as it raises, so missing undo commands such as `fill` then
+    `kill` would otherwise hide what the Group itself raised first (reviews A and B, #288).
+    """
+    while isinstance(error, CommandMissing) and isinstance(error.__context__, Exception):
+        error = error.__context__
+    return error
 
 
 def judge(
@@ -256,8 +268,10 @@ def judge(
     - Either `mismatch` above lists each test case of the Reference's Transcript compared
       with itself, besides what the Comparison found, so the Report fails every test case
       the Reference's play has (#262).
-    - The Candidate does not have a command the Group's Control needs (`CommandMissing`):
-      `blocked`, naming it (`needs /tick`).
+    - The Candidate does not have a command the Group's Control needs (`CommandMissing`),
+      before or after the Group's windows: the first `mismatch` above, its `failed`
+      Divergence saying `missing /tick` (#284). Like any other Candidate failure, it fails
+      every test case of the Reference's play, and keeps what the windows found.
     - The Reference failed, or the Comparison raises comparing the Reference's Transcript
       with itself, which a Candidate failure always does (#262): `error`, the harness or
       the Reference having failed.
@@ -270,9 +284,6 @@ def judge(
     """
     if isinstance(reference, GroupError):
         return _error(group, f"the Reference failed: {reference}")
-    if isinstance(candidate, GroupError) and isinstance(candidate.__cause__, CommandMissing):
-        detail = f"needs /{candidate.__cause__.root}"
-        return Verdict(group_id=group.id, outcome=Outcome.BLOCKED, detail=detail)
     transcript = candidate.transcript if isinstance(candidate, GroupError) else candidate
     try:
         verdict = compare(reference, transcript, group.masks)
@@ -292,7 +303,7 @@ def _comparison_raised(
     own = _itself(reference, group)
     if isinstance(own, Exception):
         return _error(group, what)
-    first = str(candidate) if isinstance(candidate, GroupError) else what
+    first = _candidate_failure(candidate) if isinstance(candidate, GroupError) else what
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
@@ -313,7 +324,7 @@ def _group_raised(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
         divergences=(*_group_failed(candidate), *verdict.divergences),
-        detail=f"the Candidate failed: {candidate}",
+        detail=f"the Candidate failed: {_candidate_failure(candidate)}",
         test_cases=tuple(sorted({*verdict.test_cases, *own.test_cases})),
     )
 
@@ -823,8 +834,19 @@ def _comparison_failed(exc: Exception) -> str:
 def _group_failed(candidate: Transcript | GroupError) -> tuple[Divergence, ...]:
     """The `failed` Divergence for the Group raising on the Candidate, if it did."""
     if isinstance(candidate, GroupError):
-        return (_failed(bot=candidate.bot, what=str(candidate)),)
+        return (_failed(bot=candidate.bot, what=_candidate_failure(candidate)),)
     return ()
+
+
+def _candidate_failure(candidate: GroupError) -> str:
+    """What the Group raising on the Candidate says it did: "missing /tick" for a command missing.
+
+    Anything else, including a failure a missing undo command came after, is the GroupError's
+    own description, such as "TimeoutError: ...".
+    """
+    cause = candidate.__cause__
+    first = _first_failure(cause) if isinstance(cause, Exception) else cause
+    return f"missing /{first.root}" if isinstance(first, CommandMissing) else str(candidate)
 
 
 def _failed(*, bot: str, what: str) -> Divergence:

@@ -48,7 +48,7 @@ Vanilla puts a player who joins at a random place near the world spawn, so the b
 stand where a command sets a block. It would then crawl and take damage, and the server would
 tell it so. To keep that out of the comparison, the Group moves the builder with `/tp` to x 0.5, y -60,
 z 14.5 before the first window, away from every block a Group changes. The blocks Groups
-therefore require `/tp`, and on a server without it all three are `blocked`.
+therefore require `/tp`, and a server without it fails all three.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

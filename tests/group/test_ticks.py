@@ -170,15 +170,15 @@ async def played(server: ControlServer) -> Transcript | GroupError:
 
 
 @pytest.mark.asyncio
-async def test_a_candidate_without_tick_is_blocked_needing_it() -> None:
+async def test_a_candidate_without_tick_fails_needing_it() -> None:
     reference = await played(ControlServer())
     candidate = await played(ControlServer(commands=tree("setblock", "tellraw")))
 
     assert isinstance(candidate, GroupError)
     assert isinstance(candidate.__cause__, CommandMissing)
     verdict = judge(PROBE, reference, candidate)
-    assert verdict.outcome is Outcome.BLOCKED, verdict
-    assert verdict.detail == "needs /tick"
+    assert verdict.outcome is Outcome.MISMATCH, verdict
+    assert verdict.detail == "the Candidate failed: missing /tick"
 
 
 @pytest.mark.asyncio

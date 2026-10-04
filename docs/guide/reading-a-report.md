@@ -131,16 +131,16 @@ Running tests against pumpkin
 Took 41 s
 ```
 
-`Not tested` means a prerequisite did not pass, or the Candidate lacks a
-command the Group needs, such as `/tick`. A prerequisite passes when each
-of its test cases passes and it has no line of its own. So a prerequisite
-that differs only in network traffic passes. No shipped Group has a
-prerequisite yet. `Error` means mscts or vanilla
+`Not tested` means a prerequisite did not pass. A prerequisite passes
+when each of its test cases passes and it has no line of its own. So a
+prerequisite that differs only in network traffic passes. No shipped
+Group has a prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
-vanilla's, closed the connection, did not answer in time, or still had
-players online from the previous Group. In that last case, mscts plays
-the Group on vanilla only. If the Candidate's world stays frozen after a
+vanilla's, closed the connection, did not answer in time, lacked a
+command the Group requires (`Candidate failed: missing /tick`), or still had
+players online from the previous Group. In that last case, mscts plays the
+Group on vanilla only. If the Candidate's world stays frozen after a
 Group, mscts plays each later Group on vanilla only, and each of them
 fails as `Candidate failed`. Different packet counts for a Bot also give
 the Group a line of its own.
@@ -151,8 +151,9 @@ that case the line is marked `!` instead of ✗ and is not scored, because the
 fault lies with mscts or vanilla, not the Candidate. When the Candidate
 fails a Group, each test case that vanilla's play of the Group has in any
 repetition fails too, including a Group mscts played on vanilla only. So a
-Candidate that crashes, is left unable to play, or sends something mscts
-cannot compare never scores better than one that sends every value wrong.
+Candidate that crashes, lacks a command, is left unable to play, or sends
+something mscts cannot compare never scores better than one that sends
+every value wrong.
 
 ## Total time
 
