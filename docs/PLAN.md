@@ -519,6 +519,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                                     # teleport's pose, or where it moved since (a copy)
     entities: Entities              # (property, #27) the entities its server told it about,
                                     # by entity id (Replies.tracker; below)
+    chunks: frozenset[tuple[int, int]]  # (property, #33) the chunks (x, z) its server sent
+                                    # and has not told it to forget, in this level (Replies.chunks;
+                                    # a copy)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
