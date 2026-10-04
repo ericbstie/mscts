@@ -308,6 +308,26 @@ def test_close_container_with_none_open_closes_the_inventory_screen_as_window_0(
     assert sent == [("minecraft:container_close", {"window_id": 0})]
 
 
+def test_a_screen_the_server_opens_while_the_close_is_sent_stays_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # LocalPlayer.closeContainer closes the menu at once: an open_screen read during the send
+    # (the reader runs while it drains) opens the menu the Bot holds after.
+    async def script(bot: Bot) -> None:
+        send = bot._connection.send  # noqa: SLF001 - the send the reader runs beside
+
+        async def read_meanwhile(name: str, /, **fields: object) -> None:
+            await send(name, **fields)
+            if name == "minecraft:container_close":
+                bot._replies.inventory.follow(*open_screen(CHEST + 1, GENERIC_9X3))  # noqa: SLF001
+
+        monkeypatch.setattr(bot._connection, "send", read_meanwhile)  # noqa: SLF001
+        await bot.close_container()
+
+    view, _ = inventory_after([open_screen(CHEST, GENERIC_9X3)], script)
+    assert view.window_id == CHEST + 1
+
+
 @pytest.mark.parametrize(
     ("whole", "action", "left"),
     [(False, 5, stack("stone", 63)), (True, 4, None)],

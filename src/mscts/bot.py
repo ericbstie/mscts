@@ -725,10 +725,10 @@ class Bot:
     def inventory(self) -> Inventory:
         """The player's inventory and the open container, as the vanilla client would show them.
 
-        A snapshot: each read is the inventory as the Bot has it then. The server sets every
-        slot; the Bot changes one itself only where the client predicts the change (`drop`).
-        It changes only as the Bot reads packets: after `sync`, it holds everything the server
-        sent before (docs/research/2026-10-04-bot-inventory.md).
+        A snapshot: each read is the inventory as the Bot has it then. The Bot changes slots
+        itself only for its own `drop`. What other actions change, such as a placed block,
+        arrives from the server: it changes only as the Bot reads packets, and after `sync` it
+        holds everything the server sent before (docs/research/2026-10-04-bot-inventory.md).
         """
         return self._replies.inventory.view()
 
@@ -1191,9 +1191,9 @@ class Bot:
         """
         self._require_play("close_container")
         window_id = self._replies.inventory.view().window_id
+        self._replies.inventory.close()  # at once, as the client does, before what the send lets in
         async with self._operation(self._timeout_s):
             await self._connection.send("minecraft:container_close", window_id=window_id)
-        self._replies.inventory.close()
 
     async def drop(self, *, all: bool = False) -> None:  # noqa: A002 - #28: bot.drop(all=True)
         """Drop one of the held items (Q), or the whole stack (Ctrl+Q), in one client tick.

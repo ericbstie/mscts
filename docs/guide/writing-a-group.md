@@ -59,7 +59,7 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), or stops using it. |
 | `await bot.attack(entity)` | Attacks an entity from `bot.entities`, as a left click does. On vanilla, an attack with a spear or another piercing weapon does nothing. |
 | `await bot.interact(entity, at=(0.0, 0.0, 0.0), off_hand=False)` | Uses the held item on an entity, as a right click does. `at` is the point on the entity, relative to its position. When the Bot sneaks, the server sees the sneak key held. |
-| `await bot.drop(all=False)` | Drops the held item (Q, or Ctrl+Q). |
+| `await bot.drop(all=False)` | Drops the held item (Q, or Ctrl+Q). With a container open it raises `ProtocolError`: close it first. |
 | `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
 | `await bot.close_container()` | Closes the open container. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
