@@ -1468,8 +1468,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # stopped; the same code path otherwise (judge, blocked, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
-    # A side that is still not empty means the Group is played on neither side, and its
-    # Verdict says who is still online. The Reference's failure is `error`: "the Reference
+    # A side that is still not empty means the Group is not played there, and its
+    # Verdict says who is still online. The Reference's failure is `error`, and neither side
+    # is played: "the Reference
     # had 2 players still online after waiting 2 s: 'watcher', 'control'" (the Candidate's
     # sentence after a "; " if it had players too). The Candidate's alone is `mismatch`
     # (audit H3: a Candidate failure is never `error`): a `failed` Divergence (bot "",
@@ -1490,7 +1491,13 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # unusable: <group id> left its world frozen" (the Candidate's likewise,
     # after a "; " if both are). Only the Candidate's: each is `mismatch`, led by a
     # `failed` Divergence "<group id> left its world frozen", so the Score
-    # counts it (an `error` is not scored, and would reward breaking the world).
+    # counts it (an `error` is not scored, and would reward breaking the world); only
+    # the Reference is waited on then.
+    # #266: when only the Candidate's side is not compared (unusable, or not empty), the
+    # Group is played on the Reference alone, and its `mismatch` lists the test cases of
+    # compare(reference, reference, masks), which the Report fails, as for #262; the
+    # Reference raising, or that self-comparison raising, is `error` as in judge. Its
+    # Measurements and `elapsed_s` are the Reference's play; no Transcripts are kept.
     # NotImplementedError for a statistical Group (M6b); ValueError for one
     # listed twice, or whose `spec` does not give an Attached side's spec (host and port
     # aside: it would run against the wrong config), before anything starts; RunnerError
@@ -2156,11 +2163,12 @@ class GroupResult:
     verdicts: tuple[Verdict, ...]                    # one per repetition
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
-    elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition; blocked 0
+    elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition (the
+                                      # Reference's alone if the Candidate's was not); blocked 0
     transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = ()  # only with
                                       # run_results(..., keep_transcripts=True), off by default
                                       # (reference, candidate) per repetition whose Verdict
-                                      # is not match, else None (#162)
+                                      # is not match and both sides played, else None (#162)
 
 @frozen
 class SideSummary:

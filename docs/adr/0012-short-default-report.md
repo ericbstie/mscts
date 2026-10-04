@@ -83,12 +83,33 @@ many lines as one that sends every value wrong, and one more. If the
 Comparison raises comparing the Reference with itself, the fault is the
 Reference's data or mscts's, and the Group is an `error`, however the
 Candidate failed. If the Group has no test case in any
-repetition (it was never played, because the Candidate was left
-unusable before each repetition), its own line is all that fails.
+repetition, its own line is all that fails. (This first named a
+Candidate left unusable as that case; the #266 amendment plays the
+Reference there.)
 
 A prerequisite still passes only when each of its test cases passes and
 it has no line of its own (#219), so a Group the Candidate failed blocks
 the Groups that require it, as before.
+
+## Amendment (#266, 2026-10-04)
+
+A Candidate must never score higher by skipping work than by doing it
+wrong. So when the Candidate's side of a Group is not compared, mscts
+plays the Reference anyway, and the Candidate fails each test case of
+that play, with the Group's own line saying why. This amendment covers
+two cases. In both, the Candidate's side is not played:
+
+- The Candidate still has players online from the Group before
+  (`Candidate failed: 1 player still online after waiting 2 s: …`).
+- A Group earlier in the Run left the Candidate's world frozen
+  (`Candidate failed: players/join-seen left its world frozen`). Only the
+  Reference is then waited on.
+
+If the Reference fails that play, or the Comparison raises comparing
+its play with itself, the Group is an `error`, as in any other Group.
+Its Measurements and time are the Reference's play alone. Neither side
+is played when the Reference is the side left frozen or unsettled; the
+Group is then an `error`.
 
 ## Consequences
 

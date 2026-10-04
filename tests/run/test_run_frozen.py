@@ -1,6 +1,7 @@
 """An Instance a failed Group left frozen is unusable for the rest of the Run (#228)."""
 
 import functools
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,8 @@ import pytest
 from mscts import run as run_module
 from mscts.compare import Outcome, Verdict
 from mscts.group import Group, GroupContext, GroupKind
-from mscts.report import GroupLine, LineResult, report_lines, totals
+from mscts.net import Endpoint
+from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
 from mscts.run import GroupResult, run
 from tests.group.test_control import ControlServer
 from tests.run.occupancy import attached
@@ -16,6 +18,9 @@ from tests.test_report import _report
 
 GROUP_TIMEOUT_S = 0.5
 """Each Bot operation's bound here: short, since the frozen side never answers its unfreeze."""
+
+UNSETTLED = run_module._unsettled  # noqa: SLF001 - the real wait, which `quick` replaces
+"""The wait for no player online, for a test that puts it back."""
 
 
 def refusing_to_unfreeze() -> ControlServer:
@@ -109,9 +114,91 @@ async def test_a_group_after_one_that_left_the_candidate_frozen_fails_and_is_sco
         [(d.kind, d.candidate, d.test_case) for d in verdict.divergences] == [("failed", what, "")]
         for verdict in later
     ), later
-    lines = report_lines(_report(GroupResult(JOINS.id, tuple(later), (), ())))
-    assert lines == (GroupLine(JOINS.id, LineResult.FAIL, f"Candidate failed: {what}"),)
-    assert totals(lines).scored == 1
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_left_frozen_fails_each_test_case_of_the_references_play(
+    tmp_path: Path,
+) -> None:
+    # #266, audit M2: the Reference is still played, so a Candidate that broke its world
+    # fails every test case sending every value wrong would, and the Group's own line.
+    [verdict] = await _later(STAYS_FROZEN, "Candidate", tmp_path)
+    played = await _reference_test_cases(tmp_path / "reference")
+
+    assert verdict.test_cases == played
+    lines = report_lines(_report(GroupResult(JOINS.id, (verdict,), (), ())))
+    what = f"{STAYS_FROZEN.id} left its world frozen"
+    assert lines[-1] == GroupLine(JOINS.id, LineResult.FAIL, f"Candidate failed: {what}")
+    assert totals(lines) == Totals(passed=0, failed=len(played) + 1, not_tested=0, errors=0)
+
+
+@pytest.mark.asyncio
+async def test_only_the_reference_is_waited_on_while_the_candidate_is_frozen(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    # A frozen world never ticks, so it never drops a closed Bot's player: waiting on it
+    # would cost the whole deadline before each later Group.
+    waited: list[int] = []
+
+    async def settled(group: Group, endpoints: Sequence[Endpoint]) -> None:
+        del group
+        waited.append(len(endpoints))
+
+    monkeypatch.setattr(run_module, "_unsettled", settled)
+    await _later(STAYS_FROZEN, "Candidate", tmp_path)
+
+    assert waited == [2, 1], "both sides before the freeze, then the Reference alone"
+
+
+@pytest.mark.asyncio
+async def test_no_side_is_waited_on_once_the_reference_is_frozen(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    waited: list[int] = []
+
+    async def settled(group: Group, endpoints: Sequence[Endpoint]) -> None:
+        del group
+        waited.append(len(endpoints))
+
+    monkeypatch.setattr(run_module, "_unsettled", settled)
+    await _later(STAYS_FROZEN, "Reference", tmp_path)
+
+    assert waited == [2]
+
+
+@pytest.mark.asyncio
+async def test_a_reference_unsettled_while_the_candidate_is_frozen_is_an_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(run_module, "_unsettled", UNSETTLED)
+    polls: list[Endpoint] = []
+
+    async def poll(endpoint: Endpoint, *, deadline_s: float) -> None:
+        del deadline_s
+        polls.append(endpoint)
+        if len(polls) > 2:  # the later Group's, on the Reference alone
+            msg = "vanilla stopped"
+            raise RuntimeError(msg)
+
+    monkeypatch.setattr(run_module, "until_no_player_online", poll)
+    [verdict] = await _later(STAYS_FROZEN, "Candidate", tmp_path)
+
+    detail = (
+        "the Reference failed: the wait for no player online failed: RuntimeError: vanilla stopped"
+    )
+    assert verdict == Verdict(JOINS.id, Outcome.ERROR, detail=detail)
+
+
+async def _reference_test_cases(tmp_path: Path) -> tuple[str, ...]:
+    """The test cases of JOINS, played on two fakes that both unfreeze."""
+    async with (
+        attached("vanilla", ControlServer()) as reference,
+        attached("vanilla", ControlServer()) as candidate,
+    ):
+        [verdict] = await run([JOINS], reference, candidate, workdir=tmp_path)
+    assert verdict.outcome is Outcome.MATCH, verdict
+    assert verdict.test_cases, "JOINS must have test cases for this to show anything"
+    return verdict.test_cases
 
 
 @pytest.mark.asyncio

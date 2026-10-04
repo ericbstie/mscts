@@ -139,22 +139,20 @@ prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
 vanilla's, closed the connection, did not answer in time, or still had
-players online from the previous Group. If this happens while mscts
-waits for the previous Group's players to leave, it does not play the
-Group. If the Candidate's world stays frozen after a Group, mscts plays
-none of the later Groups, and each of them fails as `Candidate failed`.
-Different packet counts for a Bot also give the Group a line of its own.
+players online from the previous Group. In that last case, mscts plays
+the Group on vanilla only. If the Candidate's world stays frozen after a
+Group, mscts plays each later Group on vanilla only, and each of them
+fails as `Candidate failed`. Different packet counts for a Bot also give
+the Group a line of its own.
 
 The line names each distinct reason from the Group's repetitions once. It
 counts as one failing test case, unless every reason is an `Error`. In
 that case the line is marked `!` instead of ✗ and is not scored, because the
 fault lies with mscts or vanilla, not the Candidate. When the Candidate
 fails a Group, each test case that vanilla's play of the Group has in any
-repetition fails too. So a Candidate that crashes, or sends something mscts cannot
-compare, never scores better than one that sends every value wrong. If
-the Group was never played because the Candidate still had players
-online from the previous Group in every repetition, only its line
-fails.
+repetition fails too, including a Group mscts played on vanilla only. So a
+Candidate that crashes, is left unable to play, or sends something mscts
+cannot compare never scores better than one that sends every value wrong.
 
 ## Total time
 

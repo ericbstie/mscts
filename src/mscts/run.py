@@ -111,12 +111,13 @@ class GroupResult:
         reference: The Reference's Measurements in each repetition (none if the
             Group was blocked there).
         candidate: The Candidate's Measurements in each repetition, likewise.
-        elapsed_s: Seconds playing both sides and comparing, per repetition; zero
-            when blocked. Instance startup and shutdown are excluded.
+        elapsed_s: Seconds playing both sides and comparing, per repetition, or the
+            Reference alone where the Candidate was not played; zero when blocked.
+            Instance startup and shutdown are excluded.
         transcripts: The Reference's and the Candidate's Transcript in each repetition
             whose Verdict is not `match`, if the Run was asked to keep them
             (`keep_transcripts`), to diagnose it (#162); None in the others, in one where
-            neither side was played, and in every one otherwise. No Report shows
+            the Candidate was not played, and in every one otherwise. No Report shows
             them, `report.json` does not hold them, and equality ignores them.
     """
 
@@ -539,35 +540,32 @@ class _Instances:
     async def play(self, group: Group) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it.
 
-        It waits first for both Instances to have no player online (the previous Group's
-        Bots have left). If one has any after `SETTLE_TIMEOUT_S`, or its wait raised,
-        `group` is not played on either, and its Verdict names the players still online
-        or what was raised: `error` if the Reference did, else `mismatch` (only the
-        Candidate did), see `_unsettled`.
+        It waits first for each usable Instance to have no player online (the previous
+        Group's Bots have left). If the Reference is unusable (`_unusable_verdict`), has
+        any player online after `SETTLE_TIMEOUT_S`, or its wait raised, `group` is not
+        played on either, and its Verdict is `error`, naming why (`_unsettled`). If only
+        the Candidate is, `group` is played on the Reference alone (`_reference_alone`).
         """
         endpoints = await self._pair(group.spec)
         unusable = self._unusable_verdict(group, endpoints)
-        if unusable is not None:
+        if unusable is not None and unusable.outcome is Outcome.ERROR:
             return _Play(unusable)
-        unsettled = await _unsettled(group, endpoints)
-        if unsettled is not None:
-            return _Play(unsettled)
+        waited = endpoints if unusable is None else endpoints[:1]
+        unsettled = await _unsettled(group, waited)
+        not_played = unsettled or unusable  # a Reference unsettled comes first: `error`
+        if not_played is None:
+            return await self._both(group, endpoints)
+        if not_played.outcome is Outcome.ERROR:
+            return _Play(not_played)
+        return await self._reference_alone(group, endpoints[0], not_played)
+
+    async def _both(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
+        """Play `group` on the Reference, then on the Candidate, and judge it."""
         started = perf_counter()
         attempts = [
-            await _attempt(group, endpoint, server=side.name)
-            for side, endpoint in zip(self._sides, endpoints, strict=True)
+            await self._attempt(group, role, endpoint) for role, endpoint in enumerate(endpoints)
         ]
-        transcripts = [
-            attempt.transcript if isinstance(attempt, GroupError) else attempt
-            for attempt in attempts
-        ]
-        for role, transcript in enumerate(transcripts):
-            if self._versions[role] is None:
-                self._versions[role] = status_version(transcript)
-        for endpoint, attempt in zip(endpoints, attempts, strict=True):
-            if isinstance(attempt, GroupError) and attempt.left_frozen:
-                self._unusable[endpoint] = f"{group.id} left its world frozen"
-        reference, candidate = transcripts
+        reference, candidate = (_transcript(attempt) for attempt in attempts)
         verdict = judge(group, *attempts)
         return _Play(
             verdict,
@@ -577,22 +575,52 @@ class _Instances:
             transcripts=(reference, candidate) if self._kept(verdict) else None,
         )
 
+    async def _reference_alone(self, group: Group, endpoint: Endpoint, verdict: Verdict) -> _Play:
+        """Play `group` on the Reference alone, the Candidate's side not compared (#266).
+
+        `verdict` says why the Candidate's side is not compared. It is the Verdict, listing
+        each test case of the Reference's play, which the Report then fails, so skipping the
+        Candidate never scores better than sending every value wrong (`_not_compared`).
+        """
+        started = perf_counter()
+        attempt = await self._attempt(group, 0, endpoint)
+        return _Play(
+            _not_compared(group, attempt, verdict),
+            reference=tuple(measurements(_transcript(attempt))),
+            elapsed_s=perf_counter() - started,
+        )
+
+    async def _attempt(
+        self, group: Group, role: int, endpoint: Endpoint
+    ) -> Transcript | GroupError:
+        """Play `group` on side `role` at `endpoint`, and learn what it shows about the side.
+
+        The version its first status_response names, and whether it left its world frozen.
+        """
+        attempt = await _attempt(group, endpoint, server=self._sides[role].name)
+        if self._versions[role] is None:
+            self._versions[role] = status_version(_transcript(attempt))
+        if isinstance(attempt, GroupError) and attempt.left_frozen:
+            self._unusable[endpoint] = f"{group.id} left its world frozen"
+        return attempt
+
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
         return self._keep_transcripts and verdict.outcome is not Outcome.MATCH
 
     def _unusable_verdict(self, group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
-        """The Verdict `group` gets unplayed if a side is unusable (#228), or None.
+        """The Verdict `group` gets if a side is unusable (#228), or None.
 
         A side a failed Group left frozen (`GroupError.left_frozen`) would make every later
-        Group compare against a frozen world, so no later Group plays on either side:
+        Group compare against a frozen world, so no later Group plays on it:
 
         - The Reference is unusable: `error`, "the Reference is unusable: <group> left
           its world frozen", and the same for the Candidate after a "; " if it is
-          too.
+          too. Neither side is played.
         - Only the Candidate is: `mismatch`, led by a `failed` Divergence saying so, as for
           any Candidate failure (`judge`), so the Score counts it: an `error`, which the
-          Score leaves out, would score a Candidate that broke its world better.
+          Score leaves out, would score a Candidate that broke its world better. The
+          Reference is still played, for its test cases (`_reference_alone`).
         """
         reference, candidate = (self._unusable.get(endpoint) for endpoint in endpoints)
         if reference is not None:
@@ -675,17 +703,19 @@ def _installed_version(side: Side) -> str | None:
 async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
     """Wait for the Reference and the Candidate to have no player online; None if both do.
 
+    `endpoints` is the Reference's, then the Candidate's unless it is not to be waited for.
     Both are waited on at once, each wait to its end, so neither is left running when the
     Run moves on. If one still has players at the deadline (`PlayersStillOnline`), or its
-    wait raised, the Verdict that `group` gets instead of being played:
+    wait raised, the Verdict that says why `group` is not played there:
 
     - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
       2 players still online after waiting 2 s: 'watcher', 'control'" (or "the Reference
       failed: the wait for no player online failed: RuntimeError: ..."), and the same
-      for the Candidate after a "; " if it did too.
+      for the Candidate after a "; " if it did too. Neither side is played.
     - Only the Candidate does, whatever its wait raised: `mismatch` (a Candidate failure is
       never `error`, audit H3; the Reference's wait ran the same code, #222), led by a
-      `failed` Divergence that says who is still online, or what the wait raised.
+      `failed` Divergence that says who is still online, or what the wait raised. The
+      Reference is still played, for its test cases (#266).
 
     Raises:
         BaseException: A wait raised one that is not an Exception (a cancellation from
@@ -698,7 +728,9 @@ async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | N
     for result in results:
         if isinstance(result, BaseException) and not isinstance(result, Exception):
             raise result
-    reference, candidate = (result if isinstance(result, Exception) else None for result in results)
+    reference, candidate = (
+        result if isinstance(result, Exception) else None for result in (*results, None)[:2]
+    )
     if reference is not None:
         detail = f"the Reference {_unsettled_by(reference)}"
         if candidate is not None:
@@ -733,6 +765,28 @@ async def _attempt(group: Group, endpoint: Endpoint, *, server: str) -> Transcri
         return await run_group(group, endpoint, server=server)
     except GroupError as error:
         return error
+
+
+def _transcript(attempt: Transcript | GroupError) -> Transcript:
+    """What a play recorded, whether or not the Group raised."""
+    return attempt.transcript if isinstance(attempt, GroupError) else attempt
+
+
+def _not_compared(group: Group, reference: Transcript | GroupError, verdict: Verdict) -> Verdict:
+    """`verdict`, on a Candidate side not compared, listing each test case of `reference`.
+
+    `verdict` says why the Candidate's side is not compared. The Report fails each test
+    case it lists, as for any Candidate failure of a whole Group (#262), so skipping the
+    Candidate never scores better than sending every value wrong (#266). The Reference
+    raised, or the Comparison raises comparing its Transcript with itself: `error`, as in
+    `judge`.
+    """
+    if isinstance(reference, GroupError):
+        return _error(group, f"the Reference failed: {reference}")
+    own = _itself(reference, group)
+    if isinstance(own, Exception):
+        return _error(group, _comparison_failed(own))
+    return dataclasses.replace(verdict, test_cases=own.test_cases)
 
 
 def _describe(error: Exception, timeout_s: float) -> str:
