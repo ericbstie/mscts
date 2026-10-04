@@ -2,7 +2,8 @@
 
 That is the packet report (`packets.json`, copied verbatim), the names of the registries
 the codec needs, in protocol id order (`registry_names.json`, derived from the registry
-report), and how many block states there are (`block_states.json`, from the block report).
+report), how many block states there are (`block_states.json`, from the block report), and
+each item's stack size and equipment slot (`items.json`, from the item component reports).
 Runnable as `python -m mscts.codec.regen` (check mode; non-zero exit and a message
 on any difference) or `python -m mscts.codec.regen --write` (update the committed files).
 See also the `regen:packets` mise task.
@@ -25,6 +26,9 @@ DATA_DIR = Path(__file__).parent / "data"
 _REPORT_RELATIVE = Path("reports") / "packets.json"
 _REGISTRIES_REPORT = "registries.json"
 _BLOCKS_REPORT = "blocks.json"
+_ITEM_REPORTS = Path("minecraft") / "components" / "item"
+_DEFAULT_STACK_SIZE = 64
+"""`Item.Properties`' default `max_stack_size`: items.json lists only the others."""
 _GENERATOR_TIMEOUT_S = 300
 
 REGISTRY_NAME_LISTS = (
@@ -60,6 +64,11 @@ def registry_names_path(target: Target) -> Path:
 def block_states_path(target: Target) -> Path:
     """Where the committed block_states.json for `target` lives."""
     return DATA_DIR / target.minecraft_version / "block_states.json"
+
+
+def items_path(target: Target) -> Path:
+    """Where the committed items.json for `target` lives."""
+    return DATA_DIR / target.minecraft_version / "items.json"
 
 
 def data_generator_argv(java: Path, jar: Path, output: Path) -> list[str]:
@@ -165,6 +174,46 @@ def block_states_json(blocks_report: bytes) -> bytes:
     return (json.dumps({"count": len(ids)}, indent=2) + "\n").encode()
 
 
+def items_json(reports: Path) -> bytes:
+    """The text of items.json for a generated `reports` directory.
+
+    From each item's default components (`minecraft/components/item/<name>.json`):
+    `max_stack_size`, each item whose stack size is not 64 by name, and `equippable`, each
+    equippable item's equipment slot by name (the Bot's inventory predicts clicks with them,
+    #28). Raises RegenError if there are no item reports, or one has no integer stack size or
+    an equippable with no slot.
+    """
+    directory = reports / _ITEM_REPORTS
+    files = sorted(directory.glob("*.json")) if directory.is_dir() else []
+    if not files:
+        msg = f"the data generator wrote no item reports in {_ITEM_REPORTS.as_posix()}"
+        raise RegenError(msg)
+    sizes: dict[str, int] = {}
+    slots: dict[str, str] = {}
+    for file in files:
+        name = f"minecraft:{file.stem}"
+        report: object = json.loads(file.read_bytes())
+        components = report.get("components") if isinstance(report, dict) else None
+        size = components.get("minecraft:max_stack_size") if isinstance(components, dict) else None
+        if not isinstance(components, dict) or not isinstance(size, int):
+            msg = f"{name}: its item report has no integer max_stack_size"
+            raise RegenError(msg)
+        if size != _DEFAULT_STACK_SIZE:
+            sizes[name] = size
+        equippable = components.get("minecraft:equippable")
+        if equippable is not None:
+            slot = equippable.get("slot") if isinstance(equippable, dict) else None
+            if not isinstance(slot, str):
+                msg = f"{name}: its equippable has no slot"
+                raise RegenError(msg)
+            slots[name] = slot
+    lists = {
+        "max_stack_size": dict(sorted(sizes.items())),
+        "equippable": dict(sorted(slots.items())),
+    }
+    return (json.dumps(lists, indent=2) + "\n").encode()
+
+
 def fresh_data(target: Target, reports: Path) -> dict[Path, bytes]:
     """Each committed file's fresh contents, from a data generator's `reports` directory.
 
@@ -180,6 +229,7 @@ def fresh_data(target: Target, reports: Path) -> dict[Path, bytes]:
         packets_json_path(target): (reports / "packets.json").read_bytes(),
         registry_names_path(target): registry_names_json(registries.read_bytes()),
         block_states_path(target): block_states_json(blocks.read_bytes()),
+        items_path(target): items_json(reports),
     }
 
 

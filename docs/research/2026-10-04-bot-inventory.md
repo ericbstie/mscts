@@ -85,3 +85,88 @@ with.
   empty hand too. The swing that follows sends nothing.
 - `Minecraft.tick` calls `handleKeybinds` only when no screen is open, so
   the client never drops this way with a container open.
+
+## Clicks
+
+- **What is sent** (`MultiPlayerGameMode.handleContainerInput`): a click
+  for another window than the open one is dropped with a warning. Otherwise
+  the client copies every slot's stack, runs `AbstractContainerMenu.clicked`,
+  and puts each slot whose stack no longer `ItemStack.matches` its copy into
+  a new `Int2ObjectOpenHashMap()`, in slot order. It sends
+  `container_click` with the window id, the menu's state id (which a click
+  never changes), the slot (`Shorts.checkedCast`), the button
+  (`SignedBytes.checkedCast`), the mode, that map and the cursor's stack,
+  each stack as a `HashedStack`. A click is a mouse or key callback, sent at
+  once, outside the tick.
+- **Map order.** The changed slots go on the wire in the map's iteration
+  order. fastutil 8.5.18 (the jar's) starts the table at 32 entries
+  (16 expected, load factor 0.75) and doubles it when a put finds 24 or
+  more entries already in. A key goes at `HashCommon.mix(key) & mask`, where
+  `mix` is the key times `0x9E3779B9`, xor that shifted right by 16, then
+  the next free position after it. Iteration gives key 0 first (it is kept
+  apart), then the table from its last position down. Recorded in Java for
+  nine key sets: three past the growth, and two of 24, the most before it
+  (`tests/net/test_bot_inventory.py`).
+- **`HashedStack`**: an empty stack is `false`. Otherwise the item, the
+  count, and the component patch hashed with the connection's hash
+  generator (`decoratedHashOpsGenenerator`). A stack whose patch is empty
+  sends empty lists. The Bot cannot hash any other patch.
+- **`doClick`**, mode by mode:
+  - QUICK_CRAFT (a drag) is a state machine on the button: header
+    `button & 3` (start 0, add 1, end 2) and type `button >> 2 & 3`. Type 0
+    spreads the cursor evenly (`floor(count / slots)`), 1 puts one in each
+    slot, and 2 (a full stack each) needs infinite materials. A slot joins
+    the drag only while the cursor holds more items than the drag has slots.
+    A drag over one slot ends as a PICKUP on it with the type as the button.
+    Any other click during a drag ends the drag and does nothing else.
+  - PICKUP and QUICK_MOVE take button 0 or 1. Slot -999 drops the cursor
+    (all, or one), and another negative slot does nothing.
+  - QUICK_MOVE calls the menu's `quickMoveStack` until it moves nothing or
+    the slot holds another item.
+  - PICKUP with an empty cursor takes the stack, or half rounded up. With a
+    stack on the cursor it puts down all of it, or one. On a slot holding
+    the same stack it merges up to the slot's limit, and on another item it
+    swaps, if the cursor fits.
+  - SWAP takes button 0 to 8 or 40, an `Inventory` index. It swaps that
+    index with the slot. A stack too big for an empty slot leaves the rest
+    at the index. When both hold stacks and the index's stack is too big
+    for the slot, the slot takes what fits and its old stack goes through
+    `Inventory.add`; otherwise the two swap (javap, 1275 to 1353).
+  - CLONE needs infinite materials.
+  - THROW needs an empty cursor. It drops one with button 0, and the
+    stack with any other button; only button 1 repeats while the slot holds
+    the same item.
+  - PICKUP_ALL needs a stack on the cursor, and an empty slot or one the
+    player may not take from. It gathers from slot 0 forward with button 0,
+    or from the end with any other button, in two passes, the first skipping
+    full stacks.
+- **`mayPickup`**: PICKUP on a slot that holds a stack (taking, merging and
+  swapping alike), QUICK_MOVE and SWAP check it first, and `Slot.tryRemove`
+  (THROW and PICKUP_ALL) gives nothing without it. Only `ArmorSlot` can
+  refuse: for a player not in creative, when the stack has an enchantment
+  with `prevent_armor_change`. In the vanilla data pack that is curse of
+  binding alone (the server jar's `data/minecraft/enchantment/*.json`).
+  `EnchantmentHelper.has` reads the `minecraft:enchantments` component,
+  whose ids are the `minecraft:enchantment` registry the server sent in
+  configuration (`registry_data`, in order).
+- **`moveItemStackTo`**: first merges into stacks of the same item and
+  components (only for a stackable item), then puts the rest in the first
+  empty slot that takes it, and stops there.
+- **`quickMoveStack`**: `ChestMenu`, `HopperMenu` and `ShulkerBoxMenu` move
+  a container slot to the player's slots from the end, and a player slot to
+  the container's from 0. `DispenserMenu` does the same over 9 slots.
+  `InventoryMenu` moves the crafting grid and the armor to slots 9 to 44.
+  An armor item goes to its own empty armor slot (8 minus its slot's index:
+  the head is 5), and an off-hand item to an empty off hand (45). Otherwise
+  slots 9 to 35 go to the hotbar (36 to 44), and the hotbar goes to 9 to 35.
+- **Slots**: a slot's limit is the lower of its container's (99) and the
+  item's stack size. `ArmorSlot` holds one, and takes only an item whose
+  `equippable` slot is its own (`isEquippableInSlot`; `Player` keeps
+  `canUseSlot` true for every slot). `ShulkerBoxSlot` refuses a
+  `ShulkerBoxBlock` item (`canFitInsideContainerItems`). `tryRemove` from a
+  slot that may not take back its own stack gives only the whole stack.
+  `BundleItem` overrides a click on or with a bundle, and `Item` and
+  `BlockItem` do not.
+- `equippable` items limited to some entities (`allowed_entities`) all have
+  the `body` or `saddle` slot, never a player's armor slot (the 26.3 item
+  component reports).

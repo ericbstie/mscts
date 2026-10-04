@@ -78,8 +78,8 @@ test needs it:
 | `codec/schemas/play/inventory.py` | the container packets' schemas: `open_screen`, `mount_screen_open` (its entity id an Int), `container_set_content`, `container_set_slot`, `container_set_data`, `container_close` (both ways), `set_cursor_item`, `set_player_inventory`, and the client's `container_click` (its changed slots each a `HASHED_SLOT`, at most 128) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
-| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order) and `block_states.json` (how many block states there are). Committed, regenerated and checked by `mise run regen:packets` |
-| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
+| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order), `block_states.json` (how many block states there are) and `items.json` (each item's stack size but 64, and each equippable item's slot). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette; `max_stack_sizes(version)` and `equipment_slots(version)`, the items' defaults by name |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
@@ -114,8 +114,8 @@ decision. Signatures are Python 3.13. `@frozen` means
   and decoding.
 - `codec.packets`: `PacketIds`, `Schemas` — Codec lookup table types.
 - `codec.regen`: `DATA_DIR`, `REGISTRY_NAME_LISTS`, `RegenError`, `block_states_json`,
-  `block_states_path`, `compare_or_write`, `data_generator_argv`, `fresh_data`,
-  `packets_json_path`, `regenerate`, `registry_names_json`, `registry_names_path`,
+  `block_states_path`, `compare_or_write`, `data_generator_argv`, `fresh_data`, `items_json`,
+  `items_path`, `packets_json_path`, `regenerate`, `registry_names_json`, `registry_names_path`,
   `run_data_generator` — Mojang data regeneration.
 - `codec.schemas.login`: `GAME_PROFILE` — login packet schema.
 - `codec.schemas.play`: `merge_submodules` — Play schema assembly.
@@ -573,6 +573,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def interact(self, entity: Entity, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
                        *, off_hand: bool = False) -> None: ...         # interact
     async def drop(self, *, all: bool = False) -> None: ...            # player_action DROP_ITEM / DROP_ALL_ITEMS
+    async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None: ...  # container_click
     async def close_container(self) -> None: ...                       # container_close, outside a tick
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
@@ -670,7 +671,11 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # (MultiPlayerGameMode.dropItem); refused with a container open (ProtocolError: the client
     # reads the drop key only with no screen). close_container (#28): back to the inventory menu,
     # then container_close with the old menu's window id (0 with none open: the inventory
-    # screen), sent at once and not in a tick (LocalPlayer.closeContainer).
+    # screen), sent at once and not in a tick (LocalPlayer.closeContainer). click (#28): on a
+    # Bot in play, InventoryTracker.click predicts the click, then container_click goes at
+    # once, not in a tick (a mouse or key callback); a refused click sends nothing (ValueError).
+    # The Bot follows no game mode: click predicts a survival or adventure player, and drop
+    # sends what a spectator's client never would (the guide says so).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
@@ -730,6 +735,8 @@ class Inventory:                    # Bot.inventory: one moment's snapshot
     player: tuple[Stack | None, ...]  # by Inventory index, PLAYER_INDEXES of them
 
 class InventoryTracker:
+    enchantments: tuple[str, ...] | None  # the minecraft:enchantment registry by network id, from
+                                          # the last configuration's registry_data (Replies)
     def follow(
         self, name: str, fields: Mapping[str, object], entities: Mapping[int, Entity] | None = None
     ) -> None: ...
@@ -747,6 +754,28 @@ class InventoryTracker:
     def clear(self) -> None: ...      # a new player: nothing anywhere, no container open
     def close(self) -> None: ...      # back to the inventory menu (Player.closeContainer)
     def remove_from_selected(self, selected: int, *, whole: bool) -> None: ...  # one, or the stack
+    def click(self, slot: int, button: int, mode: str) -> dict[str, object]: ...  # container_click fields
+    # As AbstractContainerMenu.doClick on the client, in the inventory menu and the chest,
+    # dispenser, hopper and shulker box menus, for a survival or adventure player (clone, and
+    # a drag of a stack to each slot, change nothing): pickup
+    # (button 0 all, 1 half; slot OUTSIDE drops the cursor), quick_move (the menu's
+    # quickMoveStack, repeated while it moves some), swap (button 0-8 or 40: that Inventory
+    # index), throw (button 0 one, any other the stack, 1 repeated), quick_craft (button = header | type << 2:
+    # start 0, add 1, end 2; type 0 even, 1 one each), pickup_all (from slot 0, or the end with
+    # any button but 0; full stacks last). Slot rules: armor slots take their equippable items,
+    # one, and give up nothing enchanted with curse of binding (mayPickup; its id from
+    # `enchantments`, an enchanted armor stack refused while they are None); a shulker box's
+    # slots no shulker box; stack sizes from items.json. Returns window id,
+    # state id, slot, button, mode, the slots whose stack changed (ItemStack.matches) hashed
+    # in Int2ObjectOpenHashMap() order (fastutil: table 32, linear probing, grown past 3/4;
+    # key 0 first, then positions down), and the hashed cursor. ValueError, nothing changed:
+    # an unknown mode, a slot outside a Short or a button outside a Byte, a slot the click
+    # must name that the menu lacks, a menu other than the inventory's, a chest's, a
+    # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), the crafting result, a bundle, a
+    # swap whose slot stack would go back through Inventory.add, or a changed slot or cursor
+    # stack with a component patch (its hash needs the component's encoding).
+CLICK_MODES: Mapping[str, int]      # pickup 0, quick_move 1, swap 2, clone 3, throw 4, quick_craft 5, pickup_all 6
+OUTSIDE = -999                      # the slot of a click outside the menu
 
 def java_round(value: float) -> int: ...  # Java's Math.round: half up, exact (VecDeltaCodec, LpVec3)
 
@@ -789,7 +818,9 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # (EntityTracker.clear, so a kept Bot.entities view follows) on play login or respawn into
     # another dimension (a new ClientLevel; no answer); every play packet → Replies.inventory
     # (InventoryTracker, with Replies.tracker's entities), cleared on play login or any
-    # respawn (a new LocalPlayer; no answer);
+    # respawn (a new LocalPlayer; no answer); configuration registry_data for
+    # minecraft:enchantment → its entry names collected, set as Replies.inventory.enchantments
+    # on finish_configuration (each configuration collects afresh; no answer of its own);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join and respawn, not Replies, send player_loaded.
