@@ -29,13 +29,13 @@ build, delete the installed one first; the message names its folder.
 | Argument | Description |
 | --- | --- |
 | `<adapter>` | `vanilla` or `pumpkin`. |
-| `@<version>` | The build to install. For vanilla, a Minecraft version (only `26.3` works). For Pumpkin, the commit of its nightly build, at least 7 characters, or `nightly` for the latest. |
+| `@<version>` | The build to install. For vanilla, a Minecraft version (only `26.3` works). For Pumpkin, the commit of its nightly build, at least 7 characters long, or `nightly` for the latest. |
 | `--from PATH` | Install a file you supply instead of downloading. mscts checks that it is a build for 26.3, hashes it and records its path. |
 
 A version and `--from` cannot be combined. A build for another Minecraft
-version is refused, and so is a Pumpkin commit that is not its latest
-nightly: Pumpkin publishes only that one. Build an older commit yourself
-and install the file with `--from`.
+version is refused, and so is a Pumpkin commit other than the latest
+nightly, because Pumpkin publishes only the latest one. To test an older
+commit, build it yourself and install the file with `--from`.
 
 ```sh
 uv run mscts adapter install vanilla
@@ -51,7 +51,7 @@ uv run mscts adapter install pumpkin --from ./pumpkin-X64-Linux
 mscts adapter list
 ```
 
-Lists every Adapter, the build installed for it and whether it is installed.
+Lists every Adapter and the build installed for it, if any.
 A broken Installation shows as `unusable` and points to `mscts adapter status`.
 
 ## `mscts adapter status`
@@ -62,8 +62,8 @@ mscts adapter status <adapter>
 
 Shows where the Adapter's Installation lives, its version, its commit (when
 the build names one), its sha256 and size, where it came from, and when it
-was installed. Exits with code 1 if nothing is installed, and prints the
-install command.
+was installed. If nothing is installed, it prints the
+install command and exits with code 1.
 
 ## `mscts run`
 
@@ -84,25 +84,25 @@ line, then the total Run time in seconds. [Reading a Report](/guide/reading-a-re
 each line.
 
 On a terminal, ✓ is green, ✗ red and `!` yellow. Set `NO_COLOR` to any
-value to turn the colours off. Output sent to a file or another program,
-`report.md` and `report.json` have no colours.
+value to turn the colours off. Output sent to a file or another program has
+no colours, and neither do `report.md` and `report.json`.
 
 | Option | Default | Description |
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
-| `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds, about 14 seconds for each repetition. |
+| `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds, so it takes about 14 seconds for each repetition. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
-| `-v`, `--verbose` | off | Add the Reference's installed version, Target, repetitions, both values under each test case that differs, and time per Group. |
+| `-v`, `--verbose` | off | Also show the Reference's installed version, Target, repetitions, both values under each test case that differs, and time per Group. |
 | `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |
 
 Verbose values appear directly under their test case. Distinct values from
 different repetitions are kept; identical differences are shown once.
-Group time is the sum of playing both sides and comparing them across
-all repetitions. It excludes Instance startup and shutdown, which remain
+A Group's time is the sum, over all repetitions, of playing both sides
+and comparing them. It excludes Instance startup and shutdown, which remain
 in the final total. Skipped Groups say `not played`. An installed version
-is the installed build: its version, its commit where the build names one,
-and the start of its sha256. It does not trust the version claimed in a
-status response.
+names the installed build: its version, its commit where the build names
+one, and the start of its sha256. mscts does not trust the version claimed
+in a status response.
 
 `--out DIR` creates `DIR` if needed and writes two files into it:
 `report.json`, the whole Report with both values of each difference, up to 20
@@ -129,7 +129,7 @@ If a server is not installed, `mscts run` asks on a terminal whether to
 install it. Without a terminal it fails and prints the install command.
 
 If a server fails to start, `mscts run` exits with code 1 and keeps that
-server's working directory, and the message gives the path to its console
+server's working directory. The message gives the path to its console
 log.
 
 ## mise tasks

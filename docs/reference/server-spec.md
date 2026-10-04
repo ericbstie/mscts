@@ -12,9 +12,9 @@ Group can change it through its `spec` option.
 | `port` | `int` | set by mscts | The port the server binds. |
 | `motd` | `str` | `"mscts"` | The description shown in the server list. |
 | `max_players` | `int` | `20` | |
-| `view_distance` | `int` | `2` | In chunks, at most 12. A server sends each player the chunks within its own view distance or the player's, whichever is smaller, and every Bot asks for 12, as a new vanilla client does. |
+| `view_distance` | `int` | `2` | In chunks, at most 12. A server sends each player the chunks within the smaller of its own view distance and the player's. Every Bot asks for 12, as a new vanilla client does. |
 | `simulation_distance` | `int` | `2` | In chunks. |
-| `world` | `WorldPreset` | `FLAT` | Flat is the only preset so far. Void comes once it is verified on vanilla. |
+| `world` | `WorldPreset` | `FLAT` | Flat is the only preset so far. Void will be added once it is verified on vanilla. |
 | `seed` | `int` | `0` | |
 | `game_mode` | `GameMode` | `SURVIVAL` | `SURVIVAL`, `CREATIVE`, `ADVENTURE` or `SPECTATOR`. |
 | `difficulty` | `Difficulty` | `PEACEFUL` | `PEACEFUL`, `EASY`, `NORMAL` or `HARD`. |

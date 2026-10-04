@@ -17,10 +17,10 @@ need is missing, add it here in the same commit that introduces it.
 - **Candidate**: the custom server implementation being measured
   (Pumpkin, Minestom, …). _Avoid_: SUT, implementation, custom server (in
   code).
-- **Adapter**: the only server-specific code. It says where its server's
-  latest build for the Target is downloaded from, reads which build a binary
-  is and checks that it can run it, and turns a ServerSpec into a LaunchPlan.
-  It never installs anything. Reference and every Candidate each have one.
+- **Adapter**: the only server-specific code. It says where to download its
+  server's latest build for the Target, reads which build a binary is and
+  checks that it can run it, and turns a ServerSpec into a LaunchPlan.
+  It never installs anything. The Reference and every Candidate each have one.
 - **ServerSpec**: a server-agnostic, declarative description of how a
   server must be configured (the host and port of its Endpoint, view
   distance, world preset, operators, …). Offline mode, no encryption, no
@@ -29,7 +29,7 @@ need is missing, add it here in the same commit that introduces it.
   is always a loopback address (127.0.0.0/8), and each Instance gets one of
   its own.
 - **Installation**: the binaries installed for an Adapter and a Target,
-  cached on disk, with the build they are (its version, and its commit where
+  cached on disk with their build (its version, and its commit where
   the publisher names one), their sha256 and their source (the URL the
   Adapter gave, or a `--from` file). It is created only by
   `mscts adapter install`, or after an explicit prompt (ADR-0008).
@@ -59,7 +59,7 @@ need is missing, add it here in the same commit that introduces it.
   `control`, which every Adapter makes an operator. It runs each command,
   then a marker command, and returns once the server has answered the
   marker and passed the barrier. What it receives is recorded but never
-  compared, and a Candidate without one of its commands makes the Group
+  compared, and a Candidate that lacks one of its commands makes the Group
   `blocked`. Control can leave (its Bot closes), and its next command
   joins a new one.
 - **Fixture**: world or player state established before the observed part
@@ -80,8 +80,8 @@ need is missing, add it here in the same commit that introduces it.
 - **Transcript**: the ordered, timestamped record of every Packet each Bot
   sent and every Packet it took from what it received, plus Marks.
 - **Event**: one entry of a Transcript: a Packet one Bot sent or received,
-  and when: a sent Packet when it was written, a received one when it
-  arrived (not when the Bot took it).
+  and its time. A sent Packet is timed when it was written, a received one
+  when it arrived (not when the Bot took it).
 - **Mark**: a named timestamp a Group records so a Measurement can be
   computed, or an Observation window found.
 - **Observation window**: the part of a Group whose play packets are
@@ -89,26 +89,26 @@ need is missing, add it here in the same commit that introduces it.
   found by when each packet arrived. It never compares the **heartbeat
   packets** (`compare.HEARTBEAT` by name and `compare.HEARTBEAT_PAYLOADS`
   by name and first bytes, each with its reason): packets a server sends
-  on a clock whatever a Group does (keep-alives, the time of day,
+  on a clock, regardless of what a Group does (keep-alives, the time of day,
   vanilla's player latency updates).
   A window can be narrowed to named packets. Status, login and
   configuration packets are compared whole, and so is every packet of a
   Group with no window. Before a window opens, and when it closes, each
   Bot in play first passes the **barrier** (`Bot.sync`). It asks the server for its
-  statistics three times, each 5 ms after the last answer arrived. The
+  statistics three times, each 5 ms after the previous answer arrived. The
   last answer comes from a later tick than the first, so by then the
   server has sent everything caused by what the Bot sent before. Two
   `award_stats` the server sends unasked during one barrier can still
   end it early (ADR-0010). Each Bot's window ends
-  at its own barrier's last answer, whatever the other Bots are still
-  waiting for, and a Bot made after the window ends is outside it. A
+  at its own barrier's last answer, regardless of what the other Bots are
+  still waiting for. A Bot created after the window ends is outside it. A
   barrier covers what its own Bot sent, so a window that must hold
   what another Bot's action causes waits for that action's feedback
   before it ends. The Bot then takes what has already arrived (the
   **drain**), outside its window. A window can
-  instead end at a packet's arrival (`until`): no barrier, and it closes
-  when the first packet of that name arrived at a Bot, or at the Bot
-  named with `bot=`. _Avoid_: phase,
+  instead end when a packet arrives (`until`): there is no barrier, and it
+  closes when the first packet of that name arrives at any Bot, or at the
+  Bot named with `bot=`. _Avoid_: phase,
   section.
 - **Mask**: a normalization rule that excludes an identifier with no
   gameplay meaning (keep-alive ids, teleport ids) from
@@ -132,7 +132,7 @@ need is missing, add it here in the same commit that introduces it.
   one boot (or join) to the next while the client keeps its entries in a
   map or a set, such as the tag lists (`compare.UNORDERED`). Every
   Comparison sorts it by each entry's key in that map or set, before
-  anything else, so its order is no Divergence at all.
+  anything else, so its order is never a Divergence.
 - **Canonicalization**: rewrites a value into one canonical form when the
   protocol defines two encodings as meaning the same thing to the vanilla
   client (a text component `"x"` is `{"text": "x"}`). It is not a Mask: a
@@ -156,7 +156,7 @@ need is missing, add it here in the same commit that introduces it.
   Every compared field is one, so nobody lists them by hand. A packet
   compared as a whole (by payload, missing or unexpected) is the test
   case of its packet name. A masked field is a test case only where one
-  side lacks it, and packets an Observation window leaves out are none. Each test
+  side lacks it, and packets an Observation window leaves out are not test cases. Each test
   case in a Verdict is the same, different in gameplay, or different in
   network traffic only: gameplay if any of its Divergences is. _Avoid_:
   check, test (for one compared field).
@@ -168,10 +168,10 @@ need is missing, add it here in the same commit that introduces it.
   `failed` Divergence that says what happened, never an `error`. That
   holds whatever the failure: a frame that does not decode, an answer
   that breaks the protocol, no answer in time, a connection closed, reset
-  or refused, players still online from the Group before, or a value the
+  or refused, players still online from the previous Group, or a value the
   Group does not expect. The Score leaves `error` out, so a
   Candidate must never score better by failing. The same holds while
-  mscts waits for the players of the Group before to leave; it then does
+  mscts waits for the previous Group's players to leave; it then does
   not play the Group.
 - **Self-check**: a Comparison of Reference against Reference. It must
   always be `match`. Anything else is a missing Mask or a flaky Group,

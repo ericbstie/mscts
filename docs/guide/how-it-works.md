@@ -35,8 +35,8 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    `status/ping`. It opens one or more **Bots**. A Bot is a protocol client
    that answers what the vanilla client answers automatically, such as
    keep-alives and teleport confirmations. Before mscts plays a Group, it
-   waits until the previous Group's Bots have left, which it reads from each
-   server's own status. If a server still has players online after a short
+   checks each server's own status until the previous Group's Bots have
+   left. If a server still has players online after a short
    wait, mscts does not play the Group: the Verdict is `error` if that server
    is vanilla, and `mismatch` if it is the Candidate.
 3. **Record.** Every packet a Bot sends or receives goes into a
@@ -50,8 +50,8 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    or failed Groups and the total Run time.
 
 If the mscts process is forcibly killed, its servers may keep running. The
-next Instance launch using the same cache checks their process identities
-and stops the orphaned process groups.
+next time mscts launches an Instance with the same cache, it checks their
+process identities and stops the orphaned process groups.
 
 ## Verdicts
 
@@ -59,13 +59,13 @@ and stops the orphaned process groups.
 | --- | --- |
 | `match` | The Candidate sent what vanilla sent. |
 | `mismatch` | At least one difference, called a **Divergence**. |
-| `blocked` | A Group this one requires did not match, or the Candidate does not have a command this Group sets up the world with, so mscts did not play it. |
+| `blocked` | A Group this one requires did not match, or the Candidate lacks a command this Group uses to set up the world, so mscts did not play it. |
 | `error` | mscts failed on vanilla or while comparing, or vanilla could not run the Group. |
 
 When the Candidate breaks the protocol, sends a frame that does not decode,
 closes the connection, stops answering, still has players online from the
-Group before, or sends a value that makes the Group fail when it did not fail
-on vanilla, the Verdict is `mismatch`, led by a `failed` Divergence that says what
+previous Group, or sends a value that makes the Group fail where it did not
+fail on vanilla, the Verdict is `mismatch`, led by a `failed` Divergence that says what
 happened. It is never `error`.
 The Report's score leaves `error` out, so a Candidate cannot score
 better by crashing.
@@ -89,7 +89,7 @@ a value into one canonical form, and each one cites the client code that
 proves the two forms are equal. mscts still reports network traffic
 differences, but a test case that differs only in network traffic passes.
 
-A difference is only network traffic where such a rule says so. Today the
+A difference counts as network traffic only where such a rule says so. Today the
 canonical table covers the server list answer. Any other difference counts
 as gameplay.
 
@@ -99,26 +99,26 @@ Some values differ between two runs of vanilla itself, such as keep-alive
 ids and teleport ids. A **Mask** hides that field's value from the
 Comparison. Whether the field is there still counts: if one server sends
 it and the other leaves it out, that is a difference. A Mask must give a
-reason, and that reason must show the value
-has no gameplay meaning.
+reason, and that reason must show that the value has no gameplay meaning.
 
 Entity ids, and the random UUIDs of mobs, differ too, but need no Mask.
 mscts names an entity spawned before the compared part by its type and
-where it spawned, such as `pig@(1.5, -60.0, 7.5)`, a player by its UUID,
-and numbers the others in the order each Bot first hears of them. A Mask
-on a position field of `add_entity` hides that part of the name too. So the same entities compare
-equal on both servers, and a packet about a different entity still shows
-up as a difference.
+where it spawned, such as `pig@(1.5, -60.0, 7.5)`. It names a player by
+its UUID, and numbers the other entities in the order each Bot first hears
+of them. A Mask on a position field of `add_entity` hides that part of the
+name too. Naming entities this way makes the same entities compare equal on
+both servers, while a packet about a different entity still shows up as a
+difference.
 
 A few fields hold a value vanilla picks at random every time, such as the
 session id each login gets. Two runs of vanilla never agree on them, so
 mscts leaves them out for every Group. Vanilla also sends the tag lists in
-an order that changes each time it starts, and the client reads them into
-lookup tables, so mscts compares them sorted by name.
+an order that changes each time it starts. The client reads them into
+lookup tables, so mscts sorts them by name before comparing them.
 
 Otherwise mscts never masks anything a player could observe, even if it
-is random. Random mechanics, such as mob spawning and loot, will be
-compared statistically instead, as distributions over many runs.
+is random. Random mechanics, such as mob spawning and loot, will instead
+be compared statistically, as distributions over many runs.
 
 ## Self-checks
 
@@ -131,8 +131,8 @@ is flaky or is missing a Mask. It never means vanilla is wrong.
 A Group marks spans in its script. `status/ping` marks the time from
 sending a ping to receiving the pong, and mscts records that as
 `status.rtt` in milliseconds. mscts also records `instance.startup`, the
-time from launch until the server is ready. Those Measurements remain in
-the Run result. The default Report shows the total Run time, including
+time from launch until the server is ready. Both Measurements are kept
+in the Run result. The default Report shows the total Run time, including
 starting and stopping both servers, in seconds.
 
 ## What mscts does not cover
