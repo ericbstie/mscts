@@ -21,6 +21,7 @@ import contextlib
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
 
+from mscts import run
 from mscts.bot import Bot
 from mscts.group import GroupContext, group
 from mscts.groups._world import pin_joins
@@ -38,9 +39,6 @@ PACKETS = (
     "minecraft:set_chunk_cache_center",
 )
 """What a window compares: the chunks sent, the chunks forgotten, and the view's centre."""
-
-SENT_TIMEOUT_S = 10.0
-"""How long the walker waits for its view: `run.GROUP_TIMEOUT_S`, a Bot's bound."""
 
 HELD_SYNCS = 3
 """How many barriers (`Bot.sync`) a window lasts after the walker holds its view, about 9
@@ -101,7 +99,8 @@ async def _until_sent(bot: Bot, chunks: frozenset[Chunk]) -> None:
     chunks that are ready (`PlayerChunkSender.collectChunksToSend`, 26.3 javap).
 
     Raises:
-        TimeoutError: One had not arrived within `SENT_TIMEOUT_S`; it names those missing.
+        TimeoutError: One had not arrived within `run.GROUP_TIMEOUT_S`, a Bot's bound; it
+            names those missing.
     """
 
     def missing() -> frozenset[Chunk]:
@@ -109,10 +108,11 @@ async def _until_sent(bot: Bot, chunks: frozenset[Chunk]) -> None:
 
     if not missing():
         return
+    timeout_s = run.GROUP_TIMEOUT_S
     try:
-        await bot.expect(_CHUNK, timeout_s=SENT_TIMEOUT_S, where=lambda _: not missing())
+        await bot.expect(_CHUNK, timeout_s=timeout_s, where=lambda _: not missing())
     except TimeoutError:
-        msg = f"chunks {sorted(missing())} never arrived within {SENT_TIMEOUT_S} s"
+        msg = f"chunks {sorted(missing())} never arrived within {timeout_s} s"
         raise TimeoutError(msg) from None
 
 

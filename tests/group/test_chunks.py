@@ -13,6 +13,7 @@ from typing import cast
 
 import pytest
 
+from mscts import run
 from mscts.bot import SYNC_REQUESTS, TICK_GAP_S
 from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
@@ -277,7 +278,7 @@ def test_the_view_centre_has_titles() -> None:
 async def test_a_chunk_never_sent_fails_the_group_and_control_still_undoes_the_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.5)
     transcript = Transcript(group_id="chunks/join-view", server="fake")
     with pytest.raises(TimeoutError):
         async with playing(ChunksServer(withheld=(3, 3)), transcript) as context:
@@ -307,7 +308,7 @@ async def test_the_teleport_window_holds_control_teleporting_the_walker_once_it_
 async def test_a_chunk_never_sent_after_the_teleport_fails_the_group_and_control_still_undoes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.5)
     transcript = Transcript(group_id="chunks/teleport", server="fake")
     with pytest.raises(TimeoutError):
         async with playing(ChunksServer(withheld=(23, 3)), transcript) as context:
@@ -352,7 +353,7 @@ async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None
 async def test_a_chunk_never_sent_after_the_step_across_fails_the_group_and_control_undoes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.5)
     transcript = Transcript(group_id="chunks/walk", server="fake")
     with pytest.raises(TimeoutError):
         async with playing(ChunksServer(withheld=(-4, 0)), transcript) as context:
@@ -383,9 +384,9 @@ async def test_a_group_counts_the_chunks_the_first_batch_held(
 
 
 @pytest.mark.asyncio
-async def test_a_chunk_never_sent_is_named_when_the_group_gives_up(
+async def test_a_chunk_never_sent_is_named_when_the_group_gives_up_at_a_bots_bound(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
-    with pytest.raises(TimeoutError, match=r"\(3, 3\)"):
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.5)
+    with pytest.raises(TimeoutError, match=r"\(3, 3\)\] never arrived within 0\.5 s"):
         await play("chunks/join-view", ChunksServer(withheld=(3, 3)))
