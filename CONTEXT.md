@@ -60,7 +60,7 @@ need is missing, add it here in the same commit that introduces it.
   then a marker command, and returns once the server has answered the
   marker and the Bot has passed the barrier. What it receives is recorded but never
   compared, and a Candidate without one of its commands fails the Group
-  (`needs /tick`). Control can leave (its Bot closes), and its next command
+  (`requires /tick`). Control can leave (its Bot closes), and its next command
   joins a new one.
 - **Fixture**: world or player state established before the observed part
   of a Group.
@@ -168,9 +168,10 @@ need is missing, add it here in the same commit that introduces it.
   `failed` Divergence that says what happened, never an `error`. That
   holds whatever the failure: a frame that does not decode, an answer
   that breaks the protocol, no answer in time, a connection closed, reset
-  or refused, a command Control needs missing, players still online from
-  the previous Group, or a value the Group does not expect. The Score leaves `error` out, so a
-  Candidate must never score better by failing. The same holds while
+  or refused, a missing command that Control sends, players still online
+  from the previous Group, or a value the Group does not expect. The Score
+  leaves `error` out, so a Candidate must never score better by failing.
+  The same holds while
   mscts waits for the previous Group's players to leave, and after a
   Group left the Candidate's world frozen. mscts then plays the Group on
   the Reference alone, and the Candidate fails each test case of that

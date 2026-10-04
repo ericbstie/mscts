@@ -121,10 +121,12 @@ the `blocks/*` undo stack, after every window.
 
 Now it is a Candidate failure like any other, as the #262 amendment
 says. It is a `mismatch` led by a `failed` Divergence naming the
-command, and its line reads `Candidate failed: needs /tick`. It keeps
+command, and its line reads `Candidate failed: requires /tick`. It keeps
 what the Comparison found, and the Candidate fails each test case of
-the Reference's play. A command missing on the Reference is still an
-`error`. `blocked` now means only that a prerequisite did not pass.
+the Reference's play. If the Group had already failed, and the command
+was missing only while undoing what the Group changed, the line names
+that first failure instead. A command missing on the Reference is still
+an `error`. `blocked` now means only that a prerequisite did not pass.
 
 ## Consequences
 

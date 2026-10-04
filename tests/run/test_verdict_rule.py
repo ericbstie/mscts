@@ -385,8 +385,8 @@ async def test_a_command_the_candidate_does_not_have_fails_the_group_needing_it(
     assert verdict == Verdict(
         "test/needs-tick",
         Outcome.MISMATCH,
-        divergences=(_failed("needs /tick", bot=""),),
-        detail="the Candidate failed: needs /tick",
+        divergences=(_failed("requires /tick", bot=""),),
+        detail="the Candidate failed: requires /tick",
     )
 
 
@@ -460,8 +460,8 @@ def test_a_command_missing_after_the_windows_keeps_the_comparisons_divergences()
 
     verdict = judge(NEEDS_TICK, SETS_BLOCKS, _missing(EVERY_VALUE_WRONG, "kill"))
 
-    assert verdict.divergences == (_failed("needs /kill", bot=""), *wrong.divergences)
-    assert verdict.detail == "the Candidate failed: needs /kill"
+    assert verdict.divergences == (_failed("requires /kill", bot=""), *wrong.divergences)
+    assert verdict.detail == "the Candidate failed: requires /kill"
 
 
 @pytest.mark.asyncio
@@ -480,6 +480,31 @@ async def test_a_command_missing_from_an_undo_callback_is_the_groups_cause() -> 
 
     assert isinstance(candidate, GroupError)
     assert isinstance(candidate.__cause__, CommandMissing)
+
+
+@pytest.mark.asyncio
+async def test_a_command_missing_from_an_undo_callback_does_not_hide_the_groups_failure() -> None:
+    # Review A #288: the Group failed first; the missing `kill` only came while undoing.
+    async def kill() -> None:
+        root = "kill"
+        raise CommandMissing(root)
+
+    async def fails_then_undoes(context: GroupContext) -> None:
+        del context
+        async with contextlib.AsyncExitStack() as undo:
+            undo.push_async_callback(kill)
+            msg = "the block never changed"
+            raise TimeoutError(msg)
+
+    group = Group(id="test/fails-then-undoes", run=fails_then_undoes)
+    candidate = await _play(group, None)
+    assert isinstance(candidate, GroupError)
+
+    verdict = judge(group, Transcript(group.id, "vanilla"), candidate)
+
+    first = "TimeoutError: the block never changed"
+    assert verdict.divergences == (_failed(first, bot=""),)
+    assert verdict.detail == f"the Candidate failed: {first}"
 
 
 @pytest.mark.asyncio
