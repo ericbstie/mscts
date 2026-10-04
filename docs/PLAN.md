@@ -1042,9 +1042,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `FAR_VIEW_DISTANCE` — the view distances the Groups set (2, and 5 for
   `chunks/view-distance`); `SPAWN` and `SPAWN_AT` — the chunk and the place a joining player
   is put; `FAR` and `FAR_AT` — the chunk and the place `chunks/teleport` moves the walker to;
-  `Chunk` — a chunk's (x, z); `view` — the chunks vanilla sends for a view centre and distance
-  (`ChunkTrackingView`); `join_view`, `view_distance` and `teleport` — the `chunks/join-view`,
-  `chunks/view-distance` and `chunks/teleport` scripts.
+  `WALK` — the x of each step of `chunks/walk`; `Chunk` — a chunk's (x, z); `view` — the chunks
+  vanilla sends for a view centre and distance (`ChunkTrackingView`); `join_view`,
+  `view_distance`, `teleport` and `walk` — the `chunks/join-view`, `chunks/view-distance`,
+  `chunks/teleport` and `chunks/walk` scripts.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `chunks` Groups).

@@ -29,6 +29,9 @@ from tests.net.fakes import EMPTY_CHUNK, NO_STATISTICS, JoinScript, Peer, join_s
 TICK_S = 2 * TICK_GAP_S
 """The fake's tick: just over what a barrier needs to see one pass, so a play is quick."""
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
+MOVE = "minecraft:move_player_pos"
+MOVES = {MOVE, "minecraft:move_player_pos_rot"}
+"""What a step can be sent as: the first after the join turns the player too (the fake's yaw)."""
 AWARD_STATS, CHUNK = "minecraft:award_stats", "minecraft:level_chunk_with_light"
 MARKER = "tellraw @s "
 CONTROL, WALKER = "control", chunks.WALKER
@@ -52,7 +55,8 @@ class ChunksServer:
 
     The join's first batch holds chunk (0, 0) (`join_server`); the rest of the view at
     `distance` follows at once. Control's teleport of the walker to `chunks.FAR_AT` sends the
-    walker the view around `chunks.FAR`. A marker (`tellraw @s "<token>"`) gets its token back; no
+    walker the view around `chunks.FAR`, and its first step into chunk (-1, 0) sends it the
+    chunks that step brings into its view. A marker (`tellraw @s "<token>"`) gets its token back; no
     other command gets feedback. Chunk `withheld` is never sent.
     """
 
@@ -72,10 +76,20 @@ class ChunksServer:
         if (hellos[-1].fields or {})["name"] == WALKER:
             self.walker = peer
             await self.send(peer, chunks.view(chunks.SPAWN, self.distance) - {(0, 0)})
-        requests = 0
+        requests, crossed = 0, False
         async for packet in peer.packets():
             self.seen.append(packet)
-            if packet.name == CLIENT_COMMAND:
+            if (
+                packet.name in MOVES
+                and cast("float", (packet.fields or {})["x"]) < 0
+                and not crossed
+            ):
+                crossed = True
+                west = chunks.view((-1, 0), self.distance) - chunks.view(
+                    chunks.SPAWN, self.distance
+                )
+                await self.send(peer, west)
+            elif packet.name == CLIENT_COMMAND:
                 requests += 1
                 if (requests - 1) % SYNC_REQUESTS != 0:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
@@ -154,8 +168,13 @@ def test_a_view_is_vanillas_chunk_tracking_view() -> None:
 
 
 JOINS = ("chunks/join-view", "chunks/view-distance")
-ALL = (*JOINS, "chunks/teleport")
-DISTANCES = {"chunks/join-view": 2, "chunks/view-distance": 5, "chunks/teleport": 2}
+ALL = (*JOINS, "chunks/teleport", "chunks/walk")
+DISTANCES = {
+    "chunks/join-view": 2,
+    "chunks/view-distance": 5,
+    "chunks/teleport": 2,
+    "chunks/walk": 2,
+}
 
 
 @pytest.mark.parametrize("group_id", ALL)
@@ -255,3 +274,45 @@ async def test_a_chunk_never_sent_after_the_teleport_fails_the_group_and_control
             await GROUPS["chunks/teleport"].run(context)
 
     assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, TELEPORT, *UNDO]
+
+
+def walked(transcript: Transcript) -> list[tuple[int, str]]:
+    """What the walker sent of its steps and barriers, with when: each step's x, or `sync`."""
+    return [
+        (e.t_ns, str((e.packet.fields or {})["x"]) if e.packet.name in MOVES else "sync")
+        for e in transcript.events
+        if e.bot == WALKER
+        and e.packet.direction is Direction.SERVERBOUND
+        and e.packet.name in {*MOVES, CLIENT_COMMAND}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None:
+    transcript = await play("chunks/walk")
+
+    opened, closed = window(transcript)
+    inside = [what for t, what in walked(transcript) if opened < t < closed]
+    steps = [str(x) for x in chunks.WALK]
+    barrier = ["sync"] * SYNC_REQUESTS
+    # Only the window's own barrier after the step across: another would take the new chunks
+    # out from under the wait for them.
+    assert inside == [steps[0], *barrier, steps[1], *barrier, steps[2], *barrier]
+    west = chunks.view((-1, 0), 2) - chunks.view(chunks.SPAWN, 2)
+    arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
+    assert west <= arrived.keys()
+    assert opened < min(arrived[chunk] for chunk in west)
+    assert max(arrived[chunk] for chunk in west) < closed
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_never_sent_after_the_step_across_fails_the_group_and_control_undoes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.2)
+    transcript = Transcript(group_id="chunks/walk", server="fake")
+    with pytest.raises(TimeoutError):
+        async with playing(ChunksServer(withheld=(-4, 0)), transcript) as context:
+            await GROUPS["chunks/walk"].run(context)
+
+    assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, *UNDO]

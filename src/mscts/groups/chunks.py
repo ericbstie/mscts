@@ -1,6 +1,6 @@
 """Chunk loading Groups: which chunks the world loads around a player, and which it forgets.
 
-A Bot called `walker` joins or is teleported, and each window compares the chunks it is sent
+A Bot called `walker` joins, is teleported, or walks, and each window compares the chunks it is sent
 (`level_chunk_with_light`), the ones it is told to forget (`forget_level_chunk`) and where its
 view is centred (`set_chunk_cache_center`).
 
@@ -42,7 +42,7 @@ SENT_TIMEOUT_S = 10.0
 """How long the walker waits for its view: `run.GROUP_TIMEOUT_S`, a Bot's bound."""
 
 VIEW_DISTANCE = 2
-"""The view distance of `chunks/join-view` and `chunks/teleport`."""
+"""The view distance of `chunks/join-view`, `chunks/teleport` and `chunks/walk`."""
 
 FAR_VIEW_DISTANCE = 5
 """The view distance of `chunks/view-distance`."""
@@ -58,6 +58,9 @@ FAR = (20, 0)
 
 FAR_AT = "320.5 -60 0.5"
 """Where in `FAR` the walker is teleported to."""
+
+WALK = (0.25, 0.0, -0.25)
+"""The x of each step of `chunks/walk`, one a tick, west from 0.5: the last is in chunk -1."""
 
 _CHUNK = "minecraft:level_chunk_with_light"
 
@@ -161,3 +164,20 @@ async def teleport(context: GroupContext) -> None:
         async with context.observe(*PACKETS):
             await context.control.run(f"tp {WALKER} {FAR_AT}")
             await _until_sent(walker, view(FAR, VIEW_DISTANCE))
+
+
+@group("chunks/walk", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
+async def walk(context: GroupContext) -> None:
+    """The walker steps west into the next chunk, one step a tick."""
+    async with _walker(context) as walker:
+        await walker.join()
+        old = view(SPAWN, VIEW_DISTANCE)
+        await _until_sent(walker, old - _nearest(SPAWN))
+        async with context.observe(*PACKETS):
+            *before, across = WALK
+            for x in before:
+                await walker.move(x, -60.0, 0.5)
+                await walker.sync()
+            # No barrier after the step across: it would take the new chunks the wait looks for.
+            await walker.move(across, -60.0, 0.5)
+            await _until_sent(walker, view((-1, 0), VIEW_DISTANCE) - old)

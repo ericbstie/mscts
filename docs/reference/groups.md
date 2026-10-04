@@ -162,6 +162,7 @@ its own: 2, or 5 for `chunks/view-distance`.
 | `chunks/join-view` | exact | `join/basic` | The walker joins and is sent the chunks around it: the 7 by 7 chunks around its own at view distance 2. | none |
 | `chunks/view-distance` | exact | `join/basic` | The same as `chunks/join-view`, with view distance 5. | none |
 | `chunks/teleport` | exact | `join/basic` | Once the walker has its view, Control teleports it 20 chunks east. The walker is told to unload its old chunks and is sent the chunks around its new position. | none |
+| `chunks/walk` | exact | `join/basic` | Once the walker has its view, it walks west into the next chunk, one step a tick. The walker is told to unload the column of chunks it left behind and is sent the column ahead. | none |
 
 The chunks are compared by position and content. Their order is not compared, and neither is
 which chunk batch carries each chunk: two vanilla servers split the same chunks into batches
