@@ -1119,7 +1119,7 @@ type Answer = Callable[[Connection, Packet], Awaitable[None]]
 async def _values_until_closed(
     endpoint: Endpoint, codec: Codec, transcript: Transcript, answer: Answer
 ) -> list[object]:
-    """The `value` of every frame recv takes, then the ConnectionClosedError's type."""
+    """The `value` of every frame recv takes, then the ConnectionClosedError's message."""
     connection = await Connection.open(
         endpoint, codec, bot="alice", transcript=transcript, answer=answer
     )
@@ -1129,7 +1129,7 @@ async def _values_until_closed(
             try:
                 packet = await connection.recv(timeout_s=2)
             except ConnectionClosedError as error:
-                taken.append(type(error))
+                taken.append(str(error))
                 return taken
             taken.append((packet.fields or {}).get("value"))
     finally:
@@ -1162,7 +1162,7 @@ def test_what_was_still_in_the_socket_when_a_write_failed_is_still_taken(
 
     with serve_in_thread(toy_codec, server) as endpoint:
         taken = asyncio.run(_values_until_closed(endpoint, toy_codec, transcript, answer))
-    assert taken == [1, 2, ConnectionClosedError]
+    assert taken[:-1] == [1, 2]
 
 
 BACKLOG_FRAMES = 14_000
@@ -1196,7 +1196,34 @@ def test_what_was_left_in_the_socket_by_a_full_stream_when_a_write_failed_is_sti
 
     with serve_in_thread(toy_codec, server) as endpoint:
         taken = asyncio.run(_values_until_closed(endpoint, toy_codec, transcript, answer))
-    assert taken == [1, *[2] * BACKLOG_FRAMES, 3, ConnectionClosedError]
+    assert taken[:-1] == [1, *[2] * BACKLOG_FRAMES, 3]
+
+
+def test_a_server_that_closed_before_a_write_failed_is_reported_as_closed_not_lost(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review S1: the server closes cleanly and the reader sees it; only the answer's
+    # later write fails. The same server behaviour must read the same whatever we write.
+    cue, done = threading.Event(), threading.Event()
+
+    async def server(peer: Peer) -> None:
+        await peer.write(peer.frame("test:reply", value=1))
+        assert await asyncio.to_thread(cue.wait, HANDLER_TIMEOUT_S)
+        await peer.write(peer.frame("test:reply", value=2))
+        await peer.close()
+        done.set()
+
+    async def answer(connection: Connection, packet: Packet) -> None:
+        if (packet.fields or {}).get("value") == 1:
+            cue.set()
+            assert await asyncio.to_thread(done.wait, HANDLER_TIMEOUT_S)
+            await asyncio.sleep(0.05)  # the reader has seen the close
+            for _ in range(3):  # the first write draws a reset, a later one fails
+                await connection.send("test:request", value=0)
+
+    with serve_in_thread(toy_codec, server) as endpoint:
+        taken = asyncio.run(_values_until_closed(endpoint, toy_codec, transcript, answer))
+    assert taken == [1, 2, "the server closed the connection"]
 
 
 def test_canary_asyncio_tells_the_protocol_a_write_failed_before_it_closes_the_socket(

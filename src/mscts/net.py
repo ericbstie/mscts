@@ -87,10 +87,20 @@ class _Stream(asyncio.StreamReader):
     When a write fails, asyncio also stops reading and closes the socket, dropping what
     the socket still holds. It tells this reader first, while the socket is open, so this
     one takes those bytes before it ends the stream.
+
+    A loss after the stream has ended (the server closed it, then a write failed) is not
+    recorded: the server closed the connection, whatever was written after.
     """
 
     lost: ConnectionError | None = None
     _socket: socket.socket | None = None
+    _ended = False
+
+    @override
+    def feed_eof(self) -> None:
+        """End the stream, as asyncio does, and remember it has ended."""
+        self._ended = True
+        super().feed_eof()
 
     @override
     def set_transport(self, transport: asyncio.BaseTransport) -> None:
@@ -104,8 +114,9 @@ class _Stream(asyncio.StreamReader):
         if not isinstance(exc, ConnectionError):
             super().set_exception(exc)
             return
-        if self.lost is None:
-            self.lost = exc
+        if self._ended:
+            return
+        self.lost = exc
         self._take_what_the_socket_holds()
         self.feed_eof()
 
