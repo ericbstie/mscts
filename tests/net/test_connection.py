@@ -1122,6 +1122,34 @@ def test_a_plain_stream_that_fails_with_a_connection_error_ends_as_closed(
     assert asyncio.run(client()) == message
 
 
+def test_a_connection_that_timed_out_is_lost_not_a_recv_timeout(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review L1, mutant M4: a TCP timeout (ETIMEDOUT) is an OSError, not a
+    # ConnectionError. Raised as is, recv's TimeoutError would read as "no frame in time,
+    # the Connection is still usable", on this and every later call.
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> list[str]:
+        async with serve(toy_codec, server) as endpoint:
+            _, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
+            stream = net._Stream()  # noqa: SLF001 - how asyncio reports the loss to it
+            stream.set_exception(TimeoutError(110, "Connection timed out"))
+            connection = Connection(stream, writer, toy_codec, bot="alice", transcript=transcript)
+            seen: list[str] = []
+            try:
+                for _ in range(2):
+                    with pytest.raises(ConnectionClosedError) as raised:
+                        await connection.recv(timeout_s=2)
+                    seen.append(str(raised.value))
+            finally:
+                await connection.close()
+            return seen
+
+    assert asyncio.run(client()) == ["the connection was lost (connection timed out)"] * 2
+
+
 type Answer = Callable[[Connection, Packet], Awaitable[None]]
 
 

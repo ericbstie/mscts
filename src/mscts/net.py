@@ -79,10 +79,10 @@ class _Arrival:
 class _Stream(asyncio.StreamReader):
     """A StreamReader that still yields what arrived when the connection is lost.
 
-    asyncio's raises the loss (a reset, or a failed write: EPIPE) on the next read,
-    ahead of the bytes it already holds, so a server's last frames would be lost
-    (#291). This one ends the stream after those bytes instead, and keeps the loss
-    in `lost`.
+    asyncio's raises the loss (any OSError: a reset, a TCP timeout, or a failed write:
+    EPIPE) on the next read, ahead of the bytes it already holds, so a server's last
+    frames would be lost (#291). This one ends the stream after those bytes instead, and
+    keeps the loss in `lost`.
 
     When a write fails, asyncio also stops reading and closes the socket, dropping what
     the socket still holds. It tells this reader first, while the socket is open, so this
@@ -92,7 +92,7 @@ class _Stream(asyncio.StreamReader):
     recorded: the server closed the connection, whatever was written after.
     """
 
-    lost: ConnectionError | None = None
+    lost: OSError | None = None
     _socket: socket.socket | None = None
     _ended = False
 
@@ -111,7 +111,7 @@ class _Stream(asyncio.StreamReader):
     @override
     def set_exception(self, exc: Exception) -> None:
         """Record a lost connection and end the stream; set any other error as asyncio does."""
-        if not isinstance(exc, ConnectionError):
+        if not isinstance(exc, OSError):
             super().set_exception(exc)
             return
         if self._ended:
@@ -443,7 +443,7 @@ class Connection:
                 self._frames.compression_threshold = threshold
         self._receiving = _STATE_AFTER_RECEIVING.get((packet.state, packet.name), packet.state)
 
-    def _end_of_stream(self, lost: ConnectionError | None = None) -> _End:
+    def _end_of_stream(self, lost: OSError | None = None) -> _End:
         if lost is None and isinstance(self._reader, _Stream):
             lost = self._reader.lost
         if lost is None:
