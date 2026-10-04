@@ -78,11 +78,37 @@ Any session that writes user-facing text follows this skill all the same.
   commas ("…, checked tick by tick, and …, compared over many runs") that
   leave the reader unsure whether the sentence is over. Split it, or
   drop what the reader doesn't need there.
+- **Say each thing once.** Look for redundancy in every text and
+  rephrase it so nothing is said twice: not a set-up followed by the
+  content ("two servers: vanilla and the custom server"), and not two
+  lines that name the same thing ("Running tests against pumpkin" then
+  "Candidate: pumpkin …"). Keep the natural flow: this is not about
+  cutting filler words or packing the text densely.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Report output, the first line and the totals
+
+- Before: "Running tests against pumpkin", then "Candidate: pumpkin
+  nightly 4426d11 (sha256 b8382a8a…)"; at the end "19 passed, 0 failed"
+  then "Score: 100% (19 of 19 test cases pass)".
+- After: "Running tests against pumpkin nightly 4426d11 (sha256
+  b8382a8a…)"; at the end "19 passed, 0 failed. (100%)". The maintainer
+  chose both wordings.
+- Why: each pair says the same thing twice. "Always look for redundancy
+  and try to rephrase for conciseness. I don't want to lose the natural
+  flow in text, so this isn't about removing filler words and making it
+  as dense as possible, just not saying the same thing twice."
+
+### Report output, a title after each test case
+
+- Before: "✓ status/basic/status_response.players.max Player limit".
+- After: "✓ status/basic/status_response.players.max".
+- Why: the maintainer doesn't want a message after each one; "I liked
+  that it only shows the pathname of the test."
 
 ### Home page, "What is tested?", what comes next
 

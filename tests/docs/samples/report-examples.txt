@@ -1,7 +1,6 @@
 Running tests against pumpkin
-✗ status/basic/status_response.players.max Player limit
-✗ status/ping/status:pong_response.timestamp Server list ping response
+✗ status/basic/status_response.players.max
+✗ status/ping/status:pong_response.timestamp
 ✗ join/basic Not tested: prerequisite status/basic was mismatch
-0 passed, 3 failed (1 not tested)
-Score: 0% (0 of 3 test cases pass)
+0 passed, 3 failed (1 not tested). (0%)
 Took 41 s

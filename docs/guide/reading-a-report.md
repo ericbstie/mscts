@@ -1,39 +1,36 @@
 # Reading a Report
 
 A Report lists every test case mscts compared, each marked ✓ if the
-Candidate passed it or ✗ if not. Then it gives the totals and a score. It
+Candidate passed it or ✗ if not. Then it gives the totals and the score. It
 does not hide differences the Candidate considers intentional.
 
 A default Run against Pumpkin produced this Report:
 
 ```
-Running tests against pumpkin
-Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
-✓ status/basic/status_response.description Server list description (network traffic only)
-✓ status/basic/status_response.description.text Server list description text
-✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
-✓ status/basic/status_response.favicon Server list icon (network traffic only)
+Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
+✓ status/basic/status_response.description (network traffic only)
+✓ status/basic/status_response.description.text
+✓ status/basic/status_response.enforceSecureChat (network traffic only)
+✓ status/basic/status_response.favicon (network traffic only)
 ...
-✗ status/with-player/login_finished.profile.uuid Player UUID at login
+✗ status/with-player/login_finished.profile.uuid
 ...
-36 passed, 10 failed
-Score: 78.2% (36 of 46 test cases pass)
+36 passed, 10 failed. (78.2%)
 Took 89.5 s
 ```
 
-The first line names the Candidate's Adapter. The second names the exact
-build tested: its version, its commit where the publisher names one, and
-the start of the file's sha256.
+The first line names the Candidate's Adapter and the exact build tested:
+its version, its commit where the publisher names one, and the start of
+the file's sha256.
 
 Each line after that is one test case of one Group, in the order the
 Groups were played. It starts with ✓ or ✗, then the Group id and the test
-case name joined by `/`, then the [test case title](/reference/test-cases).
-A test case without a title keeps just its name. A test case that two
-Groups compare has a line in each, but only one per Group, however many
-repetitions or values differed.
+case name joined by `/`. A test case that two Groups compare has a line in
+each, but only one per Group, however many repetitions or values
+differed.
 
-The last three lines are the totals, the score and the total Run time in
-seconds.
+The last two lines are the totals with the score, and the total Run time
+in seconds.
 
 ## Score
 
@@ -54,19 +51,21 @@ an empty list or object included. Copies of a packet share its test
 cases, so if vanilla sends a packet more often than the Candidate, every
 field of that packet fails, even in the copies that matched. The score is
 rounded down to one decimal, so only a Run where every scored test case
-passes shows 100%. If no test case was scored, the score is `none`.
+passes shows 100%. If no test case was scored, the line has no score.
 
-The totals line counts the lines that passed and failed, then any that
-were not scored, such as `0 passed, 3 failed (1 not tested), 1 error (not
-scored)`. [Skipped or failed Groups](#skipped-or-failed-groups) says which
-lines count how.
+The totals line counts the lines that passed and failed, and how many of
+the failed were not tested, then gives the score, such as `0 passed, 3
+failed (1 not tested). (0%)`. Errors are not scored, so they get a line
+of their own after it, such as `1 error (not scored)`. [Skipped or failed
+Groups](#skipped-or-failed-groups) says which lines count how.
 
 ## Test cases
 
 Every value mscts compares is a test case, named after its packet and
 where the value is in it. `status_response.players.max` is the `max` value
 inside `players` in the status response. Every line in the Report
-keeps the name of its test case, after its title when one is known.
+shows the name of its test case. [Test cases](/reference/test-cases)
+describes each one.
 
 - `[]` stands for any element of a list, so all the elements share one test
   case: `status_response.players.sample[].name`. The Report lists the test case once per Group.
@@ -123,11 +122,10 @@ its reasons. This example is rendered from illustrative Report inputs:
 
 ```
 Running tests against pumpkin
-✗ status/basic/status_response.players.max Player limit
-✗ status/ping/status:pong_response.timestamp Server list ping response
+✗ status/basic/status_response.players.max
+✗ status/ping/status:pong_response.timestamp
 ✗ join/basic Not tested: prerequisite status/basic was mismatch
-0 passed, 3 failed (1 not tested)
-Score: 0% (0 of 3 test cases pass)
+0 passed, 3 failed (1 not tested). (0%)
 Took 41 s
 ```
 
@@ -172,29 +170,27 @@ those Measurements in the Run result.
 ## Verbose values and Group times
 
 Add `-v` or `--verbose` to see both values below each test case that
-differs, and the installed versions at the top:
+differs, and the Reference, Target and repetitions at the top:
 
 ```sh
 uv run mscts run --candidate pumpkin --group 'status/[bp]*' --verbose
 ```
 
 ```
-Running tests against pumpkin
+Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Reference    vanilla 26.3 (sha256 d052f14d…)
-  Candidate    pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
-✓ status/basic/status_response.description Server list description (network traffic only)
+✓ status/basic/status_response.description (network traffic only)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
-✓ status/basic/status_response.description.text Server list description text
-✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
+✓ status/basic/status_response.description.text
+✓ status/basic/status_response.enforceSecureChat (network traffic only)
   vanilla leaves it out, pumpkin sends true
 ...
 Group times
   status/basic 0 s
   status/ping 0 s
-19 passed, 0 failed
-Score: 100% (19 of 19 test cases pass)
+19 passed, 0 failed. (100%)
 Took 16.7 s
 ```
 
@@ -241,16 +237,13 @@ Report, it has the header, values and Group times only with `--verbose`.
 A Run of `status/basic` and `status/ping` against Pumpkin wrote:
 
 ```md
-# Running tests against pumpkin
+# Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
 
-Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
-
-- ✓ `status/basic/status_response.description` Server list description (network traffic only)
-- ✓ `status/basic/status_response.description.text` Server list description text
+- ✓ `status/basic/status_response.description` (network traffic only)
+- ✓ `status/basic/status_response.description.text`
 ...
 
-19 passed, 0 failed\
-Score: 100% (19 of 19 test cases pass)\
+19 passed, 0 failed. (100%)\
 Took 13.3 s
 ```
 

@@ -93,20 +93,18 @@ the status. It adds about 14 seconds to each repetition. Progress goes to stderr
 the Report to stdout, so `> report.txt` captures only the Report.
 
 ```
-Running tests against pumpkin
-Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
-✓ status/basic/status_response.description Server list description (network traffic only)
-✓ status/basic/status_response.description.text Server list description text
-✓ status/basic/status_response.enforceSecureChat Unused secure chat flag (network traffic only)
-✓ status/basic/status_response.favicon Server list icon (network traffic only)
+Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
+✓ status/basic/status_response.description (network traffic only)
+✓ status/basic/status_response.description.text
+✓ status/basic/status_response.enforceSecureChat (network traffic only)
+✓ status/basic/status_response.favicon (network traffic only)
 ...
-✗ status/with-player/login_finished.profile.uuid Player UUID at login
+✗ status/with-player/login_finished.profile.uuid
 ...
-✗ status/with-player/status_response.players.sample[].id Server list player UUID
-✓ status/with-player/status_response.players.sample[].name Server list player name
+✗ status/with-player/status_response.players.sample[].id
+✓ status/with-player/status_response.players.sample[].name
 ...
-36 passed, 10 failed
-Score: 78.2% (36 of 46 test cases pass)
+36 passed, 10 failed. (78.2%)
 Took 89.5 s
 ```
 

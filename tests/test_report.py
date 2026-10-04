@@ -59,8 +59,8 @@ def _report(*results: GroupResult, elapsed_s: float = 41.0) -> Report:
     )
 
 
-FAILED_ONE = "0 passed, 1 failed\nScore: 0% (0 of 1 test case passes)\nTook 41 s\n"
-PASSED_ONE = "1 passed, 0 failed\nScore: 100% (1 of 1 test case passes)\nTook 41 s\n"
+FAILED_ONE = "0 passed, 1 failed. (0%)\nTook 41 s\n"
+PASSED_ONE = "1 passed, 0 failed. (100%)\nTook 41 s\n"
 
 
 def _compared(*names: str, group_id: str = "status/basic") -> Verdict:
@@ -78,10 +78,9 @@ def test_the_default_output_is_one_line_per_test_case_then_totals_and_time() -> 
     )
     assert render_text(report) == (
         "Running tests against pumpkin\n"
-        "✗ status/basic/status_response.description Server list description\n"
-        "✓ status/basic/status_response.players.max Player limit\n"
-        "1 passed, 1 failed\n"
-        "Score: 50% (1 of 2 test cases pass)\n"
+        "✗ status/basic/status_response.description\n"
+        "✓ status/basic/status_response.players.max\n"
+        "1 passed, 1 failed. (50%)\n"
         "Took 41 s\n"
     )
 
@@ -89,8 +88,7 @@ def test_the_default_output_is_one_line_per_test_case_then_totals_and_time() -> 
 def test_a_run_without_differences_scores_100_percent() -> None:
     report = _report(_result(_compared("status_response.players.max")))
     assert render_text(report) == (
-        "Running tests against pumpkin\n"
-        "✓ status/basic/status_response.players.max Player limit\n" + PASSED_ONE
+        "Running tests against pumpkin\n✓ status/basic/status_response.players.max\n" + PASSED_ONE
     )
 
 
@@ -104,8 +102,7 @@ def test_a_network_traffic_difference_passes_and_says_so() -> None:
     report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
     assert render_text(report) == (
         "Running tests against pumpkin\n"
-        "✓ status/basic/status_response.favicon Server list icon (network traffic only)\n"
-        + PASSED_ONE
+        "✓ status/basic/status_response.favicon (network traffic only)\n" + PASSED_ONE
     )
 
 
@@ -130,10 +127,9 @@ def test_each_test_case_is_listed_once_per_group_across_repetitions_and_values()
     )
     assert text == (
         "Running tests against pumpkin\n"
-        "✗ status/basic/status_response.players.max Player limit\n"
-        "✗ status/ping/status_response.players.max Player limit\n"
-        "0 passed, 2 failed\n"
-        "Score: 0% (0 of 2 test cases pass)\n"
+        "✗ status/basic/status_response.players.max\n"
+        "✗ status/ping/status_response.players.max\n"
+        "0 passed, 2 failed. (0%)\n"
         "Took 41 s\n"
     )
 
@@ -177,11 +173,11 @@ def test_a_group_without_test_cases_to_list_has_one_line_with_its_reasons() -> N
     assert text == (
         "Running tests against pumpkin\n"
         "✗ redstone/timing Not tested: needs /tick\n"
-        "✗ status/basic/status_response.players.max Player limit\n"
+        "✗ status/basic/status_response.players.max\n"
         "! status/error Error: the Reference did not start\n"
         "✗ join/basic Candidate failed: disconnected during join\n"
-        "0 passed, 3 failed (1 not tested), 1 error (not scored)\n"
-        "Score: 0% (0 of 3 test cases pass)\n"
+        "0 passed, 3 failed (1 not tested). (0%)\n"
+        "1 error (not scored)\n"
         "Took 41 s\n"
     )
 
@@ -191,8 +187,8 @@ def test_a_report_with_nothing_scored_has_no_score() -> None:
     assert render_text(report) == (
         "Running tests against pumpkin\n"
         "! status/basic Error: failed\n"
-        "0 passed, 0 failed, 1 error (not scored)\n"
-        "Score: none (no test case was scored)\n"
+        "0 passed, 0 failed.\n"
+        "1 error (not scored)\n"
         "Took 41 s\n"
     )
 
@@ -201,8 +197,7 @@ def test_counts_of_more_than_one_use_plurals_and_the_score_is_rounded_down() -> 
     errors = [_result(Verdict(f"status/e{n}", Outcome.ERROR, detail="failed")) for n in range(2)]
     report = _report(_result(_compared(*"abcdefg"), _verdict(_field("x"), _field("y"))), *errors)
     text = render_text(report)
-    assert "\n7 passed, 2 failed, 2 errors (not scored)\n" in text, text
-    assert "\nScore: 77.7% (7 of 9 test cases pass)\n" in text, text
+    assert "\n7 passed, 2 failed. (77.7%)\n2 errors (not scored)\n" in text, text
 
 
 def test_a_group_lists_distinct_failure_details_once_in_one_line() -> None:
@@ -234,12 +229,11 @@ def test_verbose_header_uses_installed_versions_instead_of_status_claims() -> No
         candidate=replace(report.candidate, installed_version="nightly-abc"),
     )
     assert render_text(report, verbose=True) == (
-        "Running tests against pumpkin\n"
+        "Running tests against pumpkin nightly-abc\n"
         "  Reference    vanilla 26.3\n"
-        "  Candidate    pumpkin nightly-abc\n"
         "  Target       Minecraft 26.3 (protocol 777)\n"
         "  Repetitions  1 of each group\n"
-        "✗ status/basic/status_response.description Server list description\n"
+        "✗ status/basic/status_response.description\n"
         '  vanilla sends "reference value", pumpkin sends "candidate value"\n'
         "Group times\n"
         "  status/basic not recorded\n" + FAILED_ONE
@@ -253,7 +247,7 @@ def test_verbose_values_are_under_their_case_and_keep_distinct_values() -> None:
     other = replace(field, candidate={"text": "other"})
     report = _report(_result(_verdict(field), _verdict(field, replace(field, index=3), other)))
     text = render_text(report, verbose=True)
-    assert text.count("✗ status/basic/status_response.description Server list description\n") == 1
+    assert text.count("✗ status/basic/status_response.description\n") == 1
     assert text.count('  vanilla sends "mscts", pumpkin sends {"text": "mscts"}\n') == 1
     assert 'pumpkin sends {"text": "other"}\n' in text, text
 
@@ -264,7 +258,7 @@ def test_verbose_values_belong_to_their_own_group() -> None:
     report = _report(_result(_verdict(field)), _result(_verdict(other, group_id="status/ping")))
     text = render_text(report, verbose=True)
     assert (
-        "✗ status/ping/status_response.players.max Player limit\n"
+        "✗ status/ping/status_response.players.max\n"
         '  vanilla sends "reference value", pumpkin sends "other value"\n'
         "Group times\n"
     ) in text, text
@@ -319,11 +313,10 @@ def test_verbose_renders_uuid_and_nested_binary_values() -> None:
 BUILT = SideSummary("pumpkin", "26.3", (), "nightly 4426d11 (sha256 b8382a8a…)")
 
 
-def test_the_default_output_names_the_candidate_s_exact_build() -> None:
+def test_the_first_line_names_the_candidate_s_exact_build() -> None:
     report = replace(_report(_result(_compared("a"))), candidate=BUILT)
     assert render_text(report) == (
-        "Running tests against pumpkin\n"
-        "Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
+        "Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
         "✓ status/basic/a\n" + PASSED_ONE
     )
 
@@ -332,20 +325,17 @@ def test_the_verbose_output_names_the_candidate_s_build_once() -> None:
     report = replace(_report(_result(_verdict())), candidate=BUILT)
     text = render_text(report, verbose=True)
     assert text.count("nightly 4426d11") == 1, text
-    assert "  Candidate    pumpkin nightly 4426d11 (sha256 b8382a8a…)\n" in text, text
+    assert text.startswith("Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)\n")
 
 
-def test_markdown_names_the_candidate_s_exact_build_under_the_heading() -> None:
+def test_markdown_names_the_candidate_s_exact_build_in_the_heading() -> None:
     report = replace(_report(_result(_compared("a"))), candidate=BUILT)
     assert render_markdown(report) == (
-        "# Running tests against pumpkin\n"
-        "\n"
-        "Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
+        "# Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
         "\n"
         "- ✓ `status/basic/a`\n"
         "\n"
-        "1 passed, 0 failed\\\n"
-        "Score: 100% (1 of 1 test case passes)\\\n"
+        "1 passed, 0 failed. (100%)\\\n"
         "Took 41 s\n"
     )
 
@@ -359,22 +349,17 @@ def test_markdown_is_the_default_report_with_a_heading_and_names_as_code() -> No
         "# Running tests against pumpkin\n"
         "\n"
         "- ✓ `status/basic/new.field` (network traffic only)\n"
-        "- ✗ `status/basic/status_response.description` Server list description\n"
+        "- ✗ `status/basic/status_response.description`\n"
         "- ✗ `join/basic` Not tested: needs /tick\n"
         "\n"
-        "1 passed, 2 failed (1 not tested)\\\n"
-        "Score: 33.3% (1 of 3 test cases pass)\\\n"
+        "1 passed, 2 failed (1 not tested). (33.3%)\\\n"
         "Took 41 s\n"
     )
 
 
 def test_markdown_of_a_run_with_no_groups_has_no_list() -> None:
     assert render_markdown(_report()) == (
-        "# Running tests against pumpkin\n"
-        "\n"
-        "0 passed, 0 failed\\\n"
-        "Score: none (no test case was scored)\\\n"
-        "Took 41 s\n"
+        "# Running tests against pumpkin\n\n0 passed, 0 failed.\\\nTook 41 s\n"
     )
 
 
@@ -383,10 +368,9 @@ def test_verbose_markdown_keeps_the_header_values_and_group_times() -> None:
     report = _report(_result(_verdict(field)))
     report = replace(report, candidate=replace(report.candidate, installed_version="nightly-abc"))
     assert render_markdown(report, verbose=True) == (
-        "# Running tests against pumpkin\n"
+        "# Running tests against pumpkin nightly-abc\n"
         "\n"
         "Reference: vanilla (installed version unknown)\\\n"
-        "Candidate: pumpkin nightly-abc\\\n"
         "Target: Minecraft 26.3 (protocol 777)\\\n"
         "Repetitions: 1 of each group\n"
         "\n"
@@ -397,8 +381,7 @@ def test_verbose_markdown_keeps_the_header_values_and_group_times() -> None:
         "\n"
         "- status/basic not recorded\n"
         "\n"
-        "0 passed, 1 failed\\\n"
-        "Score: 0% (0 of 1 test case passes)\\\n"
+        "0 passed, 1 failed. (0%)\\\n"
         "Took 41 s\n"
     )
 
@@ -473,4 +456,4 @@ def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
         candidate=2,
     )
     text = render_text(_report(_result(_verdict(late))), verbose=True)
-    assert "Single block change\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text
+    assert "block_update\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text

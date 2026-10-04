@@ -2251,17 +2251,18 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # case_titles.py: TITLES: Mapping[str, str], test case name → short title.
 # docs/reference/test-cases.md has one entry per title, checked against the table.
 # Unknown test cases are still reported; the table never filters Comparisons.
-# ADR-0012 / #9: first line "Running tests against <candidate adapter name>";
-# #156: then "Candidate: <adapter name> <installed_version>" when the build is known;
+# ADR-0012 / #9: first line "Running tests against <candidate adapter name>[ <installed_version>]"
+# (the build, when known; 2026-10-04 amendment, replacing #156's second line);
 # #101 (amends ADR-0012): one line per report_lines line whose result is in _LISTED
-# (every result today): "<✓|✗> <group>/<test case> <title>" (bare name when untitled),
+# (every result today): "<✓|✗> <group>/<test case>" (no title since 2026-10-04),
 # " (network traffic only)" when it passed that way; a Group line is
-# "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then "<p> passed, <f> failed[ (<n> not tested)][, <e> error[s]
-# (not scored)]", "Score: <percent>% (<p> of <scored> test case[s] pass[es])" with the
-# percent rounded down to tenths (".0" dropped), or "Score: none (no test case was
-# scored)", and last "Took <seconds> s", rounded to tenths, including launch and
+# "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then
+# "<p> passed, <f> failed[ (<n> not tested)]. (<percent>%)" with the percent rounded down
+# to tenths (".0" dropped), and no "(…%)" when nothing was scored; then
+# "<e> error[s] (not scored)" when there are errors; and last "Took <seconds> s", rounded
+# to tenths, including launch and
 # shutdown. No section headings, Notes, legend or per-Measurement timing table.
-# #10: verbose adds installed versions, Target and repetitions at the top, distinct
+# #10: verbose adds the Reference's installed version, Target and repetitions at the top, distinct
 # pairs of actual values directly under each line that differs, and total time per Group
 # across repetitions (play both sides + Comparison; excludes startup/shutdown).
 # Blocked Groups say "not played"; older results without durations say "not recorded".
