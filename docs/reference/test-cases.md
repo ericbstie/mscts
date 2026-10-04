@@ -188,22 +188,6 @@ The data of a plugin message sent while the player is being configured.
 Vanilla sends one on the `minecraft:brand` channel. It holds the
 server's name, which the client shows on its debug screen.
 
-## `disconnect`
-
-**Kick**
-
-The server ends the player's connection, as vanilla does to a survival
-player that floats in the air for too long. A server that leaves it out
-lets the player stay; one that sends it where vanilla doesn't kicks a
-player vanilla would keep.
-
-## `disconnect.reason`
-
-**Kick reason**
-
-The message the client shows a kicked player, such as "Flying is not
-enabled on this server".
-
 ## `forget_level_chunk`
 
 **Chunk unloaded**
@@ -456,6 +440,22 @@ The y coordinate the server puts the player at, the height of its feet.
 **Player position z**
 
 The z coordinate the server puts the player at.
+
+## `play:disconnect`
+
+**Kick**
+
+The server ends the player's connection, as vanilla does to a survival
+player that floats in the air for too long. A server that leaves it out
+lets the player stay; one that sends it where vanilla doesn't kicks a
+player vanilla would keep.
+
+## `play:disconnect.reason`
+
+**Kick reason**
+
+The message the client shows a kicked player, such as "Flying is not
+enabled on this server".
 
 ## `play:post_effects`
 
