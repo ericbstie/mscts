@@ -235,3 +235,37 @@ def test_the_fields_of_a_packet_left_out_fail() -> None:
         "foo.a": LineResult.FAIL,
         "foo.b.c": LineResult.FAIL,
     }
+
+
+def test_a_packet_the_candidate_sent_undecodable_fails_each_field_of_the_reference() -> None:
+    sent = {"a": {"b": 1, "c": 2}, "d": 3}
+    undecodable = packet("minecraft:foo", b"\xff")  # no fields: it did not decode
+    verdict = compare(
+        transcript(("alice", packet("minecraft:foo", b"\x01", fields=sent)), group_id="x/a"),
+        transcript(("alice", undecodable), group_id="x/a"),
+        (),
+    )
+
+    lines = report_lines(_report(_result(verdict)))
+    assert {line.test_case: line.result for line in lines if isinstance(line, CaseResult)} == {
+        "foo": LineResult.FAIL,
+        "foo.a.b": LineResult.FAIL,
+        "foo.a.c": LineResult.FAIL,
+        "foo.d": LineResult.FAIL,
+    }
+    assert totals(lines) == Totals(passed=0, failed=4, not_tested=0, errors=0)
+
+
+def test_a_packet_only_the_candidate_sent_fails_its_own_test_case_alone() -> None:
+    sent = packet("minecraft:foo", b"\x01", fields={"a": 1})
+    verdict = compare(
+        transcript(("alice", sent), group_id="x/a"),
+        transcript(("alice", sent), ("alice", sent), group_id="x/a"),
+        (),
+    )
+
+    lines = report_lines(_report(_result(verdict)))
+    assert {line.test_case: line.result for line in lines if isinstance(line, CaseResult)} == {
+        "foo": LineResult.FAIL,
+        "foo.a": LineResult.PASS,
+    }
