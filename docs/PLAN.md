@@ -1037,6 +1037,13 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   many barriers the Bot that must not be kicked floats for; `too_fast`, `into_blocks`, `flying` and
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
+- `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
+  compares; `SENT_TIMEOUT_S` — how long the walker waits for its view; `VIEW_DISTANCE` and
+  `FAR_VIEW_DISTANCE` — the view distances the Groups set (2, and 5 for
+  `chunks/view-distance`); `SPAWN` and `SPAWN_AT` — the chunk and the place a joining player
+  is put; `Chunk` — a chunk's (x, z); `view` — the chunks vanilla sends for a view centre and
+  distance (`ChunkTrackingView`); `join_view` and `view_distance` — the `chunks/join-view` and
+  `chunks/view-distance` scripts.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `chunks` Groups).

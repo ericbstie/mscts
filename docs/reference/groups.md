@@ -146,6 +146,30 @@ arriving, the server takes them in two ticks and refuses none. This is rare. Eac
 waiting for the server's answer to a request, which it sends at the start of a tick. The moves go
 out just after it, so they arrive about 50 ms before the server next reads. They are also sent
 within a millisecond.
+## Chunk loading (`chunks`)
+
+Which chunks the server sends a player, which chunks it tells the player to unload, and where
+it centres the player's view. A player called `walker` joins alone at the world spawn
+(`gamerule respawn_radius 0`), with the world frozen (`/tick freeze`). Each comparison lasts
+until the walker has every chunk of its view, as vanilla works the view out. A server that
+never sends one of them fails the Group after 10 seconds.
+
+The view distance is the ServerSpec's unless the Group says otherwise. Every chunks Group sets
+its own: 2, or 5 for `chunks/view-distance`.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `chunks/join-view` | exact | `join/basic` | The walker joins and is sent the chunks around it: the 7 by 7 chunks around its own at view distance 2. | none |
+| `chunks/view-distance` | exact | `join/basic` | The same as `chunks/join-view`, with view distance 5. | none |
+
+The chunks are compared by position and content. Their order is not compared, and neither is
+which chunk batch carries each chunk: two vanilla servers split the same chunks into batches
+differently, depending on how soon each chunk is ready. A chunk that comes before or after
+another packet on one server only, such as the player's position, is still a difference.
+
+When a Group ends, the walker is moved back to the world spawn, because the server keeps where
+a player left and its next join starts there. Then the world is unfrozen and the rules are set
+back to vanilla's defaults.
 
 ## Planned
 

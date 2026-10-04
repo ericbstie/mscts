@@ -1,0 +1,146 @@
+"""Chunk loading Groups: which chunks the world loads around a player, and which it forgets.
+
+A Bot called `walker` joins, and each window compares the chunks it is sent
+(`level_chunk_with_light`), the ones it is told to forget (`forget_level_chunk`) and where its
+view is centred (`set_chunk_cache_center`).
+
+A window lasts until the walker has every chunk of its new view: vanilla sends them over
+several ticks, a batch a tick, so a window that ended at the barrier would end partway. Which
+chunks a view holds is vanilla's rule (`ChunkTrackingView`, below). A server that never sends
+one of them fails the Group when the wait times out; one that sends more has them compared
+up to the window's close.
+
+The batches themselves (`chunk_batch_start`, `chunk_batch_finished`) are not compared: which
+chunks go in which batch depends on how soon each is ready, and differed between two vanilla
+Instances. Nor is the order of the chunks between two other packets: the Comparison puts them
+in order of position, as the client keeps them (docs/research/2026-10-02-chunks-light.md).
+"""
+
+import contextlib
+from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
+from typing import cast
+
+from mscts.bot import Bot
+from mscts.codec.packets import Packet
+from mscts.group import GroupContext, group
+from mscts.groups._world import pin_joins
+from mscts.settle import until_no_player_online
+from mscts.spec import ServerSpec
+
+WALKER = "walker"
+"""The Bot whose chunks are compared."""
+
+PACKETS = (
+    "minecraft:level_chunk_with_light",
+    "minecraft:forget_level_chunk",
+    "minecraft:set_chunk_cache_center",
+)
+"""What a window compares: the chunks sent, the chunks forgotten, and the view's centre."""
+
+SENT_TIMEOUT_S = 10.0
+"""How long the walker waits for its view: `run.GROUP_TIMEOUT_S`, a Bot's bound."""
+
+VIEW_DISTANCE = 2
+"""The view distance of `chunks/join-view`."""
+
+FAR_VIEW_DISTANCE = 5
+"""The view distance of `chunks/view-distance`."""
+
+SPAWN = (0, 0)
+"""The chunk a joining player is in: `gamerule respawn_radius 0` puts it at 0.5 -60 0.5."""
+
+SPAWN_AT = "0.5 -60 0.5"
+"""Where a joining player is put, which the walker is put back to when the Group ends."""
+
+_CHUNK = "minecraft:level_chunk_with_light"
+
+type Chunk = tuple[int, int]
+
+
+def view(center: Chunk, distance: int) -> frozenset[Chunk]:
+    """The chunks a vanilla server sends a player whose view is `center` and `distance`.
+
+    `ChunkTrackingView.Positioned.contains(x, z)` (26.3 javap): a chunk is in the view when
+    `dx * dx + dz * dz < distance * distance`, where `dx` is `max(0, |x - cx| - 2)` and `dz`
+    likewise. So the view distance 2 is the 7 by 7 square around the centre.
+    """
+    cx, cz = center
+    reach = distance + 1  # the box `Positioned.forEach` walks
+    return frozenset(
+        (x, z)
+        for x in range(cx - reach, cx + reach + 1)
+        for z in range(cz - reach, cz + reach + 1)
+        if _past(x - cx) ** 2 + _past(z - cz) ** 2 < distance * distance
+    )
+
+
+def _past(offset: int) -> int:
+    """How far an offset is past the two chunks next to the centre (`isWithinDistance`)."""
+    return max(0, abs(offset) - 2)
+
+
+def _nearest(center: Chunk) -> frozenset[Chunk]:
+    """The 9 chunks nearest `center`: what vanilla's first batch holds, which `join` takes."""
+    cx, cz = center
+    return frozenset((cx + dx, cz + dz) for dx in (-1, 0, 1) for dz in (-1, 0, 1))
+
+
+async def _until_sent(bot: Bot, chunks: frozenset[Chunk]) -> None:
+    """Take the walker's packets until every chunk in `chunks` has arrived.
+
+    Raises:
+        TimeoutError: One had not arrived within `SENT_TIMEOUT_S`.
+    """
+    missing = set(chunks)
+
+    def arrived(packet: Packet) -> bool:
+        fields = packet.fields or {}
+        missing.discard((cast("int", fields.get("chunk_x")), cast("int", fields.get("chunk_z"))))
+        return not missing
+
+    if missing:
+        await bot.expect(_CHUNK, timeout_s=SENT_TIMEOUT_S, where=arrived)
+
+
+@contextlib.asynccontextmanager
+async def _walker(context: GroupContext) -> AsyncIterator[Bot]:
+    """Set the Fixture, let Control leave, and connect the walker; undo it all after.
+
+    The walker joins alone: Control's player at the spawn would be sent to it between two
+    chunk batches. Each undo runs even if another fails.
+    """
+    async with contextlib.AsyncExitStack() as undo:
+        control = context.control
+        await pin_joins(control, undo)
+        await control.run("tick freeze")
+        undo.push_async_callback(control.run, "tick unfreeze")
+        await control.leave()
+        await until_no_player_online(context.endpoint)
+        walker = await context.bot(WALKER)
+        undo.push_async_callback(walker.close)
+        # The server keeps where a player left: the next play's walker joins at the spawn.
+        undo.push_async_callback(control.run, f"tp {WALKER} {SPAWN_AT}")
+        yield walker
+
+
+def _at(distance: int) -> Callable[[ServerSpec], ServerSpec]:
+    return lambda spec: replace(spec, view_distance=distance)
+
+
+async def _join_view(context: GroupContext, distance: int) -> None:
+    async with _walker(context) as walker, context.observe(*PACKETS):
+        await walker.join()
+        await _until_sent(walker, view(SPAWN, distance) - _nearest(SPAWN))
+
+
+@group("chunks/join-view", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
+async def join_view(context: GroupContext) -> None:
+    """The walker joins, and is sent its view."""
+    await _join_view(context, VIEW_DISTANCE)
+
+
+@group("chunks/view-distance", requires=("join/basic",), spec=_at(FAR_VIEW_DISTANCE))
+async def view_distance(context: GroupContext) -> None:
+    """The walker joins a server whose view distance is 5, and is sent its view."""
+    await _join_view(context, FAR_VIEW_DISTANCE)

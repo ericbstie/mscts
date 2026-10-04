@@ -628,6 +628,27 @@ The version of a data pack the server tells the client it has. A pack only count
 The server's description and icon, sent again once the player has
 joined.
 
+## `set_chunk_cache_center`
+
+**View centre**
+
+The chunk the player's view is centred on. The client keeps only the
+chunks within its view distance plus three chunks of it, and drops a
+chunk sent outside that area. A server that leaves it out, or sends it
+at another point, can leave the player with holes in the world.
+
+## `set_chunk_cache_center.chunk_x`
+
+**View centre chunk x**
+
+The x coordinate of the chunk the player's view is centred on.
+
+## `set_chunk_cache_center.chunk_z`
+
+**View centre chunk z**
+
+The z coordinate of the chunk the player's view is centred on.
+
 ## `set_default_spawn_position`
 
 **World spawn point**

@@ -1417,7 +1417,8 @@ def test_the_gameplay_test_cases_of_chunks_and_light_have_titles() -> None:
     assert cases == {
         name
         for name in TITLES
-        if ("chunk" in name or "light" in name) and not name.startswith("chunk_batch")
+        if ("chunk" in name or "light" in name)
+        and not name.startswith(("chunk_batch", "set_chunk_cache_center"))
     }
 
 
