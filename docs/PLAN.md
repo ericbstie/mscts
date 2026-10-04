@@ -922,6 +922,8 @@ class LaunchPlan:
     stop_stdin: bytes | None        # graceful stop via stdin (b"stop\n"); None → SIGTERM
 
 class ProvisionError(RuntimeError): ...   # an Installation is missing, unverifiable, or not installable
+class ShortCommitError(ProvisionError): ...  # a commit name of fewer than 7 characters (#206);
+                                           # kept unchanged, without a --from hint
 # The two refusals an Adapter reports with facts, worded once by mscts (#158):
 class UnsupportedError(ProvisionError):  # (subject, *, target, actual=None)
     # "<subject> is not supported: [it is <actual>, and ]this mscts tests Minecraft <v>."
@@ -947,13 +949,13 @@ class Adapter(Protocol):
     def release(self, target: Target, version: str | None, fetch: Fetch) -> Release: ...
         # The latest build for target (version None), or the one `<name>@<version>` names,
         # read only through `fetch`. Facts only: install.py adds the --from hint to any other
-    # ProvisionError. Otherwise UnsupportedError or UnavailableError: vanilla:
+        # ProvisionError. Otherwise ShortCommitError, UnsupportedError or UnavailableError: vanilla:
         # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3." (nothing fetched),
         # else the jar Mojang's version manifest lists for target (its version JSON checked
         # by the manifest's sha1); Pumpkin: the nightly, Build("nightly", <the commit the
         # `nightly` tag names>) whatever `version` is: only the file says whether it is the
         # build `version` names (install.py checks it). A commit of 1-6 hex characters is
-        # refused before anything is fetched.
+        # refused with ShortCommitError before anything is fetched.
     def check(self, binary: Path, target: Target) -> Build: ...
         # The Build the file names, or ProvisionError unless `binary` is a server it can run
         # for target. A build for another Minecraft version: UnsupportedError, "<binary> is not

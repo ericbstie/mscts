@@ -21,6 +21,7 @@ from mscts.adapters.base import (
     PrepareError,
     ProvisionError,
     Release,
+    ShortCommitError,
     UnsupportedError,
 )
 from mscts.net import Endpoint
@@ -557,13 +558,13 @@ def _nightly_commit(refs: bytes) -> str:
 
 
 def _refuse_too_short(adapter: str, version: str) -> None:
-    """ProvisionError if `version` is a commit too short to name one (fewer than 7 characters)."""
+    """ShortCommitError if `version` is a commit name of fewer than 7 characters (#206)."""
     if _SHORT_HEX.fullmatch(version):
         msg = (
             f"{adapter}@{version} is too short to name a commit: name at least {_SHORT} "
             "characters of it."
         )
-        raise ProvisionError(msg)
+        raise ShortCommitError(msg)
 
 
 class PumpkinAdapter:

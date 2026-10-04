@@ -26,6 +26,7 @@ from mscts.adapters.base import (
     Installation,
     ProvisionError,
     Release,
+    ShortCommitError,
     Source,
     UnavailableError,
     UnsupportedError,
@@ -276,16 +277,13 @@ def install_release(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in
 
 
 def _release(adapter: Adapter, target: Target, version: str | None, fetch: Fetch) -> Release:
-    """`adapter.release`, whose every failure is a ProvisionError naming `--from`.
-
-    An Adapter gives the facts; mscts adds the hint (UnavailableError words its own).
-    """
+    """`adapter.release`, keeping typed refusals and adding hints to other failures (#206)."""
     yourself = f"`{install_command(adapter.name, path='<file>')}`"
     try:
         return adapter.release(target, version, fetch)
     except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
         raise _download_failed(error, yourself) from error
-    except (UnsupportedError, UnavailableError):
+    except (ShortCommitError, UnsupportedError, UnavailableError):
         raise
     except ProvisionError as error:
         msg = f"{error}\n{build_it_yourself(adapter.name)}"
