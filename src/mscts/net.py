@@ -7,7 +7,7 @@ import os
 import socket
 import sys
 import termios
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Self, override
 
@@ -310,6 +310,52 @@ class Connection:
             self._sent(packet, t_ns=t_ns, state_after=state_after)  # the frame is queued
             raise
         self._sent(packet, t_ns=t_ns, state_after=state_after)
+
+    async def send_all(self, packets: Sequence[tuple[str, Mapping[str, object]]]) -> None:
+        """Send each (name, fields) packet, in order, in one write, then drain as `send` does.
+
+        A burst (a chat spam kick) goes out with no gap between its frames, though the
+        server can still tick between reading two of them. Every packet is stamped
+        immediately before the write and recorded once it has drained, in order.
+
+        Raises:
+            ValueError: `packets` is empty, or a packet would change the State (send that
+                one on its own, as the frames after it would need the next State).
+            CodecError: A packet is unknown here, or its fields do not fit its schema.
+            ConnectionClosedError: As for `send`.
+
+            In each case, but a connection lost while draining, nothing is written or
+            recorded.
+        """
+        if not packets:
+            msg = "send_all needs at least one packet"
+            raise ValueError(msg)
+        self._check_open()
+        encoded = []
+        for name, fields in packets:
+            data = self._codec.encode(self._state, Direction.SERVERBOUND, name, fields)
+            packet = self._codec.decode(self._state, Direction.SERVERBOUND, data)
+            if _state_after(packet) is not self._state:
+                msg = f"{name} changes the State: send it on its own"
+                raise ValueError(msg)
+            frame = encode_frame(data, compression_threshold=self._frames.compression_threshold)
+            encoded.append((packet, frame))
+        if self._writer.transport.is_closing():
+            msg = "the connection was lost"
+            raise ConnectionClosedError(msg)
+        t_ns = self._transcript.now_ns()
+        self._writer.write(b"".join(frame for _, frame in encoded))
+        try:
+            await self._writer.drain()
+        except ConnectionError as exc:
+            msg = "the connection was lost"
+            raise ConnectionClosedError(msg) from exc
+        except asyncio.CancelledError:
+            for packet, _ in encoded:  # the frames are queued
+                self._sent(packet, t_ns=t_ns, state_after=self._state)
+            raise
+        for packet, _ in encoded:
+            self._sent(packet, t_ns=t_ns, state_after=self._state)
 
     def _sent(self, packet: Packet, *, t_ns: int, state_after: State) -> None:
         self._transcript.record(self._bot, packet, t_ns=t_ns)

@@ -478,6 +478,10 @@ class Connection:                   # one TCP connection; owns framing, compress
     # was decoded in. A login_compression that arrives sets the threshold both ways from the
     # next frame (frames are split one at a time); a negative threshold means uncompressed.
     async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
+    async def send_all(self, packets: Sequence[tuple[str, Mapping[str, object]]]) -> None: ...
+                                    # each (name, fields) in order, in one write, then one drain,
+                                    # each recorded at the time before the write (#65);
+                                    # ValueError for none, or for a packet that changes the State
     async def recv(self, *, timeout_s: float) -> Packet: ...           # records an Event
     async def close(self) -> None: ...                                 # idempotent; aborts after 1 s
     # A background reader task reads the socket continuously from open until close: it stamps
@@ -542,6 +546,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def refuse_queued_disconnect(self) -> None: ...              # drain if a disconnect waits
     async def send(self, name: str, /, **fields: object) -> None: ...
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
+    async def signed_command(self, command: str) -> None: ...          # chat_command_signed, no signature (#65)
+    async def chat(self, message: str) -> None: ...                    # chat, no signature (#65)
+    async def chat_at_once(self, *messages: str) -> None: ...          # each as chat, one write (#65)
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None: ...
     async def look(self, yaw: float, pitch: float) -> None: ...
     async def sprint(self, sprinting: bool) -> None: ...               # holds forward and sprint, + the command
@@ -583,6 +590,13 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
     # command: on a Bot in play (else ProtocolError, nothing sent), sends play chat_command
     # (String 32767) and returns at once; what the server answers arrives like any packet.
+    # chat / signed_command (#65): on a Bot in play (else ProtocolError, nothing sent), send
+    # play chat (the message) or chat_command_signed (the command, no argument signatures) as
+    # the 26.3 client does with no chat session (ClientPacketListener.sendChat / sendCommand,
+    # javap): CHAT_TIMESTAMP_MS and CHAT_SALT where the client sends its clock and a random
+    # salt, no signature, message_count 0, acknowledged 3 zero bytes, checksum 1 (an empty
+    # last-seen set's). The client sends a command with a message argument (/say, /me, /msg,
+    # /teammsg) as chat_command_signed, any other as chat_command; the Group picks.
     # sync, the barrier: returns once the server has sent everything caused by what it
     # received before. On a Bot in play (else ProtocolError, nothing sent): client_command
     # (REQUEST_STATS) then expect(award_stats), SYNC_REQUESTS (3) times, always.
@@ -698,6 +712,8 @@ class EntityTracker:
 
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
+CHAT_TIMESTAMP_MS = 1_790_000_000_000  # the time every chat and signed command of a Bot carries
+CHAT_SALT = 0                       # the salt they carry
 TICK_GAP_S = 0.005                  # sync's wait from an answer's arrival to its next request
 SYNC_REQUESTS = 3                   # how many statistics requests sync sends (#169)
 SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request
@@ -1057,6 +1073,17 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups).
+- `groups.chat`: `LISTENER` — the Bot in the world for every case, sent what the others say;
+  `SPEAKER` — the Bot that speaks in `chat/player` and, as an operator, runs `chat/commands`;
+  `JOINER` — the Bot that joins and leaves in `chat/join-leave`; `TALKER`, `OPERATOR` — the
+  Bots of `chat/limits` that say the longest message and spam as an operator; `LONG`,
+  `SECTION`, `SPAMMER` — the Bots it kicks; `SPAM_MESSAGES` — how many messages a Bot sends
+  in one write to be kicked for spam, past the 10 that kick within one tick; `CHATTER` — the
+  Bot that is not an operator and sends `UNDER_SPAM_MESSAGES` (9) in one write, never kicked
+  for them; `FEEDBACK_TIMEOUT_S` — how long a Bot
+  waits for a message or its kick; `PACKETS` — what a window compares; `player`, `commands`,
+  `join_leave` and `limits` — the `chat/player`, `chat/commands`, `chat/join-leave` and
+  `chat/limits` scripts.
 - `run`: `status_version` — status version extraction.
 
 ```python
@@ -1361,7 +1388,8 @@ RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields va
                                     # minecraft:sound.seed and minecraft:sound_entity.seed
                                     # (docs/research/2026-10-01-block-world-events.md), and
                                     # update_advancements' progress[*].criteria[*].obtained
-                                    # (#106)
+                                    # (#106), and minecraft:player_chat.timestamp
+                                    # (docs/research/2026-10-04-chat.md)
 ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields that hold an
                                     # entity's UUID, which every Comparison numbers by first
                                     # appearance, but not a player's (#21):

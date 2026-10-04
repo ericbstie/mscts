@@ -188,6 +188,17 @@ The data of a plugin message sent while the player is being configured.
 Vanilla sends one on the `minecraft:brand` channel. It holds the
 server's name, which the client shows on its debug screen.
 
+## `disguised_chat`
+
+**Disguised chat message**
+
+A player's message that the server shows as from the player but sends
+as text, with no place for a signature, such as `/say` sent unsigned.
+Vanilla sends `player_chat` for a message from a player with no chat
+session, and for a command such as `/say` sent the way the client sends
+it. A server that sends this packet instead is reported here and under
+`player_chat`.
+
 ## `forget_level_chunk`
 
 **Chunk unloaded**
@@ -353,6 +364,113 @@ sends another UUID turns the same player into a different one.
 Whether the player can fly, is flying, takes no damage or builds
 instantly, and how fast it flies and walks.
 
+## `player_chat`
+
+**Chat message from a player**
+
+A message a player said, or sent with a command such as `/msg`. Vanilla
+sends it to every player who can see the message, the sender included.
+Its time is taken from the server's clock, so mscts does not compare it.
+Each other field has its own test case, below.
+
+## `player_chat.chat_type.reference`
+
+**Chat message type**
+
+Which entry of the `minecraft:chat_type` registry the client uses to
+show the message, such as `minecraft:chat` for a plain message or
+`minecraft:msg_command_incoming` for a whisper.
+
+## `player_chat.filter.bits`
+
+**Filtered characters in a chat message**
+
+Which characters the server hid from the message, when it filters only
+part of it. Vanilla filters nothing unless a text filter is set up.
+
+## `player_chat.filter.type`
+
+**Chat message filtering**
+
+Whether the server let the message through, hid all of it, or hid some
+characters.
+
+## `player_chat.global_index`
+
+**Chat message count**
+
+How many player messages the server has sent this player before this
+one. A server that counts from another number, or skips one, differs
+here on every later message.
+
+## `player_chat.index`
+
+**Sender's chat message count**
+
+How many messages the sender had sent in its chat session before this
+one. A player with no chat session has none, so vanilla sends 0.
+
+## `player_chat.message`
+
+**Chat message text from a player**
+
+What the player said, as plain text.
+
+## `player_chat.previous_messages`
+
+**Earlier chat messages a signature covers**
+
+The earlier messages the sender had seen when it signed this one. An
+unsigned message has none.
+
+## `player_chat.salt`
+
+**Chat message salt**
+
+The random number the sender signed with the message. Vanilla sends 0
+for an unsigned message.
+
+## `player_chat.sender`
+
+**Chat message sender**
+
+The UUID of the player who sent the message.
+
+## `player_chat.sender_name`
+
+**Chat message sender name**
+
+The name the client shows for the sender, as a text component.
+mscts compares its bytes, so the same name written another way also
+differs here.
+
+## `player_chat.signature`
+
+**Chat message signature**
+
+The sender's signature of the message. An unsigned message has none.
+
+## `player_chat.target_name`
+
+**Chat message recipient name**
+
+The name of the player or team a message was sent to, such as the
+player named in `/msg`, or nothing for a message to everyone.
+
+## `player_chat.unsigned_content`
+
+**Chat message text the server changed**
+
+Text the client shows in place of the signed message. Vanilla sends
+none unless something changed what the player said.
+
+## `player_info_remove`
+
+**Player list removal**
+
+Removes players from the client's list of players, as when a player
+leaves the server.
+
 ## `player_info_remove.uuids[]`
 
 **Player leaving the list**
@@ -496,7 +614,14 @@ player vanilla would keep.
 **Kick reason**
 
 The message the client shows a kicked player, such as "Flying is not
-enabled on this server".
+enabled on this server", or `multiplayer.disconnect.illegal_characters`
+for a chat message with a `§`.
+
+For a chat message longer than 256 characters, vanilla's reason is the
+text of the Java exception it got reading the message: `Internal
+Exception: io.netty.handler.codec.DecoderException: Failed to decode
+packet 'serverbound/minecraft:chat'`. A server that kicks the player
+too still differs here unless it sends the same text.
 
 ## `play:post_effects`
 
@@ -836,6 +961,13 @@ reported as left out in one place and sent in another.
 The message's text component. mscts compares its bytes, so the same
 message written another way also differs here. The translation key in the
 bytes, such as `commands.setblock.success`, says what the message is.
+
+## `system_chat.overlay`
+
+**Whether a message shows above the hotbar**
+
+Whether the client shows the message above the hotbar instead of in the
+chat.
 
 ## `ticking_state`
 
