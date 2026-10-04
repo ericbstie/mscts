@@ -294,10 +294,12 @@ def test_a_comparison_that_raises_logs_its_traceback(
     with caplog.at_level(logging.WARNING, logger="mscts.run"):
         judge(BASIC, Transcript(BASIC.id, "vanilla"), Transcript(BASIC.id, "pumpkin"))
 
-    (record,) = caplog.records
+    record, alone = caplog.records
     assert record.getMessage() == "the Comparison of status/basic failed"
     assert record.exc_info is not None
     assert record.exc_info[1] is error
+    # It raises on the Reference against itself too, so it is the harness's `error` (#239).
+    assert alone.getMessage() == "the Comparison of status/basic fails on the Reference alone"
 
 
 @pytest.mark.asyncio

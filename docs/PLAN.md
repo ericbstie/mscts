@@ -1431,10 +1431,13 @@ def judge(group: Group, reference: Transcript | GroupError,
     # none on the Reference, whatever its cause's type, #222) is `mismatch`: a `failed`
     # Divergence first, then what compare finds in the Transcripts so far (e.g. the
     # undecodable frame, by payload), whatever the Masks. CommandMissing on the Candidate
-    # (it lacks a command Control needs) is `blocked`, detail "needs /<root>". `error` only
-    # if the Reference failed (CommandMissing included) or compare raised: any Exception,
-    # named in the detail ("the Comparison failed: OverflowError: ..."), so the Run goes on
-    # to the next Group (#174). Else compare(reference, candidate, masks). The trade: a
+    # (it lacks a command Control needs) is `blocked`, detail "needs /<root>". If compare
+    # raised (any Exception, so the Run goes on to the next Group, #174), compare(reference,
+    # reference, masks) decides: it does not raise, so the Candidate's data did, and it is
+    # `mismatch` led by a `failed` Divergence from no Bot, "the Comparison failed:
+    # OverflowError: ..." (#239); it raises too, so it is `error` with that detail. `error`
+    # also if the Reference failed (CommandMissing included). Else compare(reference,
+    # candidate, masks). The trade: a
     # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
     # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...

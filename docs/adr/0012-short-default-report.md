@@ -59,6 +59,17 @@ listed, and `NETWORK_TRAFFIC_ONLY_PASSES` in `compare.py` the one place
 that applies ADR-0007's rule. The Report and the check of whether a
 prerequisite passed (#221) both read it.
 
+## Amendment (#239, 2026-10-03)
+
+A Comparison that raises is `error`, and left out of the score, only when
+the fault is the Reference's data or mscts's. mscts tells the two apart by
+comparing the Reference's Transcript with itself. If that does not raise,
+the Candidate sent what made the Comparison raise. The Group is then a
+`mismatch` led by a `failed` Divergence naming the exception, and its
+line reads `Candidate failed: the Comparison failed: …`. If it raises
+too, the Group stays an `error`. The candidate tier fails on both, so a
+Comparison bug that a Candidate's packets set off still shows.
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains
