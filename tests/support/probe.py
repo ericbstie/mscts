@@ -43,19 +43,25 @@ async def _repeater_stepped(context: GroupContext) -> None:
 
     Control lays a repeater (input at x = 1, delay 2, so 4 ticks) and dust after it, then,
     in a window, sets the redstone block that powers the repeater and steps 10 ticks. The
-    watcher sees each block change on the tick it happened.
+    watcher sees each block change on the tick it happened. Random ticks are off while it
+    steps, and back on once it ends, however it ends: a stepped tick runs them, and the
+    grass under the redstone block turned to dirt on one Instance only (#272).
     """
     watcher = await context.bot(WATCHER)
     await watcher.join()
     await context.control.run(f"tp {WATCHER} {WATCHER_AT}")
     await context.freeze()
-    row = REPEATER_ROW
-    await context.control.run(f"setblock 2 -60 {row} minecraft:repeater[facing=west,delay=2]")
-    await context.control.run(f"fill 3 -60 {row} 5 -60 {row} minecraft:redstone_wire")
-    async with context.observe("minecraft:block_update", "minecraft:section_blocks_update"):
-        await context.control.run(f"setblock 1 -60 {row} minecraft:redstone_block")
-        await context.step(STEPS)
-    await context.control.run(f"fill 1 -60 {row} 5 -60 {row} minecraft:air")
+    try:
+        await context.control.run("gamerule random_tick_speed 0")
+        row = REPEATER_ROW
+        await context.control.run(f"setblock 2 -60 {row} minecraft:repeater[facing=west,delay=2]")
+        await context.control.run(f"fill 3 -60 {row} 5 -60 {row} minecraft:redstone_wire")
+        async with context.observe("minecraft:block_update", "minecraft:section_blocks_update"):
+            await context.control.run(f"setblock 1 -60 {row} minecraft:redstone_block")
+            await context.step(STEPS)
+        await context.control.run(f"fill 1 -60 {row} 5 -60 {row} minecraft:air")
+    finally:
+        await context.control.run("gamerule random_tick_speed 3")
 
 
 REPEATER_STEPPED = Group(

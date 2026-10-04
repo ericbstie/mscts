@@ -286,11 +286,13 @@ async def repeater_delay(context: GroupContext) -> None:
     await observer.join()
     await context.control.run("tp observer 0.5 -60 14.5")
     await context.freeze()
+    await context.control.run("gamerule random_tick_speed 0")
     await context.control.run("setblock 2 -60 4 minecraft:repeater[facing=west,delay=2]")
     async with context.observe("minecraft:block_update", "minecraft:section_blocks_update"):
         await context.control.run("setblock 1 -60 4 minecraft:redstone_block")
         await context.step(8)
     await context.control.run("fill 1 -60 4 2 -60 4 minecraft:air")
+    await context.control.run("gamerule random_tick_speed 3")
 ```
 
 `await context.freeze()` freezes the world with `/tick freeze`. mscts
@@ -306,8 +308,11 @@ on the Candidate is a difference. With `--verbose`, the Report shows the
 tick each server sent it on. Name the packets your Group tests in its
 window, and leave out light updates (`minecraft:light_update`): vanilla
 works light out separately from the tick, so a light update can arrive on
-a later tick than the change that caused it. A
-Candidate without `/tick` is reported as blocked, naming the command.
+a later tick than the change that caused it. A stepped tick also runs
+random ticks, and each server picks its own blocks to tick, so turn them
+off while the Group steps (`gamerule random_tick_speed 0`) and back on
+(`3`) when it ends. A Candidate without `/tick` is reported as blocked,
+naming the command.
 
 `statistical` Groups are planned. They will run many times and compare
 distributions, for random mechanics such as mob spawning.
