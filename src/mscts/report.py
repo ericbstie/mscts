@@ -145,6 +145,10 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             traffic = divergence.observability is Observability.NETWORK_TRAFFIC
             for name in _differing(divergence, found):
                 found[name].add(traffic)
+        if _candidate_failed(group):
+            traffic = False  # it differs in gameplay
+            for differs in found.values():
+                differs.add(traffic)
         results.extend(_case_result(group.group_id, name, found[name]) for name in sorted(found))
         details = _group_details(group)
         if details:
@@ -153,6 +157,21 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             reasons = "; ".join(reason for _, reason in details)
             results.append(GroupLine(group.group_id, result, reasons))
     return tuple(results)
+
+
+def _candidate_failed(group: GroupResult) -> bool:
+    """Whether the Candidate failed the whole Group in any repetition: a `failed` Divergence.
+
+    Then each test case the Group has in any repetition fails, as if the Candidate had sent
+    it wrong, so failing a whole Group never scores better than sending each value wrong
+    (#262). The Reference's own test cases are among them where the Group was played
+    (`run.judge`). With none in any repetition, the Group's own line is all that fails.
+    """
+    return any(
+        divergence.kind == "failed"
+        for verdict in group.verdicts
+        for divergence in verdict.divergences
+    )
 
 
 def _differing(divergence: Divergence, names: Iterable[str]) -> list[str]:

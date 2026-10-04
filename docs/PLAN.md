@@ -1437,7 +1437,10 @@ def judge(group: Group, reference: Transcript | GroupError,
     # `mismatch` led by a `failed` Divergence from no Bot, "the Comparison failed:
     # OverflowError: ..." (#239); it raises too, so it is `error` with that detail. `error`
     # also if the Reference failed (CommandMissing included). Else compare(reference,
-    # candidate, masks). The trade: a
+    # candidate, masks). A Candidate failure's Verdict lists the test cases of
+    # compare(reference, reference, masks) besides what compare found (#262), which the
+    # Report fails; if that self-comparison raises, it is `error` naming it, whichever
+    # way the Candidate failed. The trade: a
     # mscts bug that shows only on the Candidate is that Candidate's `mismatch`; the
     # Self-check is what catches it.
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ...
@@ -2197,7 +2200,8 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of
 # its fields' differ, and so does a gameplay `field` Divergence whose reference is a list
-# or mapping, for its test case and each of its leaves', #225): FAIL if it differs in gameplay in any repetition, PASS (marked
+# or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in any
+# repetition makes every test case of the Group differ, #262): FAIL if it differs in gameplay in any repetition, PASS (marked
 # network_traffic_only) if it differs only in network traffic, else PASS. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else

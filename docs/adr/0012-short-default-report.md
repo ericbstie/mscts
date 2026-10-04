@@ -70,6 +70,26 @@ line reads `Candidate failed: the Comparison failed: …`. If it raises
 too, the Group stays an `error`. The candidate tier fails on both, so a
 Comparison bug that a Candidate's packets set off still shows.
 
+## Amendment (#262, 2026-10-03)
+
+A Candidate failure of a whole Group (a `failed` Divergence: the Group
+raised on the Candidate, the Comparison raised on its data, or the
+Candidate was left unusable) fails every test case the Group has in any
+repetition, besides the Group's own line. Where the Group was played,
+those include each test case of the Reference's play, which the
+Comparison of the Reference with itself lists. So a Candidate that
+crashes, or sends what the Comparison cannot take, fails at least as
+many lines as one that sends every value wrong, and one more. If the
+Comparison raises comparing the Reference with itself, the fault is the
+Reference's data or mscts's, and the Group is an `error`, however the
+Candidate failed. If the Group has no test case in any
+repetition (it was never played, because the Candidate was left
+unusable before each repetition), its own line is all that fails.
+
+A prerequisite still passes only when each of its test cases passes and
+it has no line of its own (#219), so a Group the Candidate failed blocks
+the Groups that require it, as before.
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains
