@@ -33,7 +33,7 @@ the mechanic, and the Report lists results under it. Put the module in
 ## What a script can do
 
 `context.bot(name)` connects a new Bot and returns it. Each Bot in a Group
-needs a unique name, and Divergences name the Bot they came from.
+requires a unique name, and Divergences name the Bot they came from.
 
 | Bot method | What it does |
 | --- | --- |
@@ -43,7 +43,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.respawn()` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
-| `await bot.move(x, y, z, on_ground=True)` | Moves the Bot, and sends the position update the vanilla client would send, if any. |
+| `await bot.move(x, y, z, on_ground=True)` | Moves the Bot. If the vanilla client would send a position update, the Bot sends it too. |
 | `await bot.look(yaw, pitch)` | Sends one rotation update. |
 | `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
 | `await bot.jump()` | Presses the jump key for one tick, as the vanilla client reports it. It does not move the Bot. Send the jump's positions with `move`. |
@@ -53,22 +53,22 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.stop_digging(x, y, z, face)` | Finishes breaking a block and swings the arm. The Bot does not time the breaking: send this at the tick you want to test. |
 | `await bot.cancel_digging(x, y, z)` | Stops breaking a block before it breaks. |
 | `await bot.place(x, y, z, face, cursor=(0.5, 0.5, 0.5), off_hand=False)` | Uses the held item on a block face. It places a block, opens a door, or does what the item does to that block. |
-| `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), and stops. |
+| `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), or stops using it. |
 | `await bot.attack(entity)` | Attacks an entity from `bot.entities`, as a left click does. On vanilla, an attack with a spear or another piercing weapon does nothing. |
-| `await bot.interact(entity, at=(0.0, 0.0, 0.0), off_hand=False)` | Uses the held item on an entity, as a right click does. `at` is where on the entity, relative to its position. When the Bot sneaks, the server sees the sneak key held. |
+| `await bot.interact(entity, at=(0.0, 0.0, 0.0), off_hand=False)` | Uses the held item on an entity, as a right click does. `at` is the point on the entity, relative to its position. When the Bot sneaks, the server sees the sneak key held. |
 | `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
 | `bot.entities` | The entities the server has told this Bot about: their type, position and data, as the vanilla client would track them. They change only as the Bot reads packets, so after a summon, call `await bot.sync()` before you look. A login, or a respawn into another dimension, clears them. |
-| `bot.entities.find(type, near=None)` | Returns the entity of a type, such as `"zombie"`. Entity ids differ from server to server, so find entities this way. When several have the type, give `near=(x, y, z)` to get the nearest one. It raises `LookupError` when it can't pick one. |
-| `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent before, so everything it sent because of that has arrived. Needs a Bot that has joined. |
+| `bot.entities.find(type, near=None)` | Returns the entity of the given type, such as `"zombie"`. Entity ids differ from server to server, so find entities this way. When several have the type, give `near=(x, y, z)` to get the nearest one. It raises `LookupError` when it can't pick one. |
+| `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent, so everything the server sent in response has arrived. Requires a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
 
 A Bot does not simulate physics, so a Group gives every position itself.
 Each of these calls, from `move` to `swing`, is one tick of the vanilla
 client. The Bot sends what changed, then the packet that ends
-the client's tick. A position that has not changed is sent again every 20
-calls, as the vanilla client sends it every 20 ticks. The Bot presses no
+the client's tick. The Bot sends an unchanged position again every 20
+calls, as the vanilla client does every 20 ticks. The Bot presses no
 direction keys, except forward while it sprints. No call waits for the
 server. To move once per server tick, `await bot.sync()` between calls:
 
@@ -82,13 +82,13 @@ for step in range(1, 26):
 When the server refuses a move, it sends the Bot back, and `bot.position`
 then says where it put the Bot.
 
-The server takes the player to be moving until a client tick without a move.
+The server treats the player as moving until a client tick arrives with no move.
 To stop the Bot, call `await bot.tick()` after its last move.
 
 A face is one of `Face.DOWN`, `Face.UP`, `Face.NORTH`, `Face.SOUTH`,
 `Face.WEST` and `Face.EAST`, imported from `mscts.bot`. The vanilla client
 swings on every tick while it breaks a block. To break one in survival, a
-Group starts, swings once per server tick, and finishes at the tick it
+Group starts digging, swings once per server tick, and finishes at the tick it
 chooses:
 
 <!-- not run: A fragment of a Group's function; it needs a Bot that has joined. -->
@@ -104,18 +104,18 @@ await bot.stop_digging(0, -61, 0, Face.UP)
 of the Group that is compared.
 `await context.control.run("setblock 0 -60 0 minecraft:stone")` runs a
 command and waits until the server has answered it. What the server sends to
-it is recorded but never compared. If the Candidate does not have the
-command, the Group is reported as blocked, naming the command.
+it is recorded but never compared. If the Candidate lacks the
+command, the Group is blocked, and the Report names the command.
 
 `run` returns the chat messages the server sent Control while the command
 ran, as `minecraft:system_chat` packets. Usually that is the command's
-answer. Keep setup commands before the window, and small. Your own Bots are
+answer. Keep setup commands small and before the window. Your own Bots are
 not operators, and none of them can be called `control`.
 
 | Control method | What it does |
 | --- | --- |
 | `await context.control.run(command)` | Runs a command as Control's Bot, without the leading `/`, and returns once the server has answered it and a tick has passed. |
-| `await context.control.leave()` | Closes Control's Bot. The next `run` joins a new one and waits as it did the first time, so a Group can set a Fixture up, let Control leave while its own Bot joins, and put the Fixture back afterwards. A server removes a closed Bot's player a moment later: call `mscts.settle.until_no_player_online(context.endpoint)` before your Bot joins if the server has to be empty. |
+| `await context.control.leave()` | Closes Control's Bot. The next `run` joins a new one and waits as it did the first time, so a Group can set a Fixture up, let Control leave while its own Bot joins, and put the Fixture back afterwards. A server removes a closed Bot's player a moment later, so if the server must be empty, call `mscts.settle.until_no_player_online(context.endpoint)` before your Bot joins. |
 
 While it runs, each Bot sends and answers what the vanilla client sends and
 answers without asking the player: its brand and client settings after
@@ -134,16 +134,16 @@ compared. Set the world up before it and clean up after it. When the block
 ends, each Bot waits until a tick has passed on the server since it
 received everything the Bot sent. Its window ends there, whatever the other
 Bots are still waiting for (a window with `until` waits for nothing: see
-below). Each Bot also waits the same way before the window opens, so what
-your setup changed reaches every Bot before the window, not only Control,
-provided the setup waited for its feedback (`context.control.run` does). A
-command a Bot sends without waiting for its feedback can still land inside
+below). Each Bot also waits the same way before the window opens. So,
+provided the setup waited for its feedback (`context.control.run` does),
+what your setup changed reaches every Bot before the window, not only
+Control. A command a Bot sends without waiting for its feedback can still land inside
 the window.
-A Bot you make after the window ends is outside it. A few
-packets the server sends on a clock rather than because of anything a Group
-did (keep-alives, the time of day and vanilla's player latency updates)
-are never compared inside a window.
-Groups of their own compare the keep-alives and the time of day.
+A Bot you make after the window ends is outside it. A window
+never compares the few packets the server sends on a clock rather than
+because of anything a Group did (keep-alives, the time of day and vanilla's
+player latency updates). Separate Groups compare the keep-alives and the
+time of day.
 
 Each Bot's wait covers only what that Bot sent. When one Bot's action
 causes something another Bot receives, and the window must hold it, wait
@@ -154,16 +154,16 @@ before it arrives.
 To test a kick, take the server's disconnect inside the window with
 `await bot.expect("minecraft:disconnect", timeout_s=...)`. That Bot then
 skips the wait. A disconnect the Group did not take fails the Group if a
-later wait or the Bot's next `expect` takes it. Otherwise, the Group's
-end takes it before closing the Bots, but only if it has arrived by
-then; one still on its way is missed. A Bot you closed yourself is not
+later wait or the Bot's next `expect` takes it. Otherwise, mscts takes
+it when the Group ends, before it closes the Bots, but only if it has
+arrived by then. One still on its way is missed. A Bot you closed yourself is not
 checked. So take every disconnect your Group causes.
 
 | Window option | What it does |
 | --- | --- |
 | `context.observe("minecraft:block_update", ...)` | Compares only the packets named. |
-| `context.observe(play=False)` | Compares no play packet, only the login, configuration and status packets. Use it when the play packets vary and the Group tests something else, as `status/with-player` does. It takes no names and no `until`. |
-| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, or at the Bot you name with `bot=`, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block going until the packet has arrived (a Bot's `join` does for a join's packets): if none had when the block ended, the Group fails and says which. With more than one Bot, name the Bot: when the window ends for the others then depends on timing. |
+| `context.observe(play=False)` | Compares no play packets, only the login, configuration and status packets. Use it when the play packets vary and the Group tests something else, as `status/with-player` does. It takes no names and no `until`. |
+| `context.observe(until="minecraft:chunk_batch_finished")` | Ends the window when the first packet with that name arrives at any of your Bots (not Control's) after the window opened, or at the Bot you name with `bot=`, and waits for nothing: no barrier. The window holds that packet and what arrived before it, and nothing the server sends after it. Keep the block open until the packet has arrived (a Bot's `join` does this for a join's packets). If none has arrived when the block ends, the Group fails and says which. With more than one Bot, name the Bot: when the window ends for the others then depends on timing. |
 
 A packet name must be one the server sends in play, with its namespace
 (`minecraft:block_update`). Keep-alives, the time of day and the
@@ -172,8 +172,8 @@ never compared, so they can't be named. Any other name stops the Group with an
 error.
 
 Use `until` when what the server keeps sending after the part you compare
-would differ between two runs: after a join, later chunk batches and the
-mobs that wander into view. Put the Bot's join inside the window:
+would differ between two runs, such as the later chunk batches after a join
+and the mobs that wander into view. Put the Bot's join inside the window:
 
 <!-- not run: A fragment of a Group's function; it needs a context and a Bot. -->
 ```python
@@ -235,7 +235,7 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
   left out for every Group, so list only what your Group adds. Entity ids
   and the random UUIDs of mobs need no Mask. mscts names each entity by its
   type and where it spawned, or numbers it in the order each Bot first
-  hears of it, so the same entities compare equal on both servers, and a
+  hears of it. The same entities then compare equal on both servers, and a
   packet about a different entity still shows up as a difference. Two
   entities of the same type spawned at the same position are told apart
   only by the order the client heard of them, so spawn them apart. If an
@@ -248,8 +248,8 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 ## Make it deterministic
 
 Both runs must send the same bytes, so a Group must not depend on the
-clock, randomness, or the order of unrelated events. `status/ping` sends a
-fixed payload for this reason, where the vanilla client sends its clock.
+clock, randomness, or the order of unrelated events. For this reason,
+`status/ping` sends a fixed payload where the vanilla client sends its clock.
 
 Mobs do not spawn on their own: every server starts with the
 `spawn_mobs` game rule off. A Group that tests natural spawning turns it
@@ -257,9 +257,8 @@ on with `await context.control.run("gamerule spawn_mobs true")`, and off
 again when it is done.
 
 Vanilla also sends some packets on a clock that a window still compares,
-because the same packets carry real changes too: every player's latency,
-about every 30 seconds, and where each entity a Bot can see is, every 3
-seconds, even if it has not moved. If a window can catch one of these,
+because the same packets carry real changes too. It sends the position of
+each entity a Bot can see every 3 seconds, even if it has not moved. If a window can catch one of these,
 name the packets the Group is about.
 
 Then prove it with a Self-check: run the Group with vanilla on both sides.
@@ -267,13 +266,13 @@ It must `match` in 20 runs out of 20 before it counts. The `selfcheck` tier
 does this for every registered Group, 3 runs each. For 20 runs of your own,
 run `MSCTS_SELFCHECK_REPEAT=20 uv run pytest -m selfcheck -k '<mechanic>/'`.
 If it does not match, find the field that varies. Add a Mask only if that
-field has no gameplay meaning. Otherwise the Group needs to control that
+field has no gameplay meaning. Otherwise the Group must control that
 value itself.
 
 ## Group kinds
 
-Groups are `exact` unless they say otherwise, and are compared packet by
-packet. A `tick-exact` Group freezes the world and moves it on one tick at a
+A Group is `exact` unless it says otherwise, and mscts compares it packet by
+packet. A `tick-exact` Group freezes the world and advances it one tick at a
 time, so that what happens on each tick is compared, whatever the servers'
 speed:
 
@@ -300,20 +299,20 @@ async def repeater_delay(context: GroupContext) -> None:
 unfreezes it when the Group ends, even if the Group failed. If the server
 does not answer the unfreeze, the Group fails and the server stays frozen.
 mscts then plays no later Group on either server. If vanilla stays frozen,
-each later Group is an error. If the custom server stays frozen, each
+each later Group is an error. If the Candidate stays frozen, each
 later Group fails.
-`await context.step(n)` moves the world on `n` ticks, one `/tick step 1` at
+`await context.step(n)` advances the world `n` ticks, one `/tick step 1` at
 a time, and returns once the server has finished them. Inside a window,
 packets are compared tick by tick: the same packet arriving one tick later
 on the Candidate is a difference. With `--verbose`, the Report shows the
 tick each server sent it on. Name the packets your Group tests in its
 window, and leave out light updates (`minecraft:light_update`): vanilla
-works light out separately from the tick, so a light update can arrive on
+computes light separately from the tick, so a light update can arrive on
 a later tick than the change that caused it. A stepped tick also runs
 random ticks, and each server picks its own blocks to tick, so turn them
 off while the Group steps (`gamerule random_tick_speed 0`) and back on
-(`3`) when it ends. A Candidate without `/tick` is reported as blocked,
-naming the command.
+(`3`) when it ends. A Candidate without `/tick` makes the Group blocked,
+and the Report names the command.
 
 `statistical` Groups are planned. They will run many times and compare
 distributions, for random mechanics such as mob spawning.

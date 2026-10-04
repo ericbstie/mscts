@@ -4,9 +4,9 @@ This page takes you from a clean checkout to a Report that compares vanilla
 26.3 with [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin). It takes a few
 minutes, most of it spent downloading.
 
-This page runs mscts from a checkout. To install the `mscts` command
-instead, from the latest
-[GitHub Release](https://github.com/ericbstie/mscts/releases), run:
+This page runs mscts from a checkout. To install the `mscts` command from
+the latest [GitHub Release](https://github.com/ericbstie/mscts/releases)
+instead, run:
 
 ```sh
 mise use -g uv pypi:ericbstie/mscts
@@ -27,7 +27,7 @@ Java 25, which `mise use -g java@temurin-25` installs.
   [loopback addresses](https://github.com/ericbstie/mscts/issues/144).
 - [mise](https://mise.jdx.dev). It installs the pinned Python, uv and Java 25
   for you.
-- About 200 MB of disk for the two servers.
+- About 200 MB of disk space for the two servers.
 
 ## 1. Set up the checkout
 
@@ -38,7 +38,7 @@ mise install        # Python 3.13, uv, Java 25 (Temurin)
 mise run sync       # locked Python dependencies into .venv
 ```
 
-The vanilla server needs Java 25. mscts looks for it in `MSCTS_JAVA` first,
+The vanilla server requires Java 25. mscts looks for it in `MSCTS_JAVA` first,
 then as `java` on your `PATH`. If `java` on your `PATH` is a different
 version or a mise shim, point `MSCTS_JAVA` at the real launcher:
 
@@ -89,8 +89,8 @@ uv run mscts run --candidate pumpkin
 mscts starts both servers, plays every `status/*` Group five times against
 each, stops them and prints the Report. One of those Groups,
 `status/with-player`, joins a player and waits 6 seconds before it asks for
-the status. It adds about 14 seconds to each repetition. Progress goes to stderr and
-the Report to stdout, so `> report.txt` captures only the Report.
+the status, so it adds about 14 seconds to each repetition. Progress goes to
+stderr and the Report to stdout, so `> report.txt` captures only the Report.
 
 ```
 Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
@@ -109,15 +109,15 @@ Took 89.5 s
 ```
 
 Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
-sends four status values in a different form from vanilla. The vanilla
-client decodes each pair to the same thing, so these test cases pass, marked
-"network traffic only".
+sends four status values in a different form than vanilla does. The vanilla
+client decodes both forms of each to the same thing, so these test cases pass
+and are marked "network traffic only".
 
 The ten ✗ lines are all from `status/with-player`, which joins a player. Two
-are the player's UUID, which Pumpkin makes differently from vanilla: at
-login, and in the server list sample. The other eight, the plugin message,
-registry and tag lines, are differences in what Pumpkin sends while the
-player joins.
+are the player's UUID at login and in the server list sample, because
+Pumpkin makes the UUID differently from vanilla. The other eight are the
+plugin message, registry and tag lines: differences in what Pumpkin sends
+while the player joins.
 [Reading a Report](/guide/reading-a-report) explains the lines, the totals and the score.
 
 ## Next

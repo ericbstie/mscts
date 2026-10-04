@@ -29,32 +29,32 @@ case name joined by `/`. A test case that two Groups compare has a line in
 each, but only one per Group, however many repetitions or values
 differed.
 
-The last two lines are the totals with the score, and the total Run time
-in seconds.
+The last two lines give the totals with the score, then the total Run
+time in seconds.
 
 ## Score
 
 The score is the share of scored test cases that passed. The goal is that
 a Candidate scoring 100% plays like vanilla, and the suite grows toward
-it. Today's score covers only the test cases mscts has so far, and only
+that goal. Today's score covers only the test cases mscts has so far, and only
 those of the Groups this Run played. It counts a test case that differs
 only in network traffic as passing.
 
 A test case fails if it differs in gameplay in any repetition. Each field
 of a packet vanilla sent is a test case, so a Candidate that leaves a
-packet out, stops before sending it, or sends it so that it does not
-decode, fails each of its fields, as if it had sent them all wrong. The
-same holds for a value that holds others,
-such as the `players` of a status response: a Candidate that leaves it
+packet out, stops before sending it, or sends it in a form that does not
+decode fails each of its fields, as if it had sent them all wrong. The
+same holds for a value that contains others, such as the `players` of a status response: a Candidate that leaves it
 out, or sends something else in its place, fails each value inside it,
 an empty list or object included. Copies of a packet share its test
 cases, so if vanilla sends a packet more often than the Candidate, every
 field of that packet fails, even in the copies that matched. The score is
-rounded down to one decimal, so only a Run where every scored test case
-passes shows 100%. If no test case was scored, the line has no score.
+rounded down to one decimal place, so only a Run where every scored test
+case passes shows 100%. If no test case was scored, the totals line has no
+score.
 
 The totals line counts the lines that passed and failed, and how many of
-the failed were not tested, then gives the score, such as `0 passed, 3
+the failed lines were not tested, then gives the score, such as `0 passed, 3
 failed (1 not tested). (0%)`. Errors are not scored, so they get a line
 of their own after it, such as `1 error (not scored)`. [Skipped or failed
 Groups](#skipped-or-failed-groups) says which lines count how.
@@ -74,8 +74,9 @@ describes each one.
 - A key that is not a plain word is written as a quoted string in
   brackets, such as `["a.b"]`.
 - A packet compared as a whole is the test case of its name, such as
-  `hurt_animation`. That is a packet only one server sent, or one mscts
-  has no schema for, so it compares the bytes.
+  `hurt_animation`. mscts compares a packet as a whole when only one
+  server sent it, or when it has no schema for the packet and so compares
+  the bytes.
 - A packet name that vanilla uses in more than one protocol state starts
   with the state: `configuration:keep_alive`, `play:keep_alive.id`.
 - The status response is one piece of JSON text, so its test cases are
@@ -99,20 +100,21 @@ pass: their bytes differ, but the vanilla client decodes both to the same
 thing. The Report marks them because a server developer may want to match
 vanilla byte for byte. `--verbose` shows their values.
 
-In a chunk, mscts shows a section's palette with its ids in ascending
-order, and its packed data to match, rather than as the server sent
-them. Vanilla itself sends the same section with its palette in
-different orders, so that order is not compared.
+In a chunk, mscts shows each section's palette sorted by id, with its
+packed data rewritten to match, rather than as the server sent them.
+Vanilla itself sends the same section with its palette in different
+orders, so mscts does not compare that order.
 
-Vanilla omits `enforceSecureChat`, `favicon` and `players.sample` in this
+Vanilla omits `enforceSecureChat`, `favicon` and `players.sample` from this
 response. Pumpkin sends `true`, `null` and `[]`, respectively. Vanilla's
 own key is `enforcesSecureChat`, with an `s`. The client never reads a key
 spelled `enforceSecureChat`, so Pumpkin's value decodes as if that key
 were absent.
 
-mscts calls a difference network traffic only where a hand-written rule
-says the formats mean the same. Each rule comes from reading vanilla's
-own decoding code. Today these rules cover the server list answer. Every
+mscts calls a difference network traffic only when a hand-written rule
+says both formats mean the same thing. Each rule comes from reading vanilla's
+own decoding code. Today these rules cover the server list response, chunks, light updates
+and chunk batch markers. Every
 other difference counts as gameplay until a rule proves otherwise.
 
 ## Skipped or failed Groups
@@ -137,22 +139,21 @@ prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
 vanilla's, closed the connection, did not answer in time, or still had
-players online from the Group before. If this happens while
-mscts waits for the players of the Group before to leave, it does not
-play the Group. If the Candidate's world stays frozen after a Group,
-mscts plays no later Group, and each of them fails as `Candidate failed`.
-Different packet counts for a Bot also give the Group a
-line.
+players online from the previous Group. If this happens while mscts
+waits for the previous Group's players to leave, it does not play the
+Group. If the Candidate's world stays frozen after a Group, mscts plays
+none of the later Groups, and each of them fails as `Candidate failed`.
+Different packet counts for a Bot also give the Group a line of its own.
 
 The line names each distinct reason from the Group's repetitions once. It
-counts as one test case: a failing one, unless every reason is an `Error`.
-Then the line is marked `!` instead of ✗ and is not scored, because the
-fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
-failed also fails each test case that vanilla's play of it has in any
-repetition. So a Candidate that crashes, or sends something mscts cannot
+counts as one failing test case, unless every reason is an `Error`. In
+that case the line is marked `!` instead of ✗ and is not scored, because the
+fault lies with mscts or vanilla, not the Candidate. When the Candidate
+fails a Group, each test case that vanilla's play of the Group has in any
+repetition fails too. So a Candidate that crashes, or sends something mscts cannot
 compare, never scores better than one that sends every value wrong. If
-the Group was never played, because the Candidate still had players
-online from the Group before in every repetition, its line is all that
+the Group was never played because the Candidate still had players
+online from the previous Group in every repetition, only its line
 fails.
 
 ## Total time
@@ -160,12 +161,12 @@ fails.
 The clock starts after both Installations have been resolved, before the
 working directories are created. It stops after both servers have stopped
 and those directories have been removed. Install prompts and downloads
-are excluded. Seconds are rounded to tenths, with whole seconds shown
-without a decimal point.
+are not counted. The time is rounded to a tenth of a second, and a whole
+number of seconds is shown without a decimal point.
 
 Groups still record Measurements such as `status.rtt`, and the Run records
-`instance.startup`. The default Report keeps the final total and leaves
-those Measurements in the Run result.
+`instance.startup`. The default Report shows only the final total and
+leaves those Measurements in the Run result.
 
 ## Verbose values and Group times
 
@@ -196,40 +197,41 @@ Took 16.7 s
 
 The installed version names the exact build tested: its version, its
 commit where the build names one, and the start of the sha256 of the
-verified file. A server's own status version can claim something else, so
-it never supplies this header. Without installation provenance, the header
+verified file. The version a server reports in its status response can claim
+something else, so mscts never uses it for this header. Without installation provenance, the header
 says `installed version unknown`.
 
-Identical differences from repetitions appear once; distinct values stay
-under the same line. A value that failed because the Candidate left out
-or replaced the packet or value holding it has no values of its own:
-they are under the line of the packet or value that holds it. List values also name their element's path.
-Missing values say `leaves it out`; `null` remains a value. Binary values
+A difference that repeats identically across repetitions appears once,
+and distinct values all stay under the same line. A value that failed
+because the Candidate left out or replaced the packet or value holding
+it shows no values of its own. They are under the line of the packet or
+value that holds it. List values also name their element's path.
+A missing value reads `leaves it out`, while `null` is still a value. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts
 could not read is compared byte by byte and shown in hexadecimal: 256 of
-its bytes, with how many come after them, such as `(257 more bytes)`. These
-are its first 256 bytes, unless both servers sent more than 256 bytes. Then
-both start just before the first byte that differs, after a count such as
+its bytes, followed by a count of the rest, such as `(257 more bytes)`. These
+are its first 256 bytes, unless both servers sent more than 256 bytes. In that
+case both start just before the first byte that differs, after a count such as
 `(576 bytes before)`. An entity spawned before the compared part is written by its type and where the client
 first saw it, such as `"pig@(1.5, -60.0, 7.5)"`; a masked position reads
-`<masked>`, as in `"pig@(<masked>, -60.0, 7.5)"`, and -0.0 is written 0.0.
+`<masked>`, as in `"pig@(<masked>, -60.0, 7.5)"`, and -0.0 is written as 0.0.
 A player spawned then is written `"player <uuid>"`. If such an entity has
-another type or position on the two servers, the difference shows as
+a different type or position on each server, the difference shows as
 `<packet>.entity_id` on each packet about that entity. Any other entity id
 is written `"#<n>"`: the n-th entity in what mscts compared for that Bot.
 An entity removed before the Bot heard of it is written `"#?"`.
 The UUID of an entity that is not a player is written the same way,
-counted on its own.
+with a count of its own.
 
-Each Group's time adds all repetitions, playing both servers and comparing
-their Transcripts. It excludes starting and stopping Instances, which the
+Each Group's time is the sum, over all repetitions, of playing both
+servers and comparing their Transcripts. It excludes starting and stopping Instances, which the
 final total includes. A skipped Group says `not played`. Older Report
 inputs without durations say `not recorded`.
 
 ## Report files
 
-`mscts run --out DIR` also writes the Report into two files in `DIR`.
+`mscts run --out DIR` also writes the Report to two files in `DIR`.
 
 `report.md` is the printed Report as Markdown. Its first line is a
 heading, and test case names and values are code. Like the printed
@@ -247,8 +249,8 @@ A Run of `status/basic` and `status/ping` against Pumpkin wrote:
 Took 13.3 s
 ```
 
-`report.json` is the whole Report, with or without `--verbose`, but for the
-differences a Verdict leaves out (see `results` below). Its keys
+`report.json` is the whole Report, with or without `--verbose`, except for
+the differences a Verdict leaves out (see `results` below). Its keys
 are `target`, `reference`, `candidate`, `lines`, `totals`,
 `results`, `notes` and `elapsed_s`. `lines` has one entry for each test
 case of each Group and one for each Group's own line. `totals` counts
@@ -284,11 +286,11 @@ Verdict, its differences with both values, and each server's
 Measurements. A Verdict keeps at most 20 differences of one test case, and
 its `omitted` counts the ones it left out. Without that limit, a default
 Run against Pumpkin wrote an 88 MB file, almost all of it the elements of
-one tag list. A difference past the 20 stays if it is the first of its test
-case with its kind, observability and kind of value, so the lines and the
-score read the same. A difference of a Group itself is never left out. The
-printed Report and `report.md` are not cut short, but the values a verbose
-Report reads from a `report.json` are the stored ones. A Run of the first
+one tag list. A difference beyond the first 20 is still kept if it is the first of its
+test case with its kind, observability and kind of value, so the lines
+and the score come out the same. A difference of a Group itself is never left out. The
+printed Report and `report.md` are not cut short, but a verbose Report read
+from a `report.json` shows only the values stored there. A Run of the first
 two Groups wrote this, among its other differences:
 
 ```json
@@ -360,11 +362,11 @@ with one key:
 - `{"float": "nan"}`, `{"float": "inf"}` or `{"float": "-inf"}`: a number
   JSON cannot write.
 
-An object a server sent whose only key is one of these, or `dict`, is
-written inside `{"dict": ...}`, so it never reads as one of them.
+If a server sent an object whose only key is one of these, or `dict`,
+mscts writes it inside `{"dict": ...}` so it never reads as one of them.
 
 In Python, `mscts.report_json.loads` reads a `report.json` back into the
 Report mscts wrote, with up to 20 differences of a test case in each Verdict
 and the rest counted in `omitted`. It ignores `lines` and `totals`, which
-follow from `results`, and reads a file with no `omitted`, written before the
-limit, as one that left nothing out.
+follow from `results`. A file with no `omitted`, written before the limit
+existed, reads as one that left nothing out.

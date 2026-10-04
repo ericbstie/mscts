@@ -9,9 +9,10 @@ plays the chosen Groups against each, stops both, and prints a Report.
 
 ## Choose Groups
 
-`--group` takes a glob over Group ids. The default is `status/*`, which includes
-`status/with-player`: it joins a player and waits 6 seconds before it asks for the
-status. Each repetition of it takes about 14 seconds.
+`--group` takes a glob over Group ids. The default is `status/*`. It
+includes `status/with-player`, which joins a player and waits 6 seconds
+before it asks for the status. Each repetition of that Group takes about 14
+seconds.
 
 ```sh
 uv run mscts run --candidate pumpkin --group 'status/ping'
@@ -20,8 +21,8 @@ uv run mscts run --candidate pumpkin --group 'status/ping'
 mscts adds each chosen Group's prerequisites and plays them first. If a
 prerequisite has a test case that fails, or a line of its own in the
 Report, mscts skips the Group that needs it and reports it as `blocked`.
-A glob that matches nothing fails and lists the Groups that exist. The [Group reference](/reference/groups) lists
-them too.
+A glob that matches nothing fails and lists the Groups that exist. The
+[Group reference](/reference/groups) lists them too.
 
 ## Choose how many repetitions
 
@@ -34,7 +35,7 @@ uv run mscts run --candidate pumpkin --repeat 20
 
 More repetitions give steadier timings. They also expose differences that
 appear only some of the time. The Report says when a difference appeared in
-fewer than all runs, for example `(in 3 of 20 runs)`.
+only some of the runs, for example `(in 3 of 20 runs)`.
 
 ## Output
 
@@ -45,7 +46,7 @@ Report:
 uv run mscts run --candidate pumpkin > report.txt
 ```
 
-The Report is plain text. To keep it as files, add `--out DIR`:
+The Report is plain text. To also write it to files, add `--out DIR`:
 
 ```sh
 uv run mscts run --candidate pumpkin --out reports/

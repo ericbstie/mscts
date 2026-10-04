@@ -47,7 +47,7 @@ uv run pytest tests/path/test_file.py::test_name
 `mise run test:selfcheck` plays every registered Group against two vanilla
 servers and expects `match` every time. That is a Self-check. The tier has
 one test for each Group, named by the Group's id, so a Group is covered as
-soon as it is registered, and there is no test file to write for it. A Group
+soon as it is registered, with no test file to write for it. A Group
 that changes the server's settings with `spec` gets two servers of its own,
 which adds two boots.
 
@@ -58,15 +58,15 @@ picks Groups by id:
 MSCTS_SELFCHECK_REPEAT=20 uv run pytest -m selfcheck -k 'status/'
 ```
 
-A Group's pull request shows 20 runs out of 20 this way for its own Groups.
-That is a command you run once, not part of `mise run check`. It also shows
-what the Candidate does, from
+A pull request that adds Groups shows 20 runs out of 20 for them this way.
+That is a command you run once, not part of `mise run check`. The pull
+request also shows what the Candidate does, with
 `uv run mscts run --candidate pumpkin --group '<mechanic>/*'`. No test pins
 what a Candidate does.
 
 When a play does not match, in this tier or in the `reference` tier's
-20-out-of-20 Self-checks, the failure message also names a file for it,
-under the test's temporary directory. The file lists the packets each Bot
+20-out-of-20 Self-checks, the failure message also names a file under the
+test's temporary directory. The file lists the packets each Bot
 sent and received on both servers, in time order, in milliseconds since the
 play started. For each packet received, it says whether an Observation
 window compared it. For each `award_stats`, it says how long after the
@@ -115,8 +115,8 @@ The `release` workflow checks that the tag matches `version`, runs
 archive attached. If the tag doesn't match, it fails and creates nothing.
 
 To withdraw a release, delete both the Release and its tag on GitHub.
-`mise use -g uv pypi:ericbstie/mscts` then installs the newest release
-that is left.
+`mise use -g uv pypi:ericbstie/mscts` then installs the newest remaining
+release.
 
 ## Inspecting the Target's libraries
 
@@ -126,9 +126,9 @@ The research tool can disassemble a class from a library the Target uses:
 mise exec -- uv run python scripts/research/javap.py --lib datafixerupper server com.mojang.serialization.codecs.OptionalFieldCodec
 ```
 
-Repeat `--lib` to add another library, such as `--lib gson`. Each substring
-must match exactly one artifact name in Mojang's version metadata. An
-ambiguous name lists its matches. Selected jars are cached under
+Repeat `--lib` to add another library, such as `--lib gson`. Each value is
+a substring that must match exactly one artifact name in Mojang's version
+metadata. If it matches more than one, the tool lists the matches. Selected jars are cached under
 `research/26.3/libraries/` in the mscts cache, and their published sha1 and
 size are checked on every use. With no `--lib`, only the Target jar is on
 the classpath.
@@ -157,8 +157,8 @@ A proposal:
   does not need (`advance_time`, `advance_weather`, `random_tick_speed 0`,
   `spawn_mobs false`). Pin the join position with `respawn_radius 0` and
   `/setworldspawn`. Give entities explicit positions and motion. Whatever
-  is still random needs a statistical Group, run many times on each
-  server. It is never hidden with a Mask.
+  is still random needs a statistical Group, which runs many times on
+  each server. It is never hidden with a Mask.
 - **Compares what the vanilla client receives**, and names the packets. A
   Mask may only hide an identifier that means nothing in the game, such as
   an entity id.
@@ -169,9 +169,9 @@ A proposal:
 
 A test issue is labelled `test`, and `needs-triage` until the tech lead
 has sized it and checked its spec. If it needs other issues first, the
-lead names them in a **Blocked by** line at the top of its description;
-it is ready once they are closed. Game rules and commands are named as vanilla 26.3 names them:
-`advance_time`, not `doDaylightCycle`.
+lead names them in a **Blocked by** line at the top of its description,
+and it is ready once they are closed. Game rules and commands use their
+vanilla 26.3 names: `advance_time`, not `doDaylightCycle`.
 
 ## Repository layout
 

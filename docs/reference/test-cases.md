@@ -25,10 +25,10 @@ player's UUID, the same one their player list entry holds.
 
 **Block entity data**
 
-The data of a block that holds some, such as the text of a sign. A server
-that leaves it out, or sends other data, shows a blank sign or different
-text. A chest's items are not sent in it; the `blocks` Groups read them
-with a command instead, and compare the answer as `system_chat`.
+The data a block holds, such as the text of a sign. A server that leaves
+it out, or sends other data, shows a blank sign or different text. A
+chest's items are not sent in it. The `blocks` Groups read them with a
+command instead and compare the answer as `system_chat`.
 
 ## `block_update`
 
@@ -42,9 +42,9 @@ different world. Its fields have their own test cases, below.
 
 **Single block change state**
 
-The state the block changes to. Each block, with its properties such as
-which way a stair faces, has its own number, so a different number shows
-a different block or a differently turned one.
+The state the block changes to. Each combination of a block and its
+properties, such as which way a stair faces, has its own number, so a
+different number shows a different block or a differently turned one.
 
 ## `block_update.pos.x`
 
@@ -81,8 +81,8 @@ in its settings.
 A server sends chunks in batches, each between a start and an end
 packet. The client uses them only to decide how fast to ask for more
 chunks, and two vanilla servers can split the same chunks into
-different batches. So an end packet only one server sent is network
-traffic only.
+different batches. So an end packet that only one server sent is
+network traffic only.
 
 ## `chunk_batch_finished.batch_size`
 
@@ -95,8 +95,8 @@ different count is network traffic only.
 
 **Start of a chunk batch**
 
-The packet before a batch of chunks. One only one server sent is
-network traffic only, as for the end of a batch.
+The packet before a batch of chunks. As with the end of a batch, a start
+packet that only one server sent is network traffic only.
 
 ## `commands.nodes[]`
 
@@ -104,9 +104,9 @@ network traffic only, as for the end of a batch.
 
 One node of the command tree the server sends when a player joins: a
 literal word, an argument, or the root. The client uses the tree to
-suggest, complete and check the commands a player types, so a node
-vanilla sends and another server leaves out is a command, or part of
-one, the client does not know. Each node's fields have their own test
+suggest, complete and check the commands a player types. If vanilla
+sends a node that another server leaves out, the client does not know
+that command, or that part of it. Each node's fields have their own test
 cases, below.
 
 ## `commands.nodes[].children[]`
@@ -151,8 +151,8 @@ takes one word or the rest of the line.
 
 **Command redirect**
 
-The node this one continues at, as `/execute` loops back to its own
-options, or an alias such as `/tell` points to `/msg`.
+The node this one continues at. For example, `/execute` loops back to
+its own options, and an alias such as `/tell` points to `/msg`.
 
 ## `commands.nodes[].suggestions_type`
 
@@ -171,22 +171,22 @@ The channel a plugin message names in the configuration phase. It says which mod
 
 **Tagged registry name**
 
-The name of the registry a group of tags belongs to, such as `minecraft:block`. A different name means the tags apply to another registry.
+The name of the registry a set of tags belongs to, such as `minecraft:block`. A different name means the tags apply to another registry.
 
 ## `container_set_content`
 
 **Inventory contents**
 
-Every slot of a container the player has open; at a join, the player's
-own inventory.
+Every slot of the container the player has open. At a join, this is the
+player's own inventory.
 
 ## `configuration:custom_payload.data`
 
 **Configuration plugin message data**
 
 The data of a plugin message sent while the player is being configured.
-Vanilla sends one on the `minecraft:brand` channel, the server's name,
-which the client shows on its debug screen.
+Vanilla sends one on the `minecraft:brand` channel. It holds the
+server's name, which the client shows on its debug screen.
 
 ## `forget_level_chunk`
 
@@ -214,10 +214,10 @@ The world border's centre, size and warning distances.
 **Chunk**
 
 A chunk only one server sent, shown by its chunk coordinates, such as
-`chunk 3 -2`. The client keeps chunks by position, so the order of
-chunks is not compared, nor which batch each one comes in, unless
-something that depends on the order comes between them. Differences
-inside a chunk both servers sent have the test cases below.
+`chunk 3 -2`. The client keeps chunks by position, so neither the order
+of chunks nor the batch each one comes in is compared, unless something
+that depends on the order comes between them. Differences inside a chunk
+that both servers sent have their own test cases, below.
 
 ## `level_chunk_with_light.sections[].block_states`
 
@@ -225,13 +225,13 @@ inside a chunk both servers sent have the test cases below.
 
 The block at each position of one 16-block-high section of a chunk.
 Servers can encode the same blocks in different ways; that difference is
-network traffic only. The order of a section's palette, the list of
-blocks its positions refer to, is not compared at all, because vanilla
+network traffic only. A section's palette is the list of blocks its
+positions refer to. Its order is not compared at all, because vanilla
 itself sends the same section with its palette in different orders. A
-different block is shown at its position in the
-world, with each server's block state id there, such as
+different block is shown at its position in the world, with each
+server's block state id at that position, such as
 `chunk 2 -1: 37 -62 -9 is 10`. The first three positions that differ are
-named and the rest counted.
+named, and the rest are counted.
 
 ## `level_chunk_with_light.sections[].biomes`
 
@@ -287,10 +287,10 @@ the broken block as its data. A different number plays a different effect.
 
 **Light update**
 
-A later change to the light of a chunk, shown by the chunk's
-coordinates, such as `chunk 3 -2`, when only one server sent it. Light
-updates for different chunks can come in any order; those for one chunk
-keep theirs.
+A later change to the light of a chunk. When only one server sent it,
+it is shown by the chunk's coordinates, such as `chunk 3 -2`. Light
+updates for different chunks can come in any order, but updates for the
+same chunk keep their order.
 
 ## `light_update.data.sky[]`
 
@@ -317,7 +317,7 @@ player when a server does not.
 
 **Flat world flag**
 
-Whether the world is a flat world. The client then draws the horizon at
+Whether the world is flat. If it is, the client draws the horizon at
 the bottom of the world, not at sea level.
 
 ## `login.sea_level`
@@ -343,8 +343,8 @@ The name the server gives the player when login finishes. The client shows it as
 **Player UUID at login**
 
 The player's UUID, which the server sends when the login succeeds. In
-offline mode vanilla makes it from the player's name, so another UUID
-makes the same player a different one.
+offline mode vanilla makes it from the player's name, so a server that
+sends another UUID turns the same player into a different one.
 
 ## `player_abilities`
 
@@ -380,14 +380,14 @@ or leaves out some that vanilla sets.
 **Player chat session**
 
 The key a player signs their chat messages with. Offline, vanilla has
-none, and still sends this part of the update to say so.
+none, but still sends this part of the update to say so.
 
 ## `player_info_update.players[].display_name`
 
 **Player list display name**
 
 The name the tab list shows in place of the player's own. Vanilla sends
-none for a player who just joined, and still sends this part of the
+none for a player who just joined, but still sends this part of the
 update to say so.
 
 ## `player_info_update.players[].name`
@@ -436,7 +436,7 @@ Whether each recipe book is open and filtered.
 
 **Registry entry**
 
-One entry of a registry the server sends while the player is configured,
+One entry of a registry the server sends while the player is being configured,
 such as one biome or one cow variant. An entry vanilla sends and another
 server leaves out is one the client does not have.
 
@@ -444,9 +444,9 @@ server leaves out is one the client does not have.
 
 **Registry entry data**
 
-The contents of a registry entry. Vanilla sends none for an entry that a
-data pack both servers share already has, and the client then takes it
-from that pack.
+The contents of a registry entry. Vanilla sends none for an entry in a data
+pack that the server and the client both have at the same version, and
+the client then takes it from that pack.
 
 ## `registry_data.entries[].entry_id`
 
@@ -468,8 +468,9 @@ send their registries in a different order.
 
 **Block changes in a section**
 
-Many blocks changing in one chunk section, a part of a chunk 16 blocks
-high, at once, as `/fill` and `/clone` do. It holds the section's position
+Many blocks in one chunk section changing at once, as `/fill` and
+`/clone` do. A chunk section is a part of a chunk 16 blocks high. The
+packet holds the section's position
 and a list of changes. Each change has its own test cases, below.
 
 ## `section_blocks_update.blocks[]`
@@ -477,7 +478,7 @@ and a list of changes. Each change has its own test cases, below.
 **Block change in a section**
 
 One change in the list, or a change only one server sent. mscts compares
-the list in the order it is sent, and vanilla sends it in the order of a
+the list in the order it is sent. Vanilla sends it in the order of a
 hash set, so a server that sends the same changes in another order also
 differs here.
 
@@ -521,7 +522,7 @@ value puts the same changes at a different height.
 
 **Known pack ID**
 
-The ID of a data pack the server tells the client it has. The server leaves out the registry data of each pack the client says it has too.
+The ID of a data pack the server tells the client it has. For each pack the client says it also has, the server leaves out that pack's registry data.
 
 ## `select_known_packs.known_packs[].namespace`
 
@@ -618,7 +619,7 @@ Which hotbar slot the player is holding.
 **Server list description**
 
 The server's description in the multiplayer server list. This test case
-compares its original format: vanilla's `"mscts"` and Pumpkin's
+compares it in its original format. Vanilla's `"mscts"` and Pumpkin's
 `{"text": "mscts"}` display the same text, so that difference is network
 traffic only. Differences in the text the client reads are compared below.
 
@@ -626,8 +627,8 @@ traffic only. Differences in the text the client reads are compared below.
 
 **Server list description text**
 
-The description text after mscts gives equivalent text components one
-form. A different value changes the description a player reads in the
+The description text, after mscts rewrites equivalent text components
+into one form. A different value changes the description a player reads in the
 server list.
 
 ## `status_response.enforceSecureChat`
@@ -700,15 +701,15 @@ It is separate from the protocol number that determines compatibility.
 
 The protocol number the server advertises. A different value can make the
 client show the server as incompatible. The Target's protocol number is
-777; this comparison checks the advertised value, not every packet layout.
+777. This test case checks the advertised value, not every packet layout.
 
 ## `status:pong_response.timestamp`
 
 **Server list ping response**
 
 The value returned for a server list ping. The server should echo what
-the client sent. A different value breaks that exchange; the time until
-the answer arrives is measured separately as `status.rtt`. The `status:`
+the client sent. A different value breaks that exchange. The time until
+the answer arrives is measured separately, as `status.rtt`. The `status:`
 prefix distinguishes this packet from a pong in another protocol state.
 
 ## `system_chat`
@@ -716,11 +717,11 @@ prefix distinguishes this packet from a pong in another protocol state.
 **Chat message from the server**
 
 A message the server shows in the chat, such as the answer to a command.
-A server that leaves it out, or sends one more, shows the player a message
-vanilla does not. mscts keeps the order of the packets in a window, so a
-command's answer that comes after the block changes it makes, where
-vanilla sends it before them, is reported as left out in one place and
-sent in another.
+A server that leaves it out, or sends an extra one, shows the player
+different messages from vanilla. mscts keeps the order of the packets in
+a window. If a server sends a command's answer after the block changes
+the command makes, where vanilla sends it before them, the answer is
+reported as left out in one place and sent in another.
 
 ## `system_chat.content`
 
@@ -760,7 +761,7 @@ can reach, with their modifiers.
 
 **Enabled feature flag**
 
-A feature flag the server enables, such as `minecraft:vanilla`. Flags switch groups of game features on, so a different set changes what the client lets a player use.
+A feature flag the server enables, such as `minecraft:vanilla`. Flags switch sets of game features on, so a different set changes what the client lets a player use.
 
 ## `update_recipes`
 

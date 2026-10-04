@@ -174,9 +174,9 @@ your tests pass a fake `fetch` so they never touch the network.
 
 **Name the build exactly.** Give the version your publisher uses, and the
 full commit when the publisher names one. Reports show both. The commit a
-release names only finds the file: mscts records the commit `check` reads
-from the file itself. Where the release names a commit, it refuses a
-download that names none. A `--from` file that names none installs
+release names is only used to find the file. mscts records the commit that
+`check` reads from the file itself. If the release names a commit, mscts
+refuses a download that names none. A `--from` file that names none installs
 without one.
 
 **Pass on the publisher's own checksum.** If the publisher lists a sha1 and
@@ -186,8 +186,8 @@ the download against them.
 **Only the Minecraft version mscts tests.** Refuse a build for any other
 version with `UnsupportedError`, in `release` when you can tell from the
 version, and always in `check`. Give it what was asked for (`myserver@1.2`
-or the file) and, when you know it, what the build is. mscts words the
-message, the same for every Adapter.
+or the file) and, when you know it, what the build is. mscts writes the
+message, which is the same for every Adapter.
 
 **Raise `ProvisionError` for anything else you expect,** such as a page
 that is not what you asked for. Say only what is wrong, never what to

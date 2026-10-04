@@ -22,9 +22,9 @@ every run.
 
 `status/with-player` waits 6 seconds after the join before it asks.
 Vanilla drops its cached status when a player joins and lists the player
-from the next tick. The wait is a margin for a server that caches its
-status lazily: 5 seconds is the longest vanilla keeps a status, plus one
-second. A server whose status still lacks the player after the wait shows
+from the next tick. The wait leaves a margin for a server that caches its
+status lazily: it lasts as long as vanilla keeps a status, 5 seconds, plus
+one second. A server whose status still lacks the player after the wait shows
 no player, and the Report shows that as a difference. Each play of the
 Group takes about 14 seconds, so a default Run of five repetitions took
 about 70 seconds longer in the stored example (26 s without it, 97 s with
@@ -36,27 +36,27 @@ without gameplay meaning, so every difference in it is a Divergence.
 ## Blocks (`blocks`)
 
 What `/setblock`, `/fill` and `/clone` do to the world. A Bot called `builder`, which is an
-operator, runs each command itself, in a window of its own. The Group compares the blocks the
+operator, runs each command itself, in a window of its own. Each Group compares the blocks the
 command changes, the data of the block entities, the break particles, the items a block drops,
 and the message the server answers the builder with.
 
 The world is frozen and random ticks are off while a Group runs, so nothing changes a block but
 the command. Both settings are put back afterwards, and so are the blocks. Every block a Group
-changes is in the chunk the builder is sent when it joins, the one that holds x and z from 0 to 15.
+changes is in the chunk that holds x and z from 0 to 15, which the builder is sent when it joins.
 
 Vanilla puts a player who joins at a random place near the world spawn, so the builder could
 stand where a command sets a block. It would then crawl and take damage, and the server would
-tell it so. To keep that out of the comparison, the builder is moved with `/tp` to x 0.5, y -60,
-z 14.5 before the first window, away from every block a Group changes. So the blocks Groups
-require `/tp`: on a server without it, all three are `blocked`.
+tell it so. To keep that out of the comparison, the Group moves the builder with `/tp` to x 0.5, y -60,
+z 14.5 before the first window, away from every block a Group changes. The blocks Groups
+therefore require `/tp`, and on a server without it all three are `blocked`.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `blocks/setblock` | exact | none | Runs `/setblock` in each mode (`destroy`, `keep`, `replace`, `strict`), on air and on a block. Then it sets a block with states, a sign with text, a chest with an item, and the block that is already there. Last, it reads the chest back with `/data get block`. | none |
 | `blocks/fill` | exact | none | Runs `/fill` over a region of 5 by 5 by 5 blocks that crosses a chunk section border, with blocks already in it: with no mode, with each mode (`destroy`, `hollow`, `keep`, `outline`, `replace`, `strict`), and with `replace` and a block to replace. | none |
-| `blocks/clone` | exact | none | Runs `/clone` on a box of 3 by 3 by 3 blocks that holds stone, dirt, a sign with text, a stair, a chest with an item and air: with each of `replace`, `masked` and `filtered`, each with `normal`, `force` and `move`. Then it clones the box onto a box that overlaps it, with `normal`, `force` and `move`. Last, it reads the copied chest back with `/data get block`, after a `normal` and a `move` clone. | none |
+| `blocks/clone` | exact | none | Runs `/clone` on a box of 3 by 3 by 3 blocks that holds stone, dirt, a sign with text, a stair, a chest with an item and air: with each of `replace`, `masked` and `filtered`, combined with each of `normal`, `force` and `move`. Then it clones the box onto a box that overlaps it, with `normal`, `force` and `move`. Last, it reads the copied chest back with `/data get block`, after a `normal` and a `move` clone. | none |
 
-A block dropped in `destroy` mode starts at a random place and speed. `blocks/setblock` and
+The item a block drops in `destroy` mode starts at a random place and speed. `blocks/setblock` and
 `blocks/fill` leave out where the item appears (`x`, `y` and `z` in `add_entity`), its sideways
 speed (`velocity.x` and `velocity.z`) and which way it faces (`yaw`). Which item drops, and how
 many, is still compared. `/clone` drops nothing, so `blocks/clone` has no such Mask.
@@ -66,8 +66,8 @@ see them in the block packets. The builder reads them with `/data get block`, an
 gets back is compared.
 
 The `/fill` region holds one block that drops an item. Vanilla sends the items a tick drops in an
-order that follows their entity ids, and two servers number their entities differently, so with
-several the Reference would not match itself.
+order that follows their entity ids, and two servers can number their entities differently, so with
+several items the Reference would not match itself.
 
 ## Joining a world (`join`)
 
@@ -97,7 +97,7 @@ and the world is unfrozen.
 | --- | --- | --- | --- | --- |
 | `players/join-seen` | exact | none | `bob` joins next to `ada`. Both are compared: what `ada` sees of `bob`, and what `bob` sees of `ada` as he joins. | none |
 | `players/leave-seen` | exact | none | `bob` leaves, and `ada` sees him go. | none |
-| `players/mode-seen` | exact | none | `bob`'s game mode is changed with `/gamemode` to creative, adventure, spectator and survival, in turn, each in a window of its own. | none |
+| `players/mode-seen` | exact | none | `/gamemode` sets `bob`'s game mode to creative, adventure, spectator and survival in turn, each in a window of its own. | none |
 | `players/server-full` | exact | none | The server lets in one player. `ada` joins, then `bob` tries to join and is refused. The refusal message is compared. | none |
 
 The tab list shows each player's latency, so it is compared. Vanilla sends 0 until it first

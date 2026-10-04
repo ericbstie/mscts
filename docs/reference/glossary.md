@@ -25,10 +25,10 @@ The custom server implementation being measured
 
 ### Adapter
 
-The only server-specific code. It says where its server's
-latest build for the Target is downloaded from, reads which build a binary
-is and checks that it can run it, and turns a ServerSpec into a LaunchPlan.
-It never installs anything. Reference and every Candidate each have one.
+The only server-specific code. It says where to download its
+server's latest build for the Target, reads which build a binary is and
+checks that it can run it, and turns a ServerSpec into a LaunchPlan.
+It never installs anything. The Reference and every Candidate each have one.
 
 ### ServerSpec
 
@@ -43,7 +43,7 @@ its own.
 ### Installation
 
 The binaries installed for an Adapter and a Target,
-cached on disk, with the build they are (its version, and its commit where
+cached on disk with their build (its version, and its commit where
 the publisher names one), their sha256 and their source (the URL the
 Adapter gave, or a `--from` file). It is created only by
 `mscts adapter install`, or after an explicit prompt (ADR-0008).
@@ -92,8 +92,8 @@ The channel used to set up Fixtures. By default it is an
 **Operator Bot** that sends vanilla command syntax: a Bot called
 `control`, which every Adapter makes an operator. It runs each command,
 then a marker command, and returns once the server has answered the
-marker and passed the barrier. What it receives is recorded but never
-compared, and a Candidate without one of its commands makes the Group
+marker and the Bot has passed the barrier. What it receives is recorded but never
+compared, and a Candidate that lacks one of its commands makes the Group
 `blocked`. Control can leave (its Bot closes), and its next command
 joins a new one.
 
@@ -128,8 +128,8 @@ sent and every Packet it took from what it received, plus Marks.
 ### Event
 
 One entry of a Transcript: a Packet one Bot sent or received,
-and when: a sent Packet when it was written, a received one when it
-arrived (not when the Bot took it).
+and its time. A sent Packet is timed when it was written, a received one
+when it arrived (not when the Bot took it).
 
 ### Mark
 
@@ -143,26 +143,26 @@ compared: what a Bot receives inside `async with context.observe():`,
 found by when each packet arrived. It never compares the **heartbeat
 packets** (`compare.HEARTBEAT` by name and `compare.HEARTBEAT_PAYLOADS`
 by name and first bytes, each with its reason): packets a server sends
-on a clock whatever a Group does (keep-alives, the time of day,
+on a clock, regardless of what a Group does (keep-alives, the time of day,
 vanilla's player latency updates).
 A window can be narrowed to named packets. Status, login and
 configuration packets are compared whole, and so is every packet of a
 Group with no window. Before a window opens, and when it closes, each
 Bot in play first passes the **barrier** (`Bot.sync`). It asks the server for its
-statistics three times, each 5 ms after the last answer arrived. The
+statistics three times, each 5 ms after the previous answer arrived. The
 last answer comes from a later tick than the first, so by then the
 server has sent everything caused by what the Bot sent before. Two
 `award_stats` the server sends unasked during one barrier can still
 end it early (ADR-0010). Each Bot's window ends
-at its own barrier's last answer, whatever the other Bots are still
-waiting for, and a Bot made after the window ends is outside it. A
+at its own barrier's last answer, regardless of what the other Bots are
+still waiting for. A Bot created after the window ends is outside it. A
 barrier covers what its own Bot sent, so a window that must hold
 what another Bot's action causes waits for that action's feedback
 before it ends. The Bot then takes what has already arrived (the
 **drain**), outside its window. A window can
-instead end at a packet's arrival (`until`): no barrier, and it closes
-when the first packet of that name arrived at a Bot, or at the Bot
-named with `bot=`.
+instead end when a packet arrives (`until`): there is no barrier, and it
+closes when the first packet of that name arrives at any Bot, or at the
+Bot named with `bot=`.
 
 ### Mask
 
@@ -194,7 +194,7 @@ A list vanilla sends in an order that changes from
 one boot (or join) to the next while the client keeps its entries in a
 map or a set, such as the tag lists (`compare.UNORDERED`). Every
 Comparison sorts it by each entry's key in that map or set, before
-anything else, so its order is no Divergence at all.
+anything else, so its order is never a Divergence.
 
 ### Canonicalization
 
@@ -230,7 +230,7 @@ several same-named packets it was, so it is the same in every run.
 Every compared field is one, so nobody lists them by hand. A packet
 compared as a whole (by payload, missing or unexpected) is the test
 case of its packet name. A masked field is a test case only where one
-side lacks it, and packets an Observation window leaves out are none. Each test
+side lacks it, and packets an Observation window leaves out are not test cases. Each test
 case in a Verdict is the same, different in gameplay, or different in
 network traffic only: gameplay if any of its Divergences is.
 
@@ -244,10 +244,10 @@ the Candidate and not on the Reference is a `mismatch`, led by a
 `failed` Divergence that says what happened, never an `error`. That
 holds whatever the failure: a frame that does not decode, an answer
 that breaks the protocol, no answer in time, a connection closed, reset
-or refused, players still online from the Group before, or a value the
+or refused, players still online from the previous Group, or a value the
 Group does not expect. The Score leaves `error` out, so a
 Candidate must never score better by failing. The same holds while
-mscts waits for the players of the Group before to leave; it then does
+mscts waits for the previous Group's players to leave; it then does
 not play the Group.
 
 ### Self-check

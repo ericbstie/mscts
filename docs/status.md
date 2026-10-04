@@ -1,6 +1,6 @@
 # Project status
 
-mscts is early. This page lists what works today and what comes next. The
+mscts is at an early stage. This page lists what works today and what comes next. The
 working log is
 [`docs/PROGRESS.md`](https://github.com/ericbstie/mscts/blob/main/docs/PROGRESS.md),
 and the milestones are in
@@ -18,8 +18,8 @@ and the milestones are in
 | Comparison | Gameplay and network traffic Divergences. Each rule in the canonical table cites the vanilla client code behind it. |
 | Report | A list of differences on stdout, and JSON and Markdown files with `--out DIR`. |
 
-The first comparison of Pumpkin found no gameplay difference in the
-server list ping, and four network traffic ones.
+The first comparison of Pumpkin found no gameplay differences in
+`status/basic` and `status/ping`, and four network traffic differences.
 
 ## Next
 
@@ -27,7 +27,7 @@ server list ping, and four network traffic ones.
 2. An option to exit non-zero on gameplay differences.
 3. Alternating the order in which the two servers run, for fairer timings.
 4. `mscts selfcheck` as a command.
-5. An operator Bot for Fixtures, then world and block Groups.
+5. An Operator Bot for Fixtures, then world and block Groups.
 6. `tick-exact` Groups for redstone and known vanilla glitches.
 7. `statistical` Groups for spawning and loot, in an opt-in tier.
 8. `mscts adapter check`, to prove a third-party Adapter against a live
