@@ -183,7 +183,7 @@ need is missing, add it here in the same commit that introduces it.
   Candidate, repeated N times. It produces a **Report**. Each side of a
   Run either launches its own Instances (a Server) or is **Attached**: an
   Instance someone else launched and stops, which the Run only plays
-  against, and only for Groups of the ServerSpec it was launched from.
+  against, and only for Groups that use the ServerSpec it was launched from.
 - **Score**: the share of a Report's scored lines that passed, as in
   `35 passed, 5 failed. (87.5%)` (#101). Each line is one test
   case of one Group, or the Group's own line. A test case fails if it

@@ -2,7 +2,6 @@
 
 mscts records each significant decision as an Architecture Decision Record
 in [`docs/adr/`](https://github.com/ericbstie/mscts/tree/main/docs/adr).
-The ADRs are the only place decisions live. This page lists them.
 
 - [ADR-0001: Black-box differential testing through the network protocol](https://github.com/ericbstie/mscts/blob/main/docs/adr/0001-black-box-differential-testing.md)
 - [ADR-0002: Python with the Astral toolchain, managed by mise](https://github.com/ericbstie/mscts/blob/main/docs/adr/0002-python-astral-toolchain.md)

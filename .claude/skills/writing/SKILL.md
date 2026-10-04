@@ -66,7 +66,9 @@ Any session that writes user-facing text follows this skill all the same.
 - **Don't announce what the user will see anyway.** If running the
   command shows it, the page need not say it is shown.
 - **Only what is useful to the user.** Internal rules and project
-  promises (explicit installs) are not selling points.
+  promises (explicit installs, "every commit passes `mise run check`",
+  "the ADRs are the only place decisions live") are not selling points
+  and don't help a reader, so leave them out of the docs site.
 - **A section holds only what its heading promises.** Under "How it
   works", only how mscts tests compliancy; setup facts such as running
   offline belong elsewhere, if anywhere.
@@ -84,11 +86,47 @@ Any session that writes user-facing text follows this skill all the same.
   lines that name the same thing ("Running tests against pumpkin" then
   "Candidate: pumpkin …"). Keep the natural flow: this is not about
   cutting filler words or packing the text densely.
+- **Never say what you're about to say; just say it.** No sentence
+  that announces what a page or section will do ("This page takes you
+  from …", "This page lists them."). Start with the content itself.
 - **No detail that means nothing to the reader.** Drop numbers and
   identifiers the reader cannot use where they appear (a protocol number
   in a hero). Put them where they matter.
 
 ## Examples
+
+### Getting started, the opening
+
+- Before: "This page takes you from a clean checkout to a Report that
+  compares vanilla 26.3 with Pumpkin. It takes a few minutes, most of it
+  spent downloading. This page runs mscts from a checkout. To install the
+  `mscts` command from the latest GitHub Release instead, run:"
+- After: "To install the `mscts` command from the latest GitHub
+  Release, run:". The same sweep dropped "This page lists …" from the
+  status and design decisions pages.
+- Why: redundant and unnecessary prose. "Never say what you're about to
+  say — just say it." The download time comment is "totally
+  unnecessary".
+
+### Status, design decisions and development guide openings
+
+- Before: "mscts is at an early stage. The working log is
+  docs/PROGRESS.md, and the milestones are in docs/PLAN.md."; "The ADRs
+  are the only place decisions live."; "Every commit on `main` passes
+  `mise run check`."
+- After: "mscts is in its early development stage. Future milestones are
+  documented in docs/PLAN.md." (the maintainer's wording); the other two
+  sentences removed.
+- Why: "No need to show / tell about the working log." The other two
+  are internal project rules that don't help a reader; the maintainer
+  confirmed that reason.
+
+### Development guide, the language
+
+- Before: "mscts is Python 3.13, managed with mise and uv."
+- After: "mscts uses Python 3.13, managed with mise and uv." The
+  maintainer gave the correction.
+- Why: a grammatical error; mscts is not Python, it uses it.
 
 ### Report output, the first line and the totals
 

@@ -1,12 +1,7 @@
 # Getting started
 
-This page takes you from a clean checkout to a Report that compares vanilla
-26.3 with [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin). It takes a few
-minutes, most of it spent downloading.
-
-This page runs mscts from a checkout. To install the `mscts` command from
-the latest [GitHub Release](https://github.com/ericbstie/mscts/releases)
-instead, run:
+To install the `mscts` command from the latest
+[GitHub Release](https://github.com/ericbstie/mscts/releases), run:
 
 ```sh
 mise use -g uv pypi:ericbstie/mscts
@@ -62,7 +57,8 @@ the sha1 and size Mojang publishes, and stores it in the cache
 uv run mscts adapter install pumpkin
 ```
 
-This downloads Pumpkin's latest nightly build. mscts checks that it is a
+This downloads the latest nightly build of
+[Pumpkin](https://github.com/Pumpkin-MC/Pumpkin). mscts checks that it is a
 build for Minecraft 26.3 and records the commit it was made from, so every
 Report names the exact build it tested. Pumpkin publishes only its latest
 nightly. To test another commit, build it yourself and install the file with
@@ -109,7 +105,7 @@ Took 89.5 s
 ```
 
 Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
-sends four status values in a different form than vanilla does. The vanilla
+sends four status values in a different form from vanilla's. The vanilla
 client decodes both forms of each to the same thing, so these test cases pass
 and are marked "network traffic only".
 

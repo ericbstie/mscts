@@ -285,7 +285,7 @@ has its `reasons` instead of a `test_case`.
 Verdict, its differences with both values, and each server's
 Measurements. A Verdict keeps at most 20 differences of one test case, and
 its `omitted` counts the ones it left out. Without that limit, a default
-Run against Pumpkin wrote an 88 MB file, almost all of it the elements of
+Run against Pumpkin would write an 88 MB file, almost all of it the elements of
 one tag list. A difference beyond the first 20 is still kept if it is the first of its
 test case with its kind, observability and kind of value, so the lines
 and the score come out the same. A difference of a Group itself is never left out. The
