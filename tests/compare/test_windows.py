@@ -9,6 +9,7 @@ from mscts.compare import (
     HEARTBEAT,
     HEARTBEAT_PAYLOADS,
     OBSERVE_CLOSE,
+    OBSERVE_NO_PLAY,
     OBSERVE_OPEN,
     Outcome,
     compare,
@@ -215,6 +216,18 @@ def test_names_narrow_the_window_to_the_packets_they_name() -> None:
     )
     assert [d.packet for d in verdict.divergences] == ["minecraft:block_update"], verdict
     assert verdict.test_cases == ("block_update",)
+
+
+def test_a_window_with_no_play_packets_takes_none_but_still_takes_the_others() -> None:
+    def login(text: bytes) -> Packet:
+        return packet("minecraft:login_finished", text, state=State.LOGIN)
+
+    verdict = compare(
+        transcript(opening(OBSERVE_NO_PLAY), ("alice", login(b"a")), ("alice", chat("a")), CLOSE),
+        transcript(opening(OBSERVE_NO_PLAY), ("alice", login(b"b")), ("alice", chat("b")), CLOSE),
+        [],
+    )
+    assert [d.packet for d in verdict.divergences] == ["minecraft:login_finished"], verdict
 
 
 def test_names_take_more_than_one_packet() -> None:

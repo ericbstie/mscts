@@ -10,7 +10,7 @@ import pytest
 
 from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
 from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
@@ -107,6 +107,31 @@ async def test_a_narrowed_window_names_its_packets_in_its_open_mark() -> None:
         ALICE_CLOSE,
         OBSERVE_CLOSE,
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_window_with_no_play_packets_says_so_in_its_open_mark() -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(play_server([]), transcript) as context:
+        await joined(context)
+        async with context.observe(play=False):
+            pass
+
+    assert labels(transcript) == [f"{OBSERVE_OPEN} {OBSERVE_NO_PLAY}", ALICE_CLOSE, OBSERVE_CLOSE]
+
+
+@pytest.mark.asyncio
+async def test_a_window_with_no_play_packets_refuses_names_and_until() -> None:
+    context = GroupContext(
+        _UNUSED, Transcript(group_id="test/observe", server="fake"), timeout_s=1.0
+    )
+
+    with pytest.raises(ValueError, match="play=False compares no play packet"):
+        async with context.observe(BLOCK_UPDATE, play=False):
+            pass
+    with pytest.raises(ValueError, match="play=False compares no play packet"):
+        async with context.observe(until=BLOCK_UPDATE, play=False):
+            pass
 
 
 NOT_A_PLAY_PACKET = [

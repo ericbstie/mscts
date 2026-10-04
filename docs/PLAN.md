@@ -1020,7 +1020,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `compare`: `DivergenceKind` — Divergence classification.
 - `groups.status`: `PING_PAYLOAD` — status ping payload; `STATUS_CACHE_S` — the longest vanilla
   keeps a built status (a join drops it sooner); `CACHE_WAIT_S` — how long `status/with-player`
-  waits after the join (that interval plus one second, a margin for a lazy cache); `PLAY_PACKET` — the one play packet its window compares;
+  waits after the join (that interval plus one second, a margin for a lazy cache); its window compares no play packet (`observe(play=False)`);
   `with_player` — the `status/with-player` script.
 - `groups.blocks`: `BUILDER` — the operator Bot that runs each command itself; `BUILDER_AT` —
   where Control puts it, clear of every block the Groups set; `FEEDBACK_TIMEOUT_S`
@@ -1075,14 +1075,16 @@ class GroupContext:
                                                  # CONTROL_PLAYER (Control's Bot)
     def span(self, name: str) -> AbstractAsyncContextManager[None]: ...   # Marks "<name>:start"/"<name>:end"
                                     # (no end Mark if the body raises: no Measurement)
-    def observe(self, *names: str, until: str | None = None, bot: Bot | None = None
+    def observe(self, *names: str, until: str | None = None, bot: Bot | None = None,
+                play: bool = True
                 ) -> AbstractAsyncContextManager[None]: ...
                                     # an Observation window: on entry, every Bot in play
                                     # and not disconnected passes Bot.sync (all at once, so
                                     # what setup caused has arrived at every Bot, if the
                                     # setup waited for its feedback, as Control.run does;
                                     # #141), then
-                                    # Marks OBSERVE_OPEN (then the names, each after a space);
+                                    # Marks OBSERVE_OPEN (then the names, each after a space;
+                                    # play=False: OBSERVE_NO_PLAY, and no names or until);
                                     # when the body completes, every Bot in play and not
                                     # disconnected passes Bot.sync again (all at once; the
                                     # first error raises, as that Bot's failure), then a Mark
@@ -1289,7 +1291,11 @@ class Verdict:
 
 OBSERVE_OPEN = "observe:open"       # the Mark that opens an Observation window; a window
                                     # narrowed to packets has their names after it:
-                                    # "observe:open minecraft:block_update"
+                                    # "observe:open minecraft:block_update"; a window
+                                    # that compares no play packet has OBSERVE_NO_PLAY
+                                    # ("-") after it
+OBSERVE_NO_PLAY = "-"               # what follows OBSERVE_OPEN when observe(play=False):
+                                    # no packet has this name, so no play packet is taken
 TICK_PATH = "(tick)"                # #23: the path of the field Divergence of a packet
                                     # a tick-exact Group got on different ticks; the Report
                                     # shows it before the values ("(tick): vanilla sends 1, ...");

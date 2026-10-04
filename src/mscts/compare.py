@@ -103,8 +103,13 @@ OBSERVE_OPEN = "observe:open"
 """The label of the Mark that opens an Observation window.
 
 A window narrowed to some packets has their names after it, each after a space:
-`observe:open minecraft:block_update minecraft:system_chat`.
+`observe:open minecraft:block_update minecraft:system_chat`. A window that compares no play
+packet has `OBSERVE_NO_PLAY` after it, which no packet is called.
 """
+
+OBSERVE_NO_PLAY = "-"
+"""What follows `observe:open` in a window that compares no play packet, only the packets of
+the other States. No packet has this name, so the window's names take no play packet."""
 
 TICK_MARK = "tick:"
 """The start of the label of the Mark that ends a tick of a tick-exact Group: `tick:<k>`.

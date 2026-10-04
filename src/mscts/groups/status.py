@@ -28,10 +28,6 @@ CACHE_WAIT_S = STATUS_CACHE_S + 1
 second. Vanilla needs only a tick, so the rest is a margin for a Candidate that builds its
 status lazily. A Candidate that takes longer shows no player, and that is a difference."""
 
-PLAY_PACKET = "minecraft:player_chat"
-"""The one play packet the window of `status/with-player` compares. Nothing sends it there:
-the window only has to leave out the join's play packets, which vary without a Fixture."""
-
 
 @group("status/basic")
 async def basic(context: GroupContext) -> None:
@@ -72,7 +68,7 @@ async def with_player(context: GroupContext) -> None:
         undo.push_async_callback(until_no_player_online, context.endpoint)
         undo.push_async_callback(player.close)
         await player.join()
-        async with context.observe(PLAY_PACKET):
+        async with context.observe(play=False):
             await asyncio.sleep(CACHE_WAIT_S)
             bot = await context.bot("status")
             await bot.status()
