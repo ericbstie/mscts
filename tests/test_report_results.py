@@ -247,6 +247,59 @@ def test_the_leaves_of_a_replaced_compound_fail_and_its_siblings_do_not() -> Non
     )
 
 
+def test_a_list_replaced_by_a_scalar_fails_each_of_its_elements_test_cases() -> None:
+    # Audit 2026-10-04 L4 (mutant P9): `foo.a[].b` is under `foo.a`, past a `[`.
+    verdict = compare(
+        transcript(
+            ("alice", packet("minecraft:foo", fields={"a": [{"b": 1}], "ab": 2})), group_id="x/a"
+        ),
+        transcript(("alice", packet("minecraft:foo", fields={"a": 0, "ab": 2})), group_id="x/a"),
+        (),
+    )
+    assert report_lines(_report(_result(verdict))) == (
+        CaseResult("x/a", "foo.a", LineResult.FAIL),
+        CaseResult("x/a", "foo.a[].b", LineResult.FAIL),
+        CaseResult("x/a", "foo.ab", LineResult.PASS),
+    )
+
+
+LIGHT_UPDATE = packet(
+    "minecraft:light_update",
+    fields={
+        "chunk_x": 3,
+        "chunk_z": 4,
+        "data": {
+            "sky_light_mask": b"",
+            "block_light_mask": b"",
+            "empty_sky_light_mask": b"",
+            "empty_block_light_mask": b"",
+            "sky_light_arrays": [],
+            "block_light_arrays": [],
+        },
+    },
+)
+
+
+def test_a_chunk_packet_left_out_fails_each_of_its_fields() -> None:
+    # Audit 2026-10-04 L4 (mutant P4): a missing chunk packet shows `chunk 3 4`, a string, so
+    # only its being `missing` fans it out to each field.
+    other = packet("minecraft:set_time", fields={"game_time": 1})
+    verdict = compare(
+        transcript(("alice", LIGHT_UPDATE), ("alice", other)),
+        transcript(("alice", other), server="pumpkin"),
+        (),
+    )
+    [missing] = [d for d in verdict.divergences if d.kind == "missing"]
+    assert missing.reference == "chunk 3 4"
+
+    lines = [
+        line for line in report_lines(_report(_result(verdict))) if isinstance(line, CaseResult)
+    ]
+    light = [line for line in lines if line.test_case.startswith("light_update")]
+    assert len(light) > 1
+    assert {line.result for line in light} == {LineResult.FAIL}
+
+
 def test_a_compound_sent_in_another_format_marks_only_its_own_test_case() -> None:
     traffic = replace(_field("x.a", traffic=True), reference={"b": 1}, candidate="b")
     verdict = replace(_verdict(traffic), test_cases=("x.a", "x.a.b"))

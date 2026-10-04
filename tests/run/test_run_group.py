@@ -239,6 +239,24 @@ def test_a_prerequisite_not_run_is_named_before_one_the_candidate_failed(
     )
 
 
+@pytest.mark.parametrize("order", [("test/broken", "test/gone"), ("test/gone", "test/broken")])
+def test_an_error_prerequisite_is_named_before_one_not_run(order: tuple[str, ...]) -> None:
+    both = Group(id="test/both", run=status.ping, requires=order)
+
+    verdict = prerequisite_verdict(both, {"test/broken": Verdict("test/broken", Outcome.ERROR)})
+
+    assert verdict == Verdict(
+        "test/both", Outcome.ERROR, detail="prerequisite test/broken was error"
+    )
+
+
+def test_of_prerequisites_the_candidate_failed_the_first_listed_is_named() -> None:
+    both = Group(id="status/ping", run=status.ping, requires=("status/basic", "test/other"))
+    verdicts = {name: Verdict(name, Outcome.MISMATCH) for name in ("status/basic", "test/other")}
+
+    assert prerequisite_verdict(both, verdicts) == _prerequisite_failed("status/basic")
+
+
 def _prerequisite_failed(prerequisite: str) -> Verdict:
     """status/ping's Verdict when the Candidate failed its `prerequisite`."""
     what = f"prerequisite {prerequisite} was mismatch"

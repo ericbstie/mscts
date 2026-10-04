@@ -876,6 +876,24 @@ def test_another_number_of_batches_is_network_traffic_only() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("name", "observability"),
+    [
+        ("minecraft:chunk_batch_start", Observability.NETWORK_TRAFFIC),
+        ("minecraft:chunk_batch_finished", Observability.NETWORK_TRAFFIC),
+        ("minecraft:chunks_biomes", Observability.GAMEPLAY),
+    ],
+)
+def test_a_packet_one_side_left_out_is_network_traffic_only_if_it_marks_a_batch(
+    name: str, observability: Observability
+) -> None:
+    # Audit 2026-10-04 L4 (mutant C6): chunks_biomes changes the client's world.
+    verdict = compare(transcript(("alice", packet(name, fields={}))), transcript(), [])
+
+    [missing] = [d for d in verdict.divergences if d.kind == "missing"]
+    assert missing.observability is observability
+
+
 @pytest.mark.parametrize("name", UNRELATED)
 def test_chunks_are_sorted_across_a_packet_whose_handling_reads_no_chunk(name: str) -> None:
     between = packet(name, fields={})
