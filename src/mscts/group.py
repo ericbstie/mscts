@@ -345,7 +345,7 @@ class GroupContext:
             ValueError: A window is open already (windows do not nest), or a name (in
                 `names` or `until`) is not a packet the Target's server sends in play,
                 or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
-                `until` names no packet; or
+                `until` names no packet or the same one twice; or
                 `names` narrows the window and `until` has several names that it leaves out
                 (Compare would not see which of them ended it); or
                 `bot` is given without `until`, or is not one of this Group's Bots; or
@@ -360,10 +360,7 @@ class GroupContext:
         if not play and (names or until is not None):
             msg = "play=False compares no play packet: give no names and no until with it"
             raise ValueError(msg)
-        ends = None if until is None else (until,) if isinstance(until, str) else tuple(until)
-        if ends == ():
-            msg = "until needs the name of at least one packet"
-            raise ValueError(msg)
+        ends = _until_names(until)
         for name in (*names, *(ends or ())):
             _check_observable(name)
         if names and ends is not None and len(ends) > 1:
@@ -597,6 +594,25 @@ def _check_observable(name: str) -> None:
     if name in HEARTBEAT:
         msg = f"{name!r} is a heartbeat packet, which no window compares: {HEARTBEAT[name]}"
         raise ValueError(msg)
+
+
+def _until_names(until: str | tuple[str, ...] | None) -> tuple[str, ...] | None:
+    """The packet names `until` gives: a str is one name, None is none (a window with a barrier).
+
+    Raises:
+        ValueError: `until` is empty, or names one packet twice.
+    """
+    if until is None:
+        return None
+    names = (until,) if isinstance(until, str) else tuple(until)
+    if not names:
+        msg = "until needs the name of at least one packet"
+        raise ValueError(msg)
+    for name in names:
+        if names.count(name) > 1:
+            msg = f"until names {name} twice"
+            raise ValueError(msg)
+    return names
 
 
 type Script = Callable[[GroupContext], Awaitable[None]]

@@ -456,3 +456,15 @@ async def test_a_narrowed_window_must_compare_every_packet_that_can_end_it() -> 
     # One name, as before: a Candidate that never sends it fails ("no X arrived").
     async with context.observe(BLOCK_UPDATE, until=DIFFICULTY):
         _heard_by(transcript, "alice", DIFFICULTY, at=transcript.now_ns())
+
+
+@pytest.mark.asyncio
+async def test_a_name_given_twice_to_until_is_a_mistake() -> None:
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    with pytest.raises(ValueError, match=f"{DIFFICULTY} twice"):
+        async with context.observe(until=(DIFFICULTY, HELD_SLOT, DIFFICULTY)):
+            pass
+
+    assert transcript.marks == []
