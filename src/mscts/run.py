@@ -451,7 +451,7 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
                 if verdict is None or _blocked_by_candidate(group, done, by_id):
                     await instances.start(group)  # first, so progress reads in order
                     LOG.info("running %s (%d of %d) ...", group.id, repetition, repeat)
-                    play = await instances.play(group, blocked=verdict)
+                    play = await instances.play(group, blocked_verdict=verdict)
                 else:
                     LOG.info(
                         "skipping %s (%d of %d): %s",
@@ -574,7 +574,7 @@ class _Instances:
         """Make sure the Instances `group` plays against are up."""
         await self._pair(group.spec)
 
-    async def play(self, group: Group, *, blocked: Verdict | None = None) -> _Play:
+    async def play(self, group: Group, *, blocked_verdict: Verdict | None = None) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it.
 
         It waits first for each usable Instance to have no player online (the previous
@@ -583,13 +583,16 @@ class _Instances:
         played on either, and its Verdict is `error`, naming why (`_unsettled`). If only
         the Candidate is, or `group` is `blocked` by a prerequisite the Candidate failed
         (`_blocked_by_candidate`), `group` is played on the Reference alone
-        (`_reference_alone`), and its Verdict is `blocked` if it was.
+        (`_reference_alone`), and its Verdict is `blocked` if it was: `blocked_verdict`.
+
+        Both Instances of `group`'s ServerSpec are up either way: they launch as a pair, the
+        first time a Group of that ServerSpec is played on either side.
         """
         endpoints = await self._pair(group.spec)
         unusable = self._unusable_verdict(group, endpoints)
         if unusable is not None and unusable.outcome is Outcome.ERROR:
             return _Play(unusable)
-        skipped = blocked or unusable
+        skipped = blocked_verdict or unusable
         reference, candidate = endpoints
         unsettled = await _unsettled(group, reference, candidate if skipped is None else None)
         not_played = unsettled or skipped  # a Reference unsettled comes first: `error`

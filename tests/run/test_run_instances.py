@@ -136,6 +136,35 @@ async def test_a_group_whose_prerequisite_was_not_run_is_played_on_neither_side(
 
 
 @pytest.mark.asyncio
+async def test_a_reference_error_in_one_repetition_fails_no_test_case_of_what_requires_it(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Review A #289: in repetition 2 vanilla raises on the prerequisite, so PING is played
+    # on neither side; its test cases from repetition 1, which matched, still pass.
+    plays: list[Endpoint] = []
+
+    async def flaky(context: GroupContext) -> None:
+        plays.append(context.endpoint)
+        if context.endpoint == plays[0] and plays.count(plays[0]) == 2:  # the Reference
+            msg = "vanilla flaked"
+            raise RuntimeError(msg)
+        await status.basic(context)
+
+    basic = Group(id=BASIC.id, run=flaky)
+
+    result = await run_results(
+        [basic, PING], fake_server("one"), fake_server("two"), workdir=tmp_path, repeat=2
+    )
+
+    flaked, ping = result.results
+    assert [verdict.outcome for verdict in flaked.verdicts] == [Outcome.MATCH, Outcome.ERROR]
+    assert [verdict.outcome for verdict in ping.verdicts] == [Outcome.MATCH, Outcome.BLOCKED]
+    cases = [line for line in report_lines(_report(ping)) if not isinstance(line, GroupLine)]
+    assert cases
+    assert {line.result for line in cases} == {LineResult.PASS}
+
+
+@pytest.mark.asyncio
 async def test_only_the_reference_is_waited_on_for_a_group_blocked_by_the_candidate(
     monkeypatch: pytest.MonkeyPatch, fake_server: MakeServer, tmp_path: Path
 ) -> None:

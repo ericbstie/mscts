@@ -139,7 +139,8 @@ when each of its test cases passes and it has no line of its own. So a
 prerequisite that differs only in network traffic passes. If the
 Candidate failed the prerequisite, mscts still plays the Group on
 vanilla, and the Candidate fails each test case of that play. If the
-prerequisite was an `Error`, mscts plays the Group on neither server. No
+prerequisite was an `Error` or was not run, mscts plays the Group on
+neither server, and only its own line fails. No
 shipped Group has a prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
@@ -155,11 +156,12 @@ The line names each distinct reason from the Group's repetitions once. It
 counts as one test case: a failing one, unless every reason is an `Error`.
 Then the line is marked `!` instead of ✗ and is not scored, because the
 fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
-failed, or that was not tested, also fails each test case that vanilla's
-play of it has in any repetition, including a Group mscts played on
-vanilla only. So a Candidate that crashes, lacks a command, fails a
-prerequisite, is left unable to play, or sends something mscts cannot
-compare never scores better than one that sends every value wrong.
+failed also fails each test case that vanilla's play of it has in any
+repetition. So does a Group not tested because the Candidate failed its
+prerequisite, which mscts played on vanilla only. So a Candidate that
+crashes, lacks a command, fails a prerequisite, still has players online,
+leaves its world frozen, or sends something mscts cannot compare never
+scores better than one that sends every value wrong.
 
 ## Total time
 

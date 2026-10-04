@@ -455,9 +455,10 @@ class Verdict:
         detail: A human-readable note, e.g. why the Group is blocked.
         test_cases: Every test case the Comparison compared, matched or not, and each field
             of a reference Packet the Candidate did not send (#101), sorted and each once;
-            none if the Verdict was made without one (`error`). A Candidate failure lists
-            the Reference's play's own (`run.judge`), and so does a `blocked` Verdict
-            whose Group was played on the Reference alone (#285).
+            none if the Verdict was made without one (`error`, or `blocked` and played on
+            neither side). A Candidate failure lists the Reference's play's own
+            (`run.judge`), and so does a `blocked` Verdict whose Group was played on the
+            Reference alone (#285).
         omitted: How many Divergences a report.json left out of `divergences` (#254): the
             Verdict a Comparison makes has none left out, and a Verdict read back from a
             report.json that capped them has the count that file gave.

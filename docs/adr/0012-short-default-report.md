@@ -145,7 +145,10 @@ every repetition, as for a Candidate failure. If that play fails, the
 Group is an `error`.
 
 If a prerequisite is an `error`, or was not run, the Group is played on
-neither side and its own line is all that fails, as before. Whether
+neither side and its own line is all that fails, as before. That holds
+per repetition: a repetition blocked this way lists no test cases and
+fails none, even when the Candidate matched the Group in another
+repetition (review A). Whether
 that line should be an `error` too (audit 2026-10-04, L2) is left open.
 
 ## Consequences

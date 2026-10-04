@@ -2227,8 +2227,9 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of
 # its fields' differ, and so does a gameplay `field` Divergence whose reference is a list
 # or mapping, for its test case and each of its leaves', #225; a `failed` Divergence or a
-# blocked Verdict in any repetition makes every test case of the Group differ, #262,
-# #285): FAIL if it differs in gameplay in any repetition, PASS (marked
+# blocked Verdict played on the Reference (one with test cases) in any repetition makes
+# every test case of the Group differ, #262, #285): FAIL if it differs in gameplay in any
+# repetition, PASS (marked
 # network_traffic_only) if it differs only in network traffic, else PASS. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
