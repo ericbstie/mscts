@@ -676,9 +676,11 @@ class Bot:
         """The chunks (x, z) the server has sent the Bot and not told it to forget (a copy).
 
         A login, or a respawn into another dimension, starts with none, as the client's level
-        does. Unlike the client, it keeps a chunk sent outside the Bot's view distance
-        (`ClientChunkCache.replaceWithPacketData` ignores one) and the chunks held through a
-        reconfiguration (`handleConfigurationStart` clears the client's level). It changes
+        does. Unlike the client, it keeps a chunk more than `max(2, d) + 3` chunks from the
+        view's centre in x or z, where `d` is the view distance the server sent: the client
+        drops one (`ClientChunkCache.calculateStorageRange`, `Storage.inRange`, measured from
+        `set_chunk_cache_center`). It also keeps the chunks held through a reconfiguration
+        (`handleConfigurationStart` clears the client's level). It changes
         only as the Bot reads packets, whether or not a Group takes them, so it also holds the
         chunks `join` or `sync` took.
         """
