@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 
 from mscts.group import Control, GroupContext, group
+from mscts.groups._world import pin_joins
 from mscts.groups.blocks import FEEDBACK_TIMEOUT_S
 from mscts.net import ProtocolError
 from mscts.settle import until_no_player_online
@@ -44,31 +45,20 @@ PACKETS = (
 )
 """The packets a window compares: the tab list, the other player's body and the chat."""
 
-_RULES = (
-    ("respawn_radius", "0", "10"),
-    ("player_movement_check", "false", "true"),
-)
-"""Each game rule the Groups set, its value while they play, and vanilla's default after.
-
-Both players join at the world spawn, so each sees the other
-at the same place on both Instances (#30). A join can repeat its first `player_position`, a
-race with the first tick, unless the movement check is off (docs/research/2026-09-26-join.md).
-"""
-
 _GAME_MODES = ("creative", "adventure", "spectator", "survival")
 """The game modes the second player changes to, in turn, ending as it joined."""
 
 
 @contextlib.asynccontextmanager
 async def _still_world(control: Control) -> AsyncIterator[None]:
-    """Set the rules and freeze the world; on the way out, undo each.
+    """Set the join rules and freeze the world; on the way out, undo each.
 
-    Each undo runs even if another fails, and after the body however it ended.
+    Both players join at the world spawn (`pin_joins`), so each sees the other at the same
+    place on both Instances (#30). Each undo runs even if another fails, and after the body
+    however it ended.
     """
     async with contextlib.AsyncExitStack() as undo:
-        for rule, value, default in _RULES:
-            await control.run(f"gamerule {rule} {value}")
-            undo.push_async_callback(control.run, f"gamerule {rule} {default}")
+        await pin_joins(control, undo)
         await control.run("tick freeze")
         undo.push_async_callback(control.run, "tick unfreeze")
         yield

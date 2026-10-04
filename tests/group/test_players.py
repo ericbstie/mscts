@@ -37,15 +37,15 @@ COMPARED = (
 WINDOW = " ".join((OBSERVE_OPEN, *COMPARED))
 """The open Mark of every window: the tab list, the other player's body and the chat."""
 SET_UP = (
-    "gamerule respawn_radius 0",
     "gamerule player_movement_check false",
+    "gamerule respawn_radius 0",
     "tick freeze",
 )
 """Mob spawning is off in every Fixture world already (ADR-0013), so it is left alone."""
 UNDO = (
     "tick unfreeze",
-    "gamerule player_movement_check true",
     "gamerule respawn_radius 10",
+    "gamerule player_movement_check true",
 )
 """What Control ends with: each setting put back, the last made first."""
 COMMANDS = tree("gamerule", "gamemode", "tick", "tellraw")
