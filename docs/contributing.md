@@ -35,6 +35,11 @@ When a test in one of the server tiers fails, look at the end of its failure
 output: for every server it used, an `Instance console` section shows the
 last lines of that server's console.
 
+Every `mise run test…` task gives its run a temp directory of its own and removes it at the end, so
+test runs at the same time do not delete each other's files. The server tiers keep it when the run
+fails, and print its path. To choose where the files go, for example to read a failing play's
+timeline, pass a folder: `mise run test:selfcheck -- --basetemp /tmp/mine`.
+
 Run one test with:
 
 ```sh
