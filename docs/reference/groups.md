@@ -169,8 +169,10 @@ its own: 2, or 5 for `chunks/view-distance`.
 
 The chunks are compared by position and content. Their order is not compared, and neither is
 which chunk batch carries each chunk: two vanilla servers split the same chunks into batches
-differently, depending on how soon each chunk is ready. A chunk that comes before or after
-another packet on one server only, such as the player's position, is still a difference.
+differently, depending on how soon each chunk is ready. A chunk that comes before another
+packet on one server and after it on the other, such as the player's position, is a difference
+only when it changes the order of the chunks around that packet, because the client applies
+them in turn.
 
 When a Group ends, the walker is moved back to the world spawn, because the server keeps where
 a player left and its next join starts there. Then the world is unfrozen and the rules are set
