@@ -9,6 +9,7 @@ commands, exactly like `tests/tooling/test_mutate.py`'s pattern.
 
 import importlib.util
 import os
+import re
 import subprocess
 import sys
 import types
@@ -78,6 +79,85 @@ def test_parse_args_exits_2_on_an_unrecognized_flag(commit_green: types.ModuleTy
     with pytest.raises(SystemExit) as excinfo:
         commit_green.parse_args(["--nope", "--", "-m", "msg"])
     assert excinfo.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        "-a",
+        "--all",
+        "-i",
+        "--include",
+        "-o",
+        "--only",
+        "a.py",
+        "-amanother message",
+        "-qva",
+        "--on",
+        "--inc",
+        "--interactive",
+        "-p",
+        "--patch",
+        "-U",
+        "-U3",
+        "--unified=3",
+        "--pathspec-from-file=paths.txt",
+        "--pathspec-file-nul",
+        "--fixup=reword:HEAD",
+    ],
+)
+def test_parse_args_refuses_arguments_that_change_the_committed_tree(
+    commit_green: types.ModuleType, selection: str
+) -> None:
+    with pytest.raises(commit_green.CommitError, match=re.escape(selection)) as excinfo:
+        commit_green.parse_args(["--", "-m", "message", selection])
+    assert "stage the intended files first" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "git_args",
+    [
+        ("-m", "--all"),
+        ("-m", "a.py"),
+        ("-mmessage with -a",),
+        ("-F", "message.txt"),
+        ("-Fmessage.txt",),
+        ("--message", "message"),
+        ("--message=message",),
+        ("--mess", "message"),
+        ("--amend", "--no-edit"),
+        ("-qvs", "--amend", "-C", "HEAD"),
+        ("--fixup", "HEAD"),
+        ("--fixup=amend:HEAD", "--no-edit"),
+        ("--author", "Test <test@example.com>", "-m", "msg"),
+        ("--trailer", "Reviewed-by: Test", "-m", "msg"),
+        ("--gpg-sign=key", "-m", "msg"),
+        ("-Skey", "-m", "msg"),
+        ("-uno", "-m", "msg"),
+        ("-m", "msg", "--"),
+    ],
+)
+def test_parse_args_keeps_message_and_amend_options(
+    commit_green: types.ModuleType, git_args: tuple[str, ...]
+) -> None:
+    assert commit_green.parse_args(["--", *git_args]).git_args == git_args
+
+
+@pytest.mark.parametrize(
+    ("git_args", "refused"),
+    [
+        (("-F", "message.txt", "--", "a.py"), "a.py"),
+        (("-m", "--all", "a.py"), "a.py"),
+        (("--fixup", "reword:HEAD"), "--fixup"),
+        (("--fix", "reword:HEAD"), "--fix"),
+    ],
+)
+def test_parse_args_refuses_paths_after_option_values_and_reword_fixups(
+    commit_green: types.ModuleType, git_args: tuple[str, ...], refused: str
+) -> None:
+    with pytest.raises(commit_green.CommitError, match=re.escape(refused)) as excinfo:
+        commit_green.parse_args(["--", *git_args])
+    assert "stage the intended files first" in str(excinfo.value)
 
 
 # -- strip_git_env ----------------------------------------------------------------------

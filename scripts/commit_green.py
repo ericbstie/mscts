@@ -43,10 +43,34 @@ from pathlib import Path
 
 DEFAULT_CHECK_CMD: tuple[str, ...] = ("mise", "run", "check")
 DEFAULT_TAIL_LINES = 60
+_TREE_OPTIONS = (
+    "--all",
+    "--include",
+    "--only",
+    "--interactive",
+    "--patch",
+    "--unified",
+    "--pathspec-from-file",
+    "--pathspec-file-nul",
+)
+_VALUE_OPTIONS = (
+    "--file",
+    "--message",
+    "--author",
+    "--date",
+    "--reedit-message",
+    "--reuse-message",
+    "--fixup",
+    "--squash",
+    "--trailer",
+    "--template",
+    "--cleanup",
+    "--inter-hunk-context",
+)
 
 
 class CommitError(Exception):
-    """Bad arguments: no '--' separator, nothing after it, or no `git` on PATH."""
+    """Arguments cannot commit the checked index, or `git` is unavailable."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +110,66 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _refuse_selection(argument: str) -> None:
+    msg = f"git commit argument {argument!r} can change the tree; stage the intended files first"
+    raise CommitError(msg)
+
+
+def _required_value(args: Sequence[str], index: int) -> str:
+    if index + 1 == len(args):
+        msg = f"git commit argument {args[index]!r} requires a value"
+        raise CommitError(msg)
+    return args[index + 1]
+
+
+def _long_option_end(args: Sequence[str], index: int) -> int:
+    argument = args[index]
+    option, equals, value = argument.partition("=")
+    if any(name.startswith(option) for name in _TREE_OPTIONS):
+        _refuse_selection(argument)
+    if any(name.startswith(option) for name in _VALUE_OPTIONS):
+        if not equals:
+            value = _required_value(args, index)
+        # --fixup=reword:<commit> implies --only (git-commit manual, #150).
+        if "--fixup".startswith(option) and value.startswith("reword:"):
+            _refuse_selection(argument)
+        return index + (1 if equals else 2)
+    return index + 1
+
+
+def _short_option_end(args: Sequence[str], index: int) -> int:
+    argument = args[index]
+    for offset, option in enumerate(argument[1:], start=1):
+        if option in "aiopU":
+            _refuse_selection(argument)
+        if option in "FmcCt":
+            if offset + 1 < len(argument):
+                return index + 1
+            _required_value(args, index)
+            return index + 2
+        if option in "Su":  # optional values are attached to the option, as in -Skey
+            return index + 1
+    return index + 1
+
+
+def _validate_git_args(args: Sequence[str]) -> None:
+    """Refuse tree-selection flags and paths, while leaving message/amend options intact."""
+    index = 0
+    while index < len(args):
+        argument = args[index]
+        if argument == "--":
+            if index + 1 < len(args):
+                _refuse_selection(args[index + 1])
+            return
+        if not argument.startswith("-") or argument == "-":
+            _refuse_selection(argument)
+        index = (
+            _long_option_end(args, index)
+            if argument.startswith("--")
+            else _short_option_end(args, index)
+        )
+
+
 def parse_args(argv: Sequence[str]) -> Args:
     """Parse `argv` (without the program name) into `Args`.
 
@@ -98,6 +182,7 @@ def parse_args(argv: Sequence[str]) -> Args:
     if not git_args:
         msg = "no git commit arguments after '--'"
         raise CommitError(msg)
+    _validate_git_args(git_args)
     parsed = _build_parser().parse_args(own)
     check_cmd = (
         DEFAULT_CHECK_CMD if parsed.check_cmd is None else tuple(shlex.split(parsed.check_cmd))
