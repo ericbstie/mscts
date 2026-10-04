@@ -675,9 +675,12 @@ class Bot:
     def chunks(self) -> frozenset[tuple[int, int]]:
         """The chunks (x, z) the server has sent the Bot and not told it to forget (a copy).
 
-        As the client keeps them in its level: a login, or a respawn into another dimension,
-        starts with none. It changes only as the Bot reads packets, whether or not a Group
-        takes them, so it also holds the chunks `join` or `sync` took.
+        A login, or a respawn into another dimension, starts with none, as the client's level
+        does. Unlike the client, it keeps a chunk sent outside the Bot's view distance
+        (`ClientChunkCache.replaceWithPacketData` ignores one) and the chunks held through a
+        reconfiguration (`handleConfigurationStart` clears the client's level). It changes
+        only as the Bot reads packets, whether or not a Group takes them, so it also holds the
+        chunks `join` or `sync` took.
         """
         return frozenset(self._replies.chunks)
 

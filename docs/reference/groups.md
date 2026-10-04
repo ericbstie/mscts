@@ -156,7 +156,9 @@ more. A server that never sends one of them fails the Group after 10 seconds. A 
 unloaded, in those 9 ticks is compared. One sent later is not.
 
 The chunks Groups require no other Group. A join that fails fails the Group, but a join whose
-packets differ from vanilla's, which `join/basic` reports, still has its chunks compared.
+packets differ from vanilla's, which `join/basic` reports, still has its chunks compared. The
+login and configuration packets are compared in every Group, so each chunks Group also lists
+the join's differences, such as in `registry_data` or `update_tags`.
 
 The view distance is the ServerSpec's unless the Group says otherwise. Every chunks Group sets
 its own: 2, or 5 for `chunks/view-distance`.
