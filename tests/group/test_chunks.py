@@ -28,6 +28,8 @@ from tests.net.fakes import EMPTY_CHUNK, NO_STATISTICS, JoinScript, Peer, join_s
 
 TICK_S = 2 * TICK_GAP_S
 """The fake's tick: just over what a barrier needs to see one pass, so a play is quick."""
+LATE_S = 0.1
+"""How long after the join the fake sends the rest of the walker's view: past the join's barrier."""
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 MOVE = "minecraft:move_player_pos"
 MOVES = {MOVE, "minecraft:move_player_pos_rot"}
@@ -54,16 +56,18 @@ class ChunksServer:
     """A fake server that joins like vanilla and sends the walker the chunks of its view.
 
     The join's first batch holds chunk (0, 0) (`join_server`); the rest of the view at
-    `distance` follows at once. Control's teleport of the walker to `chunks.FAR_AT` sends the
-    walker the view around `chunks.FAR`, and its first step into chunk (-1, 0) sends it the
-    chunks that step brings into its view. A marker (`tellraw @s "<token>"`) gets its token back; no
-    other command gets feedback. Chunk `withheld` is never sent.
+    `distance` follows `LATE_S` later, after any barrier the join ends with. Control's teleport
+    of the walker to `chunks.FAR_AT` sends the walker the view around `chunks.FAR`, and its
+    first step into chunk (-1, 0) sends it the chunks that step brings into its view. A marker
+    (`tellraw @s "<token>"`) gets its token back; no other command gets feedback. Chunk
+    `withheld` is never sent.
     """
 
     distance: int = chunks.VIEW_DISTANCE
     withheld: Chunk | None = None
     seen: list[Packet] = field(default_factory=list)
     walker: Peer | None = None
+    late: set[asyncio.Task[None]] = field(default_factory=set)
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -75,7 +79,10 @@ class ChunksServer:
         hellos = [packet for packet in self.seen if packet.name == "minecraft:hello"]
         if (hellos[-1].fields or {})["name"] == WALKER:
             self.walker = peer
-            await self.send(peer, chunks.view(chunks.SPAWN, self.distance) - {(0, 0)})
+            rest = chunks.view(chunks.SPAWN, self.distance) - {(0, 0)}
+            task = asyncio.create_task(self.send(peer, rest, after_s=LATE_S))
+            self.late.add(task)
+            task.add_done_callback(self.late.discard)
         requests, crossed = 0, False
         async for packet in peer.packets():
             self.seen.append(packet)
@@ -101,8 +108,9 @@ class ChunksServer:
                 elif command == TELEPORT and self.walker is not None:
                     await self.send(self.walker, chunks.view(chunks.FAR, self.distance))
 
-    async def send(self, peer: Peer, positions: frozenset[Chunk]) -> None:
-        """Send a chunk at each of `positions` but `withheld`, in one write."""
+    async def send(self, peer: Peer, positions: frozenset[Chunk], *, after_s: float = 0) -> None:
+        """Send a chunk at each of `positions` but `withheld`, in one write, `after_s` from now."""
+        await asyncio.sleep(after_s)
         frames = [
             peer.frame(CHUNK, **(EMPTY_CHUNK | {"chunk_x": x, "chunk_z": z}))
             for x, z in sorted(positions - {self.withheld})
@@ -237,7 +245,7 @@ def test_the_view_centre_has_titles() -> None:
 async def test_a_chunk_never_sent_fails_the_group_and_control_still_undoes_the_fixture(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
     transcript = Transcript(group_id="chunks/join-view", server="fake")
     with pytest.raises(TimeoutError):
         async with playing(ChunksServer(withheld=(3, 3)), transcript) as context:
@@ -267,7 +275,7 @@ async def test_the_teleport_window_holds_control_teleporting_the_walker_once_it_
 async def test_a_chunk_never_sent_after_the_teleport_fails_the_group_and_control_still_undoes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
     transcript = Transcript(group_id="chunks/teleport", server="fake")
     with pytest.raises(TimeoutError):
         async with playing(ChunksServer(withheld=(23, 3)), transcript) as context:
@@ -300,6 +308,8 @@ async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None
     assert inside == [steps[0], *barrier, steps[1], *barrier, steps[2], *barrier]
     west = chunks.view((-1, 0), 2) - chunks.view(chunks.SPAWN, 2)
     arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
+    spawn = chunks.view(chunks.SPAWN, 2)
+    assert max(arrived[chunk] for chunk in spawn) < opened, "the whole view before the window"
     assert west <= arrived.keys()
     assert opened < min(arrived[chunk] for chunk in west)
     assert max(arrived[chunk] for chunk in west) < closed
@@ -309,7 +319,7 @@ async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None
 async def test_a_chunk_never_sent_after_the_step_across_fails_the_group_and_control_undoes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
     transcript = Transcript(group_id="chunks/walk", server="fake")
     with pytest.raises(TimeoutError):
         async with playing(ChunksServer(withheld=(-4, 0)), transcript) as context:
