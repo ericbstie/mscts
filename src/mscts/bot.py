@@ -10,6 +10,7 @@ import struct
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
+from enum import IntEnum
 from typing import Self, cast
 
 from mscts.codec.packets import Codec, Packet, State
@@ -41,6 +42,12 @@ sent on channel `minecraft:brand` as a String.
 
 _BRAND_MAX = 32767
 """`BrandPayload` writes the brand with `FriendlyByteBuf.writeUtf`, at most 32767."""
+
+_CONFIGURATION_ANSWERS = {
+    "minecraft:code_of_conduct": "minecraft:accept_code_of_conduct",
+    "minecraft:finish_configuration": "minecraft:finish_configuration",
+}
+"""Configuration packets answered by a packet with no fields: what each is answered with."""
 
 _RELATIVE_X, _RELATIVE_Y, _RELATIVE_Z, _RELATIVE_YAW, _RELATIVE_PITCH = (
     1 << bit for bit in range(5)
@@ -124,6 +131,49 @@ sprinting (`ClientPacketListener.handleRespawn`)."""
 
 type _Send = tuple[str, dict[str, object]]
 """A packet to send: its name and fields."""
+
+
+_START_DESTROY_BLOCK, _ABORT_DESTROY_BLOCK, _STOP_DESTROY_BLOCK, _RELEASE_USE_ITEM = 0, 2, 3, 6
+"""`ServerboundPlayerActionPacket.Action` ordinals (26.3 javap; the wiki misses one at 1)."""
+
+_MAIN_HAND, _OFF_HAND = 0, 1
+"""`InteractionHand` ids."""
+
+_HOTBAR_SLOTS = 9
+"""`Inventory.isHotbarSlot`: 0 to 8."""
+
+_CURSOR_MIDDLE = (0.5, 0.5, 0.5)
+
+
+class Face(IntEnum):
+    """A block face, as the client names the one it hits (`Direction.get3DDataValue`)."""
+
+    DOWN = 0
+    UP = 1
+    NORTH = 2
+    SOUTH = 3
+    WEST = 4
+    EAST = 5
+
+
+@dataclass(slots=True)
+class _Interaction:
+    """What the client keeps to dig, place and use items, apart from its player.
+
+    `sequence` is the level's `BlockStatePredictionHandler.currentSequenceNr`, which each
+    predicted action adds 1 to before it sends it. `selected_slot` is the hotbar slot selected
+    (`Inventory.selected`), and `carried_slot` the one last sent
+    (`MultiPlayerGameMode.carriedIndex`). All start at 0 (26.3 javap).
+    """
+
+    sequence: int = 0
+    selected_slot: int = 0
+    carried_slot: int = 0
+
+    def next_sequence(self) -> int:
+        """The sequence number of a new predicted action, as `startPredicting` counts."""
+        self.sequence += 1
+        return self.sequence
 
 
 @dataclass(slots=True)
@@ -305,6 +355,23 @@ def _remember(
     reported.on_ground = controls.on_ground
 
 
+_PUNCH: _Send = ("minecraft:punch", {})
+
+
+def _carried_change(interaction: _Interaction) -> list[_Send]:
+    """`set_carried_item` with the selected slot, if it differs from the one last sent."""
+    if interaction.selected_slot == interaction.carried_slot:
+        return []
+    interaction.carried_slot = interaction.selected_slot
+    return [("minecraft:set_carried_item", {"slot": interaction.selected_slot})]
+
+
+def _player_action(action: int, block: tuple[int, int, int], face: Face, sequence: int) -> _Send:
+    x, y, z = block
+    fields = {"action": action, "pos": {"x": x, "y": y, "z": z}, "face": int(face)}
+    return ("minecraft:player_action", {**fields, "sequence": sequence})
+
+
 class Replies:
     """What a Bot answers by itself, as each packet arrives, the way the vanilla client does.
 
@@ -328,7 +395,10 @@ class Replies:
     Every other packet gets no answer. Play `login` names the player's entity id. A play
     `login` or `respawn` makes a new player, as the client makes a new `LocalPlayer`, so
     `reported` starts again from a fresh player's; a respawn that keeps entity data
-    (`data_kept` bit 1) keeps the keys and sprinting last reported.
+    (`data_kept` bit 1) keeps the keys and sprinting last reported. A login, or a respawn into
+    another dimension, starts the block-change sequence again; a login also the held slots.
+    A respawn selects slot 0 and keeps the slot last sent, so the next tick sends 0 if that
+    differs. Play `set_held_slot` selects a hotbar slot.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
@@ -336,6 +406,7 @@ class Replies:
             moved since.
         entity_id: The player's entity id from play's `login`, or None before it arrives.
         reported: What the client last reported of its player, which a tick compares with.
+        interaction: The block-change sequence and the hotbar slots selected and last sent.
     """
 
     def __init__(self) -> None:
@@ -344,6 +415,8 @@ class Replies:
         self.saw_disconnect = False
         self.entity_id: int | None = None
         self.reported = _Reported()
+        self.interaction = _Interaction()
+        self._dimension: str | None = None
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
@@ -364,16 +437,19 @@ class Replies:
                 await connection.send(
                     "minecraft:select_known_packs", known_packs=fields.get("known_packs")
                 )
-            case State.CONFIGURATION, "minecraft:code_of_conduct":
-                await connection.send("minecraft:accept_code_of_conduct")
-            case State.CONFIGURATION, "minecraft:finish_configuration":
-                await connection.send("minecraft:finish_configuration")
+            case (
+                State.CONFIGURATION,
+                "minecraft:code_of_conduct" | "minecraft:finish_configuration",
+            ):
+                await connection.send(_CONFIGURATION_ANSWERS[packet.name])
             case State.CONFIGURATION | State.PLAY, "minecraft:keep_alive":
                 await connection.send(
                     "minecraft:keep_alive", keep_alive_id=fields.get("keep_alive_id")
                 )
             case State.PLAY, "minecraft:login" | "minecraft:respawn":
                 self._new_player(packet.name, fields)
+            case State.PLAY, "minecraft:set_held_slot":
+                self._select_slot(_field(fields, "slot", int))
             case State.PLAY, "minecraft:player_position":
                 self.pose.teleport(fields)
                 await connection.send(
@@ -395,18 +471,39 @@ class Replies:
                 pass
 
     def _new_player(self, name: str, fields: Mapping[str, object]) -> None:
-        """Start `reported` again, as the client makes a new `LocalPlayer` for a login or respawn.
+        """Start again with the new player a login or a respawn brings (26.3 javap).
 
-        A login also names the player's entity id. A respawn that keeps entity data keeps the
-        keys and sprinting last reported (`ClientPacketListener.handleRespawn`).
+        A login names the player's entity id, and brings a new level and a new
+        `MultiPlayerGameMode`: `interaction` starts again. A login or a respawn makes a new
+        `LocalPlayer`, so `reported` starts again; a respawn that keeps entity data keeps the
+        keys and sprinting last reported, and one into another dimension brings a new level,
+        whose block-change sequence starts at 0 (`ClientPacketListener.handleLogin`,
+        `handleRespawn`). A respawn's new player selects slot 0 (a new `Inventory`), while the
+        `MultiPlayerGameMode` keeps the slot last sent.
         """
+        dimension = _field(fields, "dimension_name", str)
         if name == "minecraft:login":
             self.entity_id = _field(fields, "entity_id", int)
             self.reported = _Reported()
-            return
-        old = self.reported
-        kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
-        self.reported = _Reported(keys=old.keys, sprinting=old.sprinting) if kept else _Reported()
+            self.interaction = _Interaction()
+        else:
+            old = self.reported
+            kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
+            self.reported = (
+                _Reported(keys=old.keys, sprinting=old.sprinting) if kept else _Reported()
+            )
+            self.interaction.selected_slot = 0
+            if dimension != self._dimension:
+                self.interaction.sequence = 0
+        self._dimension = dimension
+
+    def _select_slot(self, slot: int) -> None:
+        """Select the held slot the server sent, if it is in the hotbar (`handleSetHeldSlot`).
+
+        The slot last sent stays, so the next tick sends the selected one back.
+        """
+        if 0 <= slot < _HOTBAR_SLOTS:
+            self.interaction.selected_slot = slot
 
 
 @dataclass(frozen=True, slots=True)
@@ -701,20 +798,165 @@ class Bot:
         self._require_play("tick")
         await self._tick()
 
-    async def _tick(self) -> None:
-        """Send one client tick for the pose and controls as they are now.
+    async def _tick(self, actions: tuple[_Send, ...] = ()) -> None:
+        """Send one client tick for the pose and controls as they are now, with `actions`.
 
-        What it reports is kept only once every packet has gone, so a tick that failed to
-        send is reported again by the next.
+        As `Minecraft.tick` does: the held slot if it changed (`MultiPlayerGameMode.tick`),
+        then `actions` (`handleKeybinds`), then what the player reports (`sendChanges`), then
+        `client_tick_end`. What it reports is kept only once every packet has gone, so a tick
+        that failed to send is reported again by the next.
         """
         before = self._replies.reported
         reported = copy.deepcopy(before)
-        sends = _client_tick(self._replies.pose, self._controls, reported, self._replies.entity_id)
+        sends = [
+            *_carried_change(self._replies.interaction),
+            *actions,
+            *_client_tick(self._replies.pose, self._controls, reported, self._replies.entity_id),
+        ]
         async with self._operation(self._timeout_s):
             for name, fields in sends:
                 await self._connection.send(name, **fields)
         if self._replies.reported is before:  # else a fresh player arrived while it sent
             self._replies.reported = reported
+
+    async def hold(self, slot: int) -> None:
+        """Select hotbar slot `slot` (0 to 8), in one client tick that sends it.
+
+        The client sends the slot it selected at the start of its next tick
+        (`MultiPlayerGameMode.ensureHasSentCarriedItem`); the Bot's tick is that one. One call
+        is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+            ValueError: `slot` is not 0 to 8; nothing is sent.
+        """
+        self._require_play("hold")
+        if not 0 <= slot < _HOTBAR_SLOTS:
+            msg = f"hold needs a hotbar slot from 0 to 8, not {slot}"
+            raise ValueError(msg)
+        self._replies.interaction.selected_slot = slot
+        await self._tick()
+
+    async def dig(self, x: int, y: int, z: int, face: Face) -> None:
+        """Start breaking the block at `x`, `y`, `z` from `face`, in one client tick.
+
+        The tick sends what the client sends when the attack key goes down on a block
+        (`Minecraft.startAttack`): `player_action` START_DESTROY_BLOCK with the next sequence
+        number, then the swing (`punch`). The Bot does not time the breaking: in survival, call
+        `stop_digging` at the tick to test; in creative, the start breaks the block. One call
+        is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("dig")
+        sequence = self._replies.interaction.next_sequence()
+        await self._tick((_player_action(_START_DESTROY_BLOCK, (x, y, z), face, sequence), _PUNCH))
+
+    async def stop_digging(self, x: int, y: int, z: int, face: Face) -> None:
+        """Finish breaking the block at `x`, `y`, `z`, in one client tick.
+
+        The tick sends what the client sends on the tick it thinks the block broke
+        (`MultiPlayerGameMode.continueDestroyBlock`): `player_action` STOP_DESTROY_BLOCK with
+        the next sequence number, then the swing (`punch`). One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("stop_digging")
+        sequence = self._replies.interaction.next_sequence()
+        await self._tick((_player_action(_STOP_DESTROY_BLOCK, (x, y, z), face, sequence), _PUNCH))
+
+    async def cancel_digging(self, x: int, y: int, z: int) -> None:
+        """Stop breaking the block at `x`, `y`, `z` before it breaks, in one client tick.
+
+        The tick sends what the client sends when the attack key goes up
+        (`MultiPlayerGameMode.stopDestroyBlock`): `player_action` ABORT_DESTROY_BLOCK facing
+        down, with sequence 0, since the client predicts nothing. One call is one tick (see
+        `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("cancel_digging")
+        await self._tick((_player_action(_ABORT_DESTROY_BLOCK, (x, y, z), Face.DOWN, 0),))
+
+    async def place(  # noqa: PLR0913 - #26: a block, its face, and where on it
+        self,
+        x: int,
+        y: int,
+        z: int,
+        face: Face,
+        cursor: tuple[float, float, float] = _CURSOR_MIDDLE,
+        *,
+        off_hand: bool = False,
+    ) -> None:
+        """Use the held item on `face` of the block at `x`, `y`, `z`, in one client tick.
+
+        It places a block, opens a door, or does whatever the item does to a block:
+        `use_item_on` from the main hand (or the off hand), hitting the face at `cursor` (0 to
+        1 on each axis, from the block's lowest corner), with the next sequence number. The
+        client's swing for it sends nothing. A client that sees the use do nothing goes on to
+        `use_item`; the Bot cannot see that, so it sends `use_item_on` only. One call is one
+        tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("place")
+        cursor_x, cursor_y, cursor_z = cursor
+        fields: dict[str, object] = {
+            "hand": _OFF_HAND if off_hand else _MAIN_HAND,
+            "pos": {"x": x, "y": y, "z": z},
+            "face": int(face),
+            "cursor_x": cursor_x,
+            "cursor_y": cursor_y,
+            "cursor_z": cursor_z,
+            "inside_block": False,
+            "world_border_hit": False,
+            "sequence": self._replies.interaction.next_sequence(),
+        }
+        await self._tick((("minecraft:use_item_on", fields),))
+
+    async def use_item(self, *, off_hand: bool = False) -> None:
+        """Start using the held item (eat, draw a bow, raise a shield), in one client tick.
+
+        `use_item` from the main hand (or the off hand), with the next sequence number and the
+        way the player faces. One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("use_item")
+        pose = self._replies.pose
+        fields: dict[str, object] = {
+            "hand": _OFF_HAND if off_hand else _MAIN_HAND,
+            "sequence": self._replies.interaction.next_sequence(),
+            "yaw": pose.yaw,
+            "pitch": pose.pitch,
+        }
+        await self._tick((("minecraft:use_item", fields),))
+
+    async def release_item(self) -> None:
+        """Stop using the held item (loose the arrow, lower the shield), in one client tick.
+
+        `player_action` RELEASE_USE_ITEM at the origin facing down, with sequence 0
+        (`MultiPlayerGameMode.releaseUsingItem`). One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("release_item")
+        await self._tick((_player_action(_RELEASE_USE_ITEM, (0, 0, 0), Face.DOWN, 0),))
+
+    async def swing(self) -> None:
+        """Swing the main hand, in one client tick: `punch`, as the client attacks or digs.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("swing")
+        await self._tick((_PUNCH,))
 
     def _require_play(self, operation: str) -> None:
         """Raise ProtocolError, naming `operation`, unless the Bot is in play."""

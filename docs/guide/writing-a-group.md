@@ -47,14 +47,21 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
 | `await bot.jump()` | Presses the jump key for one tick, as the vanilla client reports it. It does not move the Bot. Send the jump's positions with `move`. |
 | `await bot.tick()` | Sends what the vanilla client sends on a tick when the player does nothing. |
+| `await bot.hold(slot)` | Selects a hotbar slot, from 0 to 8. After a respawn, slot 0 is selected again, as in the vanilla client. |
+| `await bot.dig(x, y, z, face)` | Starts breaking a block from one face and swings the arm. In creative, this breaks the block. |
+| `await bot.stop_digging(x, y, z, face)` | Finishes breaking a block and swings the arm. The Bot does not time the breaking: send this at the tick you want to test. |
+| `await bot.cancel_digging(x, y, z)` | Stops breaking a block before it breaks. |
+| `await bot.place(x, y, z, face, cursor=(0.5, 0.5, 0.5), off_hand=False)` | Uses the held item on a block face. It places a block, opens a door, or does what the item does to that block. |
+| `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), and stops. |
+| `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
 | `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent before, so everything it sent because of that has arrived. Needs a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
 
 A Bot does not simulate physics, so a Group gives every position itself.
-Each call to `move`, `look`, `sprint`, `sneak`, `jump` or `tick` is one tick
-of the vanilla client. The Bot sends what changed, then the packet that ends
+Each of these calls, from `move` to `swing`, is one tick of the vanilla
+client. The Bot sends what changed, then the packet that ends
 the client's tick. A position that has not changed is sent again every 20
 calls, as the vanilla client sends it every 20 ticks. The Bot presses no
 direction keys, except forward while it sprints. No call waits for the
@@ -72,6 +79,21 @@ then says where it put the Bot.
 
 The server takes the player to be moving until a client tick without a move.
 To stop the Bot, call `await bot.tick()` after its last move.
+
+A face is one of `Face.DOWN`, `Face.UP`, `Face.NORTH`, `Face.SOUTH`,
+`Face.WEST` and `Face.EAST`, imported from `mscts.bot`. The vanilla client
+swings on every tick while it breaks a block. To break one in survival, a
+Group starts, swings once per server tick, and finishes at the tick it
+chooses:
+
+<!-- not run: A fragment of a Group's function; it needs a Bot that has joined. -->
+```python
+await bot.dig(0, -61, 0, Face.UP)
+for _ in range(ticks):
+    await bot.sync()
+    await bot.swing()
+await bot.stop_digging(0, -61, 0, Face.UP)
+```
 
 `context.control` is an operator Bot that sets up the world before the part
 of the Group that is compared.

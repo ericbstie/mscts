@@ -124,7 +124,15 @@ def test_other_packets_get_no_answer(state: State, name: str) -> None:
 def test_login_names_the_player_and_gets_no_answer() -> None:
     replies = Replies()
     assert replies.entity_id is None
-    assert answers(replies, arrived(State.PLAY, "minecraft:login", entity_id=300)) == []
+    assert (
+        answers(
+            replies,
+            arrived(
+                State.PLAY, "minecraft:login", entity_id=300, dimension_name="minecraft:overworld"
+            ),
+        )
+        == []
+    )
     assert replies.entity_id == 300
 
 

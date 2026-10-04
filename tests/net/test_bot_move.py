@@ -131,26 +131,29 @@ def _teleport(position: Mapping[str, float]) -> dict[str, object]:
     }
 
 
-def ticks_sent(seen: list[Packet]) -> list[Sent]:
-    """What the Bot sent after joining, split into client ticks."""
+def ticks_sent(seen: list[Packet], names: frozenset[str] = TICK_PACKETS) -> list[Sent]:
+    """What the Bot sent after joining among `names`, split into client ticks."""
     ticks: list[Sent] = [[]]
     for packet in seen:
-        if packet.name in TICK_PACKETS:
+        if packet.name in names:
             ticks[-1].append((packet.name, packet.fields))
             if packet.name == "minecraft:client_tick_end":
                 ticks.append([])
     return ticks[:-1]
 
 
-def play(
+def joined(
     script: Callable[[Bot], Awaitable[None]],
     *,
     login: bool = True,
     teleport_to: Mapping[str, float] | None = None,
     correct_to: Mapping[str, float] | None = None,
     after_first_tick: tuple[str, Mapping[str, object]] | None = None,
-) -> list[Sent]:
-    """Join a Bot on `moving_server`, run `script`, then wait until the server has read it."""
+) -> list[Packet]:
+    """Join a Bot on `moving_server`, run `script`, wait until the server has read it.
+
+    Returns every packet the server read.
+    """
     seen: list[Packet] = []
 
     async def use(bot: Bot) -> None:
@@ -166,7 +169,27 @@ def play(
         after_first_tick=after_first_tick,
     )
     with_bot(CODEC, Transcript(group_id="test/move", server="fake"), handler, use)
-    return ticks_sent(seen)
+    return seen
+
+
+def play(
+    script: Callable[[Bot], Awaitable[None]],
+    *,
+    login: bool = True,
+    teleport_to: Mapping[str, float] | None = None,
+    correct_to: Mapping[str, float] | None = None,
+    after_first_tick: tuple[str, Mapping[str, object]] | None = None,
+) -> list[Sent]:
+    """What `joined` read of a client tick's packets, split into client ticks."""
+    return ticks_sent(
+        joined(
+            script,
+            login=login,
+            teleport_to=teleport_to,
+            correct_to=correct_to,
+            after_first_tick=after_first_tick,
+        )
+    )
 
 
 def pos(
