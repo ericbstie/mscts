@@ -179,8 +179,13 @@ error.
 Give `until` or `bot.expect` several names when a server could send what you wait for
 in another packet. Vanilla answers a chat message with `minecraft:player_chat`, but
 another server might answer with `minecraft:disguised_chat`. If the Group waits for
-only one, it times out on that server and plays none of its later cases. If it waits for
-either, it goes on, and the Report shows the other packet as a difference.
+only one, it fails on that server and plays none of its later cases: `bot.expect` times
+out, and `until` fails at once with "no ... arrived" when the block ends before the
+packet came. If it waits for either, it goes on, and the Report shows the other packet
+as a difference, if the window compares it. A window narrowed with names doesn't compare
+other packets, so put every packet you wait for in the names too: `observe` refuses an
+`until` with several names that its names leave out, and `bot.expect` can't see the
+window, so a packet outside it shows no difference.
 
 Use `until` when what the server keeps sending after the part you compare
 would differ between two runs, such as the later chunk batches after a join

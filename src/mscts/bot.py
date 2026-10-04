@@ -782,6 +782,9 @@ class Bot:
 
         With several names, whichever such packet arrives first ends the wait: a server
         may carry the same thing in another packet (`disguised_chat` for `player_chat`).
+        `expect` can't see an Observation window: in one narrowed to other packets, a packet
+        outside it is never compared, so name every packet you wait for in the window's
+        names too.
         Every packet taken is recorded, the ones before it included, and the Bot's
         Replies have already answered each of them.
 

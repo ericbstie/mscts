@@ -436,3 +436,23 @@ async def test_until_checks_each_name_and_needs_one() -> None:
             pass
 
     assert transcript.marks == []
+
+
+@pytest.mark.asyncio
+async def test_a_narrowed_window_must_compare_every_packet_that_can_end_it() -> None:
+    # Compare drops what `names` leaves out, so a Candidate ending the window on the other
+    # packet would show no difference (#270 review): the window refuses to open instead.
+    transcript = Transcript(group_id="test/until", server="fake")
+    context = GroupContext(Endpoint(host="127.0.0.1", port=1), transcript, timeout_s=1.0)
+
+    with pytest.raises(ValueError, match=f"add {DIFFICULTY}, {HELD_SLOT} to names"):
+        async with context.observe(BLOCK_UPDATE, until=(DIFFICULTY, HELD_SLOT)):
+            pass
+    assert transcript.marks == []
+
+    # Each of the ending packets in names: the Report shows which one came.
+    async with context.observe(DIFFICULTY, HELD_SLOT, until=(DIFFICULTY, HELD_SLOT)):
+        _heard_by(transcript, "alice", DIFFICULTY, at=transcript.now_ns())
+    # One name, as before: a Candidate that never sends it fails ("no X arrived").
+    async with context.observe(BLOCK_UPDATE, until=DIFFICULTY):
+        _heard_by(transcript, "alice", DIFFICULTY, at=transcript.now_ns())

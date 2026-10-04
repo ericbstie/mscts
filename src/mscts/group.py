@@ -346,6 +346,8 @@ class GroupContext:
                 `names` or `until`) is not a packet the Target's server sends in play,
                 or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
                 `until` names no packet; or
+                `names` narrows the window and `until` has several names that it leaves out
+                (Compare would not see which of them ended it); or
                 `bot` is given without `until`, or is not one of this Group's Bots; or
                 `play` is False and `names` or `until` is given.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
@@ -364,6 +366,15 @@ class GroupContext:
             raise ValueError(msg)
         for name in (*names, *(ends or ())):
             _check_observable(name)
+        if names and ends is not None and len(ends) > 1:
+            left_out = [name for name in ends if name not in names]
+            if left_out:
+                msg = (
+                    f"a window narrowed to {', '.join(names)} that several packets can end must "
+                    f"compare each of them, or the Report can't show which one came: add "
+                    f"{', '.join(left_out)} to names"
+                )
+                raise ValueError(msg)
         if bot is not None and until is None:
             msg = "bot= names the Bot whose until packet ends the window: give until too"
             raise ValueError(msg)
