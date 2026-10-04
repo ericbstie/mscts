@@ -149,3 +149,8 @@ The repository defines these tasks in `mise.toml`:
 | `mise run test:statistical` | Opt-in statistical tests. |
 | `mise run docs:dev` | This site, served locally with live reload. |
 | `mise run docs:build` | This site, built into `docs/.vitepress/dist`. |
+
+Every task that runs pytest gives the run its own temp directory and removes it afterwards, so runs
+at the same time, such as several agents on one machine, cannot delete each other's files. The live
+tiers and `test:statistical` keep that directory when the run fails and print where it is.
+Pass `--basetemp <dir>` after `--` to put the files in a folder of your own instead.
