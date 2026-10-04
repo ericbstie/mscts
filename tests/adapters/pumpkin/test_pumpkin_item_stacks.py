@@ -4,8 +4,13 @@ A record, not a requirement: the Candidate is not the Codec's authority (ADR-000
 operator Bot is given every stack in tests/support/gives.py, the same ones the Reference
 test plays (tests/reference/test_item_stacks_reference.py), and each is sorted by what
 arrives for it. When Pumpkin changes, the first test fails with the new lists to record.
+
+A stack in bytes the Codec rejects ends the Bot's reading, whichever packet carries it, and
+stays in the operator's inventory for the next Bot to meet as it joins: that Bot sends the
+`clear` itself, and a new operator Bot takes over.
 """
 
+import asyncio
 import contextlib
 import dataclasses
 import uuid
@@ -28,12 +33,13 @@ from support.leak_guard import kill_survivors
 
 from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
-from mscts.bot import status_probe
-from mscts.codec.packets import Packet
+from mscts.bot import Bot, status_probe
+from mscts.codec.packets import CodecError, Packet
 from mscts.codec.wire import WireError
 from mscts.runner import Instance, free_endpoint, running
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
+from mscts.transcript import Transcript
 
 pytestmark = pytest.mark.candidate
 
@@ -137,12 +143,18 @@ async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
     outcomes: dict[str, tuple[str, tuple[str, ...]]] = {}
     async with (
         _pumpkin(cache_dir, tmp_path / "pumpkin") as instance,
-        operator_bot(instance, "pumpkin") as (bot, transcript),
+        contextlib.AsyncExitStack() as held,
     ):
+        bot, transcript = await _fresh_operator(instance, held)
         for give in filter(lambda give: not _slashed(give), GIVES):
-            payloads = await given_slots(bot, transcript, give.argument, wait_s=1.0)
-            outcomes[give.label] = _classify(give, payloads)
-            await clear(bot)
+            try:
+                payloads = await given_slots(bot, transcript, give.argument, wait_s=1.0)
+                outcomes[give.label] = _classify(give, payloads)
+                await clear(bot)
+            except CodecError:  # in container_set_slot, container_set_content or the like
+                outcomes[give.label] = ("malformed", ())
+                await _clear_unread(bot, held)
+                bot, transcript = await _fresh_operator(instance, held)
 
     malformed = frozenset(label for label, (kind, _) in outcomes.items() if kind == "malformed")
     silent = frozenset(label for label, (kind, _) in outcomes.items() if kind == "silent")
@@ -168,6 +180,38 @@ async def test_pumpkin_never_answers_a_give_of_a_component_with_a_slash_in_its_n
         await bot.command(f"give {OPERATOR} minecraft:{give.argument}")
         with pytest.raises(TimeoutError):
             await bot.expect("minecraft:container_set_slot", timeout_s=3, where=_a_stack)
+
+
+async def _fresh_operator(
+    instance: Instance, held: contextlib.AsyncExitStack
+) -> tuple[Bot, Transcript]:
+    """A new operator Bot, joined, with nothing the Codec rejects in its inventory."""
+    for _ in range(5):
+        transcript = Transcript(group_id="item-stacks", server="pumpkin")
+        bot = await Bot.connect(
+            instance.endpoint, TARGET, name=OPERATOR, transcript=transcript, timeout_s=30
+        )
+        held.push_async_callback(bot.close)
+        try:
+            await bot.join()
+            await clear(bot)
+        except CodecError:
+            await _clear_unread(bot, held)
+        else:
+            return bot, transcript
+    msg = "the operator's inventory still holds a stack the Codec rejects"
+    raise AssertionError(msg)
+
+
+async def _clear_unread(bot: Bot, held: contextlib.AsyncExitStack) -> None:
+    """Empty the inventory from a Bot that reads nothing more, then close it.
+
+    It can still send. Pumpkin runs a command after the tick it came in, and drops it if the
+    player has left by then, so the Bot stays a second.
+    """
+    await bot.command(f"clear {OPERATOR}")
+    await asyncio.sleep(1.0)
+    await held.aclose()
 
 
 def _a_stack(packet: Packet) -> bool:
