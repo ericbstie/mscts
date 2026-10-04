@@ -45,6 +45,7 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.signed_command(text)` | Runs a command with a message argument (`/say`, `/me`, `/msg`, `/teammsg`) the way the vanilla client sends one. The client signs each message argument, and a Bot, which has no chat signing keys, signs none. |
 | `await bot.chat(text)` | Says `text` in chat, the way the vanilla client says it without chat signing keys. |
+| `await bot.chat_at_once(text, ...)` | Says each message as `chat` does, all sent together, so the server reads them within one tick. |
 | `await bot.move(x, y, z, on_ground=True)` | Moves the Bot. If the vanilla client would send a position update, the Bot sends it too. |
 | `await bot.look(yaw, pitch)` | Sends one rotation update. |
 | `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |

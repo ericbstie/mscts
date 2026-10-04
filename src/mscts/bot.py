@@ -888,6 +888,28 @@ class Bot:
                 "minecraft:chat", message=message, signature=None, **_UNSIGNED_CHAT
             )
 
+    async def chat_at_once(self, *messages: str) -> None:
+        """Say each of `messages` in chat, as `chat` does, all in one write, and return.
+
+        The frames leave together, with no gap in which the server could tick between them:
+        vanilla's spam kick counts the messages that arrive within a tick
+        (docs/research/2026-10-04-chat.md).
+
+        Raises:
+            ValueError: No message is given.
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("chat_at_once")
+        if not messages:
+            msg = "chat_at_once needs at least one message"
+            raise ValueError(msg)
+        chats = [
+            ("minecraft:chat", {"message": message, "signature": None, **_UNSIGNED_CHAT})
+            for message in messages
+        ]
+        async with self._operation(self._timeout_s):
+            await self._connection.send_all(chats)
+
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None:
         """Move the player to `x`, `y`, `z`, on the ground or not, in one client tick.
 

@@ -6,7 +6,7 @@ import pytest
 
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Packet
-from mscts.net import ProtocolError
+from mscts.net import Connection, ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import play_server, status_server, with_bot
@@ -72,7 +72,33 @@ def test_chat_and_signed_command_send_the_same_time_and_salt() -> None:
     assert (chat["timestamp"], chat["salt"]) == (command["timestamp"], command["salt"])
 
 
-@pytest.mark.parametrize("operation", ["chat", "signed_command"])
+def test_chat_at_once_says_each_message_as_chat_does_in_one_write(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #65: vanilla's spam kick needs the messages within one tick, so no gap between them.
+    batches: list[int] = []
+    send_all = Connection.send_all
+
+    async def counting(self: Connection, packets: list[tuple[str, dict[str, object]]]) -> None:
+        batches.append(len(packets))
+        await send_all(self, packets)
+
+    monkeypatch.setattr(Connection, "send_all", counting)
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        await bot.chat("solo")
+        await bot.chat_at_once("one", "two", "three")
+        await bot.sync()
+
+    chats = fields_of(sent(use), "minecraft:chat")
+
+    assert batches == [3]
+    assert [chat.pop("message") for chat in chats] == ["solo", "one", "two", "three"]
+    assert all(chat == chats[0] for chat in chats)
+
+
+@pytest.mark.parametrize("operation", ["chat", "signed_command", "chat_at_once"])
 def test_chat_and_signed_command_refuse_a_bot_that_is_not_in_play(operation: str) -> None:
     transcript = Transcript(group_id="test/chat", server="fake")
 

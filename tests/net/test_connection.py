@@ -1334,3 +1334,98 @@ def test_canary_asyncio_tells_the_protocol_a_write_failed_before_it_closes_the_s
     exc, fileno = asyncio.run(lost_with())
     assert isinstance(exc, ConnectionError)
     assert fileno >= 0
+
+
+def test_send_all_writes_every_frame_in_one_write_and_records_each_in_order(
+    toy_codec: Codec,
+    transcript: Transcript,
+    stream_writers: list[asyncio.StreamWriter],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # #65: a burst a server must see within one tick goes out in one write, so no gap
+    # between frames lets a tick fall in between.
+    received: list[Packet] = []
+    writes: list[bytes] = []
+
+    async def server(peer: Peer) -> None:
+        received.extend([await peer.recv() for _ in range(3)])
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            [writer] = stream_writers
+            write = writer.write
+
+            def spy(data: bytes) -> None:
+                writes.append(bytes(data))
+                write(data)
+
+            monkeypatch.setattr(writer, "write", spy)
+            await connection.send_all(
+                [
+                    ("test:request", {"value": 1}),
+                    ("test:hello", {"name": "a"}),
+                    ("test:request", {"value": 3}),
+                ]
+            )
+
+    asyncio.run(client())
+    assert len(writes) == 1
+    expected = [
+        ("test:request", {"value": 1}),
+        ("test:hello", {"name": "a"}),
+        ("test:request", {"value": 3}),
+    ]
+    assert [(p.name, p.fields) for p in received] == expected
+    assert [(e.packet.name, e.packet.fields) for e in transcript.events] == expected
+    assert len({event.t_ns for event in transcript.events}) == 1, "stamped before the write"
+
+
+def test_send_all_refuses_nothing_to_send_and_a_bad_packet_writing_nothing(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(toy_codec, server) as endpoint,
+            connected(endpoint, toy_codec, transcript) as connection,
+        ):
+            with pytest.raises(ValueError, match="at least one packet"):
+                await connection.send_all([])
+            with pytest.raises(CodecError):
+                await connection.send_all(
+                    [("test:request", {"value": 1}), ("test:request", {"value": "x"})]
+                )
+
+    asyncio.run(client())
+    assert transcript.events == []
+
+
+def test_send_all_refuses_a_packet_that_changes_the_state(transcript: Transcript) -> None:
+    # A frame after a state change would need the next State's ids: send it on its own.
+    codec = Codec.load("26.3")
+
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    async def client() -> None:
+        async with (
+            serve(codec, server) as endpoint,
+            connected(endpoint, codec, transcript) as connection,
+        ):
+            intention = {
+                "protocol_version": 0,
+                "server_address": "localhost",
+                "server_port": 25565,
+                "intent": 1,
+            }
+            with pytest.raises(ValueError, match="changes the State"):
+                await connection.send_all([("minecraft:intention", intention)])
+
+    asyncio.run(client())
+    assert transcript.events == []

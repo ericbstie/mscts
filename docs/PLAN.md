@@ -478,6 +478,10 @@ class Connection:                   # one TCP connection; owns framing, compress
     # was decoded in. A login_compression that arrives sets the threshold both ways from the
     # next frame (frames are split one at a time); a negative threshold means uncompressed.
     async def send(self, name: str, /, **fields: object) -> None: ...  # records an Event
+    async def send_all(self, packets: Sequence[tuple[str, Mapping[str, object]]]) -> None: ...
+                                    # each (name, fields) in order, in one write, then one drain,
+                                    # each recorded at the time before the write (#65);
+                                    # ValueError for none, or for a packet that changes the State
     async def recv(self, *, timeout_s: float) -> Packet: ...           # records an Event
     async def close(self) -> None: ...                                 # idempotent; aborts after 1 s
     # A background reader task reads the socket continuously from open until close: it stamps
@@ -544,6 +548,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def command(self, command: str) -> None: ...                 # unsigned chat_command, no leading "/"
     async def signed_command(self, command: str) -> None: ...          # chat_command_signed, no signature (#65)
     async def chat(self, message: str) -> None: ...                    # chat, no signature (#65)
+    async def chat_at_once(self, *messages: str) -> None: ...          # each as chat, one write (#65)
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None: ...
     async def look(self, yaw: float, pitch: float) -> None: ...
     async def sprint(self, sprinting: bool) -> None: ...               # holds forward and sprint, + the command
