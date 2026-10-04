@@ -550,14 +550,14 @@ class _Instances:
         unusable = self._unusable_verdict(group, endpoints)
         if unusable is not None and unusable.outcome is Outcome.ERROR:
             return _Play(unusable)
-        waited = endpoints if unusable is None else endpoints[:1]
-        unsettled = await _unsettled(group, waited)
+        reference, candidate = endpoints
+        unsettled = await _unsettled(group, reference, candidate if unusable is None else None)
         not_played = unsettled or unusable  # a Reference unsettled comes first: `error`
         if not_played is None:
             return await self._both(group, endpoints)
         if not_played.outcome is Outcome.ERROR:
             return _Play(not_played)
-        return await self._reference_alone(group, endpoints[0], not_played)
+        return await self._reference_alone(group, reference, not_played)
 
     async def _both(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it."""
@@ -700,12 +700,14 @@ def _installed_version(side: Side) -> str | None:
     return f"sha256 {source.sha256}"
 
 
-async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
-    """Wait for the Reference and the Candidate to have no player online; None if both do.
+async def _unsettled(
+    group: Group, reference: Endpoint, candidate: Endpoint | None
+) -> Verdict | None:
+    """Wait for the Reference, and the Candidate if given, to have no player online.
 
-    `endpoints` is the Reference's, then the Candidate's unless it is not to be waited for.
-    Both are waited on at once, each wait to its end, so neither is left running when the
-    Run moves on. If one still has players at the deadline (`PlayersStillOnline`), or its
+    None if each does. The two are waited on at once, each wait to its end, so neither is
+    left running when the Run moves on. The Candidate is not given when it will not be
+    played anyway. If one still has players at the deadline (`PlayersStillOnline`), or its
     wait raised, the Verdict that says why `group` is not played there:
 
     - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
@@ -721,6 +723,7 @@ async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | N
         BaseException: A wait raised one that is not an Exception (a cancellation from
             inside it, KeyboardInterrupt); raised once both waits are done.
     """
+    endpoints = (reference,) if candidate is None else (reference, candidate)
     waits = (
         until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S) for endpoint in endpoints
     )
@@ -728,21 +731,20 @@ async def _unsettled(group: Group, endpoints: Sequence[Endpoint]) -> Verdict | N
     for result in results:
         if isinstance(result, BaseException) and not isinstance(result, Exception):
             raise result
-    reference, candidate = (
-        result if isinstance(result, Exception) else None for result in (*results, None)[:2]
-    )
-    if reference is not None:
-        detail = f"the Reference {_unsettled_by(reference)}"
-        if candidate is not None:
-            detail += f"; the Candidate {_unsettled_by(candidate)}"
+    reference_left = results[0] if isinstance(results[0], Exception) else None
+    left = results[-1] if candidate is not None and isinstance(results[-1], Exception) else None
+    if reference_left is not None:
+        detail = f"the Reference {_unsettled_by(reference_left)}"
+        if left is not None:
+            detail += f"; the Candidate {_unsettled_by(left)}"
         return _error(group, detail)
-    if candidate is None:
+    if left is None:
         return None
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
-        divergences=(_failed(bot="", what=_left_what(candidate)),),
-        detail=f"the Candidate failed: {_left_what(candidate)}",
+        divergences=(_failed(bot="", what=_left_what(left)),),
+        detail=f"the Candidate failed: {_left_what(left)}",
     )
 
 

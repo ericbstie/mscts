@@ -1,7 +1,6 @@
 """An Instance a failed Group left frozen is unusable for the rest of the Run (#228)."""
 
 import functools
-from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -140,9 +139,9 @@ async def test_only_the_reference_is_waited_on_while_the_candidate_is_frozen(
     # would cost the whole deadline before each later Group.
     waited: list[int] = []
 
-    async def settled(group: Group, endpoints: Sequence[Endpoint]) -> None:
-        del group
-        waited.append(len(endpoints))
+    async def settled(group: Group, reference: Endpoint, candidate: Endpoint | None) -> None:
+        del group, reference
+        waited.append(1 if candidate is None else 2)
 
     monkeypatch.setattr(run_module, "_unsettled", settled)
     await _later(STAYS_FROZEN, "Candidate", tmp_path)
@@ -156,9 +155,9 @@ async def test_no_side_is_waited_on_once_the_reference_is_frozen(
 ) -> None:
     waited: list[int] = []
 
-    async def settled(group: Group, endpoints: Sequence[Endpoint]) -> None:
-        del group
-        waited.append(len(endpoints))
+    async def settled(group: Group, reference: Endpoint, candidate: Endpoint | None) -> None:
+        del group, reference
+        waited.append(1 if candidate is None else 2)
 
     monkeypatch.setattr(run_module, "_unsettled", settled)
     await _later(STAYS_FROZEN, "Reference", tmp_path)
