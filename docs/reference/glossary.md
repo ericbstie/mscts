@@ -238,8 +238,9 @@ network traffic only: gameplay if any of its Divergences is.
 
 `match`, `mismatch` (has Divergences), `blocked` (a
 prerequisite Group did not pass: it is not a `match`, nor a `mismatch`
-only in network traffic), or `error` (the harness failed, or
-the Reference itself could not run the Group). A Group that fails on
+only in network traffic), or `error` (the harness failed, the
+Reference itself could not run the Group, or a prerequisite is an
+`error`). A Group that fails on
 the Candidate and not on the Reference is a `mismatch`, led by a
 `failed` Divergence that says what happened, never an `error`. That
 holds whatever the failure: a frame that does not decode, an answer
@@ -282,8 +283,10 @@ differs in gameplay in any repetition, or if the Candidate failed its
 whole Group, or a prerequisite of it, in any repetition (#262, #285).
 A Group blocked by a prerequisite the Candidate failed is still played
 on the Reference, so its test cases are that play's. One blocked by a
-prerequisite that was an `error` or not run is played on neither
-server, and fails no test case. A Group's own line fails for a blocked
+prerequisite that was not run is played on neither server, and fails
+no test case. One whose prerequisite is an `error` is an `error` too,
+so an identical Candidate scores 100% whatever vanilla does (audit
+L2). A Group's own line fails for a blocked
 Group or a Candidate failure; an `error` is not scored. The score is
 rounded down, so only a Run where every scored line passes scores 100%.
 

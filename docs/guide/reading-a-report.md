@@ -139,8 +139,9 @@ when each of its test cases passes and it has no line of its own. So a
 prerequisite that differs only in network traffic passes. If the
 Candidate failed the prerequisite, mscts still plays the Group on
 vanilla, and the Candidate fails each test case of that play. If the
-prerequisite was an `Error` or was not run, mscts plays the Group on
-neither server, and only its own line fails. No
+prerequisite was not run, mscts plays the Group on neither server, and
+only its own line fails. If the prerequisite was an `Error`, the Group
+is an `Error` too, not scored. No
 shipped Group has a prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with

@@ -60,7 +60,7 @@ process identities and stops the orphaned process groups.
 | `match` | The Candidate sent what vanilla sent. |
 | `mismatch` | At least one difference, called a **Divergence**. |
 | `blocked` | A Group this one requires did not match, so mscts did not play it on the Candidate. If the Candidate failed that Group, mscts plays this one on vanilla only, and the Candidate fails each of its test cases. |
-| `error` | mscts failed on vanilla or while comparing, or vanilla could not run the Group. |
+| `error` | mscts failed on vanilla or while comparing, vanilla could not run the Group, or a Group this one requires was an `error`. |
 
 When the Candidate breaks the protocol, sends a frame that does not decode,
 closes the connection, stops answering, lacks a command the Group sets up

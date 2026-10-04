@@ -205,12 +205,41 @@ def test_a_group_whose_prerequisite_matched_is_not_blocked() -> None:
     assert blocked(PING, {"status/basic": Verdict("status/basic", Outcome.MATCH)}) is None
 
 
-@pytest.mark.parametrize("outcome", [Outcome.MISMATCH, Outcome.BLOCKED, Outcome.ERROR])
+@pytest.mark.parametrize("outcome", [Outcome.MISMATCH, Outcome.BLOCKED])
 def test_a_group_whose_prerequisite_did_not_match_is_blocked(outcome: Outcome) -> None:
     verdict = blocked(PING, {"status/basic": Verdict("status/basic", outcome)})
 
     assert verdict == Verdict(
         "status/ping", Outcome.BLOCKED, detail=f"prerequisite status/basic was {outcome}"
+    )
+
+
+def test_a_group_whose_prerequisite_is_an_error_is_an_error() -> None:
+    # Audit L2: vanilla's or mscts's fault, which the Score leaves out.
+    verdict = blocked(PING, {"status/basic": Verdict("status/basic", Outcome.ERROR)})
+
+    assert verdict == Verdict(
+        "status/ping", Outcome.ERROR, detail="prerequisite status/basic was error"
+    )
+
+
+@pytest.mark.parametrize(
+    "order", [("status/basic", "test/broken"), ("test/broken", "status/basic")]
+)
+def test_an_error_prerequisite_is_named_before_one_the_candidate_failed(
+    order: tuple[str, ...],
+) -> None:
+    # Review B L-289-3: the `error` decides that the Group is not played.
+    both = Group(id="test/both", run=status.ping, requires=order)
+    verdicts = {
+        "status/basic": Verdict("status/basic", Outcome.MISMATCH),
+        "test/broken": Verdict("test/broken", Outcome.ERROR),
+    }
+
+    verdict = blocked(both, verdicts)
+
+    assert verdict == Verdict(
+        "test/both", Outcome.ERROR, detail="prerequisite test/broken was error"
     )
 
 
@@ -261,9 +290,8 @@ def test_a_prerequisite_that_did_not_compare_blocks_whatever_its_divergences(
 
     verdict = blocked(PING, {"status/basic": basic})
 
-    assert verdict == Verdict(
-        "status/ping", Outcome.BLOCKED, detail=f"prerequisite status/basic was {outcome}"
-    )
+    assert verdict is not None
+    assert verdict.detail == f"prerequisite status/basic was {outcome}"
 
 
 def test_a_prerequisite_with_a_gameplay_difference_too_blocks() -> None:

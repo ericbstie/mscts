@@ -330,22 +330,29 @@ def _group_raised(
 
 
 def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
-    """A `blocked` Verdict if a prerequisite of `group` did not pass in `verdicts`.
+    """The Verdict `group` gets if a prerequisite did not pass in `verdicts`, else None.
 
     A prerequisite passed if it is a `match`, or a `mismatch` whose Divergences are all
-    network traffic, which the Score counts as passing (ADR-0007, #221). The Verdict
-    lists no test case: the Run adds the Reference's, if it plays the Group there.
+    network traffic, which the Score counts as passing (ADR-0007, #221). If one that did
+    not pass is an `error`, `group` is an `error` too, naming it: that is the Reference's
+    or mscts's fault, which the Score leaves out, so an identical Candidate still scores
+    100% (audit L2). Otherwise `group` is `blocked`, naming the first that did not pass.
+    The Verdict lists no test case: the Run adds the Reference's, if it plays it there.
     """
+    unmet: dict[str, str] = {}
     for prerequisite in group.requires:
         verdict = verdicts.get(prerequisite)
         if verdict is None:
-            detail = f"prerequisite {prerequisite} was not run"
+            unmet[prerequisite] = "not run"
         elif not _passed(verdict):
-            detail = f"prerequisite {prerequisite} was {verdict.outcome}"
-        else:
-            continue
-        return Verdict(group_id=group.id, outcome=Outcome.BLOCKED, detail=detail)
-    return None
+            unmet[prerequisite] = str(verdict.outcome)
+    if not unmet:
+        return None
+    errors = [prerequisite for prerequisite, was in unmet.items() if was == Outcome.ERROR]
+    prerequisite = errors[0] if errors else next(iter(unmet))
+    outcome = Outcome.ERROR if errors else Outcome.BLOCKED
+    detail = f"prerequisite {prerequisite} was {unmet[prerequisite]}"
+    return Verdict(group_id=group.id, outcome=outcome, detail=detail)
 
 
 def _blocked_by_candidate(
@@ -422,7 +429,8 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     `blocked`) earlier in the same repetition (so list them first). It is still played
     on the Reference when the Candidate failed each prerequisite that did not pass
     (`_blocked_by_candidate`), and its Verdict lists that play's test cases, which the
-    Report fails (#285); otherwise it is played on neither side and measures nothing.
+    Report fails (#285); otherwise it is played on neither side and measures nothing. A
+    Group a prerequisite of which is an `error` is an `error` too (`blocked`, audit L2).
 
     A Server side gets one Instance per distinct ServerSpec the Groups' `spec` make,
     launched in its own directory under `workdir` at an Endpoint of its own

@@ -166,8 +166,8 @@ def _candidate_failed(group: GroupResult) -> bool:
     Reference's test cases (#285). Each test case the Group has in any repetition then
     fails, as if the Candidate had sent it wrong, so failing a whole Group never scores
     better than sending each value wrong (#262). A repetition blocked by a prerequisite
-    that was an `error` or not run was played on neither server, has no test cases, and
-    fails none. With none in any repetition, the Group's own line is all that fails.
+    that was not run was played on neither server, has no test cases, and fails none.
+    With none in any repetition, the Group's own line is all that fails.
     """
     return any(
         (verdict.outcome is Outcome.BLOCKED and verdict.test_cases)

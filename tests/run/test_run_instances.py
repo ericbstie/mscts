@@ -123,6 +123,36 @@ async def test_a_group_whose_prerequisite_is_an_error_is_played_on_neither_side(
 
 
 @pytest.mark.asyncio
+async def test_an_identical_candidate_scores_full_marks_when_vanilla_fails_a_prerequisite(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Audit L2, review B: both sides raise on status/basic; that is vanilla's or mscts's
+    # fault, so neither it nor what requires it is scored against the Candidate.
+    async def fails(context: GroupContext) -> None:
+        del context
+        msg = "both flake"
+        raise RuntimeError(msg)
+
+    broken = Group(id="status/basic", run=fails)
+    passing = Group(id="test/passing", run=status.basic)
+
+    result = await run_results(
+        [broken, PING, AFTER_PING, passing],
+        fake_server("one"),
+        fake_server("two"),
+        workdir=tmp_path,
+    )
+
+    _, ping, after, _ = result.results
+    assert ping.verdicts == (
+        Verdict(PING.id, Outcome.ERROR, detail="prerequisite status/basic was error"),
+    )
+    assert after.verdicts[0].detail == "prerequisite status/ping was error"
+    counted = totals(report_lines(_report(*result.results)))
+    assert (counted.failed, counted.errors, counted.score) == (0, 3, 1.0)
+
+
+@pytest.mark.asyncio
 async def test_a_group_whose_prerequisite_was_not_run_is_played_on_neither_side(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
@@ -158,7 +188,7 @@ async def test_a_reference_error_in_one_repetition_fails_no_test_case_of_what_re
 
     flaked, ping = result.results
     assert [verdict.outcome for verdict in flaked.verdicts] == [Outcome.MATCH, Outcome.ERROR]
-    assert [verdict.outcome for verdict in ping.verdicts] == [Outcome.MATCH, Outcome.BLOCKED]
+    assert [verdict.outcome for verdict in ping.verdicts] == [Outcome.MATCH, Outcome.ERROR]
     cases = [line for line in report_lines(_report(ping)) if not isinstance(line, GroupLine)]
     assert cases
     assert {line.result for line in cases} == {LineResult.PASS}

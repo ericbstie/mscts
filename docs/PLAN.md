@@ -1466,7 +1466,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # passed earlier in the same repetition. #285: if each prerequisite that did not pass
     # is a `mismatch`, or blocked so itself, it is played on the Reference alone, as for
     # #266 below, and the blocked Verdict lists that play's test cases (the Report fails
-    # them); a prerequisite that is an `error` or was not run means neither side plays it.
+    # them); a prerequisite that was not run means neither side plays it, and one that is
+    # an `error` makes the Group an `error`, "prerequisite X was error", named before any
+    # other (audit L2), played on neither side.
     # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
