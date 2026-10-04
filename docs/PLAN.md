@@ -1041,7 +1041,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
 - `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
-  compares; `SENT_TIMEOUT_S` — how long the walker waits for its view; `VIEW_DISTANCE` and
+  compares; `SENT_TIMEOUT_S` — how long the walker waits for its view; `HELD_SYNCS` — how
+  many barriers a window lasts after the walker holds its view; `VIEW_DISTANCE` and
   `FAR_VIEW_DISTANCE` — the view distances the Groups set (2, and 5 for
   `chunks/view-distance`); `SPAWN` and `SPAWN_AT` — the chunk and the place a joining player
   is put; `FAR` and `FAR_AT` — the chunk and the place `chunks/teleport` moves the walker to;

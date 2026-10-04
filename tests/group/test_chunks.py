@@ -60,15 +60,19 @@ class ChunksServer:
     Control's teleport of the walker to `chunks.FAR_AT` sends the walker the view around
     `chunks.FAR`, and its first step into chunk (-1, 0) sends it the chunks that step brings
     into its view. A marker (`tellraw @s "<token>"`) gets its token back; no other command gets
-    feedback. Chunk `withheld` is never sent.
+    feedback. Chunk `withheld` is never sent. With `ring`, the chunks one view distance
+    further out follow a whole barrier after the view: a view one ring too big, sent nearest
+    first, as vanilla sends a view.
     """
 
     distance: int = chunks.VIEW_DISTANCE
     withheld: Chunk | None = None
     first: frozenset[Chunk] = frozenset({(0, 0)})
+    ring: bool = False
     seen: list[Packet] = field(default_factory=list)
     walker: Peer | None = None
     late: set[asyncio.Task[None]] = field(default_factory=set)
+    viewed: bool = False
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -83,10 +87,10 @@ class ChunksServer:
         if (hellos[-1].fields or {})["name"] == WALKER:
             self.walker = peer
             rest = chunks.view(chunks.SPAWN, self.distance) - self.first
-            task = asyncio.create_task(self.send(peer, rest, after_s=LATE_S))
+            task = asyncio.create_task(self._send_view(peer, rest))
             self.late.add(task)
             task.add_done_callback(self.late.discard)
-        requests, crossed = 0, False
+        requests, after_view, crossed = 0, 0, False
         async for packet in peer.packets():
             self.seen.append(packet)
             if (
@@ -101,6 +105,10 @@ class ChunksServer:
                 await self.send(peer, west)
             elif packet.name == CLIENT_COMMAND:
                 requests += 1
+                after_view += self.viewed and peer is self.walker
+                if self.ring and after_view == SYNC_REQUESTS + 1:
+                    far = chunks.view(chunks.SPAWN, self.distance + 1)
+                    await self.send(peer, far - chunks.view(chunks.SPAWN, self.distance))
                 if (requests - 1) % SYNC_REQUESTS != 0:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
                 await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS))
@@ -110,6 +118,10 @@ class ChunksServer:
                     await peer.write(chat(peer, json.loads(command.removeprefix(MARKER))))
                 elif command == TELEPORT and self.walker is not None:
                     await self.send(self.walker, chunks.view(chunks.FAR, self.distance))
+
+    async def _send_view(self, peer: Peer, rest: frozenset[Chunk]) -> None:
+        await self.send(peer, rest, after_s=LATE_S)
+        self.viewed = True
 
     async def send(self, peer: Peer, positions: frozenset[Chunk], *, after_s: float = 0) -> None:
         """Send a chunk at each of `positions` but `withheld`, in one write, `after_s` from now."""
@@ -231,6 +243,23 @@ async def test_the_window_holds_the_join_and_every_chunk_of_the_view(group_id: s
     assert max(event.t_ns for event in arrived) < closed
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", JOINS)
+async def test_the_window_holds_a_ring_too_many_sent_a_barrier_after_the_view(
+    group_id: str,
+) -> None:
+    # Review B of #280, S2: the window closed at the barrier after the view, so a view one
+    # ring too big, its outer ring sent last, matched vanilla's.
+    distance = DISTANCES[group_id]
+    transcript = await play(group_id, ChunksServer(distance=distance, ring=True))
+
+    _, closed = window(transcript)
+    ring = chunks.view(chunks.SPAWN, distance + 1) - chunks.view(chunks.SPAWN, distance)
+    arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
+    assert ring <= arrived.keys()
+    assert max(arrived[chunk] for chunk in ring) < closed
+
+
 def test_the_windows_compare_the_chunks_sent_and_forgotten_and_the_view_centre() -> None:
     assert chunks.PACKETS == (
         "minecraft:level_chunk_with_light",
@@ -307,8 +336,9 @@ async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None
     steps = [str(x) for x in chunks.WALK]
     barrier = ["sync"] * SYNC_REQUESTS
     # A step a tick: a barrier after each step but the last, which the wait for the new
-    # column and the window's own barrier follow.
-    assert inside == [steps[0], *barrier, steps[1], *barrier, steps[2], *barrier]
+    # column, `HELD_SYNCS` barriers and the window's own barrier follow.
+    held = barrier * (chunks.HELD_SYNCS + 1)
+    assert inside == [steps[0], *barrier, steps[1], *barrier, steps[2], *held]
     west = chunks.view((-1, 0), 2) - chunks.view(chunks.SPAWN, 2)
     arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
     spawn = chunks.view(chunks.SPAWN, 2)

@@ -4,11 +4,11 @@ A Bot called `walker` joins, is teleported, or walks, and each window compares t
 (`level_chunk_with_light`), the ones it is told to forget (`forget_level_chunk`) and where its
 view is centred (`set_chunk_cache_center`).
 
-A window lasts until the walker has every chunk of its new view: vanilla sends them over
-several ticks, a batch a tick, so a window that ended at the barrier would end partway. Which
-chunks a view holds is vanilla's rule (`ChunkTrackingView`, below). A server that never sends
-one of them fails the Group when the wait times out; one that sends more has them compared
-up to the window's close.
+A window lasts until the walker has every chunk of its new view, then `HELD_SYNCS` barriers
+more: vanilla sends them over several ticks, a batch a tick, so a window that ended at the
+barrier would end partway. Which chunks a view holds is vanilla's rule (`ChunkTrackingView`,
+below). A server that never sends one of them fails the Group when the wait times out; one
+that sends more, or forgets one, has it compared if it does so within those barriers.
 
 The batches themselves (`chunk_batch_start`, `chunk_batch_finished`) are not compared: which
 chunks go in which batch depends on how soon each is ready, and differed between two vanilla
@@ -41,6 +41,11 @@ PACKETS = (
 
 SENT_TIMEOUT_S = 10.0
 """How long the walker waits for its view: `run.GROUP_TIMEOUT_S`, a Bot's bound."""
+
+HELD_SYNCS = 3
+"""How many barriers (`Bot.sync`) a window lasts after the walker holds its view, about 9
+ticks: vanilla sends no chunk then, so a server that sends more, or forgets one, has it
+compared."""
 
 VIEW_DISTANCE = 2
 """The view distance of `chunks/join-view`, `chunks/teleport` and `chunks/walk`."""
@@ -111,6 +116,13 @@ async def _until_sent(bot: Bot, chunks: frozenset[Chunk]) -> None:
         raise TimeoutError(msg) from None
 
 
+async def _held(bot: Bot, chunks: frozenset[Chunk]) -> None:
+    """Wait until the walker holds `chunks` (`_until_sent`), then `HELD_SYNCS` barriers."""
+    await _until_sent(bot, chunks)
+    for _ in range(HELD_SYNCS):
+        await bot.sync()
+
+
 @contextlib.asynccontextmanager
 async def _walker(context: GroupContext) -> AsyncIterator[Bot]:
     """Set the Fixture, let Control leave, and connect the walker; undo it all after.
@@ -139,7 +151,7 @@ def _at(distance: int) -> Callable[[ServerSpec], ServerSpec]:
 async def _join_view(context: GroupContext, distance: int) -> None:
     async with _walker(context) as walker, context.observe(*PACKETS):
         await walker.join()
-        await _until_sent(walker, view(SPAWN, distance))
+        await _held(walker, view(SPAWN, distance))
 
 
 @group("chunks/join-view", spec=_at(VIEW_DISTANCE))
@@ -162,7 +174,7 @@ async def teleport(context: GroupContext) -> None:
         await _until_sent(walker, view(SPAWN, VIEW_DISTANCE))
         async with context.observe(*PACKETS):
             await context.control.run(f"tp {WALKER} {FAR_AT}")
-            await _until_sent(walker, view(FAR, VIEW_DISTANCE))
+            await _held(walker, view(FAR, VIEW_DISTANCE))
 
 
 @group("chunks/walk", spec=_at(VIEW_DISTANCE))
@@ -176,6 +188,6 @@ async def walk(context: GroupContext) -> None:
             for x in before:
                 await walker.move(x, -60.0, 0.5)
                 await walker.sync()
-            # The wait for the new view, then the window's barrier, follow the step across.
+            # The wait for the new view, its barriers, then the window's, follow the step across.
             await walker.move(across, -60.0, 0.5)
-            await _until_sent(walker, view((-1, 0), VIEW_DISTANCE))
+            await _held(walker, view((-1, 0), VIEW_DISTANCE))

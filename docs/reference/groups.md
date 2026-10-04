@@ -151,8 +151,9 @@ within a millisecond.
 Which chunks the server sends a player, which chunks it tells the player to unload, and where
 it centres the player's view. A player called `walker` joins alone at the world spawn
 (`gamerule respawn_radius 0`), with the world frozen (`/tick freeze`). Each comparison lasts
-until the walker has every chunk of its view, as vanilla works the view out. A server that
-never sends one of them fails the Group after 10 seconds.
+until the walker has every chunk of its view, as vanilla works the view out, and about 9 ticks
+more. A server that never sends one of them fails the Group after 10 seconds. A chunk sent, or
+unloaded, in those 9 ticks is compared. One sent later is not.
 
 The chunks Groups require no other Group. A join that fails fails the Group, but a join whose
 packets differ from vanilla's, which `join/basic` reports, still has its chunks compared.
