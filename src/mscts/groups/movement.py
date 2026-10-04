@@ -15,7 +15,11 @@ then puts the Bot where each case starts with `/tp`, before its window.
 
 The speed check runs only while the world runs normally
 (`ServerGamePacketListenerImpl.handlePlayerPositionChange`, 26.3 javap: `runsNormally()`), so
-`movement/too-fast` and `movement/flying` play in a running world. The collision checks run in
+`movement/too-fast` and `movement/flying` play in a running world. The speed check measures a
+move from where the player was when the tick began (`firstGood*`, reset by `tickPlayer`) and
+counts the moves since then, the Bot's accept of the `/tp` among them; the window's opening
+barrier (`Bot.sync`) puts a server tick between that accept and the first move, so each case is
+measured from its start, with no move counted before it. The collision checks run in
 a frozen world too, so `movement/into-blocks` and `movement/before-teleport` freeze it and step
 it one tick after each move (tick-exact). Every block they set is in chunk (0, 0), the one a
 Bot is sent when it joins (docs/guide/writing-a-group.md).
