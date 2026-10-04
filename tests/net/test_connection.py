@@ -1150,6 +1150,32 @@ def test_a_connection_that_timed_out_is_lost_not_a_recv_timeout(
     assert asyncio.run(client()) == ["the connection was lost (connection timed out)"] * 2
 
 
+def test_an_error_that_is_not_a_lost_connection_is_raised_by_recv_as_it_is(
+    toy_codec: Codec, transcript: Transcript
+) -> None:
+    # #292 review mutant M10: anything else asyncio reports to the stream (a harness bug in
+    # the protocol) is no loss: recv raises it, rather than a closed connection.
+    async def server(peer: Peer) -> None:
+        await peer.eof()
+
+    bug = RuntimeError("a harness bug")
+
+    async def client() -> None:
+        async with serve(toy_codec, server) as endpoint:
+            _, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
+            stream = net._Stream()  # noqa: SLF001 - how asyncio reports the error to it
+            stream.set_exception(bug)
+            connection = Connection(stream, writer, toy_codec, bot="alice", transcript=transcript)
+            try:
+                with pytest.raises(RuntimeError) as raised:
+                    await connection.recv(timeout_s=2)
+                assert raised.value is bug
+            finally:
+                await connection.close()
+
+    asyncio.run(client())
+
+
 type Answer = Callable[[Connection, Packet], Awaitable[None]]
 
 
