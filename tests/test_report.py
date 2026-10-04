@@ -297,6 +297,14 @@ def test_verbose_group_times_total_all_repetitions_and_mark_blocked_groups() -> 
     assert "How to read this" not in text
 
 
+def test_verbose_group_times_show_the_reference_play_of_a_blocked_group() -> None:
+    # #285: a Group blocked by a prerequisite the Candidate failed is played on the Reference.
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    played = replace(_result(blocked), elapsed_s=(0.5,))
+    text = render_text(_report(played), verbose=True)
+    assert "Group times\n  join/basic 0.5 s\n" in text, text
+
+
 def test_default_output_leaves_group_times_to_verbose() -> None:
     result = replace(_result(_compared("a")), elapsed_s=(0.25,))
     assert "Group times" not in render_text(_report(result))

@@ -43,16 +43,28 @@
     },
     {
       "group_id": "join/basic",
+      "test_case": "login.is_flat",
+      "result": "fail",
+      "network_traffic_only": false
+    },
+    {
+      "group_id": "join/basic",
+      "test_case": "login.sea_level",
+      "result": "fail",
+      "network_traffic_only": false
+    },
+    {
+      "group_id": "join/basic",
       "result": "not tested",
       "reasons": "Not tested: prerequisite status/basic was mismatch"
     }
   ],
   "totals": {
     "passed": 0,
-    "failed": 3,
+    "failed": 5,
     "not_tested": 1,
     "errors": 0,
-    "scored": 3,
+    "scored": 5,
     "score": 0.0
   },
   "results": [
@@ -349,7 +361,10 @@
           "divergences": [],
           "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": []
+          "test_cases": [
+            "login.is_flat",
+            "login.sea_level"
+          ]
         },
         {
           "group_id": "join/basic",
@@ -357,7 +372,10 @@
           "divergences": [],
           "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": []
+          "test_cases": [
+            "login.is_flat",
+            "login.sea_level"
+          ]
         },
         {
           "group_id": "join/basic",
@@ -365,7 +383,10 @@
           "divergences": [],
           "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": []
+          "test_cases": [
+            "login.is_flat",
+            "login.sea_level"
+          ]
         },
         {
           "group_id": "join/basic",
@@ -373,7 +394,10 @@
           "divergences": [],
           "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": []
+          "test_cases": [
+            "login.is_flat",
+            "login.sea_level"
+          ]
         },
         {
           "group_id": "join/basic",
@@ -381,7 +405,10 @@
           "divergences": [],
           "omitted": 0,
           "detail": "prerequisite status/basic was mismatch",
-          "test_cases": []
+          "test_cases": [
+            "login.is_flat",
+            "login.sea_level"
+          ]
         }
       ],
       "reference": [

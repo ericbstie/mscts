@@ -159,18 +159,19 @@ def report_lines(report: Report) -> tuple[Line, ...]:
 
 
 def _candidate_failed(group: GroupResult) -> bool:
-    """Whether the Candidate failed the whole Group in any repetition: a `failed` Divergence.
+    """Whether the Candidate failed the whole Group in any repetition.
 
-    Then each test case the Group has in any repetition fails, as if the Candidate had sent
-    it wrong, so failing a whole Group never scores better than sending each value wrong
-    (#262). The Reference's own test cases are among them wherever the Reference played the
-    Group, which it does even when the Candidate's side is not compared (#266). With none in
-    any repetition, the Group's own line is all that fails.
+    It did if a repetition has a `failed` Divergence, or is `blocked`: a prerequisite did
+    not pass. Then each test case the Group has in any repetition fails, as if the Candidate
+    had sent it wrong, so failing a whole Group never scores better than sending each value
+    wrong (#262). The Reference's own test cases are among them wherever the Reference
+    played the Group, which it does even when the Candidate's side is not compared (#266,
+    #285). With none in any repetition, the Group's own line is all that fails.
     """
     return any(
-        divergence.kind == "failed"
+        verdict.outcome is Outcome.BLOCKED
+        or any(divergence.kind == "failed" for divergence in verdict.divergences)
         for verdict in group.verdicts
-        for divergence in verdict.divergences
     )
 
 
@@ -485,7 +486,9 @@ def _sent(value: object) -> _Line:
 def _group_times(results: Sequence[GroupResult]) -> tuple[str, ...]:
     times = []
     for result in results:
-        if all(verdict.outcome is Outcome.BLOCKED for verdict in result.verdicts):
+        if any(result.elapsed_s):  # a blocked Group may still be played on the Reference
+            duration = f"{_seconds(sum(result.elapsed_s))} s"
+        elif all(verdict.outcome is Outcome.BLOCKED for verdict in result.verdicts):
             duration = "not played"
         elif result.elapsed_s:
             duration = f"{_seconds(sum(result.elapsed_s))} s"

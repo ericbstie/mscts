@@ -119,22 +119,28 @@ other difference counts as gameplay until a rule proves otherwise.
 
 ## Skipped or failed Groups
 
-A Group with no test cases to list has one line of its own: its id and
-its reasons. This example is rendered from illustrative Report inputs:
+A Group that was skipped or failed has one line of its own, after its
+test cases: its id and its reasons. This example is rendered from
+illustrative Report inputs:
 
 ```
 Running tests against pumpkin
 ✗ status/basic/status_response.players.max
 ✗ status/ping/status:pong_response.timestamp
+✗ join/basic/login.is_flat
+✗ join/basic/login.sea_level
 ✗ join/basic Not tested: prerequisite status/basic was mismatch
-0 passed, 3 failed (1 not tested). (0%)
+0 passed, 5 failed (1 not tested). (0%)
 Took 41 s
 ```
 
 `Not tested` means a prerequisite did not pass. A prerequisite passes
 when each of its test cases passes and it has no line of its own. So a
-prerequisite that differs only in network traffic passes. No shipped
-Group has a prerequisite yet. `Error` means mscts or vanilla
+prerequisite that differs only in network traffic passes. If the
+Candidate failed the prerequisite, mscts still plays the Group on
+vanilla, and the Candidate fails each test case of that play. If the
+prerequisite was an `Error`, mscts plays the Group on neither server. No
+shipped Group has a prerequisite yet. `Error` means mscts or vanilla
 failed. `Candidate failed` means the Candidate broke the protocol, sent a
 frame that did not decode, sent a value mscts could not compare with
 vanilla's, closed the connection, did not answer in time, lacked a
@@ -146,14 +152,14 @@ fails as `Candidate failed`. Different packet counts for a Bot also give
 the Group a line of its own.
 
 The line names each distinct reason from the Group's repetitions once. It
-counts as one failing test case, unless every reason is an `Error`. In
-that case the line is marked `!` instead of ✗ and is not scored, because the
-fault lies with mscts or vanilla, not the Candidate. When the Candidate
-fails a Group, each test case that vanilla's play of the Group has in any
-repetition fails too, including a Group mscts played on vanilla only. So a
-Candidate that crashes, lacks a command, is left unable to play, or sends
-something mscts cannot compare never scores better than one that sends
-every value wrong.
+counts as one test case: a failing one, unless every reason is an `Error`.
+Then the line is marked `!` instead of ✗ and is not scored, because the
+fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
+failed, or that was not tested, also fails each test case that vanilla's
+play of it has in any repetition, including a Group mscts played on
+vanilla only. So a Candidate that crashes, lacks a command, fails a
+prerequisite, is left unable to play, or sends something mscts cannot
+compare never scores better than one that sends every value wrong.
 
 ## Total time
 

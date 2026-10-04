@@ -188,6 +188,25 @@ async def test_a_reference_unsettled_while_the_candidate_is_frozen_is_an_error(
     assert verdict == Verdict(JOINS.id, Outcome.ERROR, detail=detail)
 
 
+@pytest.mark.asyncio
+async def test_a_group_blocked_by_the_group_that_froze_the_candidate_says_it_is_blocked(
+    tmp_path: Path,
+) -> None:
+    # Both reasons fail each test case of the Reference's play; the prerequisite comes first.
+    after = Group(id="test/after-frozen", run=_joins, requires=(STAYS_FROZEN.id,))
+    async with (
+        attached("vanilla", ControlServer()) as reference,
+        attached("vanilla", refusing_to_unfreeze()) as candidate,
+    ):
+        _, verdict = await run([STAYS_FROZEN, after], reference, candidate, workdir=tmp_path)
+
+    assert (verdict.outcome, verdict.detail) == (
+        Outcome.BLOCKED,
+        f"prerequisite {STAYS_FROZEN.id} was mismatch",
+    )
+    assert verdict.test_cases
+
+
 async def _reference_test_cases(tmp_path: Path) -> tuple[str, ...]:
     """The test cases of JOINS, played on two fakes that both unfreeze."""
     async with (

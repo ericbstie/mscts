@@ -67,6 +67,20 @@ def test_a_blocked_group_is_one_failing_line_that_was_not_tested() -> None:
     )
 
 
+def test_a_blocked_repetition_fails_each_test_case_the_group_has_in_any_repetition() -> None:
+    # #285: the Reference's play of a blocked Group lists its test cases; the Candidate,
+    # never played, fails each, as if it had sent every value wrong.
+    reason = "prerequisite status/basic was mismatch"
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail=reason, test_cases=("a",))
+    passed = _compared("a", "b", group_id="join/basic")
+
+    assert report_lines(_report(_result(blocked, passed))) == (
+        CaseResult("join/basic", "a", LineResult.FAIL),
+        CaseResult("join/basic", "b", LineResult.FAIL),
+        GroupLine("join/basic", LineResult.NOT_TESTED, f"Not tested: {reason}"),
+    )
+
+
 def test_an_error_group_is_one_line_left_out_of_the_score() -> None:
     error = Verdict("status/basic", Outcome.ERROR, detail="the Reference did not start")
     assert report_lines(_report(_result(error))) == (

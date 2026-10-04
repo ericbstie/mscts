@@ -226,7 +226,9 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 ```
 
 - `requires` lists Groups that must `match` first. If one does not, this
-  Group is `blocked` and mscts does not play it.
+  Group is `blocked` and mscts does not play it on the Candidate. mscts
+  still plays it on vanilla, unless the Group required was an `error`, and
+  the Candidate fails each of its test cases.
 - `masks` excludes fields that change between two runs of vanilla. Each
   `Mask` names a packet, a field path (or `*` for the whole packet) and a
   reason. The reason must show the field has no gameplay meaning. Reviews

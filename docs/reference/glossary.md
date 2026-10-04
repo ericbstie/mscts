@@ -279,8 +279,10 @@ The share of a Report's scored lines that passed, as in
 `35 passed, 5 failed. (87.5%)` (#101). Each line is one test
 case of one Group, or the Group's own line. A test case fails if it
 differs in gameplay in any repetition, or if the Candidate failed its
-whole Group in any repetition (#262). A Group's own line fails for a
-blocked Group or a Candidate failure; an `error` is not scored. The
+whole Group, or it was blocked, in any repetition (#262, #285). A
+blocked Group is still played on the Reference when the Candidate
+failed its prerequisites, so its test cases are that play's. A Group's
+own line fails for a blocked Group or a Candidate failure; an `error` is not scored. The
 score is rounded down, so only a Run where every scored line passes
 scores 100%.
 

@@ -128,6 +128,26 @@ was missing only while undoing what the Group changed, the line names
 that first failure instead. A command missing on the Reference is still
 an `error`. `blocked` now means only that a prerequisite did not pass.
 
+## Amendment (#285, 2026-10-04)
+
+A blocked Group was never played, so it was one `Not tested` line. A
+Candidate that sent one value of a prerequisite wrong then scored above
+one that passed the prerequisite and sent every value of the Groups that
+require it wrong.
+
+Now a Group blocked by a prerequisite the Candidate failed is still
+played on the Reference, as the #266 amendment does. The prerequisite
+failed on the Candidate's side if it is a `mismatch`, or is itself
+blocked that way. The Verdict stays `blocked`, and its line still reads
+`Not tested: prerequisite status/basic was mismatch`. It lists the test
+cases of the Reference's play, and the Candidate fails each of them, in
+every repetition, as for a Candidate failure. If that play fails, the
+Group is an `error`.
+
+If a prerequisite is an `error`, or was not run, the Group is played on
+neither side and its own line is all that fails, as before. Whether
+that line should be an `error` too (audit 2026-10-04, L2) is left open.
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains

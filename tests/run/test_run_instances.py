@@ -4,15 +4,20 @@ from pathlib import Path
 
 import pytest
 
-from mscts.compare import Outcome
-from mscts.group import Group, GroupKind
+from mscts import run as run_module
+from mscts.compare import Outcome, Verdict
+from mscts.group import Group, GroupContext, GroupKind
 from mscts.groups import status
-from mscts.run import Server, run
+from mscts.net import Endpoint
+from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
+from mscts.run import GroupResult, Server, run, run_results
 from mscts.spec import ServerSpec
 from tests.run.fakes import FakeAdapter
+from tests.test_report import _report
 
 BASIC = Group(id="status/basic", run=status.basic)
 PING = Group(id="status/ping", run=status.ping, requires=("status/basic",))
+AFTER_PING = Group(id="test/after-ping", run=status.ping, requires=("status/ping",))
 
 type MakeServer = Callable[..., Server]
 
@@ -61,6 +66,102 @@ async def test_a_candidate_that_differs_is_a_mismatch_and_blocks_what_requires_i
     assert [d.candidate for d in basic.divergences] == ["not vanilla"]
     assert ping.outcome is Outcome.BLOCKED
     assert ping.detail == "prerequisite status/basic was mismatch"
+
+
+@pytest.mark.asyncio
+async def test_a_group_blocked_by_the_candidate_fails_each_test_case_of_the_references_play(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # #285, audit M1: sending every value of PING wrong fails each test case of the
+    # Reference's play of it, so failing its prerequisite must fail each of them too.
+    candidate = fake_server("two", description="not vanilla")
+
+    _, ping = await run([BASIC, PING], fake_server("one"), candidate, workdir=tmp_path / "run")
+    own = await _test_cases(PING, fake_server, tmp_path / "own")
+
+    assert ping.test_cases == own
+    lines = report_lines(_report(GroupResult(PING.id, (ping,), (), ())))
+    reason = "Not tested: prerequisite status/basic was mismatch"
+    assert lines[-1] == GroupLine(PING.id, LineResult.NOT_TESTED, reason)
+    assert totals(lines) == Totals(passed=0, failed=len(own) + 1, not_tested=1, errors=0)
+
+
+@pytest.mark.asyncio
+async def test_a_group_blocked_by_a_blocked_group_still_plays_the_reference(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    candidate = fake_server("two", description="not vanilla")
+
+    *_, after = await run(
+        [BASIC, PING, AFTER_PING], fake_server("one"), candidate, workdir=tmp_path / "run"
+    )
+
+    assert after.outcome is Outcome.BLOCKED
+    assert after.detail == "prerequisite status/ping was blocked"
+    assert after.test_cases == await _test_cases(AFTER_PING, fake_server, tmp_path / "own")
+
+
+@pytest.mark.asyncio
+async def test_a_group_whose_prerequisite_is_an_error_is_played_on_neither_side(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Audit L2: an `error` is the Reference's or mscts's; what depends on it is not played.
+    async def fails(context: GroupContext) -> None:
+        del context
+        msg = "vanilla stopped"
+        raise RuntimeError(msg)
+
+    broken = Group(id="status/basic", run=fails)
+
+    result = await run_results(
+        [broken, PING, AFTER_PING], fake_server("one"), fake_server("two"), workdir=tmp_path
+    )
+
+    _, ping, after = result.results
+    assert [verdict.test_cases for verdict in (*ping.verdicts, *after.verdicts)] == [(), ()]
+    assert ping.elapsed_s == after.elapsed_s == (0.0,), "neither side was played"
+
+
+@pytest.mark.asyncio
+async def test_a_group_whose_prerequisite_was_not_run_is_played_on_neither_side(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    result = await run_results([PING], fake_server("one"), fake_server("two"), workdir=tmp_path)
+
+    [ping] = result.results
+    assert ping.verdicts == (
+        Verdict(PING.id, Outcome.BLOCKED, detail="prerequisite status/basic was not run"),
+    )
+    assert ping.elapsed_s == (0.0,)
+
+
+@pytest.mark.asyncio
+async def test_only_the_reference_is_waited_on_for_a_group_blocked_by_the_candidate(
+    monkeypatch: pytest.MonkeyPatch, fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Whatever the Candidate still has online, it is not played: waiting on it would
+    # only replace the reason with another.
+    waited: list[int] = []
+
+    async def settled(group: Group, reference: Endpoint, candidate: Endpoint | None) -> None:
+        del group, reference
+        waited.append(1 if candidate is None else 2)
+
+    monkeypatch.setattr(run_module, "_unsettled", settled)
+    candidate = fake_server("two", description="not vanilla")
+
+    await run([BASIC, PING], fake_server("one"), candidate, workdir=tmp_path)
+
+    assert waited == [2, 1]
+
+
+async def _test_cases(group: Group, fake_server: MakeServer, workdir: Path) -> tuple[str, ...]:
+    """The test cases of `group` played on two fakes that agree, its prerequisites first."""
+    groups = [BASIC, PING, AFTER_PING][: [BASIC, PING, AFTER_PING].index(group) + 1]
+    verdicts = await run(groups, fake_server("one"), fake_server("two"), workdir=workdir)
+    assert verdicts[-1].outcome is Outcome.MATCH, verdicts
+    assert verdicts[-1].test_cases, "the Group must have test cases for this to show anything"
+    return verdicts[-1].test_cases
 
 
 @pytest.mark.asyncio

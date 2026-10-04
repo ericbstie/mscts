@@ -1283,7 +1283,8 @@ class Verdict:
     test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, and each
                                       # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
-                                    # blocked or error. run.judge keeps compare's.
+                                    # error, or blocked and not played on the Reference
+                                    # (#285). run.judge keeps compare's.
     omitted: int = 0                # Divergences a report.json left out (#254); 0 from compare
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
@@ -1461,8 +1462,12 @@ def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None: ..
 async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
               workdir: Path, repeat: int = 1) -> list[Verdict]: ...
     # one Verdict per Group per repetition, repetition after repetition, in the order
-    # given; a Group is blocked (not played) unless its prerequisites passed earlier in
-    # the same repetition. One Instance pair per distinct ServerSpec the Groups' `spec`
+    # given; a Group is blocked (not played on the Candidate) unless its prerequisites
+    # passed earlier in the same repetition. #285: if each prerequisite that did not pass
+    # is a `mismatch`, or blocked so itself, it is played on the Reference alone, as for
+    # #266 below, and the blocked Verdict lists that play's test cases (the Report fails
+    # them); a prerequisite that is an `error` or was not run means neither side plays it.
+    # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
     # An Attached side is played at its endpoint for every Group, never started or
@@ -2157,7 +2162,7 @@ def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 # run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
 #                     keep_transcripts=False) -> RunResult
 # plays exactly as run() does (run() returns its .verdicts); a blocked repetition measures
-# nothing on either side.
+# nothing on the Candidate, and on the Reference only if it was played there (#285).
 @frozen
 class GroupResult:
     group_id: str
@@ -2165,7 +2170,8 @@ class GroupResult:
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition (the
-                                      # Reference's alone if the Candidate's was not); blocked 0
+                                      # Reference's alone if the Candidate's was not); 0 if
+                                      # neither was
     transcripts: tuple[tuple[Transcript, Transcript] | None, ...] = ()  # only with
                                       # run_results(..., keep_transcripts=True), off by default
                                       # (reference, candidate) per repetition whose Verdict
@@ -2220,8 +2226,9 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # Groups in play order; each Group's compared test cases sorted, each once across
 # repetitions (a `missing` packet's Divergence makes its packet's test case and each of
 # its fields' differ, and so does a gameplay `field` Divergence whose reference is a list
-# or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in any
-# repetition makes every test case of the Group differ, #262): FAIL if it differs in gameplay in any repetition, PASS (marked
+# or mapping, for its test case and each of its leaves', #225; a `failed` Divergence or a
+# blocked Verdict in any repetition makes every test case of the Group differ, #262,
+# #285): FAIL if it differs in gameplay in any repetition, PASS (marked
 # network_traffic_only) if it differs only in network traffic, else PASS. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
@@ -2279,7 +2286,8 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # #10: verbose adds the Reference's installed version, Target and repetitions at the top, distinct
 # pairs of actual values directly under each line that differs, and total time per Group
 # across repetitions (play both sides + Comparison; excludes startup/shutdown).
-# Blocked Groups say "not played"; older results without durations say "not recorded".
+# Blocked Groups played on neither side say "not played" (one played on the Reference
+# alone shows that play's time, #285); older results without durations say "not recorded".
 ```
 
 CLI (`src/mscts/cli.py`, stdlib argparse; `[project.scripts] mscts = "mscts.cli:main"`;

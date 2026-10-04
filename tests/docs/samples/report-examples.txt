@@ -1,6 +1,8 @@
 Running tests against pumpkin
 ✗ status/basic/status_response.players.max
 ✗ status/ping/status:pong_response.timestamp
+✗ join/basic/login.is_flat
+✗ join/basic/login.sea_level
 ✗ join/basic Not tested: prerequisite status/basic was mismatch
-0 passed, 3 failed (1 not tested). (0%)
+0 passed, 5 failed (1 not tested). (0%)
 Took 41 s
