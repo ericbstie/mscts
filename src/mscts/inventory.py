@@ -208,10 +208,17 @@ def _mount_menu(fields: Mapping[str, object], entities: Mapping[int, Entity]) ->
 
 
 class InventoryTracker:
-    """Follows the inventory packets a Bot receives, as `ClientPacketListener` does."""
+    """Follows the inventory packets a Bot receives, as `ClientPacketListener` does.
+
+    Attributes:
+        enchantments: The server's `minecraft:enchantment` registry, by network id, from the
+            last configuration's `registry_data`; None until one arrives. A click reads it to
+            tell a stack enchanted with curse of binding.
+    """
 
     def __init__(self) -> None:
         """Start as a new player: nothing anywhere, and no container open."""
+        self.enchantments: tuple[str, ...] | None = None
         self._player: list[Stack | None] = [None] * PLAYER_INDEXES
         self._inventory = _inventory_menu()
         self._open = self._inventory
@@ -252,8 +259,9 @@ class InventoryTracker:
         The menu's slots and carried stack change as `doClick` changes them on the client
         (`CLICK_MODES` names the modes). The fields hold the slots whose stacks changed, each
         hashed, in the order the client's `Int2ObjectOpenHashMap` gives them, and the carried
-        stack (`MultiPlayerGameMode.handleContainerInput`). The Bot predicts as a survival
-        player: a clone, or a drag of a full stack to each slot, changes nothing.
+        stack (`MultiPlayerGameMode.handleContainerInput`). The Bot predicts as a survival or
+        adventure player: a clone, or a drag of a full stack to each slot, changes nothing, and
+        an armor slot gives up nothing enchanted with curse of binding.
 
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
@@ -280,7 +288,7 @@ class InventoryTracker:
         saved_drag = (menu.quickcraft_type, set(menu.quickcraft_slots))
         before = self._slots(menu)
         try:
-            _Click(self._player, menu, menu.layout).run(slot, button, number)
+            _Click(self._player, menu, menu.layout, self.enchantments).run(slot, button, number)
             after = self._slots(menu)
             differ = [
                 index
@@ -476,7 +484,14 @@ class _UnpredictableError(ValueError):
 class _Click:
     """One click on one menu laid out by the tracker, changing the tracker's stacks in place."""
 
-    def __init__(self, player: list[Stack | None], menu: _Menu, places: tuple[_Place, ...]) -> None:
+    def __init__(
+        self,
+        player: list[Stack | None],
+        menu: _Menu,
+        places: tuple[_Place, ...],
+        enchantments: tuple[str, ...] | None,
+    ) -> None:
+        self.enchantments = enchantments
         self.player = player
         self.menu = menu
         self.places = places
@@ -515,6 +530,21 @@ class _Click:
         if self.shulker and index < self.own_size:
             return not stack.item.endswith("shulker_box")
         return True
+
+    def may_pickup(self, index: int) -> bool:
+        """`Slot.mayPickup`: an armor slot keeps a cursed stack from a survival player.
+
+        `ArmorSlot.mayPickup` is false when the stack has an enchantment that prevents armor
+        change: in the vanilla data pack, curse of binding alone.
+
+        Raises:
+            _UnpredictableError: The slot's stack is enchanted, and the server's enchantments
+                are not known.
+        """
+        held = self.get(index)
+        if held is None or not (self.is_inventory and index in _ARMOR):
+            return True
+        return not _binds(held, self.enchantments)
 
     def can_take_for_pick_all(self, index: int) -> bool:
         """`canTakeItemForPickAll`: the inventory menu never takes from its crafting result."""
@@ -618,6 +648,8 @@ class _Click:
             return
         self._require_slot(slot)
         if mode == _QUICK_MOVE:
+            if not self.may_pickup(slot):
+                return
             result = self.quick_move(slot)
             while result is not None and _same_item(self.get(slot), result):
                 result = self.quick_move(slot)
@@ -634,6 +666,8 @@ class _Click:
         if held is None:
             if carried is not None:
                 self.carried = self.safe_insert(slot, carried, carried.count if primary else 1)
+        elif not self.may_pickup(slot):
+            return
         elif carried is None:
             taken = self.try_remove(slot, held.count if primary else (held.count + 1) // 2, None)
             if taken is not None:
@@ -677,7 +711,7 @@ class _Click:
         A slot whose stack it may not put back (`allowModification`) gives only its whole stack.
         """
         held = self.get(index)
-        if held is None:
+        if held is None or not self.may_pickup(index):
             return None
         ceiling = held.count if limit is None else limit
         if not self.may_place(index, held) and ceiling < held.count:
@@ -770,8 +804,9 @@ class _Click:
         if theirs is None and held is None:
             return
         if theirs is None:
-            self.player[button] = held
-            self.put(slot, None)
+            if self.may_pickup(slot):
+                self.player[button] = held
+                self.put(slot, None)
         elif held is None:
             if not self.may_place(slot, theirs):
                 return
@@ -782,7 +817,7 @@ class _Click:
             else:
                 self.player[button] = None
                 self.put(slot, theirs)
-        elif self.may_place(slot, theirs):
+        elif self.may_pickup(slot) and self.may_place(slot, theirs):
             if theirs.count > self.slot_max(slot, theirs):
                 msg = "the Bot does not predict a swap that puts the slot's stack back elsewhere"
                 raise _UnpredictableError(msg)
@@ -802,8 +837,7 @@ class _Click:
         """A double click: gather the carried stack's kind from the menu, full stacks last."""
         self._require_slot(slot)
         carried = self.carried
-        held = self.get(slot)
-        if carried is None or held is not None:
+        if carried is None or (self.get(slot) is not None and self.may_pickup(slot)):
             return
         order = range(self.size) if button == 0 else range(self.size - 1, -1, -1)
         for full_stacks in (False, True):
@@ -838,6 +872,30 @@ def _max_stack_size(stack: Stack) -> int:
 
 def _equipment_slot(stack: Stack) -> str | None:
     return equipment_slots(TARGET.minecraft_version).get(stack.item)
+
+
+_BINDING_CURSE = "minecraft:binding_curse"
+"""The vanilla data pack's one enchantment with `prevent_armor_change` (its enchantment files)."""
+
+
+def _binds(stack: Stack, enchantments: tuple[str, ...] | None) -> bool:
+    """Whether `stack`'s `minecraft:enchantments` component holds curse of binding.
+
+    Raises:
+        _UnpredictableError: It is enchanted, and `enchantments` is None.
+    """
+    added = cast("list[Mapping[str, object]]", stack.components.get("added", []))
+    for component in added:
+        if component.get("type") != "minecraft:enchantments":
+            continue
+        if enchantments is None:
+            msg = f"the Bot does not know the server's enchantments, which {stack.item} has"
+            raise _UnpredictableError(msg)
+        for entry in cast("list[Mapping[str, object]]", component.get("value")):
+            enchantment = cast("int", entry.get("enchantment"))
+            if 0 <= enchantment < len(enchantments) and enchantments[enchantment] == _BINDING_CURSE:
+                return True
+    return False
 
 
 def _is_bundle(stack: Stack) -> bool:

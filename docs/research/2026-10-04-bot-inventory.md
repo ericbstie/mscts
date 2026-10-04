@@ -133,10 +133,22 @@ with.
     for the slot, the slot takes what fits and its old stack goes through
     `Inventory.add`; otherwise the two swap (javap, 1275 to 1353).
   - CLONE needs infinite materials.
-  - THROW needs an empty cursor. It drops one (button 0), or the stack.
-  - PICKUP_ALL needs a stack on the cursor and an empty slot. It gathers
-    from slot 0 forward, or from the end with button 1, in two passes, the
-    first skipping full stacks.
+  - THROW needs an empty cursor. It drops one with button 0, and the
+    stack with any other button; only button 1 repeats while the slot holds
+    the same item.
+  - PICKUP_ALL needs a stack on the cursor, and an empty slot or one the
+    player may not take from. It gathers from slot 0 forward with button 0,
+    or from the end with any other button, in two passes, the first skipping
+    full stacks.
+- **`mayPickup`**: PICKUP on a slot that holds a stack (taking, merging and
+  swapping alike), QUICK_MOVE and SWAP check it first, and `Slot.tryRemove`
+  (THROW and PICKUP_ALL) gives nothing without it. Only `ArmorSlot` can
+  refuse: for a player not in creative, when the stack has an enchantment
+  with `prevent_armor_change`. In the vanilla data pack that is curse of
+  binding alone (the server jar's `data/minecraft/enchantment/*.json`).
+  `EnchantmentHelper.has` reads the `minecraft:enchantments` component,
+  whose ids are the `minecraft:enchantment` registry the server sent in
+  configuration (`registry_data`, in order).
 - **`moveItemStackTo`**: first merges into stacks of the same item and
   components (only for a stackable item), then puts the rest in the first
   empty slot that takes it, and stops there.

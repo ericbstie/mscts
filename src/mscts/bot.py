@@ -488,12 +488,14 @@ class Replies:
         self.chunks: set[tuple[int, int]] = set()
         self.inventory = InventoryTracker()
         self._dimension: str | None = None
+        self._enchantments: list[str] | None = None  # this configuration's, so far
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
         """Send `packet`'s answer, if it has one, on `connection`."""
         self.saw_disconnect |= _ends_the_session(packet)
         fields = packet.fields or {}
         self._track(packet, fields)
+        self._configure(packet, fields)
         match packet.state, packet.name:
             case State.LOGIN, "minecraft:login_finished":
                 # The ack moves the outbound state on, so the brand and the client
@@ -541,6 +543,22 @@ class Replies:
                 await connection.send("minecraft:configuration_acknowledged")
             case _:
                 pass
+
+    def _configure(self, packet: Packet, fields: Mapping[str, object]) -> None:
+        """Keep the server's enchantments, by network id, from a configuration's registries.
+
+        Each configuration collects its registries afresh (a new `RegistryDataCollector`),
+        appending each `registry_data`'s entries; they take effect as it finishes.
+        """
+        if packet.state is not State.CONFIGURATION:
+            return
+        if packet.name == "minecraft:registry_data" and fields.get("registry_id") == _ENCHANTMENT:
+            entries = cast("list[Mapping[str, object]]", _field(fields, "entries", list))
+            names = [_field(entry, "entry_id", str) for entry in entries]
+            self._enchantments = [*(self._enchantments or []), *names]
+        elif packet.name == "minecraft:finish_configuration" and self._enchantments is not None:
+            self.inventory.enchantments = tuple(self._enchantments)
+            self._enchantments = None
 
     def _track(self, packet: Packet, fields: Mapping[str, object]) -> None:
         """Give a play packet to `tracker` and `inventory`, which follow the packets they track.
@@ -1505,6 +1523,9 @@ def status_probe(
 def _held(keys: int, key: int, *, held: bool) -> int:
     """`keys` with `key` held or released."""
     return keys | key if held else keys & ~key
+
+
+_ENCHANTMENT = "minecraft:enchantment"
 
 
 def _field[T](fields: Mapping[str, object], name: str, kind: type[T]) -> T:

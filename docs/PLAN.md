@@ -733,6 +733,8 @@ class Inventory:                    # Bot.inventory: one moment's snapshot
     player: tuple[Stack | None, ...]  # by Inventory index, PLAYER_INDEXES of them
 
 class InventoryTracker:
+    enchantments: tuple[str, ...] | None  # the minecraft:enchantment registry by network id, from
+                                          # the last configuration's registry_data (Replies)
     def follow(
         self, name: str, fields: Mapping[str, object], entities: Mapping[int, Entity] | None = None
     ) -> None: ...
@@ -751,14 +753,17 @@ class InventoryTracker:
     def close(self) -> None: ...      # back to the inventory menu (Player.closeContainer)
     def remove_from_selected(self, selected: int, *, whole: bool) -> None: ...  # one, or the stack
     def click(self, slot: int, button: int, mode: str) -> dict[str, object]: ...  # container_click fields
-    # As AbstractContainerMenu.doClick on the client, in the menus laid out above, for a
-    # survival player (clone, and a drag of a stack to each slot, change nothing): pickup
+    # As AbstractContainerMenu.doClick on the client, in the inventory menu and the chest,
+    # dispenser, hopper and shulker box menus, for a survival or adventure player (clone, and
+    # a drag of a stack to each slot, change nothing): pickup
     # (button 0 all, 1 half; slot OUTSIDE drops the cursor), quick_move (the menu's
     # quickMoveStack, repeated while it moves some), swap (button 0-8 or 40: that Inventory
-    # index), throw (button 0 one, 1 the stack), quick_craft (button = header | type << 2:
+    # index), throw (button 0 one, any other the stack, 1 repeated), quick_craft (button = header | type << 2:
     # start 0, add 1, end 2; type 0 even, 1 one each), pickup_all (from slot 0, or the end with
-    # button 1; full stacks last). Slot rules: armor slots take their equippable items, one;
-    # a shulker box's slots no shulker box; stack sizes from items.json. Returns window id,
+    # any button but 0; full stacks last). Slot rules: armor slots take their equippable items,
+    # one, and give up nothing enchanted with curse of binding (mayPickup; its id from
+    # `enchantments`, an enchanted armor stack refused while they are None); a shulker box's
+    # slots no shulker box; stack sizes from items.json. Returns window id,
     # state id, slot, button, mode, the slots whose stack changed (ItemStack.matches) hashed
     # in Int2ObjectOpenHashMap() order (fastutil: table 32, linear probing, grown past 3/4;
     # key 0 first, then positions down), and the hashed cursor. ValueError, nothing changed:
@@ -811,7 +816,9 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # (EntityTracker.clear, so a kept Bot.entities view follows) on play login or respawn into
     # another dimension (a new ClientLevel; no answer); every play packet → Replies.inventory
     # (InventoryTracker, with Replies.tracker's entities), cleared on play login or any
-    # respawn (a new LocalPlayer; no answer);
+    # respawn (a new LocalPlayer; no answer); configuration registry_data for
+    # minecraft:enchantment → its entry names collected, set as Replies.inventory.enchantments
+    # on finish_configuration (each configuration collects afresh; no answer of its own);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join and respawn, not Replies, send player_loaded.

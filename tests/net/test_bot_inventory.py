@@ -14,16 +14,25 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from mscts.bot import Bot
+from mscts.bot import Bot, Replies
+from mscts.codec.packets import State
 from mscts.codec.registry_names import registry_names
 from mscts.entities import Entity
-from mscts.inventory import OUTSIDE, Inventory, InventoryTracker, Stack, _hash_map_order
+from mscts.inventory import (
+    CLICK_MODES,
+    OUTSIDE,
+    Inventory,
+    InventoryTracker,
+    Stack,
+    _hash_map_order,
+)
 from mscts.net import ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import with_bot
 from tests.net.test_bot_entities import added, entity_server
 from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN, TICK_END
+from tests.net.test_bot_replies import answers, arrived
 
 if TYPE_CHECKING:
     from mscts.codec.packets import Packet
@@ -1079,3 +1088,89 @@ def test_q_with_a_button_past_ctrl_drops_the_whole_stack() -> None:
     # doClick takes the slot's count for any button but 0, and repeats only for button 1.
     tracker = holding({9: ("stone", 64)})
     assert tracker.click(9, 2, "throw") == click_sent(9, [(9, None)], None, button=2, mode=4)
+
+
+# ArmorSlot.mayPickup: a survival player may not take from an armor slot a stack enchanted with
+# an enchantment that prevents armor change (curse of binding, in the vanilla data pack).
+
+ENCHANTMENTS = ("minecraft:protection", "minecraft:binding_curse")
+"""The server's `minecraft:enchantment` registry, in the order its `registry_data` sent it."""
+
+
+def enchanted(enchantment: int) -> dict[str, object]:
+    """A diamond helmet enchanted with `ENCHANTMENTS[enchantment]`, as the codec decodes it."""
+    value = [{"enchantment": enchantment, "level": 1}]
+    patch = {"added": [{"type": "minecraft:enchantments", "value": value}], "removed": []}
+    return {**slot(item_id("diamond_helmet"), 1), "components": patch}
+
+
+def wearing(
+    enchantment: int,
+    stacks: Mapping[int, tuple[str, int]] | None = None,
+    carried: tuple[str, int] | None = None,
+    enchantments: tuple[str, ...] | None = ENCHANTMENTS,
+) -> InventoryTracker:
+    """The inventory menu with an enchanted helmet in the head slot (5) and `stacks`."""
+    tracker = holding(stacks or {}, carried=carried)
+    tracker.enchantments = enchantments
+    tracker.follow(*set_slot(0, 5, enchanted(enchantment), state_id=5))
+    return tracker
+
+
+@pytest.mark.parametrize(
+    ("button", "mode"),
+    [(0, "pickup"), (1, "pickup"), (0, "quick_move"), (0, "swap"), (0, "throw"), (1, "throw")],
+)
+def test_a_cursed_armor_slot_gives_up_nothing(button: int, mode: str) -> None:
+    tracker = wearing(1)
+    before = tracker.view()
+    sent = click_sent(5, [], None, button=button, mode=CLICK_MODES[mode])
+    assert tracker.click(5, button, mode) == sent
+    assert tracker.view() == before
+
+
+def test_a_cursed_armor_slot_takes_nothing_from_the_cursor() -> None:
+    # The whole held-slot branch of PICKUP needs mayPickup, the merge and the swap with it.
+    tracker = wearing(1, carried=("stone", 10))
+    assert tracker.click(5, 0, "pickup") == click_sent(5, [], hashed("stone", 10))
+
+
+def test_a_double_click_on_a_cursed_armor_slot_gathers_as_on_an_empty_one() -> None:
+    # PICKUP_ALL gathers when the clicked slot is empty or the player may not take from it.
+    tracker = wearing(1, {9: ("stone", 20)}, carried=("stone", 10))
+    sent = click_sent(5, [(9, None)], hashed("stone", 30), mode=6)
+    assert tracker.click(5, 0, "pickup_all") == sent
+
+
+def test_an_armor_slot_with_another_enchantment_gives_its_stack_up() -> None:
+    tracker = wearing(0)
+    assert tracker.click(5, 0, "throw") == click_sent(5, [(5, None)], None, mode=4)
+
+
+def test_an_enchanted_armor_slot_is_refused_while_the_enchantments_are_unknown() -> None:
+    tracker = wearing(0, enchantments=None)
+    before = tracker.view()
+    with pytest.raises(ValueError, match="enchantment"):
+        tracker.click(5, 0, "throw")
+    assert tracker.view() == before
+
+
+def registry(*names: str) -> "Packet":
+    entries = [{"entry_id": name, "data": None} for name in names]
+    return arrived(
+        State.CONFIGURATION,
+        "minecraft:registry_data",
+        registry_id="minecraft:enchantment",
+        entries=entries,
+    )
+
+
+def test_the_enchantments_come_from_each_configurations_registry_data() -> None:
+    # RegistryDataCollector appends each registry_data's entries, and a new configuration
+    # starts a new collector: the ids are the order sent.
+    replies = Replies()
+    finish = arrived(State.CONFIGURATION, "minecraft:finish_configuration")
+    answers(replies, registry("minecraft:protection"), registry("minecraft:binding_curse"), finish)
+    assert replies.inventory.enchantments == ENCHANTMENTS
+    answers(replies, registry("minecraft:binding_curse"), finish)
+    assert replies.inventory.enchantments == ("minecraft:binding_curse",)
