@@ -20,10 +20,8 @@ two other packets: the Comparison puts them in order of position, as the client 
 import contextlib
 from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
-from typing import cast
 
 from mscts.bot import Bot
-from mscts.codec.packets import Packet
 from mscts.group import GroupContext, group
 from mscts.groups._world import pin_joins
 from mscts.settle import until_no_player_online
@@ -32,8 +30,10 @@ from mscts.spec import ServerSpec
 WALKER = "walker"
 """The Bot whose chunks are compared."""
 
+_CHUNK = "minecraft:level_chunk_with_light"
+
 PACKETS = (
-    "minecraft:level_chunk_with_light",
+    _CHUNK,
     "minecraft:forget_level_chunk",
     "minecraft:set_chunk_cache_center",
 )
@@ -63,8 +63,6 @@ FAR_AT = "320.5 -60 0.5"
 WALK = (0.25, 0.0, -0.25)
 """The x of each step of `chunks/walk`, one a tick, west from 0.5: the last is in chunk -1."""
 
-_CHUNK = "minecraft:level_chunk_with_light"
-
 type Chunk = tuple[int, int]
 
 
@@ -90,27 +88,27 @@ def _past(offset: int) -> int:
     return max(0, abs(offset) - 2)
 
 
-def _nearest(center: Chunk) -> frozenset[Chunk]:
-    """The 9 chunks nearest `center`: what vanilla's first batch holds, which `join` takes."""
-    cx, cz = center
-    return frozenset((cx + dx, cz + dz) for dx in (-1, 0, 1) for dz in (-1, 0, 1))
-
-
 async def _until_sent(bot: Bot, chunks: frozenset[Chunk]) -> None:
-    """Take the walker's packets until every chunk in `chunks` has arrived.
+    """Take the walker's packets until it holds every chunk in `chunks`.
+
+    The chunks it already holds count, whichever packets took them (`Bot.chunks`): which
+    chunks the join's first batch holds is not compared, and on vanilla it is the 9 nearest
+    chunks that are ready (`PlayerChunkSender.collectChunksToSend`, 26.3 javap).
 
     Raises:
-        TimeoutError: One had not arrived within `SENT_TIMEOUT_S`.
+        TimeoutError: One had not arrived within `SENT_TIMEOUT_S`; it names those missing.
     """
-    missing = set(chunks)
 
-    def arrived(packet: Packet) -> bool:
-        fields = packet.fields or {}
-        missing.discard((cast("int", fields.get("chunk_x")), cast("int", fields.get("chunk_z"))))
-        return not missing
+    def missing() -> frozenset[Chunk]:
+        return chunks - bot.chunks
 
-    if missing:
-        await bot.expect(_CHUNK, timeout_s=SENT_TIMEOUT_S, where=arrived)
+    if not missing():
+        return
+    try:
+        await bot.expect(_CHUNK, timeout_s=SENT_TIMEOUT_S, where=lambda _: not missing())
+    except TimeoutError:
+        msg = f"chunks {sorted(missing())} never arrived within {SENT_TIMEOUT_S} s"
+        raise TimeoutError(msg) from None
 
 
 @contextlib.asynccontextmanager
@@ -141,7 +139,7 @@ def _at(distance: int) -> Callable[[ServerSpec], ServerSpec]:
 async def _join_view(context: GroupContext, distance: int) -> None:
     async with _walker(context) as walker, context.observe(*PACKETS):
         await walker.join()
-        await _until_sent(walker, view(SPAWN, distance) - _nearest(SPAWN))
+        await _until_sent(walker, view(SPAWN, distance))
 
 
 @group("chunks/join-view", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
@@ -161,7 +159,7 @@ async def teleport(context: GroupContext) -> None:
     """Control teleports the walker 20 chunks east: it forgets its view and is sent a new one."""
     async with _walker(context) as walker:
         await walker.join()
-        await _until_sent(walker, view(SPAWN, VIEW_DISTANCE) - _nearest(SPAWN))
+        await _until_sent(walker, view(SPAWN, VIEW_DISTANCE))
         async with context.observe(*PACKETS):
             await context.control.run(f"tp {WALKER} {FAR_AT}")
             await _until_sent(walker, view(FAR, VIEW_DISTANCE))
@@ -172,13 +170,12 @@ async def walk(context: GroupContext) -> None:
     """The walker steps west into the next chunk, one step a tick."""
     async with _walker(context) as walker:
         await walker.join()
-        old = view(SPAWN, VIEW_DISTANCE)
-        await _until_sent(walker, old - _nearest(SPAWN))
+        await _until_sent(walker, view(SPAWN, VIEW_DISTANCE))
         async with context.observe(*PACKETS):
             *before, across = WALK
             for x in before:
                 await walker.move(x, -60.0, 0.5)
                 await walker.sync()
-            # No barrier after the step across: it would take the new chunks the wait looks for.
+            # The wait for the new view, then the window's barrier, follow the step across.
             await walker.move(across, -60.0, 0.5)
-            await _until_sent(walker, view((-1, 0), VIEW_DISTANCE) - old)
+            await _until_sent(walker, view((-1, 0), VIEW_DISTANCE))

@@ -30,6 +30,13 @@ says so), or on two fresh vanilla 26.3 Instances where a line says *live*.
 - `MinecraftServer.tickChildren` sends the queued chunks
   (`PlayerChunkSender.sendNextChunks`, "send chunks") whether or not the tick
   rate manager runs normally: `/tick freeze` does not stop chunk sending.
+- A batch holds the pending chunks nearest the player
+  (`collectChunksToSend`: `Comparators.least(quota, distanceSquared)` over
+  `pendingChunks`), and a chunk becomes pending only once it is loaded
+  (`markChunkPendingToSend(LevelChunk)`). So the join's first batch is the 9
+  nearest chunks that are *ready*: the 3 by 3 around the player only when all
+  9 are. A Group counts the chunks a Bot already holds (`Bot.chunks`) rather
+  than assume what the first batch held.
 - `sendNextChunks` never sends an empty batch, so nothing tells a player that
   its view is complete. A Group waits for the chunks it expects.
 - *Live*: the join's chunks were all sent 250 to 400 ms after the join; a

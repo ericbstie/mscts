@@ -55,16 +55,17 @@ type Chunk = tuple[int, int]
 class ChunksServer:
     """A fake server that joins like vanilla and sends the walker the chunks of its view.
 
-    The join's first batch holds chunk (0, 0) (`join_server`); the rest of the view at
-    `distance` follows `LATE_S` later, after any barrier the join ends with. Control's teleport
-    of the walker to `chunks.FAR_AT` sends the walker the view around `chunks.FAR`, and its
-    first step into chunk (-1, 0) sends it the chunks that step brings into its view. A marker
-    (`tellraw @s "<token>"`) gets its token back; no other command gets feedback. Chunk
-    `withheld` is never sent.
+    The join's first batch holds the chunks `first`, (0, 0) unless told otherwise; the rest of
+    the view at `distance` follows `LATE_S` later, after any barrier the join ends with.
+    Control's teleport of the walker to `chunks.FAR_AT` sends the walker the view around
+    `chunks.FAR`, and its first step into chunk (-1, 0) sends it the chunks that step brings
+    into its view. A marker (`tellraw @s "<token>"`) gets its token back; no other command gets
+    feedback. Chunk `withheld` is never sent.
     """
 
     distance: int = chunks.VIEW_DISTANCE
     withheld: Chunk | None = None
+    first: frozenset[Chunk] = frozenset({(0, 0)})
     seen: list[Packet] = field(default_factory=list)
     walker: Peer | None = None
     late: set[asyncio.Task[None]] = field(default_factory=set)
@@ -73,13 +74,15 @@ class ChunksServer:
         """Serve one connection: a Handler."""
         # A Bot that leaves with something unread resets the connection instead of closing it.
         with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+            batch = [EMPTY_CHUNK | {"chunk_x": x, "chunk_z": z} for x, z in sorted(self.first)]
+            script = JoinScript(commands=COMMANDS, first_batch=batch, then=self._play)
+            await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
         hellos = [packet for packet in self.seen if packet.name == "minecraft:hello"]
         if (hellos[-1].fields or {})["name"] == WALKER:
             self.walker = peer
-            rest = chunks.view(chunks.SPAWN, self.distance) - {(0, 0)}
+            rest = chunks.view(chunks.SPAWN, self.distance) - self.first
             task = asyncio.create_task(self.send(peer, rest, after_s=LATE_S))
             self.late.add(task)
             task.add_done_callback(self.late.discard)
@@ -303,8 +306,8 @@ async def test_the_walk_window_holds_a_step_a_tick_and_every_new_chunk() -> None
     inside = [what for t, what in walked(transcript) if opened < t < closed]
     steps = [str(x) for x in chunks.WALK]
     barrier = ["sync"] * SYNC_REQUESTS
-    # Only the window's own barrier after the step across: another would take the new chunks
-    # out from under the wait for them.
+    # A step a tick: a barrier after each step but the last, which the wait for the new
+    # column and the window's own barrier follow.
     assert inside == [steps[0], *barrier, steps[1], *barrier, steps[2], *barrier]
     west = chunks.view((-1, 0), 2) - chunks.view(chunks.SPAWN, 2)
     arrived = {position(event): event.t_ns for event in received(transcript, CHUNK)}
@@ -326,3 +329,33 @@ async def test_a_chunk_never_sent_after_the_step_across_fails_the_group_and_cont
             await GROUPS["chunks/walk"].run(context)
 
     assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, *UNDO]
+
+
+FIRST_BATCHES = {
+    "an-outer-chunk": frozenset({(0, 0), (2, 0)}),
+    "the-whole-view": chunks.view(chunks.SPAWN, chunks.VIEW_DISTANCE),
+}
+"""First batches vanilla's own need not be: the 9 nearest *ready* chunks, so an outer chunk
+when fewer of the 3 by 3 are ready (`PlayerChunkSender.collectChunksToSend`, 26.3 javap), or a
+server that sends the whole view at once (#280 review, B1)."""
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first", FIRST_BATCHES.values(), ids=FIRST_BATCHES.keys())
+@pytest.mark.parametrize("group_id", ["chunks/join-view", "chunks/teleport", "chunks/walk"])
+async def test_a_group_counts_the_chunks_the_first_batch_held(
+    group_id: str, first: frozenset[Chunk]
+) -> None:
+    transcript = await play(group_id, ChunksServer(first=first))
+
+    spawn = chunks.view(chunks.SPAWN, chunks.VIEW_DISTANCE)
+    assert spawn <= {position(event) for event in received(transcript, CHUNK)}
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_never_sent_is_named_when_the_group_gives_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(chunks, "SENT_TIMEOUT_S", 0.5)
+    with pytest.raises(TimeoutError, match=r"\(3, 3\)"):
+        await play("chunks/join-view", ChunksServer(withheld=(3, 3)))
