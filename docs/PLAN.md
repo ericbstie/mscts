@@ -81,6 +81,7 @@ test needs it:
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
+| `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read) |
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
@@ -516,6 +517,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                                     # (a Group that tests a kick takes it so)
     position: Position              # (property) where the player is and faces: the last
                                     # teleport's pose, or where it moved since (a copy)
+    entities: Entities              # (property, #27) the entities its server told it about,
+                                    # by entity id (Replies.tracker; below)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -640,6 +643,35 @@ class Position:                     # Bot.position: where its player is and face
 class Face(IntEnum):                # a block face: Direction.get3DDataValue
     DOWN = 0; UP = 1; NORTH = 2; SOUTH = 3; WEST = 4; EAST = 5
 
+# entities.py (#27): what a Bot knows of the entities around it, as ClientPacketListener
+# tracks them (docs/research/2026-10-03-bot-entities.md).
+@frozen
+class Entity:                       # one entity, as the server last described it
+    id: int                         # its entity id: it differs from server to server
+    uuid: UUID
+    type: str                       # "minecraft:zombie"; "#<id>" for an id outside the registry
+    x: float; y: float; z: float    # where the server last put it
+    data: Mapping[int, object]      # its entity data so far, by index
+
+class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each lookup a snapshot
+    def find(self, type: str, *, near: tuple[float, float, float] | None = None) -> Entity: ...
+    # type "minecraft:zombie" or "zombie". The only entity of the type, or with near the one
+    # nearest to it (squared distance). LookupError: none of the type (the message counts the
+    # types there are), two or more without near, or two or more equally near: which comes
+    # first would depend on the server's ids.
+
+class EntityTracker:
+    entities: Entities
+    def clear(self) -> None: ...      # forget every entity; `entities` stays the same view
+    def follow(self, name: str, fields: Mapping[str, object]) -> None: ...
+    # add_entity adds (replacing the id); other packets for an unknown id change nothing.
+    # move_entity_pos(_rot) decodes against the entity's base (VecDeltaCodec: an axis with a
+    # 0 delta keeps the base's value, any other is (Math.round(base * 4096) + delta) / 4096; a
+    # stepped delta step by step) and puts both the entity and the base at the end;
+    # entity_position_sync puts both at the path's end; teleport_entity adds each flagged
+    # axis to the position and replaces the others, and leaves the base.
+    # set_entity_data sets each entry's value by its index; remove_entities drops each id.
+
 CHUNKS_PER_TICK = 9.0               # what a Bot's chunk_batch_received asks for: vanilla's server start rate
 BRAND = "vanilla"                   # the brand a Bot sends: ClientBrandRetriever.VANILLA_NAME
 TICK_GAP_S = 0.005                  # sync's wait from an answer's arrival to its next request
@@ -661,7 +693,10 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # starts at 0 again (a new ClientLevel), login also the held slots (a new
     # MultiPlayerGameMode); respawn → slot 0 selected (a new Inventory), the last sent slot
     # kept, so the next tick sends 0 if it differs; play set_held_slot (0-8) → selected, sent back on the next tick
-    # (no answer); chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
+    # (no answer); every play packet → Replies.tracker (EntityTracker), cleared in place
+    # (EntityTracker.clear, so a kept Bot.entities view follows) on play login or respawn into
+    # another dimension (a new ClientLevel; no answer);
+    # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
 
