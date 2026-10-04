@@ -202,11 +202,21 @@ async def before_teleport(context: GroupContext) -> None:
         await _play(context, walker, (_BEFORE_TELEPORT_CASE,), frozen=True)
 
 
-# `movement/flying`: two Bots hover 1.5 blocks above the grass, one in creative.
+# `movement/flying`: Bots hover 1.5 blocks above the grass: one in creative, one in survival
+# that lands again soon, and one in survival until it is kicked.
 
 _FLYER = "flyer"
 _CREATIVE_FLYER = "creative_flyer"
+_LANDER = "lander"
 _HOVER = 1.5
+
+LANDER_BARRIERS = 5
+"""How many barriers (`Bot.sync`) the lander floats for before it lands.
+
+Each barrier lasts at least two server ticks (its answers come from later packet passes), and
+about three on vanilla, so the lander floats for about 15 ticks: long enough that a server that
+kicks a floating player within a few ticks kicks it, and far below vanilla's 80.
+"""
 
 
 async def _hover(bot: Bot, x: float, z: float) -> None:
@@ -221,16 +231,25 @@ async def _hover(bot: Bot, x: float, z: float) -> None:
 
 @group("movement/flying")
 async def flying(context: GroupContext) -> None:
-    """A survival Bot and a creative Bot hover in the air until the survival one is kicked."""
+    """A creative Bot hovers; a survival Bot hovers a moment and lands; another hovers until kicked.
+
+    Only the kick's message is compared, not when it comes. The lander makes a server that kicks
+    too soon differ, and the creative Bot one that kicks a player allowed to fly.
+    """
     async with contextlib.AsyncExitStack() as undo:
-        creative, flyer = await _join(context, undo, _CREATIVE_FLYER, _FLYER)
+        creative, lander, flyer = await _join(context, undo, _CREATIVE_FLYER, _LANDER, _FLYER)
         await context.control.run(f"gamemode creative {_CREATIVE_FLYER}")
         undo.push_async_callback(context.control.run, f"gamemode survival {_CREATIVE_FLYER}")
         await _tp(context, creative, (2.5, -60.0, 2.5))
+        await _tp(context, lander, (10.5, -60.0, 2.5))
         await _tp(context, flyer, (6.5, -60.0, 2.5))
-        # The creative Bot rises first, so it has floated longer than the survival one by
-        # the time that one is kicked: past vanilla's limit, without a clock.
+        # The creative Bot rises first, so it has floated at least as long as the survival one
+        # by the time that one is kicked: past vanilla's limit, without a clock.
         async with context.observe(*PACKETS):
             await _hover(creative, 2.5, 2.5)
+            await _hover(lander, 10.5, 2.5)
+            for _ in range(LANDER_BARRIERS):
+                await lander.sync()
+            await lander.move(10.5, -60.0, 2.5)  # onto the grass: no longer floating
             await _hover(flyer, 6.5, 2.5)
             await flyer.expect("minecraft:disconnect", timeout_s=KICK_TIMEOUT_S)

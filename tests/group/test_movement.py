@@ -18,6 +18,7 @@ from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import movement
+from mscts.net import ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
@@ -41,7 +42,7 @@ TICK_EXACT = ("movement/into-blocks", "movement/before-teleport")
 BOTS = {
     "movement/too-fast": ("runner",),
     "movement/into-blocks": ("walker",),
-    "movement/flying": ("creative_flyer", "flyer"),
+    "movement/flying": ("creative_flyer", "lander", "flyer"),
     "movement/before-teleport": ("walker",),
 }
 CHECK_OFF, CHECK_ON = "gamerule player_movement_check false", "gamerule player_movement_check true"
@@ -51,12 +52,13 @@ CHECK_OFF, CHECK_ON = "gamerule player_movement_check false", "gamerule player_m
 class MovementServer:
     """A fake server that joins like vanilla, answers Control's markers and the barrier.
 
-    It kicks the Bot called `flyer` once it has moved twice, as vanilla kicks a survival
-    player that floats, unless `kicks` is False.
+    It kicks each Bot named in `kicks` once it has moved twice (its hover), as vanilla kicks
+    a survival player that floats: by default `flyer` alone, at once, where vanilla waits 80
+    ticks.
     """
 
     seen: list[Packet] = field(default_factory=list)
-    kicks: bool = True
+    kicks: tuple[str, ...] = ("flyer",)
     stall_after: str | None = None
     """A command after which the fake leaves Control's next marker unanswered (a server that
     ran it but whose answer is late)."""
@@ -92,7 +94,7 @@ class MovementServer:
                     await peer.write(
                         peer.frame("minecraft:system_chat", content=text(token), overlay=False)
                     )
-            elif packet.name in MOVES and player == "flyer" and self.kicks:
+            elif packet.name in MOVES and player in self.kicks:
                 moves += 1
                 if moves == 2:  # _hover's second move
                     # Vanilla closes the connection after it; the fake reads on until the Bot
@@ -184,6 +186,11 @@ def tp(bot: str, at: tuple[float, float, float]) -> str:
 
 
 STEP = (CONTROL, "tick step 1")
+
+
+def first_open(transcript: Transcript) -> int:
+    """When the first Observation window opened."""
+    return next(m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN))
 
 
 # Registration
@@ -391,13 +398,36 @@ async def test_flying_hovers_the_creative_bot_first_then_waits_for_the_kick() ->
     assert window.sent == (
         ("creative_flyer", (2.5, -58.5, 2.5)),
         ("creative_flyer", (2.5, -58.4, 2.5)),
+        ("lander", (10.5, -58.5, 2.5)),
+        ("lander", (10.5, -58.4, 2.5)),
+        ("lander", (10.5, -60.0, 2.5)),
         ("flyer", (6.5, -58.5, 2.5)),
         ("flyer", (6.5, -58.4, 2.5)),
     )
+    # The lander floats across its barriers, and lands on the ground.
+    lander = [
+        e for e in transcript.events if e.bot == "lander" and e.t_ns >= first_open(transcript)
+    ]
+    hovered = [i for i, e in enumerate(lander) if e.packet.name in MOVES]
+    asked = [i for i, e in enumerate(lander) if e.packet.name == CLIENT_COMMAND]
+    between = [i for i in asked if hovered[1] < i < hovered[2]]
+    assert len(between) == movement.LANDER_BARRIERS * SYNC_REQUESTS
+    assert (lander[hovered[2]].packet.fields or {})["flags"] == 1  # on ground
     assert "gamemode creative creative_flyer" in window.before
     assert result.after[0] == "gamemode survival creative_flyer"
     kicks = [e for e in transcript.events if e.packet.name == "minecraft:disconnect"]
     assert [event.bot for event in kicks] == ["flyer"]
+
+
+@pytest.mark.asyncio
+async def test_flying_fails_a_server_that_kicks_a_short_hover() -> None:
+    # Review B of #277, S1: with only the kick compared, a server that kicks a survival
+    # player as soon as it floats matched vanilla, which waits 80 ticks. The lander floats
+    # for a few ticks, then lands, and must not be kicked.
+    transcript = Transcript(group_id="movement/flying", server="fake")
+    async with playing(MovementServer(kicks=("flyer", "lander")), transcript) as context:
+        with pytest.raises(ProtocolError, match="lander"):
+            await GROUPS["movement/flying"].run(context)
 
 
 @pytest.mark.asyncio
@@ -407,7 +437,9 @@ async def test_flying_reports_each_hover_move_in_the_air() -> None:
     flags = {
         (event.packet.fields or {})["flags"]
         for event in transcript.events
-        if event.packet.name in MOVES and event.bot in BOTS["movement/flying"]
+        if event.packet.name in MOVES
+        and event.bot in BOTS["movement/flying"]
+        and (event.packet.fields or {})["y"] != -60.0  # in the air, not the lander landing
     }
     assert flags == {0}  # not on ground
 
@@ -418,7 +450,7 @@ async def test_flying_undoes_its_settings_when_the_flyer_is_never_kicked(
 ) -> None:
     monkeypatch.setattr(movement, "KICK_TIMEOUT_S", 0.3)
     transcript = Transcript(group_id="movement/flying", server="fake")
-    async with playing(MovementServer(kicks=False), transcript) as context:
+    async with playing(MovementServer(kicks=()), transcript) as context:
         with pytest.raises(TimeoutError):
             await GROUPS["movement/flying"].run(context)
 

@@ -126,13 +126,17 @@ teleport number of every later teleport.
 | --- | --- | --- | --- | --- |
 | `movement/too-fast` | exact | none | A Bot moves 1, 5, 9, 11 and 20 blocks, each in one move. Then it sends two moves of 8 blocks in one tick, and six moves of 2 blocks in one tick. | none |
 | `movement/into-blocks` | tick-exact | none | A Bot walks into a wall, through a gap 1 block wide and 2 high, up onto a full block without jumping, and up onto a slab. The world steps one tick after each move. | none |
-| `movement/flying` | exact | none | A survival Bot and a creative Bot rise 1.5 blocks into the air and stay there, until the server kicks the survival one. The creative Bot rises first, so by then it has floated for longer. | none |
+| `movement/flying` | exact | none | Three Bots rise 1.5 blocks into the air. A creative Bot stays there. A survival Bot lands again after about 15 ticks, well before vanilla's limit of 80, and must not be kicked. Another survival Bot stays there until the server kicks it. The creative Bot rises first, so by then it has floated at least as long. | none |
 | `movement/before-teleport` | tick-exact | none | A Bot walks into a wall, then sends three more moves before it accepts the teleport the server answers with. | none |
 
 Vanilla checks a move's speed only while the world runs normally, not while it is frozen. So
 `movement/too-fast` runs in a running world. `movement/flying` also runs in a running world.
 Freezing it would not change when vanilla kicks, because vanilla counts the ticks a player floats
 either way.
+
+`movement/flying` compares the kick's message, not when it comes. A server that kicks a player
+after fewer than about 15 ticks in the air kicks the Bot that lands, and differs. A server that
+kicks later than vanilla, but within 10 seconds, does not differ.
 
 The moves of one tick are sent back to back, and the server must take them in one tick. Vanilla
 reads what has arrived at the start of each tick, so if a tick starts while the moves are still
