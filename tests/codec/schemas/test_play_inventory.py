@@ -31,6 +31,15 @@ def test_open_screen_is_the_window_its_menu_type_and_its_title() -> None:
     )
 
 
+def test_mount_screen_open_is_the_window_the_columns_and_an_int_entity_id() -> None:
+    # ClientboundMountScreenOpenPacket.write: writeContainerId, writeVarInt, writeInt.
+    fields = {"window_id": 2, "inventory_columns": 5, "entity_id": 300}
+    data = bytes([0x2A, 0x02, 0x05]) + struct.pack(">i", 300)
+    round_trip(CLIENTBOUND, "minecraft:mount_screen_open", fields, data)
+    paths = CODEC.entity_id_paths(State.PLAY, CLIENTBOUND, "minecraft:mount_screen_open")
+    assert paths == (("entity_id",),)
+
+
 def test_container_set_content_is_every_slot_then_the_cursor() -> None:
     fields = {"window_id": 0, "state_id": 300, "slot_data": [None, STONE], "carried_item": None}
     data = bytes([0x12, 0x00, 0xAC, 0x02, 0x02, 0x00]) + STONE_BYTES + bytes([0x00])
