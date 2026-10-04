@@ -96,6 +96,28 @@ sometimes went differently.
 - **Flag conflicts with an ADR.** A change that reverses a decision needs a
   new ADR. See [Design decisions](/design-decisions).
 
+## Releasing
+
+A release is a GitHub Release, made from a tag. mscts is not published to
+PyPI.
+
+1. Set `version` in `pyproject.toml`, run `uv lock`, and merge that into
+   `main`.
+2. Tag the merge and push the tag:
+
+   ```sh
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+The `release` workflow checks that the tag matches `version`, runs
+`mise run check`, and creates the Release with the wheel and source
+archive attached. If the tag doesn't match, it fails and creates nothing.
+
+To withdraw a release, delete both the Release and its tag on GitHub.
+`mise use -g uv pypi:ericbstie/mscts` then installs the newest release
+that is left.
+
 ## Inspecting the Target's libraries
 
 The research tool can disassemble a class from a library the Target uses:

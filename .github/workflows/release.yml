@@ -1,0 +1,37 @@
+# Publishes a GitHub Release when a v<version> tag is pushed (#273).
+# mise installs it with `mise use -g uv pypi:ericbstie/mscts`; nothing goes to PyPI.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: jdx/mise-action@v4
+        with:
+          install: false
+      - run: mise install
+      - run: mise run sync
+      - name: Check the tag names the version in pyproject.toml
+        run: |
+          expected="v$(uv version --short)"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match pyproject.toml, which says $expected: delete the tag, or bump version in pyproject.toml and tag again"
+            exit 1
+          fi
+      - name: Set Git identity for temporary test commits
+        run: |
+          git config --global user.name 'mscts CI'
+          git config --global user.email 'ci@example.invalid'
+      - run: mise run check
+      - run: uv build
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

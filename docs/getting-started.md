@@ -4,7 +4,19 @@ This page takes you from a clean checkout to a Report that compares vanilla
 26.3 with [Pumpkin](https://github.com/Pumpkin-MC/Pumpkin). It takes a few
 minutes, most of it spent downloading.
 
-mscts is not on PyPI yet. You run it from a checkout.
+This page runs mscts from a checkout. To install the `mscts` command
+instead, from the latest
+[GitHub Release](https://github.com/ericbstie/mscts/releases), run:
+
+```sh
+mise use -g uv pypi:ericbstie/mscts
+```
+
+Add `@<version>` for one release, such as `pypi:ericbstie/mscts@0.1.0`.
+uv installs Python 3.13 for it if you don't have it. With the installed
+command, type `mscts` where this page types `uv run mscts`, and install
+vanilla with `mscts adapter install vanilla`. Vanilla still requires
+Java 25, which `mise use -g java@temurin-25` installs.
 
 ## Requirements
 

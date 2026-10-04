@@ -1,6 +1,6 @@
 [project]
 name = "mscts"
-version = "0.0.0"
+version = "0.1.0"
 description = "Minecraft Server Compliancy Test Suite: differential parity and timing of custom servers against vanilla"
 readme = "README.md"
 requires-python = ">=3.13"
