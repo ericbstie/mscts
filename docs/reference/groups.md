@@ -81,7 +81,8 @@ player has none. They send their messages unsigned. A command with a message arg
 signatures, and vanilla then sends `player_chat` for it. The same command sent unsigned would
 get `disguised_chat`. A server that sends `disguised_chat` where vanilla sends `player_chat`
 still has every case compared: the window waits for either one, and the Report shows the
-difference.
+difference. A command's window also ends on a `system_chat`, for a server that sends the
+command's message as a system message.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

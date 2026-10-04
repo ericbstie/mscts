@@ -86,11 +86,14 @@ class ChatServer:
     back; `tellraw @a` is told to every player. A player who says a message longer than
     vanilla reads, or one with a `§`, is kicked, and so is one who is not in `operators` on
     its `chat.SPAM_MESSAGES`-th message. `left` holds when each player left, by name. With
-    `disguised`, what a player says goes out as `disguised_chat`, as Pumpkin sends it.
+    `disguised`, what a player says goes out as `disguised_chat`, as Pumpkin sends it; with
+    `commands_as_system`, a message command's goes out as `system_chat`, as Pumpkin sends
+    `/teammsg`.
     """
 
     operators: tuple[str, ...] = ()
     disguised: bool = False
+    commands_as_system: bool = False
     seen: list[Packet] = field(default_factory=list)
     left: dict[str, int] = field(default_factory=dict)
     _players: dict[str, Peer] = field(default_factory=dict, init=False)
@@ -117,6 +120,9 @@ class ChatServer:
                     await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS))
                 elif packet.name == CHAT_COMMAND:
                     await self._command(peer, str(fields["command"]))
+                elif packet.name == SIGNED and self.commands_as_system:
+                    command = str(fields["command"])
+                    await self._tell_all(lambda other, said=command: system_chat(other, said))
                 elif packet.name == SIGNED:
                     await self._say(peer, str(fields["command"]))
                 elif packet.name == CHAT:
@@ -411,3 +417,12 @@ async def test_a_server_that_sends_disguised_chat_still_gets_every_window(group_
         return [[(s.bot, s.text) for s in window.said] for window in result.windows]
 
     assert cases(disguised) == cases(vanilla)
+
+
+@pytest.mark.asyncio
+async def test_a_server_that_says_a_message_command_as_a_system_message_gets_every_window() -> None:
+    # Pumpkin answers /teammsg with system_chat: a command's window ends on that too.
+    server = ChatServer(operators=operators("chat/commands"), commands_as_system=True)
+    result = await play("chat/commands", server)
+
+    assert len(result.windows) == len((await play("chat/commands")).windows)

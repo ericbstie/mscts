@@ -44,6 +44,10 @@ _SAID = (_PLAYER_CHAT, "minecraft:disguised_chat")
 """What a window waits for when a player says something: vanilla sends `player_chat`. A
 server that sends `disguised_chat` instead ends the window too, so the Report shows the
 difference and the Group goes on (#270)."""
+
+_COMMAND_SAID = (*_SAID, _SYSTEM_CHAT)
+"""What a window waits for when a player runs a message command: what a player says, or a
+system message, as Pumpkin sends `/teammsg`. The listener hears nothing else meanwhile."""
 _DISCONNECT = "minecraft:disconnect"
 
 
@@ -106,15 +110,15 @@ class _Command:
 
 
 _COMMANDS = (
-    _Command("me waves to everyone", signed=True, arrives_as=_SAID),
-    _Command("say Hello from the speaker", signed=True, arrives_as=_SAID),
-    _Command(f"msg {LISTENER} This is a whisper", signed=True, arrives_as=_SAID),
+    _Command("me waves to everyone", signed=True, arrives_as=_COMMAND_SAID),
+    _Command("say Hello from the speaker", signed=True, arrives_as=_COMMAND_SAID),
+    _Command(f"msg {LISTENER} This is a whisper", signed=True, arrives_as=_COMMAND_SAID),
     _Command(
         'tellraw @a {"text":"Formatted text","color":"gold","bold":true}',
         signed=False,
         arrives_as=(_SYSTEM_CHAT,),
     ),
-    _Command("teammsg Hello, team", signed=True, arrives_as=_SAID),
+    _Command("teammsg Hello, team", signed=True, arrives_as=_COMMAND_SAID),
 )
 """What the speaker runs, each in a window of its own."""
 
