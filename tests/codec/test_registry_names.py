@@ -79,3 +79,30 @@ def test_consume_effect_names_are_the_registry_in_protocol_id_order() -> None:
         "minecraft:teleport_randomly",
         "minecraft:play_sound",
     )
+
+
+def test_item_names_are_the_registry_in_protocol_id_order() -> None:
+    # A stack's `item` (#28): the reference tier saw stone as 1 and a diamond sword as 1050.
+    names = registry_names(TARGET.minecraft_version, "minecraft:item")
+    assert len(names) == 1658
+    assert names[0] == "minecraft:air"
+    assert names[1] == "minecraft:stone"
+    assert names[1050] == "minecraft:diamond_sword"
+    assert len(set(names)) == len(names)
+
+
+def test_menu_names_are_the_registry_in_protocol_id_order() -> None:
+    # An open_screen's `window_type` (#28): a single chest opened as 2.
+    names = registry_names(TARGET.minecraft_version, "minecraft:menu")
+    assert names[:7] == (
+        "minecraft:generic_9x1",
+        "minecraft:generic_9x2",
+        "minecraft:generic_9x3",
+        "minecraft:generic_9x4",
+        "minecraft:generic_9x5",
+        "minecraft:generic_9x6",
+        "minecraft:generic_3x3",
+    )
+    assert names[16] == "minecraft:hopper"
+    assert names[20] == "minecraft:shulker_box"
+    assert len(names) == 25

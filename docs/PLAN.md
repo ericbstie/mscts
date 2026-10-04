@@ -78,11 +78,12 @@ test needs it:
 | `codec/schemas/play/inventory.py` | the container packets' schemas: `open_screen`, `mount_screen_open` (its entity id an Int), `container_set_content`, `container_set_slot`, `container_set_data`, `container_close` (both ways), `set_cursor_item`, `set_player_inventory`, and the client's `container_click` (its changed slots each a `HASHED_SLOT`, at most 128) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
-| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type and slot display names in protocol id order) and `block_states.json` (how many block states there are). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order) and `block_states.json` (how many block states there are). Committed, regenerated and checked by `mise run regen:packets` |
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
+| `inventory.py` | `InventoryTracker`: the player's inventory and the open container (`Inventory`, `Stack`) |
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read) |
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
@@ -530,6 +531,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     chunks: frozenset[tuple[int, int]]  # (property, #33) the chunks (x, z) its server sent
                                     # and has not told it to forget, in this level (Replies.chunks;
                                     # a copy)
+    inventory: Inventory            # (property, #28) the player's inventory and the open
+                                    # container: a snapshot (Replies.inventory; below)
     @classmethod
     async def connect(cls, endpoint: Endpoint, target: Target, *, name: str,
                       transcript: Transcript, timeout_s: float) -> "Bot": ...  # Codec.for_target
@@ -569,6 +572,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def attack(self, entity: Entity) -> None: ...                # attack, + punch
     async def interact(self, entity: Entity, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
                        *, off_hand: bool = False) -> None: ...         # interact
+    async def drop(self, *, all: bool = False) -> None: ...            # player_action DROP_ITEM / DROP_ALL_ITEMS
+    async def close_container(self) -> None: ...                       # container_close, outside a tick
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -659,6 +664,13 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # encodes it, sneaking = the sneak key held), no punch (MultiPlayerGameMode.interact).
     # interact refuses a NaN or infinite `at` (ValueError, nothing sent). Like place, it does
     # not go on to use_item when the use does nothing.
+    # drop (#28): one client tick, as above: Inventory.removeFromSelected on the held slot
+    # (one item, or the stack with all=True), then player_action DROP_ITEM (5) or
+    # DROP_ALL_ITEMS (4) at 0 0 0, face down, sequence 0, sent with an empty hand too
+    # (MultiPlayerGameMode.dropItem); refused with a container open (ProtocolError: the client
+    # reads the drop key only with no screen). close_container (#28): back to the inventory menu,
+    # then container_close with the old menu's window id (0 with none open: the inventory
+    # screen), sent at once and not in a tick (LocalPlayer.closeContainer).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
@@ -696,6 +708,45 @@ class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each loo
     # nearest to it (squared distance). LookupError: none of the type (the message counts the
     # types there are), two or more without near, or two or more equally near: which comes
     # first would depend on the server's ids.
+
+# inventory.py (#28): the player's inventory and the open container, as ClientPacketListener
+# keeps them (docs/research/2026-10-04-bot-inventory.md).
+PLAYER_INDEXES = 43                 # Inventory's indexes: hotbar 0-8, 9-35, feet..head 36-39,
+                                    # off hand 40, body 41, saddle 42
+@frozen
+class Stack:                        # a stack of items, as the server last described it
+    item: str                       # "minecraft:stone"; "#<id>" for an id outside the registry
+    count: int
+    components: Mapping[str, object] = {"added": [], "removed": []}  # the patch, as decoded
+
+@frozen
+class Inventory:                    # Bot.inventory: one moment's snapshot
+    window_id: int                  # the open menu's; 0 for the player's own inventory menu
+    menu: str | None                # "minecraft:generic_9x3"; None for the player's own; a
+                                    # mount's entity type ("minecraft:horse") for its inventory
+    slots: tuple[Stack | None, ...] # the open menu's slots, by slot number (what a click names)
+    carried: Stack | None           # the cursor's stack
+    state_id: int                   # the last one the server sent for the open menu
+    player: tuple[Stack | None, ...]  # by Inventory index, PLAYER_INDEXES of them
+
+class InventoryTracker:
+    def follow(
+        self, name: str, fields: Mapping[str, object], entities: Mapping[int, Entity] | None = None
+    ) -> None: ...
+    # container_set_content / container_set_slot: window 0 → the inventory menu (even with a
+    # container open), the open menu's id → that menu, any other id or a slot the menu does not
+    # have → nothing. set_cursor_item → the open menu's carried stack; set_player_inventory →
+    # an Inventory index (out of range: nothing); open_screen → a new open menu;
+    # mount_screen_open → a new open menu if `entities` holds the entity as a horse (saddle,
+    # body, 3 rows of the columns) or a nautilus (saddle, body), else nothing; container_close
+    # → the inventory menu again. Every menu lays out its player slots as the Inventory: the
+    # inventory menu (46 slots), and every other menu its own slots (javap of its constructor),
+    # then the 27 and the hotbar; the crafter's result comes last, and the lectern has only
+    # its book. The server sends inventory changes through the open window only.
+    def view(self) -> Inventory: ...
+    def clear(self) -> None: ...      # a new player: nothing anywhere, no container open
+    def close(self) -> None: ...      # back to the inventory menu (Player.closeContainer)
+    def remove_from_selected(self, selected: int, *, whole: bool) -> None: ...  # one, or the stack
 
 def java_round(value: float) -> int: ...  # Java's Math.round: half up, exact (VecDeltaCodec, LpVec3)
 
@@ -736,7 +787,9 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # kept, so the next tick sends 0 if it differs; play set_held_slot (0-8) → selected, sent back on the next tick
     # (no answer); every play packet → Replies.tracker (EntityTracker), cleared in place
     # (EntityTracker.clear, so a kept Bot.entities view follows) on play login or respawn into
-    # another dimension (a new ClientLevel; no answer);
+    # another dimension (a new ClientLevel; no answer); every play packet → Replies.inventory
+    # (InventoryTracker, with Replies.tracker's entities), cleared on play login or any
+    # respawn (a new LocalPlayer; no answer);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join and respawn, not Replies, send player_loaded.

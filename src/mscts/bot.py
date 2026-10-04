@@ -18,6 +18,7 @@ from mscts.codec.schemas.configuration import CLIENT_INFORMATION
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
 from mscts.entities import Entities, Entity, EntityTracker, java_round
+from mscts.inventory import Inventory, InventoryTracker
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
 from mscts.transcript import Mark, Transcript
@@ -163,7 +164,8 @@ type _Send = tuple[str, dict[str, object]]
 """A packet to send: its name and fields."""
 
 
-_START_DESTROY_BLOCK, _ABORT_DESTROY_BLOCK, _STOP_DESTROY_BLOCK, _RELEASE_USE_ITEM = 0, 2, 3, 6
+_START_DESTROY_BLOCK, _ABORT_DESTROY_BLOCK, _STOP_DESTROY_BLOCK = 0, 2, 3
+_DROP_ALL_ITEMS, _DROP_ITEM, _RELEASE_USE_ITEM = 4, 5, 6
 """`ServerboundPlayerActionPacket.Action` ordinals (26.3 javap; the wiki misses one at 1)."""
 
 _MAIN_HAND, _OFF_HAND = 0, 1
@@ -458,7 +460,9 @@ class Replies:
     new level, so the tracker forgets every entity (cleared in place, so a view kept from
     before shows the new level). A chunk joins `chunks` with `level_chunk_with_light` and
     leaves it with `forget_level_chunk`; a new level starts with none, as its
-    `ClientChunkCache` does.
+    `ClientChunkCache` does. Every play packet also goes to `inventory`, which follows the
+    inventory packets; a login or any respawn brings a new player, with nothing in its
+    inventory and no container open.
 
     Attributes:
         saw_disconnect: Whether the server's disconnect has arrived, taken or not.
@@ -470,6 +474,7 @@ class Replies:
         tracker: The entities the server has told the Bot about, in this level.
         chunks: The chunks (x, z) the server has sent in this level and not told the Bot to
             forget.
+        inventory: The player's inventory and the open container.
     """
 
     def __init__(self) -> None:
@@ -481,6 +486,7 @@ class Replies:
         self.interaction = _Interaction()
         self.tracker = EntityTracker()
         self.chunks: set[tuple[int, int]] = set()
+        self.inventory = InventoryTracker()
         self._dimension: str | None = None
 
     async def __call__(self, connection: Connection, packet: Packet) -> None:
@@ -537,7 +543,7 @@ class Replies:
                 pass
 
     def _track(self, packet: Packet, fields: Mapping[str, object]) -> None:
-        """Give a play packet to `tracker`, which follows the entity packets among them.
+        """Give a play packet to `tracker` and `inventory`, which follow the packets they track.
 
         A chunk packet adds its chunk to `chunks`, or drops it. A chunk that does not decode
         never comes here: the reader stops at it, and the Bot's next read raises CodecError.
@@ -545,6 +551,7 @@ class Replies:
         if packet.state is not State.PLAY:
             return
         self.tracker.follow(packet.name, fields)
+        self.inventory.follow(packet.name, fields, self.tracker.entities)
         if packet.name in _CHUNK_ARRIVES_OR_GOES:
             at = (_field(fields, "chunk_x", int), _field(fields, "chunk_z", int))
             if packet.name == _CHUNK_ARRIVES:
@@ -561,7 +568,8 @@ class Replies:
         keys and sprinting last reported, and one into another dimension brings a new level,
         whose block-change sequence starts at 0 (`ClientPacketListener.handleLogin`,
         `handleRespawn`). A respawn's new player selects slot 0 (a new `Inventory`), while the
-        `MultiPlayerGameMode` keeps the slot last sent.
+        `MultiPlayerGameMode` keeps the slot last sent. Either new player holds nothing, with
+        no container open.
         """
         dimension = _field(fields, "dimension_name", str)
         if name == "minecraft:login":
@@ -570,6 +578,7 @@ class Replies:
             self.interaction = _Interaction()
             self.tracker.clear()
             self.chunks.clear()
+            self.inventory.clear()
         else:
             old = self.reported
             kept = _field(fields, "data_kept", int) & _KEEP_ENTITY_DATA
@@ -577,6 +586,7 @@ class Replies:
                 _Reported(keys=old.keys, sprinting=old.sprinting) if kept else _Reported()
             )
             self.interaction.selected_slot = 0
+            self.inventory.clear()
             if dimension != self._dimension:
                 self.interaction.sequence = 0
                 self.tracker.clear()
@@ -710,6 +720,17 @@ class Bot:
         chunks `join` or `sync` took.
         """
         return frozenset(self._replies.chunks)
+
+    @property
+    def inventory(self) -> Inventory:
+        """The player's inventory and the open container, as the vanilla client would show them.
+
+        A snapshot: each read is the inventory as the Bot has it then. The Bot changes slots
+        itself only for its own `drop`. What other actions change, such as a placed block,
+        arrives from the server: it changes only as the Bot reads packets, and after `sync` it
+        holds everything the server sent before (docs/research/2026-10-04-bot-inventory.md).
+        """
+        return self._replies.inventory.view()
 
     async def status(self) -> Mapping[str, object]:
         """Ask for the server's status, and return the parsed status JSON.
@@ -1157,6 +1178,43 @@ class Bot:
         """
         self._require_play("release_item")
         await self._tick((_player_action(_RELEASE_USE_ITEM, (0, 0, 0), Face.DOWN, 0),))
+
+    async def close_container(self) -> None:
+        """Close the open container, as the player closes its screen.
+
+        `container_close` with the open menu's window id, sent at once rather than in a tick,
+        as the client sends it when the screen closes (`LocalPlayer.closeContainer`). With no
+        container open it sends window 0: the player's own inventory screen closing.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("close_container")
+        window_id = self._replies.inventory.view().window_id
+        self._replies.inventory.close()  # at once, as the client does, before what the send lets in
+        async with self._operation(self._timeout_s):
+            await self._connection.send("minecraft:container_close", window_id=window_id)
+
+    async def drop(self, *, all: bool = False) -> None:  # noqa: A002 - #28: bot.drop(all=True)
+        """Drop one of the held items (Q), or the whole stack (Ctrl+Q), in one client tick.
+
+        The client takes the item from the held stack itself, then sends `player_action`
+        DROP_ITEM (or DROP_ALL_ITEMS) at the origin facing down, with sequence 0
+        (`MultiPlayerGameMode.dropItem`); it sends that with an empty hand too. One call is one
+        tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play, or a container is open: the client reads
+                the drop key only with no screen open.
+        """
+        self._require_play("drop")
+        if self._replies.inventory.view().window_id != 0:
+            msg = "drop needs no container open: call close_container first"
+            raise ProtocolError(msg)
+        selected = self._replies.interaction.selected_slot
+        self._replies.inventory.remove_from_selected(selected, whole=all)
+        action = _DROP_ALL_ITEMS if all else _DROP_ITEM
+        await self._tick((_player_action(action, (0, 0, 0), Face.DOWN, 0),))
 
     async def attack(self, entity: Entity) -> None:
         """Hit `entity` with the held item, in one client tick.

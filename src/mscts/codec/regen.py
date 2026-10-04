@@ -32,12 +32,15 @@ REGISTRY_NAME_LISTS = (
     "minecraft:consume_effect_type",
     "minecraft:data_component_type",
     "minecraft:entity_type",
+    "minecraft:item",
+    "minecraft:menu",
     "minecraft:slot_display",
 )
 """The registries whose entry names are committed: the data component table and the consume
 effect dispatch (`codec/components.py`), the command argument parsers (#17), the player's
-entity type (the Comparison's entity renumbering, #21) and a recipe's slot display (#106) take
-their ids from these lists, never from source."""
+entity type (the Comparison's entity renumbering, #21), a stack's item and an open screen's menu
+(the Bot's inventory, #28) and a recipe's slot display (#106) take their ids from these lists,
+never from source."""
 
 
 class RegenError(RuntimeError):
