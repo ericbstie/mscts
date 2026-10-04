@@ -1442,7 +1442,8 @@ def judge(group: Group, reference: Transcript | GroupError,
     # none on the Reference, whatever its cause's type, #222) is `mismatch`: a `failed`
     # Divergence first, then what compare finds in the Transcripts so far (e.g. the
     # undecodable frame, by payload), whatever the Masks. CommandMissing on the Candidate
-    # (it lacks a command Control needs) is `blocked`, detail "needs /<root>". If compare
+    # (it lacks a command Control needs, in setup or from an undo callback) is that
+    # `mismatch` too, its `failed` Divergence "needs /<root>" (#284). If compare
     # raised (any Exception, so the Run goes on to the next Group, #174), compare(reference,
     # reference, masks) decides: it does not raise, so the Candidate's data did, and it is
     # `mismatch` led by a `failed` Divergence from no Bot, "the Comparison failed:
@@ -2411,7 +2412,7 @@ concurrent joins, chunk throughput), and process metrics (RSS, CPU).
 **M8 — Reports.** JSON plus a Markdown/HTML summary: a catalogue of
 Divergences grouped by mechanic, each linked to its reproducible
 Group, with no declared deviations (ADR-0006). Also a compliance
-score, `blocked` counts per missing command, and history across Candidate
+score, failure counts per missing command, and history across Candidate
 versions.
 
 **M3a — Installs (ADR-0008).**

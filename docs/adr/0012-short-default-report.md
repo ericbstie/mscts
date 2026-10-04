@@ -111,6 +111,21 @@ Its Measurements and time are the Reference's play alone. Neither side
 is played when the Reference is the side left frozen or unsettled; the
 Group is then an `error`.
 
+## Amendment (#284, 2026-10-04)
+
+A Candidate that lacks a command Control sends is no longer `blocked`.
+Before, such a Group was one `Not tested: needs /tick` line, and the
+Comparison of what the Candidate had played was thrown away. That lost
+gameplay differences when the command came last, such as `kill` from
+the `blocks/*` undo stack, after every window.
+
+Now it is a Candidate failure like any other, as the #262 amendment
+says. It is a `mismatch` led by a `failed` Divergence naming the
+command, and its line reads `Candidate failed: needs /tick`. It keeps
+what the Comparison found, and the Candidate fails each test case of
+the Reference's play. A command missing on the Reference is still an
+`error`. `blocked` now means only that a prerequisite did not pass.
+
 ## Consequences
 
 Network traffic remains a distinct kind of Divergence and remains

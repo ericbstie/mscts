@@ -83,7 +83,7 @@ class GroupLine:
         group_id: The Group.
         result: FAIL if the Candidate failed or a Bot's packet count differed, else
             NOT_TESTED if it was blocked, else ERROR, which is left out of the score.
-        reasons: Each distinct reason, joined by "; ", such as `Not tested: needs /tick`.
+        reasons: Each distinct reason, joined by "; ", such as `Candidate failed: needs /tick`.
     """
 
     group_id: str

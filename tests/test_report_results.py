@@ -81,8 +81,11 @@ FAILED = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected", "")
 def test_a_candidate_failure_fails_its_group_and_each_of_its_test_cases() -> None:
     verdict = replace(_verdict(FAILED, group_id="join/basic"), test_cases=("a",))
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="needs /tick")
-    reasons = "Candidate failed: disconnected; Error: vanilla stopped; Not tested: needs /tick"
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    reasons = (
+        "Candidate failed: disconnected; Error: vanilla stopped; "
+        "Not tested: prerequisite x was mismatch"
+    )
     assert report_lines(_report(_result(verdict, error, blocked))) == (
         CaseResult("join/basic", "a", LineResult.FAIL),
         GroupLine("join/basic", LineResult.FAIL, reasons),
@@ -118,7 +121,7 @@ def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line()
 
 def test_a_group_that_was_not_tested_and_errored_is_not_tested() -> None:
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="needs /tick")
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
     [line] = report_lines(_report(_result(error, blocked)))
     assert line.result is LineResult.NOT_TESTED
 
@@ -144,7 +147,7 @@ def test_totals_count_each_result_and_score_the_passes_among_what_was_scored() -
     lines = [
         *[CaseResult("g/a", str(n), LineResult.PASS) for n in range(7)],
         CaseResult("g/a", "x", LineResult.FAIL),
-        GroupLine("g/b", LineResult.NOT_TESTED, "Not tested: needs /tick"),
+        GroupLine("g/b", LineResult.NOT_TESTED, "Not tested: prerequisite x was mismatch"),
         GroupLine("g/c", LineResult.ERROR, "Error: vanilla stopped"),
     ]
     result = totals(lines)

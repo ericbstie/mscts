@@ -105,7 +105,8 @@ of the Group that is compared.
 `await context.control.run("setblock 0 -60 0 minecraft:stone")` runs a
 command and waits until the server has answered it. What the server sends to
 it is recorded but never compared. If the Candidate lacks the
-command, the Group is blocked, and the Report names the command.
+command, the Candidate fails the Group, and its line names the command
+(`Candidate failed: needs /tick`).
 
 `run` returns the chat messages the server sent Control while the command
 ran, as `minecraft:system_chat` packets. Usually that is the command's
@@ -311,8 +312,8 @@ computes light separately from the tick, so a light update can arrive on
 a later tick than the change that caused it. A stepped tick also runs
 random ticks, and each server picks its own blocks to tick, so turn them
 off while the Group steps (`gamerule random_tick_speed 0`) and back on
-(`3`) when it ends. A Candidate without `/tick` makes the Group blocked,
-and the Report names the command.
+(`3`) when it ends. A Candidate without `/tick` fails the Group, and its
+line names the command.
 
 `statistical` Groups are planned. They will run many times and compare
 distributions, for random mechanics such as mob spawning.

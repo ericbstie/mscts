@@ -6,6 +6,7 @@ and for the Reference itself failing.
 """
 
 import contextlib
+import dataclasses
 import json
 import logging
 from collections.abc import Callable, Sequence
@@ -15,18 +16,20 @@ from pathlib import Path
 import pytest
 
 import mscts.run as run_module
-from mscts.codec.packets import Codec
+from mscts.codec.packets import Codec, Packet
 from mscts.codec.wire import Writer
 from mscts.compare import Divergence, Mask, Outcome, Verdict, compare
 from mscts.group import GROUPS, CommandMissing, Group, GroupContext
 from mscts.groups import status
 from mscts.net import Endpoint, ProtocolError
+from mscts.report import report_lines, totals
 from mscts.run import GroupError, Server, judge, run_group, run_results
 from mscts.settle import PlayersStillOnline
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.compare.build import divergence
+from tests.compare.build import divergence, packet, transcript
 from tests.net.fakes import VANILLA_STATUS, Handler, Peer, free_port, serve, status_server
+from tests.test_report import _report, _result
 
 BASIC = Group(id="status/basic", run=status.basic)
 TIMEOUT_S = 0.2
@@ -373,13 +376,110 @@ NEEDS_TICK = Group(id="test/needs-tick", run=_needs_tick)
 
 
 @pytest.mark.asyncio
-async def test_a_command_the_candidate_does_not_have_blocks_the_group() -> None:
+async def test_a_command_the_candidate_does_not_have_fails_the_group_needing_it() -> None:
     candidate = await _play(NEEDS_TICK, None)
     assert isinstance(candidate, GroupError)
 
     verdict = judge(NEEDS_TICK, Transcript(NEEDS_TICK.id, "vanilla"), candidate)
 
-    assert verdict == Verdict("test/needs-tick", Outcome.BLOCKED, detail="needs /tick")
+    assert verdict == Verdict(
+        "test/needs-tick",
+        Outcome.MISMATCH,
+        divergences=(_failed("needs /tick", bot=""),),
+        detail="the Candidate failed: needs /tick",
+    )
+
+
+def _block(x: int, state: int) -> Packet:
+    position = {"x": x, "y": -60, "z": 0}
+    return packet("minecraft:block_update", fields={"pos": position, "state": state})
+
+
+SETS_BLOCKS = transcript(*(("alice", _block(x, 1)) for x in range(4)), group_id=NEEDS_TICK.id)
+"""The Reference's play of a Group of 4 test cases: 4 blocks set."""
+
+EVERY_VALUE_WRONG = transcript(
+    *(
+        (
+            "alice",
+            packet("minecraft:block_update", fields={"pos": {"x": x, "y": 0, "z": 9}, "state": 7}),
+        )
+        for x in range(100, 104)
+    ),
+    server="pumpkin",
+    group_id=NEEDS_TICK.id,
+)
+"""The Candidate's play of it, with every value wrong."""
+
+PASSING = Group(id="test/passing", run=_needs_tick)
+"""A Group the Candidate passes, played before it in the Run."""
+
+
+def _missing(transcript: Transcript, root: str) -> GroupError:
+    """The GroupError of a Candidate that recorded `transcript`, then lacked command `root`."""
+    missing = CommandMissing(root)
+    error = GroupError(transcript, f"CommandMissing: {missing}")
+    error.__cause__ = missing  # as `raise ... from` sets it in run_group
+    return error
+
+
+def _score(verdict: Verdict) -> tuple[float | None, int]:
+    """The Score and failed lines of a Run of a passing Group, then `verdict`."""
+    played = dataclasses.replace(SETS_BLOCKS, group_id=PASSING.id)
+    passing = judge(PASSING, played, played)
+    counted = totals(report_lines(_report(_result(passing), _result(verdict))))
+    return counted.score, counted.failed
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        _missing(Transcript(NEEDS_TICK.id, "pumpkin"), "tick"),
+        _missing(EVERY_VALUE_WRONG, "kill"),
+    ],
+    ids=["setup", "teardown"],
+)
+def test_a_candidate_without_a_command_scores_no_higher_than_sending_every_value_wrong(
+    candidate: GroupError,
+) -> None:
+    # Audit 2026-10-04 H1 (#284): `blocked` failed one line where every value wrong fails 4.
+    wrong = judge(NEEDS_TICK, SETS_BLOCKS, EVERY_VALUE_WRONG)
+
+    missing = judge(NEEDS_TICK, SETS_BLOCKS, candidate)
+
+    (missing_score, missing_failed), (wrong_score, wrong_failed) = _score(missing), _score(wrong)
+    assert missing_score is not None
+    assert wrong_score is not None
+    assert missing_score <= wrong_score
+    assert missing_failed > wrong_failed, "every test case, and the Group's own line"
+
+
+def test_a_command_missing_after_the_windows_keeps_the_comparisons_divergences() -> None:
+    # Audit H1: blocks/* send `kill` only from the undo stack, after every window.
+    wrong = judge(NEEDS_TICK, SETS_BLOCKS, EVERY_VALUE_WRONG)
+
+    verdict = judge(NEEDS_TICK, SETS_BLOCKS, _missing(EVERY_VALUE_WRONG, "kill"))
+
+    assert verdict.divergences == (_failed("needs /kill", bot=""), *wrong.divergences)
+    assert verdict.detail == "the Candidate failed: needs /kill"
+
+
+@pytest.mark.asyncio
+async def test_a_command_missing_from_an_undo_callback_is_the_groups_cause() -> None:
+    # blocks._frozen pushes `kill @e[type=minecraft:item]` on its undo stack.
+    async def kill() -> None:
+        root = "kill"
+        raise CommandMissing(root)
+
+    async def undoes(context: GroupContext) -> None:
+        del context
+        async with contextlib.AsyncExitStack() as undo:
+            undo.push_async_callback(kill)
+
+    candidate = await _play(Group(id="test/undoes", run=undoes), None)
+
+    assert isinstance(candidate, GroupError)
+    assert isinstance(candidate.__cause__, CommandMissing)
 
 
 @pytest.mark.asyncio

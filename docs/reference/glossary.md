@@ -93,8 +93,8 @@ The channel used to set up Fixtures. By default it is an
 `control`, which every Adapter makes an operator. It runs each command,
 then a marker command, and returns once the server has answered the
 marker and the Bot has passed the barrier. What it receives is recorded but never
-compared, and a Candidate that lacks one of its commands makes the Group
-`blocked`. Control can leave (its Bot closes), and its next command
+compared, and a Candidate without one of its commands fails the Group
+(`needs /tick`). Control can leave (its Bot closes), and its next command
 joins a new one.
 
 ### Fixture
@@ -244,8 +244,8 @@ the Candidate and not on the Reference is a `mismatch`, led by a
 `failed` Divergence that says what happened, never an `error`. That
 holds whatever the failure: a frame that does not decode, an answer
 that breaks the protocol, no answer in time, a connection closed, reset
-or refused, players still online from the previous Group, or a value the
-Group does not expect. The Score leaves `error` out, so a
+or refused, a command Control needs missing, players still online from
+the previous Group, or a value the Group does not expect. The Score leaves `error` out, so a
 Candidate must never score better by failing. The same holds while
 mscts waits for the previous Group's players to leave, and after a
 Group left the Candidate's world frozen. mscts then plays the Group on

@@ -11,7 +11,7 @@ import pytest
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Codec, Direction, Packet, State
-from mscts.compare import Outcome
+from mscts.compare import Outcome, compare
 from mscts.group import CommandMissing, Group, GroupContext
 from mscts.net import ProtocolError
 from mscts.run import GroupError, judge, run_group
@@ -467,7 +467,7 @@ async def test_a_candidate_that_never_answers_the_marker_fails_the_group() -> No
 
 
 @pytest.mark.asyncio
-async def test_a_candidate_without_the_command_blocks_the_group() -> None:
+async def test_a_candidate_without_the_command_fails_the_group_needing_it() -> None:
     async with serve(CODEC, ControlServer()) as endpoint:
         reference = await run_group(SETS_A_BLOCK, endpoint, server="vanilla", timeout_s=2.0)
     async with serve(CODEC, ControlServer(commands=tree("tellraw"))) as endpoint:
@@ -476,4 +476,11 @@ async def test_a_candidate_without_the_command_blocks_the_group() -> None:
 
     verdict = judge(SETS_A_BLOCK, reference, caught.value)
 
-    assert (verdict.outcome, verdict.detail) == (Outcome.BLOCKED, "needs /setblock"), verdict
+    assert (verdict.outcome, verdict.detail) == (
+        Outcome.MISMATCH,
+        "the Candidate failed: needs /setblock",
+    ), verdict
+    failed = verdict.divergences[0]
+    assert (failed.kind, failed.candidate) == ("failed", "needs /setblock"), verdict
+    own = compare(reference, reference, SETS_A_BLOCK.masks).test_cases
+    assert set(own) <= set(verdict.test_cases)
