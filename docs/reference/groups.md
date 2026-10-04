@@ -132,7 +132,9 @@ teleport number of every later teleport.
 Vanilla checks a move's speed only while the world runs normally, not while it is frozen. So
 `movement/too-fast` runs in a running world. `movement/flying` also runs in a running world.
 Freezing it would not change when vanilla kicks, because vanilla counts the ticks a player floats
-either way.
+either way. In `movement/into-blocks` and `movement/before-teleport`, vanilla checks speed again
+for the packets it reads just after each step. None of their moves arrives then, and none is
+long enough to be refused.
 
 `movement/flying` compares the kick's message, not when it comes. A server that kicks a player
 after fewer than about 15 ticks in the air kicks the Bot that lands, and differs. A server that
@@ -140,8 +142,10 @@ kicks later than vanilla, but within 10 seconds, does not differ.
 
 The moves of one tick are sent back to back, and the server must take them in one tick. Vanilla
 reads what has arrived at the start of each tick, so if a tick starts while the moves are still
-arriving, the server takes them in two ticks and refuses none. This is rare, because they are
-sent within a fraction of a millisecond.
+arriving, the server takes them in two ticks and refuses none. This is rare. Each window opens by
+waiting for the server's answer to a request, which it sends at the start of a tick. The moves go
+out just after it, so they arrive about 50 ms before the server next reads. They are also sent
+within a millisecond.
 
 ## Planned
 
