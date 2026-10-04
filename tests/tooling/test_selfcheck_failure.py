@@ -10,6 +10,7 @@ from support.selfcheck import (
     MAX_DIVERGENCES,
     MAX_VERDICTS,
     describe_unmatched,
+    keep_timeline,
     keep_timelines_and_describe,
 )
 
@@ -114,6 +115,16 @@ def test_a_failure_keeps_each_unmatched_plays_timelines_and_names_their_file(
         f"  {kept}",
     ]
     assert list(tmp_path.iterdir()) == [kept], "a play that matched keeps nothing"
+
+
+def test_a_plays_timelines_are_kept_in_one_file_in_a_folder_it_makes(tmp_path: Path) -> None:
+    # #238: a test that compares two plays itself, with no Verdict, keeps them too.
+    one = transcript(OBSERVE_OPEN, group_id="probe/join-until", server="vanilla")
+    other = transcript(OBSERVE_CLOSE, group_id="probe/join-until", server="vanilla")
+    path = tmp_path / "timelines" / "probe-join-until.3.txt"
+
+    assert keep_timeline((one, other), path) == path
+    assert path.read_text() == f"{timeline(one)}\n\n{timeline(other)}\n"
 
 
 def test_verdicts_past_the_first_few_are_counted_not_listed() -> None:

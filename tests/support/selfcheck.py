@@ -17,6 +17,7 @@ from mscts.group import GROUPS, Group
 from mscts.run import RunResult
 from mscts.spec import ServerSpec
 from mscts.timeline import timeline
+from mscts.transcript import Transcript
 
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
@@ -84,10 +85,19 @@ def _keep_timelines(result: RunResult, where: Path) -> list[Path]:
     for group in result.results:
         for repetition, transcripts in enumerate(group.transcripts, start=1):
             if transcripts is not None:
-                path = where / f"{group.group_id.replace('/', '-')}.{repetition}.txt"
-                path.write_text("\n\n".join(timeline(t) for t in transcripts) + "\n")
-                kept.append(path)
+                name = f"{group.group_id.replace('/', '-')}.{repetition}.txt"
+                kept.append(keep_timeline(transcripts, where / name))
     return kept
+
+
+def keep_timeline(transcripts: Sequence[Transcript], path: Path) -> Path:
+    """Write one play's timelines to `path`, one Transcript after another; return `path`.
+
+    The folder `path` is in is made if it is not there.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n\n".join(timeline(transcript) for transcript in transcripts) + "\n")
+    return path
 
 
 def _describe(verdict: Verdict) -> list[str]:
