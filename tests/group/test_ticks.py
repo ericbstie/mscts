@@ -1,6 +1,7 @@
 """Tick-exact Groups: `freeze` and `step` against a fake server, and the Marks they leave."""
 
 import pytest
+from support.probe import REPEATER_STEPPED
 
 from mscts.codec.packets import Direction
 from mscts.compare import TICK_MARK, Outcome
@@ -214,3 +215,45 @@ async def test_a_server_that_does_not_unfreeze_fails_the_group() -> None:
     reference = await played(ControlServer())
     assert judge(PROBE, failed, reference).outcome is Outcome.ERROR
     assert steps(commands_sent(stuck.seen)).count("tick unfreeze") == 1
+
+
+PROBE_TREE = tree("tp", "tick", "gamerule", "setblock", "fill", "tellraw")
+RANDOM_TICKS_OFF, RANDOM_TICKS_ON = "gamerule random_tick_speed 0", "gamerule random_tick_speed 3"
+
+
+@pytest.mark.asyncio
+async def test_the_repeater_probe_steps_with_random_ticks_off() -> None:
+    # #272: a stepped tick runs random ticks, and the grass under the redstone block
+    # turned to dirt on one Instance only.
+    server = ControlServer(commands=PROBE_TREE)
+    transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
+    async with playing(server, transcript) as context:
+        await REPEATER_STEPPED.run(context)
+        await context.end()
+    sent = steps(commands_sent(server.seen))
+
+    assert sent.index("tick freeze") < sent.index(RANDOM_TICKS_OFF) < sent.index("tick step 1")
+    assert sent[-3:] == [
+        "fill 1 -60 4 5 -60 4 minecraft:air",
+        RANDOM_TICKS_ON,
+        "tick unfreeze",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_repeater_probe_turns_random_ticks_back_on_when_it_fails() -> None:
+    def hang_on_the_first_step(command: str) -> None:
+        if command == "tick step 1":
+            server.answers_markers = False
+
+    server = ControlServer(commands=PROBE_TREE, on_command=hang_on_the_first_step)
+    transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
+
+    async def failing() -> None:
+        async with playing(server, transcript, timeout_s=0.5) as context:
+            await REPEATER_STEPPED.run(context)
+
+    with pytest.raises(TimeoutError):
+        await failing()
+
+    assert RANDOM_TICKS_ON in steps(commands_sent(server.seen))
