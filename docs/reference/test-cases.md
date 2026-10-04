@@ -188,6 +188,22 @@ The data of a plugin message sent while the player is being configured.
 Vanilla sends one on the `minecraft:brand` channel. It holds the
 server's name, which the client shows on its debug screen.
 
+## `disconnect`
+
+**Kick**
+
+The server ends the player's connection, as vanilla does to a survival
+player that floats in the air for too long. A server that leaves it out
+lets the player stay; one that sends it where vanilla doesn't kicks a
+player vanilla would keep.
+
+## `disconnect.reason`
+
+**Kick reason**
+
+The message the client shows a kicked player, such as "Flying is not
+enabled on this server".
+
 ## `forget_level_chunk`
 
 **Chunk unloaded**
@@ -412,6 +428,34 @@ the same player with another UUID.
 
 Where the server puts the player, and which way it faces. The client
 moves the player there and confirms it.
+
+## `player_position.teleport_id`
+
+**Teleport number**
+
+The number the client sends back to confirm a teleport. The server
+counts its teleports of the player up from 1, so a different number
+means one server sent the player back, or teleported it, more often
+than the other.
+
+## `player_position.x`
+
+**Player position x**
+
+The x coordinate the server puts the player at. When the server refuses
+a move, it is where the server still has the player.
+
+## `player_position.y`
+
+**Player position y**
+
+The y coordinate the server puts the player at, the height of its feet.
+
+## `player_position.z`
+
+**Player position z**
+
+The z coordinate the server puts the player at.
 
 ## `play:post_effects`
 
