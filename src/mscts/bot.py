@@ -776,22 +776,38 @@ class Bot:
             await self._connection.send("minecraft:player_loaded")
 
     async def expect(
-        self, name: str, *, timeout_s: float, where: Callable[[Packet], bool] | None = None
+        self,
+        name: str,
+        /,
+        *others: str,
+        timeout_s: float,
+        where: Callable[[Packet], bool] | None = None,
     ) -> Packet:
-        """Take packets until one is called `name` and `where` holds for it; return it.
+        """Take packets until one is called any of `names` and `where` holds for it; return it.
 
-        Every packet taken is recorded, the ones before it included, and the Bot's
+        With several names, whichever such packet arrives first ends the wait: a server
+        may carry the same thing in another packet (`disguised_chat` for `player_chat`).
+        `expect` can't see an Observation window: in one narrowed to other packets, a packet
+        outside it is never compared, so name every packet you wait for in the window's
+        names too.
+        `where` is called with a packet of any of the names, so it must read only fields
+        they all have. Every packet taken is recorded, the ones before it included, and the Bot's
         Replies have already answered each of them.
 
         Raises:
+            ValueError: A name is given twice.
             ProtocolError: The server disconnected the Bot, or asked for encryption,
                 before such a packet arrived.
             TimeoutError: None arrived within `timeout_s`.
         """
+        names = (name, *others)
+        if len(set(names)) < len(names):
+            msg = f"expect names a packet twice: {', '.join(names)}"
+            raise ValueError(msg)
         async with self._operation(timeout_s):
             while True:
                 packet = await self._connection.recv(timeout_s=timeout_s)
-                if packet.name == name and (where is None or where(packet)):
+                if packet.name in names and (where is None or where(packet)):
                     self._disconnected |= _ends_the_session(packet)
                     return packet
                 self._refuse(packet)

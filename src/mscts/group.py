@@ -282,7 +282,11 @@ class GroupContext:
 
     @contextlib.asynccontextmanager
     async def observe(
-        self, *names: str, until: str | None = None, bot: Bot | None = None, play: bool = True
+        self,
+        *names: str,
+        until: str | tuple[str, ...] | None = None,
+        bot: Bot | None = None,
+        play: bool = True,
     ) -> AsyncIterator[None]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
@@ -308,13 +312,13 @@ class GroupContext:
         before it closes, as `OperatorBot.run` does for a command.
 
         With `until`, there is no barrier at the end. Every Bot not closed takes what has already
-        arrived, and the window closes when the first play packet called `until` arrived
-        at any Bot but Control after the window opened. Its Mark is stamped a nanosecond
-        after that arrival (not after the time the Bot took the packet). So the window
-        holds the packet and everything that arrived before it, and none of what arrived
-        after it, not even a frame that came in the same read of the socket. The body
-        must last until the packet has arrived (`Bot.join` does, for a join's packets): a
-        body that ends sooner fails with the ProtocolError below.
+        arrived, and the window closes when the first play packet called `until` (or any of
+        its names) arrived at any Bot but Control after the window opened. Its Mark is
+        stamped a nanosecond after that arrival (not after the time the Bot took the
+        packet). So the window holds the packet and everything that arrived before it, and
+        none of what arrived after it, not even a frame that came in the same read of the
+        socket. The body must last until the packet has arrived (`Bot.join` does, for a
+        join's packets): a body that ends sooner fails with the ProtocolError below.
 
         With `bot` too, only that Bot's `until` packet ends the window. Without it, with
         more than one Bot, where the window ends for the others is timing: each Bot's
@@ -328,8 +332,10 @@ class GroupContext:
             names: The only packets the window compares, e.g. `minecraft:block_update`;
                 none for every packet.
             until: The name of the packet whose arrival ends the window, e.g.
-                `minecraft:chunk_batch_finished`; None for a window that ends at the
-                barrier.
+                `minecraft:chunk_batch_finished`, or several names, of which whichever
+                arrives first ends it (a server may carry the same thing in another
+                packet: `disguised_chat` for `player_chat`); None for a window that ends at
+                the barrier.
             bot: The Bot whose `until` packet ends the window; None for any Bot but
                 Control.
             play: False for a window that compares no play packet; then neither `names` nor
@@ -339,6 +345,9 @@ class GroupContext:
             ValueError: A window is open already (windows do not nest), or a name (in
                 `names` or `until`) is not a packet the Target's server sends in play,
                 or is a heartbeat packet (`HEARTBEAT`), which no window compares; or
+                `until` names no packet or the same one twice; or
+                `names` narrows the window and `until` has several names that it leaves out
+                (Compare would not see which of them ended it); or
                 `bot` is given without `until`, or is not one of this Group's Bots; or
                 `play` is False and `names` or `until` is given.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
@@ -351,8 +360,18 @@ class GroupContext:
         if not play and (names or until is not None):
             msg = "play=False compares no play packet: give no names and no until with it"
             raise ValueError(msg)
-        for name in (*names, *(() if until is None else (until,))):
+        ends = _until_names(until)
+        for name in (*names, *(ends or ())):
             _check_observable(name)
+        if names and ends is not None and len(ends) > 1:
+            left_out = [name for name in ends if name not in names]
+            if left_out:
+                msg = (
+                    f"a window narrowed to {', '.join(names)} that several packets can end must "
+                    f"compare each of them, or the Report can't show which one came: add "
+                    f"{', '.join(left_out)} to names"
+                )
+                raise ValueError(msg)
         if bot is not None and until is None:
             msg = "bot= names the Bot whose until packet ends the window: give until too"
             raise ValueError(msg)
@@ -366,7 +385,7 @@ class GroupContext:
             await self._sync()
             opened = self._mark(" ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,)))))
             yield
-            if until is None:
+            if ends is None:
                 self._mark_each(OBSERVE_CLOSE, await self._sync())
                 await self._drain()
             else:
@@ -374,7 +393,7 @@ class GroupContext:
                 # Compare puts a packet stamped at a Mark's time after the Mark, so the Mark
                 # goes a nanosecond after the arrival. A Connection stamps the frames of one
                 # read a nanosecond apart, so that is just before the next frame.
-                arrival = self._arrival_of(until, since=opened, bot=bot)
+                arrival = self._arrival_of(ends, since=opened, bot=bot)
                 self._mark(OBSERVE_CLOSE, t_ns=arrival + 1)
         finally:
             self._observing = False
@@ -487,8 +506,8 @@ class GroupContext:
             self._mark(f"{label} {name}", t_ns=ends[name] + 1 if name in ends else now)
         self._mark(label, t_ns=now)
 
-    def _arrival_of(self, name: str, *, since: int, bot: Bot | None) -> int:
-        """When the first play packet `name` arrived at `bot`, at or after `since`.
+    def _arrival_of(self, names: tuple[str, ...], *, since: int, bot: Bot | None) -> int:
+        """When the first play packet called any of `names` arrived at `bot`, at or after `since`.
 
         With no `bot`, at any Bot but Control: Control's receipts are never compared, so
         they cannot end a window. A Bot records a frame when it takes it, so this is the
@@ -502,13 +521,13 @@ class GroupContext:
             for event in self._transcript.events
             if event.t_ns >= since
             and (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
-            and event.packet.name == name
+            and event.packet.name in names
             and event.packet.state is State.PLAY
             and event.packet.direction is Direction.CLIENTBOUND
         ]
         if not arrivals:
             at = "any Bot" if bot is None else bot.name
-            msg = f"no {name} arrived at {at} after the Observation window opened"
+            msg = f"no {' or '.join(names)} arrived at {at} after the Observation window opened"
             raise ProtocolError(msg)
         return min(arrivals)
 
@@ -575,6 +594,25 @@ def _check_observable(name: str) -> None:
     if name in HEARTBEAT:
         msg = f"{name!r} is a heartbeat packet, which no window compares: {HEARTBEAT[name]}"
         raise ValueError(msg)
+
+
+def _until_names(until: str | tuple[str, ...] | None) -> tuple[str, ...] | None:
+    """The packet names `until` gives: a str is one name, None is none (a window with a barrier).
+
+    Raises:
+        ValueError: `until` is empty, or names one packet twice.
+    """
+    if until is None:
+        return None
+    names = (until,) if isinstance(until, str) else tuple(until)
+    if not names:
+        msg = "until needs the name of at least one packet"
+        raise ValueError(msg)
+    for name in names:
+        if names.count(name) > 1:
+            msg = f"until names {name} twice"
+            raise ValueError(msg)
+    return names
 
 
 type Script = Callable[[GroupContext], Awaitable[None]]
