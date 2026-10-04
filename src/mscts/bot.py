@@ -551,7 +551,7 @@ class Replies:
         if packet.state is not State.PLAY:
             return
         self.tracker.follow(packet.name, fields)
-        self.inventory.follow(packet.name, fields)
+        self.inventory.follow(packet.name, fields, self.tracker.entities)
         if packet.name in _CHUNK_ARRIVES_OR_GOES:
             at = (_field(fields, "chunk_x", int), _field(fields, "chunk_z", int))
             if packet.name == _CHUNK_ARRIVES:

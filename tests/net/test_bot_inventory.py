@@ -8,17 +8,21 @@ player's `Inventory`, so a change through one shows in every menu.
 """
 
 import dataclasses
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING
 
 import pytest
 
 from mscts.bot import Bot
+from mscts.codec.registry_names import registry_names
+from mscts.entities import Entity
 from mscts.inventory import Inventory, InventoryTracker, Stack
 from mscts.net import ProtocolError
+from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import with_bot
-from tests.net.test_bot_entities import entity_server
+from tests.net.test_bot_entities import added, entity_server
 from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN, TICK_END
 
 if TYPE_CHECKING:
@@ -191,15 +195,123 @@ def test_the_cursor_is_the_open_menus_and_the_inventory_menu_keeps_its_own() -> 
     assert tracker.view().carried is None
 
 
-def test_a_menu_the_bot_does_not_lay_out_holds_its_contents_as_sent() -> None:
-    # A furnace's slots are its contents, in order, with no link to the player's inventory.
-    tracker = followed(open_screen(CHEST, FURNACE), content(CHEST, [slot(STONE, 1), None]))
-    tracker.follow(*set_slot(CHEST, 1, slot(SWORD, 1)))
+def test_a_furnaces_player_slots_are_the_players_inventory() -> None:
+    # ServerPlayer.tick broadcasts only the open menu, so a /give with a furnace open arrives
+    # at the furnace's slot 30 (its 3, then the 27): the hotbar's first slot, shown once closed.
+    tracker = followed(open_screen(CHEST, FURNACE), set_slot(CHEST, 30, slot(STONE, 5)), CLOSE)
     view = tracker.view()
-    assert (view.menu, view.slots) == (
-        "minecraft:furnace",
-        (stack("stone", 1), stack("diamond_sword", 1)),
+    assert (view.player[0], view.slots[36]) == (stack("stone", 5), stack("stone", 5))
+
+
+MENU_SLOTS = {
+    "generic_9x1": 9,
+    "generic_9x2": 18,
+    "generic_9x3": 27,
+    "generic_9x4": 36,
+    "generic_9x5": 45,
+    "generic_9x6": 54,
+    "generic_3x3": 9,
+    "anvil": 3,
+    "beacon": 1,
+    "blast_furnace": 3,
+    "brewing_stand": 5,
+    "crafting": 10,
+    "enchantment": 2,
+    "furnace": 3,
+    "grindstone": 3,
+    "hopper": 5,
+    "loom": 4,
+    "merchant": 3,
+    "shulker_box": 27,
+    "smithing": 4,
+    "smoker": 3,
+    "cartography_table": 3,
+    "stonecutter": 2,
+}
+"""Each menu's own slots before the player's 27 and hotbar (javap of each menu's constructor:
+its `addSlot`s, then `addStandardInventorySlots`)."""
+
+
+def menu_id(name: str) -> int:
+    return registry_names(TARGET.minecraft_version, "minecraft:menu").index(f"minecraft:{name}")
+
+
+@pytest.mark.parametrize(("menu", "own"), MENU_SLOTS.items(), ids=list(MENU_SLOTS))
+def test_a_menu_lays_out_its_own_slots_then_the_players(menu: str, own: int) -> None:
+    tracker = followed(
+        open_screen(CHEST, menu_id(menu)),
+        set_slot(CHEST, own, slot(STONE, 1)),
+        set_slot(CHEST, own + 35, slot(SWORD, 1)),
     )
+    view = tracker.view()
+    assert len(view.slots) == own + 36
+    assert (view.player[9], view.player[8]) == (stack("stone", 1), stack("diamond_sword", 1))
+
+
+def test_a_crafters_result_comes_after_the_players_slots() -> None:
+    # CrafterMenu.addSlots: the 3x3, the 27 and the hotbar, then its result (slot 45).
+    tracker = followed(
+        open_screen(CHEST, menu_id("crafter_3x3")),
+        content(CHEST, [None] * 9 + [slot(STONE, 1)] + [None] * 35 + [slot(SWORD, 1)]),
+    )
+    view = tracker.view()
+    assert (len(view.slots), view.player[9], view.slots[45]) == (
+        46,
+        stack("stone", 1),
+        stack("diamond_sword", 1),
+    )
+    assert view.player[8] is None
+
+
+def test_a_lectern_holds_its_book_and_none_of_the_players_slots() -> None:
+    # LecternMenu adds one slot and no player inventory: a set slot past it changes nothing.
+    tracker = followed(
+        open_screen(CHEST, menu_id("lectern")),
+        content(CHEST, [slot(SWORD, 1)]),
+        set_slot(CHEST, 1, slot(STONE, 1)),
+    )
+    view = tracker.view()
+    assert (view.slots, view.player[9]) == ((stack("diamond_sword", 1),), None)
+
+
+def mount_screen(window_id: int, columns: int, entity_id: int) -> Received:
+    fields = {"window_id": window_id, "inventory_columns": columns, "entity_id": entity_id}
+    return ("minecraft:mount_screen_open", fields)
+
+
+def mount(entity_id: int, kind: str) -> Mapping[int, Entity]:
+    return {
+        entity_id: Entity(id=entity_id, uuid=uuid.UUID(int=entity_id), type=kind, x=0, y=0, z=0)
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "columns", "own"),
+    [
+        ("minecraft:horse", 0, 2),
+        ("minecraft:donkey", 5, 17),
+        ("minecraft:camel_husk", 0, 2),
+        ("minecraft:zombie_nautilus", 3, 2),
+    ],
+)
+def test_a_mount_screen_opens_the_mounts_window(kind: str, columns: int, own: int) -> None:
+    # handleMountScreenOpen: a HorseInventoryMenu (saddle, body, then 3 rows of the columns)
+    # for an AbstractHorse, a NautilusInventoryMenu (saddle, body) for an AbstractNautilus.
+    tracker = InventoryTracker()
+    tracker.follow(*mount_screen(CHEST, columns, 7), entities=mount(7, kind))
+    tracker.follow(*set_slot(CHEST, own, slot(STONE, 1)))
+    view = tracker.view()
+    assert (view.window_id, view.menu, len(view.slots)) == (CHEST, kind, own + 36)
+    assert view.player[9] == stack("stone", 1)
+
+
+@pytest.mark.parametrize(
+    "entities", [{}, mount(7, "minecraft:pig")], ids=["unknown", "not-a-mount"]
+)
+def test_a_mount_screen_for_no_mount_opens_nothing(entities: Mapping[int, Entity]) -> None:
+    tracker = InventoryTracker()
+    tracker.follow(*mount_screen(CHEST, 0, 7), entities=entities)
+    assert tracker.view().window_id == 0
 
 
 def test_a_close_with_no_container_open_keeps_the_inventory_menu() -> None:
@@ -375,3 +487,21 @@ def test_inventory_is_a_snapshot() -> None:
     view = InventoryTracker().view()
     with pytest.raises(dataclasses.FrozenInstanceError):
         setattr(view, "window_id", 1)  # noqa: B010
+
+
+HORSE = 7
+"""A horse's entity id."""
+
+
+def test_a_horses_screen_is_the_window_drop_refuses_and_close_container_closes() -> None:
+    # The Bot knows the horse, so the mount screen opens its window, as the client's does.
+    async def script(bot: Bot) -> None:
+        with pytest.raises(ProtocolError, match="close_container"):
+            await bot.drop()
+        await bot.close_container()
+
+    types = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
+    horse = added(HORSE, types.index("minecraft:horse"), 1.0, -60.0, 1.0)
+    view, sent = inventory_after([horse, mount_screen(CHEST, 0, HORSE)], script)
+    assert sent == [("minecraft:container_close", {"window_id": CHEST})]
+    assert view.window_id == 0

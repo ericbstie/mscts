@@ -722,21 +722,27 @@ class Stack:                        # a stack of items, as the server last descr
 @frozen
 class Inventory:                    # Bot.inventory: one moment's snapshot
     window_id: int                  # the open menu's; 0 for the player's own inventory menu
-    menu: str | None                # "minecraft:generic_9x3"; None for the player's own
+    menu: str | None                # "minecraft:generic_9x3"; None for the player's own; a
+                                    # mount's entity type ("minecraft:horse") for its inventory
     slots: tuple[Stack | None, ...] # the open menu's slots, by slot number (what a click names)
     carried: Stack | None           # the cursor's stack
     state_id: int                   # the last one the server sent for the open menu
     player: tuple[Stack | None, ...]  # by Inventory index, PLAYER_INDEXES of them
 
 class InventoryTracker:
-    def follow(self, name: str, fields: Mapping[str, object]) -> None: ...
+    def follow(
+        self, name: str, fields: Mapping[str, object], entities: Mapping[int, Entity] | None = None
+    ) -> None: ...
     # container_set_content / container_set_slot: window 0 → the inventory menu (even with a
     # container open), the open menu's id → that menu, any other id or a slot the menu does not
     # have → nothing. set_cursor_item → the open menu's carried stack; set_player_inventory →
-    # an Inventory index (out of range: nothing); open_screen → a new open menu; container_close
-    # → the inventory menu again. The inventory menu (46 slots), generic_9x1-9x6, generic_3x3,
-    # hopper and shulker_box lay out their player slots as the Inventory; any other menu holds
-    # its contents as sent.
+    # an Inventory index (out of range: nothing); open_screen → a new open menu;
+    # mount_screen_open → a new open menu if `entities` holds the entity as a horse (saddle,
+    # body, 3 rows of the columns) or a nautilus (saddle, body), else nothing; container_close
+    # → the inventory menu again. Every menu lays out its player slots as the Inventory: the
+    # inventory menu (46 slots), and every other menu its own slots (javap of its constructor),
+    # then the 27 and the hotbar; the crafter's result comes last, and the lectern has only
+    # its book. The server sends inventory changes through the open window only.
     def view(self) -> Inventory: ...
     def clear(self) -> None: ...      # a new player: nothing anywhere, no container open
     def close(self) -> None: ...      # back to the inventory menu (Player.closeContainer)
@@ -782,7 +788,8 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # (no answer); every play packet → Replies.tracker (EntityTracker), cleared in place
     # (EntityTracker.clear, so a kept Bot.entities view follows) on play login or respawn into
     # another dimension (a new ClientLevel; no answer); every play packet → Replies.inventory
-    # (InventoryTracker), cleared on play login or any respawn (a new LocalPlayer; no answer);
+    # (InventoryTracker, with Replies.tracker's entities), cleared on play login or any
+    # respawn (a new LocalPlayer; no answer);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
     # else is answered (not yet: custom_query). join and respawn, not Replies, send player_loaded.

@@ -1,4 +1,4 @@
-"""A Bot's inventory against a live vanilla 26.3: what it holds after gives, a chest and a drop.
+"""A Bot's inventory against a live vanilla 26.3: gives, a chest, a drop and a furnace.
 
 Boots a Reference of its own, since Control gives items and places a chest.
 """
@@ -69,3 +69,39 @@ async def test_a_bots_inventory_follows_gives_a_chest_and_a_drop(
     assert chest.slots[:27] == (None,) * 27
     assert chest.slots[54:56] == (stone, sword)
     assert (dropped.window_id, dropped.player[0]) == (0, Stack("minecraft:stone", 63))
+
+
+SMELTER = "smelter"
+FURNACE = (2, -60, 0)
+
+
+@pytest.mark.timeout(180)  # its own boot and stop, a join, three commands and a few barriers
+@pytest.mark.asyncio
+async def test_a_give_with_a_furnace_open_shows_in_the_hotbar_once_it_closes(
+    boot_reference: Callable[..., AbstractAsyncContextManager[Instance]],
+) -> None:
+    # ServerPlayer.tick broadcasts only the open menu: the give comes through the furnace's
+    # window, at its player slot 30, and nothing resends it for window 0 after the close.
+    transcript = Transcript(group_id="reference/bot-inventory-furnace", server="vanilla")
+    async with boot_reference() as reference:
+        context = GroupContext(reference.endpoint, transcript, timeout_s=_TIMEOUT_S)
+        try:
+            smelter = await context.bot(SMELTER)
+            await smelter.join()
+            await context.control.run("tp smelter 0.5 -60 0.5 0 0")
+            await context.control.run("setblock 2 -60 0 minecraft:furnace")
+            await smelter.sync()
+            await smelter.place(*FURNACE, Face.UP)  # an empty hand's use opens the furnace
+            await smelter.sync()
+            await context.control.run("give smelter minecraft:stone 5")
+            await smelter.sync()
+            opened = smelter.inventory
+            await smelter.close_container()
+            await smelter.sync()
+            closed = smelter.inventory
+        finally:
+            await context.close()
+
+    stone = Stack("minecraft:stone", 5)
+    assert (opened.menu, len(opened.slots), opened.slots[30]) == ("minecraft:furnace", 39, stone)
+    assert (closed.window_id, closed.player[0], closed.slots[36]) == (0, stone, stone)

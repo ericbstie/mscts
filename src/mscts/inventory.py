@@ -5,12 +5,14 @@
 even with a container open, and one for the open container's id to that container's menu; any
 other id changes nothing. `set_cursor_item` sets the open menu's carried stack, and
 `set_player_inventory` one index of the player's `Inventory`. `open_screen` makes a new menu
-the open one, and the server's `container_close` goes back to the inventory menu.
+the open one, as `mount_screen_open` does for a horse's or a nautilus's inventory, and the
+server's `container_close` goes back to the inventory menu.
 
 A menu's player slots are the player's `Inventory` itself, so a stack set through one menu
-shows in every other. The tracker lays out the inventory menu and the menus of the chests,
-barrels, shulker boxes, dispensers, droppers and hoppers that way. Any other menu holds its
-contents as the server last sent them, with no link to the player's inventory.
+shows in every other. That matters: while a menu is open the server sends the player's
+inventory changes through that menu's window only (`ServerPlayer.tick` broadcasts the open
+menu), and not again through window 0 once it closes. Every menu but the lectern ends with the
+27 and the hotbar.
 """
 
 from collections.abc import Mapping
@@ -18,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from mscts.codec.registry_names import registry_names
+from mscts.entities import Entity
 from mscts.net import ProtocolError
 from mscts.target import TARGET
 
@@ -52,7 +55,8 @@ class Inventory:
 
     Attributes:
         window_id: The open menu's window id: 0 for the player's own inventory menu.
-        menu: The open menu's type, e.g. `minecraft:generic_9x3`; None for the player's own.
+        menu: The open menu's type, e.g. `minecraft:generic_9x3`; None for the player's own;
+            for a mount's inventory, the mount's entity type, e.g. `minecraft:horse`.
         slots: The open menu's slots, by slot number: the numbers a click names. Each is a
             Stack, or None for an empty slot.
         carried: The stack on the cursor, or None.
@@ -96,11 +100,48 @@ _CONTAINER_SIZES = {
     "minecraft:generic_9x5": 45,
     "minecraft:generic_9x6": 54,
     "minecraft:generic_3x3": 9,
+    "minecraft:anvil": 3,
+    "minecraft:beacon": 1,
+    "minecraft:blast_furnace": 3,
+    "minecraft:brewing_stand": 5,
+    "minecraft:cartography_table": 3,
+    "minecraft:crafting": 10,
+    "minecraft:enchantment": 2,
+    "minecraft:furnace": 3,
+    "minecraft:grindstone": 3,
     "minecraft:hopper": 5,
+    "minecraft:loom": 4,
+    "minecraft:merchant": 3,
     "minecraft:shulker_box": 27,
+    "minecraft:smithing": 4,
+    "minecraft:smoker": 3,
+    "minecraft:stonecutter": 2,
 }
-"""The menus laid out as their container's slots, then the 27, then the hotbar (`ChestMenu`,
-`DispenserMenu`, `HopperMenu`, `ShulkerBoxMenu`), by their container's size."""
+"""The menus laid out as their own slots, then the 27, then the hotbar, by how many own slots
+they have (javap of each menu's constructor: its `addSlot`s, then `addStandardInventorySlots`;
+an anvil's and a smithing table's inputs and result through `ItemCombinerMenu`)."""
+_CRAFTER, _CRAFTER_GRID = "minecraft:crafter_3x3", 9
+"""`CrafterMenu.addSlots`: its 3x3, the 27 and the hotbar, then its result."""
+_LECTERN = "minecraft:lectern"
+"""`LecternMenu`: one slot, the book, and none of the player's."""
+_HORSES = frozenset(
+    {
+        "minecraft:camel",
+        "minecraft:camel_husk",
+        "minecraft:donkey",
+        "minecraft:horse",
+        "minecraft:llama",
+        "minecraft:mule",
+        "minecraft:skeleton_horse",
+        "minecraft:trader_llama",
+        "minecraft:zombie_horse",
+    }
+)
+"""The entity types whose class extends `AbstractHorse` (javap): a `HorseInventoryMenu` each."""
+_NAUTILUSES = frozenset({"minecraft:nautilus", "minecraft:zombie_nautilus"})
+"""The entity types whose class extends `AbstractNautilus`: a `NautilusInventoryMenu` each."""
+_MOUNT_EQUIPMENT, _MOUNT_ROWS = 2, 3
+"""A mount's menu: its saddle and body slots, then its chest's 3 rows (a horse's only)."""
 
 
 @dataclass(slots=True)
@@ -123,11 +164,37 @@ def _inventory_menu() -> _Menu:
 
 
 def _opened(window_id: int, menu: str) -> _Menu:
+    """The menu `open_screen` opens: one outside the registry is laid out as sent."""
+    if menu == _CRAFTER:
+        grid = tuple((False, index) for index in range(_CRAFTER_GRID))
+        layout = (*grid, *_STORAGE, *_HOTBAR, (False, _CRAFTER_GRID))
+        return _Menu(window_id, menu, [None] * (_CRAFTER_GRID + 1), layout)
+    if menu == _LECTERN:
+        return _Menu(window_id, menu, [None], ((False, 0),))
     size = _CONTAINER_SIZES.get(menu)
     if size is None:
         return _Menu(window_id=window_id, menu=menu, own=[], layout=None)
+    return _laid_out(window_id, menu, size)
+
+
+def _laid_out(window_id: int, menu: str, size: int) -> _Menu:
+    """A menu of `size` own slots, then the 27 and the hotbar."""
     layout = (*((False, index) for index in range(size)), *_STORAGE, *_HOTBAR)
     return _Menu(window_id=window_id, menu=menu, own=[None] * size, layout=layout)
+
+
+def _mount_menu(fields: Mapping[str, object], entities: Mapping[int, Entity]) -> _Menu | None:
+    """The menu a `mount_screen_open` opens for its entity among `entities`, or None for none."""
+    mount = entities.get(_int(fields, "entity_id"))
+    window_id = _int(fields, "window_id")
+    if mount is None:
+        return None
+    if mount.type in _NAUTILUSES:
+        return _laid_out(window_id, mount.type, _MOUNT_EQUIPMENT)
+    if mount.type in _HORSES:
+        columns = max(_int(fields, "inventory_columns"), 0)
+        return _laid_out(window_id, mount.type, _MOUNT_EQUIPMENT + _MOUNT_ROWS * columns)
+    return None
 
 
 class InventoryTracker:
@@ -169,20 +236,26 @@ class InventoryTracker:
         left = 0 if whole else held.count - 1
         self._player[selected] = Stack(held.item, left, held.components) if left else None
 
-    def follow(self, name: str, fields: Mapping[str, object]) -> None:
-        """Apply one clientbound play packet's decoded `fields`; other packets change nothing."""
+    def follow(
+        self, name: str, fields: Mapping[str, object], entities: Mapping[int, Entity] | None = None
+    ) -> None:
+        """Apply one clientbound play packet's decoded `fields`; other packets change nothing.
+
+        `entities` are the entities the Bot knows of: `mount_screen_open` opens a menu only for
+        a horse or a nautilus among them (`handleMountScreenOpen`).
+        """
         match name:
             case "minecraft:open_screen":
                 menu = _menu_name(_int(fields, "window_type"))
                 self._open = _opened(_int(fields, "window_id"), menu)
+            case "minecraft:mount_screen_open":
+                self._open_mount(fields, entities)
             case "minecraft:container_close":
                 self.close()
             case "minecraft:set_cursor_item":
                 self._open.carried = _stack(fields.get("slot_data"))
             case "minecraft:set_player_inventory":
-                index = _int(fields, "slot")
-                if 0 <= index < PLAYER_INDEXES:
-                    self._player[index] = _stack(fields.get("slot_data"))
+                self._set_player(_int(fields, "slot"), _stack(fields.get("slot_data")))
             case "minecraft:container_set_slot":
                 menu = self._addressed(_int(fields, "window_id"))
                 value = _stack(fields.get("slot_data"))
@@ -194,6 +267,19 @@ class InventoryTracker:
                     self._fill(menu, fields)
             case _:
                 pass
+
+    def _set_player(self, index: int, value: Stack | None) -> None:
+        """`Inventory.setItem` at `index`; an index it lacks changes nothing."""
+        if 0 <= index < PLAYER_INDEXES:
+            self._player[index] = value
+
+    def _open_mount(
+        self, fields: Mapping[str, object], entities: Mapping[int, Entity] | None
+    ) -> None:
+        """Open the mount's menu a `mount_screen_open` names, if it is a known mount."""
+        opened = _mount_menu(fields, entities or {})
+        if opened is not None:
+            self._open = opened
 
     def _addressed(self, window_id: int) -> _Menu | None:
         """The menu a set packet for `window_id` goes to, or None (`handleContainerSetSlot`)."""
