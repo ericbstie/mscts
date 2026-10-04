@@ -195,3 +195,64 @@ def test_disguised_chat_is_the_message_then_how_to_show_it() -> None:
 
     assert CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:disguised_chat") == 0x21
     round_trip(CLIENTBOUND, "minecraft:disguised_chat", fields, data)
+
+
+def test_player_chat_holds_a_message_of_at_most_256_characters() -> None:
+    # The vanilla client refuses a longer one (`stringUtf8(256)`): a server that sends one is
+    # a decode failure, not a message.
+    longest = CODEC.encode(
+        State.PLAY, CLIENTBOUND, "minecraft:player_chat", player_chat_fields(message="x" * 256)
+    )
+    too_long = longest.replace(bytes([0x80, 0x02]) + b"x" * 256, bytes([0x81, 0x02]) + b"x" * 257)
+
+    assert CODEC.decode(State.PLAY, CLIENTBOUND, longest).fields == player_chat_fields(
+        message="x" * 256
+    )
+    assert too_long != longest
+    with pytest.raises(CodecError, match=r"message: .*max length 256"):
+        CODEC.decode(State.PLAY, CLIENTBOUND, too_long)
+    with pytest.raises(CodecError, match=r"message: .*max length 256"):
+        CODEC.encode(
+            State.PLAY, CLIENTBOUND, "minecraft:player_chat", player_chat_fields(message="x" * 257)
+        )
+
+
+def signed_command_fields(*names: str) -> dict[str, object]:
+    return {
+        "command": "say hi",
+        "timestamp": 1_790_000_000_000,
+        "salt": 7,
+        "argument_signatures": [{"argument_name": n, "signature": SIGNATURE} for n in names],
+        "message_count": 0,
+        "acknowledged": bytes(3),
+        "checksum": 1,
+    }
+
+
+def test_a_signed_command_argument_name_is_at_most_16_characters() -> None:
+    name = "minecraft:chat_command_signed"
+    longest = CODEC.encode(State.PLAY, SERVERBOUND, name, signed_command_fields("a" * 16))
+    too_long = longest.replace(bytes([0x10]) + b"a" * 16, bytes([0x11]) + b"a" * 17)
+
+    assert too_long != longest
+    assert CODEC.decode(State.PLAY, SERVERBOUND, longest).fields == signed_command_fields("a" * 16)
+    with pytest.raises(CodecError, match=r"argument_name: .*max length 16"):
+        CODEC.decode(State.PLAY, SERVERBOUND, too_long)
+    with pytest.raises(CodecError, match=r"argument_name: .*max length 16"):
+        CODEC.encode(State.PLAY, SERVERBOUND, name, signed_command_fields("a" * 17))
+
+
+def test_a_signed_command_carries_at_most_8_argument_signatures() -> None:
+    name = "minecraft:chat_command_signed"
+    entry = bytes([0x07]) + b"message" + SIGNATURE
+    most = CODEC.encode(State.PLAY, SERVERBOUND, name, signed_command_fields(*["message"] * 8))
+    too_many = most.replace(bytes([0x08]) + entry * 8, bytes([0x09]) + entry * 9)
+
+    assert too_many != most
+    assert CODEC.decode(State.PLAY, SERVERBOUND, most).fields == signed_command_fields(
+        *["message"] * 8
+    )
+    with pytest.raises(CodecError, match=r"argument_signatures: .*max 8"):
+        CODEC.decode(State.PLAY, SERVERBOUND, too_many)
+    with pytest.raises(CodecError, match=r"argument_signatures: .*max 8"):
+        CODEC.encode(State.PLAY, SERVERBOUND, name, signed_command_fields(*["message"] * 9))
