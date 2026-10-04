@@ -231,6 +231,16 @@ async def test_the_bots_join_with_the_movement_check_off_and_it_is_on_after(grou
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_the_movement_check_is_on_again_before_the_first_window(group_id: str) -> None:
+    # Without it, every window plays with vanilla's speed check off, and a Candidate that has
+    # none would match `movement/too-fast`.
+    result = await played(group_id)
+
+    assert result.first.index(CHECK_OFF) < result.first.index(CHECK_ON)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", TICK_EXACT)
 async def test_a_tick_exact_group_freezes_the_world_and_clears_its_blocks_after(
     group_id: str,
