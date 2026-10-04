@@ -329,15 +329,22 @@ def _group_raised(
     )
 
 
-def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
+def prerequisite_verdict(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
     """The Verdict `group` gets if a prerequisite did not pass in `verdicts`, else None.
 
     A prerequisite passed if it is a `match`, or a `mismatch` whose Divergences are all
-    network traffic, which the Score counts as passing (ADR-0007, #221). If one that did
-    not pass is an `error`, `group` is an `error` too, naming it: that is the Reference's
-    or mscts's fault, which the Score leaves out, so an identical Candidate still scores
-    100% (audit L2). Otherwise `group` is `blocked`, naming the first that did not pass.
-    The Verdict lists no test case: the Run adds the Reference's, if it plays it there.
+    network traffic, which the Score counts as passing (ADR-0007, #221). Of those that did
+    not pass, the one that decides is named (review B):
+
+    - One is an `error`: `group` is an `error` too, played on neither side. That is the
+      Reference's or mscts's fault, which the Score leaves out, so an identical Candidate
+      still scores 100% (audit L2).
+    - One was not run, or is `blocked` itself: `group` is `blocked`, played on neither
+      side, and fails only its own line.
+    - Each is a `mismatch`, the Candidate's failure: `group` is a `mismatch` led by a
+      `failed` Divergence naming it, as when the Candidate is left frozen (#266). The Run
+      still plays it on the Reference and adds that play's test cases, which the Report
+      fails like any whole-Group Candidate failure (#285).
     """
     unmet: dict[str, str] = {}
     for prerequisite in group.requires:
@@ -348,32 +355,18 @@ def blocked(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
             unmet[prerequisite] = str(verdict.outcome)
     if not unmet:
         return None
-    errors = [prerequisite for prerequisite, was in unmet.items() if was == Outcome.ERROR]
-    prerequisite = errors[0] if errors else next(iter(unmet))
-    outcome = Outcome.ERROR if errors else Outcome.BLOCKED
-    detail = f"prerequisite {prerequisite} was {unmet[prerequisite]}"
-    return Verdict(group_id=group.id, outcome=outcome, detail=detail)
-
-
-def _blocked_by_candidate(
-    group: Group, verdicts: Mapping[str, Verdict], groups: Mapping[str, Group]
-) -> bool:
-    """Whether each prerequisite of `group` that did not pass failed on the Candidate's side.
-
-    That is a `mismatch`, or `blocked` by such a failure itself, so `group` is still played
-    on the Reference (#285). A prerequisite that is an `error` (the Reference's or mscts's
-    fault), or was not run, is not.
-    """
-    for prerequisite in group.requires:
-        verdict = verdicts.get(prerequisite)
-        if verdict is None:
-            return False
-        if verdict.outcome is Outcome.BLOCKED:
-            if not _blocked_by_candidate(groups[prerequisite], verdicts, groups):
-                return False
-        elif verdict.outcome is Outcome.ERROR:
-            return False
-    return True
+    for outcome, decides in ((Outcome.ERROR, {"error"}), (Outcome.BLOCKED, {"not run", "blocked"})):
+        prerequisite = next((name for name, was in unmet.items() if was in decides), None)
+        if prerequisite is not None:
+            detail = f"prerequisite {prerequisite} was {unmet[prerequisite]}"
+            return Verdict(group_id=group.id, outcome=outcome, detail=detail)
+    what = f"prerequisite {next(iter(unmet))} was mismatch"
+    return Verdict(
+        group_id=group.id,
+        outcome=Outcome.MISMATCH,
+        divergences=(_failed(bot="", what=what),),
+        detail=f"the Candidate failed: {what}",
+    )
 
 
 def _passed(verdict: Verdict) -> bool:
@@ -424,13 +417,12 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     Measurements for every repetition, and, with `keep_transcripts`, both sides'
     Transcripts of each repetition that did not match (`GroupResult.transcripts`, kept
     until the Run ends, so off by default); and for each side its `instance.startup`
-    Measurements and the version its status_response named. A Group is `blocked`,
-    and not played on the Candidate, unless each of its prerequisites passed (see
-    `blocked`) earlier in the same repetition (so list them first). It is still played
-    on the Reference when the Candidate failed each prerequisite that did not pass
-    (`_blocked_by_candidate`), and its Verdict lists that play's test cases, which the
-    Report fails (#285); otherwise it is played on neither side and measures nothing. A
-    Group a prerequisite of which is an `error` is an `error` too (`blocked`, audit L2).
+    Measurements and the version its status_response named. A Group is not played on
+    the Candidate unless each of its prerequisites passed earlier in the same repetition
+    (so list them first; `prerequisite_verdict` says what it is then). If the Candidate
+    failed each that did not pass, it is still played on the Reference, and its
+    `mismatch` lists that play's test cases, which the Report fails (#285); otherwise
+    it is an `error` or `blocked`, played on neither side, and measures nothing.
 
     A Server side gets one Instance per distinct ServerSpec the Groups' `spec` make,
     launched in its own directory under `workdir` at an Endpoint of its own
@@ -447,7 +439,6 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     """
     _check(groups, (reference, candidate))
     plays: dict[str, list[_Play]] = {group.id: [] for group in groups}
-    by_id = {group.id: group for group in groups}
     async with contextlib.AsyncExitStack() as stack:
         instances = _Instances(
             stack, reference, candidate, workdir, keep_transcripts=keep_transcripts
@@ -455,11 +446,11 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
         for repetition in range(1, repeat + 1):
             done: dict[str, Verdict] = {}
             for group in groups:
-                verdict = blocked(group, done)
-                if verdict is None or _blocked_by_candidate(group, done, by_id):
+                verdict = prerequisite_verdict(group, done)
+                if verdict is None or verdict.outcome is Outcome.MISMATCH:
                     await instances.start(group)  # first, so progress reads in order
                     LOG.info("running %s (%d of %d) ...", group.id, repetition, repeat)
-                    play = await instances.play(group, blocked_verdict=verdict)
+                    play = await instances.play(group, prerequisite_failed=verdict)
                 else:
                     LOG.info(
                         "skipping %s (%d of %d): %s",
@@ -582,16 +573,16 @@ class _Instances:
         """Make sure the Instances `group` plays against are up."""
         await self._pair(group.spec)
 
-    async def play(self, group: Group, *, blocked_verdict: Verdict | None = None) -> _Play:
+    async def play(self, group: Group, *, prerequisite_failed: Verdict | None = None) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it.
 
         It waits first for each usable Instance to have no player online (the previous
         Group's Bots have left). If the Reference is unusable (`_unusable_verdict`), has
         any player online after `SETTLE_TIMEOUT_S`, or its wait raised, `group` is not
         played on either, and its Verdict is `error`, naming why (`_unsettled`). If only
-        the Candidate is, or `group` is `blocked` by a prerequisite the Candidate failed
-        (`_blocked_by_candidate`), `group` is played on the Reference alone
-        (`_reference_alone`), and its Verdict is `blocked` if it was: `blocked_verdict`.
+        the Candidate is, or the Candidate failed a prerequisite of `group`
+        (`prerequisite_failed`, from `prerequisite_verdict`), `group` is played on the
+        Reference alone (`_reference_alone`); the prerequisite is named first.
 
         Both Instances of `group`'s ServerSpec are up either way: they launch as a pair, the
         first time a Group of that ServerSpec is played on either side.
@@ -600,7 +591,7 @@ class _Instances:
         unusable = self._unusable_verdict(group, endpoints)
         if unusable is not None and unusable.outcome is Outcome.ERROR:
             return _Play(unusable)
-        skipped = blocked_verdict or unusable
+        skipped = prerequisite_failed or unusable
         reference, candidate = endpoints
         unsettled = await _unsettled(group, reference, candidate if skipped is None else None)
         not_played = unsettled or skipped  # a Reference unsettled comes first: `error`

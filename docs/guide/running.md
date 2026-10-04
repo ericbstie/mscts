@@ -20,10 +20,10 @@ uv run mscts run --candidate pumpkin --group 'status/ping'
 
 mscts adds each chosen Group's prerequisites and plays them first. If a
 prerequisite has a test case that fails, or a line of its own in the
-Report, mscts reports the Group that requires it as `blocked` and does
-not play it on the Candidate. If the Candidate failed the prerequisite,
-mscts still plays the Group on vanilla, and the Candidate fails each of
-its test cases.
+Report, mscts does not play the Group that requires it on the
+Candidate. It still plays that Group on vanilla, and the Candidate
+fails it and each of its test cases. If the prerequisite was an error,
+the Group is an error too.
 A glob that matches nothing fails and lists the Groups that exist. The [Group reference](/reference/groups) lists
 them too.
 

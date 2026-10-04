@@ -373,7 +373,7 @@ NETWORK_TRAFFIC_ONLY_PASSES: bool = True
 """Whether a test case that differs only in network traffic passes (ADR-0007).
 
 The one place that decides it: the Report's test cases and Score (`report`), and
-whether a prerequisite passed (`run.blocked`), both read it here, as
+whether a prerequisite passed (`run.prerequisite_verdict`), both read it here, as
 `mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES`.
 """
 
@@ -435,7 +435,7 @@ class Divergence:
         """Refuse a `bot` or `failed` Divergence that is network traffic.
 
         It is about the whole Group and gives it a line of its own, which always fails;
-        a prerequisite passes only without one (`run.blocked`, #221).
+        a prerequisite passes only without one (`run.prerequisite_verdict`, #221).
         """
         if self.kind in {"bot", "failed"} and self.observability is not Observability.GAMEPLAY:
             msg = f"a {self.kind} Divergence is gameplay, not {self.observability}"
@@ -455,10 +455,9 @@ class Verdict:
         detail: A human-readable note, e.g. why the Group is blocked.
         test_cases: Every test case the Comparison compared, matched or not, and each field
             of a reference Packet the Candidate did not send (#101), sorted and each once;
-            none if the Verdict was made without one (`error`, or `blocked` and played on
-            neither side). A Candidate failure lists the Reference's play's own
-            (`run.judge`), and so does a `blocked` Verdict whose Group was played on the
-            Reference alone (#285).
+            none if the Verdict was made without one (`error`, `blocked`). A Candidate
+            failure lists the Reference's play's own (`run.judge`), and so does one whose
+            Group was played on the Reference alone (#266, #285).
         omitted: How many Divergences a report.json left out of `divergences` (#254): the
             Verdict a Comparison makes has none left out, and a Verdict read back from a
             report.json that capped them has the count that file gave.

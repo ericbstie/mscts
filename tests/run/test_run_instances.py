@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from mscts import run as run_module
-from mscts.compare import Outcome, Verdict
+from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import Group, GroupContext, GroupKind
 from mscts.groups import status
 from mscts.net import Endpoint
@@ -55,17 +55,30 @@ async def test_each_side_runs_on_its_own_free_endpoint(
 
 
 @pytest.mark.asyncio
-async def test_a_candidate_that_differs_is_a_mismatch_and_blocks_what_requires_it(
+async def test_a_candidate_that_differs_fails_what_requires_it(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
+    # Review B S-289-1: not played on the Candidate, as for #266; it failed the same way.
     candidate = fake_server("two", description="not vanilla")
 
     basic, ping = await run([BASIC, PING], fake_server("one"), candidate, workdir=tmp_path / "run")
 
     assert basic.outcome is Outcome.MISMATCH
     assert [d.candidate for d in basic.divergences] == ["not vanilla"]
-    assert ping.outcome is Outcome.BLOCKED
-    assert ping.detail == "prerequisite status/basic was mismatch"
+    assert ping.outcome is Outcome.MISMATCH
+    assert ping.detail == "the Candidate failed: prerequisite status/basic was mismatch"
+    assert ping.divergences == (
+        Divergence(
+            bot="",
+            index=0,
+            kind="failed",
+            packet="",
+            path=None,
+            reference=ABSENT,
+            candidate="prerequisite status/basic was mismatch",
+            test_case="",
+        ),
+    )
 
 
 @pytest.mark.asyncio
@@ -81,13 +94,13 @@ async def test_a_group_blocked_by_the_candidate_fails_each_test_case_of_the_refe
 
     assert ping.test_cases == own
     lines = report_lines(_report(GroupResult(PING.id, (ping,), (), ())))
-    reason = "Not tested: prerequisite status/basic was mismatch"
-    assert lines[-1] == GroupLine(PING.id, LineResult.NOT_TESTED, reason)
-    assert totals(lines) == Totals(passed=0, failed=len(own) + 1, not_tested=1, errors=0)
+    reason = "Candidate failed: prerequisite status/basic was mismatch"
+    assert lines[-1] == GroupLine(PING.id, LineResult.FAIL, reason)
+    assert totals(lines) == Totals(passed=0, failed=len(own) + 1, not_tested=0, errors=0)
 
 
 @pytest.mark.asyncio
-async def test_a_group_blocked_by_a_blocked_group_still_plays_the_reference(
+async def test_a_group_whose_prerequisite_failed_that_way_still_plays_the_reference(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
     candidate = fake_server("two", description="not vanilla")
@@ -96,8 +109,8 @@ async def test_a_group_blocked_by_a_blocked_group_still_plays_the_reference(
         [BASIC, PING, AFTER_PING], fake_server("one"), candidate, workdir=tmp_path / "run"
     )
 
-    assert after.outcome is Outcome.BLOCKED
-    assert after.detail == "prerequisite status/ping was blocked"
+    assert after.outcome is Outcome.MISMATCH
+    assert after.detail == "the Candidate failed: prerequisite status/ping was mismatch"
     assert after.test_cases == await _test_cases(AFTER_PING, fake_server, tmp_path / "own")
 
 

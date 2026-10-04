@@ -55,14 +55,14 @@
     },
     {
       "group_id": "join/basic",
-      "result": "not tested",
-      "reasons": "Not tested: prerequisite status/basic was mismatch"
+      "result": "fail",
+      "reasons": "Candidate failed: prerequisite status/basic was mismatch"
     }
   ],
   "totals": {
     "passed": 0,
     "failed": 5,
-    "not_tested": 1,
+    "not_tested": 0,
     "errors": 0,
     "scored": 5,
     "score": 0.0
@@ -357,10 +357,24 @@
       "verdicts": [
         {
           "group_id": "join/basic",
-          "outcome": "blocked",
-          "divergences": [],
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "",
+              "index": 0,
+              "kind": "failed",
+              "packet": "",
+              "path": null,
+              "reference": {
+                "absent": true
+              },
+              "candidate": "prerequisite status/basic was mismatch",
+              "test_case": "",
+              "observability": "gameplay"
+            }
+          ],
           "omitted": 0,
-          "detail": "prerequisite status/basic was mismatch",
+          "detail": "the Candidate failed: prerequisite status/basic was mismatch",
           "test_cases": [
             "login.is_flat",
             "login.sea_level"
@@ -368,10 +382,24 @@
         },
         {
           "group_id": "join/basic",
-          "outcome": "blocked",
-          "divergences": [],
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "",
+              "index": 0,
+              "kind": "failed",
+              "packet": "",
+              "path": null,
+              "reference": {
+                "absent": true
+              },
+              "candidate": "prerequisite status/basic was mismatch",
+              "test_case": "",
+              "observability": "gameplay"
+            }
+          ],
           "omitted": 0,
-          "detail": "prerequisite status/basic was mismatch",
+          "detail": "the Candidate failed: prerequisite status/basic was mismatch",
           "test_cases": [
             "login.is_flat",
             "login.sea_level"
@@ -379,10 +407,24 @@
         },
         {
           "group_id": "join/basic",
-          "outcome": "blocked",
-          "divergences": [],
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "",
+              "index": 0,
+              "kind": "failed",
+              "packet": "",
+              "path": null,
+              "reference": {
+                "absent": true
+              },
+              "candidate": "prerequisite status/basic was mismatch",
+              "test_case": "",
+              "observability": "gameplay"
+            }
+          ],
           "omitted": 0,
-          "detail": "prerequisite status/basic was mismatch",
+          "detail": "the Candidate failed: prerequisite status/basic was mismatch",
           "test_cases": [
             "login.is_flat",
             "login.sea_level"
@@ -390,10 +432,24 @@
         },
         {
           "group_id": "join/basic",
-          "outcome": "blocked",
-          "divergences": [],
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "",
+              "index": 0,
+              "kind": "failed",
+              "packet": "",
+              "path": null,
+              "reference": {
+                "absent": true
+              },
+              "candidate": "prerequisite status/basic was mismatch",
+              "test_case": "",
+              "observability": "gameplay"
+            }
+          ],
           "omitted": 0,
-          "detail": "prerequisite status/basic was mismatch",
+          "detail": "the Candidate failed: prerequisite status/basic was mismatch",
           "test_cases": [
             "login.is_flat",
             "login.sea_level"
@@ -401,10 +457,24 @@
         },
         {
           "group_id": "join/basic",
-          "outcome": "blocked",
-          "divergences": [],
+          "outcome": "mismatch",
+          "divergences": [
+            {
+              "bot": "",
+              "index": 0,
+              "kind": "failed",
+              "packet": "",
+              "path": null,
+              "reference": {
+                "absent": true
+              },
+              "candidate": "prerequisite status/basic was mismatch",
+              "test_case": "",
+              "observability": "gameplay"
+            }
+          ],
           "omitted": 0,
-          "detail": "prerequisite status/basic was mismatch",
+          "detail": "the Candidate failed: prerequisite status/basic was mismatch",
           "test_cases": [
             "login.is_flat",
             "login.sea_level"

@@ -237,10 +237,11 @@ network traffic only: gameplay if any of its Divergences is.
 ### Verdict
 
 `match`, `mismatch` (has Divergences), `blocked` (a
-prerequisite Group did not pass: it is not a `match`, nor a `mismatch`
-only in network traffic), or `error` (the harness failed, the
-Reference itself could not run the Group, or a prerequisite is an
-`error`). A Group that fails on
+prerequisite Group was not run, or is `blocked` itself, so the Group
+was played on neither server), or `error` (the harness failed, the Reference itself could
+not run the Group, or a prerequisite is an `error`). A prerequisite
+passes if it is a `match`, or a `mismatch` only in network traffic.
+A Group that fails on
 the Candidate and not on the Reference is a `mismatch`, led by a
 `failed` Divergence that says what happened, never an `error`. That
 holds whatever the failure: a frame that does not decode, an answer
@@ -248,11 +249,11 @@ that breaks the protocol, no answer in time, a connection closed, reset
 or refused, a missing command that Control sends, players still online
 from the previous Group, or a value the Group does not expect. The Score
 leaves `error` out, so a Candidate must never score better by failing.
-The same holds while
-mscts waits for the previous Group's players to leave, and after a
-Group left the Candidate's world frozen. mscts then plays the Group on
-the Reference alone, and the Candidate fails each test case of that
-play (#266).
+The same holds while mscts waits for the players of the Group before to
+leave, after a Group left the Candidate's world frozen (#266), and when
+the Candidate failed a prerequisite (#285). mscts then plays the Group
+on the Reference alone, and the Candidate fails each test case of that
+play.
 
 ### Self-check
 
@@ -281,14 +282,14 @@ The share of a Report's scored lines that passed, as in
 case of one Group, or the Group's own line. A test case fails if it
 differs in gameplay in any repetition, or if the Candidate failed its
 whole Group, or a prerequisite of it, in any repetition (#262, #285).
-A Group blocked by a prerequisite the Candidate failed is still played
-on the Reference, so its test cases are that play's. One blocked by a
-prerequisite that was not run is played on neither server, and fails
-no test case. One whose prerequisite is an `error` is an `error` too,
-so an identical Candidate scores 100% whatever vanilla does (audit
-L2). A Group's own line fails for a blocked
-Group or a Candidate failure; an `error` is not scored. The score is
-rounded down, so only a Run where every scored line passes scores 100%.
+A Group whose prerequisite the Candidate failed is still played on the
+Reference, so its test cases are that play's. A blocked Group is played
+on neither server, and fails no test case. One whose prerequisite is
+an `error` is an `error` too, so an identical Candidate scores 100%
+whatever vanilla does (audit L2). A Group's own line fails for a
+blocked Group or a Candidate failure; an `error` is not scored. The
+score is rounded down, so only a Run where every scored line passes
+scores 100%.
 
 ## Development
 

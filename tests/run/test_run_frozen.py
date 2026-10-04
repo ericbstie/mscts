@@ -189,7 +189,7 @@ async def test_a_reference_unsettled_while_the_candidate_is_frozen_is_an_error(
 
 
 @pytest.mark.asyncio
-async def test_a_group_blocked_by_the_group_that_froze_the_candidate_says_it_is_blocked(
+async def test_a_group_requiring_the_group_that_froze_the_candidate_names_that_prerequisite(
     tmp_path: Path,
 ) -> None:
     # Both reasons fail each test case of the Reference's play; the prerequisite comes first.
@@ -201,8 +201,8 @@ async def test_a_group_blocked_by_the_group_that_froze_the_candidate_says_it_is_
         _, verdict = await run([STAYS_FROZEN, after], reference, candidate, workdir=tmp_path)
 
     assert (verdict.outcome, verdict.detail) == (
-        Outcome.BLOCKED,
-        f"prerequisite {STAYS_FROZEN.id} was mismatch",
+        Outcome.MISMATCH,
+        f"the Candidate failed: prerequisite {STAYS_FROZEN.id} was mismatch",
     )
     assert verdict.test_cases
 

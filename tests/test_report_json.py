@@ -38,7 +38,7 @@ def _report(*divergences: Divergence) -> Report:
         "",
         ("status_response.players.sample[]",),
     )
-    blocked = Verdict("join/basic", Outcome.BLOCKED, (), "prerequisite status/basic was mismatch")
+    blocked = Verdict("join/basic", Outcome.BLOCKED, (), "prerequisite status/basic was not run")
     return Report(
         TARGET,
         SideSummary("vanilla", "26.3", (Measurement("instance.startup", "ms", 20963.1),), "26.3"),
@@ -77,7 +77,7 @@ def test_report_json_carries_each_line_and_the_totals_of_the_report() -> None:
         {
             "group_id": "join/basic",
             "result": "not tested",
-            "reasons": "Not tested: prerequisite status/basic was mismatch",
+            "reasons": "Not tested: prerequisite status/basic was not run",
         },
     ]
     assert data["totals"] == {

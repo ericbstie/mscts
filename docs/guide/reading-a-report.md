@@ -129,40 +129,43 @@ Running tests against pumpkin
 ✗ status/ping/status:pong_response.timestamp
 ✗ join/basic/login.is_flat
 ✗ join/basic/login.sea_level
-✗ join/basic Not tested: prerequisite status/basic was mismatch
-0 passed, 5 failed (1 not tested). (0%)
+✗ join/basic Candidate failed: prerequisite status/basic was mismatch
+0 passed, 5 failed. (0%)
 Took 41 s
 ```
 
-`Not tested` means a prerequisite did not pass. A prerequisite passes
-when each of its test cases passes and it has no line of its own. So a
-prerequisite that differs only in network traffic passes. If the
-Candidate failed the prerequisite, mscts still plays the Group on
-vanilla, and the Candidate fails each test case of that play. If the
-prerequisite was not run, mscts plays the Group on neither server, and
-only its own line fails. If the prerequisite was an `Error`, the Group
-is an `Error` too, not scored. No
-shipped Group has a prerequisite yet. `Error` means mscts or vanilla
-failed. `Candidate failed` means the Candidate broke the protocol, sent a
-frame that did not decode, sent a value mscts could not compare with
-vanilla's, closed the connection, did not answer in time, lacked a
-command the Group requires (`Candidate failed: missing /tick`), or still had
-players online from the previous Group. In that last case, mscts plays the
-Group on vanilla only. If the Candidate's world stays frozen after a
-Group, mscts plays each later Group on vanilla only, and each of them
-fails as `Candidate failed`. Different packet counts for a Bot also give
-the Group a line of its own.
+A Group is played on the Candidate only if each Group it requires
+passed. A Group passes when each of its test cases passes and it has no
+line of its own, so one that differs only in network traffic passes. If
+the Candidate failed a required Group, mscts still plays this one on
+vanilla, and it fails as `Candidate failed`, as in the example. If a
+required Group was an `Error`, this one is an `Error` too. If a required
+Group was not run, mscts plays this one on neither server: `Not tested`
+means that. The count in brackets on the totals line counts these
+lines. No shipped Group requires another yet.
+
+`Error` means mscts or vanilla failed. `Candidate failed` means the
+Candidate broke the protocol, sent a frame that did not decode, sent a
+value mscts could not compare with vanilla's, closed the connection, did
+not answer in time, lacked a command the Group requires (`Candidate
+failed: missing /tick`), failed a Group this one requires, or still had
+players online from the previous Group. In those last two cases, mscts
+plays the Group on vanilla only. If the Candidate's world stays frozen
+after a Group, mscts plays each later Group on vanilla only, and each of
+them fails as `Candidate failed`.
+Different packet counts for a Bot also give the Group a
+line.
 
 The line names each distinct reason from the Group's repetitions once. It
 counts as one test case: a failing one, unless every reason is an `Error`.
 Then the line is marked `!` instead of ✗ and is not scored, because the
 fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
 failed also fails each test case that vanilla's play of it has in any
-repetition. So does a Group not tested because the Candidate failed its
-prerequisite, which mscts played on vanilla only. So a Candidate that
-crashes, lacks a command, fails a prerequisite, still has players online,
-leaves its world frozen, or sends something mscts cannot compare never
-scores better than one that sends every value wrong.
+repetition, including a Group mscts played on vanilla only. So a
+Candidate that crashes, lacks a command, fails a Group another requires,
+still has players online, leaves its world frozen, or sends something
+mscts cannot compare never scores better than one that sends every value
+wrong.
 
 ## Total time
 
@@ -294,7 +297,12 @@ has its `reasons` instead of a `test_case`.
 Verdict, its differences with both values, each server's
 Measurements, and its time in seconds in `elapsed_s`. A repetition that
 played vanilla only has no Measurements of the Candidate, and its time is
-that play alone. A Verdict keeps at most 20 differences of one test case, and
+that play alone. Its Verdict is a `mismatch` with a difference of kind
+`failed` that says why, such as `prerequisite status/basic was
+mismatch`, and lists the test cases of vanilla's play. A Verdict with a
+`failed` difference fails every test case its Group has, in any
+repetition. A `blocked` Verdict was played on neither server and lists
+none. A Verdict keeps at most 20 differences of one test case, and
 its `omitted` counts the ones it left out. Without that limit, a default
 Run against Pumpkin would write an 88 MB file, almost all of it the elements of
 one tag list. A difference beyond the first 20 is still kept if it is the first of its

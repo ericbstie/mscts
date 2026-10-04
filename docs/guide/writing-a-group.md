@@ -225,11 +225,11 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
 )
 ```
 
-- `requires` lists Groups that must `match` first. If one does not, this
-  Group is `blocked` and mscts does not play it on the Candidate. If the
-  Candidate failed the Group it requires, mscts still plays this one on
-  vanilla, and the Candidate fails each of its test cases. If that Group
-  was not run, mscts plays this one on neither server. If it was an
+- `requires` lists Groups that must `match` first. If one does not, mscts
+  does not play this Group on the Candidate. If the Candidate failed the
+  Group it requires, mscts still plays this one on vanilla, and the
+  Candidate fails it and each of its test cases. If that Group was not
+  run, this one is `blocked`, played on neither server. If it was an
   `error`, this one is an `error` too.
 - `masks` excludes fields that change between two runs of vanilla. Each
   `Mask` names a packet, a field path (or `*` for the whole packet) and a

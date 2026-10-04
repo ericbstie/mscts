@@ -102,7 +102,7 @@ class Totals:
     Attributes:
         passed: Lines that passed.
         failed: Lines that failed, counting those not tested.
-        not_tested: Of the failed lines, those not tested.
+        not_tested: Of the failed lines, the Group lines of a Group played on neither server.
         errors: Lines left out of the score because mscts or the Reference failed.
     """
 
@@ -159,20 +159,19 @@ def report_lines(report: Report) -> tuple[Line, ...]:
 
 
 def _candidate_failed(group: GroupResult) -> bool:
-    """Whether the Candidate failed the whole Group in any repetition.
+    """Whether the Candidate failed the whole Group in any repetition: a `failed` Divergence.
 
-    It did if a repetition has a `failed` Divergence, or is `blocked` by a Group the
-    Candidate failed: then the Reference still played it, so the Verdict has the
-    Reference's test cases (#285). Each test case the Group has in any repetition then
-    fails, as if the Candidate had sent it wrong, so failing a whole Group never scores
-    better than sending each value wrong (#262). A repetition blocked by a prerequisite
-    that was not run was played on neither server, has no test cases, and fails none.
-    With none in any repetition, the Group's own line is all that fails.
+    Then each test case the Group has in any repetition fails, as if the Candidate had sent
+    it wrong, so failing a whole Group never scores better than sending each value wrong
+    (#262). The Reference's own test cases are among them where the Reference played the
+    Group, which it does even when the Candidate was not played: left frozen or unsettled
+    (#266), or having failed a prerequisite (#285). With none in any repetition, the
+    Group's own line is all that fails.
     """
     return any(
-        (verdict.outcome is Outcome.BLOCKED and verdict.test_cases)
-        or any(divergence.kind == "failed" for divergence in verdict.divergences)
+        divergence.kind == "failed"
         for verdict in group.verdicts
+        for divergence in verdict.divergences
     )
 
 
@@ -487,7 +486,7 @@ def _sent(value: object) -> _Line:
 def _group_times(results: Sequence[GroupResult]) -> tuple[str, ...]:
     times = []
     for result in results:
-        if any(result.elapsed_s):  # a blocked Group may still be played on the Reference
+        if any(result.elapsed_s):  # a Group the Candidate did not play may be played on vanilla
             duration = f"{_seconds(sum(result.elapsed_s))} s"
         elif all(verdict.outcome is Outcome.BLOCKED for verdict in result.verdicts):
             duration = "not played"

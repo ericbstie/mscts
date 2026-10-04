@@ -55,29 +55,41 @@ def test_a_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -
 
 
 def test_a_blocked_group_is_one_failing_line_that_was_not_tested() -> None:
-    blocked = Verdict(
-        "join/basic", Outcome.BLOCKED, detail="prerequisite status/basic was mismatch"
-    )
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite status/basic was not run")
     assert report_lines(_report(_result(blocked, blocked))) == (
         GroupLine(
             "join/basic",
             LineResult.NOT_TESTED,
-            "Not tested: prerequisite status/basic was mismatch",
+            "Not tested: prerequisite status/basic was not run",
         ),
     )
 
 
-def test_a_blocked_repetition_fails_each_test_case_the_group_has_in_any_repetition() -> None:
-    # #285: the Reference's play of a blocked Group lists its test cases; the Candidate,
+def test_a_failed_prerequisite_fails_each_test_case_the_group_has_in_any_repetition() -> None:
+    # #285, review B: vanilla's play of the Group lists its test cases; the Candidate,
     # never played, fails each, as if it had sent every value wrong.
-    reason = "prerequisite status/basic was mismatch"
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail=reason, test_cases=("a",))
+    what = "prerequisite status/basic was mismatch"
+    failed = replace(FAILED, bot="", candidate=what)
+    unplayed = replace(_verdict(failed, group_id="join/basic"), test_cases=("a",))
     passed = _compared("a", "b", group_id="join/basic")
 
-    assert report_lines(_report(_result(blocked, passed))) == (
+    assert report_lines(_report(_result(unplayed, passed))) == (
         CaseResult("join/basic", "a", LineResult.FAIL),
         CaseResult("join/basic", "b", LineResult.FAIL),
-        GroupLine("join/basic", LineResult.NOT_TESTED, f"Not tested: {reason}"),
+        GroupLine("join/basic", LineResult.FAIL, f"Candidate failed: {what}"),
+    )
+
+
+def test_a_blocked_verdict_fails_no_test_case() -> None:
+    # Review A B1: a `blocked` Verdict was played on neither server.
+    blocked = Verdict(
+        "join/basic", Outcome.BLOCKED, detail="prerequisite x was not run", test_cases=("a",)
+    )
+    passed = _compared("a", group_id="join/basic")
+
+    assert report_lines(_report(_result(blocked, passed))) == (
+        CaseResult("join/basic", "a", LineResult.PASS),
+        GroupLine("join/basic", LineResult.NOT_TESTED, "Not tested: prerequisite x was not run"),
     )
 
 
@@ -95,10 +107,10 @@ FAILED = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected", "")
 def test_a_candidate_failure_fails_its_group_and_each_of_its_test_cases() -> None:
     verdict = replace(_verdict(FAILED, group_id="join/basic"), test_cases=("a",))
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
     reasons = (
         "Candidate failed: disconnected; Error: vanilla stopped; "
-        "Not tested: prerequisite x was mismatch"
+        "Not tested: prerequisite x was not run"
     )
     assert report_lines(_report(_result(verdict, error, blocked))) == (
         CaseResult("join/basic", "a", LineResult.FAIL),
@@ -135,7 +147,7 @@ def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line()
 
 def test_a_group_that_was_not_tested_and_errored_is_not_tested() -> None:
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
-    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was mismatch")
+    blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
     [line] = report_lines(_report(_result(error, blocked)))
     assert line.result is LineResult.NOT_TESTED
 
@@ -161,7 +173,7 @@ def test_totals_count_each_result_and_score_the_passes_among_what_was_scored() -
     lines = [
         *[CaseResult("g/a", str(n), LineResult.PASS) for n in range(7)],
         CaseResult("g/a", "x", LineResult.FAIL),
-        GroupLine("g/b", LineResult.NOT_TESTED, "Not tested: prerequisite x was mismatch"),
+        GroupLine("g/b", LineResult.NOT_TESTED, "Not tested: prerequisite x was not run"),
         GroupLine("g/c", LineResult.ERROR, "Error: vanilla stopped"),
     ]
     result = totals(lines)

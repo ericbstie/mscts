@@ -82,7 +82,7 @@ async def test_an_attached_side_has_no_startup_measurement(
 
 
 @pytest.mark.asyncio
-async def test_a_group_blocked_by_the_candidate_measures_the_reference_alone(
+async def test_a_group_whose_prerequisite_the_candidate_failed_measures_the_reference_alone(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
     result = await run_results(
@@ -93,7 +93,7 @@ async def test_a_group_blocked_by_the_candidate_measures_the_reference_alone(
     )
 
     ping = result.results[1]
-    assert ping.verdicts[0].outcome is Outcome.BLOCKED
+    assert ping.verdicts[0].outcome is Outcome.MISMATCH
     [[rtt]] = ping.reference
     assert rtt.name == "status.rtt"
     assert ping.candidate == ((),)
