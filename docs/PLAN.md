@@ -1032,6 +1032,11 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   compares; `join_seen`, `leave_seen`, `mode_seen` and `server_full` — the
   `players/join-seen`, `players/leave-seen`, `players/mode-seen` and `players/server-full`
   scripts.
+- `groups.movement`: `PACKETS` — what a window compares (`player_position`, `disconnect`);
+  `LANDER_BARRIERS` — how
+  many barriers the Bot that must not be kicked floats for; `too_fast`, `into_blocks`, `flying` and
+  `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
+  `movement/before-teleport` scripts.
 - `run`: `status_version` — status version extraction.
 
 ```python

@@ -108,12 +108,52 @@ its own. That update is never compared, because it comes at a different time on 
 Offline, a server makes each player's UUID from their name. A server that makes it another way
 shows the other player with another UUID, in the tab list and in their body.
 
+## Movement (`movement`)
+
+What the server does with the moves a player's client reports. The server checks each move
+against where it has the player: a move too far for one tick, a move into a block, a player
+floating in the air for too long. When it refuses a move, it sends the player back
+(`player_position`). When it refuses the player, it kicks them (`disconnect`). The Groups compare
+only these two packets.
+
+A Bot does not simulate physics: each Group gives every position the Bot reports. Control moves
+the Bot to where each case starts with `/tp`. The Bots join with vanilla's speed check off
+(`gamerule player_movement_check false`), and it is turned on again as soon as they have joined.
+During a join, that check can send a player back to where it already is, which would change the
+teleport number of every later teleport.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `movement/too-fast` | exact | none | A Bot moves 1, 5, 9, 11 and 20 blocks, each in one move. Then it sends two moves of 8 blocks in one tick, and six moves of 2 blocks in one tick. | none |
+| `movement/into-blocks` | tick-exact | none | A Bot walks into a wall, through a gap 1 block wide and 2 high, up onto a full block without jumping, and up onto a slab. The world steps one tick after each move. | none |
+| `movement/flying` | exact | none | Three Bots rise 1.5 blocks into the air. A creative Bot stays there. A survival Bot lands again after about 15 ticks, well before vanilla's limit of 80, and must not be kicked. Another survival Bot stays there until the server kicks it. The creative Bot rises first, so by then it has floated at least as long. | none |
+| `movement/before-teleport` | tick-exact | none | A Bot walks into a wall, then sends three more moves before it accepts the teleport the server answers with. | none |
+
+Vanilla checks a move's speed only while the world runs normally, not while it is frozen. So
+`movement/too-fast` runs in a running world. `movement/flying` also runs in a running world.
+Freezing it would not change when vanilla kicks, because vanilla counts the ticks a player floats
+either way. In `movement/into-blocks` and `movement/before-teleport`, vanilla checks speed again
+for the packets it reads just after each step. None of their moves arrives then, and none is
+long enough to be refused.
+
+`movement/flying` compares the kick's message, not when it comes. A server that kicks a player
+after fewer than about 15 ticks in the air kicks the Bot that lands, and differs. A server that
+kicks later than vanilla, but within 10 seconds, does not differ.
+
+The moves of one tick are sent back to back, and the server must take them in one tick. Vanilla
+reads what has arrived at the start of each tick, so if a tick starts while the moves are still
+arriving, the server takes them in two ticks and refuses none. This is rare. Each window opens by
+waiting for the server's answer to a request, which it sends at the start of a tick. The moves go
+out just after it, so they arrive about 50 ms before the server next reads. They are also sent
+within a millisecond.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
 | Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
 | Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
+| Invalid moves | `movement/invalid`: a coordinate that is not a number, an infinite one, and a pitch of 91 | A Bot that can send a move as given. Today a Bot refuses such a coordinate, and holds pitch between -90 and 90 as the vanilla client does. |
 
 See [Project status](/status) for the order.
 
