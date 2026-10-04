@@ -78,7 +78,7 @@ test needs it:
 | `codec/schemas/play/inventory.py` | the container packets' schemas: `open_screen`, `mount_screen_open` (its entity id an Int), `container_set_content`, `container_set_slot`, `container_set_data`, `container_close` (both ways), `set_cursor_item`, `set_player_inventory`, and the client's `container_click` (its changed slots each a `HASHED_SLOT`, at most 128) |
 | `codec/packets.py` | `Codec`: packet name ↔ id, field schemas, `encode` / `decode`, `entity_id_paths` |
 | `codec/entity_ids.py` | where a value holds entity ids: `entity_id_paths` and `inner_types` walk a wire type, and a path's steps are keys, `EACH` and `Variant` |
-| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order) `block_states.json` (how many block states there are) and `items.json` (each item's stack size but 64, and each equippable item's slot). Committed, regenerated and checked by `mise run regen:packets` |
+| `codec/data/26.3/` | generated `packets.json`, `registry_names.json` (the data component, consume effect, command argument parser, entity type, item, menu and slot display names in protocol id order), `block_states.json` (how many block states there are) and `items.json` (each item's stack size but 64, and each equippable item's slot). Committed, regenerated and checked by `mise run regen:packets` |
 | `codec/registry_names.py` | `registry_names(version, registry)`: the committed name lists, where a name's position is its protocol id; `block_state_count(version)`, the size of the global block state palette; `max_stack_sizes(version)` and `equipment_slots(version)`, the items' defaults by name |
 | `net.py` | `Endpoint`, `Connection` (asyncio, state machine, records to a Transcript) |
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
@@ -765,8 +765,8 @@ class InventoryTracker:
     # an unknown mode, a slot outside a Short or a button outside a Byte, a slot the click
     # must name that the menu lacks, a menu other than the inventory's, a chest's, a
     # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), the crafting result, a bundle, a
-    # swap whose slot stack would go back through Inventory.add, or a stack with a component
-    # patch (its hash needs the component's encoding).
+    # swap whose slot stack would go back through Inventory.add, or a changed slot or cursor
+    # stack with a component patch (its hash needs the component's encoding).
 CLICK_MODES: Mapping[str, int]      # pickup 0, quick_move 1, swap 2, clone 3, throw 4, quick_craft 5, pickup_all 6
 OUTSIDE = -999                      # the slot of a click outside the menu
 

@@ -726,9 +726,9 @@ class Bot:
         """The player's inventory and the open container, as the vanilla client would show them.
 
         A snapshot: each read is the inventory as the Bot has it then. The Bot changes slots
-        itself only for its own `drop`. What other actions change, such as a placed block,
-        arrives from the server: it changes only as the Bot reads packets, and after `sync` it
-        holds everything the server sent before (docs/research/2026-10-04-bot-inventory.md).
+        itself only for its own `drop` and `click`. What other actions change, such as a placed
+        block, arrives from the server: it changes only as the Bot reads packets, so call `sync`
+        before clicking after them (docs/research/2026-10-04-bot-inventory.md).
         """
         return self._replies.inventory.view()
 

@@ -105,7 +105,7 @@ with.
   `mix` is the key times `0x9E3779B9`, xor that shifted right by 16, then
   the next free position after it. Iteration gives key 0 first (it is kept
   apart), then the table from its last position down. Recorded in Java for
-  seven key sets, among them three past the growth
+  nine key sets: three past the growth, and two of 24, the most before it
   (`tests/net/test_bot_inventory.py`).
 - **`HashedStack`**: an empty stack is `false`. Otherwise the item, the
   count, and the component patch hashed with the connection's hash
@@ -128,9 +128,10 @@ with.
     the same stack it merges up to the slot's limit, and on another item it
     swaps, if the cursor fits.
   - SWAP takes button 0 to 8 or 40, an `Inventory` index. It swaps that
-    index with the slot. A stack too big for the slot leaves the rest at the
-    index. When both hold stacks, the slot's stack then goes through
-    `Inventory.add`.
+    index with the slot. A stack too big for an empty slot leaves the rest
+    at the index. When both hold stacks and the index's stack is too big
+    for the slot, the slot takes what fits and its old stack goes through
+    `Inventory.add`; otherwise the two swap (javap, 1275 to 1353).
   - CLONE needs infinite materials.
   - THROW needs an empty cursor. It drops one (button 0), or the stack.
   - PICKUP_ALL needs a stack on the cursor and an empty slot. It gathers

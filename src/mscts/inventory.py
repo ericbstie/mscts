@@ -259,8 +259,8 @@ class InventoryTracker:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
                 a chest's, a dispenser's, a hopper's or a shulker box's; the crafting result; a
-                bundle; a swap that puts the slot's stack elsewhere; or a stack whose components
-                change, which it cannot hash. Nothing changes.
+                bundle; a swap that puts the slot's stack elsewhere; or a changed slot's or the
+                cursor's stack with a component patch, which it cannot hash. Nothing changes.
         """
         number = CLICK_MODES.get(mode)
         if number is None:
@@ -467,7 +467,6 @@ _INVENTORY_HOTBAR = 36
 _INVENTORY_END = 45
 _RESULT = 0
 _SHORT, _BYTE = 1 << 15, 1 << 7
-_MAX_CHANGED = 128
 
 
 class _UnpredictableError(ValueError):
