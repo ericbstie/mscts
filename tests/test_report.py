@@ -146,12 +146,11 @@ def test_an_unknown_test_case_is_listed_by_name() -> None:
 
 
 def test_list_elements_share_one_line_without_their_values_or_indices() -> None:
-    first = replace(_field("status_response.players.sample[].name"), path="players.sample[0].name")
-    second = replace(first, path="players.sample[1].name", candidate="another name")
+    first = replace(_field("hurt_animation.entity_id"), path="entity_id")
+    second = replace(first, path="entity_id", candidate="another name")
     text = render_text(_report(_result(_verdict(first, second))))
     assert text == (
-        "Running tests against pumpkin\n"
-        "✗ status/basic/status_response.players.sample[].name\n" + FAILED_ONE
+        "Running tests against pumpkin\n✗ status/basic/hurt_animation.entity_id\n" + FAILED_ONE
     )
 
 

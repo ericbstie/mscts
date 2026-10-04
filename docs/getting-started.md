@@ -91,7 +91,7 @@ Candidate: pumpkin nightly 4426d11 (sha256 b8382a8a…)
 ✗ status/with-player/login_finished.profile.uuid Player UUID at login
 ...
 ✗ status/with-player/status_response.players.sample[].id Server list player UUID
-✓ status/with-player/status_response.players.sample[].name
+✓ status/with-player/status_response.players.sample[].name Server list player name
 ...
 36 passed, 10 failed
 Score: 78.2% (36 of 46 test cases pass)
