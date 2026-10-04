@@ -5,6 +5,7 @@ imports, so registering a Group is the only thing that adds a test.
 """
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 
@@ -54,3 +55,33 @@ def test_there_is_a_test_for_every_registered_group_and_no_other(suite: pytest.P
 
     collected = [line for line in result.outlines if "::test_selfcheck[" in line]
     assert [line.split("[", 1)[1].rstrip("]") for line in collected] == list(GROUPS)
+
+
+@pytest.mark.parametrize(
+    ("repeat", "timeout_s"),
+    [(None, 900), ("", 900), ("1", 900), ("3", 900), ("20", 1200), ("40", 2400)],
+)
+def test_the_collected_selfchecks_have_a_bounded_timeout_for_the_repeat_count(
+    pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, repeat: str | None, timeout_s: int
+) -> None:
+    if repeat is None:
+        monkeypatch.delenv("MSCTS_SELFCHECK_REPEAT", raising=False)
+    else:
+        monkeypatch.setenv("MSCTS_SELFCHECK_REPEAT", repeat)
+    pytester.makeini("[pytest]\nasyncio_default_fixture_loop_scope = function\n")
+    pytester.makeconftest(
+        CONFTEST
+        + """
+def pytest_collection_finish(session):
+    for item in session.items:
+        marker = item.get_closest_marker("timeout")
+        print(f"selfcheck budget {item.callspec.params['group_id']} {marker.args[0]}")
+"""
+    )
+    source = Path(__file__).resolve().parents[1] / "selfcheck/test_groups.py"
+    pytester.makepyfile(test_groups=source.read_text())
+
+    result = pytester.runpytest("--collect-only", "-q")
+
+    assert result.ret == pytest.ExitCode.OK
+    result.stdout.fnmatch_lines([f"selfcheck budget {group_id} {timeout_s}" for group_id in GROUPS])
