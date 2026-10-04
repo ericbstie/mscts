@@ -54,10 +54,11 @@ class _Case:
 async def _join(context: GroupContext, undo: contextlib.AsyncExitStack, *names: str) -> list[Bot]:
     """Join a Bot for each name with the movement check off, then turn the check on again.
 
-    The check is on by default, so turning it on is also the undo, pushed on `undo`.
+    The check is on by default, so turning it on is also the undo, pushed on `undo` before
+    the check is turned off: a command that timed out may still have run.
     """
-    await context.control.run(f"{_MOVEMENT_CHECK} false")
     undo.push_async_callback(context.control.run, f"{_MOVEMENT_CHECK} true")
+    await context.control.run(f"{_MOVEMENT_CHECK} false")
     bots = []
     for name in names:
         bot = await context.bot(name)

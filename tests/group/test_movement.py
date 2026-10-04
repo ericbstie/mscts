@@ -57,6 +57,9 @@ class MovementServer:
 
     seen: list[Packet] = field(default_factory=list)
     kicks: bool = True
+    stall_after: str | None = None
+    """A command after which the fake leaves Control's next marker unanswered (a server that
+    ran it but whose answer is late)."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -70,6 +73,7 @@ class MovementServer:
     async def _play(self, peer: Peer) -> None:
         player = self._player()
         requests = moves = 0
+        stalled = False
         async for packet in peer.packets():
             self.seen.append(packet)
             if packet.name == CLIENT_COMMAND:
@@ -79,7 +83,11 @@ class MovementServer:
                 await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
             elif packet.name == CHAT_COMMAND:
                 command = str((packet.fields or {})["command"])
-                if command.startswith(MARKER):
+                if command == self.stall_after:
+                    stalled = True
+                elif command.startswith(MARKER) and stalled:
+                    stalled = False
+                elif command.startswith(MARKER):
                     token = json.loads(command.removeprefix(MARKER))
                     await peer.write(
                         peer.frame("minecraft:system_chat", content=text(token), overlay=False)
@@ -228,6 +236,19 @@ async def test_the_bots_join_with_the_movement_check_off_and_it_is_on_after(grou
     assert all(off < hello < on for hello in hellos)
     # Undone last (the rule's default), but for the unfreeze that ends a tick-exact Group.
     assert [command for command in result.after if command != "tick unfreeze"][-1] == CHECK_ON
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_the_movement_check_is_turned_on_when_turning_it_off_times_out(group_id: str) -> None:
+    # The command may have run though its answer never came: the undo is already pushed.
+    transcript = Transcript(group_id=group_id, server="fake")
+    async with playing(MovementServer(stall_after=CHECK_OFF), transcript) as context:
+        with pytest.raises(TimeoutError):
+            await GROUPS[group_id].run(context)
+
+    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    assert control == [CHECK_OFF, CHECK_ON]
 
 
 @pytest.mark.asyncio
