@@ -1068,6 +1068,15 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups).
+- `groups.chat`: `LISTENER` — the Bot in the world for every case, sent what the others say;
+  `SPEAKER` — the Bot that speaks in `chat/player` and, as an operator, runs `chat/commands`;
+  `JOINER` — the Bot that joins and leaves in `chat/join-leave`; `TALKER`, `OPERATOR` — the
+  Bots of `chat/limits` that say the longest message and spam as an operator; `LONG`,
+  `SECTION`, `SPAMMER` — the Bots it kicks; `SPAM_MESSAGES` — how many messages at once
+  vanilla kicks a player who is not an operator for; `FEEDBACK_TIMEOUT_S` — how long a Bot
+  waits for a message or its kick; `PACKETS` — what a window compares; `player`, `commands`,
+  `join_leave` and `limits` — the `chat/player`, `chat/commands`, `chat/join-leave` and
+  `chat/limits` scripts.
 - `run`: `status_version` — status version extraction.
 
 ```python
@@ -1372,7 +1381,8 @@ RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields va
                                     # minecraft:sound.seed and minecraft:sound_entity.seed
                                     # (docs/research/2026-10-01-block-world-events.md), and
                                     # update_advancements' progress[*].criteria[*].obtained
-                                    # (#106)
+                                    # (#106), and minecraft:player_chat.timestamp
+                                    # (docs/research/2026-10-04-chat.md)
 ENTITY_UUIDS: Mapping[str, str]     # "<packet>.<path>" -> reason: the fields that hold an
                                     # entity's UUID, which every Comparison numbers by first
                                     # appearance, but not a player's (#21):

@@ -69,6 +69,37 @@ The `/fill` region holds one block that drops an item. Vanilla sends the items a
 order that follows their entity ids, and two servers can number their entities differently, so with
 several items the Reference would not match itself.
 
+## Chat (`chat`)
+
+What players see of each other's chat. A Bot called `listener` stays in the world for every
+case, and each case has a window of its own. The Group compares the chat messages each Bot
+receives, the reason a Bot is kicked, and the changes to the player list.
+
+The Bots speak as the vanilla client does when it has no chat signing keys, as an offline
+player has none. They send their messages unsigned. A command with a message argument (`/me`,
+`/say`, `/msg`, `/teammsg`) is sent the way the client sends it, as a signed command with no
+signatures, and vanilla then sends `player_chat` for it. The same command sent unsigned would
+get `disguised_chat`.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `chat/player` | exact | none | A Bot says a plain message, then a message with a link, and the listener receives each. | none |
+| `chat/commands` | exact | none | A Bot that is an operator runs `/me`, `/say`, `/msg listener ...`, `/tellraw @a` with gold bold text, and `/teammsg`, on a team with the listener. The team is removed afterwards. | none |
+| `chat/join-leave` | exact | none | A Bot joins, then leaves, while the listener is in the world. | none |
+| `chat/limits` | exact | none | A Bot says a message of 256 characters, the longest vanilla takes. An operator sends 10 messages at once. Then a Bot says a message of 257 characters, a Bot says a message with a `§`, and a Bot that is not an operator sends 10 messages at once, and each of these three is kicked. | none |
+
+Vanilla takes a message's time from its own clock, since the Bot has no keys to sign the time it
+sends. So no chat Group compares `timestamp` in `player_chat`; the message itself is still
+compared.
+
+Vanilla kicks a player who is not an operator for spam when the messages it sends add up too
+fast: each message counts 20, each tick takes 1 away, and the kick comes at 200. The 10 messages
+reach the server within one tick, so the tenth is the kick on every run. Freezing the world would
+not help, because the count goes down on every tick even then.
+
+The kicks are the last cases, so a server that never kicks makes the Bot wait out its timeout
+only after the rest are compared.
+
 ## Joining a world (`join`)
 
 What a player receives when it joins, up to the end of the first chunk batch: the login, the configuration (registries, tags and enabled features) and the first play packets (the world, difficulty, abilities, position, inventory, health, experience, recipes, advancements, the world border and the first chunks).
