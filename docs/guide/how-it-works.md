@@ -90,7 +90,8 @@ proves the two forms are equal. mscts still reports network traffic
 differences, but a test case that differs only in network traffic passes.
 
 A difference counts as network traffic only where such a rule says so. Today the
-canonical table covers the server list answer. Any other difference counts
+canonical table covers the server list response, chunks, light updates
+and chunk batch markers. Any other difference counts
 as gameplay.
 
 ## Masks

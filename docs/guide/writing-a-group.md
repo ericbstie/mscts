@@ -257,9 +257,8 @@ on with `await context.control.run("gamerule spawn_mobs true")`, and off
 again when it is done.
 
 Vanilla also sends some packets on a clock that a window still compares,
-because the same packets carry real changes too. It sends every player's
-latency about every 30 seconds, and the position of each entity a Bot can
-see every 3 seconds, even if it has not moved. If a window can catch one of these,
+because the same packets carry real changes too. It sends the position of
+each entity a Bot can see every 3 seconds, even if it has not moved. If a window can catch one of these,
 name the packets the Group is about.
 
 Then prove it with a Self-check: run the Group with vanilla on both sides.
