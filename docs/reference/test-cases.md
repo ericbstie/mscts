@@ -617,6 +617,12 @@ The message the client shows a kicked player, such as "Flying is not
 enabled on this server", or `multiplayer.disconnect.illegal_characters`
 for a chat message with a `§`.
 
+For a chat message longer than 256 characters, vanilla's reason is the
+text of the Java exception it got reading the message: `Internal
+Exception: io.netty.handler.codec.DecoderException: Failed to decode
+packet 'serverbound/minecraft:chat'`. A server that kicks the player
+too still differs here unless it sends the same text.
+
 ## `play:post_effects`
 
 **Screen effects**
