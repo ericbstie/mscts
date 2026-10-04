@@ -16,7 +16,7 @@ import pytest
 from mscts import run
 from mscts.bot import SYNC_REQUESTS, TICK_GAP_S
 from mscts.case_titles import TITLES
-from mscts.codec.packets import Direction, Packet
+from mscts.codec.packets import CodecError, Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import chunks
@@ -63,13 +63,15 @@ class ChunksServer:
     into its view. A marker (`tellraw @s "<token>"`) gets its token back; no other command gets
     feedback. Chunk `withheld` is never sent. With `ring`, the chunks one view distance
     further out follow a whole barrier after the view: a view one ring too big, sent nearest
-    first, as vanilla sends a view.
+    first, as vanilla sends a view. With `undecodable`, a chunk with no payload, which the codec
+    refuses, comes before the rest of the view.
     """
 
     distance: int = chunks.VIEW_DISTANCE
     withheld: Chunk | None = None
     first: frozenset[Chunk] = frozenset({(0, 0)})
     ring: bool = False
+    undecodable: bool = False
     seen: list[Packet] = field(default_factory=list)
     walker: Peer | None = None
     late: set[asyncio.Task[None]] = field(default_factory=set)
@@ -121,6 +123,9 @@ class ChunksServer:
                     await self.send(self.walker, chunks.view(chunks.FAR, self.distance))
 
     async def _send_view(self, peer: Peer, rest: frozenset[Chunk]) -> None:
+        if self.undecodable:
+            await asyncio.sleep(LATE_S)
+            await peer.write(peer.raw_frame(CHUNK))
         await self.send(peer, rest, after_s=LATE_S)
         self.viewed = True
 
@@ -390,3 +395,14 @@ async def test_a_chunk_never_sent_is_named_when_the_group_gives_up_at_a_bots_bou
     monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.5)
     with pytest.raises(TimeoutError, match=r"\(3, 3\)\] never arrived within 0\.5 s"):
         await play("chunks/join-view", ChunksServer(withheld=(3, 3)))
+
+
+@pytest.mark.asyncio
+async def test_a_chunk_the_codec_refuses_fails_the_group_with_the_decode_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review B of #280, L4: the Bot's reader stops at the chunk, so the Group fails with why,
+    # not with a wait that timed out.
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.5)
+    with pytest.raises(CodecError):
+        await play("chunks/join-view", ChunksServer(undecodable=True))
