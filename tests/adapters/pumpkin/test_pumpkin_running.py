@@ -2,35 +2,28 @@
 
 import asyncio
 import contextlib
-import dataclasses
 import json
 import logging
 import sys
 import time
-import uuid
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from support.leak_guard import kill_survivors
+from support.reference import STOP_TIMEOUT_S, booted
 
 from mscts import install
-from mscts.adapters.base import Installation
 from mscts.adapters.pumpkin import PumpkinAdapter, pumpkin_toml
 from mscts.codec.framing import FrameDecoder, encode_frame
 from mscts.codec.packets import Codec, Direction, State
 from mscts.net import Endpoint
-from mscts.runner import free_endpoint, running
+from mscts.runner import free_endpoint
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 
 pytestmark = pytest.mark.candidate
 
-READY_TIMEOUT_S = 60  # it was ready in under 1 s here, fresh world included
-STOP_TIMEOUT_S = 30
 _PROBE_TIMEOUT_S = 1.0
 _CODEC = Codec.for_target(TARGET)
-_GUARD = "MSCTS_LEAK_GUARD"  # the env variable that tags this test's processes
 
 
 async def status_of(endpoint: Endpoint) -> dict[str, object] | None:
@@ -82,35 +75,10 @@ def protocol_of(status: dict[str, object] | None) -> object:
     return version.get("protocol") if isinstance(version, dict) else None
 
 
-async def answers_status(endpoint: Endpoint) -> bool:
-    """Readiness as ADR-0004 defines it: a status ping answers with the Target protocol."""
-    return protocol_of(await status_of(endpoint)) == TARGET.protocol_version
-
-
-@pytest.fixture
-def leak_token() -> Iterator[str]:
-    """A token for this test's Instances; fails the test if a tagged process outlives it.
-
-    The Instance's env carries it, so a Pumpkin (or a child of it) that the runner failed
-    to stop is found in /proc, killed, and reported (tests/support/leak_guard.py).
-    """
-    token = uuid.uuid4().hex
-    yield token
-    # A stopped process takes a moment to exit, and PID 1 reaps lazily.
-    leaked = kill_survivors(f"{_GUARD}={token}", within=3.0)
-    assert not leaked, f"Pumpkin processes outlived the test: {leaked}"
-
-
-@pytest.fixture
-def installation(cache_dir: Path) -> Installation:
-    return install.require(PumpkinAdapter(), TARGET, cache_dir)
-
-
 @pytest.mark.asyncio
 async def test_pumpkin_becomes_ready_reads_its_config_and_stops_on_its_stop_line(
-    installation: Installation,
+    cache_dir: Path,
     tmp_path: Path,
-    leak_token: str,
     caplog: pytest.LogCaptureFixture,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -118,15 +86,15 @@ async def test_pumpkin_becomes_ready_reads_its_config_and_stops_on_its_stop_line
     endpoint = free_endpoint()  # a loopback host of its own, never 127.0.0.1
     spec = ServerSpec(host=endpoint.host, port=endpoint.port)
     workdir = tmp_path / "pumpkin"
-    plan = PumpkinAdapter().prepare(installation, spec, workdir)
+    adapter = PumpkinAdapter()
+    plan = adapter.prepare(install.require(adapter, TARGET, cache_dir), spec, workdir)
     assert plan.stop_stdin == b"stop\n"
-    # The one change to the plan: a leak-guard token in its (empty) env. Pumpkin ignores it.
-    plan = dataclasses.replace(plan, env={**plan.env, _GUARD: leak_token})
+    with pytest.raises(ValueError, match="ServerSpec changes cannot be applied"):
+        async with booted(cache_dir, workdir, plan=plan, motd="ignored"):
+            pytest.fail("a prepared LaunchPlan silently ignored a ServerSpec change")
     # Cold: the first boot of a fresh workdir. Warm: the same workdir again, world made.
     for boot in ("cold", "warm"):
-        async with running(
-            plan, ready=answers_status, ready_timeout=READY_TIMEOUT_S, stop_timeout=STOP_TIMEOUT_S
-        ) as instance:
+        async with booted(cache_dir, workdir, plan=plan) as instance:
             status = await status_of(plan.endpoint)
             leaving = time.monotonic()
         stopping_s = time.monotonic() - leaving

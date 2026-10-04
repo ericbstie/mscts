@@ -12,9 +12,6 @@ stays in the operator's inventory for the next Bot to meet as it joins: that Bot
 
 import asyncio
 import contextlib
-import dataclasses
-import uuid
-from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
@@ -29,21 +26,17 @@ from support.gives import (
     read_slots,
     stacks_of,
 )
-from support.leak_guard import kill_survivors
+from support.reference import booted
 
-from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
-from mscts.bot import Bot, status_probe
+from mscts.bot import Bot
 from mscts.codec.packets import CodecError, Packet
 from mscts.codec.wire import WireError
-from mscts.runner import Instance, free_endpoint, running
-from mscts.spec import ServerSpec
+from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
 pytestmark = pytest.mark.candidate
-
-_GUARD = "MSCTS_LEAK_GUARD"
 
 MALFORMED = frozenset(
     {
@@ -101,25 +94,6 @@ def _slashed(give: Give) -> bool:
     return any("/" in name for name in give.added)
 
 
-@contextlib.asynccontextmanager
-async def _pumpkin(cache_dir: Path, workdir: Path) -> AsyncIterator[Instance]:
-    """A Pumpkin with the operator, leak-guarded like any process-starting test."""
-    endpoint = free_endpoint()
-    spec = ServerSpec(host=endpoint.host, port=endpoint.port, operators=(OPERATOR,))
-    adapter = PumpkinAdapter()
-    plan = adapter.prepare(install.require(adapter, TARGET, cache_dir), spec, workdir)
-    token = uuid.uuid4().hex
-    plan = dataclasses.replace(plan, env={**plan.env, _GUARD: token})
-    try:
-        async with running(
-            plan, ready=status_probe(TARGET), ready_timeout=60, stop_timeout=5
-        ) as instance:
-            yield instance
-    finally:
-        leaked = kill_survivors(f"{_GUARD}={token}", within=3.0)
-    assert not leaked, f"Pumpkin processes outlived the test: {leaked}"
-
-
 def _classify(give: Give, payloads: list[bytes]) -> tuple[str, tuple[str, ...]]:
     """What arrived for `give`: malformed, silent, decoded or different, and the components."""
     try:
@@ -142,7 +116,9 @@ async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
 ) -> None:
     outcomes: dict[str, tuple[str, tuple[str, ...]]] = {}
     async with (
-        _pumpkin(cache_dir, tmp_path / "pumpkin") as instance,
+        booted(
+            cache_dir, tmp_path / "pumpkin", adapter=PumpkinAdapter(), operators=(OPERATOR,)
+        ) as instance,
         contextlib.AsyncExitStack() as held,
     ):
         bot, transcript = await _fresh_operator(instance, held)
@@ -174,7 +150,13 @@ async def test_pumpkin_never_answers_a_give_of_a_component_with_a_slash_in_its_n
     # few such commands stop the server): the rows with a slash are not played with the others.
     (give,) = (give for give in GIVES if give.label == "cushion/color")
     async with (
-        _pumpkin(cache_dir, tmp_path / "pumpkin") as instance,
+        booted(
+            cache_dir,
+            tmp_path / "pumpkin",
+            adapter=PumpkinAdapter(),
+            operators=(OPERATOR,),
+            stop_timeout=5,
+        ) as instance,
         operator_bot(instance, "pumpkin") as (bot, _),
     ):
         await bot.command(f"give {OPERATOR} minecraft:{give.argument}")
