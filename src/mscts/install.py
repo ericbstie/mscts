@@ -470,13 +470,14 @@ def _answer(terminal: Terminal) -> bool | None:
         terminal.say("Please answer y or n. ", end="")
 
 
-def require(
+def require(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in, not read
     adapter: Adapter,
     target: Target,
     cache_dir: Path,
     *,
     terminal: Terminal | None = None,
     fetch: Fetch = https_get,
+    now: Clock = utc_now,
 ) -> Installation:
     """`adapter`'s verified Installation for `target`; never installs one without saying so.
 
@@ -485,6 +486,7 @@ def require(
     prints the `--from` command, then ProvisionError naming it). Otherwise (no terminal, or
     stdin is no TTY; the default) ProvisionError at once, naming both commands; stdin is
     never read.
+    An accepted download records `installed_at` from `now`.
     """
     existing = installed(adapter, target, cache_dir)
     if existing is not None:
@@ -519,6 +521,6 @@ def require(
         terminal.say(f"downloading {url} ...")
         return fetch(url)
 
-    done = install_release(adapter, target, cache_dir, None, announced)
+    done = install_release(adapter, target, cache_dir, None, announced, now=now)
     terminal.say(done.message)
     return done.installation

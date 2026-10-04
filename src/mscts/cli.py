@@ -211,10 +211,12 @@ def _groups(pattern: str) -> tuple[Group, ...]:
     return resolve(chosen)
 
 
-def _server(name: str) -> run.Server:
+def _server(name: str, *, now: install.Clock) -> run.Server:
     adapter = ADAPTERS[name]()
     terminal = install.Terminal(sys.stdin, sys.stdout)
-    return run.Server(adapter, install.require(adapter, TARGET, cache_dir(), terminal=terminal))
+    return run.Server(
+        adapter, install.require(adapter, TARGET, cache_dir(), terminal=terminal, now=now)
+    )
 
 
 def _run(arguments: argparse.Namespace, world: _World) -> int:
@@ -224,7 +226,8 @@ def _run(arguments: argparse.Namespace, world: _World) -> int:
         msg = f"--repeat must be at least 1, not {repeat}"
         raise _UsageError(msg)
     out = None if arguments.out is None else _made_out_folder(Path(arguments.out))
-    reference, candidate = _server(REFERENCE), _server(str(arguments.candidate))
+    reference = _server(REFERENCE, now=world.now)
+    candidate = _server(str(arguments.candidate), now=world.now)
     started = perf_counter()
     workdir = Path(tempfile.mkdtemp(prefix="mscts-run-"))
     try:

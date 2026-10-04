@@ -1048,11 +1048,12 @@ class Terminal:
     stdin: TextIO                   # asked only if stdin.isatty()
     stdout: TextIO
 def require(adapter, target, cache_dir, *, terminal: Terminal | None = None,
-            fetch: Fetch = https_get) -> Installation: ...
+            fetch: Fetch = https_get, now: Clock = utc_now) -> Installation: ...
     # The one way a Run or a test gets an Installation (ADR-0008 §2): installed(...) if there;
     # else, only with a terminal whose stdin is a TTY, asks "<adapter> <version> is not
     # installed. Download its latest build (Y) or provision it yourself (N)?". Y:
-    # install_release, announcing each "downloading <url> ..." and printing its message.
+    # install_release with the given clock, announcing each "downloading <url> ..."
+    # and printing its message.
     # N: prints and raises ProvisionError naming `mscts adapter install <a> --from <file>`.
     # Anything else re-asks ("Please answer y or n."); end of input refuses, naming both
     # commands. No terminal (the default) or no TTY: ProvisionError at once naming

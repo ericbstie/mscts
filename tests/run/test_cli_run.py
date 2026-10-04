@@ -1,6 +1,7 @@
 """`mscts run`: a Run of the Reference against a Candidate, with fake Adapters."""
 
 import dataclasses
+import datetime
 import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -103,6 +104,30 @@ def test_the_cli_measures_the_total_run_time(
 
     assert code == 0
     assert out.endswith("\nTook 41.2 s\n"), out
+
+
+def test_a_run_passes_its_install_clock_to_both_servers(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fakes()
+    original = install.require
+    clocks: list[object] = []
+
+    def require(adapter: Adapter, target: Target, cache: Path, **keywords: object) -> Installation:
+        clocks.append(keywords.get("now"))
+        return original(adapter, target, cache)
+
+    monkeypatch.setattr(install, "require", require)
+    moment = datetime.datetime(2001, 2, 3, 4, 5, 6, tzinfo=datetime.UTC)
+
+    def now() -> datetime.datetime:
+        return moment
+
+    code = cli.main(["run", "--candidate", "pumpkin", "--repeat", "1"], now=now)
+    _, err = capsys.readouterr()
+
+    assert code == 0, err
+    assert clocks == [now, now]
 
 
 def test_the_group_glob_picks_the_groups(fakes: Fakes, capsys: pytest.CaptureFixture[str]) -> None:

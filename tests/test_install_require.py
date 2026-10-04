@@ -1,6 +1,8 @@
 """install.require: a missing Installation is never installed without saying so (ADR-0008 §2)."""
 
+import datetime
 import io
+import json
 from pathlib import Path
 from typing import override
 
@@ -80,6 +82,20 @@ def test_yes_downloads_the_latest_build_and_says_so(tmp_path: Path) -> None:
         f"{QUESTION}downloading {TAGS_URL} ...\ndownloading {NIGHTLY_URL} ...\n"
         f"installed pumpkin nightly 4426d11 from {NIGHTLY_URL} into {root_of(tmp_path)}\n"
     )
+
+
+def test_yes_records_installed_at_from_the_supplied_clock(tmp_path: Path) -> None:
+    terminal, _ = ask("y\n")
+    moment = datetime.datetime(2001, 2, 3, 4, 5, 6, 123456, tzinfo=datetime.UTC)
+
+    installation = require(
+        ADAPTER, TARGET, tmp_path, terminal=terminal, fetch=FakeGitHub(), now=lambda: moment
+    )
+
+    assert installation.source is not None
+    assert installation.source.installed_at == "2001-02-03T04:05:06+00:00"
+    recorded = json.loads((installation.root / install.SOURCE).read_text())
+    assert recorded["installed_at"] == installation.source.installed_at
 
 
 def test_no_prints_the_from_command_and_refuses_naming_it(tmp_path: Path) -> None:
