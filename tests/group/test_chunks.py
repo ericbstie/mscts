@@ -189,14 +189,14 @@ DISTANCES = {
 
 
 @pytest.mark.parametrize("group_id", ALL)
-def test_each_group_is_exact_requires_join_basic_and_sets_its_view_distance(
+def test_each_group_is_exact_requires_nothing_and_sets_its_view_distance(
     group_id: str,
 ) -> None:
     group = GROUPS[group_id]
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert group.kind is GroupKind.EXACT
-    assert (group.masks, group.requires) == ((), ("join/basic",))
+    assert (group.masks, group.requires) == ((), ())
     assert group.spec(default).view_distance == DISTANCES[group_id]
 
 

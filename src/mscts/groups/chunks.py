@@ -142,19 +142,19 @@ async def _join_view(context: GroupContext, distance: int) -> None:
         await _until_sent(walker, view(SPAWN, distance))
 
 
-@group("chunks/join-view", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
+@group("chunks/join-view", spec=_at(VIEW_DISTANCE))
 async def join_view(context: GroupContext) -> None:
     """The walker joins, and is sent its view."""
     await _join_view(context, VIEW_DISTANCE)
 
 
-@group("chunks/view-distance", requires=("join/basic",), spec=_at(FAR_VIEW_DISTANCE))
+@group("chunks/view-distance", spec=_at(FAR_VIEW_DISTANCE))
 async def view_distance(context: GroupContext) -> None:
     """The walker joins a server whose view distance is 5, and is sent its view."""
     await _join_view(context, FAR_VIEW_DISTANCE)
 
 
-@group("chunks/teleport", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
+@group("chunks/teleport", spec=_at(VIEW_DISTANCE))
 async def teleport(context: GroupContext) -> None:
     """Control teleports the walker 20 chunks east: it forgets its view and is sent a new one."""
     async with _walker(context) as walker:
@@ -165,7 +165,7 @@ async def teleport(context: GroupContext) -> None:
             await _until_sent(walker, view(FAR, VIEW_DISTANCE))
 
 
-@group("chunks/walk", requires=("join/basic",), spec=_at(VIEW_DISTANCE))
+@group("chunks/walk", spec=_at(VIEW_DISTANCE))
 async def walk(context: GroupContext) -> None:
     """The walker steps west into the next chunk, one step a tick."""
     async with _walker(context) as walker:
