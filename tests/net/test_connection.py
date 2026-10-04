@@ -1084,15 +1084,24 @@ def test_what_arrived_before_a_reset_is_still_taken_and_then_it_is_closed(
     assert asyncio.run(client()) == [
         1,
         2,
-        "the connection was lost (ConnectionResetError(104, 'Connection reset by peer'))",
+        "the connection was lost (connection reset by peer)",
     ]
 
 
+@pytest.mark.parametrize(
+    ("loss", "message"),
+    [
+        (BrokenPipeError(32, "Broken pipe"), "the connection was lost (broken pipe)"),
+        (ConnectionError("no errno"), "the connection was lost"),
+    ],
+    ids=["errno", "no-errno"],
+)
 def test_a_plain_stream_that_fails_with_a_connection_error_ends_as_closed(
-    toy_codec: Codec, transcript: Transcript
+    toy_codec: Codec, transcript: Transcript, loss: ConnectionError, message: str
 ) -> None:
     # A Connection wrapping asyncio's own stream pair sees the loss raised by read: the
     # reader still ends with ConnectionClosedError, as send does when its write fails.
+    # The message names the system's reason in plain words, when there is one.
     async def server(peer: Peer) -> None:
         await peer.eof()
 
@@ -1100,17 +1109,17 @@ def test_a_plain_stream_that_fails_with_a_connection_error_ends_as_closed(
         async with serve(toy_codec, server) as endpoint:
             _, writer = await asyncio.open_connection(endpoint.host, endpoint.port)
             reader = asyncio.StreamReader()
-            reader.set_exception(BrokenPipeError(32, "Broken pipe"))
+            reader.set_exception(loss)
             connection = Connection(reader, writer, toy_codec, bot="alice", transcript=transcript)
             try:
                 with pytest.raises(ConnectionClosedError) as raised:
                     await connection.recv(timeout_s=2)
-                assert isinstance(raised.value.__cause__, BrokenPipeError)
+                assert raised.value.__cause__ is loss
                 return str(raised.value)
             finally:
                 await connection.close()
 
-    assert asyncio.run(client()) == "the connection was lost (BrokenPipeError(32, 'Broken pipe'))"
+    assert asyncio.run(client()) == message
 
 
 type Answer = Callable[[Connection, Packet], Awaitable[None]]

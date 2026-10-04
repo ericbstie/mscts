@@ -446,11 +446,12 @@ class Connection:
     def _end_of_stream(self, lost: ConnectionError | None = None) -> _End:
         if lost is None and isinstance(self._reader, _Stream):
             lost = self._reader.lost
-        msg = (
-            "the server closed the connection"
-            if lost is None
-            else f"the connection was lost ({lost!r})"
-        )
+        if lost is None:
+            msg = "the server closed the connection"
+        elif lost.strerror:  # the system's reason, e.g. "Connection reset by peer"
+            msg = f"the connection was lost ({lost.strerror[0].lower()}{lost.strerror[1:]})"
+        else:
+            msg = "the connection was lost"
         if self._frames.buffered:
             msg += f" mid-frame, {self._frames.buffered} byte(s) into it"
         error = ConnectionClosedError(msg)
