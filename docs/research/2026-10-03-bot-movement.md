@@ -130,5 +130,5 @@ every layout.
   (`data_kept` bit 1, `KEEP_ENTITY_DATA`). A Bot does the same. After a
   respawn the real client sends nothing from `sendChanges` until it has
   loaded again and sent `player_loaded`, and its new player is not
-  sprinting. A Bot sends no `player_loaded` after a respawn and keeps the
-  keys and sprinting its Group set.
+  sprinting. A Bot keeps the keys and sprinting its Group set, and sends
+  `player_loaded` again only when the Group calls `respawn()` (#27).

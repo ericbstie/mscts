@@ -17,7 +17,7 @@ from mscts.codec.packets import Codec, Packet, State
 from mscts.codec.schemas.configuration import CLIENT_INFORMATION
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
-from mscts.entities import Entities, EntityTracker
+from mscts.entities import Entities, Entity, EntityTracker, java_round
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
 from mscts.transcript import Mark, Transcript
@@ -86,6 +86,10 @@ name. Compare reads only `observe:` Marks, so it changes no Verdict.
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
+_PERFORM_RESPAWN = 0
+"""The `client_command` action the client sends from the death screen's respawn button
+(`ServerboundClientCommandPacket.Action`: PERFORM_RESPAWN 0, REQUEST_STATS 1; 26.3 javap)."""
+
 
 def offline_uuid(name: str) -> uuid.UUID:
     """The UUID an offline-mode server gives the player called `name`.
@@ -144,6 +148,13 @@ _HOTBAR_SLOTS = 9
 """`Inventory.isHotbarSlot`: 0 to 8."""
 
 _CURSOR_MIDDLE = (0.5, 0.5, 0.5)
+
+_LP_VEC3_ZERO_BELOW = 3.051944088384301e-5
+"""`LpVec3.write` (26.3 javap) sends the zero vector when no axis is this large."""
+_LP_VEC3_LIMIT = 1.7179869183e10
+"""`LpVec3.sanitize` holds each axis to plus or minus this."""
+_LP_VEC3_QUANTA = 32766.0
+"""`LpVec3.pack`: a quantum is `Math.round((v / scale * 0.5 + 0.5) * 32766)`."""
 
 
 class Face(IntEnum):
@@ -365,6 +376,21 @@ def _carried_change(interaction: _Interaction) -> list[_Send]:
         return []
     interaction.carried_slot = interaction.selected_slot
     return [("minecraft:set_carried_item", {"slot": interaction.selected_slot})]
+
+
+def _lp_vec3(vector: tuple[float, float, float]) -> dict[str, int]:
+    """`vector` as `LpVec3.write` encodes it (26.3 javap): a scale and three 15-bit quanta.
+
+    The scale is the largest axis, rounded up (`Mth.ceilLong`); each quantum is the axis over
+    the scale, from -1..1 to 0..32766, rounded as `Math.round` rounds (half up).
+    """
+    held = [max(-_LP_VEC3_LIMIT, min(_LP_VEC3_LIMIT, axis)) for axis in vector]
+    largest = max(abs(axis) for axis in held)
+    if largest < _LP_VEC3_ZERO_BELOW:
+        return {"scale": 0, "x": 0, "y": 0, "z": 0}
+    scale = math.ceil(largest)
+    x, y, z = (java_round((axis / scale * 0.5 + 0.5) * _LP_VEC3_QUANTA) for axis in held)
+    return {"scale": scale, "x": x, "y": y, "z": z}
 
 
 def _player_action(action: int, block: tuple[int, int, int], face: Face, sequence: int) -> _Send:
@@ -691,6 +717,28 @@ class Bot:
             # client could be ready earlier (docs/research/2026-09-26-join.md).
             await self._connection.send("minecraft:player_loaded")
 
+    async def respawn(self) -> None:
+        """Respawn a dead player, and return once the Bot has said it loaded the world again.
+
+        Sends `client_command` PERFORM_RESPAWN, as the death screen's button does, takes each
+        packet until the server's `respawn` and then the first `chunk_batch_finished` after it,
+        and sends `player_loaded`. The client waits for its world to load again after a
+        respawn (`ClientPacketListener.handleRespawn`), and until it says so, the server
+        ignores its attacks and interactions (`hasClientLoaded`); as at the join, the Bot says
+        so once the first chunk batch has arrived and been acknowledged.
+
+        Raises:
+            ProtocolError: The Bot is not in play, or the server disconnected it.
+            TimeoutError: The respawn and its first chunk batch did not come within
+                `timeout_s`: the server ignores the request while the player is alive.
+        """
+        self._require_play("respawn")
+        async with self._operation(self._timeout_s):
+            await self._connection.send("minecraft:client_command", action=_PERFORM_RESPAWN)
+            await self.expect("minecraft:respawn", timeout_s=self._timeout_s)
+            await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
+            await self._connection.send("minecraft:player_loaded")
+
     async def expect(
         self, name: str, *, timeout_s: float, where: Callable[[Packet], bool] | None = None
     ) -> Packet:
@@ -973,6 +1021,57 @@ class Bot:
         """
         self._require_play("release_item")
         await self._tick((_player_action(_RELEASE_USE_ITEM, (0, 0, 0), Face.DOWN, 0),))
+
+    async def attack(self, entity: Entity) -> None:
+        """Hit `entity` with the held item, in one client tick.
+
+        The tick sends what the client sends when the attack key goes down on an entity
+        (`Minecraft.startAttack`, `MultiPlayerGameMode.attack`): `attack` with the entity's id,
+        then the swing (`punch`). One call is one tick (see `tick`).
+
+        The client attacks with an item that has `piercing_weapon` (a spear) through another
+        packet, and vanilla's server ignores an `attack` made with one, so such an attack does
+        nothing on vanilla. Vanilla disconnects a player that attacks an item, an experience orb,
+        an arrow or itself (`invalid_entity_attacked`), which no real client sends.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("attack")
+        await self._tick((("minecraft:attack", {"entity_id": entity.id}), _PUNCH))
+
+    async def interact(
+        self,
+        entity: Entity,
+        at: tuple[float, float, float] = (0.0, 0.0, 0.0),
+        *,
+        off_hand: bool = False,
+    ) -> None:
+        """Use the held item on `entity` (trade, shear, put on a saddle), in one client tick.
+
+        `interact` with the entity's id, the main hand (or the off hand), where on the entity
+        relative to its position (`at`, its feet by default), and whether the sneak key is held
+        (`MultiPlayerGameMode.interact`). The client's swing for it sends nothing. A client that
+        sees the use do nothing goes on (`Minecraft.startUseItem`): `use_item` with the same hand
+        if it holds something, then the same with the off hand. The Bot cannot see that, so it
+        sends `interact` only; a Group calls `use_item` itself. One call is one tick (see
+        `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+            ValueError: A coordinate of `at` is NaN or infinite; nothing is sent.
+        """
+        self._require_play("interact")
+        if not all(math.isfinite(axis) for axis in at):
+            msg = f"interact needs a finite location on the entity, not {at}"
+            raise ValueError(msg)
+        fields: dict[str, object] = {
+            "entity_id": entity.id,
+            "hand": _OFF_HAND if off_hand else _MAIN_HAND,
+            "location": _lp_vec3(at),
+            "sneaking": bool(self._controls.keys & _SNEAK),
+        }
+        await self._tick((("minecraft:interact", fields),))
 
     async def swing(self) -> None:
         """Swing the main hand, in one client tick: `punch`, as the client attacks or digs.

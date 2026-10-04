@@ -40,6 +40,7 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.status()` | Sends the status handshake and request, and returns the parsed status JSON. |
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
+| `await bot.respawn()` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. |
 | `await bot.expect(name, timeout_s=..., where=...)` | Reads packets until one named `name` arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.move(x, y, z, on_ground=True)` | Moves the Bot, and sends the position update the vanilla client would send, if any. |
@@ -53,6 +54,8 @@ needs a unique name, and Divergences name the Bot they came from.
 | `await bot.cancel_digging(x, y, z)` | Stops breaking a block before it breaks. |
 | `await bot.place(x, y, z, face, cursor=(0.5, 0.5, 0.5), off_hand=False)` | Uses the held item on a block face. It places a block, opens a door, or does what the item does to that block. |
 | `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), and stops. |
+| `await bot.attack(entity)` | Attacks an entity from `bot.entities`, as a left click does. On vanilla, an attack with a spear or another piercing weapon does nothing. |
+| `await bot.interact(entity, at=(0.0, 0.0, 0.0), off_hand=False)` | Uses the held item on an entity, as a right click does. `at` is where on the entity, relative to its position. When the Bot sneaks, the server sees the sneak key held. |
 | `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
 | `bot.entities` | The entities the server has told this Bot about: their type, position and data, as the vanilla client would track them. They change only as the Bot reads packets, so after a summon, call `await bot.sync()` before you look. A login, or a respawn into another dimension, clears them. |

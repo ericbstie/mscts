@@ -13,7 +13,7 @@ import pytest
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
 from mscts.codec.registry_names import registry_names
-from mscts.entities import Entity, EntityTracker
+from mscts.entities import Entity, EntityTracker, java_round
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import Handler, JoinScript, Peer, answer_each_tick, join_server, with_bot
@@ -380,3 +380,12 @@ def test_a_view_kept_from_before_a_new_level_forgets_the_entities_too(
     transcript = Transcript(group_id="test/entities", server="fake")
     with_bot(CODEC, transcript, entity_server([], [ADDED, fresh]), use)
     assert found == {}
+
+
+@pytest.mark.parametrize(
+    ("value", "rounded"),
+    [(2.5, 3), (-1.5, -1), (-2.5, -2), (0.49999999999999994, 0), (409.6, 410)],
+)
+def test_java_round_rounds_half_up_as_math_round_does(value: float, rounded: int) -> None:
+    # floor(value + 0.5) would give 1 for 0.49999999999999994, whose sum rounds up to 1.0.
+    assert java_round(value) == rounded

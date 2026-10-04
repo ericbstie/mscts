@@ -528,6 +528,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
+    async def respawn(self) -> None: ...                               # PERFORM_RESPAWN → player_loaded
     async def expect(self, name: str, *, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
@@ -551,6 +552,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def use_item(self, *, off_hand: bool = False) -> None: ...
     async def release_item(self) -> None: ...
     async def swing(self) -> None: ...                                  # punch
+    async def attack(self, entity: Entity) -> None: ...                # attack, + punch
+    async def interact(self, entity: Entity, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
+                       *, off_hand: bool = False) -> None: ...         # interact
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -562,6 +566,11 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # player_loaded: it returns once the server's first chunk batch has finished, Replies having
     # answered the rest. player_loaded goes once, right after that batch's chunk_batch_received:
     # the vanilla client's moment depends on its renderer, and none could be ready earlier.
+    # respawn (#27): on a Bot in play (else ProtocolError, nothing sent), client_command
+    # PERFORM_RESPAWN (0), then expect(play respawn), then expect(chunk_batch_finished), then
+    # player_loaded, as join does: the client waits to load its world again after a respawn
+    # (handleRespawn), and the server ignores attack and interact until it has
+    # (hasClientLoaded). A server ignores the request from a live player → TimeoutError.
     # expect: takes (and so records) packets until one is called `name` and `where` holds for it.
     # A disconnect before it (login_disconnect, or configuration / play disconnect) or an
     # encryption request (login hello: online mode) → ProtocolError naming the Bot and the reason.
@@ -622,6 +631,12 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # has no swing packet with a hand). START, STOP, use_item_on and use_item carry the next
     # block-change sequence (BlockStatePredictionHandler: +1, then sent, from 0 per level).
     # The Bot times no breaking: a Group sends stop_digging at the tick it tests.
+    # attack / interact (#27): one client tick each, as above. attack: attack with the
+    # entity's id, then punch (Minecraft.startAttack, MultiPlayerGameMode.attack); interact:
+    # interact (the entity's id, hand, `at` relative to the entity's position as LpVec3.write
+    # encodes it, sneaking = the sneak key held), no punch (MultiPlayerGameMode.interact).
+    # interact refuses a NaN or infinite `at` (ValueError, nothing sent). Like place, it does
+    # not go on to use_item when the use does nothing.
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
@@ -659,6 +674,8 @@ class Entities(Mapping[int, Entity]):  # a read-only view by entity id: each loo
     # nearest to it (squared distance). LookupError: none of the type (the message counts the
     # types there are), two or more without near, or two or more equally near: which comes
     # first would depend on the server's ids.
+
+def java_round(value: float) -> int: ...  # Java's Math.round: half up, exact (VecDeltaCodec, LpVec3)
 
 class EntityTracker:
     entities: Entities
@@ -698,7 +715,7 @@ class Replies:                      # an Answer: what a Bot answers by itself, a
     # another dimension (a new ClientLevel; no answer);
     # chunk_batch_finished → chunk_batch_received(CHUNKS_PER_TICK),
     # never a timing-dependent rate; start_configuration → configuration_acknowledged. Nothing
-    # else is answered (not yet: custom_query). join, not Replies, sends player_loaded.
+    # else is answered (not yet: custom_query). join and respawn, not Replies, send player_loaded.
 
 PROBE_TIMEOUT_S = 1.0               # bot.py, since it reuses Bot.status (net cannot import bot)
 def status_probe(target: Target, *, timeout_s: float = PROBE_TIMEOUT_S

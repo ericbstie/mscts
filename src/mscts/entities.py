@@ -229,10 +229,10 @@ def _decoded(base: _Vec, delta: object) -> _Vec:
 def _axis(base: float, delta: int) -> float:
     if delta == 0:
         return base
-    return (_java_round(base * _DELTA_SCALE) + delta) / _DELTA_SCALE
+    return (java_round(base * _DELTA_SCALE) + delta) / _DELTA_SCALE
 
 
-def _java_round(value: float) -> int:
+def java_round(value: float) -> int:
     """Java's `Math.round`: the nearest integer, a half rounded up (floor of value + 0.5, exact)."""
     floor = math.floor(value)
     return floor + 1 if value - floor >= 0.5 else floor  # noqa: PLR2004 - the half

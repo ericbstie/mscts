@@ -1,10 +1,11 @@
-"""Play-state schemas for what the client sends as its player digs, places and uses items.
+"""Play-state schemas for what the client sends as its player digs, places, uses and attacks.
 
 Field layouts: minecraft.wiki `Java_Edition_protocol/Packets`, revision 3810839
 (2026-10-01, "26.3, protocol 777"), raw wikitext, checked against the 26.3 client jar with
 `javap`: `ServerboundPlayerActionPacket`, `ServerboundUseItemOnPacket` (`InteractionHand` and
 `BlockHitResult`'s stream codecs), `ServerboundUseItemPacket`, `ServerboundSetCarriedItemPacket`,
-`ServerboundPunchPacket` (`StreamCodec.unit`), `ClientboundBlockChangedAckPacket` and
+`ServerboundPunchPacket` (`StreamCodec.unit`), `ServerboundAttackPacket`,
+`ServerboundInteractPacket` (#27), `ClientboundBlockChangedAckPacket` and
 `ClientboundSetHeldSlotPacket`. They agree but for one thing: the wiki lists 8 player actions
 and 26.3 has 9, with `CHANGE_DESTROY_DIRECTION` at 1, so every action after it is one higher
 than the wiki says (#26).
@@ -16,7 +17,17 @@ unsigned byte), so they are plain integers here: hand 0 main, 1 off; face 0 down
 
 from collections.abc import Mapping
 
-from mscts.codec.schema import BOOL, FLOAT, POSITION, SHORT, UBYTE, VAR_INT, Schema
+from mscts.codec.schema import (
+    BOOL,
+    ENTITY_ID,
+    FLOAT,
+    LP_VEC3,
+    POSITION,
+    SHORT,
+    UBYTE,
+    VAR_INT,
+    Schema,
+)
 from mscts.codec.shapes import OrdinalEnum
 
 _ACTIONS = 9
@@ -48,6 +59,13 @@ SERVERBOUND: Mapping[str, Schema] = {
     # Set Held Item: the hotbar slot selected, 0 to 8.
     "minecraft:set_carried_item": Schema(slot=SHORT),
     "minecraft:punch": Schema(),  # the player swings its main hand to attack or dig
+    # Attack: the entity the player hits.
+    "minecraft:attack": Schema(entity_id=ENTITY_ID),
+    # Interact: the entity used, the hand, where on it relative to its position (an LpVec3,
+    # Vec3.LP_STREAM_CODEC), and whether the player is sneaking (usingSecondaryAction).
+    "minecraft:interact": Schema(
+        entity_id=ENTITY_ID, hand=VAR_INT, location=LP_VEC3, sneaking=BOOL
+    ),
 }
 
 CLIENTBOUND: Mapping[str, Schema] = {
