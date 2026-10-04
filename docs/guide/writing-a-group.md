@@ -59,11 +59,14 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.use_item(off_hand=False)` / `await bot.release_item()` | Starts using the held item (eating, drawing a bow, raising a shield), or stops using it. |
 | `await bot.attack(entity)` | Attacks an entity from `bot.entities`, as a left click does. On vanilla, an attack with a spear or another piercing weapon does nothing. |
 | `await bot.interact(entity, at=(0.0, 0.0, 0.0), off_hand=False)` | Uses the held item on an entity, as a right click does. `at` is the point on the entity, relative to its position. When the Bot sneaks, the server sees the sneak key held. |
+| `await bot.drop(all=False)` | Drops the held item (Q, or Ctrl+Q). |
 | `await bot.swing()` | Swings the arm, as the vanilla client does when it attacks or digs. |
+| `await bot.close_container()` | Closes the open container. |
 | `bot.position` | Where the Bot's player is and which way it faces, after its last move. After `await bot.sync()`, it includes the server's last teleport. |
 | `bot.entities` | The entities the server has told this Bot about: their type, position and data, as the vanilla client would track them. They change only as the Bot reads packets, so after a summon, call `await bot.sync()` before you look. A login, or a respawn into another dimension, clears them. |
 | `bot.entities.find(type, near=None)` | Returns the entity of the given type, such as `"zombie"`. Entity ids differ from server to server, so find entities this way. When several have the type, give `near=(x, y, z)` to get the nearest one. It raises `LookupError` when it can't pick one. |
 | `bot.chunks` | The chunks the server has sent this Bot and not told it to unload, as `(x, z)` pairs. Like `bot.entities`, they change only as the Bot reads packets, including the chunks `join` and `sync` read. A login, or a respawn into another dimension, clears them. The client drops a chunk more than 3 chunks beyond the server's view distance from the centre of its view, and drops them all during a reconfiguration. The Bot keeps them. |
+| `bot.inventory` | The player's inventory and the open container, as the vanilla client would show them. |
 | `await bot.sync()` | Waits until a tick has passed on the server since it received what the Bot sent, so everything the server sent in response has arrived. Requires a Bot that has joined. |
 | `await bot.drain()` | Reads every packet that has already arrived, without waiting for more. |
 | `await bot.close()` | Closes the connection. mscts closes every Bot at the end anyway. |
