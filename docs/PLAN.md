@@ -668,9 +668,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # (one item, or the stack with all=True), then player_action DROP_ITEM (5) or
     # DROP_ALL_ITEMS (4) at 0 0 0, face down, sequence 0, sent with an empty hand too
     # (MultiPlayerGameMode.dropItem); refused with a container open (ProtocolError: the client
-    # reads the drop key only with no screen). close_container (#28): container_close with the
-    # open menu's window id (0 with none open: the inventory screen), sent at once and not in a
-    # tick (LocalPlayer.closeContainer), then back to the inventory menu.
+    # reads the drop key only with no screen). close_container (#28): back to the inventory menu,
+    # then container_close with the old menu's window id (0 with none open: the inventory
+    # screen), sent at once and not in a tick (LocalPlayer.closeContainer).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.

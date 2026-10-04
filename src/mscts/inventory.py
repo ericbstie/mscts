@@ -11,8 +11,8 @@ server's `container_close` goes back to the inventory menu.
 A menu's player slots are the player's `Inventory` itself, so a stack set through one menu
 shows in every other. That matters: while a menu is open the server sends the player's
 inventory changes through that menu's window only (`ServerPlayer.tick` broadcasts the open
-menu), and not again through window 0 once it closes. Every menu but the lectern ends with the
-27 and the hotbar.
+menu), and not again through window 0 once it closes. Every menu but the lectern has the 27
+and the hotbar after its own slots; the crafter's result comes after them.
 """
 
 from collections.abc import Mapping
