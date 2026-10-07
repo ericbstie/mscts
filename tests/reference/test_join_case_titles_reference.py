@@ -20,6 +20,7 @@ async def test_every_case_a_vanilla_pair_compares_at_join_has_a_title(
 ) -> None:
     with own_reference(cache_dir) as server:
         (verdict,) = await run((GROUPS["join/basic"],), server, server, workdir=tmp_path)
+    # A mismatch is fine here: two vanilla Instances may differ in a value. Only titles matter.
     assert verdict.outcome in (Outcome.MATCH, Outcome.MISMATCH), verdict.detail
     assert {"login.dimension_name", "set_health.health"} <= set(verdict.test_cases), verdict
     assert any(name.startswith("level_chunk_with_light.") for name in verdict.test_cases), verdict

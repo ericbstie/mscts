@@ -180,6 +180,38 @@ The name of the registry a set of tags belongs to, such as `minecraft:block`. A 
 Every slot of the container the player has open. At a join, this is the
 player's own inventory.
 
+## `container_set_content.carried_item`
+
+**Item on the cursor**
+
+The item stack the cursor holds when the contents are sent, with its
+count and components. A difference changes what the player is holding
+with the mouse.
+
+## `container_set_content.slot_data[]`
+
+**Inventory slot item**
+
+The item stack in one slot, listed in slot order, with its count and
+components. A difference puts another item, another amount or other
+components in that slot.
+
+## `container_set_content.state_id`
+
+**Inventory state number**
+
+The number the server gives to this version of the window's contents.
+The client sends it back with its next click, which lets the server tell
+whether the click was made on contents that have changed since.
+
+## `container_set_content.window_id`
+
+**Inventory window**
+
+The window the contents are for, where 0 is the player's own inventory.
+The client ignores contents for a window that is not the one open, so a
+difference can leave the slots unchanged.
+
 ## `configuration:custom_payload.data`
 
 **Configuration plugin message data**
