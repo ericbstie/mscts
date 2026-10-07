@@ -29,7 +29,7 @@ INVARIANTS = {
     "networking.java.encryption": False,  # else it sends an encryption request, even offline
     "networking.bedrock.enabled": False,
     "networking.query.enabled": False,
-    "networking.rcon.enabled": False,
+    "networking.management.enabled": False,  # its WebSocket management listener
     "networking.lan_broadcast.enabled": False,
     "networking.proxy.enabled": False,
     "networking.proxy.velocity.enabled": False,
@@ -93,7 +93,7 @@ def key_paths(document: Mapping[str, object], prefix: str = "") -> Iterator[str]
 
 
 def test_the_pinned_defaults_render_as_pumpkins_first_run_file_byte_for_byte() -> None:
-    # pumpkin/pumpkin.toml is what the nightly (commit a4d6465) wrote on its first run. The
+    # pumpkin/pumpkin.toml is what the nightly (commit f1c0871) wrote on its first run. The
     # renderer reproduces Pumpkin's own serialization of it exactly.
     pristine = resources.files("mscts.adapters.pumpkin").joinpath("pumpkin.toml")
     assert toml_document(pumpkin_defaults()) == pristine.read_text(encoding="utf-8")
@@ -123,7 +123,8 @@ def test_default_spec_file_is_pumpkins_own_defaults_plus_documented_substitution
 
 @pytest.mark.parametrize("spec", [ServerSpec(host=HOST, port=25599), UNUSUAL_SPEC])
 def test_writes_exactly_the_keys_pumpkin_writes(spec: ServerSpec) -> None:
-    # A key Pumpkin does not know is kept but ignored; a key it misses gets its default.
+    # A key Pumpkin does not know is ignored; a key it misses gets its default, and then
+    # Pumpkin rewrites the file without the unknown ones.
     golden = table(tomllib.loads(GOLDEN.read_text(encoding="utf-8")))
     assert sorted(key_paths(parsed(spec))) == sorted(key_paths(golden))
 

@@ -103,7 +103,7 @@ INVARIANTS: Mapping[str, TomlValue] = MappingProxyType(
         "networking.java.encryption": False,
         "networking.bedrock.enabled": False,  # Java only: no Bedrock listener
         "networking.query.enabled": False,  # no listener besides the game port
-        "networking.rcon.enabled": False,
+        "networking.management.enabled": False,  # its WebSocket management server
         "networking.lan_broadcast.enabled": False,  # no UDP multicast to the LAN
         "networking.proxy.enabled": False,  # Bots connect directly, never through a proxy
         "networking.proxy.velocity.enabled": False,

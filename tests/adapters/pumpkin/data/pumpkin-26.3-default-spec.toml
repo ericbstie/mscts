@@ -55,17 +55,12 @@ level = 6
 enabled = false
 address = "0.0.0.0:25565"
 
-[networking.rcon]
+[networking.management]
 enabled = false
-address = "0.0.0.0:25575"
-password = ""
-max_connections = 10
-
-[networking.rcon.logging]
-logged_successfully = true
-wrong_password = true
-commands = true
-quit = true
+address = "127.0.0.1:25585"
+secret = ""
+allowed_origins = []
+status_heartbeat_interval = 0
 
 [networking.proxy]
 enabled = false
