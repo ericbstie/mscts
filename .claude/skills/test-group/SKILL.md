@@ -128,6 +128,12 @@ race with the first tick, docs/research/2026-09-26-join.md). By javap,
 the repeats, and Pumpkin accepts the command; a window that holds a
 join sets it in its Fixture.
 
+A Group gives only item stacks whose components are outside `MALFORMED`
+in `tests/adapters/pumpkin/test_pumpkin_item_stacks.py`, unless the
+component is what it tests. Pumpkin encodes those components wrongly, so
+a Bot that receives such a stack fails with a `CodecError`, and the
+behaviour the Group was written for is never compared (#312).
+
 ## Tests, red first
 
 1. Unit: `tests/group/test_<mechanic>.py` against the fake server. Pin
