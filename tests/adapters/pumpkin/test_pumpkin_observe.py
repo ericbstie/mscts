@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from support.probe import SETBLOCK_OBSERVED, WATCHER
-from support.reference import booted
+from support.reference import launched
 
 from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
@@ -29,7 +29,7 @@ async def test_the_probe_group_completes_against_pumpkin(cache_dir: Path, tmp_pa
     adapter = PumpkinAdapter()
     workdir = tmp_path / "pumpkin"
     plan = adapter.prepare(install.require(adapter, TARGET, cache_dir), spec, workdir)
-    async with booted(cache_dir, workdir, plan=plan) as instance:
+    async with launched(plan) as instance:
         transcript = await run_group(SETBLOCK_OBSERVED, instance.endpoint, server="pumpkin")
 
     labels = [mark.label for mark in transcript.marks]

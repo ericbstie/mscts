@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 import pytest
-from support.reference import STOP_TIMEOUT_S, booted
+from support.reference import STOP_TIMEOUT_S, launched
 
 from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter, pumpkin_toml
@@ -89,12 +89,9 @@ async def test_pumpkin_becomes_ready_reads_its_config_and_stops_on_its_stop_line
     adapter = PumpkinAdapter()
     plan = adapter.prepare(install.require(adapter, TARGET, cache_dir), spec, workdir)
     assert plan.stop_stdin == b"stop\n"
-    with pytest.raises(ValueError, match="ServerSpec changes cannot be applied"):
-        async with booted(cache_dir, workdir, plan=plan, motd="ignored"):
-            pytest.fail("a prepared LaunchPlan silently ignored a ServerSpec change")
     # Cold: the first boot of a fresh workdir. Warm: the same workdir again, world made.
     for boot in ("cold", "warm"):
-        async with booted(cache_dir, workdir, plan=plan) as instance:
+        async with launched(plan) as instance:
             status = await status_of(plan.endpoint)
             leaving = time.monotonic()
         stopping_s = time.monotonic() - leaving
