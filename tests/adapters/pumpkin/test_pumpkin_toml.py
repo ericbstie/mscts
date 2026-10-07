@@ -123,7 +123,8 @@ def test_default_spec_file_is_pumpkins_own_defaults_plus_documented_substitution
 
 @pytest.mark.parametrize("spec", [ServerSpec(host=HOST, port=25599), UNUSUAL_SPEC])
 def test_writes_exactly_the_keys_pumpkin_writes(spec: ServerSpec) -> None:
-    # A key Pumpkin does not know is kept but ignored; a key it misses gets its default.
+    # A key Pumpkin does not know is ignored; a key it misses gets its default, and then
+    # Pumpkin rewrites the file without the unknown ones.
     golden = table(tomllib.loads(GOLDEN.read_text(encoding="utf-8")))
     assert sorted(key_paths(parsed(spec))) == sorted(key_paths(golden))
 
