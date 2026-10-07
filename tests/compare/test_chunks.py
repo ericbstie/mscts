@@ -1415,11 +1415,17 @@ def test_the_gameplay_test_cases_of_chunks_and_light_have_titles() -> None:
     cases = {d.test_case for verdict in verdicts for d in verdict.gameplay}
 
     assert cases == {
-        name
-        for name in TITLES
-        if ("chunk" in name or "light" in name)
-        and not name.startswith(("chunk_batch", "set_chunk_cache_center"))
+        "forget_level_chunk",
+        "level_chunk_with_light",
+        "level_chunk_with_light.light.block[]",
+        "level_chunk_with_light.light.sky[]",
+        "level_chunk_with_light.sections[].biomes",
+        "level_chunk_with_light.sections[].block_states",
+        "light_update",
+        "light_update.data.block[]",
+        "light_update.data.sky[]",
     }
+    assert cases <= TITLES.keys()
 
 
 def test_the_network_traffic_test_cases_of_batches_have_titles() -> None:
