@@ -7,26 +7,18 @@ fails to decode is listed in the failure message and in the research note as evi
 asserted away (docs/research/2026-10-01-block-world-events.md).
 """
 
-import dataclasses
-import uuid
 from pathlib import Path
 
 import pytest
 from support.block_events import play, undecoded
-from support.leak_guard import kill_survivors
+from support.reference import booted
 
-from mscts import install
 from mscts.adapters.pumpkin import PumpkinAdapter
-from mscts.bot import status_probe
 from mscts.group import GroupContext
-from mscts.runner import free_endpoint, running
-from mscts.spec import ServerSpec
-from mscts.target import TARGET
 from mscts.transcript import Transcript
 
 pytestmark = pytest.mark.candidate
 
-_GUARD = "MSCTS_LEAK_GUARD"
 _TIMEOUT_S = 10.0
 
 
@@ -35,25 +27,13 @@ _TIMEOUT_S = 10.0
 async def test_pumpkin_sends_the_block_and_world_events_and_its_decoding_is_listed(
     cache_dir: Path, tmp_path: Path
 ) -> None:
-    endpoint = free_endpoint()
-    spec = ServerSpec(host=endpoint.host, port=endpoint.port)
-    adapter = PumpkinAdapter()
-    plan = adapter.prepare(install.require(adapter, TARGET, cache_dir), spec, tmp_path / "pumpkin")
-    token = uuid.uuid4().hex
-    plan = dataclasses.replace(plan, env={**plan.env, _GUARD: token})
     transcript = Transcript(group_id="candidate/block-events", server="pumpkin")
-    try:
-        async with running(
-            plan, ready=status_probe(TARGET), ready_timeout=60, stop_timeout=30
-        ) as instance:
-            context = GroupContext(instance.endpoint, transcript, timeout_s=_TIMEOUT_S)
-            try:
-                played = await play(context, transcript)
-            finally:
-                await context.close()
-    finally:
-        leaked = kill_survivors(f"{_GUARD}={token}", within=3.0)
-    assert not leaked, f"Pumpkin processes outlived the test: {leaked}"
+    async with booted(cache_dir, tmp_path / "pumpkin", adapter=PumpkinAdapter()) as instance:
+        context = GroupContext(instance.endpoint, transcript, timeout_s=_TIMEOUT_S)
+        try:
+            played = await play(context, transcript)
+        finally:
+            await context.close()
 
     for one in played:
         print(  # noqa: T201 - the evidence the research note quotes (pytest -s)
