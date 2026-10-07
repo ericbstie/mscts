@@ -289,6 +289,91 @@ def test_move_refuses_a_coordinate_that_is_not_finite(bad: float) -> None:
     assert positions == [Position(**SPAWN_POSITION, **SPAWN_ROTATION)]
 
 
+UNCHECKED = [
+    (axis, value)
+    for axis in ("x", "y", "z", "yaw", "pitch")
+    for value in (math.nan, math.inf, -math.inf)
+]
+
+
+@pytest.mark.parametrize(
+    ("axis", "value"), UNCHECKED, ids=[f"{axis}={value}" for axis, value in UNCHECKED]
+)
+def test_move_unchecked_sends_a_value_that_is_not_finite_as_given(axis: str, value: float) -> None:
+    # No client sends one, and Bot.move refuses one: only move_unchecked can, for a Group that
+    # tests what a server does with it (#278).
+    given = {"x": 1.0, "y": 2.0, "z": 3.0, "yaw": 10.0, "pitch": 91.0, axis: value}
+
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        await bot.move_unchecked(Position(**given))
+
+    [[(name, fields), end]] = play(script)[1:]
+    assert (name, end) == ("minecraft:move_player_pos_rot", TICK_END)
+    assert fields is not None
+    assert [key for key, v in given.items() if not same_float(fields[key], v)] == []
+    assert fields["flags"] == ON_GROUND
+
+
+def same_float(sent: object, given: float) -> bool:
+    """Whether `sent` is the float `given`, NaN being the same as NaN."""
+    return isinstance(sent, float) and (sent == given or (math.isnan(sent) and math.isnan(given)))
+
+
+def test_move_unchecked_changes_nothing_the_bot_keeps() -> None:
+    # The Bot's pose and what it last reported stay as they were: the next tick sends only its
+    # end, and position is where the Bot last moved.
+    positions: list[Position] = []
+
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        await bot.move_unchecked(Position(x=math.nan, y=2.0, z=3.0, yaw=1.0, pitch=2.0))
+        positions.append(bot.position)
+        await bot.tick()
+
+    assert play(script)[2:] == [[TICK_END]]
+    assert positions == [Position(**SPAWN_POSITION, **SPAWN_ROTATION)]
+
+
+REFUSED_UNCHECKED = [
+    ("yaw", 0.1, "a 32-bit float holds exactly"),  # it rounds nothing: 0.1 is no binary32
+    ("pitch", 1e40, "a 32-bit float holds exactly"),  # beyond binary32's range
+    ("x", 1, "floats"),
+    ("pitch", 0, "floats"),
+]
+
+
+@pytest.mark.parametrize(
+    ("axis", "value", "why"), REFUSED_UNCHECKED, ids=[f"{a}={v!r}" for a, v, _ in REFUSED_UNCHECKED]
+)
+def test_move_unchecked_refuses_what_it_cannot_send_as_given(
+    axis: str, value: object, why: str
+) -> None:
+    # Nothing is sent, and the Bot has no failure: it was never asked to send.
+    failures: list[Exception | None] = []
+    given: dict[str, object] = {"x": 1.0, "y": 2.0, "z": 3.0, "yaw": 0.0, "pitch": 0.0}
+
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        with pytest.raises(ValueError, match=why):
+            await bot.move_unchecked(Position(**{**given, axis: value}))  # ty: ignore[invalid-argument-type]
+        failures.append(bot.failure)
+        await bot.tick()
+
+    assert play(script)[1:] == [[TICK_END]]
+    assert failures == [None]
+
+
+def test_move_unchecked_sends_whether_the_bot_last_moved_on_the_ground() -> None:
+    async def script(bot: Bot) -> None:
+        await bot.tick()
+        await bot.move(6.5, -59.5, 7.5, on_ground=False)
+        await bot.move_unchecked(Position(x=6.5, y=-59.5, z=7.5, yaw=0.0, pitch=0.0))
+
+    moved = {"x": 6.5, "y": -59.5, "z": 7.5, "yaw": 0.0, "pitch": 0.0, "flags": 0}
+    assert play(script)[2:] == [[("minecraft:move_player_pos_rot", moved), TICK_END]]
+
+
 def test_a_move_off_the_ground_says_so_in_the_flags() -> None:
     async def script(bot: Bot) -> None:
         await bot.tick()
@@ -567,6 +652,10 @@ MOVES: list[tuple[str, Callable[[Bot], Awaitable[None]]]] = [
     ("sneak", lambda bot: bot.sneak(sneaking=True)),
     ("jump", lambda bot: bot.jump()),
     ("tick", lambda bot: bot.tick()),
+    (
+        "move_unchecked",
+        lambda bot: bot.move_unchecked(Position(x=1.0, y=2.0, z=3.0, yaw=0.0, pitch=0.0)),
+    ),
 ]
 
 
