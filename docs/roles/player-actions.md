@@ -20,6 +20,10 @@ lead routes each change and both review it.
   information and `player_loaded`.
 - The game rule `player_movement_check` decides whether vanilla sends
   repeated `player_position` corrections (#30's measurement).
+- A Group gives only item stacks whose components are outside
+  `MALFORMED` in `tests/adapters/pumpkin/test_pumpkin_item_stacks.py`,
+  unless the component is what it tests: on Pumpkin a Bot fails on such a
+  stack before the Group compares anything (#312).
 
 ## Log
 
