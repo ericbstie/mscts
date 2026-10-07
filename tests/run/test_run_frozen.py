@@ -11,7 +11,7 @@ from mscts.group import Group, GroupContext, GroupKind
 from mscts.net import Endpoint
 from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
 from mscts.run import GroupResult, run
-from tests.group.test_control import ControlServer
+from tests.group.test_control import ControlServer, commands_sent, tree
 from tests.run.occupancy import attached
 from tests.test_report import _report
 
@@ -217,6 +217,24 @@ async def _reference_test_cases(tmp_path: Path) -> tuple[str, ...]:
     assert verdict.outcome is Outcome.MATCH, verdict
     assert verdict.test_cases, "JOINS must have test cases for this to show anything"
     return verdict.test_cases
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_without_tick_is_not_left_frozen_for_the_groups_after(
+    tmp_path: Path,
+) -> None:
+    # #290: the freeze never took effect, so there is nothing to unfreeze and nothing left
+    # frozen, so the next Group is played and judged. Both fakes lack `/tick` because a
+    # command tree is sent at the join, so a Candidate whose tree differed would not match.
+    servers = [ControlServer(commands=tree("setblock", "tellraw")) for _ in range(2)]
+    async with (
+        attached("vanilla", servers[0]) as reference,
+        attached("vanilla", servers[1]) as candidate,
+    ):
+        _, after = await run([STAYS_FROZEN, JOINS], reference, candidate, workdir=tmp_path)
+
+    assert (after.outcome, after.detail) == (Outcome.MATCH, ""), after
+    assert all("tick unfreeze" not in commands_sent(server.seen) for server in servers)
 
 
 @pytest.mark.asyncio

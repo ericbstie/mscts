@@ -1270,7 +1270,8 @@ class GroupContext:
     async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
                                     # Group froze already. end() unfreezes (a failure fails
                                     # the Group); after a failed Group, close() tries, and
-                                    # logs a failure
+                                    # logs a failure. CommandMissing (nothing sent): not
+                                    # frozen, so nothing to unfreeze (#290)
     async def step(self, ticks: int = 1) -> None: ...   # #23: per tick, control.run(
                                     # "tick step 1") (marker, then barrier), then every Bot in
                                     # play passes Bot.sync at once, then Marks
