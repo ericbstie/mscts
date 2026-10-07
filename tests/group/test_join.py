@@ -167,24 +167,58 @@ async def test_alice_has_left_the_server_before_regeneration_is_turned_back_on(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("before_handshake", [True, False], ids=["before-handshake", "after-join"])
 async def test_control_puts_the_rules_back_when_the_join_fails(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, *, before_handshake: bool
 ) -> None:
-    real_join = Bot.join
+    steps: list[str] = []
+    real_join, real_close, real_command = Bot.join, Bot.close, Bot.command
 
     async def failing_join(bot: Bot) -> None:
-        await real_join(bot)
+        steps.append(f"{bot.name} joins")
+        if bot.name != ALICE or not before_handshake:
+            await real_join(bot)
         if bot.name == ALICE:
             msg = "the server disconnected alice"
             raise ProtocolError(msg)
 
+    async def logged_close(bot: Bot) -> None:
+        if not bot.closed:
+            steps.append(f"{bot.name} closes")
+        await real_close(bot)
+
+    async def logged_command(bot: Bot, command: str) -> None:
+        if not command.startswith("tellraw"):
+            steps.append(command)
+        await real_command(bot, command)
+
+    async def until_no_player_online(_: Endpoint) -> None:
+        steps.append("no player online")
+
     monkeypatch.setattr(Bot, "join", failing_join)
+    monkeypatch.setattr(Bot, "close", logged_close)
+    monkeypatch.setattr(Bot, "command", logged_command)
+    monkeypatch.setattr(join, "until_no_player_online", until_no_player_online)
+    server = BlocksServer()
     transcript = Transcript(group_id=GROUP_ID, server="fake")
     with pytest.raises(ProtocolError, match="disconnected alice"):
-        async with playing(BlocksServer(), transcript) as context:
+        async with playing(server, transcript) as context:
             await GROUPS[GROUP_ID].run(context)
 
     assert [command for _, command in sent(transcript, CONTROL)] == [*SET_UP, *UNDO]
+    assert joined(server) == [CONTROL, *([] if before_handshake else [ALICE]), CONTROL]
+    assert steps == [
+        "control joins",
+        *SET_UP,
+        "control closes",
+        "no player online",
+        "alice joins",
+        "alice closes",
+        "no player online",
+        "control joins",
+        *UNDO,
+        "control closes",
+    ]
 
 
 SHOWN_TO_PUMPKIN = (

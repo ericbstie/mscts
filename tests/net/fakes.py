@@ -250,7 +250,7 @@ def join_server(seen: list[Packet], script: JoinScript | None = None) -> Handler
 
 
 class _Join:
-    """`join_server`'s steps: each returns False if it disconnected the client instead."""
+    """`join_server`'s steps: each returns False if the connection ends instead."""
 
     def __init__(self, seen: list[Packet], script: JoinScript) -> None:
         self.seen = seen
@@ -267,7 +267,10 @@ class _Join:
         return packet
 
     async def login(self, peer: Peer) -> bool:
-        await self.expect(peer, "minecraft:intention")
+        try:
+            await self.expect(peer, "minecraft:intention")
+        except EOFError:
+            return False
         hello = await self.expect(peer, "minecraft:hello")
         assert hello.fields is not None
         peer.name = str(hello.fields["name"])
