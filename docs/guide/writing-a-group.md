@@ -46,8 +46,9 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.signed_command(text)` | Runs a command with a message argument (`/say`, `/me`, `/msg`, `/teammsg`) the way the vanilla client sends one. The client signs each message argument, and a Bot, which has no chat signing keys, signs none. |
 | `await bot.chat(text)` | Says `text` in chat, the way the vanilla client says it without chat signing keys. |
 | `await bot.chat_at_once(text, ...)` | Says each message as `chat` does, all sent together, in one write. The server can still tick between two of them. |
-| `await bot.move(x, y, z, on_ground=True)` | Moves the Bot. If the vanilla client would send a position update, the Bot sends it too. |
+| `await bot.move(x, y, z, on_ground=True)` | Moves the Bot. If the vanilla client would send a position update, the Bot sends it too. A coordinate that is not a number, or is infinite, raises `ValueError`. |
 | `await bot.look(yaw, pitch)` | Sends one rotation update. |
+| `await bot.move_unchecked(position)` | Sends a position and rotation exactly as given, with no checks, in one tick. Use it to send what no vanilla client sends, such as a coordinate that is not a number. |
 | `await bot.sprint(True)` / `await bot.sneak(True)` | Starts or stops sprinting or sneaking, as the vanilla client reports it. A sprinting Bot holds the forward key too, and a sneaking Bot can't start sprinting. |
 | `await bot.jump()` | Presses the jump key for one tick, as the vanilla client reports it. It does not move the Bot. Send the jump's positions with `move`. |
 | `await bot.tick()` | Sends what the vanilla client sends on a tick when the player does nothing. |
@@ -96,6 +97,20 @@ then says where it put the Bot.
 
 The server treats the player as moving until a client tick arrives with no move.
 To stop the Bot, call `await bot.tick()` after its last move.
+
+`move_unchecked` takes a `Position` from `mscts.bot`, the type of
+`bot.position`, and sends all five values. To change one of them, copy
+the Bot's position:
+
+<!-- not run: A fragment of a Group's function; it needs a Bot that has joined. -->
+```python
+await bot.move_unchecked(dataclasses.replace(bot.position, x=math.nan))
+```
+
+The Bot keeps nothing of such a move. `bot.position` stays where it was,
+and the Bot's next move is sent as if this one never was. A yaw or pitch must be a value a
+32-bit float holds exactly, such as `91.0` but not `0.1`. Any other raises
+`CodecError`, and nothing is sent.
 
 A face is one of `Face.DOWN`, `Face.UP`, `Face.NORTH`, `Face.SOUTH`,
 `Face.WEST` and `Face.EAST`, imported from `mscts.bot`. The vanilla client

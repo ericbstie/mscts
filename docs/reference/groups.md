@@ -153,7 +153,7 @@ shows the other player with another UUID, in the tab list and in their body.
 
 What the server does with the moves a player's client reports. The server checks each move
 against where it has the player: a move too far for one tick, a move into a block, a player
-floating in the air for too long. When it refuses a move, it sends the player back
+floating in the air for too long, a move with values no client sends. When it refuses a move, it sends the player back
 (`player_position`). When it refuses the player, it kicks them (`disconnect`). The Groups compare
 only these two packets.
 
@@ -169,9 +169,11 @@ teleport number of every later teleport.
 | `movement/into-blocks` | tick-exact | none | A Bot walks into a wall, through a gap 1 block wide and 2 high, up onto a full block without jumping, and up onto a slab. The world steps one tick after each move. | none |
 | `movement/flying` | exact | none | Three Bots rise 1.5 blocks into the air. A creative Bot stays there. A survival Bot lands again after about 15 ticks, well before vanilla's limit of 80, and must not be kicked. Another survival Bot stays there until the server kicks it. The creative Bot rises first, so by then it has floated at least as long. | none |
 | `movement/before-teleport` | tick-exact | none | A Bot walks into a wall, then sends three more moves before it accepts the teleport the server answers with. | none |
+| `movement/invalid` | exact | none | Three Bots each send a move that no vanilla client sends. One sends an infinite x, then an infinite y. Vanilla holds each within 30 million blocks across or 20 million up or down, and then sends the Bot back because the move is too long. Another Bot sends an x that is not a number, and the last one an infinite pitch. Vanilla kicks each of them. | none |
 
 Vanilla checks a move's speed only while the world runs normally, not while it is frozen. So
-`movement/too-fast` runs in a running world. `movement/flying` also runs in a running world.
+`movement/too-fast` and `movement/invalid` run in a running world. `movement/flying` also runs
+in a running world.
 Freezing it would not change when vanilla kicks, because vanilla counts the ticks a player floats
 either way. In `movement/into-blocks` and `movement/before-teleport`, vanilla checks speed again
 for the packets it reads just after each step. None of their moves arrives then, and none is
@@ -180,6 +182,8 @@ long enough to be refused.
 `movement/flying` compares the kick's message, not when it comes. A server that kicks a player
 after fewer than about 15 ticks in the air kicks the Bot that lands, and differs. A server that
 kicks later than vanilla, but within 10 seconds, does not differ.
+
+In `movement/invalid`, a server that does not kick a Bot within 10 seconds fails the Group.
 
 The moves of one tick are sent back to back, and the server must take them in one tick. Vanilla
 reads what has arrived at the start of each tick, so if a tick starts while the moves are still
@@ -228,7 +232,6 @@ back to vanilla's defaults.
 | --- | --- | --- |
 | Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
 | Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
-| Invalid moves | `movement/invalid`: a coordinate that is not a number, an infinite one, and a pitch of 91 | A Bot that can send a move as given. Today a Bot refuses such a coordinate, and holds pitch between -90 and 90 as the vanilla client does. |
 
 See [Project status](/status) for the order.
 
