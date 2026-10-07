@@ -1,4 +1,10 @@
-"""Every test case a container packet can have a title and a reference entry (#283)."""
+"""The test cases of a container packet have titles and reference entries (#283).
+
+It covers a stack with an int-valued component (`minecraft:damage`), a stack without
+components, no stack, a stack sent by one side only, and a window with no slots. A component
+whose value has fields of its own (an enchanted stack's `...added[].value[].enchantment`) names
+test cases below its value, and those are not titled yet.
+"""
 
 import itertools
 from collections.abc import Mapping
@@ -7,6 +13,7 @@ import pytest
 
 from mscts.case_titles import TITLES
 from mscts.compare import compare
+from mscts.transcript import Transcript
 from tests.compare.build import packet, transcript
 
 CHEST_TITLE = bytes([0x08, 0x00, 0x05]) + b"Chest"
@@ -56,20 +63,15 @@ def _filled(name: str, stack: object) -> dict[str, object]:
     return {key: _holding(value, stack) for key, value in PACKETS[name].items()}
 
 
-def _cases(
-    name: str, reference: Mapping[str, object], candidate: Mapping[str, object] | None
-) -> tuple[str, ...]:
-    """The test cases of `name` sent as `reference`, and as `candidate` (None: not sent)."""
-    sent = [packet(f"minecraft:{name}", fields=fields) for fields in (reference, candidate or {})]
-    other = transcript(("alice", sent[1])) if candidate is not None else transcript()
-    return compare(transcript(("alice", sent[0])), other, []).test_cases
+def _sent(name: str, fields: Mapping[str, object]) -> Transcript:
+    """A Transcript of a Bot that was sent the packet `name` with `fields`."""
+    return transcript(("alice", packet(f"minecraft:{name}", fields=fields)))
 
 
-def _untitled(
-    name: str, reference: Mapping[str, object], candidate: Mapping[str, object] | None
-) -> list[str]:
-    """The test cases of `_cases` that `TITLES` has no title for."""
-    return sorted(set(_cases(name, reference, candidate)) - TITLES.keys())
+def _untitled(name: str, reference: Mapping[str, object], candidate: Transcript) -> list[str]:
+    """The test cases of `reference` against `candidate` that `TITLES` has no title for."""
+    cases = compare(_sent(name, reference), candidate, []).test_cases
+    return sorted(set(cases) - TITLES.keys())
 
 
 @pytest.mark.parametrize("stack", STACKS)
@@ -78,8 +80,8 @@ def test_every_test_case_of_a_packet_the_candidate_left_out_has_a_title(
     name: str, stack: str
 ) -> None:
     fields = _filled(name, STACKS[stack])
-    assert name in _cases(name, fields, None)
-    assert _untitled(name, fields, None) == []
+    assert name in compare(_sent(name, fields), transcript(), []).test_cases
+    assert _untitled(name, fields, transcript()) == []
 
 
 @pytest.mark.parametrize(("reference", "candidate"), list(itertools.permutations(STACKS, 2)))
@@ -87,12 +89,13 @@ def test_every_test_case_of_a_packet_the_candidate_left_out_has_a_title(
 def test_every_test_case_of_a_stack_the_candidate_sent_another_way_has_a_title(
     name: str, reference: str, candidate: str
 ) -> None:
-    sent = _filled(name, STACKS[candidate])
+    sent = _sent(name, _filled(name, STACKS[candidate]))
     assert _untitled(name, _filled(name, STACKS[reference]), sent) == []
 
 
 def test_a_window_with_no_slots_or_more_slots_has_titles_too() -> None:
     none, few = _filled("container_set_content", None), _filled("container_set_content", FULL)
-    assert _untitled("container_set_content", {**none, "slot_data": []}, None) == []
-    assert _untitled("container_set_content", {**none, "slot_data": []}, few) == []
-    assert _untitled("container_set_content", few, {**none, "slot_data": []}) == []
+    empty = {**none, "slot_data": []}
+    assert _untitled("container_set_content", empty, transcript()) == []
+    assert _untitled("container_set_content", empty, _sent("container_set_content", few)) == []
+    assert _untitled("container_set_content", few, _sent("container_set_content", empty)) == []

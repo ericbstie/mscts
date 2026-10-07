@@ -618,8 +618,8 @@ item there.
 **Player inventory slot number**
 
 The number of the inventory slot that changes: 0 to 8 are the hotbar, 9
-to 35 the rest of the inventory, 36 to 39 the armor, and 40 the off
-hand.
+to 35 the rest of the inventory, 36 to 39 the armor, 40 the off hand,
+41 the body and 42 the saddle.
 
 ## `set_player_inventory.slot_data`
 
