@@ -733,15 +733,43 @@ def stands_in(at: tuple[float, float, float], box: Box) -> bool:
     )
 
 
-def assert_clear_of_every_block(result: Play, player: str) -> None:
-    """`player` is moved once, before the first window, to a place clear of every block set."""
-    moves = [m for c in result.windows[0].before if (m := _TP.fullmatch(c)) and m[1] == player]
+FLOOR_Y = -60
+"""The feet of a player on the flat world: the top of its grass (the floor is at y -61)."""
+
+
+def place_of(result: Play, player: str) -> tuple[float, float, float]:
+    """Where Control moves `player` before the first window (it moves each exactly once)."""
+    moves = [
+        move
+        for command in result.windows[0].before
+        if (move := _TP.fullmatch(command)) and move[1] == player
+    ]
     assert len(moves) == 1, result.windows[0].before
-    at = (float(moves[0][2]), float(moves[0][3]), float(moves[0][4]))
-    commands = [*(c for w in result.windows for c in (*w.before, *w.builder)), *result.after]
+    return float(moves[0][2]), float(moves[0][3]), float(moves[0][4])
+
+
+def touch(one: tuple[float, float, float], other: tuple[float, float, float]) -> bool:
+    """Whether two standing players' collision boxes overlap or touch."""
+    width, height = 2 * PLAYER_HALF_WIDTH, PLAYER_HEIGHT
+    return (
+        abs(one[0] - other[0]) <= width
+        and abs(one[1] - other[1]) <= height
+        and abs(one[2] - other[2]) <= width
+    )
+
+
+def assert_clear_of_every_block(result: Play, player: str, other: str) -> None:
+    """`player` is moved to a place on the ground, clear of every block set and of `other`."""
+    at = place_of(result, player)
+    commands = [
+        *(command for window in result.windows for command in (*window.before, *window.builder)),
+        *result.after,
+    ]
     boxes = [box for command in commands for box in changed_boxes(command)]
     assert boxes
     assert not [box for box in boxes if stands_in(at, box)], at
+    assert at[1] == FLOOR_Y, at  # not in the floor, and not above it (it would fall)
+    assert not touch(at, place_of(result, other)), (at, other)
     assert (at[0] // SECTION, at[2] // SECTION) == (0, 0)  # it still stands in chunk (0, 0)
 
 
@@ -753,7 +781,7 @@ async def test_control_moves_the_builder_clear_of_every_block_a_command_sets(
     # Vanilla joins a player at a random place inside the spawn radius, once per world: a
     # block set where the builder stands makes it crawl and choke (a `set_entity_data` on one
     # Instance only).
-    assert_clear_of_every_block(await played(group_id), blocks.BUILDER)
+    assert_clear_of_every_block(await played(group_id), blocks.BUILDER, CONTROL)
 
 
 @pytest.mark.asyncio
@@ -761,4 +789,4 @@ async def test_control_moves_the_builder_clear_of_every_block_a_command_sets(
 async def test_control_moves_itself_clear_of_every_block_a_command_sets(group_id: str) -> None:
     # The same for Control (#300): it joins at a random place too, and the builder is sent
     # its pose and health inside a window when a block sets them (`set_entity_data`).
-    assert_clear_of_every_block(await played(group_id), CONTROL)
+    assert_clear_of_every_block(await played(group_id), CONTROL, blocks.BUILDER)
