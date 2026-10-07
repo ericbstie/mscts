@@ -151,6 +151,21 @@ async def test_a_group_that_never_froze_the_world_does_not_unfreeze_it() -> None
     assert "tick unfreeze" not in commands_sent(server.seen)
 
 
+@pytest.mark.asyncio
+async def test_a_group_that_goes_on_without_tick_ends_without_unfreezing() -> None:
+    # #290: the freeze raised `CommandMissing`, so it never took effect: `end` has no
+    # world to unfreeze, and `close` leaves nothing marked frozen.
+    server = ControlServer(commands=tree("setblock", "tellraw"))
+    transcript = Transcript(group_id="test/ticks", server="fake")
+    async with playing(server, transcript) as context:
+        with pytest.raises(CommandMissing):
+            await context.freeze()
+        await context.end()
+
+    assert "tick unfreeze" not in commands_sent(server.seen)
+    assert not context.left_frozen
+
+
 async def _probe(context: GroupContext) -> None:
     await joined(context)
     await context.freeze()

@@ -404,7 +404,8 @@ class GroupContext:
         Returns once the server has run the command (`Control.run`). The world stays
         frozen until the Group ends: `end` unfreezes it (`tick unfreeze`), and a failure to
         fails the Group; if the Group failed first, `close` tries. So the next Group does
-        not start in a frozen world.
+        not start in a frozen world. A freeze that raised `CommandMissing` sent nothing, so
+        the Group has no world to unfreeze.
 
         Raises:
             ValueError: The Group has frozen the world already.
@@ -415,7 +416,11 @@ class GroupContext:
             msg = "the Group has frozen the world already"
             raise ValueError(msg)
         self._ticks = 0  # set first: a command that timed out may still have run
-        await self._control.run("tick freeze")
+        try:
+            await self._control.run("tick freeze")
+        except CommandMissing:
+            self._ticks = None  # nothing was sent, so there is nothing to unfreeze
+            raise
 
     async def step(self, ticks: int = 1) -> None:
         """Move the frozen world on `ticks` ticks, one at a time, and return once they ran.
