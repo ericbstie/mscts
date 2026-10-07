@@ -72,3 +72,17 @@ Control moves the builder with `tp builder 0.5 -60 14.5` before the first
 window. A standing player is 0.6 wide and 1.8 high, so it then fills x 0.2 to
 0.8 and z 14.2 to 14.8, clear of every block the Groups set, and it is still in
 chunk (0, 0).
+
+## Control is a player too (#300)
+
+The fix above moved only the builder. Control joins the same way, at a random
+place saved per Instance, and the builder is sent Control's
+`set_entity_data` (the builder tracks Control's entity), so Control's pose
+and health reached the builder inside windows on one Instance only (the
+`blocks/clone` 40-play Self-check failed in player metadata).
+
+Control now also moves, with `tp control 3.5 -60 14.5` before the first window:
+x 3.2 to 3.8 and z 14.2 to 14.8, clear of every block the Groups set (the
+clone's blocks end at z 11), in chunk (0, 0), and 3 blocks from the builder.
+The probe in the triage comment of #300 puts Control at 4.5 -60 10.5, under the
+source's stairs at 4 -59 10, as the bad place.

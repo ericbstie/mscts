@@ -44,11 +44,12 @@ The world is frozen and random ticks are off while a Group runs, so nothing chan
 the command. Both settings are put back afterwards, and so are the blocks. Every block a Group
 changes is in the chunk that holds x and z from 0 to 15, which the builder is sent when it joins.
 
-Vanilla puts a player who joins at a random place near the world spawn, so the builder could
-stand where a command sets a block. It would then crawl and take damage, and the server would
-tell it so. To keep that out of the comparison, the Group moves the builder with `/tp` to x 0.5, y -60,
-z 14.5 before the first window, away from every block a Group changes. The blocks Groups
-therefore require `/tp`, and a server without it fails all three.
+Vanilla puts a player who joins at a random place near the world spawn, so the builder, or
+Control, could stand where a command sets a block. It would then crawl and take damage, and the
+server would tell the builder so. To keep that out of the comparison, the Group moves both with
+`/tp` before the first window, the builder to x 0.5, y -60, z 14.5 and Control to x 3.5, y -60,
+z 14.5, away from every block a Group changes. The blocks Groups therefore require `/tp`, and a
+server without it fails all three.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

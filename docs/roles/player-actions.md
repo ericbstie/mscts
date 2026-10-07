@@ -24,3 +24,5 @@ lead routes each change and both review it.
 ## Log
 
 Newest first: one line per lesson, with the issue it came from.
+
+- #300: Control is a player too. It joins at a random place, saved per Instance, and a Group's blocks can make it crawl or choke in another Bot's window. Move every player a Group's blocks can reach, not only the one that acts.

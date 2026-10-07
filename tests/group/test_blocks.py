@@ -36,8 +36,13 @@ COMMANDS = tree("setblock", "fill", "clone", "data", "tellraw", "tick", "gamerul
 GROUP_IDS = ("blocks/setblock", "blocks/fill", "blocks/clone")
 UNDO = ("kill @e[type=minecraft:item]", "gamerule random_tick_speed 3", "tick unfreeze")
 """What Control ends with, whatever happened: the last commands of every play."""
-START = (f"tp builder {blocks.BUILDER_AT}", "tick freeze", "gamerule random_tick_speed 0")
-"""What Control starts with: it moves the builder into place, then freezes the world."""
+START = (
+    f"tp builder {blocks.BUILDER_AT}",
+    f"tp control {blocks.CONTROL_AT}",
+    "tick freeze",
+    "gamerule random_tick_speed 0",
+)
+"""What Control starts with: it moves the builder and itself into place, then freezes the world."""
 
 
 def chat(peer: Peer, message: str) -> bytes:
@@ -249,7 +254,7 @@ async def test_control_freezes_the_world_before_the_first_window_and_undoes_it_a
 ) -> None:
     result = await played(group_id)
 
-    assert result.windows[0].before[:3] == START
+    assert result.windows[0].before[: len(START)] == START
     assert result.after[-3:] == UNDO
     assert re.fullmatch(r"fill \S+ \S+ \S+ \S+ \S+ \S+ minecraft:air", result.after[-4])
     assert not any(command in UNDO for window in result.windows for command in window.before)
@@ -280,7 +285,7 @@ async def test_control_undoes_its_settings_when_the_builder_never_gets_feedback(
             await GROUPS[group_id].run(context)
 
     control = [command for _, command in sent(transcript, CONTROL)]
-    assert tuple(control[:3]) == START
+    assert tuple(control[: len(START)]) == START
     assert tuple(control[-3:]) == UNDO
     assert len(sent(transcript, blocks.BUILDER)) == 1  # it did not go on to the next case
 
@@ -701,7 +706,7 @@ async def test_every_block_a_command_changes_is_in_chunk_0_0(group_id: str) -> N
     assert all(0 <= x <= 15 and 0 <= z <= 15 for x, _, z in changed), changed
 
 
-_TP = re.compile(r"tp builder (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)")
+_TP = re.compile(r"tp (builder|control) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)")
 PLAYER_HALF_WIDTH, PLAYER_HEIGHT = 0.3, 1.8
 """A standing player's collision box: 0.6 wide and 1.8 high, its feet at its position."""
 
@@ -728,6 +733,46 @@ def stands_in(at: tuple[float, float, float], box: Box) -> bool:
     )
 
 
+FLOOR_Y = -60
+"""The feet of a player on the flat world: the top of its grass (the floor is at y -61)."""
+
+
+def place_of(result: Play, player: str) -> tuple[float, float, float]:
+    """Where Control moves `player` before the first window (it moves each exactly once)."""
+    moves = [
+        move
+        for command in result.windows[0].before
+        if (move := _TP.fullmatch(command)) and move[1] == player
+    ]
+    assert len(moves) == 1, result.windows[0].before
+    return float(moves[0][2]), float(moves[0][3]), float(moves[0][4])
+
+
+def touch(one: tuple[float, float, float], other: tuple[float, float, float]) -> bool:
+    """Whether two standing players' collision boxes overlap or touch."""
+    width, height = 2 * PLAYER_HALF_WIDTH, PLAYER_HEIGHT
+    return (
+        abs(one[0] - other[0]) <= width
+        and abs(one[1] - other[1]) <= height
+        and abs(one[2] - other[2]) <= width
+    )
+
+
+def assert_clear_of_every_block(result: Play, player: str, other: str) -> None:
+    """`player` is moved to a place on the ground, clear of every block set and of `other`."""
+    at = place_of(result, player)
+    commands = [
+        *(command for window in result.windows for command in (*window.before, *window.builder)),
+        *result.after,
+    ]
+    boxes = [box for command in commands for box in changed_boxes(command)]
+    assert boxes
+    assert not [box for box in boxes if stands_in(at, box)], at
+    assert at[1] == FLOOR_Y, at  # not in the floor, and not above it (it would fall)
+    assert not touch(at, place_of(result, other)), (at, other)
+    assert (at[0] // SECTION, at[2] // SECTION) == (0, 0)  # it still stands in chunk (0, 0)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", GROUP_IDS)
 async def test_control_moves_the_builder_clear_of_every_block_a_command_sets(
@@ -736,13 +781,12 @@ async def test_control_moves_the_builder_clear_of_every_block_a_command_sets(
     # Vanilla joins a player at a random place inside the spawn radius, once per world: a
     # block set where the builder stands makes it crawl and choke (a `set_entity_data` on one
     # Instance only).
-    result = await played(group_id)
+    assert_clear_of_every_block(await played(group_id), blocks.BUILDER, CONTROL)
 
-    moves = [m for command in result.windows[0].before if (m := _TP.fullmatch(command))]
-    assert len(moves) == 1, result.windows[0].before
-    at = (float(moves[0][1]), float(moves[0][2]), float(moves[0][3]))
-    commands = [*(c for w in result.windows for c in (*w.before, *w.builder)), *result.after]
-    boxes = [box for command in commands for box in changed_boxes(command)]
-    assert boxes
-    assert not [box for box in boxes if stands_in(at, box)], at
-    assert (at[0] // SECTION, at[2] // SECTION) == (0, 0)  # it still stands in chunk (0, 0)
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_control_moves_itself_clear_of_every_block_a_command_sets(group_id: str) -> None:
+    # The same for Control (#300): it joins at a random place too, and the builder is sent
+    # its pose and health inside a window when a block sets them (`set_entity_data`).
+    assert_clear_of_every_block(await played(group_id), CONTROL, blocks.BUILDER)
