@@ -166,6 +166,24 @@ async def test_a_group_that_goes_on_without_tick_ends_without_unfreezing() -> No
     assert not context.left_frozen
 
 
+@pytest.mark.asyncio
+async def test_a_freeze_that_timed_out_is_still_unfrozen_when_the_group_closes() -> None:
+    # The command may have run though the answer never came, so unlike `CommandMissing`
+    # the world may be frozen.
+    def hang_on_freeze(command: str) -> None:
+        if command == "tick freeze":
+            server.answers_markers = False
+
+    server = ControlServer(on_command=hang_on_freeze)
+    transcript = Transcript(group_id="test/ticks", server="fake")
+    async with playing(server, transcript, timeout_s=0.5) as context:
+        with pytest.raises(TimeoutError):
+            await context.freeze()
+        server.answers_markers = True
+
+    assert steps(commands_sent(server.seen)) == ["tick freeze", "tick unfreeze"]
+
+
 async def _probe(context: GroupContext) -> None:
     await joined(context)
     await context.freeze()
