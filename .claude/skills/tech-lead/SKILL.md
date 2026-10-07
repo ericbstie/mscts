@@ -66,13 +66,6 @@ first.
   whole file.
 - When you land a fix for a red that blocks everyone, message the
   in-flight workers (SendMessage).
-- Helper PRs (issues labelled `helper-ready`, worked by an outside
-  agent): check open PRs at every wake and review them in one batch. Run
-  the PR's `## Verify` commands, then `integrate.sh rebase`. Read the
-  diff against the issue, and merge. Log its `## Surprises` only when they
-  show a new or repeated process problem. Helpers stack PRs on each other:
-  after the parent merges, rebase the child, set its base to `main`, then
-  merge it.
 - Before merging a codec change, run the candidate tier as well as the
   reference tier: a stricter schema can stop a Bot on what a Candidate
   sends (#20's item stack placeholder stopped every two-Bot run on

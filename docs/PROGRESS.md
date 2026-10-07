@@ -134,17 +134,6 @@ touches, afterwards; Next 1, 6, 11 and process work are parked. Lead
 decisions for the Report: a mechanic is a Scenario id's first segment,
 and wire-only Divergences are grouped per packet with a leaf count.
 
-## Delegated to the helper agent
-
-The maintainer's outside agents (Astra, ChatGPT) take GitHub issues labelled
-`helper-ready`. Claude stays the primary worker; do not brief a Claude
-worker on a delegated item. A helper PR has a `## Verify` section (the
-commands that prove it, with their expected output) and a `## Surprises`
-section; the lead reviews helper PRs in batches (tech-lead skill).
-Open: #25 Bot movement (lead corrections posted). A helper comments on an issue to claim it before starting.
-Merged: #5 (javap, closes #2), the output lane (#14, #12, #9, #10, #13), #6, #4, #3, #98.
-Their PRs are reviewed and integrated like a worker branch.
-
 ## Next
 
 The queue is the open GitHub issues without `needs-triage`, `needs-decision`
