@@ -83,6 +83,10 @@ then one commit.
 
 ## Known traps
 
+- `mise run commit` holds `.git/index.lock` for the whole check. If it is
+  killed (usage limit, restart), every `git add` in that worktree fails with
+  "index.lock exists". Once no Git command runs there, `rm` the lock the
+  message names.
 - `git rebase --autosquash` folds `fixup!` commits only with `-i`: use
   `env GIT_SEQUENCE_EDITOR=true git rebase -i --autosquash <base>`. Without
   `-i` it reports success and leaves the fixup on top (AT, #35).
