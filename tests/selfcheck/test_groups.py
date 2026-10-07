@@ -16,11 +16,12 @@ default one. Its Self-check launches two Instances of its own for that ServerSpe
 which costs two boots.
 """
 
+import os
 from pathlib import Path
 
 import pytest
 from support.reference import attached, own_reference
-from support.selfcheck import keep_timelines_and_describe, needs_instances_of_their_own
+from support.selfcheck import keep_timelines_and_describe, needs_instances_of_their_own, repeat_from
 
 from mscts.compare import Outcome
 from mscts.group import Group, resolve
@@ -30,8 +31,10 @@ from mscts.runner import Instance
 pytestmark = [
     pytest.mark.selfcheck,
     pytest.mark.asyncio(loop_scope="session"),
-    # The Groups bound each Bot operation themselves; this is only for a Run that hangs.
-    pytest.mark.timeout(900),
+    # 90 s per play, at least 900 s (#182). The slowest Group, blocks/clone, takes about
+    # 45 s per play (40 plays: 1750 to 1890 s), so a slower host or --stress keeps room.
+    # Bot operations have their own bounds.
+    pytest.mark.timeout(max(900, 90 * repeat_from(os.environ))),
 ]
 
 
