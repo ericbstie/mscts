@@ -26,6 +26,7 @@ from mscts.adapters.base import (
     Installation,
     ProvisionError,
     Release,
+    ShortCommitError,
     Source,
     UnavailableError,
     UnsupportedError,
@@ -276,16 +277,13 @@ def install_release(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in
 
 
 def _release(adapter: Adapter, target: Target, version: str | None, fetch: Fetch) -> Release:
-    """`adapter.release`, whose every failure is a ProvisionError naming `--from`.
-
-    An Adapter gives the facts; mscts adds the hint (UnavailableError words its own).
-    """
+    """`adapter.release`, keeping typed refusals and adding hints to other failures (#206)."""
     yourself = f"`{install_command(adapter.name, path='<file>')}`"
     try:
         return adapter.release(target, version, fetch)
     except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
         raise _download_failed(error, yourself) from error
-    except (UnsupportedError, UnavailableError):
+    except (ShortCommitError, UnsupportedError, UnavailableError):
         raise
     except ProvisionError as error:
         msg = f"{error}\n{build_it_yourself(adapter.name)}"
@@ -472,13 +470,14 @@ def _answer(terminal: Terminal) -> bool | None:
         terminal.say("Please answer y or n. ", end="")
 
 
-def require(
+def require(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in, not read
     adapter: Adapter,
     target: Target,
     cache_dir: Path,
     *,
     terminal: Terminal | None = None,
     fetch: Fetch = https_get,
+    now: Clock = utc_now,
 ) -> Installation:
     """`adapter`'s verified Installation for `target`; never installs one without saying so.
 
@@ -487,6 +486,7 @@ def require(
     prints the `--from` command, then ProvisionError naming it). Otherwise (no terminal, or
     stdin is no TTY; the default) ProvisionError at once, naming both commands; stdin is
     never read.
+    An accepted download records `installed_at` from `now`.
     """
     existing = installed(adapter, target, cache_dir)
     if existing is not None:
@@ -521,6 +521,6 @@ def require(
         terminal.say(f"downloading {url} ...")
         return fetch(url)
 
-    done = install_release(adapter, target, cache_dir, None, announced)
+    done = install_release(adapter, target, cache_dir, None, announced, now=now)
     terminal.say(done.message)
     return done.installation

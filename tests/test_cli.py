@@ -83,6 +83,23 @@ def test_an_unpublished_version_fails_saying_how_to_build_it(
 
 
 @pytest.mark.usefixtures("cache")
+@pytest.mark.parametrize("commit", ["a", "abc", "ABCDEF"])
+def test_a_short_commit_says_to_type_more_characters_without_a_from_hint(
+    capsys: pytest.CaptureFixture[str], commit: str
+) -> None:
+    github = FakeGitHub()
+
+    code, out, err = run(capsys, "adapter", "install", f"pumpkin@{commit}", fetch=github)
+
+    assert (code, out) == (1, "")
+    assert err == (
+        f"mscts: pumpkin@{commit} is too short to name a commit: "
+        "name at least 7 characters of it.\n"
+    )
+    assert github.fetched == []
+
+
+@pytest.mark.usefixtures("cache")
 def test_another_minecraft_version_is_not_supported(capsys: pytest.CaptureFixture[str]) -> None:
     code, out, err = run(capsys, "adapter", "install", "vanilla@26.4")
     assert (code, out) == (1, "")

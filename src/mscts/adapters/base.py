@@ -47,6 +47,10 @@ def build_it_yourself(adapter: str) -> str:
     return f"Build it yourself and install it with:\n  {install_command(adapter, path='<file>')}"
 
 
+class ShortCommitError(ProvisionError):
+    """A commit name shorter than seven characters; typing more is the fix (#206)."""
+
+
 class UnsupportedError(ProvisionError):
     """A build not for the Target: the Adapter reports it, mscts words it."""
 
@@ -143,8 +147,9 @@ class Adapter(Protocol):
         """The latest build for `target`, or the build `version` names (`<name>@<version>`).
 
         Facts only, never CLI text: UnsupportedError if that build is not for `target`,
-        UnavailableError if it cannot be downloaded, else ProvisionError saying what is
-        wrong. mscts words the refusals and adds how to install a build from a file.
+        UnavailableError if it cannot be downloaded, ShortCommitError if a commit name is
+        too short, else ProvisionError saying what is wrong. mscts keeps typed refusals
+        unchanged and adds how to install a build from a file to other ProvisionErrors.
         """
         ...
 
