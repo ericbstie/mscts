@@ -1134,7 +1134,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   waits after the join (that interval plus one second, a margin for a lazy cache); its window compares no play packet (`observe(play=False)`);
   `with_player` — the `status/with-player` script.
 - `groups.blocks`: `BUILDER` — the operator Bot that runs each command itself; `BUILDER_AT` —
-  where Control puts it, clear of every block the Groups set; `FEEDBACK_TIMEOUT_S`
+  where Control puts it, clear of every block the Groups set; `CONTROL_AT` — where Control
+  puts itself, likewise; `FEEDBACK_TIMEOUT_S`
   — how long it waits for a command's feedback; `PACKETS` — what a window compares;
   `DROP_MASKS` — the random fields of a dropped item's `add_entity`; `setblock`, `fill` and
   `clone` — the `blocks/setblock`, `blocks/fill` and `blocks/clone` scripts.

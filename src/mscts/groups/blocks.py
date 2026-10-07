@@ -17,7 +17,7 @@ from dataclasses import dataclass, replace
 
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, group
-from mscts.spec import ServerSpec
+from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 BUILDER = "builder"
 """The Bot that runs each command itself, as an operator, so its feedback is compared."""
@@ -35,6 +35,15 @@ one Instance only (docs/research/2026-10-03-builder-pose.md).
 
 This holds only while PACKETS leaves out `player_position` (which the teleport sends,
 before the first window) and `set_health`.
+"""
+
+CONTROL_AT = "3.5 -60 14.5"
+"""Where Control stands: like BUILDER_AT, clear of every block the Groups set (#300).
+
+Control joins at a random place of its own, saved per Instance, so a block set there makes it
+crawl and choke on one Instance only, and the builder hears of it (a `set_entity_data` for
+Control's entity, inside a window). It stands 3 blocks from the builder: the clone's blocks
+end at z 11 and the player at z 14.2.
 """
 
 PACKETS = (
@@ -118,6 +127,7 @@ async def _play(context: GroupContext, cases: tuple[_Case, ...], clear: str) -> 
     builder = await context.bot(BUILDER)
     await builder.join()
     await context.control.run(f"tp {BUILDER} {BUILDER_AT}")
+    await context.control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
     async with _frozen(context.control, clear):
         for case in cases:
             for command in case.setup:
