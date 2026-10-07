@@ -2142,6 +2142,17 @@ def _canonical_batch_finished(fields: dict[str, _Value], _context: _Context) -> 
     return {key: value for key, value in fields.items() if key != "batch_size"}
 
 
+def _canonical_container_state(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+    """No `state_id`: the client only echoes it back in its next click.
+
+    (`ClientPacketListener.handleContainerContent` and `handleContainerSetSlot` pass it to
+    `AbstractContainerMenu.initializeContents` and `setItem`, which store it in `stateId`;
+    `MultiPlayerGameMode.handleContainerInput` is the one client code that reads it, and copies
+    it into `ServerboundContainerClickPacket`.) Nothing the player sees depends on it.
+    """
+    return {key: value for key, value in fields.items() if key != "state_id"}
+
+
 _BATCH_PACKETS = frozenset(
     {(State.PLAY, "minecraft:chunk_batch_start"), (State.PLAY, "minecraft:chunk_batch_finished")}
 )
@@ -2363,6 +2374,8 @@ _CANONICAL: Mapping[
         (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
         (State.PLAY, "minecraft:light_update"): _canonical_light_update,
         (State.PLAY, "minecraft:chunk_batch_finished"): _canonical_batch_finished,
+        (State.PLAY, "minecraft:container_set_content"): _canonical_container_state,
+        (State.PLAY, "minecraft:container_set_slot"): _canonical_container_state,
     }
 )
 """The canonical form of each clientbound packet that has one, by (State, name), from its

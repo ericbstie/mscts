@@ -338,8 +338,10 @@ takes away. A difference keeps or removes another default.
 **Inventory state number**
 
 The number the server gives to this version of the window's contents.
-The client sends it back with its next click, which lets the server tell
-whether the click was made on contents that have changed since.
+The client keeps it and sends it back with its next click, which lets
+the server tell whether the click was made on contents that have changed
+since. The player sees nothing of it, so a different number is network
+traffic only.
 
 ## `container_set_content.window_id`
 
@@ -463,7 +465,8 @@ changed slot takes away. A difference keeps or removes another default.
 **Inventory slot change state number**
 
 The number the server gives to this version of the window's contents.
-The client sends it back with its next click.
+The client keeps it and sends it back with its next click. The player
+sees nothing of it, so a different number is network traffic only.
 
 ## `container_set_slot.window_id`
 
