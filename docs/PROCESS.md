@@ -72,23 +72,6 @@ ADRs and briefs. What the maintainer has asked for:
   - an elegant, honest developer experience;
   - installs are never hidden inside runs;
   - Adapters are easy for third parties to write and verify.
-- **Helper agent.** The maintainer also runs a non-Claude agent, in two
-  roles:
-  - *Implementer*: it takes small, independent tooling, docs and
-    platform issues labelled `helper-ready`, each with a `## Verify`
-    section saying what to run and see. The lead keeps at most 8 open.
-    Its PRs get the same review and rebase-with-check integration, and
-    the surprises in its PR description are logged as a retrospective.
-  - *Reviewer*: on PRs the lead labels `helper-review` (scrutiny::high
-    first), it posts one comment-only GitHub review whose summary starts
-    "Helper review:", one comment per finding with file:line and a
-    severity (blocking, should-fix, nit). It never pushes, merges or
-    resolves threads. Its reviews arrive under the maintainer's account;
-    the prefix tells them apart. The lead treats its findings like a
-    review bot's: verify, then fix or reply.
-
-  Claude remains the primary worker; the process is not shaped around
-  the helper.
 - **Autonomy:** within those decisions, the lead steers without asking,
   including batches, audits, refactors and process changes, and keeps
   the maintainer informed.
@@ -115,7 +98,7 @@ fully (the enabler, the Group, its docs).
 | `lane:statistics` | Randomness: compare distributions over many runs | `docs/roles/statistics.md` |
 | `lane:player-actions` | The Bot behaving like a real client | `docs/roles/player-actions.md` |
 
-Platform, tooling and docs issues stay with the helper and the lead.
+Platform, tooling and docs issues stay with the lead, who briefs a worker on each.
 
 **Core areas have one owner.** The timing specialist owns `net.py`,
 `bot.py`, `settle.py`, `group.py` and `transcript.py`; the comparison
@@ -694,6 +677,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-07 | The helper agent is retired: the `helper-ready` and `helper-review` labels are gone, and the lead briefs a Claude worker on tooling, docs and platform issues too | Maintainer: "I no longer have a helper" (his ChatGPT subscription ended) |
 | 2026-10-07 | The tech lead hands off to a fresh lead session at the end of each chunk of work, with a short handoff note, rather than running one long session | Maintainer: "tech leads give handoffs when a chunk of work has been done. I don't want it to be time based but for it to be when it makes sense to do so." A lead turn cost about 790k tokens on 2026-10-04 because its context had grown to 150k to 350k and every wake re-read it |
 | 2026-10-03 | `needs-triage` means not yet assessed: the lead sizes the issue, sets its lane and scrutiny, and makes sure the spec is complete, then removes the label. A blocked issue names its blockers in a **Blocked by** line at the top of its description instead of carrying a label, and is ready once they are closed | Maintainer: the label hid his own untriaged issues among blocked ones, and relabelling as blockers closed was manual work |
 | 2026-10-03 | Workers run only the live tests their change adds or touches, open draft PRs, and leave the full live tiers to the merge train | Maintainer: speed up; the full tiers queued on one live lock behind every worker, then ran again in the train |
