@@ -14,12 +14,12 @@ each level requires).
 
 | Area | Files | Level | Clean merges since the last escape | Why |
 | --- | --- | --- | --- | --- |
-| timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | medium | 4 | Audits 2026-09-26 and 2026-10-02 (H1, H5), then escapes #127, #184 and #169: an unasked `award_stats` could end a barrier a pass early (found in the review of PR #163 and left for later; fixed in #218). Lowered 2026-10-03 after 5 clean merges (#204, #220, #218, #223, #231). Clean since: #248, #264, #265, #267 |
-| comparison core | `compare.py`, `measure.py`, `case_titles.py`, `codec/entity_ids.py`, Verdicts in `run.py` | high | 2 | Audit 2026-10-02 H2, H3, H4; #172. Lowered 2026-10-03 after #226, then raised by #239 the same minute. Five escapes in the Score and the Report: a Candidate failure scored too lightly (#239, #230, #262), a prerequisite that differed only in network traffic blocked its dependents (#221), and an 88 MB `report.json` (#254). Lowered 2026-10-04 after #223, #231, #234, #250, #258, then raised by #266 (open). Clean since: #267, #268 |
-| codec | `codec/*` | medium | 4 | Audit K MD1, MD4 (2026-09-26); none since. Clean since: #220, #250, #248, #265 |
-| platform | `runner.py`, `adapters/*`, `install.py`, `spec.py`, `cli.py`, `report.py` | low | 2 | Audit K H1; orphaned Instances (#3); mobs near the Fixture world's spawn (#183). Lowered to medium 2026-10-03 after #192, #194, #158, #204, #205, and to low 2026-10-04 after #219, #227, #214, #223, #258. Clean since: #261, #263 |
-| Groups | `groups/*`, `tests/group/*` | high | 3 | `blocks/clone` (#170). Lowered 2026-10-03 after 5 clean merges (the last #216, #235, #218). Raised 2026-10-04: a random tick turned the grass under the tick-exact probe's redstone block to dirt on one Instance (#272). Clean since: #250, #275, #267 |
-| tooling and docs | `scripts/*`, `docs/*`, `.github/*`, test fakes and helpers | low | 1 | Raised to high 2026-10-03: stress runs on `main` found two flaky unit tests (#209, #210) and an untested signal path (#211); then two test races (#233, #246) and a test helper that read windows by index (#249). Lowered to medium 2026-10-03 after #235, #226, #218, #245, #241, and to low 2026-10-04 after #247, #251, #223, #257, #275. Clean since: #274 |
+| timing core | `net.py`, `bot.py`, `settle.py`, `group.py`, `transcript.py` | medium | 2 | Audits 2026-09-26 and 2026-10-02 (H1, H5), then escapes #127, #184 and #169: an unasked `award_stats` could end a barrier a pass early (found in the review of PR #163 and left for later; fixed in #218). Lowered 2026-10-03 after 5 clean merges (#204, #220, #218, #223, #231). Raised to high 2026-10-04 by #290 (a Candidate without `/tick` is reported as having left its world frozen; open), then #291 at high (a Bot's read lost the frames before a kick and raised a raw `BrokenPipeError`; fixed in #292; #309 is its reset variant). Lowered to medium 2026-10-04 after #288, #280, #292, #271, #310. Clean since: #279, #281 |
+| comparison core | `compare.py`, `measure.py`, `case_titles.py`, `codec/entity_ids.py`, Verdicts in `run.py` | medium | 2 | Audit 2026-10-02 H2, H3, H4; #172. Lowered 2026-10-03 after #226, then raised by #239 the same minute. Five escapes in the Score and the Report: a Candidate failure scored too lightly (#239, #230, #262), a prerequisite that differed only in network traffic blocked its dependents (#221), and an 88 MB `report.json` (#254). Lowered 2026-10-04 after #223, #231, #234, #250, #258, then raised by #266 (fixed in #287). The audit of 2026-10-04 found three more escapes at high: a missing command and a failed prerequisite scored better than sending every value wrong (#284, #285; fixed in #288, #289), and the `report.json` cap can drop the Divergence that fans out (#293; open). Lowered to medium 2026-10-04 after #277, #287, #288, #289, #294. Clean since: #280, #310 |
+| codec | `codec/*` | low | 3 | Audit K MD1, MD4 (2026-09-26); none since. Lowered to low 2026-10-04 after #220, #250, #248, #265, #310. Clean since: #276, #279, #281 |
+| platform | `runner.py`, `adapters/*`, `install.py`, `spec.py`, `cli.py`, `report.py` | low | 5 | Audit K H1; orphaned Instances (#3); mobs near the Fixture world's spawn (#183). Lowered to medium 2026-10-03 after #192, #194, #158, #204, #205, and to low 2026-10-04 after #219, #227, #214, #223, #258. Clean since: #261, #263, #287, #288, #289 |
+| Groups | `groups/*`, `tests/group/*` | medium | 3 | `blocks/clone` (#170). Lowered 2026-10-03 after 5 clean merges (the last #216, #235, #218). Raised 2026-10-04: a random tick turned the grass under the tick-exact probe's redstone block to dirt on one Instance (#272). Lowered to medium 2026-10-04 after #250, #275, #267, #277, #288. Clean since: #280, #271, #310 |
+| tooling and docs | `scripts/*`, `docs/*`, `.github/*`, test fakes and helpers | high | 3 | Raised to high 2026-10-03: stress runs on `main` found two flaky unit tests (#209, #210) and an untested signal path (#211); then two test races (#233, #246) and a test helper that read windows by index (#249). Lowered to medium 2026-10-03 after #235, #226, #218, #245, #241, and to low 2026-10-04 after #247, #251, #223, #257, #275. Raised to medium 2026-10-04 by #295 (a `test_live_lock` signal test fails now and then; open) and to high by #298 (concurrent test runs deleted each other's pytest temp directories; fixed in #299). #301 at high (a live-tier test still expected the old run output; fixed in #304) calls an audit. Clean since: #299, #280, #292 |
 
 Tick-exact and statistical Groups are raised to high: they rest on the
 timing core and on statistics that are new ground.
@@ -32,10 +32,12 @@ fixes was caught before merge. A bug left for a later train was on
 
 Audits owed (an escape at high):
 
-- timing core: called by #169.
-- comparison core: called by #221, then #230, #262 and #254.
+- timing core: called by #169, then #291 (#290 had raised it to high).
+- comparison core: called by #221, then #230, #262 and #254. The audit of
+  2026-10-04 held it and found #284, #285 and #293, and widened #266.
 - tooling and docs: called by #210, then #211, #233, #246 and #249
-  (#209 had raised it to high).
+  (#209 had raised it to high). Called again by #301 (#295 and #298 had
+  raised it from low to high).
 
 Process gaps in trains 14 to 21:
 
@@ -45,6 +47,20 @@ Process gaps in trains 14 to 21:
   review each. PROCESS requires two.
 - #65, #60 and #270 were labelled medium, though they touch high areas.
   They were relabelled high on 2026-10-04.
+
+Process gaps in trains 22 to 24:
+
+- Trains 22 to 24 merged with this register not updated. This update
+  covers them. All merged on 2026-10-04. Train 22 merged #277, #287 and
+  #304 at 17:25. Train 23 merged #288, #289, #299, #308, #294, #280, #292
+  and #271 at 20:15. Train 24 merged #310 at 20:17 and #276, #279 and #281
+  at 21:08.
+- #304 (a live-tier test) and #308 (a skill file) change no file of any
+  area, so they count for none.
+- #296 (the run output's wording) merged without the live tiers, so the
+  stale expectation in `test_cli_candidate` reached `main` (#301).
+- #310 landed #269's commits. #269 was stacked on #271's branch, and
+  merging it went into that branch, not into `main`.
 
 ## Rules
 
@@ -64,10 +80,31 @@ Newest first. "Escaped" means it was on `main`.
 
 | Date | Area | Bug | Found by | Escaped | Follow-up |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-04 | Groups | The `chat/limits` spam kick fell on a different message depending on where a tick landed, and `/tick freeze` cannot pin it because `TickThrottler` counts on every connection tick; a fake that kicked on the 3rd or 9th message passed every test (#269 review M1, S1) | review | no | fixed before merge (train 24) |
+| 2026-10-04 | core: timing | Mutants of `Connection.send_all`'s failure paths (no closed check, no recording on cancel, no drain-error translation) survived (#269 review S2) | review | no | fixed before merge (train 24) |
+| 2026-10-04 | core: timing | `observe` with a narrowed window left out one of several `until` names, so the Comparison could not see which ended it; an empty `until` gave a malformed `ProtocolError` (#271 reviews) | review | no | fixed before merge |
+| 2026-10-04 | core: timing | A write that failed with more than 128 KiB buffered also dropped the last frames and the close (#292 review B1) | review | no | fixed before merge |
+| 2026-10-04 | Groups | `chunks/*` took the join's first batch for the nearest chunks and ended a window when the view was held, so a Candidate that sends its whole view at once, or a ring one barrier later, was compared wrongly (#280 reviews B1, S2) | review | no | fixed before merge |
+| 2026-10-04 | core: comparison | Pumpkin's join was sorted in three pieces: `set_health`, `set_experience` and `set_entity_data` between its chunk batches ended a run, so 18 chunks read as both left out and sent (#280 review B1) | review | no | fixed in #294, in the same train |
+| 2026-10-04 | core: comparison | The latency broadcast (a `player_info_update`) came between two chunk batches on one Instance only and split the sorted runs differently: 32 chunks differed in `chunks/teleport`, play 15 of 20 under stress | Self-check of PR #280 | no | fixed in #294, in the same train |
+| 2026-10-04 | core: comparison | A Group whose prerequisite was `error` was not `error` too, so an identical Candidate did not score full marks when vanilla failed the prerequisite (#289 review B, audit L2) | review | no | fixed before merge |
+| 2026-10-04 | core: comparison | A Group blocked by an `error` prerequisite in one repetition failed the test cases it matched in the other repetitions (#289 review A B1) | review | no | fixed before merge |
+| 2026-10-04 | core: comparison | A Group that failed and then lacked `kill` on its undo stack read `needs /kill`, which hid the Group's own failure (#288 reviews A L1, B L-288-1) | review | no | fixed before merge |
+| 2026-10-04 | core: comparison | An unsettled Reference was played while the Candidate was frozen (#287 mutation batch) | mutation sweep | no | fixed in #287 before merge |
+| 2026-10-04 | not yet known | A Reference block-events test required `block_update` where vanilla sent only `section_blocks_update`, once in a run (#303). A rerun on #305's branch passed | helper's reference tier on `main` | yes | #303 open |
+| 2026-10-04 | tooling and docs | `test_cli_candidate` still expected the run output from before #296 (#301) | train 22's candidate tier | yes | fixed in #304, in the same train |
+| 2026-10-04 | not yet known | The 40-play `blocks/clone` Self-check: all 40 Verdicts were not `match`, with four `set_entity_data` packets (pose, health) missing from the Candidate's side, which was vanilla too (#300) | helper's Self-check on `main` | yes | #300 open |
+| 2026-10-04 | tooling and docs | Concurrent test runs deleted each other's pytest temp directories: 323 errors on a good commit (#298) | train 22's checks | yes | fixed in #299 |
+| 2026-10-04 | tooling and docs | A `test_live_lock` signal test failed once in `mise run check` and passed on the rerun (#295; #224 is the same file) | check run during the #28 rebase | yes | #295 open |
+| 2026-10-04 | core: comparison | `report_json`'s cap can drop the one Divergence that fans out, so `loads` gives other lines than the Report in memory: 4 passed, 1 failed, not 0 passed, 5 failed (#293). The file's own lines and totals are right | comparison-core audit of 2026-10-04 (L1) | yes | #293 open |
+| 2026-10-04 | core: timing | A Bot's read raised a raw `BrokenPipeError` after a kick, and the frames that arrived before the loss were dropped: `chat/limits` ended once in 400 stress plays (#291). #309 is its reset variant, once in a Pumpkin Run | Self-check of PR #269 | yes | fixed in #292; #309 open until a rerun confirms it |
+| 2026-10-04 | core: timing | A Candidate without `/tick` is reported as having left its world frozen, so every later Group fails with the wrong reason (#290) | #288's worker, left for later | yes | #290 open |
+| 2026-10-04 | core: comparison | Failing a prerequisite scored better than passing it and failing its dependents (#285). No shipped Group has `requires`, so no Score was wrong yet | comparison-core audit of 2026-10-04 (M1) | yes | fixed in #289 |
+| 2026-10-04 | core: comparison | A Candidate that lacked a command Control uses failed one line, not the Group's test cases, and a missing `/kill` on teardown threw away the Comparison (#284) | comparison-core audit of 2026-10-04 (H1) | yes | fixed in #288 |
 | 2026-10-04 | Groups | A random tick turned the grass under the tick-exact probe's redstone block to dirt on one Instance only: a false `mismatch` in 1 of 20 plays (#272) | train 20's reference tier | yes | fixed in #275 |
 | 2026-10-04 | tooling and docs | #268's stored Report sample went stale once #260 recaptured it | train 21's checks | no | re-rendered in #268 before merge |
 | 2026-10-04 | core: comparison | #258's rule that a `bot` or `failed` Divergence is never network traffic broke #260's test, which built one | train 20's checks of each commit | no | fixed in #260 before merge |
-| 2026-10-03 | core: comparison | A Candidate left unsettled fails each later Group as one line, not as its test cases, so it can score above one that sends every value wrong (#266) | review of PR #263, left for later | yes | open |
+| 2026-10-03 | core: comparison | A Candidate left unsettled fails each later Group as one line, not as its test cases, so it can score above one that sends every value wrong (#266) | review of PR #263, left for later | yes | fixed in #287 |
 | 2026-10-03 | core: comparison | A Candidate failure of a whole Group (it raised, was left unusable, or made the Comparison raise) failed one line, not each test case of the Group (#262) | review of PR #259; on `main` since #237 | yes | fixed in #263 |
 | 2026-10-03 | core: comparison | A default Run against Pumpkin wrote an 88 MB `report.json` (#254) | #32's worker, left for later | yes | fixed in #260 |
 | 2026-10-03 | tooling and docs | Test helpers read a window as the events after an index, so another Bot's later packets could move in or out of it (#249) | #26's worker | yes | fixed in #251 |
