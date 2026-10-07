@@ -56,9 +56,14 @@ class Scenario:
     expects: frozenset[str]
 
 
-PRELUDE = ("setblock 8 -60 8 minecraft:note_block",)
-"""Commands that run before the first window, which is also when Control joins: the note block
-the third Scenario plays."""
+PRELUDE = ("gamerule random_tick_speed 0", "setblock 8 -60 8 minecraft:note_block")
+"""Commands that run before the first window, which is also when Control joins: random ticks off,
+and the note block the third Scenario plays.
+
+With random ticks on, a grass block under a placed block can turn to dirt in the tick that sends
+the placement, and vanilla sends two changes to one section in one tick as a
+`section_blocks_update`, not a `block_update` (`ChunkHolder.broadcastChanges`, #303). The test
+boots an Instance of its own, so nothing turns them back on."""
 
 SCENARIOS = (
     Scenario(
