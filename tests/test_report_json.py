@@ -9,7 +9,15 @@ from uuid import UUID
 import pytest
 
 from mscts import report_json
-from mscts.compare import ABSENT, Divergence, DivergenceKind, Observability, Outcome, Verdict
+from mscts.compare import (
+    ABSENT,
+    TICK_PATH,
+    Divergence,
+    DivergenceKind,
+    Observability,
+    Outcome,
+    Verdict,
+)
 from mscts.measure import Measurement
 from mscts.report import Report
 from mscts.run import GroupResult, SideSummary
@@ -307,6 +315,29 @@ def test_a_gameplay_difference_of_one_test_case_does_not_keep_another_one_past_t
     lines = json.loads(report_json.dumps(read_back))["lines"]
     results = {line["test_case"]: line["result"] for line in lines if "test_case" in line}
     assert (results["a"], results["b"]) == ("fail", "fail")
+
+
+def test_a_whole_packet_difference_is_kept_however_many_tick_differences_came_first() -> None:
+    # A `field` Divergence of a whole Packet (no path) also fails each field of its packet (#230),
+    # which a late tick (at `TICK_PATH`) does not, so past the cap it is not the same way (#293).
+    ticks = [
+        replace(_plain("a", index, traffic=False), path=TICK_PATH, reference=index, candidate=index)
+        for index in range(21)
+    ]
+    whole = replace(_plain("a", 21, traffic=False), path=None)
+    report = _report(*ticks, whole)
+    group = report.results[0]
+    verdict = replace(group.verdicts[0], test_cases=("a", "a.x", "a.y"))
+    report = replace(report, results=(replace(group, verdicts=(verdict,)), *report.results[1:]))
+
+    read_back = report_json.loads(report_json.dumps(report))
+
+    def lines_of(each: Report) -> list[dict[str, Any]]:
+        return json.loads(report_json.dumps(each))["lines"]
+
+    assert lines_of(read_back) == lines_of(report)
+    assert [line["result"] for line in lines_of(read_back) if line.get("test_case")] == ["fail"] * 3
+    assert report_json.loads(report_json.dumps(read_back)) == read_back
 
 
 def test_a_verdict_with_nothing_to_leave_out_says_omitted_0() -> None:
