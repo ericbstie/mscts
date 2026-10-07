@@ -261,6 +261,8 @@ class _Pose:
 class Position:
     """Where a Bot's player is and faces, as its client has it (`Bot.position`).
 
+    `Bot.move_unchecked` sends one as given, so there it may hold any value.
+
     Attributes:
         x: Its x, in blocks.
         y: Its feet's y, in blocks.
@@ -968,6 +970,29 @@ class Bot:
         pose.x, pose.y, pose.z = x, y, z
         self._controls.on_ground = on_ground
         await self._tick()
+
+    async def move_unchecked(self, position: Position) -> None:
+        """Send `position` exactly as given, checking nothing, in one client tick.
+
+        For a Group that tests what a server does with a move no client sends: a NaN or
+        infinite coordinate, a rotation that is not finite, a pitch past 90. The tick is a
+        `move_player_pos_rot` with `position`'s five values, on the ground or not as the Bot
+        last moved, then `client_tick_end`. The Bot keeps nothing of it: `position`, and what
+        the next `move` or `tick` reports, are as they were before.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+            CodecError: A rotation is not one a binary32 holds exactly (NaN and the
+                infinities are); nothing is sent.
+        """
+        self._require_play("move_unchecked")
+        flags = _ON_GROUND if self._controls.on_ground else 0
+        rotation = {"yaw": position.yaw, "pitch": position.pitch}
+        fields = {"x": position.x, "y": position.y, "z": position.z, **rotation, "flags": flags}
+        async with self._operation(self._timeout_s):
+            await self._connection.send_all(
+                [("minecraft:move_player_pos_rot", fields), ("minecraft:client_tick_end", {})]
+            )
 
     async def look(self, yaw: float, pitch: float) -> None:
         """Turn the player to `yaw` and `pitch`, in degrees, in one client tick.

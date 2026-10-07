@@ -555,6 +555,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def chat_at_once(self, *messages: str) -> None: ...          # each as chat, one write (#65)
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None: ...
     async def look(self, yaw: float, pitch: float) -> None: ...
+    async def move_unchecked(self, position: Position) -> None: ...  # pos_rot as given, keeps nothing (#278)
     async def sprint(self, sprinting: bool) -> None: ...               # holds forward and sprint, + the command
     async def sneak(self, sneaking: bool) -> None: ...                 # holds the sneak key
     async def jump(self) -> None: ...                                  # the jump key, for this tick only
@@ -679,6 +680,11 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
     # The Bot simulates no physics: the Group gives each position; move refuses a NaN or
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
+    # move_unchecked (#278): on a Bot in play (else ProtocolError), one tick of exactly
+    # move_player_pos_rot with the Position's five values and the on-ground flag of the last
+    # move, then client_tick_end, in one write. It checks and rounds nothing (a rotation no
+    # binary32 holds → CodecError, nothing sent), and changes neither the pose nor what the
+    # Bot last reported. For Groups that test moves no client sends (movement/invalid).
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
     # disconnect, catches up with the socket (Connection.caught_up), then drains only if its
     # Replies have seen the server's disconnect (Replies.saw_disconnect), so the drain refuses
