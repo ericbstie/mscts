@@ -198,15 +198,15 @@ def test_signals_reach_the_command_before_the_lock_is_released(
 ) -> None:
     child = r"""
 import os, signal, sys
-def stop(number, frame):
-    os.write(1, b'stopping\n')
-    sys.stdin.read()
-    sys.exit(23)
-signal.signal(signal.SIGINT, stop)
-signal.signal(signal.SIGTERM, stop)
+wanted = {signal.SIGINT, signal.SIGTERM}
+for number in wanted:
+    signal.signal(number, signal.SIG_DFL)
+signal.pthread_sigmask(signal.SIG_BLOCK, wanted)
 os.write(1, b'started\n')
-while True:
-    signal.pause()
+received = signal.sigwait(wanted)
+os.write(1, f'stopping {int(received)}\n'.encode())
+sys.stdin.read()
+sys.exit(23)
 """
     with command(tmp_path, child=child) as first:
         assert line(first.stdout) == "started"
@@ -217,7 +217,7 @@ while True:
             first.send_signal(termination)
         stopped = line(first.stdout)
         assert first.stderr is not None
-        assert stopped == "stopping", first.stderr.read()
+        assert stopped == f"stopping {int(termination)}", first.stderr.read()
         with command(tmp_path) as second:
             assert line(second.stderr) == f"waiting for another live tier to finish (pid {holder})"
             assert finish(first) == 23
@@ -297,13 +297,12 @@ def test_an_interrupt_reaches_a_grandchild_behind_a_parent_that_ignores_it(
 import signal, subprocess, sys
 signal.signal(signal.SIGINT, signal.SIG_IGN)
 grandchild = (
-    "import os, signal, sys\n"
-    "signal.signal(signal.SIGINT, signal.default_int_handler)\n"
-    "try:\n"
-    "    os.write(1, b'started\\n')\n"
-    "    signal.pause()\n"
-    "except KeyboardInterrupt:\n"
-    "    os.write(1, b'interrupted\\n')\n"
+    "import os, signal\n"
+    "signal.signal(signal.SIGINT, signal.SIG_DFL)\n"
+    "signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGINT})\n"
+    "os.write(1, b'started\\n')\n"
+    "received = signal.sigwait({signal.SIGINT})\n"
+    "os.write(1, f'interrupted {int(received)}\\n'.encode())\n"
 )
 subprocess.run([sys.executable, "-I", "-S", "-c", grandchild])
 sys.exit(23)
@@ -311,5 +310,5 @@ sys.exit(23)
     with command(tmp_path, child=child) as process:
         assert line(process.stdout) == "started"
         process.send_signal(signal.SIGINT)
-        assert line(process.stdout) == "interrupted"
+        assert line(process.stdout) == f"interrupted {int(signal.SIGINT)}"
         assert process.wait(timeout=5) == 23
