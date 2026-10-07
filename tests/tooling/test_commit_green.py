@@ -112,9 +112,6 @@ def test_parse_args_exits_2_on_an_unrecognized_flag(commit_green: types.ModuleTy
         "--interactive",
         "-p",
         "--patch",
-        "-U",
-        "-U3",
-        "--unified=3",
         "--pathspec-from-file=paths.txt",
         "--pathspec-file-nul",
         "--fixup=reword:HEAD",
@@ -148,6 +145,8 @@ def test_parse_args_refuses_arguments_that_change_the_committed_tree(
         ("--gpg-sign=key", "-m", "msg"),
         ("-Skey", "-m", "msg"),
         ("-uno", "-m", "msg"),
+        ("-U3", "-v", "-m", "msg"),
+        ("--unified=3", "-v", "-m", "msg"),
         ("-m", "msg", "--"),
     ],
 )
@@ -580,7 +579,10 @@ def test_main_leaves_an_existing_index_lock_alone(
 
     assert commit_green.main(["--", "-m", "second"]) == 2
 
-    assert "index is already locked" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "index is already locked" in err
+    assert "interrupted `mise run commit`" in err
+    assert f"rm {lock}" in err
     assert lock.read_bytes() == b"another Git command owns this lock"
 
 

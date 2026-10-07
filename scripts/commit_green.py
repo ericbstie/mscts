@@ -10,6 +10,9 @@ untracked files. Runs `mise run check` unless `--check-cmd` overrides it for a t
 captures its combined output to a file, and prints the tail. Git commits the captured
 index only after exit 0. A failed check leaves the original index and files unchanged.
 
+Limit: the check runs with `UV_NO_SYNC=1` against the repository's real `.venv`, so a
+staged change to pyproject.toml or uv.lock is checked against the old environment.
+
 This exists because piping the check into a commit chain has twice let a red
 check through: `mise run check | tail && git commit` commits whenever `tail`
 exits 0, which it does whether or not the check itself passed -- the pipe's exit
@@ -48,7 +51,6 @@ _TREE_OPTIONS = (
     "--only",
     "--interactive",
     "--patch",
-    "--unified",
     "--pathspec-from-file",
     "--pathspec-file-nul",
 )
@@ -139,14 +141,14 @@ def _long_option_end(args: Sequence[str], index: int) -> int:
 def _short_option_end(args: Sequence[str], index: int) -> int:
     argument = args[index]
     for offset, option in enumerate(argument[1:], start=1):
-        if option in "aiopU":
+        if option in "aiop":
             _refuse_selection(argument)
         if option in "FmcCt":
             if offset + 1 < len(argument):
                 return index + 1
             _required_value(args, index)
             return index + 2
-        if option in "Su":  # optional values are attached to the option, as in -Skey
+        if option in "SuU":  # optional values are attached to the option, as in -Skey
             return index + 1
     return index + 1
 
@@ -236,7 +238,11 @@ def _locked_index(index: Path) -> Iterator[None]:
     try:
         descriptor = os.open(lock, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except FileExistsError as exc:
-        msg = f"index is already locked: {lock}"
+        msg = (
+            f"index is already locked: {lock}\n"
+            "Another Git command may be running, or an interrupted `mise run commit` left the "
+            f"lock behind. Once no Git command runs in this worktree, remove it with `rm {lock}`."
+        )
         raise CommitError(msg) from exc
     try:
         yield
@@ -277,15 +283,18 @@ def _write_import_guard(directory: Path, venv: Path) -> Path:
     return directory
 
 
-def _check_environment(env: Mapping[str, str], snapshot: Path, venv: Path | None) -> dict[str, str]:
+def _check_environment(
+    env: Mapping[str, str], snapshot: Path, *, venv: Path | None, guard: Path | None
+) -> dict[str, str]:
+    """The check's environment; `guard` is the directory `_write_import_guard` wrote."""
     result = strip_git_env(env)
     result["PYTHONPATH"] = str(snapshot / "src")
     result["UV_PROJECT"] = str(snapshot)
     result["UV_NO_SYNC"] = "1"
     result["MISE_TRUSTED_CONFIG_PATHS"] = str(snapshot)
     if venv is not None:
-        guard = _write_import_guard(snapshot.parent / "python", venv)
-        result["PYTHONPATH"] = os.pathsep.join((str(guard), result["PYTHONPATH"]))
+        if guard is not None:
+            result["PYTHONPATH"] = os.pathsep.join((str(guard), result["PYTHONPATH"]))
         result["UV_PROJECT_ENVIRONMENT"] = str(venv)
     return result
 
@@ -343,6 +352,27 @@ def commit_if_green(
     return run_git_commit_fn(git_args)
 
 
+def _captured_tree(
+    git: str, index: Path, temporary: Path, *, cwd: Path, env: Mapping[str, str]
+) -> tuple[Path, str]:
+    """Copy `index` into `temporary`; return the copy and the tree it records."""
+    captured = temporary / "index"
+    if index.exists():
+        shutil.copyfile(index, captured)
+    tree = _git_output(git, ("write-tree",), cwd=cwd, env={**env, "GIT_INDEX_FILE": str(captured)})
+    return captured, tree
+
+
+def _snapshot(git: str, root: Path, temporary: Path, tree: str, *, env: Mapping[str, str]) -> Path:
+    """Check out `tree` under `temporary`, with the repository's `.venv` linked in."""
+    snapshot = temporary / "tree"
+    _checkout_tree(git, root, snapshot, tree, env=strip_git_env(env))
+    venv = root / ".venv"
+    if venv.is_dir():
+        (snapshot / ".venv").symlink_to(venv, target_is_directory=True)
+    return snapshot
+
+
 def _commit_checked_index(args: Args, env: Mapping[str, str], cwd: Path) -> int:
     git = shutil.which("git")
     if git is None:
@@ -356,17 +386,12 @@ def _commit_checked_index(args: Args, env: Mapping[str, str], cwd: Path) -> int:
     )
     with _locked_index(index), tempfile.TemporaryDirectory(prefix="mscts-commit-index-") as name:
         temporary = Path(name)
-        captured = temporary / "index"
-        if index.exists():
-            shutil.copyfile(index, captured)
+        captured, tree = _captured_tree(git, index, temporary, cwd=cwd, env=env)
         commit_env = {**env, "GIT_INDEX_FILE": str(captured)}
-        tree = _git_output(git, ("write-tree",), cwd=cwd, env=commit_env)
-        snapshot = temporary / "tree"
-        _checkout_tree(git, root, snapshot, tree, env=strip_git_env(env))
-        venv = root / ".venv"
-        if venv.is_dir():
-            (snapshot / ".venv").symlink_to(venv, target_is_directory=True)
-        check_env = _check_environment(env, snapshot, venv if venv.is_dir() else None)
+        snapshot = _snapshot(git, root, temporary, tree, env=env)
+        venv = root / ".venv" if (root / ".venv").is_dir() else None
+        guard = _write_import_guard(temporary / "python", venv) if venv else None
+        check_env = _check_environment(env, snapshot, venv=venv, guard=guard)
 
         def run_check_fn(cmd: Sequence[str]) -> tuple[int, str]:
             out_path = temporary / "check.log"
