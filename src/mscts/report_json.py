@@ -149,17 +149,25 @@ def _stored(divergences: tuple[Divergence, ...]) -> tuple[Divergence, ...]:
     """The Divergences report.json stores: all but the surplus of a test case (#254).
 
     The first `MAX_PER_TEST_CASE` of each test case stay, in order. Past them a Divergence
-    stays only if it is the first of its test case with its kind, observability and kind of
-    value (a list or mapping, which a replaced value fans out over its leaves). That is all
-    the Report's lines read from a Divergence, so they and the totals come out the same.
-    A Divergence of no test case is a Group's own difference and always stays.
+    stays only if it is the first of its test case with its kind, observability, kind of
+    value (a list or mapping, which a replaced value fans out over its leaves) and whether
+    it is a whole Packet's (a `field` Divergence with no path, which fans out over its
+    fields). That is all the Report's lines read from a Divergence, so they and the totals
+    come out the same. A Divergence of no test case is a Group's own difference and always
+    stays.
     """
     seen: dict[str, int] = {}
-    shown: set[tuple[str, str, Observability, bool]] = set()
+    shown: set[tuple[str, str, Observability, bool, bool]] = set()
     stored: list[Divergence] = []
     for divergence in divergences:
         case = divergence.test_case
-        way = (case, divergence.kind, divergence.observability, _holds_values(divergence))
+        way = (
+            case,
+            divergence.kind,
+            divergence.observability,
+            _holds_values(divergence),
+            _is_whole_packet(divergence),
+        )
         seen[case] = seen.get(case, 0) + 1
         if not case or seen[case] <= MAX_PER_TEST_CASE or way not in shown:
             stored.append(divergence)
@@ -169,6 +177,10 @@ def _stored(divergences: tuple[Divergence, ...]) -> tuple[Divergence, ...]:
 
 def _holds_values(divergence: Divergence) -> bool:
     return isinstance(divergence.reference, dict | list)
+
+
+def _is_whole_packet(divergence: Divergence) -> bool:
+    return divergence.kind == "field" and divergence.path is None
 
 
 def _divergence(divergence: Divergence) -> dict[str, object]:
