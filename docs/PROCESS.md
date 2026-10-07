@@ -28,6 +28,11 @@ This file is owned by the tech lead. It changes only through the
   show drift.
 - Writes product code only for trivial integration fixes. Anything more
   goes in a brief.
+- Hands off to a fresh lead session when a chunk of work is done, such as
+  a merge train landing or a batch of issues closing; never on a timer.
+  The lead judges when. It writes a short handoff note (the state of
+  `main`, open PRs and trains, who is working on what, decisions pending)
+  and stops; the next lead starts from that note.
 
 **Specialist (a long-lived worker subagent).** Owns one lane (see
 [Lanes and review levels](#lanes-and-review-levels)) and takes its issues
@@ -689,6 +694,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-07 | The tech lead hands off to a fresh lead session at the end of each chunk of work, with a short handoff note, rather than running one long session | Maintainer: "tech leads give handoffs when a chunk of work has been done. I don't want it to be time based but for it to be when it makes sense to do so." A lead turn cost about 790k tokens on 2026-10-04 because its context had grown to 150k to 350k and every wake re-read it |
 | 2026-10-03 | `needs-triage` means not yet assessed: the lead sizes the issue, sets its lane and scrutiny, and makes sure the spec is complete, then removes the label. A blocked issue names its blockers in a **Blocked by** line at the top of its description instead of carrying a label, and is ready once they are closed | Maintainer: the label hid his own untriaged issues among blocked ones, and relabelling as blockers closed was manual work |
 | 2026-10-03 | Workers run only the live tests their change adds or touches, open draft PRs, and leave the full live tiers to the merge train | Maintainer: speed up; the full tiers queued on one live lock behind every worker, then ran again in the train |
 | 2026-10-03 | Code is written and reviewed by the `function-design` skill (`.claude/skills/function-design/`, copied from the maintainer's `ericbstie/skills`): honest functions with IO, clocks and randomness passed in from the top, one level of abstraction per body, signatures designed for the caller. Workers apply it to what they write or change; reviewers flag its smells | Maintainer: use the principles of his function-design skill to decide how the code is written |
