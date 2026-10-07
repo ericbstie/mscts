@@ -2132,21 +2132,42 @@ def _canonical_light_update(fields: dict[str, _Value], _context: _Context) -> di
     return {**fields, "data": _canonical_light(fields["data"], _LIGHT_SECTIONS_MAX)}
 
 
-def _canonical_batch_finished(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
-    """No `batch_size`: the client feeds it only to the rate it asks the server for.
+def _without(key: str) -> Callable[[dict[str, _Value], _Context], dict[str, _Value]]:
+    """A canonical form that leaves out the field `key` and keeps the others.
 
-    (`ClientPacketListener.handleChunkBatchFinished`: `ChunkBatchSizeCalculator.onBatchFinished`,
-    then `chunk_batch_received` with `getDesiredChunksPerTick`.) Which chunks a batch holds races
-    between two vanilla Instances, and the client keeps each chunk by its position.
+    A Divergence of a packet that only one side sent (missing or unexpected) shows the packet
+    without that field too, since it shows the canonical form.
     """
-    return {key: value for key, value in fields.items() if key != "batch_size"}
+
+    def canonical(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+        return {name: value for name, value in fields.items() if name != key}
+
+    return canonical
+
+
+_CANONICAL_BATCH_FINISHED = _without("batch_size")
+"""No `batch_size`: the client feeds it only to the rate it asks the server for.
+
+(`ClientPacketListener.handleChunkBatchFinished`: `ChunkBatchSizeCalculator.onBatchFinished`,
+then `chunk_batch_received` with `getDesiredChunksPerTick`.) Which chunks a batch holds races
+between two vanilla Instances, and the client keeps each chunk by its position."""
+
+_CANONICAL_CONTAINER_STATE = _without("state_id")
+"""No `state_id`: the client only echoes it back in its next click.
+
+(`ClientPacketListener.handleContainerContent` and `handleContainerSetSlot` pass it to
+`AbstractContainerMenu.initializeContents` and `setItem`, which store it in `stateId`;
+`MultiPlayerGameMode.handleContainerInput` is the one client code that reads it, and copies
+it into `ServerboundContainerClickPacket`.) Nothing the player sees depends on it. A
+`container_set_content` or `container_set_slot` that only one side sent shows in its Divergence
+without `state_id`, as a `chunk_batch_finished` does without `batch_size`."""
 
 
 _BATCH_PACKETS = frozenset(
     {(State.PLAY, "minecraft:chunk_batch_start"), (State.PLAY, "minecraft:chunk_batch_finished")}
 )
 """The packets that mark a chunk batch: the client's world does not change with them, so one that
-only one side sent is network traffic (`_canonical_batch_finished`)."""
+only one side sent is network traffic (`_CANONICAL_BATCH_FINISHED`)."""
 
 
 def _chunk_cover(path: _Path) -> _Path:
@@ -2362,7 +2383,9 @@ _CANONICAL: Mapping[
         (State.STATUS, "minecraft:status_response"): _canonical_status_response,
         (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
         (State.PLAY, "minecraft:light_update"): _canonical_light_update,
-        (State.PLAY, "minecraft:chunk_batch_finished"): _canonical_batch_finished,
+        (State.PLAY, "minecraft:chunk_batch_finished"): _CANONICAL_BATCH_FINISHED,
+        (State.PLAY, "minecraft:container_set_content"): _CANONICAL_CONTAINER_STATE,
+        (State.PLAY, "minecraft:container_set_slot"): _CANONICAL_CONTAINER_STATE,
     }
 )
 """The canonical form of each clientbound packet that has one, by (State, name), from its

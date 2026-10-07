@@ -2059,6 +2059,15 @@ proves it necessary:
      both sides send an array, and otherwise what each side's section is
      (`chunk 0 0, y -32 to -17: not sent` against `all 15`; `no such
      light section` past a side's light section count).
+   - `play` / `minecraft:container_set_content` and
+     `minecraft:container_set_slot` (#283): no `state_id`. The client
+     passes it to `AbstractContainerMenu.initializeContents` and `setItem`
+     (`ClientPacketListener.handleContainerContent`,
+     `handleContainerSetSlot`), which store it in `stateId`, and the one
+     client code that reads that field is `MultiPlayerGameMode.
+     handleContainerInput`, which copies it into the
+     `ServerboundContainerClickPacket` (`javap` on the 26.3 client jar). A
+     different `state_id` is network traffic only.
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): the list form `["a", "b"]` ≡

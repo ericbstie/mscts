@@ -173,6 +173,20 @@ The channel a plugin message names in the configuration phase. It says which mod
 
 The name of the registry a set of tags belongs to, such as `minecraft:block`. A different name means the tags apply to another registry.
 
+## `container_close`
+
+**Window closing**
+
+The server closing the window the player has open, such as a chest. A
+server that leaves it out keeps the window open.
+
+## `container_close.window_id`
+
+**Window to close**
+
+The number of the window the server closes, where 0 is the player's own
+inventory.
+
 ## `container_set_content`
 
 **Inventory contents**
@@ -188,6 +202,71 @@ The item stack the cursor holds when the contents are sent, with its
 count and components. A difference changes what the player is holding
 with the mouse.
 
+## `container_set_content.carried_item.count`
+
+**Cursor item count**
+
+How many items the stack on the cursor holds. A difference gives the
+player another amount.
+
+## `container_set_content.carried_item.item`
+
+**Cursor item type**
+
+The kind of item the stack on the cursor holds, given as its number in
+the item registry. A different number is a different item.
+
+## `container_set_content.carried_item.components.added`
+
+**Cursor item components**
+
+The components the stack on the cursor has on top of what its item has
+by default. A stack with none is compared as this empty list.
+
+## `container_set_content.carried_item.components.added[]`
+
+**Cursor item component**
+
+One component the stack on the cursor has on top of what its item has by
+default, compared whole when only one server sends it. A difference adds
+a component or leaves one out.
+
+## `container_set_content.carried_item.components.added[].type`
+
+**Cursor item component name**
+
+The name of a component the stack on the cursor has on top of what its
+item has by default, such as `minecraft:damage`. A difference adds
+another component or leaves one out.
+
+## `container_set_content.carried_item.components.added[].value`
+
+**Cursor item component data**
+
+What a component added to the stack on the cursor holds, such as how
+damaged the item is. A difference changes that part of the item.
+
+## `container_set_content.carried_item.components.removed`
+
+**Cursor item removed components**
+
+The components of the item that the stack on the cursor takes away. A
+stack that takes none away is compared as this empty list.
+
+## `container_set_content.carried_item.components.removed[]`
+
+**Cursor item removed component**
+
+The name of a component the item has by default and the stack on the
+cursor takes away. A difference keeps or removes another default.
+
+## `container_set_content.slot_data`
+
+**Inventory slot items**
+
+Every slot of the window, in slot order. A window with no slots is
+compared as this empty list.
+
 ## `container_set_content.slot_data[]`
 
 **Inventory slot item**
@@ -196,13 +275,73 @@ The item stack in one slot, listed in slot order, with its count and
 components. A difference puts another item, another amount or other
 components in that slot.
 
+## `container_set_content.slot_data[].count`
+
+**Slot item count**
+
+How many items the stack in a slot holds. A difference gives the player
+another amount.
+
+## `container_set_content.slot_data[].item`
+
+**Slot item type**
+
+The kind of item the stack in a slot holds, given as its number in the
+item registry. A different number is a different item.
+
+## `container_set_content.slot_data[].components.added`
+
+**Slot item components**
+
+The components the stack in a slot has on top of what its item has by
+default. A stack with none is compared as this empty list.
+
+## `container_set_content.slot_data[].components.added[]`
+
+**Slot item component**
+
+One component the stack in a slot has on top of what its item has by
+default, compared whole when only one server sends it. A difference adds
+a component or leaves one out.
+
+## `container_set_content.slot_data[].components.added[].type`
+
+**Slot item component name**
+
+The name of a component the stack in a slot has on top of what its item
+has by default, such as `minecraft:damage`. A difference adds another
+component or leaves one out.
+
+## `container_set_content.slot_data[].components.added[].value`
+
+**Slot item component data**
+
+What a component added to the stack in a slot holds, such as how damaged
+the item is. A difference changes that part of the item.
+
+## `container_set_content.slot_data[].components.removed`
+
+**Slot item removed components**
+
+The components of the item that the stack in a slot takes away. A stack
+that takes none away is compared as this empty list.
+
+## `container_set_content.slot_data[].components.removed[]`
+
+**Slot item removed component**
+
+The name of a component the item has by default and the stack in a slot
+takes away. A difference keeps or removes another default.
+
 ## `container_set_content.state_id`
 
 **Inventory state number**
 
 The number the server gives to this version of the window's contents.
-The client sends it back with its next click, which lets the server tell
-whether the click was made on contents that have changed since.
+The client keeps it and sends it back with its next click, which lets
+the server tell whether the click was made on contents that have changed
+since. The player sees nothing of it, so a different number is network
+traffic only.
 
 ## `container_set_content.window_id`
 
@@ -211,6 +350,341 @@ whether the click was made on contents that have changed since.
 The window the contents are for, where 0 is the player's own inventory.
 The client ignores contents for a window that is not the one open, so a
 difference can leave the slots unchanged.
+
+## `container_set_data`
+
+**Window property**
+
+One number a window shows besides its items, such as how far a furnace
+has smelted. A server that leaves it out, or sends another, shows a
+different progress or setting.
+
+## `container_set_data.property`
+
+**Window property number**
+
+Which number of the window is set. Each kind of window numbers its own,
+so the same value means something else in a furnace and in an enchanting
+table.
+
+## `container_set_data.value`
+
+**Window property value**
+
+The value the window's number is set to.
+
+## `container_set_data.window_id`
+
+**Window of a property**
+
+The window the number belongs to. The client ignores it for a window
+that is not the one open.
+
+## `container_set_slot`
+
+**Inventory slot change**
+
+One slot of a window changing, such as the item a player picks up. A
+server that leaves it out, or sends another, shows a different item in
+that slot.
+
+## `container_set_slot.slot`
+
+**Inventory slot number**
+
+The number of the slot that changes. Slots are numbered from 0 in the
+order the window lists them, so a different number changes another slot.
+
+## `container_set_slot.slot_data`
+
+**Item in a changed slot**
+
+The item stack the slot holds after the change, with its count and
+components. An empty slot is sent as no stack.
+
+## `container_set_slot.slot_data.count`
+
+**Changed slot item count**
+
+How many items the stack in the changed slot holds. A difference gives
+the player another amount.
+
+## `container_set_slot.slot_data.item`
+
+**Changed slot item type**
+
+The kind of item the stack in the changed slot holds, given as its
+number in the item registry. A different number is a different item.
+
+## `container_set_slot.slot_data.components.added`
+
+**Changed slot item components**
+
+The components the stack in the changed slot has on top of what its item
+has by default. A stack with none is compared as this empty list.
+
+## `container_set_slot.slot_data.components.added[]`
+
+**Changed slot item component**
+
+One component the stack in the changed slot has on top of what its item
+has by default, compared whole when only one server sends it. A
+difference adds a component or leaves one out.
+
+## `container_set_slot.slot_data.components.added[].type`
+
+**Changed slot item component name**
+
+The name of a component the stack in the changed slot has on top of what
+its item has by default, such as `minecraft:damage`. A difference adds
+another component or leaves one out.
+
+## `container_set_slot.slot_data.components.added[].value`
+
+**Changed slot item component data**
+
+What a component added to the stack in the changed slot holds, such as
+how damaged the item is. A difference changes that part of the item.
+
+## `container_set_slot.slot_data.components.removed`
+
+**Changed slot item removed components**
+
+The components of the item that the stack in the changed slot takes
+away. A stack that takes none away is compared as this empty list.
+
+## `container_set_slot.slot_data.components.removed[]`
+
+**Changed slot item removed component**
+
+The name of a component the item has by default and the stack in the
+changed slot takes away. A difference keeps or removes another default.
+
+## `container_set_slot.state_id`
+
+**Inventory slot change state number**
+
+The number the server gives to this version of the window's contents.
+The client keeps it and sends it back with its next click. The player
+sees nothing of it, so a different number is network traffic only.
+
+## `container_set_slot.window_id`
+
+**Window of a slot change**
+
+The window the slot is in, where 0 is the player's own inventory. For
+any other window, the client ignores a change unless that window is the
+one open.
+
+## `mount_screen_open`
+
+**Mount inventory opening**
+
+The inventory of a mount, such as a horse, opening as a window. A server
+that leaves it out does not show the player the mount's inventory.
+
+## `mount_screen_open.entity_id`
+
+**Mount whose inventory opens**
+
+The mount whose inventory opens. mscts compares the entity each server
+refers to, rather than its server-assigned number. A difference opens
+another mount's inventory.
+
+## `mount_screen_open.inventory_columns`
+
+**Mount chest columns**
+
+How many columns of chest slots the mount has, or 0 for none. A
+different number shows a different number of slots.
+
+## `mount_screen_open.window_id`
+
+**Mount inventory window**
+
+The number the server gives to the window it opens.
+
+## `open_screen`
+
+**Window opening**
+
+The server opening a window for the player, such as a chest or a
+furnace. A server that leaves it out, or opens another kind, shows the
+player another screen.
+
+## `open_screen.window_id`
+
+**Opened window number**
+
+The number the server gives to the window. The client sends it back in
+its clicks and when it closes the window.
+
+## `open_screen.window_title`
+
+**Opened window title**
+
+The text the window shows as its title, such as `Chest`. A different
+text shows another title.
+
+## `open_screen.window_type`
+
+**Opened window type**
+
+The kind of window, as its number in the menu registry. It decides which
+screen the client draws, so a different number draws a different one.
+
+## `set_cursor_item`
+
+**Cursor item change**
+
+The server changing the stack the cursor holds. A server that leaves it
+out leaves the cursor as it was.
+
+## `set_cursor_item.slot_data`
+
+**New cursor item**
+
+The stack the cursor holds after the change, with its count and
+components. An empty cursor is sent as no stack.
+
+## `set_cursor_item.slot_data.count`
+
+**New cursor item count**
+
+How many items the new stack on the cursor holds. A difference gives the
+player another amount.
+
+## `set_cursor_item.slot_data.item`
+
+**New cursor item type**
+
+The kind of item the new stack on the cursor holds, given as its number
+in the item registry. A different number is a different item.
+
+## `set_cursor_item.slot_data.components.added`
+
+**New cursor item components**
+
+The components the new stack on the cursor has on top of what its item
+has by default. A stack with none is compared as this empty list.
+
+## `set_cursor_item.slot_data.components.added[]`
+
+**New cursor item component**
+
+One component the new stack on the cursor has on top of what its item
+has by default, compared whole when only one server sends it. A
+difference adds a component or leaves one out.
+
+## `set_cursor_item.slot_data.components.added[].type`
+
+**New cursor item component name**
+
+The name of a component the new stack on the cursor has on top of what
+its item has by default, such as `minecraft:damage`. A difference adds
+another component or leaves one out.
+
+## `set_cursor_item.slot_data.components.added[].value`
+
+**New cursor item component data**
+
+What a component added to the new stack on the cursor holds, such as how
+damaged the item is. A difference changes that part of the item.
+
+## `set_cursor_item.slot_data.components.removed`
+
+**New cursor item removed components**
+
+The components of the item that the new stack on the cursor takes away.
+A stack that takes none away is compared as this empty list.
+
+## `set_cursor_item.slot_data.components.removed[]`
+
+**New cursor item removed component**
+
+The name of a component the item has by default and the new stack on the
+cursor takes away. A difference keeps or removes another default.
+
+## `set_player_inventory`
+
+**Player inventory slot change**
+
+One slot of the player's own inventory changing, whichever window is
+open. A server that leaves it out, or sends another, shows a different
+item there.
+
+## `set_player_inventory.slot`
+
+**Player inventory slot number**
+
+The number of the inventory slot that changes: 0 to 8 are the hotbar, 9
+to 35 the rest of the inventory, 36 to 39 the armor, 40 the off hand,
+41 the body and 42 the saddle.
+
+## `set_player_inventory.slot_data`
+
+**Item in a player inventory slot**
+
+The item stack the slot holds after the change, with its count and
+components. An empty slot is sent as no stack.
+
+## `set_player_inventory.slot_data.count`
+
+**Inventory item count**
+
+How many items the stack in the player's slot holds. A difference gives
+the player another amount.
+
+## `set_player_inventory.slot_data.item`
+
+**Inventory item type**
+
+The kind of item the stack in the player's slot holds, given as its
+number in the item registry. A different number is a different item.
+
+## `set_player_inventory.slot_data.components.added`
+
+**Inventory item components**
+
+The components the stack in the player's slot has on top of what its
+item has by default. A stack with none is compared as this empty list.
+
+## `set_player_inventory.slot_data.components.added[]`
+
+**Inventory item component**
+
+One component the stack in the player's slot has on top of what its item
+has by default, compared whole when only one server sends it. A
+difference adds a component or leaves one out.
+
+## `set_player_inventory.slot_data.components.added[].type`
+
+**Inventory item component name**
+
+The name of a component the stack in the player's slot has on top of
+what its item has by default, such as `minecraft:damage`. A difference
+adds another component or leaves one out.
+
+## `set_player_inventory.slot_data.components.added[].value`
+
+**Inventory item component data**
+
+What a component added to the stack in the player's slot holds, such as
+how damaged the item is. A difference changes that part of the item.
+
+## `set_player_inventory.slot_data.components.removed`
+
+**Inventory item removed components**
+
+The components of the item that the stack in the player's slot takes
+away. A stack that takes none away is compared as this empty list.
+
+## `set_player_inventory.slot_data.components.removed[]`
+
+**Inventory item removed component**
+
+The name of a component the item has by default and the stack in the
+player's slot takes away. A difference keeps or removes another default.
 
 ## `configuration:custom_payload.data`
 
