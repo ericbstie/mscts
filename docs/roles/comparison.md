@@ -34,6 +34,7 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #283: A network-traffic-only field is dropped in its `_CANONICAL` entry (`_without`), with its javap reason; a titles test builds the empty-list, one-side-only and absent forms of every stack, because each names a case.
 - #122: Chunk packets are put in order in runs across neutral packets (the javap list is in the research note); batch packets and `batch_size` are network traffic; a chunk copy shows at most 254 sections and 256 light arrays per layer.
 - #122: A canonical form that reads a registry takes it from the last configuration before the packet (`_Context.each`), never from a sum over the Transcript.
 - #116: An entity first added before the windows is named by its first add_entity (type and position after the Group's Masks; a player by UUID); a `remove_entities`, compared or not, ends a name or number. `_Numbers` follows the stream packet by packet.

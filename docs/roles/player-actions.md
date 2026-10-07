@@ -29,4 +29,5 @@ lead routes each change and both review it.
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #278: `Bot.move_unchecked` sends a move no client sends and ends its tick, because vanilla kicks a second position before `client_tick_end`. Vanilla kicks a NaN coordinate or a non-finite rotation before any other check; an infinite coordinate is clamped and then sent back as too long a move.
 - #300: Control is a player too. It joins at a random place, saved per Instance, and a Group's blocks can make it crawl or choke in another Bot's window. Move every player a Group's blocks can reach, not only the one that acts.
