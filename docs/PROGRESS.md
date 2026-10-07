@@ -195,6 +195,30 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-04 to 2026-10-07: trains 22 to 28
+
+The project paused after v0.1.0 (released 2026-10-04 from 9cdf1ed) and
+resumed on 2026-10-07. Since then a lead hands off to a fresh session
+after each chunk of work. `docs/RISK.md` lists each train's PRs.
+
+- Train 22 (#277, #287, #304), train 23 (#288, #289, #299, #308, #294,
+  #280, #292, #271) and train 24 (#310, #276, #279, #281) landed v0.1.0's
+  last work on 2026-10-04.
+- Train 25 (#314 to #317, #236, #232, #253) and train 26 (#324, #243,
+  #307, #305, #306, #322) closed #293, #303, #300 and #319 and merged the
+  helper's seven PRs. Reference 35 of 35 on train 26's tip.
+- Train 27 (#325, #327, #328, #329, #332): the `test_live_lock` signal
+  flakes are gone (#295, #224: `sigwait`, 200 of 200 under stress); a
+  Candidate without `/tick` no longer reads as frozen (#290); container
+  test cases have titles and `state_id` is network traffic (#283); Groups
+  avoid Pumpkin's malformed item components (#312); the helper agent is
+  retired. Candidate 15 of 15, reference 35 of 35 on its tip.
+- Train 28 (#333): `movement/invalid` and `Bot.move_unchecked` (#278).
+- Filed from reviews: #330 (a network-traffic-only field changes the
+  Score), #331 (titles under structured item components), #334
+  (Divergences from windows a Candidate never played), #335 (kick reasons
+  compared byte for byte), #326 (`mise run commit` on a shallow checkout).
+
 ### 2026-09-30 — session 5: building the test catalogue
 
 Maintainer goal: implement every test issue from session 4, at most 2 parallel
