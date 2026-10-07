@@ -261,11 +261,22 @@ def test_an_installation_whose_binary_changed_is_refused_naming_the_fix(tmp_path
     assert github.fetched == []  # never silently replaced
 
 
-def test_an_unrecorded_installation_is_refused_naming_the_fix(tmp_path: Path) -> None:
-    root_of(tmp_path).mkdir(parents=True)
-    (root_of(tmp_path) / "pumpkin").write_bytes(NIGHTLY)
-    with pytest.raises(ProvisionError, match=r"not a recorded Installation.*delete"):
+@pytest.mark.parametrize("record", [None, b"{"], ids=["missing", "invalid-json"])
+def test_an_unrecorded_installation_is_refused_without_changing_the_cache(
+    tmp_path: Path, record: bytes | None
+) -> None:
+    root = root_of(tmp_path)
+    root.mkdir(parents=True)
+    (root / "pumpkin").write_bytes(NIGHTLY)
+    if record is not None:
+        (root / "SOURCE.json").write_bytes(record)
+    before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.iterdir()}
+    modified = root.stat().st_mtime_ns
+    with pytest.raises(ProvisionError, match=r"not a recorded Installation.*delete") as raised:
         installed(ADAPTER, TARGET, tmp_path)
+    assert f"delete {root} and run `mscts adapter install pumpkin` again" in str(raised.value)
+    assert {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in root.iterdir()} == before
+    assert root.stat().st_mtime_ns == modified
 
 
 def test_a_download_recorded_before_builds_were_reads_its_label_and_the_binarys_commit(
