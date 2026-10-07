@@ -24,7 +24,7 @@ from mscts.net import ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
-from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
+from tests.net.fakes import NO_STATISTICS, SPAWN, TICK_S, JoinScript, Peer, join_server
 
 CONTROL = "control"
 MARKER = "tellraw @s "
@@ -68,6 +68,8 @@ class MovementServer:
     stall_after: str | None = None
     """A command after which the fake leaves Control's next marker unanswered (a server that
     ran it but whose answer is late)."""
+    teleport_ids: dict[str, int] = field(default_factory=dict)
+    """The last teleport id sent to each player; the join's is 1."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -102,15 +104,50 @@ class MovementServer:
                     )
             elif packet.name in MOVES:
                 moves += 1
-                if self._kicks(player, packet, moves):
-                    # Vanilla closes the connection after it; the fake reads on until the Bot
-                    # closes it, so the client_tick_end that follows the move is not left unread.
-                    await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+                await self._answer_move(peer, player, packet, moves)
+
+    async def _answer_move(self, peer: Peer, player: str, move: Packet, moves: int) -> None:
+        """Kick `player` for its `moves`th move, `move`, or send it back, as vanilla would.
+
+        Vanilla closes the connection after a kick; the fake reads on until the Bot closes it,
+        so the client_tick_end that follows the move is not left unread. A move to an infinite
+        coordinate is too long: the player goes back to its last `/tp`, with the next teleport
+        id, as an absolute `player_position`.
+        """
+        if self._kicks(player, move, moves):
+            await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+        elif _too_far(move):
+            self.teleport_ids[player] = self.teleport_ids.get(player, 1) + 1
+            x, y, z = self._last_tp(player)
+            await peer.send(
+                "minecraft:player_position",
+                **{**SPAWN, "x": x, "y": y, "z": z},
+                teleport_id=self.teleport_ids[player],
+                velocity_x=0.0,
+                velocity_y=0.0,
+                velocity_z=0.0,
+                flags=0,
+            )
 
     def _kicks(self, player: str, move: Packet, moves: int) -> bool:
         """Whether `player`'s `moves`th move, `move`, is kicked: an invalid one, or a hover."""
         hovered = player in self.kicks and moves == 2  # _hover's second move
         return hovered or (self.kicks_invalid and _invalid(move))
+
+    def _last_tp(self, player: str) -> tuple[float, float, float]:
+        """Where Control last put `player` with `/tp`."""
+        commands = [str((p.fields or {})["command"]) for p in self.seen if p.name == CHAT_COMMAND]
+        last = [c for c in commands if c.startswith(f"tp {player} ")][-1]
+        x, y, z = (float(part) for part in last.split()[2:5])
+        return x, y, z
+
+
+def _too_far(move: Packet) -> bool:
+    """Whether `move` goes to an infinite coordinate, which no speed check lets through."""
+    fields = move.fields or {}
+    return any(
+        isinstance(v, float) and math.isinf(v) for v in (fields.get(a) for a in ("x", "y", "z"))
+    )
 
 
 def _invalid(move: Packet) -> bool:
@@ -551,6 +588,26 @@ async def test_invalid_sends_an_infinite_x_then_an_infinite_y_from_the_start() -
     assert [window.before[-1] for window in result.windows[:2]] == [
         tp("clamped", CLAMPED_START)
     ] * 2
+
+
+@pytest.mark.asyncio
+async def test_invalid_takes_each_correction_and_accepts_it_inside_its_window() -> None:
+    # The fake sends the clamped Bot back, as vanilla does: the correction and the Bot's
+    # accept of it are both compared or sent before the window closes, so the next /tp
+    # starts from a settled teleport.
+    transcript, _ = await play("movement/invalid")
+
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    clamped = [e for e in transcript.events if e.bot == "clamped" and e.t_ns >= opens[0]]
+    sent_back = [e for e in clamped if e.packet.name == "minecraft:player_position"]
+    accepts = [e for e in clamped if e.packet.name == "minecraft:accept_teleportation"]
+
+    assert [(e.packet.fields or {})["teleport_id"] for e in sent_back] == [2, 3]
+    assert [(e.packet.fields or {})["teleport_id"] for e in accepts] == [2, 3]
+    for window, (back, accept) in enumerate(zip(sent_back, accepts, strict=True)):
+        assert opens[window] < back.t_ns < accept.t_ns < closes[window]
+    assert [(e.packet.fields or {})["x"] for e in sent_back] == [8.5, 8.5]
 
 
 @pytest.mark.asyncio

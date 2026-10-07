@@ -17,8 +17,8 @@ The speed check runs only while the world runs normally (`runsNormally()`; every
 Groups rely on is in docs/research/2026-10-04-movement-checks.md), so
 `movement/too-fast`, `movement/flying` and `movement/invalid` play in a running world.
 `movement/invalid` sends moves no client sends, each as given (`Bot.move_unchecked`): vanilla
-clamps an infinite coordinate and then sends the player back as too fast, and kicks for a NaN
-coordinate or a rotation that is not finite. The speed check measures a
+sends the player back from an infinite coordinate as too fast, and kicks for a NaN coordinate
+or a rotation that is not finite. The speed check measures a
 move from where the player was when the tick began (`firstGood*`, reset by `tickPlayer`) and
 counts the moves since then, the Bot's accept of the `/tp` among them; the window's opening
 barrier (`Bot.sync`) puts a server tick between that accept and the first move, so each case is
@@ -288,35 +288,37 @@ _CLAMPED = "clamped"
 _NAN_COORDINATE = "nan_coordinate"
 _INFINITE_PITCH = "infinite_pitch"
 
-_INVALID_STARTS = {
-    _CLAMPED: (8.5, -60.0, 8.5),
-    _NAN_COORDINATE: (2.5, -60.0, 12.5),
-    _INFINITE_PITCH: (6.5, -60.0, 12.5),
-}
-"""Where each Bot stands, on the grass, apart from the others."""
-
 type _Unchecked = Callable[[Position], Position]
 """What a case changes in where the Bot stands, to make the move it sends."""
+
+_CLAMPED_START = (8.5, -60.0, 8.5)
 
 _CLAMPED_CASES: tuple[_Unchecked, ...] = (
     lambda at: dataclasses.replace(at, x=math.inf),
     lambda at: dataclasses.replace(at, y=-math.inf),
 )
-"""An infinite x, then an infinite y.
+"""An infinite x, then a y of minus infinity.
 
-Vanilla clamps each, x to 3·10⁷ and y to -2·10⁷ (`clampHorizontal`, `clampVertical`), and then
-refuses the move as too fast: the player is sent back (26.3 javap).
+Vanilla refuses each as too fast and sends the player back to where it was (26.3 javap). It
+clamps the coordinate first (`clampHorizontal`, `clampVertical`), but no packet shows where to:
+a server that clamps elsewhere, or not at all, sends the same.
 """
 
-_KICKED_CASES: Mapping[str, _Unchecked] = {
-    _NAN_COORDINATE: lambda at: dataclasses.replace(at, x=math.nan),
-    _INFINITE_PITCH: lambda at: dataclasses.replace(at, pitch=math.inf),
+_KICKED_CASES: Mapping[str, tuple[_Point, _Unchecked]] = {
+    _NAN_COORDINATE: ((2.5, -60.0, 12.5), lambda at: dataclasses.replace(at, x=math.nan)),
+    _INFINITE_PITCH: ((6.5, -60.0, 12.5), lambda at: dataclasses.replace(at, pitch=math.inf)),
 }
-"""A NaN x, and an infinite pitch, each from the Bot it names.
+"""A NaN x, and an infinite pitch, each from the Bot it names, standing where it says.
 
 Vanilla kicks a player for either before it reads anything else of the move
 (`containsInvalidValues`, `multiplayer.disconnect.invalid_player_movement`; 26.3 javap).
 """
+
+_INVALID_STARTS = {
+    _CLAMPED: _CLAMPED_START,
+    **{name: start for name, (start, _) in _KICKED_CASES.items()},
+}
+"""Where each Bot stands, on the grass, apart from the others."""
 
 
 @group("movement/invalid")
@@ -331,16 +333,16 @@ async def invalid(context: GroupContext) -> None:
             context, undo, _CLAMPED, *_KICKED_CASES, starts=_INVALID_STARTS
         )
         for case in _CLAMPED_CASES:
-            await _tp(context, clamped, _INVALID_STARTS[_CLAMPED])
+            await _tp(context, clamped, _CLAMPED_START)
             async with context.observe(*PACKETS):
-                await clamped.move_unchecked(case(_standing(clamped)))
-        for bot in kicked:
+                await clamped.move_unchecked(case(_standing(clamped, _CLAMPED_START)))
+        for bot, (start, case) in zip(kicked, _KICKED_CASES.values(), strict=True):
             async with context.observe(*PACKETS):
-                await bot.move_unchecked(_KICKED_CASES[bot.name](_standing(bot)))
+                await bot.move_unchecked(case(_standing(bot, start)))
                 await bot.expect("minecraft:disconnect", timeout_s=run.GROUP_TIMEOUT_S)
 
 
-def _standing(bot: Bot) -> Position:
-    """Where `bot` starts (`_INVALID_STARTS`), facing as it faces."""
-    x, y, z = _INVALID_STARTS[bot.name]
+def _standing(bot: Bot, at: _Point) -> Position:
+    """`bot` standing at `at`, facing as it faces."""
+    x, y, z = at
     return dataclasses.replace(bot.position, x=x, y=y, z=z)
