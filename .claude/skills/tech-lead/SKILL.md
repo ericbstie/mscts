@@ -12,7 +12,7 @@ first.
 
 ## Every session
 
-1. Orient. Read `docs/PROGRESS.md`, the retrospective log in
+1. Orient. Read the previous lead's handoff note if there is one, `docs/PROGRESS.md`, the retrospective log in
    `docs/PROCESS.md`, and `git log --oneline -20`. List the open issues
    (`needs-triage`: triage it; `needs-decision`; an open issue in its **Blocked by** line: blocked; the rest: ready) and open PRs with the GitHub MCP tools.
    Run `mise run check`.
@@ -40,6 +40,8 @@ first.
      commit.
 6. Keep `docs/PROGRESS.md` current (Now, Log) and push after each
    integration.
+7. When a chunk of work is done (a train landed, a batch of issues
+   closed), write the handoff note and stop (docs/PROCESS.md, Roles).
 
 ## Integration safety (learned the hard way)
 
