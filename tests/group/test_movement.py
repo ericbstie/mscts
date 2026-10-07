@@ -8,6 +8,7 @@ answers is never asserted: the fake only kicks the floating survival Bot, so tha
 
 import asyncio
 import json
+import math
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -38,6 +39,7 @@ GROUP_IDS = (
     "movement/into-blocks",
     "movement/flying",
     "movement/before-teleport",
+    "movement/invalid",
 )
 TICK_EXACT = ("movement/into-blocks", "movement/before-teleport")
 BOTS = {
@@ -45,6 +47,7 @@ BOTS = {
     "movement/into-blocks": ("walker",),
     "movement/flying": ("creative_flyer", "lander", "flyer"),
     "movement/before-teleport": ("walker",),
+    "movement/invalid": ("clamped", "nan_coordinate", "infinite_pitch"),
 }
 CHECK_OFF, CHECK_ON = "gamerule player_movement_check false", "gamerule player_movement_check true"
 
@@ -55,11 +58,13 @@ class MovementServer:
 
     It kicks each Bot named in `kicks` once it has moved twice (its hover), as vanilla kicks
     a survival player that floats: by default `flyer` alone, at once, where vanilla waits 80
-    ticks.
+    ticks. With `kicks_invalid`, it kicks a Bot whose move has a NaN coordinate or a rotation
+    that is not finite, as vanilla does (`containsInvalidValues`).
     """
 
     seen: list[Packet] = field(default_factory=list)
     kicks: tuple[str, ...] = ("flyer",)
+    kicks_invalid: bool = True
     stall_after: str | None = None
     """A command after which the fake leaves Control's next marker unanswered (a server that
     ran it but whose answer is late)."""
@@ -95,12 +100,27 @@ class MovementServer:
                     await peer.write(
                         peer.frame("minecraft:system_chat", content=text(token), overlay=False)
                     )
-            elif packet.name in MOVES and player in self.kicks:
+            elif packet.name in MOVES:
                 moves += 1
-                if moves == 2:  # _hover's second move
+                if self._kicks(player, packet, moves):
                     # Vanilla closes the connection after it; the fake reads on until the Bot
                     # closes it, so the client_tick_end that follows the move is not left unread.
                     await peer.write(peer.raw_frame("minecraft:disconnect", KICKED))
+
+    def _kicks(self, player: str, move: Packet, moves: int) -> bool:
+        """Whether `player`'s `moves`th move, `move`, is kicked: an invalid one, or a hover."""
+        hovered = player in self.kicks and moves == 2  # _hover's second move
+        return hovered or (self.kicks_invalid and _invalid(move))
+
+
+def _invalid(move: Packet) -> bool:
+    """Whether vanilla kicks for `move`: a NaN coordinate, or a rotation that is not finite."""
+    fields = move.fields or {}
+    coordinates = [fields[axis] for axis in ("x", "y", "z") if axis in fields]
+    rotation = [fields[axis] for axis in ("yaw", "pitch") if axis in fields]
+    return any(isinstance(v, float) and math.isnan(v) for v in coordinates) or any(
+        isinstance(v, float) and not math.isfinite(v) for v in rotation
+    )
 
 
 @dataclass(frozen=True)
@@ -285,8 +305,9 @@ async def test_a_tick_exact_group_freezes_the_world_and_clears_its_blocks_after(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("group_id", ["movement/too-fast", "movement/flying"])
-async def test_the_speed_and_flying_groups_play_in_a_running_world(group_id: str) -> None:
+@pytest.mark.parametrize("group_id", ["movement/too-fast", "movement/flying", "movement/invalid"])
+async def test_the_speed_flying_and_invalid_groups_play_in_a_running_world(group_id: str) -> None:
+    # movement/invalid: vanilla sends back a clamped move only when its speed check runs.
     transcript, _ = await play(group_id)
 
     commands = [what for _, who, what in _sent(transcript) if who == CONTROL]
@@ -490,3 +511,88 @@ async def test_flying_undoes_its_settings_when_the_flyer_is_never_kicked(
 
     control = [what for _, who, what in _sent(transcript) if who == CONTROL]
     assert control[-2:] == ["gamemode survival creative_flyer", CHECK_ON]
+
+
+# movement/invalid
+
+CLAMPED_START = (8.5, -60.0, 8.5)
+FACING = (-90.0, 0.0)
+"""The fake's join faces each Bot so (`SPAWN`); it sends no teleport for a `tp`."""
+
+
+def unchecked_moves(transcript: Transcript) -> list[list[tuple[str, tuple[float, ...]]]]:
+    """Each window's moves, as `(bot, (x, y, z, yaw, pitch))`, and that each ends its tick."""
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    sent = [e for e in transcript.events if e.packet.direction is Direction.SERVERBOUND]
+    windows = []
+    for opened, closed in zip(opens, closes, strict=True):
+        inside = [e for e in sent if opened <= e.t_ns <= closed]
+        moves = []
+        for i, event in enumerate(inside):
+            if event.packet.name in MOVES:
+                fields = event.packet.fields or {}
+                assert inside[i + 1].packet.name == "minecraft:client_tick_end"
+                values = tuple(float(str(fields[k])) for k in ("x", "y", "z", "yaw", "pitch"))
+                moves.append((event.bot, values))
+        windows.append(moves)
+    return windows
+
+
+@pytest.mark.asyncio
+async def test_invalid_sends_an_infinite_x_then_an_infinite_y_from_the_start() -> None:
+    transcript, result = await play("movement/invalid")
+
+    windows = unchecked_moves(transcript)
+    assert windows[:2] == [
+        [("clamped", (math.inf, -60.0, 8.5, *FACING))],
+        [("clamped", (8.5, -math.inf, 8.5, *FACING))],
+    ]
+    assert [window.before[-1] for window in result.windows[:2]] == [
+        tp("clamped", CLAMPED_START)
+    ] * 2
+
+
+@pytest.mark.asyncio
+async def test_invalid_sends_a_nan_x_then_an_infinite_pitch_and_waits_for_each_kick() -> None:
+    transcript, _ = await play("movement/invalid")
+
+    windows = unchecked_moves(transcript)
+    [[(nan_bot, nan_move)], [(pitch_bot, pitch_move)]] = windows[2:]
+    assert (nan_bot, pitch_bot) == ("nan_coordinate", "infinite_pitch")
+    assert math.isnan(nan_move[0])
+    assert nan_move[1:] == (-60.0, 12.5, *FACING)
+    assert pitch_move == (6.5, -60.0, 12.5, -90.0, math.inf)
+    kicks = [e for e in transcript.events if e.packet.name == "minecraft:disconnect"]
+    assert [event.bot for event in kicks] == ["nan_coordinate", "infinite_pitch"]
+    # Each kick is taken inside its own window, after the Bot's move.
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    assert opens[2] < kicks[0].t_ns < opens[3] < kicks[1].t_ns
+
+
+@pytest.mark.asyncio
+async def test_invalid_puts_each_bot_at_its_start_as_soon_as_it_joins() -> None:
+    result = await played("movement/invalid")
+
+    assert [command for command in result.first if command.startswith("tp ")] == [
+        tp("clamped", CLAMPED_START),
+        tp("nan_coordinate", (2.5, -60.0, 12.5)),
+        tp("infinite_pitch", (6.5, -60.0, 12.5)),
+        tp("clamped", CLAMPED_START),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_invalid_fails_a_server_that_does_not_kick_and_undoes_the_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A Candidate that takes a NaN move holds the Group until the kick's wait times out; the
+    # Run makes that a `failed` Divergence (a `mismatch`), and on the Reference an `error`.
+    monkeypatch.setattr(run, "GROUP_TIMEOUT_S", 0.3)
+    transcript = Transcript(group_id="movement/invalid", server="fake")
+    async with playing(MovementServer(kicks_invalid=False), transcript) as context:
+        with pytest.raises(TimeoutError):
+            await GROUPS["movement/invalid"].run(context)
+
+    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    assert control[-1] == CHECK_ON

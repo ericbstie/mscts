@@ -15,7 +15,10 @@ then puts the Bot where each case starts with `/tp`, before its window.
 
 The speed check runs only while the world runs normally (`runsNormally()`; every check these
 Groups rely on is in docs/research/2026-10-04-movement-checks.md), so
-`movement/too-fast` and `movement/flying` play in a running world. The speed check measures a
+`movement/too-fast`, `movement/flying` and `movement/invalid` play in a running world.
+`movement/invalid` sends moves no client sends, each as given (`Bot.move_unchecked`): vanilla
+clamps an infinite coordinate and then sends the player back as too fast, and kicks for a NaN
+coordinate or a rotation that is not finite. The speed check measures a
 move from where the player was when the tick began (`firstGood*`, reset by `tickPlayer`) and
 counts the moves since then, the Bot's accept of the `/tp` among them; the window's opening
 barrier (`Bot.sync`) puts a server tick between that accept and the first move, so each case is
@@ -26,11 +29,13 @@ Bot is sent when it joins (docs/guide/writing-a-group.md).
 """
 
 import contextlib
-from collections.abc import Mapping
+import dataclasses
+import math
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
 from mscts import run  # run imports mscts.groups: read GROUP_TIMEOUT_S at call time
-from mscts.bot import Bot
+from mscts.bot import Bot, Position
 from mscts.group import GroupContext, GroupKind, group
 
 PACKETS = ("minecraft:player_position", "minecraft:disconnect")
@@ -275,3 +280,67 @@ async def flying(context: GroupContext) -> None:
             await _hover(flyer, 6.5, 2.5)
             # Vanilla kicks after 80 ticks in the air, 4 s at 20 ticks a second.
             await flyer.expect("minecraft:disconnect", timeout_s=run.GROUP_TIMEOUT_S)
+
+
+# `movement/invalid`: moves no client sends, each sent as given (`Bot.move_unchecked`).
+
+_CLAMPED = "clamped"
+_NAN_COORDINATE = "nan_coordinate"
+_INFINITE_PITCH = "infinite_pitch"
+
+_INVALID_STARTS = {
+    _CLAMPED: (8.5, -60.0, 8.5),
+    _NAN_COORDINATE: (2.5, -60.0, 12.5),
+    _INFINITE_PITCH: (6.5, -60.0, 12.5),
+}
+"""Where each Bot stands, on the grass, apart from the others."""
+
+type _Unchecked = Callable[[Position], Position]
+"""What a case changes in where the Bot stands, to make the move it sends."""
+
+_CLAMPED_CASES: tuple[_Unchecked, ...] = (
+    lambda at: dataclasses.replace(at, x=math.inf),
+    lambda at: dataclasses.replace(at, y=-math.inf),
+)
+"""An infinite x, then an infinite y.
+
+Vanilla clamps each, x to 3·10⁷ and y to -2·10⁷ (`clampHorizontal`, `clampVertical`), and then
+refuses the move as too fast: the player is sent back (26.3 javap).
+"""
+
+_KICKED_CASES: Mapping[str, _Unchecked] = {
+    _NAN_COORDINATE: lambda at: dataclasses.replace(at, x=math.nan),
+    _INFINITE_PITCH: lambda at: dataclasses.replace(at, pitch=math.inf),
+}
+"""A NaN x, and an infinite pitch, each from the Bot it names.
+
+Vanilla kicks a player for either before it reads anything else of the move
+(`containsInvalidValues`, `multiplayer.disconnect.invalid_player_movement`; 26.3 javap).
+"""
+
+
+@group("movement/invalid")
+async def invalid(context: GroupContext) -> None:
+    """Bots send a move with an infinite x or y, a NaN x, or an infinite pitch.
+
+    Each case is one move, in a window of its own, from where its Bot stands. The cases that
+    wait for a kick go last: a server that does not kick holds the Group until it times out.
+    """
+    async with contextlib.AsyncExitStack() as undo:
+        clamped, *kicked = await _join(
+            context, undo, _CLAMPED, *_KICKED_CASES, starts=_INVALID_STARTS
+        )
+        for case in _CLAMPED_CASES:
+            await _tp(context, clamped, _INVALID_STARTS[_CLAMPED])
+            async with context.observe(*PACKETS):
+                await clamped.move_unchecked(case(_standing(clamped)))
+        for bot in kicked:
+            async with context.observe(*PACKETS):
+                await bot.move_unchecked(_KICKED_CASES[bot.name](_standing(bot)))
+                await bot.expect("minecraft:disconnect", timeout_s=run.GROUP_TIMEOUT_S)
+
+
+def _standing(bot: Bot) -> Position:
+    """Where `bot` starts (`_INVALID_STARTS`), facing as it faces."""
+    x, y, z = _INVALID_STARTS[bot.name]
+    return dataclasses.replace(bot.position, x=x, y=y, z=z)
