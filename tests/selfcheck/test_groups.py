@@ -31,8 +31,10 @@ from mscts.runner import Instance
 pytestmark = [
     pytest.mark.selfcheck,
     pytest.mark.asyncio(loop_scope="session"),
-    # #182: 40 blocks/clone plays outlast 900 s; Bot operations have their own bounds.
-    pytest.mark.timeout(max(900, 60 * repeat_from(os.environ))),
+    # 90 s per play, at least 900 s (#182). The slowest Group, blocks/clone, takes about
+    # 45 s per play (40 plays: 1750 to 1890 s), so a slower host or --stress keeps room.
+    # Bot operations have their own bounds.
+    pytest.mark.timeout(max(900, 90 * repeat_from(os.environ))),
 ]
 
 

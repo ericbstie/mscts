@@ -59,7 +59,7 @@ def test_there_is_a_test_for_every_registered_group_and_no_other(suite: pytest.P
 
 @pytest.mark.parametrize(
     ("repeat", "timeout_s"),
-    [(None, 900), ("", 900), ("1", 900), ("3", 900), ("20", 1200), ("40", 2400)],
+    [(None, 900), ("", 900), ("1", 900), ("3", 900), ("20", 1800), ("40", 3600)],
 )
 def test_the_collected_selfchecks_have_a_bounded_timeout_for_the_repeat_count(
     pytester: pytest.Pytester, monkeypatch: pytest.MonkeyPatch, repeat: str | None, timeout_s: int
