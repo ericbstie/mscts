@@ -682,9 +682,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # infinite coordinate (ValueError, nothing sent). Horizontal collision is never reported.
     # move_unchecked (#278): on a Bot in play (else ProtocolError), one tick of exactly
     # move_player_pos_rot with the Position's five values and the on-ground flag of the last
-    # move, then client_tick_end, in one write. It checks and rounds nothing (a rotation no
-    # binary32 holds → CodecError, nothing sent), and changes neither the pose nor what the
-    # Bot last reported. For Groups that test moves no client sends (movement/invalid).
+    # move, then client_tick_end, in one write. It checks and rounds nothing the wire can carry
+    # (a value that is not a float, or a rotation no binary32 holds → ValueError before any
+    # send, so no Bot.failure), and changes neither the pose nor what the Bot last reported. For Groups that test moves no client sends (movement/invalid).
     # refuse_queued_disconnect (#184): on a Bot not closed whose expect has not returned the
     # disconnect, catches up with the socket (Connection.caught_up), then drains only if its
     # Replies have seen the server's disconnect (Replies.saw_disconnect), so the drain refuses

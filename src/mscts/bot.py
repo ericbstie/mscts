@@ -355,7 +355,7 @@ def _movement(pose: _Pose, controls: _Controls, reported: _Reported) -> list[_Se
     )
     turned = (pose.yaw, pose.pitch) != (reported.pose.yaw, reported.pose.pitch)
     landed_or_left = controls.on_ground != reported.on_ground
-    flags = _ON_GROUND if controls.on_ground else 0
+    flags = _flags(controls)
     sends = _movement_packet(pose, flags, moved=moved, turned=turned, flags_only=landed_or_left)
     _remember(reported, pose, controls, moved=moved, turned=turned)
     return sends
@@ -374,7 +374,7 @@ def _movement_packet(
     position = {"x": pose.x, "y": pose.y, "z": pose.z}
     rotation = {"yaw": pose.yaw, "pitch": pose.pitch}
     if moved and turned:
-        return [("minecraft:move_player_pos_rot", {**position, **rotation, "flags": flags})]
+        return [_pos_rot(position, rotation, flags)]
     if moved:
         return [("minecraft:move_player_pos", {**position, "flags": flags})]
     if turned:
@@ -382,6 +382,31 @@ def _movement_packet(
     if flags_only:
         return [("minecraft:move_player_status_only", {"flags": flags})]
     return []
+
+
+def _flags(controls: _Controls) -> int:
+    """A movement packet's flags: on the ground or not (horizontal collision never)."""
+    return _ON_GROUND if controls.on_ground else 0
+
+
+def _pos_rot(position: Mapping[str, object], rotation: Mapping[str, object], flags: int) -> _Send:
+    """`move_player_pos_rot`: `position` (x, y, z), `rotation` (yaw, pitch) and `flags`."""
+    return ("minecraft:move_player_pos_rot", {**position, **rotation, "flags": flags})
+
+
+def _require_sendable(position: Position) -> None:
+    """Raise ValueError unless every value of `position` goes on the wire just as it is.
+
+    Each is a float, and a rotation one that a binary32 holds (`Writer.float_`).
+    """
+    values = (position.x, position.y, position.z, position.yaw, position.pitch)
+    if not all(isinstance(value, float) for value in values):
+        msg = f"move_unchecked sends floats, not {values}"
+        raise ValueError(msg)
+    for rotation in (position.yaw, position.pitch):
+        if _binary32(rotation) != rotation and not math.isnan(rotation):
+            msg = f"move_unchecked needs a rotation a 32-bit float holds exactly, not {rotation}"
+            raise ValueError(msg)
 
 
 def _remember(
@@ -982,17 +1007,18 @@ class Bot:
 
         Raises:
             ProtocolError: The Bot is not in play.
-            CodecError: A rotation is not one a binary32 holds exactly (NaN and the
-                infinities are); nothing is sent.
+            ValueError: A value is not a float, or a rotation is not one a 32-bit float holds
+                exactly (NaN and the infinities are, 0.1 is not); nothing is sent.
         """
         self._require_play("move_unchecked")
-        flags = _ON_GROUND if self._controls.on_ground else 0
-        rotation = {"yaw": position.yaw, "pitch": position.pitch}
-        fields = {"x": position.x, "y": position.y, "z": position.z, **rotation, "flags": flags}
+        _require_sendable(position)
+        move = _pos_rot(
+            {"x": position.x, "y": position.y, "z": position.z},
+            {"yaw": position.yaw, "pitch": position.pitch},
+            _flags(self._controls),
+        )
         async with self._operation(self._timeout_s):
-            await self._connection.send_all(
-                [("minecraft:move_player_pos_rot", fields), ("minecraft:client_tick_end", {})]
-            )
+            await self._connection.send_all([move, ("minecraft:client_tick_end", {})])
 
     async def look(self, yaw: float, pitch: float) -> None:
         """Turn the player to `yaw` and `pitch`, in degrees, in one client tick.

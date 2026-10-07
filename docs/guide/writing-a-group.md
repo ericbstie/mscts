@@ -108,9 +108,10 @@ await bot.move_unchecked(dataclasses.replace(bot.position, x=math.nan))
 ```
 
 The Bot keeps nothing of such a move. `bot.position` stays where it was,
-and the Bot's next move is sent as if this one never was. A yaw or pitch must be a value a
-32-bit float holds exactly, such as `91.0` but not `0.1`. Any other raises
-`CodecError`, and nothing is sent.
+and the Bot's next move is sent as if this one had not been. Every value
+must be a float, and a yaw or pitch one that a 32-bit float holds exactly,
+such as `91.0` but not `0.1`. Any other raises `ValueError`, and nothing is
+sent.
 
 A face is one of `Face.DOWN`, `Face.UP`, `Face.NORTH`, `Face.SOUTH`,
 `Face.WEST` and `Face.EAST`, imported from `mscts.bot`. The vanilla client

@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable, Mapping
 import pytest
 
 from mscts.bot import Bot, Position
-from mscts.codec.packets import Codec, CodecError, Packet
+from mscts.codec.packets import Codec, Packet
 from mscts.net import Connection, ConnectionClosedError, ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -335,15 +335,33 @@ def test_move_unchecked_changes_nothing_the_bot_keeps() -> None:
     assert positions == [Position(**SPAWN_POSITION, **SPAWN_ROTATION)]
 
 
-def test_move_unchecked_refuses_a_rotation_a_float_does_not_hold() -> None:
-    # It sends as given, so it rounds nothing: 0.1 is no binary32, and nothing is sent.
+REFUSED_UNCHECKED = [
+    ("yaw", 0.1, "a 32-bit float holds exactly"),  # it rounds nothing: 0.1 is no binary32
+    ("pitch", 1e40, "a 32-bit float holds exactly"),  # beyond binary32's range
+    ("x", 1, "floats"),
+    ("pitch", 0, "floats"),
+]
+
+
+@pytest.mark.parametrize(
+    ("axis", "value", "why"), REFUSED_UNCHECKED, ids=[f"{a}={v!r}" for a, v, _ in REFUSED_UNCHECKED]
+)
+def test_move_unchecked_refuses_what_it_cannot_send_as_given(
+    axis: str, value: object, why: str
+) -> None:
+    # Nothing is sent, and the Bot has no failure: it was never asked to send.
+    failures: list[Exception | None] = []
+    given: dict[str, object] = {"x": 1.0, "y": 2.0, "z": 3.0, "yaw": 0.0, "pitch": 0.0}
+
     async def script(bot: Bot) -> None:
         await bot.tick()
-        with pytest.raises(CodecError, match="not exactly a Float"):
-            await bot.move_unchecked(Position(x=1.0, y=2.0, z=3.0, yaw=0.1, pitch=0.0))
+        with pytest.raises(ValueError, match=why):
+            await bot.move_unchecked(Position(**{**given, axis: value}))  # ty: ignore[invalid-argument-type]
+        failures.append(bot.failure)
         await bot.tick()
 
     assert play(script)[1:] == [[TICK_END]]
+    assert failures == [None]
 
 
 def test_move_unchecked_sends_whether_the_bot_last_moved_on_the_ground() -> None:
