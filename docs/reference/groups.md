@@ -334,6 +334,7 @@ marker for it, an entity a server tells no player about, so it adds no packet.
 | `combat/damage-types` | tick-exact | none | The Bot wears no armor and takes 4 points of `generic`, `player_attack`, `mob_attack`, `arrow`, `fall`, `in_fire`, `lava`, `magic`, `wither`, `explosion`, `out_of_world` and `starve` damage, a window each. | none |
 | `combat/armor` | tick-exact | none | The Bot wears iron, diamond and netherite armor, then diamond armor enchanted with Protection IV, Fire Protection IV and Blast Protection IV, and takes the same twelve kinds of damage through each set. | none |
 | `combat/effects` | tick-exact | none | The Bot wears no armor, has Resistance I, II, III or IV, or Absorption II, and takes the same twelve kinds of damage under each. | none |
+| `combat/death` | tick-exact | none | The Bot takes 100 points of `generic`, `fall` and `magic` damage with `show_death_messages` on, and of `generic` damage with it off. Each death has a window, and the respawn after it has another. | none |
 
 Armor reduces some kinds of damage and not others. In vanilla 26.3, `generic`, `fall`, `magic`,
 `wither`, `out_of_world` and `starve` are in the damage type tag `bypasses_armor`, so the
@@ -347,6 +348,14 @@ respawn, before the window. In vanilla 26.3, Resistance cuts a hit by 20% a leve
 `out_of_world` (the tag `bypasses_resistance`) and `starve` (`bypasses_effects`). Absorption II
 takes the whole 4 points into the Bot's extra hearts, so no `set_health` comes, only the change
 in its entity data.
+
+`combat/death` hurts the Bot by 100 points, five times its health. The window holds the death
+screen (`player_combat_kill`) and the death message that the server says in chat (`system_chat`),
+both with the same text. With `show_death_messages` off, the server sends no chat message and the
+text in `player_combat_kill` is empty. The game rule `immediate_respawn` stays false, as in
+vanilla, so the server waits for the Bot to ask to respawn. Kinds of damage that need an attacker
+are left out, because the attacker's name and UUID are in the message and the UUID differs
+between servers.
 
 ## Player (`player`)
 

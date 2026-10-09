@@ -137,7 +137,7 @@ def respawns(transcript: Transcript) -> int:
     )
 
 
-GROUP_IDS = ("combat/damage-types", "combat/armor", "combat/effects")
+GROUP_IDS = ("combat/damage-types", "combat/armor", "combat/effects", "combat/death")
 
 
 # Registration
@@ -406,3 +406,48 @@ def test_the_command_for_an_effect_has_no_particles_and_lasts_past_the_window() 
         "absorption", 1
     )
     assert [(e.name, e.amplifier) for e in combat_damage.EFFECTS] == list(EFFECTS)
+
+
+# combat/death
+
+DEATHS = (("true", "generic"), ("true", "fall"), ("true", "magic"), ("false", "generic"))
+
+
+def test_death_has_a_window_for_each_death_and_one_for_the_respawn_after_it() -> None:
+    result = played("combat/death")
+
+    assert len(result.windows) == 2 * len(DEATHS)
+    assert {w.label for w in result.windows} == {
+        f"{OBSERVE_OPEN} {' '.join(combat_damage.PACKETS)}"
+    }
+
+
+def test_death_hurts_by_more_than_the_health_in_the_window_and_sends_nothing_in_the_respawn() -> (
+    None
+):
+    result = played("combat/death")
+
+    deaths = result.windows[0::2]
+    respawns_ = result.windows[1::2]
+    assert [w.sent for w in deaths] == [
+        ((CONTROL, f"damage victim 100 minecraft:{kind}"),) for _, kind in DEATHS
+    ]
+    assert [w.sent for w in respawns_] == [()] * len(DEATHS)
+
+
+def test_death_sets_the_message_rule_before_the_kill_that_makes_the_bot_fresh() -> None:
+    result = played("combat/death")
+
+    deaths = result.windows[0::2]
+    assert [w.before[-2:] for w in deaths] == [
+        (f"gamerule show_death_messages {show}", "kill victim") for show, _ in DEATHS
+    ]
+
+
+def test_death_puts_the_message_rule_back_and_leaves_the_game_rule_for_respawning_alone() -> None:
+    transcript, result = play("combat/death")
+
+    assert "gamerule show_death_messages true" in result.after
+    commands = (*result.first, *result.after, *(c for w in result.windows for c in w.before))
+    assert not [c for c in commands if "immediate_respawn" in c]
+    assert respawns(transcript) == 2 * len(DEATHS)

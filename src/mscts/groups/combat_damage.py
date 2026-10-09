@@ -123,7 +123,11 @@ async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSta
 
 
 async def _hurt(
-    context: GroupContext, bot: Bot, source: Source, before: Sequence[str] = ()
+    context: GroupContext,
+    bot: Bot,
+    source: Source,
+    before: Sequence[str] = (),
+    amount: float = _DAMAGE,
 ) -> None:
     """Make the Bot fresh, run the `before` commands, then hurt it with `source` in a window.
 
@@ -133,7 +137,7 @@ async def _hurt(
     for command in before:
         await context.control.run(command)
     async with context.observe(*PACKETS):
-        await context.control.run(damage_command(bot.name, source))
+        await context.control.run(damage_command(bot.name, source, amount))
 
 
 async def _sweep(context: GroupContext, bot: Bot, before: Sequence[str] = ()) -> None:
@@ -265,3 +269,53 @@ async def effects(context: GroupContext) -> None:
         await context.freeze()
         for effect in EFFECTS:
             await _sweep(context, bot, (effect_command(bot.name, effect),))
+
+
+# `combat/death`: damage above the Bot's health, with the death message on and off.
+
+
+@dataclass(frozen=True, slots=True)
+class Death:
+    """One death: what kills the Bot, and whether the server says so in chat.
+
+    Attributes:
+        source: The kind of damage.
+        message: The value of the game rule `show_death_messages`.
+    """
+
+    source: Source
+    message: bool
+
+
+DEATHS = (
+    Death(Source("generic"), message=True),
+    Death(Source("fall"), message=True),
+    Death(Source("magic"), message=True),
+    Death(Source("generic"), message=False),
+)
+"""Three kinds of damage with the death message on, which have three messages, then one with it off.
+
+Kinds that need an attacker are left out: the attacker's name goes in the message, with the UUID
+of an entity that differs between servers."""
+
+_LETHAL = 100
+"""How much a lethal hit hurts: five times a player's health."""
+
+
+@group("combat/death", kind=GroupKind.TICK_EXACT, spec=_normal)
+async def death(context: GroupContext) -> None:
+    """A Bot is hurt by 100 points of damage, and respawns in a window of its own.
+
+    The game rule `immediate_respawn` is false, as in vanilla, so the server sends the death screen
+    (`player_combat_kill`) and waits for the Bot to ask to respawn.
+    """
+    control = context.control
+    async with _arena(context) as undo:
+        bot = await join_at_spawn(context, undo, VICTIM)
+        undo.push_async_callback(control.run, "gamerule show_death_messages true")
+        await context.freeze()
+        for case in DEATHS:
+            await control.run(f"gamerule show_death_messages {str(case.message).lower()}")
+            await _hurt(context, bot, case.source, amount=_LETHAL)
+            async with context.observe(*PACKETS):
+                await bot.respawn()
