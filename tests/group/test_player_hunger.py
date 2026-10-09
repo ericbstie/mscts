@@ -39,7 +39,9 @@ MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 SET_HEALTH, SET_TIME = "minecraft:set_health", "minecraft:set_time"
 PERFORM_RESPAWN = 0
-COMMANDS = tree("gamerule", "tick", "effect", "damage", "kill", "tp", "tellraw", "difficulty")
+COMMANDS = tree(
+    "gamerule", "tick", "effect", "damage", "kill", "tp", "tellraw", "difficulty", "give", "clear"
+)
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
 HUNGER = 17
@@ -62,7 +64,8 @@ class HungerServer:
 
     It answers Control's markers, the barrier (a tick apart) and a respawn request (`respawn`,
     then one chunk batch). A command whose first word is in `answers` is answered, a tick
-    later, with its packets, sent to the player the command names. Every player but Control
+    later, with its packets, sent to the player the command names; a packet whose name is in
+    `answers` is answered the same way, to the player that sent it. Every player but Control
     is sent `set_time` every tick.
     """
 
@@ -95,6 +98,8 @@ class HungerServer:
                     await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
                 elif packet.name == CHAT_COMMAND:
                     await self._command(peer, str((packet.fields or {})["command"]))
+                elif packet.name in self.answers:
+                    await self._answer(peer, self.answers[packet.name])
         finally:
             if clock is not None:
                 clock.cancel()
@@ -107,13 +112,16 @@ class HungerServer:
                 peer.frame("minecraft:system_chat", content=text(token), overlay=False)
             )
         elif words[0] in self.answers:
-            await asyncio.sleep(TICK_S)
             player = next(self.players[word] for word in words if word in self.players)
-            for name, body in self.answers[words[0]]:
-                if isinstance(body, bytes):
-                    await player.write(player.raw_frame(name, body))
-                else:
-                    await player.send(name, **body)
+            await self._answer(player, self.answers[words[0]])
+
+    async def _answer(self, player: Peer, answer: Answer) -> None:
+        await asyncio.sleep(TICK_S)
+        for name, body in answer:
+            if isinstance(body, bytes):
+                await player.write(player.raw_frame(name, body))
+            else:
+                await player.send(name, **body)
 
     async def _tick(self, peer: Peer) -> None:
         with suppress(ConnectionError):
@@ -138,6 +146,7 @@ ANSWERS: Mapping[str, Mapping[str, Answer]] = {
     "player/starvation": {
         "effect": (ENDS, health(10.0, 0), health(1.0, 0), (DEATH, b"\x02" + text("dead")))
     },
+    "player/eating": {"effect": (ENDS,), "minecraft:use_item": (health(20.0, 7),)},
 }
 """What the fake answers in each Group: just what the Group waits for."""
 
@@ -332,3 +341,86 @@ def test_starvation_respawns_the_bot_it_starved_to_death() -> None:
     asked = respawns(transcript, STARVER)
     assert len(asked) == 4
     assert asked[-1] > closes[-1]
+
+
+# player/eating
+
+EATER = "eater"
+FOODS = (
+    "minecraft:bread",
+    "minecraft:cooked_beef",
+    "minecraft:golden_apple",
+    "minecraft:rotten_flesh",
+)
+EATING = (SET_HEALTH, "minecraft:update_mob_effect", "minecraft:entity_event", "minecraft:sound")
+FLESH = (SET_HEALTH, "minecraft:entity_event", "minecraft:sound")
+
+
+def sent_by(transcript: Transcript, bot: str, name: str) -> list[Packet]:
+    return [
+        e.packet
+        for e in transcript.events
+        if e.bot == bot and e.packet.direction is Direction.SERVERBOUND and e.packet.name == name
+    ]
+
+
+def sent_times(transcript: Transcript, bot: str, name: str) -> list[int]:
+    return [
+        e.t_ns
+        for e in transcript.events
+        if e.bot == bot and e.packet.direction is Direction.SERVERBOUND and e.packet.name == name
+    ]
+
+
+def test_eating_is_registered_exact_on_normal_difficulty_masking_the_sound_pitch() -> None:
+    group = GROUPS["player/eating"]
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert group.kind is GroupKind.EXACT
+    assert group.requires == ()
+    assert [(mask.packet, mask.path) for mask in group.masks] == [("minecraft:sound", "pitch")]
+    assert group.spec(default) == ServerSpec(
+        host="127.0.0.1", port=25566, difficulty=Difficulty.NORMAL
+    )
+
+
+def test_eating_empties_a_fresh_bot_to_food_2_and_gives_it_each_food() -> None:
+    result = played("player/eating")
+
+    assert result.first == (
+        "gamerule player_movement_check false",
+        "gamerule respawn_radius 0",
+        "tick freeze",
+        "clear eater",
+        "kill eater",
+        "effect give eater minecraft:hunger 4 234 true",
+        *(f"give eater {food}" for food in FOODS),
+    )
+    assert result.after == (
+        "tp eater 0.5 -60 0.5",
+        "gamerule respawn_radius 10",
+        "gamerule player_movement_check true",
+        "tick unfreeze",
+    )
+
+
+def test_eating_holds_each_food_then_eats_it_in_a_window_of_its_own() -> None:
+    transcript, result = play("player/eating")
+
+    assert [window.label for window in result.windows] == [opened(*EATING)] * 3 + [opened(*FLESH)]
+    assert [window.before for window in result.windows][1:] == [()] * 3
+    held = sent_by(transcript, EATER, "minecraft:set_carried_item")
+    assert [(p.fields or {})["slot"] for p in held] == [1, 2, 3]  # the fake's player holds 0
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    held_at = sent_times(transcript, EATER, "minecraft:set_carried_item")
+    eaten_at = sent_times(transcript, EATER, "minecraft:use_item")
+    assert all(h < o for h, o in zip(held_at, opens[1:], strict=True))
+    assert all(o < e < c for o, e, c in zip(opens, eaten_at, closes, strict=True))
+
+
+def test_eating_windows_end_on_the_health_that_eating_sends() -> None:
+    transcript, _ = play("player/eating")
+
+    for packets in received_in_windows(transcript, EATER):
+        assert packets[-1].name == SET_HEALTH

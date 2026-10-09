@@ -27,6 +27,7 @@ from dataclasses import dataclass
 
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
+from mscts.compare import Mask
 from mscts.group import GroupContext, group
 from mscts.groups._world import _normal, fresh, join_at_spawn, pin_joins
 
@@ -199,3 +200,71 @@ async def starvation(context: GroupContext) -> None:
             async with context.observe(*PACKETS):
                 await _starve(context, bot, part)
         await bot.respawn()
+
+
+# `player/eating`: a hungry Bot eats four foods, one window each.
+
+_EATER = "eater"
+
+_HUNGRY = _Hunger(234, 4)
+"""Food 2 and saturation 0 from a fresh player (94 exhaustion: 23 points), so that every food
+the Bot eats raises its food."""
+
+_FOODS = (
+    "minecraft:bread",
+    "minecraft:cooked_beef",
+    "minecraft:golden_apple",
+    "minecraft:rotten_flesh",
+)
+"""Bread 5 food and 0.6 saturation a point, cooked beef 8 and 0.8, a golden apple 4 and 1.2 with
+its regeneration and absorption, rotten flesh 4 and 0.1 (`Foods`)."""
+
+_EATING_PACKETS = (
+    _SET_HEALTH,
+    "minecraft:update_mob_effect",
+    "minecraft:entity_event",
+    "minecraft:sound",
+)
+"""What an eating window compares: the food, the golden apple's effects, the end of eating and
+its sounds."""
+
+_FLESH_PACKETS = (_SET_HEALTH, "minecraft:entity_event", "minecraft:sound")
+"""What the rotten flesh's window compares: not its effects, since it gives hunger only 4 times
+in 5, at random (`Foods.ROTTEN_FLESH`'s consume effect, probability 0.8)."""
+
+EATING_MASKS = (
+    Mask(
+        "minecraft:sound",
+        "pitch",
+        "Vanilla draws it at random for the sounds of eating (26.3 javap): "
+        "`FoodProperties.onConsume` plays the food's eat sound with pitch "
+        "random.triangle(1.0, 0.4) and PLAYER_BURP with pitch randomBetween(0.9, 1.0). Which "
+        "sound plays, and at what volume, is still compared.",
+    ),
+)
+"""The Mask on the eating sounds' pitch."""
+
+
+@group("player/eating", spec=_normal, masks=EATING_MASKS)
+async def eating(context: GroupContext) -> None:
+    """A Bot at food 2 eats bread, cooked beef, a golden apple and rotten flesh, in turn.
+
+    The Bot has full health, so nothing heals it. Each window opens before the Bot starts to
+    eat and ends on the `set_health` that eating sends.
+    """
+    control = context.control
+    async with contextlib.AsyncExitStack() as undo:
+        await pin_joins(control, undo)
+        bot = await join_at_spawn(context, undo, _EATER)
+        await context.freeze()
+        await control.run(f"clear {bot.name}")
+        await fresh(context, bot)
+        await _lower(context, bot, _HUNGRY)
+        for food in _FOODS:
+            await control.run(f"give {bot.name} {food}")
+        for slot, food in enumerate(_FOODS):
+            await bot.hold(slot)
+            names = _FLESH_PACKETS if food == "minecraft:rotten_flesh" else _EATING_PACKETS
+            async with context.observe(*names, until=_SET_HEALTH, bot=bot):
+                await bot.use_item()
+                await bot.expect(_SET_HEALTH, timeout_s=_WAIT_S)
