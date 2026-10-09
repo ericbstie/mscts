@@ -466,7 +466,10 @@ class Verdict:
         detail: A human-readable note, e.g. why the Group is blocked.
         test_cases: Every test case the Comparison compared, matched or not, and each field
             of a reference Packet the Candidate did not send (#101), sorted and each once;
-            none if the Verdict was made without one (`error`, `blocked`). A Candidate
+            none if the Verdict was made without one (`error`, `blocked`). A test case only
+            network traffic Divergences name is not among them: it was never compared, so
+            listing it would give a Candidate that sends another spelling one more test case
+            than one that sends vanilla's (#330). A Candidate
             failure lists the Reference's play's own (`run.judge`), and so does one whose
             Group was played on the Reference alone (#266, #285).
         omitted: How many Divergences a report.json left out of `divergences` (#254): the
@@ -581,7 +584,11 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
         for bot in bots
         for divergence in _compare_bot(bot, reference, candidate, indexed, compared)
     )
-    compared.update(divergence.test_case for divergence in divergences)
+    compared.update(
+        divergence.test_case
+        for divergence in divergences
+        if divergence.observability is Observability.GAMEPLAY
+    )
     compared.discard("")
     return Verdict(
         group_id=reference.group_id,
@@ -2637,8 +2644,10 @@ def _compare_streams(
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):
-            compared.update(_field_cases(reference[index]))
-            yield _unmatched(bot, index, "missing", reference[index])
+            missing = _unmatched(bot, index, "missing", reference[index])
+            if missing.observability is Observability.GAMEPLAY:
+                compared.update(_field_cases(reference[index]))
+            yield missing
         for index in range(next_candidate, cand_index):
             yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):

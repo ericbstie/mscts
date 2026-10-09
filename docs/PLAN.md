@@ -1429,7 +1429,8 @@ class Verdict:
     test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, and each
                                       # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
-                                    # error or blocked. run.judge keeps compare's.
+                                    # error or blocked. run.judge keeps compare's. Not a
+                                    # test case only network traffic Divergences name (#330).
     omitted: int = 0                # Divergences a report.json left out (#254); 0 from compare
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
@@ -2283,8 +2284,8 @@ proves it necessary:
    A Verdict lists its test cases (`Verdict.test_cases`): the test case
    of every pair of leaves compared in matched packets, after Masks and
    canonicalization, whether the two were equal or not, the test
-   case of every Divergence, and (#101) the test case of each unmasked
-   leaf of a reference packet the alignment left `missing`, as a match
+   case of every gameplay Divergence, and (#101) the test case of each unmasked
+   leaf of a reference packet the alignment left `missing` as gameplay, as a match
    with itself would name it, so leaving a packet out fails each field
    sending it wrong would. Likewise (#225) a reference list or mapping
    the candidate sent as something else, or left out, adds the test case
@@ -2299,7 +2300,9 @@ proves it necessary:
    network traffic only (`Verdict.differing`). A network traffic test
    case appears only where the two formats differed: its raw path is
    not a compared field otherwise, and listing it as the same would
-   claim a comparison that was never made.
+   claim a comparison that was never made. So it is not in
+   `Verdict.test_cases` either, unless a compared pair names it too
+   (#330); nor are the fields of a chunk batch marker left `missing`.
 
 ### Measurements and Report
 
