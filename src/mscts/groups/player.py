@@ -29,7 +29,7 @@ from dataclasses import dataclass, replace
 from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import pin_joins
+from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, pin_joins
 from mscts.net import ProtocolError
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
@@ -60,20 +60,12 @@ HIT_PACKETS = (
 data is left out, because a window that opens after a hit starts a tick or two later on one
 Instance than on another, and the entity data changes every tick (air, ticks frozen)."""
 
-CONTROL_AT = "96.5 -60 96.5"
-"""Where Control stands: 6 chunks from the spawn, clear of every block the Groups set (#300) and
-out of the Bot's view, so that its entity is never sent to the Bot again when the Bot respawns:
-vanilla sends it a tick or so later, which no window can place."""
-
 _RULES = (
     ("natural_health_regeneration", "false", "true"),
     ("random_tick_speed", "0", "3"),
 )
 """The game rules a Group sets: the rule, the value it plays with and the value the Fixture world
 has (vanilla's default). Not `spawn_mobs`: the Fixture has it off already (ADR-0013)."""
-
-SPAWN_AT = "0.5 -60 0.5"
-"""Where a Bot is put when the Group ends: the world spawn, clear of every block a Group sets."""
 
 _HEAL = "effect give {bot} minecraft:instant_health 1 5 true"
 """Heals a Bot to full health, whatever the last case left it."""
@@ -106,18 +98,6 @@ async def _environment(
         for command in restore:
             undo.push_async_callback(control.run, command)
         yield undo
-
-
-async def _join(context: GroupContext, undo: contextlib.AsyncExitStack, name: str) -> Bot:
-    """Join a Bot, and have it put back at the spawn when the Group ends.
-
-    The server saves a player where it leaves, so a Bot left in the Group's pool or stone would
-    rejoin inside that block, on the next play (#300).
-    """
-    bot = await context.bot(name)
-    await bot.join()
-    undo.push_async_callback(context.control.run, f"tp {name} {SPAWN_AT}")
-    return bot
 
 
 async def _tp(context: GroupContext, bot: Bot, at: _Point) -> None:
@@ -249,7 +229,7 @@ async def fall(context: GroupContext) -> None:
     """
     restore = (_KILL_ITEMS, *(c for landing in _LANDINGS for c in landing.restore))
     async with _environment(context, restore) as undo:
-        bot = await _join(context, undo, _FALLER)
+        bot = await join_at_spawn(context, undo, _FALLER)
         await context.freeze()
         for landing in _LANDINGS:
             for command in landing.build:
@@ -283,15 +263,6 @@ when the last window closed, a little after the hit."""
 
 clock = time.monotonic
 """The clock that times the gap between a hit and the next window. Tests replace it."""
-
-
-async def _fresh(context: GroupContext, bot: Bot) -> None:
-    """Kill the Bot and respawn it, so that it has full health, food and air and is not burning.
-
-    The server saves a player when it leaves: its air, health and fire, and where it was.
-    """
-    await context.control.run(f"kill {bot.name}")
-    await bot.respawn()
 
 
 class _Hits:
@@ -365,11 +336,11 @@ async def drowning(context: GroupContext) -> None:
     Then `drowning_damage` is turned off, and the Bot stays under water for one more hit's time.
     """
     async with _environment(context, _WATER.restore) as undo:
-        bot = await _join(context, undo, _DROWNER)
+        bot = await join_at_spawn(context, undo, _DROWNER)
         await context.freeze()
         for command in _WATER.build:
             await context.control.run(command)
-        await _fresh(context, bot)
+        await fresh(context, bot)
         hits = _Hits(context, bot)
         async with hits.window(PACKETS):
             await _tp(context, bot, _at(_WATER.lane, -62.0))
@@ -400,11 +371,11 @@ _INVULNERABLE_TICKS = 10
 async def suffocation(context: GroupContext) -> None:
     """A Bot is put inside a column of stone and takes damage, three hits in a row."""
     async with _environment(context, _STONE_COLUMN.restore) as undo:
-        bot = await _join(context, undo, _SUFFOCATOR)
+        bot = await join_at_spawn(context, undo, _SUFFOCATOR)
         await context.freeze()
         for command in _STONE_COLUMN.build:
             await context.control.run(command)
-        await _fresh(context, bot)
+        await fresh(context, bot)
         hits = _Hits(context, bot)
         async with hits.window(PACKETS):
             await _tp(context, bot, _at(_STONE_COLUMN.lane, _STONE_COLUMN.lands_at))
@@ -424,9 +395,9 @@ _DEATH = "minecraft:player_combat_kill"
 async def void(context: GroupContext) -> None:
     """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns."""
     async with _environment(context, ()) as undo:
-        bot = await _join(context, undo, _VOID_BOT)
+        bot = await join_at_spawn(context, undo, _VOID_BOT)
         await context.freeze()
-        await _fresh(context, bot)
+        await fresh(context, bot)
         async with context.observe(*PACKETS, until=_DEATH, bot=bot):
             await _tp(context, bot, _VOID_AT)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
@@ -476,14 +447,14 @@ async def fire(context: GroupContext) -> None:
     """
     sites = (_WATER, _LAVA, _FIRE)
     async with _environment(context, tuple(c for site in sites for c in site.restore)) as undo:
-        bot = await _join(context, undo, _BURNER)
+        bot = await join_at_spawn(context, undo, _BURNER)
         await context.freeze()
         for command in (c for site in sites for c in site.build):
             await context.control.run(command)
-        await _fresh(context, bot)
+        await fresh(context, bot)
         async with _Hits(context, bot).window(PACKETS):
             await _tp(context, bot, _at(_FIRE.lane, _FIRE.lands_at))
-        await _fresh(context, bot)
+        await fresh(context, bot)
         hits = _Hits(context, bot)
         async with hits.window(PACKETS):
             await _tp(context, bot, _at(_LAVA.lane, _LAVA.lands_at))
@@ -506,18 +477,18 @@ _FREEZING_PERIOD = 40
 FREEZING_PACKETS = (*HIT_PACKETS, "minecraft:player_position")
 """What a window compares for freezing: the hits, and the Bot being put in the snow. Not the entity
 data: vanilla hurts a frozen player when its `tickCount` is a multiple of 40, a count that started
-at the respawn `_fresh` makes, so the ticks that came before the first hit are timing."""
+at the respawn `fresh` makes, so the ticks that came before the first hit are timing."""
 
 
 @group("player/freezing", spec=_normal)
 async def freezing(context: GroupContext) -> None:
     """A Bot is put in powder snow, without leather boots, and takes damage twice."""
     async with _environment(context, _SNOW.restore) as undo:
-        bot = await _join(context, undo, _FREEZER)
+        bot = await join_at_spawn(context, undo, _FREEZER)
         await context.freeze()
         for command in _SNOW.build:
             await context.control.run(command)
-        await _fresh(context, bot)
+        await fresh(context, bot)
         hits = _Hits(context, bot)
         async with hits.window(FREEZING_PACKETS):
             await _tp(context, bot, _at(_SNOW.lane, _SNOW.lands_at))

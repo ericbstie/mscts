@@ -308,6 +308,31 @@ A Player keeps its health and its food from play to play, so each Bot is given h
 saturation (`effect give`) before the first hit. In `combat/immunity` the tapper stands a block
 behind the striker, out of the sweep of the striker's sword. `combat/pvp` runs with player
 versus player damage on, which is the server default; a server with it off is not covered.
+
+### Damage and armor
+
+How much each kind of damage costs a player, and what the server sends about it. A Bot called
+`victim` is hurt by Control's `/damage`, one kind of damage at a time, and each hit has a window of
+its own. A window compares the damage (`damage_event`, `hurt_animation`, `entity_event`), the
+health (`set_health`, and the health in `set_entity_data`), the push of the hit
+(`set_entity_motion`), the stacks the Bot holds (`container_set_slot`, which shows armor wearing
+down), the sounds, and a death (`player_combat_kill`, `system_chat`). The server runs on normal
+difficulty. `set_equipment` is not compared, because a server sends it to the players who see
+the Bot and never to the Bot itself.
+
+A player is immune for 10 ticks after a hit, counted in its own ticks, which run in real time
+even in a frozen world. A second hit inside that gap hurts only by the excess and sends no
+`damage_event`, so stepping the world does not clear it. The Bot is killed and respawned before
+each hit instead, which gives it full health and food and no immunity. Natural regeneration is
+off. A server keeps where a player left, so the Bot is put back at the spawn when a Group ends.
+
+`player_attack`, `mob_attack` and `arrow` need someone to deal the damage. Control summons a
+marker for it, an entity a server tells no player about, so it adds no packet.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `combat/damage-types` | tick-exact | none | The Bot wears no armor and takes 4 points of `generic`, `player_attack`, `mob_attack`, `arrow`, `fall`, `in_fire`, `lava`, `magic`, `wither`, `explosion`, `out_of_world` and `starve` damage, a window each. | none |
+
 ## Player (`player`)
 
 What the world does to a survival player. Each Group puts a Bot where the world hurts it and

@@ -1169,10 +1169,14 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `combat/immunity`; `ATTACKER` and `VICTIM` — the two Bots of `combat/pvp`; `PVP_PACKETS` and
   `PVP_SPRINT_PACKETS` — what its windows compare; `immunity` and `pvp` — the `combat/immunity`
   and `combat/pvp` scripts.
+- `groups.combat_damage`: `VICTIM` — the Bot that is hurt; `PACKETS` — what a window compares;
+  `Source` — one kind of damage (its damage type, and whether the marker deals it); `SOURCES` —
+  the twelve kinds of damage the Groups compare; `damage_command` — the `/damage` command for
+  a victim, a source and an amount; `damage_types` — the `combat/damage-types` script.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `fall` — the `player/fall` script.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `HIT_PACKETS` — what a window compares for a hit after the first; `fall` and `drowning` — the `player/fall` and `player/drowning` scripts.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `HIT_PACKETS` — what a window compares for a hit after the first; `FREEZING_PACKETS` — what a window compares for freezing (the hits and `player_position`); `FIRE_MASKS` — the Mask on the sounds' pitch; `fall`, `drowning`, `suffocation`, `void`, `fire` and `freezing` — the `player/fall`, `player/drowning`, `player/suffocation`, `player/void`, `player/fire` and `player/freezing` scripts.
-- `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when the Group ends; `clock` — the clock that times the gap between a hit and the next window; `HIT_PACKETS` — what a window compares for a hit after the first; `FREEZING_PACKETS` — what a window compares for freezing (the hits and `player_position`); `FIRE_MASKS` — the Mask on the sounds' pitch; `fall`, `drowning`, `suffocation`, `void`, `fire` and `freezing` — the `player/fall`, `player/drowning`, `player/suffocation`, `player/void`, `player/fire` and `player/freezing` scripts.
+- `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `clock` — the clock that times the gap between a hit and the next window; `HIT_PACKETS` — what a window compares for a hit after the first; `FREEZING_PACKETS` — what a window compares for freezing (the hits and `player_position`); `FIRE_MASKS` — the Mask on the sounds' pitch; `fall`, `drowning`, `suffocation`, `void`, `fire` and `freezing` — the `player/fall`, `player/drowning`, `player/suffocation`, `player/void`, `player/fire` and `player/freezing` scripts.
 - `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
   compares (the walker waits `run.GROUP_TIMEOUT_S` for its view); `HELD_SYNCS` — how
   many barriers a window lasts after the walker holds its view; `VIEW_DISTANCE` and
@@ -1185,7 +1189,11 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `chunks/teleport` and `chunks/walk` scripts.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
-  `players` and `chunks` Groups).
+  `players` and `chunks` Groups). `CONTROL_AT` — where Control
+  puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when its Group ends;
+  `join_at_spawn` — join a Bot and push the `tp` that puts it back at the spawn; `fresh` — kill a
+  Bot and respawn it, with full health and food and no immunity (the `player` and `combat_damage`
+  Groups).
 - `groups.chat`: `LISTENER` — the Bot in the world for every case, sent what the others say;
   `SPEAKER` — the Bot that speaks in `chat/player` and, as an operator, runs `chat/commands`;
   `JOINER` — the Bot that joins and leaves in `chat/join-leave`; `TALKER`, `OPERATOR` — the
