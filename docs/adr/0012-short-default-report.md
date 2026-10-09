@@ -191,3 +191,39 @@ The maintainer asked for a Report that says each thing once.
   `35 passed, 5 failed (1 not tested). (87.5%)`. Errors, which are not
   scored, follow on a line of their own: `1 error (not scored)`. With
   nothing scored, the line has no percentage.
+
+## Amendment (#330, 2026-10-09)
+
+A network traffic Divergence names the test case of its raw path. Some of
+those names belong to no compared field: a field the canonical form
+leaves out (`container_set_slot.state_id`, `chunk_batch_finished.batch_size`),
+a status response key the client never reads, a spelling the canonical
+form compares under another name (`status_response.description` for
+`"mscts"` against `{"text": "mscts"}`), or a chunk batch marker one side
+sent alone or on another tick. Such a test case existed only when the two
+sides differed, and then passed. A Candidate that sent another
+`state_id` scored 4 of 5 where one that sent vanilla's bytes scored 3 of 4.
+
+Now `Verdict.test_cases` leaves out a test case that no compared pair
+names, and the Report gives it a line only when a network traffic
+Divergence names it:
+
+- Its result is `not scored`, in report.json too, and its line reads
+  `· <group>/<test case> (network traffic only, not scored)`. The `·`
+  mark, grey on a terminal, is its own, as `!` is an error's: the line
+  neither passes nor fails.
+- The totals count it nowhere, so the score is the same whether the
+  sides agree on it or not. That holds even when a missing packet or a
+  Candidate failure of the Group would otherwise fail it, since sending
+  that field wrong is not scored either.
+- A test case that a compared pair also names, such as a heightmap,
+  still passes as `(network traffic only)`.
+- With `NETWORK_TRAFFIC_ONLY_PASSES` off, the line fails like any other
+  network traffic difference, as `run.prerequisite_verdict` fails its
+  Verdict, so the Report and the prerequisite check agree either way.
+- A report.json written before this lists every Divergence's test case
+  in `test_cases`, so it renders with its old score.
+
+This refines ADR-0007's "the Report scores it as compliant": a Verdict
+whose only Divergences are network traffic passes, and a test case that
+only such a Divergence names is left out of the score.

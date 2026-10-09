@@ -56,6 +56,7 @@ class LineResult(StrEnum):
     FAIL = "fail"
     NOT_TESTED = "not tested"
     ERROR = "error"
+    NOT_SCORED = "not scored"  # a test case no compared pair names (#330)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +66,8 @@ class CaseResult:
     Attributes:
         group_id: The Group.
         test_case: The test case's name.
-        result: PASS or FAIL.
+        result: PASS or FAIL; NOT_SCORED for one no compared pair names, which shows only
+            in network traffic (`_case_result`).
         network_traffic_only: True if it differs, but only in network traffic.
     """
 
@@ -148,7 +150,11 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             traffic = False  # it differs in gameplay
             for differs in found.values():
                 differs.add(traffic)
-        results.extend(_case_result(group.group_id, name, found[name]) for name in sorted(found))
+        never = _never_compared(group)
+        results.extend(
+            _case_result(group.group_id, name, found[name], scored=name not in never)
+            for name in sorted(found)
+        )
         details = _group_details(group)
         if details:
             kinds = {kind for kind, _ in details}
@@ -156,6 +162,25 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             reasons = "; ".join(reason for _, reason in details)
             results.append(GroupLine(group.group_id, result, reasons))
     return tuple(results)
+
+
+def _never_compared(group: GroupResult) -> set[str]:
+    """The test cases of `group` that no compared pair names in any repetition.
+
+    Each is named by network traffic Divergences, by no gameplay one, and is in no
+    repetition's `Verdict.test_cases`. A network traffic Divergence names one only when the
+    two sides spell something differently where the canonical form compares nothing under
+    that name, such as a field it leaves out. Scored, a Candidate that sends another
+    spelling would have one more passing test case than one that sends vanilla's (#330). A
+    report.json written before #330 lists them among its compared test cases, so it scores
+    them as it did.
+    """
+    named: dict[Observability, set[str]] = {kind: set() for kind in Observability}
+    for verdict in group.verdicts:
+        for divergence in verdict.divergences:
+            named[divergence.observability].add(divergence.test_case)
+    compared = {name for verdict in group.verdicts for name in verdict.test_cases}
+    return named[Observability.NETWORK_TRAFFIC] - named[Observability.GAMEPLAY] - compared
 
 
 def _candidate_failed(group: GroupResult) -> bool:
@@ -202,12 +227,22 @@ _GROUP_RESULTS = (LineResult.FAIL, LineResult.NOT_TESTED, LineResult.ERROR)
 """A Group line's result: the first of these that any of its reasons has."""
 
 
-def _case_result(group_id: str, name: str, traffic: set[bool]) -> CaseResult:
-    """`traffic` holds, for each way the test case differs, whether it is network traffic."""
+def _case_result(group_id: str, name: str, traffic: set[bool], *, scored: bool) -> CaseResult:
+    """How the test case `name` came out.
+
+    `traffic` holds, for each way the test case differs, whether it is network traffic.
+    `scored` is False for a test case no compared pair names (`_never_compared`): while
+    network traffic passes (`NETWORK_TRAFFIC_ONLY_PASSES`), it is NOT_SCORED, whatever else
+    makes it differ; with the switch off it fails like any network traffic difference, as
+    `run.prerequisite_verdict` fails its Verdict.
+    """
+    passes = mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES
+    if not scored and passes:
+        return CaseResult(group_id, name, LineResult.NOT_SCORED, network_traffic_only=True)
     if not traffic:
         return CaseResult(group_id, name, LineResult.PASS)
     if traffic == {True}:
-        result = LineResult.PASS if mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES else LineResult.FAIL
+        result = LineResult.PASS if passes else LineResult.FAIL
         return CaseResult(group_id, name, result, network_traffic_only=True)
     return CaseResult(group_id, name, LineResult.FAIL)
 
@@ -245,8 +280,10 @@ _MARKS = {
     LineResult.FAIL: "✗",
     LineResult.NOT_TESTED: "✗",
     LineResult.ERROR: "!",
+    LineResult.NOT_SCORED: "·",
 }
-"""Each line's mark: `!` for an error, which is not scored, so neither passes nor fails."""
+"""Each line's mark: `!` for an error and `·` for a test case that is not scored, which
+neither pass nor fail."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,7 +291,8 @@ class _Entry:
     """One listed line: a test case, or a Group without test cases to show for it.
 
     Attributes:
-        mark: ✓ if it passed, ! if it is an error, else ✗ (`_MARKS`).
+        mark: ✓ if it passed, ! if it is an error, · if it is not scored, else ✗
+            (`_MARKS`).
         name: `<group>/<test case>`, or the Group id for the Group's own line.
         label: The test case's title, or the Group's reasons; "" if it has neither.
         values: The verbose lines under it.
@@ -285,8 +323,8 @@ class _Document:
     closing: tuple[str, ...]
 
 
-_COLORS = {"✓": "32", "✗": "31", "!": "33"}
-"""Each mark's ANSI colour on a terminal: green, red and yellow."""
+_COLORS = {"✓": "32", "✗": "31", "!": "33", "·": "90"}
+"""Each mark's ANSI colour on a terminal: green, red, yellow and grey."""
 
 
 def render_text(report: Report, *, verbose: bool = False, color: bool = False) -> str:
@@ -388,6 +426,8 @@ def _entry(report: Report, group: GroupResult, line: Line, *, verbose: bool) -> 
     else:
         name, case = f"{line.group_id}/{line.test_case}", line.test_case
         label = "(network traffic only)" if line.network_traffic_only else ""
+        if line.result is LineResult.NOT_SCORED:
+            label = "(network traffic only, not scored)"
     values = _values(report, group, case) if verbose else ()
     return _Entry(_MARKS[line.result], name, label, values)
 

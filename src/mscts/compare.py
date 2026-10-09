@@ -428,7 +428,8 @@ class Divergence:
         observability: `network traffic`: a `field` Divergence between raw values whose
             canonical forms are equal, so the vanilla client reads both alike; its path
             and values are the raw ones; or a `missing` or `unexpected` `chunk_batch_start`
-            or `chunk_batch_finished`, which leave the client's world as it is. `gameplay`:
+            or `chunk_batch_finished`, or one on another tick (`TICK_PATH`), which leave
+            the client's world as it is. `gameplay`:
             every other Divergence, including every `bot` and `failed` one.
     """
 
@@ -466,7 +467,10 @@ class Verdict:
         detail: A human-readable note, e.g. why the Group is blocked.
         test_cases: Every test case the Comparison compared, matched or not, and each field
             of a reference Packet the Candidate did not send (#101), sorted and each once;
-            none if the Verdict was made without one (`error`, `blocked`). A Candidate
+            none if the Verdict was made without one (`error`, `blocked`). A test case that
+            no compared pair names and only network traffic Divergences do is not among
+            them, so a Candidate that sends another spelling does not get one more test case
+            than one that sends vanilla's (#330). A Candidate
             failure lists the Reference's play's own (`run.judge`), and so does one whose
             Group was played on the Reference alone (#266, #285).
         omitted: How many Divergences a report.json left out of `divergences` (#254): the
@@ -581,7 +585,11 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
         for bot in bots
         for divergence in _compare_bot(bot, reference, candidate, indexed, compared)
     )
-    compared.update(divergence.test_case for divergence in divergences)
+    compared.update(
+        divergence.test_case
+        for divergence in divergences
+        if divergence.observability is Observability.GAMEPLAY
+    )
     compared.discard("")
     return Verdict(
         group_id=reference.group_id,
@@ -2637,8 +2645,10 @@ def _compare_streams(
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):
-            compared.update(_field_cases(reference[index]))
-            yield _unmatched(bot, index, "missing", reference[index])
+            missing = _unmatched(bot, index, "missing", reference[index])
+            if missing.observability is Observability.GAMEPLAY:
+                compared.update(_field_cases(reference[index]))
+            yield missing
         for index in range(next_candidate, cand_index):
             yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):
@@ -2695,7 +2705,9 @@ def _diff_ticks(
     """The ticks of two matched Packets, if both have one and they differ (#23).
 
     One `field` Divergence at `TICK_PATH`, with the two ticks, and the packet's test case;
-    the Packets' own differences follow it (`_diff_matched`).
+    the Packets' own differences follow it (`_diff_matched`). It is network traffic for a
+    packet that marks a chunk batch (`_BATCH_PACKETS`), as one left out is (`_unmatched`), so
+    a marker sent late never scores lower than one not sent.
     """
     if reference.tick is None or candidate.tick is None or reference.tick == candidate.tick:
         return
@@ -2709,6 +2721,11 @@ def _diff_ticks(
         reference=reference.tick,
         candidate=candidate.tick,
         test_case=_test_case(state, name, ()),
+        observability=(
+            Observability.NETWORK_TRAFFIC
+            if (state, name) in _BATCH_PACKETS
+            else Observability.GAMEPLAY
+        ),
     )
 
 

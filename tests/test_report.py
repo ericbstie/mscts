@@ -36,12 +36,23 @@ def _field(name: str, *, traffic: bool = False) -> Divergence:
 
 
 def _verdict(*divergences: Divergence, group_id: str = "status/basic") -> Verdict:
+    """A Verdict as compare makes it: a network traffic Divergence's test case is not listed.
+
+    So such a test case is one no compared pair names (#330). `_listed` lists it too.
+    """
+    gameplay = {d.test_case for d in divergences if d.observability is Observability.GAMEPLAY}
     return Verdict(
         group_id,
         Outcome.MISMATCH if divergences else Outcome.MATCH,
         divergences,
-        test_cases=tuple(sorted({d.test_case for d in divergences if d.test_case})),
+        test_cases=tuple(sorted(gameplay - {""})),
     )
+
+
+def _listed(*divergences: Divergence, group_id: str = "status/basic") -> Verdict:
+    """A Verdict that lists each Divergence's test case: compared as well, or before #330."""
+    names = {d.test_case for d in divergences} - {""}
+    return replace(_verdict(*divergences, group_id=group_id), test_cases=tuple(sorted(names)))
 
 
 def _result(*verdicts: Verdict) -> GroupResult:
@@ -98,12 +109,29 @@ def test_the_first_line_uses_only_the_candidate_adapter_name() -> None:
     assert render_text(report).startswith("Running tests against vanilla\n")
 
 
-def test_a_network_traffic_difference_passes_and_says_so() -> None:
-    report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
+def test_a_compared_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -> None:
+    report = _report(_result(_listed(_field("status_response.favicon", traffic=True))))
     assert render_text(report) == (
         "Running tests against pumpkin\n"
         "✓ status/basic/status_response.favicon (network traffic only)\n" + PASSED_ONE
     )
+
+
+def test_a_network_traffic_difference_the_comparison_did_not_compare_is_not_scored() -> None:
+    # #330: a field the canonical form leaves out is named only where the sides differ.
+    traffic = replace(_field("container_set_slot.state_id", traffic=True), path="state_id")
+    verdict = _verdict(traffic, _field("container_set_slot.window_id"))
+    assert render_text(_report(_result(verdict))) == (
+        "Running tests against pumpkin\n"
+        "· status/basic/container_set_slot.state_id (network traffic only, not scored)\n"
+        "✗ status/basic/container_set_slot.window_id\n" + FAILED_ONE
+    )
+
+
+def test_a_report_json_from_before_330_scores_a_network_traffic_test_case_as_it_did() -> None:
+    # It listed the test case of every Divergence, so a network traffic one still passes.
+    report = _report(_result(_listed(_field("status_response.favicon", traffic=True))))
+    assert render_text(report).endswith(PASSED_ONE)
 
 
 def test_a_network_traffic_difference_fails_if_network_traffic_does_not_pass(
@@ -265,7 +293,7 @@ def test_verbose_values_belong_to_their_own_group() -> None:
 
 
 def test_verbose_shows_the_values_of_a_network_traffic_difference() -> None:
-    report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
+    report = _report(_result(_listed(_field("status_response.favicon", traffic=True))))
     assert (
         "(network traffic only)\n"
         '  vanilla sends "reference value", pumpkin sends "candidate value"\n'
@@ -352,7 +380,7 @@ def test_markdown_names_the_candidate_s_exact_build_in_the_heading() -> None:
 
 def test_markdown_is_the_default_report_with_a_heading_and_names_as_code() -> None:
     report = _report(
-        _result(_verdict(_field("status_response.description"), _field("new.field", traffic=True))),
+        _result(_listed(_field("status_response.description"), _field("new.field", traffic=True))),
         _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")),
     )
     assert render_markdown(report) == (
@@ -436,17 +464,19 @@ def test_markdown_code_keeps_its_edges(path: str, code: str) -> None:
     assert f"  - {code}: vanilla sends" in text, text
 
 
-def test_colour_marks_a_pass_green_a_failure_red_and_an_error_yellow() -> None:
+def test_colour_marks_a_pass_green_a_failure_red_an_error_yellow_and_the_rest_grey() -> None:
     error = Verdict("status/error", Outcome.ERROR, detail="failed")
     report = _report(
         _result(_compared("a")),
         _result(_verdict(_field("b"), group_id="status/ping")),
         _result(error),
+        _result(_verdict(_field("c", traffic=True), group_id="status/other")),
     )
     text = render_text(report, color=True)
     assert "\x1b[32m✓\x1b[0m status/basic/a\n" in text, text
     assert "\x1b[31m✗\x1b[0m status/ping/b\n" in text, text
     assert "\x1b[33m!\x1b[0m status/error Error: failed\n" in text, text
+    assert "\x1b[90m·\x1b[0m status/other/c (network traffic only, not scored)\n" in text
     assert re.sub("\x1b\\[[0-9]+m", "", text) == render_text(report)
 
 

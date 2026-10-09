@@ -152,20 +152,21 @@ def test_a_field_no_one_listed_by_hand_still_gets_a_test_case() -> None:
     assert any(name.startswith("play:keep_alive.") for name in named)
 
 
-def test_every_divergence_of_a_field_is_in_a_listed_test_case() -> None:
+def test_every_gameplay_divergence_of_a_field_is_in_a_listed_test_case() -> None:
     for seed in SEEDS:
         rng = seeded(seed)
         verdict = compare(render(script(rng), rng), render(script(rng), rng), MASKS)
         assert list(verdict.test_cases) == sorted(set(verdict.test_cases)), f"seed {seed}"
         for divergence in verdict.divergences:
             assert (divergence.test_case == "") == (divergence.kind == "bot"), f"seed {seed}"
+        for divergence in verdict.gameplay:
             assert divergence.test_case in {"", *verdict.test_cases}, f"seed {seed}"
 
 
-def test_two_runs_give_the_same_test_cases_but_where_the_format_differed() -> None:
+def test_two_runs_give_the_same_test_cases_however_the_format_differed() -> None:
     # Re-runs of one Script differ in masked values, ambient packets, interleaving and
-    # how the status JSON is spelled. A network traffic difference adds the test case of
-    # its raw path only in a run where the two formats differed; every other name stays.
+    # how the status JSON is spelled. A network traffic difference adds no test case (#330),
+    # so the names are the same whether or not the two formats differed.
     varied = 0
     for seed in SEEDS:
         runs = script(seeded(seed))
@@ -175,9 +176,9 @@ def test_two_runs_give_the_same_test_cases_but_where_the_format_differed() -> No
             )
             for n in (0, 2)
         )
-        assert _but_network_traffic(first) == _but_network_traffic(second), f"seed {seed}"
-        varied += first.test_cases != second.test_cases
-    assert varied >= 0.2 * len(SEEDS)  # not vacuous: 50 of 120 when written
+        assert first.test_cases == second.test_cases, f"seed {seed}"
+        varied += _network_traffic(first) != _network_traffic(second)
+    assert varied >= 0.2 * len(SEEDS)  # not vacuous
 
 
 def _alice(sent: Sequence[Packet]) -> Transcript:
@@ -193,11 +194,10 @@ def _every_leaf_changed(value: object) -> object:
     return [value]
 
 
-def _but_network_traffic(verdict: Verdict) -> set[str]:
-    traffic = {
+def _network_traffic(verdict: Verdict) -> set[str]:
+    return {
         d.test_case for d in verdict.divergences if d.observability is Observability.NETWORK_TRAFFIC
     }
-    return set(verdict.test_cases) - traffic
 
 
 def _mirror(

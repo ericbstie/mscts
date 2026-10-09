@@ -218,6 +218,10 @@
 .dark .vp-code span.ms-error {
   color: var(--ms-mark-error);
 }
+.vp-code span.ms-skip,
+.dark .vp-code span.ms-skip {
+  color: var(--vp-c-text-3);
+}
 .ms-term .ms-pass {
   color: var(--ms-term-accent);
 }
@@ -226,6 +230,9 @@
 }
 .ms-term .ms-error {
   color: var(--ms-term-warn);
+}
+.ms-term .ms-skip {
+  color: var(--ms-term-muted);
 }
 .ms-term .head {
   color: #fff;

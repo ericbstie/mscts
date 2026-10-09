@@ -290,11 +290,13 @@ def test_masked_fields_and_dropped_packets_are_no_test_cases() -> None:
     assert _verdict(sent, sent, *masks).test_cases == ("set_health.health",)
 
 
-def test_a_network_traffic_difference_adds_the_test_case_of_its_raw_path() -> None:
+def test_a_network_traffic_difference_adds_no_test_case_for_its_raw_path() -> None:
+    # Its raw path is compared only where the formats differ (#330).
     reference = _status('{"description":"mscts"}')
     candidate = _status('{"description":{"text":"mscts"}}')
     verdict = _verdict([reference], [candidate])
-    assert verdict.test_cases == ("status_response.description", "status_response.description.text")
+    assert [d.test_case for d in verdict.divergences] == ["status_response.description"]
+    assert verdict.test_cases == ("status_response.description.text",)
 
 
 def test_a_bot_on_one_side_only_adds_no_test_case_of_its_own() -> None:
@@ -343,7 +345,12 @@ def test_the_differing_test_cases_say_how_they_differ() -> None:
         "status_response.description": Observability.NETWORK_TRAFFIC,
         "status_response.players.max": Observability.GAMEPLAY,
     }
-    assert set(verdict.differing) < set(verdict.test_cases)  # the others are the same
+    # The others are the same; the network traffic one was not compared otherwise (#330).
+    assert set(verdict.test_cases) == {
+        "status_response.description.text",
+        "status_response.players.max",
+        "status_response.players.online",
+    }
 
 
 def _extra(*extra: object) -> Packet:

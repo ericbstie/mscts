@@ -1429,7 +1429,8 @@ class Verdict:
     test_cases: tuple[str, ...] = ()  # every test case compared, matched or not, and each
                                       # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
-                                    # error or blocked. run.judge keeps compare's.
+                                    # error or blocked. run.judge keeps compare's. Not a
+                                    # test case no compared pair names (#330).
     omitted: int = 0                # Divergences a report.json left out (#254); 0 from compare
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
@@ -2218,6 +2219,8 @@ proves it necessary:
    tick is not part of the key, so a run of packets each a tick late still
    matches one for one; two matched packets on different ticks give one
    `field` Divergence at `TICK_PATH`, then the two packets' differences.
+   For a chunk batch marker that Divergence is network traffic, as a
+   marker only one side sent is (#330, review A).
    When both streams have ticks, they break ties (#229): of the longest
    alignments, the one with the most pairs on the same tick, so the copy
    of a repeated packet on a tick the other side lacks is the one left
@@ -2283,8 +2286,8 @@ proves it necessary:
    A Verdict lists its test cases (`Verdict.test_cases`): the test case
    of every pair of leaves compared in matched packets, after Masks and
    canonicalization, whether the two were equal or not, the test
-   case of every Divergence, and (#101) the test case of each unmasked
-   leaf of a reference packet the alignment left `missing`, as a match
+   case of every gameplay Divergence, and (#101) the test case of each unmasked
+   leaf of a reference packet the alignment left `missing` as gameplay, as a match
    with itself would name it, so leaving a packet out fails each field
    sending it wrong would. Likewise (#225) a reference list or mapping
    the candidate sent as something else, or left out, adds the test case
@@ -2296,10 +2299,12 @@ proves it necessary:
    Observation window leaves out are in none, and neither is a pair of
    values at a masked path that are the same (two `MASKED`, or two
    None): a masked field is a test case only where it diverges. Each is the same, different in gameplay, or different in
-   network traffic only (`Verdict.differing`). A network traffic test
-   case appears only where the two formats differed: its raw path is
-   not a compared field otherwise, and listing it as the same would
-   claim a comparison that was never made.
+   network traffic only (`Verdict.differing`). A network traffic
+   Divergence names the test case of its raw path. Where no compared
+   pair names that test case too, it is not in `Verdict.test_cases`
+   (#330): listing it would claim a comparison that was never made,
+   and would give a Candidate that spells it differently one more test
+   case. Nor are the fields of a chunk batch marker left `missing`.
 
 ### Measurements and Report
 
@@ -2370,12 +2375,12 @@ class Report:                       # report.py
     # later: compliance = matches / (groups − errors)
 
 # report.py, #101: each test case of each Group passes or fails.
-class LineResult(StrEnum): PASS; FAIL; NOT_TESTED; ERROR
+class LineResult(StrEnum): PASS; FAIL; NOT_TESTED; ERROR; NOT_SCORED  # "not scored", #330
 @frozen
 class CaseResult:                   # a test case's line
     group_id: str
     test_case: str
-    result: LineResult              # PASS or FAIL
+    result: LineResult              # PASS, FAIL or NOT_SCORED
     network_traffic_only: bool = False
 @frozen
 class GroupLine:                    # a Group's own line
@@ -2394,7 +2399,12 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in
 # any repetition makes every test case of the Group differ, #262, #266, #285): FAIL if it
 # differs in gameplay in any repetition, PASS (marked
-# network_traffic_only) if it differs only in network traffic, else PASS. Then one
+# network_traffic_only) if it differs only in network traffic, else PASS. One that no
+# compared pair names (network traffic Divergences name it, no gameplay one does, and
+# no repetition's Verdict.test_cases lists it; _never_compared, #330) is NOT_SCORED
+# (marked network_traffic_only) while NETWORK_TRAFFIC_ONLY_PASSES, whatever else
+# makes it differ, and FAIL with the switch off, as run.prerequisite_verdict judges
+# its Verdict; totals counts NOT_SCORED nowhere. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
 # NOT_TESTED if blocked, else ERROR.
@@ -2423,11 +2433,12 @@ def loads(text: str) -> Report: ...
 class ReportJsonError(ValueError): ...
 
 def render_text(report: Report, *, verbose: bool = False, color: bool = False) -> str: ...
-# color (#101): each mark in its ANSI colour, ✓ green (32), ✗ red (31), ! yellow (33).
+# color (#101): each mark in its ANSI colour, ✓ green (32), ✗ red (31), ! yellow (33),
+# · grey (90, #330).
 def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # report.md (#190): what render_text says, as Markdown. "# <first line>"; the build line
 # (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks;
-# each line "- <✓|✗> `<group>/<test case>` <title>" (no list when there is no line),
+# each line "- <✓|✗|·> `<group>/<test case>` <title>" (no list when there is no line),
 # its verbose values nested ("  - "), with values and paths as code spans; "## Group
 # times" and a list; the totals, score and total time last, one paragraph joined by hard
 # breaks. Blocks are separated by a blank line. Text mscts did
@@ -2440,8 +2451,9 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>[ <installed_version>]"
 # (the build, when known; 2026-10-04 amendment, replacing #156's second line);
 # #101 (amends ADR-0012): one line per report_lines line whose result is in _LISTED
-# (every result today): "<✓|✗> <group>/<test case>" (no title since 2026-10-04),
-# " (network traffic only)" when it passed that way; a Group line is
+# (every result today): "<✓|✗|·> <group>/<test case>" (· for NOT_SCORED) (no title since 2026-10-04),
+# " (network traffic only)" when it passed that way, " (network traffic only, not
+# scored)" for NOT_SCORED (#330); a Group line is
 # "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then
 # "<p> passed, <f> failed[ (<n> not tested)]. (<percent>%)" with the percent rounded down
 # to tenths (".0" dropped), and no "(…%)" when nothing was scored; then
