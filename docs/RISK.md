@@ -2,7 +2,8 @@
 
 Owned by the tech lead. It names the core areas the
 [scrutiny nudge](PROCESS.md#lanes-and-review-levels) refers to, and logs every
-bug found so the escape statistics can be redone.
+bug found and every merged PR's review results, so the statistics can be
+redone.
 
 ## Areas
 
@@ -43,6 +44,17 @@ Log every bug found, caught or escaped, newest first:
 | 2026-10-09 | #56 | Groups | #344 (`scrutiny::medium`) | a lava hit inside the fire hit's immunity, 1 play in 20 | the Self-check | no |
 | 2026-10-09 | #53 | Groups | #346 (`scrutiny::medium`) | an extra world step while waiting for tracking | the first review | no |
 | 2026-10-09 | #53 | Groups | #346 (`scrutiny::medium`) | sweep damage, knockback and sprint-hit health not compared | the first review | no |
+
+## Review results
+
+The lead adds one row per merged PR when it merges the train, newest first.
+**Reviews** lists the reviews that ran (the lead's diff read, the first
+review, the second review). **Blocking findings** gives the count each review
+found, in the same order. **Stress runs** gives how many ran and what they
+caught, or "none".
+
+| PR | Scrutiny | Reviews | Blocking findings | Stress runs |
+| --- | --- | --- | --- | --- |
 
 ## Bug log until 2026-10-09
 
