@@ -236,7 +236,6 @@ async def _dig_survival(
 async def _respawn(context: GroupContext, digger: Bot) -> None:
     """Kill the digger and respawn it where it stood: the server counts its dig time anew."""
     await context.control.run(f"kill {DIGGER}")
-    await digger.sync()
     await digger.respawn()
     await context.control.run(f"tp {DIGGER} {DIGGER_AT} 0 0")
     await digger.sync()
@@ -262,9 +261,10 @@ SURVIVAL_CASES = (
 """Finishes sent when the client would send them, which the server accepts: the block breaks and
 drops. Obsidian and stone by hand take the longest, 188 and 151 ticks."""
 
-UPTIME_S = 11.0
-"""How long the digger waits after its last early finish, so that every on-time finish is
-accepted: they need up to 131 ticks (6.6 s) of the digger's time, and it has about 15 s."""
+UPTIME_S = 3.0
+"""How long the digger waits after its last early finish, so that the first on-time finishes are
+accepted: the cheapest need 15 ticks (0.75 s) of the digger's time or less, and the two that need
+more (104 and 131 ticks, 5.2 s and 6.6 s) come after 15 s or more of it."""
 
 
 @group("blocks/dig-survival", masks=DROP_MASKS)

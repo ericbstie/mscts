@@ -107,8 +107,9 @@ just respawned, the same finishes were refused. The rule that fits is that the s
 finish when the time since the player was created (a join, or a respawn) reaches that count of
 ticks, whatever the time since the start. The cause is not known. So the Group respawns the digger
 before each early finish, which then comes about 3 seconds after the respawn, short of the 5.2
-seconds that 104 ticks take, and waits 11 seconds after the last, so that every other finish comes when the
-player is more than 15 seconds old: more than twice the 131 ticks (6.6 seconds) the longest needs.
+seconds that 104 ticks take, and waits 3 seconds after the last. The finishes then come in the order
+of what they need: the three cheap ones need 15 ticks (0.75 seconds) or less, and the two that need
+104 and 131 ticks (5.2 and 6.6 seconds) come when the player is about 15 seconds old.
 Each finish also waits at least a second past the least the server accepts from the start, so that
 it is also accepted by a server that counts from the start.
 
