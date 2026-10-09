@@ -470,6 +470,22 @@ A dropped item and an orb start moving in a direction vanilla draws at random. T
 
 A server keeps a player's spawn point and no command clears it. The Bot that respawns at the world spawn never has one, and the second Bot, `pointer`, always has the same, so every play starts from the same state. The two Bots stand out of each other's view: a player who respawns is sent to the others in view a tick or two later, and a window cannot place that.
 
+### Hunger (`player_hunger`)
+
+What a survival player's food does to its health. A player's food, saturation and exhaustion
+change on its own tick, and a frozen world does not freeze a player, so these Groups take real
+time. Each window waits for the `set_health` that ends what it tests, then for 100 more ticks in
+which nothing else may come. What is compared is the order of the values, not the tick they
+come on.
+
+Every part starts from a fresh player, killed and respawned: health 20, food 20, saturation 5.
+No command sets the food, so a Group lowers it with the hunger effect for an exact number of
+ticks, and sets the health with `/damage` of type `generic`, which costs no food.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/regeneration` | exact | none | A Bot at 10 health heals from food 20, from food 18 and from food 17, in a window of its own each. Each heal costs food, and the healing stops at 17. | none |
+
 ## Planned
 
 | Mechanic | First Group | Needs |

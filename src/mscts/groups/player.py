@@ -24,14 +24,14 @@ turns it on.)
 import contextlib
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, pin_joins
+from mscts.groups._world import CONTROL_AT, _normal, fresh, join_at_spawn, pin_joins
 from mscts.net import ProtocolError
-from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
+from mscts.spec import CONTROL_PLAYER
 
 PACKETS = (
     "minecraft:set_health",
@@ -71,11 +71,6 @@ _HEAL = "effect give {bot} minecraft:instant_health 1 5 true"
 """Heals a Bot to full health, whatever the last case left it."""
 
 type _Point = tuple[float, float, float]
-
-
-def _normal(spec: ServerSpec) -> ServerSpec:
-    """Play on normal difficulty: peaceful heals the player and stops most damage."""
-    return replace(spec, difficulty=Difficulty.NORMAL)
 
 
 @contextlib.asynccontextmanager

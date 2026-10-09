@@ -1,9 +1,11 @@
 """World setup that more than one Group uses."""
 
 import contextlib
+from dataclasses import replace
 
 from mscts.bot import Bot
 from mscts.group import Control, GroupContext
+from mscts.spec import Difficulty, ServerSpec
 
 CONTROL_AT = "96.5 -60 96.5"
 """Where Control stands: 6 chunks from the spawn, clear of every block the Groups set (#300) and
@@ -46,6 +48,11 @@ async def join_at_spawn(context: GroupContext, undo: contextlib.AsyncExitStack, 
     await bot.join()
     undo.push_async_callback(context.control.run, f"tp {name} {SPAWN_AT}")
     return bot
+
+
+def _normal(spec: ServerSpec) -> ServerSpec:
+    """Play on normal difficulty: peaceful heals the player and stops most damage."""
+    return replace(spec, difficulty=Difficulty.NORMAL)
 
 
 async def fresh(context: GroupContext, bot: Bot) -> None:

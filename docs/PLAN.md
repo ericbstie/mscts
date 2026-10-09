@@ -1192,6 +1192,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   vanilla sends for a view centre and distance (`ChunkTrackingView`); `join_view`,
   `view_distance`, `teleport` and `walk` — the `chunks/join-view`, `chunks/view-distance`,
   `chunks/teleport` and `chunks/walk` scripts.
+- `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
+  eating, the damage, sounds and the death); `regeneration` — the `player/regeneration`
+  script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
