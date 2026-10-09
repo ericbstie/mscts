@@ -333,6 +333,7 @@ marker for it, an entity a server tells no player about, so it adds no packet.
 | --- | --- | --- | --- | --- |
 | `combat/damage-types` | tick-exact | none | The Bot wears no armor and takes 4 points of `generic`, `player_attack`, `mob_attack`, `arrow`, `fall`, `in_fire`, `lava`, `magic`, `wither`, `explosion`, `out_of_world` and `starve` damage, a window each. | none |
 | `combat/armor` | tick-exact | none | The Bot wears iron, diamond and netherite armor, then diamond armor enchanted with Protection IV, Fire Protection IV and Blast Protection IV, and takes the same twelve kinds of damage through each set. | none |
+| `combat/effects` | tick-exact | none | The Bot wears no armor, has Resistance I, II, III or IV, or Absorption II, and takes the same twelve kinds of damage under each. | none |
 
 Armor reduces some kinds of damage and not others. In vanilla 26.3, `generic`, `fall`, `magic`,
 `wither`, `out_of_world` and `starve` are in the damage type tag `bypasses_armor`, so the
@@ -340,6 +341,12 @@ sets change what the other six cost: `player_attack`, `mob_attack`, `arrow`, `in
 and `explosion`. A hit that armor reduces wears each piece down by 1, and the Bot is told of it
 (`container_set_slot`). `combat/armor` has the Bot keep its stacks when it dies, so that one
 set of armor serves all twelve kinds of damage. The stacks are cleared when the Group ends.
+
+A kill clears a player's effects, so `combat/effects` gives the Bot its effect again after each
+respawn, before the window. In vanilla 26.3, Resistance cuts a hit by 20% a level, except for
+`out_of_world` (the tag `bypasses_resistance`) and `starve` (`bypasses_effects`). Absorption II
+takes the whole 4 points into the Bot's extra hearts, so no `set_health` comes, only the change
+in its entity data.
 
 ## Player (`player`)
 

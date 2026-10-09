@@ -1174,7 +1174,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   the twelve kinds of damage the Groups compare; `damage_command` — the `/damage` command for
   a victim, a source and an amount; `damage_types` — the `combat/damage-types` script;
   `Armor` — a set of armor (a material and an enchantment); `ARMORS` — the six sets;
-  `wear_commands` — the commands that put a set on a victim; `armor` — the `combat/armor` script.
+  `wear_commands` — the commands that put a set on a victim; `armor` — the `combat/armor` script;
+  `Effect` — a status effect and its amplifier; `EFFECTS` — the five the Group gives; `effect_command` — the
+  command that gives one to a victim; `effects` — the `combat/effects` script.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `fall` — the `player/fall` script.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `HIT_PACKETS` — what a window compares for a hit after the first; `fall` and `drowning` — the `player/fall` and `player/drowning` scripts.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `HIT_PACKETS` — what a window compares for a hit after the first; `FREEZING_PACKETS` — what a window compares for freezing (the hits and `player_position`); `FIRE_MASKS` — the Mask on the sounds' pitch; `fall`, `drowning`, `suffocation`, `void`, `fire` and `freezing` — the `player/fall`, `player/drowning`, `player/suffocation`, `player/void`, `player/fire` and `player/freezing` scripts.

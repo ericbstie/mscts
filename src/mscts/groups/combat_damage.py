@@ -218,3 +218,50 @@ async def armor(context: GroupContext) -> None:
             for command in wear_commands(bot.name, worn):
                 await context.control.run(command)
             await _sweep(context, bot)
+
+
+# `combat/effects`: the same damage under Resistance and Absorption.
+
+
+@dataclass(frozen=True, slots=True)
+class Effect:
+    """A status effect: its id without `minecraft:`, and its amplifier (0 is level I).
+
+    Attributes:
+        name: The effect, as `/effect give` takes it.
+        amplifier: One less than the level.
+    """
+
+    name: str
+    amplifier: int
+
+
+EFFECTS = (
+    Effect("resistance", 0),
+    Effect("resistance", 1),
+    Effect("resistance", 2),
+    Effect("resistance", 3),
+    Effect("absorption", 1),
+)
+"""Resistance I to IV, then Absorption II."""
+
+_EFFECT_SECONDS = 1_000_000
+"""How long an effect lasts: the most `/effect give` takes, so that it outlasts the window."""
+
+
+def effect_command(victim: str, effect: Effect) -> str:
+    """The command that gives `victim` the effect, with no particles."""
+    return f"effect give {victim} minecraft:{effect.name} {_EFFECT_SECONDS} {effect.amplifier} true"
+
+
+@group("combat/effects", kind=GroupKind.TICK_EXACT, spec=_normal)
+async def effects(context: GroupContext) -> None:
+    """A Bot with each effect is hurt by 4 points of each kind of damage, with no armor.
+
+    A kill clears a player's effects, so the effect is given again after each respawn.
+    """
+    async with _arena(context) as undo:
+        bot = await join_at_spawn(context, undo, VICTIM)
+        await context.freeze()
+        for effect in EFFECTS:
+            await _sweep(context, bot, (effect_command(bot.name, effect),))

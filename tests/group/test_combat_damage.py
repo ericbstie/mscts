@@ -137,7 +137,7 @@ def respawns(transcript: Transcript) -> int:
     )
 
 
-GROUP_IDS = ("combat/damage-types", "combat/armor")
+GROUP_IDS = ("combat/damage-types", "combat/armor", "combat/effects")
 
 
 # Registration
@@ -355,3 +355,54 @@ def test_the_command_for_a_set_names_every_piece_and_the_enchantment_at_level_iv
         ("diamond", "fire_protection"),
         ("diamond", "blast_protection"),
     ]
+
+
+# combat/effects
+
+EFFECTS = (
+    ("resistance", 0),
+    ("resistance", 1),
+    ("resistance", 2),
+    ("resistance", 3),
+    ("absorption", 1),
+)
+
+
+def giving(effect: str, amplifier: int) -> str:
+    return f"effect give victim minecraft:{effect} 1000000 {amplifier} true"
+
+
+def test_effects_has_a_window_for_each_kind_of_damage_under_each_effect() -> None:
+    result = played("combat/effects")
+
+    assert len(result.windows) == len(EFFECTS) * len(SOURCE_TYPES)
+    assert {w.label for w in result.windows} == {
+        f"{OBSERVE_OPEN} {' '.join(combat_damage.PACKETS)}"
+    }
+    assert [w.sent for w in result.windows] == [((CONTROL, c),) for c in damages() * len(EFFECTS)]
+
+
+def test_effects_gives_the_effect_after_every_respawn_and_before_the_window() -> None:
+    transcript, result = play("combat/effects")
+
+    expected = [
+        ("kill victim", giving(effect, amplifier))
+        for effect, amplifier in EFFECTS
+        for _ in SOURCE_TYPES
+    ]
+    assert [w.before[-2:] for w in result.windows] == expected
+    assert respawns(transcript) == len(EFFECTS) * len(SOURCE_TYPES)
+
+
+def test_effects_wears_no_armor_and_keeps_no_stacks() -> None:
+    result = played("combat/effects")
+
+    commands = (*result.first, *result.after, *(c for w in result.windows for c in w.before))
+    assert not [c for c in commands if c.startswith("item ") or "keep_inventory" in c]
+
+
+def test_the_command_for_an_effect_has_no_particles_and_lasts_past_the_window() -> None:
+    assert combat_damage.effect_command(VICTIM, combat_damage.Effect("absorption", 1)) == giving(
+        "absorption", 1
+    )
+    assert [(e.name, e.amplifier) for e in combat_damage.EFFECTS] == list(EFFECTS)
