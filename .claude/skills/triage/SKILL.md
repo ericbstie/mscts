@@ -13,19 +13,22 @@ only output is one comment on the issue, in the layout under
 
 ## Rules
 
-- Work on exactly the one issue you were given.
+- Work on exactly the one issue you were given, in your own git
+  worktree, never in the main checkout.
 - Leave the issue as it is: no label, title, body or assignee changes.
   Removing `needs-triage` is the lead's job.
 - Never push, open a PR, run `mise run commit` or commit on `main`.
 - Never decide a question the issue leaves open. Write it down under
   **Questions for the lead** and carry on with the rest.
 - Use the vocabulary in `CONTEXT.md` exactly.
-- Code you write follows the function-design skill.
+- Load the function-design skill before you write any code. The
+  reproduction test and the spike both follow it, because a worker may
+  reuse the test.
 - Every claim in the comment names its evidence: a `file:line`, a
   command and its output, or a link. A claim you inferred without
   checking says "inferred".
-- Read the issue and its comments with the GitHub MCP tools (load them
-  with ToolSearch; repo `ericbstie/mscts`; there is no `gh`).
+- Read GitHub with the GitHub MCP tools (load them with ToolSearch;
+  repo `ericbstie/mscts`).
 
 ## Steps
 
@@ -33,16 +36,23 @@ Do the steps in order. Each one feeds a section of the comment.
 
 ### 1. Read
 
-Read the issue and all its comments, `CONTEXT.md`, the lanes and
-scrutiny table in `docs/PROCESS.md` (Lanes and review levels),
-`docs/RISK.md` (Levels now), and every ADR, doc page, file and issue the
-issue links. Then read the code the issue names, and follow it one call
-up and one call down.
+Read these in full:
+
+- the issue and all its comments;
+- every issue, PR, ADR, doc page and file the issue names or links,
+  even when it reads like background;
+- `CONTEXT.md`;
+- `docs/PROCESS.md` § Lanes and review levels;
+- `docs/RISK.md` § Levels now;
+- the handbook of the issue's lane, `docs/roles/<lane>.md`.
+
+Then read the code the issue names, and follow it one call up and one
+call down.
 
 ### 2. Scope indicators
 
 Fill each row of the table in the comment. Find files with `rg`, not by
-guessing.
+guessing, and read the part of each file you list.
 
 - **Files**: every file the change will modify, `src/`, `tests/` and
   `docs/` alike, each with the function or section involved.
@@ -56,14 +66,17 @@ guessing.
 - **Lane**: the `lane:*` whose hard part this is, by the table in
   `docs/PROCESS.md`, or "lead" for platform, tooling and docs. Say
   whether it matches the issue's label.
-- **Docs pages**: the pages a user would see change, or "none".
-- **Live tiers**: the tiers a PR would have to run (`reference`,
-  `candidate`, `selfcheck`), or "none".
+- **Docs pages**: the pages a user would see change, or "None.".
+- **Live tiers**: `reference` if the change touches a codec schema, an
+  Adapter, the runner, the Bot or a Group; `candidate` if it changes
+  what a Candidate's Report says; otherwise "None.". The scrutiny level
+  adds its own runs, so leave those out.
 - **Increments**: how many red-green increments (one failing test, the
   code, one commit each) the change needs, and one line naming each.
 - **Related issues**: open issues that block this one, that this one
-  blocks, or that change the same files. Search with the GitHub MCP
-  tools.
+  blocks, or that change the same files. List the open issues with
+  `list_issues` (`state: OPEN`, `fields: ["number", "title", "labels"]`),
+  then read every one whose title touches the same files or Groups.
 
 ### 3. Reproduction
 
@@ -76,7 +89,9 @@ new behaviour." and you go on to step 4.
 2. Write the smallest unit test that shows the wrong behaviour, in the
    test file a worker would put it in, using the helpers in
    `tests/support/` and the fakes the nearby tests use. Name it after
-   the behaviour the issue wants, so it fails today.
+   the behaviour the issue wants, so it fails today: for example
+   `test_a_candidate_that_fails_in_window_one_reports_no_later_window`,
+   not `test_issue_334_repro`.
 3. Run only that test: `uv run pytest <path>::<name>`.
 4. The bug is **reproduced** when the test fails on an assertion that
    shows the wrong behaviour. An import error, a fixture error or a
@@ -100,16 +115,24 @@ reviews it and nobody reuses it.
 Work on `triage-<n>-spike` (create it as in step 3 if there is no
 reproduction). Make the change the issue asks for in the simplest way
 you can find. Skip docs, polish and edge cases the issue does not name.
+Code that does not exist yet is not a blocker: write the least of it
+that the spike needs, and record its absence as a hidden unknown. Where
+the issue allows more than one reading, take the narrowest one that
+lets its own test pass, carry on, and put the choice under **Questions
+for the lead**.
 
 Stop at the first of these and record which one stopped you:
 
 - **Done**: the reproduction test passes, or for new behaviour, one new
-  test of the behaviour the issue asks for passes.
+  test of the behaviour the issue asks for passes. If the issue asks for
+  more than that test shows, the spike is **done, partial**, and the
+  comment says what is left.
 - **Blocker**: you cannot go on without one of these.
-  - A choice between two behaviours that the issue, its comments and the
-    docs do not settle.
+  - A choice between behaviours where no reading of the issue lets its
+    own test pass.
   - A protocol or server fact that is not in `docs/research/`, the codec
-    schemas or the code. Name the fact.
+    schemas, the code or the issue itself. Name the fact. A fact you take
+    from the issue goes under **Hidden unknowns** as unverified.
   - A change to a public interface, a CONTEXT term or an ADR.
   - A change in a core area that another lane owns (`docs/PROCESS.md`,
     Core areas have one owner).
@@ -123,9 +146,12 @@ Then:
 1. If the spike stopped at **Done**, run the unit tier once with
    `mise run test` and note every test that now fails. Each one is a
    hidden unknown.
-2. Save `git diff --stat origin/main` for the comment.
-3. Discard the spike: `git switch --detach origin/main`, then
-   `git branch -D triage-<n>-spike`.
+2. Whatever stopped the spike, save `git diff --stat origin/main` for
+   the comment.
+3. Discard the spike and the reproduction with it:
+   `git switch --discard-changes --detach origin/main`, then
+   `git clean -fd`, then `git branch -D triage-<n>-spike`.
+   `git status` must show a clean tree.
 
 Every surprise the spike met goes under **Hidden unknowns**: a caller you
 did not expect, a test that pinned the old behaviour, a second place
@@ -144,7 +170,7 @@ and nothing else.
 
 Use this layout exactly. Keep every heading and every table row, in
 this order. A row or section with nothing to report says "None." Keep
-each cell to one or two sentences.
+each table cell short; detail goes under **Hidden unknowns**.
 
 ````markdown
 ## Preliminary triage
@@ -180,7 +206,8 @@ should know about.>
 
 ### Spike
 
-**Stopped:** done, blocker: <the blocker in one sentence>, or budget.
+**Stopped:** one of `done`; `done, partial: <what is left>`;
+`blocker: <the blocker in one sentence>`; `budget`.
 
 <One or two sentences on what the spike changed.>
 
