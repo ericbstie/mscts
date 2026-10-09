@@ -199,7 +199,7 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 The project paused after v0.1.0 (released 2026-10-04 from 9cdf1ed) and
 resumed on 2026-10-07. Since then a lead hands off to a fresh session
-after each chunk of work. `docs/RISK.md` lists each train's PRs.
+after each chunk of work.
 
 - Train 22 (#277, #287, #304), train 23 (#288, #289, #299, #308, #294,
   #280, #292, #271) and train 24 (#310, #276, #279, #281) landed v0.1.0's

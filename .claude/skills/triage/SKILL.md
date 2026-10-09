@@ -17,6 +17,8 @@ only output is one comment on the issue, in the layout under
   worktree, never in the main checkout.
 - Leave the issue as it is: no label, title, body or assignee changes.
   Removing `needs-triage` is the lead's job.
+- Do not message or notify the tech lead. It reads your comment when
+  it takes the issue.
 - Never push, open a PR, run `mise run commit` or commit on `main`.
 - Never decide a question the issue leaves open. Write it down under
   **Questions for the lead** and carry on with the rest.
@@ -43,7 +45,7 @@ Read these in full:
   even when it reads like background;
 - `CONTEXT.md`;
 - `docs/PROCESS.md` § Lanes and review levels;
-- `docs/RISK.md` § Levels now;
+- `docs/RISK.md` § Areas;
 - the handbook of the issue's lane, `docs/roles/<lane>.md`.
 
 Then read the code the issue names, and follow it one call up and one
@@ -56,10 +58,10 @@ guessing, and read the part of each file you list.
 
 - **Files**: every file the change will modify, `src/`, `tests/` and
   `docs/` alike, each with the function or section involved.
-- **Suggested scrutiny**: the highest level in `docs/RISK.md` among the
-  areas that own those files, one step higher if the change adds new
-  concurrency, a new kind of Verdict, or code that later Groups build
-  on. `high` stays `high`.
+- **Suggested scrutiny**: the level the scrutiny nudge in
+  `docs/PROCESS.md` gives for what the change touches, not for the area
+  its files live in, followed by the reason in one sentence. The lead
+  confirms or overrides it.
 - **Lane**: the `lane:*` whose hard part this is, by the table in
   `docs/PROCESS.md`, or "lead" for platform, tooling and docs. Say
   whether it matches the issue's label.
@@ -179,7 +181,7 @@ should know about.>
 | Indicator | Finding |
 | --- | --- |
 | Files | `src/mscts/<file>.py` (`<function>`); `tests/<file>.py`; `docs/<page>.md` § <section> |
-| Suggested scrutiny | `scrutiny::<level>` |
+| Suggested scrutiny | `scrutiny::<level>`: <the reason in one sentence> |
 | Lane | `lane:<name>`, <matches or differs from> the label |
 | Docs pages | <pages, or None.> |
 | Live tiers | <tiers, or None.> |
