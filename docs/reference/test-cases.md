@@ -2296,3 +2296,57 @@ Where the sound plays along z, in eighths of a block.
 **Sound volume**
 
 How loud the sound is, and how far it carries.
+
+## `animate`
+
+**Entity animation**
+
+A packet that tells the client to play an animation on an entity, such as the stars of a critical hit. A server that leaves it out, or sends another animation, shows the player no critical hit.
+
+## `animate.entity_id`
+
+**Entity playing an animation**
+
+Which entity plays the animation. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `animate.action`
+
+**Animation type**
+
+Which animation the client plays, such as a swing of the arm or a critical hit.
+
+## `level_particles`
+
+**Particles**
+
+A packet that tells the client to show particles at a position, such as the hearts a hit shows. A server that leaves it out shows none.
+
+## `level_particles.particle.type`
+
+**Particle type**
+
+Which particle the client shows.
+
+## `level_particles.x`
+
+**Particles x**
+
+Where the particles appear along x.
+
+## `level_particles.y`
+
+**Particles y**
+
+Where the particles appear along y.
+
+## `level_particles.z`
+
+**Particles z**
+
+Where the particles appear along z.
+
+## `level_particles.count`
+
+**Particle count**
+
+How many particles the client shows.

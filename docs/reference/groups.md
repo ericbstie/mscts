@@ -270,6 +270,7 @@ until the husks it killed are gone, so the next play starts without them.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `combat/melee-mob` | tick-exact | none | The fighter hits a husk with a bare hand, a wooden sword, a diamond sword and a diamond axe, each at full charge. | none |
+| `combat/critical` | tick-exact | none | The fighter hits a husk with a diamond sword twice. The first hit comes while the fighter falls: it hops a block into the air and comes down half a block before the hit, which makes it critical. The second comes while the fighter sprints, which is not critical. | none |
 
 ## Planned
 

@@ -25,17 +25,25 @@ from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
+from tests.net.test_bot_move import LOGIN
+
+
+def _login(peer: Peer) -> bytes:
+    """The `login` that names the player's entity id, which a sprint command carries."""
+    return peer.frame("minecraft:login", **LOGIN)
+
 
 CONTROL = "control"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 COMMANDS = tree("gamerule", "tp", "tick", "summon", "item", "data", "kill", "execute", "tellraw")
 HUSK = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:husk")
+MOVES = ("minecraft:move_player_pos", "minecraft:move_player_pos_rot")
+START_SPRINTING, STOP_SPRINTING = 1, 2
 STEP = "tick step 1"
 NONE_LEFT = "commands.execute.conditional.fail"
 
-GROUP_IDS = ("combat/melee-mob",)
-BOTS = {"combat/melee-mob": ("fighter",)}
+GROUP_IDS = ("combat/melee-mob", "combat/critical")
 
 
 @dataclass
@@ -57,7 +65,8 @@ class CombatServer:
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
         with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+            script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
+            await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
         self._peers.append(peer)
@@ -131,6 +140,8 @@ def sent(transcript: Transcript) -> list[Item]:
             items.append(Item(event.t_ns, event.bot, str(fields["command"]), fields))
         elif packet.name in ("minecraft:attack", "minecraft:punch", "minecraft:player_command"):
             items.append(Item(event.t_ns, event.bot, packet.name, fields))
+        elif packet.name in MOVES:
+            items.append(Item(event.t_ns, event.bot, "move", fields))
     return items
 
 
@@ -180,6 +191,13 @@ def read(transcript: Transcript) -> Play:
     after = tuple(i for i in items if i.t_ns > previous)
     first = tuple(i for i in items if not opens or i.t_ns < opens[0][0])
     return Play(tuple(windows), first, after, transcript)
+
+
+def on_ground(move: Item) -> bool:
+    """Whether a move says the player is on the ground (bit 0 of its flags)."""
+    flags = move.fields["flags"]
+    assert isinstance(flags, int)
+    return bool(flags & 1)
 
 
 def commands(items: tuple[Item, ...], bot: str = CONTROL) -> list[str]:
@@ -278,58 +296,99 @@ async def test_mob_drops_are_turned_on_again_when_the_kill_never_answers() -> No
     assert control[control.index(kill) + 1] == "gamerule mob_drops true"
 
 
-# combat/melee-mob
+# Every Group: one husk, one lane and one window for each case
 
 
-WEAPONS = (None, "minecraft:wooden_sword", "minecraft:diamond_sword", "minecraft:diamond_axe")
-LANES = (2.5, 6.5, 10.5, 14.5)
+SWORD = "minecraft:diamond_sword"
+WEAPONS = {
+    "combat/melee-mob": (None, "minecraft:wooden_sword", SWORD, "minecraft:diamond_axe"),
+    "combat/critical": (SWORD, SWORD),
+}
+SIZES = {group_id: len(weapons) for group_id, weapons in WEAPONS.items()}
 
 
 @pytest.mark.asyncio
-async def test_melee_mob_hits_one_husk_in_each_of_four_windows() -> None:
-    result = await play("combat/melee-mob")
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_each_case_hits_the_husk_summoned_for_it_once(group_id: str) -> None:
+    result = await play(group_id)
 
     attacks = [
         [i for i in window.inside if i.what == "minecraft:attack"] for window in result.windows
     ]
-    assert [len(a) for a in attacks] == [1, 1, 1, 1]
+    assert [len(a) for a in attacks] == [1] * SIZES[group_id]
     # The husks are told about in order, with ids from 101; each window hits its own.
-    assert [a[0].fields["entity_id"] for a in attacks] == [101, 102, 103, 104]
+    assert [a[0].fields["entity_id"] for a in attacks] == [101 + n for n in range(SIZES[group_id])]
 
 
 @pytest.mark.asyncio
-async def test_melee_mob_sets_up_each_case_with_the_fighter_the_weapon_and_a_husk() -> None:
-    result = await play("combat/melee-mob")
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_each_case_sets_up_the_fighter_the_weapon_and_a_husk(group_id: str) -> None:
+    result = await play(group_id)
 
-    for window, weapon, lane in zip(result.windows, WEAPONS, LANES, strict=True):
+    for lane, (window, weapon) in enumerate(zip(result.windows, WEAPONS[group_id], strict=True)):
+        z = 2.5 + 4 * lane
         held = weapon or "minecraft:air"
         setup = [c for c in commands(window.before) if not c.startswith("tick")]
         assert setup[-3:] == [
-            f"tp fighter 4.5 -60 {lane} -90.0 0",
+            f"tp fighter 4.5 -60 {z} -90.0 0",
             f"item replace entity fighter hotbar.0 with {held}",
             (
-                f"summon minecraft:husk 6.0 -60 {lane} "
+                f"summon minecraft:husk 6.0 -60 {z} "
                 '{NoAI:1b,OnGround:1b,Health:20f,Tags:["mscts_combat"]}'
             ),
         ]
 
 
 @pytest.mark.asyncio
-async def test_melee_mob_waits_ten_steps_for_the_charge_before_each_hit_and_two_after() -> None:
-    result = await play("combat/melee-mob")
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_each_case_waits_ten_steps_for_the_charge_and_steps_two_after_the_hit(
+    group_id: str,
+) -> None:
+    result = await play(group_id)
 
     for window in result.windows:
         assert commands(window.before).count(STEP) == 10
         assert commands(window.inside).count(STEP) == 2
+        names = [i.what for i in window.inside if i.what in ("minecraft:attack", STEP)]
+        assert names == ["minecraft:attack", STEP, STEP]
+
+
+# combat/critical
 
 
 @pytest.mark.asyncio
-async def test_melee_mob_hits_before_it_steps() -> None:
-    result = await play("combat/melee-mob")
+async def test_critical_hops_before_the_first_window_and_comes_down_half_in_it() -> None:
+    result = await play("combat/critical")
 
-    for window in result.windows:
-        names = [i.what for i in window.inside if i.what in ("minecraft:attack", STEP)]
-        assert names == ["minecraft:attack", STEP, STEP]
+    fall = result.windows[0]
+    hops = [i for i in fall.before if i.what == "move"]
+    assert [(h.fields["y"], on_ground(h)) for h in hops] == [(-59.0, False)]
+    inside = [i.what for i in fall.inside if i.what in ("move", "minecraft:attack")]
+    assert inside == ["move", "minecraft:attack"]
+    down = next(i for i in fall.inside if i.what == "move")
+    assert (down.fields["y"], on_ground(down)) == (-59.5, False)
+
+
+@pytest.mark.asyncio
+async def test_critical_lands_after_the_falling_hit_and_the_sprinting_hit_does_not_fall() -> None:
+    result = await play("combat/critical")
+
+    landing = [i for i in result.windows[1].before if i.what == "move"]
+    assert [(m.fields["y"], on_ground(m)) for m in landing][-1:] == [(-60.0, True)]
+    assert not [i for i in result.windows[1].inside if i.what == "move"]
+
+
+@pytest.mark.asyncio
+async def test_critical_sprints_before_the_second_window_and_stops_after_it() -> None:
+    result = await play("combat/critical")
+
+    def actions(items: tuple[Item, ...]) -> list[object]:
+        return [i.fields["action"] for i in items if i.what == "minecraft:player_command"]
+
+    assert actions(result.windows[0].before) == []
+    assert actions(result.windows[1].before) == [START_SPRINTING]
+    assert actions(result.windows[1].inside) == []
+    assert actions(result.after) == [STOP_SPRINTING]
 
 
 @pytest.mark.asyncio

@@ -18,9 +18,12 @@ always at full charge, never at part of it: the Groups wait out the charge with 
 
 import contextlib
 import dataclasses
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 
+from mscts.bot import Bot
 from mscts.compare import Mask
+from mscts.entities import Entity
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import pin_joins
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
@@ -142,17 +145,107 @@ _WEAPONS: tuple[_Weapon, ...] = (
 """A bare hand, then a weapon of each kind: damage 1, 4, 7 and 9."""
 
 
-@group("combat/melee-mob", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
-async def melee_mob(context: GroupContext) -> None:
-    """The fighter hits a husk with a hand, a wooden sword, a diamond sword and an axe."""
+type _Step = Callable[[Bot], Awaitable[None]]
+"""What the fighter does on its own: no entity needed."""
+
+type _Act = Callable[[Bot, Entity], Awaitable[None]]
+"""What the fighter does inside a window, to the husk in front of it."""
+
+
+async def _hit(bot: Bot, target: Entity) -> None:
+    await bot.attack(target)
+
+
+async def _nothing(_: Bot) -> None:
+    pass
+
+
+@dataclass(frozen=True, slots=True)
+class _Case:
+    """One window: the weapon, what the fighter does before it, in it, and after it.
+
+    `before` runs after the fighter has waited out its charge, `after` once the window has
+    closed.
+    """
+
+    weapon: _Weapon
+    act: _Act = _hit
+    before: _Step = _nothing
+    after: _Step = _nothing
+
+
+async def _fight(context: GroupContext, cases: tuple[_Case, ...]) -> None:
+    """Play each case in a lane of its own, in a window narrowed to `PACKETS`.
+
+    The fighter joins, then for each case it is put in its lane with a husk in front, waits for
+    a full charge, and hits inside the window, which the world then steps two ticks.
+    """
     async with _arena(context):
         fighter = await context.bot(FIGHTER)
         await fighter.join()
-        for lane, weapon in enumerate(_WEAPONS):
+        for lane, case in enumerate(cases):
             lane_z = 2.5 + 4 * lane
-            await _stand(context, lane_z, weapon)
+            await _stand(context, lane_z, case.weapon)
             await context.step(_CHARGE_STEPS)
+            await case.before(fighter)
             async with context.observe(*PACKETS):
                 target = fighter.entities.find("husk", near=(_FIGHTER_X + _REACH, -60.0, lane_z))
-                await fighter.attack(target)
+                await case.act(fighter, target)
                 await context.step(2)
+            await case.after(fighter)
+
+
+@group("combat/melee-mob", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def melee_mob(context: GroupContext) -> None:
+    """The fighter hits a husk with a hand, a wooden sword, a diamond sword and an axe."""
+    await _fight(context, tuple(_Case(weapon) for weapon in _WEAPONS))
+
+
+# `combat/critical`: a hit while falling, and one while sprinting.
+
+_SWORD = "minecraft:diamond_sword"
+_GROUND = -60.0
+_HOP = 1.0
+"""How high the fighter hops before a falling hit: it comes down half of that."""
+
+
+async def _hop(bot: Bot) -> None:
+    """Go up a block in the air, as a jump does, without coming down yet."""
+    x, z = bot.position.x, bot.position.z
+    await bot.move(x, _GROUND + _HOP, z, on_ground=False)
+
+
+async def _fall_and_hit(bot: Bot, target: Entity) -> None:
+    """Come down half a block in the air, then hit.
+
+    Vanilla counts a hit as critical when the player has fallen (`fallDistance`, which a move
+    down in the air adds to) and is not on the ground, climbing, in water or sprinting.
+    """
+    x, z = bot.position.x, bot.position.z
+    await bot.move(x, _GROUND + _HOP / 2, z, on_ground=False)
+    await bot.attack(target)
+
+
+async def _land(bot: Bot) -> None:
+    await bot.move(bot.position.x, _GROUND, bot.position.z)
+
+
+async def _start_sprinting(bot: Bot) -> None:
+    await bot.sprint(True)  # noqa: FBT003 - the Bot's own spelling
+
+
+async def _stop_sprinting(bot: Bot) -> None:
+    await bot.sprint(False)  # noqa: FBT003 - the Bot's own spelling
+
+
+_CRITICAL_CASES = (
+    _Case(_SWORD, act=_fall_and_hit, before=_hop, after=_land),
+    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting),
+)
+"""A hit while falling, which is critical, and one while sprinting, which is not."""
+
+
+@group("combat/critical", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def critical(context: GroupContext) -> None:
+    """The fighter hits a husk with a sword while falling, then while sprinting."""
+    await _fight(context, _CRITICAL_CASES)

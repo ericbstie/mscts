@@ -315,6 +315,16 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "sound.y": "Sound y",
         "sound.z": "Sound z",
         "sound.volume": "Sound volume",
+        # critical (#53)
+        "animate": "Entity animation",
+        "animate.entity_id": "Entity playing an animation",
+        "animate.action": "Animation type",
+        "level_particles": "Particles",
+        "level_particles.particle.type": "Particle type",
+        "level_particles.x": "Particles x",
+        "level_particles.y": "Particles y",
+        "level_particles.z": "Particles z",
+        "level_particles.count": "Particle count",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
