@@ -106,23 +106,35 @@ specialist owns `compare.py`, `measure.py`, `case_titles.py`, `codec/*` and
 the Verdict rules in `run.py`. Another lane that needs a change there asks
 the lead, who routes it.
 
-**Scrutiny.** Every open issue also carries one `scrutiny::*` label,
-which the lead sets when triaging it and checks again before the brief:
-the highest level, in `docs/RISK.md`, of every area the issue will touch,
-raised one step for new concurrency, a new kind of Verdict, or code later
-Groups build on.
+**Scrutiny.** Every open issue also carries one `scrutiny::*` label.
+Triage runs on `needs-triage` issues that have no triage comment yet, and
+its comment suggests a level. A finished triage does not wake or notify the
+lead. The lead reads the comment when it takes the issue and sets the
+label then, confirming or overriding the suggestion. The level follows
+what the change touches, not the area its files live in, by this nudge:
+
+- A change that touches the comparison core or the timing core
+  (`docs/RISK.md`, Areas) gets an independent second review: it is
+  `scrutiny::high`.
+- A change that touches timing, meaning what happens on which tick and in
+  what order, also gets the stress runs of the Self-check.
+- Any other change that can alter a Verdict or what a Bot sees is
+  `scrutiny::medium`; the rest is `scrutiny::low`.
+- A change touches code when it changes what that code does. A rename, a
+  comment or a type annotation does not.
 
 | Label | Before the PR merges |
 | --- | --- |
 | `scrutiny::low` | The worker's tests, `mise run check`, the changed tier once. The lead reads the diff. |
 | `scrutiny::medium` | Low, plus a mutation sweep of the changed branches, the Self-check 20 of 20, and the reference tier on the rebased branch. |
-| `scrutiny::high` | Medium, plus the Self-check 20 of 20 five times in a row under `repeat.py --stress`, a javap account of every ordering assumption, and two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. |
+| `scrutiny::high` | Medium, plus two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. |
 
-**Escalation.** `docs/RISK.md` logs every bug. A bug that escaped into
-`main` raises its area one level and the lead relabels that area's open
-issues; 5 clean merges in a row in an area lower it one level; an escape
-at high calls an audit. A bug caught before the merge is logged and
-raises nothing.
+A change that touches timing, at any level, also needs the Self-check 20
+of 20 five times in a row under `repeat.py --stress` and a javap account of
+every ordering assumption.
+
+`docs/RISK.md` logs every bug found, caught or escaped, with the PR that
+introduced it and what found it. A bug changes no label.
 
 ## Cycle
 
@@ -130,7 +142,7 @@ raises nothing.
    issue (no `needs-triage` or `needs-decision`, and nothing open in its **Blocked by** line) (at most 5 agents at once, the reviewer included). Issues that
    run in parallel have disjoint "Owns" lists (files, modules and doc
    sections). Skip any labelled `needs-decision`. Check each issue's
-   `scrutiny::*` label against `docs/RISK.md`.
+   `scrutiny::*` label against what its change will touch.
 2. **Brief** with the [template](#brief-template), naming
    `docs/roles/common.md`, the lane's handbook and the scrutiny level.
    Start the whole batch in one message: one Agent call per specialist or
@@ -160,8 +172,8 @@ raises nothing.
      may need a follow-up issue.
    - Triage any new issue that carries `needs-triage`. Blocked issues need
      no relabelling: they become ready when their blockers close.
-4. **Risk and handbook.** Log any bug found in `docs/RISK.md` and update
-   the levels. Commit the specialist's proposed handbook lines to its
+4. **Risk and handbook.** Log every bug found in `docs/RISK.md`
+   (Escapes). Commit the specialist's proposed handbook lines to its
    `docs/roles/<lane>.md`.
 5. **Retrospective intake.** Log every item in the
    [retrospective log](#retrospective-log) and decide one of:
@@ -685,6 +697,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-09 | The scrutiny nudge replaces the area levels. A change that touches the comparison or timing core gets a second independent review (`scrutiny::high`), a change that touches timing also gets the stress runs, and the level follows what the change touches, not the area it lives in. The triage comment suggests the level with a one-sentence reason; a finished triage does not wake the lead, which confirms or overrides the level when it takes the issue. Areas no longer go up after an escape or down after 5 clean merges, and an escape no longer calls an audit. `docs/RISK.md` keeps the bug log: an escape is a bug found after the PR that introduced it merged, logged with that PR and what it touched; a finding deferred after a review caught it is not an escape | Maintainer: "Perhaps that could be written down as a scrutiny nudge instruction and then we remove the scrutiny promotion/demotion system and let the triage suggest scrutiny. Keep tracking the bugs found though so that have the statistics for later". The scrutiny check of 2026-10-09 found no sign that raising an area's level reduced its escapes, and the counter mostly counted old bugs that reviews and audits turned up and findings deferred after a review. The second review found a blocking bug the first missed in 6 of 11 PRs, all on comparison or timing logic, and stress runs caught 2 real bugs in 9 PRs |
 | 2026-10-09 | The lead starts each batch of workers in one message in the foreground and integrates when they all return, and a lane's next issue goes to a fresh specialist. The Worker report is short: the PR link, what is blocked, interface changes, handbook lines and one-line retrospective items; the PR description holds the detail | Maintainer: cut the lead's no-op wakes. On 2026-10-07 every wake after a worker finished re-read 320k to 360k tokens of lead context, about 700k tokens a wake. "The report should be short and include exactly what is relevant for the lead - it can read the PR for details". Measured after the next lead's first handoff by reading each session's token usage and per-turn records, as in the 2026-10-04 token analysis. Baseline for the two leads after the 2026-10-07 pause: one wake per finished worker, 650k to 720k tokens a wake at full context, and 10M to 21M tokens per merged PR. The change works if that lead's first chunk shows about one wake per batch and under 10M tokens per merged PR |
 | 2026-10-07 | The helper agent is retired: the `helper-ready` and `helper-review` labels are gone, and the lead briefs a Claude worker on tooling, docs and platform issues too | Maintainer: "I no longer have a helper" (his ChatGPT subscription ended) |
 | 2026-10-07 | The tech lead hands off to a fresh lead session at the end of each chunk of work, with a short handoff note, rather than running one long session | Maintainer: "tech leads give handoffs when a chunk of work has been done. I don't want it to be time based but for it to be when it makes sense to do so." A lead turn cost about 790k tokens on 2026-10-04 because its context had grown to 150k to 350k and every wake re-read it |

@@ -28,7 +28,7 @@ fakes before reporting it.
 The Audit checklist in docs/PROCESS.md, the format of
 `docs/audits/2026-09-26-foundation.md`, a narrow mutation sweep, and a
 proposed order of work. Tag each finding with its lane or core area so the
-lead can update docs/RISK.md.
+lead can log it in docs/RISK.md.
 
 ## Log
 
