@@ -39,11 +39,10 @@ This file is owned by the tech lead. It changes only through the
 one after another, each in an isolated git worktree, following the
 `red-green` skill. For each issue it commits each increment green, pushes
 its `issue-<n>-<slug>` branch, opens one PR, and ends with the
-[report](#worker-report) to the tech lead. The lead then sends the same
-agent its lane's next issue. What it learns goes in its handbook,
-`docs/roles/<lane>.md`, so a fresh agent can take over the lane when one
-runs out of context. Everything this file says about a worker applies to a
-specialist.
+[report](#worker-report) to the tech lead. The lane's next issue goes to a
+fresh specialist in the next batch. What it learns goes in its handbook,
+`docs/roles/<lane>.md`, so the next one can take over the lane.
+Everything this file says about a worker applies to a specialist.
 
 **Reviewer (a subagent).** Never writes the code it reviews. It gives
 `scrutiny::high` PRs their independent reviews and runs audits
@@ -132,11 +131,15 @@ raises nothing.
    sections). Skip any labelled `needs-decision`. Check each issue's
    `scrutiny::*` label against `docs/RISK.md`.
 2. **Brief** with the [template](#brief-template), naming
-   `docs/roles/common.md`, the lane's handbook and the scrutiny level. Spawn
-   a new specialist in the background with worktree isolation only when its
-   lane has none; otherwise send the running one its next issue. The issue
-   is the spec; the brief adds only what the lead knows beyond it.
-3. **Integrate** each PR as it finishes:
+   `docs/roles/common.md`, the lane's handbook and the scrutiny level.
+   Start the whole batch in one message: one Agent call per specialist or
+   reviewer, each with worktree isolation and in the foreground
+   (`run_in_background: false`). They run side by side, and their reports
+   come back together when the last one finishes, so the lead is not woken
+   once per worker. A lane's next issue goes to a fresh specialist in the
+   next batch, which picks up from the lane's handbook. The issue is the
+   spec; the brief adds only what the lead knows beyond it.
+3. **Integrate** the batch's PRs once it returns:
    - Review the diff against the issue: the Docs delta applied verbatim,
      the Interface exact, the Acceptance tests present and failing
      without the code. Check that no lint, type or security rule was
@@ -221,8 +224,8 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          `sed -i` or escaped spaces in `--format`); multi-step work goes in
          a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
          (it runs the check and commits only if green); never `git stash`.""
-End with: the Worker report exactly as specified in docs/PROCESS.md, including a thorough
-          Retrospective; state your worktree path and branch name.
+End with: the Worker report exactly as specified in docs/PROCESS.md; state your
+          worktree path and branch name.
 ```
 
 ## Audit checklist
@@ -349,11 +352,15 @@ new classes of defect:
 
 ## Worker report
 
+The report goes into the lead's context, so it holds only what the lead
+needs to act on. The PR description holds the detail: the lead reads the
+PR when it needs more. Never restate the PR description in the report.
+
 End your final message with exactly these sections:
 
 ```
 ## Done
-<commit hash + subject, one per line>
+<PR link and its one-line outcome>
 
 ## Not done / blocked
 <what and why, or "nothing">
@@ -362,12 +369,9 @@ End your final message with exactly these sections:
 <changes to PLAN.md interfaces or CONTEXT.md terms, or "none">
 
 ## Retrospective
-For EVERY issue you stumbled on that was not as expected (tooling, docs,
-brief, protocol facts, tests, environment), give:
-- Expected: …
-- Actual: …
-- Cost: <time / iterations lost>
-- Proposal: <concrete change to the process, a skill, the plan or a goal, or "none">
+For each thing that was not as expected and cost you time (tooling, docs,
+brief, protocol facts, tests, environment), one line:
+<what you expected> / <what happened> / <cost> / <proposed change, or "none">
 Finish with the single change that would most have sped you up.
 ```
 
@@ -677,6 +681,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-09 | The lead starts each batch of workers in one message in the foreground and integrates when they all return, and a lane's next issue goes to a fresh specialist. The Worker report is short: the PR link, what is blocked, interface changes and one-line retrospective items; the PR description holds the detail | Maintainer: cut the lead's no-op wakes. On 2026-10-07 every wake after a worker finished re-read 320k to 360k tokens of lead context, about 700k tokens a wake. "The report should be short and include exactly what is relevant for the lead - it can read the PR for details" |
 | 2026-10-07 | The helper agent is retired: the `helper-ready` and `helper-review` labels are gone, and the lead briefs a Claude worker on tooling, docs and platform issues too | Maintainer: "I no longer have a helper" (his ChatGPT subscription ended) |
 | 2026-10-07 | The tech lead hands off to a fresh lead session at the end of each chunk of work, with a short handoff note, rather than running one long session | Maintainer: "tech leads give handoffs when a chunk of work has been done. I don't want it to be time based but for it to be when it makes sense to do so." A lead turn cost about 790k tokens on 2026-10-04 because its context had grown to 150k to 350k and every wake re-read it |
 | 2026-10-03 | `needs-triage` means not yet assessed: the lead sizes the issue, sets its lane and scrutiny, and makes sure the spec is complete, then removes the label. A blocked issue names its blockers in a **Blocked by** line at the top of its description instead of carrying a label, and is ready once they are closed | Maintainer: the label hid his own untriaged issues among blocked ones, and relabelling as blockers closed was manual work |

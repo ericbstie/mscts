@@ -18,16 +18,17 @@ first.
    Run `mise run check`.
 2. Plan a batch of 1–3 ready issues whose "Owns" lists are disjoint
    (ADR-0009). Relay `needs-decision` issues to the maintainer.
-3. Spawn each worker with the Agent tool:
-   `isolation: "worktree"`, `run_in_background: true`,
+3. Start the whole batch in one message, one Agent call per worker:
+   `isolation: "worktree"`, `run_in_background: false`,
    `model: "opus"` for heavy or critical work and `"sonnet"` for
    mechanical work (the issue's model label). Use the brief template in
    PROCESS.md, and tell the worker to read the Worker contract, work its
-   issue on `issue-<n>-<slug>`, open one PR, and end with the Worker
-   report and its Retrospective (which never goes on GitHub).
-4. While workers run, do lead work: review, write the next briefs, fix the
-   process docs. Do not duplicate a worker's task.
-5. When a worker finishes:
+   issue on `issue-<n>-<slug>`, open one PR, and end with the short Worker
+   report (its Retrospective never goes on GitHub). The workers run side by
+   side and their reports return together, so you are woken once per batch.
+4. Before starting a batch, do lead work: review, write the next briefs,
+   fix the process docs. Do not duplicate a worker's task.
+5. When the batch returns, for each worker:
    - Review its PR against the issue (Docs delta verbatim, Interface,
      Acceptance tests) and read the issue's new comments.
    - Integrate: rebase the branch with
