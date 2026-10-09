@@ -2389,3 +2389,33 @@ Which parts of the old player the new one keeps. A difference keeps or loses dat
 **Respawn game mode**
 
 The game mode the player is in after a respawn. A difference changes what the player can do.
+
+## `update_attributes.attributes[].modifiers`
+
+**Entity attribute modifiers**
+
+The modifiers on an attribute, such as the extra reach a creative player has. A server that leaves them out gives the player another reach.
+
+## `update_attributes.attributes[].modifiers[].amount`
+
+**Attribute modifier amount**
+
+How much a modifier adds to its attribute, or scales it by.
+
+## `update_attributes.attributes[].modifiers[].id`
+
+**Attribute modifier name**
+
+The name that identifies a modifier on its attribute, such as `minecraft:creative_mode_block_range`.
+
+## `update_attributes.attributes[].modifiers[].operation`
+
+**Attribute modifier operation**
+
+How a modifier's amount combines with the attribute's value: added, or multiplied.
+
+## `waypoint`
+
+**Locator bar change**
+
+A packet that adds, updates or removes a player on the client's locator bar, the strip that shows where other players are. Vanilla sends one when a player becomes a spectator. mscts does not decode it yet, so a difference in any of its bytes is reported for the packet as a whole.

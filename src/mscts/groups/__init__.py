@@ -10,6 +10,7 @@ from mscts.groups import (
     join,
     movement,
     player,
+    player_modes,
     players,
     status,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "join",
     "movement",
     "player",
+    "player_modes",
     "players",
     "status",
 ]

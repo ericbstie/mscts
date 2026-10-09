@@ -332,6 +332,12 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "respawn": "Respawn",
         "respawn.data_kept": "Respawn data kept",
         "respawn.game_mode": "Respawn game mode",
+        # game modes (#59)
+        "update_attributes.attributes[].modifiers": "Entity attribute modifiers",
+        "update_attributes.attributes[].modifiers[].amount": "Attribute modifier amount",
+        "update_attributes.attributes[].modifiers[].id": "Attribute modifier name",
+        "update_attributes.attributes[].modifiers[].operation": "Attribute modifier operation",
+        "waypoint": "Locator bar change",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

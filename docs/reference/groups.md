@@ -450,6 +450,16 @@ A death is `player_combat_kill`: the player that died, and the death message as 
 text component. The player is numbered like any entity, because the id of a Bot differs between
 servers, and between plays on one server.
 
+### Game modes, death and respawn
+
+What a game mode changes, and what happens to a player who dies. The server runs on normal difficulty. Control stands at x 96.5 and z 96.5, out of every Bot's view, and each Bot is put back at the spawn in survival when the Group ends.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/game-modes` | exact | none | Two Bots join, `changer` and `watcher`. Control switches the changer to creative, adventure, spectator and back to survival with `/gamemode`, in a window each. The windows compare the abilities, the game mode event and the tab list, and what the watcher is sent about the changer: its entity data, its attributes and its place on the locator bar. | none |
+
+In spectator mode vanilla marks the changer invisible in its entity data and sends the watcher a `waypoint`. The watcher stands 4 blocks from the changer.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
