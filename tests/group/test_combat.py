@@ -11,14 +11,15 @@ import json
 import uuid
 from contextlib import suppress
 from dataclasses import dataclass, field
+from typing import cast
 
 import pytest
 
-from mscts.bot import SYNC_REQUESTS
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
 from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
-from mscts.group import GROUPS, GroupKind
+from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import combat
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
@@ -630,3 +631,49 @@ async def test_pvp_heals_the_victim_before_the_first_hit() -> None:
 
     heal = "effect give victim minecraft:instant_health 1 10 true"
     assert heal in commands(result.first)
+
+
+def test_a_sprinting_pvp_hit_compares_the_victims_health_but_not_the_entity_data() -> None:
+    assert (*combat.PACKETS, "minecraft:set_health") == combat.PVP_PACKETS
+    assert "minecraft:set_entity_data" not in combat.PVP_SPRINT_PACKETS
+    assert "minecraft:set_health" in combat.PVP_SPRINT_PACKETS
+
+
+class _Lookup:
+    """A Bot and a context that find the husk only after `missing` steps."""
+
+    def __init__(self, missing: int) -> None:
+        self.missing = missing
+        self.steps = 0
+        self.entities = self
+
+    def find(self, kind: str, *, near: tuple[float, float, float]) -> str:
+        if self.steps < self.missing:
+            raise LookupError(kind)
+        return f"{kind}@{near}"
+
+    async def step(self) -> None:
+        self.steps += 1
+
+
+def _seen_by(lookup: _Lookup) -> tuple[GroupContext, Bot]:
+    return cast("GroupContext", lookup), cast("Bot", lookup)
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_steps_on_while_the_bot_tracks_nothing() -> None:
+    lookup = _Lookup(missing=3)
+
+    found = await combat._see(*_seen_by(lookup), "husk", (1.0, 2.0, 3.0))  # noqa: SLF001
+
+    assert found == "husk@(1.0, 2.0, 3.0)"
+    assert lookup.steps == 3
+
+
+@pytest.mark.asyncio
+async def test_a_lookup_gives_up_after_a_few_steps() -> None:
+    lookup = _Lookup(missing=99)
+
+    with pytest.raises(LookupError):
+        await combat._see(*_seen_by(lookup), "husk", (0.0, 0.0, 0.0))  # noqa: SLF001
+    assert lookup.steps == 3
