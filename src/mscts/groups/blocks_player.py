@@ -9,8 +9,8 @@ same two Instances).
 
 The world is frozen, so a dropped item stays where it appears and nothing but a Bot changes a
 block (random ticks are off). `blocks/dig-creative` and `blocks/place` step it a tick at a time
-(`GroupContext.step`). `blocks/dig-survival` cannot: the server counts dig progress in ticks
-that a frozen world still runs for its players, so that Group waits by the clock (see `_dig`).
+(`GroupContext.step`). `blocks/dig-survival` cannot: a frozen world still runs its players'
+ticks, so that Group waits by the clock (see `_dig_survival`).
 Every block these Groups change is in chunk (0, 0), the one a Bot is sent when it joins
 (docs/guide/writing-a-group.md).
 """
@@ -18,6 +18,7 @@ Every block these Groups change is in chunk (0, 0), the one a Bot is sent when i
 import asyncio
 import contextlib
 import struct
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 
 from mscts.bot import Bot, Face
@@ -110,27 +111,12 @@ def _float32(value: float) -> float:
     return struct.unpack(">f", struct.pack(">f", value))[0]
 
 
-def break_ticks(speed: float, hardness: float, divisor: int) -> int:
-    """How many client ticks after the start a vanilla client finishes a block.
-
-    The client adds `speed / hardness / divisor` (the divisor is 30 with the tool the block
-    needs, or none is needed, and 100 without) to its progress each tick, in binary32, and
-    sends the finish on the tick it reaches 1 (`MultiPlayerGameMode.continueDestroyBlock`).
-    """
-    per_tick = _float32(_float32(speed / hardness) / divisor)
-    progress, ticks = 0.0, 0
-    while progress < 1.0:
-        progress = _float32(progress + per_tick)
-        ticks += 1
-    return ticks
-
-
 @dataclass(frozen=True, slots=True)
 class _Dig:
     """One dig: the block at `_BLOCK`, the tool in hand, and how long the digger waits to finish.
 
-    `ticks` is how many server ticks pass between the start and the finish. It is None where the
-    dig has no finish: in creative the start breaks the block.
+    `ticks` is how many server ticks the digger waits between the start and the finish. It is
+    None where the dig has no finish: in creative the start breaks the block.
     """
 
     block: str
@@ -141,72 +127,158 @@ class _Dig:
 TICK_S = 0.05
 """How long a server tick lasts at 20 ticks a second, which a Group waits to let ticks pass."""
 
-SETTLE_S = 5 * TICK_S
-"""How long the survival digs wait after their setup, for the block set to reach the Bots."""
+_HAND = "minecraft:air"
+_DIAMOND_PICKAXE = "minecraft:diamond_pickaxe"
+_BREAK_FINISH = 0.7
+"""The share of a block's progress that the server asks for at the finish
+(`ServerPlayerGameMode.handleBlockBreakAction`, STOP_DESTROY_BLOCK)."""
+
+SLACK_TICKS = 20
+"""How many ticks an on-time finish waits beyond the least the server accepts, so that a server
+that runs late cannot refuse it."""
 
 
-async def _dig(context: GroupContext, digger: Bot, dig: _Dig) -> None:
-    """Play one dig: set it up, start in a window and, in survival, wait and finish in another.
+def _progress(speed: float, hardness: float, divisor: int) -> float:
+    return _float32(_float32(speed / hardness) / divisor)
 
-    Dig progress is counted in the server's ticks, and a frozen world still ticks its players
-    (`ServerPlayerGameMode.tick` counts `gameTicks` in every tick), so a stepped world cannot
-    time a dig: one step takes about 6 ticks of the clock. A survival dig waits by the clock
-    instead, outside every window, and its finish is in a window of its own.
+
+def break_ticks(speed: float, hardness: float, divisor: int) -> int:
+    """How many client ticks after the start a vanilla client finishes a block.
+
+    The client adds `speed / hardness / divisor` (the divisor is 30 with the tool the block
+    needs, or none is needed, and 100 without) to its progress each tick, in binary32, and
+    sends the finish on the tick it reaches 1 (`MultiPlayerGameMode.continueDestroyBlock`).
     """
+    per_tick = _progress(speed, hardness, divisor)
+    progress, ticks = 0.0, 0
+    while progress < 1.0:
+        progress = _float32(progress + per_tick)
+        ticks += 1
+    return ticks
+
+
+def accept_ticks(speed: float, hardness: float, divisor: int) -> int:
+    """How many ticks of dig the server needs before it accepts a finish.
+
+    It accepts when `progress * (ticks + 1)` reaches 0.7, in binary32
+    (`ServerPlayerGameMode.handleBlockBreakAction`, STOP_DESTROY_BLOCK).
+    """
+    per_tick = _progress(speed, hardness, divisor)
+    ticks = 0
+    while _float32(per_tick * (ticks + 1)) < _float32(_BREAK_FINISH):
+        ticks += 1
+    return ticks
+
+
+def finish_ticks(speed: float, hardness: float, divisor: int) -> int:
+    """How many ticks an on-time finish waits: the client's, or `SLACK_TICKS` past the server's."""
+    return max(
+        break_ticks(speed, hardness, divisor),
+        accept_ticks(speed, hardness, divisor) + SLACK_TICKS,
+    )
+
+
+async def _set_up(context: GroupContext, dig: _Dig) -> None:
     x, y, z = _BLOCK
     await context.control.run(f"setblock {x} {y} {z} {dig.block}")
     await _give(context, dig.tool)
-    if dig.ticks is None:
-        await context.step(1)  # the block set reaches the Bots before the window opens
-        async with context.observe(*PACKETS):
-            await digger.dig(x, y, z, _FACE)
-            await context.step(1)
-    else:
-        await asyncio.sleep(SETTLE_S)
-        async with context.observe(*SURVIVAL_PACKETS):
-            await digger.dig(x, y, z, _FACE)
-        await asyncio.sleep(dig.ticks * TICK_S)
-        async with context.observe(*SURVIVAL_PACKETS):
-            await digger.stop_digging(x, y, z, _FACE)
-    # The server keeps a finish it refused, and breaks the block once it should have broken
-    # (`ServerPlayerGameMode.tick`): take the block away, so the next case is its own.
+
+
+async def _take_away(context: GroupContext) -> None:
+    """Take the block and its drops away, so the next case is its own.
+
+    The server keeps a finish it refused, and breaks the block once it should have broken
+    (`ServerPlayerGameMode.tick`): air disarms that on the player's next tick, and a step
+    guarantees one.
+    """
+    x, y, z = _BLOCK
     await context.control.run(f"setblock {x} {y} {z} minecraft:air")
     await context.control.run(_KILL_ITEMS)
-    await asyncio.sleep(SETTLE_S)
+    await context.step(1)
 
 
-_HAND = "minecraft:air"
-SURVIVAL_CASES = (
-    _Dig("minecraft:obsidian", "minecraft:iron_pickaxe", 5),
-    _Dig("minecraft:stone", "minecraft:wooden_pickaxe", break_ticks(2.0, 1.5, 30)),
-    _Dig("minecraft:stone", "minecraft:iron_pickaxe", break_ticks(6.0, 1.5, 30)),
-    _Dig("minecraft:dirt", _HAND, break_ticks(1.0, 0.5, 30)),
-    _Dig("minecraft:stone", _HAND, break_ticks(1.0, 1.5, 100)),
+async def _dig_creative(context: GroupContext, digger: Bot, dig: _Dig) -> None:
+    """Play one creative dig: the start breaks the block, in one window and one tick."""
+    x, y, z = _BLOCK
+    await _set_up(context, dig)
+    await context.step(1)  # the block set reaches the Bots before the window opens
+    async with context.observe(*PACKETS):
+        await digger.dig(x, y, z, _FACE)
+        await context.step(1)
+
+
+async def _dig_survival(
+    context: GroupContext,
+    digger: Bot,
+    dig: _Dig,
+    sleep: Callable[[float], Awaitable[None]],
+) -> None:
+    """Play one survival dig: start in a window, wait on the clock, finish in another.
+
+    Dig progress is counted in the server's ticks, and a frozen world still ticks its players
+    (`ServerPlayerGameMode.tick` counts `gameTicks` in every tick), so a stepped world cannot
+    time a dig: one step takes about 6 ticks of the clock. The wait is by the clock, outside
+    every window, and the finish is in a window of its own.
+    """
+    if dig.ticks is None:
+        msg = f"a survival dig of {dig.block} has no finish"
+        raise ValueError(msg)
+    x, y, z = _BLOCK
+    await _set_up(context, dig)
+    async with context.observe(*SURVIVAL_PACKETS):
+        await digger.dig(x, y, z, _FACE)
+    await sleep(dig.ticks * TICK_S)
+    async with context.observe(*SURVIVAL_PACKETS):
+        await digger.stop_digging(x, y, z, _FACE)
+    await _take_away(context)
+
+
+async def _respawn(context: GroupContext, digger: Bot) -> None:
+    """Kill the digger and respawn it where it stood: the server counts its dig time anew."""
+    await context.control.run(f"kill {DIGGER}")
+    await digger.sync()
+    await digger.respawn()
+    await context.control.run(f"tp {DIGGER} {DIGGER_AT} 0 0")
+    await digger.sync()
+    position = digger.position
+    await digger.move(position.x, position.y, position.z, on_ground=True)
+
+
+EARLY_CASES = (
+    _Dig("minecraft:stone", _HAND, 1),
+    _Dig("minecraft:obsidian", _DIAMOND_PICKAXE, 1),
 )
-"""The finish of an obsidian block dug with an iron pickaxe 5 ticks after the start (it needs
-834: the server refuses it), then stone with a wooden and an iron pickaxe, dirt by hand and stone
-by hand, each finished when the client would. The obsidian is first: see `UPTIME_S`."""
+"""Finishes sent as the start is sent, which the server refuses: a block that takes a hand
+104 ticks, and obsidian that takes a diamond pickaxe 131 (the right tool, so that it is the
+time that is wrong)."""
 
-UPTIME_S = 8.0
-"""How long the digger has been in the world when the first dig starts.
+SURVIVAL_CASES = (
+    _Dig("minecraft:stone", "minecraft:wooden_pickaxe", finish_ticks(2.0, 1.5, 30)),
+    _Dig("minecraft:stone", "minecraft:iron_pickaxe", finish_ticks(6.0, 1.5, 30)),
+    _Dig("minecraft:dirt", _HAND, finish_ticks(1.0, 0.5, 30)),
+    _Dig("minecraft:stone", _HAND, finish_ticks(1.0, 1.5, 100)),
+    _Dig("minecraft:obsidian", _DIAMOND_PICKAXE, finish_ticks(8.0, 50.0, 30)),
+)
+"""Finishes sent when the client would send them, which the server accepts: the block breaks and
+drops. Obsidian and stone by hand take the longest, 188 and 151 ticks."""
 
-Measured on the Reference (26.3): the server accepts a finish by how long the digger has been
-connected, not by the time since its start: with the digger in for 3 s a finish 0.25 s after the
-start of a stone dug by hand is refused, and with it in for 6 s accepted, as is every later one,
-even sent at once. Stone by hand needs 105 ticks (5.2 s) of a digger's time, obsidian with an
-iron pickaxe 583 (29 s). At 8 s every case but the obsidian is accepted and the obsidian, which
-the Group digs first, refused, whatever the clock does by a few seconds."""
+UPTIME_S = 11.0
+"""How long the digger waits after its last early finish, so that every on-time finish is
+accepted: they need up to 131 ticks (6.6 s) of the digger's time, and it has about 15 s."""
 
 
 @group("blocks/dig-survival", masks=DROP_MASKS)
 async def dig_survival(context: GroupContext) -> None:
-    """The digger breaks stone, dirt and obsidian with each tool, finishing on time and early."""
+    """The digger finishes digs far too early (refused), then on time (accepted)."""
     async with contextlib.AsyncExitStack() as undo:
         digger = await _stage(context, undo)
-        await asyncio.sleep(UPTIME_S)
         undo.push_async_callback(context.control.run, _KILL_ITEMS)
+        for dig in EARLY_CASES:
+            await _respawn(context, digger)  # an early finish is early only for a new player
+            await _dig_survival(context, digger, dig, asyncio.sleep)
+        await asyncio.sleep(UPTIME_S)
         for dig in SURVIVAL_CASES:
-            await _dig(context, digger, dig)
+            await _dig_survival(context, digger, dig, asyncio.sleep)
 
 
 _CREATIVE_CASES = (
@@ -223,7 +295,7 @@ async def dig_creative(context: GroupContext) -> None:
     async with contextlib.AsyncExitStack() as undo:
         digger = await _stage(context, undo)
         for dig in _CREATIVE_CASES:
-            await _dig(context, digger, dig)
+            await _dig_creative(context, digger, dig)
 
 
 # Placing: a stone block floats at `_TARGET`, and the digger places onto one of its faces.
