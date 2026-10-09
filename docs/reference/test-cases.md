@@ -2259,7 +2259,7 @@ The direction the damage came from, in degrees. The client tilts the entity away
 
 **Sound**
 
-A packet that tells the client to play a sound at a position, such as the sound of a hit. A server that sends a sound vanilla does not, or leaves one out, plays another sound or none. The pitch and the seed are left out of the comparison, because vanilla draws them at random.
+A packet that tells the client to play a sound at a position, such as the sound of a hit. A server that sends a sound vanilla does not, or leaves one out, plays another sound or none. The seed is left out of the comparison, because vanilla draws it at random. So is the pitch where a hurt player makes the sound, as in `combat/pvp`; the Groups that hit a silent husk compare it.
 
 ## `sound.sound.reference`
 
