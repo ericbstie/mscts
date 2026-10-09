@@ -678,3 +678,13 @@ def test_a_window_that_opens_after_the_next_hit_fails_the_group_instead_of_compa
 ) -> None:
     with pytest.raises(ProtocolError, match="the next may have come between the windows"):
         asyncio.run(_play(group_id, clock=jumping_clock()))
+
+
+def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:
+    # A player is immune for 10 ticks after a hit, and a lava tick inside them hurts only by the
+    # excess, so the lava's full hit would fall between two windows.
+    result = played("player/fire")
+
+    fire_window, lava_window, *_ = result.windows
+    assert fire_window.before[-1] == "kill burner"
+    assert lava_window.before[-1] == "kill burner"

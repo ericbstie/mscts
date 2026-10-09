@@ -62,6 +62,10 @@ unless a line says *live* (two vanilla 26.3 Instances, 2026-10-09).
   the fall to dry grass; 20 for drowning and burns; 40 for freezing). The Group times the gap with
   a clock and fails when it is too long (`ProtocolError`), instead of comparing windows that
   hold another health.
+- Fire: a lava tick inside the 10 ticks of immunity after a fire hit hurts by the excess only (no
+  `damage_event`), and the full lava hit comes 10 ticks after the fire hit, whichever window is
+  open then: 1 play in 20 of the Self-check lost the window to it. The Group makes the Bot fresh
+  between fire and lava.
 - Fire: a player already burning in a fire block gets `nextInt(1, 3)` more fire ticks each tick
   (`BaseFireBlock.fireIgnite`), so the second hit there is `on_fire` instead of `in_fire` about 1
   play in 512 (2^-9). The Group takes the first hit in fire only.

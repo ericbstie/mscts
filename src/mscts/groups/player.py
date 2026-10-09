@@ -467,10 +467,12 @@ FIRE_MASKS = (
 
 @group("player/fire", spec=_normal, masks=FIRE_MASKS)
 async def fire(context: GroupContext) -> None:
-    """A Bot stands in fire, steps into lava, steps out of it burning, then into water.
+    """A Bot stands in fire; then, a fresh Bot steps into lava, out of it burning, and into water.
 
-    Each of the first three stops ends on the first hit after it. The last window ends a barrier
-    after the water puts the fire out. The Bot leaves each place within a hit's period.
+    The Bot is made fresh between fire and lava: a player is immune for 10 ticks after a hit, and
+    a lava tick inside them hurts only by the excess, so the lava's full hit would come 10 ticks
+    after the fire's, whichever window is open then. Each stop ends on the first hit after it. The
+    last window ends a barrier after the water puts the fire out.
     """
     sites = (_WATER, _LAVA, _FIRE)
     async with _environment(context, tuple(c for site in sites for c in site.restore)) as undo:
@@ -479,10 +481,11 @@ async def fire(context: GroupContext) -> None:
         for command in (c for site in sites for c in site.build):
             await context.control.run(command)
         await _fresh(context, bot)
+        async with _Hits(context, bot).window(PACKETS):
+            await _tp(context, bot, _at(_FIRE.lane, _FIRE.lands_at))
+        await _fresh(context, bot)
         hits = _Hits(context, bot)
         async with hits.window(PACKETS):
-            await _tp(context, bot, _at(_FIRE.lane, _FIRE.lands_at))
-        async with hits.window(PACKETS, period_ticks=_INVULNERABLE_TICKS):
             await _tp(context, bot, _at(_LAVA.lane, _LAVA.lands_at))
         # The first tick out of lava must come at most 9 ticks after its last hit, or the burn
         # (remaining fire 300 at the first) is a full hit and a second lava hit ends the window.

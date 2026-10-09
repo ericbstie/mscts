@@ -334,7 +334,7 @@ freezes the world and steps it after each move.
 | `player/drowning` | exact | none | A Bot is put under water in a pool 2 blocks deep and stays until it takes damage, then for three more hits. Then `drowning_damage` is turned off, and the Bot stays for one more round of bubbles. | none |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
 | `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
-| `player/fire` | exact | none | A Bot is put in fire and takes damage, steps into lava, steps out of it onto dry grass still burning, then into water. | none |
+| `player/fire` | exact | none | A Bot is put in fire and takes damage. Then a fresh Bot steps into lava, out of it onto dry grass still burning, and into water. | none |
 | `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
 
 What these Groups do not compare is how often damage repeats. A window holds what one hit sends, and a Candidate that hurts a drowning player every 40 ticks instead of 20, or a suffocating one every 20 instead of 10, sends the same packets in the same order. The same holds for `player/void` and `player/freezing`: nothing in them depends on time. `player/fall` is the only tick-exact Group, and what it compares is the damage of each landing. The rate of damage needs a window that counts ticks, which these Groups do not have yet.
@@ -367,6 +367,9 @@ window ends on `player_combat_kill`, and a second window holds the respawn.
 
 `player/fire` has a window for each place. The first ends on the first hit in fire, the next on the
 first hit in lava, and the third on the first burn after the Bot has stepped out onto dry grass.
+The Bot is made fresh before the fire and again before the lava: a player is immune for 10 ticks
+after a hit, and a lava tick inside them hurts only by the excess, so the lava's full hit would
+fall between two windows.
 The Bot must leave the lava within 9 ticks of its last hit, so that the burn starts from the same
 count of ticks on every server. The last window ends a barrier after the water puts the fire out.
 The Group masks the pitch of `sound`: the burn and extinguish sounds draw it at random. Other
