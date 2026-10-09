@@ -50,13 +50,19 @@ Log every bug found, caught or escaped, newest first:
 The lead adds one row per merged PR when it merges the train, newest first.
 **Triage suggested** is the level the issue's triage comment suggested, left
 empty when there was none. **Lead chose** is the `scrutiny::*` label the lead
-set when it took the issue. **Reviews** lists the reviews that ran (the lead's diff read, the first
-review, the second review). **Blocking findings** gives the count each review
-found, in the same order. **Stress runs** gives how many ran and what they
+set when it took the issue. **Reviews** lists the reviews that ran (the
+lead's diff read, the first review, the second review). **Blocking findings**
+gives the count each review found, in the same order. **Stress runs** gives how many ran and what they
 caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #346 |  | medium | first review | 2 | none: tick-exact Groups, the review judged the wall-time gaps wide enough |
+| #344 |  | medium | first review | 1 | 5 runs of 20 plays after the fix, 0 failing; the Self-check found a lava hit inside the fire hit's immunity, 1 in 20 |
+| #343 |  | medium | first review | 2 | 2 of 5 runs of `blocks/dig-survival` before it moved to #347, both clean |
+| #341 |  | high | first review, second review | 0, 0 | none: no timing |
+| #339 |  | none | lead's diff read | 0 | none |
+| #340 |  | low | lead's diff read | 0 | none |
 
 ## Bug log until 2026-10-09
 
