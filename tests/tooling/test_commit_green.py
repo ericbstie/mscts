@@ -763,3 +763,28 @@ def test_main_does_not_load_an_untracked_package_from_the_editable_installation(
     assert source.read_text() == 'VALUE = "green"\n'
     assert (package / "__init__.py").exists()
     assert "second" not in _git("log", "--oneline", cwd=commit_repo)
+
+
+def test_main_commits_in_a_shallow_clone(
+    commit_green: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    origin = tmp_path / "origin"
+    _init_repo_with_one_commit(origin)
+    (origin / "a.py").write_text("value = 2\n")
+    _git("commit", "-q", "-am", "second", cwd=origin)
+    shallow = tmp_path / "shallow"
+    _git("clone", "-q", "--depth", "1", f"file://{origin}", str(shallow), cwd=tmp_path)
+    (shallow / "a.py").write_text("value = 3\n")
+    _git("add", "a.py", cwd=shallow)
+    check_script = tmp_path / "fake_check.py"
+    check_script.write_text("import sys\nsys.exit(0)\n")
+    monkeypatch.chdir(shallow)
+    for key in [key for key in os.environ if key.startswith("GIT_")]:
+        monkeypatch.delenv(key)
+
+    exit_code = commit_green.main(
+        ["--check-cmd", f"{sys.executable} {check_script}", "--", "-q", "-m", "third"]
+    )
+
+    assert exit_code == 0
+    assert "third" in _git("log", "--oneline", cwd=shallow)
