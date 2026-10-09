@@ -11,7 +11,7 @@ from dataclasses import dataclass, replace
 
 import pytest
 
-from mscts.bot import Face
+from mscts.bot import Bot, Face
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
@@ -116,10 +116,22 @@ pytestmark = pytest.mark.timeout(300)
 
 @pytest.fixture(autouse=True)
 def no_waiting(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Take the clock out of the survival digs: they wait 8 s and about 10 s more, by the clock."""
-    for name in ("TICK_S", "SETTLE_S", "UPTIME_S"):
+    """Take the clock out of the survival digs: they wait by the clock."""
+    for name in ("TICK_S", "UPTIME_S"):
         monkeypatch.setattr(blocks_player, name, 0.0)
     monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
+
+
+@pytest.fixture(autouse=True)
+def respawns(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Take the respawn out of the fake server, which does not answer it; log it instead."""
+    log: list[str] = []
+
+    async def respawn(_bot: Bot) -> None:
+        log.append("respawn")
+
+    monkeypatch.setattr(Bot, "respawn", respawn)
+    return log
 
 
 _PLAYS: dict[str, Play] = {}
@@ -202,6 +214,51 @@ def test_break_ticks_counts_the_ticks_a_client_adds_its_progress(
     assert blocks_player.break_ticks(speed, hardness, divisor) == ticks
 
 
+@pytest.mark.parametrize(
+    ("speed", "hardness", "divisor", "ticks"),
+    [
+        (2.0, 1.5, 30, 15),  # a wooden pickaxe on stone: 0.0444 a tick, 0.7 at the 16th tick
+        (6.0, 1.5, 30, 5),  # an iron pickaxe on stone
+        (1.0, 0.5, 30, 10),  # a hand on dirt
+        (1.0, 1.5, 100, 104),  # a hand on stone
+        (8.0, 50.0, 30, 131),  # a diamond pickaxe on obsidian
+        (6.0, 50.0, 100, 583),  # an iron pickaxe on obsidian: the wrong tool for it
+    ],
+)
+def test_accept_ticks_counts_the_ticks_the_server_needs_before_it_accepts_a_finish(
+    speed: float, hardness: float, divisor: int, ticks: int
+) -> None:
+    assert blocks_player.accept_ticks(speed, hardness, divisor) == ticks
+
+
+@pytest.mark.parametrize(
+    ("speed", "hardness", "divisor"),
+    [(2.0, 1.5, 30), (6.0, 1.5, 30), (1.0, 0.5, 30), (1.0, 1.5, 100), (8.0, 50.0, 30)],
+)
+def test_an_on_time_finish_waits_the_clients_time_and_has_slack_past_the_servers(
+    speed: float, hardness: float, divisor: int
+) -> None:
+    waits = blocks_player.finish_ticks(speed, hardness, divisor)
+
+    assert waits >= blocks_player.break_ticks(speed, hardness, divisor)
+    assert waits >= blocks_player.accept_ticks(speed, hardness, divisor) + blocks_player.SLACK_TICKS
+
+
+def test_the_on_time_finishes_each_have_a_second_of_slack_past_the_servers() -> None:
+    needed = {
+        ("minecraft:stone", "minecraft:wooden_pickaxe"): (2.0, 1.5, 30),
+        ("minecraft:stone", "minecraft:iron_pickaxe"): (6.0, 1.5, 30),
+        ("minecraft:dirt", "minecraft:air"): (1.0, 0.5, 30),
+        ("minecraft:stone", "minecraft:air"): (1.0, 1.5, 100),
+        ("minecraft:obsidian", "minecraft:diamond_pickaxe"): (8.0, 50.0, 30),
+    }
+
+    for case in blocks_player.SURVIVAL_CASES:
+        assert case.ticks is not None
+        least = blocks_player.accept_ticks(*needed[case.block, case.tool])
+        assert case.ticks - least >= 20
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", GROUP_IDS)
 async def test_control_freezes_and_undoes_its_settings_after_the_last_window(group_id: str) -> None:
@@ -217,7 +274,7 @@ async def test_control_freezes_and_undoes_its_settings_after_the_last_window(gro
 @pytest.mark.asyncio
 async def test_the_survival_digger_starts_in_one_window_and_finishes_in_the_next() -> None:
     result = await played("blocks/dig-survival")
-    cases = blocks_player.SURVIVAL_CASES
+    cases = (*blocks_player.EARLY_CASES, *blocks_player.SURVIVAL_CASES)
 
     assert len(result.windows) == 2 * len(cases)
     for starting, finishing, case in zip(
@@ -229,41 +286,64 @@ async def test_the_survival_digger_starts_in_one_window_and_finishes_in_the_next
         assert f"item replace entity digger hotbar.0 with {case.tool}" in starting.before
         assert finishing.before == ()  # nothing between the start and the finish but the wait
     assert {window.ticks for window in result.windows} == {0}  # the clock times it, not a step
-    # Each case ends with the block and its drops taken away, so the next is its own.
+    # Each case ends with the block and its drops taken away, and a tick for the server to see it.
     for before in (*(window.before for window in result.windows[2::2]), result.after):
         assert "setblock 8 -60 6 minecraft:air" in before
         assert "kill @e[type=minecraft:item]" in before
+    for before in (window.before for window in result.windows[2::2]):
+        assert "tick step 1" in before
 
 
-def test_the_survival_digs_cover_the_tools_and_blocks_the_issue_names() -> None:
-    cases = blocks_player.SURVIVAL_CASES
-
-    assert {(case.block, case.tool) for case in cases} == {
+def test_the_early_finishes_are_with_the_right_tool_and_the_survival_ones_cover_the_issue() -> None:
+    assert {(case.block, case.tool) for case in blocks_player.EARLY_CASES} == {
+        ("minecraft:stone", "minecraft:air"),
+        ("minecraft:obsidian", "minecraft:diamond_pickaxe"),
+    }
+    assert {(case.block, case.tool) for case in blocks_player.SURVIVAL_CASES} == {
         ("minecraft:stone", "minecraft:wooden_pickaxe"),
         ("minecraft:stone", "minecraft:iron_pickaxe"),
         ("minecraft:stone", "minecraft:air"),
         ("minecraft:dirt", "minecraft:air"),
-        ("minecraft:obsidian", "minecraft:iron_pickaxe"),
+        ("minecraft:obsidian", "minecraft:diamond_pickaxe"),
     }
-    assert cases[0].block == "minecraft:obsidian"  # refused only while the digger is new
+    assert all(case.ticks == 1 for case in blocks_player.EARLY_CASES)  # as soon as it can
 
 
 @pytest.mark.asyncio
-async def test_the_survival_digger_waits_for_its_uptime_before_the_first_dig(
-    monkeypatch: pytest.MonkeyPatch,
+async def test_the_early_finishes_come_first_each_from_a_new_player_then_the_digger_waits(
+    monkeypatch: pytest.MonkeyPatch, respawns: list[str]
 ) -> None:
-    slept: list[float] = []
+    log = respawns
     real_sleep = asyncio.sleep
+    timed = {13.0}
+    for case in (*blocks_player.EARLY_CASES, *blocks_player.SURVIVAL_CASES):
+        assert case.ticks is not None
+        timed.add(case.ticks * 0.5)
 
     async def sleep(seconds: float) -> None:
-        slept.append(seconds)
+        if seconds in timed:
+            log.append(f"sleep {seconds}")
         await real_sleep(0)
 
-    monkeypatch.setattr(blocks_player, "UPTIME_S", 8.0)
+    monkeypatch.setattr(blocks_player, "TICK_S", 0.5)
+    monkeypatch.setattr(blocks_player, "UPTIME_S", 13.0)
     monkeypatch.setattr(blocks_player.asyncio, "sleep", sleep)
-    await played("blocks/dig-survival", again=True)
+    result = await played("blocks/dig-survival", again=True)
 
-    assert 8.0 in slept
+    early = [f"sleep {(case.ticks or 0) * 0.5}" for case in blocks_player.EARLY_CASES]
+    survival = [f"sleep {(case.ticks or 0) * 0.5}" for case in blocks_player.SURVIVAL_CASES]
+    assert log == [
+        "respawn",
+        early[0],
+        "respawn",
+        early[1],
+        "sleep 13.0",
+        *survival,
+    ]
+    kills = [c for c in result.commands if c == "kill digger"]
+    assert len(kills) == len(blocks_player.EARLY_CASES)
+    before_first = result.windows[0].before
+    assert "tp digger 8.5 -60 4.5 0 0" in before_first[before_first.index("kill digger") :]
 
 
 @pytest.mark.asyncio
@@ -309,7 +389,7 @@ async def test_the_survival_digger_waits_the_break_time_between_start_and_stop(
     monkeypatch.setattr(blocks_player.asyncio, "sleep", sleep)
     await played("blocks/dig-survival", again=True)
 
-    for case in blocks_player.SURVIVAL_CASES:
+    for case in (*blocks_player.EARLY_CASES, *blocks_player.SURVIVAL_CASES):
         assert case.ticks is not None
         assert case.ticks * 0.5 in slept
 
