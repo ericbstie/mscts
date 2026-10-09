@@ -6,9 +6,16 @@ health in `set_entity_data`), the knockback (`set_entity_motion`), the sounds an
 particles. The husk's position packets are left out: vanilla resends a still husk's position
 about every 3 s of wall time, which lands in a window one play in four.
 
+What the window leaves out is read back in a window of its own: the fighter is an operator and
+copies each husk's `Health`, `Motion` and `Pos` to storage and reads them back, and the
+answers are compared. The frozen husk keeps all three until the world steps, so they are exact.
+
 A husk stands in for the zombie: it has the same health, speed and knockback but does not
 burn in daylight. A zombie burns when it ticks in the sun, drawn at random each tick
-(`Monster.isSunBurnTick`), and a stepped world ticks it.
+(`Monster.isSunBurnTick`), and a stepped world ticks it. The husk is silent (`Silent:1b`): its
+hurt sound has a random pitch (`LivingEntity.getVoicePitch`), and the sounds the Player makes
+when it hits have a fixed one (`Player.playServerSideSound` passes pitch 1), so the windows
+compare every pitch they hold.
 
 The world is frozen (`tick freeze`), so the husk stands where it is put and the fight moves
 only when a Group steps it. A player is never frozen (`TickRateManager.isEntityFrozen`), so
@@ -46,16 +53,19 @@ PACKETS = (
 PITCH_MASK = Mask(
     "minecraft:sound",
     "pitch",
-    "Vanilla draws a hurt mob's voice pitch at random: LivingEntity.getVoicePitch is "
-    "(nextFloat - nextFloat) * 0.2 + 1 (26.3 javap). The sound itself is still compared.",
+    "Vanilla draws a hurt Player's voice pitch at random: LivingEntity.getVoicePitch is "
+    "(nextFloat - nextFloat) * 0.2 + 1 (26.3 javap). The sound itself is still compared. "
+    "The pitch of the attack sounds, which is fixed, is left out with it: only combat/pvp "
+    "has a Player's voice in its window, and the other Groups compare those pitches.",
 )
 
 _TAG = "mscts_combat"
 """What every husk a Group summons is tagged with, so that it removes only those."""
 
-_CHARGE_STEPS = 10
+_CHARGE_STEPS = 15
 """How many steps a Bot waits so that its attack charge is full: each is at least 2 server ticks
-(a step and the barrier after it), and the slowest weapon here, an axe, needs 20 (26.3 javap)."""
+(a step and the barrier after it), and the slowest weapon here, an axe, needs 20 (26.3 javap).
+15 steps are at least 30, so a barrier that ends a pass early still leaves a margin."""
 
 _LOOKUPS = 4
 """How often a Group looks for an entity its Bot may not track yet."""
@@ -68,6 +78,13 @@ _NONE_LEFT = b"conditional.fail"
 """What vanilla's `execute if entity` answers, as a translation key, when nothing matched."""
 
 _CONTROL_AT = "5.5 -60 44.5"
+_HUSKS_AT = "5.5 -60 24.5"
+"""Where `combat/immunity` sends a husk it is done with: 20 blocks from Control."""
+
+_FEEDBACK_TIMEOUT_S = 10.0
+"""How long the fighter waits for the answer to a `data get`."""
+
+_SYSTEM_CHAT = "minecraft:system_chat"
 
 _FIGHTER_X = 4.5
 _REACH = 1.5
@@ -80,6 +97,11 @@ type _Weapon = str | None
 def _normal(spec: ServerSpec) -> ServerSpec:
     """Play on normal difficulty: peaceful removes a hostile mob."""
     return dataclasses.replace(spec, difficulty=Difficulty.NORMAL)
+
+
+def _fighting(spec: ServerSpec) -> ServerSpec:
+    """Play on normal difficulty, with the fighter an operator: it reads the husks back."""
+    return dataclasses.replace(_normal(spec), operators=(*spec.operators, FIGHTER))
 
 
 async def _remove_husks(control: Control) -> None:
@@ -127,25 +149,39 @@ async def _arena(context: GroupContext) -> AsyncIterator[None]:
         yield
 
 
-async def _summon(context: GroupContext, x: float, z: float) -> None:
+def _husk_tag(lane: int, number: int) -> str:
+    """The tag of husk `number` in `lane`, for reading it back; the first is the one hit."""
+    return f"{_TAG}_{lane}_{number}"
+
+
+async def _summon(context: GroupContext, x: float, z: float, tag: str = _TAG) -> None:
     await context.control.run(
-        f'summon minecraft:husk {x} -60 {z} {{NoAI:1b,OnGround:1b,Health:20f,Tags:["{_TAG}"]}}'
+        f"summon minecraft:husk {x} -60 {z} "
+        f'{{NoAI:1b,Silent:1b,OnGround:1b,Health:20f,Tags:["{_TAG}","{tag}"]}}'
     )
 
 
-async def _stand(context: GroupContext, lane_z: float, case: "_Case") -> None:
+def _lane_z(lane: int) -> float:
+    """The z of lane `lane`: lanes are 4 blocks apart, so a hit never reaches the next."""
+    return 2.5 + 4 * lane
+
+
+async def _stand(context: GroupContext, lane: int, case: "_Case") -> None:
     """Put the fighter in lane `lane_z` facing +x with its weapon in hand, and a husk in front.
 
     The husk it hits is summoned first; the case's `around` husks follow, each that far from it.
+    Each is tagged for `_husk_tag`.
     """
     control = context.control
+    lane_z = _lane_z(lane)
+    await _refill(control, FIGHTER)
     await control.run(f"tp {FIGHTER} {_FIGHTER_X} -60 {lane_z} {_FACING_EAST} 0")
     held = case.weapon or "minecraft:air"
     await control.run(f"item replace entity {FIGHTER} hotbar.0 with {held}")
     x = _FIGHTER_X + _REACH
-    await _summon(context, x, lane_z)
-    for dx, dz in case.around:
-        await _summon(context, x + dx, lane_z + dz)
+    await _summon(context, x, lane_z, _husk_tag(lane, 0))
+    for number, (dx, dz) in enumerate(case.around, start=1):
+        await _summon(context, x + dx, lane_z + dz, _husk_tag(lane, number))
 
 
 _WEAPONS: tuple[_Weapon, ...] = (
@@ -178,7 +214,7 @@ class _Case:
 
     `before` runs after the fighter has waited out its charge, `after` once the window has
     closed. `around` puts a husk at each (x, z) offset from the one the fighter hits. `packets`
-    narrows the case's window; the Group's `packets` otherwise.
+    is what the case's window compares.
     """
 
     weapon: _Weapon
@@ -186,33 +222,72 @@ class _Case:
     before: _Step = _nothing
     after: _Step = _nothing
     around: tuple[tuple[float, float], ...] = ()
-    packets: tuple[str, ...] | None = None
+    packets: tuple[str, ...] = PACKETS
 
 
-async def _fight(
-    context: GroupContext, cases: tuple[_Case, ...], packets: tuple[str, ...] = PACKETS
-) -> None:
-    """Play each case in a lane of its own, in a window narrowed to `packets`.
+_STORAGE = "mscts:combat"
+"""Where `_read_back` copies a husk's values to: `data get entity` names the husk in its answer,
+with a hover event that holds its UUID, and the Instances' UUIDs differ. Storage names nothing."""
+
+_READ = ("Health", "Motion", "Pos")
+
+
+@contextlib.asynccontextmanager
+async def _scratch(control: Control) -> AsyncIterator[None]:
+    """Make the storage `_read_back` writes to, and remove it on the way out."""
+    await control.run(f"data modify storage {_STORAGE} r set value {{}}")
+    try:
+        yield
+    finally:
+        await control.run(f"data remove storage {_STORAGE} r")
+
+
+async def _ask(fighter: Bot, command: str) -> None:
+    await fighter.command(command)
+    await fighter.expect(_SYSTEM_CHAT, timeout_s=_FEEDBACK_TIMEOUT_S)
+
+
+async def _read_back(context: GroupContext, fighter: Bot, tags: list[str]) -> None:
+    """Read each husk's health, velocity and position back, in a window of its own.
+
+    The packets of a hit do not tell all of it: the health is in an entity's data, which the
+    sprint flag shares (see `SPRINT_PACKETS`), and the position is not compared at all. A
+    frozen husk keeps what the hit left until the world steps, so the answers are exact. Per
+    husk the fighter copies the three values to storage, then reads them in one answer.
+    """
+    await fighter.drain()  # what Control said meanwhile reached the operator too
+    async with context.observe(_SYSTEM_CHAT):
+        for tag in tags:
+            for path in _READ:
+                copy = f"data modify storage {_STORAGE} r.{tag}.{path} set from entity"
+                await _ask(fighter, f"{copy} @e[tag={tag},limit=1] {path}")
+            await _ask(fighter, f"data get storage {_STORAGE} r.{tag}")
+
+
+async def _fight(context: GroupContext, cases: tuple[_Case, ...]) -> None:
+    """Play each case in a lane of its own: a window for the hit, then one for the readback.
 
     The fighter joins, then for each case it is put in its lane with a husk in front, waits for
     a full charge, and hits inside the window, which the world then steps two ticks.
     """
-    async with _arena(context):
+    async with _arena(context), _scratch(context.control):
         fighter = await context.bot(FIGHTER)
         await fighter.join()
         for lane, case in enumerate(cases):
-            lane_z = 2.5 + 4 * lane
-            await _stand(context, lane_z, case)
+            await _stand(context, lane, case)
             await context.step(_CHARGE_STEPS)
             await case.before(fighter)
-            async with context.observe(*(case.packets or packets)):
-                target = fighter.entities.find("husk", near=(_FIGHTER_X + _REACH, -60.0, lane_z))
+            near = (_FIGHTER_X + _REACH, -60.0, _lane_z(lane))
+            target = await _find_when_tracked(fighter, "husk", near)
+            async with context.observe(*case.packets):
                 await case.act(fighter, target)
                 await context.step(2)
             await case.after(fighter)
+            tags = [_husk_tag(lane, number) for number in range(len(case.around) + 1)]
+            await _read_back(context, fighter, tags)
 
 
-@group("combat/melee-mob", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+@group("combat/melee-mob", spec=_fighting, kind=GroupKind.TICK_EXACT)
 async def melee_mob(context: GroupContext) -> None:
     """The fighter hits a husk with a hand, a wooden sword, a diamond sword and an axe."""
     await _fight(context, tuple(_Case(weapon) for weapon in _WEAPONS))
@@ -226,8 +301,9 @@ SPRINT_PACKETS = tuple(name for name in PACKETS if name != "minecraft:set_entity
 A sprinting hit changes the data of two entities at the end of its tick: the husk's health and
 the fighter's sprint flag, which the hit clears. Vanilla sends them in the order of a hash of
 the entity ids (`ServerEntity` per tracked entity), and the two Instances' ids differ: 2 plays
-in 6 differed only in that order. So the window leaves out both, and whether the sprint stops
-is not compared.
+in 6 differed only in that order. So the window leaves out both: the husk's health is read back
+(`_read_back`), and whether the sprint stops is not compared. A rule that ignores the order of
+the tick-end resends of several entities (#320) would let it be.
 """
 
 _SWORD = "minecraft:diamond_sword"
@@ -272,7 +348,7 @@ _CRITICAL_CASES = (
 """A hit while falling, which is critical, and one while sprinting, which is not."""
 
 
-@group("combat/critical", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+@group("combat/critical", spec=_fighting, kind=GroupKind.TICK_EXACT)
 async def critical(context: GroupContext) -> None:
     """The fighter hits a husk with a sword while falling, then while sprinting."""
     await _fight(context, _CRITICAL_CASES)
@@ -287,7 +363,7 @@ _KNOCKBACK_CASES = (
 """A hit while standing, and one while sprinting, which adds knockback and stops the sprint."""
 
 
-@group("combat/knockback", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+@group("combat/knockback", spec=_fighting, kind=GroupKind.TICK_EXACT)
 async def knockback(context: GroupContext) -> None:
     """The fighter hits a husk with a sword while standing, then while sprinting."""
     await _fight(context, _KNOCKBACK_CASES)
@@ -311,14 +387,15 @@ SWEEP_PACKETS = (
 It leaves out the husks' velocity and health. Vanilla sends them at the end of the tick, for
 every husk the sweep hurt, in the order of a hash of the entity ids (`ServerEntity` per tracked
 entity), and the two Instances' ids differ: 1 play in 6 differed only in that order. The
-damage events come in the order the sweep finds the husks, which is the same on both.
+damage events come in the order the sweep finds the husks, which is the same on both. The health
+and velocity of each husk are read back (`_read_back`).
 """
 
 
-@group("combat/sweep", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+@group("combat/sweep", spec=_fighting, kind=GroupKind.TICK_EXACT)
 async def sweep(context: GroupContext) -> None:
     """The fighter hits a husk with a sword on the ground, with three husks beside it."""
-    await _fight(context, (_Case(_SWORD, around=_BESIDE),), SWEEP_PACKETS)
+    await _fight(context, (_Case(_SWORD, around=_BESIDE, packets=SWEEP_PACKETS),))
 
 
 # `combat/immunity`: two Bots hit one husk, a few ticks apart.
@@ -381,9 +458,14 @@ async def _find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, floa
     return bot.entities.find(kind, near=near)
 
 
-async def _heal(control: Control, name: str) -> None:
-    """Fill `name`'s health: a Player keeps it from play to play, as saved player data."""
+async def _refill(control: Control, name: str) -> None:
+    """Fill `name`'s health and food: a Player keeps both from play to play (saved player data).
+
+    A hit costs the attacker exhaustion; after enough plays the food level drops, and the
+    `set_health` that says so would land in a window on one Instance only.
+    """
     await control.run(f"effect give {name} minecraft:instant_health 1 10 true")
+    await control.run(f"effect give {name} minecraft:saturation 1 10 true")
 
 
 async def _stand_pair(context: GroupContext) -> None:
@@ -394,12 +476,12 @@ async def _stand_pair(context: GroupContext) -> None:
         (TAPPER, _TAPPER_X, _TAPPER_Z, "minecraft:air"),
     )
     for name, x, dz, held in stands:
-        await _heal(control, name)
+        await _refill(control, name)
         await control.run(f"tp {name} {x} -60 {_LANE_Z + dz} {_FACING_EAST} 0")
         await control.run(f"item replace entity {name} hotbar.0 with {held}")
 
 
-@group("combat/immunity", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+@group("combat/immunity", spec=_normal, kind=GroupKind.TICK_EXACT)
 async def immunity(context: GroupContext) -> None:
     """A weaker hit, a stronger one, and a weaker one, on a husk that was just hurt."""
     async with _arena(context):
@@ -410,7 +492,7 @@ async def immunity(context: GroupContext) -> None:
         husk = (_FIGHTER_X + _REACH, -60.0, _LANE_Z)
         for number, pair in enumerate(_PAIRS):
             if number:
-                await context.control.run(f"tp @e[type=minecraft:husk,tag={_TAG}] {_CONTROL_AT}")
+                await context.control.run(f"tp @e[type=minecraft:husk,tag={_TAG}] {_HUSKS_AT}")
             await _summon(context, husk[0], husk[2])
             await context.step(_CHARGE_STEPS)
             first, second = bots[pair.first], bots[pair.second]
@@ -460,7 +542,8 @@ async def pvp(context: GroupContext) -> None:
         await attacker.join()
         victim = await context.bot(VICTIM)
         await victim.join()
+        await _refill(context.control, ATTACKER)
         await context.control.run(f"item replace entity {ATTACKER} hotbar.0 with {_SWORD}")
-        await _heal(context.control, VICTIM)
+        await _refill(context.control, VICTIM)
         for lane, sprint in enumerate((False, True)):
             await _pvp_hit(context, attacker, 2.5 + 4 * lane, sprint=sprint)

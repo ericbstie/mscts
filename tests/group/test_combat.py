@@ -44,8 +44,10 @@ HUSK = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("
 MOVES = ("minecraft:move_player_pos", "minecraft:move_player_pos_rot")
 START_SPRINTING, STOP_SPRINTING = 1, 2
 STEP = "tick step 1"
+SYSTEM_CHAT = "minecraft:system_chat"
 HUSK_COMMAND = (
-    'summon minecraft:husk 6.0 -60 2.5 {NoAI:1b,OnGround:1b,Health:20f,Tags:["mscts_combat"]}'
+    "summon minecraft:husk 6.0 -60 2.5 "
+    '{NoAI:1b,Silent:1b,OnGround:1b,Health:20f,Tags:["mscts_combat","mscts_combat"]}'
 )
 NONE_LEFT = "commands.execute.conditional.fail"
 
@@ -115,6 +117,8 @@ class CombatServer:
             await self._say(peer, self.left or NONE_LEFT)
         elif command.startswith("summon minecraft:husk "):
             await self._summon(command)
+        elif command.startswith(("data get storage", "data modify storage")):
+            await self._say(peer, f"answer to {command}")
         elif command.startswith("tp @e[type=minecraft:husk"):
             await self._send_husks_away()
         return stalled
@@ -210,6 +214,8 @@ class Play:
     first: tuple[Item, ...]
     after: tuple[Item, ...]
     transcript: Transcript
+    readbacks: tuple[Window, ...] = ()
+    """The windows in which the fighter read the husks back: not among `windows`."""
 
 
 async def play(group_id: str, server: CombatServer | None = None) -> Play:
@@ -218,6 +224,10 @@ async def play(group_id: str, server: CombatServer | None = None) -> Play:
     async with playing(server or CombatServer(), transcript) as context:
         await GROUPS[group_id].run(context)
     return read(transcript)
+
+
+def label_of(packets: tuple[str, ...]) -> str:
+    return f"{OBSERVE_OPEN} {' '.join(packets)}"
 
 
 def read(transcript: Transcript) -> Play:
@@ -238,7 +248,9 @@ def read(transcript: Transcript) -> Play:
         previous = closed
     after = tuple(i for i in items if i.t_ns > previous)
     first = tuple(i for i in items if not opens or i.t_ns < opens[0][0])
-    return Play(tuple(windows), first, after, transcript)
+    readbacks = tuple(w for w in windows if w.label == label_of((SYSTEM_CHAT,)))
+    hits = tuple(w for w in windows if w.label != label_of((SYSTEM_CHAT,)))
+    return Play(hits, first, after, transcript, readbacks)
 
 
 def on_ground(move: Item) -> bool:
@@ -259,15 +271,18 @@ _ROOTS = ("gamerule", "tp ", "tick", "summon", "item", "data", "kill", "execute"
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_each_group_is_tick_exact_on_normal_difficulty_with_the_pitch_mask(group_id: str) -> None:
+def test_each_group_is_tick_exact_on_normal_difficulty_and_masks_a_pitch_only_in_pvp(
+    group_id: str,
+) -> None:
     group = GROUPS[group_id]
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert group.kind is GroupKind.TICK_EXACT
     assert group.requires == ()
-    assert group.masks == (combat.PITCH_MASK,)
+    assert group.masks == ((combat.PITCH_MASK,) if group_id == "combat/pvp" else ())
     assert group.spec(default).difficulty is Difficulty.NORMAL
     assert group.spec(default).game_mode == default.game_mode
+    assert (combat.FIGHTER in group.spec(default).operators) is (group_id in FIGHTER_GROUPS)
 
 
 def test_the_pitch_mask_names_the_sound_and_its_reason() -> None:
@@ -340,7 +355,9 @@ async def test_the_arena_is_set_before_the_first_window_and_undone_after_the_las
         "tick freeze",
     ]
     assert f"tp {CONTROL} 5.5 -60 44.5" in before
+    scratch = ["data remove storage mscts:combat r"] if group_id in FIGHTER_GROUPS else []
     assert commands(result.after) == [
+        *scratch,
         "gamerule mob_drops false",
         "kill @e[tag=mscts_combat]",
         "gamerule mob_drops true",
@@ -403,12 +420,14 @@ async def test_each_case_sets_up_the_fighter_the_weapon_and_a_husk(group_id: str
         z = 2.5 + 4 * lane
         held = weapon or "minecraft:air"
         setup = [c for c in commands(window.before) if not c.startswith("tick")]
-        husk = 'Tags:["mscts_combat"]}'
         summons = [
-            f"summon minecraft:husk {x} -60 {z + dz} {{NoAI:1b,OnGround:1b,Health:20f,{husk}"
-            for x, dz in ((6.0, 0.0), *AROUND.get(group_id, ()))
+            f"summon minecraft:husk {x} -60 {z + dz} "
+            f'{{NoAI:1b,Silent:1b,OnGround:1b,Health:20f,Tags:["mscts_combat","mscts_combat_{lane}_{n}"]}}'
+            for n, (x, dz) in enumerate(((6.0, 0.0), *AROUND.get(group_id, ())))
         ]
-        assert setup[-(2 + len(summons)) :] == [
+        assert setup[-(4 + len(summons)) :] == [
+            "effect give fighter minecraft:instant_health 1 10 true",
+            "effect give fighter minecraft:saturation 1 10 true",
             f"tp fighter 4.5 -60 {z} -90.0 0",
             f"item replace entity fighter hotbar.0 with {held}",
             *summons,
@@ -417,13 +436,13 @@ async def test_each_case_sets_up_the_fighter_the_weapon_and_a_husk(group_id: str
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", FIGHTER_GROUPS)
-async def test_each_case_waits_ten_steps_for_the_charge_and_steps_two_after_the_hit(
+async def test_each_case_waits_fifteen_steps_for_the_charge_and_steps_two_after_the_hit(
     group_id: str,
 ) -> None:
     result = await play(group_id)
 
     for window in result.windows:
-        assert commands(window.before).count(STEP) == 10
+        assert commands(window.before).count(STEP) == 15
         assert commands(window.inside).count(STEP) == 2
         names = [i.what for i in window.inside if i.what in ("minecraft:attack", STEP)]
         assert names == ["minecraft:attack", STEP, STEP]
@@ -441,7 +460,7 @@ async def test_knockback_sprints_only_in_the_second_case_and_stops_after_it() ->
 
     assert actions(result.windows[0].before) == []
     assert actions(result.windows[1].before) == [START_SPRINTING]
-    assert actions(result.after) == [STOP_SPRINTING]
+    assert actions(result.readbacks[-1].before) == [STOP_SPRINTING]
 
 
 # combat/sweep
@@ -486,7 +505,7 @@ async def test_critical_hops_before_the_first_window_and_comes_down_half_in_it()
 async def test_critical_lands_after_the_falling_hit_and_the_sprinting_hit_does_not_fall() -> None:
     result = await play("combat/critical")
 
-    landing = [i for i in result.windows[1].before if i.what == "move"]
+    landing = [i for i in result.readbacks[0].before if i.what == "move"]
     assert [(m.fields["y"], on_ground(m)) for m in landing][-1:] == [(-60.0, True)]
     assert not [i for i in result.windows[1].inside if i.what == "move"]
 
@@ -501,7 +520,7 @@ async def test_critical_sprints_before_the_second_window_and_stops_after_it() ->
     assert actions(result.windows[0].before) == []
     assert actions(result.windows[1].before) == [START_SPRINTING]
     assert actions(result.windows[1].inside) == []
-    assert actions(result.after) == [STOP_SPRINTING]
+    assert actions(result.readbacks[-1].before) == [STOP_SPRINTING]
 
 
 @pytest.mark.asyncio
@@ -560,11 +579,13 @@ async def test_immunity_stands_the_bots_either_side_of_the_lane_with_a_sword_and
     result = await play("combat/immunity")
 
     setup = [c for c in commands(result.windows[0].before) if not c.startswith("tick")]
-    assert setup[-7:] == [
+    assert setup[-9:] == [
         "effect give striker minecraft:instant_health 1 10 true",
+        "effect give striker minecraft:saturation 1 10 true",
         "tp striker 4.5 -60 2.0 -90.0 0",
         "item replace entity striker hotbar.0 with minecraft:diamond_sword",
         "effect give tapper minecraft:instant_health 1 10 true",
+        "effect give tapper minecraft:saturation 1 10 true",
         "tp tapper 3.5 -60 3.0 -90.0 0",
         "item replace entity tapper hotbar.0 with minecraft:air",
         HUSK_COMMAND,
@@ -578,11 +599,11 @@ async def test_immunity_sends_the_last_husk_away_and_summons_a_new_one_for_each_
     for window in result.windows[1:]:
         setup = [c for c in commands(window.before) if not c.startswith("tick")]
         assert setup == [
-            "tp @e[type=minecraft:husk,tag=mscts_combat] 5.5 -60 44.5",
+            "tp @e[type=minecraft:husk,tag=mscts_combat] 5.5 -60 24.5",
             HUSK_COMMAND,
         ]
     for window in result.windows:
-        assert commands(window.before).count(STEP) == 10
+        assert commands(window.before).count(STEP) == 15
 
 
 # combat/pvp
@@ -596,7 +617,7 @@ async def test_pvp_hits_the_other_bot_once_in_each_window() -> None:
         attacks = [i for i in window.inside if i.what == "minecraft:attack"]
         assert [(a.bot, a.fields["entity_id"]) for a in attacks] == [("attacker", VICTIM_ID)]
         assert commands(window.inside).count(STEP) == 2
-        assert commands(window.before).count(STEP) == 10
+        assert commands(window.before).count(STEP) == 15
 
 
 @pytest.mark.asyncio
@@ -689,3 +710,47 @@ async def test_the_steps_before_each_window_do_not_depend_on_what_the_bots_track
 
     for window in result.windows:
         assert commands(window.before).count(STEP) == combat._CHARGE_STEPS  # noqa: SLF001
+
+
+# The readback
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", FIGHTER_GROUPS)
+async def test_each_hit_is_followed_by_a_readback_of_the_health_velocity_and_place_of_each_husk(
+    group_id: str,
+) -> None:
+    result = await play(group_id)
+
+    assert len(result.readbacks) == len(result.windows)
+    for lane, window in enumerate(result.readbacks):
+        husks = 1 + len(AROUND.get(group_id, ()))
+        assert window.label == label((SYSTEM_CHAT,))
+        tags = [f"mscts_combat_{lane}_{n}" for n in range(husks)]
+        copy = "data modify storage mscts:combat r.{tag}.{path} set from entity"
+        assert commands(window.inside, "fighter") == [
+            command
+            for tag in tags
+            for command in (
+                *(
+                    f"{copy.format(tag=tag, path=path)} @e[tag={tag},limit=1] {path}"
+                    for path in ("Health", "Motion", "Pos")
+                ),
+                f"data get storage mscts:combat r.{tag}",
+            )
+        ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", FIGHTER_GROUPS)
+async def test_the_readback_comes_after_the_hit_window_and_before_the_next_lane(
+    group_id: str,
+) -> None:
+    result = await play(group_id)
+
+    for back in result.readbacks:
+        assert not [i for i in back.inside if i.what in ("minecraft:attack", STEP)]
+
+
+def test_the_fighter_reads_back_and_no_group_but_pvp_masks_a_pitch() -> None:
+    assert [g for g in GROUP_IDS if GROUPS[g].masks] == ["combat/pvp"]
