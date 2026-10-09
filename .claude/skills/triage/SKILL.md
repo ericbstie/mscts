@@ -56,13 +56,10 @@ guessing, and read the part of each file you list.
 
 - **Files**: every file the change will modify, `src/`, `tests/` and
   `docs/` alike, each with the function or section involved.
-- **Risk areas**: each area in `docs/RISK.md` that owns one of those
-  files, with its level today.
-- **Scrutiny raised**: "yes" with the reason if the change adds new
+- **Suggested scrutiny**: the highest level in `docs/RISK.md` among the
+  areas that own those files, one step higher if the change adds new
   concurrency, a new kind of Verdict, or code that later Groups build
-  on; otherwise "no".
-- **Suggested scrutiny**: the highest level among the risk areas, one
-  step higher if scrutiny is raised. `high` stays `high`.
+  on. `high` stays `high`.
 - **Lane**: the `lane:*` whose hard part this is, by the table in
   `docs/PROCESS.md`, or "lead" for platform, tooling and docs. Say
   whether it matches the issue's label.
@@ -116,7 +113,7 @@ Work on `triage-<n>-spike` (create it as in step 3 if there is no
 reproduction). Make the change the issue asks for in the simplest way
 you can find. Skip docs, polish and edge cases the issue does not name.
 Code that does not exist yet is not a blocker: write the least of it
-that the spike needs, and record its absence as a hidden unknown. Where
+that the spike needs, and say in the Spike section that it was missing. Where
 the issue allows more than one reading, take the narrowest one that
 lets its own test pass, carry on, and put the choice under **Questions
 for the lead**.
@@ -131,8 +128,8 @@ Stop at the first of these and record which one stopped you:
   - A choice between behaviours where no reading of the issue lets its
     own test pass.
   - A protocol or server fact that is not in `docs/research/`, the codec
-    schemas, the code or the issue itself. Name the fact. A fact you take
-    from the issue goes under **Hidden unknowns** as unverified.
+    schemas, the code or the issue itself. Name the fact. The Spike
+    section names any fact you took from the issue as unverified.
   - A change to a public interface, a CONTEXT term or an ADR.
   - A change in a core area that another lane owns (`docs/PROCESS.md`,
     Core areas have one owner).
@@ -144,8 +141,7 @@ Stop at the first of these and record which one stopped you:
 Then:
 
 1. If the spike stopped at **Done**, run the unit tier once with
-   `mise run test` and note every test that now fails. Each one is a
-   hidden unknown.
+   `mise run test` and note every test that now fails.
 2. Whatever stopped the spike, save `git diff --stat origin/main` for
    the comment.
 3. Discard the spike and the reproduction with it:
@@ -153,7 +149,7 @@ Then:
    `git clean -fd`, then `git branch -D triage-<n>-spike`.
    `git status` must show a clean tree.
 
-Every surprise the spike met goes under **Hidden unknowns**: a caller you
+The Spike section names every surprise the spike met: a caller you
 did not expect, a test that pinned the old behaviour, a second place
 with the same bug, a fact the issue got wrong, a file outside the ones
 you listed in step 2. If the spike changed files that step 2 did not
@@ -170,7 +166,7 @@ and nothing else.
 
 Use this layout exactly. Keep every heading and every table row, in
 this order. A row or section with nothing to report says "None." Keep
-each table cell short; detail goes under **Hidden unknowns**.
+each table cell short.
 
 ````markdown
 ## Preliminary triage
@@ -183,8 +179,6 @@ should know about.>
 | Indicator | Finding |
 | --- | --- |
 | Files | `src/mscts/<file>.py` (`<function>`); `tests/<file>.py`; `docs/<page>.md` § <section> |
-| Risk areas | <area> (<level>) |
-| Scrutiny raised | no, or yes: <reason> |
 | Suggested scrutiny | `scrutiny::<level>` |
 | Lane | `lane:<name>`, <matches or differs from> the label |
 | Docs pages | <pages, or None.> |
@@ -209,7 +203,7 @@ should know about.>
 **Stopped:** one of `done`; `done, partial: <what is left>`;
 `blocker: <the blocker in one sentence>`; `budget`.
 
-<One or two sentences on what the spike changed.>
+<What the spike changed, and each surprise it met with its evidence.>
 
 ```
 <git diff --stat origin/main>
@@ -217,10 +211,6 @@ should know about.>
 
 <The unit tier result after a done spike: "unit tier green", or the
 failing tests.>
-
-### Hidden unknowns
-
-1. <What the issue does not say, with its evidence.>
 
 ### Questions for the lead
 
