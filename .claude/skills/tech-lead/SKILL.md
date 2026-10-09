@@ -45,7 +45,9 @@ first.
 6. Keep `docs/PROGRESS.md` current (Now, Log) and push after each
    integration.
 7. When a chunk of work is done (a train landed, a batch of issues
-   closed), write the handoff note and stop (docs/PROCESS.md, Roles).
+   closed), write the handoff note and stop (docs/PROCESS.md, Roles). End
+   the note with your session's total tokens (`get_session` on yourself),
+   the number of batches and of wakes, and the PRs merged.
 
 ## Integration safety (learned the hard way)
 
