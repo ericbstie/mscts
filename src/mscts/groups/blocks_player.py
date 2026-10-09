@@ -192,14 +192,16 @@ def _at(cell: _Cell) -> str:
 
 
 async def _place(context: GroupContext, digger: Bot, place: _Place) -> None:
-    """Play one placement: set the cell up, turn the digger, then place and step a tick."""
+    """Play one placement: set the cell up, turn the digger, then place and step a tick.
+
+    The window's opening barrier brings the blocks set to the Bots before it opens.
+    """
     control = context.control
     await _clear(context)
     await control.run(f"setblock {_at(_TARGET)} minecraft:stone")
     for command in place.setup:
         await control.run(command)
     await _give(context, f"{place.item} {place.count}")
-    await context.step(1)  # the blocks set reach the Bots before the window opens
     await digger.look(place.yaw, 0.0)
     x, y, z = place.on
     async with context.observe(*PACKETS):
@@ -226,6 +228,10 @@ PLACE_CASES = (
         setup=(f"setblock {_ABOVE} minecraft:oak_slab[type=bottom]",),
         on=_ABOVE_CELL,
     ),
+)
+"""Blocks whose state follows the face, the cursor or the way the digger faces."""
+
+ATTACHED_CASES = (
     _Place("minecraft:oak_door", Face.UP, (0.25, 1.0, 0.5)),
     _Place("minecraft:oak_door", Face.UP, (0.75, 1.0, 0.5), yaw=180.0),
     _Place("minecraft:torch", Face.UP),
@@ -251,12 +257,22 @@ PLACE_CASES = (
 )
 
 
-@group("blocks/place", masks=DROP_MASKS, kind=GroupKind.TICK_EXACT)
-async def place(context: GroupContext) -> None:
-    """The digger places stairs, logs, slabs, a door, torches and beds, and into other blocks."""
+async def _play_places(context: GroupContext, cases: tuple[_Place, ...]) -> None:
     async with contextlib.AsyncExitStack() as undo:
         digger = await _stage(context, undo)
         undo.push_async_callback(context.control.run, f"kill @e[tag={_TAG}]")
         undo.push_async_callback(_clear, context)
-        for case in PLACE_CASES:
+        for case in cases:
             await _place(context, digger, case)
+
+
+@group("blocks/place", masks=DROP_MASKS, kind=GroupKind.TICK_EXACT)
+async def place(context: GroupContext) -> None:
+    """The digger places stairs and logs on each face, stairs facing four ways, and slabs."""
+    await _play_places(context, PLACE_CASES)
+
+
+@group("blocks/place-attached", masks=DROP_MASKS, kind=GroupKind.TICK_EXACT)
+async def place_attached(context: GroupContext) -> None:
+    """The digger places a door, torches and beds, and onto grass, snow and an armor stand."""
+    await _play_places(context, ATTACHED_CASES)

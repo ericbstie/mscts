@@ -24,7 +24,12 @@ PLAYER_ACTION, USE_ITEM_ON = "minecraft:player_action", "minecraft:use_item_on"
 MOVE_ROT = "minecraft:move_player_rot"
 START = 0
 COMMANDS = tree("setblock", "fill", "tp", "tick", "gamerule", "kill", "item", "summon", "tellraw")
-GROUP_IDS = ("blocks/dig-creative", "blocks/place")
+PLACE_IDS = ("blocks/place", "blocks/place-attached")
+GROUP_IDS = ("blocks/dig-creative", *PLACE_IDS)
+PLACE_CASES = {
+    "blocks/place": blocks_player.PLACE_CASES,
+    "blocks/place-attached": blocks_player.ATTACHED_CASES,
+}
 UNDO = ("gamerule random_tick_speed 3",)
 """What Control pushes first among its undos, so it runs last of the ones these tests read."""
 
@@ -109,7 +114,7 @@ def read(transcript: Transcript) -> Play:
 
 
 pytestmark = pytest.mark.timeout(300)
-"""A play of `blocks/place` takes about 70 s against the fake, more under load."""
+"""A play of a place Group takes about 40 s against the fake, more under load."""
 
 
 @pytest.fixture(autouse=True)
@@ -118,7 +123,7 @@ def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 _PLAYS: dict[str, Play] = {}
-"""What each Group sent, kept: a play of `blocks/place` takes a minute against the fake."""
+"""What each Group sent, kept: a play of a place Group takes a minute against the fake."""
 
 
 async def played(group_id: str) -> Play:
@@ -153,7 +158,7 @@ def test_only_dig_creative_asks_for_creative_mode() -> None:
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert GROUPS["blocks/dig-creative"].spec(default).game_mode is GameMode.CREATIVE
-    assert GROUPS["blocks/place"].spec(default) == default
+    assert all(GROUPS[group_id].spec(default) == default for group_id in PLACE_IDS)
     assert GROUPS["blocks/dig-creative"].spec(default) == replace(
         default, game_mode=GameMode.CREATIVE
     )
@@ -195,9 +200,12 @@ async def test_the_creative_digger_only_starts_and_never_finishes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_digger_places_once_in_each_window_with_the_face_and_cursor_of_its_case() -> None:
-    result = await played("blocks/place")
-    cases = blocks_player.PLACE_CASES
+@pytest.mark.parametrize("group_id", PLACE_IDS)
+async def test_the_digger_places_once_in_each_window_with_the_face_and_cursor_of_its_case(
+    group_id: str,
+) -> None:
+    result = await played(group_id)
+    cases = PLACE_CASES[group_id]
 
     assert len(result.windows) == len(cases)
     for window, case in zip(result.windows, cases, strict=True):
@@ -208,12 +216,11 @@ async def test_the_digger_places_once_in_each_window_with_the_face_and_cursor_of
         assert fields["pos"] == dict(zip("xyz", case.on, strict=True))
         assert f"item replace entity digger hotbar.0 with {case.item} {case.count}" in window.before
         assert window.ticks == 1
-        assert "tick step 1" in window.before  # the blocks set reach the Bots first
         assert window.yaw == case.yaw
 
 
 def test_the_placements_cover_each_block_and_face_the_issue_names() -> None:
-    cases = blocks_player.PLACE_CASES
+    cases = (*blocks_player.PLACE_CASES, *blocks_player.ATTACHED_CASES)
 
     for item in ("oak_stairs", "oak_log"):
         assert {case.face for case in cases if case.item == f"minecraft:{item}"} >= set(Face)
@@ -226,8 +233,9 @@ def test_the_placements_cover_each_block_and_face_the_issue_names() -> None:
 
 
 @pytest.mark.asyncio
-async def test_every_bot_is_moved_off_the_blocks_before_the_first_window() -> None:
-    result = await played("blocks/place")
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_every_bot_is_moved_off_the_blocks_before_the_first_window(group_id: str) -> None:
+    result = await played(group_id)
 
     moved = [c for c in result.commands if c.startswith("tp ")]
     assert {c.split()[1] for c in moved} == {"digger", "watcher", "control"}
@@ -235,8 +243,11 @@ async def test_every_bot_is_moved_off_the_blocks_before_the_first_window() -> No
 
 
 @pytest.mark.asyncio
-async def test_each_placement_empties_the_cells_from_the_top_down_and_kills_the_items() -> None:
-    result = await played("blocks/place")
+@pytest.mark.parametrize("group_id", PLACE_IDS)
+async def test_each_placement_empties_the_cells_from_the_top_down_and_kills_the_items(
+    group_id: str,
+) -> None:
+    result = await played(group_id)
 
     before = result.windows[0].before
     fills = [c for c in before if c.startswith("fill ")]

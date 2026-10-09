@@ -1148,8 +1148,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.blocks_player`: `DIGGER` — the Bot that digs and places; `WATCHER` — the Bot that
   receives the cracks and particles of a dig; `DIGGER_AT`, `WATCHER_AT` and `CONTROL_AT` — where
   the three stand, clear of every block a Group sets; `PACKETS` — what a window compares;
-  `PLACE_CASES` — what the placements are;
-  `dig_creative` and `place` — the `blocks/dig-creative` and `blocks/place` scripts.
+  `PLACE_CASES` and `ATTACHED_CASES` — what the placements of the two place Groups are;
+  `dig_creative`, `place` and `place_attached` — the `blocks/dig-creative`, `blocks/place` and
+  `blocks/place-attached` scripts.
 - `groups.players`: `FIRST` — the player in the world first, who watches; `SECOND` — the
   player who joins, changes game mode and leaves next to it; `PACKETS` — what a window
   compares; `join_seen`, `leave_seen`, `mode_seen` and `server_full` — the
