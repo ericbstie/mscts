@@ -3,6 +3,7 @@
 `player/game-modes` switches a Bot through every game mode while a second Bot watches.
 `player/death` kills a Bot that holds items and experience under each setting of `keep_inventory`
 and `immediate_respawn`.
+`player/respawn` kills it and has it respawn, at the world spawn and at a spawn point.
 
 The Bots are put back at the spawn, in survival, when the Group ends, and every rule is set back,
 because every Group is played on the same two Instances. Control stands far from the Bots: it is a
@@ -240,3 +241,56 @@ async def death(context: GroupContext) -> None:
                 await context.control.run(f"kill {bot.name}")
             await _clear_drops(context, _SPAWN)
             await bot.respawn()
+
+
+RESPAWN_PACKETS = (
+    "minecraft:respawn",
+    "minecraft:set_health",
+    "minecraft:set_experience",
+    "minecraft:container_set_content",
+    "minecraft:set_player_inventory",
+    "minecraft:container_set_slot",
+    "minecraft:set_default_spawn_position",
+    "minecraft:player_position",
+    "minecraft:player_abilities",
+    "minecraft:game_event",
+    "minecraft:update_attributes",
+    "minecraft:set_entity_data",
+)
+
+_POINTER = "pointer"
+_FAR: _Place = (-95.5, 95.5)
+_POINTER_AT = "-95.5 -60 95.5"
+_SPAWNPOINT = f"spawnpoint {_POINTER} -88 -60 88"
+"""Where the second Bot stands, and where it respawns. A server keeps a player's spawn point for
+good and a command cannot clear it, so only a Bot of its own has one: `_MORTAL` respawns at the
+world spawn every play. The Bots are 6 chunks apart or more, because the view distance is 2: a
+player who respawns is sent to the others in view a tick or two later, which no window can place."""
+
+
+async def _die_and_respawn(context: GroupContext, bot: Bot, death: _Death, place: _Place) -> None:
+    """Kill the Bot at `place` holding its kit, and take its drops away; respawn it in a window."""
+    await _rules(context, death)
+    await _kit(context, bot, death)
+    await context.control.run(f"kill {bot.name}")
+    await _clear_drops(context, place)
+    async with context.observe(*RESPAWN_PACKETS):
+        await bot.respawn()
+
+
+@group("player/respawn", kind=GroupKind.TICK_EXACT, spec=_normal)
+async def respawn(context: GroupContext) -> None:
+    """A Bot is killed and respawns at the world spawn, with and without `keep_inventory`.
+
+    Then a second Bot with a spawn point is killed and respawns there.
+    """
+    both = _Death(keep_inventory=False, immediate_respawn=False, items=True, level=True)
+    async with _mortal(context) as undo:
+        mortal = await _join(context, undo, _MORTAL)
+        pointer = await _join(context, undo, _POINTER)
+        undo.push_async_callback(_clear_drops, context, _FAR)
+        await context.control.run(f"tp {_POINTER} {_POINTER_AT}")
+        await context.control.run(_SPAWNPOINT)
+        await _die_and_respawn(context, mortal, both, _SPAWN)
+        await _die_and_respawn(context, mortal, replace(both, keep_inventory=True), _SPAWN)
+        await _die_and_respawn(context, pointer, both, _FAR)

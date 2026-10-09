@@ -33,10 +33,19 @@ PLAY_TIMEOUT_S = 300.0
 
 GAME_MODES = "player/game-modes"
 DEATH = "player/death"
-GROUP_IDS = (GAME_MODES, DEATH)
-KINDS = {GAME_MODES: GroupKind.EXACT, DEATH: GroupKind.TICK_EXACT}
-BOTS = {GAME_MODES: ("changer", "watcher"), DEATH: ("mortal",)}
-MASKS = {GAME_MODES: (), DEATH: player_modes.DROP_MASKS}
+RESPAWN = "player/respawn"
+GROUP_IDS = (GAME_MODES, DEATH, RESPAWN)
+KINDS = {
+    GAME_MODES: GroupKind.EXACT,
+    DEATH: GroupKind.TICK_EXACT,
+    RESPAWN: GroupKind.TICK_EXACT,
+}
+BOTS = {
+    GAME_MODES: ("changer", "watcher"),
+    DEATH: ("mortal",),
+    RESPAWN: ("mortal", "pointer"),
+}
+MASKS = {GAME_MODES: (), DEATH: player_modes.DROP_MASKS, RESPAWN: ()}
 SPAWN = "0.5 -60 0.5"
 
 
@@ -50,6 +59,7 @@ def clear_drops(x: str, z: str) -> tuple[str, str]:
 
 
 CLEAR_SPAWN = clear_drops("0.5", "0.5")
+CLEAR_FAR = clear_drops("-95.5", "95.5")
 
 
 @dataclass
@@ -305,3 +315,77 @@ def test_death_masks_how_vanilla_moves_and_turns_what_a_dead_player_drops() -> N
         ("minecraft:add_entity", "yaw"),
     ]
     assert all(isinstance(m, Mask) and "javap" in m.reason for m in player_modes.DROP_MASKS)
+
+
+# player/respawn
+
+
+def test_respawn_compares_what_the_new_player_is_sent() -> None:
+    assert player_modes.RESPAWN_PACKETS == (
+        "minecraft:respawn",
+        "minecraft:set_health",
+        "minecraft:set_experience",
+        "minecraft:container_set_content",
+        "minecraft:set_player_inventory",
+        "minecraft:container_set_slot",
+        "minecraft:set_default_spawn_position",
+        "minecraft:player_position",
+        "minecraft:player_abilities",
+        "minecraft:game_event",
+        "minecraft:update_attributes",
+        "minecraft:set_entity_data",
+    )
+
+
+def test_respawn_asks_once_in_each_of_three_windows_that_send_no_command() -> None:
+    result = played(RESPAWN)
+
+    assert [w.label for w in result.windows] == [opened(*player_modes.RESPAWN_PACKETS)] * 3
+    assert [w.sent for w in result.windows] == [()] * 3
+    mortal, pointer = respawn_requests(RESPAWN, "mortal"), respawn_requests(RESPAWN, "pointer")
+    assert [len(mortal), len(pointer)] == [2, 1]
+    asked = sorted([*mortal, *pointer])
+    for (opened_ns, closed_ns), request in zip(window_spans(RESPAWN), asked, strict=True):
+        assert opened_ns < request < closed_ns
+
+
+def test_respawn_kills_each_bot_holding_its_kit_and_removes_the_drops_before_its_window() -> None:
+    result = played(RESPAWN)
+
+    deaths = (("mortal", CLEAR_SPAWN), ("mortal", CLEAR_SPAWN), ("pointer", CLEAR_FAR))
+    for window, (bot, clear) in zip(result.windows, deaths, strict=True):
+        assert window.before[-7:] == (
+            f"clear {bot}",
+            f"xp set {bot} 0 levels",
+            f"give {bot} minecraft:diamond 5",
+            f"xp set {bot} 1 levels",
+            f"kill {bot}",
+            *clear,
+        )
+    assert result.after[:2] == CLEAR_FAR
+    assert all(command in result.after for command in CLEAR_SPAWN)
+
+
+def test_respawn_keeps_the_inventory_of_the_second_death_only() -> None:
+    result = played(RESPAWN)
+
+    rules = [
+        next(c for c in window.before if c.startswith("gamerule keep_inventory"))
+        for window in result.windows
+    ]
+    assert rules == [
+        "gamerule keep_inventory false",
+        "gamerule keep_inventory true",
+        "gamerule keep_inventory false",
+    ]
+
+
+def test_respawn_puts_a_second_bot_far_from_the_first_and_gives_it_a_spawn_point() -> None:
+    # A server keeps a spawn point for good and no command clears it, so the Bot that respawns at
+    # the world spawn never has one. A player who respawns is sent to the others in view a tick or
+    # two later, so the Bots are out of each other's view.
+    result = played(RESPAWN)
+
+    placed = [c for c in result.first if c.startswith(("tp pointer", "spawnpoint"))]
+    assert placed == ["tp pointer -95.5 -60 95.5", "spawnpoint pointer -88 -60 88"]
+    assert not [c for c in result.after if c.startswith("spawnpoint")]

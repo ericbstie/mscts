@@ -344,6 +344,20 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "add_entity.z": "Entity z",
         "set_entity_data.entries[].value.components.added": "Item components added",
         "set_entity_data.entries[].value.components.removed": "Item components removed",
+        # respawn (#59)
+        "set_entity_data.entries[]": "Entity data entry",
+        "respawn.death_location.death_dimension_name": "Respawn death dimension",
+        "respawn.death_location.death_location.x": "Respawn death location x",
+        "respawn.death_location.death_location.y": "Respawn death location y",
+        "respawn.death_location.death_location.z": "Respawn death location z",
+        "respawn.dimension_name": "Respawn dimension",
+        "respawn.dimension_type": "Respawn dimension type",
+        "respawn.hashed_seed": "Respawn biome seed",
+        "respawn.is_debug": "Respawn debug world flag",
+        "respawn.is_flat": "Respawn flat world flag",
+        "respawn.portal_cooldown": "Portal cooldown at respawn",
+        "respawn.previous_game_mode": "Respawn previous game mode",
+        "respawn.sea_level": "Respawn sea level",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

@@ -458,6 +458,7 @@ What a game mode changes, and what happens to a player who dies. The server runs
 | --- | --- | --- | --- | --- |
 | `player/game-modes` | exact | none | Two Bots join, `changer` and `watcher`. Control switches the changer to creative, adventure, spectator and back to survival with `/gamemode`, in a window each. The windows compare the abilities, the game mode event and the tab list, and what the watcher is sent about the changer: its entity data, its attributes and its place on the locator bar. | none |
 | `player/death` | tick-exact | none | Control kills a Bot in five windows. The Bot holds five diamonds, then one level of experience, both with `keep_inventory` on, five diamonds with `immediate_respawn` on, and both with both rules on. Each window sets the two rules, kills the Bot, and compares the death, the Bot's health, experience and inventory, the item or orb it drops, and the game event vanilla sends when `immediate_respawn` is set. The Bot respawns after each window. | none |
+| `player/respawn` | tick-exact | none | Control kills a Bot that holds five diamonds and a level of experience, and the Bot respawns at the world spawn in a window. Then the same with `keep_inventory` on. Last, a second Bot, which stands 6 chunks away and has a spawn point at -88, -60, 88, is killed and respawns there. The windows compare the respawn, the Bot's health, experience and inventory, the spawn position and the place the server puts the Bot. | none |
 
 In spectator mode vanilla marks the changer invisible in its entity data and sends the watcher a `waypoint`. The watcher stands 4 blocks from the changer.
 
@@ -466,6 +467,8 @@ A death drops at most one entity: a stack of diamonds, or an experience orb of 7
 A dropped item and an orb start moving in a direction vanilla draws at random. The Group masks the speed (`velocity.x`, `velocity.y` and `velocity.z` in `add_entity`) and which way the entity faces (`yaw`). Where the entity appears, its type and its count are still compared. How the entity then moves belongs to `entities/motion`.
 
 `immediate_respawn` is set inside the window, so that the `game_event` vanilla sends when the rule is set is compared. With the rule on, vanilla still waits for the player's request to respawn, so the Bot asks after the window in every death. Dropped items and orbs within 20 blocks of the spawn are removed after each window, because the Bot respawns there and would pick them up.
+
+A server keeps a player's spawn point and no command clears it. The Bot that respawns at the world spawn never has one, and the second Bot, `pointer`, always has the same, so every play starts from the same state. The two Bots stand out of each other's view: a player who respawns is sent to the others in view a tick or two later, and a window cannot place that.
 
 ## Planned
 

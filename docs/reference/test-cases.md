@@ -2449,3 +2449,81 @@ The components an item in an entity's data has beyond its type's defaults.
 **Item components removed**
 
 The default components an item in an entity's data has lost.
+
+## `set_entity_data.entries[]`
+
+**Entity data entry**
+
+One field of an entity's data.
+
+## `respawn.death_location.death_dimension_name`
+
+**Respawn death dimension**
+
+The dimension the player last died in, as the respawn packet reports it. A recovery compass points to that place.
+
+## `respawn.death_location.death_location.x`
+
+**Respawn death location x**
+
+The x of the block where the player last died.
+
+## `respawn.death_location.death_location.y`
+
+**Respawn death location y**
+
+The y of the block where the player last died.
+
+## `respawn.death_location.death_location.z`
+
+**Respawn death location z**
+
+The z of the block where the player last died.
+
+## `respawn.dimension_name`
+
+**Respawn dimension**
+
+The name of the dimension the player respawns in. The client uses it as the identity of its world.
+
+## `respawn.dimension_type`
+
+**Respawn dimension type**
+
+The type of the dimension the player respawns in. It sets properties such as the world's height, sky and ambient light.
+
+## `respawn.hashed_seed`
+
+**Respawn biome seed**
+
+The hashed seed the client uses to choose a biome near the edges of biome cells. A difference can move the boundaries of biome colours and effects.
+
+## `respawn.is_debug`
+
+**Respawn debug world flag**
+
+Whether the world the player respawns in is a debug world.
+
+## `respawn.is_flat`
+
+**Respawn flat world flag**
+
+Whether the world the player respawns in is flat. If it is, the client draws the horizon at the bottom of the world, not at sea level.
+
+## `respawn.portal_cooldown`
+
+**Portal cooldown at respawn**
+
+How many ticks remain before the player can use a portal again.
+
+## `respawn.previous_game_mode`
+
+**Respawn previous game mode**
+
+The player's previous game mode, or none. The client remembers it when switching modes.
+
+## `respawn.sea_level`
+
+**Respawn sea level**
+
+The sea level of the world the player respawns in.
