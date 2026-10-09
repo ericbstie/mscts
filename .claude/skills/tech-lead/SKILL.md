@@ -37,7 +37,8 @@ first.
      with a merge commit (never a squash or a rebase-merge). With several
      PRs ready, use a merge train (docs/PROCESS.md, Integrate): stack
      them, run the live tiers once on the last tip, merge in order.
-     Add each merged PR's row to the review results in `docs/RISK.md`.
+     Add each merged PR's row to the review results in `docs/RISK.md`,
+     with the level triage suggested next to the label you chose.
    - Log every retrospective item with a decision (adopt, defer or
      reject). Apply the adopted changes in a `docs:` or `tooling:`
      commit.

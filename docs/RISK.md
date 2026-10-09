@@ -48,13 +48,15 @@ Log every bug found, caught or escaped, newest first:
 ## Review results
 
 The lead adds one row per merged PR when it merges the train, newest first.
-**Reviews** lists the reviews that ran (the lead's diff read, the first
+**Triage suggested** is the level the issue's triage comment suggested, left
+empty when there was none. **Lead chose** is the `scrutiny::*` label the lead
+set when it took the issue. **Reviews** lists the reviews that ran (the lead's diff read, the first
 review, the second review). **Blocking findings** gives the count each review
 found, in the same order. **Stress runs** gives how many ran and what they
 caught, or "none".
 
-| PR | Scrutiny | Reviews | Blocking findings | Stress runs |
-| --- | --- | --- | --- | --- |
+| PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
+| --- | --- | --- | --- | --- | --- |
 
 ## Bug log until 2026-10-09
 
