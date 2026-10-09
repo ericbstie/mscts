@@ -22,7 +22,7 @@ vanishes without a death animation when the Group removes it.
 """
 
 import contextlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
@@ -56,8 +56,8 @@ _DAMAGE = 4
 _DAMAGER_TAG = "mscts_damager"
 _DAMAGER = f"@e[type=minecraft:marker,tag={_DAMAGER_TAG},limit=1]"
 _DAMAGER_AT = "3.5 -60 0.5"
-"""Where the marker stands: 3 blocks from the spawn, so that the push is not toward a random side
-(a hit from the same place pushes along a vector of length 0)."""
+"""Where the marker stands: 3 blocks from the spawn, so that a hit it deals pushes the Bot along a
+fixed line."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,8 +87,10 @@ SOURCES = (
     Source("out_of_world"),
     Source("starve"),
 )
-"""The kinds of damage the Groups compare, in order: those armor reduces, those it does not
-(`bypasses_armor`: magic, wither, out_of_world, starve), and those an attacker deals."""
+"""The kinds of damage the Groups compare, in the issue's order. The damage type tags in the
+26.3 server jar put `generic`, `fall`, `magic`, `wither`, `out_of_world` and `starve` in
+`bypasses_armor`; armor reduces the other six. Only `out_of_world` is in `bypasses_resistance` and
+only `starve` in `bypasses_effects`."""
 
 
 def _normal(spec: ServerSpec) -> ServerSpec:
@@ -120,11 +122,24 @@ async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSta
         yield undo
 
 
-async def _hurt(context: GroupContext, bot: Bot, source: Source) -> None:
-    """Make the Bot fresh, then hurt it with `source` in a window of its own."""
+async def _hurt(
+    context: GroupContext, bot: Bot, source: Source, before: Sequence[str] = ()
+) -> None:
+    """Make the Bot fresh, run the `before` commands, then hurt it with `source` in a window.
+
+    A fresh Bot has lost its effects, so a Group that tests one gives it in `before`.
+    """
     await fresh(context, bot)
+    for command in before:
+        await context.control.run(command)
     async with context.observe(*PACKETS):
         await context.control.run(damage_command(bot.name, source))
+
+
+async def _sweep(context: GroupContext, bot: Bot, before: Sequence[str] = ()) -> None:
+    """Hurt the Bot with each kind of damage in turn, each in a window of its own."""
+    for source in SOURCES:
+        await _hurt(context, bot, source, before)
 
 
 @group("combat/damage-types", kind=GroupKind.TICK_EXACT, spec=_normal)
@@ -133,5 +148,73 @@ async def damage_types(context: GroupContext) -> None:
     async with _arena(context) as undo:
         bot = await join_at_spawn(context, undo, VICTIM)
         await context.freeze()
-        for source in SOURCES:
-            await _hurt(context, bot, source)
+        await _sweep(context, bot)
+
+
+# `combat/armor`: the same damage through each set of armor.
+
+
+@dataclass(frozen=True, slots=True)
+class Armor:
+    """A set of armor: the material of its four pieces, and the enchantment on each, if any.
+
+    Attributes:
+        material: The item prefix: `iron` for `iron_helmet`.
+        enchantment: The enchantment on every piece, at level IV, without `minecraft:`.
+    """
+
+    material: str
+    enchantment: str | None = None
+
+
+ARMORS = (
+    Armor("iron"),
+    Armor("diamond"),
+    Armor("netherite"),
+    Armor("diamond", "protection"),
+    Armor("diamond", "fire_protection"),
+    Armor("diamond", "blast_protection"),
+)
+"""The sets, in order: iron, diamond, netherite (which adds toughness), then diamond with
+Protection, Fire Protection and Blast Protection."""
+
+_PIECES = (("head", "helmet"), ("chest", "chestplate"), ("legs", "leggings"), ("feet", "boots"))
+"""Each piece's equipment slot and its item suffix."""
+
+_ENCHANTMENT_LEVEL = 4
+
+
+def wear_commands(victim: str, worn: Armor) -> tuple[str, ...]:
+    """The commands that put the set `worn` on `victim`, one per piece."""
+    components = ""
+    if worn.enchantment is not None:
+        components = f"[enchantments={{{worn.enchantment}:{_ENCHANTMENT_LEVEL}}}]"
+    return tuple(
+        f"item replace entity {victim} armor.{slot} with "
+        f"minecraft:{worn.material}_{piece}{components}"
+        for slot, piece in _PIECES
+    )
+
+
+async def _keep_inventory(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
+    """Keep the Bot's stacks through each death, so that the armor survives the `kill`.
+
+    The Bot's stacks are cleared when the Group ends: the server saves them across plays.
+    """
+    control = context.control
+    undo.push_async_callback(control.run, "gamerule keep_inventory false")
+    await control.run("gamerule keep_inventory true")
+    undo.push_async_callback(control.run, f"clear {VICTIM}")
+
+
+@group("combat/armor", kind=GroupKind.TICK_EXACT, spec=_normal)
+async def armor(context: GroupContext) -> None:
+    """A Bot wears each set of armor in turn and is hurt by 4 points of each kind of damage."""
+    async with _arena(context) as undo:
+        bot = await join_at_spawn(context, undo, VICTIM)
+        await _keep_inventory(context, undo)
+        await context.freeze()
+        for worn in ARMORS:
+            for command in wear_commands(bot.name, worn):
+                await context.control.run(command)
+            await _sweep(context, bot)

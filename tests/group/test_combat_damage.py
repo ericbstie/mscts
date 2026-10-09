@@ -137,7 +137,7 @@ def respawns(transcript: Transcript) -> int:
     )
 
 
-GROUP_IDS = ("combat/damage-types",)
+GROUP_IDS = ("combat/damage-types", "combat/armor")
 
 
 # Registration
@@ -247,7 +247,7 @@ def test_the_world_is_frozen_once_the_bot_has_joined(group_id: str) -> None:
     result = played(group_id)
 
     assert result.first.count("tick freeze") == 1
-    assert result.first[-2:] == ("tick freeze", "kill victim")
+    assert result.first.index("tick freeze") < result.first.index("kill victim")
 
 
 # combat/damage-types
@@ -277,3 +277,81 @@ def test_damage_types_makes_the_bot_fresh_before_every_window() -> None:
     assert [w.before for w in result.windows[1:]] == [("kill victim",)] * (len(SOURCE_TYPES) - 1)
     assert result.windows[0].before[-1] == "kill victim"
     assert respawns(transcript) == len(SOURCE_TYPES)
+
+
+# combat/armor
+
+SETS = (
+    ("iron", ""),
+    ("diamond", ""),
+    ("netherite", ""),
+    ("diamond", "[enchantments={protection:4}]"),
+    ("diamond", "[enchantments={fire_protection:4}]"),
+    ("diamond", "[enchantments={blast_protection:4}]"),
+)
+
+
+def wearing(material: str, components: str) -> tuple[str, ...]:
+    """The commands that put a set on `victim`, head to feet."""
+    return tuple(
+        f"item replace entity victim armor.{slot} with minecraft:{material}_{piece}{components}"
+        for slot, piece in (
+            ("head", "helmet"),
+            ("chest", "chestplate"),
+            ("legs", "leggings"),
+            ("feet", "boots"),
+        )
+    )
+
+
+def damages() -> list[str]:
+    """The damage commands of one pass over the kinds of damage."""
+    return [
+        f"damage victim 4 minecraft:{kind}" + (f" by {DAMAGER}" if kind in BY_MARKER else "")
+        for kind in SOURCE_TYPES
+    ]
+
+
+def test_armor_has_a_window_for_each_kind_of_damage_in_each_set() -> None:
+    result = played("combat/armor")
+
+    assert len(result.windows) == len(SETS) * len(SOURCE_TYPES)
+    assert {w.label for w in result.windows} == {
+        f"{OBSERVE_OPEN} {' '.join(combat_damage.PACKETS)}"
+    }
+    assert [w.sent for w in result.windows] == [((CONTROL, c),) for c in damages() * len(SETS)]
+
+
+def test_armor_puts_on_each_set_before_its_first_window_and_only_then() -> None:
+    result = played("combat/armor")
+
+    per_set = len(SOURCE_TYPES)
+    for index, (material, components) in enumerate(SETS):
+        first, *rest = result.windows[index * per_set : (index + 1) * per_set]
+        assert first.before[-5:] == (*wearing(material, components), "kill victim")
+        assert {w.before for w in rest} == {("kill victim",)}
+
+
+def test_armor_keeps_the_stacks_through_each_death_and_clears_them_when_it_ends() -> None:
+    transcript, result = play("combat/armor")
+
+    assert result.first.index("gamerule keep_inventory true") < result.first.index("tick freeze")
+    assert result.after.index("clear victim") < result.after.index("gamerule keep_inventory false")
+    assert respawns(transcript) == len(SETS) * len(SOURCE_TYPES)
+
+
+def test_the_command_for_a_set_names_every_piece_and_the_enchantment_at_level_iv() -> None:
+    wear = combat_damage.wear_commands
+
+    assert wear(VICTIM, combat_damage.Armor("iron")) == wearing("iron", "")
+    assert wear(VICTIM, combat_damage.Armor("diamond", "blast_protection")) == wearing(
+        "diamond", "[enchantments={blast_protection:4}]"
+    )
+    assert [(a.material, a.enchantment) for a in combat_damage.ARMORS] == [
+        ("iron", None),
+        ("diamond", None),
+        ("netherite", None),
+        ("diamond", "protection"),
+        ("diamond", "fire_protection"),
+        ("diamond", "blast_protection"),
+    ]

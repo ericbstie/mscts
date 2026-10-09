@@ -332,6 +332,14 @@ marker for it, an entity a server tells no player about, so it adds no packet.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `combat/damage-types` | tick-exact | none | The Bot wears no armor and takes 4 points of `generic`, `player_attack`, `mob_attack`, `arrow`, `fall`, `in_fire`, `lava`, `magic`, `wither`, `explosion`, `out_of_world` and `starve` damage, a window each. | none |
+| `combat/armor` | tick-exact | none | The Bot wears iron, diamond and netherite armor, then diamond armor enchanted with Protection IV, Fire Protection IV and Blast Protection IV, and takes the same twelve kinds of damage through each set. | none |
+
+Armor reduces some kinds of damage and not others. In vanilla 26.3, `generic`, `fall`, `magic`,
+`wither`, `out_of_world` and `starve` are in the damage type tag `bypasses_armor`, so the
+sets change what the other six cost: `player_attack`, `mob_attack`, `arrow`, `in_fire`, `lava`
+and `explosion`. A hit that armor reduces wears each piece down by 1, and the Bot is told of it
+(`container_set_slot`). `combat/armor` has the Bot keep its stacks when it dies, so that one
+set of armor serves all twelve kinds of damage. The stacks are cleared when the Group ends.
 
 ## Player (`player`)
 
