@@ -89,5 +89,5 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
 - Meet the scrutiny level (the issue's `scrutiny::*` label) (PROCESS, Lanes and
   review levels) before you hand back the PR.
 - End each issue with the Worker report exactly as docs/PROCESS.md
-  specifies, with a thorough Retrospective, and the lines you propose for
-  your lane's handbook. State your worktree path, branch and PR URL.
+  specifies, including the lines you propose for your lane's handbook.
+  State your worktree path, branch and PR URL.
