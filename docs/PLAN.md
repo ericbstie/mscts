@@ -2373,12 +2373,12 @@ class Report:                       # report.py
     # later: compliance = matches / (groups − errors)
 
 # report.py, #101: each test case of each Group passes or fails.
-class LineResult(StrEnum): PASS; FAIL; NOT_TESTED; ERROR
+class LineResult(StrEnum): PASS; FAIL; NOT_TESTED; ERROR; NOT_SCORED  # "not scored", #330
 @frozen
 class CaseResult:                   # a test case's line
     group_id: str
     test_case: str
-    result: LineResult              # PASS or FAIL
+    result: LineResult              # PASS, FAIL or NOT_SCORED
     network_traffic_only: bool = False
 @frozen
 class GroupLine:                    # a Group's own line
@@ -2397,7 +2397,10 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in
 # any repetition makes every test case of the Group differ, #262, #266, #285): FAIL if it
 # differs in gameplay in any repetition, PASS (marked
-# network_traffic_only) if it differs only in network traffic, else PASS. Then one
+# network_traffic_only) if it differs only in network traffic, else PASS; NOT_SCORED
+# (marked network_traffic_only) if only network traffic Divergences name it and no
+# repetition's Verdict.test_cases lists it (#330), whatever else makes it differ;
+# totals counts it nowhere. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
 # NOT_TESTED if blocked, else ERROR.
@@ -2443,8 +2446,9 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>[ <installed_version>]"
 # (the build, when known; 2026-10-04 amendment, replacing #156's second line);
 # #101 (amends ADR-0012): one line per report_lines line whose result is in _LISTED
-# (every result today): "<✓|✗> <group>/<test case>" (no title since 2026-10-04),
-# " (network traffic only)" when it passed that way; a Group line is
+# (every result today): "<✓|✗> <group>/<test case>" (✓ for NOT_SCORED) (no title since 2026-10-04),
+# " (network traffic only)" when it passed that way, " (network traffic only, not
+# scored)" for NOT_SCORED (#330); a Group line is
 # "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then
 # "<p> passed, <f> failed[ (<n> not tested)]. (<percent>%)" with the percent rounded down
 # to tenths (".0" dropped), and no "(…%)" when nothing was scored; then

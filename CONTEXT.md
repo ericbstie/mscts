@@ -200,8 +200,10 @@ need is missing, add it here in the same commit that introduces it.
   on neither server, and fails no test case. One whose prerequisite is
   an `error` is an `error` too, so vanilla failing a prerequisite costs
   the Candidate nothing. A Group's own line fails for a blocked Group or
-  a Candidate failure; an `error` is not scored. The
-  score is rounded down, so only a Run where every scored line passes
+  a Candidate failure; an `error` is not scored. Nor is a test case
+  that only network traffic shows, such as a field the vanilla client
+  never reads: it is listed only when the two servers differ in it
+  (#330). The score is rounded down, so only a Run where every scored line passes
   scores 100%.
 
 ## Development

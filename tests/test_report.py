@@ -106,6 +106,20 @@ def test_a_network_traffic_difference_passes_and_says_so() -> None:
     )
 
 
+def test_a_network_traffic_difference_the_comparison_did_not_compare_is_not_scored() -> None:
+    # #330: a field the canonical form leaves out is named only where the sides differ.
+    traffic = replace(_field("container_set_slot.state_id", traffic=True), path="state_id")
+    verdict = replace(
+        _verdict(traffic, _field("container_set_slot.window_id")),
+        test_cases=("container_set_slot.window_id",),
+    )
+    assert render_text(_report(_result(verdict))) == (
+        "Running tests against pumpkin\n"
+        "✓ status/basic/container_set_slot.state_id (network traffic only, not scored)\n"
+        "✗ status/basic/container_set_slot.window_id\n" + FAILED_ONE
+    )
+
+
 def test_a_network_traffic_difference_fails_if_network_traffic_does_not_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

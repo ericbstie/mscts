@@ -93,6 +93,9 @@ The rules that decide this form the **canonical table**. Each rule rewrites
 a value into one canonical form, and each one cites the client code that
 proves the two forms are equal. mscts still reports network traffic
 differences, but a test case that differs only in network traffic passes.
+A test case that only network traffic shows, such as a value the client
+never reads, is not scored at all, so sending it differently neither adds
+to the score nor takes from it.
 
 A difference counts as network traffic only where such a rule says so. Today the
 canonical table covers the server list response, chunks, light updates

@@ -90,24 +90,25 @@ stderr and the Report to stdout, so `> report.txt` captures only the Report.
 
 ```
 Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
-✓ status/basic/status_response.description (network traffic only)
+✓ status/basic/status_response.description (network traffic only, not scored)
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only)
-✓ status/basic/status_response.favicon (network traffic only)
+✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
+✓ status/basic/status_response.favicon (network traffic only, not scored)
 ...
 ✗ status/with-player/login_finished.profile.uuid
 ...
 ✗ status/with-player/status_response.players.sample[].id
 ✓ status/with-player/status_response.players.sample[].name
 ...
-36 passed, 10 failed. (78.2%)
+25 passed, 10 failed. (71.4%)
 Took 89.5 s
 ```
 
 Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
 sends four status values in a different form from vanilla's. The vanilla
-client decodes both forms of each to the same thing, so these test cases pass
-and are marked "network traffic only".
+client decodes both forms of each to the same thing. Those test cases appear
+only because the forms differ, so they are marked "network traffic only, not
+scored" and the score leaves them out.
 
 The ten ✗ lines are all from `status/with-player`, which joins a player. Two
 are the player's UUID at login and in the server list sample, because

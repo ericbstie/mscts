@@ -2,35 +2,35 @@ Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Reference    vanilla 26.3 (sha256 d052f14d…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
-✓ status/basic/status_response.description (network traffic only)
+✓ status/basic/status_response.description (network traffic only, not scored)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only)
+✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends true
-✓ status/basic/status_response.favicon (network traffic only)
+✓ status/basic/status_response.favicon (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends null
 ✓ status/basic/status_response.players.max
 ✓ status/basic/status_response.players.online
-✓ status/basic/status_response.players.sample (network traffic only)
+✓ status/basic/status_response.players.sample (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends []
 ✓ status/basic/status_response.version.name
 ✓ status/basic/status_response.version.protocol
 ✓ status/ping/status:pong_response.timestamp
-✓ status/ping/status_response.description (network traffic only)
+✓ status/ping/status_response.description (network traffic only, not scored)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
 ✓ status/ping/status_response.description.text
-✓ status/ping/status_response.enforceSecureChat (network traffic only)
+✓ status/ping/status_response.enforceSecureChat (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends true
-✓ status/ping/status_response.favicon (network traffic only)
+✓ status/ping/status_response.favicon (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends null
 ✓ status/ping/status_response.players.max
 ✓ status/ping/status_response.players.online
-✓ status/ping/status_response.players.sample (network traffic only)
+✓ status/ping/status_response.players.sample (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends []
 ✓ status/ping/status_response.version.name
 ✓ status/ping/status_response.version.protocol
 Group times
   status/basic 0 s
   status/ping 0 s
-19 passed, 0 failed. (100%)
+11 passed, 0 failed. (100%)
 Took 16.7 s

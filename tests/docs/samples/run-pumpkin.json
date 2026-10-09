@@ -32,7 +32,7 @@
     {
       "group_id": "status/basic",
       "test_case": "status_response.description",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
@@ -44,13 +44,13 @@
     {
       "group_id": "status/basic",
       "test_case": "status_response.enforceSecureChat",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
       "group_id": "status/basic",
       "test_case": "status_response.favicon",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
@@ -68,7 +68,7 @@
     {
       "group_id": "status/basic",
       "test_case": "status_response.players.sample",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
@@ -92,7 +92,7 @@
     {
       "group_id": "status/ping",
       "test_case": "status_response.description",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
@@ -104,13 +104,13 @@
     {
       "group_id": "status/ping",
       "test_case": "status_response.enforceSecureChat",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
       "group_id": "status/ping",
       "test_case": "status_response.favicon",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
@@ -128,7 +128,7 @@
     {
       "group_id": "status/ping",
       "test_case": "status_response.players.sample",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
     {
@@ -145,11 +145,11 @@
     }
   ],
   "totals": {
-    "passed": 19,
+    "passed": 11,
     "failed": 0,
     "not_tested": 0,
     "errors": 0,
-    "scored": 19,
+    "scored": 11,
     "score": 1.0
   },
   "results": [
@@ -216,13 +216,9 @@
           "omitted": 0,
           "detail": "",
           "test_cases": [
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -287,13 +283,9 @@
           "omitted": 0,
           "detail": "",
           "test_cases": [
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -358,13 +350,9 @@
           "omitted": 0,
           "detail": "",
           "test_cases": [
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -429,13 +417,9 @@
           "omitted": 0,
           "detail": "",
           "test_cases": [
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -500,13 +484,9 @@
           "omitted": 0,
           "detail": "",
           "test_cases": [
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -598,13 +578,9 @@
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -670,13 +646,9 @@
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -742,13 +714,9 @@
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -814,13 +782,9 @@
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]
@@ -886,13 +850,9 @@
           "detail": "",
           "test_cases": [
             "status:pong_response.timestamp",
-            "status_response.description",
             "status_response.description.text",
-            "status_response.enforceSecureChat",
-            "status_response.favicon",
             "status_response.players.max",
             "status_response.players.online",
-            "status_response.players.sample",
             "status_response.version.name",
             "status_response.version.protocol"
           ]

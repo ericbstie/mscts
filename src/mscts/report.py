@@ -56,6 +56,7 @@ class LineResult(StrEnum):
     FAIL = "fail"
     NOT_TESTED = "not tested"
     ERROR = "error"
+    NOT_SCORED = "not scored"  # a test case only network traffic Divergences name (#330)
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +66,8 @@ class CaseResult:
     Attributes:
         group_id: The Group.
         test_case: The test case's name.
-        result: PASS or FAIL.
+        result: PASS or FAIL; NOT_SCORED for one the Comparison did not compare, which
+            only network traffic Divergences name (`report_lines`).
         network_traffic_only: True if it differs, but only in network traffic.
     """
 
@@ -148,7 +150,13 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             traffic = False  # it differs in gameplay
             for differs in found.values():
                 differs.add(traffic)
-        results.extend(_case_result(group.group_id, name, found[name]) for name in sorted(found))
+        unscored = _not_compared(group)
+        results.extend(
+            CaseResult(group.group_id, name, LineResult.NOT_SCORED, network_traffic_only=True)
+            if name in unscored
+            else _case_result(group.group_id, name, found[name])
+            for name in sorted(found)
+        )
         details = _group_details(group)
         if details:
             kinds = {kind for kind, _ in details}
@@ -156,6 +164,23 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             reasons = "; ".join(reason for _, reason in details)
             results.append(GroupLine(group.group_id, result, reasons))
     return tuple(results)
+
+
+def _not_compared(group: GroupResult) -> set[str]:
+    """The test cases of `group` that only network traffic Divergences name.
+
+    The Comparison compared none of them in any repetition (`Verdict.test_cases`): it names
+    one only when the two sides spell something differently, such as a field the canonical
+    form leaves out. Scored, a Candidate that sends another spelling would have one more
+    passing test case than one that sends vanilla's (#330). A report.json written before
+    #330 lists them among its compared test cases, so it scores them as it did.
+    """
+    named: dict[Observability, set[str]] = {kind: set() for kind in Observability}
+    for verdict in group.verdicts:
+        for divergence in verdict.divergences:
+            named[divergence.observability].add(divergence.test_case)
+    compared = {name for verdict in group.verdicts for name in verdict.test_cases}
+    return named[Observability.NETWORK_TRAFFIC] - named[Observability.GAMEPLAY] - compared
 
 
 def _candidate_failed(group: GroupResult) -> bool:
@@ -245,8 +270,12 @@ _MARKS = {
     LineResult.FAIL: "✗",
     LineResult.NOT_TESTED: "✗",
     LineResult.ERROR: "!",
+    LineResult.NOT_SCORED: "✓",
 }
-"""Each line's mark: `!` for an error, which is not scored, so neither passes nor fails."""
+"""Each line's mark: `!` for an error, which is not scored, so neither passes nor fails.
+
+A test case that is not scored differs only in network traffic, so nothing a player sees
+differs: ✓, labelled as not scored."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -388,6 +417,8 @@ def _entry(report: Report, group: GroupResult, line: Line, *, verbose: bool) -> 
     else:
         name, case = f"{line.group_id}/{line.test_case}", line.test_case
         label = "(network traffic only)" if line.network_traffic_only else ""
+        if line.result is LineResult.NOT_SCORED:
+            label = "(network traffic only, not scored)"
     values = _values(report, group, case) if verbose else ()
     return _Entry(_MARKS[line.result], name, label, values)
 

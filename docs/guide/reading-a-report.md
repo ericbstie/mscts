@@ -8,14 +8,14 @@ A default Run against Pumpkin produced this Report:
 
 ```
 Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
-✓ status/basic/status_response.description (network traffic only)
+✓ status/basic/status_response.description (network traffic only, not scored)
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only)
-✓ status/basic/status_response.favicon (network traffic only)
+✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
+✓ status/basic/status_response.favicon (network traffic only, not scored)
 ...
 ✗ status/with-player/login_finished.profile.uuid
 ...
-36 passed, 10 failed. (78.2%)
+25 passed, 10 failed. (71.4%)
 Took 89.5 s
 ```
 
@@ -38,7 +38,8 @@ The score is the share of scored test cases that passed. The goal is that
 a Candidate scoring 100% plays like vanilla, and the suite grows toward
 that goal. Today's score covers only the test cases mscts has so far, and only
 those of the Groups this Run played. It counts a test case that differs
-only in network traffic as passing.
+only in network traffic as passing, and leaves out one that only network
+traffic shows (see [Network traffic differences](#network-traffic-differences)).
 
 A test case fails if it differs in gameplay in any repetition. Each field
 of a packet vanilla sent is a test case, so a Candidate that leaves a
@@ -95,10 +96,18 @@ identical.
 
 ## Network traffic differences
 
-The test cases marked `(network traffic only)` in the Pumpkin example
-pass: their bytes differ, but the vanilla client decodes both to the same
-thing. The Report marks them because a server developer may want to match
-vanilla byte for byte. `--verbose` shows their values.
+A test case marked `(network traffic only)` passes: its bytes differ,
+but the vanilla client decodes both to the same thing. The Report marks
+it because a server developer may want to match vanilla byte for byte.
+`--verbose` shows its values.
+
+Some test cases exist only as network traffic: a value the vanilla
+client never reads, such as the misspelled `enforceSecureChat` Pumpkin
+sends, or the state number of an inventory change. mscts lists one only
+when the two servers differ in it, marked `(network traffic only, not
+scored)`, and leaves it out of the score. Counted, it would add a passing
+test case for a server that differs from vanilla and none for one that
+matches it. All the marked lines in the Pumpkin example are of this kind.
 
 In a chunk, mscts shows each section's palette sorted by id, with its
 packed data rewritten to match, rather than as the server sent them.
@@ -194,16 +203,16 @@ Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Reference    vanilla 26.3 (sha256 d052f14d…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
-✓ status/basic/status_response.description (network traffic only)
+✓ status/basic/status_response.description (network traffic only, not scored)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only)
+✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends true
 ...
 Group times
   status/basic 0 s
   status/ping 0 s
-19 passed, 0 failed. (100%)
+11 passed, 0 failed. (100%)
 Took 16.7 s
 ```
 
@@ -254,11 +263,11 @@ A Run of `status/basic` and `status/ping` against Pumpkin wrote:
 ```md
 # Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
 
-- ✓ `status/basic/status_response.description` (network traffic only)
+- ✓ `status/basic/status_response.description` (network traffic only, not scored)
 - ✓ `status/basic/status_response.description.text`
 ...
 
-19 passed, 0 failed. (100%)\
+11 passed, 0 failed. (100%)\
 Took 13.3 s
 ```
 
@@ -276,22 +285,22 @@ scored:
     {
       "group_id": "status/basic",
       "test_case": "status_response.description",
-      "result": "pass",
+      "result": "not scored",
       "network_traffic_only": true
     },
 ...
   "totals": {
-    "passed": 19,
+    "passed": 11,
     "failed": 0,
     "not_tested": 0,
     "errors": 0,
-    "scored": 19,
+    "scored": 11,
     "score": 1.0
   },
 ...
 ```
 
-A `result` is `pass`, `fail`, `not tested` or `error`. A Group's own line
+A `result` is `pass`, `fail`, `not tested`, `error` or `not scored`. A Group's own line
 has its `reasons` instead of a `test_case`.
 
 `results` has one entry per Group, with each repetition's

@@ -8,10 +8,10 @@ import pytest
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.group import Group
 from mscts.groups import status
-from mscts.report import CaseResult, GroupLine, LineResult, Totals, report_lines, totals
+from mscts.report import CaseResult, GroupLine, Line, LineResult, Totals, report_lines, totals
 from mscts.run import GroupError, judge
 from mscts.transcript import Transcript
-from tests.compare.build import packet, transcript
+from tests.compare.build import GROUP, packet, transcript
 from tests.test_report import _field, _report, _result, _verdict
 
 
@@ -412,3 +412,31 @@ def test_failing_a_whole_group_scores_no_higher_than_sending_each_value_wrong() 
     assert score(play("x/a", wrong)) == pytest.approx(100 / 110)
     assert score(raised) <= score(play("x/a", wrong))
     assert score(garbage) <= score(play("x/a", wrong))
+
+
+STONE = {"count": 64, "item": 1, "components": {"added": [], "removed": []}}
+SLOT = {"window_id": 1, "state_id": 5, "slot": 36, "slot_data": STONE}
+
+
+def _slot_lines(state_id: int) -> tuple[Line, ...]:
+    """A Group whose Candidate sends `state_id` and the wrong window in one slot change."""
+
+    def play(fields: Mapping[str, object]) -> Transcript:
+        return transcript(("alice", packet("minecraft:container_set_slot", fields=fields)))
+
+    verdict = compare(play(SLOT), play({**SLOT, "window_id": 2, "state_id": state_id}), ())
+    return report_lines(_report(_result(verdict)))
+
+
+@pytest.mark.parametrize("state_id", [5, 9], ids=["equal", "different"])
+def test_a_field_that_shows_only_network_traffic_never_counts_toward_the_score(
+    state_id: int,
+) -> None:
+    # #330: with a different state_id, 3 of 4 became 4 of 5.
+    assert totals(_slot_lines(state_id)) == Totals(passed=3, failed=1, not_tested=0, errors=0)
+
+
+def test_a_field_that_shows_only_network_traffic_is_listed_when_it_differs() -> None:
+    assert CaseResult(
+        GROUP, "container_set_slot.state_id", LineResult.NOT_SCORED, network_traffic_only=True
+    ) in _slot_lines(9)
