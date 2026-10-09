@@ -2,9 +2,9 @@
 
 Search the name from a Report to find what mscts compared and what a
 difference means. A test case without an entry is still reported by name.
-A test case that only network traffic shows, such as
+A test case that mscts never compares, such as
 `container_set_slot.state_id`, is listed only when the two servers differ
-in it, and is not scored.
+in it, and is [not scored](/guide/reading-a-report#network-traffic-differences).
 See [Reading a Report](/guide/reading-a-report#test-cases) for how names
 describe packet fields and list elements.
 

@@ -79,10 +79,10 @@ the exact build of the Candidate it tested. Then it lists each test case
 of each Group on a line of its own, marked ✓ if it passed, ✗ if not, or ·
 if it is not scored. A
 test case that differs only in network traffic passes, marked
-`(network traffic only)`. One that only network traffic shows, such as a
-value the vanilla client never reads, is listed only when the two servers
-differ in it, marked `(network traffic only, not scored)`, and is not
-scored. A Group with no test cases to list has one line
+`(network traffic only)`. One that mscts never compares is marked
+`(network traffic only, not scored)`
+([Reading a Report](/guide/reading-a-report#network-traffic-differences) says
+which). A Group with no test cases to list has one line
 with its reasons. The Report ends with the totals and the score on one
 line, then the total Run time in seconds. [Reading a Report](/guide/reading-a-report) explains
 each line.

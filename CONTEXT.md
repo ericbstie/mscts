@@ -158,7 +158,10 @@ need is missing, add it here in the same commit that introduces it.
   case of its packet name. A masked field is a test case only where one
   side lacks it, and packets an Observation window leaves out are not test cases. Each test
   case in a Verdict is the same, different in gameplay, or different in
-  network traffic only: gameplay if any of its Divergences is. _Avoid_:
+  network traffic only: gameplay if any of its Divergences is. A name
+  that only network traffic Divergences give, where no compared field
+  has it, is not in the Verdict's test cases. The Report lists it but
+  does not score it (#330). _Avoid_:
   check, test (for one compared field).
 - **Verdict**: `match`, `mismatch` (has Divergences), `blocked` (a
   prerequisite Group was not run, so the Group was played on neither
@@ -201,10 +204,10 @@ need is missing, add it here in the same commit that introduces it.
   an `error` is an `error` too, so vanilla failing a prerequisite costs
   the Candidate nothing. A Group's own line fails for a blocked Group or
   a Candidate failure; an `error` is not scored. Nor is a test case
-  that only network traffic shows, such as a field the vanilla client
-  never reads: it is listed only when the two servers differ in it
-  (#330). The score is rounded down, so only a Run where every scored line passes
-  scores 100%.
+  that no compared value names, such as a key the vanilla client
+  never reads, which is listed only where the two servers send a
+  value in different forms (#330). The score is rounded down, so only
+  a Run where every scored line passes scores 100%.
 
 ## Development
 

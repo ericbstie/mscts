@@ -107,9 +107,9 @@ Took 89.5 s
 Each line is one test case of one Group: ✓ if it passed, ✗ if not, and · if
 it is not scored. Pumpkin
 sends four status values in a different form from vanilla's. The vanilla
-client decodes both forms of each to the same thing. Those test cases appear
-only because the forms differ, so they are marked "network traffic only, not
-scored" and the score leaves them out.
+client reads both forms of each alike, and mscts never compares those
+forms, so the four lines are
+[not scored](/guide/reading-a-report#network-traffic-differences).
 
 The ten ✗ lines are all from `status/with-player`, which joins a player. Two
 are the player's UUID at login and in the server list sample, because

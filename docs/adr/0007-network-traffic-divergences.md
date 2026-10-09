@@ -37,7 +37,10 @@ information a server developer may want.
   canonical-equal means network traffic.
 - A Verdict whose only Divergences are network traffic is still
   `mismatch`, but the Report scores it as compliant. Whether that needs
-  its own Outcome is settled in the M2 wiring brief.
+  its own Outcome is settled in the M2 wiring brief. (Refined by
+  ADR-0012's #330 amendment: its test cases pass, and one that only a
+  network traffic Divergence names, which no compared field has, is
+  not scored.)
 - A Self-check must still be an exact `match`, with no network traffic
   Divergences either, because vanilla against vanilla sends identical
   bytes.

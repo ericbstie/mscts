@@ -1,7 +1,7 @@
 # Reading a Report
 
-A Report lists every test case mscts compared, each marked ✓ if the
-Candidate passed it or ✗ if not. Then it gives the totals and the score. It
+A Report lists each test case, marked ✓ if the Candidate passed it or ✗
+if not. Then it gives the totals and the score. It
 does not hide differences the Candidate considers intentional.
 
 A default Run against Pumpkin produced this Report:
@@ -39,8 +39,8 @@ The score is the share of scored test cases that passed. The goal is that
 a Candidate scoring 100% plays like vanilla, and the suite grows toward
 that goal. Today's score covers only the test cases mscts has so far, and only
 those of the Groups this Run played. It counts a test case that differs
-only in network traffic as passing, and leaves out one that only network
-traffic shows (see [Network traffic differences](#network-traffic-differences)).
+only in network traffic as passing, and leaves out one that mscts
+[never compares](#network-traffic-differences).
 
 A test case fails if it differs in gameplay in any repetition. Each field
 of a packet vanilla sent is a test case, so a Candidate that leaves a
@@ -93,7 +93,8 @@ of the value as it was sent. When Pumpkin sends the description
 `{"text": "mscts"}` for vanilla's `"mscts"`, `status_response.description`
 is different in network traffic only, and
 `status_response.description.text`, the text a player reads, is
-identical.
+identical. mscts compares the description only as its text, so the first
+is a test case it [never compares](#network-traffic-differences).
 
 ## Network traffic differences
 
@@ -102,13 +103,15 @@ but the vanilla client decodes both to the same thing. The Report marks
 it because a server developer may want to match vanilla byte for byte.
 `--verbose` shows its values.
 
-Some test cases exist only as network traffic: a value the vanilla
-client never reads, such as the misspelled `enforceSecureChat` Pumpkin
-sends, or the state number of an inventory change. mscts lists one only
-when the two servers differ in it, marked `(network traffic only, not
-scored)`, and leaves it out of the score. Counted, it would add a passing
-test case for a server that differs from vanilla and none for one that
-matches it. All the marked lines in the Pumpkin example are of this kind.
+mscts never compares a test case that names a value only in the form one
+server sent it, since it compares that value in another form.
+`status_response.description` above is one. The others in the Pumpkin
+example are a key the client never reads (the misspelled
+`enforceSecureChat`), and an omitted `favicon` or `players.sample` against
+`null` or `[]`, which the client reads alike. The state number of an
+inventory change is another. Such a test case appears only when the two
+servers differ in it, so it is marked · and `(network traffic only, not
+scored)`, and the score leaves it out, whatever else fails in its Group.
 
 In a chunk, mscts shows each section's palette sorted by id, with its
 packed data rewritten to match, rather than as the server sent them.
@@ -145,8 +148,9 @@ Took 41 s
 ```
 
 A Group is played on the Candidate only if each Group it requires
-passed. A Group passes when each of its test cases passes and it has no
-line of its own, so one that differs only in network traffic passes. If
+passed. A Group passes when each of its test cases passes or is not
+scored, and it has no line of its own, so one that differs only in
+network traffic passes. If
 the Candidate failed a required Group, mscts still plays this one on
 vanilla, and it fails as `Candidate failed`, as in the example. If a
 required Group was an `Error`, this one is an `Error` too. mscts always
