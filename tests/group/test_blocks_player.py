@@ -38,6 +38,8 @@ class Window:
     before: tuple[str, ...]
     sent: tuple[tuple[str, dict[str, object]], ...]
     ticks: int
+    yaw: float | None = None
+    """The yaw the digger last sent before the window opened."""
 
 
 @dataclass(frozen=True)
@@ -78,6 +80,13 @@ def read(transcript: Transcript) -> Play:
         for event in transcript.events
         if event.bot == blocks_player.DIGGER and event.packet.direction is Direction.SERVERBOUND
     ]
+    turns = [
+        (event.t_ns, float(str((event.packet.fields or {})["yaw"])))
+        for event in transcript.events
+        if event.bot == blocks_player.DIGGER
+        and event.packet.direction is Direction.SERVERBOUND
+        and "yaw" in (event.packet.fields or {})
+    ]
     control = control_commands(transcript)
     windows, previous = [], 0
     for opened, closed in zip(opens, closes, strict=True):
@@ -90,6 +99,7 @@ def read(transcript: Transcript) -> Play:
                     if opened <= t <= closed and name in {PLAYER_ACTION, USE_ITEM_ON}
                 ),
                 ticks=sum(opened <= t <= closed for t in ticks),
+                yaw=next((yaw for t, yaw in reversed(turns) if t < opened), None),
             )
         )
         previous = closed
@@ -170,6 +180,13 @@ def test_the_windows_compare_the_block_the_cracks_the_drops_and_the_slots() -> N
     assert len(blocks_player.PACKETS) == len(set(blocks_player.PACKETS))
 
 
+def test_the_survival_windows_leave_out_the_packets_the_server_sends_on_its_clock() -> None:
+    assert set(blocks_player.SURVIVAL_PACKETS) == set(blocks_player.PACKETS) - {
+        "minecraft:block_destruction",
+        "minecraft:level_event",
+    }
+
+
 @pytest.mark.parametrize(
     ("speed", "hardness", "divisor", "ticks"),
     [
@@ -212,6 +229,10 @@ async def test_the_survival_digger_starts_in_one_window_and_finishes_in_the_next
         assert f"item replace entity digger hotbar.0 with {case.tool}" in starting.before
         assert finishing.before == ()  # nothing between the start and the finish but the wait
     assert {window.ticks for window in result.windows} == {0}  # the clock times it, not a step
+    # Each case ends with the block and its drops taken away, so the next is its own.
+    for before in (*(window.before for window in result.windows[2::2]), result.after):
+        assert "setblock 8 -60 6 minecraft:air" in before
+        assert "kill @e[type=minecraft:item]" in before
 
 
 def test_the_survival_digs_cover_the_tools_and_blocks_the_issue_names() -> None:
@@ -251,6 +272,7 @@ async def test_the_creative_digger_only_starts_and_never_finishes() -> None:
 
     assert [actions(window) for window in result.windows] == [[START]] * len(result.windows)
     assert {window.ticks for window in result.windows} == {1}
+    assert all("tick step 1" in window.before for window in result.windows)
     assert any("iron_sword" in " ".join(window.before) for window in result.windows)
 
 
@@ -268,6 +290,28 @@ async def test_the_digger_places_once_in_each_window_with_the_face_and_cursor_of
         assert fields["pos"] == dict(zip("xyz", case.on, strict=True))
         assert f"item replace entity digger hotbar.0 with {case.item} {case.count}" in window.before
         assert window.ticks == 1
+        assert "tick step 1" in window.before  # the blocks set reach the Bots first
+        assert window.yaw == case.yaw
+
+
+@pytest.mark.asyncio
+async def test_the_survival_digger_waits_the_break_time_between_start_and_stop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slept: list[float] = []
+    real_sleep = asyncio.sleep
+
+    async def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        await real_sleep(0)
+
+    monkeypatch.setattr(blocks_player, "TICK_S", 0.5)
+    monkeypatch.setattr(blocks_player.asyncio, "sleep", sleep)
+    await played("blocks/dig-survival", again=True)
+
+    for case in blocks_player.SURVIVAL_CASES:
+        assert case.ticks is not None
+        assert case.ticks * 0.5 in slept
 
 
 def test_the_placements_cover_each_block_and_face_the_issue_names() -> None:
@@ -301,3 +345,4 @@ async def test_each_placement_empties_the_cells_from_the_top_down_and_kills_the_
     tops = [int(c.split()[2]) for c in fills]
     assert tops == sorted(tops, reverse=True)  # a torch or a door goes before its support
     assert before.index("kill @e[type=minecraft:item]") > before.index(fills[-1])
+    assert "kill @e[tag=mscts_blocks_player]" in result.after
