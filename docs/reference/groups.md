@@ -316,10 +316,13 @@ entity data (`set_entity_data`), the sounds, a correction of the player's place
 (`player_position`), and a death (`player_combat_kill`, `respawn`). The server runs on normal
 difficulty, because peaceful stops most damage.
 
-Natural regeneration, mob spawning and random ticks are off, so nothing but the Group changes the
-Bot's health or the blocks. The Bot and Control join at the world spawn. Control then moves 96
-blocks away, out of the Bot's view, so that its entity never reaches a window. Once a Group is
-over, the rules are set back to vanilla's defaults and the blocks it set are removed.
+Natural regeneration and random ticks are off, so nothing but the Group changes the Bot's health
+or the blocks. (Mobs do not spawn either, but that is the Fixture world's rule, not the Group's.)
+A server saves a player where it leaves. Control is online before the Group starts, so it joins
+where the last Group left it, which is 96 blocks from the spawn. The Group moves it there so that
+its entity never reaches a window. Each Bot joins where the last play left it, and the Group puts
+it back at the spawn when it ends, so that it does not rejoin inside a block. Once a Group is over,
+the two rules are set back to their values and the blocks it set are removed.
 
 A frozen world does not freeze a player: it ticks 20 times a second either way. A fall is
 different, because vanilla works out its damage when it reads the move that lands. So `player/fall`
@@ -331,8 +334,10 @@ freezes the world and steps it after each move.
 | `player/drowning` | exact | none | A Bot is put under water in a pool 2 blocks deep and stays until it takes damage, then for three more hits. Then `drowning_damage` is turned off, and the Bot stays for one more round of bubbles. | none |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
 | `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
-| `player/fire` | exact | none | A Bot is put in fire and takes damage twice, steps into lava, steps out of it onto dry grass still burning, then into water. | The pitch of the `sound` packet: the burn and extinguish sounds draw it at random. |
+| `player/fire` | exact | none | A Bot is put in fire and takes damage, steps into lava, steps out of it onto dry grass still burning, then into water. | none |
 | `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
+
+What these Groups do not compare is how often damage repeats. A window holds what one hit sends, and a Candidate that hurts a drowning player every 40 ticks instead of 20, or a suffocating one every 20 instead of 10, sends the same packets in the same order. The same holds for `player/void` and `player/freezing`: nothing in them depends on time. `player/fall` is the only tick-exact Group, and what it compares is the damage of each landing. The rate of damage needs a window that counts ticks, which these Groups do not have yet.
 
 A Bot does not simulate physics: `player/fall` gives each position, at most 8 blocks apart. The
 last move lands from 1 block above the surface, as a vanilla client's does. Before each fall, the
@@ -360,15 +365,21 @@ vanilla still resets the air and sends the bubbles, and sends no damage.
 vanilla hurts a player 4 points a hit below y -128, the lowest block minus 64, until it dies. That
 window ends on `player_combat_kill`, and a second window holds the respawn.
 
-`player/fire` has a window for each place. The first ends on the first hit in fire, and a second on
-the next. Lava sets the Bot alight, and the window of the dry grass is the first burn after it. The
-Bot must leave the lava within a few ticks of its last hit, so that the burn starts from the same
+`player/fire` has a window for each place. The first ends on the first hit in fire, the next on the
+first hit in lava, and the third on the first burn after the Bot has stepped out onto dry grass.
+The Bot must leave the lava within 9 ticks of its last hit, so that the burn starts from the same
 count of ticks on every server. The last window ends a barrier after the water puts the fire out.
-The sounds' pitch is a Mask, because the sound seed does not cover it.
+The Group masks the pitch of `sound`: the burn and extinguish sounds draw it at random. Other
+sounds have a fixed pitch (a note block's is its gameplay), so the Mask is this Group's and not
+every Comparison's. How the pitch is distributed belongs to a statistical Group (#24).
+
+The hits are timed in real time, so each window must open before the next hit. The Group measures
+the time since the last hit when a window opens, and fails if the next hit may already have come.
+On the Reference that is an `error`, and not a Candidate's `mismatch`.
 
 `player/freezing` compares the hits and the Bot's move into the snow, but not the entity data:
 vanilla hurts a frozen player when its tick count is a multiple of 40, a count that started when the
-player joined, so the ticks before the first hit differ between servers.
+Group made the player respawn, so the ticks before the first hit are timing.
 
 A death is `player_combat_kill`: the player that died, and the death message as the bytes of its
 text component. The player is numbered like any entity, because the id of a Bot differs between

@@ -9,8 +9,10 @@ request, and nothing else.
 import asyncio
 import functools
 import json
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
+from unittest import mock
 
 import pytest
 
@@ -19,6 +21,7 @@ from mscts.codec.packets import Packet
 from mscts.compare import OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
+from mscts.net import ProtocolError
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import CODEC, text, tree
@@ -155,7 +158,14 @@ class PlayerServer:
                         await peer.send("minecraft:entity_event", entity_id=2, event_id=67)
 
 
-async def _play(group_id: str) -> tuple[Transcript, Play]:
+def always_on_time() -> float:
+    """A clock that never moves: no hit is ever older than its period allows."""
+    return 0.0
+
+
+async def _play(
+    group_id: str, clock: Callable[[], float] = always_on_time
+) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
         CODEC,
@@ -164,7 +174,8 @@ async def _play(group_id: str) -> tuple[Transcript, Play]:
     ) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
-            await GROUPS[group_id].run(context)
+            with mock.patch.object(player, "clock", clock):
+                await GROUPS[group_id].run(context)
         finally:
             await context.close()
     return transcript, read(transcript)
@@ -250,14 +261,12 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
 ) -> None:
     transcript, result = play(group_id)
 
-    assert result.first[:7] == (
+    assert result.first[:5] == (
         "gamerule player_movement_check false",
         "gamerule respawn_radius 0",
         "gamerule natural_health_regeneration false",
-        "gamerule spawn_mobs false",
         "gamerule random_tick_speed 0",
         "tp control 96.5 -60 96.5",
-        "kill @e[type=!minecraft:player]",
     )
     hello = next(
         e.t_ns for e in transcript.events if e.packet.name == "minecraft:hello" and e.bot != CONTROL
@@ -265,14 +274,34 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
     commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
     first_tp = next(t for t, what in commands if str(what).startswith("tp control"))
     assert first_tp < hello
-    assert result.after[-6:] == (
+    assert result.after[-5:] == (
         "gamerule random_tick_speed 3",
-        "gamerule spawn_mobs true",
         "gamerule natural_health_regeneration true",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
         "tick unfreeze",
     )
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_no_group_touches_mob_spawning_or_removes_what_it_did_not_make(group_id: str) -> None:
+    # The Fixture world has `spawn_mobs` off (ADR-0013); turning it back on after a Group would
+    # leave it on for every Group that plays after.
+    result = played(group_id)
+
+    commands = (*result.first, *result.after, *(c for w in result.windows for c in w.before))
+    assert not [c for c in commands if "spawn_mobs" in c or c.startswith("kill @e[type=!")]
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_each_bot_is_put_back_at_the_spawn_before_the_blocks_are_restored(group_id: str) -> None:
+    result = played(group_id)
+
+    (bot,) = BOTS[group_id]
+    back = f"tp {bot} 0.5 -60 0.5"
+    assert back in result.after
+    blocks = [i for i, c in enumerate(result.after) if c.startswith("setblock")]
+    assert not blocks or result.after.index(back) < blocks[0]
 
 
 # player/fall
@@ -306,7 +335,8 @@ def test_fall_builds_every_surface_once_the_world_is_frozen() -> None:
         "setblock 9 -60 3 minecraft:red_bed[facing=south,part=head]",
         "setblock 9 -60 2 minecraft:red_bed[facing=south,part=foot]",
     )
-    assert result.first[frozen - 1] == tp(lane(STONE, -60.0))
+    # The Bot is not put in the block that becomes stone: it stays where it joined.
+    assert not [c for c in result.first[:frozen] if c.startswith("tp faller")]
 
 
 def test_fall_gives_each_surface_each_height_in_a_window_of_its_own() -> None:
@@ -410,8 +440,9 @@ def test_fall_ends_with_the_deadly_fall_and_the_respawn_in_a_window_of_its_own()
 def test_fall_restores_the_flat_world_and_unfreezes_it_last() -> None:
     result = played("player/fall")
 
-    assert result.after[:9] == (
+    assert result.after[:10] == (
         "gamerule fall_damage true",
+        "tp faller 0.5 -60 0.5",
         "setblock 9 -60 2 minecraft:air",
         "setblock 9 -60 3 minecraft:air",
         "setblock 7 -60 2 minecraft:air",
@@ -454,8 +485,9 @@ def test_drowning_builds_its_pool_once_the_world_is_frozen_and_restores_it() -> 
         "setblock 3 -62 2 minecraft:water",
         "setblock 3 -61 2 minecraft:water",
     )
-    assert result.after[:3] == (
+    assert result.after[:4] == (
         "gamerule drowning_damage true",
+        "tp drowner 0.5 -60 0.5",
         "setblock 3 -61 2 minecraft:grass_block",
         "setblock 3 -62 2 minecraft:dirt",
     )
@@ -500,7 +532,8 @@ def test_suffocation_builds_a_column_of_stone_after_the_freeze_and_removes_it() 
         "setblock 1 -60 2 minecraft:stone",
         "setblock 1 -59 2 minecraft:stone",
     )
-    assert result.after[:2] == (
+    assert result.after[:3] == (
+        "tp suffocator 0.5 -60 0.5",
         "setblock 1 -59 2 minecraft:air",
         "setblock 1 -60 2 minecraft:air",
     )
@@ -545,7 +578,6 @@ def test_fire_visits_fire_lava_the_dry_grass_and_the_water_in_that_order() -> No
 
     assert [window.sent for window in result.windows] == [
         ((CONTROL, "tp burner 7.5 -60.0 2.5"),),
-        (),
         ((CONTROL, "tp burner 5.5 -61.0 2.5"),),
         ((CONTROL, "tp burner 11.5 -60.0 2.5"),),
         ((CONTROL, "tp burner 3.5 -61.0 2.5"),),
@@ -557,7 +589,6 @@ def test_fire_waits_for_a_hit_in_each_place_but_the_water() -> None:
 
     assert [window.label for window in result.windows] == [
         opened(*player.PACKETS),
-        opened(*player.HIT_PACKETS),
         opened(*player.PACKETS),
         opened(*player.PACKETS),
         opened(*player.PACKETS),
@@ -575,17 +606,14 @@ def test_fire_builds_water_lava_and_fire_after_the_freeze_and_restores_the_world
         "setblock 5 -61 2 minecraft:lava",
         "setblock 7 -60 2 minecraft:fire",
     )
-    assert (
-        result.after[:6]
-        == (
-            "setblock 7 -60 2 minecraft:air",
-            "setblock 5 -61 2 minecraft:grass_block",
-            "setblock 5 -62 2 minecraft:dirt",
-            "setblock 3 -61 2 minecraft:grass_block",
-            "setblock 3 -62 2 minecraft:dirt",
-            "gamerule random_tick_speed 3",
-        )
-        or result.after[0] == "setblock 7 -60 2 minecraft:air"
+    assert result.after[:7] == (
+        "tp burner 0.5 -60 0.5",
+        "setblock 7 -60 2 minecraft:air",
+        "setblock 5 -61 2 minecraft:grass_block",
+        "setblock 5 -62 2 minecraft:dirt",
+        "setblock 3 -61 2 minecraft:grass_block",
+        "setblock 3 -62 2 minecraft:dirt",
+        "gamerule random_tick_speed 3",
     )
 
 
@@ -616,10 +644,37 @@ def test_freezing_builds_one_block_of_powder_snow_after_the_freeze_and_removes_i
     assert result.first[result.first.index("tick freeze") + 1] == (
         "setblock 9 -60 2 minecraft:powder_snow"
     )
-    assert result.after[0] == "setblock 9 -60 2 minecraft:air"
+    assert result.after[:2] == (
+        "tp freezer 0.5 -60 0.5",
+        "setblock 9 -60 2 minecraft:air",
+    )
 
 
 def test_fire_masks_only_the_random_pitch_of_its_sounds() -> None:
     masks = GROUPS["player/fire"].masks
 
     assert [(mask.packet, mask.path) for mask in masks] == [("minecraft:sound", "pitch")]
+
+
+# A hit that comes between two windows
+
+# Hits come a fixed number of ticks apart, and a player ticks in real time: a window that opens
+# later than that lets a hit pass unseen, and every window after it holds another health. The
+# Reference would differ from itself, so the Group fails (the Reference's `error`).
+
+
+def jumping_clock() -> Callable[[], float]:
+    """A clock that is 10 s later at every reading: far longer than any hit's period."""
+    now = iter(range(0, 10_000, 10))
+    return lambda: float(next(now))
+
+
+@pytest.mark.parametrize(
+    "group_id",
+    ["player/drowning", "player/suffocation", "player/fire", "player/freezing"],
+)
+def test_a_window_that_opens_after_the_next_hit_fails_the_group_instead_of_comparing(
+    group_id: str,
+) -> None:
+    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
+        asyncio.run(_play(group_id, clock=jumping_clock()))
