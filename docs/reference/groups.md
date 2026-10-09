@@ -328,6 +328,7 @@ freezes the world and steps it after each move.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
+| `player/drowning` | exact | none | A Bot is put under water in a pool 2 blocks deep and stays until it takes damage, then for three more hits. Then `drowning_damage` is turned off, and the Bot stays for one more round of bubbles. | none |
 
 A Bot does not simulate physics: `player/fall` gives each position, at most 8 blocks apart. The
 last move lands from 1 block above the surface, as a vanilla client's does. Before each fall, the
@@ -342,6 +343,14 @@ onto the pool's floor.
 
 A bed leaves an item behind when it is taken away, which would stay in the Instance for the next
 play and be picked up by the Bot, so the Group removes dropped items last.
+
+A player ticks in real time, so `player/drowning` does not step the world. It puts a fresh player
+(killed and respawned, with full air) under water with `/tp` inside its first window, which ends on
+the first `set_health` the Bot receives: the 300 ticks of air and the damage. Each
+later hit has a window of its own that compares only what the hit sends (`damage_event`,
+`entity_event`, `set_health`, `sound`). The entity data changes every tick, and a window that opens
+after a hit starts a tick or two later on one server than on another. With `drowning_damage` off,
+vanilla still resets the air and sends the bubbles, and sends no damage.
 
 `player_combat_kill` is not decoded yet, so the Report shows a difference in the death as a
 difference in the packet's bytes.

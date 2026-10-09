@@ -1170,6 +1170,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `PVP_SPRINT_PACKETS` — what its windows compare; `immunity` and `pvp` — the `combat/immunity`
   and `combat/pvp` scripts.
 - `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `fall` — the `player/fall` script.
+- `groups.player`: `PACKETS` — what a window compares (the damage, the health, the entity data, sounds, `player_position`, the death and the respawn); `CONTROL_AT` — where Control puts itself, out of the Bot's view; `HIT_PACKETS` — what a window compares for a hit after the first; `fall` and `drowning` — the `player/fall` and `player/drowning` scripts.
 - `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
   compares (the walker waits `run.GROUP_TIMEOUT_S` for its view); `HELD_SYNCS` — how
   many barriers a window lasts after the walker holds its view; `VIEW_DISTANCE` and

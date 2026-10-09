@@ -43,9 +43,11 @@ PLAY_TIMEOUT_S = 300.0
 """How long a fake serves a Bot: a play takes about 30 s when the host is idle, and several
 times that under load."""
 
-GROUP_IDS = ("player/fall",)
-KINDS = {"player/fall": GroupKind.TICK_EXACT}
-BOTS = {"player/fall": ("faller",)}
+GROUP_IDS = ("player/fall", "player/drowning")
+KINDS = {"player/fall": GroupKind.TICK_EXACT, "player/drowning": GroupKind.EXACT}
+BOTS = {"player/fall": ("faller",), "player/drowning": ("drowner",)}
+HURTS_AFTER = {"player/drowning": "tp drowner "}
+"""A command after which the fake hurts the Bot every 50 ms, in a Group that waits for a hit."""
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
 """A move's `flags` when the Bot reports it is on the ground."""
@@ -56,10 +58,14 @@ class PlayerServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
     It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch.
+    chunk batch. After the command `hurts_after`, it hurts the Bot every tick.
     """
 
     seen: list[Packet] = field(default_factory=list)
+    hurts_after: str | None = None
+    """A command after which the fake sends `set_health` and `entity_event` every 50 ms."""
+    players: dict[str, Peer] = field(default_factory=dict)
+    """Each connected player's connection, by name."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -68,30 +74,56 @@ class PlayerServer:
 
     async def _play(self, peer: Peer) -> None:
         requests = 0
-        async for packet in peer.packets():
-            self.seen.append(packet)
-            if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
-                await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
-                await peer.send("minecraft:chunk_batch_start")
-                await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
-                await peer.send("minecraft:chunk_batch_finished", batch_size=1)
-            elif packet.name == CLIENT_COMMAND:
-                requests += 1
-                if (requests - 1) % SYNC_REQUESTS != 0:
-                    await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
-                await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
-            elif packet.name == CHAT_COMMAND:
-                command = str((packet.fields or {})["command"])
-                if command.startswith(MARKER):
-                    token = json.loads(command.removeprefix(MARKER))
-                    await peer.write(
-                        peer.frame("minecraft:system_chat", content=text(token), overlay=False)
-                    )
+        hurting: asyncio.Task[None] | None = None
+        hellos = [p for p in self.seen if p.name == "minecraft:hello"]
+        self.players[str((hellos[-1].fields or {})["name"])] = peer
+        try:
+            async for packet in peer.packets():
+                self.seen.append(packet)
+                if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
+                    await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
+                    await peer.send("minecraft:chunk_batch_start")
+                    await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
+                    await peer.send("minecraft:chunk_batch_finished", batch_size=1)
+                elif packet.name == CLIENT_COMMAND:
+                    requests += 1
+                    if (requests - 1) % SYNC_REQUESTS != 0:
+                        await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
+                    await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+                elif packet.name == CHAT_COMMAND:
+                    command = str((packet.fields or {})["command"])
+                    if command.startswith(MARKER):
+                        token = json.loads(command.removeprefix(MARKER))
+                        await peer.write(
+                            peer.frame("minecraft:system_chat", content=text(token), overlay=False)
+                        )
+                    elif hurting is None and self._hurts(command):
+                        hurting = asyncio.create_task(self._hurt())
+        finally:
+            if hurting is not None:
+                hurting.cancel()
+
+    def _hurts(self, command: str) -> bool:
+        return self.hurts_after is not None and command.startswith(self.hurts_after)
+
+    async def _hurt(self) -> None:
+        """Hurt every player but Control, every tick, until cancelled."""
+        with suppress(ConnectionError):
+            while True:
+                await asyncio.sleep(TICK_S)
+                for name, peer in list(self.players.items()):
+                    if name != CONTROL:
+                        await peer.send(
+                            "minecraft:set_health", health=19.0, food=20, saturation=5.0
+                        )
+                        await peer.send("minecraft:entity_event", entity_id=2, event_id=67)
 
 
 async def _play(group_id: str) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
-    async with serve(CODEC, PlayerServer(), timeout_s=PLAY_TIMEOUT_S) as endpoint:
+    async with serve(
+        CODEC, PlayerServer(hurts_after=HURTS_AFTER.get(group_id)), timeout_s=PLAY_TIMEOUT_S
+    ) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
             await GROUPS[group_id].run(context)
@@ -144,6 +176,8 @@ def test_the_windows_compare_the_damage_the_health_and_the_death() -> None:
     assert player.PACKETS == (
         "minecraft:set_health",
         "minecraft:damage_event",
+        "minecraft:hurt_animation",
+        "minecraft:entity_event",
         "minecraft:set_entity_data",
         "minecraft:sound",
         "minecraft:player_position",
@@ -152,14 +186,24 @@ def test_the_windows_compare_the_damage_the_health_and_the_death() -> None:
     )
 
 
-@pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_every_window_is_narrowed_to_the_packets(group_id: str) -> None:
-    result = played(group_id)
+def test_the_windows_after_a_first_hit_compare_only_what_a_hit_sends() -> None:
+    assert player.HIT_PACKETS == (
+        "minecraft:damage_event",
+        "minecraft:hurt_animation",
+        "minecraft:entity_event",
+        "minecraft:set_health",
+        "minecraft:sound",
+    )
 
-    assert result.windows
-    assert {window.label for window in result.windows} == {
-        f"{OBSERVE_OPEN} {' '.join(player.PACKETS)}"
-    }
+
+def opened(*names: str) -> str:
+    return f"{OBSERVE_OPEN} {' '.join(names)}"
+
+
+def test_every_fall_window_is_narrowed_to_the_packets() -> None:
+    result = played("player/fall")
+
+    assert {window.label for window in result.windows} == {opened(*player.PACKETS)}
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
@@ -339,3 +383,57 @@ def test_fall_restores_the_flat_world_and_unfreezes_it_last() -> None:
         "kill @e[type=minecraft:item]",  # the bed's other half drops as an item when it goes
     )
     assert result.after[-1] == "tick unfreeze"
+
+
+# player/drowning
+
+
+def test_drowning_starts_from_a_fresh_player_and_puts_it_in_the_water_inside_the_window() -> None:
+    transcript, result = play("player/drowning")
+
+    first, *_ = result.windows
+    assert first.label == opened(*player.PACKETS)
+    assert first.before[-1] == "kill drowner"
+    assert first.sent == ((CONTROL, "tp drowner 3.5 -62.0 2.5"),)
+    asked = [
+        e
+        for e in transcript.events
+        if e.bot == "drowner"
+        and e.packet.name == CLIENT_COMMAND
+        and e.packet.fields == {"action": PERFORM_RESPAWN}
+    ]
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    assert len(asked) == 1
+    assert asked[0].t_ns < opens[0]
+
+
+def test_drowning_builds_its_pool_once_the_world_is_frozen_and_restores_it() -> None:
+    result = played("player/drowning")
+
+    frozen = result.first.index("tick freeze")
+    assert result.first[frozen + 1 : frozen + 3] == (
+        "setblock 3 -62 2 minecraft:water",
+        "setblock 3 -61 2 minecraft:water",
+    )
+    assert result.after[:3] == (
+        "gamerule drowning_damage true",
+        "setblock 3 -61 2 minecraft:grass_block",
+        "setblock 3 -62 2 minecraft:dirt",
+    )
+
+
+def test_drowning_waits_for_the_first_hit_and_three_more_then_for_the_bubbles() -> None:
+    result = played("player/drowning")
+
+    assert [window.label for window in result.windows] == [
+        opened(*player.PACKETS),
+        *[opened(*player.HIT_PACKETS)] * 4,
+    ]
+    assert [window.sent for window in result.windows[1:]] == [()] * 4
+
+
+def test_drowning_turns_the_damage_off_before_its_last_window() -> None:
+    result = played("player/drowning")
+
+    assert result.windows[-1].before[0] == "gamerule drowning_damage false"
+    assert result.after.count("gamerule drowning_damage true") == 1

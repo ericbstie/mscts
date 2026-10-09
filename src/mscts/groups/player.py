@@ -31,14 +31,29 @@ from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 PACKETS = (
     "minecraft:set_health",
     "minecraft:damage_event",
+    "minecraft:hurt_animation",
+    "minecraft:entity_event",
     "minecraft:set_entity_data",
     "minecraft:sound",
     "minecraft:player_position",
     "minecraft:player_combat_kill",
     "minecraft:respawn",
 )
-"""The packets a window compares: the damage, the health, the entity data (air, fire, freezing),
-the sounds, a correction of the player's place, a death and the respawn after it."""
+"""The packets a window compares: the damage, the hurt animation and entity events (vanilla sends
+neither animation nor event for a hurt player, but drowning has one), the health, the entity data
+(air, fire, freezing), the sounds, a correction of the player's place, a death and the respawn
+after it."""
+
+HIT_PACKETS = (
+    "minecraft:damage_event",
+    "minecraft:hurt_animation",
+    "minecraft:entity_event",
+    "minecraft:set_health",
+    "minecraft:sound",
+)
+"""The packets a window compares for a hit after the first: what the hit itself sends. The entity
+data is left out, because a window that opens after a hit starts a tick or two later on one
+Instance than on another, and the entity data changes every tick (air, ticks frozen)."""
 
 CONTROL_AT = "96.5 -60 96.5"
 """Where Control stands: 6 chunks from the spawn, clear of every block the Groups set (#300) and
@@ -228,3 +243,69 @@ async def fall(context: GroupContext) -> None:
         await _fall(context, bot, _STONE, _HEIGHTS[-1])
         async with context.observe(*PACKETS):
             await bot.respawn()
+
+
+# Damage the player's own ticks do. The Bot is moved with `/tp` inside the window, which ends on
+# the first `set_health` it receives after that: the damage, and everything the ticks before it
+# sent. A player ticks in real time, so the number of ticks is what is compared, not a clock.
+
+_SET_HEALTH = "minecraft:set_health"
+
+_DAMAGE_TIMEOUT_S = 60.0
+"""How long a window waits for a hit: drowning takes 320 ticks, 16 s at 20 ticks a second."""
+
+
+async def _fresh(context: GroupContext, bot: Bot) -> None:
+    """Kill the Bot and respawn it, so that it has full health, food and air and is not burning.
+
+    The server saves a player when it leaves: its air, health and fire, and where it was.
+    """
+    await context.control.run(f"kill {bot.name}")
+    await bot.respawn()
+
+
+@contextlib.asynccontextmanager
+async def _until_hurt(
+    context: GroupContext, bot: Bot, names: tuple[str, ...]
+) -> AsyncIterator[None]:
+    """A window that runs the body, then waits for the Bot's next `set_health` and ends on it."""
+    async with context.observe(*names, until=_SET_HEALTH, bot=bot):
+        yield
+        await bot.expect(_SET_HEALTH, timeout_s=_DAMAGE_TIMEOUT_S)
+
+
+async def _more_hits(context: GroupContext, bot: Bot, count: int) -> None:
+    """Wait for `count` more hits, each in a window of its own."""
+    for _ in range(count):
+        async with _until_hurt(context, bot, HIT_PACKETS):
+            pass
+
+
+# `player/drowning`: a Bot stays under water until it drowns, a few times.
+
+_DROWNER = "drowner"
+_DROWNING_DAMAGE = "gamerule drowning_damage"
+_HITS_AFTER = 3
+
+
+@group("player/drowning", spec=_normal)
+async def drowning(context: GroupContext) -> None:
+    """A Bot stays under water until it takes damage and for three hits after.
+
+    Then `drowning_damage` is turned off, and the Bot stays under water for one more hit's time.
+    """
+    async with _environment(context, _WATER.restore), contextlib.AsyncExitStack() as undo:
+        bot = await context.bot(_DROWNER)
+        await bot.join()
+        await context.freeze()
+        for command in _WATER.build:
+            await context.control.run(command)
+        await _fresh(context, bot)
+        async with _until_hurt(context, bot, PACKETS):
+            await _tp(context, bot, _at(_WATER.lane, -62.0))
+        await _more_hits(context, bot, _HITS_AFTER)
+        undo.push_async_callback(context.control.run, f"{_DROWNING_DAMAGE} true")
+        await context.control.run(f"{_DROWNING_DAMAGE} false")
+        # The bubbles still come when the damage does not: the window ends a barrier after them.
+        async with context.observe(*HIT_PACKETS):
+            await bot.expect("minecraft:entity_event", timeout_s=_DAMAGE_TIMEOUT_S)
