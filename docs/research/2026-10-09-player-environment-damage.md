@@ -28,6 +28,11 @@ unless a line says *live* (two vanilla 26.3 Instances, 2026-10-09).
 - Order in a tick: `damage_event`, `set_entity_data` (health, index 9), `set_health`. The damaged
   player does not get the sound of its own damage (*live*).
 
+- Death: `ClientboundPlayerCombatKillPacket.STREAM_CODEC` is a VarInt `playerId` then the message
+  (`ComponentSerialization.TRUSTED_STREAM_CODEC`, network NBT). The player id differs between
+  plays on one server, because the entity counter does: 19 of 20 fall plays differed in the raw
+  bytes until the packet was decoded, and the id numbered like any other (*live*, Self-check).
+
 ## Sounds
 
 - `Entity.lavaHurt` plays GENERIC_BURN at volume 0.4 with pitch 2.0 + `nextFloat()` * 0.4.

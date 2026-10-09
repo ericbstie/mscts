@@ -23,6 +23,7 @@ from mscts.codec.schema import (
     IDENTIFIER,
     INT,
     LP_VEC3,
+    NBT,
     UBYTE,
     UUID,
     VAR_INT,
@@ -113,6 +114,9 @@ CLIENTBOUND: Mapping[str, Schema] = {
     "minecraft:set_experience": Schema(
         experience_bar=FLOAT, level=VAR_INT, total_experience=VAR_INT
     ),
+    # Player Combat Kill (the death screen): the dead player and the death message, a text
+    # component kept as its NBT bytes until text components decode.
+    "minecraft:player_combat_kill": Schema(player_id=ENTITY_ID, message=NBT),
     # Set Health
     "minecraft:set_health": Schema(health=FLOAT, food=VAR_INT, saturation=FLOAT),
     # Set Passengers: the vehicle, and every entity riding it.

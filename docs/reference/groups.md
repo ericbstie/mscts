@@ -370,8 +370,9 @@ The sounds' pitch is a Mask, because the sound seed does not cover it.
 vanilla hurts a frozen player when its tick count is a multiple of 40, a count that started when the
 player joined, so the ticks before the first hit differ between servers.
 
-`player_combat_kill` is not decoded yet, so the Report shows a difference in the death as a
-difference in the packet's bytes.
+A death is `player_combat_kill`: the player that died, and the death message as the bytes of its
+text component. The player is numbered like any entity, because the id of a Bot differs between
+servers, and between plays on one server.
 
 ## Planned
 

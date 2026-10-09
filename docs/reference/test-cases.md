@@ -2358,7 +2358,19 @@ Where the damage came from, when it came from a place. The client tilts the view
 
 **Death**
 
-The packet that opens the death screen, with the death message. mscts does not decode it yet, so a difference in any of its bytes is reported for the packet as a whole.
+The packet that opens the death screen, with the death message. A server that leaves it out shows no death screen.
+
+## `player_combat_kill.message`
+
+**Death message**
+
+The text shown on the death screen. mscts compares its bytes, so the same message written another way also differs here. The translation key in the bytes, such as `death.fell.accident.generic`, says how the player died.
+
+## `player_combat_kill.player_id`
+
+**Player that died**
+
+Which player died. mscts compares the entity each server refers to, rather than its server-assigned number.
 
 ## `respawn`
 

@@ -327,6 +327,8 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "level_particles.count": "Particle count",
         # player (#56)
         "player_combat_kill": "Death",
+        "player_combat_kill.message": "Death message",
+        "player_combat_kill.player_id": "Player that died",
         "respawn": "Respawn",
         "respawn.data_kept": "Respawn data kept",
         "respawn.game_mode": "Respawn game mode",
