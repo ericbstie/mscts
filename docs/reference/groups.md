@@ -246,6 +246,31 @@ When a Group ends, the walker is moved back to the world spawn, because the serv
 a player left and its next join starts there. Then the world is unfrozen and the rules are set
 back to vanilla's defaults.
 
+## Combat (`combat`)
+
+What the server does when one player or mob hits another: the damage, the knockback, and the
+sounds. A Bot called `fighter` hits a husk that cannot think (`NoAI`) with the item in its
+hand. A husk has a zombie's health and knockback but does not burn in daylight, which a zombie
+does at random. The server runs on normal difficulty, because peaceful removes a hostile mob.
+
+The world is frozen (`/tick freeze`) and Control steps it, so a husk stands where it is put
+and moves only when a Group steps. The windows compare the damage (`damage_event`), the husk's
+health (`set_entity_data`), its velocity (`set_entity_motion`), the sounds and the particles.
+They leave out the husk's position packets: vanilla resends the position of a husk that stands
+still about every 3 seconds, so one lands in a window now and then.
+
+A player is never frozen, so a Bot's attack charge counts every server tick, stepped or not.
+A hit at part of the charge would depend on how long the Bot took, so every hit in these Groups
+comes after enough steps for a full charge. Hits at part of the charge are not compared.
+
+Vanilla draws the pitch of a hurt husk's sound at random, so the Groups leave `sound.pitch`
+out of the comparison. Each hit is played in a lane of its own, and Control waits at the end
+until the husks it killed are gone, so the next play starts without them.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `combat/melee-mob` | tick-exact | none | The fighter hits a husk with a bare hand, a wooden sword, a diamond sword and a diamond axe, each at full charge. | none |
+
 ## Planned
 
 | Mechanic | First Group | Needs |

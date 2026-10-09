@@ -1161,6 +1161,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   many barriers the Bot that must not be kicked floats for; `too_fast`, `into_blocks`, `flying` and
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
+- `groups.combat`: `FIGHTER` — the Bot that hits; `PACKETS` — what a window compares;
+  `PITCH_MASK` — the random pitch of a hurt mob's sound; `melee_mob` — the `combat/melee-mob`
+  script.
 - `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
   compares (the walker waits `run.GROUP_TIMEOUT_S` for its view); `HELD_SYNCS` — how
   many barriers a window lasts after the walker holds its view; `VIEW_DISTANCE` and
