@@ -325,6 +325,11 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "level_particles.y": "Particles y",
         "level_particles.z": "Particles z",
         "level_particles.count": "Particle count",
+        # player (#56)
+        "player_combat_kill": "Death",
+        "respawn": "Respawn",
+        "respawn.data_kept": "Respawn data kept",
+        "respawn.game_mode": "Respawn game mode",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

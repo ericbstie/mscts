@@ -308,6 +308,43 @@ A Player keeps its health and its food from play to play, so each Bot is given h
 saturation (`effect give`) before the first hit. In `combat/immunity` the tapper stands a block
 behind the striker, out of the sweep of the striker's sword. `combat/pvp` runs with player
 versus player damage on, which is the server default; a server with it off is not covered.
+## Player (`player`)
+
+What the world does to a survival player. Each Group puts a Bot where the world hurts it and
+compares what the server sends back: the damage (`damage_event`), the health (`set_health`), the
+entity data (`set_entity_data`), the sounds, a correction of the player's place
+(`player_position`), and a death (`player_combat_kill`, `respawn`). The server runs on normal
+difficulty, because peaceful stops most damage.
+
+Natural regeneration, mob spawning and random ticks are off, so nothing but the Group changes the
+Bot's health or the blocks. The Bot and Control join at the world spawn. Control then moves 96
+blocks away, out of the Bot's view, so that its entity never reaches a window. Once a Group is
+over, the rules are set back to vanilla's defaults and the blocks it set are removed.
+
+A frozen world does not freeze a player: it ticks 20 times a second either way. A fall is
+different, because vanilla works out its damage when it reads the move that lands. So `player/fall`
+freezes the world and steps it after each move.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
+
+A Bot does not simulate physics: `player/fall` gives each position, at most 8 blocks apart. The
+last move lands from 1 block above the surface, as a vanilla client's does. Before each fall, the
+Bot is healed with an `instant_health` effect and put at its height with `/tp`. The surfaces are
+one block wide, each in a lane of its own.
+
+The water is a pool 2 blocks deep, and the Bot lands in it with its head above the surface. A
+player under water loses air in real time, which a stepped window cannot place. The Bot also stops
+in the water for one tick before it lands, because vanilla learns that a player is in water on
+its own tick, after the move: a move that goes from the air into the water and lands is a fall
+onto the pool's floor.
+
+A bed leaves an item behind when it is taken away, which would stay in the Instance for the next
+play and be picked up by the Bot, so the Group removes dropped items last.
+
+`player_combat_kill` is not decoded yet, so the Report shows a difference in the death as a
+difference in the packet's bytes.
 
 ## Planned
 

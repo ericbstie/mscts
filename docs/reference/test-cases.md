@@ -2176,6 +2176,7 @@ Which item is in the stack an entity holds, such as a dropped item. A different 
 **Damage taken**
 
 A packet that tells the client an entity took damage. The client plays the hurt effect from it. A server that leaves it out, or sends it for another entity, shows no hit, or a hit on the wrong target.
+A packet that tells the client an entity was hurt, and by which kind of damage. A server that leaves it out shows no hurt effect and no damage message.
 
 ## `damage_event.entity_id`
 
@@ -2200,6 +2201,7 @@ The entity that started the damage, such as the player who swung. mscts compares
 **Entity that dealt the damage**
 
 The entity that dealt the damage directly, such as the player's own body for a melee hit, or the arrow for a shot. mscts compares the entity each server refers to.
+Which entity was hurt. mscts compares the entity each server refers to, rather than its server-assigned number. A difference shows the hurt effect on another entity.
 
 ## `damage_event.source_position`
 
@@ -2350,3 +2352,28 @@ Where the particles appear along z.
 **Particle count**
 
 How many particles the client shows.
+Where the damage came from, when it came from a place. The client tilts the view away from it. A difference tilts the view the other way.
+
+## `player_combat_kill`
+
+**Death**
+
+The packet that opens the death screen, with the death message. mscts does not decode it yet, so a difference in any of its bytes is reported for the packet as a whole.
+
+## `respawn`
+
+**Respawn**
+
+The packet that tells the client its player was created again, after a death or in another dimension. A server that sends another dimension, game mode or death location puts the player somewhere else.
+
+## `respawn.data_kept`
+
+**Respawn data kept**
+
+Which parts of the old player the new one keeps. A difference keeps or loses data such as attributes and entity data.
+
+## `respawn.game_mode`
+
+**Respawn game mode**
+
+The game mode the player is in after a respawn. A difference changes what the player can do.

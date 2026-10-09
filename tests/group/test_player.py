@@ -1,0 +1,341 @@
+"""The player Groups: where each case puts its Bot, what it sends, and what is undone after.
+
+Every test plays a Group against a fake server and reads the Transcript for what each Bot
+sent (its moves, Control's commands) and the Marks (the Observation windows). What a server
+answers is never asserted: the fake answers Control's markers, the barrier and a respawn
+request, and nothing else.
+"""
+
+import asyncio
+import functools
+import json
+from contextlib import suppress
+from dataclasses import dataclass, field
+
+import pytest
+
+from mscts.bot import SYNC_REQUESTS
+from mscts.codec.packets import Packet
+from mscts.compare import OBSERVE_OPEN
+from mscts.group import GROUPS, GroupContext, GroupKind
+from mscts.groups import player
+from mscts.spec import Difficulty, ServerSpec
+from mscts.transcript import Transcript
+from tests.group.test_control import CODEC, text, tree
+from tests.group.test_movement import MOVES, Play, _sent, read
+from tests.net.fakes import (
+    EMPTY_CHUNK,
+    NO_STATISTICS,
+    TICK_S,
+    JoinScript,
+    Peer,
+    join_server,
+    serve,
+)
+from tests.net.test_bot_move import RESPAWN
+
+CONTROL = "control"
+MARKER = "tellraw @s "
+CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
+PERFORM_RESPAWN = 0
+COMMANDS = tree("gamerule", "tp", "tick", "setblock", "effect", "fill", "kill", "tellraw")
+PLAY_TIMEOUT_S = 300.0
+"""How long a fake serves a Bot: a play takes about 30 s when the host is idle, and several
+times that under load."""
+
+GROUP_IDS = ("player/fall",)
+KINDS = {"player/fall": GroupKind.TICK_EXACT}
+BOTS = {"player/fall": ("faller",)}
+HEAL = "effect give faller minecraft:instant_health 1 5 true"
+ON_GROUND = 1
+"""A move's `flags` when the Bot reports it is on the ground."""
+
+
+@dataclass
+class PlayerServer:
+    """A fake server that joins like vanilla and answers Control's markers and the barrier.
+
+    It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
+    chunk batch.
+    """
+
+    seen: list[Packet] = field(default_factory=list)
+
+    async def __call__(self, peer: Peer) -> None:
+        """Serve one connection: a Handler."""
+        with suppress(ConnectionError):
+            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+
+    async def _play(self, peer: Peer) -> None:
+        requests = 0
+        async for packet in peer.packets():
+            self.seen.append(packet)
+            if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
+                await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
+                await peer.send("minecraft:chunk_batch_start")
+                await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
+                await peer.send("minecraft:chunk_batch_finished", batch_size=1)
+            elif packet.name == CLIENT_COMMAND:
+                requests += 1
+                if (requests - 1) % SYNC_REQUESTS != 0:
+                    await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
+                await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+            elif packet.name == CHAT_COMMAND:
+                command = str((packet.fields or {})["command"])
+                if command.startswith(MARKER):
+                    token = json.loads(command.removeprefix(MARKER))
+                    await peer.write(
+                        peer.frame("minecraft:system_chat", content=text(token), overlay=False)
+                    )
+
+
+async def _play(group_id: str) -> tuple[Transcript, Play]:
+    transcript = Transcript(group_id=group_id, server="fake")
+    async with serve(CODEC, PlayerServer(), timeout_s=PLAY_TIMEOUT_S) as endpoint:
+        context = GroupContext(endpoint, transcript, timeout_s=10.0)
+        try:
+            await GROUPS[group_id].run(context)
+        finally:
+            await context.close()
+    return transcript, read(transcript)
+
+
+@functools.cache
+def play(group_id: str) -> tuple[Transcript, Play]:
+    """Play `group_id` against a fake server once; its Transcript and what was read from it.
+
+    A play takes seconds (the fake's ticks are real), so every test of a Group reads one.
+    """
+    return asyncio.run(_play(group_id))
+
+
+def played(group_id: str) -> Play:
+    return play(group_id)[1]
+
+
+def tp(at: tuple[float, float, float], bot: str = "faller") -> str:
+    return "tp {} {} {} {}".format(bot, *at)
+
+
+def lane(index: int, y: float) -> tuple[float, float, float]:
+    """A point over the landing lane `index`: lanes are 2 blocks apart along x, at z 2.5."""
+    return (2 * index + 1.5, y, 2.5)
+
+
+# Registration
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_each_group_is_registered_without_a_mask_and_plays_on_normal_difficulty(
+    group_id: str,
+) -> None:
+    group = GROUPS[group_id]
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert group.kind is KINDS[group_id]
+    assert group.requires == ()
+    assert group.masks == ()
+    assert group.spec(default) == ServerSpec(
+        host="127.0.0.1", port=25566, difficulty=Difficulty.NORMAL
+    )
+
+
+def test_the_windows_compare_the_damage_the_health_and_the_death() -> None:
+    assert player.PACKETS == (
+        "minecraft:set_health",
+        "minecraft:damage_event",
+        "minecraft:set_entity_data",
+        "minecraft:sound",
+        "minecraft:player_position",
+        "minecraft:player_combat_kill",
+        "minecraft:respawn",
+    )
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_every_window_is_narrowed_to_the_packets(group_id: str) -> None:
+    result = played(group_id)
+
+    assert result.windows
+    assert {window.label for window in result.windows} == {
+        f"{OBSERVE_OPEN} {' '.join(player.PACKETS)}"
+    }
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
+    group_id: str,
+) -> None:
+    transcript, result = play(group_id)
+
+    assert result.first[:6] == (
+        "gamerule player_movement_check false",
+        "gamerule respawn_radius 0",
+        "gamerule natural_health_regeneration false",
+        "gamerule spawn_mobs false",
+        "gamerule random_tick_speed 0",
+        "tp control 96.5 -60 96.5",
+    )
+    hello = next(
+        e.t_ns for e in transcript.events if e.packet.name == "minecraft:hello" and e.bot != CONTROL
+    )
+    commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
+    first_tp = next(t for t, what in commands if str(what).startswith("tp control"))
+    assert first_tp < hello
+    assert result.after[-6:] == (
+        "gamerule random_tick_speed 3",
+        "gamerule spawn_mobs true",
+        "gamerule natural_health_regeneration true",
+        "gamerule respawn_radius 10",
+        "gamerule player_movement_check true",
+        "tick unfreeze",
+    )
+
+
+# player/fall
+
+STONE, WATER, HAY, SLIME, BED = range(5)
+HEIGHTS = (3, 4, 10, 23)
+LANDS_AT = {STONE: -59.0, WATER: -61.0, HAY: -59.0, SLIME: -59.0, BED: -59.4375}
+
+
+def fall_cases() -> list[tuple[int, int]]:
+    """The `(lane, height)` of each fall window, in order: the lethal fall is not among them."""
+    ordinary = [
+        (lane_index, height)
+        for lane_index in range(5)
+        for height in HEIGHTS
+        if (lane_index, height) != (STONE, 23)
+    ]
+    return [*ordinary, (STONE, 10)]
+
+
+def test_fall_builds_every_surface_once_the_world_is_frozen() -> None:
+    result = played("player/fall")
+
+    frozen = result.first.index("tick freeze")
+    assert result.first[frozen + 1 : frozen + 8] == (
+        "setblock 1 -60 2 minecraft:stone",
+        "setblock 3 -62 2 minecraft:water",
+        "setblock 3 -61 2 minecraft:water",
+        "setblock 5 -60 2 minecraft:hay_block",
+        "setblock 7 -60 2 minecraft:slime_block",
+        "setblock 9 -60 3 minecraft:red_bed[facing=south,part=head]",
+        "setblock 9 -60 2 minecraft:red_bed[facing=south,part=foot]",
+    )
+    assert result.first[frozen - 1] == tp(lane(STONE, -60.0))
+
+
+def test_fall_gives_each_surface_each_height_in_a_window_of_its_own() -> None:
+    result = played("player/fall")
+
+    starts = [window.before[-1] for window in result.windows[: len(fall_cases())]]
+    assert starts == [tp(lane(i, LANDS_AT[i] + height)) for i, height in fall_cases()]
+
+
+def test_fall_heals_the_bot_before_it_is_put_up_in_the_air() -> None:
+    result = played("player/fall")
+
+    for window in result.windows[:-1]:
+        assert window.before[-2] == HEAL
+
+
+def test_fall_drops_at_most_8_blocks_a_move_then_stops_above_the_surface_and_lands() -> None:
+    result = played("player/fall")
+
+    stone_3, stone_4, stone_10 = result.windows[:3]
+    assert stone_3.moves("faller") == [lane(STONE, -58.0), lane(STONE, -59.0)]
+    assert stone_4.moves("faller") == [lane(STONE, -58.0), lane(STONE, -59.0)]
+    assert stone_10.moves("faller") == [
+        lane(STONE, -57.0),
+        lane(STONE, -58.0),
+        lane(STONE, -59.0),
+    ]
+
+
+def test_fall_into_water_stops_in_the_water_with_its_head_out_before_it_lands() -> None:
+    # A move from the air into the water that lands is a fall onto the water's floor to vanilla,
+    # which learns that a player is in water on its tick; and under water a player loses air in
+    # real time, which a stepped window cannot place.
+    result = played("player/fall")
+
+    water_23 = result.windows[6]
+    assert water_23.moves("faller") == [
+        lane(WATER, -46.0),
+        lane(WATER, -54.0),
+        lane(WATER, -60.5),
+        lane(WATER, -61.0),
+    ]
+
+
+def test_fall_steps_the_world_after_every_move() -> None:
+    result = played("player/fall")
+
+    for window in result.windows[: len(fall_cases())]:
+        moves = len(window.moves("faller"))
+        assert [who for who, _ in window.sent] == ["faller", CONTROL] * moves
+        assert [what for who, what in window.sent if who == CONTROL] == ["tick step 1"] * moves
+
+
+def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
+    transcript, result = play("player/fall")
+
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
+    for opened, closed in zip(opens[: len(fall_cases())], closes, strict=False):
+        flags = [
+            int(str((e.packet.fields or {})["flags"])) & ON_GROUND
+            for e in transcript.events
+            if e.bot == "faller" and e.packet.name in MOVES and opened <= e.t_ns <= closed
+        ]
+        assert flags[-1] == ON_GROUND
+        assert not any(flags[:-1])
+    assert len(result.windows) == len(fall_cases()) + 2
+
+
+def test_fall_turns_fall_damage_off_for_one_fall_and_on_again_for_the_last() -> None:
+    result = played("player/fall")
+
+    off_fall = len(fall_cases()) - 1
+    assert result.windows[off_fall].before[0] == "gamerule fall_damage false"
+    assert result.windows[off_fall].moves("faller")[-1] == lane(STONE, -59.0)
+    lethal = result.windows[off_fall + 1]
+    assert lethal.before[0] == "gamerule fall_damage true"
+    assert lethal.before[-1] == tp(lane(STONE, -59.0 + 23))
+    assert result.after.count("gamerule fall_damage true") == 1
+
+
+def test_fall_ends_with_the_deadly_fall_and_the_respawn_in_a_window_of_its_own() -> None:
+    transcript, result = play("player/fall")
+
+    *_, lethal, respawn = result.windows
+    assert lethal.moves("faller")[-1] == lane(STONE, -59.0)
+    assert respawn.sent == ()
+    asked = [
+        e
+        for e in transcript.events
+        if e.bot == "faller"
+        and e.packet.name == CLIENT_COMMAND
+        and e.packet.fields == {"action": PERFORM_RESPAWN}
+    ]
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
+    [ask] = asked
+    assert opens[-1] < ask.t_ns < closes[-1]
+
+
+def test_fall_restores_the_flat_world_and_unfreezes_it_last() -> None:
+    result = played("player/fall")
+
+    assert result.after[:9] == (
+        "gamerule fall_damage true",
+        "setblock 9 -60 2 minecraft:air",
+        "setblock 9 -60 3 minecraft:air",
+        "setblock 7 -60 2 minecraft:air",
+        "setblock 5 -60 2 minecraft:air",
+        "setblock 3 -61 2 minecraft:grass_block",
+        "setblock 3 -62 2 minecraft:dirt",
+        "setblock 1 -60 2 minecraft:air",
+        "kill @e[type=minecraft:item]",  # the bed's other half drops as an item when it goes
+    )
+    assert result.after[-1] == "tick unfreeze"
