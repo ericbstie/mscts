@@ -10,6 +10,7 @@ hunger effect a tick after it is given, sends the health the Group waits for aft
 import asyncio
 import functools
 import json
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -38,11 +39,21 @@ MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 SET_HEALTH, SET_TIME = "minecraft:set_health", "minecraft:set_time"
 PERFORM_RESPAWN = 0
-COMMANDS = tree("gamerule", "tick", "effect", "damage", "kill", "tp", "tellraw")
+COMMANDS = tree("gamerule", "tick", "effect", "damage", "kill", "tp", "tellraw", "difficulty")
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
 HUNGER = 17
 """The hunger effect's id in the `mob_effect` registry, which `remove_mob_effect` carries."""
+DEATH = "minecraft:player_combat_kill"
+
+type Answer = tuple[tuple[str, Mapping[str, object] | bytes], ...]
+"""Packets a fake sends after a command: each name with its fields, or its raw payload."""
+
+ENDS = ("minecraft:remove_mob_effect", {"entity_id": 1, "effect": HUNGER})
+
+
+def health(value: float, food: int) -> tuple[str, Mapping[str, object]]:
+    return (SET_HEALTH, {"health": value, "food": food, "saturation": 0.0})
 
 
 @dataclass
@@ -50,13 +61,13 @@ class HungerServer:
     """A fake server that joins like vanilla and answers what the hunger Groups wait for.
 
     It answers Control's markers, the barrier (a tick apart) and a respawn request (`respawn`,
-    then one chunk batch). A hunger effect given to a player ends a tick later
-    (`remove_mob_effect`); a `/damage` is answered with `damaged`, sent to the player hurt.
-    Every player but Control is sent `set_time` every tick.
+    then one chunk batch). A command whose first word is in `answers` is answered, a tick
+    later, with its packets, sent to the player the command names. Every player but Control
+    is sent `set_time` every tick.
     """
 
-    damaged: dict[str, object] = field(default_factory=dict)
-    """The `set_health` fields sent to a player after a `/damage`."""
+    answers: Mapping[str, Answer] = field(default_factory=dict)
+    """The packets sent after a command, by the command's first word."""
     seen: list[Packet] = field(default_factory=list)
     players: dict[str, Peer] = field(default_factory=dict)
 
@@ -95,13 +106,14 @@ class HungerServer:
             await peer.write(
                 peer.frame("minecraft:system_chat", content=text(token), overlay=False)
             )
-        elif command.startswith("effect give") and words[3] == "minecraft:hunger":
+        elif words[0] in self.answers:
             await asyncio.sleep(TICK_S)
-            await self.players[words[2]].send(
-                "minecraft:remove_mob_effect", entity_id=1, effect=HUNGER
-            )
-        elif words[0] == "damage":
-            await self.players[words[1]].send(SET_HEALTH, **self.damaged)
+            player = next(self.players[word] for word in words if word in self.players)
+            for name, body in self.answers[words[0]]:
+                if isinstance(body, bytes):
+                    await player.write(player.raw_frame(name, body))
+                else:
+                    await player.send(name, **body)
 
     async def _tick(self, peer: Peer) -> None:
         with suppress(ConnectionError):
@@ -121,15 +133,19 @@ async def _play(group_id: str, server: HungerServer) -> Transcript:
     return transcript
 
 
-DAMAGED: dict[str, dict[str, object]] = {
-    "player/regeneration": {"health": 10.0, "food": 17, "saturation": 0.0},
+ANSWERS: Mapping[str, Mapping[str, Answer]] = {
+    "player/regeneration": {"effect": (ENDS,), "damage": (health(10.0, 17),)},
+    "player/starvation": {
+        "effect": (ENDS, health(10.0, 0), health(1.0, 0), (DEATH, b"\x02" + text("dead")))
+    },
 }
+"""What the fake answers in each Group: just what the Group waits for."""
 
 
 @functools.cache
 def play(group_id: str) -> tuple[Transcript, Play]:
     """Play `group_id` against a fake server once; its Transcript and what was read from it."""
-    transcript = asyncio.run(_play(group_id, HungerServer(damaged=DAMAGED[group_id])))
+    transcript = asyncio.run(_play(group_id, HungerServer(answers=ANSWERS[group_id])))
     return transcript, read(transcript)
 
 
@@ -242,3 +258,77 @@ def test_regeneration_waits_for_food_17_then_100_ticks_before_a_window_ends() ->
         last_health = max(i for i, name in enumerate(names) if name == SET_HEALTH)
         assert (packets[last_health].fields or {})["food"] == 17
         assert names[last_health + 1 :].count(SET_TIME) >= 6
+
+
+# player/starvation
+
+STARVER = "starver"
+EMPTY = "effect give starver minecraft:hunger 5 255 true"
+
+
+def test_starvation_is_registered_exact_on_normal_difficulty_with_no_mask() -> None:
+    group = GROUPS["player/starvation"]
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert group.kind is GroupKind.EXACT
+    assert group.requires == ()
+    assert group.masks == ()
+    assert group.spec(default) == ServerSpec(
+        host="127.0.0.1", port=25566, difficulty=Difficulty.NORMAL
+    )
+
+
+def test_starvation_turns_regeneration_off_and_puts_it_and_the_difficulty_back() -> None:
+    result = played("player/starvation")
+
+    assert result.first == (
+        "gamerule player_movement_check false",
+        "gamerule respawn_radius 0",
+        "gamerule natural_health_regeneration false",
+        "tick freeze",
+        "difficulty easy",
+        "kill starver",
+    )
+    assert result.after == (
+        "tp starver 0.5 -60 0.5",
+        "difficulty normal",
+        "gamerule natural_health_regeneration true",
+        "gamerule respawn_radius 10",
+        "gamerule player_movement_check true",
+        "tick unfreeze",
+    )
+
+
+def test_starvation_hurts_and_empties_a_fresh_bot_on_easy_normal_and_hard() -> None:
+    result = played("player/starvation")
+
+    assert [window.label for window in result.windows] == [opened(*player_hunger.PACKETS)] * 3
+    assert [window.sent for window in result.windows] == [
+        ((CONTROL, f"damage starver {amount} minecraft:generic"), (CONTROL, EMPTY))
+        for amount in (8, 17, 18)
+    ]
+    assert [window.before for window in result.windows] == [
+        result.first,
+        ("difficulty normal", "kill starver"),
+        ("difficulty hard", "kill starver"),
+    ]
+
+
+def test_starvation_waits_for_each_floor_then_100_ticks_and_on_hard_for_the_death() -> None:
+    transcript, _ = play("player/starvation")
+
+    easy, normal, hard = received_in_windows(transcript, STARVER)
+    for packets, floor in ((easy, 10.0), (normal, 1.0)):
+        names = [p.name for p in packets]
+        at = next(i for i, p in enumerate(packets) if (p.fields or {}).get("health") == floor)
+        assert names[at + 1 :].count(SET_TIME) >= 6
+    assert DEATH in [p.name for p in hard]
+
+
+def test_starvation_respawns_the_bot_it_starved_to_death() -> None:
+    transcript, _ = play("player/starvation")
+
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    asked = respawns(transcript, STARVER)
+    assert len(asked) == 4
+    assert asked[-1] > closes[-1]

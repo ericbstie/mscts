@@ -75,11 +75,16 @@ async def _quiet(bot: Bot) -> None:
         await bot.expect(_TIME, timeout_s=_WAIT_S)
 
 
-async def _lower(context: GroupContext, bot: Bot, hunger: _Hunger) -> None:
-    """Give the Bot `hunger`, hiding its particles, and wait until it has worn off."""
+async def _give(context: GroupContext, bot: Bot, hunger: _Hunger) -> None:
+    """Give the Bot `hunger`, hiding its particles."""
     await context.control.run(
         f"effect give {bot.name} minecraft:hunger {hunger.seconds} {hunger.amplifier} true"
     )
+
+
+async def _lower(context: GroupContext, bot: Bot, hunger: _Hunger) -> None:
+    """Give the Bot `hunger` and wait until it has worn off."""
+    await _give(context, bot, hunger)
     await bot.expect(_EFFECT_ENDS, timeout_s=_WAIT_S)
 
 
@@ -88,11 +93,11 @@ async def _damage(context: GroupContext, bot: Bot, amount: int) -> None:
     await context.control.run(f"damage {bot.name} {amount} minecraft:generic")
 
 
-def _food_is(food: int) -> Callable[[Packet], bool]:
-    """Whether a `set_health` says the food is `food`."""
+def _says(field: str, value: float) -> Callable[[Packet], bool]:
+    """Whether a `set_health` says `field` (`food`, `health`) is `value`."""
 
     def holds(packet: Packet) -> bool:
-        return (packet.fields or {}).get("food") == food
+        return (packet.fields or {}).get(field) == value
 
     return holds
 
@@ -127,5 +132,70 @@ async def regeneration(context: GroupContext) -> None:
                 await _lower(context, bot, start)
             async with context.observe(*PACKETS):
                 await _damage(context, bot, 10)
-                await bot.expect(_SET_HEALTH, timeout_s=_WAIT_S, where=_food_is(_STOPS_AT))
+                await bot.expect(_SET_HEALTH, timeout_s=_WAIT_S, where=_says("food", _STOPS_AT))
                 await _quiet(bot)
+
+
+# `player/starvation`: a Bot at food 0 starves down to a floor that depends on the difficulty.
+
+_STARVER = "starver"
+_DEATH = "minecraft:player_combat_kill"
+
+_EMPTY = _Hunger(255, 5)
+"""Food 0 and saturation 0 from a fresh player: 128 exhaustion, more than the 100 of food 20
+and saturation 5. The food reaches 0 about 20 ticks before the effect ends."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Starving:
+    """One part of `player/starvation`.
+
+    Attributes:
+        difficulty: The difficulty the part is played on.
+        health: The Bot's health when its food runs out.
+        floor: The health starvation stops at, or None if it kills the Bot.
+    """
+
+    difficulty: str
+    health: int
+    floor: int | None
+
+
+_STARVINGS = (_Starving("easy", 12, 10), _Starving("normal", 3, 1), _Starving("hard", 2, None))
+"""Starvation hurts a player 1 every 80 ticks while its health is over 10 on easy, over 1 on
+normal, and always on hard (`FoodData.tick`): two hits each."""
+
+
+async def _starve(context: GroupContext, bot: Bot, part: _Starving) -> None:
+    """Hurt a fresh Bot to `part.health`, take all its food, and wait for its health to settle."""
+    await _damage(context, bot, 20 - part.health)
+    await _give(context, bot, _EMPTY)
+    if part.floor is None:
+        await bot.expect(_DEATH, timeout_s=_WAIT_S)
+    else:
+        await bot.expect(_SET_HEALTH, timeout_s=_WAIT_S, where=_says("health", part.floor))
+        await _quiet(bot)
+
+
+@group("player/starvation", spec=_normal)
+async def starvation(context: GroupContext) -> None:
+    """A Bot with no food starves on easy, normal and hard, from just above each floor.
+
+    On easy it stops at 10 health, on normal at 1, and on hard it dies. Natural regeneration
+    is off, so nothing heals it between hits. Each window holds the damage, the food running
+    out, every hit, and on easy and normal 100 ticks with nothing more.
+    """
+    control = context.control
+    async with contextlib.AsyncExitStack() as undo:
+        await pin_joins(control, undo)
+        undo.push_async_callback(control.run, "gamerule natural_health_regeneration true")
+        await control.run("gamerule natural_health_regeneration false")
+        undo.push_async_callback(control.run, "difficulty normal")
+        bot = await join_at_spawn(context, undo, _STARVER)
+        await context.freeze()
+        for part in _STARVINGS:
+            await control.run(f"difficulty {part.difficulty}")
+            await fresh(context, bot)
+            async with context.observe(*PACKETS):
+                await _starve(context, bot, part)
+        await bot.respawn()

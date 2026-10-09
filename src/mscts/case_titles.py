@@ -358,6 +358,16 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "respawn.portal_cooldown": "Portal cooldown at respawn",
         "respawn.previous_game_mode": "Respawn previous game mode",
         "respawn.sea_level": "Respawn sea level",
+        # player hunger (#57)
+        "update_mob_effect": "Effect given",
+        "update_mob_effect.entity_id": "Entity given the effect",
+        "update_mob_effect.effect": "Effect type",
+        "update_mob_effect.amplifier": "Effect amplifier",
+        "update_mob_effect.duration": "Effect duration",
+        "update_mob_effect.flags": "Effect display flags",
+        "remove_mob_effect": "Effect ended",
+        "remove_mob_effect.entity_id": "Entity losing the effect",
+        "remove_mob_effect.effect": "Effect that ended",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

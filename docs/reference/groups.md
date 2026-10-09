@@ -485,6 +485,7 @@ ticks, and sets the health with `/damage` of type `generic`, which costs no food
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `player/regeneration` | exact | none | A Bot at 10 health heals from food 20, from food 18 and from food 17, in a window of its own each. Each heal costs food, and the healing stops at 17. | none |
+| `player/starvation` | exact | none | A Bot with no food starves on easy from 12 health, on normal from 3 and on hard from 2, in a window of its own each. It stops at 10 health on easy and at 1 on normal, and dies on hard. | none |
 
 ## Planned
 
