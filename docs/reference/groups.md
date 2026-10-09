@@ -489,6 +489,30 @@ ticks, and sets the health with `/damage` of type `generic`, which costs no food
 | `player/eating` | exact | none | A Bot at food 2 eats bread, cooked beef, a golden apple and rotten flesh, in a window of its own each. | none |
 | `player/exhaustion` | exact | none | A Bot sprints 100 blocks, jumps 50 times and hits 20 husks, in a window of its own each. After each, it reads back its food, saturation and exhaustion with `/data get`. | none |
 
+These Groups compare what changes and in what order, not how many ticks it takes. A Candidate
+that heals every 40 ticks instead of 80, or starves a player every 20, sends the same packets
+in the same order. The rate needs a window that counts ticks, as for damage above. A window
+knows that nothing more comes by waiting: vanilla sends `set_time` every 20 ticks, frozen or not,
+so 6 of them span at least 100 ticks, more than the 80 between two heals or two hits of
+starvation.
+
+In `player/regeneration` the Bot heals from saturation at food 20, every 10 ticks, and from food
+alone at 18, every 80. Each heal costs food, until the food is 17 and the healing stops. In
+`player/starvation`, natural regeneration is off. The damage that sets the health runs inside the
+window: a respawned player takes no damage until its client says it has loaded the world, and
+the window's opening barrier makes sure the server has read that.
+
+In `player/eating` each window ends on the `set_health` that the food sends. The Group masks the
+pitch of `sound`, because vanilla draws it at random for the eating and burp sounds. Rotten flesh
+gives hunger 4 times in 5, at random, so its window does not compare the effects.
+
+No packet carries exhaustion, so `player/exhaustion` has the Bot, an operator, read its food,
+saturation and exhaustion back with `/data get` after each part. The Bot passes a barrier after
+each move, jump and hit, so its player ticks between two of them, as it does for a vanilla
+client, and the exhaustion adds up in the same order on every server. A hit costs exhaustion only
+when it hurts, and a husk is immune for 10 ticks after a hit, so the Bot hits 20 husks once each,
+standing in a ring around it.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
