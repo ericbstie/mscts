@@ -227,6 +227,7 @@ is not compared.
 _SWORD = "minecraft:diamond_sword"
 _GROUND = -60.0
 _HOP = 1.0
+_LOOKUPS = 4
 """How high the fighter hops before a falling hit: it comes down half of that."""
 
 
@@ -313,3 +314,149 @@ damage events come in the order the sweep finds the husks, which is the same on 
 async def sweep(context: GroupContext) -> None:
     """The fighter hits a husk with a sword on the ground, with three husks beside it."""
     await _fight(context, (_Case(_SWORD, around=_BESIDE),), SWEEP_PACKETS)
+
+
+# `combat/immunity`: two Bots hit one husk, a few ticks apart.
+
+STRIKER = "striker"
+"""The Bot that hits with a diamond sword (7 damage)."""
+
+TAPPER = "tapper"
+"""The Bot that hits with a bare hand (1 damage)."""
+
+_LANE_Z = 2.5
+_STRIKER_Z = -0.5
+_TAPPER_Z = 0.5
+_TAPPER_X = _FIGHTER_X - 1.0
+"""Where the two Bots stand: either side of the husk's lane, the tapper a block further back.
+
+The striker's sword sweeps: it hurts whoever stands within a block of the husk it hits, and the
+tapper is a Player. A block back puts the tapper out of the sweep and still in reach.
+"""
+
+
+@dataclass(frozen=True, slots=True)
+class _Pair:
+    """Who hits first, who hits second, and how many steps the husk takes between the hits."""
+
+    first: str
+    second: str
+    steps: int
+
+
+_PAIRS = (
+    _Pair(STRIKER, TAPPER, 5),
+    _Pair(TAPPER, STRIKER, 5),
+    _Pair(STRIKER, TAPPER, 11),
+)
+"""A weaker hit 5 ticks after a stronger one, a stronger one 5 ticks after a weaker one, and a
+weaker one 11 ticks after a stronger one.
+
+A hurt mob ignores a hit that is not stronger than the last, until its immunity (20 ticks, from
+`invulnerableTime`) is down to 10 or less; then it takes the whole hit. The husk counts those
+ticks only when the world steps (a frozen mob does not tick), so the gap is exact. Each Bot
+has a charge of its own, so a Bot that hit in the last case is full again after the steps that
+wait for the charge. A Bot hits once per case: the same Bot twice would hit at part of its
+charge, which depends on how long it took.
+"""
+
+
+async def _see(
+    context: GroupContext, bot: Bot, kind: str, near: tuple[float, float, float]
+) -> Entity:
+    """The entity of `kind` nearest `near` that `bot` tracks, stepping on while it has none.
+
+    A Bot teleported to a new lane can lose track of everything for a tick or two (vanilla
+    drops and re-adds what it tracks as the Bot moves away), so the lookup waits it out.
+    """
+    for _ in range(_LOOKUPS - 1):
+        try:
+            return bot.entities.find(kind, near=near)
+        except LookupError:
+            await context.step()
+    return bot.entities.find(kind, near=near)
+
+
+async def _heal(control: Control, name: str) -> None:
+    """Fill `name`'s health: a Player keeps it from play to play, as saved player data."""
+    await control.run(f"effect give {name} minecraft:instant_health 1 10 true")
+
+
+async def _stand_pair(context: GroupContext) -> None:
+    """Put the Bots either side of the lane, the striker with a sword and the tapper bare-handed."""
+    control = context.control
+    stands = (
+        (STRIKER, _FIGHTER_X, _STRIKER_Z, _SWORD),
+        (TAPPER, _TAPPER_X, _TAPPER_Z, "minecraft:air"),
+    )
+    for name, x, dz, held in stands:
+        await _heal(control, name)
+        await control.run(f"tp {name} {x} -60 {_LANE_Z + dz} {_FACING_EAST} 0")
+        await control.run(f"item replace entity {name} hotbar.0 with {held}")
+
+
+@group("combat/immunity", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def immunity(context: GroupContext) -> None:
+    """A weaker hit, a stronger one, and a weaker one, on a husk that was just hurt."""
+    async with _arena(context):
+        bots = {name: await context.bot(name) for name in (STRIKER, TAPPER)}
+        for bot in bots.values():
+            await bot.join()
+        await _stand_pair(context)
+        husk = (_FIGHTER_X + _REACH, -60.0, _LANE_Z)
+        for number, pair in enumerate(_PAIRS):
+            if number:
+                await context.control.run(f"tp @e[type=minecraft:husk,tag={_TAG}] {_CONTROL_AT}")
+            await _summon(context, husk[0], husk[2])
+            await context.step(_CHARGE_STEPS)
+            first, second = bots[pair.first], bots[pair.second]
+            targets = [await _see(context, bot, "husk", husk) for bot in (first, second)]
+            async with context.observe(*PACKETS):
+                await first.attack(targets[0])
+                await context.step(pair.steps)
+                await second.attack(targets[1])
+                await context.step(2)
+
+
+# `combat/pvp`: a Bot hits another Bot.
+
+ATTACKER = "attacker"
+VICTIM = "victim"
+
+PVP_PACKETS = (*PACKETS, "minecraft:set_health")
+PVP_SPRINT_PACKETS = (*SPRINT_PACKETS, "minecraft:set_health")
+"""What the windows compare: `PACKETS` and the victim's health, and the same without the entity
+data for a sprinting hit (`SPRINT_PACKETS`)."""
+
+_VICTIM_X = _FIGHTER_X + _REACH
+
+
+async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprint: bool) -> None:
+    """Put the Bots in `lane_z` and hit once, sprinting or not, in a window of its own."""
+    control = context.control
+    await control.run(f"tp {ATTACKER} {_FIGHTER_X} -60 {lane_z} {_FACING_EAST} 0")
+    await control.run(f"tp {VICTIM} {_VICTIM_X} -60 {lane_z} 90.0 0")
+    await context.step(_CHARGE_STEPS)
+    if sprint:
+        await _start_sprinting(attacker)
+    packets = PVP_SPRINT_PACKETS if sprint else PVP_PACKETS
+    target = await _see(context, attacker, "player", (_VICTIM_X, -60.0, lane_z))
+    async with context.observe(*packets):
+        await attacker.attack(target)
+        await context.step(2)
+    if sprint:
+        await _stop_sprinting(attacker)
+
+
+@group("combat/pvp", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def pvp(context: GroupContext) -> None:
+    """A Bot hits another Bot with a diamond sword while standing, then while sprinting."""
+    async with _arena(context):
+        attacker = await context.bot(ATTACKER)
+        await attacker.join()
+        victim = await context.bot(VICTIM)
+        await victim.join()
+        await context.control.run(f"item replace entity {ATTACKER} hotbar.0 with {_SWORD}")
+        await _heal(context.control, VICTIM)
+        for lane, sprint in enumerate((False, True)):
+            await _pvp_hit(context, attacker, 2.5 + 4 * lane, sprint=sprint)

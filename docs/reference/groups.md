@@ -273,6 +273,8 @@ until the husks it killed are gone, so the next play starts without them.
 | `combat/critical` | tick-exact | none | The fighter hits a husk with a diamond sword twice. The first hit comes while the fighter falls: it hops a block into the air and comes down half a block before the hit, which makes it critical. The second comes while the fighter sprints, which is not critical. | none |
 | `combat/knockback` | tick-exact | none | The fighter hits a husk with a diamond sword while standing, then while sprinting. A sprinting hit knocks the husk back further. | none |
 | `combat/sweep` | tick-exact | none | The fighter hits a husk with a diamond sword on the ground, with three more husks 0.9 blocks from it. The sweep hurts all three. | none |
+| `combat/immunity` | tick-exact | none | Two Bots, `striker` with a diamond sword and `tapper` with a bare hand, hit one husk a few ticks apart: the striker then the tapper after 5 ticks, the tapper then the striker after 5, and the striker then the tapper after 11. A hurt husk ignores a hit that is not stronger than the last until its immunity is down to 10 ticks. | none |
+| `combat/pvp` | tick-exact | none | A Bot called `attacker` hits another Bot, `victim`, with a diamond sword, standing and then sprinting. The window also compares the victim's health (`set_health`). | none |
 
 Vanilla sends the data and the velocity of every entity a tick changed at the end of that tick, in
 the order of a hash of their entity ids, and the two Instances' ids differ. So when a hit changes
@@ -281,6 +283,11 @@ changes the husk's health and the fighter's sprint flag, which the hit clears, s
 the sprinting hits in `combat/critical` and `combat/knockback` leave out `set_entity_data`. Whether
 the sprint stops is not compared. The window of `combat/sweep` compares only the damage, the
 sounds and the particles, because the sweep hurts four husks.
+
+A Player keeps its health from play to play, so the Groups with more than one Bot heal each Bot
+(`effect give`) before the first hit. In `combat/immunity` the tapper stands a block behind the
+striker, out of the sweep of the striker's sword. The case of `combat/pvp` runs with player
+versus player damage on, which is the server default; a server with it off is not covered.
 
 ## Planned
 

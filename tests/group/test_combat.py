@@ -36,14 +36,29 @@ def _login(peer: Peer) -> bytes:
 CONTROL = "control"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
-COMMANDS = tree("gamerule", "tp", "tick", "summon", "item", "data", "kill", "execute", "tellraw")
+COMMANDS = tree(
+    "gamerule", "tp", "tick", "summon", "item", "effect", "data", "kill", "execute", "tellraw"
+)
 HUSK = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:husk")
 MOVES = ("minecraft:move_player_pos", "minecraft:move_player_pos_rot")
 START_SPRINTING, STOP_SPRINTING = 1, 2
 STEP = "tick step 1"
+HUSK_COMMAND = (
+    'summon minecraft:husk 6.0 -60 2.5 {NoAI:1b,OnGround:1b,Health:20f,Tags:["mscts_combat"]}'
+)
 NONE_LEFT = "commands.execute.conditional.fail"
 
-GROUP_IDS = ("combat/melee-mob", "combat/critical", "combat/knockback", "combat/sweep")
+GROUP_IDS = (
+    "combat/melee-mob",
+    "combat/critical",
+    "combat/knockback",
+    "combat/sweep",
+    "combat/immunity",
+    "combat/pvp",
+)
+FIGHTER_GROUPS = GROUP_IDS[:4]
+PLAYER = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:player")
+VICTIM_ID = 200
 
 
 @dataclass
@@ -70,6 +85,8 @@ class CombatServer:
 
     async def _play(self, peer: Peer) -> None:
         self._peers.append(peer)
+        if peer.name == "victim":
+            await self._announce_victim()
         requests = 0
         stalled = False
         async for packet in peer.packets():
@@ -80,20 +97,50 @@ class CombatServer:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
                 await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
             elif packet.name == CHAT_COMMAND:
-                command = str((packet.fields or {})["command"])
-                if command == self.stall_after:
-                    stalled = True
-                elif command.startswith(MARKER) and stalled:
-                    stalled = False
-                elif command.startswith(MARKER):
-                    token = json.loads(command.removeprefix(MARKER))
-                    await peer.write(
-                        peer.frame("minecraft:system_chat", content=text(token), overlay=False)
-                    )
-                elif command.startswith("execute if entity"):
-                    await self._say(peer, self.left or NONE_LEFT)
-                elif command.startswith("summon minecraft:husk "):
-                    await self._summon(command)
+                stalled = await self._command(peer, str((packet.fields or {})["command"]), stalled)
+
+    async def _command(self, peer: Peer, command: str, stalled: bool) -> bool:  # noqa: FBT001
+        """Answer one command; True while the next marker is to stay unanswered."""
+        if command == self.stall_after:
+            return True
+        if command.startswith(MARKER):
+            if not stalled:
+                token = json.loads(command.removeprefix(MARKER))
+                await peer.write(
+                    peer.frame("minecraft:system_chat", content=text(token), overlay=False)
+                )
+            return False
+        if command.startswith("execute if entity"):
+            await self._say(peer, self.left or NONE_LEFT)
+        elif command.startswith("summon minecraft:husk "):
+            await self._summon(command)
+        elif command.startswith("tp @e[type=minecraft:husk"):
+            await self._send_husks_away()
+        return stalled
+
+    async def _send_husks_away(self) -> None:
+        """Every husk summoned so far leaves the Bots' sight (a `remove_entities`)."""
+        gone = list(range(101, self._next_id + 1))
+        for peer in self._peers:
+            await peer.send("minecraft:remove_entities", entity_ids=gone)
+
+    async def _announce_victim(self) -> None:
+        """Tell every player already in the world that the victim is there (an `add_entity`)."""
+        for peer in self._peers[:-1]:
+            await peer.send(
+                "minecraft:add_entity",
+                entity_id=VICTIM_ID,
+                entity_uuid=uuid.UUID(int=VICTIM_ID),
+                type=PLAYER,
+                x=6.0,
+                y=-60.0,
+                z=2.5,
+                velocity={"scale": 0, "x": 0, "y": 0, "z": 0},
+                pitch=0,
+                yaw=0,
+                head_yaw=0,
+                data=0,
+            )
 
     async def _say(self, peer: Peer, message: str) -> None:
         await peer.write(peer.frame("minecraft:system_chat", content=text(message), overlay=False))
@@ -204,7 +251,7 @@ def commands(items: tuple[Item, ...], bot: str = CONTROL) -> list[str]:
     return [i.what for i in items if i.bot == bot and i.what.startswith(tuple(_ROOTS))]
 
 
-_ROOTS = ("gamerule", "tp ", "tick", "summon", "item", "data", "kill", "execute")
+_ROOTS = ("gamerule", "tp ", "tick", "summon", "item", "data", "kill", "execute", "effect")
 
 
 # Registration
@@ -268,6 +315,8 @@ async def test_every_window_is_narrowed_to_the_packets_of_its_case(group_id: str
         "combat/critical": [combat.PACKETS, combat.SPRINT_PACKETS],
         "combat/knockback": [combat.PACKETS, combat.SPRINT_PACKETS],
         "combat/sweep": [combat.SWEEP_PACKETS],
+        "combat/immunity": [combat.PACKETS] * 3,
+        "combat/pvp": [combat.PVP_PACKETS, combat.PVP_SPRINT_PACKETS],
     }[group_id]
     assert [window.label for window in result.windows] == [label(p) for p in expected]
 
@@ -333,7 +382,7 @@ SIZES = {group_id: len(weapons) for group_id, weapons in WEAPONS.items()}
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", FIGHTER_GROUPS)
 async def test_each_case_hits_the_husk_summoned_for_it_once(group_id: str) -> None:
     result = await play(group_id)
 
@@ -346,7 +395,7 @@ async def test_each_case_hits_the_husk_summoned_for_it_once(group_id: str) -> No
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", FIGHTER_GROUPS)
 async def test_each_case_sets_up_the_fighter_the_weapon_and_a_husk(group_id: str) -> None:
     result = await play(group_id)
 
@@ -367,7 +416,7 @@ async def test_each_case_sets_up_the_fighter_the_weapon_and_a_husk(group_id: str
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", FIGHTER_GROUPS)
 async def test_each_case_waits_ten_steps_for_the_charge_and_steps_two_after_the_hit(
     group_id: str,
 ) -> None:
@@ -469,3 +518,115 @@ async def test_control_gives_up_asking_after_twenty_answers_that_a_husk_is_left(
 
     asked = [c for c in commands(result.after) if c.startswith("execute")]
     assert len(asked) == 20
+
+
+# combat/immunity
+
+
+def hits(window: Window) -> list[str]:
+    """What happened inside the window: `<bot> hit`, and each step of the world."""
+    return [
+        STEP if i.what == STEP else f"{i.bot} hit"
+        for i in window.inside
+        if i.what in (STEP, "minecraft:attack")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_immunity_hits_a_husk_twice_with_the_steps_of_the_pair_between_the_hits() -> None:
+    result = await play("combat/immunity")
+
+    assert [hits(window) for window in result.windows] == [
+        ["striker hit", *[STEP] * 5, "tapper hit", STEP, STEP],
+        ["tapper hit", *[STEP] * 5, "striker hit", STEP, STEP],
+        ["striker hit", *[STEP] * 11, "tapper hit", STEP, STEP],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_immunity_hits_the_same_husk_with_both_bots() -> None:
+    result = await play("combat/immunity")
+
+    for number, window in enumerate(result.windows):
+        attacks = [i for i in window.inside if i.what == "minecraft:attack"]
+        assert [a.fields["entity_id"] for a in attacks] == [101 + number] * 2
+
+
+@pytest.mark.asyncio
+async def test_immunity_stands_the_bots_either_side_of_the_lane_with_a_sword_and_a_hand() -> None:
+    result = await play("combat/immunity")
+
+    setup = [c for c in commands(result.windows[0].before) if not c.startswith("tick")]
+    assert setup[-7:] == [
+        "effect give striker minecraft:instant_health 1 10 true",
+        "tp striker 4.5 -60 2.0 -90.0 0",
+        "item replace entity striker hotbar.0 with minecraft:diamond_sword",
+        "effect give tapper minecraft:instant_health 1 10 true",
+        "tp tapper 3.5 -60 3.0 -90.0 0",
+        "item replace entity tapper hotbar.0 with minecraft:air",
+        HUSK_COMMAND,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_immunity_sends_the_last_husk_away_and_summons_a_new_one_for_each_case() -> None:
+    result = await play("combat/immunity")
+
+    for window in result.windows[1:]:
+        setup = [c for c in commands(window.before) if not c.startswith("tick")]
+        assert setup == [
+            "tp @e[type=minecraft:husk,tag=mscts_combat] 5.5 -60 44.5",
+            HUSK_COMMAND,
+        ]
+    for window in result.windows:
+        assert commands(window.before).count(STEP) == 10
+
+
+# combat/pvp
+
+
+@pytest.mark.asyncio
+async def test_pvp_hits_the_other_bot_once_in_each_window() -> None:
+    result = await play("combat/pvp")
+
+    for window in result.windows:
+        attacks = [i for i in window.inside if i.what == "minecraft:attack"]
+        assert [(a.bot, a.fields["entity_id"]) for a in attacks] == [("attacker", VICTIM_ID)]
+        assert commands(window.inside).count(STEP) == 2
+        assert commands(window.before).count(STEP) == 10
+
+
+@pytest.mark.asyncio
+async def test_pvp_puts_both_bots_in_the_lane_facing_each_other() -> None:
+    result = await play("combat/pvp")
+
+    for lane, window in enumerate(result.windows):
+        z = 2.5 + 4 * lane
+        setup = [c for c in commands(window.before) if not c.startswith("tick")]
+        assert setup[-2:] == [f"tp attacker 4.5 -60 {z} -90.0 0", f"tp victim 6.0 -60 {z} 90.0 0"]
+
+
+@pytest.mark.asyncio
+async def test_pvp_gives_the_attacker_a_sword_and_sprints_only_in_the_second_case() -> None:
+    result = await play("combat/pvp")
+
+    assert "item replace entity attacker hotbar.0 with minecraft:diamond_sword" in commands(
+        result.first
+    )
+    actions = [
+        [i.fields["action"] for i in w.before if i.what == "minecraft:player_command"]
+        for w in result.windows
+    ]
+    assert actions == [[], [START_SPRINTING]]
+    assert [i.fields["action"] for i in result.after if i.what == "minecraft:player_command"] == [
+        STOP_SPRINTING
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pvp_heals_the_victim_before_the_first_hit() -> None:
+    """A Player keeps its health from play to play, so each play starts the victim at full."""
+    result = await play("combat/pvp")
+
+    heal = "effect give victim minecraft:instant_health 1 10 true"
+    assert heal in commands(result.first)
