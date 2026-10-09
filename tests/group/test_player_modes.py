@@ -208,6 +208,8 @@ def test_game_modes_compares_the_abilities_the_event_the_tab_list_and_what_a_wat
         "minecraft:set_entity_data",
         "minecraft:update_attributes",
         "minecraft:waypoint",
+        "minecraft:add_entity",
+        "minecraft:remove_entities",
     )
 
 

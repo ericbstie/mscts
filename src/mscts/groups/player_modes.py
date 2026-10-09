@@ -73,9 +73,12 @@ MODE_PACKETS = (
     "minecraft:set_entity_data",
     "minecraft:update_attributes",
     "minecraft:waypoint",
+    "minecraft:add_entity",
+    "minecraft:remove_entities",
 )
 """The packets a window compares: the abilities, the game mode event, the tab list, and the
-entity data, attributes and waypoint the mode changes."""
+entity data, attributes and waypoint the mode changes. Vanilla sends the watcher no entity added
+or removed: a spectator stays tracked (`ServerPlayer.broadcastToPlayer`)."""
 
 _MODES = ("creative", "adventure", "spectator", "survival")
 
