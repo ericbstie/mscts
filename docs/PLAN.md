@@ -1148,15 +1148,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.blocks_player`: `DIGGER` — the Bot that digs and places; `WATCHER` — the Bot that
   receives the cracks and particles of a dig; `DIGGER_AT`, `WATCHER_AT` and `CONTROL_AT` — where
   the three stand, clear of every block a Group sets; `PACKETS` — what a window compares;
-  `SURVIVAL_PACKETS` — the same without the cracks and the particles, which the clock times;
-  `TICK_S` — how long a server tick lasts; `SLACK_TICKS` — how many ticks an on-time finish
-  waits past the least the server accepts; `UPTIME_S` — how long the digger waits after its
-  early finishes; `EARLY_CASES` and `SURVIVAL_CASES` and `PLACE_CASES` — what the early digs, the
-  on-time digs and the placements are; `break_ticks`, `accept_ticks` and `finish_ticks` — how
-  many client ticks a vanilla client takes to finish a block, how many the server needs before it
-  accepts a finish, and how many a finish waits;
-  `dig_survival`, `dig_creative` and `place` — the `blocks/dig-survival`, `blocks/dig-creative`
-  and `blocks/place` scripts.
+  `PLACE_CASES` — what the placements are;
+  `dig_creative` and `place` — the `blocks/dig-creative` and `blocks/place` scripts.
 - `groups.players`: `FIRST` — the player in the world first, who watches; `SECOND` — the
   player who joins, changes game mode and leaves next to it; `PACKETS` — what a window
   compares; `join_seen`, `leave_seen`, `mode_seen` and `server_full` — the
