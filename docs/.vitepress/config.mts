@@ -4,7 +4,12 @@ const repo = "https://github.com/ericbstie/mscts";
 // Served as a GitHub Pages project site, at https://ericbstie.github.io/mscts/.
 const base = "/mscts/";
 // The class of each Report mark, coloured as `mscts run` colours it on a terminal.
-const MARKS: Record<string, string> = { "✓": "ms-pass", "✗": "ms-fail", "!": "ms-error" };
+const MARKS: Record<string, string> = {
+  "✓": "ms-pass",
+  "✗": "ms-fail",
+  "!": "ms-error",
+  "·": "ms-skip",
+};
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -40,7 +45,7 @@ export default defineConfig({
         const html = fence(tokens, idx, options, env, self);
         if (tokens[idx].info.trim() !== "") return html;
         return html.replace(
-          /(<span class="line"><span[^>]*>)([✓✗!]) /g,
+          /(<span class="line"><span[^>]*>)([✓✗!·]) /g,
           (_, line, mark) => `${line}<span class="${MARKS[mark]}">${mark}</span> `,
         );
       };

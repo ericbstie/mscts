@@ -90,10 +90,10 @@ stderr and the Report to stdout, so `> report.txt` captures only the Report.
 
 ```
 Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
-✓ status/basic/status_response.description (network traffic only, not scored)
+· status/basic/status_response.description (network traffic only, not scored)
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
-✓ status/basic/status_response.favicon (network traffic only, not scored)
+· status/basic/status_response.enforceSecureChat (network traffic only, not scored)
+· status/basic/status_response.favicon (network traffic only, not scored)
 ...
 ✗ status/with-player/login_finished.profile.uuid
 ...
@@ -104,7 +104,8 @@ Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
 Took 89.5 s
 ```
 
-Each line is one test case of one Group: ✓ if it passed, ✗ if not. Pumpkin
+Each line is one test case of one Group: ✓ if it passed, ✗ if not, and · if
+it is not scored. Pumpkin
 sends four status values in a different form from vanilla's. The vanilla
 client decodes both forms of each to the same thing. Those test cases appear
 only because the forms differ, so they are marked "network traffic only, not

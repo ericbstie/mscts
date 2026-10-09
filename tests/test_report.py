@@ -123,7 +123,7 @@ def test_a_network_traffic_difference_the_comparison_did_not_compare_is_not_scor
     verdict = _verdict(traffic, _field("container_set_slot.window_id"))
     assert render_text(_report(_result(verdict))) == (
         "Running tests against pumpkin\n"
-        "✓ status/basic/container_set_slot.state_id (network traffic only, not scored)\n"
+        "· status/basic/container_set_slot.state_id (network traffic only, not scored)\n"
         "✗ status/basic/container_set_slot.window_id\n" + FAILED_ONE
     )
 
@@ -464,17 +464,19 @@ def test_markdown_code_keeps_its_edges(path: str, code: str) -> None:
     assert f"  - {code}: vanilla sends" in text, text
 
 
-def test_colour_marks_a_pass_green_a_failure_red_and_an_error_yellow() -> None:
+def test_colour_marks_a_pass_green_a_failure_red_an_error_yellow_and_the_rest_grey() -> None:
     error = Verdict("status/error", Outcome.ERROR, detail="failed")
     report = _report(
         _result(_compared("a")),
         _result(_verdict(_field("b"), group_id="status/ping")),
         _result(error),
+        _result(_verdict(_field("c", traffic=True), group_id="status/other")),
     )
     text = render_text(report, color=True)
     assert "\x1b[32m✓\x1b[0m status/basic/a\n" in text, text
     assert "\x1b[31m✗\x1b[0m status/ping/b\n" in text, text
     assert "\x1b[33m!\x1b[0m status/error Error: failed\n" in text, text
+    assert "\x1b[90m·\x1b[0m status/other/c (network traffic only, not scored)\n" in text
     assert re.sub("\x1b\\[[0-9]+m", "", text) == render_text(report)
 
 

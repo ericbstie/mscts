@@ -7,3 +7,4 @@ report.json rewritten 2026-10-03 through report_json.dumps, adding lines and tot
 Played the Groups the default held then, status/basic and status/ping. #32 added
 status/with-player to the default; `--group 'status/[bp]*'` plays the same two.
 test_cases rewritten 2026-10-09 (#330): the status_response names only network traffic Divergences gave were dropped, as compare no longer lists them; lines, totals and the rendered output follow.
+Text re-rendered 2026-10-09 from the same report.json for the · mark of a line not scored (#330).

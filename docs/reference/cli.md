@@ -76,7 +76,8 @@ stops both and prints the Report to stdout. Progress goes to stderr.
 
 The Report starts with `Running tests against <adapter name> <build>`,
 the exact build of the Candidate it tested. Then it lists each test case
-of each Group on a line of its own, marked ✓ if it passed or ✗ if not. A
+of each Group on a line of its own, marked ✓ if it passed, ✗ if not, or ·
+if it is not scored. A
 test case that differs only in network traffic passes, marked
 `(network traffic only)`. One that only network traffic shows, such as a
 value the vanilla client never reads, is listed only when the two servers
@@ -86,7 +87,7 @@ with its reasons. The Report ends with the totals and the score on one
 line, then the total Run time in seconds. [Reading a Report](/guide/reading-a-report) explains
 each line.
 
-On a terminal, ✓ is green, ✗ red and `!` yellow. Set `NO_COLOR` to any
+On a terminal, ✓ is green, ✗ red, `!` yellow and · grey. Set `NO_COLOR` to any
 value to turn the colours off. Output sent to a file or another program has
 no colours, and neither do `report.md` and `report.json`.
 

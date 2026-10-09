@@ -8,10 +8,10 @@ A default Run against Pumpkin produced this Report:
 
 ```
 Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
-✓ status/basic/status_response.description (network traffic only, not scored)
+· status/basic/status_response.description (network traffic only, not scored)
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
-✓ status/basic/status_response.favicon (network traffic only, not scored)
+· status/basic/status_response.enforceSecureChat (network traffic only, not scored)
+· status/basic/status_response.favicon (network traffic only, not scored)
 ...
 ✗ status/with-player/login_finished.profile.uuid
 ...
@@ -24,7 +24,8 @@ its version, its commit where the publisher names one, and the start of
 the file's sha256.
 
 Each line after that is one test case of one Group, in the order the
-Groups were played. It starts with ✓ or ✗, then the Group id and the test
+Groups were played. It starts with ✓ if it passed, ✗ if not, or · if it
+is [not scored](#network-traffic-differences), then the Group id and the test
 case name joined by `/`. A test case that two Groups compare has a line in
 each, but only one per Group, however many repetitions or values
 differed.
@@ -203,10 +204,10 @@ Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
   Reference    vanilla 26.3 (sha256 d052f14d…)
   Target       Minecraft 26.3 (protocol 777)
   Repetitions  5 of each group
-✓ status/basic/status_response.description (network traffic only, not scored)
+· status/basic/status_response.description (network traffic only, not scored)
   vanilla sends "mscts", pumpkin sends {"text": "mscts"}
 ✓ status/basic/status_response.description.text
-✓ status/basic/status_response.enforceSecureChat (network traffic only, not scored)
+· status/basic/status_response.enforceSecureChat (network traffic only, not scored)
   vanilla leaves it out, pumpkin sends true
 ...
 Group times
@@ -263,7 +264,7 @@ A Run of `status/basic` and `status/ping` against Pumpkin wrote:
 ```md
 # Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
 
-- ✓ `status/basic/status_response.description` (network traffic only, not scored)
+- · `status/basic/status_response.description` (network traffic only, not scored)
 - ✓ `status/basic/status_response.description.text`
 ...
 

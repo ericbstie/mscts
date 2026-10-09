@@ -17,23 +17,23 @@
         <div class="ms-term-bar"><i></i><i></i><i></i></div>
 <pre v-pre><span class="prompt">$</span> mscts run --candidate pumpkin
 Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)
-<span class="ms-pass">✓</span> status/basic/status_response.description (network traffic only, not scored)
+<span class="ms-skip">·</span> status/basic/status_response.description (network traffic only, not scored)
 <span class="ms-pass">✓</span> status/basic/status_response.description.text
-<span class="ms-pass">✓</span> status/basic/status_response.enforceSecureChat (network traffic only, not scored)
-<span class="ms-pass">✓</span> status/basic/status_response.favicon (network traffic only, not scored)
+<span class="ms-skip">·</span> status/basic/status_response.enforceSecureChat (network traffic only, not scored)
+<span class="ms-skip">·</span> status/basic/status_response.favicon (network traffic only, not scored)
 <span class="ms-pass">✓</span> status/basic/status_response.players.max
 <span class="ms-pass">✓</span> status/basic/status_response.players.online
-<span class="ms-pass">✓</span> status/basic/status_response.players.sample (network traffic only, not scored)
+<span class="ms-skip">·</span> status/basic/status_response.players.sample (network traffic only, not scored)
 <span class="ms-pass">✓</span> status/basic/status_response.version.name
 <span class="ms-pass">✓</span> status/basic/status_response.version.protocol
 <span class="ms-pass">✓</span> status/ping/status:pong_response.timestamp
-<span class="ms-pass">✓</span> status/ping/status_response.description (network traffic only, not scored)
+<span class="ms-skip">·</span> status/ping/status_response.description (network traffic only, not scored)
 <span class="ms-pass">✓</span> status/ping/status_response.description.text
-<span class="ms-pass">✓</span> status/ping/status_response.enforceSecureChat (network traffic only, not scored)
-<span class="ms-pass">✓</span> status/ping/status_response.favicon (network traffic only, not scored)
+<span class="ms-skip">·</span> status/ping/status_response.enforceSecureChat (network traffic only, not scored)
+<span class="ms-skip">·</span> status/ping/status_response.favicon (network traffic only, not scored)
 <span class="ms-pass">✓</span> status/ping/status_response.players.max
 <span class="ms-pass">✓</span> status/ping/status_response.players.online
-<span class="ms-pass">✓</span> status/ping/status_response.players.sample (network traffic only, not scored)
+<span class="ms-skip">·</span> status/ping/status_response.players.sample (network traffic only, not scored)
 <span class="ms-pass">✓</span> status/ping/status_response.version.name
 <span class="ms-pass">✓</span> status/ping/status_response.version.protocol
 11 passed, 0 failed. (100%)

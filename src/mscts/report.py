@@ -280,12 +280,10 @@ _MARKS = {
     LineResult.FAIL: "✗",
     LineResult.NOT_TESTED: "✗",
     LineResult.ERROR: "!",
-    LineResult.NOT_SCORED: "✓",
+    LineResult.NOT_SCORED: "·",
 }
-"""Each line's mark: `!` for an error, which is not scored, so neither passes nor fails.
-
-A test case that is not scored differs only in network traffic, so nothing a player sees
-differs: ✓, labelled as not scored."""
+"""Each line's mark: `!` for an error and `·` for a test case that is not scored, which
+neither pass nor fail."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,7 +291,8 @@ class _Entry:
     """One listed line: a test case, or a Group without test cases to show for it.
 
     Attributes:
-        mark: ✓ if it passed, ! if it is an error, else ✗ (`_MARKS`).
+        mark: ✓ if it passed, ! if it is an error, · if it is not scored, else ✗
+            (`_MARKS`).
         name: `<group>/<test case>`, or the Group id for the Group's own line.
         label: The test case's title, or the Group's reasons; "" if it has neither.
         values: The verbose lines under it.
@@ -324,8 +323,8 @@ class _Document:
     closing: tuple[str, ...]
 
 
-_COLORS = {"✓": "32", "✗": "31", "!": "33"}
-"""Each mark's ANSI colour on a terminal: green, red and yellow."""
+_COLORS = {"✓": "32", "✗": "31", "!": "33", "·": "90"}
+"""Each mark's ANSI colour on a terminal: green, red, yellow and grey."""
 
 
 def render_text(report: Report, *, verbose: bool = False, color: bool = False) -> str:

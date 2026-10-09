@@ -2433,11 +2433,12 @@ def loads(text: str) -> Report: ...
 class ReportJsonError(ValueError): ...
 
 def render_text(report: Report, *, verbose: bool = False, color: bool = False) -> str: ...
-# color (#101): each mark in its ANSI colour, ✓ green (32), ✗ red (31), ! yellow (33).
+# color (#101): each mark in its ANSI colour, ✓ green (32), ✗ red (31), ! yellow (33),
+# · grey (90, #330).
 def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # report.md (#190): what render_text says, as Markdown. "# <first line>"; the build line
 # (#156) as a paragraph; the verbose header as "Label: value" lines joined by hard breaks;
-# each line "- <✓|✗> `<group>/<test case>` <title>" (no list when there is no line),
+# each line "- <✓|✗|·> `<group>/<test case>` <title>" (no list when there is no line),
 # its verbose values nested ("  - "), with values and paths as code spans; "## Group
 # times" and a list; the totals, score and total time last, one paragraph joined by hard
 # breaks. Blocks are separated by a blank line. Text mscts did
@@ -2450,7 +2451,7 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # ADR-0012 / #9: first line "Running tests against <candidate adapter name>[ <installed_version>]"
 # (the build, when known; 2026-10-04 amendment, replacing #156's second line);
 # #101 (amends ADR-0012): one line per report_lines line whose result is in _LISTED
-# (every result today): "<✓|✗> <group>/<test case>" (✓ for NOT_SCORED) (no title since 2026-10-04),
+# (every result today): "<✓|✗|·> <group>/<test case>" (· for NOT_SCORED) (no title since 2026-10-04),
 # " (network traffic only)" when it passed that way, " (network traffic only, not
 # scored)" for NOT_SCORED (#330); a Group line is
 # "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then
