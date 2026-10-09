@@ -57,3 +57,26 @@ it. So `RANDOM_FIELDS` holds fields vanilla draws at random or reads from its
 clock, with the same evidence rule. Its Masks, like every Mask, hide a value
 and never whether it is there: a criterion obtained on one side only is a
 Divergence (`compare.MASKED`).
+
+## Amendment (2026-10-09, #56): a field that is random only for some sources
+
+A field can be random for the sources a Group's windows can receive and
+fixed for others. A sound's pitch is: `Entity.lavaHurt` and
+`playEntityOnFireExtinguishedSound` draw it from the level's random (javap,
+26.3), while a note block's pitch is that block's gameplay and most sounds
+play at 1.0. A `RANDOM_FIELDS` entry would hide it for every Group, which
+item 1 allows only for a field vanilla draws at random on every run.
+
+So **a Group may Mask a field that is random for every source its windows
+can receive, when that field is fixed for other sources.** The Mask is the
+Group's own, with the javap line that draws the value for each source the
+windows receive, and the two vanilla runs that differed before it. It hides
+the value and never which packet came or its other fields. This is item 2
+applied to one Group: the Mask names where the distribution is judged. A
+statistical Group judges the distribution (#24), as ADR-0006 item 3 says of
+random mechanics. `blocks/*` does this for a dropped item's position and
+motion (`DROP_MASKS`), and `player/fire` for a sound's pitch (`FIRE_MASKS`).
+
+The test-group skill already follows this rule. ADR-0006 item 2, which
+allows no Mask on what a player can observe, gives way to it for random
+values, as item 2 above says.

@@ -861,3 +861,32 @@ def test_the_entity_ids_of_a_link_are_ints() -> None:
     fields = play_schema("minecraft:set_entity_link").fields
     assert fields["attached_entity_id"] is ENTITY_ID_INT
     assert fields["holding_entity_id"] is ENTITY_ID_INT_OR_NONE
+
+
+def test_player_combat_kill_is_the_players_id_and_the_death_message_as_nbt_bytes() -> None:
+    # Recorded from vanilla 26.3, after a fall of 23 blocks onto stone: player 29, and the
+    # message `death.fell.accident.generic` with the player's name, uuid and click and hover events.
+    message = (
+        "0a090004776974680a000000010a000b636c69636b5f6576656e74080006616374696f6e000f737567676573745f636f6d6d"
+        "616e64080007636f6d6d616e64000d2f74656c6c2066616c6c65722000080009696e73657274696f6e000666616c6c657208"
+        "000474657874000666616c6c65720a000b686f7665725f6576656e740800046e616d65000666616c6c657208000661637469"
+        "6f6e000b73686f775f656e74697479080002696400106d696e6563726166743a706c617965720b0004757569640000000481"
+        "43ff0486273d7abb3ec61bfa4e192b00000800097472616e736c617465001b64656174682e66656c6c2e6163636964656e74"
+        "2e67656e6572696300"
+    )
+
+    round_trip(
+        "minecraft:player_combat_kill",
+        {"player_id": 29, "message": bytes.fromhex(message)},
+        "1d" + message,
+    )
+    assert entity_id_paths(play_schema("minecraft:player_combat_kill")) == ["player_id"]
+
+
+def test_player_combat_kill_refuses_a_message_that_is_not_a_text_component() -> None:
+    # A lone TAG_End root is NBT, but no text component: the vanilla client cannot read it.
+    data = Writer().var_int(
+        CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:player_combat_kill")
+    )
+    with pytest.raises(CodecError):
+        CODEC.decode(State.PLAY, CLIENTBOUND, data.var_int(29).to_bytes() + b"\x00")

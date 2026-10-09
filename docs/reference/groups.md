@@ -308,6 +308,85 @@ A Player keeps its health and its food from play to play, so each Bot is given h
 saturation (`effect give`) before the first hit. In `combat/immunity` the tapper stands a block
 behind the striker, out of the sweep of the striker's sword. `combat/pvp` runs with player
 versus player damage on, which is the server default; a server with it off is not covered.
+## Player (`player`)
+
+What the world does to a survival player. Each Group puts a Bot where the world hurts it and
+compares what the server sends back: the damage (`damage_event`), the health (`set_health`), the
+entity data (`set_entity_data`), the sounds, a correction of the player's place
+(`player_position`), and a death (`player_combat_kill`, `respawn`). The server runs on normal
+difficulty, because peaceful stops most damage.
+
+Natural regeneration and random ticks are off, so nothing but the Group changes the Bot's health
+or the blocks. (Mobs do not spawn either, but that is the Fixture world's rule, not the Group's.)
+A server saves a player where it leaves. Control is online before the Group starts, so it joins
+where the last Group left it, which is 96 blocks from the spawn. The Group moves it there so that
+its entity never reaches a window. Each Bot joins where the last play left it, and the Group puts
+it back at the spawn when it ends, so that it does not rejoin inside a block. Once a Group is over,
+the two rules are set back to their values and the blocks it set are removed.
+
+A frozen world does not freeze a player: it ticks 20 times a second either way. A fall is
+different, because vanilla works out its damage when it reads the move that lands. So `player/fall`
+freezes the world and steps it after each move.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
+| `player/drowning` | exact | none | A Bot is put under water in a pool 2 blocks deep and stays until it takes damage, then for three more hits. Then `drowning_damage` is turned off, and the Bot stays for one more round of bubbles. | none |
+| `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
+| `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
+| `player/fire` | exact | none | A Bot is put in fire and takes damage. Then a fresh Bot steps into lava, out of it onto dry grass still burning, and into water. | none |
+| `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
+
+What these Groups do not compare is how often damage repeats. A window holds what one hit sends, and a Candidate that hurts a drowning player every 40 ticks instead of 20, or a suffocating one every 20 instead of 10, sends the same packets in the same order. The same holds for `player/void` and `player/freezing`: nothing in them depends on time. `player/fall` is the only tick-exact Group, and what it compares is the damage of each landing. The rate of damage needs a window that counts ticks, which these Groups do not have yet.
+
+A Bot does not simulate physics: `player/fall` gives each position, at most 8 blocks apart. The
+last move lands from 1 block above the surface, as a vanilla client's does. Before each fall, the
+Bot is healed with an `instant_health` effect and put at its height with `/tp`. The surfaces are
+one block wide, each in a lane of its own.
+
+The water is a pool 2 blocks deep, and the Bot lands in it with its head above the surface. A
+player under water loses air in real time, which a stepped window cannot place. The Bot also stops
+in the water for one tick before it lands, because vanilla learns that a player is in water on
+its own tick, after the move: a move that goes from the air into the water and lands is a fall
+onto the pool's floor.
+
+A bed leaves an item behind when it is taken away, which would stay in the Instance for the next
+play and be picked up by the Bot, so the Group removes dropped items last.
+
+A player ticks in real time, so `player/drowning` does not step the world. It puts a fresh player
+(killed and respawned, with full air) under water with `/tp` inside its first window, which ends on
+the first `set_health` the Bot receives: the 300 ticks of air and the damage. Each
+later hit has a window of its own that compares only what the hit sends (`damage_event`,
+`entity_event`, `set_health`, `sound`). The entity data changes every tick, and a window that opens
+after a hit starts a tick or two later on one server than on another. With `drowning_damage` off,
+vanilla still resets the air and sends the bubbles, and sends no damage.
+
+`player/suffocation` puts the Bot's feet and eyes inside stone, and `player/void` puts it at y -130:
+vanilla hurts a player 4 points a hit below y -128, the lowest block minus 64, until it dies. That
+window ends on `player_combat_kill`, and a second window holds the respawn.
+
+`player/fire` has a window for each place. The first ends on the first hit in fire, the next on the
+first hit in lava, and the third on the first burn after the Bot has stepped out onto dry grass.
+The Bot is made fresh before the fire and again before the lava: a player is immune for 10 ticks
+after a hit, and a lava tick inside them hurts only by the excess, so the lava's full hit would
+fall between two windows.
+The Bot must leave the lava within 9 ticks of its last hit, so that the burn starts from the same
+count of ticks on every server. The last window ends a barrier after the water puts the fire out.
+The Group masks the pitch of `sound`: the burn and extinguish sounds draw it at random. Other
+sounds have a fixed pitch (a note block's is its gameplay), so the Mask is this Group's and not
+every Comparison's. How the pitch is distributed belongs to a statistical Group (#24).
+
+The hits are timed in real time, so each window must open before the next hit. The Group measures
+the time since the last hit when a window opens, and fails if the next hit may already have come.
+On the Reference that is an `error`, and not a Candidate's `mismatch`.
+
+`player/freezing` compares the hits and the Bot's move into the snow, but not the entity data:
+vanilla hurts a frozen player when its tick count is a multiple of 40, a count that started when the
+Group made the player respawn, so the ticks before the first hit are timing.
+
+A death is `player_combat_kill`: the player that died, and the death message as the bytes of its
+text component. The player is numbered like any entity, because the id of a Bot differs between
+servers, and between plays on one server.
 
 ## Planned
 
