@@ -428,7 +428,8 @@ class Divergence:
         observability: `network traffic`: a `field` Divergence between raw values whose
             canonical forms are equal, so the vanilla client reads both alike; its path
             and values are the raw ones; or a `missing` or `unexpected` `chunk_batch_start`
-            or `chunk_batch_finished`, which leave the client's world as it is. `gameplay`:
+            or `chunk_batch_finished`, or one on another tick (`TICK_PATH`), which leave
+            the client's world as it is. `gameplay`:
             every other Divergence, including every `bot` and `failed` one.
     """
 
@@ -2704,7 +2705,9 @@ def _diff_ticks(
     """The ticks of two matched Packets, if both have one and they differ (#23).
 
     One `field` Divergence at `TICK_PATH`, with the two ticks, and the packet's test case;
-    the Packets' own differences follow it (`_diff_matched`).
+    the Packets' own differences follow it (`_diff_matched`). It is network traffic for a
+    packet that marks a chunk batch (`_BATCH_PACKETS`), as one left out is (`_unmatched`), so
+    a marker sent late never scores lower than one not sent.
     """
     if reference.tick is None or candidate.tick is None or reference.tick == candidate.tick:
         return
@@ -2718,6 +2721,11 @@ def _diff_ticks(
         reference=reference.tick,
         candidate=candidate.tick,
         test_case=_test_case(state, name, ()),
+        observability=(
+            Observability.NETWORK_TRAFFIC
+            if (state, name) in _BATCH_PACKETS
+            else Observability.GAMEPLAY
+        ),
     )
 
 

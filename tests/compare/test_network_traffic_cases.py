@@ -11,7 +11,7 @@ from collections.abc import Mapping
 import pytest
 
 from mscts.codec.packets import Packet
-from mscts.compare import Verdict, compare
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, Verdict, compare
 from tests.compare.build import packet, transcript
 from tests.compare.test_canonical import PUMPKIN_NIGHTLY, VANILLA, status
 
@@ -78,3 +78,28 @@ def test_a_chunk_batch_marker_only_one_side_sent_adds_no_test_case(
     assert verdict.divergences
     assert verdict.gameplay == ()
     assert verdict.test_cases == ("set_health.health",)
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [{}, {"batch_size": 3}],
+    ids=["chunk_batch_start", "chunk_batch_finished"],
+)
+def test_a_chunk_batch_marker_a_tick_late_scores_as_one_left_out(
+    fields: Mapping[str, object],
+) -> None:
+    # Review A of #341, should-fix 1: a late marker was a gameplay Divergence with a test
+    # case, so sending it late scored lower than leaving it out.
+    name = "chunk_batch_start" if not fields else "chunk_batch_finished"
+    health = ("alice", _fields("set_health", {"health": 20.0}))
+    marker = ("alice", _fields(name, fields))
+    first, second = f"{TICK_MARK}1", f"{TICK_MARK}2"
+    on_time = transcript(OBSERVE_OPEN, health, marker, first, second, OBSERVE_CLOSE)
+    late = transcript(OBSERVE_OPEN, health, first, marker, second, OBSERVE_CLOSE)
+    gone = transcript(OBSERVE_OPEN, health, first, second, OBSERVE_CLOSE)
+
+    verdict = compare(on_time, late, [])
+
+    assert [d.path for d in verdict.divergences] == [TICK_PATH]
+    assert verdict.gameplay == ()
+    assert verdict.test_cases == compare(on_time, gone, []).test_cases == ("set_health.health",)
