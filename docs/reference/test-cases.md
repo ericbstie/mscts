@@ -2075,3 +2075,99 @@ difference can move an entry in that list.
 The hotbar slot the client selects, numbered 0 to 8. A difference can make
 the player hold another item. Values outside that range are ignored by the
 26.3 client.
+
+## `add_entity.data`
+
+**Entity spawn data**
+
+A number some entities need to appear correctly. It means different things for different kinds of entity.
+
+## `add_entity.entity_id`
+
+**Entity number**
+
+The number later packets use to refer to the entity. mscts compares entities by their type and where they appear, so two servers numbering them differently is not a difference by itself.
+
+## `add_entity.head_yaw`
+
+**Entity head direction**
+
+The way the entity's head turns, as an angle. A difference turns the entity's head.
+
+## `add_entity.pitch`
+
+**Entity up-down angle**
+
+How far up or down the entity looks, as an angle. A difference tilts the entity.
+
+## `add_entity.type`
+
+**Entity type**
+
+Which kind of entity appears, such as a dropped item or a pig. A different type shows a different entity.
+
+## `add_entity.velocity.scale`
+
+**Entity motion scale**
+
+The size of the unit the entity's starting speed is counted in. A difference changes how fast it starts to move.
+
+## `add_entity.velocity.y`
+
+**Entity upward speed**
+
+How fast the entity starts to move up or down. A block's drop pops up at the same speed on vanilla every time, so a difference shows an item that jumps higher or lower.
+
+## `block_changed_ack`
+
+**Block action acknowledgement**
+
+The server telling the player it has dealt with a block action the client guessed at, such as breaking or placing a block. Without it the client keeps showing its guess.
+
+## `block_changed_ack.sequence`
+
+**Acknowledged action number**
+
+Which of the client's guessed actions the server acknowledges. The client keeps its guess until it hears that action's number, so a wrong number leaves a block looking changed or changes it back too soon.
+
+## `level_event.data`
+
+**World event data**
+
+Extra detail for the effect. For a block breaking it is the state of the broken block, which picks the particles and the sound.
+
+## `level_event.global_event`
+
+**World event heard everywhere**
+
+Whether every player hears the effect however far away they are, or only the players near it. Block effects are only for those near.
+
+## `level_event.pos.x`
+
+**World event x**
+
+The x coordinate where the effect plays. A different value plays it somewhere else.
+
+## `level_event.pos.y`
+
+**World event y**
+
+The y coordinate where the effect plays. A different value plays it somewhere else.
+
+## `level_event.pos.z`
+
+**World event z**
+
+The z coordinate where the effect plays. A different value plays it somewhere else.
+
+## `set_entity_data.entries[].value.count`
+
+**Item count in entity data**
+
+How many items are in the stack an entity holds, such as a dropped item. A different count shows a different stack on the ground.
+
+## `set_entity_data.entries[].value.item`
+
+**Item type in entity data**
+
+Which item is in the stack an entity holds, such as a dropped item. A different item drops something else.

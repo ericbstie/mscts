@@ -276,6 +276,23 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "update_recipes.stonecutter_recipes[].slot_display.type": "Stonecutter result display type",
         "update_recipes.stonecutter_recipes[].slot_display.value.count": "Stonecutter result count",
         "update_recipes.stonecutter_recipes[].slot_display.value.item": "Stonecutter result item",
+        # Blocks a player breaks and places (#36).
+        "add_entity.data": "Entity spawn data",
+        "add_entity.entity_id": "Entity number",
+        "add_entity.head_yaw": "Entity head direction",
+        "add_entity.pitch": "Entity up-down angle",
+        "add_entity.type": "Entity type",
+        "add_entity.velocity.scale": "Entity motion scale",
+        "add_entity.velocity.y": "Entity upward speed",
+        "block_changed_ack": "Block action acknowledgement",
+        "block_changed_ack.sequence": "Acknowledged action number",
+        "level_event.data": "World event data",
+        "level_event.global_event": "World event heard everywhere",
+        "level_event.pos.x": "World event x",
+        "level_event.pos.y": "World event y",
+        "level_event.pos.z": "World event z",
+        "set_entity_data.entries[].value.count": "Item count in entity data",
+        "set_entity_data.entries[].value.item": "Item type in entity data",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
