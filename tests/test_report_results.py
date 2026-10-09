@@ -436,6 +436,15 @@ def test_a_field_that_shows_only_network_traffic_never_counts_toward_the_score(
     assert totals(_slot_lines(state_id)) == Totals(passed=3, failed=1, not_tested=0, errors=0)
 
 
+def test_a_test_case_a_gameplay_divergence_names_is_scored_even_if_not_listed() -> None:
+    # Mutant R3 of #330: only a test case that network traffic alone names is not scored.
+    mixed = (_field("b", traffic=True), replace(_field("b"), index=1))
+    verdict = Verdict("status/basic", Outcome.MISMATCH, mixed, test_cases=())
+    assert report_lines(_report(_result(verdict))) == (
+        CaseResult("status/basic", "b", LineResult.FAIL),
+    )
+
+
 def test_a_field_that_shows_only_network_traffic_is_listed_when_it_differs() -> None:
     assert CaseResult(
         GROUP, "container_set_slot.state_id", LineResult.NOT_SCORED, network_traffic_only=True
