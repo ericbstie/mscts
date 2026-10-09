@@ -25,7 +25,8 @@ first.
    PROCESS.md, and tell the worker to read the Worker contract, work its
    issue on `issue-<n>-<slug>`, open one PR, and end with the short Worker
    report (its Retrospective never goes on GitHub). The workers run side by
-   side and their reports return together, so you are woken once per batch.
+   side and your turn resumes once, when the last report returns. Agent
+   calls in separate messages would run one after another.
 4. Before starting a batch, do lead work: review, write the next briefs,
    fix the process docs. Do not duplicate a worker's task.
 5. When the batch returns, for each worker:
