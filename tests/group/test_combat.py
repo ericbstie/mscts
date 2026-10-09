@@ -19,7 +19,7 @@ from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
 from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
-from mscts.group import GROUPS, GroupContext, GroupKind
+from mscts.group import GROUPS, GroupKind
 from mscts.groups import combat
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
@@ -341,7 +341,6 @@ async def test_the_arena_is_set_before_the_first_window_and_undone_after_the_las
     ]
     assert f"tp {CONTROL} 5.5 -60 44.5" in before
     assert commands(result.after) == [
-        "data merge entity @e[tag=mscts_combat] {last_hurt_by_player_memory_time:0}",
         "gamerule mob_drops false",
         "kill @e[tag=mscts_combat]",
         "gamerule mob_drops true",
@@ -514,10 +513,13 @@ async def test_control_asks_until_no_husk_is_left_then_stops() -> None:
 
 
 @pytest.mark.asyncio
-async def test_control_gives_up_asking_after_twenty_answers_that_a_husk_is_left() -> None:
-    result = await play("combat/melee-mob", CombatServer(left="Test passed, count: 1"))
+async def test_control_asks_twenty_times_and_then_fails_while_a_husk_is_left() -> None:
+    server = CombatServer(left="Test passed, count: 1")
 
-    asked = [c for c in commands(result.after) if c.startswith("execute")]
+    with pytest.raises(TimeoutError, match="a husk was still there after 20 asks"):
+        await play("combat/melee-mob", server)
+
+    asked = [p for p in server.seen if "execute if entity" in str((p.fields or {}).get("command"))]
     assert len(asked) == 20
 
 
@@ -640,40 +642,50 @@ def test_a_sprinting_pvp_hit_compares_the_victims_health_but_not_the_entity_data
 
 
 class _Lookup:
-    """A Bot and a context that find the husk only after `missing` steps."""
+    """A Bot that finds the husk only after `missing` syncs; it counts the syncs."""
 
     def __init__(self, missing: int) -> None:
         self.missing = missing
-        self.steps = 0
+        self.syncs = 0
         self.entities = self
 
     def find(self, kind: str, *, near: tuple[float, float, float]) -> str:
-        if self.steps < self.missing:
+        if self.syncs < self.missing:
             raise LookupError(kind)
         return f"{kind}@{near}"
 
-    async def step(self) -> None:
-        self.steps += 1
-
-
-def _seen_by(lookup: _Lookup) -> tuple[GroupContext, Bot]:
-    return cast("GroupContext", lookup), cast("Bot", lookup)
+    async def sync(self) -> None:
+        self.syncs += 1
 
 
 @pytest.mark.asyncio
-async def test_a_lookup_steps_on_while_the_bot_tracks_nothing() -> None:
+async def test_a_lookup_syncs_while_the_bot_tracks_nothing_and_never_steps_the_world() -> None:
     lookup = _Lookup(missing=3)
 
-    found = await combat._see(*_seen_by(lookup), "husk", (1.0, 2.0, 3.0))  # noqa: SLF001
+    found = await combat._find_when_tracked(  # noqa: SLF001
+        cast("Bot", lookup), "husk", (1.0, 2.0, 3.0)
+    )
 
     assert found == "husk@(1.0, 2.0, 3.0)"
-    assert lookup.steps == 3
+    assert lookup.syncs == 3
 
 
 @pytest.mark.asyncio
-async def test_a_lookup_gives_up_after_a_few_steps() -> None:
+async def test_a_lookup_gives_up_after_a_few_syncs() -> None:
     lookup = _Lookup(missing=99)
 
     with pytest.raises(LookupError):
-        await combat._see(*_seen_by(lookup), "husk", (0.0, 0.0, 0.0))  # noqa: SLF001
-    assert lookup.steps == 3
+        await combat._find_when_tracked(cast("Bot", lookup), "husk", (0.0, 0.0, 0.0))  # noqa: SLF001
+    assert lookup.syncs == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_the_steps_before_each_window_do_not_depend_on_what_the_bots_track(
+    group_id: str,
+) -> None:
+    """A step moves every later packet a tick: it may only come from the script, not the wait."""
+    result = await play(group_id)
+
+    for window in result.windows:
+        assert commands(window.before).count(STEP) == combat._CHARGE_STEPS  # noqa: SLF001

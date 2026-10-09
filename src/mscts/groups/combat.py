@@ -57,6 +57,9 @@ _CHARGE_STEPS = 10
 """How many steps a Bot waits so that its attack charge is full: each is at least 2 server ticks
 (a step and the barrier after it), and the slowest weapon here, an axe, needs 20 (26.3 javap)."""
 
+_LOOKUPS = 4
+"""How often a Group looks for an entity its Bot may not track yet."""
+
 _CORPSE_POLLS = 20
 """How often Control asks whether a husk is left: a corpse goes in about 1 s, a poll takes about
 0.3 s."""
@@ -82,14 +85,15 @@ def _normal(spec: ServerSpec) -> ServerSpec:
 async def _remove_husks(control: Control) -> None:
     """Kill every husk the Group summoned, leaving no loot and no experience, and wait for them.
 
-    A husk a player hit drops experience, and loot, where it dies. Experience needs a player
-    to have hurt it in the last 100 ticks (`lastHurtByPlayerMemoryTime`), which the first
-    command clears; loot and experience both need `mob_drops`, which the rest turn off while
-    the husks die. A corpse stays for 20 ticks of its own (`LivingEntity.tickDeath`), so the
-    world runs again until none is left: the next play puts new husks where these stood, and
-    would be told apart from them only by the order they were heard in.
+    A husk a player hit drops experience, and loot, where it dies; both need `mob_drops`
+    (`LivingEntity.die` runs `dropAllDeathLoot` and `dropExperience`, and each checks it), which
+    is off while the husks die. A corpse stays for 20 ticks of its own (`LivingEntity.tickDeath`),
+    so the world runs again until none is left: the next play puts new husks where these stood,
+    and would be told apart from them only by the order they were heard in.
+
+    Raises:
+        TimeoutError: A husk was still there after `_CORPSE_POLLS` asks.
     """
-    await control.run(f"data merge entity @e[tag={_TAG}] {{last_hurt_by_player_memory_time:0}}")
     try:
         await control.run("gamerule mob_drops false")
         await control.run(f"kill @e[tag={_TAG}]")
@@ -100,6 +104,8 @@ async def _remove_husks(control: Control) -> None:
         said = await control.run(f"execute if entity @e[tag={_TAG}]")
         if any(_NONE_LEFT in packet.payload for packet in said):
             return
+    msg = f"a husk was still there after {_CORPSE_POLLS} asks: the next play would meet it"
+    raise TimeoutError(msg)
 
 
 @contextlib.asynccontextmanager
@@ -227,7 +233,6 @@ is not compared.
 _SWORD = "minecraft:diamond_sword"
 _GROUND = -60.0
 _HOP = 1.0
-_LOOKUPS = 4
 """How high the fighter hops before a falling hit: it comes down half of that."""
 
 
@@ -361,19 +366,18 @@ charge, which depends on how long it took.
 """
 
 
-async def _see(
-    context: GroupContext, bot: Bot, kind: str, near: tuple[float, float, float]
-) -> Entity:
-    """The entity of `kind` nearest `near` that `bot` tracks, stepping on while it has none.
+async def _find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float]) -> Entity:
+    """The entity of `kind` nearest `near` that `bot` tracks, once the server has sent it.
 
-    A Bot teleported to a new lane can lose track of everything for a tick or two (vanilla
-    drops and re-adds what it tracks as the Bot moves away), so the lookup waits it out.
+    The Bot may not have been told of an entity yet when a Group asks. The wait is `Bot.sync`,
+    which does not step the world: a step would move every later packet a tick on one side
+    only, which a tick-exact Comparison reports as a difference in the hit.
     """
     for _ in range(_LOOKUPS - 1):
         try:
             return bot.entities.find(kind, near=near)
         except LookupError:
-            await context.step()
+            await bot.sync()
     return bot.entities.find(kind, near=near)
 
 
@@ -410,7 +414,7 @@ async def immunity(context: GroupContext) -> None:
             await _summon(context, husk[0], husk[2])
             await context.step(_CHARGE_STEPS)
             first, second = bots[pair.first], bots[pair.second]
-            targets = [await _see(context, bot, "husk", husk) for bot in (first, second)]
+            targets = [await _find_when_tracked(bot, "husk", husk) for bot in (first, second)]
             async with context.observe(*PACKETS):
                 await first.attack(targets[0])
                 await context.step(pair.steps)
@@ -440,7 +444,7 @@ async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprin
     if sprint:
         await _start_sprinting(attacker)
     packets = PVP_SPRINT_PACKETS if sprint else PVP_PACKETS
-    target = await _see(context, attacker, "player", (_VICTIM_X, -60.0, lane_z))
+    target = await _find_when_tracked(attacker, "player", (_VICTIM_X, -60.0, lane_z))
     async with context.observe(*packets):
         await attacker.attack(target)
         await context.step(2)
