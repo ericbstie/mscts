@@ -70,6 +70,24 @@ The `/fill` region holds one block that drops an item. Vanilla sends the items a
 order that follows their entity ids, and two servers can number their entities differently, so with
 several items the Reference would not match itself.
 
+### Blocks a player breaks and places
+
+Two Bots, `digger` and `watcher`, join. The digger breaks and places blocks. The watcher stands
+beside it, because vanilla does not send the cracks and break particles of a dig to the player who
+digs. Control puts the digger, the watcher and itself at x 8.5, 12.5 and 4.5, y -60, z 4.5, with
+`/tp`, before the first window, and sets each case up with `/setblock`, `/fill`, `/summon`,
+`/item replace entity` (the tool or the stack the digger holds, in its first hotbar slot) and
+`/kill`. The world is frozen and random ticks are off. The Groups require all of those commands.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `blocks/dig-creative` | tick-exact | none | In creative mode, the digger breaks stone, dirt and obsidian by hand, each in one window, then tries stone with an iron sword, which cannot break blocks. | none |
+| `blocks/place` | tick-exact | none | The digger places stairs and logs on each of the six faces of a stone block, stairs while facing each of four ways, and a slab (bottom, top and doubled). | none |
+| `blocks/place-attached` | tick-exact | none | The digger places a door with the cursor on each side of the block, a torch (on top and on each side), and a bed facing each of four ways. Then it places stone onto short grass and onto a snow layer, which it replaces, and into the space of an armor stand, which the server refuses. | none |
+
+A dropped item has the same Masks as in the commands above: where it appears, its sideways speed and
+which way it faces.
+
 ## Chat (`chat`)
 
 What players see of each other's chat. A Bot called `listener` stays in the world for every
@@ -234,6 +252,7 @@ back to vanilla's defaults.
 | --- | --- | --- |
 | Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
 | Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
+| Survival digging | `blocks/dig-survival`: finishing a dig early and on time | [#347](https://github.com/ericbstie/mscts/issues/347): the server's rule for accepting a finish is not known yet. |
 
 See [Project status](/status) for the order.
 
