@@ -40,8 +40,9 @@ one after another, each in an isolated git worktree, following the
 `red-green` skill. For each issue it commits each increment green, pushes
 its `issue-<n>-<slug>` branch, opens one PR, and ends with the
 [report](#worker-report) to the tech lead. The lane's next issue goes to a
-fresh specialist in the next batch. What it learns goes in its handbook,
-`docs/roles/<lane>.md`, so the next one can take over the lane.
+fresh specialist in the next batch. Its report proposes what it learned
+as lines for its handbook, `docs/roles/<lane>.md`, and the lead commits
+them, so the next one can take over the lane.
 Everything this file says about a worker applies to a specialist.
 
 **Reviewer (a subagent).** Never writes the code it reviews. It gives
@@ -368,6 +369,9 @@ End your final message with exactly these sections:
 ## Interface changes
 <changes to PLAN.md interfaces or CONTEXT.md terms, or "none">
 
+## Handbook
+<lines to add to your lane's docs/roles/<lane>.md, or "none">
+
 ## Retrospective
 For each thing that was not as expected and cost you time (tooling, docs,
 brief, protocol facts, tests, environment), one line:
@@ -681,7 +685,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
-| 2026-10-09 | The lead starts each batch of workers in one message in the foreground and integrates when they all return, and a lane's next issue goes to a fresh specialist. The Worker report is short: the PR link, what is blocked, interface changes and one-line retrospective items; the PR description holds the detail | Maintainer: cut the lead's no-op wakes. On 2026-10-07 every wake after a worker finished re-read 320k to 360k tokens of lead context, about 700k tokens a wake. "The report should be short and include exactly what is relevant for the lead - it can read the PR for details". Measured after the next lead's first handoff by reading each session's token usage and per-turn records, as in the 2026-10-04 token analysis. Baseline for the two leads after the 2026-10-07 pause: one wake per finished worker, 650k to 720k tokens a wake at full context, and 10M to 21M tokens per merged PR. The change works if that lead's first chunk shows about one wake per batch and under 10M tokens per merged PR |
+| 2026-10-09 | The lead starts each batch of workers in one message in the foreground and integrates when they all return, and a lane's next issue goes to a fresh specialist. The Worker report is short: the PR link, what is blocked, interface changes, handbook lines and one-line retrospective items; the PR description holds the detail | Maintainer: cut the lead's no-op wakes. On 2026-10-07 every wake after a worker finished re-read 320k to 360k tokens of lead context, about 700k tokens a wake. "The report should be short and include exactly what is relevant for the lead - it can read the PR for details". Measured after the next lead's first handoff by reading each session's token usage and per-turn records, as in the 2026-10-04 token analysis. Baseline for the two leads after the 2026-10-07 pause: one wake per finished worker, 650k to 720k tokens a wake at full context, and 10M to 21M tokens per merged PR. The change works if that lead's first chunk shows about one wake per batch and under 10M tokens per merged PR |
 | 2026-10-07 | The helper agent is retired: the `helper-ready` and `helper-review` labels are gone, and the lead briefs a Claude worker on tooling, docs and platform issues too | Maintainer: "I no longer have a helper" (his ChatGPT subscription ended) |
 | 2026-10-07 | The tech lead hands off to a fresh lead session at the end of each chunk of work, with a short handoff note, rather than running one long session | Maintainer: "tech leads give handoffs when a chunk of work has been done. I don't want it to be time based but for it to be when it makes sense to do so." A lead turn cost about 790k tokens on 2026-10-04 because its context had grown to 150k to 350k and every wake re-read it |
 | 2026-10-03 | `needs-triage` means not yet assessed: the lead sizes the issue, sets its lane and scrutiny, and makes sure the spec is complete, then removes the label. A blocked issue names its blockers in a **Blocked by** line at the top of its description instead of carrying a label, and is ready once they are closed | Maintainer: the label hid his own untriaged issues among blocked ones, and relabelling as blockers closed was manual work |
