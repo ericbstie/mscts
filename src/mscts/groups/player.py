@@ -24,6 +24,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
+from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import pin_joins
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
@@ -65,6 +66,10 @@ _RULES = ("natural_health_regeneration false", "spawn_mobs false", "random_tick_
 
 _RULES_BACK = ("natural_health_regeneration true", "spawn_mobs true", "random_tick_speed 3")
 
+_KILL_OTHERS = "kill @e[type=!minecraft:player]"
+"""Removes the animals of the flat world's spawn area. A Bot that respawns is sent every entity in
+its view again a tick or so later, which no window can place, and one of them may be hurt too."""
+
 _HEAL = "effect give {bot} minecraft:instant_health 1 5 true"
 """Heals a Bot to full health, whatever the last case left it."""
 
@@ -90,6 +95,7 @@ async def _environment(context: GroupContext, restore: tuple[str, ...]) -> Async
             undo.push_async_callback(control.run, f"gamerule {back}")
             await control.run(f"gamerule {rule}")
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
+        await control.run(_KILL_OTHERS)
         for command in restore:
             undo.push_async_callback(control.run, command)
         yield
@@ -309,3 +315,134 @@ async def drowning(context: GroupContext) -> None:
         # The bubbles still come when the damage does not: the window ends a barrier after them.
         async with context.observe(*HIT_PACKETS):
             await bot.expect("minecraft:entity_event", timeout_s=_DAMAGE_TIMEOUT_S)
+
+
+# `player/suffocation`: a Bot inside a block of stone.
+
+_SUFFOCATOR = "suffocator"
+_STONE_COLUMN = _Landing(
+    0,
+    (_block(0, -60, "minecraft:stone"), _block(0, -59, "minecraft:stone")),
+    (_block(0, -60, "minecraft:air"), _block(0, -59, "minecraft:air")),
+    lands_at=-60.0,
+)
+"""Two blocks of stone, so that the Bot's feet and its eyes are inside."""
+
+
+@group("player/suffocation", spec=_normal)
+async def suffocation(context: GroupContext) -> None:
+    """A Bot is put inside a column of stone and takes damage, three hits in a row."""
+    async with _environment(context, _STONE_COLUMN.restore):
+        bot = await context.bot(_SUFFOCATOR)
+        await bot.join()
+        await context.freeze()
+        for command in _STONE_COLUMN.build:
+            await context.control.run(command)
+        await _fresh(context, bot)
+        async with _until_hurt(context, bot, PACKETS):
+            await _tp(context, bot, _at(_STONE_COLUMN.lane, _STONE_COLUMN.lands_at))
+        await _more_hits(context, bot, 2)
+
+
+# `player/void`: a Bot below the world.
+
+_VOID_BOT = "voider"
+_VOID_AT: _Point = (0.5, -130.0, 0.5)
+"""Vanilla hurts a player below the lowest block minus 64 (`Entity.checkBelowWorld`): y -128."""
+
+_DEATH = "minecraft:player_combat_kill"
+
+
+@group("player/void", spec=_normal)
+async def void(context: GroupContext) -> None:
+    """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns."""
+    async with _environment(context, ()):
+        bot = await context.bot(_VOID_BOT)
+        await bot.join()
+        await context.freeze()
+        await _fresh(context, bot)
+        async with context.observe(*PACKETS, until=_DEATH, bot=bot):
+            await _tp(context, bot, _VOID_AT)
+            await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
+        async with context.observe(*PACKETS):
+            await bot.respawn()
+
+
+# `player/fire`: a Bot in fire, in lava, out of it still burning, then in water.
+
+_BURNER = "burner"
+_LAVA = _Landing(
+    2,
+    (_block(2, -62, "minecraft:lava"), _block(2, -61, "minecraft:lava")),
+    (_block(2, -62, "minecraft:dirt"), _block(2, -61, "minecraft:grass_block")),
+    lands_at=-61.0,
+)
+"""A pool of lava like the water's: 2 blocks deep and 1 wide, walled in by the world."""
+_FIRE = _solid(3, "minecraft:fire", lands_at=-60.0)
+_DRY_LANE = 5
+"""A lane of bare grass: the Bot burns on there."""
+
+
+FIRE_MASKS = (
+    Mask(
+        "minecraft:sound",
+        "pitch",
+        "Vanilla draws it at random (26.3 javap): `Entity.lavaHurt` plays GENERIC_BURN at volume "
+        "0.4 with pitch 2.0 + nextFloat() * 0.4, and `playEntityOnFireExtinguishedSound` plays "
+        "GENERIC_EXTINGUISH_FIRE at volume 0.7 with pitch 1.6 + (nextFloat() - nextFloat()) * "
+        "0.4. Which sound plays, and at what volume, is still compared.",
+    ),
+)
+"""The pitch of the burn and extinguish sounds, which the sound seed does not cover."""
+
+
+@group("player/fire", spec=_normal, masks=FIRE_MASKS)
+async def fire(context: GroupContext) -> None:
+    """A Bot stands in fire, steps into lava, steps out of it burning, then into water.
+
+    Each of the first three stops ends on the first hit after it, and fire gets one more. The
+    last window ends a barrier after the water puts the fire out.
+    """
+    lanes = (_WATER, _LAVA, _FIRE)
+    async with _environment(context, tuple(c for lane in lanes for c in lane.restore)):
+        bot = await context.bot(_BURNER)
+        await bot.join()
+        await context.freeze()
+        for command in (c for lane in lanes for c in lane.build):
+            await context.control.run(command)
+        await _fresh(context, bot)
+        async with _until_hurt(context, bot, PACKETS):
+            await _tp(context, bot, _at(_FIRE.lane, _FIRE.lands_at))
+        await _more_hits(context, bot, 1)
+        async with _until_hurt(context, bot, PACKETS):
+            await _tp(context, bot, _at(_LAVA.lane, _LAVA.lands_at))
+        async with _until_hurt(context, bot, PACKETS):
+            await _tp(context, bot, _at(_DRY_LANE, -60.0))
+        async with context.observe(*PACKETS):
+            await _tp(context, bot, _at(_WATER.lane, _WATER.lands_at))
+
+
+# `player/freezing`: a Bot in powder snow.
+
+_FREEZER = "freezer"
+_SNOW = _solid(4, "minecraft:powder_snow", lands_at=-60.0)
+
+FREEZING_PACKETS = (*HIT_PACKETS, "minecraft:player_position")
+"""What a window compares for freezing: the hits, and the Bot being put in the snow. Not the entity
+data: vanilla hurts a frozen player when its `tickCount` is a multiple of 40, a count that
+started when the player joined, so the ticks that came before the first hit differ."""
+
+
+@group("player/freezing", spec=_normal)
+async def freezing(context: GroupContext) -> None:
+    """A Bot is put in powder snow, without leather boots, and takes damage twice."""
+    async with _environment(context, _SNOW.restore):
+        bot = await context.bot(_FREEZER)
+        await bot.join()
+        await context.freeze()
+        for command in _SNOW.build:
+            await context.control.run(command)
+        await _fresh(context, bot)
+        async with _until_hurt(context, bot, FREEZING_PACKETS):
+            await _tp(context, bot, _at(_SNOW.lane, _SNOW.lands_at))
+        await _more_hits(context, bot, 1)

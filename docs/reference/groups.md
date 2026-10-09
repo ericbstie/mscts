@@ -329,6 +329,10 @@ freezes the world and steps it after each move.
 | --- | --- | --- | --- | --- |
 | `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
 | `player/drowning` | exact | none | A Bot is put under water in a pool 2 blocks deep and stays until it takes damage, then for three more hits. Then `drowning_damage` is turned off, and the Bot stays for one more round of bubbles. | none |
+| `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
+| `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
+| `player/fire` | exact | none | A Bot is put in fire and takes damage twice, steps into lava, steps out of it onto dry grass still burning, then into water. | The pitch of the `sound` packet: the burn and extinguish sounds draw it at random. |
+| `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
 
 A Bot does not simulate physics: `player/fall` gives each position, at most 8 blocks apart. The
 last move lands from 1 block above the surface, as a vanilla client's does. Before each fall, the
@@ -351,6 +355,20 @@ later hit has a window of its own that compares only what the hit sends (`damage
 `entity_event`, `set_health`, `sound`). The entity data changes every tick, and a window that opens
 after a hit starts a tick or two later on one server than on another. With `drowning_damage` off,
 vanilla still resets the air and sends the bubbles, and sends no damage.
+
+`player/suffocation` puts the Bot's feet and eyes inside stone, and `player/void` puts it at y -130:
+vanilla hurts a player 4 points a hit below y -128, the lowest block minus 64, until it dies. That
+window ends on `player_combat_kill`, and a second window holds the respawn.
+
+`player/fire` has a window for each place. The first ends on the first hit in fire, and a second on
+the next. Lava sets the Bot alight, and the window of the dry grass is the first burn after it. The
+Bot must leave the lava within a few ticks of its last hit, so that the burn starts from the same
+count of ticks on every server. The last window ends a barrier after the water puts the fire out.
+The sounds' pitch is a Mask, because the sound seed does not cover it.
+
+`player/freezing` compares the hits and the Bot's move into the snow, but not the entity data:
+vanilla hurts a frozen player when its tick count is a multiple of 40, a count that started when the
+player joined, so the ticks before the first hit differ between servers.
 
 `player_combat_kill` is not decoded yet, so the Report shows a difference in the death as a
 difference in the packet's bytes.

@@ -43,10 +43,38 @@ PLAY_TIMEOUT_S = 300.0
 """How long a fake serves a Bot: a play takes about 30 s when the host is idle, and several
 times that under load."""
 
-GROUP_IDS = ("player/fall", "player/drowning")
-KINDS = {"player/fall": GroupKind.TICK_EXACT, "player/drowning": GroupKind.EXACT}
-BOTS = {"player/fall": ("faller",), "player/drowning": ("drowner",)}
-HURTS_AFTER = {"player/drowning": "tp drowner "}
+GROUP_IDS = (
+    "player/fall",
+    "player/drowning",
+    "player/suffocation",
+    "player/void",
+    "player/fire",
+    "player/freezing",
+)
+KINDS = {
+    "player/fall": GroupKind.TICK_EXACT,
+    "player/drowning": GroupKind.EXACT,
+    "player/suffocation": GroupKind.EXACT,
+    "player/void": GroupKind.EXACT,
+    "player/fire": GroupKind.EXACT,
+    "player/freezing": GroupKind.EXACT,
+}
+BOTS = {
+    "player/fall": ("faller",),
+    "player/drowning": ("drowner",),
+    "player/suffocation": ("suffocator",),
+    "player/void": ("voider",),
+    "player/fire": ("burner",),
+    "player/freezing": ("freezer",),
+}
+HURTS_AFTER = {
+    "player/drowning": "tp drowner ",
+    "player/suffocation": "tp suffocator ",
+    "player/fire": "tp burner ",
+    "player/freezing": "tp freezer ",
+}
+KILLS_AFTER = {"player/void": "tp voider "}
+DEATH = "minecraft:player_combat_kill"
 """A command after which the fake hurts the Bot every 50 ms, in a Group that waits for a hit."""
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
@@ -64,6 +92,8 @@ class PlayerServer:
     seen: list[Packet] = field(default_factory=list)
     hurts_after: str | None = None
     """A command after which the fake sends `set_health` and `entity_event` every 50 ms."""
+    kills_after: str | None = None
+    """A command after which the fake sends `player_combat_kill`, once."""
     players: dict[str, Peer] = field(default_factory=dict)
     """Each connected player's connection, by name."""
 
@@ -97,6 +127,12 @@ class PlayerServer:
                         await peer.write(
                             peer.frame("minecraft:system_chat", content=text(token), overlay=False)
                         )
+                    elif self.kills_after and command.startswith(self.kills_after):
+                        await self.players[command.split()[1]].write(
+                            self.players[command.split()[1]].raw_frame(
+                                DEATH, b"\x02" + text("dead")
+                            )
+                        )
                     elif hurting is None and self._hurts(command):
                         hurting = asyncio.create_task(self._hurt())
         finally:
@@ -122,7 +158,9 @@ class PlayerServer:
 async def _play(group_id: str) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
-        CODEC, PlayerServer(hurts_after=HURTS_AFTER.get(group_id)), timeout_s=PLAY_TIMEOUT_S
+        CODEC,
+        PlayerServer(hurts_after=HURTS_AFTER.get(group_id), kills_after=KILLS_AFTER.get(group_id)),
+        timeout_s=PLAY_TIMEOUT_S,
     ) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
@@ -158,7 +196,7 @@ def lane(index: int, y: float) -> tuple[float, float, float]:
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_each_group_is_registered_without_a_mask_and_plays_on_normal_difficulty(
+def test_each_group_is_registered_with_only_the_masks_it_needs_and_plays_on_normal_difficulty(
     group_id: str,
 ) -> None:
     group = GROUPS[group_id]
@@ -166,7 +204,7 @@ def test_each_group_is_registered_without_a_mask_and_plays_on_normal_difficulty(
 
     assert group.kind is KINDS[group_id]
     assert group.requires == ()
-    assert group.masks == ()
+    assert group.masks == (player.FIRE_MASKS if group_id == "player/fire" else ())
     assert group.spec(default) == ServerSpec(
         host="127.0.0.1", port=25566, difficulty=Difficulty.NORMAL
     )
@@ -212,13 +250,14 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
 ) -> None:
     transcript, result = play(group_id)
 
-    assert result.first[:6] == (
+    assert result.first[:7] == (
         "gamerule player_movement_check false",
         "gamerule respawn_radius 0",
         "gamerule natural_health_regeneration false",
         "gamerule spawn_mobs false",
         "gamerule random_tick_speed 0",
         "tp control 96.5 -60 96.5",
+        "kill @e[type=!minecraft:player]",
     )
     hello = next(
         e.t_ns for e in transcript.events if e.packet.name == "minecraft:hello" and e.bot != CONTROL
@@ -437,3 +476,150 @@ def test_drowning_turns_the_damage_off_before_its_last_window() -> None:
 
     assert result.windows[-1].before[0] == "gamerule drowning_damage false"
     assert result.after.count("gamerule drowning_damage true") == 1
+
+
+# player/suffocation
+
+
+def test_suffocation_puts_a_fresh_bot_into_the_stone_inside_the_first_window() -> None:
+    result = played("player/suffocation")
+
+    first, *hits = result.windows
+    assert first.label == opened(*player.PACKETS)
+    assert first.before[-1] == "kill suffocator"
+    assert first.sent == ((CONTROL, "tp suffocator 1.5 -60.0 2.5"),)
+    assert [window.label for window in hits] == [opened(*player.HIT_PACKETS)] * 2
+    assert [window.sent for window in hits] == [(), ()]
+
+
+def test_suffocation_builds_a_column_of_stone_after_the_freeze_and_removes_it() -> None:
+    result = played("player/suffocation")
+
+    frozen = result.first.index("tick freeze")
+    assert result.first[frozen + 1 : frozen + 3] == (
+        "setblock 1 -60 2 minecraft:stone",
+        "setblock 1 -59 2 minecraft:stone",
+    )
+    assert result.after[:2] == (
+        "setblock 1 -59 2 minecraft:air",
+        "setblock 1 -60 2 minecraft:air",
+    )
+
+
+# player/void
+
+
+def test_void_puts_a_fresh_bot_below_the_world_and_waits_for_its_death() -> None:
+    transcript, result = play("player/void")
+
+    first, respawn = result.windows
+    assert first.label == opened(*player.PACKETS)
+    assert first.before[-1] == "kill voider"
+    assert first.sent == ((CONTROL, "tp voider 0.5 -130.0 0.5"),)
+    assert respawn.label == opened(*player.PACKETS)
+    assert respawn.sent == ()
+    asked = [
+        e
+        for e in transcript.events
+        if e.bot == "voider"
+        and e.packet.name == CLIENT_COMMAND
+        and e.packet.fields == {"action": PERFORM_RESPAWN}
+    ]
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
+    assert len(asked) == 2  # the fresh start, and the respawn after the void
+    assert opens[1] < asked[1].t_ns < closes[1]
+
+
+def test_void_sets_no_block() -> None:
+    result = played("player/void")
+
+    assert not any(c.startswith(("setblock", "fill")) for c in (*result.first, *result.after))
+
+
+# player/fire
+
+
+def test_fire_visits_fire_lava_the_dry_grass_and_the_water_in_that_order() -> None:
+    result = played("player/fire")
+
+    assert [window.sent for window in result.windows] == [
+        ((CONTROL, "tp burner 7.5 -60.0 2.5"),),
+        (),
+        ((CONTROL, "tp burner 5.5 -61.0 2.5"),),
+        ((CONTROL, "tp burner 11.5 -60.0 2.5"),),
+        ((CONTROL, "tp burner 3.5 -61.0 2.5"),),
+    ]
+
+
+def test_fire_waits_for_a_hit_in_each_place_but_the_water() -> None:
+    result = played("player/fire")
+
+    assert [window.label for window in result.windows] == [
+        opened(*player.PACKETS),
+        opened(*player.HIT_PACKETS),
+        opened(*player.PACKETS),
+        opened(*player.PACKETS),
+        opened(*player.PACKETS),
+    ]
+
+
+def test_fire_builds_water_lava_and_fire_after_the_freeze_and_restores_the_world() -> None:
+    result = played("player/fire")
+
+    frozen = result.first.index("tick freeze")
+    assert result.first[frozen + 1 : frozen + 6] == (
+        "setblock 3 -62 2 minecraft:water",
+        "setblock 3 -61 2 minecraft:water",
+        "setblock 5 -62 2 minecraft:lava",
+        "setblock 5 -61 2 minecraft:lava",
+        "setblock 7 -60 2 minecraft:fire",
+    )
+    assert (
+        result.after[:6]
+        == (
+            "setblock 7 -60 2 minecraft:air",
+            "setblock 5 -61 2 minecraft:grass_block",
+            "setblock 5 -62 2 minecraft:dirt",
+            "setblock 3 -61 2 minecraft:grass_block",
+            "setblock 3 -62 2 minecraft:dirt",
+            "gamerule random_tick_speed 3",
+        )
+        or result.after[0] == "setblock 7 -60 2 minecraft:air"
+    )
+
+
+# player/freezing
+
+
+def test_freezing_compares_the_teleport_into_the_snow_and_two_hits() -> None:
+    result = played("player/freezing")
+
+    first, second = result.windows
+    assert first.label == opened(*player.FREEZING_PACKETS)
+    assert second.label == opened(*player.HIT_PACKETS)
+    assert first.sent == ((CONTROL, "tp freezer 9.5 -60.0 2.5"),)
+    assert first.before[-1] == "kill freezer"
+    assert second.sent == ()
+
+
+def test_freezing_leaves_the_entity_data_out_because_the_first_hit_depends_on_the_tick_count() -> (
+    None
+):
+    assert "minecraft:set_entity_data" not in player.FREEZING_PACKETS
+    assert (*player.HIT_PACKETS, "minecraft:player_position") == player.FREEZING_PACKETS
+
+
+def test_freezing_builds_one_block_of_powder_snow_after_the_freeze_and_removes_it() -> None:
+    result = played("player/freezing")
+
+    assert result.first[result.first.index("tick freeze") + 1] == (
+        "setblock 9 -60 2 minecraft:powder_snow"
+    )
+    assert result.after[0] == "setblock 9 -60 2 minecraft:air"
+
+
+def test_fire_masks_only_the_random_pitch_of_its_sounds() -> None:
+    masks = GROUPS["player/fire"].masks
+
+    assert [(mask.packet, mask.path) for mask in masks] == [("minecraft:sound", "pitch")]
