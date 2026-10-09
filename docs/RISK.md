@@ -35,6 +35,14 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-09 | #330 | comparison core | unknown | the tick Divergence of a chunk batch marker | the first review of #341 | yes |
+| 2026-10-09 | #342 | comparison core | unknown | the status `description` canonical form | the first review of #341 | yes |
+| 2026-10-09 | #330 | comparison core | #341 (`scrutiny::high`) | a not-scored line ignored `NETWORK_TRAFFIC_ONLY_PASSES` | both reviews of #341 | no |
+| 2026-10-09 | #36 | Groups | #343 (`scrutiny::medium`) | a survival dig's early finish rule; no early finish a Candidate could fail | the first review | no |
+| 2026-10-09 | #56 | Groups | #344 (`scrutiny::medium`) | `spawn_mobs` turned on for every later Group | the first review | no |
+| 2026-10-09 | #56 | Groups | #344 (`scrutiny::medium`) | a lava hit inside the fire hit's immunity, 1 play in 20 | the Self-check | no |
+| 2026-10-09 | #53 | Groups | #346 (`scrutiny::medium`) | an extra world step while waiting for tracking | the first review | no |
+| 2026-10-09 | #53 | Groups | #346 (`scrutiny::medium`) | sweep damage, knockback and sprint-hit health not compared | the first review | no |
 
 ## Bug log until 2026-10-09
 

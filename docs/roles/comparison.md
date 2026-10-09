@@ -34,6 +34,8 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #330: a test case that no compared pair names is not in `Verdict.test_cases` and is not scored while `NETWORK_TRAFFIC_ONLY_PASSES` is on (`report._never_compared`). Check whether a compared pair names the same test case before treating network-traffic lines alike: heightmaps and `status_response.description` do.
+- #330: a `missing` packet adds its fields' test cases only when it is gameplay; a chunk batch marker missing or a tick late is network traffic.
 - #283: A network-traffic-only field is dropped in its `_CANONICAL` entry (`_without`), with its javap reason; a titles test builds the empty-list, one-side-only and absent forms of every stack, because each names a case.
 - #122: Chunk packets are put in order in runs across neutral packets (the javap list is in the research note); batch packets and `batch_size` are network traffic; a chunk copy shows at most 254 sections and 256 light arrays per layer.
 - #122: A canonical form that reads a registry takes it from the last configuration before the packet (`_Context.each`), never from a sum over the Transcript.

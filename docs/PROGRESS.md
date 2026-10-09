@@ -195,6 +195,19 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-09: train 29
+
+- #340 (#326): `mise run commit` works on a shallow checkout.
+- Train 29 (#339, #341, #343, #346, #344): the scrutiny nudge replaces the
+  area levels; a test case only network traffic names is never scored and
+  shows as `·` (#330); `blocks/dig-creative`, `blocks/place` and
+  `blocks/place-attached` (part of #36; `blocks/dig-survival` waits on
+  #347); six `combat/*` Groups (part of #53); six `player/*` Groups
+  (#56). Reference 35 of 35 and candidate 15 of 15 on its tip.
+- Filed from reviews: #342 (status `description` with `"extra": []`),
+  #345 (how often environment damage repeats), #347 (why vanilla accepts
+  an early dig finish from a player that has been in a while).
+
 ### 2026-10-04 to 2026-10-07: trains 22 to 28
 
 The project paused after v0.1.0 (released 2026-10-04 from 9cdf1ed) and
