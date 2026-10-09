@@ -271,6 +271,16 @@ until the husks it killed are gone, so the next play starts without them.
 | --- | --- | --- | --- | --- |
 | `combat/melee-mob` | tick-exact | none | The fighter hits a husk with a bare hand, a wooden sword, a diamond sword and a diamond axe, each at full charge. | none |
 | `combat/critical` | tick-exact | none | The fighter hits a husk with a diamond sword twice. The first hit comes while the fighter falls: it hops a block into the air and comes down half a block before the hit, which makes it critical. The second comes while the fighter sprints, which is not critical. | none |
+| `combat/knockback` | tick-exact | none | The fighter hits a husk with a diamond sword while standing, then while sprinting. A sprinting hit knocks the husk back further. | none |
+| `combat/sweep` | tick-exact | none | The fighter hits a husk with a diamond sword on the ground, with three more husks 0.9 blocks from it. The sweep hurts all three. | none |
+
+Vanilla sends the data and the velocity of every entity a tick changed at the end of that tick, in
+the order of a hash of their entity ids, and the two Instances' ids differ. So when a hit changes
+two entities, the order of their packets differs between runs of vanilla itself. A sprinting hit
+changes the husk's health and the fighter's sprint flag, which the hit clears, so the windows of
+the sprinting hits in `combat/critical` and `combat/knockback` leave out `set_entity_data`. Whether
+the sprint stops is not compared. The window of `combat/sweep` compares only the damage, the
+sounds and the particles, because the sweep hurts four husks.
 
 ## Planned
 

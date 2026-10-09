@@ -1162,8 +1162,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
 - `groups.combat`: `FIGHTER` — the Bot that hits; `PACKETS` — what a window compares;
-  `PITCH_MASK` — the random pitch of a hurt mob's sound; `melee_mob` and `critical` — the `combat/melee-mob` and `combat/critical`
-  script.
+  `SPRINT_PACKETS` — what a sprinting hit's window compares; `SWEEP_PACKETS` — what the sweep's
+  window compares; `PITCH_MASK` — the random pitch of a hurt mob's sound; `melee_mob`,
+  `critical`, `knockback` and `sweep` — the `combat/melee-mob`, `combat/critical`,
+  `combat/knockback` and `combat/sweep` scripts.
 - `groups.chunks`: `WALKER` — the Bot whose chunks are compared; `PACKETS` — what a window
   compares (the walker waits `run.GROUP_TIMEOUT_S` for its view); `HELD_SYNCS` — how
   many barriers a window lasts after the walker holds its view; `VIEW_DISTANCE` and

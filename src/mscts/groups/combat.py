@@ -127,13 +127,19 @@ async def _summon(context: GroupContext, x: float, z: float) -> None:
     )
 
 
-async def _stand(context: GroupContext, lane_z: float, weapon: _Weapon) -> None:
-    """Put the fighter in lane `lane_z` facing +x with `weapon` in hand, and a husk in front."""
+async def _stand(context: GroupContext, lane_z: float, case: "_Case") -> None:
+    """Put the fighter in lane `lane_z` facing +x with its weapon in hand, and a husk in front.
+
+    The husk it hits is summoned first; the case's `around` husks follow, each that far from it.
+    """
     control = context.control
     await control.run(f"tp {FIGHTER} {_FIGHTER_X} -60 {lane_z} {_FACING_EAST} 0")
-    held = weapon or "minecraft:air"
+    held = case.weapon or "minecraft:air"
     await control.run(f"item replace entity {FIGHTER} hotbar.0 with {held}")
-    await _summon(context, _FIGHTER_X + _REACH, lane_z)
+    x = _FIGHTER_X + _REACH
+    await _summon(context, x, lane_z)
+    for dx, dz in case.around:
+        await _summon(context, x + dx, lane_z + dz)
 
 
 _WEAPONS: tuple[_Weapon, ...] = (
@@ -165,17 +171,22 @@ class _Case:
     """One window: the weapon, what the fighter does before it, in it, and after it.
 
     `before` runs after the fighter has waited out its charge, `after` once the window has
-    closed.
+    closed. `around` puts a husk at each (x, z) offset from the one the fighter hits. `packets`
+    narrows the case's window; the Group's `packets` otherwise.
     """
 
     weapon: _Weapon
     act: _Act = _hit
     before: _Step = _nothing
     after: _Step = _nothing
+    around: tuple[tuple[float, float], ...] = ()
+    packets: tuple[str, ...] | None = None
 
 
-async def _fight(context: GroupContext, cases: tuple[_Case, ...]) -> None:
-    """Play each case in a lane of its own, in a window narrowed to `PACKETS`.
+async def _fight(
+    context: GroupContext, cases: tuple[_Case, ...], packets: tuple[str, ...] = PACKETS
+) -> None:
+    """Play each case in a lane of its own, in a window narrowed to `packets`.
 
     The fighter joins, then for each case it is put in its lane with a husk in front, waits for
     a full charge, and hits inside the window, which the world then steps two ticks.
@@ -185,10 +196,10 @@ async def _fight(context: GroupContext, cases: tuple[_Case, ...]) -> None:
         await fighter.join()
         for lane, case in enumerate(cases):
             lane_z = 2.5 + 4 * lane
-            await _stand(context, lane_z, case.weapon)
+            await _stand(context, lane_z, case)
             await context.step(_CHARGE_STEPS)
             await case.before(fighter)
-            async with context.observe(*PACKETS):
+            async with context.observe(*(case.packets or packets)):
                 target = fighter.entities.find("husk", near=(_FIGHTER_X + _REACH, -60.0, lane_z))
                 await case.act(fighter, target)
                 await context.step(2)
@@ -202,6 +213,16 @@ async def melee_mob(context: GroupContext) -> None:
 
 
 # `combat/critical`: a hit while falling, and one while sprinting.
+
+SPRINT_PACKETS = tuple(name for name in PACKETS if name != "minecraft:set_entity_data")
+"""What a sprinting hit's window compares: `PACKETS` without the entity data.
+
+A sprinting hit changes the data of two entities at the end of its tick: the husk's health and
+the fighter's sprint flag, which the hit clears. Vanilla sends them in the order of a hash of
+the entity ids (`ServerEntity` per tracked entity), and the two Instances' ids differ: 2 plays
+in 6 differed only in that order. So the window leaves out both, and whether the sprint stops
+is not compared.
+"""
 
 _SWORD = "minecraft:diamond_sword"
 _GROUND = -60.0
@@ -240,7 +261,7 @@ async def _stop_sprinting(bot: Bot) -> None:
 
 _CRITICAL_CASES = (
     _Case(_SWORD, act=_fall_and_hit, before=_hop, after=_land),
-    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting),
+    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting, packets=SPRINT_PACKETS),
 )
 """A hit while falling, which is critical, and one while sprinting, which is not."""
 
@@ -249,3 +270,46 @@ _CRITICAL_CASES = (
 async def critical(context: GroupContext) -> None:
     """The fighter hits a husk with a sword while falling, then while sprinting."""
     await _fight(context, _CRITICAL_CASES)
+
+
+# `combat/knockback`: a standing hit and a sprinting hit.
+
+_KNOCKBACK_CASES = (
+    _Case(_SWORD),
+    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting, packets=SPRINT_PACKETS),
+)
+"""A hit while standing, and one while sprinting, which adds knockback and stops the sprint."""
+
+
+@group("combat/knockback", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def knockback(context: GroupContext) -> None:
+    """The fighter hits a husk with a sword while standing, then while sprinting."""
+    await _fight(context, _KNOCKBACK_CASES)
+
+
+# `combat/sweep`: a full-charge sword hit on the ground, with three husks beside the target.
+
+_BESIDE = ((0.0, 0.9), (0.0, -0.9), (0.9, 0.0))
+"""Three husks 0.9 blocks from the target, each inside the box a sweep covers around it (1 block
+wide and long, a quarter of a block high; `Player.attack`, 26.3 javap)."""
+
+
+SWEEP_PACKETS = (
+    "minecraft:damage_event",
+    "minecraft:sound",
+    "minecraft:animate",
+    "minecraft:level_particles",
+)
+"""What the sweep window compares: the damage each husk takes, the sounds and the particles.
+
+It leaves out the husks' velocity and health. Vanilla sends them at the end of the tick, for
+every husk the sweep hurt, in the order of a hash of the entity ids (`ServerEntity` per tracked
+entity), and the two Instances' ids differ: 1 play in 6 differed only in that order. The
+damage events come in the order the sweep finds the husks, which is the same on both.
+"""
+
+
+@group("combat/sweep", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def sweep(context: GroupContext) -> None:
+    """The fighter hits a husk with a sword on the ground, with three husks beside it."""
+    await _fight(context, (_Case(_SWORD, around=_BESIDE),), SWEEP_PACKETS)

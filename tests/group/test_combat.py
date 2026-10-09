@@ -43,7 +43,7 @@ START_SPRINTING, STOP_SPRINTING = 1, 2
 STEP = "tick step 1"
 NONE_LEFT = "commands.execute.conditional.fail"
 
-GROUP_IDS = ("combat/melee-mob", "combat/critical")
+GROUP_IDS = ("combat/melee-mob", "combat/critical", "combat/knockback", "combat/sweep")
 
 
 @dataclass
@@ -240,15 +240,36 @@ def test_the_windows_compare_the_hit_and_what_it_does_to_the_husk() -> None:
     )
 
 
+def label(packets: tuple[str, ...]) -> str:
+    return f"{OBSERVE_OPEN} {' '.join(packets)}"
+
+
+def test_a_sprinting_hit_leaves_out_the_entity_data_and_a_sweep_the_end_of_tick_packets() -> None:
+    assert (
+        tuple(name for name in combat.PACKETS if name != "minecraft:set_entity_data")
+        == combat.SPRINT_PACKETS
+    )
+    assert "minecraft:set_entity_data" in combat.PACKETS
+    assert combat.SWEEP_PACKETS == (
+        "minecraft:damage_event",
+        "minecraft:sound",
+        "minecraft:animate",
+        "minecraft:level_particles",
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-async def test_every_window_is_narrowed_to_the_hit_packets(group_id: str) -> None:
+async def test_every_window_is_narrowed_to_the_packets_of_its_case(group_id: str) -> None:
     result = await play(group_id)
 
-    assert result.windows
-    assert {window.label for window in result.windows} == {
-        f"{OBSERVE_OPEN} {' '.join(combat.PACKETS)}"
-    }
+    expected = {
+        "combat/melee-mob": [combat.PACKETS] * 4,
+        "combat/critical": [combat.PACKETS, combat.SPRINT_PACKETS],
+        "combat/knockback": [combat.PACKETS, combat.SPRINT_PACKETS],
+        "combat/sweep": [combat.SWEEP_PACKETS],
+    }[group_id]
+    assert [window.label for window in result.windows] == [label(p) for p in expected]
 
 
 # The arena
@@ -303,7 +324,11 @@ SWORD = "minecraft:diamond_sword"
 WEAPONS = {
     "combat/melee-mob": (None, "minecraft:wooden_sword", SWORD, "minecraft:diamond_axe"),
     "combat/critical": (SWORD, SWORD),
+    "combat/knockback": (SWORD, SWORD),
+    "combat/sweep": (SWORD,),
 }
+AROUND = {"combat/sweep": ((6.0, 0.9), (6.0, -0.9), (6.9, 0.0))}
+"""Where the husks beside the target stand, as (x, offset of z)."""
 SIZES = {group_id: len(weapons) for group_id, weapons in WEAPONS.items()}
 
 
@@ -329,13 +354,15 @@ async def test_each_case_sets_up_the_fighter_the_weapon_and_a_husk(group_id: str
         z = 2.5 + 4 * lane
         held = weapon or "minecraft:air"
         setup = [c for c in commands(window.before) if not c.startswith("tick")]
-        assert setup[-3:] == [
+        husk = 'Tags:["mscts_combat"]}'
+        summons = [
+            f"summon minecraft:husk {x} -60 {z + dz} {{NoAI:1b,OnGround:1b,Health:20f,{husk}"
+            for x, dz in ((6.0, 0.0), *AROUND.get(group_id, ()))
+        ]
+        assert setup[-(2 + len(summons)) :] == [
             f"tp fighter 4.5 -60 {z} -90.0 0",
             f"item replace entity fighter hotbar.0 with {held}",
-            (
-                f"summon minecraft:husk 6.0 -60 {z} "
-                '{NoAI:1b,OnGround:1b,Health:20f,Tags:["mscts_combat"]}'
-            ),
+            *summons,
         ]
 
 
@@ -351,6 +378,43 @@ async def test_each_case_waits_ten_steps_for_the_charge_and_steps_two_after_the_
         assert commands(window.inside).count(STEP) == 2
         names = [i.what for i in window.inside if i.what in ("minecraft:attack", STEP)]
         assert names == ["minecraft:attack", STEP, STEP]
+
+
+# combat/knockback
+
+
+@pytest.mark.asyncio
+async def test_knockback_sprints_only_in_the_second_case_and_stops_after_it() -> None:
+    result = await play("combat/knockback")
+
+    def actions(items: tuple[Item, ...]) -> list[object]:
+        return [i.fields["action"] for i in items if i.what == "minecraft:player_command"]
+
+    assert actions(result.windows[0].before) == []
+    assert actions(result.windows[1].before) == [START_SPRINTING]
+    assert actions(result.after) == [STOP_SPRINTING]
+
+
+# combat/sweep
+
+
+@pytest.mark.asyncio
+async def test_sweep_hits_the_first_husk_summoned_and_not_one_beside_it() -> None:
+    result = await play("combat/sweep")
+
+    (window,) = result.windows
+    (attack,) = [i for i in window.inside if i.what == "minecraft:attack"]
+    assert attack.fields["entity_id"] == 101
+
+
+@pytest.mark.asyncio
+async def test_sweep_stands_on_the_ground_and_does_not_sprint_or_fall() -> None:
+    result = await play("combat/sweep")
+
+    (window,) = result.windows
+    # The Bot reports where `/tp` put it; no move leaves the ground.
+    assert all(m.fields["y"] == -60.0 and on_ground(m) for m in window.inside if m.what == "move")
+    assert not [i for i in sent(result.transcript) if i.what == "minecraft:player_command"]
 
 
 # combat/critical
