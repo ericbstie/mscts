@@ -2171,3 +2171,182 @@ How many items are in the stack an entity holds, such as a dropped item. A diffe
 **Item type in entity data**
 
 Which item is in the stack an entity holds, such as a dropped item. A different item drops something else.
+## `damage_event`
+
+**Damage taken**
+
+A packet that tells the client an entity took damage. The client plays the hurt effect from it. A server that leaves it out, or sends it for another entity, shows no hit, or a hit on the wrong target.
+
+## `damage_event.entity_id`
+
+**Entity taking damage**
+
+Which entity took the damage. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `damage_event.source_type`
+
+**Damage type**
+
+The kind of damage, such as a player's attack. The client uses it to choose the hurt sound and the death message.
+
+## `damage_event.source_cause_id`
+
+**Entity that caused the damage**
+
+The entity that started the damage, such as the player who swung. mscts compares the entity each server refers to.
+
+## `damage_event.source_direct_id`
+
+**Entity that dealt the damage**
+
+The entity that dealt the damage directly, such as the player's own body for a melee hit, or the arrow for a shot. mscts compares the entity each server refers to.
+
+## `damage_event.source_position`
+
+**Damage source position**
+
+Where the damage came from, when no entity dealt it. The client turns the damage tilt away from it.
+
+## `set_entity_motion.entity_id`
+
+**Entity receiving a velocity**
+
+Which entity the velocity is for. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `set_entity_motion.velocity.scale`
+
+**Velocity scale**
+
+How the three velocity values are scaled. The packet holds a velocity as a scaled integer for each axis, so a different scale with the same movement shows here.
+
+## `set_entity_motion.velocity.x`
+
+**Velocity x**
+
+The velocity along x. After a hit it is the knockback: a server with a different knockback strength sends a different number, and the entity is thrown another distance.
+
+## `set_entity_motion.velocity.y`
+
+**Velocity y**
+
+The velocity along y. After a hit it is how high the entity is thrown.
+
+## `set_entity_motion.velocity.z`
+
+**Velocity z**
+
+The velocity along z. After a hit it is the knockback along z: a server that takes the attacker's facing differently sends another number.
+
+## `hurt_animation`
+
+**Hurt animation**
+
+A packet that tells the client to play the hurt animation of an entity. Vanilla sends the damage event instead for a hit, so a server that sends this one plays the animation another way.
+
+## `hurt_animation.entity_id`
+
+**Entity playing the hurt animation**
+
+Which entity plays the animation. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `hurt_animation.yaw`
+
+**Hurt animation direction**
+
+The direction the damage came from, in degrees. The client tilts the entity away from it.
+
+## `sound`
+
+**Sound**
+
+A packet that tells the client to play a sound at a position, such as the sound of a hit. A server that sends a sound vanilla does not, or leaves one out, plays another sound or none. The seed is left out of the comparison, because vanilla draws it at random. So is the pitch where a hurt player makes the sound, as in `combat/pvp`; the Groups that hit a silent husk compare it.
+
+## `sound.sound.reference`
+
+**Sound to play**
+
+Which sound the client plays. A difference plays another sound.
+
+## `sound.category`
+
+**Sound category**
+
+The volume slider that controls the sound, such as players or hostile creatures.
+
+## `sound.x`
+
+**Sound x**
+
+Where the sound plays along x, in eighths of a block.
+
+## `sound.y`
+
+**Sound y**
+
+Where the sound plays along y, in eighths of a block.
+
+## `sound.z`
+
+**Sound z**
+
+Where the sound plays along z, in eighths of a block.
+
+## `sound.volume`
+
+**Sound volume**
+
+How loud the sound is, and how far it carries.
+
+## `animate`
+
+**Entity animation**
+
+A packet that tells the client to play an animation on an entity, such as the stars of a critical hit. A server that leaves it out, or sends another animation, shows the player no critical hit.
+
+## `animate.entity_id`
+
+**Entity playing an animation**
+
+Which entity plays the animation. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `animate.action`
+
+**Animation type**
+
+Which animation the client plays, such as a swing of the arm or a critical hit.
+
+## `level_particles`
+
+**Particles**
+
+A packet that tells the client to show particles at a position, such as the hearts a hit shows. A server that leaves it out shows none.
+
+## `level_particles.particle.type`
+
+**Particle type**
+
+Which particle the client shows.
+
+## `level_particles.x`
+
+**Particles x**
+
+Where the particles appear along x.
+
+## `level_particles.y`
+
+**Particles y**
+
+Where the particles appear along y.
+
+## `level_particles.z`
+
+**Particles z**
+
+Where the particles appear along z.
+
+## `level_particles.count`
+
+**Particle count**
+
+How many particles the client shows.

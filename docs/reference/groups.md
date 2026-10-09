@@ -246,6 +246,69 @@ When a Group ends, the walker is moved back to the world spawn, because the serv
 a player left and its next join starts there. Then the world is unfrozen and the rules are set
 back to vanilla's defaults.
 
+## Combat (`combat`)
+
+What the server does when one player or mob hits another: the damage, the knockback, and the
+sounds. A Bot called `fighter` hits a husk that cannot think (`NoAI`) and does not speak
+(`Silent`) with the item in its hand. A husk has a zombie's health and knockback but does not
+burn in daylight, which a zombie does at random. The server runs on normal difficulty, because
+peaceful removes a hostile mob. In the Groups with a fighter, the fighter is an operator.
+
+The world is frozen (`/tick freeze`) and Control steps it, so a husk stands where it is put
+and moves only when a Group steps. A window compares the damage (`damage_event`), the husk's
+health (`set_entity_data`), its velocity (`set_entity_motion`), the sounds and the particles.
+It leaves out the husk's position packets: vanilla resends the position of a husk that stands
+still about every 3 seconds, so one lands in a window now and then.
+
+A window of its own follows each hit. In it the fighter copies the `Health`, `Motion` and `Pos` of
+each husk to command storage (`data modify storage`) and reads them back (`data get storage`), and
+the answers are compared. The answer to `data get entity` would name the husk with its UUID, which
+differs between servers. A frozen husk keeps all three values until the world steps, so they are
+exact. That is how the Groups compare the husk's health, its knockback and how far the hit moved
+it where the hit's own window cannot.
+
+A player is never frozen, so a Bot's attack charge counts every server tick, stepped or not.
+A hit at part of the charge would depend on how long the Bot took, so every hit in these Groups
+comes after 15 steps, which is more than the 20 ticks an axe needs. Hits at part of the charge
+are not compared.
+
+A husk's hurt sound has a random pitch, and the sounds a player makes when it hits have a fixed
+one, so the husk is silent and the windows compare every pitch they hold. Only `combat/pvp` has
+a player's hurt sound in its window, and there the pitch of every sound is left out. The sound
+of a hurt husk is not compared.
+
+Each hit is played in a lane of its own, and Control waits at the end until the husks it killed
+are gone, so the next play starts without them. The Group fails if a husk is still there after
+20 asks.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `combat/melee-mob` | tick-exact | none | The fighter hits a husk with a bare hand, a wooden sword, a diamond sword and a diamond axe, each at full charge. | none |
+| `combat/critical` | tick-exact | none | The fighter hits a husk with a diamond sword twice. The first hit comes while the fighter falls: it hops a block into the air and comes down half a block before the hit, which makes it critical. The second comes while the fighter sprints, which is not critical. | none |
+| `combat/knockback` | tick-exact | none | The fighter hits a husk with a diamond sword while standing, then while sprinting. A sprinting hit knocks the husk back further, which shows in its velocity and position. | none |
+| `combat/sweep` | tick-exact | none | The fighter hits a husk with a diamond sword on the ground, with three more husks 0.9 blocks from it. The sweep hurts all three. | none |
+| `combat/immunity` | tick-exact | none | Two Bots, `striker` with a diamond sword and `tapper` with a bare hand, hit one husk a few ticks apart: the striker then the tapper after 5 ticks, the tapper then the striker after 5, and the striker then the tapper after 11. A hurt husk ignores a hit that is not stronger than the last until its immunity is down to 10 ticks. | none |
+| `combat/pvp` | tick-exact | none | A Bot called `attacker` hits another Bot, `victim`, with a diamond sword, standing and then sprinting. The window also compares the victim's health (`set_health`). | none |
+
+Vanilla sends the data and the velocity of every entity a tick changed at the end of that tick, in
+the order of a hash of their entity ids, and the two Instances' ids differ. So when a hit changes
+two entities, the order of their packets differs between runs of vanilla itself. A sprinting hit
+changes the husk's health and the fighter's sprint flag, which the hit clears. So the windows of
+the sprinting hits in `combat/critical`, `combat/knockback` and `combat/pvp` leave out
+`set_entity_data`, and the health of the husk is read back; the victim's is in `set_health`.
+Whether the sprint stops is not compared. A rule that ignores the order of the tick-end resends
+of several entities (#320) would let it be. The window of `combat/sweep` compares only the damage,
+the sounds and the particles, because the sweep hurts four husks, and the health and velocity of
+each husk are read back.
+
+In `combat/knockback` the husk's velocity and position, in the window and in the readback, say how
+far a sprinting hit knocks it back.
+
+A Player keeps its health and its food from play to play, so each Bot is given health and
+saturation (`effect give`) before the first hit. In `combat/immunity` the tapper stands a block
+behind the striker, out of the sweep of the striker's sword. `combat/pvp` runs with player
+versus player damage on, which is the server default; a server with it off is not covered.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
