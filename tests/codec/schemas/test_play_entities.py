@@ -881,3 +881,12 @@ def test_player_combat_kill_is_the_players_id_and_the_death_message_as_nbt_bytes
         "1d" + message,
     )
     assert entity_id_paths(play_schema("minecraft:player_combat_kill")) == ["player_id"]
+
+
+def test_player_combat_kill_refuses_a_message_that_is_not_a_text_component() -> None:
+    # A lone TAG_End root is NBT, but no text component: the vanilla client cannot read it.
+    data = Writer().var_int(
+        CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:player_combat_kill")
+    )
+    with pytest.raises(CodecError):
+        CODEC.decode(State.PLAY, CLIENTBOUND, data.var_int(29).to_bytes() + b"\x00")
