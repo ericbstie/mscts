@@ -1202,6 +1202,12 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   eating, the damage, sounds and the death); `EATING_MASKS` — the Mask on the eating
   sounds' pitch; `regeneration`, `starvation` and `eating` — the `player/regeneration`,
   `player/starvation` and `player/eating` scripts.
+- `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
+  eating, the damage, sounds and the death); `EATING_MASKS` — the Mask on the eating
+  sounds' pitch; `EXERCISER` — the Bot that sprints, jumps and hits, and as an operator
+  reads its food back; `regeneration`, `starvation`, `eating` and `exhaustion` — the
+  `player/regeneration`, `player/starvation`, `player/eating` and `player/exhaustion`
+  scripts.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control

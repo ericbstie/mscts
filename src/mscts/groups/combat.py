@@ -32,7 +32,7 @@ from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.entities import Entity
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import pin_joins
+from mscts.groups._world import _find_when_tracked, pin_joins
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
 FIGHTER = "fighter"
@@ -66,9 +66,6 @@ _CHARGE_STEPS = 15
 """How many steps a Bot waits so that its attack charge is full: each is at least 2 server ticks
 (a step and the barrier after it), and the slowest weapon here, an axe, needs 20 (26.3 javap).
 15 steps are at least 30, so a barrier that ends a pass early still leaves a margin."""
-
-_LOOKUPS = 4
-"""How often a Group looks for an entity its Bot may not track yet."""
 
 _CORPSE_POLLS = 20
 """How often Control asks whether a husk is left: a corpse goes in about 1 s, a poll takes about
@@ -441,21 +438,6 @@ has a charge of its own, so a Bot that hit in the last case is full again after 
 wait for the charge. A Bot hits once per case: the same Bot twice would hit at part of its
 charge, which depends on how long it took.
 """
-
-
-async def _find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float]) -> Entity:
-    """The entity of `kind` nearest `near` that `bot` tracks, once the server has sent it.
-
-    The Bot may not have been told of an entity yet when a Group asks. The wait is `Bot.sync`,
-    which does not step the world: a step would move every later packet a tick on one side
-    only, which a tick-exact Comparison reports as a difference in the hit.
-    """
-    for _ in range(_LOOKUPS - 1):
-        try:
-            return bot.entities.find(kind, near=near)
-        except LookupError:
-            await bot.sync()
-    return bot.entities.find(kind, near=near)
 
 
 async def _refill(control: Control, name: str) -> None:

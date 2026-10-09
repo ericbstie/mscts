@@ -22,14 +22,16 @@ back afterwards, because every Group is played on the same two Instances.
 """
 
 import contextlib
+import math
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
 from mscts.compare import Mask
 from mscts.group import GroupContext, group
-from mscts.groups._world import _normal, fresh, join_at_spawn, pin_joins
+from mscts.groups._world import _find_when_tracked, _normal, fresh, join_at_spawn, pin_joins
+from mscts.spec import ServerSpec
 
 PACKETS = (
     "minecraft:set_health",
@@ -268,3 +270,115 @@ async def eating(context: GroupContext) -> None:
             async with context.observe(*names, until=_SET_HEALTH, bot=bot):
                 await bot.use_item()
                 await bot.expect(_SET_HEALTH, timeout_s=_WAIT_S)
+
+
+# `player/exhaustion`: a Bot sprints, jumps and attacks, and reads back what each cost.
+
+EXERCISER = "exerciser"
+"""The Bot that sprints, jumps and attacks, and as an operator reads its own food back."""
+
+_LANE_Z = -20.5
+_START_X = -49.5
+_RUN = 100
+"""How many blocks the Bot sprints, one a move."""
+
+_JUMPS = 50
+_JUMP_TOP = -59.58
+"""The Bot's height at the top of each jump's single airborne move."""
+
+_HUSKS = 20
+_RING = 1.5
+"""How far from the Bot the husks stand, in a ring: within reach, each in a place of its own."""
+
+_TAG = "mscts_hunger"
+
+_FOOD_PATHS = ("foodLevel", "foodSaturationLevel", "foodExhaustionLevel")
+"""What the Bot reads back after each part: its food, saturation and exhaustion (`FoodData`)."""
+
+_SYSTEM_CHAT = "minecraft:system_chat"
+
+
+def _operator(spec: ServerSpec) -> ServerSpec:
+    """Normal difficulty, with the exerciser an operator, so that it can run `/data get`."""
+    return replace(_normal(spec), operators=(*spec.operators, EXERCISER))
+
+
+async def _read_back(context: GroupContext, bot: Bot) -> None:
+    """Have the Bot read its food, saturation and exhaustion back, in a window of its own."""
+    await bot.drain()
+    async with context.observe(_SYSTEM_CHAT, _SET_HEALTH):
+        for path in _FOOD_PATHS:
+            await bot.command(f"data get entity {bot.name} {path}")
+            await bot.expect(_SYSTEM_CHAT, timeout_s=_WAIT_S)
+
+
+async def _sprint(bot: Bot) -> None:
+    """Sprint `_RUN` blocks east, one block a move, each move followed by a barrier."""
+    await bot.sprint(True)  # noqa: FBT003
+    for step in range(1, _RUN + 1):
+        await bot.move(_START_X + step, -60.0, _LANE_Z)
+        await bot.sync()
+    await bot.sprint(False)  # noqa: FBT003
+
+
+async def _jump(bot: Bot, x: float) -> None:
+    """Jump `_JUMPS` times in place at `x`, each move followed by a barrier."""
+    for _ in range(_JUMPS):
+        await bot.jump()
+        await bot.move(x, _JUMP_TOP, _LANE_Z, on_ground=False)
+        await bot.sync()
+        await bot.move(x, -60.0, _LANE_Z)
+        await bot.sync()
+
+
+def _ring(x: float) -> list[tuple[float, float]]:
+    """Where the husks stand: `_HUSKS` places on a circle of radius `_RING` around (x, _LANE_Z)."""
+    return [
+        (
+            round(x + _RING * math.cos(math.tau * k / _HUSKS), 2),
+            round(_LANE_Z + _RING * math.sin(math.tau * k / _HUSKS), 2),
+        )
+        for k in range(_HUSKS)
+    ]
+
+
+async def _attack_each(context: GroupContext, bot: Bot, ring: list[tuple[float, float]]) -> None:
+    """Summon a still, silent husk at each place in `ring`, then hit each once."""
+    for x, z in ring:
+        await context.control.run(
+            f"summon minecraft:husk {x} -60 {z} "
+            f'{{NoAI:1b,Silent:1b,PersistenceRequired:1b,Tags:["{_TAG}"]}}'
+        )
+    husks = [await _find_when_tracked(bot, "husk", (x, -60.0, z)) for x, z in ring]
+    async with context.observe(_SET_HEALTH):
+        for husk in husks:
+            await bot.attack(husk)
+            await bot.sync()
+
+
+@group("player/exhaustion", spec=_operator)
+async def exhaustion(context: GroupContext) -> None:
+    """A Bot sprints 100 blocks, jumps 50 times and hits 20 husks, reading its food back after each.
+
+    The Bot keeps its full health, so it never heals, and the only exhaustion is what it does.
+    Each move, jump and hit is followed by a barrier, so the Bot's player ticks between two of
+    them, as it does for a vanilla client, and its exhaustion adds up the same way on every
+    server.
+    """
+    control = context.control
+    async with contextlib.AsyncExitStack() as undo:
+        await pin_joins(control, undo)
+        undo.push_async_callback(control.run, f"tp @e[tag={_TAG}] 0 -300 0")
+        bot = await join_at_spawn(context, undo, EXERCISER)
+        await context.freeze()
+        await fresh(context, bot)
+        await control.run(f"tp {bot.name} {_START_X} -60 {_LANE_Z} -90 0")
+        async with context.observe(_SET_HEALTH):
+            await _sprint(bot)
+        await _read_back(context, bot)
+        end = _START_X + _RUN
+        async with context.observe(_SET_HEALTH):
+            await _jump(bot, end)
+        await _read_back(context, bot)
+        await _attack_each(context, bot, _ring(end))
+        await _read_back(context, bot)

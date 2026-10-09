@@ -2,14 +2,16 @@
 
 Every test plays a Group against a fake server once and reads the Transcript for what each Bot
 sent (Control's commands) and the Marks (the Observation windows). What a server answers is
-never asserted: the fake answers Control's markers, the barrier and a respawn request, ends a
-hunger effect a tick after it is given, sends the health the Group waits for after a
-`/damage`, and sends `set_time` every tick (vanilla sends it every 20).
+never asserted: the fake answers Control's markers, the barrier and a respawn request, and
+sends just what each Group waits for: the end of a hunger effect, the health after a `/damage`
+or a meal, the husks summoned, the answer to `/data get`, and `set_time` every 10 ticks
+(vanilla sends it every 20).
 """
 
 import asyncio
 import functools
 import json
+import uuid
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -21,6 +23,7 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_hunger
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
+from tests.group.test_combat import HUSK
 from tests.group.test_control import CODEC, text, tree
 from tests.group.test_movement import Play, read
 from tests.net.fakes import (
@@ -32,7 +35,7 @@ from tests.net.fakes import (
     join_server,
     serve,
 )
-from tests.net.test_bot_move import RESPAWN
+from tests.net.test_bot_move import LOGIN, RESPAWN
 
 CONTROL = "control"
 MARKER = "tellraw @s "
@@ -40,18 +43,40 @@ CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_comma
 SET_HEALTH, SET_TIME = "minecraft:set_health", "minecraft:set_time"
 PERFORM_RESPAWN = 0
 COMMANDS = tree(
-    "gamerule", "tick", "effect", "damage", "kill", "tp", "tellraw", "difficulty", "give", "clear"
+    "gamerule",
+    "tick",
+    "effect",
+    "damage",
+    "kill",
+    "tellraw",
+    "difficulty",
+    "give",
+    "clear",
+    "summon",
+    "tp",
+    "data",
 )
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
 HUNGER = 17
 """The hunger effect's id in the `mob_effect` registry, which `remove_mob_effect` carries."""
 DEATH = "minecraft:player_combat_kill"
+EFFECT_TICKS = 5
+"""How many ticks after it is given the fake ends a hunger effect: longer than a barrier, so a
+window opened without waiting for the end would hold it."""
+TIME_TICKS = 10
+"""How many ticks apart the fake sends `set_time` (vanilla: 20): longer than a barrier, so a
+window that closes on the barrier after its sixth holds no seventh."""
 
 type Answer = tuple[tuple[str, Mapping[str, object] | bytes], ...]
 """Packets a fake sends after a command: each name with its fields, or its raw payload."""
 
 ENDS = ("minecraft:remove_mob_effect", {"entity_id": 1, "effect": HUNGER})
+
+
+def _login(peer: Peer) -> bytes:
+    """The `login` that names the player's entity id, which a sprint command carries."""
+    return peer.frame("minecraft:login", **LOGIN)
 
 
 def health(value: float, food: int) -> tuple[str, Mapping[str, object]]:
@@ -63,21 +88,26 @@ class HungerServer:
     """A fake server that joins like vanilla and answers what the hunger Groups wait for.
 
     It answers Control's markers, the barrier (a tick apart) and a respawn request (`respawn`,
-    then one chunk batch). A command whose first word is in `answers` is answered, a tick
-    later, with its packets, sent to the player the command names; a packet whose name is in
-    `answers` is answered the same way, to the player that sent it. Every player but Control
-    is sent `set_time` every tick.
+    then one chunk batch), and tells every player but Control of each husk summoned
+    (`add_entity`). A command whose first word is in `answers` is answered, a tick later
+    (`EFFECT_TICKS` for an effect), with its packets, sent to the player the command names; a
+    packet whose name is in `answers` is answered a tick later, to the player that sent it.
+    Every player but Control is sent `set_time` every `TIME_TICKS` ticks.
     """
 
     answers: Mapping[str, Answer] = field(default_factory=dict)
     """The packets sent after a command, by the command's first word."""
     seen: list[Packet] = field(default_factory=list)
     players: dict[str, Peer] = field(default_factory=dict)
+    summoned: int = 0
+    later: set[asyncio.Task[None]] = field(default_factory=set)
+    """The answers to commands still to be sent."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
         with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+            script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
+            await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
         self.players[peer.name] = peer
@@ -111,22 +141,46 @@ class HungerServer:
             await peer.write(
                 peer.frame("minecraft:system_chat", content=text(token), overlay=False)
             )
+        elif words[0] == "summon":
+            await self._summon(*(float(word) for word in words[2:5]))
         elif words[0] in self.answers:
             player = next(self.players[word] for word in words if word in self.players)
-            await self._answer(player, self.answers[words[0]])
+            ticks = EFFECT_TICKS if words[0] == "effect" else 1
+            self.later.add(asyncio.create_task(self._answer(player, self.answers[words[0]], ticks)))
 
-    async def _answer(self, player: Peer, answer: Answer) -> None:
-        await asyncio.sleep(TICK_S)
-        for name, body in answer:
-            if isinstance(body, bytes):
-                await player.write(player.raw_frame(name, body))
-            else:
-                await player.send(name, **body)
+    async def _summon(self, x: float, y: float, z: float) -> None:
+        """Tell every player but Control of a husk at `x`, `y`, `z` (ids from 100)."""
+        self.summoned += 1
+        for name, player in self.players.items():
+            if name != CONTROL:
+                await player.send(
+                    "minecraft:add_entity",
+                    entity_id=99 + self.summoned,
+                    entity_uuid=uuid.UUID(int=self.summoned),
+                    type=HUSK,
+                    x=x,
+                    y=y,
+                    z=z,
+                    velocity={"scale": 0, "x": 0, "y": 0, "z": 0},
+                    pitch=0,
+                    yaw=0,
+                    head_yaw=0,
+                    data=0,
+                )
+
+    async def _answer(self, player: Peer, answer: Answer, ticks: int = 1) -> None:
+        await asyncio.sleep(ticks * TICK_S)
+        with suppress(ConnectionError):
+            for name, body in answer:
+                if isinstance(body, bytes):
+                    await player.write(player.raw_frame(name, body))
+                else:
+                    await player.send(name, **body)
 
     async def _tick(self, peer: Peer) -> None:
         with suppress(ConnectionError):
             while True:
-                await asyncio.sleep(TICK_S)
+                await asyncio.sleep(TIME_TICKS * TICK_S)
                 await peer.write(peer.raw_frame(SET_TIME, bytes(9)))
 
 
@@ -147,6 +201,9 @@ ANSWERS: Mapping[str, Mapping[str, Answer]] = {
         "effect": (ENDS, health(10.0, 0), health(1.0, 0), (DEATH, b"\x02" + text("dead")))
     },
     "player/eating": {"effect": (ENDS,), "minecraft:use_item": (health(20.0, 7),)},
+    "player/exhaustion": {
+        "data": (("minecraft:system_chat", {"content": text("data"), "overlay": False}),)
+    },
 }
 """What the fake answers in each Group: just what the Group waits for."""
 
@@ -266,7 +323,22 @@ def test_regeneration_waits_for_food_17_then_100_ticks_before_a_window_ends() ->
         names = [p.name for p in packets]
         last_health = max(i for i, name in enumerate(names) if name == SET_HEALTH)
         assert (packets[last_health].fields or {})["food"] == 17
-        assert names[last_health + 1 :].count(SET_TIME) >= 6
+        assert names[last_health + 1 :].count(SET_TIME) == 6
+
+
+def test_regeneration_waits_for_each_hunger_effect_to_end_before_its_window() -> None:
+    transcript, _ = play("player/regeneration")
+
+    windows = received_in_windows(transcript, REGENERATOR)
+    assert all("minecraft:remove_mob_effect" not in [p.name for p in w] for w in windows)
+    ended = [
+        e.t_ns
+        for e in transcript.events
+        if e.bot == REGENERATOR and e.packet.name == "minecraft:remove_mob_effect"
+    ]
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    assert len(ended) == 2
+    assert all(end < opened for end, opened in zip(ended, opens[1:], strict=True))
 
 
 # player/starvation
@@ -330,7 +402,7 @@ def test_starvation_waits_for_each_floor_then_100_ticks_and_on_hard_for_the_deat
     for packets, floor in ((easy, 10.0), (normal, 1.0)):
         names = [p.name for p in packets]
         at = next(i for i, p in enumerate(packets) if (p.fields or {}).get("health") == floor)
-        assert names[at + 1 :].count(SET_TIME) >= 6
+        assert names[at + 1 :].count(SET_TIME) == 6
     assert DEATH in [p.name for p in hard]
 
 
@@ -424,3 +496,95 @@ def test_eating_windows_end_on_the_health_that_eating_sends() -> None:
 
     for packets in received_in_windows(transcript, EATER):
         assert packets[-1].name == SET_HEALTH
+
+
+# player/exhaustion
+
+EXERCISER = "exerciser"
+SYSTEM_CHAT = "minecraft:system_chat"
+READ_BACK = tuple(
+    (EXERCISER, f"data get entity exerciser {path}")
+    for path in ("foodLevel", "foodSaturationLevel", "foodExhaustionLevel")
+)
+
+
+def test_exhaustion_is_registered_exact_on_normal_difficulty_with_the_bot_an_operator() -> None:
+    group = GROUPS["player/exhaustion"]
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert group.kind is GroupKind.EXACT
+    assert group.requires == ()
+    assert group.masks == ()
+    assert group.spec(default) == ServerSpec(
+        host="127.0.0.1", port=25566, difficulty=Difficulty.NORMAL, operators=(EXERCISER,)
+    )
+
+
+def test_exhaustion_puts_a_fresh_bot_at_the_lane_and_sends_the_husks_away_after() -> None:
+    result = played("player/exhaustion")
+
+    assert result.first == (
+        "gamerule player_movement_check false",
+        "gamerule respawn_radius 0",
+        "tick freeze",
+        "kill exerciser",
+        "tp exerciser -49.5 -60 -20.5 -90 0",
+    )
+    assert result.after == (
+        "tp exerciser 0.5 -60 0.5",
+        "tp @e[tag=mscts_hunger] 0 -300 0",
+        "gamerule respawn_radius 10",
+        "gamerule player_movement_check true",
+        "tick unfreeze",
+    )
+
+
+def test_exhaustion_sprints_jumps_and_attacks_reading_the_food_back_after_each() -> None:
+    transcript, result = play("player/exhaustion")
+
+    assert [window.label for window in result.windows] == [
+        opened(SET_HEALTH),
+        opened(SYSTEM_CHAT, SET_HEALTH),
+    ] * 3
+    sprint, _, jumps, _, attacks, _ = result.windows
+    # the sprint's own tick reports where the Bot is first (the fake teleports no one)
+    assert sprint.sent[1:] == tuple(
+        (EXERCISER, (-49.5 + step, -60.0, -20.5)) for step in range(1, 101)
+    )
+    assert (
+        jumps.sent == ((EXERCISER, (50.5, -59.58, -20.5)), (EXERCISER, (50.5, -60.0, -20.5))) * 50
+    )
+    assert [window.sent for window in result.windows[1::2]] == [READ_BACK] * 3
+    assert set(attacks.sent) <= {(EXERCISER, (50.5, -60.0, -20.5))}  # a position reminder
+    assert len(attacks.before) == 20
+    assert all(c.startswith("summon minecraft:husk ") for c in attacks.before)
+    hit = sent_by(transcript, EXERCISER, "minecraft:attack")
+    assert [(p.fields or {})["entity_id"] for p in hit] == list(range(100, 120))
+
+
+def test_exhaustion_follows_each_move_and_hit_with_a_barrier() -> None:
+    transcript, _ = play("player/exhaustion")
+
+    sent = [
+        e.packet
+        for e in transcript.events
+        if e.bot == EXERCISER
+        and e.packet.direction is Direction.SERVERBOUND
+        and e.packet.name in {"minecraft:move_player_pos", "minecraft:attack", CLIENT_COMMAND}
+    ]
+    # An action is a hit or a move to a new place; a move to the same place is a reminder.
+    steps: list[str] = []
+    at = None
+    for packet in sent:
+        fields = packet.fields or {}
+        if packet.name == "minecraft:move_player_pos":
+            place = (fields["x"], fields["y"], fields["z"])
+            if place != at:
+                steps.append("act")
+            at = place
+        else:
+            steps.append("act" if packet.name == "minecraft:attack" else "sync")
+    acts = "".join("a" if step == "act" else "s" for step in steps)
+    assert acts.count("a") >= 100 + 100 + 20
+    # the first is the sprint's own tick, which reports where the Bot stands
+    assert "aa" not in acts[acts.find("a") + 1 :]

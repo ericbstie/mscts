@@ -4,6 +4,7 @@ import contextlib
 from dataclasses import replace
 
 from mscts.bot import Bot
+from mscts.entities import Entity
 from mscts.group import Control, GroupContext
 from mscts.spec import Difficulty, ServerSpec
 
@@ -14,6 +15,9 @@ vanilla sends it a tick or so later, which no window can place."""
 
 SPAWN_AT = "0.5 -60 0.5"
 """Where a Bot is put when the Group ends: the world spawn, clear of every block a Group sets."""
+
+_LOOKUPS = 4
+"""How often a Group looks for an entity its Bot may not track yet."""
 
 _MOVEMENT_CHECK = "gamerule player_movement_check"
 """The check that can repeat a join's first `player_position`, a race with the first tick
@@ -62,3 +66,18 @@ async def fresh(context: GroupContext, bot: Bot) -> None:
     """
     await context.control.run(f"kill {bot.name}")
     await bot.respawn()
+
+
+async def _find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float]) -> Entity:
+    """The entity of `kind` nearest `near` that `bot` tracks, once the server has sent it.
+
+    The Bot may not have been told of an entity yet when a Group asks. The wait is `Bot.sync`,
+    which does not step the world: a step would move every later packet a tick on one side
+    only, which a tick-exact Comparison reports as a difference in the hit.
+    """
+    for _ in range(_LOOKUPS - 1):
+        try:
+            return bot.entities.find(kind, near=near)
+        except LookupError:
+            await bot.sync()
+    return bot.entities.find(kind, near=near)
