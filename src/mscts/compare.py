@@ -467,9 +467,9 @@ class Verdict:
         detail: A human-readable note, e.g. why the Group is blocked.
         test_cases: Every test case the Comparison compared, matched or not, and each field
             of a reference Packet the Candidate did not send (#101), sorted and each once;
-            none if the Verdict was made without one (`error`, `blocked`). A test case only
-            network traffic Divergences name is not among them: it was never compared, so
-            listing it would give a Candidate that sends another spelling one more test case
+            none if the Verdict was made without one (`error`, `blocked`). A test case that
+            no compared pair names and only network traffic Divergences do is not among
+            them, so a Candidate that sends another spelling does not get one more test case
             than one that sends vanilla's (#330). A Candidate
             failure lists the Reference's play's own (`run.judge`), and so does one whose
             Group was played on the Reference alone (#266, #285).

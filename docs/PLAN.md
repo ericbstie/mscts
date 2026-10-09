@@ -1430,7 +1430,7 @@ class Verdict:
                                       # field of a missing reference packet (#101), sorted
                                     # and unique (Comparison semantics step 5); () when
                                     # error or blocked. run.judge keeps compare's. Not a
-                                    # test case only network traffic Divergences name (#330).
+                                    # test case no compared pair names (#330).
     omitted: int = 0                # Divergences a report.json left out (#254); 0 from compare
     @property
     def gameplay(self) -> tuple[Divergence, ...]: ...     # the gameplay Divergences, in
@@ -2299,12 +2299,12 @@ proves it necessary:
    Observation window leaves out are in none, and neither is a pair of
    values at a masked path that are the same (two `MASKED`, or two
    None): a masked field is a test case only where it diverges. Each is the same, different in gameplay, or different in
-   network traffic only (`Verdict.differing`). A network traffic test
-   case appears only where the two formats differed: its raw path is
-   not a compared field otherwise, and listing it as the same would
-   claim a comparison that was never made. So it is not in
-   `Verdict.test_cases` either, unless a compared pair names it too
-   (#330); nor are the fields of a chunk batch marker left `missing`.
+   network traffic only (`Verdict.differing`). A network traffic
+   Divergence names the test case of its raw path. Where no compared
+   pair names that test case too, it is not in `Verdict.test_cases`
+   (#330): listing it would claim a comparison that was never made,
+   and would give a Candidate that spells it differently one more test
+   case. Nor are the fields of a chunk batch marker left `missing`.
 
 ### Measurements and Report
 
@@ -2399,10 +2399,12 @@ def report_lines(report: Report) -> tuple[Line, ...]: ...
 # or mapping, for its test case and each of its leaves', #225; a `failed` Divergence in
 # any repetition makes every test case of the Group differ, #262, #266, #285): FAIL if it
 # differs in gameplay in any repetition, PASS (marked
-# network_traffic_only) if it differs only in network traffic, else PASS; NOT_SCORED
-# (marked network_traffic_only) if only network traffic Divergences name it and no
-# repetition's Verdict.test_cases lists it (#330), whatever else makes it differ;
-# totals counts it nowhere. Then one
+# network_traffic_only) if it differs only in network traffic, else PASS. One that no
+# compared pair names (network traffic Divergences name it, no gameplay one does, and
+# no repetition's Verdict.test_cases lists it; _never_compared, #330) is NOT_SCORED
+# (marked network_traffic_only) while NETWORK_TRAFFIC_ONLY_PASSES, whatever else
+# makes it differ, and FAIL with the switch off, as run.prerequisite_verdict judges
+# its Verdict; totals counts NOT_SCORED nowhere. Then one
 # Group line if any repetition was blocked or errored, the Candidate failed, or a bot's
 # packet count differed: FAIL if the Candidate failed or a count differed, else
 # NOT_TESTED if blocked, else ERROR.

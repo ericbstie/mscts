@@ -56,7 +56,7 @@ class LineResult(StrEnum):
     FAIL = "fail"
     NOT_TESTED = "not tested"
     ERROR = "error"
-    NOT_SCORED = "not scored"  # a test case only network traffic Divergences name (#330)
+    NOT_SCORED = "not scored"  # a test case no compared pair names (#330)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,8 +66,8 @@ class CaseResult:
     Attributes:
         group_id: The Group.
         test_case: The test case's name.
-        result: PASS or FAIL; NOT_SCORED for one the Comparison did not compare, which
-            only network traffic Divergences name (`report_lines`).
+        result: PASS or FAIL; NOT_SCORED for one no compared pair names, which shows only
+            in network traffic (`_case_result`).
         network_traffic_only: True if it differs, but only in network traffic.
     """
 
@@ -150,11 +150,9 @@ def report_lines(report: Report) -> tuple[Line, ...]:
             traffic = False  # it differs in gameplay
             for differs in found.values():
                 differs.add(traffic)
-        unscored = _not_compared(group)
+        never = _never_compared(group)
         results.extend(
-            CaseResult(group.group_id, name, LineResult.NOT_SCORED, network_traffic_only=True)
-            if name in unscored
-            else _case_result(group.group_id, name, found[name])
+            _case_result(group.group_id, name, found[name], scored=name not in never)
             for name in sorted(found)
         )
         details = _group_details(group)
@@ -166,14 +164,16 @@ def report_lines(report: Report) -> tuple[Line, ...]:
     return tuple(results)
 
 
-def _not_compared(group: GroupResult) -> set[str]:
-    """The test cases of `group` that only network traffic Divergences name.
+def _never_compared(group: GroupResult) -> set[str]:
+    """The test cases of `group` that no compared pair names in any repetition.
 
-    The Comparison compared none of them in any repetition (`Verdict.test_cases`): it names
-    one only when the two sides spell something differently, such as a field the canonical
-    form leaves out. Scored, a Candidate that sends another spelling would have one more
-    passing test case than one that sends vanilla's (#330). A report.json written before
-    #330 lists them among its compared test cases, so it scores them as it did.
+    Each is named by network traffic Divergences, by no gameplay one, and is in no
+    repetition's `Verdict.test_cases`. A network traffic Divergence names one only when the
+    two sides spell something differently where the canonical form compares nothing under
+    that name, such as a field it leaves out. Scored, a Candidate that sends another
+    spelling would have one more passing test case than one that sends vanilla's (#330). A
+    report.json written before #330 lists them among its compared test cases, so it scores
+    them as it did.
     """
     named: dict[Observability, set[str]] = {kind: set() for kind in Observability}
     for verdict in group.verdicts:
@@ -227,12 +227,22 @@ _GROUP_RESULTS = (LineResult.FAIL, LineResult.NOT_TESTED, LineResult.ERROR)
 """A Group line's result: the first of these that any of its reasons has."""
 
 
-def _case_result(group_id: str, name: str, traffic: set[bool]) -> CaseResult:
-    """`traffic` holds, for each way the test case differs, whether it is network traffic."""
+def _case_result(group_id: str, name: str, traffic: set[bool], *, scored: bool) -> CaseResult:
+    """How the test case `name` came out.
+
+    `traffic` holds, for each way the test case differs, whether it is network traffic.
+    `scored` is False for a test case no compared pair names (`_never_compared`): while
+    network traffic passes (`NETWORK_TRAFFIC_ONLY_PASSES`), it is NOT_SCORED, whatever else
+    makes it differ; with the switch off it fails like any network traffic difference, as
+    `run.prerequisite_verdict` fails its Verdict.
+    """
+    passes = mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES
+    if not scored and passes:
+        return CaseResult(group_id, name, LineResult.NOT_SCORED, network_traffic_only=True)
     if not traffic:
         return CaseResult(group_id, name, LineResult.PASS)
     if traffic == {True}:
-        result = LineResult.PASS if mscts.compare.NETWORK_TRAFFIC_ONLY_PASSES else LineResult.FAIL
+        result = LineResult.PASS if passes else LineResult.FAIL
         return CaseResult(group_id, name, result, network_traffic_only=True)
     return CaseResult(group_id, name, LineResult.FAIL)
 

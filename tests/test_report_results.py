@@ -5,6 +5,7 @@ from dataclasses import replace
 
 import pytest
 
+import mscts.compare
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.group import Group
 from mscts.groups import status
@@ -12,7 +13,7 @@ from mscts.report import CaseResult, GroupLine, Line, LineResult, Totals, report
 from mscts.run import GroupError, judge
 from mscts.transcript import Transcript
 from tests.compare.build import GROUP, packet, transcript
-from tests.test_report import _field, _report, _result, _verdict
+from tests.test_report import _field, _listed, _report, _result, _verdict
 
 
 def _compared(*names: str, group_id: str = "status/basic") -> Verdict:
@@ -45,8 +46,8 @@ def test_a_test_case_that_differs_in_any_repetition_fails() -> None:
     assert report_lines(report) == (CaseResult("status/basic", "a", LineResult.FAIL),)
 
 
-def test_a_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -> None:
-    traffic = _verdict(_field("a", traffic=True))
+def test_a_compared_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -> None:
+    traffic = _listed(_field("a", traffic=True))
     mixed = _verdict(_field("b", traffic=True), replace(_field("b"), index=1))
     assert report_lines(_report(_result(traffic), _result(replace(mixed, group_id="x/y")))) == (
         CaseResult("status/basic", "a", LineResult.PASS, network_traffic_only=True),
@@ -443,6 +444,40 @@ def test_a_test_case_a_gameplay_divergence_names_is_scored_even_if_not_listed() 
     assert report_lines(_report(_result(verdict))) == (
         CaseResult("status/basic", "b", LineResult.FAIL),
     )
+
+
+def test_a_test_case_no_compared_pair_names_fails_if_network_traffic_does_not_pass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review A and B of #341: with the switch off, run._passed fails such a Verdict as a
+    # prerequisite, so the Report fails its line too rather than leaving it out.
+    monkeypatch.setattr(mscts.compare, "NETWORK_TRAFFIC_ONLY_PASSES", False)
+    lines = _slot_lines(9)
+    assert (
+        CaseResult(GROUP, "container_set_slot.state_id", LineResult.FAIL, network_traffic_only=True)
+        in lines
+    )
+    assert totals(lines) == Totals(passed=3, failed=2, not_tested=0, errors=0)
+
+
+def test_a_candidate_failure_leaves_a_test_case_no_compared_pair_names_not_scored() -> None:
+    # Review B of #341, nit 8: sending that field wrong is not scored, so failing the whole
+    # Group does not score it either. Its siblings fail.
+    def play(*sent: Mapping[str, object]) -> Transcript:
+        return transcript(
+            *(("alice", packet("minecraft:container_set_slot", fields=f)) for f in sent)
+        )
+
+    traffic = compare(play(SLOT), play({**SLOT, "state_id": 9}), ())
+    crashed = replace(_verdict(FAILED, group_id=GROUP), test_cases=traffic.test_cases)
+    lines = report_lines(_report(_result(traffic, crashed)))
+    assert [(line.test_case, line.result) for line in lines if isinstance(line, CaseResult)] == [
+        ("container_set_slot.slot", LineResult.FAIL),
+        ("container_set_slot.slot_data.count", LineResult.FAIL),
+        ("container_set_slot.slot_data.item", LineResult.FAIL),
+        ("container_set_slot.state_id", LineResult.NOT_SCORED),
+        ("container_set_slot.window_id", LineResult.FAIL),
+    ]
 
 
 def test_a_field_that_shows_only_network_traffic_is_listed_when_it_differs() -> None:
