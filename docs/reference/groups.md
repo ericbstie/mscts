@@ -70,6 +70,39 @@ The `/fill` region holds one block that drops an item. Vanilla sends the items a
 order that follows their entity ids, and two servers can number their entities differently, so with
 several items the Reference would not match itself.
 
+### Blocks a player breaks and places
+
+Two Bots, `digger` and `watcher`, join. The digger breaks and places blocks. The watcher stands
+beside it, because vanilla does not send the cracks and break particles of a dig to the player who
+digs. Control puts the digger, the watcher and itself at x 8.5, 12.5 and 4.5, y -60, z 4.5, with
+`/tp`, before the first window, and sets each case up with `/setblock`, `/fill`, `/summon`,
+`/item replace entity` (the tool or the stack the digger holds, in its first hotbar slot) and
+`/kill`. The world is frozen and random ticks are off. The Groups require all of those commands.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `blocks/dig-survival` | exact | none | In survival, the digger breaks a block 2 blocks away: stone with a wooden pickaxe, stone with an iron pickaxe, dirt by hand and stone by hand, each finished after the time a vanilla client takes. It also finishes obsidian with an iron pickaxe 5 ticks after the start, which the server refuses. Each dig is two windows: the start, then the finish. | none |
+| `blocks/dig-creative` | tick-exact | none | In creative mode, the digger breaks stone, dirt and obsidian by hand, each in one window, then tries stone with an iron sword, which cannot break blocks. | none |
+| `blocks/place` | tick-exact | none | The digger places stairs and logs on each of the six faces of a stone block, stairs while facing each of four ways, a slab (bottom, top and doubled), a door with the cursor on each side of the block, a torch (on top and on each side), and a bed facing each of four ways. Then it places stone onto short grass and onto a snow layer, which it replaces, and into the space of an armor stand, which the server refuses. | none |
+
+A dropped item has the same Masks as in the commands above: where it appears, its sideways speed and
+which way it faces.
+
+`blocks/dig-survival` cannot be tick-exact. The server counts a dig in the ticks of the player's
+own game mode, and a frozen world still ticks its players, so stepping the world a tick at a time
+does not time a dig. It waits by the clock instead, outside any window, and compares only what the
+finish changes: the block, the acknowledgement, the item that drops and the tool's wear. It leaves
+out the cracks and the particles of the dig (`block_destruction` and the `level_event` 2019 and
+2020 that vanilla sends every tick), because how many a window holds depends on how long it lasts.
+
+The server decides a finish by how long the digger has been in the world, not by the time since
+the dig started (measured on 26.3: with the digger in for 3 seconds, a finish a quarter of a
+second after the start is refused, and with it in for 6 seconds, it is accepted, as is every
+later one). The Group therefore waits 8 seconds before the first dig, and digs the obsidian
+first: by then the server accepts every finish except the obsidian one, which needs 29 seconds.
+A dig on time and a dig too early cannot be told apart for the blocks that break in under 5
+seconds, and obsidian is not dug to the end because it takes 42 seconds.
+
 ## Chat (`chat`)
 
 What players see of each other's chat. A Bot called `listener` stays in the world for every
