@@ -1,19 +1,23 @@
 """Player Groups: game modes, death and respawn.
 
 `player/game-modes` switches a Bot through every game mode while a second Bot watches.
+`player/death` kills a Bot that holds items and experience under each setting of `keep_inventory`
+and `immediate_respawn`.
 
 The Bots are put back at the spawn, in survival, when the Group ends, and every rule is set back,
 because every Group is played on the same two Instances. Control stands far from the Bots: it is a
 player too, and it joins where the last Group left it, which may be in their view
 (docs/roles/player-actions.md, #300).
+A dead Bot's drops are taken away, so that Control and the Bot do not pick them up.
 """
 
 import contextlib
 from collections.abc import AsyncIterator
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
-from mscts.group import GroupContext, group
+from mscts.compare import Mask
+from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import pin_joins
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
@@ -88,3 +92,151 @@ async def game_modes(context: GroupContext) -> None:
         for mode in _MODES:
             async with context.observe(*MODE_PACKETS):
                 await context.control.run(f"gamemode {mode} {_CHANGER}")
+
+
+# `player/death` and `player/respawn`
+
+type _Place = tuple[float, float]
+"""An x and a z, at y -60."""
+
+_SPAWN: _Place = (0.5, 0.5)
+
+_MORTAL = "mortal"
+
+DEATH_PACKETS = (
+    "minecraft:game_event",
+    "minecraft:player_combat_kill",
+    "minecraft:set_health",
+    "minecraft:set_experience",
+    "minecraft:container_set_content",
+    "minecraft:set_player_inventory",
+    "minecraft:container_set_slot",
+    "minecraft:add_entity",
+    "minecraft:set_entity_data",
+    "minecraft:respawn",
+)
+"""The packets a window compares for a death."""
+
+_DIAMONDS = "give {bot} minecraft:diamond 5"
+_ONE_LEVEL = "xp set {bot} 1 levels"
+"""A level of experience drops as one orb of 7 points (`Player.getBaseExperienceReward`)."""
+
+_REACH = 20
+"""How far from a Bot's death its drops are taken away: they lie within a few blocks of it."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Death:
+    """One death: the game rules it happens under, and what the Bot holds when it dies.
+
+    Attributes:
+        keep_inventory: The value of the rule.
+        immediate_respawn: The value of the rule.
+        items: Whether the Bot holds a stack of diamonds.
+        level: Whether the Bot has a level of experience.
+    """
+
+    keep_inventory: bool
+    immediate_respawn: bool
+    items: bool
+    level: bool
+
+
+_DEATHS = (
+    _Death(keep_inventory=False, immediate_respawn=False, items=True, level=False),
+    _Death(keep_inventory=False, immediate_respawn=False, items=False, level=True),
+    _Death(keep_inventory=True, immediate_respawn=False, items=True, level=True),
+    _Death(keep_inventory=False, immediate_respawn=True, items=True, level=False),
+    _Death(keep_inventory=True, immediate_respawn=True, items=True, level=True),
+)
+"""The deaths. What drops is one entity a death: vanilla resends the entities a tick made in an
+order that follows their raw ids, which differ per Instance."""
+
+_ITEM_THROW = (
+    "LivingEntity.createItemStackToDrop gives a dropped item the motion "
+    "(-sin(a) * f, 0.2, cos(a) * f) with a = nextFloat() * 2 pi and f = nextFloat() * 0.5, and "
+    "the ItemEntity constructor sets its yaw to nextFloat() * 360"
+)
+_ORB_THROW = (
+    "the ExperienceOrb constructor sets its yaw to nextFloat() * 360 and its motion to "
+    "((nextDouble() * 0.2 - 0.1) * 2, nextDouble() * 0.2 * 2, (nextDouble() * 0.2 - 0.1) * 2)"
+)
+_DRAWN = {
+    "velocity.x": f"{_ITEM_THROW}; {_ORB_THROW}",
+    "velocity.y": f"The item's is fixed at 0.2, but {_ORB_THROW}",
+    "velocity.z": f"{_ITEM_THROW}; {_ORB_THROW}",
+    "yaw": f"{_ITEM_THROW}; {_ORB_THROW}",
+}
+
+DROP_MASKS = tuple(
+    Mask(
+        "minecraft:add_entity",
+        path,
+        f"Vanilla draws it at random for what a dead player drops: {draw} (26.3 javap). Where "
+        "the drop appears is compared (the player's place), and so are its type and count in "
+        "`set_entity_data`; how it moves belongs to `entities/motion`.",
+    )
+    for path, draw in _DRAWN.items()
+)
+"""How a dropped item and an experience orb move and face, drawn at random by vanilla.
+
+The one `add_entity` a death window compares is the item or the orb the Bot dropped.
+"""
+
+
+async def _rules(context: GroupContext, death: _Death) -> None:
+    """Set the two game rules to the values of `death`."""
+    rules = (
+        ("keep_inventory", death.keep_inventory),
+        ("immediate_respawn", death.immediate_respawn),
+    )
+    for rule, value in rules:
+        await context.control.run(f"gamerule {rule} {str(value).lower()}")
+
+
+async def _kit(context: GroupContext, bot: Bot, death: _Death) -> None:
+    """Give the Bot what it holds when it dies, and nothing else."""
+    control = context.control
+    await control.run(f"clear {bot.name}")
+    await control.run(f"xp set {bot.name} 0 levels")
+    if death.items:
+        await control.run(_DIAMONDS.format(bot=bot.name))
+    if death.level:
+        await control.run(_ONE_LEVEL.format(bot=bot.name))
+
+
+async def _clear_drops(context: GroupContext, place: _Place) -> None:
+    """Remove the items and orbs within `_REACH` blocks of `place`.
+
+    A dead Bot's drops would stay in the Instance, lie where the Bot respawns and be picked up
+    by the next play.
+    """
+    x, z = place
+    where = f"x={x},y=-60,z={z},distance=..{_REACH}"
+    await context.control.run(f"kill @e[type=minecraft:item,{where}]")
+    await context.control.run(f"kill @e[type=minecraft:experience_orb,{where}]")
+
+
+@contextlib.asynccontextmanager
+async def _mortal(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
+    """Move Control away and freeze the world; undo the rules and the drops on exit."""
+    async with _arena(context) as undo:
+        undo.push_async_callback(_clear_drops, context, _SPAWN)
+        for rule in ("keep_inventory", "immediate_respawn"):
+            undo.push_async_callback(context.control.run, f"gamerule {rule} false")
+        await context.freeze()
+        yield undo
+
+
+@group("player/death", kind=GroupKind.TICK_EXACT, spec=_normal, masks=DROP_MASKS)
+async def death(context: GroupContext) -> None:
+    """A Bot is killed holding items or experience, under each setting of two game rules."""
+    async with _mortal(context) as undo:
+        bot = await _join(context, undo, _MORTAL)
+        for case in _DEATHS:
+            await _kit(context, bot, case)
+            async with context.observe(*DEATH_PACKETS):
+                await _rules(context, case)
+                await context.control.run(f"kill {bot.name}")
+            await _clear_drops(context, _SPAWN)
+            await bot.respawn()

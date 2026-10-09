@@ -13,26 +13,43 @@ from typing import override
 
 import pytest
 
-from mscts.compare import OBSERVE_OPEN
+from mscts.codec.packets import Direction
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_modes
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import CODEC, tree
 from tests.group.test_movement import Play, read
-from tests.group.test_player import PlayerServer
+from tests.group.test_player import PERFORM_RESPAWN, PlayerServer
 from tests.net.fakes import JoinScript, Peer, join_server, serve
 
 CONTROL = "control"
-COMMANDS = tree("gamerule", "tp", "tick", "gamemode", "tellraw")
+CLIENT_COMMAND = "minecraft:client_command"
+COMMANDS = tree(
+    "gamerule", "tp", "tick", "gamemode", "give", "clear", "xp", "kill", "spawnpoint", "tellraw"
+)
 PLAY_TIMEOUT_S = 300.0
 
 GAME_MODES = "player/game-modes"
-GROUP_IDS = (GAME_MODES,)
-KINDS = {GAME_MODES: GroupKind.EXACT}
-BOTS = {GAME_MODES: ("changer", "watcher")}
-MASKS = {GAME_MODES: ()}
+DEATH = "player/death"
+GROUP_IDS = (GAME_MODES, DEATH)
+KINDS = {GAME_MODES: GroupKind.EXACT, DEATH: GroupKind.TICK_EXACT}
+BOTS = {GAME_MODES: ("changer", "watcher"), DEATH: ("mortal",)}
+MASKS = {GAME_MODES: (), DEATH: player_modes.DROP_MASKS}
 SPAWN = "0.5 -60 0.5"
+
+
+def clear_drops(x: str, z: str) -> tuple[str, str]:
+    """The commands that remove the items and orbs within 20 blocks of (x, z)."""
+    where = f"x={x},y=-60,z={z},distance=..20"
+    return (
+        f"kill @e[type=minecraft:item,{where}]",
+        f"kill @e[type=minecraft:experience_orb,{where}]",
+    )
+
+
+CLEAR_SPAWN = clear_drops("0.5", "0.5")
 
 
 @dataclass
@@ -72,6 +89,27 @@ def played(group_id: str) -> Play:
 
 def opened(*names: str) -> str:
     return f"{OBSERVE_OPEN} {' '.join(names)}"
+
+
+def respawn_requests(group_id: str, bot: str) -> list[int]:
+    """When (in ns) `bot` asked to respawn."""
+    transcript, _ = play(group_id)
+    return [
+        e.t_ns
+        for e in transcript.events
+        if e.bot == bot
+        and e.packet.direction is Direction.SERVERBOUND
+        and e.packet.name == CLIENT_COMMAND
+        and e.packet.fields == {"action": PERFORM_RESPAWN}
+    ]
+
+
+def window_spans(group_id: str) -> list[tuple[int, int]]:
+    """When each window opened and closed."""
+    transcript, _ = play(group_id)
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    return list(zip(opens, closes, strict=True))
 
 
 def joined(group_id: str) -> list[str]:
@@ -177,3 +215,93 @@ def test_game_modes_puts_the_watcher_beside_the_changer_before_the_first_window(
 
     assert result.first[-1] == "tp watcher 4.5 -60 0.5"
     assert [w.before for w in result.windows[1:]] == [()] * 3
+
+
+# player/death
+
+RULES = (
+    ("false", "false"),
+    ("false", "false"),
+    ("true", "false"),
+    ("false", "true"),
+    ("true", "true"),
+)
+"""The values of `keep_inventory` and `immediate_respawn` each death runs under."""
+DIAMONDS, LEVEL = "give mortal minecraft:diamond 5", "xp set mortal 1 levels"
+KITS = ((DIAMONDS,), (LEVEL,), (DIAMONDS, LEVEL), (DIAMONDS,), (DIAMONDS, LEVEL))
+"""What the Bot holds each death, after `clear` and `xp set 0 levels`."""
+
+
+def test_death_compares_the_death_the_health_the_drops_and_the_respawn_screen() -> None:
+    assert player_modes.DEATH_PACKETS == (
+        "minecraft:game_event",
+        "minecraft:player_combat_kill",
+        "minecraft:set_health",
+        "minecraft:set_experience",
+        "minecraft:container_set_content",
+        "minecraft:set_player_inventory",
+        "minecraft:container_set_slot",
+        "minecraft:add_entity",
+        "minecraft:set_entity_data",
+        "minecraft:respawn",
+    )
+
+
+def test_death_sets_the_rules_inside_the_window_and_kills_the_bot_last() -> None:
+    result = played(DEATH)
+
+    assert [w.label for w in result.windows] == [opened(*player_modes.DEATH_PACKETS)] * 5
+    assert [w.sent for w in result.windows] == [
+        (
+            (CONTROL, f"gamerule keep_inventory {keep}"),
+            (CONTROL, f"gamerule immediate_respawn {immediate}"),
+            (CONTROL, "kill mortal"),
+        )
+        for keep, immediate in RULES
+    ]
+
+
+def test_death_gives_the_bot_only_what_the_death_holds_before_each_window() -> None:
+    result = played(DEATH)
+
+    for window, kit in zip(result.windows, KITS, strict=True):
+        assert window.before[-len(kit) - 2 :] == ("clear mortal", "xp set mortal 0 levels", *kit)
+
+
+def test_death_drops_one_entity_a_death_so_that_no_two_are_resent_in_an_order_of_ids() -> None:
+    # Vanilla resends the entities one tick made in the order of their raw ids, which differ per
+    # Instance: a death that dropped an item and an orb would differ from itself.
+    for (keep, _), kit in zip(RULES, KITS, strict=True):
+        assert keep == "true" or len(kit) == 1
+
+
+def test_death_takes_the_drops_away_and_then_respawns_the_bot_after_every_window() -> None:
+    result = played(DEATH)
+
+    asked = respawn_requests(DEATH, "mortal")
+    spans = window_spans(DEATH)
+    assert len(asked) == len(spans)
+    for (_, closed), request in zip(spans, asked, strict=True):
+        assert request > closed
+    for window in result.windows[1:]:
+        assert window.before[:2] == CLEAR_SPAWN
+
+
+def test_death_freezes_the_world_and_puts_the_rules_and_the_drops_back_after() -> None:
+    result = played(DEATH)
+
+    assert "tick freeze" in result.first
+    assert result.after[-1] == "tick unfreeze"
+    assert "gamerule keep_inventory false" in result.after
+    assert "gamerule immediate_respawn false" in result.after
+    assert result.after[:2] == CLEAR_SPAWN
+
+
+def test_death_masks_how_vanilla_moves_and_turns_what_a_dead_player_drops() -> None:
+    assert [(m.packet, m.path) for m in player_modes.DROP_MASKS] == [
+        ("minecraft:add_entity", "velocity.x"),
+        ("minecraft:add_entity", "velocity.y"),
+        ("minecraft:add_entity", "velocity.z"),
+        ("minecraft:add_entity", "yaw"),
+    ]
+    assert all(isinstance(m, Mask) and "javap" in m.reason for m in player_modes.DROP_MASKS)

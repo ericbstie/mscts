@@ -2419,3 +2419,33 @@ How a modifier's amount combines with the attribute's value: added, or multiplie
 **Locator bar change**
 
 A packet that adds, updates or removes a player on the client's locator bar, the strip that shows where other players are. Vanilla sends one when a player becomes a spectator. mscts does not decode it yet, so a difference in any of its bytes is reported for the packet as a whole.
+
+## `add_entity.x`
+
+**Entity x**
+
+Where the entity appears along x.
+
+## `add_entity.y`
+
+**Entity y**
+
+Where the entity appears along y.
+
+## `add_entity.z`
+
+**Entity z**
+
+Where the entity appears along z.
+
+## `set_entity_data.entries[].value.components.added`
+
+**Item components added**
+
+The components an item in an entity's data has beyond its type's defaults.
+
+## `set_entity_data.entries[].value.components.removed`
+
+**Item components removed**
+
+The default components an item in an entity's data has lost.

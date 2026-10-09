@@ -338,6 +338,12 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "update_attributes.attributes[].modifiers[].id": "Attribute modifier name",
         "update_attributes.attributes[].modifiers[].operation": "Attribute modifier operation",
         "waypoint": "Locator bar change",
+        # death (#59)
+        "add_entity.x": "Entity x",
+        "add_entity.y": "Entity y",
+        "add_entity.z": "Entity z",
+        "set_entity_data.entries[].value.components.added": "Item components added",
+        "set_entity_data.entries[].value.components.removed": "Item components removed",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
