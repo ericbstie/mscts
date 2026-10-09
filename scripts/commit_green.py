@@ -254,13 +254,24 @@ def _locked_index(index: Path) -> Iterator[None]:
 def _checkout_tree(
     git: str, root: Path, destination: Path, tree: str, *, env: Mapping[str, str]
 ) -> None:
-    """Check out the captured tree in its own Git repository without making a commit."""
+    """Check out the captured tree in its own Git repository without making a commit.
+
+    The clone borrows the checkout's objects through `objects/info/alternates`, written
+    here because `clone --shared` skips it from a shallow repository (#326) and the
+    captured tree is not in the pack it copies instead.
+    """
     _git_output(
         git,
         ("clone", "--shared", "--no-checkout", "--quiet", str(root), str(destination)),
         cwd=root,
         env=env,
     )
+    objects = _git_output(
+        git, ("rev-parse", "--path-format=absolute", "--git-path", "objects"), cwd=root, env=env
+    )
+    alternates = destination / ".git" / "objects" / "info" / "alternates"
+    alternates.parent.mkdir(parents=True, exist_ok=True)
+    alternates.write_text(f"{objects}\n")
     _git_output(git, ("read-tree", tree), cwd=destination, env=env)
     _git_output(git, ("checkout-index", "--all"), cwd=destination, env=env)
 
