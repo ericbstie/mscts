@@ -539,22 +539,19 @@ def test_exhaustion_puts_a_fresh_bot_at_the_lane_and_sends_the_husks_away_after(
     )
 
 
-def test_exhaustion_sprints_jumps_and_attacks_reading_the_food_back_after_each() -> None:
+def test_exhaustion_sprints_and_attacks_reading_the_food_back_after_each() -> None:
     transcript, result = play("player/exhaustion")
 
     assert [window.label for window in result.windows] == [
         opened(SET_HEALTH),
         opened(SYSTEM_CHAT, SET_HEALTH),
-    ] * 3
-    sprint, _, jumps, _, attacks, _ = result.windows
+    ] * 2
+    sprint, _, attacks, _ = result.windows
     # the sprint's own tick reports where the Bot is first (the fake teleports no one)
     assert sprint.sent[1:] == tuple(
         (EXERCISER, (-49.5 + step, -60.0, -20.5)) for step in range(1, 101)
     )
-    assert (
-        jumps.sent == ((EXERCISER, (50.5, -59.58, -20.5)), (EXERCISER, (50.5, -60.0, -20.5))) * 50
-    )
-    assert [window.sent for window in result.windows[1::2]] == [READ_BACK] * 3
+    assert [window.sent for window in result.windows[1::2]] == [READ_BACK] * 2
     assert set(attacks.sent) <= {(EXERCISER, (50.5, -60.0, -20.5))}  # a position reminder
     assert len(attacks.before) == 20
     assert all(c.startswith("summon minecraft:husk ") for c in attacks.before)
@@ -585,6 +582,6 @@ def test_exhaustion_follows_each_move_and_hit_with_a_barrier() -> None:
         else:
             steps.append("act" if packet.name == "minecraft:attack" else "sync")
     acts = "".join("a" if step == "act" else "s" for step in steps)
-    assert acts.count("a") >= 100 + 100 + 20
+    assert acts.count("a") >= 100 + 20
     # the first is the sprint's own tick, which reports where the Bot stands
     assert "aa" not in acts[acts.find("a") + 1 :]

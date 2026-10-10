@@ -487,7 +487,7 @@ ticks, and sets the health with `/damage` of type `generic`, which costs no food
 | `player/regeneration` | exact | none | A Bot at 10 health heals from food 20, from food 18 and from food 17, in a window of its own each. Each heal costs food, and the healing stops at 17. | none |
 | `player/starvation` | exact | none | A Bot with no food starves on easy from 12 health, on normal from 3 and on hard from 2, in a window of its own each. It stops at 10 health on easy and at 1 on normal, and dies on hard. | none |
 | `player/eating` | exact | none | A Bot at food 2 eats bread, cooked beef, a golden apple and rotten flesh, in a window of its own each. | none |
-| `player/exhaustion` | exact | none | A Bot sprints 100 blocks, jumps 50 times and hits 20 husks, in a window of its own each. After each, it reads back its food, saturation and exhaustion with `/data get`. | none |
+| `player/exhaustion` | exact | none | A Bot sprints 100 blocks and hits 20 husks, in a window of its own each. After each, it reads back its food, saturation and exhaustion with `/data get`. | none |
 
 These Groups compare what changes and in what order, not how many ticks it takes. A Candidate
 that heals every 40 ticks instead of 80, or starves a player every 20, sends the same packets
@@ -508,10 +508,11 @@ gives hunger 4 times in 5, at random, so its window does not compare the effects
 
 No packet carries exhaustion, so `player/exhaustion` has the Bot, an operator, read its food,
 saturation and exhaustion back with `/data get` after each part. The Bot passes a barrier after
-each move, jump and hit, so its player ticks between two of them, as it does for a vanilla
+each move and hit, so its player ticks between two of them, as it does for a vanilla
 client, and the exhaustion adds up in the same order on every server. A hit costs exhaustion only
 when it hurts, and a husk is immune for 10 ticks after a hit, so the Bot hits 20 husks once each,
-standing in a ring around it.
+standing in a ring around it. Jumping is not covered yet: in 1 Self-check play of 15, two
+vanilla servers counted a different number of the same 50 jumps ([#57](https://github.com/ericbstie/mscts/issues/57)).
 
 ## Planned
 

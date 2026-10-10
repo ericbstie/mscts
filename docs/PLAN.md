@@ -1204,7 +1204,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `player/starvation` and `player/eating` scripts.
 - `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
   eating, the damage, sounds and the death); `EATING_MASKS` — the Mask on the eating
-  sounds' pitch; `EXERCISER` — the Bot that sprints, jumps and hits, and as an operator
+  sounds' pitch; `EXERCISER` — the Bot that sprints and hits, and as an operator
   reads its food back; `regeneration`, `starvation`, `eating` and `exhaustion` — the
   `player/regeneration`, `player/starvation`, `player/eating` and `player/exhaustion`
   scripts.

@@ -272,19 +272,15 @@ async def eating(context: GroupContext) -> None:
                 await bot.expect(_SET_HEALTH, timeout_s=_WAIT_S)
 
 
-# `player/exhaustion`: a Bot sprints, jumps and attacks, and reads back what each cost.
+# `player/exhaustion`: a Bot sprints and attacks, and reads back what each cost.
 
 EXERCISER = "exerciser"
-"""The Bot that sprints, jumps and attacks, and as an operator reads its own food back."""
+"""The Bot that sprints and attacks, and as an operator reads its own food back."""
 
 _LANE_Z = -20.5
 _START_X = -49.5
 _RUN = 100
 """How many blocks the Bot sprints, one a move."""
-
-_JUMPS = 50
-_JUMP_TOP = -59.58
-"""The Bot's height at the top of each jump's single airborne move."""
 
 _HUSKS = 20
 _RING = 1.5
@@ -321,16 +317,6 @@ async def _sprint(bot: Bot) -> None:
     await bot.sprint(False)  # noqa: FBT003
 
 
-async def _jump(bot: Bot, x: float) -> None:
-    """Jump `_JUMPS` times in place at `x`, each move followed by a barrier."""
-    for _ in range(_JUMPS):
-        await bot.jump()
-        await bot.move(x, _JUMP_TOP, _LANE_Z, on_ground=False)
-        await bot.sync()
-        await bot.move(x, -60.0, _LANE_Z)
-        await bot.sync()
-
-
 def _ring(x: float) -> list[tuple[float, float]]:
     """Where the husks stand: `_HUSKS` places on a circle of radius `_RING` around (x, _LANE_Z)."""
     return [
@@ -358,12 +344,13 @@ async def _attack_each(context: GroupContext, bot: Bot, ring: list[tuple[float, 
 
 @group("player/exhaustion", spec=_operator)
 async def exhaustion(context: GroupContext) -> None:
-    """A Bot sprints 100 blocks, jumps 50 times and hits 20 husks, reading its food back after each.
+    """A Bot sprints 100 blocks and hits 20 husks, reading its food back after each.
 
     The Bot keeps its full health, so it never heals, and the only exhaustion is what it does.
-    Each move, jump and hit is followed by a barrier, so the Bot's player ticks between two of
-    them, as it does for a vanilla client, and its exhaustion adds up the same way on every
-    server.
+    Each move and hit is followed by a barrier, so the Bot's player ticks between two of them, as
+    it does for a vanilla client, and its exhaustion adds up the same way on every server. It
+    does not jump: in 1 Self-check play of 15 the two servers counted a different number of
+    jumps (#57).
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
@@ -376,9 +363,5 @@ async def exhaustion(context: GroupContext) -> None:
         async with context.observe(_SET_HEALTH):
             await _sprint(bot)
         await _read_back(context, bot)
-        end = _START_X + _RUN
-        async with context.observe(_SET_HEALTH):
-            await _jump(bot, end)
-        await _read_back(context, bot)
-        await _attack_each(context, bot, _ring(end))
+        await _attack_each(context, bot, _ring(_START_X + _RUN))
         await _read_back(context, bot)
