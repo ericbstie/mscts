@@ -288,6 +288,10 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "add_entity.type": "Entity type",
         "add_entity.velocity.scale": "Entity motion scale",
         "add_entity.velocity.y": "Entity upward speed",
+        # dropped items (#47)
+        "add_entity.velocity.x": "Entity speed along x",
+        "add_entity.velocity.z": "Entity speed along z",
+        "add_entity.yaw": "Entity direction",
         "block_changed_ack": "Block action acknowledgement",
         "block_changed_ack.sequence": "Acknowledged action number",
         "level_event.data": "World event data",

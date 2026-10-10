@@ -575,6 +575,24 @@ Bot opens the table for each click and closes it after.
 The Bot does not take a crafted result, and does not click items into a crafting table's grid:
 it cannot yet predict those clicks the way the client does.
 
+## Entities (`entities`)
+
+### Dropped items
+
+How items on the ground merge, despawn and are picked up. Each Group joins one Bot at the world spawn and freezes the world. Control summons every item still and without gravity, so an item changes only on the ticks a Group steps. When a Group ends, Control removes the items it summoned and empties the Bot's inventory.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `entities/item-merge` | tick-exact | none | Control lays eight pairs of items in a row, a tick apart: two stacks of stone 0.7 blocks apart and 0.8 apart, 0.2 above each other and 0.3 above, 0.7 apart with a glass pane between them, stone next to dirt, 40 stone next to 30, and 32 next to 32. The world steps 41 ticks, until each pair has had its 40th tick. The window compares which item of a pair goes and how many items the other then holds. | none |
+| `entities/item-despawn` | tick-exact | none | Control summons a stone aged 5998 ticks, a dirt aged 5997, an experience orb aged 5996, and a stone aged -32768, which never ages. The world steps 5 ticks, and the window compares when each one goes. Vanilla removes an item or an orb when its age reaches 6000. | none |
+| `entities/item-pickup` | tick-exact | none | Items and experience orbs appear at the feet of a Bot that stands still, each in a window of its own. A stone with no pickup delay appears inside its window. Stones with a delay of 10 and of 40 ticks appear before theirs, and the world steps a tick past the delay. Orbs of 1, 7 and 37 points appear inside their windows. Last, a stone appears by the Bot with a full inventory, and then ten stones by a stack with room for four, and the world steps 2 ticks each time. Each window compares the pickup, the Bot's slots and experience, and the item or orb that appears and goes. | none |
+
+An item looks for another to merge with only on every 40th of its own ticks. The pairs are laid a tick apart so that each pair merges on a tick of its own. Vanilla sends the entity data that changes in one tick in an order that follows the entity ids, and two servers can number their entities differently.
+
+A frozen world does not freeze its players, so the Bot picks up what it can reach on every tick. A pickup delay counts down only on the ticks the world steps, so a stone is picked up on the tick its delay reaches 0. A player takes one orb in its reach each tick, chosen at random, so each orb has a window of its own. The three orbs add up to 45 points, which stays under level 5: vanilla's level-up sound depends on how long the player has been in the game.
+
+Whether two orbs merge depends on their entity ids in vanilla, so `entities/item-merge` lays no orbs.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
