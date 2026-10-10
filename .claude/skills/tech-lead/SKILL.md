@@ -37,13 +37,17 @@ first.
      with a merge commit (never a squash or a rebase-merge). With several
      PRs ready, use a merge train (docs/PROCESS.md, Integrate): stack
      them, run the live tiers once on the last tip, merge in order.
+     Add each merged PR's row to the review results in `docs/RISK.md`,
+     with the level triage suggested next to the label you chose.
    - Log every retrospective item with a decision (adopt, defer or
      reject). Apply the adopted changes in a `docs:` or `tooling:`
      commit.
 6. Keep `docs/PROGRESS.md` current (Now, Log) and push after each
    integration.
 7. When a chunk of work is done (a train landed, a batch of issues
-   closed), write the handoff note and stop (docs/PROCESS.md, Roles).
+   closed), write the handoff note and stop (docs/PROCESS.md, Roles). End
+   the note with your session's total tokens (`get_session` on yourself),
+   the number of batches and of wakes, and the PRs merged.
 
 ## Integration safety (learned the hard way)
 
