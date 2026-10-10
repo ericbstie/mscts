@@ -339,7 +339,8 @@ marker for it, an entity a server tells no player about, so it adds no packet.
 Armor reduces some kinds of damage and not others. In vanilla 26.3, `generic`, `fall`, `magic`,
 `wither`, `out_of_world` and `starve` are in the damage type tag `bypasses_armor`, so the
 sets change what the other six cost: `player_attack`, `mob_attack`, `arrow`, `in_fire`, `lava`
-and `explosion`. A hit that armor reduces wears each piece down by 1, and the Bot is told of it
+and `explosion`. A hit that armor reduces wears each piece down by 1, except a piece that resists that damage
+(netherite, against `in_fire` and `lava`), and the Bot is told of each wear
 (`container_set_slot`). `combat/armor` has the Bot keep its stacks when it dies, so that one
 set of armor serves every kind of damage. The stacks are cleared when the Group ends.
 
@@ -364,6 +365,10 @@ text in `player_combat_kill` is empty. The game rule `immediate_respawn` stays f
 vanilla, so the server waits for the Bot to ask to respawn. Kinds of damage that need an attacker
 are left out, because the attacker's name and UUID are in the message and the UUID differs
 between servers.
+
+A dead player still ticks in real time, and about a second after the death the server sends it
+`entity_event` 60. The respawn comes well before that. A host that stalls for a second on one
+Instance only can show it as a Divergence in the respawn's window.
 
 ## Player (`player`)
 

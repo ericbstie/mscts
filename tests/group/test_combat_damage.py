@@ -411,6 +411,12 @@ def test_effects_wears_no_armor_and_keeps_no_stacks() -> None:
     assert not [c for c in commands if c.startswith("item ") or "keep_inventory" in c]
 
 
+def test_effects_clears_the_effects_when_it_ends_before_the_bot_is_put_back() -> None:
+    result = played("combat/effects")
+
+    assert result.after.index("effect clear victim") < result.after.index("tp victim 0.5 -60 0.5")
+
+
 def test_the_command_for_an_effect_has_no_particles_and_lasts_past_the_window() -> None:
     assert combat_damage.effect_command(VICTIM, combat_damage.Effect("absorption", 1)) == giving(
         "absorption", 1

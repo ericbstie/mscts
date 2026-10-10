@@ -24,7 +24,7 @@ from dataclasses import replace
 from mscts import run
 from mscts.bot import Bot
 from mscts.group import GroupContext, group
-from mscts.groups._world import pin_joins
+from mscts.groups._world import SPAWN_AT, pin_joins
 from mscts.settle import until_no_player_online
 from mscts.spec import ServerSpec
 
@@ -53,9 +53,6 @@ FAR_VIEW_DISTANCE = 5
 
 SPAWN = (0, 0)
 """The chunk a joining player is in: `gamerule respawn_radius 0` puts it at 0.5 -60 0.5."""
-
-SPAWN_AT = "0.5 -60 0.5"
-"""Where a joining player is put, which the walker is put back to when the Group ends."""
 
 FAR = (20, 0)
 """The chunk `chunks/teleport` moves the walker to, 20 chunks east of the spawn."""

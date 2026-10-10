@@ -126,6 +126,7 @@ async def _hurt(
     context: GroupContext,
     bot: Bot,
     source: Source,
+    *,
     before: Sequence[str] = (),
     amount: float = _DAMAGE,
 ) -> None:
@@ -148,12 +149,13 @@ def _pick(*types: str) -> tuple[Source, ...]:
 async def _sweep(
     context: GroupContext,
     bot: Bot,
+    *,
     before: Sequence[str] = (),
     sources: Sequence[Source] = SOURCES,
 ) -> None:
     """Hurt the Bot with each of `sources` in turn, each in a window of its own."""
     for source in sources:
-        await _hurt(context, bot, source, before)
+        await _hurt(context, bot, source, before=before)
 
 
 @group("combat/damage-types", kind=GroupKind.TICK_EXACT, spec=_normal)
@@ -193,7 +195,7 @@ ARMORS = (
     Armor("iron"),
     Armor("diamond"),
     Armor("netherite"),
-    Armor("diamond", "protection", SOURCES),
+    Armor("diamond", "protection", sources=SOURCES),
     Armor("diamond", "fire_protection"),
     Armor("diamond", "blast_protection"),
 )
@@ -220,15 +222,17 @@ def wear_commands(victim: str, worn: Armor) -> tuple[str, ...]:
     )
 
 
-async def _keep_inventory(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
-    """Keep the Bot's stacks through each death, so that the armor survives the `kill`.
+async def _keep_inventory(
+    context: GroupContext, undo: contextlib.AsyncExitStack, name: str
+) -> None:
+    """Keep the stacks of the Bot `name` through each death, so that the armor survives the `kill`.
 
-    The Bot's stacks are cleared when the Group ends: the server saves them across plays.
+    The stacks are cleared when the Group ends: the server saves them across plays.
     """
     control = context.control
     undo.push_async_callback(control.run, "gamerule keep_inventory false")
     await control.run("gamerule keep_inventory true")
-    undo.push_async_callback(control.run, f"clear {VICTIM}")
+    undo.push_async_callback(control.run, f"clear {name}")
 
 
 @group("combat/armor", kind=GroupKind.TICK_EXACT, spec=_normal)
@@ -236,7 +240,7 @@ async def armor(context: GroupContext) -> None:
     """A Bot wears each set of armor in turn and is hurt by 4 points of each kind of damage."""
     async with _arena(context) as undo:
         bot = await join_at_spawn(context, undo, VICTIM)
-        await _keep_inventory(context, undo)
+        await _keep_inventory(context, undo, bot.name)
         await context.freeze()
         for worn in ARMORS:
             for command in wear_commands(bot.name, worn):
@@ -270,9 +274,9 @@ to keep a play within the Self-check's time (see `ARMOR_REDUCED`)."""
 
 EFFECTS = (
     Effect("resistance", 0),
-    Effect("resistance", 1, _RESISTANCE_SAMPLE),
-    Effect("resistance", 2, _RESISTANCE_SAMPLE),
-    Effect("resistance", 3, _RESISTANCE_SAMPLE),
+    Effect("resistance", 1, sources=_RESISTANCE_SAMPLE),
+    Effect("resistance", 2, sources=_RESISTANCE_SAMPLE),
+    Effect("resistance", 3, sources=_RESISTANCE_SAMPLE),
     Effect("absorption", 1),
 )
 """Resistance I to IV, then Absorption II."""
@@ -290,13 +294,20 @@ def effect_command(victim: str, effect: Effect) -> str:
 async def effects(context: GroupContext) -> None:
     """A Bot with each effect is hurt by 4 points of each kind of damage, with no armor.
 
-    A kill clears a player's effects, so the effect is given again after each respawn.
+    A kill clears a player's effects, so the effect is given again after each respawn. The last
+    effect would stay on the saved player, so the Group clears them when it ends.
     """
     async with _arena(context) as undo:
         bot = await join_at_spawn(context, undo, VICTIM)
+        undo.push_async_callback(context.control.run, f"effect clear {bot.name}")
         await context.freeze()
         for effect in EFFECTS:
-            await _sweep(context, bot, (effect_command(bot.name, effect),), effect.sources)
+            await _sweep(
+                context,
+                bot,
+                before=(effect_command(bot.name, effect),),
+                sources=effect.sources,
+            )
 
 
 # `combat/death`: damage above the Bot's health, with the death message on and off.
@@ -336,6 +347,10 @@ async def death(context: GroupContext) -> None:
 
     The game rule `immediate_respawn` is false, as in vanilla, so the server sends the death screen
     (`player_combat_kill`) and waits for the Bot to ask to respawn.
+
+    A dead player still ticks in real time, and about a second after its death the server sends
+    `entity_event` 60 to it. The respawn has to come before that, which it does unless the host
+    stalls: a stall that falls on one Instance only shows as a Divergence in the respawn's window.
     """
     control = context.control
     async with _arena(context) as undo:
