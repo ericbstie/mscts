@@ -6,8 +6,6 @@ Observation windows and the ticks stepped). What a server answers is never asser
 answers Control's markers and the barrier.
 """
 
-import asyncio
-import functools
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import cast, override
@@ -214,17 +212,23 @@ class _Opening:
             yield packet
 
 
-async def _play(group_id: str) -> Play:
+async def replay(group_id: str, server: ChestServer) -> Play:
+    """Play `group_id` against `server`; return what was read from its Transcript."""
     transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(ChestServer(commands=COMMANDS), transcript) as context:
+    async with playing(server, transcript) as context:
         await GROUPS[group_id].run(context)
     return read(transcript, BOTS[group_id])
 
 
-@functools.cache
-def played(group_id: str) -> Play:
-    """Play `group_id` against a fake server once: every test of a Group reads that play."""
-    return asyncio.run(_play(group_id))
+_PLAYS: dict[str, Play] = {}
+"""Each Group's play against a default `ChestServer`; no test changes it."""
+
+
+async def played(group_id: str) -> Play:
+    """The play of `group_id` against a default fake server, played the first time it is asked."""
+    if group_id not in _PLAYS:
+        _PLAYS[group_id] = await replay(group_id, ChestServer(commands=COMMANDS))
+    return _PLAYS[group_id]
 
 
 @pytest.fixture(autouse=True)
@@ -249,8 +253,11 @@ def test_each_group_is_registered_with_its_kind_and_the_default_spec(group_id: s
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_control_pins_the_joins_moves_away_and_tags_what_lies_there_first(group_id: str) -> None:
-    first = played(group_id).first
+@pytest.mark.asyncio
+async def test_control_pins_the_joins_moves_away_and_tags_what_lies_there_first(
+    group_id: str,
+) -> None:
+    first = (await played(group_id)).first
 
     assert first[:4] == (
         "gamerule player_movement_check false",
@@ -265,11 +272,12 @@ def test_control_pins_the_joins_moves_away_and_tags_what_lies_there_first(group_
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_control_kills_the_new_items_then_clears_the_bot_and_undoes_the_rest(
+@pytest.mark.asyncio
+async def test_control_kills_the_new_items_then_clears_the_bot_and_undoes_the_rest(
     group_id: str,
 ) -> None:
     own = UNDONE_FIRST.get(group_id, ())
-    after = played(group_id).after
+    after = (await played(group_id)).after
     bot = BOTS[group_id]
 
     assert after[: len(own)] == own
@@ -298,8 +306,9 @@ def test_give_masks_the_dropped_items_motion_and_the_pickup_sounds_pitch() -> No
     }
 
 
-def test_give_runs_one_give_in_each_window() -> None:
-    windows = played(GIVE).windows
+@pytest.mark.asyncio
+async def test_give_runs_one_give_in_each_window() -> None:
+    windows = (await played(GIVE)).windows
 
     assert [window.commands for window in windows] == [
         ("give giver minecraft:stone 1",),
@@ -310,9 +319,10 @@ def test_give_runs_one_give_in_each_window() -> None:
     ]
 
 
-def test_only_the_give_that_makes_two_items_leaves_out_their_entity_data() -> None:
+@pytest.mark.asyncio
+async def test_only_the_give_that_makes_two_items_leaves_out_their_entity_data() -> None:
     # Vanilla resends each new entity's data at the end of the tick in the hash order of its id.
-    labels = [window.label for window in played(GIVE).windows]
+    labels = [window.label for window in (await played(GIVE)).windows]
     compared = f"{OBSERVE_OPEN} {' '.join(inventory.GIVE_PACKETS)}"
     no_data = tuple(name for name in inventory.GIVE_PACKETS if name != SET_ENTITY_DATA)
 
@@ -320,16 +330,18 @@ def test_only_the_give_that_makes_two_items_leaves_out_their_entity_data() -> No
     assert SET_ENTITY_DATA in inventory.GIVE_PACKETS
 
 
-def test_each_give_starts_from_an_empty_inventory_with_no_new_item_left() -> None:
-    windows = played(GIVE).windows
+@pytest.mark.asyncio
+async def test_each_give_starts_from_an_empty_inventory_with_no_new_item_left() -> None:
+    windows = (await played(GIVE)).windows
 
     for window in windows[:-1]:
         assert window.before[-2:] == (KILL_NEW_ITEMS, "clear giver")
     assert [len(window.before) for window in windows[1:]] == [2, 2, 2, 3]
 
 
-def test_the_last_give_finds_the_inventory_full() -> None:
-    before = played(GIVE).windows[-1].before
+@pytest.mark.asyncio
+async def test_the_last_give_finds_the_inventory_full() -> None:
+    before = (await played(GIVE)).windows[-1].before
 
     assert before == (KILL_NEW_ITEMS, "clear giver", "give giver minecraft:dirt 2304")
 
@@ -352,8 +364,9 @@ def actions(window: Window) -> list[int]:
     return [int(str(fields["action"])) for name, fields in window.sent if name == PLAYER_ACTION]
 
 
-def test_the_bot_presses_q_once_in_each_window_and_ctrl_q_in_the_second() -> None:
-    windows = played(DROP).windows
+@pytest.mark.asyncio
+async def test_the_bot_presses_q_once_in_each_window_and_ctrl_q_in_the_second() -> None:
+    windows = (await played(DROP)).windows
 
     assert [actions(window) for window in windows] == [
         [DROP_ITEM],
@@ -363,14 +376,16 @@ def test_the_bot_presses_q_once_in_each_window_and_ctrl_q_in_the_second() -> Non
     ]
 
 
-def test_only_the_first_drop_steps_past_the_pickup_delay() -> None:
+@pytest.mark.asyncio
+async def test_only_the_first_drop_steps_past_the_pickup_delay() -> None:
     # The pickup delay is 40 item ticks (LivingEntity.createItemStackToDrop); the player picks
     # the item up on the 40th, and the 41st shows that nothing comes after.
-    assert [window.ticks for window in played(DROP).windows] == [41, 1, 1, 1]
+    assert [window.ticks for window in (await played(DROP)).windows] == [41, 1, 1, 1]
 
 
-def test_each_drop_starts_from_its_item_alone_in_the_first_hotbar_slot() -> None:
-    held = [window.before[-3:] for window in played(DROP).windows]
+@pytest.mark.asyncio
+async def test_each_drop_starts_from_its_item_alone_in_the_first_hotbar_slot() -> None:
+    held = [window.before[-3:] for window in (await played(DROP)).windows]
 
     assert held == [
         (KILL_NEW_ITEMS, "clear dropper", f"item replace entity dropper hotbar.0 with {item}")
@@ -398,8 +413,9 @@ def test_clicks_masks_the_thrown_items_motion_and_the_chests_sound_pitch() -> No
     }
 
 
-def test_control_places_the_filled_chest_and_gives_the_kit_before_the_chest_opens() -> None:
-    before = played(CLICKS).windows[0].before
+@pytest.mark.asyncio
+async def test_control_places_the_filled_chest_and_gives_the_kit_before_the_chest_opens() -> None:
+    before = (await played(CLICKS)).windows[0].before
 
     assert before[-9:] == (
         "setblock 2 -60 0 minecraft:air",
@@ -414,8 +430,9 @@ def opens(window: Window) -> list[tuple[object, object]]:
     return [(f["pos"], f["face"]) for name, f in window.sent if name == USE_ITEM_ON]
 
 
-def test_the_bot_opens_the_chest_in_the_first_window_after_each_half_and_at_the_end() -> None:
-    windows = played(CLICKS).windows
+@pytest.mark.asyncio
+async def test_the_bot_opens_the_chest_in_the_first_window_after_each_half_and_at_the_end() -> None:
+    windows = (await played(CLICKS)).windows
     chest = ({"x": 2, "y": -60, "z": 0}, int(Face.UP))
 
     assert [i for i, window in enumerate(windows) if opens(window)] == [0, 14, 30]
@@ -436,8 +453,9 @@ PICKUP, QUICK_MOVE, SWAP, THROW, QUICK_CRAFT, PICKUP_ALL = 0, 1, 2, 4, 5, 6
 """`ClickType` ordinals (26.3 javap), as `container_click` sends the mode."""
 
 
-def test_the_first_chest_windows_take_and_split_a_stack_and_shift_click_both_ways() -> None:
-    windows = played(CLICKS).windows
+@pytest.mark.asyncio
+async def test_the_first_chest_windows_take_and_split_a_stack_and_shift_click_both_ways() -> None:
+    windows = (await played(CLICKS)).windows
 
     assert [clicks(window) for window in windows[1:5]] == [
         [(1, 0, 0, PICKUP), (1, 5, 0, PICKUP)],
@@ -447,8 +465,9 @@ def test_the_first_chest_windows_take_and_split_a_stack_and_shift_click_both_way
     ]
 
 
-def test_each_half_clicks_its_sequences_in_its_own_menu() -> None:
-    windows = played(CLICKS).windows
+@pytest.mark.asyncio
+async def test_each_half_clicks_its_sequences_in_its_own_menu() -> None:
+    windows = (await played(CLICKS)).windows
     chest = [[(1, *click) for click in modes(s)] for s in inventory.CHEST_CLICKS]
     own = [[(0, *click) for click in modes(s)] for s in inventory.INVENTORY_CLICKS]
 
@@ -480,8 +499,13 @@ drags (start, add, end), double-click, Q and Ctrl+Q."""
 
 
 @pytest.mark.parametrize("menu", ["chest", "inventory"])
-def test_each_half_clicks_every_mode_and_button_and_outside_the_window(menu: str) -> None:
-    windows = played(CLICKS).windows[1:14] if menu == "chest" else played(CLICKS).windows[15:30]
+@pytest.mark.asyncio
+async def test_each_half_clicks_every_mode_and_button_and_outside_the_window(menu: str) -> None:
+    windows = (
+        (await played(CLICKS)).windows[1:14]
+        if menu == "chest"
+        else (await played(CLICKS)).windows[15:30]
+    )
     sent = [click for window in windows for click in clicks(window)]
 
     assert {(mode, button) for _, _, button, mode in sent} == CLICKED
@@ -489,16 +513,18 @@ def test_each_half_clicks_every_mode_and_button_and_outside_the_window(menu: str
     assert (OUTSIDE, 1, PICKUP) in {(slot, button, mode) for _, slot, button, mode in sent}
 
 
-def test_the_bot_closes_each_menu_and_syncs_before_control_acts_again() -> None:
-    timeline = played(CLICKS).timeline
+@pytest.mark.asyncio
+async def test_the_bot_closes_each_menu_and_syncs_before_control_acts_again() -> None:
+    timeline = (await played(CLICKS)).timeline
     closes = [i for i, entry in enumerate(timeline) if entry.startswith("close")]
 
     assert [timeline[i] for i in closes] == ["close 1", "close 2", "close 0", "close 3"]
     assert all(timeline[i + 1] == "sync" for i in closes)
 
 
-def test_the_inventory_half_starts_from_the_kit_again() -> None:
-    before = played(CLICKS).windows[15].before
+@pytest.mark.asyncio
+async def test_the_inventory_half_starts_from_the_kit_again() -> None:
+    before = (await played(CLICKS)).windows[15].before
 
     assert before == (
         "clear clicker",
