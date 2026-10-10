@@ -78,6 +78,13 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
 - Live-tier mise tasks share `<cache>/live-tier.lock` (#138). A second
   waits for the holder; `MSCTS_LIVE_LOCK=0` bypasses it on a machine known
   to have enough capacity. The unit tier takes no lock.
+  Never bypass it on a shared host, and run `mscts run` against a
+  Candidate only while you hold no other live run: too many Instances at
+  once restarted the container twice in train 30.
+- Run `mise run commit`, the live tiers and Self-checks in the background
+  with the longest timeout (7200000 ms). A 10-minute limit kills the check
+  and leaves `.git/index.lock` behind. Wait for a background run by its
+  output, never by `pgrep -f` in a loop: it matches its own wrapper.
 - Rebase onto main only before opening the PR
   (`git rebase main --exec "mise run check"`), and report commit hashes
   only in the final report. A timing claim compares clean main and your

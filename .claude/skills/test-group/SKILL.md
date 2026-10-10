@@ -146,6 +146,12 @@ behaviour the Group was written for is never compared (#312).
 2. Self-check: the registry tier (#84) covers a Group once registered.
    Before each push: `mise run test:selfcheck -- -k '<mechanic>/'`.
    Once, for the PR: `MSCTS_SELFCHECK_REPEAT=20` on the new Groups.
+   A play has 90 s for both Instances (`tests/selfcheck/test_groups.py`),
+   and a Group with its own `spec` plays them one after the other, so plan
+   the window count before the first draft: a window with a kill, a
+   respawn and two barriers costs about 0.9 s a side (#54 cut two Groups
+   to about 40 windows). `-k` does not match a hyphenated id: select by
+   words (`-k 'damage or armor'`).
 3. Candidate evidence: `uv run mscts run --candidate pumpkin --group
    '<mechanic>/*'`, its Report in the PR body. A Divergence there is
    what the suite is for, not a failure. Run each Group alone too

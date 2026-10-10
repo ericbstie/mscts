@@ -57,6 +57,10 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #352 |  | medium | first review | 0 | none: no barrier or window change; the Self-check after the review fixes found the husk cleanup unloading its own chunk, 4 of 5 plays, fixed before the merge |
+| #351 |  | medium | first review | 0 | none: no barrier or window change |
+| #353 |  | medium | first review | 0 | none: no barrier or window change |
+| #348 |  | none | lead's diff read | 0 | none |
 | #346 |  | medium | first review | 2 | none: tick-exact Groups, the review judged the wall-time gaps wide enough |
 | #344 |  | medium | first review | 1 | 5 runs of 20 plays after the fix, 0 failing; the Self-check found a lava hit inside the fire hit's immunity, 1 in 20 |
 | #343 |  | medium | first review | 2 | 2 of 5 runs of `blocks/dig-survival` before it moved to #347, both clean |

@@ -42,6 +42,9 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #57: a respawned player ignores damage until the server has read its `player_loaded` (`ServerPlayer.isInvulnerableTo`): run `/damage` after a barrier, for example inside the window.
+- #57: to wait until "nothing more comes" from a player's own ticks, count `set_time` packets: vanilla sends one every 20 ticks, frozen or not, so 6 of them span at least 100 ticks. `context.step` costs about 300 ms a step.
+- #57: food, saturation and exhaustion change in the player's tick, on the wall clock: compare the order of the changes (`exact`), not the tick they land on. Set food exactly with a kill and respawn, the Hunger effect for a counted number of ticks, then `/damage generic`.
 - #129: what crosses a window's edges is measured per window with
   `scripts/research/probe_window_edges.py`: setup packets inside the
   window, the command's packets after the close, and the margin before
