@@ -195,6 +195,20 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-10: train 30
+
+- Train 30 (#348, #353, #351, then #352): the review results table in
+  `docs/RISK.md`; `combat/damage-types`, `combat/armor`, `combat/effects`
+  and `combat/death` (#54); `player/game-modes`, `player/death` and
+  `player/respawn` (#59); `player/regeneration`, `player/starvation`,
+  `player/eating` and `player/exhaustion` (#57). Shared Group helpers moved
+  to `groups/_world.py`. Reference 35 of 35, candidate 15 of 15, and the
+  player, combat and chunks Self-checks on each tip.
+- `combat/armor` and `combat/effects` play fewer kinds of damage than #54
+  lists, to fit the Self-check's 90 s play. `player/exhaustion` has no jumps
+  (#354), and the hunger Groups compare the order of changes, not their tick.
+- Filed: #350 (the unit tier takes 20 minutes serially), #354.
+
 ### 2026-10-09: train 29
 
 - #340 (#326): `mise run commit` works on a shallow checkout.
