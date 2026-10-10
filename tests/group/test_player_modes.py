@@ -30,7 +30,17 @@ if TYPE_CHECKING:
 CONTROL = "control"
 CLIENT_COMMAND = "minecraft:client_command"
 COMMANDS = tree(
-    "gamerule", "tp", "tick", "gamemode", "give", "clear", "xp", "kill", "spawnpoint", "tellraw"
+    "gamerule",
+    "tp",
+    "tick",
+    "gamemode",
+    "give",
+    "clear",
+    "xp",
+    "kill",
+    "tag",
+    "spawnpoint",
+    "tellraw",
 )
 PLAY_TIMEOUT_S = 300.0
 
@@ -52,16 +62,35 @@ MASKS = {GAME_MODES: (), DEATH: player_modes.DROP_MASKS, RESPAWN: ()}
 SPAWN = "0.5 -60 0.5"
 
 
-def clear_drops(x: str, z: str) -> tuple[str, str]:
-    """The commands that remove the items and orbs within 20 blocks of (x, z)."""
-    where = f"x={x},y=-60,z={z},distance=..20"
+TAG = "mscts_before_drops"
+
+
+def near(kind: str, x: str, z: str, more: str = "") -> str:
+    """The selector of the `kind` entities within 20 blocks of (x, z)."""
+    return f"@e[type=minecraft:{kind},x={x},y=-60,z={z},distance=..20{more}]"
+
+
+def tag_drops(x: str, z: str) -> tuple[str, str]:
+    """The commands that tag the items and orbs that are there before a death."""
     return (
-        f"kill @e[type=minecraft:item,{where}]",
-        f"kill @e[type=minecraft:experience_orb,{where}]",
+        f"tag {near('item', x, z)} add {TAG}",
+        f"tag {near('experience_orb', x, z)} add {TAG}",
     )
 
 
+def clear_drops(x: str, z: str) -> tuple[str, str, str, str]:
+    """The commands that remove the items and orbs that were not there before, and the tag."""
+    return (
+        f"kill {near('item', x, z, f',tag=!{TAG}')}",
+        f"kill {near('experience_orb', x, z, f',tag=!{TAG}')}",
+        f"tag {near('item', x, z)} remove {TAG}",
+        f"tag {near('experience_orb', x, z)} remove {TAG}",
+    )
+
+
+TAG_SPAWN = tag_drops("0.5", "0.5")
 CLEAR_SPAWN = clear_drops("0.5", "0.5")
+TAG_FAR = tag_drops("-95.5", "95.5")
 CLEAR_FAR = clear_drops("-95.5", "95.5")
 
 
@@ -188,6 +217,7 @@ def test_each_bot_is_back_in_survival_at_the_spawn_when_the_group_ends(group_id:
             f"tp {bot} {SPAWN}"
         )
         assert result.first.count(f"gamemode survival {bot}") == 1
+        assert {f"clear {bot}", f"xp set {bot} 0 levels"} <= set(result.after)
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
@@ -196,6 +226,10 @@ def test_no_group_touches_mob_spawning_or_kills_what_it_did_not_make(group_id: s
 
     commands = (*result.first, *result.after, *(c for w in result.windows for c in w.before))
     assert not [c for c in commands if "spawn_mobs" in c or c.startswith("kill @e[type=!")]
+    assert not [c for c in commands if c.startswith("kill @e") and f"tag=!{TAG}" not in c]
+    added = [c for c in commands if c.startswith("tag ") and c.endswith(f"add {TAG}")]
+    removed = [c for c in commands if c.startswith("tag ") and c.endswith(f"remove {TAG}")]
+    assert {c.replace(" add ", " remove ") for c in added} == set(removed)
 
 
 # player/game-modes
@@ -244,7 +278,12 @@ RULES = (
 """The values of `keep_inventory` and `immediate_respawn` each death runs under."""
 DIAMONDS, LEVEL = "give mortal minecraft:diamond 5", "xp set mortal 1 levels"
 KITS = ((DIAMONDS,), (LEVEL,), (DIAMONDS, LEVEL), (DIAMONDS,), (DIAMONDS, LEVEL))
-"""What the Bot holds each death, after `clear` and `xp set 0 levels`."""
+"""What the Bot holds each death, after `clear` and `xp set 0 levels`.
+
+What drops is one entity a death, or none under `keep_inventory`: vanilla resends the entities
+one tick made in the order of their raw ids, which differ per Instance, so a death that dropped
+an item and an orb would differ from itself.
+"""
 
 
 def test_death_compares_the_death_the_health_the_drops_and_the_respawn_screen() -> None:
@@ -281,13 +320,7 @@ def test_death_gives_the_bot_only_what_the_death_holds_before_each_window() -> N
 
     for window, kit in zip(result.windows, KITS, strict=True):
         assert window.before[-len(kit) - 2 :] == ("clear mortal", "xp set mortal 0 levels", *kit)
-
-
-def test_death_drops_one_entity_a_death_so_that_no_two_are_resent_in_an_order_of_ids() -> None:
-    # Vanilla resends the entities one tick made in the order of their raw ids, which differ per
-    # Instance: a death that dropped an item and an orb would differ from itself.
-    for (keep, _), kit in zip(RULES, KITS, strict=True):
-        assert keep == "true" or len(kit) == 1
+        assert window.before[-len(kit) - 4 : -len(kit) - 2] == TAG_SPAWN
 
 
 def test_death_takes_the_drops_away_and_then_respawns_the_bot_after_every_window() -> None:
@@ -299,17 +332,16 @@ def test_death_takes_the_drops_away_and_then_respawns_the_bot_after_every_window
     for (_, closed), request in zip(spans, asked, strict=True):
         assert request > closed
     for window in result.windows[1:]:
-        assert window.before[:2] == CLEAR_SPAWN
+        assert window.before[:4] == CLEAR_SPAWN
 
 
-def test_death_freezes_the_world_and_puts_the_rules_and_the_drops_back_after() -> None:
+def test_death_freezes_the_world_and_puts_the_rules_back_after() -> None:
     result = played(DEATH)
 
     assert "tick freeze" in result.first
     assert result.after[-1] == "tick unfreeze"
     assert "gamerule keep_inventory false" in result.after
     assert "gamerule immediate_respawn false" in result.after
-    assert result.after[:2] == CLEAR_SPAWN
 
 
 def test_death_masks_how_vanilla_moves_and_turns_what_a_dead_player_drops() -> None:
@@ -359,9 +391,14 @@ def test_respawn_asks_once_in_each_of_three_windows_that_send_no_command() -> No
 def test_respawn_kills_each_bot_holding_its_kit_and_removes_the_drops_before_its_window() -> None:
     result = played(RESPAWN)
 
-    deaths = (("mortal", CLEAR_SPAWN), ("mortal", CLEAR_SPAWN), ("pointer", CLEAR_FAR))
-    for window, (bot, clear) in zip(result.windows, deaths, strict=True):
-        assert window.before[-7:] == (
+    deaths = (
+        ("mortal", TAG_SPAWN, CLEAR_SPAWN),
+        ("mortal", TAG_SPAWN, CLEAR_SPAWN),
+        ("pointer", TAG_FAR, CLEAR_FAR),
+    )
+    for window, (bot, tag, clear) in zip(result.windows, deaths, strict=True):
+        assert window.before[-11:] == (
+            *tag,
             f"clear {bot}",
             f"xp set {bot} 0 levels",
             f"give {bot} minecraft:diamond 5",
@@ -369,8 +406,6 @@ def test_respawn_kills_each_bot_holding_its_kit_and_removes_the_drops_before_its
             f"kill {bot}",
             *clear,
         )
-    assert result.after[:2] == CLEAR_FAR
-    assert all(command in result.after for command in CLEAR_SPAWN)
 
 
 def test_respawn_keeps_the_inventory_of_the_second_death_only() -> None:

@@ -22,7 +22,10 @@ from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import pin_joins
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
-_SPAWN_AT = "0.5 -60 0.5"
+type _Place = tuple[float, float]
+"""An x and a z, at y -60."""
+
+_SPAWN: _Place = (0.5, 0.5)
 """Where a Bot is put when the Group ends: the world spawn."""
 
 _CONTROL_AT = "96.5 -60 96.5"
@@ -30,6 +33,12 @@ _CONTROL_AT = "96.5 -60 96.5"
 
 _WATCHER_AT = "4.5 -60 0.5"
 """Where the watcher stands: in view of the Bot, and clear of its place."""
+
+
+def _at(place: _Place) -> str:
+    """The coordinates of `place` for a command."""
+    x, z = place
+    return f"{x} -60 {z}"
 
 
 def _normal(spec: ServerSpec) -> ServerSpec:
@@ -51,12 +60,16 @@ async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSta
         yield undo
 
 
-async def _join(context: GroupContext, undo: contextlib.AsyncExitStack, name: str) -> Bot:
-    """Join a Bot, and have it put back at the spawn, in survival, when the Group ends."""
+async def _join_in_survival(
+    context: GroupContext, undo: contextlib.AsyncExitStack, name: str
+) -> Bot:
+    """Join a Bot in survival; have it put back, empty, at the spawn when the Group ends."""
     bot = await context.bot(name)
     await bot.join()
-    undo.push_async_callback(context.control.run, f"tp {name} {_SPAWN_AT}")
+    undo.push_async_callback(context.control.run, f"tp {name} {_at(_SPAWN)}")
     undo.push_async_callback(context.control.run, f"gamemode survival {name}")
+    undo.push_async_callback(context.control.run, f"xp set {name} 0 levels")
+    undo.push_async_callback(context.control.run, f"clear {name}")
     await context.control.run(f"gamemode survival {name}")
     return bot
 
@@ -90,8 +103,8 @@ async def game_modes(context: GroupContext) -> None:
     A second Bot watches it, in a window for each switch.
     """
     async with _arena(context) as undo:
-        await _join(context, undo, _CHANGER)
-        await _join(context, undo, _WATCHER)
+        await _join_in_survival(context, undo, _CHANGER)
+        await _join_in_survival(context, undo, _WATCHER)
         await context.control.run(f"tp {_WATCHER} {_WATCHER_AT}")
         for mode in _MODES:
             async with context.observe(*MODE_PACKETS):
@@ -99,11 +112,6 @@ async def game_modes(context: GroupContext) -> None:
 
 
 # `player/death` and `player/respawn`
-
-type _Place = tuple[float, float]
-"""An x and a z, at y -60."""
-
-_SPAWN: _Place = (0.5, 0.5)
 
 _MORTAL = "mortal"
 
@@ -126,7 +134,11 @@ _ONE_LEVEL = "xp set {bot} 1 levels"
 """A level of experience drops as one orb of 7 points (`Player.getBaseExperienceReward`)."""
 
 _REACH = 20
-"""How far from a Bot's death its drops are taken away: they lie within a few blocks of it."""
+"""How far from a Bot's death its drops are looked for: they lie within a few blocks of it."""
+
+_DROPS = ("minecraft:item", "minecraft:experience_orb")
+_BEFORE = "mscts_before_drops"
+"""The tag that an item or orb already there carries while a death is played."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,16 +221,30 @@ async def _kit(context: GroupContext, bot: Bot, death: _Death) -> None:
         await control.run(_ONE_LEVEL.format(bot=bot.name))
 
 
-async def _clear_drops(context: GroupContext, place: _Place) -> None:
-    """Remove the items and orbs within `_REACH` blocks of `place`.
-
-    A dead Bot's drops would stay in the Instance, lie where the Bot respawns and be picked up
-    by the next play.
-    """
+def _near(kind: str, place: _Place, *more: str) -> str:
+    """The selector of the `kind` entities within `_REACH` blocks of `place` that match `more`."""
     x, z = place
-    where = f"x={x},y=-60,z={z},distance=..{_REACH}"
-    await context.control.run(f"kill @e[type=minecraft:item,{where}]")
-    await context.control.run(f"kill @e[type=minecraft:experience_orb,{where}]")
+    return f"@e[type={kind},x={x},y=-60,z={z},distance=..{_REACH}{''.join(more)}]"
+
+
+@contextlib.asynccontextmanager
+async def _drops(context: GroupContext, place: _Place) -> AsyncIterator[None]:
+    """Take away the items and orbs that the body drops near `place`, and only those.
+
+    A dead Bot's drops would stay in the Instance, lie where the Bot respawns and be picked up by
+    the next play. So would the item that `/give` leaves in a world that is frozen. What lay there
+    before, left by another Group, is tagged and left alone.
+    """
+    run = context.control.run
+    for kind in _DROPS:
+        await run(f"tag {_near(kind, place)} add {_BEFORE}")
+    try:
+        yield
+    finally:
+        for kind in _DROPS:
+            await run(f"kill {_near(kind, place, f',tag=!{_BEFORE}')}")
+        for kind in _DROPS:
+            await run(f"tag {_near(kind, place)} remove {_BEFORE}")
 
 
 @contextlib.asynccontextmanager
@@ -249,9 +275,8 @@ async def _dying(bot: Bot) -> AsyncIterator[Callable[[], Awaitable[None]]]:
 
 @contextlib.asynccontextmanager
 async def _mortal(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
-    """Move Control away and freeze the world; undo the rules and the drops on exit."""
+    """Move Control away and freeze the world; undo the rules on exit."""
     async with _arena(context) as undo:
-        undo.push_async_callback(_clear_drops, context, _SPAWN)
         for rule in ("keep_inventory", "immediate_respawn"):
             undo.push_async_callback(context.control.run, f"gamerule {rule} false")
         await context.freeze()
@@ -262,14 +287,14 @@ async def _mortal(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSt
 async def death(context: GroupContext) -> None:
     """A Bot is killed holding items or experience, under each setting of two game rules."""
     async with _mortal(context) as undo:
-        bot = await _join(context, undo, _MORTAL)
+        bot = await _join_in_survival(context, undo, _MORTAL)
         for case in _DEATHS:
-            await _kit(context, bot, case)
             async with _dying(bot) as respawn:
-                async with context.observe(*DEATH_PACKETS):
-                    await _rules(context, case)
-                    await context.control.run(f"kill {bot.name}")
-                await _clear_drops(context, _SPAWN)
+                async with _drops(context, _SPAWN):
+                    await _kit(context, bot, case)
+                    async with context.observe(*DEATH_PACKETS):
+                        await _rules(context, case)
+                        await context.control.run(f"kill {bot.name}")
                 await respawn()
 
 
@@ -292,7 +317,6 @@ RESPAWN_PACKETS = (
 
 _POINTER = "pointer"
 _FAR: _Place = (-95.5, 95.5)
-_POINTER_AT = "-95.5 -60 95.5"
 _SPAWNPOINT = f"spawnpoint {_POINTER} -88 -60 88"
 """Where the second Bot stands, and where it respawns. A server keeps a player's spawn point for
 good and a command cannot clear it, so only a Bot of its own has one: `_MORTAL` respawns at the
@@ -303,10 +327,10 @@ player who respawns is sent to the others in view a tick or two later, which no 
 async def _die_and_respawn(context: GroupContext, bot: Bot, death: _Death, place: _Place) -> None:
     """Kill the Bot at `place` holding its kit, and take its drops away; respawn it in a window."""
     await _rules(context, death)
-    await _kit(context, bot, death)
     async with _dying(bot) as respawn:
-        await context.control.run(f"kill {bot.name}")
-        await _clear_drops(context, place)
+        async with _drops(context, place):
+            await _kit(context, bot, death)
+            await context.control.run(f"kill {bot.name}")
         async with context.observe(*RESPAWN_PACKETS):
             await respawn()
 
@@ -319,10 +343,9 @@ async def respawn(context: GroupContext) -> None:
     """
     both = _Death(keep_inventory=False, immediate_respawn=False, items=True, level=True)
     async with _mortal(context) as undo:
-        mortal = await _join(context, undo, _MORTAL)
-        pointer = await _join(context, undo, _POINTER)
-        undo.push_async_callback(_clear_drops, context, _FAR)
-        await context.control.run(f"tp {_POINTER} {_POINTER_AT}")
+        mortal = await _join_in_survival(context, undo, _MORTAL)
+        pointer = await _join_in_survival(context, undo, _POINTER)
+        await context.control.run(f"tp {_POINTER} {_at(_FAR)}")
         await context.control.run(_SPAWNPOINT)
         await _die_and_respawn(context, mortal, both, _SPAWN)
         await _die_and_respawn(context, mortal, replace(both, keep_inventory=True), _SPAWN)
