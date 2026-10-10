@@ -1,4 +1,4 @@
-"""Play-state schemas for recipes: what a joining player gets in `update_recipes`.
+"""Play-state schemas for recipes: `update_recipes`, the recipe book and the ghost recipe.
 
 Field layouts: minecraft.wiki `Java_Edition_protocol/Packets`, revision 3790659 (2026-09-23,
 "26.3, protocol 777"), "Update Recipes", and `Java_Edition_protocol/Recipes`, revision
@@ -16,6 +16,15 @@ Field layouts: minecraft.wiki `Java_Edition_protocol/Packets`, revision 3790659 
   a Slot; `tag` is a holder set (`ByteBufCodecs.holderSet(ITEM)`), not an Identifier; and
   `smithing_trim`'s pattern is `TrimPattern.STREAM_CODEC` (`ByteBufCodecs.holder`), a registry
   id or the pattern itself.
+- `ClientboundRecipeBookAddPacket` is a list of `RecipeDisplayEntry.STREAM_CODEC` and a `BYTE`
+  each, then a `BOOL`. An entry is `RecipeDisplayId.STREAM_CODEC` (a `VAR_INT`),
+  `RecipeDisplay.STREAM_CODEC`, the group as `ByteBufCodecs.OPTIONAL_VAR_INT`, a
+  `RECIPE_BOOK_CATEGORY` registry id, then `Ingredient.CONTENTS_STREAM_CODEC` in a list made
+  optional with `ByteBufCodecs.optional`. `ClientboundRecipeBookRemovePacket` is a list of
+  `RecipeDisplayId`s. `ClientboundPlaceGhostRecipePacket` is a `CONTAINER_ID` and a
+  `RecipeDisplay`, and `ServerboundPlaceRecipePacket` a `CONTAINER_ID`, a `RecipeDisplayId` and a
+  `BOOL`. `RecipeDisplay.STREAM_CODEC` dispatches on the types in `RecipeDisplays.bootstrap`'s
+  order: `crafting_shapeless`, `crafting_shaped`, `furnace`, `stonecutter`, `smithing`.
 """
 
 from collections.abc import Mapping
