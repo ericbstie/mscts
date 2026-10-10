@@ -79,8 +79,8 @@ class CraftingServer:
     """
 
     seen: list[Packet] = field(default_factory=list)
-    books: bool = True
-    """Whether a recipe given to a Bot is added to its book."""
+    entries: int = 1
+    """How many book entries a recipe given to a Bot adds: 0 for none."""
     _peers: dict[str, Peer] = field(default_factory=dict, init=False)
 
     async def __call__(self, peer: Peer) -> None:
@@ -142,7 +142,7 @@ class CraftingServer:
                     slot_data=[None] * INVENTORY_SLOTS,
                     carried_item=None,
                 )
-            case ["recipe", "give", _, recipe] if recipe != "*" and self.books:
+            case ["recipe", "give", _, recipe] if recipe != "*" and self.entries:
                 contents = {
                     "id": display_id(recipe),
                     "display": _DISPLAY,
@@ -150,7 +150,7 @@ class CraftingServer:
                     "category": 0,
                     "crafting_requirements": None,
                 }
-                entries = [{"contents": contents, "flags": 3}]
+                entries = [{"contents": contents, "flags": 3}] * self.entries
                 return target.frame("minecraft:recipe_book_add", entries=entries, replace=False)
             case _:
                 return None
@@ -541,7 +541,13 @@ async def test_a_recipe_given_but_never_added_to_the_book_is_named(
     monkeypatch.setattr(crafting, "_BOOK_TIMEOUT_S", 0.5)
 
     with pytest.raises(TimeoutError, match=r"minecraft:oak_planks.*recipe_book_add"):
-        await replay(BOOK, CraftingServer(books=False))
+        await replay(BOOK, CraftingServer(entries=0))
+
+
+@pytest.mark.asyncio
+async def test_a_recipe_given_as_several_book_entries_is_named() -> None:
+    with pytest.raises(ValueError, match=r"minecraft:oak_planks.*2 entries"):
+        await replay(BOOK, CraftingServer(entries=2))
 
 
 def test_the_book_cases_cover_both_grids_a_ghost_recipe_and_a_recipe_not_known() -> None:

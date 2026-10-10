@@ -208,8 +208,10 @@ async def _display_id(context: GroupContext, bot: Bot, recipe: str) -> int:
         msg = f"{recipe} was given, but no recipe_book_add came within {_BOOK_TIMEOUT_S} s"
         raise TimeoutError(msg) from None
     entries = cast("list[Mapping[str, object]]", (packet.fields or {})["entries"])
-    (entry,) = entries
-    return cast("int", cast("Mapping[str, object]", entry["contents"])["id"])
+    if len(entries) != 1:
+        msg = f"{recipe} was given, but its recipe_book_add held {len(entries)} entries, not 1"
+        raise ValueError(msg)
+    return cast("int", cast("Mapping[str, object]", entries[0]["contents"])["id"])
 
 
 async def _click(bot: Bot, context: GroupContext, ids: Mapping[str, int], case: Placement) -> None:
