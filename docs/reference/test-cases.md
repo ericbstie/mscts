@@ -2527,3 +2527,57 @@ The player's previous game mode, or none. The client remembers it when switching
 **Respawn sea level**
 
 The sea level of the world the player respawns in.
+
+## `update_mob_effect`
+
+**Effect given**
+
+A packet that tells the client an entity has an effect, such as hunger, with its level and how long it lasts. A server that leaves it out shows no effect icon and no effect on the client.
+
+## `update_mob_effect.entity_id`
+
+**Entity given the effect**
+
+Which entity has the effect. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `update_mob_effect.effect`
+
+**Effect type**
+
+Which effect, such as hunger or saturation. A difference shows another effect.
+
+## `update_mob_effect.amplifier`
+
+**Effect amplifier**
+
+How strong the effect is: its level minus 1. A difference shows another level.
+
+## `update_mob_effect.duration`
+
+**Effect duration**
+
+How many ticks the effect lasts. The client counts it down on the effect's icon.
+
+## `update_mob_effect.flags`
+
+**Effect display flags**
+
+Whether the effect is ambient, shows particles and shows an icon. A difference shows or hides them.
+
+## `remove_mob_effect`
+
+**Effect ended**
+
+A packet that tells the client an entity's effect has ended. A server that leaves it out leaves the effect's icon on the screen.
+
+## `remove_mob_effect.entity_id`
+
+**Entity losing the effect**
+
+Which entity lost the effect. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `remove_mob_effect.effect`
+
+**Effect that ended**
+
+Which effect ended. A difference ends another effect on the client.

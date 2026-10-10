@@ -470,6 +470,57 @@ A dropped item and an orb start moving in a direction vanilla draws at random. T
 
 A server keeps a player's spawn point and no command clears it. The Bot that respawns at the world spawn never has one, and the second Bot, `pointer`, always has the same, so every play starts from the same state. The two Bots stand out of each other's view: a player who respawns is sent to the others in view a tick or two later, and a window cannot place that.
 
+### Hunger (`player_hunger`)
+
+What a survival player's food does to its health. A player's food, saturation and exhaustion
+change on its own tick, and a frozen world does not freeze a player, so these Groups take real
+time. Each window waits for the `set_health` that ends what it tests, then for 100 more ticks in
+which nothing else may come. What is compared is the order of the values, not the tick they
+come on.
+
+Every part starts from a fresh player, killed and respawned: health 20, food 20, saturation 5.
+No command sets the food, so a Group lowers it with the hunger effect for an exact number of
+ticks, and sets the health with `/damage` of type `generic`, which costs no food.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/regeneration` | exact | none | A Bot at 10 health heals from food 20, from food 18 and from food 17, in a window of its own each. Each heal costs food, and the healing stops at 17. | none |
+| `player/starvation` | exact | none | A Bot with no food starves on easy from 12 health, on normal from 3 and on hard from 2, in a window of its own each. It stops at 10 health on easy and at 1 on normal, and dies on hard. | none |
+| `player/eating` | exact | none | A Bot at food 2 eats bread, cooked beef, a golden apple and rotten flesh, in a window of its own each. | none |
+| `player/exhaustion` | exact | none | A Bot sprints 100 blocks, then hits 20 husks, with one window for the sprint and one for the hits. After each, it reads back its food, saturation and exhaustion with `/data get`. | none |
+
+These Groups compare what changes and in what order, not how many ticks it takes. A Candidate
+that heals every 40 ticks instead of 80, or starves a player every 20, sends the same packets
+in the same order. The rate needs a window that counts ticks, as for damage above. A window
+knows that nothing more comes by waiting: vanilla sends `set_time` every 20 ticks, frozen or not,
+so 6 of them span at least 100 ticks, more than the 80 between two heals or two hits of
+starvation. A Candidate that hurts a starving player past the floor, but more than 100 ticks
+after its last hit, is not seen.
+
+In `player/regeneration` the Bot heals from saturation at food 20, every 10 ticks, and from food
+alone at 18, every 80. Each heal costs food, until the food is 17 and the healing stops. In
+`player/starvation`, natural regeneration is off. The damage that sets the health runs inside the
+window: a respawned player takes no damage until its client says it has loaded the world, and
+the window's opening barrier makes sure the server has read that.
+
+In `player/eating` each window ends on the `set_health` that the food sends. The Group masks the
+pitch of `sound`, because vanilla draws it at random for the eating and burp sounds. Rotten flesh
+gives hunger 4 times in 5, at random, so its window does not compare the effects.
+
+No packet carries exhaustion, so `player/exhaustion` has the Bot, an operator, read its food,
+saturation and exhaustion back with `/data get` after each part. The Bot passes a barrier after
+each move and hit, so its player ticks between two of them, as it does for a vanilla
+client, and the exhaustion adds up in the same order on every server. A hit costs exhaustion only
+when it hurts, and a husk is immune for 10 ticks after a hit, so the Bot hits 20 husks once each,
+standing in a ring around it. The husks are killed when the Group ends, with drops off. The Bot
+stays beside them until it is told the last one is gone, so that their chunk stays loaded. Jumping is not covered yet: in 1 Self-check play of 15, two
+vanilla servers counted a different number of the same 50 jumps ([#57](https://github.com/ericbstie/mscts/issues/57)).
+
+The sprint and the hits change neither the health nor the food, so on vanilla their windows hold
+nothing, and the readback carries the comparison. The windows compare only `set_health`, not
+`sound` or `entity_event`: a hit's sound and effects follow the attack charge, which grows in
+real time, so the same hit can differ from one play to the next.
+
 ## Planned
 
 | Mechanic | First Group | Needs |

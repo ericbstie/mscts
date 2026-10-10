@@ -24,14 +24,14 @@ turns it on.)
 import contextlib
 import time
 from collections.abc import AsyncIterator
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, pin_joins
+from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, normal, pin_joins
 from mscts.net import ProtocolError
-from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
+from mscts.spec import CONTROL_PLAYER
 
 PACKETS = (
     "minecraft:set_health",
@@ -71,11 +71,6 @@ _HEAL = "effect give {bot} minecraft:instant_health 1 5 true"
 """Heals a Bot to full health, whatever the last case left it."""
 
 type _Point = tuple[float, float, float]
-
-
-def _normal(spec: ServerSpec) -> ServerSpec:
-    """Play on normal difficulty: peaceful heals the player and stops most damage."""
-    return replace(spec, difficulty=Difficulty.NORMAL)
 
 
 @contextlib.asynccontextmanager
@@ -220,7 +215,7 @@ async def _fall(context: GroupContext, bot: Bot, landing: _Site, height: int) ->
             await context.step(1)
 
 
-@group("player/fall", kind=GroupKind.TICK_EXACT, spec=_normal)
+@group("player/fall", kind=GroupKind.TICK_EXACT, spec=normal)
 async def fall(context: GroupContext) -> None:
     """A Bot falls 3, 4, 10 and 23 blocks onto stone, water, hay, slime and a bed.
 
@@ -329,7 +324,7 @@ _DROWNING_PERIOD = 20
 """Ticks between two drowning hits: the air is back at 0 and runs out again."""
 
 
-@group("player/drowning", spec=_normal)
+@group("player/drowning", spec=normal)
 async def drowning(context: GroupContext) -> None:
     """A Bot stays under water until it takes damage and for three hits after.
 
@@ -367,7 +362,7 @@ _INVULNERABLE_TICKS = 10
 """Ticks between two hits of damage that comes every tick: the player is immune for 10."""
 
 
-@group("player/suffocation", spec=_normal)
+@group("player/suffocation", spec=normal)
 async def suffocation(context: GroupContext) -> None:
     """A Bot is put inside a column of stone and takes damage, three hits in a row."""
     async with _environment(context, _STONE_COLUMN.restore) as undo:
@@ -391,7 +386,7 @@ _VOID_AT: _Point = (0.5, -130.0, 0.5)
 _DEATH = "minecraft:player_combat_kill"
 
 
-@group("player/void", spec=_normal)
+@group("player/void", spec=normal)
 async def void(context: GroupContext) -> None:
     """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns."""
     async with _environment(context, ()) as undo:
@@ -436,7 +431,7 @@ FIRE_MASKS = (
 """The pitch of the burn and extinguish sounds, which the sound seed does not cover."""
 
 
-@group("player/fire", spec=_normal, masks=FIRE_MASKS)
+@group("player/fire", spec=normal, masks=FIRE_MASKS)
 async def fire(context: GroupContext) -> None:
     """A Bot stands in fire; then, a fresh Bot steps into lava, out of it burning, and into water.
 
@@ -480,7 +475,7 @@ data: vanilla hurts a frozen player when its `tickCount` is a multiple of 40, a 
 at the respawn `fresh` makes, so the ticks that came before the first hit are timing."""
 
 
-@group("player/freezing", spec=_normal)
+@group("player/freezing", spec=normal)
 async def freezing(context: GroupContext) -> None:
     """A Bot is put in powder snow, without leather boots, and takes damage twice."""
     async with _environment(context, _SNOW.restore) as undo:
