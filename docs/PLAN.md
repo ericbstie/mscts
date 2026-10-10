@@ -576,6 +576,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def drop(self, *, all: bool = False) -> None: ...            # player_action DROP_ITEM / DROP_ALL_ITEMS
     async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None: ...  # container_click
     async def close_container(self) -> None: ...                       # container_close, outside a tick
+    async def place_recipe(self, recipe_id: int, *, use_max_items: bool = False) -> None: ...  # place_recipe
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -675,6 +676,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # screen), sent at once and not in a tick (LocalPlayer.closeContainer). click (#28): on a
     # Bot in play, InventoryTracker.click predicts the click, then container_click goes at
     # once, not in a tick (a mouse or key callback); a refused click sends nothing (ValueError).
+    # place_recipe (#62): on a Bot in play, place_recipe with the open menu's window id, the
+    # recipe's display id and use_max_items, sent at once and not in a tick
+    # (MultiPlayerGameMode.handlePlaceRecipe); the client changes no slot, the server fills the
+    # grid.
     # The Bot follows no game mode: click predicts a survival or adventure player, and drop
     # sends what a spectator's client never would (the guide says so).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
