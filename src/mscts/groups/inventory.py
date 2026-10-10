@@ -100,14 +100,28 @@ GIVE_PACKETS = (
 )
 """The packets a give window compares: the inventory, the item that appears, and the sound."""
 
+_SEVERAL_ITEMS_PACKETS = tuple(name for name in GIVE_PACKETS if name != "minecraft:set_entity_data")
+"""What a window that makes several items compares. Vanilla sends each new item's data again at
+the end of the tick, in the hash order of its entity id (`ChunkMap.tick` over `entityMap`), and
+two servers can number their entities differently. Each item's type is in the slot it fills."""
+
 
 @dataclass(frozen=True, slots=True)
 class _Give:
-    """One `/give`: the item and the count, into an empty inventory or a `full` one."""
+    """One `/give`: the item and the count, into an empty inventory or a `full` one.
+
+    `stacks` is how many stacks the count makes: `GiveCommand.giveItem` gives a stack at a time,
+    and each stack makes an item entity of its own.
+    """
 
     item: str
     count: int
     full: bool = False
+    stacks: int = 1
+
+    def packets(self) -> tuple[str, ...]:
+        """What the give's window compares."""
+        return GIVE_PACKETS if self.stacks == 1 else _SEVERAL_ITEMS_PACKETS
 
 
 _FULL = f"give {_GIVER} minecraft:dirt 2304"
@@ -116,7 +130,7 @@ _FULL = f"give {_GIVER} minecraft:dirt 2304"
 GIVES = (
     _Give("minecraft:stone", 1),
     _Give("minecraft:stone", 64),
-    _Give("minecraft:stone", 100),
+    _Give("minecraft:stone", 100, stacks=2),
     _Give("minecraft:diamond_sword", 1),
     _Give("minecraft:stone", 1, full=True),
 )
@@ -132,5 +146,5 @@ async def give(context: GroupContext) -> None:
             await _empty(context, _GIVER)
             if case.full:
                 await context.control.run(_FULL)
-            async with context.observe(*GIVE_PACKETS):
+            async with context.observe(*case.packets()):
                 await context.control.run(f"give {_GIVER} {case.item} {case.count}")

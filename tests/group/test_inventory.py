@@ -12,10 +12,10 @@ from dataclasses import dataclass
 
 import pytest
 
-import mscts.groups  # noqa: F401 - registers the shipped Groups
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
+from mscts.groups import inventory
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group import test_control
@@ -27,6 +27,7 @@ KINDS = {GIVE: GroupKind.EXACT}
 BOTS = {GIVE: "giver"}
 COMMANDS = tree("gamerule", "tp", "tick", "gamemode", "give", "clear", "kill", "tag", "tellraw")
 CONTROL = "control"
+SET_ENTITY_DATA = "minecraft:set_entity_data"
 ACTIONS = frozenset({"minecraft:player_action", "minecraft:container_click"})
 """The Bot's packets a test reads: what it does with its items."""
 
@@ -39,6 +40,7 @@ KILL_NEW_ITEMS = f"kill {ITEMS},tag=!{TAG}]"
 class Window:
     """One Observation window: Control's commands before it and in it, the Bot's actions, ticks."""
 
+    label: str
     before: tuple[str, ...]
     commands: tuple[str, ...]
     sent: tuple[tuple[str, dict[str, object]], ...]
@@ -68,6 +70,7 @@ def _commands(transcript: Transcript) -> list[tuple[int, str]]:
 
 def read(transcript: Transcript, bot: str) -> Play:
     """The windows of `transcript`, each from its open Mark to its last close Mark."""
+    labels = [mark.label for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
     opens = [mark.t_ns for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
     closes = [mark.t_ns for mark in transcript.marks if mark.label == OBSERVE_CLOSE]
     assert len(opens) == len(closes), transcript.marks
@@ -83,9 +86,10 @@ def read(transcript: Transcript, bot: str) -> Play:
     ]
     control = _commands(transcript)
     windows, previous = [], 0
-    for opened, closed in zip(opens, closes, strict=True):
+    for label, opened, closed in zip(labels, opens, closes, strict=True):
         windows.append(
             Window(
+                label=label,
                 before=tuple(c for t, c in control if previous <= t < opened),
                 commands=tuple(c for t, c in control if opened <= t <= closed),
                 sent=tuple((name, f) for t, name, f in actions if opened <= t <= closed),
@@ -188,6 +192,16 @@ def test_give_runs_one_give_in_each_window() -> None:
         ("give giver minecraft:diamond_sword 1",),
         ("give giver minecraft:stone 1",),
     ]
+
+
+def test_only_the_give_that_makes_two_items_leaves_out_their_entity_data() -> None:
+    # Vanilla resends each new entity's data at the end of the tick in the hash order of its id.
+    labels = [window.label for window in played(GIVE).windows]
+    compared = f"{OBSERVE_OPEN} {' '.join(inventory.GIVE_PACKETS)}"
+    no_data = tuple(name for name in inventory.GIVE_PACKETS if name != SET_ENTITY_DATA)
+
+    assert labels == [compared, compared, f"{OBSERVE_OPEN} {' '.join(no_data)}", compared, compared]
+    assert SET_ENTITY_DATA in inventory.GIVE_PACKETS
 
 
 def test_each_give_starts_from_an_empty_inventory_with_no_new_item_left() -> None:
