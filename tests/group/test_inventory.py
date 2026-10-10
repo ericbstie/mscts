@@ -8,32 +8,77 @@ answers Control's markers and the barrier.
 
 import asyncio
 import functools
-from dataclasses import dataclass
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import cast, override
 
 import pytest
 
-from mscts.codec.packets import Direction
+from mscts.bot import Face
+from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import inventory
+from mscts.inventory import CLICK_MODES, OUTSIDE
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group import test_control
-from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
+from tests.group.test_control import (
+    CHAT_COMMAND,
+    CLIENT_COMMAND,
+    MARKER,
+    ControlServer,
+    playing,
+    tree,
+)
+from tests.net.fakes import Peer
 
-GIVE, DROP = "inventory/give", "inventory/drop"
-GROUP_IDS = (GIVE, DROP)
-KINDS = {GIVE: GroupKind.EXACT, DROP: GroupKind.TICK_EXACT}
-BOTS = {GIVE: "giver", DROP: "dropper"}
+GIVE, DROP, CLICKS = "inventory/give", "inventory/drop", "inventory/clicks"
+GROUP_IDS = (GIVE, DROP, CLICKS)
+KINDS = {GIVE: GroupKind.EXACT, DROP: GroupKind.TICK_EXACT, CLICKS: GroupKind.EXACT}
+BOTS = {GIVE: "giver", DROP: "dropper", CLICKS: "clicker"}
 COMMANDS = tree(
-    "gamerule", "tp", "tick", "gamemode", "give", "clear", "kill", "tag", "item", "tellraw"
+    "gamerule",
+    "tp",
+    "tick",
+    "gamemode",
+    "give",
+    "clear",
+    "kill",
+    "tag",
+    "item",
+    "setblock",
+    "tellraw",
 )
 DROP_ITEM, DROP_ALL_ITEMS = 5, 4
 """The `player_action` actions of Q and Ctrl+Q (`ServerboundPlayerActionPacket$Action`)."""
 CONTROL = "control"
 SET_ENTITY_DATA = "minecraft:set_entity_data"
-ACTIONS = frozenset({"minecraft:player_action", "minecraft:container_click"})
-"""The Bot's packets a test reads: what it does with its items."""
+PLAYER_ACTION, CONTAINER_CLICK = "minecraft:player_action", "minecraft:container_click"
+USE_ITEM_ON, CONTAINER_CLOSE = "minecraft:use_item_on", "minecraft:container_close"
+ACTIONS = frozenset({PLAYER_ACTION, CONTAINER_CLICK, USE_ITEM_ON})
+"""The Bot's packets a test reads in a window: what it does with its items."""
+CHEST_BLOCK = (
+    "minecraft:chest[facing=west]{Items:["
+    '{Slot:0b,id:"minecraft:stone",count:10},'
+    '{Slot:1b,id:"minecraft:dirt",count:64},'
+    '{Slot:2b,id:"minecraft:diamond_sword",count:1},'
+    '{Slot:3b,id:"minecraft:stone",count:5},'
+    '{Slot:4b,id:"minecraft:oak_log",count:3}]}'
+)
+KIT = (
+    "hotbar.0 with minecraft:stone 32",
+    "hotbar.1 with minecraft:oak_log 16",
+    "inventory.0 with minecraft:dirt 20",
+    "inventory.2 with minecraft:diamond_helmet 1",
+    "inventory.3 with minecraft:stone 64",
+    "weapon.offhand with minecraft:torch 8",
+)
+GENERIC_9X3 = 2
+"""`minecraft:generic_9x3`, a chest's menu, in `minecraft:menu` (registries report)."""
+CHEST_TITLE = bytes([0x08, 0x00, 0x05]) + b"Chest"  # a network NBT String tag
+UNDONE_FIRST = {CLICKS: ("setblock 2 -60 0 minecraft:air",)}
+"""What a Group undoes before the undo every Group shares."""
 
 ITEMS = "@e[type=minecraft:item,x=0.5,y=-60,z=0.5,distance=..20"
 TAG = "mscts_inventory_before"
@@ -58,6 +103,8 @@ class Play:
     windows: tuple[Window, ...]
     first: tuple[str, ...]
     after: tuple[str, ...]
+    timeline: tuple[str, ...]
+    """Control's commands, the Bot's closes (`close <window id>`) and its syncs, in order."""
 
 
 def _commands(transcript: Transcript) -> list[tuple[int, str]]:
@@ -102,12 +149,74 @@ def read(transcript: Transcript, bot: str) -> Play:
         )
         previous = closed
     first = tuple(c for t, c in control if t < opens[0]) if opens else ()
-    return Play(tuple(windows), first, tuple(c for t, c in control if t > previous))
+    after = tuple(c for t, c in control if t > previous)
+    return Play(tuple(windows), first, after, _timeline(transcript, bot, control))
+
+
+def _timeline(transcript: Transcript, bot: str, control: list[tuple[int, str]]) -> tuple[str, ...]:
+    """Control's commands among the Bot's closes and syncs, by when each was sent."""
+    own = [
+        (event.t_ns, _said(event.packet))
+        for event in transcript.events
+        if event.bot == bot
+        and event.packet.direction is Direction.SERVERBOUND
+        and event.packet.name in {CONTAINER_CLOSE, CLIENT_COMMAND}
+    ]
+    return tuple(entry for _, entry in sorted([*own, *control]))
+
+
+def _said(packet: Packet) -> str:
+    """`close <window id>` for a container_close, `sync` for a statistics request."""
+    if packet.name == CONTAINER_CLOSE:
+        return f"close {(packet.fields or {})['window_id']}"
+    return "sync"
+
+
+@dataclass
+class ChestServer(ControlServer):
+    """A ControlServer that opens a 3-row chest for each `use_item_on`, as vanilla does.
+
+    Each open gets the next window id, from 1 (`ServerPlayer.nextContainerCounter`).
+    """
+
+    _windows: int = field(default=0, init=False)
+
+    @override
+    async def _play(self, peer: Peer) -> None:
+        await super()._play(cast("Peer", _Opening(peer, self)))
+
+    async def opened(self, peer: Peer) -> None:
+        """Send the next chest's `open_screen`."""
+        self._windows += 1
+        frame = peer.frame(
+            "minecraft:open_screen",
+            window_id=self._windows,
+            window_type=GENERIC_9X3,
+            window_title=CHEST_TITLE,
+        )
+        await peer.write(frame)
+
+
+class _Opening:
+    """`peer`, but each `use_item_on` it reads opens a chest first."""
+
+    def __init__(self, peer: Peer, server: ChestServer) -> None:
+        self._peer = peer
+        self._server = server
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._peer, name)
+
+    async def packets(self) -> AsyncIterator[Packet]:
+        async for packet in self._peer.packets():
+            if packet.name == USE_ITEM_ON:
+                await self._server.opened(self._peer)
+            yield packet
 
 
 async def _play(group_id: str) -> Play:
     transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(ControlServer(commands=COMMANDS), transcript) as context:
+    async with playing(ChestServer(commands=COMMANDS), transcript) as context:
         await GROUPS[group_id].run(context)
     return read(transcript, BOTS[group_id])
 
@@ -159,9 +268,12 @@ def test_control_pins_the_joins_moves_away_and_tags_what_lies_there_first(group_
 def test_control_kills_the_new_items_then_clears_the_bot_and_undoes_the_rest(
     group_id: str,
 ) -> None:
+    own = UNDONE_FIRST.get(group_id, ())
     after = played(group_id).after
     bot = BOTS[group_id]
 
+    assert after[: len(own)] == own
+    after = after[len(own) :]
     assert after[:3] == (KILL_NEW_ITEMS, f"clear {bot}", f"tp {bot} 0.5 -60 0.5")
     assert after[3:] == (
         f"tag {ITEMS}] remove {TAG}",
@@ -237,7 +349,7 @@ def test_drop_masks_only_the_dropped_items_motion() -> None:
 
 
 def actions(window: Window) -> list[int]:
-    return [int(str(fields["action"])) for name, fields in window.sent]
+    return [int(str(fields["action"])) for name, fields in window.sent if name == PLAYER_ACTION]
 
 
 def test_the_bot_presses_q_once_in_each_window_and_ctrl_q_in_the_second() -> None:
@@ -269,3 +381,126 @@ def test_each_drop_starts_from_its_item_alone_in_the_first_hotbar_slot() -> None
             "minecraft:air",
         )
     ]
+
+
+# `inventory/clicks`
+
+
+def test_clicks_masks_the_thrown_items_motion_and_the_chests_sound_pitch() -> None:
+    masks = {(mask.packet, mask.path) for mask in GROUPS[CLICKS].masks}
+
+    assert masks == {
+        ("minecraft:add_entity", "velocity.x"),
+        ("minecraft:add_entity", "velocity.y"),
+        ("minecraft:add_entity", "velocity.z"),
+        ("minecraft:add_entity", "yaw"),
+        ("minecraft:sound", "pitch"),
+    }
+
+
+def test_control_places_the_filled_chest_and_gives_the_kit_before_the_chest_opens() -> None:
+    before = played(CLICKS).windows[0].before
+
+    assert before[-9:] == (
+        "setblock 2 -60 0 minecraft:air",
+        f"setblock 2 -60 0 {CHEST_BLOCK}",
+        "clear clicker",
+        *(f"item replace entity clicker {entry}" for entry in KIT),
+    )
+
+
+def opens(window: Window) -> list[tuple[object, object]]:
+    """Where and on which face the Bot uses its hand in `window`."""
+    return [(f["pos"], f["face"]) for name, f in window.sent if name == USE_ITEM_ON]
+
+
+def test_the_bot_opens_the_chest_in_the_first_window_after_each_half_and_at_the_end() -> None:
+    windows = played(CLICKS).windows
+    chest = ({"x": 2, "y": -60, "z": 0}, int(Face.UP))
+
+    assert [i for i, window in enumerate(windows) if opens(window)] == [0, 14, 30]
+    assert [opens(windows[i]) for i in (0, 14, 30)] == [[chest]] * 3
+    assert len(windows) == 31
+
+
+def clicks(window: Window) -> list[tuple[int, int, int, int]]:
+    """The window id, slot, button and mode of each click the Bot sends in `window`."""
+    return [
+        (int(str(f["window_id"])), int(str(f["slot"])), int(str(f["button"])), int(str(f["mode"])))
+        for name, f in window.sent
+        if name == CONTAINER_CLICK
+    ]
+
+
+PICKUP, QUICK_MOVE, SWAP, THROW, QUICK_CRAFT, PICKUP_ALL = 0, 1, 2, 4, 5, 6
+"""`ClickType` ordinals (26.3 javap), as `container_click` sends the mode."""
+
+
+def test_the_first_chest_windows_take_and_split_a_stack_and_shift_click_both_ways() -> None:
+    windows = played(CLICKS).windows
+
+    assert [clicks(window) for window in windows[1:5]] == [
+        [(1, 0, 0, PICKUP), (1, 5, 0, PICKUP)],
+        [(1, 1, 1, PICKUP), (1, 6, 1, PICKUP), (1, 6, 0, PICKUP)],
+        [(1, 2, 0, QUICK_MOVE)],
+        [(1, 54, 0, QUICK_MOVE)],
+    ]
+
+
+def test_each_half_clicks_its_sequences_in_its_own_menu() -> None:
+    windows = played(CLICKS).windows
+    chest = [[(1, *click) for click in modes(s)] for s in inventory.CHEST_CLICKS]
+    own = [[(0, *click) for click in modes(s)] for s in inventory.INVENTORY_CLICKS]
+
+    assert [clicks(window) for window in windows[1:14]] == chest
+    assert [clicks(window) for window in windows[15:30]] == own
+
+
+def modes(sequence: tuple[tuple[int, int, str], ...]) -> list[tuple[int, int, int]]:
+    return [(slot, button, CLICK_MODES[mode]) for slot, button, mode in sequence]
+
+
+CLICKED = {
+    (PICKUP, 0),
+    (PICKUP, 1),
+    (QUICK_MOVE, 0),
+    *((SWAP, key) for key in (*range(9), 40)),
+    (QUICK_CRAFT, 0),
+    (QUICK_CRAFT, 1),
+    (QUICK_CRAFT, 2),
+    (QUICK_CRAFT, 4),
+    (QUICK_CRAFT, 5),
+    (QUICK_CRAFT, 6),
+    (PICKUP_ALL, 0),
+    (THROW, 0),
+    (THROW, 1),
+}
+"""Every mode and button the issue names: left and right, shift, the keys 1-9 and F, both
+drags (start, add, end), double-click, Q and Ctrl+Q."""
+
+
+@pytest.mark.parametrize("menu", ["chest", "inventory"])
+def test_each_half_clicks_every_mode_and_button_and_outside_the_window(menu: str) -> None:
+    windows = played(CLICKS).windows[1:14] if menu == "chest" else played(CLICKS).windows[15:30]
+    sent = [click for window in windows for click in clicks(window)]
+
+    assert {(mode, button) for _, _, button, mode in sent} == CLICKED
+    assert (OUTSIDE, 0, PICKUP) in {(slot, button, mode) for _, slot, button, mode in sent}
+    assert (OUTSIDE, 1, PICKUP) in {(slot, button, mode) for _, slot, button, mode in sent}
+
+
+def test_the_bot_closes_each_menu_and_syncs_before_control_acts_again() -> None:
+    timeline = played(CLICKS).timeline
+    closes = [i for i, entry in enumerate(timeline) if entry.startswith("close")]
+
+    assert [timeline[i] for i in closes] == ["close 1", "close 2", "close 0", "close 3"]
+    assert all(timeline[i + 1] == "sync" for i in closes)
+
+
+def test_the_inventory_half_starts_from_the_kit_again() -> None:
+    before = played(CLICKS).windows[15].before
+
+    assert before == (
+        "clear clicker",
+        *(f"item replace entity clicker {entry}" for entry in KIT),
+    )

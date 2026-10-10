@@ -1203,7 +1203,12 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   what a give window compares; `GIVES` — the items and counts given, one window each; `give` —
   the `inventory/give` script; `DROP_PACKETS` — what a drop window compares; `PICKUP_TICKS` —
   the ticks a window steps to see a thrown item picked up; `DROPS` — what the Bot holds for each
-  drop, and whether it drops the whole stack; `drop` — the `inventory/drop` script.
+  drop, and whether it drops the whole stack; `drop` — the `inventory/drop` script; `CHEST` —
+  where the chest the Bot clicks in stands; `CLICK_PACKETS` — what a click window compares;
+  `CHEST_PITCH` — the Mask on the pitch of a chest's sound; `KIT` — what the Bot holds before
+  each half of the clicks; `Click` — a slot, button and mode; `CHEST_CLICKS` and
+  `INVENTORY_CLICKS` — the click sequences in the chest's menu and in the Bot's own, one window
+  each; `clicks` — the `inventory/clicks` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
