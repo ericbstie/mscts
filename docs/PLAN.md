@@ -1193,16 +1193,6 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `view_distance`, `teleport` and `walk` — the `chunks/join-view`, `chunks/view-distance`,
   `chunks/teleport` and `chunks/walk` scripts.
 - `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
-  eating, the damage, sounds and the death); `regeneration` — the `player/regeneration`
-  script.
-- `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
-  eating, the damage, sounds and the death); `regeneration` and `starvation` — the
-  `player/regeneration` and `player/starvation` scripts.
-- `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
-  eating, the damage, sounds and the death); `EATING_MASKS` — the Mask on the eating
-  sounds' pitch; `regeneration`, `starvation` and `eating` — the `player/regeneration`,
-  `player/starvation` and `player/eating` scripts.
-- `groups.player_hunger`: `PACKETS` — what a window compares (the health, the effects, the
   eating, the damage, sounds and the death); `EATING_MASKS` — the Mask on the eating
   sounds' pitch; `EXERCISER` — the Bot that sprints and hits, and as an operator
   reads its food back; `regeneration`, `starvation`, `eating` and `exhaustion` — the

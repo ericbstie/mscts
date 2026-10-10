@@ -357,7 +357,11 @@ async def exhaustion(context: GroupContext) -> None:
     Each move and hit is followed by a barrier, so the Bot's player ticks between two of them, as
     it does for a vanilla client, and its exhaustion adds up the same way on every server. It
     does not jump: in 1 Self-check play of 15 the two servers counted a different number of
-    jumps (#57).
+    jumps (#57; follow-up #354).
+
+    The windows compare only `set_health`, which on vanilla neither the sprint nor the hits
+    send, so the readback carries the comparison. They leave out `sound` and `entity_event`:
+    the attack sound and what a hit does follow the attack charge, which grows in real time.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
