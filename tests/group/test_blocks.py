@@ -190,16 +190,33 @@ def read(transcript: Transcript) -> Play:
     return Play(tuple(windows), tuple(c for t, c in control if t > previous))
 
 
-async def play(group_id: str, server: BlocksServer | None = None) -> tuple[Transcript, Play]:
-    """Play `group_id` against a fake server; return its Transcript and what was read from it."""
+async def replay(group_id: str, server: BlocksServer) -> tuple[Transcript, Play]:
+    """Play `group_id` against `server`; return its Transcript and what was read from it."""
     transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(server or BlocksServer(), transcript) as context:
+    async with playing(server, transcript) as context:
         await GROUPS[group_id].run(context)
     return transcript, read(transcript)
 
 
+_PLAYS: dict[str, tuple[Transcript, Play]] = {}
+"""Each Group's play against a default `BlocksServer`; no test changes it."""
+
+
+async def play(group_id: str) -> tuple[Transcript, Play]:
+    """The play of `group_id` against a default fake server, played the first time it is asked."""
+    if group_id not in _PLAYS:
+        _PLAYS[group_id] = await replay(group_id, BlocksServer())
+    return _PLAYS[group_id]
+
+
 async def played(group_id: str) -> Play:
     return (await play(group_id))[1]
+
+
+@pytest.mark.asyncio
+async def test_the_tests_of_a_group_share_one_play_of_it() -> None:
+    """A play takes seconds (the fake's ticks are real), so a Group is played once per process."""
+    assert await play("blocks/clone") is await play("blocks/clone")
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
@@ -268,7 +285,7 @@ async def test_the_builder_gets_its_own_feedback_inside_the_window_when_the_serv
     # The command runs after the barrier's first answers (a server behind schedule), and what
     # Control said before the window reached the builder first: neither may end the window.
     server = BlocksServer(feedback_after_s=FEEDBACK_AFTER_S, broadcast=True)
-    _, result = await play(group_id, server)
+    _, result = await replay(group_id, server)
 
     assert [window.feedback for window in result.windows] == [1] * len(result.windows)
 
