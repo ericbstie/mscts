@@ -3290,3 +3290,75 @@ an item tag, an item stack, any fuel, or several choices in turn.
 
 The item, tag or stack the recipe book shows for the block the recipe is
 made at.
+
+## `add_entity.velocity.x`
+
+**Entity east-west speed**
+
+How fast the entity starts to move east or west. A difference moves the entity sideways before the server corrects it.
+
+## `add_entity.velocity.z`
+
+**Entity north-south speed**
+
+How fast the entity starts to move north or south. A difference moves the entity sideways before the server corrects it.
+
+## `add_entity.yaw`
+
+**Entity facing**
+
+The way the entity's body faces, as an angle. A difference turns the entity.
+
+## `bundle_delimiter`
+
+**Packet bundle edge**
+
+A packet that starts or ends a bundle, whose packets the client handles together. Vanilla sends a new entity's spawn, data, attributes and equipment in one bundle. A server that sends them without one may show the entity before its data has arrived.
+
+## `rotate_head`
+
+**Entity head turning**
+
+A packet that turns an entity's head. Vanilla sends one for a summoned mob just after it appears. A difference turns the mob's head another way.
+
+## `set_entity_data.entries[].value.level`
+
+**Villager level**
+
+A villager's level, which shows on its badge. A difference shows another badge.
+
+## `set_entity_data.entries[].value.profession`
+
+**Villager profession**
+
+A villager's profession, which sets the clothes it wears. A difference dresses it as another profession.
+
+## `set_entity_data.entries[].value.type`
+
+**Villager type**
+
+The biome a villager comes from, which sets its outfit. A difference dresses it as a villager of another biome.
+
+## `set_equipment.entity_id`
+
+**Entity receiving equipment**
+
+Which entity the equipment is for. mscts compares corresponding entities rather than their server-assigned numbers. A difference puts the equipment on another entity.
+
+## `set_equipment.equipment[].item.count`
+
+**Equipped item count**
+
+How many items are in a stack the entity holds or wears.
+
+## `set_equipment.equipment[].item.item`
+
+**Equipped item type**
+
+Which item the entity holds or wears in a slot. A difference shows another item in its hand or on its body.
+
+## `set_equipment.equipment[].slot`
+
+**Equipment slot**
+
+Where the entity holds or wears the item: a hand, or an armour slot. A difference shows the item somewhere else.
