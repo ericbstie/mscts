@@ -20,7 +20,7 @@ import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from mscts.group import GroupContext, group
+from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, normal, pin_joins, remove_tagged
 from mscts.spec import CONTROL_PLAYER
 
@@ -177,3 +177,38 @@ async def data_changes(context: GroupContext) -> None:
             async with context.observe(*PACKETS):
                 await control.run(change)
                 await context.step()
+
+
+# `entities/death`: a pig and a zombie are killed, and the world steps until their bodies go.
+
+_NO_LOOT = f'{_MOB},DeathLootTable:"minecraft:empty"'
+"""A mob that drops nothing: its drop would be a second entity the death's tick changes, and
+how many of it drops is random (the pig's porkchops, the zombie's rotten flesh)."""
+
+DEATHS = (
+    Summon("pig", _NO_LOOT),
+    Summon("zombie", _NO_LOOT),
+)
+
+DYING_TICKS = 20
+"""How long a body stays: `LivingEntity.tickDeath` removes it once its `deathTime` reaches 20."""
+
+
+def death_position(number: int) -> _Position:
+    """Where the `number`th mob of `entities/death` stands."""
+    return (-8.5 - 4 * number, -60.0, -16.5)
+
+
+@group("entities/death", spec=normal, kind=GroupKind.TICK_EXACT)
+async def death(context: GroupContext) -> None:
+    """Control kills each mob in a window that steps the world until the body is gone.
+
+    Each mob is summoned just before its window, so that it never ticks alive.
+    """
+    control = context.control
+    async with _arena(context):
+        for number, mob in enumerate(DEATHS):
+            await control.run(summon_command(mob.entity, death_position(number), mob.nbt))
+            async with context.observe(*PACKETS):
+                await control.run(f"kill @e[tag={_TAG},type=minecraft:{mob.entity}]")
+                await context.step(DYING_TICKS)

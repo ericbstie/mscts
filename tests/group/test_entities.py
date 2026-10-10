@@ -190,8 +190,12 @@ def summoned(entity: str, at: tuple[float, float, float], nbt: str) -> str:
     return f'summon minecraft:{entity} {x} {y} {z} {{{nbt},Rotation:[90f,0f],Tags:["{TAG}"]}}'
 
 
-GROUP_IDS = ("entities/summon", "entities/data-changes")
-KINDS = {"entities/summon": GroupKind.EXACT, "entities/data-changes": GroupKind.EXACT}
+GROUP_IDS = ("entities/summon", "entities/data-changes", "entities/death")
+KINDS = {
+    "entities/summon": GroupKind.EXACT,
+    "entities/data-changes": GroupKind.EXACT,
+    "entities/death": GroupKind.TICK_EXACT,
+}
 
 
 # Registration and the shape of every play
@@ -343,3 +347,29 @@ async def test_data_changes_takes_the_roof_away_after_the_zombie() -> None:
     result = await play("entities/data-changes")
 
     assert result.after == (f"setblock {ROOF} minecraft:air", *TEARDOWN)
+
+
+# `entities/death`
+
+NO_LOOT = f'{MOB},DeathLootTable:"minecraft:empty"'
+DYING = (("pig", (-8.5, -60.0, -16.5)), ("zombie", (-12.5, -60.0, -16.5)))
+
+
+@pytest.mark.asyncio
+async def test_death_summons_each_mob_without_loot_just_before_its_window() -> None:
+    result = await play("entities/death")
+
+    assert result.first == (*SETUP, summoned("pig", DYING[0][1], NO_LOOT))
+    assert [window.before for window in result.windows[1:]] == [
+        (summoned(mob, at, NO_LOOT),) for mob, at in DYING[1:]
+    ]
+
+
+@pytest.mark.asyncio
+async def test_death_kills_each_mob_in_its_window_then_steps_twenty_ticks() -> None:
+    result = await play("entities/death")
+
+    assert [window.inside for window in result.windows] == [
+        (f"kill @e[tag={TAG},type=minecraft:{mob}]", *[STEP] * 20) for mob, _ in DYING
+    ]
+    assert result.after == TEARDOWN

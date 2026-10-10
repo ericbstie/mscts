@@ -1237,6 +1237,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `entities/summon` script. `ZOMBIE_AT` — where the zombie of `entities/data-changes` stands;
   `ROOF` — the block over its head, which keeps it from burning in daylight; `CHANGES` — the
   commands that change it, one window each; `data_changes` — the `entities/data-changes` script.
+  `DEATHS` — the pig and the zombie `entities/death` kills, with no loot; `DYING_TICKS` — the 20
+  ticks a body stays; `death_position` — where each stands; `death` — the `entities/death`
+  script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
