@@ -1229,6 +1229,17 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `crafting/unlocking`; `BOOK_CHANGES` — the `recipe` commands that change its book in a window
   each; `OAK_PLANKS_ADVANCEMENT` — the advancement that unlocks oak planks; `unlocking` — the
   `crafting/unlocking` script.
+- `groups.entities`: `WATCHER` — the Bot that is told about the entities; `PACKETS` — what a
+  window compares (the spawn bundle, the data, attributes, equipment and head, the damage and
+  death events, the removal); `summon_command` — the `/summon` of an entity type at a place with
+  NBT, facing west and tagged; `Summon` — an entity type and its NBT; `SUMMONS` — the seventeen
+  entities summoned, one window each; `row_position` — where each stands; `summon` — the
+  `entities/summon` script. `ZOMBIE_AT` — where the zombie of `entities/data-changes` stands;
+  `ROOF` — the block over its head, which keeps it from burning in daylight; `CHANGES` — the
+  commands that change it, one window each; `data_changes` — the `entities/data-changes` script.
+  `DEATHS` — the pig and the zombie `entities/death` kills, with no loot; `DYING_TICKS` — the 20
+  ticks a body stays; `death_position` — where each stands; `death` — the `entities/death`
+  script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
@@ -1238,7 +1249,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   Groups).
   `normal` — the spec on normal difficulty; `find_when_tracked` — the entity of a type nearest a
   place, once the Bot tracks one; `remove_tagged` — kill every entity with a tag, without drops,
-  and wait until none is left (the `combat` and `player_hunger` Groups).
+  and wait until none is left (the `combat`, `player_hunger` and `entities` Groups).
 - `groups.chat`: `LISTENER` — the Bot in the world for every case, sent what the others say;
   `SPEAKER` — the Bot that speaks in `chat/player` and, as an operator, runs `chat/commands`;
   `JOINER` — the Bot that joins and leaves in `chat/join-leave`; `TALKER`, `OPERATOR` — the

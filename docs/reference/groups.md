@@ -575,6 +575,42 @@ Bot opens the table for each click and closes it after.
 The Bot does not take a crafted result, and does not click items into a crafting table's grid:
 it cannot yet predict those clicks the way the client does.
 
+## Entities (`entities`)
+
+Entities are matched by the order they appear, not by their ids, which differ between servers.
+
+A Bot called `watcher` stands at the spawn. Control summons, changes and kills entities a few
+blocks away, one entity a window. A window compares what the watcher is told about the entity:
+its spawn (`add_entity`, and the `bundle_delimiter`s around it), its data (`set_entity_data`),
+its attributes, its equipment and head, its damage and death events, and its removal. The server
+runs on normal difficulty, because peaceful removes a hostile mob.
+
+The world is frozen (`/tick freeze`), so nothing moves unless a Group steps it. Every entity is
+summoned with NBT, which makes vanilla skip what it draws at random for a new mob: its
+equipment, whether it is a baby, and its attribute bonuses. Mobs cannot think (`NoAI`), and the
+other entities do not fall (`NoGravity`). When a Group ends, Control kills the entities it
+summoned, and the watcher waits until it is told the last body is gone.
+
+Every entity stands in the chunk the watcher stands in. A server tells a player about an entity
+only once it has sent the player the entity's chunk, and the watcher's join waits only for the
+chunks around the spawn.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `entities/summon` | exact | none | Control summons a pig, a cow, a light blue sheep, a chicken, a zombie, a skeleton holding a bow, a creeper, a plains farmer villager, an armor stand, an item frame holding a diamond, an oak boat, a minecart, an arrow, a snowball, an experience orb worth 5, a falling sand block and a primed TNT with 40 ticks of fuse left, each facing west, in rows of 8, 2 blocks apart. | none |
+| `entities/data-changes` | exact | none | Control changes one zombie a way at a time: a custom name that shows, glowing, silent, no gravity, on fire, invisible (`/effect give`) and a movement speed of 0.5 (`/attribute`). Each window steps the world once. | none |
+| `entities/death` | tick-exact | none | Control kills a pig, then a zombie, with `/kill`. Each window steps the world 20 ticks, until the body is removed. | none |
+
+Some changes show only when the entity ticks: it is on fire, or invisible, from its next tick on.
+A zombie that ticks in daylight catches fire at random, so the zombie of
+`entities/data-changes` has a block over its head.
+
+The mobs of `entities/death` drop nothing, and `/kill` drops no experience. A drop would be a
+second entity changed in the tick of the death. Vanilla sends the data of every entity a tick
+changed at the end of that tick, in an order that follows their entity ids, so the two packets
+could come in either order ([#320](https://github.com/ericbstie/mscts/issues/320)). How many
+items a pig or a zombie drops is also random.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
