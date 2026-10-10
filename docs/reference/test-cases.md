@@ -1303,6 +1303,34 @@ world.
 
 One entity the client removes. A player is named by their UUID.
 
+## `take_item_entity`
+
+**Item picked up**
+
+A packet that tells the client an entity picked an item up, such as a
+player walking over an item it dropped. The client plays the pickup sound
+and shows the item flying to the player. A server that leaves it out
+shows the item vanish with no sound.
+
+## `take_item_entity.collected_entity_id`
+
+**Item entity picked up**
+
+The item that was picked up.
+
+## `take_item_entity.collector_entity_id`
+
+**Entity picking an item up**
+
+The entity that picked the item up, such as the player.
+
+## `take_item_entity.pickup_item_count`
+
+**Number of items picked up**
+
+How many of the item's stack the entity took. The client takes that many
+from the item on the ground, and removes the item once none are left.
+
 ## `set_entity_data`
 
 **Entity data**

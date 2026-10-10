@@ -21,11 +21,15 @@ from mscts.transcript import Transcript
 from tests.group import test_control
 from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
-GIVE = "inventory/give"
-GROUP_IDS = (GIVE,)
-KINDS = {GIVE: GroupKind.EXACT}
-BOTS = {GIVE: "giver"}
-COMMANDS = tree("gamerule", "tp", "tick", "gamemode", "give", "clear", "kill", "tag", "tellraw")
+GIVE, DROP = "inventory/give", "inventory/drop"
+GROUP_IDS = (GIVE, DROP)
+KINDS = {GIVE: GroupKind.EXACT, DROP: GroupKind.TICK_EXACT}
+BOTS = {GIVE: "giver", DROP: "dropper"}
+COMMANDS = tree(
+    "gamerule", "tp", "tick", "gamemode", "give", "clear", "kill", "tag", "item", "tellraw"
+)
+DROP_ITEM, DROP_ALL_ITEMS = 5, 4
+"""The `player_action` actions of Q and Ctrl+Q (`ServerboundPlayerActionPacket$Action`)."""
 CONTROL = "control"
 SET_ENTITY_DATA = "minecraft:set_entity_data"
 ACTIONS = frozenset({"minecraft:player_action", "minecraft:container_click"})
@@ -216,3 +220,52 @@ def test_the_last_give_finds_the_inventory_full() -> None:
     before = played(GIVE).windows[-1].before
 
     assert before == (KILL_NEW_ITEMS, "clear giver", "give giver minecraft:dirt 2304")
+
+
+# `inventory/drop`
+
+
+def test_drop_masks_only_the_dropped_items_motion() -> None:
+    masks = {(mask.packet, mask.path) for mask in GROUPS[DROP].masks}
+
+    assert masks == {
+        ("minecraft:add_entity", "velocity.x"),
+        ("minecraft:add_entity", "velocity.y"),
+        ("minecraft:add_entity", "velocity.z"),
+        ("minecraft:add_entity", "yaw"),
+    }
+
+
+def actions(window: Window) -> list[int]:
+    return [int(str(fields["action"])) for name, fields in window.sent]
+
+
+def test_the_bot_presses_q_once_in_each_window_and_ctrl_q_in_the_second() -> None:
+    windows = played(DROP).windows
+
+    assert [actions(window) for window in windows] == [
+        [DROP_ITEM],
+        [DROP_ALL_ITEMS],
+        [DROP_ITEM],
+        [DROP_ITEM],
+    ]
+
+
+def test_only_the_first_drop_steps_past_the_pickup_delay() -> None:
+    # The pickup delay is 40 item ticks (LivingEntity.createItemStackToDrop); the player picks
+    # the item up on the 40th, and the 41st shows that nothing comes after.
+    assert [window.ticks for window in played(DROP).windows] == [41, 1, 1, 1]
+
+
+def test_each_drop_starts_from_its_item_alone_in_the_first_hotbar_slot() -> None:
+    held = [window.before[-3:] for window in played(DROP).windows]
+
+    assert held == [
+        (KILL_NEW_ITEMS, "clear dropper", f"item replace entity dropper hotbar.0 with {item}")
+        for item in (
+            "minecraft:stone 64",
+            "minecraft:stone 64",
+            "minecraft:diamond_sword 1",
+            "minecraft:air",
+        )
+    ]

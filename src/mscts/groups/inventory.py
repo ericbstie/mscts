@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from mscts.bot import Bot
 from mscts.compare import Mask
-from mscts.group import GroupContext, group
+from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, SPAWN_AT, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER
 
@@ -148,3 +148,57 @@ async def give(context: GroupContext) -> None:
                 await context.control.run(_FULL)
             async with context.observe(*case.packets()):
                 await context.control.run(f"give {_GIVER} {case.item} {case.count}")
+
+
+# `inventory/drop`
+
+_DROPPER = "dropper"
+
+DROP_PACKETS = (
+    "minecraft:container_set_slot",
+    "minecraft:set_player_inventory",
+    "minecraft:add_entity",
+    "minecraft:set_entity_data",
+    "minecraft:take_item_entity",
+    "minecraft:remove_entities",
+    "minecraft:sound",
+)
+"""The packets a drop window compares: the slot, the item thrown, and the item picked up."""
+
+PICKUP_TICKS = 41
+"""How many ticks a window steps to see the thrown item picked up. Its pickup delay is 40
+(`LivingEntity.createItemStackToDrop`), counted down only on the ticks the frozen world steps,
+and the Bot, which looks down, stands on it: it is picked up on the 40th. The 41st shows that
+nothing follows."""
+
+
+@dataclass(frozen=True, slots=True)
+class _Drop:
+    """One press of Q: what the Bot holds, whether Ctrl is held (`all`), how many ticks follow."""
+
+    held: str
+    all: bool = False
+    ticks: int = 1
+
+
+DROPS = (
+    _Drop("minecraft:stone 64", ticks=PICKUP_TICKS),
+    _Drop("minecraft:stone 64", all=True),
+    _Drop("minecraft:diamond_sword 1"),
+    _Drop("minecraft:air"),
+)
+"""The drops, one window each: one stone of a stack, until the Bot picks it up again; the whole
+stack; an unstackable item; and an empty hand. Only the first steps until the pickup: a step
+takes about 0.3 s of the play's time."""
+
+
+@group("inventory/drop", masks=DROP_MASKS, kind=GroupKind.TICK_EXACT)
+async def drop(context: GroupContext) -> None:
+    """The Bot drops a stone and picks it up again, then drops a stack, a sword and nothing."""
+    async with _arena(context, _DROPPER) as bot:
+        for case in DROPS:
+            await _empty(context, _DROPPER)
+            await context.control.run(f"item replace entity {_DROPPER} hotbar.0 with {case.held}")
+            async with context.observe(*DROP_PACKETS):
+                await bot.drop(all=case.all)
+                await context.step(case.ticks)
