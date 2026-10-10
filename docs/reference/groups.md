@@ -521,6 +521,25 @@ nothing, and the readback carries the comparison. The windows compare only `set_
 `sound` or `entity_event`: a hit's sound and effects follow the attack charge, which grows in
 real time, so the same hit can differ from one play to the next.
 
+## Inventory (`inventory`)
+
+What a survival player sees when it is given items, clicks them about and drops them. Each Group joins one Bot at the world spawn, looking down, with an empty inventory. Control freezes the world, so an item on the ground stays where it fell and counts down its pickup delay only on the ticks a Group steps. When a Group ends, Control removes the items it made and empties the Bot's inventory. Items that lay there before are tagged first and left alone.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `inventory/give` | exact | none | Control gives the Bot 1, 64 and 100 stone, a diamond sword, and one stone into an inventory full of dirt, in a window of its own each, and the world steps one tick. Each window compares the slots that change, the item vanilla shows popping out of the player, which nobody can pick up and which it removes on that tick, the pickup sound, and, for the full inventory, the item that drops. | none |
+| `inventory/clicks-inventory` | exact | none | The Bot clicks in every mode in its own inventory: a left and a right click, a shift-click between the inventory and the hotbar, the number keys 1 to 9 and the off-hand key, an even drag and a drag of one each, a double-click, Q and Ctrl+Q over a slot, and a click outside the menu. It also shift-clicks a diamond helmet onto its head and back, which plays the equip sound. Each click sequence has a window of its own. | none |
+| `inventory/clicks-chest` | exact | none | The Bot opens a chest of stone, dirt, logs and a sword and clicks in every mode in its menu, as in `inventory/clicks-inventory`, with a shift-click each way between the chest and the Bot. Each click sequence has a window of its own, and the Bot opens the chest again at the end to compare what is in it. | none |
+| `inventory/drop` | tick-exact | none | The Bot drops one stone of a stack with Q, and the world steps 41 ticks: the stone's pickup delay is 40, and the Bot picks it up on the 40th. Then it drops a whole stack with Ctrl+Q, a sword, and nothing from an empty hand, a tick each. | none |
+
+The Bot predicts each click as the vanilla client does and sends its prediction. Vanilla sends nothing back for a click it agrees with, so a click window on vanilla is often empty. A server that resolves a click another way sends the slots it corrects, and those are compared.
+
+Vanilla throws an item a player drops with a random motion and yaw, so these Groups compare where a dropped item appears, what it is and how many, but not how it moves. The pitch of the `/give` pickup sound and of a chest's sound is random too, and only the pitch is left out.
+
+A `/give` of 100 stone makes two item entities in one tick. Vanilla sends each new entity's data again at the end of the tick, in an order that follows the entity ids, and two servers can number their entities differently. That window leaves out `set_entity_data`. The slots still show what was given, but which entity carried which stack is not compared.
+
+Swapping hands with F is not covered yet, because the Bot cannot press it ([#359](https://github.com/ericbstie/mscts/issues/359)).
+
 ## Planned
 
 | Mechanic | First Group | Needs |
