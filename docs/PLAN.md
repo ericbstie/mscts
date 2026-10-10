@@ -1229,6 +1229,12 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `crafting/unlocking`; `BOOK_CHANGES` — the `recipe` commands that change its book in a window
   each; `OAK_PLANKS_ADVANCEMENT` — the advancement that unlocks oak planks; `unlocking` — the
   `crafting/unlocking` script.
+- `groups.entities`: `WATCHER` — the Bot that is told about the entities; `PACKETS` — what a
+  window compares (the spawn bundle, the data, attributes, equipment and head, the damage and
+  death events, the removal); `summon_command` — the `/summon` of an entity type at a place with
+  NBT, facing west and tagged; `Summon` — an entity type and its NBT; `SUMMONS` — the seventeen
+  entities summoned, one window each; `row_position` — where each stands; `summon` — the
+  `entities/summon` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
