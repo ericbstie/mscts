@@ -24,6 +24,7 @@ from mscts.net import ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
+from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, SPAWN, TICK_S, JoinScript, Peer, join_server
 
 CONTROL = "control"
@@ -425,6 +426,18 @@ async def test_into_blocks_steps_the_world_after_each_move() -> None:
     assert [window.before[-1] for window in result.windows] == [
         tp("walker", (4.5, -60.0, z)) for z in (2.5, 6.5, 10.5, 13.5)
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", TICK_EXACT)
+async def test_each_move_reaches_the_server_before_the_step_after_it(group_id: str) -> None:
+    transcript, result = await play(group_id)
+    moves = sum(len(window.moves("walker")) for window in result.windows)
+
+    barriers = barriers_before_steps(transcript, "walker", set(MOVES))
+
+    assert len(barriers) == moves > 0
+    assert set(barriers) == {SYNC_REQUESTS}
 
 
 # movement/before-teleport
