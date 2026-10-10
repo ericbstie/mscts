@@ -28,8 +28,8 @@ description = "bandit over src/"
 run = "uv run bandit -q -c pyproject.toml -r src"
 
 [tasks.test]
-description = "unit tier, parallelized across CPUs (pytest-xdist)"
-run = "uv run python scripts/with_temproot.py -- uv run pytest -m 'not reference and not selfcheck and not candidate and not statistical' -n auto"
+description = "unit tier, parallelized across CPUs (pytest-xdist), one file on one worker"
+run = "uv run python scripts/with_temproot.py -- uv run pytest -m 'not reference and not selfcheck and not candidate and not statistical' -n auto --dist loadfile"
 
 [tasks.check]
 description = "Everything a commit must pass"
