@@ -2146,6 +2146,24 @@ The size of the unit the entity's starting speed is counted in. A difference cha
 
 How fast the entity starts to move up or down. A block's drop pops up at the same speed on vanilla every time, so a difference shows an item that jumps higher or lower.
 
+## `add_entity.velocity.x`
+
+**Entity speed along x**
+
+How fast the entity starts to move along x. An item summoned with no motion starts still, so a difference shows an item that drifts away.
+
+## `add_entity.velocity.z`
+
+**Entity speed along z**
+
+How fast the entity starts to move along z. An item summoned with no motion starts still, so a difference shows an item that drifts away.
+
+## `add_entity.yaw`
+
+**Entity direction**
+
+Which way the entity faces when it appears. A summoned item faces the way its command says.
+
 ## `block_changed_ack`
 
 **Block action acknowledgement**
