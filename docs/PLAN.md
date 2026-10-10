@@ -1229,6 +1229,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `crafting/unlocking`; `BOOK_CHANGES` — the `recipe` commands that change its book in a window
   each; `OAK_PLANKS_ADVANCEMENT` — the advancement that unlocks oak planks; `unlocking` — the
   `crafting/unlocking` script.
+- `groups.entities_items`: `ITEM_PACKETS` — what a window compares (entities appearing,
+  changing and going, a pickup, the Bot's slots and experience, and sounds); `PAIRS` — the
+  pairs of items `entities/item-merge` lays out, a tick apart; `item_merge` — the
+  `entities/item-merge` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
