@@ -221,9 +221,14 @@ async def _click(context: GroupContext, bot: Bot, ids: Mapping[str, int], case: 
 
 
 async def _set_table(context: GroupContext, undo: contextlib.AsyncExitStack, bot: Bot) -> None:
-    """Set a crafting table two blocks south of where the Bot is put to use it."""
+    """Set a crafting table two blocks south of where the Bot is put to use it.
+
+    The undo also puts back the grass under the table: a random tick turns grass under an
+    opaque block to dirt, on one Instance and not another, which `join/basic` then sees.
+    """
     control = context.control
     x, y, z = TABLE
+    undo.push_async_callback(control.run, f"setblock {x} {y - 1} {z} minecraft:grass_block")
     undo.push_async_callback(control.run, f"setblock {x} {y} {z} minecraft:air")
     await control.run(f"setblock {x} {y} {z} minecraft:crafting_table")
     await control.run(f"tp {bot.name} {_TABLE_STAND} 0 0")

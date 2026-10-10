@@ -520,6 +520,14 @@ async def test_the_bot_opens_a_table_set_for_it_before_the_table_windows() -> No
 
 
 @pytest.mark.asyncio
+async def test_the_grass_under_the_table_is_put_back_as_a_random_tick_may_turn_it_to_dirt() -> None:
+    after = (await play(BOOK)).after
+    x, y, z = crafting.TABLE
+
+    assert f"setblock {x} {y - 1} {z} minecraft:grass_block" in after
+
+
+@pytest.mark.asyncio
 async def test_the_bot_opens_the_table_before_each_table_window_and_closes_it_after() -> None:
     result = await play(BOOK)
     first = len(crafting.INVENTORY_PLACEMENTS)
