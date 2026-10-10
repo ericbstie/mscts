@@ -8,6 +8,7 @@ entity is left (nothing is).
 
 import asyncio
 import json
+import uuid
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -16,10 +17,12 @@ import pytest
 import mscts.groups
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
+from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import entities
 from mscts.spec import Difficulty, ServerSpec
+from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
@@ -72,14 +75,24 @@ TEARDOWN = (
 then the GroupContext unfreezes the world it froze (`GroupContext.close`, here)."""
 
 
+PIG = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:pig")
+PIG_ID = 300
+
+
 @dataclass
 class EntitiesServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
-    It answers an `execute if entity` with the failure that says no entity matched.
+    It answers an `execute if entity` with the failure that says no entity matched. With
+    `pig_goes_after` set, it tells the watcher about a pig as it joins, and removes it once the
+    watcher has sent that many barrier requests after Control's `execute if entity` (a body that
+    is still dying); None leaves the pig there.
     """
 
     seen: list[Packet] = field(default_factory=list)
+    pig_goes_after: int | None = 0
+    with_pig: bool = False
+    _asked: bool = False
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -87,6 +100,8 @@ class EntitiesServer:
             await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
 
     async def _play(self, peer: Peer) -> None:
+        if self.with_pig and peer.name == WATCHER:
+            await peer.send("minecraft:add_entity", **_pig())
         requests = 0
         async for packet in peer.packets():
             self.seen.append(packet)
@@ -95,15 +110,44 @@ class EntitiesServer:
                 if (requests - 1) % SYNC_REQUESTS != 0:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
                 await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+                await self._maybe_remove_pig(peer)
             elif packet.name == CHAT_COMMAND:
                 command = str((packet.fields or {})["command"])
                 if command.startswith(MARKER):
                     await self._say(peer, json.loads(command.removeprefix(MARKER)))
                 elif command.startswith("execute if entity"):
+                    self._asked = True
                     await self._say(peer, NONE_LEFT)
+
+    async def _maybe_remove_pig(self, peer: Peer) -> None:
+        """Count the watcher's requests after the ask, and remove the pig at the set count."""
+        if not (self.with_pig and self._asked and peer.name == WATCHER):
+            return
+        if self.pig_goes_after is None:
+            return
+        self.pig_goes_after -= 1
+        if self.pig_goes_after == 0:
+            await peer.send("minecraft:remove_entities", entity_ids=[PIG_ID])
 
     async def _say(self, peer: Peer, message: str) -> None:
         await peer.write(peer.frame("minecraft:system_chat", content=text(message), overlay=False))
+
+
+def _pig() -> dict[str, object]:
+    """An `add_entity` of a pig, standing still at the spawn."""
+    return {
+        "entity_id": PIG_ID,
+        "entity_uuid": uuid.UUID(int=PIG_ID),
+        "type": PIG,
+        "x": 4.5,
+        "y": -60.0,
+        "z": 4.5,
+        "velocity": {"scale": 0, "x": 0, "y": 0, "z": 0},
+        "pitch": 0,
+        "yaw": 0,
+        "head_yaw": 0,
+        "data": 0,
+    }
 
 
 @dataclass(frozen=True)
@@ -256,6 +300,38 @@ async def test_the_tagged_entities_go_and_the_rules_come_back_after_the_last_win
     assert result.after[-len(TEARDOWN) :] == TEARDOWN
 
 
+def _asked_at(transcript: Transcript) -> int:
+    """When Control asked whether a tagged entity is left."""
+    return next(t for t, c in _commands(transcript) if c.startswith("execute if entity"))
+
+
+def _watcher_requests_after(transcript: Transcript, t_ns: int) -> int:
+    return sum(
+        1
+        for e in transcript.events
+        if e.bot == WATCHER and e.packet.name == CLIENT_COMMAND and e.t_ns > t_ns
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_watcher_waits_until_it_is_told_the_last_body_is_gone() -> None:
+    result = await replay("entities/summon", EntitiesServer(with_pig=True, pig_goes_after=4))
+    asked = _asked_at(result.transcript)
+
+    assert _watcher_requests_after(result.transcript, asked) >= 4
+    assert result.after[-len(TEARDOWN) :] == TEARDOWN
+
+
+@pytest.mark.asyncio
+async def test_a_body_that_never_goes_ends_the_play_with_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(entities, "_GONE_SYNCS", 2)
+
+    with pytest.raises(TimeoutError, match="still tracked"):
+        await replay("entities/summon", EntitiesServer(with_pig=True, pig_goes_after=None))
+
+
 @pytest.mark.asyncio
 async def test_the_tests_of_a_group_share_one_play_of_it() -> None:
     """A play takes seconds (the fake's ticks are real), so a Group is played once per process."""
@@ -291,12 +367,12 @@ ROW = (
 
 
 @pytest.mark.asyncio
-async def test_summon_summons_each_entity_alone_in_its_window_two_blocks_apart() -> None:
+async def test_summon_summons_each_entity_alone_in_its_window_in_rows_of_eight() -> None:
     result = await play("entities/summon")
+    places = [(1.5 + 2 * x, -60.0, 9.5 + 2 * z) for z in range(3) for x in range(8)]
 
     assert [window.inside for window in result.windows] == [
-        (summoned(entity, (-16.5 + 2 * number, -60.0, -6.5), nbt),)
-        for number, (entity, nbt) in enumerate(ROW)
+        (summoned(entity, place, nbt),) for (entity, nbt), place in zip(ROW, places, strict=False)
     ]
 
 
@@ -311,7 +387,7 @@ async def test_summon_sets_nothing_up_between_its_windows() -> None:
 # `entities/data-changes`
 
 ZOMBIE = f"@e[tag={TAG},limit=1]"
-ROOF = "-5 -57 -13"
+ROOF = "14 -57 4"
 CHANGES = (
     f'data merge entity {ZOMBIE} {{CustomName:"Bob",CustomNameVisible:1b}}',
     f"data merge entity {ZOMBIE} {{Glowing:1b}}",
@@ -330,7 +406,7 @@ async def test_data_changes_roofs_and_summons_one_zombie_once_the_watcher_has_jo
     assert result.first == (
         *SETUP,
         f"setblock {ROOF} minecraft:stone",
-        summoned("zombie", (-4.5, -60.0, -12.5), MOB),
+        summoned("zombie", (14.5, -60.0, 4.5), MOB),
     )
 
 
@@ -352,7 +428,7 @@ async def test_data_changes_takes_the_roof_away_after_the_zombie() -> None:
 # `entities/death`
 
 NO_LOOT = f'{MOB},DeathLootTable:"minecraft:empty"'
-DYING = (("pig", (-8.5, -60.0, -16.5)), ("zombie", (-12.5, -60.0, -16.5)))
+DYING = (("pig", (8.5, -60.0, 4.5)), ("zombie", (11.5, -60.0, 4.5)))
 
 
 @pytest.mark.asyncio

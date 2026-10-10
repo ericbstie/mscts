@@ -1249,7 +1249,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   Groups).
   `normal` — the spec on normal difficulty; `find_when_tracked` — the entity of a type nearest a
   place, once the Bot tracks one; `remove_tagged` — kill every entity with a tag, without drops,
-  and wait until none is left (the `combat` and `player_hunger` Groups).
+  and wait until none is left (the `combat`, `player_hunger` and `entities` Groups).
 - `groups.chat`: `LISTENER` — the Bot in the world for every case, sent what the others say;
   `SPEAKER` — the Bot that speaks in `chat/player` and, as an operator, runs `chat/commands`;
   `JOINER` — the Bot that joins and leaves in `chat/join-leave`; `TALKER`, `OPERATOR` — the

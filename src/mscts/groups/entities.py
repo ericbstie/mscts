@@ -14,12 +14,18 @@ Fixture world has `spawn_mobs` off, ADR-0013.)
 
 Vanilla resends the data of every entity a tick changed at the end of that tick, in an order that
 follows their entity ids, which differ between Instances (#320). So each window changes one entity.
+
+Every entity stands in chunk (0, 0), where the watcher stands: a server tells a player about an
+entity only once it has sent the player the entity's chunk, and the first chunk batch, which the
+join waits for, holds that one. An entity two chunks away was summoned and killed before one
+Instance had sent its chunk (measured: 1 Self-check play of 20).
 """
 
 import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from mscts.bot import Bot
 from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, normal, pin_joins, remove_tagged
 from mscts.spec import CONTROL_PLAYER
@@ -61,21 +67,49 @@ def summon_command(entity: str, at: _Position, nbt: str) -> str:
     return f'summon minecraft:{entity} {x} {y} {z} {{{nbt},{_FACING},Tags:["{_TAG}"]}}'
 
 
+_GONE_SYNCS = 60
+"""How many barriers the watcher waits for the entities to go: each is at least a tick, and a
+body goes 20 ticks after its death."""
+
+_PLAYER = "minecraft:player"
+
+
+async def _remove_entities(context: GroupContext, watcher: Bot) -> None:
+    """Kill the tagged entities, and wait until the watcher is told the last is gone.
+
+    `remove_tagged` stops waiting once `execute if entity` matches none, and it never matches a
+    dead body, which stays 20 ticks. A body left when the next play freezes the world would stay
+    there, and finish dying inside one of its windows, a tick that depends on when the freeze
+    came (measured: 3 Self-check plays of 20). The watcher tracks no other entity but players.
+
+    Raises:
+        TimeoutError: The watcher still tracked an entity after `_GONE_SYNCS` barriers.
+    """
+    await remove_tagged(context.control, _TAG)
+    for _ in range(_GONE_SYNCS):
+        tracked = (watcher.entities[number] for number in watcher.entities)
+        if all(entity.type == _PLAYER for entity in tracked):
+            return
+        await watcher.sync()
+    msg = f"the watcher still tracked an entity after {_GONE_SYNCS} barriers"
+    raise TimeoutError(msg)
+
+
 @contextlib.asynccontextmanager
 async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
     """Pin the join, take Control away, freeze the world and join the watcher; undo it all.
 
     Yields the stack of undos, for what the body sets: they run first, then these. The tagged
-    entities go first, and `remove_tagged` waits for their bodies to go, in a running world.
+    entities go first, and the watcher waits until it is told their bodies are gone.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
         await context.freeze()
-        undo.push_async_callback(remove_tagged, control, _TAG)
         watcher = await context.bot(WATCHER)
         await watcher.join()
+        undo.push_async_callback(_remove_entities, context, watcher)
         yield undo
 
 
@@ -122,9 +156,16 @@ the villager is a plains farmer, the item frame lies on the ground holding a dia
 worth 5 points, the falling block is sand, and the TNT has 40 ticks left of its fuse."""
 
 
+_ROW_LENGTH = 8
+
+
 def row_position(number: int) -> _Position:
-    """Where the `number`th entity of `entities/summon` stands: 2 blocks apart, x -16.5 to 15.5."""
-    return (-16.5 + 2 * number, -60.0, -6.5)
+    """Where the `number`th entity of `entities/summon` stands: rows of 8, 2 blocks apart.
+
+    The rows run east from x 1.5, at z 9.5, 11.5 and 13.5, in the chunk the watcher stands in.
+    """
+    row, place = divmod(number, _ROW_LENGTH)
+    return (1.5 + 2 * place, -60.0, 9.5 + 2 * row)
 
 
 @group("entities/summon", spec=normal)
@@ -139,9 +180,9 @@ async def summon(context: GroupContext) -> None:
 
 # `entities/data-changes`: one zombie, changed one way at a time.
 
-ZOMBIE_AT: _Position = (-4.5, -60.0, -12.5)
+ZOMBIE_AT: _Position = (14.5, -60.0, 4.5)
 
-ROOF = "-5 -57 -13"
+ROOF = "14 -57 4"
 """A block above the zombie's head: a zombie the world ticks catches fire in daylight at random
 (`Zombie.isSunBurnTick` draws `nextFloat`), unless it cannot see the sky."""
 
@@ -196,7 +237,7 @@ DYING_TICKS = 20
 
 def death_position(number: int) -> _Position:
     """Where the `number`th mob of `entities/death` stands."""
-    return (-8.5 - 4 * number, -60.0, -16.5)
+    return (8.5 + 3 * number, -60.0, 4.5)
 
 
 @group("entities/death", spec=normal, kind=GroupKind.TICK_EXACT)
