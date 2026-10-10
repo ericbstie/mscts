@@ -1215,6 +1215,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `INVENTORY_CLICKS` — the click sequences in the chest's menu and in the Bot's own, one window
   each; `clicks_inventory` and `clicks_chest` — the `inventory/clicks-inventory` and
   `inventory/clicks-chest` scripts.
+- `groups.crafting`: `PACKETS` — what a window compares (the slots, the cursor, the ghost
+  recipe and the recipe book); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
+  inventory menu's slot of the first hotbar slot; `Grid` — one 2x2 case (a stack, the cells it
+  is clicked onto); `GRID_CASES` — the cases; `grid` — the `crafting/grid` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
