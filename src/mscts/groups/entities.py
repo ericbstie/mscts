@@ -135,3 +135,45 @@ async def summon(context: GroupContext) -> None:
             command = summon_command(entity.entity, row_position(number), entity.nbt)
             async with context.observe(*PACKETS):
                 await context.control.run(command)
+
+
+# `entities/data-changes`: one zombie, changed one way at a time.
+
+ZOMBIE_AT: _Position = (-4.5, -60.0, -12.5)
+
+ROOF = "-5 -57 -13"
+"""A block above the zombie's head: a zombie the world ticks catches fire in daylight at random
+(`Zombie.isSunBurnTick` draws `nextFloat`), unless it cannot see the sky."""
+
+_ZOMBIE = f"@e[tag={_TAG},limit=1]"
+
+CHANGES = (
+    f'data merge entity {_ZOMBIE} {{CustomName:"Bob",CustomNameVisible:1b}}',
+    f"data merge entity {_ZOMBIE} {{Glowing:1b}}",
+    f"data merge entity {_ZOMBIE} {{Silent:1b}}",
+    f"data merge entity {_ZOMBIE} {{NoGravity:1b}}",
+    f"data merge entity {_ZOMBIE} {{Fire:95s}}",
+    f"effect give {_ZOMBIE} minecraft:invisibility 1000 0 true",
+    f"attribute {_ZOMBIE} minecraft:movement_speed base set 0.5",
+)
+"""The changes, in order, each kept in the next. The fire starts at 95 ticks and burns for the
+last three steps; a fire hurts only on a multiple of 20 ticks left, so it never hurts the
+zombie here."""
+
+
+@group("entities/data-changes", spec=normal)
+async def data_changes(context: GroupContext) -> None:
+    """Control changes a zombie one way at a time; each window holds the change and one step.
+
+    An entity shows some changes only when it ticks: it is on fire, or invisible, from its next
+    tick on. So each window steps the world once.
+    """
+    control = context.control
+    async with _arena(context) as undo:
+        undo.push_async_callback(control.run, f"setblock {ROOF} minecraft:air")
+        await control.run(f"setblock {ROOF} minecraft:stone")
+        await control.run(summon_command("zombie", ZOMBIE_AT, _MOB))
+        for change in CHANGES:
+            async with context.observe(*PACKETS):
+                await control.run(change)
+                await context.step()

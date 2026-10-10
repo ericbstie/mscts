@@ -1234,7 +1234,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   death events, the removal); `summon_command` — the `/summon` of an entity type at a place with
   NBT, facing west and tagged; `Summon` — an entity type and its NBT; `SUMMONS` — the seventeen
   entities summoned, one window each; `row_position` — where each stands; `summon` — the
-  `entities/summon` script.
+  `entities/summon` script. `ZOMBIE_AT` — where the zombie of `entities/data-changes` stands;
+  `ROOF` — the block over its head, which keeps it from burning in daylight; `CHANGES` — the
+  commands that change it, one window each; `data_changes` — the `entities/data-changes` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control

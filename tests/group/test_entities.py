@@ -190,8 +190,8 @@ def summoned(entity: str, at: tuple[float, float, float], nbt: str) -> str:
     return f'summon minecraft:{entity} {x} {y} {z} {{{nbt},Rotation:[90f,0f],Tags:["{TAG}"]}}'
 
 
-GROUP_IDS = ("entities/summon",)
-KINDS = {"entities/summon": GroupKind.EXACT}
+GROUP_IDS = ("entities/summon", "entities/data-changes")
+KINDS = {"entities/summon": GroupKind.EXACT, "entities/data-changes": GroupKind.EXACT}
 
 
 # Registration and the shape of every play
@@ -302,3 +302,44 @@ async def test_summon_sets_nothing_up_between_its_windows() -> None:
 
     assert all(window.before == () for window in result.windows[1:])
     assert result.after == TEARDOWN
+
+
+# `entities/data-changes`
+
+ZOMBIE = f"@e[tag={TAG},limit=1]"
+ROOF = "-5 -57 -13"
+CHANGES = (
+    f'data merge entity {ZOMBIE} {{CustomName:"Bob",CustomNameVisible:1b}}',
+    f"data merge entity {ZOMBIE} {{Glowing:1b}}",
+    f"data merge entity {ZOMBIE} {{Silent:1b}}",
+    f"data merge entity {ZOMBIE} {{NoGravity:1b}}",
+    f"data merge entity {ZOMBIE} {{Fire:95s}}",
+    f"effect give {ZOMBIE} minecraft:invisibility 1000 0 true",
+    f"attribute {ZOMBIE} minecraft:movement_speed base set 0.5",
+)
+
+
+@pytest.mark.asyncio
+async def test_data_changes_roofs_and_summons_one_zombie_once_the_watcher_has_joined() -> None:
+    result = await play("entities/data-changes")
+
+    assert result.first == (
+        *SETUP,
+        f"setblock {ROOF} minecraft:stone",
+        summoned("zombie", (-4.5, -60.0, -12.5), MOB),
+    )
+
+
+@pytest.mark.asyncio
+async def test_data_changes_makes_each_change_in_its_window_then_steps_once() -> None:
+    result = await play("entities/data-changes")
+
+    assert [window.inside for window in result.windows] == [(change, STEP) for change in CHANGES]
+    assert all(window.before == () for window in result.windows[1:])
+
+
+@pytest.mark.asyncio
+async def test_data_changes_takes_the_roof_away_after_the_zombie() -> None:
+    result = await play("entities/data-changes")
+
+    assert result.after == (f"setblock {ROOF} minecraft:air", *TEARDOWN)
