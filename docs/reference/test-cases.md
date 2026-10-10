@@ -2389,3 +2389,141 @@ Which parts of the old player the new one keeps. A difference keeps or loses dat
 **Respawn game mode**
 
 The game mode the player is in after a respawn. A difference changes what the player can do.
+
+## `update_attributes.attributes[].modifiers`
+
+**Entity attribute modifiers**
+
+The modifiers on an attribute, such as the extra reach a creative player has. A server that leaves them out gives the player another reach.
+
+## `update_attributes.attributes[].modifiers[].amount`
+
+**Attribute modifier amount**
+
+How much a modifier adds to its attribute, or scales it by.
+
+## `update_attributes.attributes[].modifiers[].id`
+
+**Attribute modifier name**
+
+The name that identifies a modifier on its attribute, such as `minecraft:creative_mode_block_range`.
+
+## `update_attributes.attributes[].modifiers[].operation`
+
+**Attribute modifier operation**
+
+How a modifier's amount combines with the attribute's value: added, or multiplied.
+
+## `waypoint`
+
+**Locator bar change**
+
+A packet that adds, updates or removes a player on the client's locator bar, the strip that shows where other players are. Vanilla sends one when a player becomes a spectator. mscts does not decode it yet, so a difference in any of its bytes is reported for the packet as a whole.
+
+## `add_entity.x`
+
+**Entity x**
+
+Where the entity appears along x.
+
+## `add_entity.y`
+
+**Entity y**
+
+Where the entity appears along y.
+
+## `add_entity.z`
+
+**Entity z**
+
+Where the entity appears along z.
+
+## `set_entity_data.entries[].value.components.added`
+
+**Item components added**
+
+The components an item in an entity's data has beyond its type's defaults.
+
+## `set_entity_data.entries[].value.components.removed`
+
+**Item components removed**
+
+The default components an item in an entity's data has lost.
+
+## `set_entity_data.entries[]`
+
+**Entity data entry**
+
+One field of an entity's data.
+
+## `respawn.death_location.death_dimension_name`
+
+**Respawn death dimension**
+
+The dimension the player last died in, as the respawn packet reports it. A recovery compass points to that place.
+
+## `respawn.death_location.death_location.x`
+
+**Respawn death location x**
+
+The x of the block where the player last died.
+
+## `respawn.death_location.death_location.y`
+
+**Respawn death location y**
+
+The y of the block where the player last died.
+
+## `respawn.death_location.death_location.z`
+
+**Respawn death location z**
+
+The z of the block where the player last died.
+
+## `respawn.dimension_name`
+
+**Respawn dimension**
+
+The name of the dimension the player respawns in. The client uses it as the identity of its world.
+
+## `respawn.dimension_type`
+
+**Respawn dimension type**
+
+The type of the dimension the player respawns in. It sets properties such as the world's height, sky and ambient light.
+
+## `respawn.hashed_seed`
+
+**Respawn biome seed**
+
+The hashed seed the client uses to choose a biome near the edges of biome cells. A difference can move the boundaries of biome colours and effects.
+
+## `respawn.is_debug`
+
+**Respawn debug world flag**
+
+Whether the world the player respawns in is a debug world.
+
+## `respawn.is_flat`
+
+**Respawn flat world flag**
+
+Whether the world the player respawns in is flat. If it is, the client draws the horizon at the bottom of the world, not at sea level.
+
+## `respawn.portal_cooldown`
+
+**Portal cooldown at respawn**
+
+How many ticks remain before the player can use a portal again.
+
+## `respawn.previous_game_mode`
+
+**Respawn previous game mode**
+
+The player's previous game mode, or none. The client remembers it when switching modes.
+
+## `respawn.sea_level`
+
+**Respawn sea level**
+
+The sea level of the world the player respawns in.

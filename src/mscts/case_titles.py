@@ -332,6 +332,32 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "respawn": "Respawn",
         "respawn.data_kept": "Respawn data kept",
         "respawn.game_mode": "Respawn game mode",
+        # game modes (#59)
+        "update_attributes.attributes[].modifiers": "Entity attribute modifiers",
+        "update_attributes.attributes[].modifiers[].amount": "Attribute modifier amount",
+        "update_attributes.attributes[].modifiers[].id": "Attribute modifier name",
+        "update_attributes.attributes[].modifiers[].operation": "Attribute modifier operation",
+        "waypoint": "Locator bar change",
+        # death (#59)
+        "add_entity.x": "Entity x",
+        "add_entity.y": "Entity y",
+        "add_entity.z": "Entity z",
+        "set_entity_data.entries[].value.components.added": "Item components added",
+        "set_entity_data.entries[].value.components.removed": "Item components removed",
+        # respawn (#59)
+        "set_entity_data.entries[]": "Entity data entry",
+        "respawn.death_location.death_dimension_name": "Respawn death dimension",
+        "respawn.death_location.death_location.x": "Respawn death location x",
+        "respawn.death_location.death_location.y": "Respawn death location y",
+        "respawn.death_location.death_location.z": "Respawn death location z",
+        "respawn.dimension_name": "Respawn dimension",
+        "respawn.dimension_type": "Respawn dimension type",
+        "respawn.hashed_seed": "Respawn biome seed",
+        "respawn.is_debug": "Respawn debug world flag",
+        "respawn.is_flat": "Respawn flat world flag",
+        "respawn.portal_cooldown": "Portal cooldown at respawn",
+        "respawn.previous_game_mode": "Respawn previous game mode",
+        "respawn.sea_level": "Respawn sea level",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
