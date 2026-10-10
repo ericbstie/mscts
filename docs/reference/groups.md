@@ -138,6 +138,8 @@ What a player receives when it joins, up to the end of the first chunk batch: th
 
 The comparison ends when the first chunk batch is complete. Later batches, and the animals that walk into view, depend on timing.
 
+The recipe numbers in the recipe book are masked, as in the [crafting Groups](#crafting-crafting).
+
 ## Multiplayer (`players`)
 
 What a player sees of another player: their entry in the tab list, their body and the chat
@@ -557,8 +559,12 @@ emptied and put back at the spawn.
 A recipe book click names the recipe by the number the server gave it in the player's book.
 `crafting/recipe-book` gives the Bot each recipe it clicks and reads the number from the
 `recipe_book_add` the server sends. A server that sends none within 10 seconds fails the Group,
-and the Report names the recipe. Vanilla numbers its recipes in the same order on every
-start, so the numbers are compared too.
+and the Report names the recipe.
+
+The crafting Groups and `join/basic` mask these numbers, and the numbers of recipe groups. The
+client uses them only to look a recipe up, so a server that numbers its recipes another way
+shows the same recipe book. Whether a recipe is in a group is still compared. A removal is
+compared by how many recipes it takes out, not which.
 
 A player unlocks recipes when an item first enters its inventory, once per player. The
 `recipe-book` Bot gets every item it uses before its book is emptied, so that no case unlocks a

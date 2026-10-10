@@ -1216,7 +1216,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   each; `clicks_inventory` and `clicks_chest` — the `inventory/clicks-inventory` and
   `inventory/clicks-chest` scripts.
 - `groups.crafting`: `PACKETS` — what a window compares (the slots, the cursor, the ghost
-  recipe and the recipe book); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
+  recipe and the recipe book); `RECIPE_ID_MASKS` — the Masks on the recipe display ids and
+  group numbers, which the client uses only as keys (the crafting Groups and `join/basic`); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
   inventory menu's slot of the first hotbar slot; `Grid` — one 2x2 case (a stack, the cells it
   is clicked onto); `GRID_CASES` — the cases; `grid` — the `crafting/grid` script.
   `BOOKWORM` — the Bot of `crafting/recipe-book`; `TABLE` — where its crafting table stands;

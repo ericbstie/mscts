@@ -18,12 +18,14 @@ import pytest
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
 from mscts.codec.registry_names import registry_names
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome, compare
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import crafting
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
+from tests.compare.build import packet as built_packet
+from tests.compare.build import transcript as built_transcript
 from tests.group.test_control import CODEC, chat, tree
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server, serve
 
@@ -268,14 +270,53 @@ def clicks(window: Window) -> list[tuple[int, int, int]]:
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_each_group_is_exact_with_no_mask_on_the_default_spec(group_id: str) -> None:
+def test_each_group_is_exact_masks_the_recipe_ids_and_keeps_the_default_spec(
+    group_id: str,
+) -> None:
     group = GROUPS[group_id]
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert group.kind is GroupKind.EXACT
     assert group.requires == ()
-    assert group.masks == ()
+    assert group.masks == crafting.RECIPE_ID_MASKS
     assert group.spec(default) == default
+
+
+def test_the_recipe_id_masks_hide_the_display_ids_and_group_numbers() -> None:
+    assert {(mask.packet, mask.path) for mask in crafting.RECIPE_ID_MASKS} == {
+        ("minecraft:recipe_book_add", "entries[*].contents.id"),
+        ("minecraft:recipe_book_add", "entries[*].contents.group"),
+        ("minecraft:recipe_book_remove", "recipes[*]"),
+    }
+    assert all("ClientRecipeBook" in mask.reason for mask in crafting.RECIPE_ID_MASKS)
+
+
+def _book(display_id: int, group: int | None) -> Transcript:
+    """A Transcript of a Bot sent one recipe, with `display_id`, then sent its removal."""
+    contents = {
+        "id": display_id,
+        "display": _DISPLAY,
+        "group": group,
+        "category": 0,
+        "crafting_requirements": None,
+    }
+    added = {"entries": [{"contents": contents, "flags": 3}], "replace": False}
+    return built_transcript(
+        ("alice", built_packet("minecraft:recipe_book_add", fields=added)),
+        ("alice", built_packet("minecraft:recipe_book_remove", fields={"recipes": [display_id]})),
+    )
+
+
+def test_a_server_that_numbers_its_recipes_another_way_matches() -> None:
+    verdict = compare(_book(339, 4), _book(12, 0), crafting.RECIPE_ID_MASKS)
+
+    assert verdict.outcome is Outcome.MATCH, verdict.detail
+
+
+def test_a_recipe_in_a_group_on_one_server_only_still_diverges() -> None:
+    verdict = compare(_book(339, 4), _book(339, None), crafting.RECIPE_ID_MASKS)
+
+    assert verdict.outcome is Outcome.MISMATCH
 
 
 @pytest.mark.asyncio

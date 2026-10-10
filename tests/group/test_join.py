@@ -12,6 +12,7 @@ from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import join
+from mscts.groups.crafting import RECIPE_ID_MASKS
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
@@ -64,13 +65,13 @@ def joined(server: BlocksServer) -> list[str]:
     ]
 
 
-def test_it_is_exact_with_no_masks_prerequisites_or_spec() -> None:
+def test_it_is_exact_masks_the_recipe_ids_and_has_no_prerequisites_or_spec() -> None:
     group = GROUPS[GROUP_ID]
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert group.run is join.basic
     assert group.kind is GroupKind.EXACT
-    assert (group.masks, group.requires) == ((), ())
+    assert (group.masks, group.requires) == (RECIPE_ID_MASKS, ())
     assert group.spec(default) == default
 
 

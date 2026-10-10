@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from mscts.bot import Bot, Face
+from mscts.compare import Mask
 from mscts.group import GroupContext, group
 from mscts.groups._world import CONTROL_AT, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER
@@ -31,6 +32,27 @@ PACKETS = (
 )
 """What every window compares: the slots and the cursor as the server sets them, the ghost
 recipe the grid shows, and the recipes added to and taken from the recipe book."""
+
+_IDS_ARE_KEYS = (
+    "A number the server picks for each recipe display. The client uses it only as a key: "
+    "ClientRecipeBook.add puts the entry in its HashMap `known` under its RecipeDisplayId, "
+    "remove takes it out by that id, and place_recipe sends it back (26.3 javap). A server "
+    "that numbers its recipes another way shows the same recipe book."
+)
+_GROUPS_ARE_KEYS = (
+    "A number the server picks for each recipe group. The client uses it only as a key: "
+    "ClientRecipeBook.categorizeAndGroupRecipes puts the recipes with the same category and "
+    "group number in one button, through a HashBasedTable (26.3 javap). Whether a recipe has "
+    "a group is still compared."
+)
+
+RECIPE_ID_MASKS = (
+    Mask("minecraft:recipe_book_add", "entries[*].contents.id", _IDS_ARE_KEYS),
+    Mask("minecraft:recipe_book_add", "entries[*].contents.group", _GROUPS_ARE_KEYS),
+    Mask("minecraft:recipe_book_remove", "recipes[*]", _IDS_ARE_KEYS),
+)
+"""The recipe display ids and group numbers, which every recipe book Comparison hides
+(`join/basic` too). Which recipes a removal takes out is then not compared, only how many."""
 
 CRAFTER = "crafter"
 """The Bot of `crafting/grid`."""
@@ -93,7 +115,7 @@ async def _put(context: GroupContext, bot: Bot, case: Grid) -> None:
             await bot.click(HOTBAR_0)
 
 
-@group("crafting/grid")
+@group("crafting/grid", masks=RECIPE_ID_MASKS)
 async def grid(context: GroupContext) -> None:
     """Items clicked into the inventory's 2x2 grid show a result, or none."""
     async with contextlib.AsyncExitStack() as undo:
@@ -221,7 +243,7 @@ async def _in_table(
     await bot.close_container()
 
 
-@group("crafting/recipe-book")
+@group("crafting/recipe-book", masks=RECIPE_ID_MASKS)
 async def recipe_book(context: GroupContext) -> None:
     """Clicks in the recipe book fill the 2x2 and 3x3 grids, or show a ghost recipe."""
     control = context.control
@@ -272,7 +294,7 @@ async def _limited(context: GroupContext, bot: Bot, *, limited: bool) -> None:
         await bot.click(1)
 
 
-@group("crafting/unlocking")
+@group("crafting/unlocking", masks=RECIPE_ID_MASKS)
 async def unlocking(context: GroupContext) -> None:
     """Recipes given, taken and unlocked by an item change the book, and limit crafting."""
     control = context.control
