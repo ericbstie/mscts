@@ -93,6 +93,27 @@ GIVE_WINDOW = (
     "minecraft:sound",
 )
 """What a give window compares, as its Mark names it."""
+DROP_WINDOW = (
+    "minecraft:container_set_slot",
+    "minecraft:set_player_inventory",
+    "minecraft:add_entity",
+    SET_ENTITY_DATA,
+    "minecraft:take_item_entity",
+    "minecraft:remove_entities",
+    "minecraft:sound",
+)
+"""What a drop window compares: the slot, the item thrown, and the item picked up."""
+CLICK_WINDOW = (
+    "minecraft:open_screen",
+    "minecraft:container_set_content",
+    "minecraft:container_set_slot",
+    "minecraft:set_cursor_item",
+    "minecraft:set_player_inventory",
+    "minecraft:add_entity",
+    SET_ENTITY_DATA,
+    "minecraft:sound",
+)
+"""What a click window compares: the menus, an item thrown out, and a sound."""
 
 
 def label(packets: tuple[str, ...]) -> str:
@@ -391,6 +412,13 @@ def test_drop_masks_only_the_dropped_items_motion() -> None:
     }
 
 
+@pytest.mark.asyncio
+async def test_every_drop_window_compares_the_slot_the_thrown_item_and_its_pickup() -> None:
+    labels = [window.label for window in (await played(DROP)).windows]
+
+    assert labels == [label(DROP_WINDOW)] * 4
+
+
 def actions(window: Window) -> list[int]:
     return [int(str(fields["action"])) for name, fields in window.sent if name == PLAYER_ACTION]
 
@@ -487,6 +515,16 @@ async def test_control_places_the_filled_chest_and_gives_the_kit_before_the_ches
         f"setblock 2 -60 0 {CHEST_BLOCK}",
         *KIT_COMMANDS,
     )
+
+
+@pytest.mark.parametrize(("group_id", "windows"), [(CLICKS_INVENTORY, 15), (CLICKS_CHEST, 15)])
+@pytest.mark.asyncio
+async def test_every_click_window_compares_the_menus_a_thrown_item_and_the_sound(
+    group_id: str, windows: int
+) -> None:
+    labels = [window.label for window in (await played(group_id)).windows]
+
+    assert labels == [label(CLICK_WINDOW)] * windows
 
 
 def opens(window: Window) -> list[tuple[object, object]]:
