@@ -9,7 +9,6 @@ opens a crafting table.
 """
 
 import asyncio
-import functools
 import json
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -229,9 +228,10 @@ def read(transcript: Transcript, bot: str) -> Play:
 BOTS = {GRID: crafting.CRAFTER, BOOK: crafting.BOOKWORM, UNLOCKING: crafting.LEARNER}
 
 
-async def _play(group_id: str) -> Play:
+async def replay(group_id: str, server: CraftingServer) -> Play:
+    """Play `group_id` against `server` and read its windows."""
     transcript = Transcript(group_id=group_id, server="fake")
-    async with serve(CODEC, CraftingServer(), timeout_s=PLAY_TIMEOUT_S) as endpoint:
+    async with serve(CODEC, server, timeout_s=PLAY_TIMEOUT_S) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
             await GROUPS[group_id].run(context)
@@ -240,10 +240,15 @@ async def _play(group_id: str) -> Play:
     return read(transcript, BOTS[group_id])
 
 
-@functools.cache
-def played(group_id: str) -> Play:
-    """Play `group_id` against the fake once: every test of a Group reads that one play."""
-    return asyncio.run(_play(group_id))
+_PLAYS: dict[str, Play] = {}
+"""Each Group's play against a default `CraftingServer`; no test changes it."""
+
+
+async def play(group_id: str) -> Play:
+    """The play of `group_id` against a default fake server, played the first time it is asked."""
+    if group_id not in _PLAYS:
+        _PLAYS[group_id] = await replay(group_id, CraftingServer())
+    return _PLAYS[group_id]
 
 
 def clicks(window: Window) -> list[tuple[int, int, int]]:
@@ -269,7 +274,8 @@ def test_each_group_is_exact_with_no_mask_on_the_default_spec(group_id: str) -> 
     assert group.spec(default) == default
 
 
-def test_the_windows_compare_the_slots_the_ghost_recipe_and_the_recipe_book() -> None:
+@pytest.mark.asyncio
+async def test_the_windows_compare_the_slots_the_ghost_recipe_and_the_recipe_book() -> None:
     assert set(crafting.PACKETS) == {
         "minecraft:container_set_slot",
         "minecraft:container_set_content",
@@ -280,7 +286,7 @@ def test_the_windows_compare_the_slots_the_ghost_recipe_and_the_recipe_book() ->
         "minecraft:update_recipes",
     }
     assert len(crafting.PACKETS) == len(set(crafting.PACKETS))
-    assert {window.label for window in played(GRID).windows} == {
+    assert {window.label for window in (await play(GRID)).windows} == {
         " ".join((OBSERVE_OPEN, *crafting.PACKETS))
     }
 
@@ -289,8 +295,11 @@ def test_the_windows_compare_the_slots_the_ghost_recipe_and_the_recipe_book() ->
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_the_joins_are_pinned_control_moves_away_and_the_bot_starts_empty(group_id: str) -> None:
-    result = played(group_id)
+@pytest.mark.asyncio
+async def test_the_joins_are_pinned_control_moves_away_and_the_bot_starts_empty(
+    group_id: str,
+) -> None:
+    result = await play(group_id)
     bot = BOTS[group_id]
 
     assert result.commands[:4] == (
@@ -302,10 +311,11 @@ def test_the_joins_are_pinned_control_moves_away_and_the_bot_starts_empty(group_
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_the_bot_is_emptied_and_put_back_at_the_spawn_and_the_joins_unpinned(
+@pytest.mark.asyncio
+async def test_the_bot_is_emptied_and_put_back_at_the_spawn_and_the_joins_unpinned(
     group_id: str,
 ) -> None:
-    after = played(group_id).after
+    after = (await play(group_id)).after
     bot = BOTS[group_id]
 
     assert after[-4:] == (
@@ -319,8 +329,9 @@ def test_the_bot_is_emptied_and_put_back_at_the_spawn_and_the_joins_unpinned(
 # crafting/grid
 
 
-def test_each_grid_window_takes_the_stack_places_one_on_each_cell_and_puts_the_rest_back() -> None:
-    result = played(GRID)
+@pytest.mark.asyncio
+async def test_each_grid_window_takes_the_stack_puts_one_on_each_cell_and_the_rest_back() -> None:
+    result = await play(GRID)
 
     assert len(result.windows) == len(crafting.GRID_CASES)
     for window, case in zip(result.windows, crafting.GRID_CASES, strict=True):
@@ -333,8 +344,9 @@ def test_each_grid_window_takes_the_stack_places_one_on_each_cell_and_puts_the_r
         )
 
 
-def test_a_grid_click_reports_the_one_item_it_put_in_the_cell() -> None:
-    window = played(GRID).windows[0]  # one oak log, onto the top left cell
+@pytest.mark.asyncio
+async def test_a_grid_click_reports_the_one_item_it_put_in_the_cell() -> None:
+    window = (await play(GRID)).windows[0]  # one oak log, onto the top left cell
     sent = [f for name, f in window.sent if name == CLICK]
 
     assert sent[1]["changed_slots"] == [
@@ -374,8 +386,9 @@ def _fills(name: str, items: tuple[str, ...]) -> tuple[str, ...]:
     return (f"clear {name}", *replaces)
 
 
-def test_each_book_window_clicks_one_recipe_by_the_display_id_the_server_gave_it() -> None:
-    result = played(BOOK)
+@pytest.mark.asyncio
+async def test_each_book_window_clicks_one_recipe_by_the_display_id_the_server_gave_it() -> None:
+    result = await play(BOOK)
     inventory = len(crafting.INVENTORY_PLACEMENTS)
 
     assert len(result.windows) == len(_placements())
@@ -396,8 +409,9 @@ def test_each_book_window_clicks_one_recipe_by_the_display_id_the_server_gave_it
         assert window.control == ()
 
 
-def test_the_book_is_emptied_then_given_one_recipe_at_a_time_and_one_taken_again() -> None:
-    first = played(BOOK).windows[0].before
+@pytest.mark.asyncio
+async def test_the_book_is_emptied_then_given_one_recipe_at_a_time_and_one_taken_again() -> None:
+    first = (await play(BOOK)).windows[0].before
     bot = crafting.BOOKWORM
     gives = tuple(f"recipe give {bot} {recipe}" for recipe in crafting.BOOK_RECIPES)
     fills = _fills(bot, crafting.INVENTORY_PLACEMENTS[0].items)
@@ -422,8 +436,9 @@ def test_the_first_items_hold_every_item_a_placement_uses() -> None:
     assert crafting.LOCKED in crafting.BOOK_RECIPES
 
 
-def test_the_bot_opens_a_table_set_for_it_before_the_table_windows() -> None:
-    result = played(BOOK)
+@pytest.mark.asyncio
+async def test_the_bot_opens_a_table_set_for_it_before_the_table_windows() -> None:
+    result = await play(BOOK)
     x, y, z = crafting.TABLE
     table = result.windows[len(crafting.INVENTORY_PLACEMENTS)].before
 
@@ -446,8 +461,9 @@ def test_the_book_cases_cover_both_grids_a_ghost_recipe_and_a_recipe_not_known()
 # crafting/unlocking
 
 
-def test_the_learner_starts_with_an_empty_book_after_its_first_log() -> None:
-    first = played(UNLOCKING).windows[0].before
+@pytest.mark.asyncio
+async def test_the_learner_starts_with_an_empty_book_after_its_first_log() -> None:
+    first = (await play(UNLOCKING)).windows[0].before
     bot = crafting.LEARNER
 
     assert first[3:] == (
@@ -458,8 +474,9 @@ def test_the_learner_starts_with_an_empty_book_after_its_first_log() -> None:
     )
 
 
-def test_each_book_change_is_one_recipe_command_inside_a_window() -> None:
-    windows = played(UNLOCKING).windows[: len(crafting.BOOK_CHANGES)]
+@pytest.mark.asyncio
+async def test_each_book_change_is_one_recipe_command_inside_a_window() -> None:
+    windows = (await play(UNLOCKING)).windows[: len(crafting.BOOK_CHANGES)]
 
     assert [window.control for window in windows] == [
         (command.format(name=crafting.LEARNER),) for command in crafting.BOOK_CHANGES
@@ -467,8 +484,9 @@ def test_each_book_change_is_one_recipe_command_inside_a_window() -> None:
     assert all(window.sent == () for window in windows)
 
 
-def test_a_log_is_clicked_into_the_grid_with_crafting_limited_then_not() -> None:
-    result = played(UNLOCKING)
+@pytest.mark.asyncio
+async def test_a_log_is_clicked_into_the_grid_with_crafting_limited_then_not() -> None:
+    result = await play(UNLOCKING)
     bot = crafting.LEARNER
     first = len(crafting.BOOK_CHANGES)
 
@@ -482,11 +500,12 @@ def test_a_log_is_clicked_into_the_grid_with_crafting_limited_then_not() -> None
     assert "gamerule limited_crafting false" in result.after
 
 
-def test_a_log_given_after_its_advancement_is_revoked_unlocks_the_planks_again() -> None:
-    last = played(UNLOCKING).windows[-1]
+@pytest.mark.asyncio
+async def test_a_log_given_after_its_advancement_is_revoked_unlocks_the_planks_again() -> None:
+    last = (await play(UNLOCKING)).windows[-1]
     bot = crafting.LEARNER
 
-    assert len(played(UNLOCKING).windows) == len(crafting.BOOK_CHANGES) + 3
+    assert len((await play(UNLOCKING)).windows) == len(crafting.BOOK_CHANGES) + 3
     assert last.before == (
         f"clear {bot}",
         f"advancement revoke {bot} only minecraft:recipes/building_blocks/oak_planks",
