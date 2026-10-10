@@ -37,6 +37,12 @@ def _summon_item(place: _Place, stack: str, *more: str) -> str:
     return f"summon minecraft:item {_at(place)} {{{fields}}}"
 
 
+def _summon_orb(place: _Place, value: int, *more: str) -> str:
+    """The command that summons an experience orb worth `value` points at `place`, still."""
+    fields = ",".join((f"Value:{value}s", _STILL, *more))
+    return f"summon minecraft:experience_orb {_at(place)} {{{fields}}}"
+
+
 @contextlib.asynccontextmanager
 async def _arena(context: GroupContext, name: str) -> AsyncIterator[contextlib.AsyncExitStack]:
     """Join the Bot `name` empty, in survival, at the spawn; freeze the world.
@@ -165,3 +171,29 @@ async def item_merge(context: GroupContext) -> None:
             await _lay(context, undo, index)
         async with context.observe(*ITEM_PACKETS):
             await context.step(_MERGE_TICKS + 1)
+
+
+# `entities/item-despawn`
+
+DESPAWNS = (
+    _summon_item((-3.5, _FLOOR, _ROW_Z), "minecraft:stone 1", "Age:5998s"),
+    _summon_item((-0.5, _FLOOR, _ROW_Z), "minecraft:dirt 1", "Age:5997s"),
+    _summon_item((2.5, _FLOOR, _ROW_Z), "minecraft:stone 1", "Age:-32768s"),
+    _summon_orb((5.5, _FLOOR, _ROW_Z), 3, "Age:5996s"),
+)
+"""What `entities/item-despawn` summons, 3 blocks apart: items and an orb that go on the 2nd, 3rd
+and 4th tick, and an item that never goes. An item or orb ages a tick each tick and goes when its
+age reaches 6000; an item of age -32768 does not age (`ItemEntity.tick`, `ExperienceOrb.tick`).
+Each goes on a tick of its own."""
+
+_DESPAWN_TICKS = 5
+
+
+@group("entities/item-despawn", kind=GroupKind.TICK_EXACT)
+async def item_despawn(context: GroupContext) -> None:
+    """Items and an orb close to their despawn age, and one that never despawns, step past it."""
+    async with _arena(context, _WATCHER):
+        for command in DESPAWNS:
+            await context.control.run(command)
+        async with context.observe(*ITEM_PACKETS):
+            await context.step(_DESPAWN_TICKS)
