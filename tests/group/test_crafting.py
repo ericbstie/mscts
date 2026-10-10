@@ -37,8 +37,8 @@ COMMANDS = tree(
     "gamerule", "tp", "clear", "item", "recipe", "setblock", "advancement", "give", "tellraw"
 )
 PLAY_TIMEOUT_S = 300.0
-GRID = "crafting/grid"
-GROUP_IDS = (GRID,)
+GRID, BOOK = "crafting/grid", "crafting/recipe-book"
+GROUP_IDS = (GRID, BOOK)
 INVENTORY_SLOTS = 46
 """The inventory menu's slots: result, the 2x2, the armor, the 27, the hotbar, the off hand."""
 TABLE_WINDOW = 1
@@ -112,9 +112,7 @@ class CraftingServer:
             await peer.write(chat(peer, json.loads(command.removeprefix(MARKER))))
             return
         words = command.split()
-        target = self._peers.get(words[1]) if len(words) > 1 else None
-        if target is None:
-            target = self._peers.get(words[3]) if len(words) > 3 else None
+        target = next((self._peers[word] for word in words[1:4] if word in self._peers), None)
         if target is not None:
             frame = self._effect(target, words)
             if frame is not None:
@@ -228,7 +226,7 @@ def read(transcript: Transcript, bot: str) -> Play:
     )
 
 
-BOTS = {GRID: crafting.CRAFTER}
+BOTS = {GRID: crafting.CRAFTER, BOOK: crafting.BOOKWORM}
 
 
 async def _play(group_id: str) -> Play:
@@ -358,3 +356,88 @@ def test_the_grid_cases_cover_shaped_shapeless_and_invalid_arrangements() -> Non
     assert {"minecraft:oak_log", "minecraft:oak_planks", "minecraft:bone"} <= items
     assert crafting.Grid("minecraft:oak_planks", 2, (1, 4)) in crafting.GRID_CASES  # diagonal
     assert crafting.Grid("minecraft:oak_planks", 4, (1, 2, 3, 4)) in crafting.GRID_CASES
+
+
+# crafting/recipe-book
+
+
+def _placements() -> tuple[crafting.Placement, ...]:
+    return (*crafting.INVENTORY_PLACEMENTS, *crafting.TABLE_PLACEMENTS)
+
+
+def _fills(name: str, items: tuple[str, ...]) -> tuple[str, ...]:
+    """Control's commands that empty `name` and give it `items`, from `inventory.0` on."""
+    replaces = (
+        f"item replace entity {name} inventory.{index} with {item}"
+        for index, item in enumerate(items)
+    )
+    return (f"clear {name}", *replaces)
+
+
+def test_each_book_window_clicks_one_recipe_by_the_display_id_the_server_gave_it() -> None:
+    result = played(BOOK)
+    inventory = len(crafting.INVENTORY_PLACEMENTS)
+
+    assert len(result.windows) == len(_placements())
+    for index, (window, case) in enumerate(zip(result.windows, _placements(), strict=True)):
+        window_id = 0 if index < inventory else TABLE_WINDOW
+        assert window.sent == (
+            (
+                PLACE_RECIPE,
+                {
+                    "window_id": window_id,
+                    "recipe_id": display_id(case.recipe),
+                    "use_max_items": case.use_max_items,
+                },
+            ),
+        )
+        fills = _fills(crafting.BOOKWORM, case.items)
+        assert window.before[-len(fills) :] == fills
+        assert window.control == ()
+
+
+def test_the_book_is_emptied_then_given_one_recipe_at_a_time_and_one_taken_again() -> None:
+    first = played(BOOK).windows[0].before
+    bot = crafting.BOOKWORM
+    gives = tuple(f"recipe give {bot} {recipe}" for recipe in crafting.BOOK_RECIPES)
+    fills = _fills(bot, crafting.INVENTORY_PLACEMENTS[0].items)
+
+    assert first == (
+        "gamerule player_movement_check false",
+        "gamerule respawn_radius 0",
+        "tp control 96.5 -60 96.5",
+        f"clear {bot}",
+        *_fills(bot, crafting.FIRST_ITEMS),
+        f"recipe take {bot} *",
+        *gives,
+        f"recipe take {bot} {crafting.LOCKED}",
+        *fills,
+    )
+
+
+def test_the_first_items_hold_every_item_a_placement_uses() -> None:
+    given = {item.split()[0] for item in crafting.FIRST_ITEMS}
+
+    assert {item.split()[0] for case in _placements() for item in case.items} <= given
+    assert crafting.LOCKED in crafting.BOOK_RECIPES
+
+
+def test_the_bot_opens_a_table_set_for_it_before_the_table_windows() -> None:
+    result = played(BOOK)
+    x, y, z = crafting.TABLE
+    table = result.windows[len(crafting.INVENTORY_PLACEMENTS)].before
+
+    assert result.opened_table_before == len(crafting.INVENTORY_PLACEMENTS)
+    assert table == (
+        f"setblock {x} {y} {z} minecraft:crafting_table",
+        f"tp {crafting.BOOKWORM} 12.5 -60 12.5 0 0",
+        *_fills(crafting.BOOKWORM, crafting.TABLE_PLACEMENTS[0].items),
+    )
+    assert f"setblock {x} {y} {z} minecraft:air" in result.after
+
+
+def test_the_book_cases_cover_both_grids_a_ghost_recipe_and_a_recipe_not_known() -> None:
+    assert any(case.use_max_items for case in crafting.INVENTORY_PLACEMENTS)
+    assert any(case.use_max_items for case in crafting.TABLE_PLACEMENTS)
+    assert crafting.INVENTORY_PLACEMENTS[-1].recipe == crafting.LOCKED
+    assert crafting.TABLE_PLACEMENTS[-1].recipe == crafting.LOCKED

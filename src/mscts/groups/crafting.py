@@ -11,9 +11,11 @@ the 2x2 grid of the inventory).
 """
 
 import contextlib
+from collections.abc import Mapping
 from dataclasses import dataclass
+from typing import cast
 
-from mscts.bot import Bot
+from mscts.bot import Bot, Face
 from mscts.group import GroupContext, group
 from mscts.groups._world import CONTROL_AT, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER
@@ -98,3 +100,137 @@ async def grid(context: GroupContext) -> None:
         bot = await _stage(context, undo, CRAFTER)
         for case in GRID_CASES:
             await _put(context, bot, case)
+
+
+# `crafting/recipe-book`
+
+BOOKWORM = "bookworm"
+"""The Bot of `crafting/recipe-book`."""
+
+TABLE = (12, -60, 14)
+"""Where the crafting table stands, two blocks south of where the Bot uses it."""
+_TABLE_STAND = "12.5 -60 12.5"
+"""Where the Bot stands to use the table, facing south."""
+
+BOOK_RECIPES = (
+    "minecraft:oak_planks",
+    "minecraft:crafting_table",
+    "minecraft:stone_pickaxe",
+    "minecraft:stick",
+)
+"""The recipes the Bot is given one at a time, to read their display ids from `recipe_book_add`."""
+
+LOCKED = "minecraft:stick"
+"""The recipe taken from the book again before the cases: a click on it places nothing."""
+
+_BOOK_TIMEOUT_S = 10.0
+"""How long the Bot waits for the book entry of a recipe it is given."""
+
+
+@dataclass(frozen=True, slots=True)
+class Placement:
+    """One click in the recipe book: the recipe, and whether it asks for as many as it can.
+
+    `items` are the stacks in the Bot's inventory before the click, from `inventory.0` on,
+    each an item and a count.
+    """
+
+    recipe: str
+    items: tuple[str, ...]
+    use_max_items: bool = False
+
+
+INVENTORY_PLACEMENTS = (
+    Placement("minecraft:oak_planks", ("minecraft:oak_log 2",)),
+    Placement("minecraft:oak_planks", ("minecraft:oak_log 2",), use_max_items=True),
+    Placement("minecraft:crafting_table", ("minecraft:oak_planks 2",)),
+    Placement(LOCKED, ("minecraft:oak_planks 2",)),
+)
+"""The clicks in the inventory's 2x2 grid: one placement, all of it, too few items for a
+crafting table (a ghost recipe), and a recipe the Bot does not know."""
+
+TABLE_PLACEMENTS = (
+    Placement("minecraft:stone_pickaxe", ("minecraft:cobblestone 3", "minecraft:stick 2")),
+    Placement("minecraft:stone_pickaxe", ("minecraft:cobblestone 1", "minecraft:stick 2")),
+    Placement("minecraft:crafting_table", ("minecraft:oak_planks 8",), use_max_items=True),
+    Placement(LOCKED, ("minecraft:oak_planks 2",)),
+)
+"""The clicks in a crafting table's 3x3 grid: a pickaxe, a pickaxe with too few items, two
+crafting tables at once, and a recipe the Bot does not know."""
+
+FIRST_ITEMS = (
+    "minecraft:oak_log 2",
+    "minecraft:oak_planks 8",
+    "minecraft:cobblestone 3",
+    "minecraft:stick 2",
+)
+"""Every item a placement uses, given once before the recipes are taken: an item a player
+first gets unlocks recipes (vanilla's `recipes/` advancements), once per player, so no
+placement's items unlock one."""
+
+
+async def _fill(context: GroupContext, name: str, items: tuple[str, ...]) -> None:
+    """Empty the Bot `name` and put `items` in its inventory, from `inventory.0` on."""
+    control = context.control
+    await control.run(f"clear {name}")
+    for index, item in enumerate(items):
+        await control.run(f"item replace entity {name} inventory.{index} with {item}")
+
+
+async def _display_id(context: GroupContext, bot: Bot, recipe: str) -> int:
+    """Give the Bot `recipe` and read the display id its recipe book entry has."""
+    await context.control.run(f"recipe give {bot.name} {recipe}")
+    packet = await bot.expect("minecraft:recipe_book_add", timeout_s=_BOOK_TIMEOUT_S)
+    entries = cast("list[Mapping[str, object]]", (packet.fields or {})["entries"])
+    (entry,) = entries
+    return cast("int", cast("Mapping[str, object]", entry["contents"])["id"])
+
+
+async def _click(bot: Bot, context: GroupContext, ids: Mapping[str, int], case: Placement) -> None:
+    """Click the recipe of `case` in the book, inside a window."""
+    async with context.observe(*PACKETS):
+        await bot.place_recipe(ids[case.recipe], use_max_items=case.use_max_items)
+
+
+async def _set_table(context: GroupContext, undo: contextlib.AsyncExitStack, bot: Bot) -> None:
+    """Set a crafting table two blocks south of where the Bot is put to use it."""
+    control = context.control
+    x, y, z = TABLE
+    undo.push_async_callback(control.run, f"setblock {x} {y} {z} minecraft:air")
+    await control.run(f"setblock {x} {y} {z} minecraft:crafting_table")
+    await control.run(f"tp {bot.name} {_TABLE_STAND} 0 0")
+
+
+async def _in_table(
+    context: GroupContext, bot: Bot, ids: Mapping[str, int], case: Placement
+) -> None:
+    """Open the table, click the recipe of `case`, and close the table.
+
+    Closing the table gives back what its grid holds, so each case starts from an empty grid.
+    """
+    await _fill(context, bot.name, case.items)
+    await bot.sync()
+    x, y, z = TABLE
+    await bot.place(x, y, z, Face.NORTH, (0.5, 0.5, 0.0))
+    await bot.sync()
+    await _click(bot, context, ids, case)
+    await bot.close_container()
+
+
+@group("crafting/recipe-book")
+async def recipe_book(context: GroupContext) -> None:
+    """Clicks in the recipe book fill the 2x2 and 3x3 grids, or show a ghost recipe."""
+    control = context.control
+    async with contextlib.AsyncExitStack() as undo:
+        bot = await _stage(context, undo, BOOKWORM)
+        await _fill(context, bot.name, FIRST_ITEMS)
+        await control.run(f"recipe take {bot.name} *")
+        await bot.sync()
+        ids = {recipe: await _display_id(context, bot, recipe) for recipe in BOOK_RECIPES}
+        await control.run(f"recipe take {bot.name} {LOCKED}")
+        for case in INVENTORY_PLACEMENTS:
+            await _fill(context, bot.name, case.items)
+            await _click(bot, context, ids, case)
+        await _set_table(context, undo, bot)
+        for case in TABLE_PLACEMENTS:
+            await _in_table(context, bot, ids, case)

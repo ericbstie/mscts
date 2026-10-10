@@ -1219,6 +1219,12 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   recipe and the recipe book); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
   inventory menu's slot of the first hotbar slot; `Grid` — one 2x2 case (a stack, the cells it
   is clicked onto); `GRID_CASES` — the cases; `grid` — the `crafting/grid` script.
+  `BOOKWORM` — the Bot of `crafting/recipe-book`; `TABLE` — where its crafting table stands;
+  `BOOK_RECIPES` — the recipes it is given, to read their display ids from `recipe_book_add`;
+  `LOCKED` — the recipe taken from its book again; `Placement` — one recipe book click (the
+  recipe, the stacks, `use_max_items`); `INVENTORY_PLACEMENTS` and `TABLE_PLACEMENTS` — the
+  clicks in the 2x2 and the 3x3 grid; `FIRST_ITEMS` — every item it gets before its book is
+  emptied; `recipe_book` — the `crafting/recipe-book` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
