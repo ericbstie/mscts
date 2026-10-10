@@ -539,6 +539,34 @@ Vanilla throws an item a player drops with a random motion and yaw, so these Gro
 A `/give` of 100 stone makes two item entities in one tick. Vanilla sends each new entity's data again at the end of the tick, in an order that follows the entity ids, and two servers can number their entities differently. That window leaves out `set_entity_data`. The slots still show what was given, but which entity carried which stack is not compared.
 
 Swapping hands with F is not covered yet, because the Bot cannot press it ([#359](https://github.com/ericbstie/mscts/issues/359)).
+## Crafting (`crafting`)
+
+What a crafting grid shows, what a click in the recipe book puts in it, and how recipes enter
+and leave the recipe book. Each Group joins one Bot in survival and empties its inventory.
+Control gives the Bot the items each case uses and stands at x 96.5 and z 96.5, out of view.
+Every window compares the slots and the cursor as the server sets them, the ghost recipe, the
+recipes added to and removed from the book, and the recipe data. When the Group ends, the Bot is
+emptied and put back at the spawn.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `crafting/grid` | exact | none | A Bot, `crafter`, clicks items into the 2 × 2 grid of its inventory, one item a cell, in a window for each case: planks from a log, sticks, a crafting table, bone meal from a bone (shapeless), and two arrangements that make nothing. | none |
+| `crafting/recipe-book` | exact | none | A Bot, `bookworm`, clicks recipes in its recipe book, in a window each. In the 2 × 2 grid: planks, all the planks it can make, a crafting table with too few planks, and sticks, a recipe it does not know. Then in a crafting table: a stone pickaxe, a stone pickaxe with too little cobblestone, as many crafting tables as it can make, and sticks. | none |
+| `crafting/unlocking` | exact | none | Control gives a Bot, `learner`, the stick recipe and takes it, then gives and takes every recipe, in a window each. With `limited_crafting` on and then off, the Bot clicks an oak log into its grid while it knows no recipe. Last, Control revokes the advancement that unlocks oak planks and gives the Bot an oak log, which unlocks the recipe again. | none |
+
+A recipe book click names the recipe by the number the server gave it in the player's book.
+`crafting/recipe-book` gives the Bot each recipe it clicks and reads the number from the
+`recipe_book_add` the server sends. Vanilla numbers its recipes in the same order on every
+start, so the numbers are compared too.
+
+A player unlocks recipes when an item first enters its inventory, once per player. The
+`recipe-book` Bot gets every item it uses before its book is emptied, so that no case unlocks a
+recipe of its own. A grid holds the items it was given until it is cleared. `/clear` empties the
+inventory's grid as well, and a crafting table gives its grid back when it is closed, so the
+Bot opens the table for each click and closes it after.
+
+The Bot does not take a crafted result, and does not click items into a crafting table's grid:
+it cannot yet predict those clicks the way the client does.
 
 ## Planned
 
