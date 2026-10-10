@@ -336,6 +336,8 @@ def test_respawn_compares_what_the_new_player_is_sent() -> None:
         "minecraft:game_event",
         "minecraft:update_attributes",
         "minecraft:set_entity_data",
+        "minecraft:change_difficulty",
+        "minecraft:initialize_border",
     )
 
 

@@ -259,6 +259,8 @@ RESPAWN_PACKETS = (
     "minecraft:game_event",
     "minecraft:update_attributes",
     "minecraft:set_entity_data",
+    "minecraft:change_difficulty",
+    "minecraft:initialize_border",
 )
 
 _POINTER = "pointer"
