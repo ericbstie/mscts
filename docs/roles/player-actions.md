@@ -29,6 +29,9 @@ lead routes each change and both review it.
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #61: after `bot.close_container()`, pass `bot.sync()` before Control's next command: they travel on two connections, and vanilla can run them in either order, which leaves the Bot's InventoryTracker stale (#62 hit the same with a crafting table and `/clear`).
+- #61: a `/give` over one stack makes two item entities in one tick, and the end-of-tick resend of their data follows entity-id hash order: that window leaves `set_entity_data` out. A `context.step` costs about 0.3 s, so four 41-tick windows came to 106 s, over the Self-check's 90 s.
+- #61: a Candidate that never opens a container makes the Bot's next click land in its own inventory menu. The Group checks for `open_screen` first and fails naming the container.
 - #59: a respawning player reaches other Bots in view a tick or two late, and the delay differed between Instances. With view distance 2, keep Bots 6 chunks apart.
 - #59: one drop entity per death window: one tick's new entities are resent in raw-id order, which differs per Instance. Drop motion and yaw are random (`ItemEntity` and `ExperienceOrb` constructors), so they take a Mask. An orb is an `add_entity` of type 50, not a packet of its own.
 - #59: `/give` leaves an item entity behind in a frozen world. A cleanup that kills only the Group's drops tags what is there before the kit is given, or that item survives (9 of 20 respawn plays failed).

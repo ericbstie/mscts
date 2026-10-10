@@ -34,6 +34,13 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
   `scripts/mutate.py --batch spec.json --jobs 4 -- <tests>` (red-green,
   Known traps), output redirected to a log in your scratch dir. Name the
   narrowest test selection that kills the mutants, and pass `--timeout 300`.
+- A Group test module plays each Group once per process and its tests read
+  that play: `play(group_id)` caches in a module dict (`_PLAYS`), and
+  `replay(group_id, server)` plays uncached for a test that needs its own
+  fake server. The unit tier runs `--dist loadfile`, so keep a Group's tests
+  in one file (#350).
+- `mscts run --group` takes one glob, and the last `--group` wins: run one
+  `mscts run` per glob.
 - Repeat a selection with
   `uv run scripts/repeat.py --times N [--stress] -- <pytest args>` (one
   line per run, the union of failures). Never hand-roll a loop. Use

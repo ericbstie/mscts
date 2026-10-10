@@ -34,6 +34,8 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #62: recipe display ids and group numbers are numbers the client uses only as HashMap keys (`ClientRecipeBook.known`): masked in the crafting Groups and join/basic until #363 renumbers them per Transcript.
+- #62: title only the test cases `compare` produces from a vanilla dump of the Group: templating every combination gave 209 titles where 99 were needed.
 - #330: a test case that no compared pair names is not in `Verdict.test_cases` and is not scored while `NETWORK_TRAFFIC_ONLY_PASSES` is on (`report._never_compared`). Check whether a compared pair names the same test case before treating network-traffic lines alike: heightmaps and `status_response.description` do.
 - #330: a `missing` packet adds its fields' test cases only when it is gameplay; a chunk batch marker missing or a tick late is network traffic.
 - #283: A network-traffic-only field is dropped in its `_CANONICAL` entry (`_without`), with its javap reason; a titles test builds the empty-list, one-side-only and absent forms of every stack, because each names a case.
