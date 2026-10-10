@@ -258,7 +258,7 @@ class _Opening:
             yield packet
 
 
-async def replay(group_id: str, server: ChestServer) -> Play:
+async def replay(group_id: str, server: ControlServer) -> Play:
     """Play `group_id` against `server`; return what was read from its Transcript."""
     transcript = Transcript(group_id=group_id, server="fake")
     async with playing(server, transcript) as context:
@@ -525,6 +525,13 @@ async def test_every_click_window_compares_the_menus_a_thrown_item_and_the_sound
     labels = [window.label for window in (await played(group_id)).windows]
 
     assert labels == [label(CLICK_WINDOW)] * windows
+
+
+@pytest.mark.asyncio
+async def test_the_chest_clicks_say_so_when_the_chest_does_not_open() -> None:
+    # A server that opens nothing: the Bot's first click would land on its own inventory menu.
+    with pytest.raises(ValueError, match="the chest did not open"):
+        await replay(CLICKS_CHEST, ControlServer(commands=COMMANDS))
 
 
 def opens(window: Window) -> list[tuple[object, object]]:

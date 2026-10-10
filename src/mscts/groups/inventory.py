@@ -345,9 +345,17 @@ async def _set_kit(context: GroupContext) -> None:
 
 
 async def _open_chest(context: GroupContext, bot: Bot) -> None:
-    """Open the chest in a window of its own: its menu and the Bot's come with it."""
+    """Open the chest in a window of its own: its menu and the Bot's come with it.
+
+    Raises:
+        ValueError: The server opened no container for the Bot. A click meant for the chest
+            would land on the Bot's own inventory menu.
+    """
     async with context.observe(*CLICK_PACKETS):
         await bot.place(*CHEST, Face.UP)
+    if bot.inventory.window_id == 0:
+        msg = "the chest did not open: the server sent the Bot no open_screen for it"
+        raise ValueError(msg)
 
 
 async def _close(bot: Bot) -> None:
