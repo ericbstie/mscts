@@ -451,6 +451,24 @@ class GroupContext:
             self._ticks += 1
             self._mark_each(f"{TICK_MARK}{self._ticks}", ends)
 
+    async def step_after(self, bot: Bot, *, ticks: int = 1) -> None:
+        """Step the frozen world on `ticks` ticks once the server has handled what `bot` sent.
+
+        For an action a stepped tick must see: `bot` acts on its own connection, and
+        Control steps on another, so without a barrier between them the step could reach
+        the server first and the action land a tick late. So `bot` passes the barrier
+        (`Bot.sync`) first: vanilla handles a player's packets in the order they came, and
+        answers the barrier's request as it handles it, so by the answer it has handled the
+        action (docs/research/2026-10-10-step-barrier.md). Then it steps (`step`).
+
+        Raises:
+            ValueError: `ticks` is less than 1, or the Group has not frozen the world.
+            TimeoutError: `bot`'s barrier, or a step, got no answer in time.
+            ProtocolError: `bot` is not in play, or the server disconnected a Bot.
+        """
+        await bot.sync()
+        await self.step(ticks)
+
     async def end(self) -> None:
         """Unfreeze the world if the Group froze it, then refuse a disconnect still queued.
 
