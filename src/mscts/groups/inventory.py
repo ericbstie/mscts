@@ -210,7 +210,7 @@ async def drop(context: GroupContext) -> None:
             await context.control.run(f"item replace entity {_DROPPER} hotbar.0 with {case.held}")
             async with context.observe(*DROP_PACKETS):
                 await bot.drop(all=case.all)
-                await context.step(case.ticks)
+                await context.step_after(bot, ticks=case.ticks)
 
 
 # `inventory/clicks-inventory` and `inventory/clicks-chest`
