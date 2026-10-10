@@ -589,6 +589,10 @@ How items on the ground merge, despawn and are picked up. Each Group joins one B
 
 An item looks for another to merge with only on every 40th of its own ticks. The pairs are laid a tick apart so that each pair merges on a tick of its own. Vanilla sends the entity data that changes in one tick in an order that follows the entity ids, and two servers can number their entities differently.
 
+A frozen world does not freeze its players, so the Bot picks up what it can reach on every tick. A pickup delay counts down only on the ticks the world steps, so a stone is picked up on the tick its delay reaches 0. A player takes one orb in its reach each tick, chosen at random, so each orb has a window of its own. The three orbs add up to 45 points, which stays under level 5: vanilla's level-up sound depends on how long the player has been in the game.
+
+Whether two orbs merge depends on their entity ids in vanilla, so `entities/item-merge` lays no orbs.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
