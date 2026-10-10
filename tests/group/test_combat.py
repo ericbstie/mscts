@@ -218,12 +218,29 @@ class Play:
     """The windows in which the fighter read the husks back: not among `windows`."""
 
 
-async def play(group_id: str, server: CombatServer | None = None) -> Play:
-    """Play `group_id` against a fake server; read what the Transcript shows."""
+async def replay(group_id: str, server: CombatServer) -> Play:
+    """Play `group_id` against `server`; read what the Transcript shows."""
     transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(server or CombatServer(), transcript) as context:
+    async with playing(server, transcript) as context:
         await GROUPS[group_id].run(context)
     return read(transcript)
+
+
+_PLAYS: dict[str, Play] = {}
+"""Each Group's play against a default `CombatServer`; no test changes it."""
+
+
+async def play(group_id: str) -> Play:
+    """The play of `group_id` against a default fake server, played the first time it is asked."""
+    if group_id not in _PLAYS:
+        _PLAYS[group_id] = await replay(group_id, CombatServer())
+    return _PLAYS[group_id]
+
+
+@pytest.mark.asyncio
+async def test_the_tests_of_a_group_share_one_play_of_it() -> None:
+    """A play takes seconds (the fake's ticks are real), so a Group is played once per process."""
+    assert await play("combat/melee-mob") is await play("combat/melee-mob")
 
 
 def label_of(packets: tuple[str, ...]) -> str:
@@ -536,7 +553,7 @@ async def test_control_asks_twenty_times_and_then_fails_while_a_husk_is_left() -
     server = CombatServer(left="Test passed, count: 1")
 
     with pytest.raises(TimeoutError, match="mscts_combat was still there after 20 asks"):
-        await play("combat/melee-mob", server)
+        await replay("combat/melee-mob", server)
 
     asked = [p for p in server.seen if "execute if entity" in str((p.fields or {}).get("command"))]
     assert len(asked) == 20
