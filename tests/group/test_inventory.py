@@ -12,7 +12,7 @@ from typing import cast, override
 
 import pytest
 
-from mscts.bot import Face
+from mscts.bot import SYNC_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
@@ -29,6 +29,7 @@ from tests.group.test_control import (
     playing,
     tree,
 )
+from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import Peer
 
 GIVE, DROP = "inventory/give", "inventory/drop"
@@ -149,6 +150,8 @@ class Play:
     after: tuple[str, ...]
     timeline: tuple[str, ...]
     """Control's commands, the Bot's closes (`close <window id>`) and its syncs, in order."""
+    barriers: tuple[int, ...]
+    """For each drop a step follows: the Bot's barrier requests in between."""
 
 
 def _commands(transcript: Transcript) -> list[tuple[int, str]]:
@@ -194,7 +197,13 @@ def read(transcript: Transcript, bot: str) -> Play:
         previous = closed
     first = tuple(c for t, c in control if t < opens[0]) if opens else ()
     after = tuple(c for t, c in control if t > previous)
-    return Play(tuple(windows), first, after, _timeline(transcript, bot, control))
+    return Play(
+        tuple(windows),
+        first,
+        after,
+        _timeline(transcript, bot, control),
+        tuple(barriers_before_steps(transcript, bot, {PLAYER_ACTION})),
+    )
 
 
 def _timeline(transcript: Transcript, bot: str, control: list[tuple[int, str]]) -> tuple[str, ...]:
@@ -433,6 +442,14 @@ async def test_the_bot_presses_q_once_in_each_window_and_ctrl_q_in_the_second() 
         [DROP_ITEM],
         [DROP_ITEM],
     ]
+
+
+@pytest.mark.asyncio
+async def test_each_drop_reaches_the_server_before_the_steps_after_it() -> None:
+    result = await played(DROP)
+
+    assert len(result.barriers) == len(result.windows)
+    assert set(result.barriers) == {SYNC_REQUESTS}
 
 
 @pytest.mark.asyncio
