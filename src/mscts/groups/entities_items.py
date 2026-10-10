@@ -197,3 +197,79 @@ async def item_despawn(context: GroupContext) -> None:
             await context.control.run(command)
         async with context.observe(*ITEM_PACKETS):
             await context.step(_DESPAWN_TICKS)
+
+
+# `entities/item-pickup`
+
+_PICKER = "picker"
+_FEET: _Place = (0.5, _FLOOR, 0.5)
+"""Where every item and orb of `entities/item-pickup` appears: at the Bot's feet, in its reach.
+A summoned entity faces where its `Rotation` says, 0 here, not where the constructor drew."""
+
+_STONE = "minecraft:stone 1"
+
+PICKUP_DELAYS = (10, 40)
+"""The pickup delays of the items summoned before their window: the delay counts down only on the
+ticks a frozen world steps, and a player picks an item up on the tick its delay reaches 0
+(`ItemEntity.tick`, `ItemEntity.playerTouch`)."""
+
+ORB_VALUES = (1, 7, 37)
+"""The orbs' points, one orb a window: a player takes one orb in its reach at random each tick
+(`Player.aiStep`). The three make 45 points, under level 5, where vanilla would play the level-up
+sound depending on how long the player has been in the game (`Player.giveExperienceLevels`)."""
+
+_FULL = tuple(
+    f"item replace entity {_PICKER} container.{slot} with minecraft:dirt 64" for slot in range(36)
+)
+"""Fills the 36 slots of the Bot's inventory; `/item replace` takes one slot at a time."""
+
+
+async def _with_delays(context: GroupContext) -> None:
+    """An item with no delay appears in a window, then one with each of `PICKUP_DELAYS`.
+
+    Each delayed item is summoned before its window, which steps a tick past the delay. A
+    player ticks in a frozen world too, later in the tick that ran the summon (the server
+    handles commands first, then the world, then the players), so the item with no delay is
+    picked up in the window's own tick.
+    """
+    control = context.control
+    async with context.observe(*ITEM_PACKETS):
+        await control.run(_summon_item(_FEET, _STONE, "PickupDelay:0s"))
+    for delay in PICKUP_DELAYS:
+        await control.run(_summon_item(_FEET, _STONE, f"PickupDelay:{delay}s"))
+        async with context.observe(*ITEM_PACKETS):
+            await context.step(delay + 1)
+
+
+async def _orbs(context: GroupContext) -> None:
+    """An orb worth each of `ORB_VALUES` appears in a window of its own."""
+    for value in ORB_VALUES:
+        async with context.observe(*ITEM_PACKETS):
+            await context.control.run(_summon_orb(_FEET, value))
+
+
+async def _without_room(context: GroupContext) -> None:
+    """A stone appears by the Bot with a full inventory, then ten by a stack with room for four.
+
+    Each is summoned with a delay of a tick before its window, which steps two.
+    """
+    control = context.control
+    for command in _FULL:
+        await control.run(command)
+    await control.run(_summon_item(_FEET, _STONE, "PickupDelay:1s"))
+    async with context.observe(*ITEM_PACKETS):
+        await context.step(2)
+    await control.run(f"kill @e[tag={_TAG}]")
+    await control.run(f"item replace entity {_PICKER} container.0 with minecraft:stone 60")
+    await control.run(_summon_item(_FEET, "minecraft:stone 10", "PickupDelay:1s"))
+    async with context.observe(*ITEM_PACKETS):
+        await context.step(2)
+
+
+@group("entities/item-pickup", kind=GroupKind.TICK_EXACT)
+async def item_pickup(context: GroupContext) -> None:
+    """Items with each pickup delay, orbs, and items the Bot has no room for appear at its feet."""
+    async with _arena(context, _PICKER):
+        await _with_delays(context)
+        await _orbs(context)
+        await _without_room(context)
