@@ -17,9 +17,9 @@ from mscts.transcript import Transcript
 from tests.group import test_control
 from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
-MERGE, DESPAWN = "entities/item-merge", "entities/item-despawn"
-GROUP_IDS = (MERGE, DESPAWN)
-BOTS = {MERGE: "watcher", DESPAWN: "watcher"}
+MERGE, DESPAWN, PICKUP = "entities/item-merge", "entities/item-despawn", "entities/item-pickup"
+GROUP_IDS = (MERGE, DESPAWN, PICKUP)
+BOTS = {MERGE: "watcher", DESPAWN: "watcher", PICKUP: "picker"}
 COMMANDS = tree(
     "gamerule",
     "tp",
@@ -287,3 +287,82 @@ async def test_despawn_steps_one_window_a_tick_past_the_last_to_go() -> None:
 @pytest.mark.asyncio
 async def test_despawn_changes_nothing_else() -> None:
     assert (await play(DESPAWN)).after[:-8] == ()
+
+
+# `entities/item-pickup`
+
+FEET = "0.5 -60.0 0.5"
+STONE = "minecraft:stone 1"
+DIRT_EVERYWHERE = tuple(
+    f"item replace entity picker container.{slot} with minecraft:dirt 64" for slot in range(36)
+)
+
+
+@pytest.mark.asyncio
+async def test_pickup_summons_an_item_with_no_delay_at_the_bots_feet_inside_its_window() -> None:
+    # A player picks an item up on the server tick it can (Player.aiStep); the summon runs
+    # before that tick's players, so the pickup lands in the window and steps no tick.
+    play_ = await play(PICKUP)
+
+    assert play_.first[8:] == ()
+    assert play_.windows[0].commands == (item(FEET, STONE, "PickupDelay:0s"),)
+    assert play_.windows[0].ticks == 0
+
+
+@pytest.mark.asyncio
+async def test_pickup_steps_a_tick_past_each_pickup_delay() -> None:
+    # The delay counts down only on the ticks a frozen world steps (ItemEntity.tick).
+    windows = (await play(PICKUP)).windows[1:3]
+
+    assert [window.before for window in windows] == [
+        (item(FEET, STONE, "PickupDelay:10s"),),
+        (item(FEET, STONE, "PickupDelay:40s"),),
+    ]
+    assert [window.commands for window in windows] == [
+        ("tick step 1",) * 11,
+        ("tick step 1",) * 41,
+    ]
+    assert [window.ticks for window in windows] == [11, 41]
+
+
+@pytest.mark.asyncio
+async def test_pickup_summons_each_orb_at_the_bots_feet_in_a_window_of_its_own() -> None:
+    # A player takes one orb in reach at random each tick (Player.aiStep): one at a time.
+    windows = (await play(PICKUP)).windows[3:6]
+
+    assert [window.before for window in windows] == [(), (), ()]
+    assert [window.commands for window in windows] == [
+        (orb(FEET, 1),),
+        (orb(FEET, 7),),
+        (orb(FEET, 37),),
+    ]
+    assert [window.ticks for window in windows] == [0, 0, 0]
+
+
+@pytest.mark.asyncio
+async def test_pickup_fills_every_slot_then_steps_past_an_items_delay() -> None:
+    window = (await play(PICKUP)).windows[6]
+
+    assert window.before == (*DIRT_EVERYWHERE, item(FEET, STONE, "PickupDelay:1s"))
+    assert window.commands == ("tick step 1",) * 2
+
+
+@pytest.mark.asyncio
+async def test_pickup_last_leaves_room_for_four_of_ten_stones() -> None:
+    window = (await play(PICKUP)).windows[7]
+
+    assert window.before == (
+        f"kill @e[tag={TAG}]",
+        "item replace entity picker container.0 with minecraft:stone 60",
+        item(FEET, "minecraft:stone 10", "PickupDelay:1s"),
+    )
+    assert window.commands == ("tick step 1",) * 2
+
+
+@pytest.mark.asyncio
+async def test_pickup_has_eight_windows_and_changes_nothing_else() -> None:
+    play_ = await play(PICKUP)
+
+    assert len(play_.windows) == 8
+    assert {window.label for window in play_.windows} == {WINDOW}
+    assert play_.after[:-8] == ()
