@@ -26,6 +26,7 @@ from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import CODEC, text, tree
 from tests.group.test_movement import MOVES, Play, _sent, read
+from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -388,6 +389,16 @@ def test_fall_steps_the_world_after_every_move() -> None:
         moves = len(window.moves("faller"))
         assert [who for who, _ in window.sent] == ["faller", CONTROL] * moves
         assert [what for who, what in window.sent if who == CONTROL] == ["tick step 1"] * moves
+
+
+def test_each_move_of_a_fall_reaches_the_server_before_the_step_after_it() -> None:
+    transcript, result = play("player/fall")
+    moves = sum(len(window.moves("faller")) for window in result.windows)
+
+    barriers = barriers_before_steps(transcript, "faller", set(MOVES))
+
+    assert len(barriers) == moves > 0
+    assert set(barriers) == {SYNC_REQUESTS}
 
 
 def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
