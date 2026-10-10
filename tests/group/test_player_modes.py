@@ -9,7 +9,7 @@ import asyncio
 import functools
 from contextlib import suppress
 from dataclasses import dataclass
-from typing import override
+from typing import TYPE_CHECKING, cast, override
 
 import pytest
 
@@ -23,6 +23,9 @@ from tests.group.test_control import CODEC, tree
 from tests.group.test_movement import Play, read
 from tests.group.test_player import PERFORM_RESPAWN, PlayerServer
 from tests.net.fakes import JoinScript, Peer, join_server, serve
+
+if TYPE_CHECKING:
+    from mscts.bot import Bot
 
 CONTROL = "control"
 CLIENT_COMMAND = "minecraft:client_command"
@@ -393,3 +396,65 @@ def test_respawn_puts_a_second_bot_far_from_the_first_and_gives_it_a_spawn_point
     placed = [c for c in result.first if c.startswith(("tp pointer", "spawnpoint"))]
     assert placed == ["tp pointer -95.5 -60 95.5", "spawnpoint pointer -88 -60 88"]
     assert not [c for c in result.after if c.startswith("spawnpoint")]
+
+
+# A Bot that a Group leaves dead
+
+
+class WindowError(Exception):
+    """The body of a window failed."""
+
+
+@dataclass
+class StubBot:
+    """What `_dying` asks of a Bot: to respawn, which it may fail to do."""
+
+    fails: bool = False
+    respawns: int = 0
+
+    async def respawn(self) -> None:
+        self.respawns += 1
+        if self.fails:
+            raise TimeoutError
+
+
+async def dying(bot: StubBot, body: str) -> None:
+    async with player_modes._dying(cast("Bot", bot)) as respawn:  # noqa: SLF001
+        if body == "respawn":
+            await respawn()
+        elif body == "fail":
+            raise WindowError
+
+
+def test_a_bot_that_the_body_respawned_is_not_respawned_again() -> None:
+    bot = StubBot()
+
+    asyncio.run(dying(bot, "respawn"))
+
+    assert bot.respawns == 1
+
+
+def test_a_bot_that_the_body_left_dead_is_respawned_on_exit() -> None:
+    bot = StubBot()
+
+    asyncio.run(dying(bot, "leave"))
+
+    assert bot.respawns == 1
+
+
+def test_a_bot_is_respawned_when_the_body_fails_and_the_failure_is_the_one_raised() -> None:
+    bot = StubBot(fails=True)
+
+    with pytest.raises(WindowError):
+        asyncio.run(dying(bot, "fail"))
+
+    assert bot.respawns == 1
+
+
+def test_a_respawn_that_failed_is_not_asked_again() -> None:
+    bot = StubBot(fails=True)
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(dying(bot, "respawn"))
+
+    assert bot.respawns == 1

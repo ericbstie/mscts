@@ -13,7 +13,7 @@ A dead Bot's drops are taken away, so that Control and the Bot do not pick them 
 """
 
 import contextlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
@@ -222,6 +222,32 @@ async def _clear_drops(context: GroupContext, place: _Place) -> None:
 
 
 @contextlib.asynccontextmanager
+async def _dying(bot: Bot) -> AsyncIterator[Callable[[], Awaitable[None]]]:
+    """Yield how to respawn the Bot; if the body ends without that, respawn it on exit.
+
+    A dead Bot that a failed Group leaves is saved with no health and logs back in dead, so the
+    next Group would fail for a reason that is not its own. When the body failed, an error of
+    that respawn is dropped: the body's is the one to see.
+    """
+    pending = True
+
+    async def respawn() -> None:
+        nonlocal pending
+        pending = False
+        await bot.respawn()
+
+    try:
+        yield respawn
+    except Exception:
+        if pending:
+            with contextlib.suppress(Exception):
+                await bot.respawn()
+        raise
+    if pending:
+        await bot.respawn()
+
+
+@contextlib.asynccontextmanager
 async def _mortal(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
     """Move Control away and freeze the world; undo the rules and the drops on exit."""
     async with _arena(context) as undo:
@@ -239,11 +265,12 @@ async def death(context: GroupContext) -> None:
         bot = await _join(context, undo, _MORTAL)
         for case in _DEATHS:
             await _kit(context, bot, case)
-            async with context.observe(*DEATH_PACKETS):
-                await _rules(context, case)
-                await context.control.run(f"kill {bot.name}")
-            await _clear_drops(context, _SPAWN)
-            await bot.respawn()
+            async with _dying(bot) as respawn:
+                async with context.observe(*DEATH_PACKETS):
+                    await _rules(context, case)
+                    await context.control.run(f"kill {bot.name}")
+                await _clear_drops(context, _SPAWN)
+                await respawn()
 
 
 RESPAWN_PACKETS = (
@@ -277,10 +304,11 @@ async def _die_and_respawn(context: GroupContext, bot: Bot, death: _Death, place
     """Kill the Bot at `place` holding its kit, and take its drops away; respawn it in a window."""
     await _rules(context, death)
     await _kit(context, bot, death)
-    await context.control.run(f"kill {bot.name}")
-    await _clear_drops(context, place)
-    async with context.observe(*RESPAWN_PACKETS):
-        await bot.respawn()
+    async with _dying(bot) as respawn:
+        await context.control.run(f"kill {bot.name}")
+        await _clear_drops(context, place)
+        async with context.observe(*RESPAWN_PACKETS):
+            await respawn()
 
 
 @group("player/respawn", kind=GroupKind.TICK_EXACT, spec=_normal)
