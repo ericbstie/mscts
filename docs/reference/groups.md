@@ -611,6 +611,16 @@ changed at the end of that tick, in an order that follows their entity ids, so t
 could come in either order ([#320](https://github.com/ericbstie/mscts/issues/320)). How many
 items a pig or a zombie drops is also random.
 
+### Dropped items
+
+How items on the ground merge, despawn and are picked up. Each Group joins one Bot at the world spawn and freezes the world. Control summons every item still and without gravity, so an item changes only on the ticks a Group steps. When a Group ends, Control removes the items it summoned and empties the Bot's inventory.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `entities/item-merge` | tick-exact | none | Control lays eight pairs of items in a row, a tick apart: two stacks of stone 0.7 blocks apart and 0.8 apart, 0.2 above each other and 0.3 above, 0.7 apart with a glass pane between them, stone next to dirt, 40 stone next to 30, and 32 next to 32. The world steps 41 ticks, until each pair has had its 40th tick. The window compares which item of a pair goes and how many items the other then holds. | none |
+
+An item looks for another to merge with only on every 40th of its own ticks. The pairs are laid a tick apart so that each pair merges on a tick of its own. Vanilla sends the entity data that changes in one tick in an order that follows the entity ids, and two servers can number their entities differently.
+
 ## Planned
 
 | Mechanic | First Group | Needs |
