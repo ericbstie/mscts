@@ -64,6 +64,12 @@ If a cause needs a schema, a canonical rule or a window option that
 does not exist, stop: comment on the issue with the evidence and the
 options (`needs-decision`), and report.
 
+Before writing the unit tests, read each window's starting state in a
+vanilla dump: a crafting table's grid survives `/clear` (#62). An undo
+puts back every block the Group changed, the ones under it included: a
+random tick turns grass under an opaque block to dirt on one Instance
+only (#62).
+
 ## Where things go
 
 - Groups go in `src/mscts/groups/<mechanic>.py`, one module per mechanic

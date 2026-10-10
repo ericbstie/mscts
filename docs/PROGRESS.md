@@ -195,6 +195,21 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-10: train 31
+
+- #357 (#350): Group test modules play each Group once per process, and the
+  unit tier runs `--dist loadfile`. The tier went from 9 min 35 s to about
+  3 min under `mise run check`.
+- Train 31 (#358, then #361): `inventory/give`, `inventory/clicks-inventory`,
+  `inventory/clicks-chest` and `inventory/drop` (#61); `crafting/grid`,
+  `crafting/recipe-book` and `crafting/unlocking` (#62), with the recipe
+  book packets decoded and `Bot.place_recipe`. Each new Group passed its
+  Self-check 20 of 20. Reference 35 of 35, candidate 15 of 15, and the
+  inventory, crafting and join Self-checks on the train's tip.
+- Left for follow-ups: the off-hand swap (#359), a barrier between a Bot's
+  action and `tick step` (#360), taking a crafting result (#362), and
+  renumbering recipe display ids instead of masking them (#363).
+
 ### 2026-10-10: train 30
 
 - Train 30 (#348, #353, #351, then #352): the review results table in

@@ -57,6 +57,9 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #361 |  | medium | first review | 0 | none: no barrier or window change; the Self-check after the review fixes found the crafting table's undo leaving dirt where grass was on one Instance, fixed before the merge |
+| #358 |  | medium | first review | 0 | none: no barrier or window change |
+| #357 | low | low | lead's diff read | 0 | none: test code only |
 | #352 |  | medium | first review | 0 | none: no barrier or window change; the Self-check after the review fixes found the husk cleanup unloading its own chunk, 4 of 5 plays, fixed before the merge |
 | #351 |  | medium | first review | 0 | none: no barrier or window change |
 | #353 |  | medium | first review | 0 | none: no barrier or window change |

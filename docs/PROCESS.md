@@ -403,6 +403,15 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-10 | worker (#350) | The lead's baseline log of the unit tier finished after two increments, and it gave no load average | **reject**: the brief template already asks for the tier's time on main; the lead sent a run still going instead of a number |
+| 2026-10-10 | worker (#350) | Waiting on a background run with Monitor ticks fired unevenly; a foreground `until grep ...; do sleep 10; done` with a 600000 ms timeout was reliable | **reject**: a harness detail that changes between versions; common.md already says to wait by the run's output |
+| 2026-10-10 | worker (#61) | Most of the wall time went to waiting on the live lock behind the lead's reference run and the other worker's Self-checks | **reject**: the lock is what keeps the container up (train 30); with the unit tier at about 3 minutes the waits are the live runs themselves |
+| 2026-10-10 | worker (#61) | `mscts run --candidate` cannot take several Groups by id under one lock, so a worker queues three lock waits | **reject** for now: one `mscts run` per glob works; a repeatable `--group` is a product change for the maintainer to ask for |
+| 2026-10-10 | worker (#62) | A crafting table's grid survives `/clear`, so table cases leaked into each other until a vanilla dump showed it | **adopt**: the test-group skill says to read each window's starting state in a vanilla dump before the unit tests |
+| 2026-10-10 | worker (#62) | The `plan` check failed the first Group commit for names missing from docs/PLAN.md | **reject**: common.md already says it; the test-group skill points there |
+| 2026-10-10 | worker (#62) | `--group` takes one glob and the last one wins, which cost one live run | **adopt**: common.md line |
+| 2026-10-10 | lead (train 31) | The review of #361 found recipe display ids compared though the client uses them only as map keys, and the join recipe book sent in hash order | **defer**: #363; a Mask stands in until then |
+| 2026-10-10 | lead (train 31) | The review of #358 found act-then-step windows sending the action and `tick step` on two connections with no barrier | **defer**: #360 |
 | 2026-10-10 | lead (train 30) | `mise run check` took 12 to 17 minutes per commit on this 4-CPU host: the Group tests' fakes wait real ticks | **defer**: #350. The lead checks a train's commits three at a time in their own worktrees, each one still checked |
 | 2026-10-10 | lead (train 30) | The container restarted twice mid-batch with three workers' live runs, one bypassing the live lock and one running `mscts run` beside a Self-check | **adopt**: `docs/roles/common.md`, never bypass the lock on a shared host, and `mscts run` only while holding no other live run |
 | 2026-10-10 | lead (train 30) | Each worker's draft PR subscribed the lead's session to its activity, one wake each, though the brief said not to subscribe | **reject**: the harness subscribes the session that opens a PR; the lead unsubscribes at the first event |
