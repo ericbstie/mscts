@@ -372,6 +372,215 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "remove_mob_effect": "Effect ended",
         "remove_mob_effect.entity_id": "Entity losing the effect",
         "remove_mob_effect.effect": "Effect that ended",
+        "place_ghost_recipe": "Ghost recipe",
+        "place_ghost_recipe.window_id": "Ghost recipe window",
+        "recipe_book_add.entries": "Recipe book entries",
+        "recipe_book_add.entries[]": "Recipe book entry",
+        "recipe_book_add.entries[].contents.id": "Recipe display id",
+        "recipe_book_add.entries[].contents.group": "Recipe book group",
+        "recipe_book_add.entries[].contents.category": "Recipe book category",
+        "recipe_book_add.entries[].contents.crafting_requirements": "Recipe requirements",
+        "recipe_book_add.entries[].contents.crafting_requirements[].tag": "Recipe requirement tag",
+        "recipe_book_add.entries[].contents.crafting_requirements[].ids": (
+            "Recipe requirement items"
+        ),
+        "recipe_book_add.entries[].contents.crafting_requirements[].ids[]": (
+            "Recipe requirement item"
+        ),
+        "recipe_book_add.entries[].flags": "Recipe book entry flags",
+        "recipe_book_add.replace": "Recipe book replaced",
+        "recipe_book_remove": "Recipes taken from the recipe book",
+        "recipe_book_remove.recipes": "Display ids removed",
+        "recipe_book_remove.recipes[]": "Display id removed",
+        "place_ghost_recipe.recipe_display.type": "Ghost recipe type",
+        "place_ghost_recipe.recipe_display.value.width": "Ghost recipe width",
+        "place_ghost_recipe.recipe_display.value.height": "Ghost recipe height",
+        "place_ghost_recipe.recipe_display.value.ingredients": "Ghost recipe ingredients",
+        "place_ghost_recipe.recipe_display.value.duration": "Ghost recipe cooking time",
+        "place_ghost_recipe.recipe_display.value.experience": "Ghost recipe experience",
+        "place_ghost_recipe.recipe_display.value.ingredients[]": "Ghost recipe ingredient",
+        "place_ghost_recipe.recipe_display.value.ingredients[].type": (
+            "Ghost recipe ingredient display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.ingredients[].value": (
+            "Ghost recipe ingredient display data"
+        ),
+        "place_ghost_recipe.recipe_display.value.ingredients[].value.tag": (
+            "Ghost recipe ingredient tag"
+        ),
+        "place_ghost_recipe.recipe_display.value.ingredients[].value.ids": (
+            "Ghost recipe ingredient items"
+        ),
+        "place_ghost_recipe.recipe_display.value.ingredients[].value.ids[]": (
+            "Ghost recipe ingredient choice"
+        ),
+        "place_ghost_recipe.recipe_display.value.ingredient": "Ghost recipe furnace input",
+        "place_ghost_recipe.recipe_display.value.ingredient.type": (
+            "Ghost recipe furnace input display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.ingredient.value": (
+            "Ghost recipe furnace input display data"
+        ),
+        "place_ghost_recipe.recipe_display.value.fuel": "Ghost recipe fuel",
+        "place_ghost_recipe.recipe_display.value.fuel.type": "Ghost recipe fuel display type",
+        "place_ghost_recipe.recipe_display.value.fuel.value": "Ghost recipe fuel display data",
+        "place_ghost_recipe.recipe_display.value.input": "Ghost recipe stonecutter input",
+        "place_ghost_recipe.recipe_display.value.input.type": (
+            "Ghost recipe stonecutter input display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.input.value": (
+            "Ghost recipe stonecutter input display data"
+        ),
+        "place_ghost_recipe.recipe_display.value.template": "Ghost recipe smithing template",
+        "place_ghost_recipe.recipe_display.value.template.type": (
+            "Ghost recipe smithing template display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.template.value": (
+            "Ghost recipe smithing template display data"
+        ),
+        "place_ghost_recipe.recipe_display.value.base": "Ghost recipe smithing base",
+        "place_ghost_recipe.recipe_display.value.base.type": (
+            "Ghost recipe smithing base display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.base.value": (
+            "Ghost recipe smithing base display data"
+        ),
+        "place_ghost_recipe.recipe_display.value.addition": "Ghost recipe smithing addition",
+        "place_ghost_recipe.recipe_display.value.addition.type": (
+            "Ghost recipe smithing addition display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.addition.value": (
+            "Ghost recipe smithing addition display data"
+        ),
+        "place_ghost_recipe.recipe_display.value.result.type": "Ghost recipe result display type",
+        "place_ghost_recipe.recipe_display.value.result.value": "Ghost recipe result display data",
+        "place_ghost_recipe.recipe_display.value.result.value.item": "Ghost recipe result item",
+        "place_ghost_recipe.recipe_display.value.result.value.count": "Ghost recipe result count",
+        "place_ghost_recipe.recipe_display.value.result.value.components.added": (
+            "Ghost recipe result components"
+        ),
+        "place_ghost_recipe.recipe_display.value.result.value.components.removed": (
+            "Ghost recipe result removed components"
+        ),
+        "place_ghost_recipe.recipe_display.value.crafting_station.type": (
+            "Ghost recipe crafting station display type"
+        ),
+        "place_ghost_recipe.recipe_display.value.crafting_station.value": (
+            "Ghost recipe crafting station display data"
+        ),
+        "recipe_book_add.entries[].contents.display.type": "Recipe book recipe type",
+        "recipe_book_add.entries[].contents.display.value.width": "Recipe book recipe width",
+        "recipe_book_add.entries[].contents.display.value.height": "Recipe book recipe height",
+        "recipe_book_add.entries[].contents.display.value.ingredients": "Recipe book ingredients",
+        "recipe_book_add.entries[].contents.display.value.duration": "Recipe book cooking time",
+        "recipe_book_add.entries[].contents.display.value.experience": "Recipe book experience",
+        "recipe_book_add.entries[].contents.display.value.ingredients[]": "Recipe book ingredient",
+        "recipe_book_add.entries[].contents.display.value.ingredients[].type": (
+            "Recipe book ingredient display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredients[].value": (
+            "Recipe book ingredient display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredients[].value.tag": (
+            "Recipe book ingredient tag"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredients[].value.ids": (
+            "Recipe book ingredient items"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredients[].value.ids[]": (
+            "Recipe book ingredient choice"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredient": "Recipe book furnace input",
+        "recipe_book_add.entries[].contents.display.value.ingredient.type": (
+            "Recipe book furnace input display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredient.value": (
+            "Recipe book furnace input display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredient.value.tag": (
+            "Recipe book furnace input tag"
+        ),
+        "recipe_book_add.entries[].contents.display.value.ingredient.value.ids[]": (
+            "Recipe book furnace input choice"
+        ),
+        "recipe_book_add.entries[].contents.display.value.fuel": "Recipe book fuel",
+        "recipe_book_add.entries[].contents.display.value.fuel.type": (
+            "Recipe book fuel display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.fuel.value": (
+            "Recipe book fuel display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.input": "Recipe book stonecutter input",
+        "recipe_book_add.entries[].contents.display.value.input.type": (
+            "Recipe book stonecutter input display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.input.value": (
+            "Recipe book stonecutter input display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.input.value.ids[]": (
+            "Recipe book stonecutter input choice"
+        ),
+        "recipe_book_add.entries[].contents.display.value.template": (
+            "Recipe book smithing template"
+        ),
+        "recipe_book_add.entries[].contents.display.value.template.type": (
+            "Recipe book smithing template display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.template.value": (
+            "Recipe book smithing template display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.template.value.ids[]": (
+            "Recipe book smithing template choice"
+        ),
+        "recipe_book_add.entries[].contents.display.value.base": "Recipe book smithing base",
+        "recipe_book_add.entries[].contents.display.value.base.type": (
+            "Recipe book smithing base display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.base.value": (
+            "Recipe book smithing base display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.base.value.tag": (
+            "Recipe book smithing base tag"
+        ),
+        "recipe_book_add.entries[].contents.display.value.base.value.ids[]": (
+            "Recipe book smithing base choice"
+        ),
+        "recipe_book_add.entries[].contents.display.value.addition": (
+            "Recipe book smithing addition"
+        ),
+        "recipe_book_add.entries[].contents.display.value.addition.type": (
+            "Recipe book smithing addition display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.addition.value": (
+            "Recipe book smithing addition display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.addition.value.tag": (
+            "Recipe book smithing addition tag"
+        ),
+        "recipe_book_add.entries[].contents.display.value.result.type": (
+            "Recipe book result display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.result.value": (
+            "Recipe book result display data"
+        ),
+        "recipe_book_add.entries[].contents.display.value.result.value.item": (
+            "Recipe book result item"
+        ),
+        "recipe_book_add.entries[].contents.display.value.result.value.count": (
+            "Recipe book result count"
+        ),
+        "recipe_book_add.entries[].contents.display.value.result.value.components.added": (
+            "Recipe book result components"
+        ),
+        "recipe_book_add.entries[].contents.display.value.result.value.components.removed": (
+            "Recipe book result removed components"
+        ),
+        "recipe_book_add.entries[].contents.display.value.crafting_station.type": (
+            "Recipe book crafting station display type"
+        ),
+        "recipe_book_add.entries[].contents.display.value.crafting_station.value": (
+            "Recipe book crafting station display data"
+        ),
     }
 )
 """Known test case name → the short title checked against the docs reference."""

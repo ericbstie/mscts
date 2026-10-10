@@ -1286,6 +1286,28 @@ class Bot:
         async with self._operation(self._timeout_s):
             await self._connection.send("minecraft:container_click", **fields)
 
+    async def place_recipe(self, recipe_id: int, *, use_max_items: bool = False) -> None:
+        """Click a recipe in the recipe book, as the client reports it: the server fills the grid.
+
+        `place_recipe` with the open window's id, the recipe's display id (the `id` the server
+        gave it in `recipe_book_add`), and whether to fill the grid with as many sets as the
+        inventory holds (a shift-click), sent at once, not in a tick
+        (`MultiPlayerGameMode.handlePlaceRecipe`). The client changes no slot itself. It does
+        not send a second click on a recipe it cannot craft that it placed last; the Bot does.
+
+        Raises:
+            ProtocolError: The Bot is not in play.
+        """
+        self._require_play("place_recipe")
+        window_id = self._replies.inventory.view().window_id
+        async with self._operation(self._timeout_s):
+            await self._connection.send(
+                "minecraft:place_recipe",
+                window_id=window_id,
+                recipe_id=recipe_id,
+                use_max_items=use_max_items,
+            )
+
     async def drop(self, *, all: bool = False) -> None:  # noqa: A002 - #28: bot.drop(all=True)
         """Drop one of the held items (Q), or the whole stack (Ctrl+Q), in one client tick.
 

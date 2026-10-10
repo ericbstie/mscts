@@ -2609,3 +2609,684 @@ Which entity lost the effect. mscts compares the entity each server refers to, r
 **Effect that ended**
 
 Which effect ended. A difference ends another effect on the client.
+
+## `place_ghost_recipe`
+
+**Ghost recipe**
+
+The recipe the client draws faintly in the crafting grid after a click
+in the recipe book, when the player lacks the items to fill the grid.
+
+## `place_ghost_recipe.window_id`
+
+**Ghost recipe window**
+
+The window whose crafting grid shows the ghost recipe: 0 for the
+inventory's 2 × 2 grid.
+
+## `recipe_book_add.entries`
+
+**Recipe book entries**
+
+The recipes added in one packet.
+
+## `recipe_book_add.entries[]`
+
+**Recipe book entry**
+
+One recipe added to the player's recipe book. A recipe the server leaves
+out is missing from the book.
+
+## `recipe_book_add.entries[].contents.id`
+
+**Recipe display id**
+
+The number the server gives a recipe in this player's book. A click in
+the book sends it back to place the recipe. The client uses it only to
+look the recipe up, so the recipe book Groups mask its value.
+
+## `recipe_book_add.entries[].contents.group`
+
+**Recipe book group**
+
+The group that shows several recipes as one button in the book, such as
+every kind of planks. A recipe in no group has none. The number itself
+is masked; whether a recipe has a group is compared.
+
+## `recipe_book_add.entries[].contents.category`
+
+**Recipe book category**
+
+The tab and section of the book the recipe is filed under, such as
+building blocks or equipment.
+
+## `recipe_book_add.entries[].contents.crafting_requirements`
+
+**Recipe requirements**
+
+The ingredients the client looks for in the inventory to show whether
+the recipe can be made. A recipe with none is never shown as craftable.
+
+## `recipe_book_add.entries[].contents.crafting_requirements[].tag`
+
+**Recipe requirement tag**
+
+The item tag an ingredient accepts, such as `minecraft:planks`.
+
+## `recipe_book_add.entries[].contents.crafting_requirements[].ids`
+
+**Recipe requirement items**
+
+The items an ingredient accepts, when it is not a tag.
+
+## `recipe_book_add.entries[].contents.crafting_requirements[].ids[]`
+
+**Recipe requirement item**
+
+One item an ingredient accepts.
+
+## `recipe_book_add.entries[].flags`
+
+**Recipe book entry flags**
+
+Whether the client shows a toast for the new recipe (1) and highlights
+it in the book until it is seen (2).
+
+## `recipe_book_add.replace`
+
+**Recipe book replaced**
+
+Whether the packet replaces the whole book, as when the player joins, or
+adds to it.
+
+## `recipe_book_remove`
+
+**Recipes taken from the recipe book**
+
+Recipes the client removes from the player's recipe book.
+
+## `recipe_book_remove.recipes`
+
+**Display ids removed**
+
+The display ids of the recipes removed in one packet.
+
+## `recipe_book_remove.recipes[]`
+
+**Display id removed**
+
+The display id of one recipe removed from the book. Its value is masked,
+so a removal is compared by how many recipes it takes out.
+
+## `place_ghost_recipe.recipe_display.type`
+
+**Ghost recipe type**
+
+The kind of recipe the ghost recipe in the crafting grid shows: shaped
+or shapeless crafting, furnace, stonecutter or smithing.
+
+## `place_ghost_recipe.recipe_display.value.width`
+
+**Ghost recipe width**
+
+The width of a shaped recipe's pattern, in cells.
+
+## `place_ghost_recipe.recipe_display.value.height`
+
+**Ghost recipe height**
+
+The height of a shaped recipe's pattern, in cells.
+
+## `place_ghost_recipe.recipe_display.value.ingredients`
+
+**Ghost recipe ingredients**
+
+The ingredients of a crafting recipe: one for each cell of a shaped
+recipe's pattern, row by row, or the list of a shapeless one.
+
+## `place_ghost_recipe.recipe_display.value.duration`
+
+**Ghost recipe cooking time**
+
+The ticks a furnace recipe takes.
+
+## `place_ghost_recipe.recipe_display.value.experience`
+
+**Ghost recipe experience**
+
+The experience a furnace recipe gives.
+
+## `place_ghost_recipe.recipe_display.value.ingredients[]`
+
+**Ghost recipe ingredient**
+
+What the ghost recipe in the crafting grid shows for an ingredient.
+
+## `place_ghost_recipe.recipe_display.value.ingredients[].type`
+
+**Ghost recipe ingredient display type**
+
+How the ghost recipe in the crafting grid shows an ingredient: as an
+item, an item tag, an item stack, any fuel, or several choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.ingredients[].value`
+
+**Ghost recipe ingredient display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for
+an ingredient.
+
+## `place_ghost_recipe.recipe_display.value.ingredients[].value.tag`
+
+**Ghost recipe ingredient tag**
+
+The item tag the ghost recipe in the crafting grid shows for an
+ingredient, such as `minecraft:planks`. The client cycles through its
+items.
+
+## `place_ghost_recipe.recipe_display.value.ingredients[].value.ids`
+
+**Ghost recipe ingredient items**
+
+The items the ghost recipe in the crafting grid shows in turn for an
+ingredient, when they are listed rather than named by a tag.
+
+## `place_ghost_recipe.recipe_display.value.ingredients[].value.ids[]`
+
+**Ghost recipe ingredient choice**
+
+One of the items the ghost recipe in the crafting grid shows in turn for
+an ingredient.
+
+## `place_ghost_recipe.recipe_display.value.ingredient`
+
+**Ghost recipe furnace input**
+
+What the ghost recipe in the crafting grid shows for a furnace recipe's
+input.
+
+## `place_ghost_recipe.recipe_display.value.ingredient.type`
+
+**Ghost recipe furnace input display type**
+
+How the ghost recipe in the crafting grid shows a furnace recipe's
+input: as an item, an item tag, an item stack, any fuel, or several
+choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.ingredient.value`
+
+**Ghost recipe furnace input display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for a
+furnace recipe's input.
+
+## `place_ghost_recipe.recipe_display.value.fuel`
+
+**Ghost recipe fuel**
+
+What the ghost recipe in the crafting grid shows for a furnace recipe's
+fuel.
+
+## `place_ghost_recipe.recipe_display.value.fuel.type`
+
+**Ghost recipe fuel display type**
+
+How the ghost recipe in the crafting grid shows a furnace recipe's fuel:
+as an item, an item tag, an item stack, any fuel, or several choices in
+turn.
+
+## `place_ghost_recipe.recipe_display.value.fuel.value`
+
+**Ghost recipe fuel display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for a
+furnace recipe's fuel.
+
+## `place_ghost_recipe.recipe_display.value.input`
+
+**Ghost recipe stonecutter input**
+
+What the ghost recipe in the crafting grid shows for a stonecutter
+recipe's input.
+
+## `place_ghost_recipe.recipe_display.value.input.type`
+
+**Ghost recipe stonecutter input display type**
+
+How the ghost recipe in the crafting grid shows a stonecutter recipe's
+input: as an item, an item tag, an item stack, any fuel, or several
+choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.input.value`
+
+**Ghost recipe stonecutter input display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for a
+stonecutter recipe's input.
+
+## `place_ghost_recipe.recipe_display.value.template`
+
+**Ghost recipe smithing template**
+
+What the ghost recipe in the crafting grid shows for a smithing recipe's
+template.
+
+## `place_ghost_recipe.recipe_display.value.template.type`
+
+**Ghost recipe smithing template display type**
+
+How the ghost recipe in the crafting grid shows a smithing recipe's
+template: as an item, an item tag, an item stack, any fuel, or several
+choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.template.value`
+
+**Ghost recipe smithing template display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for a
+smithing recipe's template.
+
+## `place_ghost_recipe.recipe_display.value.base`
+
+**Ghost recipe smithing base**
+
+What the ghost recipe in the crafting grid shows for the item a smithing
+recipe upgrades.
+
+## `place_ghost_recipe.recipe_display.value.base.type`
+
+**Ghost recipe smithing base display type**
+
+How the ghost recipe in the crafting grid shows the item a smithing
+recipe upgrades: as an item, an item tag, an item stack, any fuel, or
+several choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.base.value`
+
+**Ghost recipe smithing base display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for
+the item a smithing recipe upgrades.
+
+## `place_ghost_recipe.recipe_display.value.addition`
+
+**Ghost recipe smithing addition**
+
+What the ghost recipe in the crafting grid shows for a smithing recipe's
+added material.
+
+## `place_ghost_recipe.recipe_display.value.addition.type`
+
+**Ghost recipe smithing addition display type**
+
+How the ghost recipe in the crafting grid shows a smithing recipe's
+added material: as an item, an item tag, an item stack, any fuel, or
+several choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.addition.value`
+
+**Ghost recipe smithing addition display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for a
+smithing recipe's added material.
+
+## `place_ghost_recipe.recipe_display.value.result.type`
+
+**Ghost recipe result display type**
+
+How the ghost recipe in the crafting grid shows the recipe's result: as
+an item, an item tag, an item stack, any fuel, or several choices in
+turn.
+
+## `place_ghost_recipe.recipe_display.value.result.value`
+
+**Ghost recipe result display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for
+the recipe's result.
+
+## `place_ghost_recipe.recipe_display.value.result.value.item`
+
+**Ghost recipe result item**
+
+The item of the stack the ghost recipe in the crafting grid shows for
+the recipe's result.
+
+## `place_ghost_recipe.recipe_display.value.result.value.count`
+
+**Ghost recipe result count**
+
+The count of the stack the ghost recipe in the crafting grid shows for
+the recipe's result. For the result, it is how many items the recipe
+makes.
+
+## `place_ghost_recipe.recipe_display.value.result.value.components.added`
+
+**Ghost recipe result components**
+
+The data components added to the stack the ghost recipe in the crafting
+grid shows for the recipe's result.
+
+## `place_ghost_recipe.recipe_display.value.result.value.components.removed`
+
+**Ghost recipe result removed components**
+
+The data components removed from the stack the ghost recipe in the
+crafting grid shows for the recipe's result.
+
+## `place_ghost_recipe.recipe_display.value.crafting_station.type`
+
+**Ghost recipe crafting station display type**
+
+How the ghost recipe in the crafting grid shows the block the recipe is
+made at: as an item, an item tag, an item stack, any fuel, or several
+choices in turn.
+
+## `place_ghost_recipe.recipe_display.value.crafting_station.value`
+
+**Ghost recipe crafting station display data**
+
+The item, tag or stack the ghost recipe in the crafting grid shows for
+the block the recipe is made at.
+
+## `recipe_book_add.entries[].contents.display.type`
+
+**Recipe book recipe type**
+
+The kind of recipe the recipe book shows: shaped or shapeless crafting,
+furnace, stonecutter or smithing.
+
+## `recipe_book_add.entries[].contents.display.value.width`
+
+**Recipe book recipe width**
+
+The width of a shaped recipe's pattern, in cells.
+
+## `recipe_book_add.entries[].contents.display.value.height`
+
+**Recipe book recipe height**
+
+The height of a shaped recipe's pattern, in cells.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients`
+
+**Recipe book ingredients**
+
+The ingredients of a crafting recipe: one for each cell of a shaped
+recipe's pattern, row by row, or the list of a shapeless one.
+
+## `recipe_book_add.entries[].contents.display.value.duration`
+
+**Recipe book cooking time**
+
+The ticks a furnace recipe takes.
+
+## `recipe_book_add.entries[].contents.display.value.experience`
+
+**Recipe book experience**
+
+The experience a furnace recipe gives.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients[]`
+
+**Recipe book ingredient**
+
+What the recipe book shows for an ingredient.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients[].type`
+
+**Recipe book ingredient display type**
+
+How the recipe book shows an ingredient: as an item, an item tag, an
+item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients[].value`
+
+**Recipe book ingredient display data**
+
+The item, tag or stack the recipe book shows for an ingredient.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients[].value.tag`
+
+**Recipe book ingredient tag**
+
+The item tag the recipe book shows for an ingredient, such as
+`minecraft:planks`. The client cycles through its items.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients[].value.ids`
+
+**Recipe book ingredient items**
+
+The items the recipe book shows in turn for an ingredient, when they are
+listed rather than named by a tag.
+
+## `recipe_book_add.entries[].contents.display.value.ingredients[].value.ids[]`
+
+**Recipe book ingredient choice**
+
+One of the items the recipe book shows in turn for an ingredient.
+
+## `recipe_book_add.entries[].contents.display.value.ingredient`
+
+**Recipe book furnace input**
+
+What the recipe book shows for a furnace recipe's input.
+
+## `recipe_book_add.entries[].contents.display.value.ingredient.type`
+
+**Recipe book furnace input display type**
+
+How the recipe book shows a furnace recipe's input: as an item, an item
+tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.ingredient.value`
+
+**Recipe book furnace input display data**
+
+The item, tag or stack the recipe book shows for a furnace recipe's
+input.
+
+## `recipe_book_add.entries[].contents.display.value.ingredient.value.tag`
+
+**Recipe book furnace input tag**
+
+The item tag the recipe book shows for a furnace recipe's input, such as
+`minecraft:planks`. The client cycles through its items.
+
+## `recipe_book_add.entries[].contents.display.value.ingredient.value.ids[]`
+
+**Recipe book furnace input choice**
+
+One of the items the recipe book shows in turn for a furnace recipe's
+input.
+
+## `recipe_book_add.entries[].contents.display.value.fuel`
+
+**Recipe book fuel**
+
+What the recipe book shows for a furnace recipe's fuel.
+
+## `recipe_book_add.entries[].contents.display.value.fuel.type`
+
+**Recipe book fuel display type**
+
+How the recipe book shows a furnace recipe's fuel: as an item, an item
+tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.fuel.value`
+
+**Recipe book fuel display data**
+
+The item, tag or stack the recipe book shows for a furnace recipe's
+fuel.
+
+## `recipe_book_add.entries[].contents.display.value.input`
+
+**Recipe book stonecutter input**
+
+What the recipe book shows for a stonecutter recipe's input.
+
+## `recipe_book_add.entries[].contents.display.value.input.type`
+
+**Recipe book stonecutter input display type**
+
+How the recipe book shows a stonecutter recipe's input: as an item, an
+item tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.input.value`
+
+**Recipe book stonecutter input display data**
+
+The item, tag or stack the recipe book shows for a stonecutter recipe's
+input.
+
+## `recipe_book_add.entries[].contents.display.value.input.value.ids[]`
+
+**Recipe book stonecutter input choice**
+
+One of the items the recipe book shows in turn for a stonecutter
+recipe's input.
+
+## `recipe_book_add.entries[].contents.display.value.template`
+
+**Recipe book smithing template**
+
+What the recipe book shows for a smithing recipe's template.
+
+## `recipe_book_add.entries[].contents.display.value.template.type`
+
+**Recipe book smithing template display type**
+
+How the recipe book shows a smithing recipe's template: as an item, an
+item tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.template.value`
+
+**Recipe book smithing template display data**
+
+The item, tag or stack the recipe book shows for a smithing recipe's
+template.
+
+## `recipe_book_add.entries[].contents.display.value.template.value.ids[]`
+
+**Recipe book smithing template choice**
+
+One of the items the recipe book shows in turn for a smithing recipe's
+template.
+
+## `recipe_book_add.entries[].contents.display.value.base`
+
+**Recipe book smithing base**
+
+What the recipe book shows for the item a smithing recipe upgrades.
+
+## `recipe_book_add.entries[].contents.display.value.base.type`
+
+**Recipe book smithing base display type**
+
+How the recipe book shows the item a smithing recipe upgrades: as an
+item, an item tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.base.value`
+
+**Recipe book smithing base display data**
+
+The item, tag or stack the recipe book shows for the item a smithing
+recipe upgrades.
+
+## `recipe_book_add.entries[].contents.display.value.base.value.tag`
+
+**Recipe book smithing base tag**
+
+The item tag the recipe book shows for the item a smithing recipe
+upgrades, such as `minecraft:planks`. The client cycles through its
+items.
+
+## `recipe_book_add.entries[].contents.display.value.base.value.ids[]`
+
+**Recipe book smithing base choice**
+
+One of the items the recipe book shows in turn for the item a smithing
+recipe upgrades.
+
+## `recipe_book_add.entries[].contents.display.value.addition`
+
+**Recipe book smithing addition**
+
+What the recipe book shows for a smithing recipe's added material.
+
+## `recipe_book_add.entries[].contents.display.value.addition.type`
+
+**Recipe book smithing addition display type**
+
+How the recipe book shows a smithing recipe's added material: as an
+item, an item tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.addition.value`
+
+**Recipe book smithing addition display data**
+
+The item, tag or stack the recipe book shows for a smithing recipe's
+added material.
+
+## `recipe_book_add.entries[].contents.display.value.addition.value.tag`
+
+**Recipe book smithing addition tag**
+
+The item tag the recipe book shows for a smithing recipe's added
+material, such as `minecraft:planks`. The client cycles through its
+items.
+
+## `recipe_book_add.entries[].contents.display.value.result.type`
+
+**Recipe book result display type**
+
+How the recipe book shows the recipe's result: as an item, an item tag,
+an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.result.value`
+
+**Recipe book result display data**
+
+The item, tag or stack the recipe book shows for the recipe's result.
+
+## `recipe_book_add.entries[].contents.display.value.result.value.item`
+
+**Recipe book result item**
+
+The item of the stack the recipe book shows for the recipe's result.
+
+## `recipe_book_add.entries[].contents.display.value.result.value.count`
+
+**Recipe book result count**
+
+The count of the stack the recipe book shows for the recipe's result.
+For the result, it is how many items the recipe makes.
+
+## `recipe_book_add.entries[].contents.display.value.result.value.components.added`
+
+**Recipe book result components**
+
+The data components added to the stack the recipe book shows for the
+recipe's result.
+
+## `recipe_book_add.entries[].contents.display.value.result.value.components.removed`
+
+**Recipe book result removed components**
+
+The data components removed from the stack the recipe book shows for the
+recipe's result.
+
+## `recipe_book_add.entries[].contents.display.value.crafting_station.type`
+
+**Recipe book crafting station display type**
+
+How the recipe book shows the block the recipe is made at: as an item,
+an item tag, an item stack, any fuel, or several choices in turn.
+
+## `recipe_book_add.entries[].contents.display.value.crafting_station.value`
+
+**Recipe book crafting station display data**
+
+The item, tag or stack the recipe book shows for the block the recipe is
+made at.

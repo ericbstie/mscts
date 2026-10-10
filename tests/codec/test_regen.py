@@ -29,6 +29,7 @@ _WANTED = {
     "minecraft:entity_type": ["minecraft:m", "minecraft:a", "minecraft:z"],
     "minecraft:item": ["minecraft:z", "minecraft:a", "minecraft:m"],
     "minecraft:menu": ["minecraft:a", "minecraft:m", "minecraft:z", "minecraft:b"],
+    "minecraft:recipe_display": ["minecraft:m", "minecraft:z", "minecraft:a"],
     "minecraft:slot_display": ["minecraft:a", "minecraft:z", "minecraft:m"],
 }
 

@@ -576,6 +576,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def drop(self, *, all: bool = False) -> None: ...            # player_action DROP_ITEM / DROP_ALL_ITEMS
     async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None: ...  # container_click
     async def close_container(self) -> None: ...                       # container_close, outside a tick
+    async def place_recipe(self, recipe_id: int, *, use_max_items: bool = False) -> None: ...  # place_recipe
     async def close(self) -> None: ...                                 # idempotent
     # Every operation (connect included) is bounded by timeout_s → TimeoutError.
     # status / ping send the handshake (intent 1, Target protocol, Endpoint host and port) first
@@ -675,6 +676,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # screen), sent at once and not in a tick (LocalPlayer.closeContainer). click (#28): on a
     # Bot in play, InventoryTracker.click predicts the click, then container_click goes at
     # once, not in a tick (a mouse or key callback); a refused click sends nothing (ValueError).
+    # place_recipe (#62): on a Bot in play, place_recipe with the open menu's window id, the
+    # recipe's display id and use_max_items, sent at once and not in a tick
+    # (MultiPlayerGameMode.handlePlaceRecipe); the client changes no slot, the server fills the
+    # grid.
     # The Bot follows no game mode: click predicts a survival or adventure player, and drop
     # sends what a spectator's client never would (the guide says so).
     # Face is an IntEnum: DOWN 0, UP 1, NORTH 2, SOUTH 3, WEST 4, EAST 5.
@@ -1210,6 +1215,20 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `INVENTORY_CLICKS` — the click sequences in the chest's menu and in the Bot's own, one window
   each; `clicks_inventory` and `clicks_chest` — the `inventory/clicks-inventory` and
   `inventory/clicks-chest` scripts.
+- `groups.crafting`: `PACKETS` — what a window compares (the slots, the cursor, the ghost
+  recipe and the recipe book); `RECIPE_ID_MASKS` — the Masks on the recipe display ids and
+  group numbers, which the client uses only as keys (the crafting Groups and `join/basic`); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
+  inventory menu's slot of the first hotbar slot; `Grid` — one 2x2 case (a stack, the cells it
+  is clicked onto); `GRID_CASES` — the cases; `grid` — the `crafting/grid` script.
+  `BOOKWORM` — the Bot of `crafting/recipe-book`; `TABLE` — where its crafting table stands;
+  `BOOK_RECIPES` — the recipes it is given, to read their display ids from `recipe_book_add`;
+  `LOCKED` — the recipe taken from its book again; `Placement` — one recipe book click (the
+  recipe, the stacks, `use_max_items`); `INVENTORY_PLACEMENTS` and `TABLE_PLACEMENTS` — the
+  clicks in the 2x2 and the 3x3 grid; `FIRST_ITEMS` — every item it gets before its book is
+  emptied; `recipe_book` — the `crafting/recipe-book` script. `LEARNER` — the Bot of
+  `crafting/unlocking`; `BOOK_CHANGES` — the `recipe` commands that change its book in a window
+  each; `OAK_PLANKS_ADVANCEMENT` — the advancement that unlocks oak planks; `unlocking` — the
+  `crafting/unlocking` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
