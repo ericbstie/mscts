@@ -30,7 +30,7 @@ from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
 CONTROL = "control"
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 CLICK, PLACE_RECIPE = "minecraft:container_click", "minecraft:place_recipe"
-USE_ITEM_ON = "minecraft:use_item_on"
+USE_ITEM_ON, CLOSE = "minecraft:use_item_on", "minecraft:container_close"
 MARKER = "tellraw @s "
 COMMANDS = tree(
     "gamerule", "tp", "clear", "item", "recipe", "setblock", "advancement", "give", "tellraw"
@@ -173,8 +173,9 @@ class Play:
     windows: tuple[Window, ...]
     commands: tuple[str, ...]
     after: tuple[str, ...]
-    opened_table_before: int | None
-    """The index of the first window that the Bot's use of the table came before, if any."""
+    table: tuple[tuple[str, int], ...]
+    """Each use of a block and each close of a container the Bot sent, in order, with how many
+    windows had closed before it."""
 
 
 def _commands(transcript: Transcript) -> list[tuple[int, str]]:
@@ -199,7 +200,7 @@ def read(transcript: Transcript, bot: str) -> Play:
         for event in transcript.events
         if event.bot == bot
         and event.packet.direction is Direction.SERVERBOUND
-        and event.packet.name in {CLICK, PLACE_RECIPE, USE_ITEM_ON}
+        and event.packet.name in {CLICK, PLACE_RECIPE, USE_ITEM_ON, CLOSE}
     ]
     commands = _commands(transcript)
     windows, previous = [], 0
@@ -213,15 +214,16 @@ def read(transcript: Transcript, bot: str) -> Play:
             )
         )
         previous = closed
-    uses = [t for t, name, _ in actions if name == USE_ITEM_ON]
-    first_after = None
-    if uses:
-        first_after = next(i for i, (opened, _) in enumerate(opens) if opened > uses[0])
+    table = tuple(
+        (name, sum(closed < t for closed in closes))
+        for t, name, _ in actions
+        if name in {USE_ITEM_ON, CLOSE}
+    )
     return Play(
         tuple(windows),
         tuple(c for _, c in commands),
         tuple(c for t, c in commands if t > previous),
-        first_after,
+        table,
     )
 
 
@@ -442,13 +444,25 @@ async def test_the_bot_opens_a_table_set_for_it_before_the_table_windows() -> No
     x, y, z = crafting.TABLE
     table = result.windows[len(crafting.INVENTORY_PLACEMENTS)].before
 
-    assert result.opened_table_before == len(crafting.INVENTORY_PLACEMENTS)
+    assert result.table[0] == (USE_ITEM_ON, len(crafting.INVENTORY_PLACEMENTS))
     assert table == (
         f"setblock {x} {y} {z} minecraft:crafting_table",
         f"tp {crafting.BOOKWORM} 12.5 -60 12.5 0 0",
         *_fills(crafting.BOOKWORM, crafting.TABLE_PLACEMENTS[0].items),
     )
     assert f"setblock {x} {y} {z} minecraft:air" in result.after
+
+
+@pytest.mark.asyncio
+async def test_the_bot_opens_the_table_before_each_table_window_and_closes_it_after() -> None:
+    result = await play(BOOK)
+    first = len(crafting.INVENTORY_PLACEMENTS)
+
+    assert result.table == tuple(
+        step
+        for index in range(first, first + len(crafting.TABLE_PLACEMENTS))
+        for step in ((USE_ITEM_ON, index), (CLOSE, index + 1))
+    )
 
 
 def test_the_book_cases_cover_both_grids_a_ghost_recipe_and_a_recipe_not_known() -> None:
@@ -478,8 +492,13 @@ async def test_the_learner_starts_with_an_empty_book_after_its_first_log() -> No
 async def test_each_book_change_is_one_recipe_command_inside_a_window() -> None:
     windows = (await play(UNLOCKING)).windows[: len(crafting.BOOK_CHANGES)]
 
+    bot = crafting.LEARNER
+
     assert [window.control for window in windows] == [
-        (command.format(name=crafting.LEARNER),) for command in crafting.BOOK_CHANGES
+        (f"recipe give {bot} minecraft:stick",),
+        (f"recipe take {bot} minecraft:stick",),
+        (f"recipe give {bot} *",),
+        (f"recipe take {bot} *",),
     ]
     assert all(window.sent == () for window in windows)
 
