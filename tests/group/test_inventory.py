@@ -31,10 +31,16 @@ from tests.group.test_control import (
 )
 from tests.net.fakes import Peer
 
-GIVE, DROP, CLICKS = "inventory/give", "inventory/drop", "inventory/clicks"
-GROUP_IDS = (GIVE, DROP, CLICKS)
-KINDS = {GIVE: GroupKind.EXACT, DROP: GroupKind.TICK_EXACT, CLICKS: GroupKind.EXACT}
-BOTS = {GIVE: "giver", DROP: "dropper", CLICKS: "clicker"}
+GIVE, DROP = "inventory/give", "inventory/drop"
+CLICKS_INVENTORY, CLICKS_CHEST = "inventory/clicks-inventory", "inventory/clicks-chest"
+GROUP_IDS = (GIVE, DROP, CLICKS_INVENTORY, CLICKS_CHEST)
+KINDS = {
+    GIVE: GroupKind.EXACT,
+    DROP: GroupKind.TICK_EXACT,
+    CLICKS_INVENTORY: GroupKind.EXACT,
+    CLICKS_CHEST: GroupKind.EXACT,
+}
+BOTS = {GIVE: "giver", DROP: "dropper", CLICKS_INVENTORY: "clicker", CLICKS_CHEST: "clicker"}
 COMMANDS = tree(
     "gamerule",
     "tp",
@@ -94,7 +100,7 @@ def label(packets: tuple[str, ...]) -> str:
     return f"{OBSERVE_OPEN} {' '.join(packets)}"
 
 
-UNDONE_FIRST = {CLICKS: ("setblock 2 -60 0 minecraft:air",)}
+UNDONE_FIRST = {CLICKS_CHEST: ("setblock 2 -60 0 minecraft:air",)}
 """What a Group undoes before the undo every Group shares."""
 
 ITEMS = "@e[type=minecraft:item,x=0.5,y=-60,z=0.5,distance=..20"
@@ -423,11 +429,30 @@ async def test_each_drop_starts_from_its_item_alone_in_the_first_hotbar_slot() -
     ]
 
 
-# `inventory/clicks`
+# `inventory/clicks-inventory` and `inventory/clicks-chest`
 
 
-def test_clicks_masks_the_thrown_items_motion_and_the_chests_sound_pitch() -> None:
-    masks = {(mask.packet, mask.path) for mask in GROUPS[CLICKS].masks}
+def test_the_inventory_clicks_are_registered_before_the_chests_so_they_are_played_first() -> None:
+    # A Candidate that cannot open a chest fails the chest Group at its first click.
+    ids = list(GROUPS)
+
+    assert ids.index(CLICKS_INVENTORY) < ids.index(CLICKS_CHEST)
+
+
+def test_the_inventory_clicks_mask_only_the_thrown_items_motion() -> None:
+    # The helmet's equip sound has a fixed pitch (LivingEntity.onEquipItem plays it at 1.0).
+    masks = {(mask.packet, mask.path) for mask in GROUPS[CLICKS_INVENTORY].masks}
+
+    assert masks == {
+        ("minecraft:add_entity", "velocity.x"),
+        ("minecraft:add_entity", "velocity.y"),
+        ("minecraft:add_entity", "velocity.z"),
+        ("minecraft:add_entity", "yaw"),
+    }
+
+
+def test_the_chest_clicks_mask_the_thrown_items_motion_and_the_chests_sound_pitch() -> None:
+    masks = {(mask.packet, mask.path) for mask in GROUPS[CLICKS_CHEST].masks}
 
     assert masks == {
         ("minecraft:add_entity", "velocity.x"),
@@ -438,15 +463,29 @@ def test_clicks_masks_the_thrown_items_motion_and_the_chests_sound_pitch() -> No
     }
 
 
+KIT_COMMANDS = (
+    "clear clicker",
+    *(f"item replace entity clicker {entry}" for entry in KIT),
+)
+"""How Control gives the Bot its kit: an empty inventory, then each item."""
+
+
+@pytest.mark.asyncio
+async def test_control_gives_the_kit_before_the_first_inventory_click() -> None:
+    before = (await played(CLICKS_INVENTORY)).windows[0].before
+
+    assert before[-7:] == KIT_COMMANDS
+    assert not any(command.startswith("setblock") for command in before)
+
+
 @pytest.mark.asyncio
 async def test_control_places_the_filled_chest_and_gives_the_kit_before_the_chest_opens() -> None:
-    before = (await played(CLICKS)).windows[0].before
+    before = (await played(CLICKS_CHEST)).windows[0].before
 
     assert before[-9:] == (
         "setblock 2 -60 0 minecraft:air",
         f"setblock 2 -60 0 {CHEST_BLOCK}",
-        "clear clicker",
-        *(f"item replace entity clicker {entry}" for entry in KIT),
+        *KIT_COMMANDS,
     )
 
 
@@ -456,13 +495,20 @@ def opens(window: Window) -> list[tuple[object, object]]:
 
 
 @pytest.mark.asyncio
-async def test_the_bot_opens_the_chest_in_the_first_window_after_each_half_and_at_the_end() -> None:
-    windows = (await played(CLICKS)).windows
+async def test_the_bot_opens_the_chest_in_the_first_window_and_again_in_the_last() -> None:
+    windows = (await played(CLICKS_CHEST)).windows
     chest = ({"x": 2, "y": -60, "z": 0}, int(Face.UP))
 
-    assert [i for i, window in enumerate(windows) if opens(window)] == [0, 14, 30]
-    assert [opens(windows[i]) for i in (0, 14, 30)] == [[chest]] * 3
-    assert len(windows) == 31
+    assert [i for i, window in enumerate(windows) if opens(window)] == [0, 14]
+    assert [opens(windows[i]) for i in (0, 14)] == [[chest]] * 2
+    assert len(windows) == 15
+
+
+@pytest.mark.asyncio
+async def test_the_inventory_clicks_open_nothing() -> None:
+    windows = (await played(CLICKS_INVENTORY)).windows
+
+    assert [opens(window) for window in windows] == [[]] * 15
 
 
 def clicks(window: Window) -> list[tuple[int, int, int, int]]:
@@ -480,7 +526,7 @@ PICKUP, QUICK_MOVE, SWAP, THROW, QUICK_CRAFT, PICKUP_ALL = 0, 1, 2, 4, 5, 6
 
 @pytest.mark.asyncio
 async def test_the_first_chest_windows_take_and_split_a_stack_and_shift_click_both_ways() -> None:
-    windows = (await played(CLICKS)).windows
+    windows = (await played(CLICKS_CHEST)).windows
 
     assert [clicks(window) for window in windows[1:5]] == [
         [(1, 0, 0, PICKUP), (1, 5, 0, PICKUP)],
@@ -491,17 +537,26 @@ async def test_the_first_chest_windows_take_and_split_a_stack_and_shift_click_bo
 
 
 @pytest.mark.asyncio
-async def test_each_half_clicks_its_sequences_in_its_own_menu() -> None:
-    windows = (await played(CLICKS)).windows
-    chest = [[(1, *click) for click in modes(s)] for s in inventory.CHEST_CLICKS]
-    own = [[(0, *click) for click in modes(s)] for s in inventory.INVENTORY_CLICKS]
+async def test_the_first_inventory_windows_shift_click_the_helmet_onto_the_head_and_back() -> None:
+    windows = (await played(CLICKS_INVENTORY)).windows
 
-    assert [clicks(window) for window in windows[1:14]] == chest
-    assert [clicks(window) for window in windows[15:30]] == own
+    assert [clicks(window) for window in windows[4:6]] == [
+        [(0, 11, 0, QUICK_MOVE)],
+        [(0, 5, 0, QUICK_MOVE)],
+    ]
 
 
 def modes(sequence: tuple[tuple[int, int, str], ...]) -> list[tuple[int, int, int]]:
     return [(slot, button, CLICK_MODES[mode]) for slot, button, mode in sequence]
+
+
+@pytest.mark.asyncio
+async def test_each_group_clicks_its_sequences_in_its_own_menu() -> None:
+    chest = [[(1, *click) for click in modes(s)] for s in inventory.CHEST_CLICKS]
+    own = [[(0, *click) for click in modes(s)] for s in inventory.INVENTORY_CLICKS]
+
+    assert [clicks(window) for window in (await played(CLICKS_CHEST)).windows[1:14]] == chest
+    assert [clicks(window) for window in (await played(CLICKS_INVENTORY)).windows] == own
 
 
 CLICKED = {
@@ -523,14 +578,12 @@ CLICKED = {
 drags (start, add, end), double-click, Q and Ctrl+Q."""
 
 
-@pytest.mark.parametrize("menu", ["chest", "inventory"])
+@pytest.mark.parametrize("group_id", [CLICKS_INVENTORY, CLICKS_CHEST])
 @pytest.mark.asyncio
-async def test_each_half_clicks_every_mode_and_button_and_outside_the_window(menu: str) -> None:
-    windows = (
-        (await played(CLICKS)).windows[1:14]
-        if menu == "chest"
-        else (await played(CLICKS)).windows[15:30]
-    )
+async def test_each_group_clicks_every_mode_and_button_and_outside_the_window(
+    group_id: str,
+) -> None:
+    windows = (await played(group_id)).windows
     sent = [click for window in windows for click in clicks(window)]
 
     assert {(mode, button) for _, _, button, mode in sent} == CLICKED
@@ -538,20 +591,16 @@ async def test_each_half_clicks_every_mode_and_button_and_outside_the_window(men
     assert (OUTSIDE, 1, PICKUP) in {(slot, button, mode) for _, slot, button, mode in sent}
 
 
+@pytest.mark.parametrize(
+    ("group_id", "closed"),
+    [(CLICKS_INVENTORY, ["close 0"]), (CLICKS_CHEST, ["close 1", "close 2"])],
+)
 @pytest.mark.asyncio
-async def test_the_bot_closes_each_menu_and_syncs_before_control_acts_again() -> None:
-    timeline = (await played(CLICKS)).timeline
+async def test_the_bot_closes_each_menu_and_syncs_before_control_acts_again(
+    group_id: str, closed: list[str]
+) -> None:
+    timeline = (await played(group_id)).timeline
     closes = [i for i, entry in enumerate(timeline) if entry.startswith("close")]
 
-    assert [timeline[i] for i in closes] == ["close 1", "close 2", "close 0", "close 3"]
+    assert [timeline[i] for i in closes] == closed
     assert all(timeline[i + 1] == "sync" for i in closes)
-
-
-@pytest.mark.asyncio
-async def test_the_inventory_half_starts_from_the_kit_again() -> None:
-    before = (await played(CLICKS)).windows[15].before
-
-    assert before == (
-        "clear clicker",
-        *(f"item replace entity clicker {entry}" for entry in KIT),
-    )

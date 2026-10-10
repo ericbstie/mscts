@@ -1208,7 +1208,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `CHEST_PITCH` — the Mask on the pitch of a chest's sound; `KIT` — what the Bot holds before
   each half of the clicks; `Click` — a slot, button and mode; `CHEST_CLICKS` and
   `INVENTORY_CLICKS` — the click sequences in the chest's menu and in the Bot's own, one window
-  each; `clicks` — the `inventory/clicks` script.
+  each; `clicks_inventory` and `clicks_chest` — the `inventory/clicks-inventory` and
+  `inventory/clicks-chest` scripts.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control

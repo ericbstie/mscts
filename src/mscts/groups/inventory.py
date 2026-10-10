@@ -208,7 +208,7 @@ async def drop(context: GroupContext) -> None:
                 await context.step(case.ticks)
 
 
-# `inventory/clicks`
+# `inventory/clicks-inventory` and `inventory/clicks-chest`
 
 _CLICKER = "clicker"
 
@@ -232,10 +232,12 @@ CHEST_PITCH = Mask(
     "minecraft:sound",
     "pitch",
     "Vanilla draws it at random for a chest opening or closing (26.3 javap): "
-    "`ChestBlockEntity.playSound` plays it with pitch nextFloat() * 0.1 + 0.9. Which sound "
-    "plays, where and at what volume is still compared.",
+    "`ChestBlockEntity.playSound` plays it with pitch nextFloat() * 0.1 + 0.9. The Mask hides "
+    "the pitch of every sound in `inventory/clicks-chest`, where the chest is the only thing "
+    "that plays one; which sound plays, where and at what volume is still compared.",
 )
-"""The pitch of the sound a chest makes when it opens."""
+"""The pitch of the sound a chest makes when it opens. Only `inventory/clicks-chest` has it, so
+the fixed pitch of an armor's equip sound is compared in `inventory/clicks-inventory`."""
 
 _CHEST_ITEMS = (
     '{Slot:0b,id:"minecraft:stone",count:10}',
@@ -255,7 +257,7 @@ KIT = (
     "inventory.3 with minecraft:stone 64",
     "weapon.offhand with minecraft:torch 8",
 )
-"""What the Bot holds before each half of the clicks, set with `/item replace`."""
+"""What the Bot holds before its first click in each Group, set with `/item replace`."""
 
 type Click = tuple[int, int, str]
 """A click: the slot, the button and the mode, as `Bot.click` takes them."""
@@ -371,9 +373,17 @@ async def _see_chest(context: GroupContext, bot: Bot) -> None:
     await _close(bot)
 
 
-@group("inventory/clicks", masks=(*DROP_MASKS, CHEST_PITCH))
-async def clicks(context: GroupContext) -> None:
-    """The Bot clicks in every mode in a chest, then in its own inventory."""
+@group("inventory/clicks-inventory", masks=DROP_MASKS)
+async def clicks_inventory(context: GroupContext) -> None:
+    """The Bot clicks in every mode in its own inventory menu, with no container open."""
+    async with _arena(context, _CLICKER) as bot:
+        await _set_kit(context)
+        await _click_windows(context, bot, INVENTORY_CLICKS)
+
+
+@group("inventory/clicks-chest", masks=(*DROP_MASKS, CHEST_PITCH))
+async def clicks_chest(context: GroupContext) -> None:
+    """The Bot opens a chest, clicks in every mode in its menu, then opens it again."""
     x, y, z = CHEST
     async with _arena(context, _CLICKER) as bot, contextlib.AsyncExitStack() as undo:
         await context.control.run(f"setblock {x} {y} {z} minecraft:air")
@@ -382,7 +392,4 @@ async def clicks(context: GroupContext) -> None:
         await _set_kit(context)
         await _open_chest(context, bot)
         await _click_windows(context, bot, CHEST_CLICKS)
-        await _see_chest(context, bot)
-        await _set_kit(context)
-        await _click_windows(context, bot, INVENTORY_CLICKS)
         await _see_chest(context, bot)
