@@ -140,6 +140,158 @@ def test_a_slot_display_of_no_known_type_is_refused() -> None:
         CODEC.decode(State.PLAY, CLIENTBOUND, _framed(b"\x00\x01\x00\x0eminecraft:logs\x0b"))
 
 
+SERVERBOUND = Direction.SERVERBOUND
+BOOK_ADD = "minecraft:recipe_book_add"
+JOIN_BOOK = "vanilla-26.3-join-recipe_book_add.bin"
+"""The second `recipe_book_add` a fresh vanilla 26.3 Instance sent a joining player (#62): the
+crafting table, which every new player knows."""
+NO_COMPONENTS = {"added": [], "removed": []}
+PLANKS = {"type": "minecraft:tag", "value": {"tag": "minecraft:planks"}}
+CRAFTING_TABLE = {
+    "type": "minecraft:crafting_shaped",
+    "value": {
+        "width": 2,
+        "height": 2,
+        "ingredients": [PLANKS] * 4,
+        "result": {
+            "type": "minecraft:item_stack",
+            "value": {"item": 405, "count": 1, "components": NO_COMPONENTS},
+        },
+        "crafting_station": {"type": "minecraft:item", "value": 405},
+    },
+}
+
+
+def _encoded(direction: Direction, name: str, payload: bytes) -> bytes:
+    return Writer().var_int(CODEC.packet_id(State.PLAY, direction, name)).to_bytes() + payload
+
+
+def test_the_recipe_book_a_joining_player_gets_decodes_and_encodes_byte_for_byte() -> None:
+    payload = (DATA / JOIN_BOOK).read_bytes()
+    fields = CODEC.decode(State.PLAY, CLIENTBOUND, _encoded(CLIENTBOUND, BOOK_ADD, payload)).fields
+
+    assert fields is not None
+    assert fields == {
+        "entries": [
+            {
+                "contents": {
+                    "id": 339,
+                    "display": CRAFTING_TABLE,
+                    "group": None,
+                    "category": 3,
+                    "crafting_requirements": [{"tag": "minecraft:planks"}] * 4,
+                },
+                "flags": 2,
+            }
+        ],
+        "replace": False,
+    }
+    assert CODEC.encode(State.PLAY, CLIENTBOUND, BOOK_ADD, fields) == _encoded(
+        CLIENTBOUND, BOOK_ADD, payload
+    )
+
+
+ITEM_7 = {"type": "minecraft:item", "value": 7}
+RECIPE_DISPLAYS = {
+    "crafting_shapeless": (
+        {
+            "type": "minecraft:crafting_shapeless",
+            "value": {"ingredients": [ITEM_7], "result": ITEM_7, "crafting_station": ITEM_7},
+        },
+        b"\x00\x01\x04\x07\x04\x07\x04\x07",
+    ),
+    "furnace": (
+        {
+            "type": "minecraft:furnace",
+            "value": {
+                "ingredient": ITEM_7,
+                "fuel": {"type": "minecraft:any_fuel", "value": None},
+                "result": ITEM_7,
+                "crafting_station": ITEM_7,
+                "duration": 200,
+                "experience": 0.5,
+            },
+        },
+        b"\x02\x04\x07\x01\x04\x07\x04\x07\xc8\x01\x3f\x00\x00\x00",
+    ),
+    "stonecutter": (
+        {
+            "type": "minecraft:stonecutter",
+            "value": {"input": ITEM_7, "result": ITEM_7, "crafting_station": ITEM_7},
+        },
+        b"\x03\x04\x07\x04\x07\x04\x07",
+    ),
+    "smithing": (
+        {
+            "type": "minecraft:smithing",
+            "value": {
+                "template": ITEM_7,
+                "base": ITEM_7,
+                "addition": ITEM_7,
+                "result": ITEM_7,
+                "crafting_station": ITEM_7,
+            },
+        },
+        b"\x04" + b"\x04\x07" * 5,
+    ),
+}
+
+
+@pytest.mark.parametrize(("display", "data"), RECIPE_DISPLAYS.values(), ids=RECIPE_DISPLAYS.keys())
+def test_a_ghost_recipe_is_its_window_then_the_recipe_display(
+    display: dict[str, object], data: bytes
+) -> None:
+    name = "minecraft:place_ghost_recipe"
+    fields = {"window_id": 3, "recipe_display": display}
+    payload = b"\x03" + data
+
+    assert CODEC.encode(State.PLAY, CLIENTBOUND, name, fields) == _encoded(
+        CLIENTBOUND, name, payload
+    )
+    assert (
+        CODEC.decode(State.PLAY, CLIENTBOUND, _encoded(CLIENTBOUND, name, payload)).fields == fields
+    )
+
+
+def test_a_book_entry_may_have_a_group_and_no_crafting_requirements() -> None:
+    entry = {
+        "contents": {
+            "id": 300,
+            "display": RECIPE_DISPLAYS["stonecutter"][0],
+            "group": 4,
+            "category": 9,
+            "crafting_requirements": None,
+        },
+        "flags": 3,
+    }
+    fields = {"entries": [entry], "replace": True}
+    # id 300, the display, the group 4 as 5, category 9, no requirements, flags; replace.
+    payload = b"\x01\xac\x02" + RECIPE_DISPLAYS["stonecutter"][1] + b"\x05\x09\x00\x03\x01"
+
+    assert CODEC.encode(State.PLAY, CLIENTBOUND, BOOK_ADD, fields) == _encoded(
+        CLIENTBOUND, BOOK_ADD, payload
+    )
+    decoded = CODEC.decode(State.PLAY, CLIENTBOUND, _encoded(CLIENTBOUND, BOOK_ADD, payload))
+    assert decoded.fields == fields
+
+
+def test_a_book_removal_is_the_display_ids() -> None:
+    name = "minecraft:recipe_book_remove"
+    payload = b"\x02\xd3\x02\x00"  # 339, then 0
+
+    decoded = CODEC.decode(State.PLAY, CLIENTBOUND, _encoded(CLIENTBOUND, name, payload))
+    assert decoded.fields == {"recipes": [339, 0]}
+
+
+def test_a_placed_recipe_is_the_window_the_display_id_and_whether_to_use_the_most() -> None:
+    name = "minecraft:place_recipe"
+    fields = {"window_id": 2, "recipe_id": 339, "use_max_items": True}
+
+    assert CODEC.encode(State.PLAY, SERVERBOUND, name, fields) == _encoded(
+        SERVERBOUND, name, b"\x02\xd3\x02\x01"
+    )
+
+
 def test_a_property_set_is_its_id_then_its_items() -> None:
     fields = {
         "property_sets": [{"property_set_id": "minecraft:smoker_input", "items": [300, 1]}],

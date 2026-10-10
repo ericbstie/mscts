@@ -2044,6 +2044,13 @@
     "minecraft:cartography_table",
     "minecraft:stonecutter"
   ],
+  "minecraft:recipe_display": [
+    "minecraft:crafting_shapeless",
+    "minecraft:crafting_shaped",
+    "minecraft:furnace",
+    "minecraft:stonecutter",
+    "minecraft:smithing"
+  ],
   "minecraft:slot_display": [
     "minecraft:empty",
     "minecraft:any_fuel",
