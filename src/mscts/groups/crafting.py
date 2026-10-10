@@ -234,3 +234,58 @@ async def recipe_book(context: GroupContext) -> None:
         await _set_table(context, undo, bot)
         for case in TABLE_PLACEMENTS:
             await _in_table(context, bot, ids, case)
+
+
+# `crafting/unlocking`
+
+LEARNER = "learner"
+"""The Bot of `crafting/unlocking`."""
+
+BOOK_CHANGES = (
+    "recipe give {name} minecraft:stick",
+    "recipe take {name} minecraft:stick",
+    "recipe give {name} *",
+    "recipe take {name} *",
+)
+"""The `recipe` commands that each change the Bot's book inside a window: one recipe given and
+taken, then every recipe."""
+
+OAK_PLANKS_ADVANCEMENT = "minecraft:recipes/building_blocks/oak_planks"
+"""The advancement that gives the oak planks recipe to a player who gets an oak log."""
+
+
+async def _limited(context: GroupContext, bot: Bot, *, limited: bool) -> None:
+    """With `limited_crafting` set to `limited`, click an oak log into the 2x2 grid.
+
+    The Bot knows no recipe, so a server that limits crafting shows no planks.
+    """
+    control = context.control
+    await control.run(f"gamerule limited_crafting {str(limited).lower()}")
+    await control.run(f"clear {bot.name}")
+    await control.run(f"item replace entity {bot.name} hotbar.0 with minecraft:oak_log 1")
+    async with context.observe(*PACKETS):
+        await bot.click(HOTBAR_0)
+        await bot.click(1)
+
+
+@group("crafting/unlocking")
+async def unlocking(context: GroupContext) -> None:
+    """Recipes given, taken and unlocked by an item change the book, and limit crafting."""
+    control = context.control
+    async with contextlib.AsyncExitStack() as undo:
+        bot = await _stage(context, undo, LEARNER)
+        name = bot.name
+        await control.run(f"item replace entity {name} hotbar.0 with minecraft:oak_log 1")
+        await control.run(f"recipe take {name} *")
+        await control.run(f"clear {name}")
+        for command in BOOK_CHANGES:
+            async with context.observe(*PACKETS):
+                await control.run(command.format(name=name))
+        undo.push_async_callback(control.run, "gamerule limited_crafting false")
+        for limited in (True, False):
+            await _limited(context, bot, limited=limited)
+        await control.run(f"clear {name}")
+        await control.run(f"advancement revoke {name} only {OAK_PLANKS_ADVANCEMENT}")
+        await control.run(f"recipe take {name} *")
+        async with context.observe(*PACKETS):
+            await control.run(f"give {name} minecraft:oak_log")

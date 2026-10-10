@@ -37,8 +37,8 @@ COMMANDS = tree(
     "gamerule", "tp", "clear", "item", "recipe", "setblock", "advancement", "give", "tellraw"
 )
 PLAY_TIMEOUT_S = 300.0
-GRID, BOOK = "crafting/grid", "crafting/recipe-book"
-GROUP_IDS = (GRID, BOOK)
+GRID, BOOK, UNLOCKING = "crafting/grid", "crafting/recipe-book", "crafting/unlocking"
+GROUP_IDS = (GRID, BOOK, UNLOCKING)
 INVENTORY_SLOTS = 46
 """The inventory menu's slots: result, the 2x2, the armor, the 27, the hotbar, the off hand."""
 TABLE_WINDOW = 1
@@ -226,7 +226,7 @@ def read(transcript: Transcript, bot: str) -> Play:
     )
 
 
-BOTS = {GRID: crafting.CRAFTER, BOOK: crafting.BOOKWORM}
+BOTS = {GRID: crafting.CRAFTER, BOOK: crafting.BOOKWORM, UNLOCKING: crafting.LEARNER}
 
 
 async def _play(group_id: str) -> Play:
@@ -441,3 +441,55 @@ def test_the_book_cases_cover_both_grids_a_ghost_recipe_and_a_recipe_not_known()
     assert any(case.use_max_items for case in crafting.TABLE_PLACEMENTS)
     assert crafting.INVENTORY_PLACEMENTS[-1].recipe == crafting.LOCKED
     assert crafting.TABLE_PLACEMENTS[-1].recipe == crafting.LOCKED
+
+
+# crafting/unlocking
+
+
+def test_the_learner_starts_with_an_empty_book_after_its_first_log() -> None:
+    first = played(UNLOCKING).windows[0].before
+    bot = crafting.LEARNER
+
+    assert first[3:] == (
+        f"clear {bot}",
+        f"item replace entity {bot} hotbar.0 with minecraft:oak_log 1",
+        f"recipe take {bot} *",
+        f"clear {bot}",
+    )
+
+
+def test_each_book_change_is_one_recipe_command_inside_a_window() -> None:
+    windows = played(UNLOCKING).windows[: len(crafting.BOOK_CHANGES)]
+
+    assert [window.control for window in windows] == [
+        (command.format(name=crafting.LEARNER),) for command in crafting.BOOK_CHANGES
+    ]
+    assert all(window.sent == () for window in windows)
+
+
+def test_a_log_is_clicked_into_the_grid_with_crafting_limited_then_not() -> None:
+    result = played(UNLOCKING)
+    bot = crafting.LEARNER
+    first = len(crafting.BOOK_CHANGES)
+
+    for window, limited in zip(result.windows[first : first + 2], ("true", "false"), strict=True):
+        assert clicks(window) == [(crafting.HOTBAR_0, 0, 0), (1, 0, 0)]
+        assert window.before[-3:] == (
+            f"gamerule limited_crafting {limited}",
+            f"clear {bot}",
+            f"item replace entity {bot} hotbar.0 with minecraft:oak_log 1",
+        )
+    assert "gamerule limited_crafting false" in result.after
+
+
+def test_a_log_given_after_its_advancement_is_revoked_unlocks_the_planks_again() -> None:
+    last = played(UNLOCKING).windows[-1]
+    bot = crafting.LEARNER
+
+    assert len(played(UNLOCKING).windows) == len(crafting.BOOK_CHANGES) + 3
+    assert last.before == (
+        f"clear {bot}",
+        f"advancement revoke {bot} only minecraft:recipes/building_blocks/oak_planks",
+        f"recipe take {bot} *",
+    )
+    assert last.control == (f"give {bot} minecraft:oak_log",)

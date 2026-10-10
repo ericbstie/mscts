@@ -1224,7 +1224,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `LOCKED` — the recipe taken from its book again; `Placement` — one recipe book click (the
   recipe, the stacks, `use_max_items`); `INVENTORY_PLACEMENTS` and `TABLE_PLACEMENTS` — the
   clicks in the 2x2 and the 3x3 grid; `FIRST_ITEMS` — every item it gets before its book is
-  emptied; `recipe_book` — the `crafting/recipe-book` script.
+  emptied; `recipe_book` — the `crafting/recipe-book` script. `LEARNER` — the Bot of
+  `crafting/unlocking`; `BOOK_CHANGES` — the `recipe` commands that change its book in a window
+  each; `OAK_PLANKS_ADVANCEMENT` — the advancement that unlocks oak planks; `unlocking` — the
+  `crafting/unlocking` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
