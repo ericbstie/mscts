@@ -96,9 +96,10 @@ GIVE_PACKETS = (
     "minecraft:add_entity",
     "minecraft:set_entity_data",
     "minecraft:take_item_entity",
+    "minecraft:remove_entities",
     "minecraft:sound",
 )
-"""The packets a give window compares: the inventory, the item that appears, and the sound."""
+"""What a give window compares: the inventory, the item that appears and goes, and the sound."""
 
 _SEVERAL_ITEMS_PACKETS = tuple(name for name in GIVE_PACKETS if name != "minecraft:set_entity_data")
 """What a window that makes several items compares. Vanilla sends each new item's data again at
@@ -135,7 +136,9 @@ GIVES = (
     _Give("minecraft:stone", 1, full=True),
 )
 """The gives, one window each: one stack, a full stack, more than a stack, an unstackable item,
-and an item that does not fit, which drops."""
+and an item that does not fit, which drops. Each window steps one tick: a give that fits shows an
+item popping out of the player that nobody can pick up (`ItemEntity.makeFakeItem`, age 5999), and
+vanilla removes it on its next tick."""
 
 
 @group("inventory/give", masks=(*DROP_MASKS, PICKUP_PITCH))
@@ -148,6 +151,7 @@ async def give(context: GroupContext) -> None:
                 await context.control.run(_FULL)
             async with context.observe(*case.packets()):
                 await context.control.run(f"give {_GIVER} {case.item} {case.count}")
+                await context.step(1)
 
 
 # `inventory/drop`

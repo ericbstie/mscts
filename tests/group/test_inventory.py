@@ -75,6 +75,25 @@ KIT = (
 GENERIC_9X3 = 2
 """`minecraft:generic_9x3`, a chest's menu, in `minecraft:menu` (registries report)."""
 CHEST_TITLE = bytes([0x08, 0x00, 0x05]) + b"Chest"  # a network NBT String tag
+GIVE_WINDOW = (
+    "minecraft:container_set_content",
+    "minecraft:container_set_slot",
+    "minecraft:set_cursor_item",
+    "minecraft:set_player_inventory",
+    "minecraft:add_entity",
+    SET_ENTITY_DATA,
+    "minecraft:take_item_entity",
+    "minecraft:remove_entities",
+    "minecraft:sound",
+)
+"""What a give window compares, as its Mark names it."""
+
+
+def label(packets: tuple[str, ...]) -> str:
+    """The open Mark of a window that compares `packets`."""
+    return f"{OBSERVE_OPEN} {' '.join(packets)}"
+
+
 UNDONE_FIRST = {CLICKS: ("setblock 2 -60 0 minecraft:air",)}
 """What a Group undoes before the undo every Group shares."""
 
@@ -307,15 +326,15 @@ def test_give_masks_the_dropped_items_motion_and_the_pickup_sounds_pitch() -> No
 
 
 @pytest.mark.asyncio
-async def test_give_runs_one_give_in_each_window() -> None:
+async def test_give_runs_one_give_in_each_window_then_steps_a_tick() -> None:
     windows = (await played(GIVE)).windows
 
     assert [window.commands for window in windows] == [
-        ("give giver minecraft:stone 1",),
-        ("give giver minecraft:stone 64",),
-        ("give giver minecraft:stone 100",),
-        ("give giver minecraft:diamond_sword 1",),
-        ("give giver minecraft:stone 1",),
+        ("give giver minecraft:stone 1", "tick step 1"),
+        ("give giver minecraft:stone 64", "tick step 1"),
+        ("give giver minecraft:stone 100", "tick step 1"),
+        ("give giver minecraft:diamond_sword 1", "tick step 1"),
+        ("give giver minecraft:stone 1", "tick step 1"),
     ]
 
 
@@ -323,11 +342,17 @@ async def test_give_runs_one_give_in_each_window() -> None:
 async def test_only_the_give_that_makes_two_items_leaves_out_their_entity_data() -> None:
     # Vanilla resends each new entity's data at the end of the tick in the hash order of its id.
     labels = [window.label for window in (await played(GIVE)).windows]
-    compared = f"{OBSERVE_OPEN} {' '.join(inventory.GIVE_PACKETS)}"
-    no_data = tuple(name for name in inventory.GIVE_PACKETS if name != SET_ENTITY_DATA)
+    compared = label(GIVE_WINDOW)
+    no_data = label(tuple(name for name in GIVE_WINDOW if name != SET_ENTITY_DATA))
 
-    assert labels == [compared, compared, f"{OBSERVE_OPEN} {' '.join(no_data)}", compared, compared]
-    assert SET_ENTITY_DATA in inventory.GIVE_PACKETS
+    assert labels == [compared, compared, no_data, compared, compared]
+
+
+@pytest.mark.asyncio
+async def test_each_give_steps_a_tick_in_which_vanilla_removes_the_item_it_showed() -> None:
+    # GiveCommand.giveItem makes a fake item (ItemEntity.makeFakeItem: age 5999), which
+    # ItemEntity.tick discards on the next tick; the frozen world steps that tick in the window.
+    assert [window.ticks for window in (await played(GIVE)).windows] == [1, 1, 1, 1, 1]
 
 
 @pytest.mark.asyncio
