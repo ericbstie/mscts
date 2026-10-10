@@ -1,15 +1,21 @@
 """Tick-exact Groups: `freeze` and `step` against a fake server, and the Marks they leave."""
 
+from collections.abc import Set as AbstractSet
+
 import pytest
 from support.probe import REPEATER_STEPPED
 
-from mscts.codec.packets import Direction
-from mscts.compare import TICK_MARK, Outcome
+from mscts.bot import SYNC_REQUESTS, Face
+from mscts.codec.packets import Direction, Packet
+from mscts.codec.schemas.play.stats import REQUEST_STATS
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Outcome
 from mscts.group import CommandMissing, Group, GroupContext, GroupKind
 from mscts.run import GroupError, judge, run_group
 from mscts.transcript import Transcript
 from tests.group.test_control import (
     AWARD_STATS,
+    CHAT_COMMAND,
+    CLIENT_COMMAND,
     CODEC,
     MARKER,
     ControlServer,
@@ -20,6 +26,7 @@ from tests.group.test_control import (
 from tests.net.fakes import serve
 
 CONTROL = "control"
+PLAYER_ACTION = "minecraft:player_action"
 
 
 def steps(seen: list[object]) -> list[object]:
@@ -29,6 +36,49 @@ def steps(seen: list[object]) -> list[object]:
 
 def tick_marks(transcript: Transcript) -> list[str]:
     return [mark.label for mark in transcript.marks if mark.label.startswith(TICK_MARK)]
+
+
+def barriers_before_steps(transcript: Transcript, bot: str, actions: AbstractSet[str]) -> list[int]:
+    """For each of `bot`'s `actions` that a step follows in its window: its barrier's requests.
+
+    That is, how many statistics requests `bot` sent after the action and before Control sent
+    the window's next `tick step 1` (#360). An action no step follows in its window is left out.
+    """
+    windows = list(
+        zip(
+            [mark.t_ns for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)],
+            [mark.t_ns for mark in transcript.marks if mark.label == OBSERVE_CLOSE],
+            strict=True,
+        )
+    )
+    sent = [event for event in transcript.events if event.packet.direction is Direction.SERVERBOUND]
+    steps = [
+        event.t_ns
+        for event in sent
+        if event.bot == CONTROL
+        and event.packet.name == CHAT_COMMAND
+        and (event.packet.fields or {})["command"] == "tick step 1"
+    ]
+    requests = [
+        event.t_ns
+        for event in sent
+        if event.bot == bot
+        and event.packet.name == CLIENT_COMMAND
+        and (event.packet.fields or {})["action"] == REQUEST_STATS
+    ]
+    counts = []
+    for event in sent:
+        if event.bot != bot or event.packet.name not in actions:
+            continue
+        closed = next(
+            (closed for opened, closed in windows if opened <= event.t_ns <= closed), None
+        )
+        if closed is None:
+            continue
+        step = next((t for t in steps if event.t_ns < t <= closed), None)
+        if step is not None:
+            counts.append(sum(event.t_ns < t < step for t in requests))
+    return counts
 
 
 async def joined(context: GroupContext, name: str = "alice") -> None:
@@ -112,6 +162,44 @@ async def test_step_refuses_a_world_the_group_has_not_frozen() -> None:
             await context.step()
 
     assert commands_sent(server.seen) == []
+
+
+def received_from_the_action(seen: list[Packet]) -> list[object]:
+    """What the server read from the dig's `player_action` on: the barrier's requests, the steps."""
+    start = next(index for index, packet in enumerate(seen) if packet.name == PLAYER_ACTION)
+    return [
+        packet.name if packet.name != CHAT_COMMAND else (packet.fields or {})["command"]
+        for packet in seen[start:]
+        if packet.name in {PLAYER_ACTION, CLIENT_COMMAND}
+        or (packet.name == CHAT_COMMAND and (packet.fields or {})["command"] == "tick step 1")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_step_after_brings_the_bots_action_to_the_server_before_the_step() -> None:
+    # #360: the action and `tick step 1` travel on two connections. The acting Bot's
+    # barrier is answered only once the server has read the action, so the server reads
+    # the action, then the barrier's requests, then the step.
+    server = ControlServer()
+    transcript = Transcript(group_id="test/ticks", server="fake")
+    async with playing(server, transcript) as context:
+        alice = await context.bot("alice")
+        await alice.join()
+        await context.freeze()
+        await alice.dig(0, -60, 0, Face.NORTH)
+        await context.step_after(alice, ticks=2)
+
+    assert received_from_the_action(server.seen)[: SYNC_REQUESTS + 2] == [
+        PLAYER_ACTION,
+        *[CLIENT_COMMAND] * SYNC_REQUESTS,
+        "tick step 1",
+    ]
+    assert steps(commands_sent(server.seen)) == [
+        "tick freeze",
+        "tick step 1",
+        "tick step 1",
+        "tick unfreeze",
+    ]
 
 
 @pytest.mark.asyncio

@@ -350,7 +350,12 @@ mscts then plays no later Group on either server. If vanilla stays frozen,
 each later Group is an error. If the Candidate stays frozen, each
 later Group fails.
 `await context.step(n)` advances the world `n` ticks, one `/tick step 1` at
-a time, and returns once the server has finished them. Inside a window,
+a time, and returns once the server has finished them. After a Bot acts
+(a dig, a hit, a move), step with `await context.step_after(bot, ticks=n)`
+instead. The Bot's action and the step reach the server on separate
+connections, so the step could arrive first and the action land a tick
+late. `step_after` waits until the server has handled what the Bot sent,
+then steps. Inside a window,
 packets are compared tick by tick: the same packet arriving one tick later
 on the Candidate is a difference. With `--verbose`, the Report shows the
 tick each server sent it on. Name the packets your Group tests in its
