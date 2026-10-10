@@ -180,6 +180,9 @@ class Play:
     table: tuple[tuple[str, int], ...]
     """Each use of a block and each close of a container the Bot sent, in order, with how many
     windows had closed before it."""
+    synced_after_close: tuple[bool, ...]
+    """For each close of a container, whether the Bot passed a barrier after it before
+    Control's next command."""
 
 
 def _commands(transcript: Transcript) -> list[tuple[int, str]]:
@@ -228,7 +231,27 @@ def read(transcript: Transcript, bot: str) -> Play:
         tuple(c for _, c in commands),
         tuple(c for t, c in commands if t > previous),
         table,
+        _synced_after_close(transcript, bot, [t for t, _ in commands]),
     )
+
+
+def _synced_after_close(transcript: Transcript, bot: str, commands: list[int]) -> tuple[bool, ...]:
+    """Whether the Bot sent a barrier request after each of its closes, before the next command.
+
+    `commands` are when Control sent its commands.
+    """
+    sent = [
+        (event.t_ns, event.packet.name)
+        for event in transcript.events
+        if event.bot == bot and event.packet.direction is Direction.SERVERBOUND
+    ]
+    requests = [t for t, name in sent if name == CLIENT_COMMAND]
+    closes = [t for t, name in sent if name == CLOSE]
+    synced = []
+    for closed in closes:
+        upto = min((t for t in commands if t > closed), default=None)
+        synced.append(any(closed < t and (upto is None or t < upto) for t in requests))
+    return tuple(synced)
 
 
 BOTS = {GRID: crafting.CRAFTER, BOOK: crafting.BOOKWORM, UNLOCKING: crafting.LEARNER}
@@ -506,6 +529,9 @@ async def test_the_bot_opens_the_table_before_each_table_window_and_closes_it_af
         for index in range(first, first + len(crafting.TABLE_PLACEMENTS))
         for step in ((USE_ITEM_ON, index), (CLOSE, index + 1))
     )
+    # The server gives the table's grid back when it handles the close: Control's next /clear
+    # must come after that, or the items come back after the clear.
+    assert result.synced_after_close == (True,) * len(crafting.TABLE_PLACEMENTS)
 
 
 @pytest.mark.asyncio

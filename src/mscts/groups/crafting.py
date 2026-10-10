@@ -233,14 +233,16 @@ async def _in_table(
     """Open the table, click the recipe of `case`, and close the table.
 
     Closing the table gives back what its grid holds, so each case starts from an empty grid.
+    The window's opening barrier covers the table's `open_screen`. The barrier after the close
+    makes the server give the grid back before Control's next `/clear`: the Bot and Control
+    are separate connections, and nothing else orders the two.
     """
     await _fill(context, bot.name, case.items)
-    await bot.sync()
     x, y, z = TABLE
     await bot.place(x, y, z, Face.NORTH, (0.5, 0.5, 0.0))
-    await bot.sync()
     await _click(bot, context, ids, case)
     await bot.close_container()
+    await bot.sync()
 
 
 @group("crafting/recipe-book", masks=RECIPE_ID_MASKS)
