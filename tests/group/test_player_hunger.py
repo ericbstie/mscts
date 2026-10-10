@@ -68,8 +68,14 @@ TIME_TICKS = 10
 """How many ticks apart the fake sends `set_time` (vanilla: 20): longer than a barrier, so a
 window that closes on the barrier after its sixth holds no seventh."""
 
-type Answer = tuple[tuple[str, Mapping[str, object] | bytes], ...]
-"""Packets a fake sends after a command: each name with its fields, or its raw payload."""
+type Answer = tuple[tuple[str, Mapping[str, object] | bytes | int], ...]
+"""Packets a fake sends after a command: each name with its fields, or its raw payload; or
+`PAUSE` with how many ticks the fake waits before the next."""
+
+PAUSE = "pause"
+GAP = (PAUSE, 15)
+"""A pause longer than `TIME_TICKS`, so that a window that stopped waiting at the packet before
+it would see the packet after it in its quiet time, after fewer than 6 `set_time`."""
 
 ENDS = ("minecraft:remove_mob_effect", {"entity_id": 1, "effect": HUNGER})
 
@@ -172,7 +178,9 @@ class HungerServer:
         await asyncio.sleep(ticks * TICK_S)
         with suppress(ConnectionError):
             for name, body in answer:
-                if isinstance(body, bytes):
+                if isinstance(body, int):
+                    await asyncio.sleep(body * TICK_S)
+                elif isinstance(body, bytes):
                     await player.write(player.raw_frame(name, body))
                 else:
                     await player.send(name, **body)
@@ -196,9 +204,21 @@ async def _play(group_id: str, server: HungerServer) -> Transcript:
 
 
 ANSWERS: Mapping[str, Mapping[str, Answer]] = {
-    "player/regeneration": {"effect": (ENDS,), "damage": (health(10.0, 17),)},
+    "player/regeneration": {
+        "effect": (ENDS,),
+        "damage": (health(10.0, 20), GAP, health(11.0, 19), GAP, health(12.0, 17)),
+    },
     "player/starvation": {
-        "effect": (ENDS, health(10.0, 0), health(1.0, 0), (DEATH, b"\x02" + text("dead")))
+        "effect": (
+            ENDS,
+            health(11.0, 0),
+            GAP,
+            health(10.0, 0),
+            GAP,
+            health(1.0, 0),
+            GAP,
+            (DEATH, b"\x02" + text("dead")),
+        )
     },
     "player/eating": {"effect": (ENDS,), "minecraft:use_item": (health(20.0, 7),)},
     "player/exhaustion": {
@@ -321,8 +341,9 @@ def test_regeneration_waits_for_food_17_then_100_ticks_before_a_window_ends() ->
 
     for packets in received_in_windows(transcript, REGENERATOR):
         names = [p.name for p in packets]
+        foods = [(p.fields or {})["food"] for p in packets if p.name == SET_HEALTH]
         last_health = max(i for i, name in enumerate(names) if name == SET_HEALTH)
-        assert (packets[last_health].fields or {})["food"] == 17
+        assert foods == [20, 19, 17]
         assert names[last_health + 1 :].count(SET_TIME) == 6
 
 
@@ -402,6 +423,8 @@ def test_starvation_waits_for_each_floor_then_100_ticks_and_on_hard_for_the_deat
     for packets, floor in ((easy, 10.0), (normal, 1.0)):
         names = [p.name for p in packets]
         at = next(i for i, p in enumerate(packets) if (p.fields or {}).get("health") == floor)
+        first = next(p for p in packets if p.name == SET_HEALTH)
+        assert (first.fields or {}).get("health") == 11.0
         assert names[at + 1 :].count(SET_TIME) == 6
     assert DEATH in [p.name for p in hard]
 
