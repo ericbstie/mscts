@@ -25,6 +25,7 @@ from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
+from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
 from tests.net.test_bot_move import LOGIN
 
@@ -463,6 +464,29 @@ async def test_each_case_waits_fifteen_steps_for_the_charge_and_steps_two_after_
         assert commands(window.inside).count(STEP) == 2
         names = [i.what for i in window.inside if i.what in ("minecraft:attack", STEP)]
         assert names == ["minecraft:attack", STEP, STEP]
+
+
+HITTERS = {
+    **dict.fromkeys(FIGHTER_GROUPS, (combat.FIGHTER,)),
+    "combat/immunity": (combat.STRIKER, combat.TAPPER),
+    "combat/pvp": (combat.ATTACKER,),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_each_hit_reaches_the_server_before_the_step_after_it(group_id: str) -> None:
+    result = await play(group_id)
+    attacks = sum(i.what == "minecraft:attack" for window in result.windows for i in window.inside)
+
+    barriers = [
+        count
+        for bot in HITTERS[group_id]
+        for count in barriers_before_steps(result.transcript, bot, {"minecraft:attack"})
+    ]
+
+    assert len(barriers) == attacks > 0
+    assert set(barriers) == {SYNC_REQUESTS}
 
 
 # combat/knockback
