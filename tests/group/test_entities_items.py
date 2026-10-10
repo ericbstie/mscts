@@ -17,9 +17,9 @@ from mscts.transcript import Transcript
 from tests.group import test_control
 from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
-MERGE = "entities/item-merge"
-GROUP_IDS = (MERGE,)
-BOTS = {MERGE: "watcher"}
+MERGE, DESPAWN = "entities/item-merge", "entities/item-despawn"
+GROUP_IDS = (MERGE, DESPAWN)
+BOTS = {MERGE: "watcher", DESPAWN: "watcher"}
 COMMANDS = tree(
     "gamerule",
     "tp",
@@ -49,6 +49,12 @@ def item(place: str, stack: str, *more: str) -> str:
     item_id, count = stack.split()
     fields = ",".join((f'Item:{{id:"{item_id}",count:{count}}}', STILL, *more))
     return f"summon minecraft:item {place} {{{fields}}}"
+
+
+def orb(place: str, value: int, *more: str) -> str:
+    """The summon of a still, tagged experience orb worth `value` at `place`."""
+    fields = ",".join((f"Value:{value}s", STILL, *more))
+    return f"summon minecraft:experience_orb {place} {{{fields}}}"
 
 
 @dataclass(frozen=True)
@@ -248,3 +254,36 @@ async def test_merge_takes_the_pane_away_first() -> None:
     after = (await play(MERGE)).after
 
     assert after[:-8] == ("setblock 1 -60 6 minecraft:air",)
+
+
+# `entities/item-despawn`
+
+
+@pytest.mark.asyncio
+async def test_despawn_summons_items_and_an_orb_near_their_last_tick_and_one_that_never_ages() -> (
+    None
+):
+    first = (await play(DESPAWN)).first
+
+    assert first[8:] == (
+        item("-3.5 -60.0 6.5", "minecraft:stone 1", "Age:5998s"),
+        item("-0.5 -60.0 6.5", "minecraft:dirt 1", "Age:5997s"),
+        item("2.5 -60.0 6.5", "minecraft:stone 1", "Age:-32768s"),
+        orb("5.5 -60.0 6.5", 3, "Age:5996s"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_despawn_steps_one_window_a_tick_past_the_last_to_go() -> None:
+    # An item or orb goes on the tick its age reaches 6000 (ItemEntity.tick, ExperienceOrb.tick):
+    # the item of age 5998 on the 2nd, the dirt on the 3rd, the orb on the 4th.
+    (window,) = (await play(DESPAWN)).windows
+
+    assert window.label == WINDOW
+    assert window.commands == ("tick step 1",) * 5
+    assert window.ticks == 5
+
+
+@pytest.mark.asyncio
+async def test_despawn_changes_nothing_else() -> None:
+    assert (await play(DESPAWN)).after[:-8] == ()
