@@ -1198,6 +1198,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   reads its food back; `regeneration`, `starvation`, `eating` and `exhaustion` — the
   `player/regeneration`, `player/starvation`, `player/eating` and `player/exhaustion`
   scripts.
+- `groups.inventory`: `DROP_MASKS` — the Masks on how an item a player drops moves and faces;
+  `PICKUP_PITCH` — the Mask on the pitch of the pickup sound `/give` plays; `GIVE_PACKETS` —
+  what a give window compares; `GIVES` — the items and counts given, one window each; `give` —
+  the `inventory/give` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
