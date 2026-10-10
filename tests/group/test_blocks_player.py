@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 
 import pytest
 
-from mscts.bot import Face
+from mscts.bot import SYNC_REQUESTS, Face
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
@@ -19,6 +19,7 @@ from mscts.spec import GameMode, ServerSpec
 from mscts.transcript import Transcript
 from tests.group import test_control
 from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
+from tests.group.test_ticks import barriers_before_steps
 
 PLAYER_ACTION, USE_ITEM_ON = "minecraft:player_action", "minecraft:use_item_on"
 MOVE_ROT = "minecraft:move_player_rot"
@@ -52,6 +53,8 @@ class Play:
     windows: tuple[Window, ...]
     after: tuple[str, ...]
     commands: tuple[str, ...]
+    barriers: tuple[int, ...]
+    """For each dig or placement a step follows: the digger's barrier requests in between."""
 
 
 def control_commands(transcript: Transcript) -> list[tuple[int, str]]:
@@ -110,6 +113,9 @@ def read(transcript: Transcript) -> Play:
         tuple(windows),
         tuple(c for t, c in control if t > previous),
         tuple(c for _, c in control),
+        tuple(
+            barriers_before_steps(transcript, blocks_player.DIGGER, {PLAYER_ACTION, USE_ITEM_ON})
+        ),
     )
 
 
@@ -187,6 +193,15 @@ async def test_control_freezes_and_undoes_its_settings_after_the_last_window(gro
     assert "gamerule random_tick_speed 0" in result.commands
     assert "gamerule random_tick_speed 3" in result.after
     assert result.commands[-1] == "tick unfreeze"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+async def test_the_dig_or_placement_reaches_the_server_before_the_step(group_id: str) -> None:
+    result = await played(group_id)
+
+    assert len(result.barriers) == len(result.windows)
+    assert set(result.barriers) == {SYNC_REQUESTS}
 
 
 @pytest.mark.asyncio

@@ -9,7 +9,7 @@ same two Instances).
 
 The world is frozen, so a dropped item stays where it appears and nothing but a Bot changes a
 block (random ticks are off). `blocks/dig-creative` and `blocks/place` step it a tick at a time
-(`GroupContext.step`).
+(`GroupContext.step_after`).
 Every block these Groups change is in chunk (0, 0), the one a Bot is sent when it joins
 (docs/guide/writing-a-group.md).
 """
@@ -120,7 +120,7 @@ async def _dig_creative(context: GroupContext, digger: Bot, dig: _Dig) -> None:
     await context.step(1)  # the block set reaches the Bots before the window opens
     async with context.observe(*PACKETS):
         await digger.dig(x, y, z, _FACE)
-        await context.step(1)
+        await context.step_after(digger)
 
 
 _CREATIVE_CASES = (
@@ -206,7 +206,7 @@ async def _place(context: GroupContext, digger: Bot, place: _Place) -> None:
     x, y, z = place.on
     async with context.observe(*PACKETS):
         await digger.place(x, y, z, place.face, place.cursor)
-        await context.step(1)
+        await context.step_after(digger)
 
 
 _SIDES = (Face.DOWN, Face.UP, Face.NORTH, Face.SOUTH, Face.WEST, Face.EAST)
