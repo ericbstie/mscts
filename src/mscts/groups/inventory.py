@@ -18,13 +18,16 @@ from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, SPAWN_AT, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER
 
-_ITEMS = "@e[type=minecraft:item,x=0.5,y=-60,z=0.5,distance=..20"
-"""The start of the selector of the items within 20 blocks of the spawn, without its `]`."""
+
+def _items(*filters: str) -> str:
+    """The selector of the items within 20 blocks of the spawn that also match `filters`."""
+    return f"@e[{','.join(('type=minecraft:item,x=0.5,y=-60,z=0.5,distance=..20', *filters))}]"
+
 
 _BEFORE = "mscts_inventory_before"
 """The tag an item already there carries while a Group plays."""
 
-_KILL_NEW_ITEMS = f"kill {_ITEMS},tag=!{_BEFORE}]"
+_KILL_NEW_ITEMS = f"kill {_items(f'tag=!{_BEFORE}')}"
 
 _THROW = (
     "LivingEntity.createItemStackToDrop gives an item a player drops the motion "
@@ -66,8 +69,8 @@ async def _arena(context: GroupContext, name: str) -> AsyncIterator[Bot]:
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
-        await control.run(f"tag {_ITEMS}] add {_BEFORE}")
-        undo.push_async_callback(control.run, f"tag {_ITEMS}] remove {_BEFORE}")
+        await control.run(f"tag {_items()} add {_BEFORE}")
+        undo.push_async_callback(control.run, f"tag {_items()} remove {_BEFORE}")
         bot = await join_at_spawn(context, undo, name)
         undo.push_async_callback(control.run, f"clear {name}")
         undo.push_async_callback(control.run, _KILL_NEW_ITEMS)
