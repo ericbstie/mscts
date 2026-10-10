@@ -2707,33 +2707,33 @@ Recipes the client removes from the player's recipe book.
 
 ## `recipe_book_remove.recipes`
 
-**Recipes removed**
+**Display ids removed**
 
 The display ids of the recipes removed in one packet.
 
 ## `recipe_book_remove.recipes[]`
 
-**Recipe removed**
+**Display id removed**
 
 The display id of one recipe removed from the book. Its value is masked,
 so a removal is compared by how many recipes it takes out.
 
 ## `place_ghost_recipe.recipe_display.type`
 
-**Ghost recipe recipe type**
+**Ghost recipe type**
 
 The kind of recipe the ghost recipe in the crafting grid shows: shaped
 or shapeless crafting, furnace, stonecutter or smithing.
 
 ## `place_ghost_recipe.recipe_display.value.width`
 
-**Ghost recipe recipe width**
+**Ghost recipe width**
 
 The width of a shaped recipe's pattern, in cells.
 
 ## `place_ghost_recipe.recipe_display.value.height`
 
-**Ghost recipe recipe height**
+**Ghost recipe height**
 
 The height of a shaped recipe's pattern, in cells.
 

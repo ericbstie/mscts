@@ -93,3 +93,14 @@ def test_every_test_case_of_a_packet_the_candidate_sent_another_way_has_a_title(
     reference: str, candidate: str
 ) -> None:
     assert _untitled(_sent(reference), _sent(candidate)) == []
+
+
+def test_no_recipe_title_repeats_a_word_or_another_title() -> None:
+    titles = {
+        name: title
+        for name, title in TITLES.items()
+        if name.split(".")[0] in {"recipe_book_add", "recipe_book_remove", "place_ghost_recipe"}
+    }
+
+    assert [title for title in titles.values() if "recipe recipe" in title.lower()] == []
+    assert len(set(titles.values())) == len(titles)
