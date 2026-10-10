@@ -65,6 +65,9 @@ DEATH = "minecraft:player_combat_kill"
 EFFECT_TICKS = 5
 """How many ticks after it is given the fake ends a hunger effect: longer than a barrier, so a
 window opened without waiting for the end would hold it."""
+CORPSE_TICKS = 20
+"""How many ticks after a kill the fake removes the husks, as vanilla removes a corpse: longer
+than the whole poll for what is left, which the fake answers at once."""
 TIME_TICKS = 10
 """How many ticks apart the fake sends `set_time` (vanilla: 20): longer than a barrier, so a
 window that closes on the barrier after its sixth holds no seventh."""
@@ -154,10 +157,21 @@ class HungerServer:
             )
         elif words[0] == "summon":
             await self._summon(*(float(word) for word in words[2:5]))
+        elif command.startswith("kill @e[tag=") and self.summoned:
+            self.later.add(asyncio.create_task(self._remove_husks()))
         elif words[0] in self.answers:
             player = next(self.players[word] for word in words if word in self.players)
             ticks = EFFECT_TICKS if words[0] == "effect" else 1
             self.later.add(asyncio.create_task(self._answer(player, self.answers[words[0]], ticks)))
+
+    async def _remove_husks(self) -> None:
+        """Tell every player but Control the husks are gone, `CORPSE_TICKS` after the kill."""
+        await asyncio.sleep(CORPSE_TICKS * TICK_S)
+        gone = list(range(100, 100 + self.summoned))
+        with suppress(ConnectionError):
+            for name, player in self.players.items():
+                if name != CONTROL:
+                    await player.send("minecraft:remove_entities", entity_ids=gone)
 
     async def _summon(self, x: float, y: float, z: float) -> None:
         """Tell every player but Control of a husk at `x`, `y`, `z` (ids from 100)."""
@@ -559,16 +573,33 @@ def test_exhaustion_puts_a_fresh_bot_at_the_lane_and_removes_the_husks_after() -
         "tp exerciser -49.5 -60 -20.5 -90 0",
     )
     assert result.after == (
-        "tp exerciser 0.5 -60 0.5",
         "gamerule mob_drops false",
         "kill @e[tag=mscts_hunger]",
         "gamerule mob_drops true",
         "tick unfreeze",
         "execute if entity @e[tag=mscts_hunger]",
+        "tp exerciser 0.5 -60 0.5",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
         "tick unfreeze",
     )
+
+
+def test_exhaustion_waits_until_the_bot_is_told_the_husks_are_gone_before_it_leaves() -> None:
+    transcript, _ = play("player/exhaustion")
+
+    [gone] = [
+        e.t_ns
+        for e in transcript.events
+        if e.bot == EXERCISER and e.packet.name == "minecraft:remove_entities"
+    ]
+    [leaves] = [
+        e.t_ns
+        for e in transcript.events
+        if e.packet.name == CHAT_COMMAND
+        and (e.packet.fields or {}).get("command") == "tp exerciser 0.5 -60 0.5"
+    ]
+    assert gone < leaves
 
 
 def test_exhaustion_sprints_and_attacks_reading_the_food_back_after_each() -> None:

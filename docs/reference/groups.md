@@ -512,8 +512,8 @@ saturation and exhaustion back with `/data get` after each part. The Bot passes 
 each move and hit, so its player ticks between two of them, as it does for a vanilla
 client, and the exhaustion adds up in the same order on every server. A hit costs exhaustion only
 when it hurts, and a husk is immune for 10 ticks after a hit, so the Bot hits 20 husks once each,
-standing in a ring around it. The husks are killed when the Group ends, with drops off, and the
-Group waits until none is left. Jumping is not covered yet: in 1 Self-check play of 15, two
+standing in a ring around it. The husks are killed when the Group ends, with drops off. The Bot
+stays beside them until it is told the last one is gone, so that their chunk stays loaded. Jumping is not covered yet: in 1 Self-check play of 15, two
 vanilla servers counted a different number of the same 50 jumps ([#57](https://github.com/ericbstie/mscts/issues/57)).
 
 The sprint and the hits change neither the health nor the food, so on vanilla their windows hold
