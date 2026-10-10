@@ -19,6 +19,13 @@ SPAWN_AT = "0.5 -60 0.5"
 _LOOKUPS = 4
 """How often a Group looks for an entity its Bot may not track yet."""
 
+_CORPSE_POLLS = 20
+"""How often Control asks whether a killed entity is left: a corpse goes in about 1 s, a poll
+takes about 0.3 s."""
+
+_NONE_LEFT = b"conditional.fail"
+"""What vanilla's `execute if entity` answers, as a translation key, when nothing matched."""
+
 _MOVEMENT_CHECK = "gamerule player_movement_check"
 """The check that can repeat a join's first `player_position`, a race with the first tick
 (docs/research/2026-09-26-join.md; `ServerGamePacketListenerImpl.shouldCheckPlayerMovement`
@@ -54,8 +61,8 @@ async def join_at_spawn(context: GroupContext, undo: contextlib.AsyncExitStack, 
     return bot
 
 
-def _normal(spec: ServerSpec) -> ServerSpec:
-    """Play on normal difficulty: peaceful heals the player and stops most damage."""
+def normal(spec: ServerSpec) -> ServerSpec:
+    """Play on normal difficulty: peaceful heals, stops most damage and removes hostile mobs."""
     return replace(spec, difficulty=Difficulty.NORMAL)
 
 
@@ -68,8 +75,12 @@ async def fresh(context: GroupContext, bot: Bot) -> None:
     await bot.respawn()
 
 
-async def _find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float]) -> Entity:
-    """The entity of `kind` nearest `near` that `bot` tracks, once the server has sent it.
+async def find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float]) -> Entity:
+    """The entity of `kind` nearest `near` that `bot` tracks, once the server has sent one.
+
+    The nearest is taken at any distance, and the Bot waits only while it tracks no entity of
+    `kind` at all, so a Group must remove the entities it made before the next play makes
+    them again (`remove_tagged`).
 
     The Bot may not have been told of an entity yet when a Group asks. The wait is `Bot.sync`,
     which does not step the world: a step would move every later packet a tick on one side
@@ -81,3 +92,29 @@ async def _find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, floa
         except LookupError:
             await bot.sync()
     return bot.entities.find(kind, near=near)
+
+
+async def remove_tagged(control: Control, tag: str) -> None:
+    """Kill every entity tagged `tag`, leaving no loot and no experience, and wait for them.
+
+    A mob a player hit drops experience, and loot, where it dies; both need `mob_drops`
+    (`LivingEntity.die` runs `dropAllDeathLoot` and `dropExperience`, and each checks it), which
+    is off while the mobs die. A corpse stays for 20 ticks of its own (`LivingEntity.tickDeath`),
+    so the world runs again until none is left: the next play puts new mobs where these stood,
+    and would be told apart from them only by the order they were heard in.
+
+    Raises:
+        TimeoutError: An entity was still there after `_CORPSE_POLLS` asks.
+    """
+    try:
+        await control.run("gamerule mob_drops false")
+        await control.run(f"kill @e[tag={tag}]")
+    finally:
+        await control.run("gamerule mob_drops true")
+    await control.run("tick unfreeze")
+    for _ in range(_CORPSE_POLLS):
+        said = await control.run(f"execute if entity @e[tag={tag}]")
+        if any(_NONE_LEFT in packet.payload for packet in said):
+            return
+    msg = f"an entity tagged {tag} was still there after {_CORPSE_POLLS} asks"
+    raise TimeoutError(msg)

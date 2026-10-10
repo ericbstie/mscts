@@ -30,7 +30,14 @@ from mscts.bot import Bot
 from mscts.codec.packets import Packet
 from mscts.compare import Mask
 from mscts.group import GroupContext, group
-from mscts.groups._world import _find_when_tracked, _normal, fresh, join_at_spawn, pin_joins
+from mscts.groups._world import (
+    find_when_tracked,
+    fresh,
+    join_at_spawn,
+    normal,
+    pin_joins,
+    remove_tagged,
+)
 from mscts.spec import ServerSpec
 
 PACKETS = (
@@ -117,7 +124,7 @@ _STOPS_AT = 17
 """The food at which regeneration stops: it needs 18 (`FoodData.tick`)."""
 
 
-@group("player/regeneration", spec=_normal)
+@group("player/regeneration", spec=normal)
 async def regeneration(context: GroupContext) -> None:
     """A Bot at 10 health heals from food 20 and saturation 5, from food 18, and from food 17.
 
@@ -180,7 +187,7 @@ async def _starve(context: GroupContext, bot: Bot, part: _Starving) -> None:
         await _quiet(bot)
 
 
-@group("player/starvation", spec=_normal)
+@group("player/starvation", spec=normal)
 async def starvation(context: GroupContext) -> None:
     """A Bot with no food starves on easy, normal and hard, from just above each floor.
 
@@ -247,7 +254,7 @@ EATING_MASKS = (
 """The Mask on the eating sounds' pitch."""
 
 
-@group("player/eating", spec=_normal, masks=EATING_MASKS)
+@group("player/eating", spec=normal, masks=EATING_MASKS)
 async def eating(context: GroupContext) -> None:
     """A Bot at food 2 eats bread, cooked beef, a golden apple and rotten flesh, in turn.
 
@@ -296,7 +303,7 @@ _SYSTEM_CHAT = "minecraft:system_chat"
 
 def _operator(spec: ServerSpec) -> ServerSpec:
     """Normal difficulty, with the exerciser an operator, so that it can run `/data get`."""
-    return replace(_normal(spec), operators=(*spec.operators, EXERCISER))
+    return replace(normal(spec), operators=(*spec.operators, EXERCISER))
 
 
 async def _read_back(context: GroupContext, bot: Bot) -> None:
@@ -335,7 +342,7 @@ async def _attack_each(context: GroupContext, bot: Bot, ring: list[tuple[float, 
             f"summon minecraft:husk {x} -60 {z} "
             f'{{NoAI:1b,Silent:1b,PersistenceRequired:1b,Tags:["{_TAG}"]}}'
         )
-    husks = [await _find_when_tracked(bot, "husk", (x, -60.0, z)) for x, z in ring]
+    husks = [await find_when_tracked(bot, "husk", (x, -60.0, z)) for x, z in ring]
     async with context.observe(_SET_HEALTH):
         for husk in husks:
             await bot.attack(husk)
@@ -355,7 +362,7 @@ async def exhaustion(context: GroupContext) -> None:
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
-        undo.push_async_callback(control.run, f"tp @e[tag={_TAG}] 0 -300 0")
+        undo.push_async_callback(remove_tagged, control, _TAG)
         bot = await join_at_spawn(context, undo, EXERCISER)
         await context.freeze()
         await fresh(context, bot)

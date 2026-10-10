@@ -23,7 +23,7 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_hunger
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_combat import HUSK
+from tests.group.test_combat import HUSK, NONE_LEFT
 from tests.group.test_control import CODEC, text, tree
 from tests.group.test_movement import Play, read
 from tests.net.fakes import (
@@ -55,6 +55,7 @@ COMMANDS = tree(
     "summon",
     "tp",
     "data",
+    "execute",
 )
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
@@ -146,6 +147,10 @@ class HungerServer:
             token = json.loads(command.removeprefix(MARKER))
             await peer.write(
                 peer.frame("minecraft:system_chat", content=text(token), overlay=False)
+            )
+        elif command.startswith("execute if entity"):
+            await peer.write(
+                peer.frame("minecraft:system_chat", content=text(NONE_LEFT), overlay=False)
             )
         elif words[0] == "summon":
             await self._summon(*(float(word) for word in words[2:5]))
@@ -543,7 +548,7 @@ def test_exhaustion_is_registered_exact_on_normal_difficulty_with_the_bot_an_ope
     )
 
 
-def test_exhaustion_puts_a_fresh_bot_at_the_lane_and_sends_the_husks_away_after() -> None:
+def test_exhaustion_puts_a_fresh_bot_at_the_lane_and_removes_the_husks_after() -> None:
     result = played("player/exhaustion")
 
     assert result.first == (
@@ -555,7 +560,11 @@ def test_exhaustion_puts_a_fresh_bot_at_the_lane_and_sends_the_husks_away_after(
     )
     assert result.after == (
         "tp exerciser 0.5 -60 0.5",
-        "tp @e[tag=mscts_hunger] 0 -300 0",
+        "gamerule mob_drops false",
+        "kill @e[tag=mscts_hunger]",
+        "gamerule mob_drops true",
+        "tick unfreeze",
+        "execute if entity @e[tag=mscts_hunger]",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
         "tick unfreeze",

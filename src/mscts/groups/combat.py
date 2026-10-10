@@ -32,8 +32,8 @@ from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.entities import Entity
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import _find_when_tracked, pin_joins
-from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
+from mscts.groups._world import find_when_tracked, normal, pin_joins, remove_tagged
+from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 FIGHTER = "fighter"
 """The Bot that hits."""
@@ -67,13 +67,6 @@ _CHARGE_STEPS = 15
 (a step and the barrier after it), and the slowest weapon here, an axe, needs 20 (26.3 javap).
 15 steps are at least 30, so a barrier that ends a pass early still leaves a margin."""
 
-_CORPSE_POLLS = 20
-"""How often Control asks whether a husk is left: a corpse goes in about 1 s, a poll takes about
-0.3 s."""
-
-_NONE_LEFT = b"conditional.fail"
-"""What vanilla's `execute if entity` answers, as a translation key, when nothing matched."""
-
 _CONTROL_AT = "5.5 -60 44.5"
 _HUSKS_AT = "5.5 -60 24.5"
 """Where `combat/immunity` sends a husk it is done with: 20 blocks from Control."""
@@ -91,40 +84,9 @@ _FACING_EAST = -90.0
 type _Weapon = str | None
 
 
-def _normal(spec: ServerSpec) -> ServerSpec:
-    """Play on normal difficulty: peaceful removes a hostile mob."""
-    return dataclasses.replace(spec, difficulty=Difficulty.NORMAL)
-
-
 def _fighting(spec: ServerSpec) -> ServerSpec:
     """Play on normal difficulty, with the fighter an operator: it reads the husks back."""
-    return dataclasses.replace(_normal(spec), operators=(*spec.operators, FIGHTER))
-
-
-async def _remove_husks(control: Control) -> None:
-    """Kill every husk the Group summoned, leaving no loot and no experience, and wait for them.
-
-    A husk a player hit drops experience, and loot, where it dies; both need `mob_drops`
-    (`LivingEntity.die` runs `dropAllDeathLoot` and `dropExperience`, and each checks it), which
-    is off while the husks die. A corpse stays for 20 ticks of its own (`LivingEntity.tickDeath`),
-    so the world runs again until none is left: the next play puts new husks where these stood,
-    and would be told apart from them only by the order they were heard in.
-
-    Raises:
-        TimeoutError: A husk was still there after `_CORPSE_POLLS` asks.
-    """
-    try:
-        await control.run("gamerule mob_drops false")
-        await control.run(f"kill @e[tag={_TAG}]")
-    finally:
-        await control.run("gamerule mob_drops true")
-    await control.run("tick unfreeze")
-    for _ in range(_CORPSE_POLLS):
-        said = await control.run(f"execute if entity @e[tag={_TAG}]")
-        if any(_NONE_LEFT in packet.payload for packet in said):
-            return
-    msg = f"a husk was still there after {_CORPSE_POLLS} asks: the next play would meet it"
-    raise TimeoutError(msg)
+    return dataclasses.replace(normal(spec), operators=(*spec.operators, FIGHTER))
 
 
 @contextlib.asynccontextmanager
@@ -141,7 +103,7 @@ async def _arena(context: GroupContext) -> AsyncIterator[None]:
         undo.push_async_callback(control.run, "gamerule natural_health_regeneration true")
         await control.run("gamerule natural_health_regeneration false")
         await context.freeze()
-        undo.push_async_callback(_remove_husks, control)
+        undo.push_async_callback(remove_tagged, control, _TAG)
         await control.run(f"tp {CONTROL_PLAYER} {_CONTROL_AT}")
         yield
 
@@ -275,7 +237,7 @@ async def _fight(context: GroupContext, cases: tuple[_Case, ...]) -> None:
             await context.step(_CHARGE_STEPS)
             await case.before(fighter)
             near = (_FIGHTER_X + _REACH, -60.0, _lane_z(lane))
-            target = await _find_when_tracked(fighter, "husk", near)
+            target = await find_when_tracked(fighter, "husk", near)
             async with context.observe(*case.packets):
                 await case.act(fighter, target)
                 await context.step(2)
@@ -463,7 +425,7 @@ async def _stand_pair(context: GroupContext) -> None:
         await control.run(f"item replace entity {name} hotbar.0 with {held}")
 
 
-@group("combat/immunity", spec=_normal, kind=GroupKind.TICK_EXACT)
+@group("combat/immunity", spec=normal, kind=GroupKind.TICK_EXACT)
 async def immunity(context: GroupContext) -> None:
     """A weaker hit, a stronger one, and a weaker one, on a husk that was just hurt."""
     async with _arena(context):
@@ -478,7 +440,7 @@ async def immunity(context: GroupContext) -> None:
             await _summon(context, husk[0], husk[2])
             await context.step(_CHARGE_STEPS)
             first, second = bots[pair.first], bots[pair.second]
-            targets = [await _find_when_tracked(bot, "husk", husk) for bot in (first, second)]
+            targets = [await find_when_tracked(bot, "husk", husk) for bot in (first, second)]
             async with context.observe(*PACKETS):
                 await first.attack(targets[0])
                 await context.step(pair.steps)
@@ -508,7 +470,7 @@ async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprin
     if sprint:
         await _start_sprinting(attacker)
     packets = PVP_SPRINT_PACKETS if sprint else PVP_PACKETS
-    target = await _find_when_tracked(attacker, "player", (_VICTIM_X, -60.0, lane_z))
+    target = await find_when_tracked(attacker, "player", (_VICTIM_X, -60.0, lane_z))
     async with context.observe(*packets):
         await attacker.attack(target)
         await context.step(2)
@@ -516,7 +478,7 @@ async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprin
         await _stop_sprinting(attacker)
 
 
-@group("combat/pvp", spec=_normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+@group("combat/pvp", spec=normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
 async def pvp(context: GroupContext) -> None:
     """A Bot hits another Bot with a diamond sword while standing, then while sprinting."""
     async with _arena(context):

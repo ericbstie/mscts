@@ -535,7 +535,7 @@ async def test_control_asks_until_no_husk_is_left_then_stops() -> None:
 async def test_control_asks_twenty_times_and_then_fails_while_a_husk_is_left() -> None:
     server = CombatServer(left="Test passed, count: 1")
 
-    with pytest.raises(TimeoutError, match="a husk was still there after 20 asks"):
+    with pytest.raises(TimeoutError, match="mscts_combat was still there after 20 asks"):
         await play("combat/melee-mob", server)
 
     asked = [p for p in server.seen if "execute if entity" in str((p.fields or {}).get("command"))]
@@ -683,9 +683,7 @@ class _Lookup:
 async def test_a_lookup_syncs_while_the_bot_tracks_nothing_and_never_steps_the_world() -> None:
     lookup = _Lookup(missing=3)
 
-    found = await combat._find_when_tracked(  # noqa: SLF001
-        cast("Bot", lookup), "husk", (1.0, 2.0, 3.0)
-    )
+    found = await combat.find_when_tracked(cast("Bot", lookup), "husk", (1.0, 2.0, 3.0))
 
     assert found == "husk@(1.0, 2.0, 3.0)"
     assert lookup.syncs == 3
@@ -696,7 +694,7 @@ async def test_a_lookup_gives_up_after_a_few_syncs() -> None:
     lookup = _Lookup(missing=99)
 
     with pytest.raises(LookupError):
-        await combat._find_when_tracked(cast("Bot", lookup), "husk", (0.0, 0.0, 0.0))  # noqa: SLF001
+        await combat.find_when_tracked(cast("Bot", lookup), "husk", (0.0, 0.0, 0.0))
     assert lookup.syncs == 3
 
 
