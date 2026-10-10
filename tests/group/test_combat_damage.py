@@ -304,30 +304,37 @@ def wearing(material: str, components: str) -> tuple[str, ...]:
     )
 
 
-def damages() -> list[str]:
-    """The damage commands of one pass over the kinds of damage."""
+def damages(kinds: tuple[str, ...] = SOURCE_TYPES) -> list[str]:
+    """The damage commands of one pass over `kinds` of damage."""
     return [
         f"damage victim 4 minecraft:{kind}" + (f" by {DAMAGER}" if kind in BY_MARKER else "")
-        for kind in SOURCE_TYPES
+        for kind in kinds
     ]
 
 
-def test_armor_has_a_window_for_each_kind_of_damage_in_each_set() -> None:
+REDUCED = ("player_attack", "mob_attack", "arrow", "in_fire", "lava", "explosion")
+"""The kinds of damage armor reduces: the rest are in the damage type tag `bypasses_armor`."""
+ARMOR_KINDS = (REDUCED, REDUCED, REDUCED, SOURCE_TYPES, REDUCED, REDUCED)
+"""The kinds of damage each set of `SETS` meets: Protection meets all twelve."""
+
+
+def test_armor_has_a_window_for_each_kind_of_damage_a_set_meets() -> None:
     result = played("combat/armor")
 
-    assert len(result.windows) == len(SETS) * len(SOURCE_TYPES)
     assert {w.label for w in result.windows} == {
         f"{OBSERVE_OPEN} {' '.join(combat_damage.PACKETS)}"
     }
-    assert [w.sent for w in result.windows] == [((CONTROL, c),) for c in damages() * len(SETS)]
+    expected = [c for kinds in ARMOR_KINDS for c in damages(kinds)]
+    assert [w.sent for w in result.windows] == [((CONTROL, c),) for c in expected]
 
 
 def test_armor_puts_on_each_set_before_its_first_window_and_only_then() -> None:
     result = played("combat/armor")
 
-    per_set = len(SOURCE_TYPES)
-    for index, (material, components) in enumerate(SETS):
-        first, *rest = result.windows[index * per_set : (index + 1) * per_set]
+    start = 0
+    for (material, components), kinds in zip(SETS, ARMOR_KINDS, strict=True):
+        first, *rest = result.windows[start : start + len(kinds)]
+        start += len(kinds)
         assert first.before[-5:] == (*wearing(material, components), "kill victim")
         assert {w.before for w in rest} == {("kill victim",)}
 
@@ -337,7 +344,7 @@ def test_armor_keeps_the_stacks_through_each_death_and_clears_them_when_it_ends(
 
     assert result.first.index("gamerule keep_inventory true") < result.first.index("tick freeze")
     assert result.after.index("clear victim") < result.after.index("gamerule keep_inventory false")
-    assert respawns(transcript) == len(SETS) * len(SOURCE_TYPES)
+    assert respawns(transcript) == sum(len(kinds) for kinds in ARMOR_KINDS)
 
 
 def test_the_command_for_a_set_names_every_piece_and_the_enchantment_at_level_iv() -> None:
@@ -366,20 +373,23 @@ EFFECTS = (
     ("resistance", 3),
     ("absorption", 1),
 )
+SAMPLE = ("generic", "arrow", "out_of_world", "starve")
+"""What Resistance II to IV meet: an ordinary hit, an attacker's, and the two that bypass it."""
+EFFECT_KINDS = (SOURCE_TYPES, SAMPLE, SAMPLE, SAMPLE, SOURCE_TYPES)
 
 
 def giving(effect: str, amplifier: int) -> str:
     return f"effect give victim minecraft:{effect} 1000000 {amplifier} true"
 
 
-def test_effects_has_a_window_for_each_kind_of_damage_under_each_effect() -> None:
+def test_effects_has_a_window_for_each_kind_of_damage_an_effect_meets() -> None:
     result = played("combat/effects")
 
-    assert len(result.windows) == len(EFFECTS) * len(SOURCE_TYPES)
     assert {w.label for w in result.windows} == {
         f"{OBSERVE_OPEN} {' '.join(combat_damage.PACKETS)}"
     }
-    assert [w.sent for w in result.windows] == [((CONTROL, c),) for c in damages() * len(EFFECTS)]
+    expected = [c for kinds in EFFECT_KINDS for c in damages(kinds)]
+    assert [w.sent for w in result.windows] == [((CONTROL, c),) for c in expected]
 
 
 def test_effects_gives_the_effect_after_every_respawn_and_before_the_window() -> None:
@@ -387,11 +397,11 @@ def test_effects_gives_the_effect_after_every_respawn_and_before_the_window() ->
 
     expected = [
         ("kill victim", giving(effect, amplifier))
-        for effect, amplifier in EFFECTS
-        for _ in SOURCE_TYPES
+        for (effect, amplifier), kinds in zip(EFFECTS, EFFECT_KINDS, strict=True)
+        for _ in kinds
     ]
     assert [w.before[-2:] for w in result.windows] == expected
-    assert respawns(transcript) == len(EFFECTS) * len(SOURCE_TYPES)
+    assert respawns(transcript) == sum(len(kinds) for kinds in EFFECT_KINDS)
 
 
 def test_effects_wears_no_armor_and_keeps_no_stacks() -> None:

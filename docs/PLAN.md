@@ -1173,9 +1173,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `Source` — one kind of damage (its damage type, and whether the marker deals it); `SOURCES` —
   the twelve kinds of damage the Groups compare; `damage_command` — the `/damage` command for
   a victim, a source and an amount; `damage_types` — the `combat/damage-types` script;
-  `Armor` — a set of armor (a material and an enchantment); `ARMORS` — the six sets;
+  `ARMOR_REDUCED` — the kinds of damage armor reduces; `Armor` — a set of armor (a material, an
+  enchantment and the kinds of damage it meets); `ARMORS` — the six sets;
   `wear_commands` — the commands that put a set on a victim; `armor` — the `combat/armor` script;
-  `Effect` — a status effect and its amplifier; `EFFECTS` — the five the Group gives; `effect_command` — the
+  `Effect` — a status effect, its amplifier and the kinds of damage it meets; `EFFECTS` — the five the Group gives; `effect_command` — the
   command that gives one to a victim; `effects` — the `combat/effects` script;
   `Death` — a lethal source and the `show_death_messages` rule it is played with; `DEATHS` — the four
   the Group plays; `death` — the `combat/death` script.

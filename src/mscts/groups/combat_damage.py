@@ -140,9 +140,19 @@ async def _hurt(
         await context.control.run(damage_command(bot.name, source, amount))
 
 
-async def _sweep(context: GroupContext, bot: Bot, before: Sequence[str] = ()) -> None:
-    """Hurt the Bot with each kind of damage in turn, each in a window of its own."""
-    for source in SOURCES:
+def _pick(*types: str) -> tuple[Source, ...]:
+    """The kinds of damage in `SOURCES` called `types`, in the order of `SOURCES`."""
+    return tuple(source for source in SOURCES if source.type in types)
+
+
+async def _sweep(
+    context: GroupContext,
+    bot: Bot,
+    before: Sequence[str] = (),
+    sources: Sequence[Source] = SOURCES,
+) -> None:
+    """Hurt the Bot with each of `sources` in turn, each in a window of its own."""
+    for source in sources:
         await _hurt(context, bot, source, before)
 
 
@@ -155,7 +165,13 @@ async def damage_types(context: GroupContext) -> None:
         await _sweep(context, bot)
 
 
-# `combat/armor`: the same damage through each set of armor.
+# `combat/armor`: damage through each set of armor.
+
+ARMOR_REDUCED = _pick("player_attack", "mob_attack", "arrow", "in_fire", "lava", "explosion")
+"""The kinds of damage armor reduces: the rest are in `bypasses_armor`, so a set without an
+enchantment hurts as much as no armor, which `combat/damage-types` has compared. Dropping
+them keeps a play of `combat/armor` within the Self-check's time (90 s for a play on both
+Instances, `tests/selfcheck/test_groups.py`), which 72 windows exceeded."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -165,22 +181,26 @@ class Armor:
     Attributes:
         material: The item prefix: `iron` for `iron_helmet`.
         enchantment: The enchantment on every piece, at level IV, without `minecraft:`.
+        sources: The kinds of damage the Bot is hurt by through the set.
     """
 
     material: str
     enchantment: str | None = None
+    sources: Sequence[Source] = ARMOR_REDUCED
 
 
 ARMORS = (
     Armor("iron"),
     Armor("diamond"),
     Armor("netherite"),
-    Armor("diamond", "protection"),
+    Armor("diamond", "protection", SOURCES),
     Armor("diamond", "fire_protection"),
     Armor("diamond", "blast_protection"),
 )
 """The sets, in order: iron, diamond, netherite (which adds toughness), then diamond with
-Protection, Fire Protection and Blast Protection."""
+Protection, Fire Protection and Blast Protection. Protection reduces every kind of damage but
+one that is in `bypasses_enchantments`, so it meets all twelve; the others meet those armor
+reduces, which holds fire and explosions."""
 
 _PIECES = (("head", "helmet"), ("chest", "chestplate"), ("legs", "leggings"), ("feet", "boots"))
 """Each piece's equipment slot and its item suffix."""
@@ -221,7 +241,7 @@ async def armor(context: GroupContext) -> None:
         for worn in ARMORS:
             for command in wear_commands(bot.name, worn):
                 await context.control.run(command)
-            await _sweep(context, bot)
+            await _sweep(context, bot, sources=worn.sources)
 
 
 # `combat/effects`: the same damage under Resistance and Absorption.
@@ -234,17 +254,25 @@ class Effect:
     Attributes:
         name: The effect, as `/effect give` takes it.
         amplifier: One less than the level.
+        sources: The kinds of damage the Bot is hurt by under the effect.
     """
 
     name: str
     amplifier: int
+    sources: Sequence[Source] = SOURCES
 
+
+_RESISTANCE_SAMPLE = _pick("generic", "arrow", "out_of_world", "starve")
+"""Damage that shows what Resistance does at a level: an ordinary hit, one an attacker deals, and
+the two kinds that bypass it (`out_of_world` is in `bypasses_resistance`, `starve` in
+`bypasses_effects`). Resistance I meets all twelve; the three levels after it meet these four,
+to keep a play within the Self-check's time (see `ARMOR_REDUCED`)."""
 
 EFFECTS = (
     Effect("resistance", 0),
-    Effect("resistance", 1),
-    Effect("resistance", 2),
-    Effect("resistance", 3),
+    Effect("resistance", 1, _RESISTANCE_SAMPLE),
+    Effect("resistance", 2, _RESISTANCE_SAMPLE),
+    Effect("resistance", 3, _RESISTANCE_SAMPLE),
     Effect("absorption", 1),
 )
 """Resistance I to IV, then Absorption II."""
@@ -268,7 +296,7 @@ async def effects(context: GroupContext) -> None:
         bot = await join_at_spawn(context, undo, VICTIM)
         await context.freeze()
         for effect in EFFECTS:
-            await _sweep(context, bot, (effect_command(bot.name, effect),))
+            await _sweep(context, bot, (effect_command(bot.name, effect),), effect.sources)
 
 
 # `combat/death`: damage above the Bot's health, with the death message on and off.
