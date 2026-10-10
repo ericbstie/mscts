@@ -556,7 +556,8 @@ emptied and put back at the spawn.
 
 A recipe book click names the recipe by the number the server gave it in the player's book.
 `crafting/recipe-book` gives the Bot each recipe it clicks and reads the number from the
-`recipe_book_add` the server sends. Vanilla numbers its recipes in the same order on every
+`recipe_book_add` the server sends. A server that sends none within 10 seconds fails the Group,
+and the Report names the recipe. Vanilla numbers its recipes in the same order on every
 start, so the numbers are compared too.
 
 A player unlocks recipes when an item first enters its inventory, once per player. The

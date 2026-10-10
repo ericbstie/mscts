@@ -180,7 +180,11 @@ async def _fill(context: GroupContext, name: str, items: tuple[str, ...]) -> Non
 async def _display_id(context: GroupContext, bot: Bot, recipe: str) -> int:
     """Give the Bot `recipe` and read the display id its recipe book entry has."""
     await context.control.run(f"recipe give {bot.name} {recipe}")
-    packet = await bot.expect("minecraft:recipe_book_add", timeout_s=_BOOK_TIMEOUT_S)
+    try:
+        packet = await bot.expect("minecraft:recipe_book_add", timeout_s=_BOOK_TIMEOUT_S)
+    except TimeoutError:
+        msg = f"{recipe} was given, but no recipe_book_add came within {_BOOK_TIMEOUT_S} s"
+        raise TimeoutError(msg) from None
     entries = cast("list[Mapping[str, object]]", (packet.fields or {})["entries"])
     (entry,) = entries
     return cast("int", cast("Mapping[str, object]", entry["contents"])["id"])

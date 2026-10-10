@@ -77,6 +77,8 @@ class CraftingServer:
     """
 
     seen: list[Packet] = field(default_factory=list)
+    books: bool = True
+    """Whether a recipe given to a Bot is added to its book."""
     _peers: dict[str, Peer] = field(default_factory=dict, init=False)
 
     async def __call__(self, peer: Peer) -> None:
@@ -138,7 +140,7 @@ class CraftingServer:
                     slot_data=[None] * INVENTORY_SLOTS,
                     carried_item=None,
                 )
-            case ["recipe", "give", _, recipe] if recipe != "*":
+            case ["recipe", "give", _, recipe] if recipe != "*" and self.books:
                 contents = {
                     "id": display_id(recipe),
                     "display": _DISPLAY,
@@ -463,6 +465,16 @@ async def test_the_bot_opens_the_table_before_each_table_window_and_closes_it_af
         for index in range(first, first + len(crafting.TABLE_PLACEMENTS))
         for step in ((USE_ITEM_ON, index), (CLOSE, index + 1))
     )
+
+
+@pytest.mark.asyncio
+async def test_a_recipe_given_but_never_added_to_the_book_is_named(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(crafting, "_BOOK_TIMEOUT_S", 0.5)
+
+    with pytest.raises(TimeoutError, match=r"minecraft:oak_planks.*recipe_book_add"):
+        await replay(BOOK, CraftingServer(books=False))
 
 
 def test_the_book_cases_cover_both_grids_a_ghost_recipe_and_a_recipe_not_known() -> None:
