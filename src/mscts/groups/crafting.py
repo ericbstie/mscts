@@ -199,7 +199,7 @@ async def _fill(context: GroupContext, name: str, items: tuple[str, ...]) -> Non
         await control.run(f"item replace entity {name} inventory.{index} with {item}")
 
 
-async def _display_id(context: GroupContext, bot: Bot, recipe: str) -> int:
+async def _give_and_read_id(context: GroupContext, bot: Bot, recipe: str) -> int:
     """Give the Bot `recipe` and read the display id its recipe book entry has."""
     await context.control.run(f"recipe give {bot.name} {recipe}")
     try:
@@ -214,7 +214,7 @@ async def _display_id(context: GroupContext, bot: Bot, recipe: str) -> int:
     return cast("int", cast("Mapping[str, object]", entries[0]["contents"])["id"])
 
 
-async def _click(bot: Bot, context: GroupContext, ids: Mapping[str, int], case: Placement) -> None:
+async def _click(context: GroupContext, bot: Bot, ids: Mapping[str, int], case: Placement) -> None:
     """Click the recipe of `case` in the book, inside a window."""
     async with context.observe(*PACKETS):
         await bot.place_recipe(ids[case.recipe], use_max_items=case.use_max_items)
@@ -242,7 +242,7 @@ async def _in_table(
     await _fill(context, bot.name, case.items)
     x, y, z = TABLE
     await bot.place(x, y, z, Face.NORTH, (0.5, 0.5, 0.0))
-    await _click(bot, context, ids, case)
+    await _click(context, bot, ids, case)
     await bot.close_container()
     await bot.sync()
 
@@ -256,11 +256,11 @@ async def recipe_book(context: GroupContext) -> None:
         await _fill(context, bot.name, FIRST_ITEMS)
         await control.run(f"recipe take {bot.name} *")
         await bot.sync()
-        ids = {recipe: await _display_id(context, bot, recipe) for recipe in BOOK_RECIPES}
+        ids = {recipe: await _give_and_read_id(context, bot, recipe) for recipe in BOOK_RECIPES}
         await control.run(f"recipe take {bot.name} {LOCKED}")
         for case in INVENTORY_PLACEMENTS:
             await _fill(context, bot.name, case.items)
-            await _click(bot, context, ids, case)
+            await _click(context, bot, ids, case)
         await _set_table(context, undo, bot)
         for case in TABLE_PLACEMENTS:
             await _in_table(context, bot, ids, case)
@@ -282,6 +282,26 @@ taken, then every recipe."""
 
 OAK_PLANKS_ADVANCEMENT = "minecraft:recipes/building_blocks/oak_planks"
 """The advancement that gives the oak planks recipe to a player who gets an oak log."""
+
+
+async def _change_book(context: GroupContext, bot: Bot) -> None:
+    """Run each of `BOOK_CHANGES` on the Bot, each inside a window."""
+    for command in BOOK_CHANGES:
+        async with context.observe(*PACKETS):
+            await context.control.run(command.format(name=bot.name))
+
+
+async def _unlock_by_item(context: GroupContext, bot: Bot) -> None:
+    """Give the Bot, who knows no recipe, an oak log inside a window, which unlocks oak planks.
+
+    The advancement is revoked first, so that the log unlocks the recipe again.
+    """
+    control = context.control
+    await control.run(f"clear {bot.name}")
+    await control.run(f"advancement revoke {bot.name} only {OAK_PLANKS_ADVANCEMENT}")
+    await control.run(f"recipe take {bot.name} *")
+    async with context.observe(*PACKETS):
+        await control.run(f"give {bot.name} minecraft:oak_log")
 
 
 async def _limited(context: GroupContext, bot: Bot, *, limited: bool) -> None:
@@ -308,14 +328,8 @@ async def unlocking(context: GroupContext) -> None:
         await control.run(f"item replace entity {name} hotbar.0 with minecraft:oak_log 1")
         await control.run(f"recipe take {name} *")
         await control.run(f"clear {name}")
-        for command in BOOK_CHANGES:
-            async with context.observe(*PACKETS):
-                await control.run(command.format(name=name))
+        await _change_book(context, bot)
         undo.push_async_callback(control.run, "gamerule limited_crafting false")
         for limited in (True, False):
             await _limited(context, bot, limited=limited)
-        await control.run(f"clear {name}")
-        await control.run(f"advancement revoke {name} only {OAK_PLANKS_ADVANCEMENT}")
-        await control.run(f"recipe take {name} *")
-        async with context.observe(*PACKETS):
-            await control.run(f"give {name} minecraft:oak_log")
+        await _unlock_by_item(context, bot)
