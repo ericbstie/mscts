@@ -1240,6 +1240,13 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `DEATHS` — the pig and the zombie `entities/death` kills, with no loot; `DYING_TICKS` — the 20
   ticks a body stays; `death_position` — where each stands; `death` — the `entities/death`
   script.
+- `groups.entities_items`: `ITEM_PACKETS` — what a window compares (entities appearing,
+  changing and going, a pickup, the Bot's slots and experience, and sounds); `PAIRS` — the
+  pairs of items `entities/item-merge` lays out, a tick apart; `item_merge` — the
+  `entities/item-merge` script; `DESPAWNS` — the summons of the items and the orb near their
+  despawn age; `item_despawn` — the `entities/item-despawn` script; `PICKUP_DELAYS` — the
+  pickup delays of the items summoned before their window; `ORB_VALUES` — the points of the
+  orbs, one a window; `item_pickup` — the `entities/item-pickup` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control

@@ -1,0 +1,368 @@
+"""The dropped item Groups: what Control summons and steps in each window, and what it undoes.
+
+Every test reads one shared play of its Group against a fake server: Control's commands and the
+Marks (the Observation windows and the ticks stepped). What a server answers is never asserted:
+the fake answers Control's markers and the barrier.
+"""
+
+from dataclasses import dataclass
+
+import pytest
+
+from mscts.codec.packets import Direction
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
+from mscts.group import GROUPS, GroupKind
+from mscts.spec import ServerSpec
+from mscts.transcript import Transcript
+from tests.group import test_control
+from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
+
+MERGE, DESPAWN, PICKUP = "entities/item-merge", "entities/item-despawn", "entities/item-pickup"
+GROUP_IDS = (MERGE, DESPAWN, PICKUP)
+BOTS = {MERGE: "watcher", DESPAWN: "watcher", PICKUP: "picker"}
+COMMANDS = tree(
+    "gamerule",
+    "tp",
+    "tick",
+    "gamemode",
+    "clear",
+    "xp",
+    "kill",
+    "summon",
+    "item",
+    "setblock",
+    "tellraw",
+)
+CONTROL = "control"
+TAG = "mscts_items"
+STILL = 'Motion:[0.0d,0.0d,0.0d],NoGravity:1b,Tags:["mscts_items"]'
+WINDOW = (
+    f"{OBSERVE_OPEN} minecraft:add_entity minecraft:set_entity_data minecraft:remove_entities "
+    "minecraft:take_item_entity minecraft:container_set_slot minecraft:set_player_inventory "
+    "minecraft:set_experience minecraft:sound"
+)
+"""The open Mark of every window."""
+
+
+def item(place: str, stack: str, *more: str) -> str:
+    """The summon of a still, tagged item of `stack` (`<id> <count>`) at `place`."""
+    item_id, count = stack.split()
+    fields = ",".join((f'Item:{{id:"{item_id}",count:{count}}}', STILL, *more))
+    return f"summon minecraft:item {place} {{{fields}}}"
+
+
+def orb(place: str, value: int, *more: str) -> str:
+    """The summon of a still, tagged experience orb worth `value` at `place`."""
+    fields = ",".join((f"Value:{value}s", STILL, *more))
+    return f"summon minecraft:experience_orb {place} {{{fields}}}"
+
+
+@dataclass(frozen=True)
+class Window:
+    """One Observation window: its open Mark, Control's commands before it and in it, its ticks."""
+
+    label: str
+    before: tuple[str, ...]
+    commands: tuple[str, ...]
+    ticks: int
+
+
+@dataclass(frozen=True)
+class Play:
+    """A played Group: its windows, and Control's commands before the first and after the last."""
+
+    windows: tuple[Window, ...]
+    first: tuple[str, ...]
+    after: tuple[str, ...]
+
+
+def _commands(transcript: Transcript) -> list[tuple[int, str]]:
+    """Control's commands with when, but its markers."""
+    commands = [
+        (event.t_ns, str((event.packet.fields or {})["command"]))
+        for event in transcript.events
+        if event.bot == CONTROL
+        and event.packet.direction is Direction.SERVERBOUND
+        and event.packet.name == CHAT_COMMAND
+    ]
+    return [(t_ns, command) for t_ns, command in commands if not command.startswith(MARKER)]
+
+
+def read(transcript: Transcript) -> Play:
+    """The windows of `transcript`, each from its open Mark to its last close Mark."""
+    labels = [mark.label for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
+    opens = [mark.t_ns for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
+    closes = [mark.t_ns for mark in transcript.marks if mark.label == OBSERVE_CLOSE]
+    assert len(opens) == len(closes), transcript.marks
+    ticks = [
+        m.t_ns for m in transcript.marks if m.label.startswith(TICK_MARK) and " " not in m.label
+    ]
+    control = _commands(transcript)
+    windows, previous = [], 0
+    for label, opened, closed in zip(labels, opens, closes, strict=True):
+        windows.append(
+            Window(
+                label=label,
+                before=tuple(c for t, c in control if previous <= t < opened),
+                commands=tuple(c for t, c in control if opened <= t <= closed),
+                ticks=sum(opened <= t <= closed for t in ticks),
+            )
+        )
+        previous = closed
+    first = tuple(c for t, c in control if t < opens[0]) if opens else ()
+    after = tuple(c for t, c in control if t > previous)
+    return Play(tuple(windows), first, after)
+
+
+async def replay(group_id: str, server: ControlServer) -> Play:
+    """Play `group_id` against `server`; return what was read from its Transcript."""
+    transcript = Transcript(group_id=group_id, server="fake")
+    async with playing(server, transcript) as context:
+        await GROUPS[group_id].run(context)
+    return read(transcript)
+
+
+_PLAYS: dict[str, Play] = {}
+"""Each Group's play against a default fake server; no test changes it."""
+
+
+async def play(group_id: str) -> Play:
+    """The play of `group_id` against a default fake server, played the first time it is asked."""
+    if group_id not in _PLAYS:
+        _PLAYS[group_id] = await replay(group_id, ControlServer(commands=COMMANDS))
+    return _PLAYS[group_id]
+
+
+@pytest.fixture(autouse=True)
+def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
+
+
+pytestmark = pytest.mark.timeout(300)
+
+
+# Every Group
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_each_group_is_registered_tick_exact_with_the_default_spec(group_id: str) -> None:
+    group = GROUPS[group_id]
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert group.kind is GroupKind.TICK_EXACT
+    assert group.requires == ()
+    assert group.spec(default) == default
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.asyncio
+async def test_control_pins_the_joins_moves_away_and_empties_the_bot_before_the_freeze(
+    group_id: str,
+) -> None:
+    bot = BOTS[group_id]
+
+    first = (await play(group_id)).first
+
+    assert first[:8] == (
+        "gamerule player_movement_check false",
+        "gamerule respawn_radius 0",
+        "tp control 96.5 -60 96.5",
+        f"gamemode survival {bot}",
+        f"clear {bot}",
+        f"xp set {bot} 0 levels",
+        f"xp set {bot} 0 points",
+        "tick freeze",
+    )
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.asyncio
+async def test_control_kills_what_it_summoned_then_empties_the_bot_and_undoes_the_rest(
+    group_id: str,
+) -> None:
+    # The summoned items go first: a player picks up an item as soon as it has room.
+    bot = BOTS[group_id]
+
+    after = (await play(group_id)).after
+
+    assert after[-8:] == (
+        f"kill @e[tag={TAG}]",
+        f"clear {bot}",
+        f"xp set {bot} 0 levels",
+        f"xp set {bot} 0 points",
+        f"tp {bot} 0.5 -60 0.5",
+        "gamerule respawn_radius 10",
+        "gamerule player_movement_check true",
+        "tick unfreeze",
+    )
+
+
+# `entities/item-merge`
+
+STONE_2, STONE_3 = "minecraft:stone 2", "minecraft:stone 3"
+PAIRS = (
+    item("-10.85 -60.0 6.5", STONE_2),
+    item("-10.15 -60.0 6.5", STONE_3),
+    "tick step 1",
+    item("-7.85 -60.0 6.5", STONE_2),
+    item("-7.05 -60.0 6.5", STONE_3),
+    "tick step 1",
+    item("-4.85 -60.0 6.5", STONE_2),
+    item("-4.85 -59.8 6.5", STONE_3),
+    "tick step 1",
+    item("-1.85 -60.0 6.5", STONE_2),
+    item("-1.85 -59.7 6.5", STONE_3),
+    "tick step 1",
+    "setblock 1 -60 6 minecraft:glass_pane",
+    item("1.15 -60.0 6.5", STONE_2),
+    item("1.85 -60.0 6.5", STONE_3),
+    "tick step 1",
+    item("4.15 -60.0 6.5", STONE_2),
+    item("4.45 -60.0 6.5", "minecraft:dirt 3"),
+    "tick step 1",
+    item("7.15 -60.0 6.5", "minecraft:stone 40"),
+    item("7.45 -60.0 6.5", "minecraft:stone 30"),
+    "tick step 1",
+    item("10.15 -60.0 6.5", "minecraft:stone 32"),
+    item("10.45 -60.0 6.5", "minecraft:stone 32"),
+)
+"""The pairs, a tick apart, so that each merges on a tick of its own: two items 0.7 apart and 0.8
+apart, 0.2 above and 0.3 above, 0.7 apart with a pane between, two different items, two stacks
+that make more than 64, and two that make 64."""
+
+
+@pytest.mark.asyncio
+async def test_merge_summons_each_pair_a_tick_after_the_one_before_it() -> None:
+    first = (await play(MERGE)).first
+
+    assert first[8:] == PAIRS
+
+
+@pytest.mark.asyncio
+async def test_merge_steps_one_window_until_the_last_pair_has_merged_and_a_tick_more() -> None:
+    # An item looks for another to merge with on every 40th of its own ticks
+    # (ItemEntity.tick); the last pair was summoned 7 ticks after the first.
+    (window,) = (await play(MERGE)).windows
+
+    assert window.label == WINDOW
+    assert window.commands == ("tick step 1",) * 41
+    assert window.ticks == 41
+
+
+@pytest.mark.asyncio
+async def test_merge_takes_the_pane_away_first() -> None:
+    after = (await play(MERGE)).after
+
+    assert after[:-8] == ("setblock 1 -60 6 minecraft:air",)
+
+
+# `entities/item-despawn`
+
+
+@pytest.mark.asyncio
+async def test_despawn_summons_items_and_an_orb_near_their_last_tick_and_one_that_never_ages() -> (
+    None
+):
+    first = (await play(DESPAWN)).first
+
+    assert first[8:] == (
+        item("-3.5 -60.0 6.5", "minecraft:stone 1", "Age:5998s"),
+        item("-0.5 -60.0 6.5", "minecraft:dirt 1", "Age:5997s"),
+        item("2.5 -60.0 6.5", "minecraft:stone 1", "Age:-32768s"),
+        orb("5.5 -60.0 6.5", 3, "Age:5996s"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_despawn_steps_one_window_a_tick_past_the_last_to_go() -> None:
+    # An item or orb goes on the tick its age reaches 6000 (ItemEntity.tick, ExperienceOrb.tick):
+    # the item of age 5998 on the 2nd, the dirt on the 3rd, the orb on the 4th.
+    (window,) = (await play(DESPAWN)).windows
+
+    assert window.label == WINDOW
+    assert window.commands == ("tick step 1",) * 5
+    assert window.ticks == 5
+
+
+@pytest.mark.asyncio
+async def test_despawn_changes_nothing_else() -> None:
+    assert (await play(DESPAWN)).after[:-8] == ()
+
+
+# `entities/item-pickup`
+
+FEET = "0.5 -60.0 0.5"
+STONE = "minecraft:stone 1"
+DIRT_EVERYWHERE = tuple(
+    f"item replace entity picker container.{slot} with minecraft:dirt 64" for slot in range(36)
+)
+
+
+@pytest.mark.asyncio
+async def test_pickup_summons_an_item_with_no_delay_at_the_bots_feet_inside_its_window() -> None:
+    # A player picks an item up on the server tick it can (Player.aiStep); the summon runs
+    # before that tick's players, so the pickup lands in the window and steps no tick.
+    play_ = await play(PICKUP)
+
+    assert play_.first[8:] == ()
+    assert play_.windows[0].commands == (item(FEET, STONE, "PickupDelay:0s"),)
+    assert play_.windows[0].ticks == 0
+
+
+@pytest.mark.asyncio
+async def test_pickup_steps_a_tick_past_each_pickup_delay() -> None:
+    # The delay counts down only on the ticks a frozen world steps (ItemEntity.tick).
+    windows = (await play(PICKUP)).windows[1:3]
+
+    assert [window.before for window in windows] == [
+        (item(FEET, STONE, "PickupDelay:10s"),),
+        (item(FEET, STONE, "PickupDelay:40s"),),
+    ]
+    assert [window.commands for window in windows] == [
+        ("tick step 1",) * 11,
+        ("tick step 1",) * 41,
+    ]
+    assert [window.ticks for window in windows] == [11, 41]
+
+
+@pytest.mark.asyncio
+async def test_pickup_summons_each_orb_at_the_bots_feet_in_a_window_of_its_own() -> None:
+    # A player takes one orb in reach at random each tick (Player.aiStep): one at a time.
+    windows = (await play(PICKUP)).windows[3:6]
+
+    assert [window.before for window in windows] == [(), (), ()]
+    assert [window.commands for window in windows] == [
+        (orb(FEET, 1),),
+        (orb(FEET, 7),),
+        (orb(FEET, 37),),
+    ]
+    assert [window.ticks for window in windows] == [0, 0, 0]
+
+
+@pytest.mark.asyncio
+async def test_pickup_fills_every_slot_then_steps_past_an_items_delay() -> None:
+    window = (await play(PICKUP)).windows[6]
+
+    assert window.before == (*DIRT_EVERYWHERE, item(FEET, STONE, "PickupDelay:1s"))
+    assert window.commands == ("tick step 1",) * 2
+
+
+@pytest.mark.asyncio
+async def test_pickup_last_leaves_room_for_four_of_ten_stones() -> None:
+    window = (await play(PICKUP)).windows[7]
+
+    assert window.before == (
+        f"kill @e[tag={TAG}]",
+        "item replace entity picker container.0 with minecraft:stone 60",
+        item(FEET, "minecraft:stone 10", "PickupDelay:1s"),
+    )
+    assert window.commands == ("tick step 1",) * 2
+
+
+@pytest.mark.asyncio
+async def test_pickup_has_eight_windows_and_changes_nothing_else() -> None:
+    play_ = await play(PICKUP)
+
+    assert len(play_.windows) == 8
+    assert {window.label for window in play_.windows} == {WINDOW}
+    assert play_.after[:-8] == ()
