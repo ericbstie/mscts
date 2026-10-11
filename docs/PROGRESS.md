@@ -195,6 +195,23 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-11: train 32
+
+- Train 32 (#365, then #366): `entities/summon`, `entities/data-changes`
+  and `entities/death` (#43); `entities/item-merge`,
+  `entities/item-despawn` and `entities/item-pickup` (#47). Experience
+  orb merging is not compared: vanilla's depends on entity ids. Each new
+  Group passed its Self-check 20 of 20. On the train's tip every commit
+  checked, reference 35 of 35, candidate 15 of 15, the entities
+  Self-checks 6 of 6.
+- #360's barrier (PR #367, draft) is not merged: `GroupContext.step_after`
+  passed five stress runs for inventory, movement, blocks and combat, but
+  `player/fall` overran the Self-check's 90 s a play. The next lead
+  chooses the lighter one-request proof or leaving `player/fall` out.
+- Filed: #368 (`remove_tagged` and bodies; Pumpkin keeps the tagged
+  entities), #369 (the SessionStart hook does not install Pumpkin).
+- Paused after this train at Eric's request (2026-10-10 18:53Z).
+
 ### 2026-10-10: train 31
 
 - #357 (#350): Group test modules play each Group once per process, and the
