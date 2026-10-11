@@ -92,7 +92,8 @@ async def _tp(context: GroupContext, bot: Bot, at: _Point) -> None:
 async def _play(context: GroupContext, bot: Bot, cases: tuple[_Case, ...], *, frozen: bool) -> None:
     """Play each case in a window of its own: the Bot is put at its start, then moves.
 
-    In a frozen world, the world steps one tick after each tick's moves. In a running one,
+    In a frozen world, the world steps one tick after each tick's moves have reached the server
+    (`GroupContext.step_after`). In a running one,
     every case has one tick, which the window's barrier ends.
     """
     for case in cases:
@@ -102,7 +103,7 @@ async def _play(context: GroupContext, bot: Bot, cases: tuple[_Case, ...], *, fr
                 for move in moves:
                     await bot.move(*move)
                 if frozen:
-                    await context.step(1)
+                    await context.step_after(bot)
 
 
 # `movement/too-fast`: moves along x from (8.5, -60, 8.5), on the flat world's grass.

@@ -212,7 +212,7 @@ async def _fall(context: GroupContext, bot: Bot, landing: _Site, height: int) ->
     async with context.observe(*PACKETS):
         for y, on_ground in _descent(landing, height):
             await bot.move(*_at(landing.lane, y), on_ground=on_ground)
-            await context.step(1)
+            await context.step_after(bot)
 
 
 @group("player/fall", kind=GroupKind.TICK_EXACT, spec=normal)

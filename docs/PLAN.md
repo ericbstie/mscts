@@ -1358,6 +1358,10 @@ class GroupContext:
                                     # freeze. Vanilla sends nothing when a step ends
                                     # (docs/research/2026-10-03-tick-step.md). ValueError:
                                     # ticks < 1, or not frozen
+    async def step_after(self, bot: Bot, *, ticks: int = 1) -> None: ...  # #360: bot.sync(),
+                                    # then step(ticks): the server has handled what `bot` sent
+                                    # (its action) before Control's "tick step 1" reaches it.
+                                    # Every act-then-step window calls it, not step
     async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises,
                                     # setting left_frozen: #228); then #184:
                                     # Bot.refuse_queued_disconnect on every Bot
