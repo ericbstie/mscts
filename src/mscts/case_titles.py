@@ -581,6 +581,19 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "recipe_book_add.entries[].contents.display.value.crafting_station.value": (
             "Recipe book crafting station display data"
         ),
+        # entities (#43)
+        "add_entity.velocity.x": "Entity east-west speed",
+        "add_entity.velocity.z": "Entity north-south speed",
+        "add_entity.yaw": "Entity facing",
+        "bundle_delimiter": "Packet bundle edge",
+        "rotate_head": "Entity head turning",
+        "set_entity_data.entries[].value.level": "Villager level",
+        "set_entity_data.entries[].value.profession": "Villager profession",
+        "set_entity_data.entries[].value.type": "Villager type",
+        "set_equipment.entity_id": "Entity receiving equipment",
+        "set_equipment.equipment[].item.count": "Equipped item count",
+        "set_equipment.equipment[].item.item": "Equipped item type",
+        "set_equipment.equipment[].slot": "Equipment slot",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
