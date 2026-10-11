@@ -20,3 +20,8 @@ natural spawning, #51 spawners, #52 pathfinding, #72 spawn spread.
 ## Log
 
 Newest first: one line per lesson, with the issue it came from.
+
+- #47: a frozen world never freezes players (`TickRateManager.isEntityFrozen`), and their connection tick runs after the level tick: an item is picked up on the step its pickup delay reaches 0, and one with delay 0, or an orb, on the tick its command runs.
+- #47: whether two experience orbs merge depends on their entity ids (`(other.id - this.id) % 40 == 0`), and a player takes one orb in reach at random each tick: never compare orb merging, and give each orb its own window.
+- #47: items look for merges every 40 ticks of their own age: summon pairs a step apart so each merge lands on its own tick. A pickup that only partly fits sends only `container_set_slot`.
+- #47: `/item replace entity <p> container.*` replaces one slot without an error; fill an inventory one slot per command.

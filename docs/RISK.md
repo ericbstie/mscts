@@ -57,6 +57,8 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #366 |  | medium | lead's diff read | 0 | none: no barrier or window change; the lead dropped a duplicate titles commit that #365 already carried |
+| #365 |  | high, lowered to medium (no comparison-core change) | lead's diff read | 0 | none: no barrier or window change; the worker's Self-check found bodies outliving `remove_tagged` (3 of 20 plays), fixed before the PR |
 | #361 |  | medium | first review | 0 | none: no barrier or window change; the Self-check after the review fixes found the crafting table's undo leaving dirt where grass was on one Instance, fixed before the merge |
 | #358 |  | medium | first review | 0 | none: no barrier or window change |
 | #357 | low | low | lead's diff read | 0 | none: test code only |

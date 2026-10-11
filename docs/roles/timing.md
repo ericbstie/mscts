@@ -42,6 +42,8 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #360: in vanilla 26.3 a Bot's action handlers and `handleClientCommand` share one server-wide FIFO (`PacketProcessor.packetsToBeHandled`), drained every tick even while frozen; chat commands bypass it (`server.execute`). One answered `client_command` proves every earlier action of that Bot was handled (docs/research/2026-10-10-step-barrier.md, on PR #367).
+- #360: a per-step barrier multiplies: count a play's steps times the barrier's round trips before adding one; `player/fall` (58 steps) overran the Self-check's 90 s a play under stress.
 - #57: a respawned player ignores damage until the server has read its `player_loaded` (`ServerPlayer.isInvulnerableTo`): run `/damage` after a barrier, for example inside the window.
 - #57: to wait until "nothing more comes" from a player's own ticks, count `set_time` packets: vanilla sends one every 20 ticks, frozen or not, so 6 of them span at least 100 ticks. `context.step` costs about 300 ms a step.
 - #57: food, saturation and exhaustion change in the player's tick, on the wall clock: compare the order of the changes (`exact`), not the tick they land on. Set food exactly with a kill and respawn, the Hunger effect for a counted number of ticks, then `/damage generic`.

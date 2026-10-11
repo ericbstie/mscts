@@ -213,13 +213,16 @@ Out of scope: <what not to touch>
 Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), never
               a wire field a Candidate may legitimately get wrong: that is a Divergence
               for the Comparison to report, not a harness assertion.
+Stress runs: <when the level asks for them, each Group family's play time on main,
+             so the worker can size the five runs; a long family goes to a worker of its own>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist;
            timings are measured on a committed tree, with `--durations` of the touched
            tests and the load average; a timing claim compares clean main and the branch
            back-to-back on the same host, median of three>
 Base: <main commit the brief was written against; the worker first runs
-      `git merge --ff-only main` in its worktree; before the PR it rebases onto main
-      with `git rebase main --exec "mise run check"`>
+      `git fetch origin main` and `git merge --ff-only origin/main` in its worktree
+      (its local `main` can be stale); before the PR it rebases onto origin/main
+      with `git rebase origin/main --exec "mise run check"`>
 Context: <facts, file paths, gotchas the tech lead already knows; reusable scratchpad
          artifacts (jars, generated reports, probe scripts) by path; names a parallel
          brief is introducing that this one must not reuse (check CONTEXT.md); the
@@ -403,6 +406,17 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-11 | worker (#360) | The stress runs for five Group families took about 14 h | **adopt**: a brief that asks for stress runs states each family's play time on main, and long families go to separate workers |
+| 2026-10-11 | worker (#360) | The worktree's local `main` was stale (9cdf1ed) though origin/main was the brief's base | **adopt**: the brief template's Base line says `git fetch origin main` and `git merge --ff-only origin/main` |
+| 2026-10-11 | worker (#360) | A background stress driver was killed at the 2 h cap | **reject**: common.md already gives the longest background timeout; a multi-hour run is split per family instead (above) |
+| 2026-10-11 | worker (#360) | `player/fall` overran its Self-check budget with a full barrier per step | **adopt**: timing handbook line, count steps times round trips before adding a per-step barrier |
+| 2026-10-11 | worker (#47) | Pumpkin was not in the shared cache; the candidate run failed only after its lock wait | **defer**: #369 |
+| 2026-10-11 | worker (#47) | `probe_loop.run` found the draft Group's id already registered from src | **reject** for now: deleting the id from `_REGISTERED` in the probe script works; one worker hit it |
+| 2026-10-11 | worker (#47) | Background probes were cut off at the 30-minute default timeout | **reject**: common.md already says to set the longest background timeout |
+| 2026-10-11 | worker (#43) | Bodies outlived `remove_tagged` and failed 3 of 20 Self-check plays | **defer**: #368; comparison handbook line meanwhile |
+| 2026-10-11 | worker (#43) | One Instance had not sent an entity's chunk when it died (1 of 20 plays) | **adopt**: comparison handbook line, keep compared entities in chunk (0, 0) |
+| 2026-10-11 | worker (#43) | `mutate.py --batch` exits 2 without `-- <pytest args>` | **reject**: its usage says so; one minute |
+| 2026-10-11 | lead (train 32) | Two stacked Group PRs both titled `add_entity.velocity.x`, `velocity.z` and `yaw` | **reject**: the merge train caught it; the lead dropped the later commit |
 | 2026-10-10 | worker (#350) | The lead's baseline log of the unit tier finished after two increments, and it gave no load average | **reject**: the brief template already asks for the tier's time on main; the lead sent a run still going instead of a number |
 | 2026-10-10 | worker (#350) | Waiting on a background run with Monitor ticks fired unevenly; a foreground `until grep ...; do sleep 10; done` with a 600000 ms timeout was reliable | **reject**: a harness detail that changes between versions; common.md already says to wait by the run's output |
 | 2026-10-10 | worker (#61) | Most of the wall time went to waiting on the live lock behind the lead's reference run and the other worker's Self-checks | **reject**: the lock is what keeps the container up (train 30); with the unit tier at about 3 minutes the waits are the live runs themselves |
@@ -723,6 +737,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-11 | The brief template's Base line fetches and merges `origin/main`; a brief that asks for stress runs gives each Group family's play time on main and splits long families across workers | Train 32: a worker started from a stale local `main`, and #360's stress runs for five families took about 14 h |
 | 2026-10-10 | Workers never bypass the live lock on a shared host, run `mscts run` only while holding no other live run, and run long commands in the background with the longest timeout; the test-group skill plans a Group's windows against the Self-check's 90 s play | Train 30: two container restarts, and two Groups trimmed after a 20-play Self-check timed out |
 | 2026-10-09 | Each lead's handoff note ends with its session's total tokens, its number of batches and of wakes, and the PRs it merged | Maintainer: yes. The 2026-10-09 context change is judged by wakes per batch and tokens per merged PR, and measuring that took a thread reading session usage by hand each time |
 | 2026-10-09 | Every merged PR gets one row in the review results table in `docs/RISK.md`: the scrutiny level triage suggested and the label the lead chose, the reviews that ran, the blocking findings of each, and the stress runs and what they caught. The lead writes the row when it merges the train | Maintainer chose a per-PR record. The scrutiny check of 2026-10-09 had to rebuild review results by hand from 44 PR pages and found none recorded for 8 high-scrutiny PRs, so the scrutiny nudge cannot be re-checked without one. The suggested and chosen levels side by side show whether the triage suggestion can be trusted |
