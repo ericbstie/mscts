@@ -56,7 +56,7 @@ Instances, a draft of each Group played with `scripts/research/probe_loop.py`, 2
   slab on the 10th: `remove_entities`, then the item's `add_entity` at the falling block's place
   (x 11.5, y -60.0) and its stack in `set_entity_data`.
 - A window that ended a step before the sand broke missed the item, which then moved at random in
-  the next window: 6 plays of 6 did not match. Ended on the step it breaks, they match.
+  the next window: 6 plays of 6 did not match. Ended on the step it breaks, 20 plays of 20 match.
 - While it falls, the entity sends `set_entity_motion` and `move_entity_pos` every third step.
 - A step took about 300 ms on each side.
 - A packet comes in step k when it arrives between the Marks `tick:<k-1>` and `tick:<k>` (the
@@ -87,3 +87,4 @@ Instances, a draft of each Group played with `scripts/research/probe_loop.py`, 2
 - Nothing came in the step after.
 - An item left on the ground sends `set_entity_motion` and `move_entity_pos` in later steps, at
   random, so each window's item is killed before the next window.
+- 20 plays of 20 matched, with a draft that killed no items.
