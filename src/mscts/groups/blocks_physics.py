@@ -105,17 +105,18 @@ GRAVITY_PACKETS = (
     "minecraft:add_transient_block",
     "minecraft:add_entity",
     "minecraft:set_entity_data",
-    "minecraft:move_entity_pos",
-    "minecraft:move_entity_pos_rot",
-    "minecraft:entity_position_sync",
-    "minecraft:set_entity_motion",
     "minecraft:remove_entities",
     "minecraft:level_event",
     "minecraft:sound",
 )
-"""What a gravity window compares: the blocks, the falling block entity as it appears, moves and
-goes, the block it lands as (`add_transient_block` too), the item it breaks into, and the
-landing's sound and event."""
+"""What a gravity window compares: the blocks, the falling block entity as it appears and goes,
+the block it lands as (`add_transient_block` too), the item it breaks into, and the landing's
+sound and event.
+
+It leaves out how the falling block moves. Vanilla sends that every so many ticks of the
+entity's tracker (`ServerEntity.sendChanges`), which `ChunkMap.tick` runs in frozen ticks too,
+so which step it comes in depends on how long each step takes (26.3 javap; 2 plays of 20 did not
+match on it)."""
 
 _COLUMN = ("minecraft:sand", "minecraft:gravel", "minecraft:red_sand") * 2
 

@@ -56,8 +56,14 @@ Instances, a draft of each Group played with `scripts/research/probe_loop.py`, 2
   slab on the 10th: `remove_entities`, then the item's `add_entity` at the falling block's place
   (x 11.5, y -60.0) and its stack in `set_entity_data`.
 - A window that ended a step before the sand broke missed the item, which then moved at random in
-  the next window: 6 plays of 6 did not match. Ended on the step it breaks, 20 plays of 20 match.
-- While it falls, the entity sends `set_entity_motion` and `move_entity_pos` every third step.
+  the next window: 6 plays of 6 did not match. Ended on the step it breaks, 20 plays of 20 matched in the probe.
+- While it falls, the entity sends `set_entity_motion` and `move_entity_pos` about every third
+  step. Which step depends on time: `ServerLevel.tick` calls `ServerChunkCache.tick(..., true)`
+  in frozen ticks too, which calls `ChunkMap.tick`, which calls `ServerEntity.sendChanges`; that
+  adds 1 to the tracker's `tickCount` each call and sends the position when
+  `UpdateInterval.test(tickCount)` is true. So the frozen ticks between two steps count. In a
+  Self-check of 20 plays that compared them, 2 did not match: the send came a step apart (47 and
+  48), or at another point of the fall (`velocity.y` 12717 and 12148).
 - A step took about 300 ms on each side.
 - A packet comes in step k when it arrives between the Marks `tick:<k-1>` and `tick:<k>` (the
   barrier at the end of each step); the first count of these steps read them one step early.

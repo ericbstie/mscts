@@ -95,7 +95,7 @@ frozen and random ticks are off. Control builds every case with `/setblock` firs
 world 5 ticks, so that the ticks the blocks schedule when they are placed have run. Each window
 then removes one block with `/setblock ... air` and steps the world a fixed number of ticks, one
 at a time, until nothing moves. Each window compares, tick by tick, the blocks, the falling block
-as it appears, moves, lands and goes, the items that drop, the break particles, and the sounds
+as it appears, lands and goes, the items that drop, the break particles, and the sounds
 and world events. When a Group ends, Control clears its blocks and kills the items they dropped. The Groups
 require `/tp`, `/setblock`, `/fill`, `/kill`, `/gamerule` and `/tick`.
 
@@ -106,6 +106,10 @@ require `/tp`, `/setblock`, `/fill`, `/kill`, `/gamerule` and `/tick`.
 
 The anvil falls one block. Vanilla chips an anvil that falls further at random: half the time
 after a fall of 10 blocks.
+
+`blocks/gravity` does not compare how a falling block moves. Vanilla sends that every few
+ticks, counting the ticks in which the world is frozen, so the tick it comes in depends on how
+long each step takes.
 
 The item a falling block breaks into appears where the block was. Its sideways speed and which
 way it faces are random, so `blocks/gravity` leaves them out. Where it appears, which item it is

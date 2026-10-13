@@ -239,7 +239,9 @@ async def test_gravity_ends_the_windows_with_a_drop_on_its_tick_and_kills_the_it
 
 
 @pytest.mark.asyncio
-async def test_gravity_compares_the_blocks_the_falling_entities_and_the_landing() -> None:
+async def test_gravity_compares_where_falling_blocks_appear_go_and_land_but_not_their_moves() -> (
+    None
+):
     windows = (await play(GRAVITY)).windows
 
     assert {window.label for window in windows} == {GRAVITY_WINDOW}
@@ -248,9 +250,7 @@ async def test_gravity_compares_the_blocks_the_falling_entities_and_the_landing(
 GRAVITY_WINDOW = (
     f"{OBSERVE_OPEN} minecraft:block_update minecraft:section_blocks_update "
     "minecraft:add_transient_block minecraft:add_entity minecraft:set_entity_data "
-    "minecraft:move_entity_pos minecraft:move_entity_pos_rot minecraft:entity_position_sync "
-    "minecraft:set_entity_motion minecraft:remove_entities minecraft:level_event "
-    "minecraft:sound"
+    "minecraft:remove_entities minecraft:level_event minecraft:sound"
 )
 
 
