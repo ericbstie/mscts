@@ -88,20 +88,21 @@ digs. Control puts the digger, the watcher and itself at x 8.5, 12.5 and 4.5, y 
 A dropped item has the same Masks as in the commands above: where it appears, its sideways speed and
 which way it faces.
 
-### Falling blocks
+### Falling blocks and blocks that lose their support
 
 A Bot called `watcher` joins at the world spawn, and Control stands 6 chunks away. The world is
 frozen and random ticks are off. Control builds every case with `/setblock` first, and steps the
 world 5 ticks, so that the ticks the blocks schedule when they are placed have run. Each window
 then removes one block with `/setblock ... air` and steps the world a fixed number of ticks, one
 at a time, until nothing moves. Each window compares, tick by tick, the blocks, the falling block
-as it appears, moves, lands and goes, the item it breaks into, and the landing's sound and world
-event. When a Group ends, Control clears its blocks and kills the items they dropped. The Groups
+as it appears, moves, lands and goes, the items that drop, the break particles, and the sounds
+and world events. When a Group ends, Control clears its blocks and kills the items they dropped. The Groups
 require `/tp`, `/setblock`, `/fill`, `/kill`, `/gamerule` and `/tick`.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `blocks/gravity` | tick-exact | none | Removes the block under a column of sand, gravel and red sand 6 high (18 ticks), under white concrete powder that falls into water (8 ticks), and under an anvil (8 ticks). Then it removes the block under sand that falls onto a torch (10 ticks) and onto a bottom slab (9 ticks), which each break it into an item. | none |
+| `blocks/support` | tick-exact | none | Removes the block under a torch, a rail, a lever, a poppy, a door and a bed, and the block behind a wall torch and a ladder, and steps 1 tick each time. | none |
 
 The anvil falls one block. Vanilla chips an anvil that falls further at random: half the time
 after a fall of 10 blocks.
@@ -110,6 +111,12 @@ The item a falling block breaks into appears where the block was. Its sideways s
 way it faces are random, so `blocks/gravity` leaves them out. Where it appears, which item it is
 and how many are still compared. The item moves at random from the next tick, so its window ends
 on the tick it appears, and Control kills it before the next window.
+
+In vanilla, a block that loses its support breaks at once, in the command that removes the
+support, and the tick after brings nothing more. A bed needs nothing under it, so it stays. The
+item a block drops has the same Masks as in the commands above: where it appears, its sideways
+speed and which way it faces. `blocks/support` does not compare how the item moves, and Control
+kills it before the next window.
 
 ## Chat (`chat`)
 

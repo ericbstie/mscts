@@ -17,8 +17,8 @@ from mscts.transcript import Transcript
 from tests.group import test_control
 from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
-GRAVITY = "blocks/gravity"
-GROUP_IDS = (GRAVITY,)
+GRAVITY, SUPPORT = "blocks/gravity", "blocks/support"
+GROUP_IDS = (GRAVITY, SUPPORT)
 COMMANDS = tree("gamerule", "tp", "tick", "setblock", "fill", "kill", "tellraw")
 CONTROL = "control"
 KILL_ITEMS = "kill @e[type=minecraft:item]"
@@ -263,7 +263,92 @@ def test_gravity_masks_only_how_a_dropped_item_moves_and_faces() -> None:
     }
 
 
-RELEASES = {GRAVITY: GRAVITY_RELEASES}
+# `blocks/support`
+
+SUPPORT_LAYOUT = (
+    "setblock 1 -60 12 minecraft:stone",
+    "setblock 1 -59 12 minecraft:torch",
+    "setblock 3 -60 12 minecraft:stone",
+    "setblock 3 -59 12 minecraft:rail",
+    "setblock 5 -60 12 minecraft:stone",
+    "setblock 5 -59 12 minecraft:lever[face=floor,facing=north]",
+    "setblock 7 -60 12 minecraft:dirt",
+    "setblock 7 -59 12 minecraft:poppy",
+    "setblock 9 -60 12 minecraft:stone",
+    "setblock 9 -59 12 minecraft:oak_door[half=lower,facing=north]",
+    "setblock 9 -58 12 minecraft:oak_door[half=upper,facing=north]",
+    "setblock 11 -60 12 minecraft:stone",
+    "setblock 11 -60 13 minecraft:stone",
+    "setblock 11 -59 12 minecraft:red_bed[part=foot,facing=south]",
+    "setblock 11 -59 13 minecraft:red_bed[part=head,facing=south]",
+    "setblock 13 -59 13 minecraft:stone",
+    "setblock 13 -59 12 minecraft:wall_torch[facing=north]",
+    "setblock 15 -59 13 minecraft:stone",
+    "setblock 15 -59 12 minecraft:ladder[facing=north]",
+)
+SUPPORT_RELEASES = (
+    ("1 -60 12", 1),
+    ("3 -60 12", 1),
+    ("5 -60 12", 1),
+    ("7 -60 12", 1),
+    ("9 -60 12", 1),
+    ("11 -60 12", 1),
+    ("13 -59 13", 1),
+    ("15 -59 13", 1),
+)
+"""A block pops off in the command that removes what holds it (Block.updateOrDestroy): one step
+shows that nothing more follows."""
+
+
+@pytest.mark.asyncio
+async def test_support_builds_eight_blocks_each_on_or_against_a_block_of_its_own() -> None:
+    first = (await play(SUPPORT)).first
+
+    assert first[len(SETUP) : -5] == SUPPORT_LAYOUT
+
+
+@pytest.mark.asyncio
+async def test_support_kills_the_item_each_window_dropped_before_the_next() -> None:
+    # The bed stays: vanilla's bed needs nothing under it.
+    play_ = await play(SUPPORT)
+
+    assert [window.before for window in play_.windows[1:]] == [
+        (KILL_ITEMS,),
+        (KILL_ITEMS,),
+        (KILL_ITEMS,),
+        (KILL_ITEMS,),
+        (KILL_ITEMS,),
+        (),
+        (KILL_ITEMS,),
+    ]
+    assert play_.after[:-7] == (KILL_ITEMS,)
+
+
+@pytest.mark.asyncio
+async def test_support_compares_the_blocks_the_drops_and_the_break_particles() -> None:
+    windows = (await play(SUPPORT)).windows
+
+    assert {window.label for window in windows} == {SUPPORT_WINDOW}
+
+
+SUPPORT_WINDOW = (
+    f"{OBSERVE_OPEN} minecraft:block_update minecraft:section_blocks_update "
+    "minecraft:add_entity minecraft:set_entity_data minecraft:remove_entities "
+    "minecraft:level_event minecraft:sound"
+)
+
+
+def test_support_masks_where_a_dropped_item_appears_and_how_it_moves_and_faces() -> None:
+    masks = GROUPS[SUPPORT].masks
+
+    assert {(mask.packet, mask.path) for mask in masks} == {
+        ("minecraft:add_entity", path)
+        for path in ("x", "y", "z", "velocity.x", "velocity.z", "yaw")
+    }
+
+
+RELEASES = {GRAVITY: GRAVITY_RELEASES, SUPPORT: SUPPORT_RELEASES}
 CLEARS = {
     GRAVITY: "fill 1 -60 7 15 -53 9 minecraft:air",
+    SUPPORT: "fill 1 -60 12 15 -58 13 minecraft:air",
 }

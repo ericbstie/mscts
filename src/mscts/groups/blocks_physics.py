@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from mscts.compare import Mask
 from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, join_at_spawn, pin_joins
+from mscts.groups.blocks import DROP_MASKS
 from mscts.spec import CONTROL_PLAYER
 
 WATCHER = "watcher"
@@ -206,3 +207,83 @@ appears where the falling block was, so its place is compared."""
 async def gravity(context: GroupContext) -> None:
     """Sand, gravel, concrete powder and an anvil fall when the block under them goes."""
     await _play(context, GRAVITY_CASES, _GRAVITY_CLEAR, GRAVITY_PACKETS)
+
+
+# `blocks/support`: a row of cases along z 12, 2 blocks apart. Each block stands on a block of
+# its own at y -60, or hangs on one at z 13, so that removing it leaves the flat world as it was.
+
+SUPPORT_PACKETS = (
+    "minecraft:block_update",
+    "minecraft:section_blocks_update",
+    "minecraft:add_entity",
+    "minecraft:set_entity_data",
+    "minecraft:remove_entities",
+    "minecraft:level_event",
+    "minecraft:sound",
+)
+"""What a support window compares: the blocks, the break particles (a world event), the item a
+block drops, and sounds. It leaves out how an item moves, which is random."""
+
+
+def _on(x: int, block: str, *, under: str = "minecraft:stone") -> tuple[str, ...]:
+    """The layout of `block` standing at x, -59, 12 on `under`, which a window removes."""
+    return (f"setblock {x} -60 12 {under}", f"setblock {x} -59 12 {block}")
+
+
+def _on_floor(x: int, block: str, *, under: str = "minecraft:stone") -> _Case:
+    """`block` on a block of `under`, which the window removes; the block drops an item."""
+    return _Case(layout=_on(x, block, under=under), release=f"{x} -60 12", ticks=1, drops=True)
+
+
+def _on_wall(x: int, block: str) -> _Case:
+    """`block` hanging on the north face of a stone, which the window removes."""
+    return _Case(
+        layout=(f"setblock {x} -59 13 minecraft:stone", f"setblock {x} -59 12 {block}"),
+        release=f"{x} -59 13",
+        ticks=1,
+        drops=True,
+    )
+
+
+SUPPORT_CASES = (
+    _on_floor(1, "minecraft:torch"),
+    _on_floor(3, "minecraft:rail"),
+    _on_floor(5, "minecraft:lever[face=floor,facing=north]"),
+    _on_floor(7, "minecraft:poppy", under="minecraft:dirt"),
+    _Case(
+        layout=(
+            *_on(9, "minecraft:oak_door[half=lower,facing=north]"),
+            "setblock 9 -58 12 minecraft:oak_door[half=upper,facing=north]",
+        ),
+        release="9 -60 12",
+        ticks=1,
+        drops=True,
+    ),
+    _Case(
+        layout=(
+            "setblock 11 -60 12 minecraft:stone",
+            "setblock 11 -60 13 minecraft:stone",
+            "setblock 11 -59 12 minecraft:red_bed[part=foot,facing=south]",
+            "setblock 11 -59 13 minecraft:red_bed[part=head,facing=south]",
+        ),
+        release="11 -60 12",
+        ticks=1,
+    ),
+    _on_wall(13, "minecraft:wall_torch[facing=north]"),
+    _on_wall(15, "minecraft:ladder[facing=north]"),
+)
+"""A torch, a rail, a lever, a poppy, a door and a bed, each on a block, and a wall torch and a
+ladder, each on the side of one. Each half of the door and the bed is set by itself.
+
+Each block pops off with its item in the command that removes what holds it up
+(`Block.updateOrDestroy`; a rail in `BaseRailBlock.neighborChanged`), and the window steps one
+tick, in which nothing more happens (vanilla 26.3, measured). The bed stays: vanilla's needs
+nothing under it (`AbstractBedBlock` has no `canSurvive`)."""
+
+_SUPPORT_CLEAR = "fill 1 -60 12 15 -58 13 minecraft:air"
+
+
+@group("blocks/support", masks=DROP_MASKS, kind=GroupKind.TICK_EXACT)
+async def support(context: GroupContext) -> None:
+    """Torches, a rail, a lever, a flower, a door, a bed and a ladder lose what holds them up."""
+    await _play(context, SUPPORT_CASES, _SUPPORT_CLEAR, SUPPORT_PACKETS)
