@@ -210,12 +210,13 @@ GRAVITY_RELEASES = (
     ("2 -60 8", 18),
     ("5 -59 8", 8),
     ("8 -60 8", 8),
-    ("11 -59 8", 10),
-    ("14 -59 8", 9),
+    ("11 -59 8", 11),
+    ("14 -59 8", 10),
 )
-"""Where each window removes a block, and how many ticks it steps: a block falls on the first
-step after the block under it goes, the next one up two steps later, and a fall of one block takes
-seven steps (measured on vanilla 26.3)."""
+"""Where each window removes a block, and how many ticks it steps, until the last block lands or
+breaks: a block falls on the second step after the block under it goes (FallingBlock's delay of 2),
+the next one up two steps later, and a fall of one block lands on the 8th step. The sand that
+falls onto the torch breaks on the 11th step, and onto the slab on the 10th (vanilla 26.3)."""
 
 
 @pytest.mark.asyncio

@@ -43,20 +43,24 @@ Instances, a draft of each Group played with `scripts/research/probe_loop.py`, 2
 
 ### When (*live*)
 
-- The block above the removed one becomes a `falling_block` on the first step after the window's
-  `setblock ... air`: `add_entity`, its start position in `set_entity_data` (twice), the block
-  set to air, and a `move_entity_pos` of 0. The block above that falls two steps later, and so
-  on up a column.
-- A fall of one block lands on the 7th step: `block_update`, `add_transient_block`,
+- The block above the removed one becomes a `falling_block` on the second step after the
+  window's `setblock ... air` (the delay of 2): `add_entity`, its start position in
+  `set_entity_data` (twice), the block set to air, and a `move_entity_pos` of 0. The block above
+  that falls two steps later, and so on up a column.
+- After a fall of one block it lands on the 8th step: `block_update`, `add_transient_block`,
   `remove_entities` and `block_update` again. The anvil's world event 1031 comes before the
-  second `block_update`. The column of 6 lands its last block on the 17th step.
-- Concrete powder that falls one block into water lands on the 7th step. The first `block_update`
+  second `block_update`. The column of 6 lands its last block on the 18th step.
+- Concrete powder that falls one block into water lands on the 8th step. The first `block_update`
   is the powder and the second is the concrete.
-- Sand that falls 2 blocks onto a torch breaks on the 10th step, and 1.5 blocks onto a bottom
-  slab on the 9th: `remove_entities`, then the item's `add_entity` at the falling block's place
-  (x 11.5, y -60.0) and its stack in `set_entity_data`. The step after brought nothing.
+- Sand that falls 2 blocks onto a torch breaks on the 11th step, and 1.5 blocks onto a bottom
+  slab on the 10th: `remove_entities`, then the item's `add_entity` at the falling block's place
+  (x 11.5, y -60.0) and its stack in `set_entity_data`.
+- A window that ended a step before the sand broke missed the item, which then moved at random in
+  the next window: 6 plays of 6 did not match. Ended on the step it breaks, they match.
 - While it falls, the entity sends `set_entity_motion` and `move_entity_pos` every third step.
-- Two plays matched, and each took about 300 ms a step on each side.
+- A step took about 300 ms on each side.
+- A packet comes in step k when it arrives between the Marks `tick:<k-1>` and `tick:<k>` (the
+  barrier at the end of each step); the first count of these steps read them one step early.
 
 ## A block that loses its support
 

@@ -156,7 +156,7 @@ GRAVITY_CASES = (
             "setblock 11 -58 8 minecraft:sand",
         ),
         release="11 -59 8",
-        ticks=10,
+        ticks=11,
         drops=True,
     ),
     _Case(
@@ -166,17 +166,17 @@ GRAVITY_CASES = (
             "setblock 14 -58 8 minecraft:sand",
         ),
         release="14 -59 8",
-        ticks=9,
+        ticks=10,
         drops=True,
     ),
 )
 """A column of sand, gravel and red sand 6 high; white concrete powder over water, in a basin of
 stone; an anvil; sand over a torch, and over a bottom slab, each of which it breaks into an item.
 
-A block falls on the first step after the block under it goes, the one above it two steps later,
-and a fall of one block takes 7 steps (vanilla 26.3, measured): the column's last block lands on
-the 17th, and the window steps one more. Sand falls 2 blocks onto the torch and breaks on the
-10th step, and 1.5 onto the slab, on the 9th.
+A block falls on the second step after the block under it goes (the delay of 2), the one above
+it two steps later, and after a fall of one block it lands on the 8th step (vanilla 26.3,
+measured): the column's last block lands on the 18th. Sand falls 2 blocks onto the torch and
+breaks on the 11th step, and 1.5 onto the slab, on the 10th. Each window ends on that step.
 
 The anvil falls one block. One that falls further lands chipped at random: `FallingBlockEntity
 .causeFallDamage` draws `random.nextFloat() < 0.05 + 0.05 * ceil(fallDistance - 1)` once the

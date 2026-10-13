@@ -101,7 +101,7 @@ require `/tp`, `/setblock`, `/fill`, `/kill`, `/gamerule` and `/tick`.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `blocks/gravity` | tick-exact | none | Removes the block under a column of sand, gravel and red sand 6 high (18 ticks), under white concrete powder that falls into water (8 ticks), and under an anvil (8 ticks). Then it removes the block under sand that falls onto a torch (10 ticks) and onto a bottom slab (9 ticks), which each break it into an item. | none |
+| `blocks/gravity` | tick-exact | none | Removes the block under a column of sand, gravel and red sand 6 high (18 ticks), under white concrete powder that falls into water (8 ticks), and under an anvil (8 ticks). Then it removes the block under sand that falls onto a torch (11 ticks) and onto a bottom slab (10 ticks), which each break it into an item. | none |
 | `blocks/support` | tick-exact | none | Removes the block under a torch, a rail, a lever, a poppy, a door and a bed, and the block behind a wall torch and a ladder, and steps 1 tick each time. | none |
 
 The anvil falls one block. Vanilla chips an anvil that falls further at random: half the time
