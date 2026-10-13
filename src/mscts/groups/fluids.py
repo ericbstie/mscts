@@ -101,8 +101,8 @@ async def _observe(context: GroupContext, schedule: tuple[_At, ...], ticks: int)
             await context.step(1)
 
 
-# `fluids/water-spread`: a source in the middle of the open floor, and one that has a hole in the
-# floor a few blocks east.
+# `fluids/water-spread` and `fluids/lava-spread`: a source in the middle of the open floor, and one
+# that has a hole in the floor a few blocks east.
 
 _HOLE = "setblock 15 -61 14 minecraft:air"
 """The hole: one block deep, in the floor at the chunk's east edge."""
@@ -130,3 +130,74 @@ async def water_spread(context: GroupContext) -> None:
     """Water spreads on an open floor, and flows toward a hole 3 blocks away."""
     async with _arena(context, (_HOLE,)):
         await _observe(context, _WATER_SPREAD, _WATER_TICKS)
+
+
+_LAVA_SPREAD = _spread("lava", "13")
+"""Lava spreads a block every 30 ticks, 2 levels less each time, up to 3 blocks
+(`LavaFluid.getTickDelay`, `getDropOff`), and flows only toward a hole within 2 blocks
+(`getSlopeFindDistance`): the second source is 2 blocks from the hole."""
+
+_LAVA_TICKS = 92
+"""The second source falls into the hole on tick 91; one tick more."""
+
+
+@group("fluids/lava-spread", kind=GroupKind.TICK_EXACT)
+async def lava_spread(context: GroupContext) -> None:
+    """Lava spreads on an open floor, and flows toward a hole 2 blocks away."""
+    async with _arena(context, (_HOLE,)):
+        await _observe(context, _LAVA_SPREAD, _LAVA_TICKS)
+
+
+# `fluids/sources`: two sources with a block between them, in a channel of stone (x 5 to 7), one
+# channel each at z 2 (water, a new source), 6 (water, none), 10 (lava, a new source) and 14
+# (lava, none).
+
+
+def _channel(z: int) -> tuple[str, ...]:
+    """Build a channel 3 blocks long at `z`, x 5 to 7, walled in stone."""
+    return (
+        f"fill 4 -60 {z - 1} 8 -60 {z + 1} minecraft:stone",
+        f"fill 5 -60 {z} 7 -60 {z} minecraft:air",
+    )
+
+
+_WATER_RULE = "gamerule water_source_conversion"
+_LAVA_RULE = "gamerule lava_source_conversion"
+
+_SOURCES_BUILD = (*_channel(2), *_channel(6), *_channel(10), *_channel(14), f"{_LAVA_RULE} true")
+"""The four channels, and the rule that lets lava make a source (vanilla's default is false)."""
+
+
+def _pair(tick: int, z: int, fluid: str) -> tuple[_At, ...]:
+    """Place a source of `fluid` at each end of the channel at `z`, a tick apart."""
+    return (
+        _At(tick, f"setblock 5 -60 {z} minecraft:{fluid}"),
+        _At(tick + 1, f"setblock 7 -60 {z} minecraft:{fluid}"),
+    )
+
+
+_SOURCES = (
+    *_pair(0, 10, "lava"),
+    *_pair(2, 14, "lava"),
+    *_pair(4, 2, "water"),
+    _At(9, f"{_WATER_RULE} false"),
+    *_pair(10, 6, "water"),
+    _At(30, f"{_LAVA_RULE} false"),
+)
+"""The block between two sources becomes a source when the first spreads into it, if the
+rule allows (`FlowingFluid.getNewLiquid`, `canConvertToSource`): water on tick 9 and lava on
+tick 30. Each rule is turned off just after, before the second pair of its fluid spreads."""
+
+_SOURCES_TICKS = 62
+"""The lava between the last pair, and the pair, have their last scheduled tick on tick 62."""
+
+
+@group("fluids/sources", kind=GroupKind.TICK_EXACT)
+async def sources(context: GroupContext) -> None:
+    """Two sources a block apart make a new one, with each source conversion rule on and off."""
+    control = context.control
+    async with contextlib.AsyncExitStack() as rules:
+        rules.push_async_callback(control.run, f"{_WATER_RULE} true")
+        rules.push_async_callback(control.run, f"{_LAVA_RULE} false")
+        async with _arena(context, _SOURCES_BUILD):
+            await _observe(context, _SOURCES, _SOURCES_TICKS)

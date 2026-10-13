@@ -673,6 +673,8 @@ block state), the fizz of lava meeting water (`level_event` 1501), and any sound
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `fluids/water-spread` | tick-exact | none | Control places a water source in the middle of the floor, and a tick later a second one 3 blocks from a hole in the floor. The world steps 36 ticks. Vanilla spreads water one block every 5 ticks, a level lower each time, up to 7 blocks out, and only toward a hole within 4 blocks. | none |
+| `fluids/lava-spread` | tick-exact | none | The same, with lava, the second source 2 blocks from the hole. The world steps 92 ticks. Vanilla spreads lava one block every 30 ticks, 2 levels lower each time, up to 3 blocks out, and only toward a hole within 2 blocks. | none |
+| `fluids/sources` | tick-exact | none | Control builds four stone channels 3 blocks long and places a source at each end of each, a tick apart: two of water and two of lava. The world steps 62 ticks. With `water_source_conversion` or `lava_source_conversion` on, vanilla turns the block between two sources into a third source. Control turns each rule on for the first pair of its fluid and off for the second. | none |
 
 Each fluid is placed a tick or more after the last one, so that no two placements reach the Bot
 together. In a frozen world the scheduled ticks of the fluids run only on the ticks the world
