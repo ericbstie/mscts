@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from mscts.bot import SYNC_REQUESTS, Bot
+from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
 from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
@@ -486,7 +486,7 @@ async def test_each_hit_reaches_the_server_before_the_step_after_it(group_id: st
     ]
 
     assert len(barriers) == attacks > 0
-    assert set(barriers) == {SYNC_REQUESTS}
+    assert set(barriers) == {HANDLED_REQUESTS}
 
 
 # combat/knockback

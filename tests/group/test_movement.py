@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 import pytest
 
 from mscts import run
-from mscts.bot import SYNC_REQUESTS
+from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
@@ -437,7 +437,7 @@ async def test_each_move_reaches_the_server_before_the_step_after_it(group_id: s
     barriers = barriers_before_steps(transcript, "walker", set(MOVES))
 
     assert len(barriers) == moves > 0
-    assert set(barriers) == {SYNC_REQUESTS}
+    assert set(barriers) == {HANDLED_REQUESTS}
 
 
 # movement/before-teleport

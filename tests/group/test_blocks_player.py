@@ -10,7 +10,7 @@ from dataclasses import dataclass, replace
 
 import pytest
 
-from mscts.bot import SYNC_REQUESTS, Face
+from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
@@ -201,7 +201,7 @@ async def test_the_dig_or_placement_reaches_the_server_before_the_step(group_id:
     result = await played(group_id)
 
     assert len(result.barriers) == len(result.windows)
-    assert set(result.barriers) == {SYNC_REQUESTS}
+    assert set(result.barriers) == {HANDLED_REQUESTS}
 
 
 @pytest.mark.asyncio

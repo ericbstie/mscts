@@ -16,7 +16,7 @@ from unittest import mock
 
 import pytest
 
-from mscts.bot import SYNC_REQUESTS
+from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.codec.packets import Packet
 from mscts.compare import OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
@@ -398,7 +398,7 @@ def test_each_move_of_a_fall_reaches_the_server_before_the_step_after_it() -> No
     barriers = barriers_before_steps(transcript, "faller", set(MOVES))
 
     assert len(barriers) == moves > 0
-    assert set(barriers) == {SYNC_REQUESTS}
+    assert set(barriers) == {HANDLED_REQUESTS}
 
 
 def test_fall_reports_every_move_in_the_air_but_the_last() -> None:

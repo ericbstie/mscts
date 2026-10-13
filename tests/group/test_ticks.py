@@ -5,7 +5,7 @@ from collections.abc import Set as AbstractSet
 import pytest
 from support.probe import REPEATER_STEPPED
 
-from mscts.bot import SYNC_REQUESTS, Face
+from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Outcome
@@ -178,8 +178,9 @@ def received_from_the_action(seen: list[Packet]) -> list[object]:
 @pytest.mark.asyncio
 async def test_step_after_brings_the_bots_action_to_the_server_before_the_step() -> None:
     # #360: the action and `tick step 1` travel on two connections. The acting Bot's
-    # barrier is answered only once the server has read the action, so the server reads
-    # the action, then the barrier's requests, then the step.
+    # requests are answered only once the server has read the action, and Control sends
+    # the step only after those answers, so the server reads the action, then the
+    # requests (`Bot.wait_until_handled`), then the step.
     server = ControlServer()
     transcript = Transcript(group_id="test/ticks", server="fake")
     async with playing(server, transcript) as context:
@@ -187,13 +188,28 @@ async def test_step_after_brings_the_bots_action_to_the_server_before_the_step()
         await alice.join()
         await context.freeze()
         await alice.dig(0, -60, 0, Face.NORTH)
+        dug_at = transcript.now_ns()
         await context.step_after(alice, ticks=2)
 
-    assert received_from_the_action(server.seen)[: SYNC_REQUESTS + 2] == [
+    assert received_from_the_action(server.seen)[: HANDLED_REQUESTS + 2] == [
         PLAYER_ACTION,
-        *[CLIENT_COMMAND] * SYNC_REQUESTS,
+        *[CLIENT_COMMAND] * HANDLED_REQUESTS,
         "tick step 1",
     ]
+    answers = [
+        event.t_ns
+        for event in transcript.events
+        if event.bot == "alice" and event.packet.name == AWARD_STATS and event.t_ns > dug_at
+    ]
+    step = next(
+        event.t_ns
+        for event in transcript.events
+        if event.bot == CONTROL
+        and event.packet.name == CHAT_COMMAND
+        and (event.packet.fields or {})["command"] == "tick step 1"
+        and event.t_ns > dug_at
+    )
+    assert answers[HANDLED_REQUESTS - 1] < step, "the step goes out once alice has her answers"
     assert steps(commands_sent(server.seen)) == [
         "tick freeze",
         "tick step 1",

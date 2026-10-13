@@ -628,7 +628,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # first request. Vanilla queues a player's action handlers and handleClientCommand on one
     # FIFO and answers REQUEST_STATS in its handler, the only place it sends award_stats
     # (javap, docs/research/2026-10-10-step-barrier.md); the second request covers one
-    # award_stats a Candidate sends unasked (#169).
+    # award_stats a Candidate sends unasked (#169). GroupContext.step_after calls it.
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
     # nothing left to take, raises as recv does. A disconnect it takes → ProtocolError, as
@@ -1396,8 +1396,9 @@ class GroupContext:
                                     # freeze. Vanilla sends nothing when a step ends
                                     # (docs/research/2026-10-03-tick-step.md). ValueError:
                                     # ticks < 1, or not frozen
-    async def step_after(self, bot: Bot, *, ticks: int = 1) -> None: ...  # #360: bot.sync(),
-                                    # then step(ticks): the server has handled what `bot` sent
+    async def step_after(self, bot: Bot, *, ticks: int = 1) -> None: ...  # #360:
+                                    # bot.wait_until_handled(), then step(ticks): the server
+                                    # has handled what `bot` sent
                                     # (its action) before Control's "tick step 1" reaches it.
                                     # Every act-then-step window calls it, not step
     async def end(self) -> None: ...     # #23: control.run("tick unfreeze") if frozen (raises,

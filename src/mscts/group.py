@@ -455,18 +455,20 @@ class GroupContext:
         """Step the frozen world on `ticks` ticks once the server has handled what `bot` sent.
 
         For an action a stepped tick must see: `bot` acts on its own connection, and
-        Control steps on another, so without a barrier between them the step could reach
-        the server first and the action land a tick late. So `bot` passes the barrier
-        (`Bot.sync`) first: vanilla handles a player's packets in the order they came, and
-        answers the barrier's request as it handles it, so by the answer it has handled the
-        action (docs/research/2026-10-10-step-barrier.md). Then it steps (`step`).
+        Control steps on another, so without a proof between them the step could reach
+        the server first and the action land a tick late. So `bot` first waits until the
+        server has handled what it sent (`Bot.wait_until_handled`): vanilla handles a
+        player's packets in the order they came, and answers a statistics request as it
+        handles it, so by the answer it has handled the action
+        (docs/research/2026-10-10-step-barrier.md). Then it steps (`step`), whose own
+        barrier covers what the action caused.
 
         Raises:
             ValueError: `ticks` is less than 1, or the Group has not frozen the world.
-            TimeoutError: `bot`'s barrier, or a step, got no answer in time.
+            TimeoutError: `bot`'s requests, or a step, got no answer in time.
             ProtocolError: `bot` is not in play, or the server disconnected a Bot.
         """
-        await bot.sync()
+        await bot.wait_until_handled()
         await self.step(ticks)
 
     async def end(self) -> None:

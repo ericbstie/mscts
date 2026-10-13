@@ -12,7 +12,7 @@ from typing import cast, override
 
 import pytest
 
-from mscts.bot import SYNC_REQUESTS, Face
+from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
@@ -449,7 +449,7 @@ async def test_each_drop_reaches_the_server_before_the_steps_after_it() -> None:
     result = await played(DROP)
 
     assert len(result.barriers) == len(result.windows)
-    assert set(result.barriers) == {SYNC_REQUESTS}
+    assert set(result.barriers) == {HANDLED_REQUESTS}
 
 
 @pytest.mark.asyncio
