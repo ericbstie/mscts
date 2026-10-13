@@ -661,6 +661,24 @@ A frozen world does not freeze its players, so the Bot picks up what it can reac
 
 Whether two orbs merge depends on their entity ids in vanilla, so `entities/item-merge` lays no orbs.
 
+## Fluids (`fluids`)
+
+How far and how fast water and lava spread, when they make a new source, and what they turn into
+where they meet. A Bot called `watcher` stands at the spawn. Control replaces the grass of the
+spawn chunk with stone, builds what a Group needs on it, stops random ticks and freezes the world.
+Then, in one window, Control places each fluid with `/setblock` and steps the world one tick at a
+time. The window compares the blocks that change on each tick (a fluid's level is part of its
+block state), the fizz of lava meeting water (`level_event` 1501), and any sound.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `fluids/water-spread` | tick-exact | none | Control places a water source in the middle of the floor, and a tick later a second one 3 blocks from a hole in the floor. The world steps 36 ticks. Vanilla spreads water one block every 5 ticks, a level lower each time, up to 7 blocks out, and only toward a hole within 4 blocks. | none |
+
+Each fluid is placed a tick or more after the last one, so that no two placements reach the Bot
+together. In a frozen world the scheduled ticks of the fluids run only on the ticks the world
+steps, so each placement takes effect on the tick its delay says. A window lasts until every
+source has had its last scheduled tick, which leaves none due for the next play.
+
 ## Planned
 
 | Mechanic | First Group | Needs |

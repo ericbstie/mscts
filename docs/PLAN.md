@@ -1254,6 +1254,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   despawn age; `item_despawn` — the `entities/item-despawn` script; `PICKUP_DELAYS` — the
   pickup delays of the items summoned before their window; `ORB_VALUES` — the points of the
   orbs, one a window; `item_pickup` — the `entities/item-pickup` script.
+- `groups.fluids`: `water_spread` — the `fluids/water-spread` script.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
