@@ -201,3 +201,50 @@ async def sources(context: GroupContext) -> None:
         rules.push_async_callback(control.run, f"{_LAVA_RULE} false")
         async with _arena(context, _SOURCES_BUILD):
             await _observe(context, _SOURCES, _SOURCES_TICKS)
+
+
+# `fluids/interactions`, x 10 to 14: lava meets water four ways, each in stone walls.
+
+_INTERACTIONS_BUILD = (
+    # z 2: a lava source at x 11 and a water source at x 13, which flows onto it.
+    "fill 10 -60 1 14 -60 3 minecraft:stone",
+    "fill 11 -60 2 13 -60 2 minecraft:air",
+    # z 6: a lava source at x 11, which flows toward a water source at x 13.
+    "fill 10 -60 5 14 -60 7 minecraft:stone",
+    "fill 11 -60 6 13 -60 6 minecraft:air",
+    # z 10: water in a pit in the floor, and a lava source above it.
+    "fill 11 -60 9 13 -60 11 minecraft:stone",
+    "setblock 12 -60 10 minecraft:air",
+    "setblock 12 -61 10 minecraft:air",
+    # z 14: a lava source at x 11, which flows onto soul soil beside blue ice.
+    "fill 10 -60 13 14 -60 15 minecraft:stone",
+    "fill 11 -60 14 12 -60 14 minecraft:air",
+    "setblock 13 -60 14 minecraft:blue_ice",
+    "setblock 12 -61 14 minecraft:soul_soil",
+)
+
+_INTERACTIONS = (
+    _At(0, "setblock 12 -61 10 minecraft:water"),
+    _At(1, "setblock 12 -60 10 minecraft:lava"),
+    _At(2, "setblock 11 -60 6 minecraft:lava"),
+    _At(3, "setblock 11 -60 14 minecraft:lava"),
+    _At(4, "setblock 11 -60 2 minecraft:lava"),
+    _At(5, "setblock 13 -60 2 minecraft:water"),
+    _At(28, "setblock 13 -60 6 minecraft:water"),
+)
+"""Lava over the water turns it to stone on tick 31; the flowing lava next to the water source
+turns to cobblestone on tick 32, and over the soul soil to basalt on tick 33; the water flowing
+next to the lava source turns it to obsidian on tick 10 (`LiquidBlock.shouldSpreadLiquid`,
+`LavaFluid.spreadTo`). The water source of z 6 comes on tick 28, just before the lava reaches
+it, so that it has not flowed toward the lava first."""
+
+_INTERACTIONS_TICKS = 63
+"""Each lava source runs its last scheduled tick 30 ticks after its neighbour changed: the last on
+tick 63."""
+
+
+@group("fluids/interactions", kind=GroupKind.TICK_EXACT)
+async def interactions(context: GroupContext) -> None:
+    """Lava and water meet and make stone, cobblestone, obsidian and basalt."""
+    async with _arena(context, _INTERACTIONS_BUILD):
+        await _observe(context, _INTERACTIONS, _INTERACTIONS_TICKS)

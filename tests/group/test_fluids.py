@@ -17,8 +17,9 @@ from tests.group.test_entities_items import Play, read
 WATER_SPREAD = "fluids/water-spread"
 LAVA_SPREAD = "fluids/lava-spread"
 SOURCES = "fluids/sources"
-GROUP_IDS = (WATER_SPREAD, LAVA_SPREAD, SOURCES)
-SETTING_NO_RULE = (WATER_SPREAD, LAVA_SPREAD)
+INTERACTIONS = "fluids/interactions"
+GROUP_IDS = (WATER_SPREAD, LAVA_SPREAD, SOURCES, INTERACTIONS)
+SETTING_NO_RULE = (WATER_SPREAD, LAVA_SPREAD, INTERACTIONS)
 """The Groups that change no game rule but random ticks."""
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "tellraw")
 WINDOW = (
@@ -253,3 +254,51 @@ async def test_sources_sets_both_rules_back_to_vanillas_defaults_last() -> None:
         "gamerule water_source_conversion true",
         "tick unfreeze",
     )
+
+
+# `fluids/interactions`
+
+
+@pytest.mark.asyncio
+async def test_interactions_walls_in_each_case_with_a_pit_soul_soil_and_blue_ice() -> None:
+    first = (await play(INTERACTIONS)).first
+
+    assert first[5:-1] == (
+        "fill 10 -60 1 14 -60 3 minecraft:stone",
+        "fill 11 -60 2 13 -60 2 minecraft:air",
+        "fill 10 -60 5 14 -60 7 minecraft:stone",
+        "fill 11 -60 6 13 -60 6 minecraft:air",
+        "fill 11 -60 9 13 -60 11 minecraft:stone",
+        "setblock 12 -60 10 minecraft:air",
+        "setblock 12 -61 10 minecraft:air",
+        "fill 10 -60 13 14 -60 15 minecraft:stone",
+        "fill 11 -60 14 12 -60 14 minecraft:air",
+        "setblock 13 -60 14 minecraft:blue_ice",
+        "setblock 12 -61 14 minecraft:soul_soil",
+    )
+
+
+@pytest.mark.asyncio
+async def test_interactions_places_the_water_source_beside_the_lava_just_before_it_flows() -> None:
+    # Lava flows a block 30 ticks after it is placed (LavaFluid.getTickDelay), water 5: the
+    # water at z 6 comes on tick 28, so the lava reaches it on 32 before it has flowed. Each
+    # lava source runs its last scheduled tick 30 ticks after its neighbour changed: on 63.
+    (window,) = (await play(INTERACTIONS)).windows
+
+    assert window.commands == (
+        "setblock 12 -61 10 minecraft:water",
+        STEP,
+        "setblock 12 -60 10 minecraft:lava",
+        STEP,
+        "setblock 11 -60 6 minecraft:lava",
+        STEP,
+        "setblock 11 -60 14 minecraft:lava",
+        STEP,
+        "setblock 11 -60 2 minecraft:lava",
+        STEP,
+        "setblock 13 -60 2 minecraft:water",
+        *(STEP,) * 23,
+        "setblock 13 -60 6 minecraft:water",
+        *(STEP,) * 35,
+    )
+    assert window.ticks == 63
