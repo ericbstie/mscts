@@ -546,6 +546,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def expect(self, name: str, /, *others: str, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
+    async def wait_until_handled(self) -> None: ...                    # #360: lighter proof (below)
     async def drain(self) -> None: ...                                 # take what has arrived
     async def refuse_queued_disconnect(self) -> None: ...              # drain if a disconnect waits
     async def send(self, name: str, /, **fields: object) -> None: ...
@@ -620,6 +621,14 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # award_stats sent unasked is taken as an answer (ADR-0010, #169 amendment).
     # Observation windows call it when they close, and Control calls it after each
     # command's marker (OperatorBot).
+    # wait_until_handled (#360): returns once the server has handled every packet the Bot
+    # sent before, not once it has sent what they caused. On a Bot in play (else
+    # ProtocolError, nothing sent): HANDLED_REQUESTS (2) client_command (REQUEST_STATS) back
+    # to back, then expect(award_stats) as many times, passing over one stamped before the
+    # first request. Vanilla queues a player's action handlers and handleClientCommand on one
+    # FIFO and answers REQUEST_STATS in its handler, the only place it sends award_stats
+    # (javap, docs/research/2026-10-10-step-barrier.md); the second request covers one
+    # award_stats a Candidate sends unasked (#169).
     # drain: takes (records) every packet already queued, without waiting: recv(timeout_s=0)
     # until TimeoutError. A frame that does not decode, or a Connection that has ended with
     # nothing left to take, raises as recv does. A disconnect it takes → ProtocolError, as
@@ -808,6 +817,7 @@ CHAT_TIMESTAMP_MS = 1_790_000_000_000  # the time every chat and signed command 
 CHAT_SALT = 0                       # the salt they carry
 TICK_GAP_S = 0.005                  # sync's wait from an answer's arrival to its next request
 SYNC_REQUESTS = 3                   # how many statistics requests sync sends (#169)
+HANDLED_REQUESTS = 2                # how many wait_until_handled sends, back to back (#360)
 SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...

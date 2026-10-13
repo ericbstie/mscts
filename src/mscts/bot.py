@@ -103,6 +103,15 @@ land in one pass (#169). With three, one such `award_stats` still leaves two ans
 pass apart.
 """
 
+HANDLED_REQUESTS = 2
+"""How many statistics requests `wait_until_handled` sends, back to back.
+
+One would do if every `award_stats` were an answer: vanilla sends one only in
+`handleClientCommand`, as the answer (26.3 javap). A Candidate may send one unasked, and
+the Bot cannot tell it from an answer (#169). With two, one such `award_stats` still leaves
+a real answer among the two taken.
+"""
+
 SYNC_PASSED_OVER = "sync:passed-over"
 """The label of the Mark `sync` leaves for an `award_stats` that came before its request.
 
@@ -1429,6 +1438,37 @@ class Bot:
                 await self._wait_until(answered + round(TICK_GAP_S * 1e9))
                 answered = await self._ask_for_statistics()
 
+    async def wait_until_handled(self) -> None:
+        """Return once the server has handled every packet the Bot sent before.
+
+        A lighter proof than `sync`: it says the server has handled what the Bot sent, not
+        that it has sent everything that caused. The Bot asks for its statistics
+        (`client_command`, `REQUEST_STATS`) `HANDLED_REQUESTS` times, back to back, and takes
+        packets until as many `award_stats` have arrived since it asked. In vanilla 26.3
+        (javap, docs/research/2026-10-10-step-barrier.md) every handler of a player's
+        actions and `handleClientCommand` first call `PacketUtils.ensureRunningOnSameThread`,
+        which queues the packet on `PacketProcessor.packetsToBeHandled`, one FIFO for the
+        whole server, drained every tick even while the world is frozen.
+        `handleClientCommand` answers `REQUEST_STATS` in the handler
+        (`ServerStatsCounter.sendStats`), the only place vanilla sends `award_stats`. So
+        an answer proves the server has handled every packet the Bot sent before that
+        request. Two requests keep the proof when one `award_stats` a Candidate sent
+        unasked is taken as an answer (#169); two such `award_stats` can still end it
+        before the server has handled the Bot's packets. Back to back, vanilla answers both
+        in one pass, so the second costs about nothing.
+
+        It does not cover what the server sends later because of those packets: `sync`
+        does. A chat command is not handled in that queue (vanilla runs it as a server
+        task), so this proves nothing about one.
+
+        Raises:
+            ProtocolError: The Bot is not in play, or the server disconnected it.
+            TimeoutError: The answers had not arrived within `timeout_s`.
+        """
+        self._require_play("wait_until_handled")
+        async with self._operation(self._timeout_s):
+            await self._ask_for_statistics(requests=HANDLED_REQUESTS)
+
     async def _wait_until(self, t_ns: int) -> None:
         """Return once the Transcript's clock has reached `t_ns`."""
         transcript = self._connection.transcript
@@ -1438,14 +1478,15 @@ class Bot:
                 return
             await asyncio.sleep(remaining_ns / 1e9)
 
-    async def _ask_for_statistics(self) -> int:
-        """Request the statistics, take packets until the answer, and return when it arrived.
+    async def _ask_for_statistics(self, *, requests: int = 1) -> int:
+        """Request the statistics `requests` times, back to back, and take as many answers.
 
-        An `award_stats` stamped before the request was sent is not its answer (a server
-        that answered twice, or sent one unasked): it is taken, passed over, and leaves
-        the Mark `sync:passed-over <Bot name>`. The reader first catches up with what
-        reached the socket, so one that arrived before the request is stamped before it,
-        however busy the loop was.
+        Returns when the last answer arrived. An `award_stats` stamped before the first
+        request was sent is not an answer (a server that answered twice, or sent one
+        unasked): it is taken, passed over, and leaves the Mark
+        `sync:passed-over <Bot name>`. The reader first catches up with what reached the
+        socket, so one that arrived before the requests is stamped before them, however
+        busy the loop was.
         """
         transcript = self._connection.transcript
         await self._connection.caught_up()
@@ -1460,10 +1501,12 @@ class Bot:
             transcript.marks.append(Mark(t_ns=arrived_ns, label=label))
             return False
 
-        await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
-        await self.expect(
-            "minecraft:award_stats", timeout_s=self._timeout_s, where=arrived_since_asked
-        )
+        for _ in range(requests):
+            await self._connection.send("minecraft:client_command", action=REQUEST_STATS)
+        for _ in range(requests):
+            await self.expect(
+                "minecraft:award_stats", timeout_s=self._timeout_s, where=arrived_since_asked
+            )
         return cast("int", self._connection.last_arrival_ns)
 
     async def drain(self) -> None:

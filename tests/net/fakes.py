@@ -479,6 +479,42 @@ async def _answer_in_passes(peer: Peer, seen: list[Packet]) -> None:
         await asyncio.gather(*effects, return_exceptions=True)
 
 
+def busy_server(seen: list[Packet], *, stray: bool = False) -> Handler:
+    """Join like vanilla, then handle a Bot's action only a tick after its first request came.
+
+    A busy server: the action and the requests behind it wait in its queue for a tick
+    (`TICK_S`). It then handles the action, which sends a `block_update`, and answers each
+    request at once. With `stray`, it sends an `award_stats` nobody asked for as the first
+    request arrives, before it has handled the action, as a Candidate may (#169). Every
+    serverbound Packet goes into `seen`. A client that leaves while an answer is still due
+    ends the handler.
+    """
+    join = _Join(seen, JoinScript())
+
+    async def handler(peer: Peer) -> None:
+        if await join.login(peer) and await join.configure(peer) and await join.play(peer):
+            with suppress(ConnectionError):  # a Bot may leave before its last answer
+                await _handle_a_tick_late(peer, seen, stray=stray)
+
+    return handler
+
+
+async def _handle_a_tick_late(peer: Peer, seen: list[Packet], *, stray: bool) -> None:
+    """`busy_server`'s play: the first request waits a tick, behind the action's effect."""
+    requests = 0
+    async for packet in peer.packets():
+        seen.append(packet)
+        if packet.name != "minecraft:client_command":
+            continue
+        requests += 1
+        if requests == 1:
+            if stray:
+                await answer_at_once(peer, requests)
+            await asyncio.sleep(TICK_S)
+            await peer.write(peer.raw_frame("minecraft:block_update", BLOCK_UPDATE))
+        await answer_at_once(peer, requests)
+
+
 FLOOD_GAP_S = 0.001
 """The pause between two of `flooding_server`'s `block_update`s.
 
