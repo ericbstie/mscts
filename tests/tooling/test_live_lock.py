@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+import tomllib
 import uuid
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -314,7 +315,16 @@ sys.exit(23)
         assert process.wait(timeout=5) == 23
 
 
-@pytest.mark.parametrize(("tier", "adapter"), [("candidate", "pumpkin")])
+@pytest.mark.parametrize("tier", ["reference", "selfcheck", "candidate"])
+def test_each_live_tier_task_names_its_tier_to_the_lock_wrapper(tier: str) -> None:
+    mise_toml = tomllib.loads((SCRIPT.parents[1] / "mise.toml").read_text(encoding="utf-8"))
+    assert f"scripts/live_lock.py --tier {tier} --" in mise_toml["tasks"][f"test:{tier}"]["run"]
+
+
+@pytest.mark.parametrize(
+    ("tier", "adapter"),
+    [("candidate", "pumpkin"), ("reference", "vanilla"), ("selfcheck", "vanilla")],
+)
 def test_a_tier_without_its_installation_fails_before_it_waits_for_the_lock(
     tmp_path: Path, tier: str, adapter: str
 ) -> None:
