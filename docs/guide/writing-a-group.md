@@ -369,5 +369,40 @@ off while the Group steps (`gamerule random_tick_speed 0`) and back on
 (`3`) when it ends. A Candidate without `/tick` fails the Group, and its
 line names the command.
 
-`statistical` Groups are planned. They will run many times and compare
-distributions, for random mechanics such as mob spawning.
+A `statistical` Group is for mechanics that are random in vanilla, such as
+where a joining player spawns or which mob appears. It plays many times on
+each server, 50 unless it sets `runs=`, and records samples with
+`context.sample(name, value)`. A value is a number or a category (a
+string), and one name holds only numbers or only categories:
+
+```python
+import math
+
+from mscts.group import GroupContext, GroupKind, group
+
+
+@group("spawn/join-distance", kind=GroupKind.STATISTICAL, runs=50)
+async def join_distance(context: GroupContext) -> None:
+    player = await context.bot("player")
+    await player.join()
+    context.sample("spawn.distance", math.hypot(player.position.x, player.position.z))
+```
+
+For each name, mscts asks whether the two servers' samples could come from
+the same distribution. Numbers get a Kolmogorov-Smirnov test and
+categories a chi-square test, at the 1% level. Categories too rare to test,
+with fewer than 5 samples expected on a server, are pooled first. The
+p-values of a Group's names are corrected together (Holm-Bonferroni), so a
+Group with several names still fails by chance at most 1% of the time.
+
+Each name is a test case. One that fails shows the test, how far apart the
+samples are (the statistic D for numbers, Cramér's V for categories, from 0
+to 1), and each server's median and quartiles or the share of each
+category. A name that one server never records fails as well, so record
+each name in every play. If a play fails on vanilla, the Group is an error.
+If it fails on the Candidate, each of its test cases fails.
+
+These Groups are slow, so `mscts run` plays them only with `--statistical`.
+A statistical Group's Self-check is one comparison of vanilla against
+vanilla, run by `mise run test:statistical`, and it must not fail. Two
+vanilla servers still fail it by chance 1% of the time.

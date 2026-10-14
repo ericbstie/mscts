@@ -2790,8 +2790,15 @@ the nether roof, …).
 
 **M6b — Statistical mechanics (ADR-0006).** The `statistical` tier and Run
 profile, a distribution test with a stated confidence level, and a
-per-kind Self-check. Then join spawn position, mob spawn rates, loot
-tables and random ticks.
+per-kind Self-check. Landed in #24: a statistical Group plays `runs`
+times per server (50 by default) and records named samples
+(`GroupContext.sample`); each name is judged by a two-sample
+Kolmogorov-Smirnov test (numbers) or a chi-square test of homogeneity
+(categories, pooled under 5 expected), at α = 0.01 after Holm-Bonferroni
+over the Group's names (`stats.py`, `run.judge_samples`); `mscts run`
+plays them only with `--statistical`, and their Self-check is one
+Reference against Reference comparison in the `statistical` tier. Then
+join spawn position (#72), mob spawn rates, loot tables and random ticks.
 
 **M7 — Performance.** Repetitions with statistics, multi-Bot load (N
 concurrent joins, chunk throughput), and process metrics (RSS, CPU).

@@ -219,5 +219,5 @@ need is missing, add it here in the same commit that introduces it.
   - `selfcheck`: needs two live vanilla Instances. One test per registered
     Group, each a Self-check, parametrised from `GROUPS`.
   - `candidate`: needs a live Candidate Instance.
-  - `statistical`: opt-in, slow. Runs statistical Groups N times;
-    never part of `check` or the default Run.
+  - `statistical`: opt-in, slow. Runs statistical Groups N times, their
+    Self-checks among them; never part of `check` or the default Run.
