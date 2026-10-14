@@ -36,7 +36,7 @@ from mscts.groups._world import (
     join_at_spawn,
     normal,
     pin_joins,
-    remove_tagged,
+    remove_tagged_until_gone,
 )
 from mscts.spec import ServerSpec
 
@@ -294,11 +294,6 @@ _RING = 1.5
 """How far from the Bot the husks stand, in a ring: within reach, each in a place of its own."""
 
 _TAG = "mscts_hunger"
-_HUSK = "minecraft:husk"
-
-_GONE_SYNCS = 60
-"""How many barriers the Bot waits for the husks to go: each is at least a tick, and a corpse
-goes 20 ticks after its death."""
 
 _FOOD_PATHS = ("foodLevel", "foodSaturationLevel", "foodExhaustionLevel")
 """What the Bot reads back after each part: its food, saturation and exhaustion (`FoodData`)."""
@@ -354,25 +349,6 @@ async def _attack_each(context: GroupContext, bot: Bot, ring: list[tuple[float, 
             await bot.sync()
 
 
-async def _remove_husks(context: GroupContext, bot: Bot) -> None:
-    """Kill the husks, and wait until the Bot, still beside them, is told the last is gone.
-
-    The Bot stays, so that the husks' chunk stays loaded: once it unloads, `kill @e` no longer
-    finds them, and the next play meets them in the ring (measured: 4 Self-check plays of 5
-    failed so, when the Bot left first). A killed husk stays as a corpse for 20 ticks.
-
-    Raises:
-        TimeoutError: The Bot still tracked a husk after `_GONE_SYNCS` barriers.
-    """
-    await remove_tagged(context.control, _TAG)
-    for _ in range(_GONE_SYNCS):
-        if not any(bot.entities[i].type == _HUSK for i in bot.entities):
-            return
-        await bot.sync()
-    msg = f"the Bot still tracked a husk after {_GONE_SYNCS} barriers"
-    raise TimeoutError(msg)
-
-
 @group("player/exhaustion", spec=_operator)
 async def exhaustion(context: GroupContext) -> None:
     """A Bot sprints 100 blocks and hits 20 husks, reading its food back after each.
@@ -391,7 +367,7 @@ async def exhaustion(context: GroupContext) -> None:
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
         bot = await join_at_spawn(context, undo, EXERCISER)
-        undo.push_async_callback(_remove_husks, context, bot)
+        undo.push_async_callback(remove_tagged_until_gone, control, _TAG, bot)
         await context.freeze()
         await fresh(context, bot)
         await control.run(f"tp {bot.name} {_START_X} -60 {_LANE_Z} -90 0")

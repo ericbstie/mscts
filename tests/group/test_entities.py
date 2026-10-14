@@ -20,7 +20,7 @@ from mscts.codec.packets import Direction, Packet
 from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupKind
-from mscts.groups import entities
+from mscts.groups import _world, entities
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
@@ -326,7 +326,7 @@ async def test_the_watcher_waits_until_it_is_told_the_last_body_is_gone() -> Non
 async def test_a_body_that_never_goes_ends_the_play_with_a_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(entities, "_GONE_SYNCS", 2)
+    monkeypatch.setattr(_world, "_GONE_SYNCS", 2)
 
     with pytest.raises(TimeoutError, match="still tracked"):
         await replay("entities/summon", EntitiesServer(with_pig=True, pig_goes_after=None))

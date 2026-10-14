@@ -25,9 +25,8 @@ import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
-from mscts.bot import Bot
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, normal, pin_joins, remove_tagged
+from mscts.groups._world import CONTROL_AT, normal, pin_joins, remove_tagged_until_gone
 from mscts.spec import CONTROL_PLAYER
 
 WATCHER = "watcher"
@@ -67,34 +66,6 @@ def summon_command(entity: str, at: _Position, nbt: str) -> str:
     return f'summon minecraft:{entity} {x} {y} {z} {{{nbt},{_FACING},Tags:["{_TAG}"]}}'
 
 
-_GONE_SYNCS = 60
-"""How many barriers the watcher waits for the entities to go: each is at least a tick, and a
-body goes 20 ticks after its death."""
-
-_PLAYER = "minecraft:player"
-
-
-async def _remove_entities(context: GroupContext, watcher: Bot) -> None:
-    """Kill the tagged entities, and wait until the watcher is told the last is gone.
-
-    `remove_tagged` stops waiting once `execute if entity` matches none, and it never matches a
-    dead body, which stays 20 ticks. A body left when the next play freezes the world would stay
-    there, and finish dying inside one of its windows, a tick that depends on when the freeze
-    came (measured: 3 Self-check plays of 20). The watcher tracks no other entity but players.
-
-    Raises:
-        TimeoutError: The watcher still tracked an entity after `_GONE_SYNCS` barriers.
-    """
-    await remove_tagged(context.control, _TAG)
-    for _ in range(_GONE_SYNCS):
-        tracked = (watcher.entities[number] for number in watcher.entities)
-        if all(entity.type == _PLAYER for entity in tracked):
-            return
-        await watcher.sync()
-    msg = f"the watcher still tracked an entity after {_GONE_SYNCS} barriers"
-    raise TimeoutError(msg)
-
-
 @contextlib.asynccontextmanager
 async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
     """Pin the join, take Control away, freeze the world and join the watcher; undo it all.
@@ -109,7 +80,7 @@ async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSta
         await context.freeze()
         watcher = await context.bot(WATCHER)
         await watcher.join()
-        undo.push_async_callback(_remove_entities, context, watcher)
+        undo.push_async_callback(remove_tagged_until_gone, control, _TAG, watcher)
         yield undo
 
 
