@@ -514,6 +514,21 @@ def _distribution(name: str, tested: Difference | None, **sides: Summary) -> Div
     )
 
 
+def test_one_sample_is_a_sample_in_the_summaries() -> None:
+    one = _distribution(
+        "x",
+        Difference("Kolmogorov-Smirnov on samples per play", "D", 0.98, 1e-27),
+        reference=Spread(samples=1, median=1000.0, quartiles=(1000.0, 1000.0)),
+        candidate=Shares(samples=1, shares=(("minecraft:pig", 1.0),)),
+    )
+    verdict = Verdict("spawn/join", Outcome.MISMATCH, (one,))
+
+    text = render_text(_report(_result(verdict)), verbose=True)
+
+    assert "vanilla 1 sample, median 1000," in text, text
+    assert "pumpkin 1 sample, minecraft:pig 100%" in text, text
+
+
 def test_verbose_shows_a_distribution_s_test_and_both_sides_summaries() -> None:
     numbers = _distribution(
         "distance",

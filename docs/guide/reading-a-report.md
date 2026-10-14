@@ -259,8 +259,15 @@ shows the test that rejected it, then a summary of each server's samples:
 - categories: the share of each one, as in
   `chi-square V = 0.52, p = 0.0031: vanilla 50 samples, minecraft:zombie 60%, minecraft:husk 40%; pumpkin 40 samples, minecraft:zombie 100%`.
 
+Categories can also read `Fisher's exact V = ...`, when two categories are
+left and one is rare, or `chi-square permutation V = ...`, when every
+category is rare. A name can also fail on how many samples each play
+recorded: `Kolmogorov-Smirnov on samples per play D = ...`. Its summaries
+are still of the samples themselves, not of the counts, so they can look
+alike.
+
 D and V are the effect sizes, from 0 to 1. The p already allows for the
-Group's other sample names (Holm's correction). A name only one server
+Group's other tests (Holm's correction). A name only one server
 sampled, or sampled as numbers on one and categories on the other, reads
 `not tested` in place of the test.
 
@@ -324,7 +331,8 @@ has its `reasons` instead of a `test_case`.
 
 `results` has one entry per Group, with each repetition's
 Verdict, its differences with both values, each server's
-Measurements, and its time in seconds in `elapsed_s`. A repetition that
+Measurements, and its time in seconds in `elapsed_s`. A statistical
+Group plays once per Run, so its entry has one Verdict. A repetition that
 played vanilla only has no Measurements of the Candidate, and its time is
 that play alone. Its Verdict is a `mismatch` with a difference of kind
 `failed` that says why, such as `prerequisite status/basic was
@@ -412,6 +420,17 @@ with one key:
 
 If a server sent an object whose only key is one of these, or `dict`,
 mscts writes it inside `{"dict": ...}` so it never reads as one of them.
+
+A difference of kind `distribution`, a statistical Group's sample name,
+holds each server's summary as its `reference` and `candidate`:
+
+- numbers: `{"samples": 50, "median": 0.18, "quartiles": [-0.47, 0.66]}`;
+- categories: `{"samples": 50, "shares": {"minecraft:husk": 0.4, "minecraft:zombie": 0.6}}`;
+- no samples: `{"samples": 0}`.
+
+Its `tested` is the test that rejected it, as in
+`{"test": "Kolmogorov-Smirnov", "effect": "D", "effect_size": 0.44, "p_value": 9.9e-05}`,
+the p after Holm's correction. A name that was not tested has no `tested`.
 
 In Python, `mscts.report_json.loads` reads a `report.json` back into the
 Report mscts wrote, with up to 20 differences of a test case in each Verdict

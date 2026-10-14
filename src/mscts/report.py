@@ -542,14 +542,18 @@ def _samples(summary: object) -> _Line:
     """A side's `stats.Summary` in words: its count, then its median and quartiles or shares."""
     match summary:
         case Shares(samples, shares):
-            line: list[str | _Literal] = [f"{samples} samples"]
+            line: list[str | _Literal] = [_count(samples)]
             for name, share in shares:
                 line.extend((", ", _Literal(name), f" {_percent(share)}"))
             return tuple(line)
         case Spread(samples, median, (lower, upper)):
             spread = f"median {median:.4g}, quartiles {lower:.4g} and {upper:.4g}"
-            return (f"{samples} samples, {spread}",)
+            return (f"{_count(samples)}, {spread}",)
     return ("no samples",)
+
+
+def _count(samples: int) -> str:
+    return "1 sample" if samples == 1 else f"{samples} samples"
 
 
 def _percent(share: float) -> str:
