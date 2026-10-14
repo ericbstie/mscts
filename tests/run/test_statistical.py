@@ -21,6 +21,7 @@ from mscts.group import DEFAULT_RUNS, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
 from mscts.run import Attached, Server, run, selfcheck
 from mscts.settle import PlayersStillOnline
+from mscts.stats import Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
 
 _RUNS = 50
@@ -102,16 +103,16 @@ async def test_shifted_samples_mismatch_with_the_effect_size(
             kind="distribution",
             packet="",
             path="Kolmogorov-Smirnov D = 0.40, p = 0.00058",
-            reference={
-                "samples": 50,
-                "median": pytest.approx(0.1660829264260152),
-                "quartiles": pytest.approx([-0.39263126161364337, 0.6631373849211302]),
-            },
-            candidate={
-                "samples": 50,
-                "median": pytest.approx(0.8637264218594136),
-                "quartiles": pytest.approx([0.021744350624680386, 1.4127839367477568]),
-            },
+            reference=Spread(
+                samples=50,
+                median=0.1660829264260152,
+                quartiles=(-0.39263126161364337, 0.6631373849211302),
+            ),
+            candidate=Spread(
+                samples=50,
+                median=0.8637264218594136,
+                quartiles=(0.021744350624680386, 1.4127839367477568),
+            ),
             test_case="x",
         ),
     )
@@ -250,8 +251,8 @@ async def test_a_name_the_candidate_never_sampled_mismatches_untested(
             kind="distribution",
             packet="",
             path=None,
-            reference={"samples": 10, "shares": {"minecraft:zombie": 1.0}},
-            candidate={"samples": 0},
+            reference=Shares(samples=10, shares=(("minecraft:zombie", 1.0),)),
+            candidate=None,
             test_case="mob",
         ),
     )
@@ -274,7 +275,7 @@ async def test_categories_are_judged_by_chi_square(run_token: str, tmp_path: Pat
     (divergence,) = verdict.divergences
     assert divergence.path is not None
     assert divergence.path.startswith("chi-square V = 1.00, p = ")
-    assert divergence.candidate == {"samples": 50, "shares": {"minecraft:skeleton": 1.0}}
+    assert divergence.candidate == Shares(samples=50, shares=(("minecraft:skeleton", 1.0),))
 
 
 @pytest.mark.asyncio

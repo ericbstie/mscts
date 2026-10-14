@@ -1333,16 +1333,16 @@ class Transcript:                   # a plain data holder: no I/O
 
 class GroupContext:
     def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float,
-                 samples: dict[str, list[Sample]] | None = None) -> None: ...
+                 samples: SampleLog | None = None) -> None: ...
                                     # samples: where sample() adds, after the samples of the
-                                    # side's earlier plays (#24); None: a dict of its own
+                                    # side's earlier plays (#24); None: a log of its own
     endpoint: Endpoint
-    def sample(self, name: str, value: Sample) -> None: ...   # #24: appends value to
-                                    # samples[name]. ValueError: an empty name, a number that is
+    def sample(self, name: str, value: Sample) -> None: ...   # #24: SampleLog.add on its
+                                    # log. ValueError: an empty name, a number that is
                                     # not finite, or a number for a name holding categories (or
                                     # the other way round); TypeError: not int, float or str
                                     # (a bool is refused)
-    samples: Mapping[str, Sequence[Sample]]   # property: every sample so far, by name
+    samples: Mapping[str, Series]   # property: every sample so far, by name (SampleLog.series)
     control: Control                # an OperatorBot (ADR-0001), the same one on every read;
                                     # its Bot is one of the context's Bots (closed, synced
                                     # and drained with them, and named by raised_by)
@@ -1559,7 +1559,8 @@ class Divergence:
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
     # distribution: a statistical Group's sample name rejected (made by run.judge_samples,
     #   never by compare, #24): bot and packet "", index 0, test_case the sample name,
-    #   reference and candidate each side's stats.Summary, path the test
+    #   reference and candidate each side's stats.Summary (Spread, Shares, or None for
+    #   no samples; report.json writes them as {"samples": n, ...}), path the test
     #   ("Kolmogorov-Smirnov D = 0.40, p = 0.00058": effect size to 2 decimals, Holm-adjusted
     #   p to 2 significant digits), or None when untested (stats.Decision.difference None).
 
@@ -1725,11 +1726,11 @@ type Side = Server | Attached
 
 async def run_group(group: Group, endpoint: Endpoint, *, server: str,
                     timeout_s: float = GROUP_TIMEOUT_S,
-                    samples: dict[str, list[Sample]] | None = None) -> Transcript: ...
+                    samples: SampleLog | None = None) -> Transcript: ...
     # one Instance; closes every Bot however it ends; GroupError if the Group raised, or if
     # GroupContext.end (called once the Group completes, before closing) refused a disconnect;
     # the Group's samples are added to `samples` (GroupContext's samples=)
-type Samples = dict[str, list[Sample]]   # a statistical Group's samples on one server, by name
+type Samples = Mapping[str, Series]   # a statistical Group's samples on one server, by name
 def judge_samples(group: Group, reference: Samples | GroupError,
                   candidate: Samples | GroupError) -> Verdict: ...
     # #24, a statistical Group's Verdict; test_cases the Reference's sample names, sorted.
@@ -2514,9 +2515,22 @@ def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form
 
 ALPHA = 0.01                        # each sample name's level, after Holm's correction
 type Sample = float | str           # a number, or a category
-type Summary = dict[str, object]    # {"samples": n, "median": x, "quartiles": [q1, q3]}
-                                    # (statistics.quantiles, inclusive), or {"samples": n,
-                                    # "shares": {category: share to 3 decimals}}; {"samples": 0}
+@frozen
+class Numbers: values: tuple[float, ...]   # one name's samples on one server
+@frozen
+class Categories: values: tuple[str, ...]
+type Series = Numbers | Categories
+class SampleLog:                    # one server's samples over a Group's plays
+    def add(self, name: str, value: Sample) -> None: ...   # the checks GroupContext.sample
+                                    # documents, a name's kind kept over every play
+    def series(self) -> dict[str, Series]: ...   # by name, in first-recorded order
+@frozen
+class Spread: samples: int; median: float; quartiles: tuple[float, float]
+                                    # statistics.quantiles, inclusive
+@frozen
+class Shares: samples: int; shares: tuple[tuple[str, float], ...]
+                                    # each category's share to 3 decimals, in category order
+type Summary = Spread | Shares | None   # None: no samples
 @frozen
 class Decision:
     name: str                       # the sample name, "spawn.distance"
@@ -2526,14 +2540,14 @@ class Decision:
     p_value: float | None           # Holm-adjusted over the Group's tested names
     reference: Summary
     candidate: Summary
-def decide(reference: Mapping[str, Sequence[Sample]],
-           candidate: Mapping[str, Sequence[Sample]]) -> tuple[Decision, ...]: ...
+def decide(reference: Mapping[str, Series],
+           candidate: Mapping[str, Series]) -> tuple[Decision, ...]: ...
     # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
     # by chi_square, the tested names' p-values corrected together by holm; a name no
     # test can tell apart (one number, or one category after pooling, on both sides) is
     # left out of holm and does not reject
 def holm(p_values: Sequence[float]) -> list[float]: ...   # Holm-Bonferroni, same order
-def summary(samples: Sequence[Sample]) -> Summary: ...
+def summary(series: Series | None) -> Summary: ...
 
 # run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
 #                     keep_transcripts=False) -> RunResult

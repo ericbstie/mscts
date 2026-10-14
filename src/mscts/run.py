@@ -20,7 +20,7 @@ from mscts.net import Endpoint
 from mscts.runner import free_endpoint, running
 from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
 from mscts.spec import ServerSpec
-from mscts.stats import Decision, Sample, decide
+from mscts.stats import Decision, SampleLog, Series, decide
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
@@ -213,7 +213,7 @@ async def run_group(
     *,
     server: str,
     timeout_s: float = GROUP_TIMEOUT_S,
-    samples: dict[str, list[Sample]] | None = None,
+    samples: SampleLog | None = None,
 ) -> Transcript:
     """Play `group` against the Instance at `endpoint`, and return its Transcript.
 
@@ -336,7 +336,7 @@ def _group_raised(
     )
 
 
-type Samples = dict[str, list[Sample]]
+type Samples = Mapping[str, Series]
 """What a statistical Group recorded over its plays on one server, by sample name."""
 
 
@@ -720,7 +720,7 @@ class _Instances:
         to have no player online, as before each Group. The first play that raises, or the
         first wait that does, ends the plays: its GroupError is the side's failure.
         """
-        samples: Samples = {}
+        samples = SampleLog()
         for played in range(group.runs):
             left = await _left_online(endpoint) if played else None
             if left is not None:
@@ -729,7 +729,7 @@ class _Instances:
             attempt = await self._attempt(group, role, endpoint, samples=samples)
             if isinstance(attempt, GroupError):
                 return attempt
-        return samples
+        return samples.series()
 
     async def _reference_alone(self, group: Group, endpoint: Endpoint, verdict: Verdict) -> _Play:
         """Play `group` on the Reference alone, the Candidate's side not compared (#266).
@@ -741,9 +741,9 @@ class _Instances:
         """
         started = perf_counter()
         if group.kind is GroupKind.STATISTICAL:
-            samples: Samples = {}
+            samples = SampleLog()
             attempt = await self._attempt(group, 0, endpoint, samples=samples)
-            sampled = attempt if isinstance(attempt, GroupError) else samples
+            sampled = attempt if isinstance(attempt, GroupError) else samples.series()
             return _Play(_not_sampled(group, sampled, verdict), elapsed_s=perf_counter() - started)
         attempt = await self._attempt(group, 0, endpoint)
         return _Play(
@@ -758,7 +758,7 @@ class _Instances:
         role: int,
         endpoint: Endpoint,
         *,
-        samples: Samples | None = None,
+        samples: SampleLog | None = None,
     ) -> Transcript | GroupError:
         """Play `group` on side `role` at `endpoint`, and learn what it shows about the side.
 
@@ -931,7 +931,7 @@ def _unsettled_by(left: Exception) -> str:
 
 
 async def _attempt(
-    group: Group, endpoint: Endpoint, *, server: str, samples: Samples | None = None
+    group: Group, endpoint: Endpoint, *, server: str, samples: SampleLog | None = None
 ) -> Transcript | GroupError:
     try:
         return await run_group(group, endpoint, server=server, samples=samples)

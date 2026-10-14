@@ -11,6 +11,7 @@ from mscts.group import Group
 from mscts.groups import status
 from mscts.report import CaseResult, GroupLine, Line, LineResult, Totals, report_lines, totals
 from mscts.run import GroupError, judge
+from mscts.stats import Spread
 from mscts.transcript import Transcript
 from tests.compare.build import GROUP, packet, transcript
 from tests.test_report import _field, _listed, _report, _result, _verdict
@@ -494,8 +495,8 @@ def _rejected(name: str) -> Divergence:
         kind="distribution",
         packet="",
         path="Kolmogorov-Smirnov D = 0.40, p = 0.00058",
-        reference={"samples": 50, "median": 0.17, "quartiles": [-0.39, 0.66]},
-        candidate={"samples": 50, "median": 0.86, "quartiles": [0.02, 1.41]},
+        reference=Spread(samples=50, median=0.17, quartiles=(-0.39, 0.66)),
+        candidate=Spread(samples=50, median=0.86, quartiles=(0.02, 1.41)),
         test_case=name,
     )
 

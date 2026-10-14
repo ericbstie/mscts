@@ -34,6 +34,7 @@ from mscts.compare import (
 from mscts.measure import Measurement
 from mscts.report import GroupLine, Line, Report, Totals, report_lines, totals
 from mscts.run import GroupResult, SideSummary
+from mscts.stats import Shares, Spread, Summary
 from mscts.target import Target
 
 MAX_PER_TEST_CASE = 20
@@ -184,17 +185,31 @@ def _is_whole_packet(divergence: Divergence) -> bool:
 
 
 def _divergence(divergence: Divergence) -> dict[str, object]:
+    side = _summary if divergence.kind == "distribution" else _value
     return {
         "bot": divergence.bot,
         "index": divergence.index,
         "kind": divergence.kind,
         "packet": divergence.packet,
         "path": divergence.path,
-        "reference": _value(divergence.reference),
-        "candidate": _value(divergence.candidate),
+        "reference": side(divergence.reference),
+        "candidate": side(divergence.candidate),
         "test_case": divergence.test_case,
         "observability": divergence.observability.value,
     }
+
+
+def _summary(value: object) -> dict[str, object]:
+    """A `distribution` Divergence's `stats.Summary` as JSON: `{"samples": 0}` for None."""
+    match value:
+        case Spread(samples, median, (lower, upper)):
+            return {"samples": samples, "median": median, "quartiles": [lower, upper]}
+        case Shares(samples, shares):
+            return {"samples": samples, "shares": dict(shares)}
+        case None:
+            return {"samples": 0}
+    msg = f"a distribution's summary cannot be a {type(value).__name__}"
+    raise TypeError(msg)
 
 
 def _value(value: object) -> object:
@@ -398,17 +413,32 @@ def _read_verdict(data: _Object) -> Verdict:
 
 
 def _read_divergence(data: _Object) -> Divergence:
+    kind = cast("DivergenceKind", data.choice("kind", _KINDS))
+    side = _read_summary if kind == "distribution" else _Object.value
     return Divergence(
         bot=data.text("bot"),
         index=data.integer("index"),
-        kind=cast("DivergenceKind", data.choice("kind", _KINDS)),
+        kind=kind,
         packet=data.text("packet"),
         path=data.maybe_text("path"),
-        reference=data.value("reference"),
-        candidate=data.value("candidate"),
+        reference=side(data, "reference"),
+        candidate=side(data, "candidate"),
         test_case=data.text("test_case"),
         observability=Observability(data.choice("observability", tuple(Observability))),
     )
+
+
+def _read_summary(data: _Object, key: str) -> Summary:
+    """The `stats.Summary` `_summary` wrote at `key`."""
+    written = data.object(key)
+    samples = written.count("samples", missing=0)
+    if "shares" in written.entries():
+        shares = written.object("shares")
+        return Shares(samples, tuple((name, shares.number(name)) for name in shares.entries()))
+    if "median" in written.entries():
+        lower, upper = written.numbers("quartiles")
+        return Spread(samples, written.number("median"), (lower, upper))
+    return None
 
 
 def _read_value(value: object, where: str) -> object:

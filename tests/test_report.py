@@ -18,6 +18,7 @@ from mscts.compare import (
 )
 from mscts.report import LineResult, Report, render_markdown, render_text, report_lines
 from mscts.run import GroupResult, SideSummary
+from mscts.stats import Shares, Spread, Summary
 from mscts.target import TARGET
 
 
@@ -499,7 +500,7 @@ def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
     assert "block_update\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text
 
 
-def _distribution(name: str, path: str | None, **sides: dict[str, object]) -> Divergence:
+def _distribution(name: str, path: str | None, **sides: Summary) -> Divergence:
     return Divergence(
         bot="",
         index=0,
@@ -516,20 +517,20 @@ def test_verbose_shows_a_distribution_s_test_and_both_sides_summaries() -> None:
     numbers = _distribution(
         "distance",
         "Kolmogorov-Smirnov D = 0.40, p = 0.00058",
-        reference={"samples": 50, "median": 0.16608, "quartiles": [-0.39263, 0.66314]},
-        candidate={"samples": 50, "median": 0.86373, "quartiles": [0.02174, 1.41278]},
+        reference=Spread(samples=50, median=0.16608, quartiles=(-0.39263, 0.66314)),
+        candidate=Spread(samples=50, median=0.86373, quartiles=(0.02174, 1.41278)),
     )
     categories = _distribution(
         "mob",
         "chi-square V = 0.52, p = 0.0031",
-        reference={"samples": 50, "shares": {"minecraft:zombie": 0.6, "minecraft:husk": 0.4}},
-        candidate={"samples": 40, "shares": {"minecraft:zombie": 1.0}},
+        reference=Shares(samples=50, shares=(("minecraft:zombie", 0.6), ("minecraft:husk", 0.4))),
+        candidate=Shares(samples=40, shares=(("minecraft:zombie", 1.0),)),
     )
     untested = _distribution(
         "drop",
         None,
-        reference={"samples": 10, "shares": {"minecraft:bone": 1.0}},
-        candidate={"samples": 0},
+        reference=Shares(samples=10, shares=(("minecraft:bone", 1.0),)),
+        candidate=None,
     )
     verdict = Verdict("spawn/join", Outcome.MISMATCH, (numbers, categories, untested))
     text = render_text(_report(_result(verdict)), verbose=True)

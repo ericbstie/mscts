@@ -41,11 +41,102 @@ ALPHA = 0.01
 type Sample = float | str
 """One sample: a number, or a category."""
 
-type Summary = dict[str, object]
-"""A side's samples of one name, in brief: their count, then their median and quartiles
-(`{"samples": 50, "median": 3.2, "quartiles": [1.9, 4.5]}`) or each category's share, to
-three decimals (`{"samples": 50, "shares": {"skeleton": 0.6, "zombie": 0.4}}`). A side with
-none is `{"samples": 0}`."""
+
+@dataclass(frozen=True, slots=True)
+class Numbers:
+    """One name's samples on one server, all numbers, in the order recorded."""
+
+    values: tuple[float, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class Categories:
+    """One name's samples on one server, all categories, in the order recorded."""
+
+    values: tuple[str, ...]
+
+
+type Series = Numbers | Categories
+"""One name's samples on one server: numbers or categories, never both."""
+
+
+class SampleLog:
+    """What a statistical Group records on one server over its plays, by sample name."""
+
+    def __init__(self) -> None:
+        """Start empty."""
+        self._values: dict[str, list[Sample]] = {}
+
+    def add(self, name: str, value: Sample) -> None:
+        """Record `value`, a number or a category, as a sample called `name`.
+
+        Raises:
+            ValueError: `name` is empty; or `value` is a number that is not finite; or
+                `name` holds numbers and `value` is a category, or the other way round.
+            TypeError: `value` is neither a number (int or float, not bool) nor a category
+                (str).
+        """
+        if not name:
+            msg = "a sample needs a name, e.g. 'spawn.distance'"
+            raise ValueError(msg)
+        if isinstance(value, bool) or not isinstance(value, int | float | str):
+            msg = f"a sample is a number or a category (a str), not {type(value).__name__}"
+            raise TypeError(msg)
+        if not isinstance(value, str) and not math.isfinite(value):
+            msg = f"a number sample is finite, not {value}"
+            raise ValueError(msg)
+        earlier = self._values.setdefault(name, [])
+        if earlier and isinstance(earlier[0], str) != isinstance(value, str):
+            held = "categories" if isinstance(earlier[0], str) else "numbers"
+            msg = (
+                f"sample {name!r} holds {held}, so {value!r} cannot join it: a name holds "
+                f"numbers or categories, never both"
+            )
+            raise ValueError(msg)
+        earlier.append(value)
+
+    def series(self) -> dict[str, Series]:
+        """Each name's samples so far, in the order the names were first recorded."""
+        return {name: _series(values) for name, values in self._values.items()}
+
+
+def _series(values: Sequence[Sample]) -> Series:
+    """`values`, of one kind as `SampleLog.add` keeps them, as that kind's Series."""
+    if isinstance(values[0], str):
+        return Categories(tuple(str(value) for value in values))
+    return Numbers(tuple(float(value) for value in values))
+
+
+@dataclass(frozen=True, slots=True)
+class Spread:
+    """A side's numbers of one name, in brief.
+
+    Attributes:
+        samples: How many.
+        median: Their median.
+        quartiles: Their lower and upper quartiles (`statistics.quantiles`, inclusive).
+    """
+
+    samples: int
+    median: float
+    quartiles: tuple[float, float]
+
+
+@dataclass(frozen=True, slots=True)
+class Shares:
+    """A side's categories of one name, in brief.
+
+    Attributes:
+        samples: How many.
+        shares: Each category's share of them, to three decimals, in category order.
+    """
+
+    samples: int
+    shares: tuple[tuple[str, float], ...]
+
+
+type Summary = Spread | Shares | None
+"""A side's samples of one name, in brief; None if it has none."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +165,7 @@ class Decision:
 
 
 def decide(
-    reference: Mapping[str, Sequence[Sample]], candidate: Mapping[str, Sequence[Sample]]
+    reference: Mapping[str, Series], candidate: Mapping[str, Series]
 ) -> tuple[Decision, ...]:
     """Each sample name either side has, in name order: do the two sides' samples differ?
 
@@ -82,14 +173,15 @@ def decide(
     p-values of the names tested are corrected together (`holm`), so a Group with several
     names still rejects one by chance at most `ALPHA` of the time. A name no test can tell
     apart (one category, or one number, on both sides) is left out of the correction, and
-    does not reject. Each name's samples on a side are all numbers or all categories, as
-    `GroupContext.sample` keeps them.
+    does not reject.
     """
     names = sorted({*reference, *candidate})
     comparable = {
-        name: _tested(reference[name], candidate[name])
+        name: _tested(ours, theirs)
         for name in names
-        if _comparable(reference.get(name, ()), candidate.get(name, ()))
+        if (ours := reference.get(name)) is not None
+        and (theirs := candidate.get(name)) is not None
+        and type(ours) is type(theirs)
     }
     differences = {name: found for name, found in comparable.items() if found is not None}
     adjusted = dict(zip(differences, holm([d.p_value for d in differences.values()]), strict=True))
@@ -99,8 +191,8 @@ def decide(
             rejected=name not in comparable or adjusted.get(name, 1.0) <= ALPHA,
             difference=differences.get(name),
             p_value=adjusted.get(name),
-            reference=summary(reference.get(name, ())),
-            candidate=summary(candidate.get(name, ())),
+            reference=summary(reference.get(name)),
+            candidate=summary(candidate.get(name)),
         )
         for name in names
     )
@@ -121,41 +213,32 @@ def holm(p_values: Sequence[float]) -> list[float]:
     return adjusted
 
 
-def summary(samples: Sequence[Sample]) -> Summary:
-    """`samples` in brief (`Summary`): their median and quartiles, or each category's share."""
-    if not samples:
-        return {"samples": 0}
-    if all(isinstance(sample, str) for sample in samples):
-        counts = Counter(samples)
-        shares = {name: round(counts[name] / len(samples), 3) for name in sorted(counts)}
-        return {"samples": len(samples), "shares": shares}
-    numbers = [float(sample) for sample in samples]
-    lower, median, upper = statistics.quantiles(numbers, n=4, method="inclusive")
-    return {"samples": len(samples), "median": median, "quartiles": [lower, upper]}
+def summary(series: Series | None) -> Summary:
+    """`series` in brief (`Summary`): their median and quartiles, or each category's share."""
+    match series:
+        case None:
+            return None
+        case Categories(values):
+            counts = Counter(values)
+            shares = tuple((name, round(counts[name] / len(values), 3)) for name in sorted(counts))
+            return Shares(samples=len(values), shares=shares)
+        case Numbers(values):
+            lower, median, upper = statistics.quantiles(values, n=4, method="inclusive")
+            return Spread(samples=len(values), median=median, quartiles=(lower, upper))
 
 
-def _comparable(reference: Sequence[Sample], candidate: Sequence[Sample]) -> bool:
-    """Whether one name's samples can be compared: each side has some, of one kind."""
-    if not reference or not candidate:
-        return False
-    return isinstance(reference[0], str) == isinstance(candidate[0], str)
+def _tested(reference: Series, candidate: Series) -> Difference | None:
+    """The two-sample test of one name's samples, of one kind on both sides, or None.
 
-
-def _tested(reference: Sequence[Sample], candidate: Sequence[Sample]) -> Difference | None:
-    """The two-sample test of one name's comparable samples, or None if none applies.
-
-    None applies to one number, or one category after pooling, on both sides.
+    None if no test applies: one number, or one category after pooling, on both sides.
     """
-    if isinstance(reference[0], str):
-        return chi_square([str(sample) for sample in reference], [str(s) for s in candidate])
-    numbers = _numbers(reference), _numbers(candidate)
-    if len({*numbers[0], *numbers[1]}) == 1:
-        return None
-    return kolmogorov_smirnov(*numbers)
-
-
-def _numbers(samples: Sequence[Sample]) -> list[float]:
-    return [sample for sample in samples if not isinstance(sample, str)]
+    if isinstance(reference, Categories) and isinstance(candidate, Categories):
+        return chi_square(reference.values, candidate.values)
+    if isinstance(reference, Numbers) and isinstance(candidate, Numbers):
+        if len({*reference.values, *candidate.values}) == 1:
+            return None
+        return kolmogorov_smirnov(reference.values, candidate.values)
+    return None
 
 
 def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference:

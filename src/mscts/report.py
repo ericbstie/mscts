@@ -6,12 +6,12 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import cast
 from uuid import UUID
 
 import mscts.compare
 from mscts.compare import ABSENT, TICK_PATH, Divergence, Observability, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
+from mscts.stats import Shares, Spread
 from mscts.target import Target
 
 _GROUP_TIMES = "Group times"
@@ -535,20 +535,18 @@ def _distribution_values(report: Report, divergence: Divergence) -> _Line:
     )
 
 
-def _samples(value: object) -> _Line:
-    """A side's `stats.summary` in words: its count, then its median and quartiles or shares."""
-    summary = cast("dict[str, object]", value)  # what `run.judge_samples` put in a Divergence
-    if not summary.get("samples"):
-        return ("no samples",)
-    count = f"{summary['samples']} samples"
-    if "shares" in summary:
-        line: list[str | _Literal] = [count]
-        for name, share in cast("dict[str, float]", summary["shares"]).items():
-            line.extend((", ", _Literal(name), f" {_percent(share)}"))
-        return tuple(line)
-    lower, upper = cast("list[float]", summary["quartiles"])
-    median = cast("float", summary["median"])
-    return (f"{count}, median {median:.4g}, quartiles {lower:.4g} and {upper:.4g}",)
+def _samples(summary: object) -> _Line:
+    """A side's `stats.Summary` in words: its count, then its median and quartiles or shares."""
+    match summary:
+        case Shares(samples, shares):
+            line: list[str | _Literal] = [f"{samples} samples"]
+            for name, share in shares:
+                line.extend((", ", _Literal(name), f" {_percent(share)}"))
+            return tuple(line)
+        case Spread(samples, median, (lower, upper)):
+            spread = f"median {median:.4g}, quartiles {lower:.4g} and {upper:.4g}"
+            return (f"{samples} samples, {spread}",)
+    return ("no samples",)
 
 
 def _percent(share: float) -> str:

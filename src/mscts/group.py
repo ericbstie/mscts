@@ -11,8 +11,7 @@ import asyncio
 import contextlib
 import functools
 import logging
-import math
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from types import MappingProxyType
@@ -24,7 +23,7 @@ from mscts.codec.schemas.play.commands import root_literals
 from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN, TICK_MARK, Mask
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
-from mscts.stats import Sample
+from mscts.stats import Sample, SampleLog, Series
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
 
@@ -219,17 +218,16 @@ class GroupContext:
         transcript: Transcript,
         *,
         timeout_s: float,
-        samples: dict[str, list[Sample]] | None = None,
+        samples: SampleLog | None = None,
     ) -> None:
         """Play against `endpoint`, recording to `transcript`, each Bot bounded by `timeout_s`.
 
-        Each `sample` is added to `samples`, by name, after those it holds already (a
-        statistical Group's earlier plays on the same server); without it, to a dict of the
-        context's own.
+        Each `sample` is added to `samples`, after those it holds already (a statistical
+        Group's earlier plays on the same server); without it, to a log of the context's own.
         """
         self.endpoint = endpoint
         self._transcript = transcript
-        self._samples: dict[str, list[Sample]] = {} if samples is None else samples
+        self._samples = SampleLog() if samples is None else samples
         self._timeout_s = timeout_s
         self._bots: dict[str, Bot] = {}
         self._unconnected: tuple[str, Exception] | None = None
@@ -244,9 +242,9 @@ class GroupContext:
         return self._control
 
     @property
-    def samples(self) -> Mapping[str, Sequence[Sample]]:
+    def samples(self) -> Mapping[str, Series]:
         """Every sample recorded so far, by name, in the order recorded."""
-        return self._samples
+        return self._samples.series()
 
     def sample(self, name: str, value: Sample) -> None:
         """Record `value`, a number or a category, as a sample called `name`.
@@ -261,24 +259,7 @@ class GroupContext:
             TypeError: `value` is neither a number (int or float, not bool) nor a category
                 (str).
         """
-        if not name:
-            msg = "a sample needs a name, e.g. 'spawn.distance'"
-            raise ValueError(msg)
-        if isinstance(value, bool) or not isinstance(value, int | float | str):
-            msg = f"a sample is a number or a category (a str), not {type(value).__name__}"
-            raise TypeError(msg)
-        if not isinstance(value, str) and not math.isfinite(value):
-            msg = f"a number sample is finite, not {value}"
-            raise ValueError(msg)
-        earlier = self._samples.setdefault(name, [])
-        if earlier and isinstance(earlier[0], str) != isinstance(value, str):
-            held = "categories" if isinstance(earlier[0], str) else "numbers"
-            msg = (
-                f"sample {name!r} holds {held}, so {value!r} cannot join it: a name holds "
-                f"numbers or categories, never both"
-            )
-            raise ValueError(msg)
-        earlier.append(value)
+        self._samples.add(name, value)
 
     async def bot(self, name: str) -> Bot:
         """Connect a Bot called `name`, recording to this Group's Transcript.
