@@ -51,6 +51,11 @@ first.
 
 ## Integration safety (learned the hard way)
 
+- Never kill by a name pattern (`pkill -f pytest`) on the shared host: it
+  stops the workers' runs too. Kill by the pid you started.
+- A live tier can wait hours for the lock behind a stress series. Start it
+  detached (`setsid nohup bash -c '<tier> > log; echo $? > rc'`) and wait
+  on the rc file, so the 2 h background cap does not kill it.
 - Never put a piped git command in an `&&` chain
   (`git merge … | tail && git branch -D …`): the pipe's status is
   `tail`'s. Redirect output to a file, then check `$?` explicitly before

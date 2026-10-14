@@ -42,6 +42,11 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #37: in a frozen world `ChunkMap.tick` still runs `ServerEntity.sendChanges` every server tick, so an entity's periodic `move_entity_pos`, `set_entity_motion` and `entity_position_sync` follow the wall clock and cannot be compared tick-exact. One-off packets (`add_entity`, `remove_entities`, a dirty `set_entity_data`) stay on their step.
+- #37: a packet belongs to step k when it arrives between the Marks `tick:<k-1>` and `tick:<k>`. Count steps from the Marks, not from where a listing prints them. A 20-play probe that matches does not predict the Self-check: give a reason for every entity packet a tick-exact Group compares.
+- #37: a block that loses its support pops inside the `setblock` command that removes it; its `section_blocks_update` arrives in the next frozen tick, before the step. An item moves at random from the tick after it spawns: end the window on the drop tick and kill the item before the next window.
+- #38: a block or fluid tick scheduled in a frozen world is saved with the chunk and runs in the next play. A tick-exact Group that schedules ticks ends each window with none due, and clears with `fill ... strict` (no neighbour updates) before a plain fill.
+- #38: fluid Self-checks are slow: 20 plays of `fluids/lava-spread` (92 steps a side) take about 21 min, all four `fluids/*` Groups about 65 min.
 - #360: in vanilla 26.3 a Bot's action handlers and `handleClientCommand` share one server-wide FIFO (`PacketProcessor.packetsToBeHandled`), drained every tick even while frozen; chat commands bypass it (`server.execute`). One answered `client_command` proves every earlier action of that Bot was handled (docs/research/2026-10-10-step-barrier.md, on PR #367).
 - #360: a per-step barrier multiplies: count a play's steps times the barrier's round trips before adding one; `player/fall` (58 steps) overran the Self-check's 90 s a play under stress.
 - #57: a respawned player ignores damage until the server has read its `player_loaded` (`ServerPlayer.isInvulnerableTo`): run `/damage` after a barrier, for example inside the window.

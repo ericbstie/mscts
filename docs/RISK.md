@@ -57,6 +57,8 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #372 |  | high, lowered to medium (no core change) | lead's diff read | 0 | none: no barrier or window change; the worker found a scheduled fluid tick saved with the chunk and run in the next play (1 of 2 plays), fixed before the PR |
+| #371 |  | high, lowered to medium (no core change) | lead's diff read | 0 | none: no barrier or window change; the worker's Self-check matched 18 of 20 while it compared falling-block movement, which it then left out |
 | #366 |  | medium | lead's diff read | 0 | none: no barrier or window change; the lead dropped a duplicate titles commit that #365 already carried |
 | #365 |  | high, lowered to medium (no comparison-core change) | lead's diff read | 0 | none: no barrier or window change; the worker's Self-check found bodies outliving `remove_tagged` (3 of 20 plays), fixed before the PR |
 | #361 |  | medium | first review | 0 | none: no barrier or window change; the Self-check after the review fixes found the crafting table's undo leaving dirt where grass was on one Instance, fixed before the merge |
