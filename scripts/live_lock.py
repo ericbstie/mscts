@@ -16,7 +16,19 @@ import time
 from types import FrameType
 from typing import cast
 
+from mscts import install
+from mscts.adapters.base import Adapter, ProvisionError
+from mscts.adapters.pumpkin import PumpkinAdapter
+from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
+from mscts.target import TARGET
+
+# The Adapter whose Installation each live tier needs (as tests/support/tiers.py NEEDS).
+TIER_ADAPTERS: dict[str, type[Adapter]] = {
+    "reference": VanillaAdapter,
+    "selfcheck": VanillaAdapter,
+    "candidate": PumpkinAdapter,
+}
 
 
 def _take_lock(descriptor: int) -> None:
@@ -83,15 +95,30 @@ def _run_command(command: list[str], descriptor: int | None = None) -> int:
             signal.signal(number, handler)
 
 
+def _require_installation(tier: str) -> None:
+    """Exit 1 with the install command if `tier`'s Installation is missing (ADR-0008).
+
+    Checked before the lock, so a missing Installation does not wait behind another tier.
+    """
+    try:
+        install.require(TIER_ADAPTERS[tier](), TARGET, cache_dir())
+    except ProvisionError as error:
+        sys.exit(str(error))
+
+
 def main() -> None:
     """Lock the shared cache unless bypassed, run the command, then pass its status through."""
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--tier", choices=sorted(TIER_ADAPTERS), help="the live tier to check")
     parser.add_argument("command", nargs=argparse.REMAINDER)
-    command = cast("list[str]", parser.parse_args().command)
+    arguments = parser.parse_args()
+    command = cast("list[str]", arguments.command)
     if command[:1] == ["--"]:
         command = command[1:]
     if not command:
         parser.error("a command is required after --")
+    if arguments.tier is not None:
+        _require_installation(arguments.tier)
     if os.environ.get("MSCTS_LIVE_LOCK") == "0":
         code = _run_command(command)
     else:

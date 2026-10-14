@@ -312,3 +312,31 @@ sys.exit(23)
         process.send_signal(signal.SIGINT)
         assert line(process.stdout) == f"interrupted {int(signal.SIGINT)}"
         assert process.wait(timeout=5) == 23
+
+
+@pytest.mark.parametrize(("tier", "adapter"), [("candidate", "pumpkin")])
+def test_a_tier_without_its_installation_fails_before_it_waits_for_the_lock(
+    tmp_path: Path, tier: str, adapter: str
+) -> None:
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    with (cache / "live-tier.lock").open("w") as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        process = subprocess.Popen(
+            [sys.executable, str(SCRIPT), "--tier", tier, "--", sys.executable, "-c", ""],
+            env={**os.environ, "MSCTS_CACHE": str(cache), "MSCTS_LIVE_LOCK": "1"},
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            code = process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            msg = f"the {tier} run waited for the lock before it checked for {adapter}"
+            raise AssertionError(msg) from None
+    _, err = process.communicate()
+    assert code == 1
+    assert f"mscts adapter install {adapter}" in err
