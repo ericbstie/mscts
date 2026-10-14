@@ -1451,11 +1451,13 @@ class Bot:
         whole server, drained every tick even while the world is frozen.
         `handleClientCommand` answers `REQUEST_STATS` in the handler
         (`ServerStatsCounter.sendStats`), the only place vanilla sends `award_stats`. So
-        an answer proves the server has handled every packet the Bot sent before that
-        request. Two requests keep the proof when one `award_stats` a Candidate sent
-        unasked is taken as an answer (#169); two such `award_stats` can still end it
-        before the server has handled the Bot's packets. Back to back, vanilla answers both
-        in one pass, so the second costs about nothing.
+        an answer proves vanilla has handled every packet the Bot sent before that
+        request. A Candidate that answers `REQUEST_STATS` outside the queue its action
+        handlers use gets no such proof: measured on vanilla only. Two requests keep the
+        proof when one `award_stats` a Candidate sent unasked is taken as an answer (#169);
+        two such `award_stats` can still end it before the server has handled the Bot's
+        packets. Back to back, vanilla answers both in one pass, so the second costs about
+        nothing.
 
         It does not cover what the server sends later because of those packets: `sync`
         does. A chat command is not handled in that queue (vanilla runs it as a server

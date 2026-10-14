@@ -460,7 +460,9 @@ class GroupContext:
         server has handled what it sent (`Bot.wait_until_handled`): vanilla handles a
         player's packets in the order they came, and answers a statistics request as it
         handles it, so by the answer it has handled the action
-        (docs/research/2026-10-10-step-barrier.md). Then it steps (`step`), whose own
+        (docs/research/2026-10-10-step-barrier.md). That is measured on vanilla only: a
+        Candidate that answers the request before it handles the action gets no proof.
+        Then it steps (`step`), whose own
         barrier covers what the action caused.
 
         Raises:

@@ -72,3 +72,8 @@ play, both sides, under stress, against the Self-check's 90 s. So `step_after` n
   0.00 ms apart (median; 3.12 ms at most, never over 5 ms: one pass); `sync` took 149.2 ms
   (median). The Bot sent 500 requests and took 500 `award_stats`, none passed over: vanilla
   sent none unasked.
+- The proof is vanilla's. Every fact above is from vanilla's jar or a vanilla Instance. A
+  Candidate that answers `REQUEST_STATS` outside the queue its action handlers use (for
+  example from its network task) can answer both requests before it handles the action,
+  and the reorder #360 describes can still move that action a tick late. No Candidate's
+  order has been measured here.
