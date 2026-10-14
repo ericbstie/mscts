@@ -1737,12 +1737,14 @@ async def run_group(group: Group, endpoint: Endpoint, *, server: str,
     # GroupContext.end (called once the Group completes, before closing) refused a disconnect;
     # the Group's samples are added to `samples` (GroupContext's samples=)
 type Samples = Mapping[str, Series]   # a statistical Group's samples on one server, by name
-def judge_samples(group: Group, reference: Samples | GroupError,
-                  candidate: Samples | GroupError) -> Verdict: ...
+def judge_samples(group: Group, reference: Samples | Exception,
+                  candidate: Samples | Exception) -> Verdict: ...
     # #24, a statistical Group's Verdict; test_cases the Reference's sample names, sorted.
-    # The Reference's GroupError: `error` "the Reference failed: ..."; the Reference recorded
-    # no sample: `error` "the Reference recorded no samples: ...". The Candidate's GroupError:
-    # `mismatch` led by its `failed` Divergence, as in judge (the Report fails each name).
+    # A side's Exception is its failure: a play's GroupError, or what the wait for no player
+    # online between plays raised (PlayersStillOnline, ...). The Reference's: `error` "the
+    # Reference failed: ..."; the Reference recorded no sample: `error` "the Reference
+    # recorded no samples: ...". The Candidate's: `mismatch` led by its `failed` Divergence
+    # (bot the GroupError's, else ""), as in judge (the Report fails each name).
     # Else stats.decide: `match`, or `mismatch` with a `distribution` Divergence per rejected
     # name, in name order.
 def judge(group: Group, reference: Transcript | GroupError,

@@ -347,31 +347,32 @@ type Samples = Mapping[str, Series]
 
 
 def judge_samples(
-    group: Group, reference: Samples | GroupError, candidate: Samples | GroupError
+    group: Group, reference: Samples | Exception, candidate: Samples | Exception
 ) -> Verdict:
     """The Verdict on statistical `group`, from what its plays recorded on each server.
 
-    Its test cases are the Reference's sample names. Then:
+    Its test cases are the Reference's sample names. A side given as an Exception failed:
+    a play raised (`GroupError`), or the wait for no player online between two plays
+    raised (`_left_online`). Then:
 
-    - A play raised on the Reference (`GroupError`), or the Reference recorded no sample:
-      `error`, the Reference or the Group having failed.
-    - A play raised on the Candidate: `mismatch`, led by a `failed` Divergence as in
-      `judge`, so the Report fails each sample name.
+    - The Reference failed, or recorded no sample: `error`, the Reference or the Group
+      having failed.
+    - The Candidate failed: `mismatch`, led by a `failed` Divergence as in `judge`, so the
+      Report fails each sample name.
     - Else each name is decided (`stats.decide`): `match` if none is rejected, else
       `mismatch` with one `distribution` Divergence per rejected name, in name order.
     """
-    if isinstance(reference, GroupError):
-        return _error(group, f"the Reference failed: {reference}")
-    if not reference:
-        detail = "the Reference recorded no samples: a statistical Group records them with "
-        return _error(group, f"{detail}context.sample")
+    if isinstance(reference, Exception) or not reference:
+        return _not_sampled_error(group, reference)
     names = tuple(sorted(reference))
-    if isinstance(candidate, GroupError):
+    if isinstance(candidate, Exception):
+        what = _side_failure(candidate)
+        bot = candidate.bot if isinstance(candidate, GroupError) else ""
         return Verdict(
             group_id=group.id,
             outcome=Outcome.MISMATCH,
-            divergences=_group_failed(candidate),
-            detail=f"the Candidate failed: {_candidate_failure(candidate)}",
+            divergences=(_failed(bot=bot, what=what),),
+            detail=f"the Candidate failed: {what}",
             test_cases=names,
         )
     divergences = tuple(
@@ -383,6 +384,23 @@ def judge_samples(
         divergences=divergences,
         test_cases=names,
     )
+
+
+def _not_sampled_error(group: Group, reference: Samples | Exception) -> Verdict:
+    """The `error` of statistical `group` whose Reference failed, or recorded no sample."""
+    if isinstance(reference, GroupError):
+        return _error(group, f"the Reference failed: {reference}")  # as in `judge`
+    if isinstance(reference, Exception):
+        return _error(group, f"the Reference failed: {_left_what(reference)}")
+    detail = "the Reference recorded no samples: a statistical Group records them with "
+    return _error(group, f"{detail}context.sample")
+
+
+def _side_failure(failure: Exception) -> str:
+    """What ended the Candidate's statistical plays: its play's failure, or its wait's."""
+    if isinstance(failure, GroupError):
+        return _candidate_failure(failure)
+    return _left_what(failure)
 
 
 def _distribution(decision: Decision) -> Divergence:
@@ -717,7 +735,7 @@ class _Instances:
         """
         started = perf_counter()
         logs = (SampleLog(), SampleLog())
-        failed: list[GroupError | None] = [None, None]
+        failed: list[Exception | None] = [None, None]
         for played in range(group.runs):
             for role, endpoint in enumerate(endpoints):
                 if failed[0] is None and failed[role] is None:
@@ -733,17 +751,16 @@ class _Instances:
 
     async def _sampled_once(
         self, group: Group, role: int, endpoint: Endpoint, samples: SampleLog, *, first: bool
-    ) -> GroupError | None:
+    ) -> Exception | None:
         """Play statistical `group` once more on side `role`, into `samples`; why not, if not.
 
         Before each play but the `first`, which `play` waited for, it waits for the Instance
-        to have no player online, as before each Group. The play raising, or the wait,
-        is the side's failure.
+        to have no player online, as before each Group. The side's failure is what the wait
+        raised (`_left_online`), or the play's GroupError.
         """
         left = None if first else await _left_online(endpoint)
         if left is not None:
-            transcript = Transcript(group_id=group.id, server=self._sides[role].name)
-            return GroupError(transcript, _left_what(left))
+            return left
         samples.new_play()
         attempt = await self._attempt(group, role, endpoint, samples=samples)
         return attempt if isinstance(attempt, GroupError) else None
@@ -965,23 +982,22 @@ async def _left_online(endpoint: Endpoint) -> Exception | None:
     Raises:
         BaseException: The wait raised one that is not an Exception.
     """
-    wait = until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
-    [result] = await asyncio.gather(wait, return_exceptions=True)
-    if isinstance(result, BaseException) and not isinstance(result, Exception):
-        raise result
-    return result
+    try:
+        await until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+    except Exception as left:  # noqa: BLE001 - the side's failure, whatever it is (#222)
+        return left
+    return None
 
 
-def _not_sampled(group: Group, reference: Samples | GroupError, verdict: Verdict) -> Verdict:
+def _not_sampled(group: Group, reference: Samples | Exception, verdict: Verdict) -> Verdict:
     """`verdict`, on a Candidate side not compared, listing the Reference's sample names.
 
     As `_not_compared` does for the other kinds; the Reference failing, or recording no
     sample, is `error`, as in `judge_samples`.
     """
-    own = judge_samples(group, reference, reference)
-    if own.outcome is Outcome.ERROR:
-        return own
-    return dataclasses.replace(verdict, test_cases=own.test_cases)
+    if isinstance(reference, Exception) or not reference:
+        return _not_sampled_error(group, reference)
+    return dataclasses.replace(verdict, test_cases=tuple(sorted(reference)))
 
 
 def _transcript(attempt: Transcript | GroupError) -> Transcript:

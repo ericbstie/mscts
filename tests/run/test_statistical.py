@@ -283,6 +283,26 @@ async def test_a_play_that_raises_on_the_candidate_fails_each_sample_name(
 
 
 @pytest.mark.asyncio
+async def test_a_candidate_play_s_failure_names_the_bot_it_came_out_of(
+    run_token: str, tmp_path: Path
+) -> None:
+    def make(reference: Attached, candidate: Attached) -> Group:
+        del reference
+        port = candidate.endpoint.port
+
+        async def script(context: GroupContext) -> None:
+            context.sample("x", 0.0)
+            if context.endpoint.port == port:
+                await (await context.bot("alice")).join()  # a status fake cannot join it
+
+        return _statistical(script, runs=2)
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    assert [(d.kind, d.bot) for d in verdict.divergences] == [("failed", "alice")]
+
+
+@pytest.mark.asyncio
 async def test_a_name_the_candidate_never_sampled_mismatches_untested(
     run_token: str, tmp_path: Path
 ) -> None:

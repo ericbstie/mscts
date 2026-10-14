@@ -415,7 +415,8 @@ samples are (the statistic D for numbers, Cramér's V for categories, from 0
 to 1), and each server's median and quartiles or the share of each
 category. A name that one server never records fails as well, so record
 each name in every play. If a play fails on vanilla, the Group is an error.
-If it fails on the Candidate, each of its test cases fails.
+If it fails on the Candidate, each of its test cases fails. One failed play
+is enough, even a rare one-off among 50, so a play must not fail by chance.
 
 These Groups are slow, so `mscts run` plays them only with `--statistical`,
 and once per Run whatever `--repeat` is, since every extra comparison could
