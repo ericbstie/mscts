@@ -3,8 +3,9 @@
 The chi-square critical values are the NIST/SEMATECH e-Handbook's table (section 1.3.6.7.4):
 each is where the upper tail holds 1%, or 5% for 3.841. The other values were computed with
 scipy 1.18.1 (`stats.ks_2samp(..., method="exact")`, `stats.chi2.sf`,
-`stats.chi2_contingency(..., correction=False)`); the two disjoint samples of five are
-Hodges' exact count: 2 of the C(10, 5) = 252 orderings put one sample wholly below the other.
+`stats.chi2_contingency(..., correction=False)`, `stats.fisher_exact`); the two disjoint
+samples of five are Hodges' exact count: 2 of the C(10, 5) = 252 orderings put one sample
+wholly below the other.
 With repeated values, scipy's exact method assumes none, so the p-value is checked against a
 count of every relabelling of the pooled values instead.
 """
@@ -15,7 +16,13 @@ from fractions import Fraction
 
 import pytest
 
-from mscts.stats import chi_square, chi_square_survival, kolmogorov_smirnov, pooled
+from mscts.stats import (
+    chi_square,
+    chi_square_survival,
+    fisher_exact,
+    kolmogorov_smirnov,
+    pooled,
+)
 
 _A = [0.61, 0.29, 0.06, 0.59, -1.73, -0.74, 0.51, -0.56, 0.39, 1.64, 0.05, -0.06, 0.64]
 _A += [-0.82, 0.37, 1.77, 1.09, -1.28, 2.36, 1.31, 1.05, -0.32, -0.4, 1.06, -2.47]
@@ -141,18 +148,51 @@ def test_chi_square_of_homogeneity_matches_a_contingency_table() -> None:
     assert found.effect_size == pytest.approx(math.sqrt(5.833333333333334 / 100), rel=1e-12)
 
 
-def test_categories_under_five_expected_are_pooled_until_none_is() -> None:
+def test_categories_under_five_expected_pool_into_one_other_category() -> None:
     # Rows of 48 and 52 samples: a category's smallest expected count is 48 * total / 100.
     columns = [(2, 1), (20, 25), (1, 0), (25, 26)]
 
-    assert sorted(pooled(columns)) == [(23, 26), (25, 26)]
+    assert pooled(columns) == [(20, 25), (25, 26), (3, 1)]
 
 
 def test_the_side_with_fewer_samples_decides_what_is_pooled() -> None:
     # Rows of 10 and 90: the first category expects 2 on the first side, 18 on the second.
-    columns = [(2, 18), (8, 72)]
+    columns = [(2, 18), (1, 9), (7, 63)]
 
-    assert pooled(columns) == [(10, 90)]
+    assert pooled(columns) == [(7, 63), (3, 27)]
+
+
+def test_a_category_only_the_candidate_has_is_never_pooled_out_of_sight() -> None:
+    # Review B's probe: 9 pigs in 50 pool into "other", and leave a sparse 2 x 2 table.
+    found = chi_square(["zombie"] * 50, ["zombie"] * 41 + ["pig"] * 9)
+
+    assert found.test == "Fisher's exact"
+    assert found.p_value == pytest.approx(0.002634204400259044, rel=1e-9)
+    assert found.effect_size == pytest.approx(math.sqrt(9.89010989010989 / 100), rel=1e-9)
+
+
+@pytest.mark.parametrize(
+    ("first", "second", "p"),
+    [
+        ((10, 3), (4, 9), 0.04717997038632386),
+        ((8, 2), (72, 18), 1.0),
+        ((50, 0), (41, 9), 0.002634204400259044),
+    ],
+)
+def test_fishers_exact_test_matches_scipy(
+    first: tuple[int, int], second: tuple[int, int], p: float
+) -> None:
+    assert fisher_exact(first, second) == pytest.approx(p, rel=1e-9)
+
+
+def test_a_rare_category_joins_other_not_a_real_one() -> None:
+    # Review B's probe: the 9 pigs were merged into the husks, which hid them.
+    found = chi_square(
+        ["zombie"] * 30 + ["husk"] * 20, ["zombie"] * 25 + ["husk"] * 16 + ["pig"] * 9
+    )
+
+    assert found.test == "chi-square"
+    assert found.p_value == pytest.approx(0.007086987311865174, rel=1e-9)
 
 
 def test_a_category_with_five_expected_is_not_pooled() -> None:

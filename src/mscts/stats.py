@@ -177,7 +177,9 @@ def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -
 def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference:
     """The chi-square test of homogeneity of two samples of categories.
 
-    Categories under `MIN_EXPECTED` expected samples on a side are pooled first (`pooled`).
+    Categories under `MIN_EXPECTED` expected samples on a side are pooled first into one
+    other category (`pooled`). If that leaves two categories, one of them still expected
+    fewer than `MIN_EXPECTED` times, Fisher's exact test is used instead (`fisher_exact`).
     One category left means no difference can be shown: V 0, p-value 1.
 
     Raises:
@@ -190,27 +192,63 @@ def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference
         return Difference(test="chi-square", effect="V", effect_size=0.0, p_value=1.0)
     statistic = _pearson(columns)
     total = len(reference) + len(candidate)
+    effect_size = math.sqrt(statistic / total)
+    if len(columns) == 2 and any(_sparse(columns)):  # noqa: PLR2004 - a 2 x 2 table
+        first, second = columns
+        p_value = fisher_exact(first, second)
+        return Difference("Fisher's exact", "V", effect_size, p_value)
     return Difference(
         test="chi-square",
         effect="V",
-        effect_size=math.sqrt(statistic / total),
+        effect_size=effect_size,
         p_value=chi_square_survival(statistic, len(columns) - 1),
     )
 
 
 def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
-    """`columns`, the two sides' counts per category, with the sparse categories pooled.
+    """`columns`, the two sides' counts per category, with the sparse ones pooled into one.
 
     A category is sparse when the side with fewer samples expects fewer than `MIN_EXPECTED`
-    of it. The two smallest categories are merged until none is sparse, or one is left.
+    of it. The sparse ones are added together into one other category, last, so a category
+    is never merged into a real one, which could hide it.
+    """
+    flags = _sparse(columns)
+    sparse = [column for column, rare in zip(columns, flags, strict=True) if rare]
+    common = [column for column, rare in zip(columns, flags, strict=True) if not rare]
+    if not sparse:
+        return common
+    other = (sum(column[0] for column in sparse), sum(column[1] for column in sparse))
+    return [*common, other]
+
+
+def fisher_exact(first: tuple[int, int], second: tuple[int, int]) -> float:
+    """Fisher's exact test of a 2 x 2 table: two categories' counts on each side.
+
+    The chance, given the table's margins, of a table no likelier than this one: each
+    table's weight is C(first's total, its count on the Reference) times the same for
+    `second`, in integers, so ties in likelihood are found exactly.
+    """
+    reference = first[0] + second[0]
+    firsts, seconds = sum(first), sum(second)
+
+    def weight(count: int) -> int:
+        return math.comb(firsts, count) * math.comb(seconds, reference - count)
+
+    observed = weight(first[0])
+    tables = range(max(0, reference - seconds), min(firsts, reference) + 1)
+    weights = [weight(count) for count in tables]
+    total = math.comb(firsts + seconds, reference)
+    return float(Fraction(sum(w for w in weights if w <= observed), total))
+
+
+def _sparse(columns: Sequence[tuple[int, int]]) -> list[bool]:
+    """For each of `columns`, whether it is too sparse to test by chi-square.
+
+    It is when the side with fewer samples expects it fewer than `MIN_EXPECTED` times.
     """
     fewer = min(sum(column[0] for column in columns), sum(column[1] for column in columns))
     total = sum(map(sum, columns))
-    left: list[tuple[int, int]] = sorted(columns, key=sum)
-    while len(left) > 1 and fewer * sum(left[0]) < MIN_EXPECTED * total:
-        merged = (left[0][0] + left[1][0], left[0][1] + left[1][1])
-        left = sorted([merged, *left[2:]], key=sum)
-    return left
+    return [fewer * sum(column) < MIN_EXPECTED * total for column in columns]
 
 
 def chi_square_survival(statistic: float, df: int) -> float:

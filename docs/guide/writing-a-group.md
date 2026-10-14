@@ -391,7 +391,9 @@ async def join_distance(context: GroupContext) -> None:
 For each name, mscts asks whether the two servers' samples could come from
 the same distribution. Numbers get a Kolmogorov-Smirnov test and
 categories a chi-square test, at the 1% level. Categories too rare to test,
-with fewer than 5 samples expected on a server, are pooled first. The
+with fewer than 5 samples expected on a server, are pooled first into one
+other category. If that leaves two categories, one of them still rare,
+Fisher's exact test is used instead. The
 p-values of a Group's names are corrected together (Holm-Bonferroni), so a
 Group with several names still fails by chance at most 1% of the time.
 

@@ -2492,21 +2492,24 @@ def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 # stats.py (#24): two-sample tests, in-repo (the standard library only; no scipy).
 @frozen
 class Difference:
-    test: str                       # "Kolmogorov-Smirnov" or "chi-square"
+    test: str                       # "Kolmogorov-Smirnov", "chi-square" or "Fisher's exact"
     effect: str                     # the effect size's name: "D", or "V" (Cramér's V)
     effect_size: float              # 0 (alike) to 1
     p_value: float
 
 def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference: ...
-    # D, and the exact p-value (Hodges' lattice-path count, as scipy's method="exact");
-    # repeated values make it conservative. ValueError if a side has no samples.
+    # D, and the exact p-value given the pooled values (Hodges' lattice-path count, read
+    # only where the pooled values change, so ties too). ValueError if a side has no samples.
 def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference: ...
     # Pearson's test of homogeneity of the two-row table, after pooled(); V = sqrt(chi2 / N).
-    # One column left: V 0, p 1. ValueError if a side has no samples.
+    # Two columns left, one sparse: fisher_exact instead. One column left: V 0, p 1.
+    # ValueError if a side has no samples.
 MIN_EXPECTED = 5
 def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
-    # merges the two smallest categories until the smaller side expects at least
-    # MIN_EXPECTED of each, or one is left
+    # adds the categories the smaller side expects fewer than MIN_EXPECTED of into one
+    # other category, last; never merges one into a real category
+def fisher_exact(first: tuple[int, int], second: tuple[int, int]) -> float: ...
+    # two-sided, in integers: the tables no likelier than this one, given the margins
 def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form; df >= 1
 
 ALPHA = 0.01                        # each sample name's level, after Holm's correction
