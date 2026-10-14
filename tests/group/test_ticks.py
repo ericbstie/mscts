@@ -180,6 +180,28 @@ async def test_step_refuses_a_world_the_group_has_not_frozen() -> None:
     assert commands_sent(server.seen) == []
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("frozen", "ticks", "refusal"),
+    [(True, 0, "at least one tick"), (False, 1, "freeze")],
+    ids=["no-tick", "not-frozen"],
+)
+async def test_step_after_refuses_before_the_bot_sends_its_requests(
+    *, frozen: bool, ticks: int, refusal: str
+) -> None:
+    transcript = Transcript(group_id="test/ticks", server="fake")
+    async with playing(ControlServer(), transcript) as context:
+        alice = await context.bot("alice")
+        await alice.join()
+        if frozen:
+            await context.freeze()
+        called_at = transcript.now_ns()
+        with pytest.raises(ValueError, match=refusal):
+            await context.step_after(alice, ticks=ticks)
+
+    assert [t for t in _requests_sent(_sent(transcript), "alice") if t > called_at] == []
+
+
 def received_from_the_action(seen: list[Packet]) -> list[object]:
     """What the server read from the dig's `player_action` on: the barrier's requests, the steps."""
     start = next(index for index, packet in enumerate(seen) if packet.name == PLAYER_ACTION)

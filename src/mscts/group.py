@@ -439,17 +439,13 @@ class GroupContext:
             TimeoutError: The server did not finish a step in time; that Bot's `failure`.
             ProtocolError: The server disconnected a Bot, and a barrier took it.
         """
-        if ticks < 1:
-            msg = f"a step moves the world on at least one tick, not {ticks}"
-            raise ValueError(msg)
-        if self._ticks is None:
-            msg = "freeze the world first (context.freeze()): only a frozen world steps"
-            raise ValueError(msg)
+        stepped = self._require_steppable(ticks)
         for _ in range(ticks):
             await self._control.run("tick step 1")
             ends = await self._sync()
-            self._ticks += 1
-            self._mark_each(f"{TICK_MARK}{self._ticks}", ends)
+            stepped += 1
+            self._ticks = stepped
+            self._mark_each(f"{TICK_MARK}{stepped}", ends)
 
     async def step_after(self, bot: Bot, *, ticks: int = 1) -> None:
         """Step the frozen world on `ticks` ticks once the server has handled what `bot` sent.
@@ -470,8 +466,19 @@ class GroupContext:
             TimeoutError: `bot`'s requests, or a step, got no answer in time.
             ProtocolError: `bot` is not in play, or the server disconnected a Bot.
         """
+        self._require_steppable(ticks)
         await bot.wait_until_handled()
         await self.step(ticks)
+
+    def _require_steppable(self, ticks: int) -> int:
+        """The ticks stepped since the freeze; ValueError unless frozen and `ticks` >= 1."""
+        if ticks < 1:
+            msg = f"a step moves the world on at least one tick, not {ticks}"
+            raise ValueError(msg)
+        if self._ticks is None:
+            msg = "freeze the world first (context.freeze()): only a frozen world steps"
+            raise ValueError(msg)
+        return self._ticks
 
     async def end(self) -> None:
         """Unfreeze the world if the Group froze it, then refuse a disconnect still queued.
