@@ -9,6 +9,7 @@ import math
 import statistics
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -153,9 +154,9 @@ def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -
     """The two-sample Kolmogorov-Smirnov test of two samples of numbers.
 
     D is the largest gap between the two samples' cumulative shares. The p-value is exact
-    (Hodges' count of the orderings of the two samples that reach a gap that large). It
-    assumes no value is repeated; repeated values make it larger than the true one, so the
-    test rejects less often, never more.
+    given the pooled values, repeated ones included: the share of the ways to split them
+    into the two samples that reach a gap that large (Hodges' count, the gap read only
+    where the pooled values change, as Schröer and Trenkler's exact test with ties does).
 
     Raises:
         ValueError: A side has no samples.
@@ -163,11 +164,13 @@ def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -
     _require_samples(reference, candidate)
     n, m = len(reference), len(candidate)
     gap = _largest_gap(sorted(reference), sorted(candidate))
+    pooled_values = sorted((*reference, *candidate))
+    changes = {k for k in range(1, n + m) if pooled_values[k - 1] != pooled_values[k]}
     return Difference(
         test="Kolmogorov-Smirnov",
         effect="D",
         effect_size=gap / (n * m),
-        p_value=_reaching(gap, n, m),
+        p_value=_reaching(gap, n, m, changes),
     )
 
 
@@ -253,21 +256,24 @@ def _largest_gap(reference: Sequence[float], candidate: Sequence[float]) -> int:
     )
 
 
-def _reaching(gap: int, n: int, m: int) -> float:
+def _reaching(gap: int, n: int, m: int, changes: AbstractSet[int]) -> float:
     """The share of the orderings of n and m values whose cumulative gap reaches `gap` / (n m).
 
-    An ordering is a lattice path from (0, 0) to (n, m); it stays inside while every point
-    (i, j) has |i m - j n| < gap. A gap of 0 is reached by every ordering.
+    An ordering is a lattice path from (0, 0) to (n, m), a step for each pooled value in
+    order. The gap can only be read after the last of equal values, so a path stays inside
+    while every point (i, j) with i + j in `changes` (the counts of pooled values after
+    which the next one is larger) has |i m - j n| < gap. A gap of 0 is reached by every
+    ordering.
     """
     if gap == 0:
         return 1.0
-    inside = [1] + [0] * m  # the paths to (0, j) that stayed inside
-    for j in range(1, m + 1):
-        inside[j] = inside[j - 1] if j * n < gap else 0
-    for i in range(1, n + 1):
-        inside[0] = inside[0] if i * m < gap else 0
-        for j in range(1, m + 1):
-            inside[j] = inside[j] + inside[j - 1] if abs(i * m - j * n) < gap else 0
+    inside = [1] + [0] * m  # the paths to (i, j) that stayed inside, row i so far
+    for i in range(n + 1):
+        for j in range(m + 1):
+            if i or j:
+                inside[j] = (inside[j] if i else 0) + (inside[j - 1] if j else 0)
+            if i + j in changes and abs(i * m - j * n) >= gap:
+                inside[j] = 0
     total = math.comb(n + m, n)
     return float(Fraction(total - inside[m], total))
 

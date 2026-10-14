@@ -5,9 +5,13 @@ each is where the upper tail holds 1%, or 5% for 3.841. The other values were co
 scipy 1.18.1 (`stats.ks_2samp(..., method="exact")`, `stats.chi2.sf`,
 `stats.chi2_contingency(..., correction=False)`); the two disjoint samples of five are
 Hodges' exact count: 2 of the C(10, 5) = 252 orderings put one sample wholly below the other.
+With repeated values, scipy's exact method assumes none, so the p-value is checked against a
+count of every relabelling of the pooled values instead.
 """
 
+import itertools
 import math
+from fractions import Fraction
 
 import pytest
 
@@ -43,6 +47,45 @@ def test_ks_of_the_same_values_finds_no_difference() -> None:
     found = kolmogorov_smirnov([3, 1, 2, 2], [2, 3, 1, 2])
 
     assert (found.effect_size, found.p_value) == (0.0, 1.0)
+
+
+def _permutation_p(reference: list[int], candidate: list[int]) -> float:
+    """KS's p-value by brute force, over every relabelling of the pooled values.
+
+    The share of them whose gap is at least the observed one.
+    """
+    pooled = [*reference, *candidate]
+
+    def gap(chosen: set[int]) -> Fraction:
+        first = [value for index, value in enumerate(pooled) if index in chosen]
+        second = [value for index, value in enumerate(pooled) if index not in chosen]
+        return max(
+            abs(
+                Fraction(sum(v <= cut for v in first), len(first))
+                - Fraction(sum(v <= cut for v in second), len(second))
+            )
+            for cut in pooled
+        )
+
+    observed = gap(set(range(len(reference))))
+    labellings = [set(c) for c in itertools.combinations(range(len(pooled)), len(reference))]
+    return sum(gap(chosen) >= observed for chosen in labellings) / len(labellings)
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ([0, 0, 1, 1, 2, 3], [1, 2, 2, 3, 3, 3, 3]),
+        ([0, 0, 0, 0, 1, 1], [1, 1, 1, 1, 1, 0]),
+        ([2, 2, 2, 5, 5], [2, 5, 5, 5, 5, 7, 7]),
+    ],
+)
+def test_ks_with_repeated_values_is_exact_given_the_values(
+    reference: list[int], candidate: list[int]
+) -> None:
+    found = kolmogorov_smirnov(reference, candidate)
+
+    assert found.p_value == pytest.approx(_permutation_p(reference, candidate), rel=1e-12)
 
 
 def test_ks_needs_samples_on_both_sides() -> None:
