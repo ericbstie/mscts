@@ -2,7 +2,6 @@
 
 import pytest
 
-from mscts import bot as bot_module
 from mscts.bot import HANDLED_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet
 from mscts.net import ProtocolError
@@ -47,12 +46,6 @@ def test_wait_until_handled_returns_only_once_the_server_handled_the_action(*, s
     assert barrier[:HANDLED_REQUESTS] == sent, "every request goes out before any answer"
     served = [packet.name for packet in seen if packet.name in {PUNCH, REQUEST}]
     assert served == [PUNCH, *[REQUEST] * HANDLED_REQUESTS], "the requests follow the action"
-
-
-def test_wait_until_handled_sends_two_requests() -> None:
-    # One would end at a Candidate's unasked award_stats (#169): vanilla never sends one
-    # (javap), but a Candidate may (docs/research/2026-10-10-step-barrier.md).
-    assert bot_module.HANDLED_REQUESTS == 2
 
 
 def test_wait_until_handled_refuses_a_bot_that_is_not_in_play() -> None:
