@@ -69,6 +69,13 @@ def test_the_decorator_registers_the_group_with_its_options() -> None:
 
 
 @pytest.mark.usefixtures("registering")
+def test_the_decorator_registers_how_many_times_a_statistical_group_runs() -> None:
+    group("test/spread", kind=GroupKind.STATISTICAL, runs=7)(_nothing)
+
+    assert GROUPS["test/spread"].runs == 7
+
+
+@pytest.mark.usefixtures("registering")
 def test_the_decorator_returns_the_function_itself() -> None:
     assert group("test/same")(_nothing) is _nothing
 

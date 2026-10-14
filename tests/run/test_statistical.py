@@ -4,6 +4,7 @@ The fake Group draws its samples from a seeded generator, shifted on the side wh
 the test names, so each test's draws, and so its Verdict, are always the same.
 """
 
+import asyncio
 import random
 from collections import Counter
 from collections.abc import Callable
@@ -114,6 +115,28 @@ async def test_shifted_samples_mismatch_with_the_effect_size(
             test_case="x",
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_a_divergence_names_the_p_value_after_holms_correction(
+    run_token: str, tmp_path: Path
+) -> None:
+    def make(reference: Attached, candidate: Attached) -> Group:
+        del reference
+        draw = _drawing(shifted_port=candidate.endpoint.port)
+
+        async def script(context: GroupContext) -> None:
+            await draw(context)
+            context.sample("y", 1.0)
+
+        return _statistical(script)
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    assert verdict.test_cases == ("x", "y")
+    assert [divergence.path for divergence in verdict.divergences] == [
+        "Kolmogorov-Smirnov D = 0.40, p = 0.0012"  # twice the 0.00058 of `x` alone
+    ]
 
 
 @pytest.mark.asyncio
@@ -335,6 +358,24 @@ async def test_a_candidate_with_a_player_still_online_between_runs_fails_the_gro
     assert [(d.kind, d.candidate) for d in verdict.divergences] == [("failed", _STILL_ONLINE)]
     assert verdict.test_cases == ("x",)
     assert plays[stuck.port] == 3  # the fourth wait found the player
+
+
+@pytest.mark.asyncio
+async def test_a_wait_between_runs_cancelled_from_inside_is_raised(
+    run_token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    waits: Counter[int] = Counter()
+
+    async def cancelled_on_the_second(endpoint: Endpoint, *, deadline_s: float) -> None:
+        del deadline_s
+        waits[endpoint.port] += 1
+        if waits[endpoint.port] == 2:  # the wait before the second play
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(run_module, "until_no_player_online", cancelled_on_the_second)
+
+    with pytest.raises(asyncio.CancelledError):
+        await _judged(lambda *_: _statistical(_drawing(0)), run_token, tmp_path)
 
 
 @pytest.mark.asyncio

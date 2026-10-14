@@ -105,6 +105,13 @@ def test_categories_under_five_expected_are_pooled_until_none_is() -> None:
     assert sorted(pooled(columns)) == [(23, 26), (25, 26)]
 
 
+def test_the_side_with_fewer_samples_decides_what_is_pooled() -> None:
+    # Rows of 10 and 90: the first category expects 2 on the first side, 18 on the second.
+    columns = [(2, 18), (8, 72)]
+
+    assert pooled(columns) == [(10, 90)]
+
+
 def test_a_category_with_five_expected_is_not_pooled() -> None:
     columns = [(5, 5), (5, 5), (40, 40)]
 
