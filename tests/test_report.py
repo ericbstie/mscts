@@ -497,3 +497,54 @@ def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
     )
     text = render_text(_report(_result(_verdict(late))), verbose=True)
     assert "block_update\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text
+
+
+def _distribution(name: str, path: str | None, **sides: dict[str, object]) -> Divergence:
+    return Divergence(
+        bot="",
+        index=0,
+        kind="distribution",
+        packet="",
+        path=path,
+        reference=sides["reference"],
+        candidate=sides["candidate"],
+        test_case=name,
+    )
+
+
+def test_verbose_shows_a_distribution_s_test_and_both_sides_summaries() -> None:
+    numbers = _distribution(
+        "distance",
+        "Kolmogorov-Smirnov D = 0.40, p = 0.00058",
+        reference={"samples": 50, "median": 0.16608, "quartiles": [-0.39263, 0.66314]},
+        candidate={"samples": 50, "median": 0.86373, "quartiles": [0.02174, 1.41278]},
+    )
+    categories = _distribution(
+        "mob",
+        "chi-square V = 0.52, p = 0.0031",
+        reference={"samples": 50, "shares": {"minecraft:zombie": 0.6, "minecraft:husk": 0.4}},
+        candidate={"samples": 40, "shares": {"minecraft:zombie": 1.0}},
+    )
+    untested = _distribution(
+        "drop",
+        None,
+        reference={"samples": 10, "shares": {"minecraft:bone": 1.0}},
+        candidate={"samples": 0},
+    )
+    verdict = Verdict("spawn/join", Outcome.MISMATCH, (numbers, categories, untested))
+    text = render_text(_report(_result(verdict)), verbose=True)
+    assert (
+        "✗ spawn/join/distance\n"
+        "  Kolmogorov-Smirnov D = 0.40, p = 0.00058: vanilla 50 samples, median 0.1661,"
+        " quartiles -0.3926 and 0.6631; pumpkin 50 samples, median 0.8637,"
+        " quartiles 0.02174 and 1.413\n"
+    ) in text, text
+    assert (
+        "✗ spawn/join/drop\n"
+        "  not tested: vanilla 10 samples, minecraft:bone 100%; pumpkin no samples\n"
+    ) in text, text
+    assert (
+        "✗ spawn/join/mob\n"
+        "  chi-square V = 0.52, p = 0.0031: vanilla 50 samples, minecraft:zombie 60%,"
+        " minecraft:husk 40%; pumpkin 40 samples, minecraft:zombie 100%\n"
+    ) in text, text

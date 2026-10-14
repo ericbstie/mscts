@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import cast
 from uuid import UUID
 
 import mscts.compare
@@ -210,11 +211,14 @@ def _differing(divergence: Divergence, names: Iterable[str]) -> list[str]:
     of its leaves' (#225). And a `field` Divergence of a whole Packet (no path), such as
     one the Candidate sent that did not decode: its packet's test case and each of its
     fields', which the Comparison lists for it (#230). Any other Divergence's: its own
-    test case.
+    test case, as for a `distribution` one, whose mapping is a summary of the Reference's
+    samples, not a value it sent (#24).
     """
     case = divergence.test_case
-    replaced = divergence.observability is Observability.GAMEPLAY and isinstance(
-        divergence.reference, dict | list
+    replaced = (
+        divergence.observability is Observability.GAMEPLAY
+        and divergence.kind != "distribution"
+        and isinstance(divergence.reference, dict | list)
     )
     whole = divergence.kind == "field" and divergence.path is None
     if divergence.kind != "missing" and not replaced and not whole:
@@ -502,6 +506,8 @@ def _values(report: Report, group: GroupResult, test_case: str) -> tuple[_Line, 
 
 
 def _difference_values(report: Report, divergence: Divergence) -> _Line:
+    if divergence.kind == "distribution":
+        return _distribution_values(report, divergence)
     # A list element's path says which element; the tick path says the values are ticks.
     shown = divergence.path and ("[" in divergence.path or divergence.path == TICK_PATH)
     path: _Line = (_Literal(divergence.path), ": ") if shown else ()
@@ -512,6 +518,41 @@ def _difference_values(report: Report, divergence: Divergence) -> _Line:
         f", {report.candidate.name} ",
         *_sent(divergence.candidate),
     )
+
+
+def _distribution_values(report: Report, divergence: Divergence) -> _Line:
+    """The test that rejected a sample name, or "not tested", then each side's summary.
+
+    `Kolmogorov-Smirnov D = 0.40, p = 0.00058: vanilla 50 samples, median 0.1661, quartiles
+    -0.3926 and 0.6631; pumpkin ...`, the p corrected for the Group's other names.
+    """
+    return (
+        divergence.path or "not tested",
+        f": {report.reference.name} ",
+        *_samples(divergence.reference),
+        f"; {report.candidate.name} ",
+        *_samples(divergence.candidate),
+    )
+
+
+def _samples(value: object) -> _Line:
+    """A side's `stats.summary` in words: its count, then its median and quartiles or shares."""
+    summary = cast("dict[str, object]", value)  # what `run.judge_samples` put in a Divergence
+    if not summary.get("samples"):
+        return ("no samples",)
+    count = f"{summary['samples']} samples"
+    if "shares" in summary:
+        line: list[str | _Literal] = [count]
+        for name, share in cast("dict[str, float]", summary["shares"]).items():
+            line.extend((", ", _Literal(name), f" {_percent(share)}"))
+        return tuple(line)
+    lower, upper = cast("list[float]", summary["quartiles"])
+    median = cast("float", summary["median"])
+    return (f"{count}, median {median:.4g}, quartiles {lower:.4g} and {upper:.4g}",)
+
+
+def _percent(share: float) -> str:
+    return f"{share:.1%}".replace(".0%", "%")
 
 
 def _sent(value: object) -> _Line:
