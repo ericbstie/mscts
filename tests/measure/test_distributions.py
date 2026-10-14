@@ -136,7 +136,7 @@ def test_chi_square_survival_matches_scipy(statistic: float, df: int, p: float) 
     assert chi_square_survival(statistic, df) == pytest.approx(p, rel=1e-9)
 
 
-def _chi_square(reference: list[str], candidate: list[str]) -> Difference:
+def _categories_test(reference: list[str], candidate: list[str]) -> Difference:
     """`categories_test`, which must find a test to run."""
     found = categories_test(reference, candidate, rng=random.Random(PERMUTATION_SEED))
     assert found is not None
@@ -152,7 +152,7 @@ def test_chi_square_of_homogeneity_matches_a_contingency_table() -> None:
     reference = ["a"] * 20 + ["b"] * 15 + ["c"] * 15
     candidate = ["a"] * 10 + ["b"] * 25 + ["c"] * 15
 
-    found = _chi_square(reference, candidate)
+    found = _categories_test(reference, candidate)
 
     assert found.test == "chi-square"
     assert found.effect == "V"
@@ -176,7 +176,7 @@ def test_the_side_with_fewer_samples_decides_what_is_pooled() -> None:
 
 def test_a_category_only_the_candidate_has_is_never_pooled_out_of_sight() -> None:
     # Review B's probe: 9 pigs in 50 pool into "other", and leave a sparse 2 x 2 table.
-    found = _chi_square(["zombie"] * 50, ["zombie"] * 41 + ["pig"] * 9)
+    found = _categories_test(["zombie"] * 50, ["zombie"] * 41 + ["pig"] * 9)
 
     assert found.test == "Fisher's exact"
     assert found.p_value == pytest.approx(0.002634204400259044, rel=1e-9)
@@ -199,7 +199,7 @@ def test_fishers_exact_test_matches_scipy(
 
 def test_a_rare_category_joins_other_not_a_real_one() -> None:
     # Review B's probe: the 9 pigs were merged into the husks, which hid them.
-    found = _chi_square(
+    found = _categories_test(
         ["zombie"] * 30 + ["husk"] * 20, ["zombie"] * 25 + ["husk"] * 16 + ["pig"] * 9
     )
 
@@ -219,7 +219,7 @@ def test_one_category_on_both_sides_is_no_test() -> None:
 
 def test_two_categories_all_too_rare_to_pool_get_fishers_test_on_the_raw_table() -> None:
     # The re-review's probe: runs=9, a zombie in every play against a pig in every play.
-    found = _chi_square(["zombie"] * 9, ["pig"] * 9)
+    found = _categories_test(["zombie"] * 9, ["pig"] * 9)
 
     assert found.test == "Fisher's exact"
     assert found.p_value == pytest.approx(2 / math.comb(18, 9), rel=1e-12)
@@ -233,7 +233,7 @@ def _items(namespace: str) -> list[str]:
 
 def test_many_categories_all_too_rare_to_pool_get_a_permutation_test() -> None:
     # The re-review's probe: 13 categories a side and none in common.
-    found = _chi_square(_items("minecraft"), _items("pumpkin"))
+    found = _categories_test(_items("minecraft"), _items("pumpkin"))
 
     assert found.test == PERMUTATION
     assert found.p_value == 1 / (PERMUTATIONS + 1)  # no relabelling is as far apart
@@ -244,9 +244,19 @@ def test_a_permutation_test_of_alike_categories_finds_no_difference() -> None:
     shuffled = _items("minecraft")
     random.Random(1).shuffle(shuffled)
 
-    found = _chi_square(_items("minecraft"), shuffled)
+    found = _categories_test(_items("minecraft"), shuffled)
 
     assert (found.test, found.p_value) == (PERMUTATION, 1.0)
+    # Six alike against six: many shuffles are as alike, and they count too.
+    assert _categories_test(list("aabbcc"), list("abcabc")).p_value == 1.0
+
+
+def test_a_permutation_test_counts_the_shuffles_that_tie_with_the_samples() -> None:
+    # Six against six: many shuffles give this very table, and they count as far apart.
+    found = _categories_test(list("aabbcc"), list("abcccc"))
+
+    assert found.effect_size == pytest.approx(1 / 3)
+    assert found.p_value == 6133 / (PERMUTATIONS + 1)  # this seed's shuffles, pinned
 
 
 def test_a_permutation_test_gives_the_same_p_value_from_the_same_seed() -> None:
@@ -254,14 +264,14 @@ def test_a_permutation_test_gives_the_same_p_value_from_the_same_seed() -> None:
     reference = [rng.choice("abcdefghijklm") for _ in range(30)]
     candidate = [rng.choice("abcdefghijklmnop") for _ in range(30)]
 
-    first, second = (_chi_square(reference, candidate) for _ in range(2))
+    first, second = (_categories_test(reference, candidate) for _ in range(2))
 
     assert first == second
     assert 0.0 < first.p_value < 1.0
 
 
 def test_disjoint_categories_reject() -> None:
-    found = _chi_square(["a"] * 50, ["b"] * 50)
+    found = _categories_test(["a"] * 50, ["b"] * 50)
 
     assert found.effect_size == pytest.approx(1.0)
     assert found.p_value < 1e-20

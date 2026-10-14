@@ -4,6 +4,7 @@ import random
 from collections.abc import Mapping
 
 import pytest
+from support.samples import RARE_ITEMS_P, rare_items
 
 from mscts.stats import (
     ALPHA,
@@ -180,6 +181,15 @@ def test_one_sample_against_fifty_rejects_by_its_count() -> None:
     assert decision.rejected
     assert decision.difference is not None
     assert decision.difference.test == _PER_PLAY
+
+
+def test_a_permutation_test_draws_from_the_generator_it_is_given() -> None:
+    reference, candidate = rare_items()
+
+    (decision,) = _decide({"loot": reference}, {"loot": candidate})
+
+    assert decision.difference is not None
+    assert decision.p_value == RARE_ITEMS_P
 
 
 def test_the_counts_are_corrected_with_the_values() -> None:

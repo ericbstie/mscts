@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from support.samples import RARE_ITEMS_P, rare_items
 from support.selfcheck import selfcheck_params
 
 from mscts import group as group_module
@@ -19,7 +20,7 @@ from mscts import run as run_module
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import DEFAULT_RUNS, CommandMissing, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
-from mscts.run import Attached, Server, run, run_results, selfcheck
+from mscts.run import Attached, Server, judge_samples, run, run_results, selfcheck
 from mscts.settle import PlayersStillOnline
 from mscts.stats import PER_PLAY, PERMUTATION, Difference, Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
@@ -430,6 +431,16 @@ async def test_categories_all_too_rare_to_pool_still_mismatch(
     (divergence,) = verdict.divergences
     assert divergence.tested is not None
     assert divergence.tested.test == PERMUTATION
+
+
+def test_a_verdict_s_permutation_test_is_seeded_so_every_run_gives_its_p_value() -> None:
+    reference, candidate = rare_items()
+
+    verdict = judge_samples(_statistical(_idle), {"loot": reference}, {"loot": candidate})
+
+    (divergence,) = verdict.divergences
+    assert divergence.tested is not None
+    assert divergence.tested.p_value == RARE_ITEMS_P
 
 
 @pytest.mark.asyncio
