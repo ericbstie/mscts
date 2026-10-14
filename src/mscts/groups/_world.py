@@ -113,12 +113,7 @@ async def remove_tagged(control: Control, tag: str) -> None:
     Raises:
         TimeoutError: An entity was still there after `_CORPSE_POLLS` asks.
     """
-    try:
-        await control.run("gamerule mob_drops false")
-        await control.run(f"kill @e[tag={tag}]")
-    finally:
-        await control.run("gamerule mob_drops true")
-    await control.run("tick unfreeze")
+    await _kill_tagged(control, tag)
     for _ in range(_CORPSE_POLLS):
         said = await control.run(f"execute if entity @e[tag={tag}]")
         if any(_NONE_LEFT in packet.payload for packet in said):
@@ -135,12 +130,25 @@ async def remove_tagged_until_gone(control: Control, tag: str, bot: Bot) -> None
     finish dying inside one of its windows, a tick that depends on when the freeze came
     (measured on #365: 3 Self-check plays of 20).
 
+    Control never asks whether a tagged entity is left (`execute if entity`), as
+    `remove_tagged` does: the Bot's wait covers it, and a server without `/execute` (Pumpkin)
+    would fail a clean-up the Group does not test (docs/research/2026-10-14-tagged-cleanup.md).
+
     Raises:
-        TimeoutError: An entity was still alive after `_CORPSE_POLLS` asks, or `bot` still
-            tracked one after `_GONE_SYNCS` barriers.
+        TimeoutError: `bot` still tracked another entity after `_GONE_SYNCS` barriers.
     """
-    await remove_tagged(control, tag)
+    await _kill_tagged(control, tag)
     await _until_only_players(bot)
+
+
+async def _kill_tagged(control: Control, tag: str) -> None:
+    """Kill every entity tagged `tag` with `mob_drops` off, then unfreeze the world."""
+    try:
+        await control.run("gamerule mob_drops false")
+        await control.run(f"kill @e[tag={tag}]")
+    finally:
+        await control.run("gamerule mob_drops true")
+    await control.run("tick unfreeze")
 
 
 async def _until_only_players(bot: Bot) -> None:

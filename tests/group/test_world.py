@@ -76,6 +76,20 @@ async def test_the_clean_up_returns_once_the_bot_tracks_only_players() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_clean_up_kills_without_drops_unfreezes_and_never_asks_with_execute() -> None:
+    world = _World(dying=0)
+
+    await remove_tagged_until_gone(world, _TAG, cast("Bot", world))
+
+    assert world.commands == [
+        "gamerule mob_drops false",
+        f"kill @e[tag={_TAG}]",
+        "gamerule mob_drops true",
+        "tick unfreeze",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_a_body_that_never_goes_ends_the_clean_up_with_a_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

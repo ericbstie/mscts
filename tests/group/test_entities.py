@@ -2,8 +2,7 @@
 
 Every test plays a Group against a fake server and reads the Transcript for what Control sent
 and the Marks (the Observation windows). What a server answers is never asserted: the fake
-answers Control's markers, the barrier, and the `execute if entity` that asks whether a tagged
-entity is left (nothing is).
+answers Control's markers and the barrier.
 """
 
 import asyncio
@@ -33,9 +32,8 @@ MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 COMMANDS = tree(
     "gamerule", "tp", "tick", "summon", "kill", "data", "effect", "attribute", "setblock",
-    "execute", "tellraw",
+    "tellraw",
 )  # fmt: skip
-NONE_LEFT = "commands.execute.conditional.fail"
 STEP = "tick step 1"
 
 PACKETS = (
@@ -52,6 +50,7 @@ PACKETS = (
 )
 LABEL = f"{OBSERVE_OPEN} {' '.join(PACKETS)}"
 TAG = "mscts_entities"
+KILL = f"kill @e[tag={TAG}]"
 
 SETUP = (
     "gamerule player_movement_check false",
@@ -66,7 +65,6 @@ TEARDOWN = (
     f"kill @e[tag={TAG}]",
     "gamerule mob_drops true",
     "tick unfreeze",
-    f"execute if entity @e[tag={TAG}]",
     "gamerule respawn_radius 10",
     "gamerule player_movement_check true",
     "tick unfreeze",
@@ -83,9 +81,8 @@ PIG_ID = 300
 class EntitiesServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
-    It answers an `execute if entity` with the failure that says no entity matched. With
-    `pig_goes_after` set, it tells the watcher about a pig as it joins, and removes it once the
-    watcher has sent that many barrier requests after Control's `execute if entity` (a body that
+    With `with_pig` set, it tells the watcher about a pig as it joins, and removes it once the
+    watcher has sent `pig_goes_after` barrier requests after Control's last `kill` (a body that
     is still dying); None leaves the pig there.
     """
 
@@ -115,9 +112,8 @@ class EntitiesServer:
                 command = str((packet.fields or {})["command"])
                 if command.startswith(MARKER):
                     await self._say(peer, json.loads(command.removeprefix(MARKER)))
-                elif command.startswith("execute if entity"):
+                elif command == KILL:
                     self._asked = True
-                    await self._say(peer, NONE_LEFT)
 
     async def _maybe_remove_pig(self, peer: Peer) -> None:
         """Count the watcher's requests after the ask, and remove the pig at the set count."""
@@ -301,8 +297,8 @@ async def test_the_tagged_entities_go_and_the_rules_come_back_after_the_last_win
 
 
 def _asked_at(transcript: Transcript) -> int:
-    """When Control asked whether a tagged entity is left."""
-    return next(t for t, c in _commands(transcript) if c.startswith("execute if entity"))
+    """When Control killed the tagged entities, after the last window."""
+    return next(t for t, c in _commands(transcript) if c == KILL)
 
 
 def _watcher_requests_after(transcript: Transcript, t_ns: int) -> int:
