@@ -42,6 +42,8 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #360: `Bot.wait_until_handled` proves the server handled what a Bot sent in about one packet pass (about 50 ms); use it before a step. Use `sync` (3 passes) only when you need everything the action caused. The proof is measured on vanilla only (#376).
+- #360: run a family's stress series under one outer `live_lock.py`, so the runs do not wait for the lock one by one; for runs past the 2 h background cap, detach the driver with `setsid` and prefix watcher lines with the file name.
 - #37: in a frozen world `ChunkMap.tick` still runs `ServerEntity.sendChanges` every server tick, so an entity's periodic `move_entity_pos`, `set_entity_motion` and `entity_position_sync` follow the wall clock and cannot be compared tick-exact. One-off packets (`add_entity`, `remove_entities`, a dirty `set_entity_data`) stay on their step.
 - #37: a packet belongs to step k when it arrives between the Marks `tick:<k-1>` and `tick:<k>`. Count steps from the Marks, not from where a listing prints them. A 20-play probe that matches does not predict the Self-check: give a reason for every entity packet a tick-exact Group compares.
 - #37: a block that loses its support pops inside the `setblock` command that removes it; its `section_blocks_update` arrives in the next frozen tick, before the step. An item moves at random from the tick after it spawns: end the window on the drop tick and kill the item before the next window.
