@@ -2475,6 +2475,27 @@ def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
     # MIN_EXPECTED of each, or one is left
 def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form; df >= 1
 
+ALPHA = 0.01                        # each sample name's level, after Holm's correction
+type Sample = float | str           # a number, or a category
+type Summary = dict[str, object]    # {"samples": n, "median": x, "quartiles": [q1, q3]}
+                                    # (statistics.quantiles, inclusive), or {"samples": n,
+                                    # "shares": {category: share to 3 decimals}}; {"samples": 0}
+@frozen
+class Decision:
+    name: str                       # the sample name, "spawn.distance"
+    rejected: bool                  # adjusted p_value <= ALPHA, or no test (below)
+    difference: Difference | None   # None: a side has no samples of the name, or one side's
+                                    # are numbers and the other's categories
+    p_value: float | None           # Holm-adjusted over the Group's tested names
+    reference: Summary
+    candidate: Summary
+def decide(reference: Mapping[str, Sequence[Sample]],
+           candidate: Mapping[str, Sequence[Sample]]) -> tuple[Decision, ...]: ...
+    # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
+    # by chi_square, the tested names' p-values corrected together by holm
+def holm(p_values: Sequence[float]) -> list[float]: ...   # Holm-Bonferroni, same order
+def summary(samples: Sequence[Sample]) -> Summary: ...
+
 # run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
 #                     keep_transcripts=False) -> RunResult
 # plays exactly as run() does (run() returns its .verdicts); a repetition the Candidate

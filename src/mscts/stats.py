@@ -6,8 +6,9 @@ standard library, and a statistical Group needs nothing else scipy has.
 
 import bisect
 import math
+import statistics
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from fractions import Fraction
 
@@ -31,6 +32,121 @@ class Difference:
     effect: str
     effect_size: float
     p_value: float
+
+
+ALPHA = 0.01
+"""The level each sample name of a statistical Group is tested at, after Holm's correction."""
+
+type Sample = float | str
+"""One sample: a number, or a category."""
+
+type Summary = dict[str, object]
+"""A side's samples of one name, in brief: their count, then their median and quartiles
+(`{"samples": 50, "median": 3.2, "quartiles": [1.9, 4.5]}`) or each category's share, to
+three decimals (`{"samples": 50, "shares": {"skeleton": 0.6, "zombie": 0.4}}`). A side with
+none is `{"samples": 0}`."""
+
+
+@dataclass(frozen=True, slots=True)
+class Decision:
+    """Whether a statistical Group's samples of one name differ between the two sides.
+
+    Attributes:
+        name: The sample name, e.g. `spawn.distance`.
+        rejected: The two sides' samples do not come from one distribution: the test's
+            Holm-adjusted p-value is at most `ALPHA`, or there is no test to run because a
+            side has no samples of the name, or one side's are numbers and the other's
+            categories.
+        difference: The test, its effect size and its own p-value; None with no test.
+        p_value: The test's p-value after Holm's correction over the Group's tested names;
+            None with no test.
+        reference: The Reference's samples in brief (`Summary`).
+        candidate: The Candidate's samples in brief.
+    """
+
+    name: str
+    rejected: bool
+    difference: Difference | None
+    p_value: float | None
+    reference: Summary
+    candidate: Summary
+
+
+def decide(
+    reference: Mapping[str, Sequence[Sample]], candidate: Mapping[str, Sequence[Sample]]
+) -> tuple[Decision, ...]:
+    """Each sample name either side has, in name order: do the two sides' samples differ?
+
+    Numbers are tested with `kolmogorov_smirnov`, categories with `chi_square`, and the
+    p-values of the names tested are corrected together (`holm`), so a Group with several
+    names still rejects one by chance at most `ALPHA` of the time. Each name's samples on a
+    side are all numbers or all categories, as `GroupContext.sample` keeps them.
+    """
+    names = sorted({*reference, *candidate})
+    differences = {
+        name: difference
+        for name in names
+        if (difference := _tested(reference.get(name, ()), candidate.get(name, ()))) is not None
+    }
+    adjusted = dict(zip(differences, holm([d.p_value for d in differences.values()]), strict=True))
+    return tuple(
+        Decision(
+            name=name,
+            rejected=name not in adjusted or adjusted[name] <= ALPHA,
+            difference=differences.get(name),
+            p_value=adjusted.get(name),
+            reference=summary(reference.get(name, ())),
+            candidate=summary(candidate.get(name, ())),
+        )
+        for name in names
+    )
+
+
+def holm(p_values: Sequence[float]) -> list[float]:
+    """The Holm-Bonferroni adjusted p-values of `p_values`, in the same order.
+
+    The k-th smallest of m is multiplied by m - k + 1, raised to the one before it if it
+    is smaller, and capped at 1. A name rejects when its adjusted p-value is at most `ALPHA`.
+    """
+    order = sorted(range(len(p_values)), key=lambda index: p_values[index])
+    adjusted = [1.0] * len(p_values)
+    running = 0.0
+    for rank, index in enumerate(order):
+        running = max(running, min(1.0, (len(p_values) - rank) * p_values[index]))
+        adjusted[index] = running
+    return adjusted
+
+
+def summary(samples: Sequence[Sample]) -> Summary:
+    """`samples` in brief (`Summary`): their median and quartiles, or each category's share."""
+    if not samples:
+        return {"samples": 0}
+    if all(isinstance(sample, str) for sample in samples):
+        counts = Counter(samples)
+        shares = {name: round(counts[name] / len(samples), 3) for name in sorted(counts)}
+        return {"samples": len(samples), "shares": shares}
+    numbers = [float(sample) for sample in samples]
+    lower, median, upper = statistics.quantiles(numbers, n=4, method="inclusive")
+    return {"samples": len(samples), "median": median, "quartiles": [lower, upper]}
+
+
+def _tested(reference: Sequence[Sample], candidate: Sequence[Sample]) -> Difference | None:
+    """The two-sample test of one name's samples, or None if they cannot be tested.
+
+    They cannot when a side has none, or one side's are numbers and the other's categories.
+    """
+    if not reference or not candidate:
+        return None
+    words = [isinstance(side[0], str) for side in (reference, candidate)]
+    if words == [True, True]:
+        return chi_square([str(sample) for sample in reference], [str(s) for s in candidate])
+    if words == [False, False]:
+        return kolmogorov_smirnov(_numbers(reference), _numbers(candidate))
+    return None
+
+
+def _numbers(samples: Sequence[Sample]) -> list[float]:
+    return [sample for sample in samples if not isinstance(sample, str)]
 
 
 def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference:
