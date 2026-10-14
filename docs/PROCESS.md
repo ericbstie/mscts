@@ -406,6 +406,10 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-14 | worker (#360) | About 13 h of stress runs for five families, shared with two workers on 4 CPUs, most of it lock contention | **defer**: #374; timing handbook line, one outer lock per series |
+| 2026-10-14 | worker (#360) | Its first timing run spun busy loops while waiting for the lock | **adopt**: the same handbook line |
+| 2026-10-14 | worker (#360) | The new fake server crashed on closed sockets until it followed the `ticking_server` pattern | **reject**: the pattern is in the fakes; one increment |
+| 2026-10-14 | reviews (#367) | The proof is measured on vanilla only; a Candidate that answers statistics requests outside its action queue gets none | **defer**: #376; the guide and docstrings now say so |
 | 2026-10-14 | workers (#37, #38) | Most wall-clock time went to waiting for the live lock behind #360's stress series; the lead's own tiers waited over 2 h each | **defer**: #374 (the lock is not first come, first served); a repeat of the train 31 complaint, so it is a process bug now |
 | 2026-10-14 | worker (#37) | A 20-play probe matched, then the Self-check failed 2 of 20 on falling-block movement (the tracker clock) | **adopt**: timing handbook line, every entity packet a tick-exact Group compares needs a reason the tracker clock cannot shift it |
 | 2026-10-14 | worker (#37) | A probe listing put each packet one step early | **adopt**: timing handbook line, count steps from the Marks |

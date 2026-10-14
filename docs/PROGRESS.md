@@ -204,9 +204,13 @@ briefs at 3–6 increments and about 1500 lines at most.
   which runs in frozen ticks too. Each new Group passed its Self-check 20 of
   20. On the train's tip every commit checked, reference 35 of 35,
   candidate 15 of 15. Pumpkin fails every fluid Group on the flow itself.
-- #360's lighter barrier (PR #367) is in its stress runs.
+- #367 (#360): `GroupContext.step_after` waits until the server has handled
+  the acting Bot's packets (`Bot.wait_until_handled`, two statistics
+  requests) before Control steps, at every act-then-step site in five Group
+  families. Both reviews found nothing blocking; five stress runs per family
+  passed; `player/fall` takes 81.3 s a play against 74.8 s on main.
 - Filed: #373 (`add_transient_block` titles), #374 (the live lock is not
-  first come, first served).
+  first come, first served), #376 (measure the step proof on Pumpkin).
 
 ### 2026-10-11: train 32
 
