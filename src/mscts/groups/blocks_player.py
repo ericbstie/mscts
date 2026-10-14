@@ -186,6 +186,33 @@ def _ticks_until(per_tick: float, share: float) -> int:
     return ticks
 
 
+SLACK_TICKS = 20
+"""How many ticks an on-time finish waits beyond the least the server accepts, so that a server
+that runs late cannot refuse it."""
+
+
+def break_ticks(speed: float, hardness: float, divisor: int) -> int:
+    """How many client ticks after the start a vanilla client finishes a block.
+
+    The client adds a tick's progress to its own each tick, in binary32, and sends the finish
+    on the tick it reaches 1 (`MultiPlayerGameMode.continueDestroyBlock`).
+    """
+    per_tick = _progress(speed, hardness, divisor)
+    progress, ticks = 0.0, 0
+    while progress < 1.0:
+        progress = _float32(progress + per_tick)
+        ticks += 1
+    return ticks
+
+
+def finish_ticks(speed: float, hardness: float, divisor: int) -> int:
+    """How many ticks an on-time finish waits: the client's, or `SLACK_TICKS` past the server's."""
+    return max(
+        break_ticks(speed, hardness, divisor),
+        accept_ticks(speed, hardness, divisor) + SLACK_TICKS,
+    )
+
+
 def accept_ticks(speed: float, hardness: float, divisor: int) -> int:
     """How many ticks of dig the server needs before it accepts a finish.
 
@@ -245,7 +272,22 @@ EARLY_CASES = (
 ticks, and obsidian with a diamond pickaxe, the tool it needs, which takes 131. The digger has
 just joined, far short of the 149 and 187 ticks after which the delayed destroy breaks them."""
 
-FINISHES = EARLY_CASES
+SURVIVAL_CASES = (
+    _Finish(_Dig("minecraft:stone", "minecraft:wooden_pickaxe"), finish_ticks(2.0, 1.5, 30)),
+    _Finish(_Dig("minecraft:stone", "minecraft:iron_pickaxe"), finish_ticks(6.0, 1.5, 30)),
+    _Finish(_Dig("minecraft:dirt", _HAND), finish_ticks(1.0, 0.5, 30)),
+    _Finish(_Dig("minecraft:stone", _HAND), finish_ticks(1.0, 1.5, 100)),
+    _Finish(_Dig("minecraft:obsidian", _DIAMOND_PICKAXE), finish_ticks(8.0, 50.0, 30)),
+)
+"""Finishes sent when the client would send them, which the server accepts: the block breaks and
+drops. Obsidian and stone by hand take the longest, 188 and 151 ticks."""
+
+AGED_CASES = EARLY_CASES
+"""The early finishes again, from a digger that the on-time waits have kept alive for 429 ticks:
+the server refuses each, then breaks the block a tick later, past the 149 and 187 ticks its
+delayed destroy needs."""
+
+FINISHES = (*EARLY_CASES, *SURVIVAL_CASES, *AGED_CASES)
 """Every survival dig, in the order `blocks/dig-survival` plays them."""
 
 
@@ -260,7 +302,7 @@ async def survival(context: GroupContext, sleep: Sleep) -> None:
 
 @group("blocks/dig-survival", masks=DROP_MASKS)
 async def dig_survival(context: GroupContext) -> None:
-    """The digger finishes digs far too early, which the server refuses."""
+    """The digger finishes digs far too early, then on time, then far too early once it has aged."""
     await survival(context, asyncio.sleep)
 
 

@@ -1167,7 +1167,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `TICK_S` — how long a server tick lasts; `Sleep` — how a survival dig waits;
   `accept_ticks` and `delayed_ticks` — how many ticks of dig the server needs before it accepts
   a finish, and how many ticks a player must have lived for a refused one to break the block a
-  tick later; `EARLY_CASES` — the finishes sent far too early; `FINISHES` — every survival dig,
+  tick later; `SLACK_TICKS`, `break_ticks` and `finish_ticks` — how many ticks an on-time finish
+  waits past the least the server accepts, how many client ticks a vanilla client takes to finish
+  a block, and how many a finish waits; `EARLY_CASES`, `SURVIVAL_CASES` and `AGED_CASES` — the
+  finishes sent far too early, on time, and far too early by an aged digger; `FINISHES` — every survival dig,
   in the order played; `survival` — plays `blocks/dig-survival` with a given `Sleep`;
   `PLACE_CASES` and `ATTACHED_CASES` — what the placements of the two place Groups are;
   `dig_survival`, `dig_creative`, `place` and `place_attached` — the `blocks/dig-survival`,

@@ -249,6 +249,10 @@ def test_the_survival_windows_leave_out_the_packets_the_server_sends_on_its_cloc
     }
 
 
+def test_a_survival_dig_waits_50_ms_a_tick() -> None:
+    assert blocks_player.TICK_S == 0.05  # 20 ticks a second
+
+
 @pytest.mark.parametrize(
     ("speed", "hardness", "divisor", "ticks"),
     [
@@ -257,6 +261,9 @@ def test_the_survival_windows_leave_out_the_packets_the_server_sends_on_its_cloc
         (1.0, 0.5, 30, 10),  # a hand on dirt
         (1.0, 1.5, 100, 104),  # a hand on stone
         (8.0, 50.0, 30, 131),  # a diamond pickaxe on obsidian
+        # Pins of the binary32 arithmetic: in binary64 the first would be 174, the second 140.
+        (6.0, 50.0, 30, 175),  # the progress a tick is rounded to binary32
+        (1.0, 2.0, 100, 139),  # the progress times the ticks is rounded to binary32
     ],
 )
 def test_accept_ticks_counts_the_ticks_of_dig_the_server_needs_before_it_accepts_a_finish(
@@ -288,6 +295,64 @@ def test_the_early_finishes_use_the_tool_each_block_needs_and_finish_as_soon_as_
     for case in blocks_player.EARLY_CASES:
         assert case.ticks == 1
         assert blocks_player.accept_ticks(*MINING[case.dig.block, case.dig.tool]) > 100
+
+
+@pytest.mark.parametrize(
+    ("speed", "hardness", "divisor", "ticks"),
+    [
+        (2.0, 1.5, 30, 23),  # a wooden pickaxe on stone: 0.0444 a tick, 22.5 rounded up
+        (6.0, 1.5, 30, 8),  # an iron pickaxe on stone: 0.1333 a tick
+        (1.0, 0.5, 30, 15),  # a hand on dirt: 0.0667 a tick, a binary32 sum that reaches 1 at 15
+        (1.0, 1.5, 100, 151),  # a hand on stone: the binary32 sum is just short of 1 at 150
+    ],
+)
+def test_break_ticks_counts_the_ticks_a_client_adds_its_progress(
+    speed: float, hardness: float, divisor: int, ticks: int
+) -> None:
+    assert blocks_player.break_ticks(speed, hardness, divisor) == ticks
+
+
+@pytest.mark.parametrize("mining", MINING.values())
+def test_an_on_time_finish_waits_the_clients_time_and_has_slack_past_the_servers(
+    mining: tuple[float, float, int],
+) -> None:
+    waits = blocks_player.finish_ticks(*mining)
+
+    assert waits >= blocks_player.break_ticks(*mining)
+    assert waits >= blocks_player.accept_ticks(*mining) + blocks_player.SLACK_TICKS
+    assert waits in {blocks_player.break_ticks(*mining), blocks_player.accept_ticks(*mining) + 20}
+
+
+def test_the_on_time_finishes_cover_the_issue_and_each_has_a_second_past_the_servers() -> None:
+    assert [(case.dig.block, case.dig.tool) for case in blocks_player.SURVIVAL_CASES] == [
+        ("minecraft:stone", "minecraft:wooden_pickaxe"),
+        ("minecraft:stone", "minecraft:iron_pickaxe"),
+        ("minecraft:dirt", "minecraft:air"),
+        ("minecraft:stone", "minecraft:air"),
+        ("minecraft:obsidian", "minecraft:diamond_pickaxe"),
+    ]
+    for case in blocks_player.SURVIVAL_CASES:
+        least = blocks_player.accept_ticks(*MINING[case.dig.block, case.dig.tool])
+        assert case.ticks - least >= 20
+
+
+def test_the_aged_early_finishes_come_once_the_on_time_waits_have_aged_the_digger() -> None:
+    assert [(case.dig.block, case.dig.tool, case.ticks) for case in blocks_player.AGED_CASES] == [
+        ("minecraft:stone", "minecraft:air", 1),
+        ("minecraft:obsidian", "minecraft:diamond_pickaxe", 1),
+    ]
+    waited = sum(case.ticks for case in blocks_player.SURVIVAL_CASES)
+    for case in blocks_player.AGED_CASES:
+        # The digger has lived through every on-time wait: a second past the delayed destroy's.
+        assert waited >= blocks_player.delayed_ticks(*MINING[case.dig.block, case.dig.tool]) + 20
+
+
+def test_the_survival_digs_are_played_early_then_on_time_then_early_from_an_aged_digger() -> None:
+    assert (
+        *blocks_player.EARLY_CASES,
+        *blocks_player.SURVIVAL_CASES,
+        *blocks_player.AGED_CASES,
+    ) == blocks_player.FINISHES
 
 
 def test_the_early_finishes_come_first_while_the_digger_is_new() -> None:
