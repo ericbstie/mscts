@@ -1,0 +1,168 @@
+"""Two-sample tests for statistical Groups (#24, ADR-0006).
+
+Both are written here rather than taken from scipy: each is a few dozen lines of the
+standard library, and a statistical Group needs nothing else scipy has.
+"""
+
+import bisect
+import math
+from collections import Counter
+from collections.abc import Sequence
+from dataclasses import dataclass
+from fractions import Fraction
+
+MIN_EXPECTED = 5
+"""The fewest samples a chi-square test expects in each category; sparser ones are pooled."""
+
+
+@dataclass(frozen=True, slots=True)
+class Difference:
+    """How two samples differ, by a two-sample test.
+
+    Attributes:
+        test: The test: `Kolmogorov-Smirnov` or `chi-square`.
+        effect: The name of its effect size: `D` or `V` (Cramér's V).
+        effect_size: How far apart the two samples are, from 0 (alike) to 1.
+        p_value: The chance of a difference at least this large if both samples came from
+            one distribution.
+    """
+
+    test: str
+    effect: str
+    effect_size: float
+    p_value: float
+
+
+def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference:
+    """The two-sample Kolmogorov-Smirnov test of two samples of numbers.
+
+    D is the largest gap between the two samples' cumulative shares. The p-value is exact
+    (Hodges' count of the orderings of the two samples that reach a gap that large). It
+    assumes no value is repeated; repeated values make it larger than the true one, so the
+    test rejects less often, never more.
+
+    Raises:
+        ValueError: A side has no samples.
+    """
+    _require_samples(reference, candidate)
+    n, m = len(reference), len(candidate)
+    gap = _largest_gap(sorted(reference), sorted(candidate))
+    return Difference(
+        test="Kolmogorov-Smirnov",
+        effect="D",
+        effect_size=gap / (n * m),
+        p_value=_reaching(gap, n, m),
+    )
+
+
+def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference:
+    """The chi-square test of homogeneity of two samples of categories.
+
+    Categories under `MIN_EXPECTED` expected samples on a side are pooled first (`pooled`).
+    One category left means no difference can be shown: V 0, p-value 1.
+
+    Raises:
+        ValueError: A side has no samples.
+    """
+    _require_samples(reference, candidate)
+    ours, theirs = Counter(reference), Counter(candidate)
+    columns = pooled([(ours[name], theirs[name]) for name in sorted(ours | theirs)])
+    if len(columns) < 2:  # noqa: PLR2004 - a test of homogeneity needs two categories
+        return Difference(test="chi-square", effect="V", effect_size=0.0, p_value=1.0)
+    statistic = _pearson(columns)
+    total = len(reference) + len(candidate)
+    return Difference(
+        test="chi-square",
+        effect="V",
+        effect_size=math.sqrt(statistic / total),
+        p_value=chi_square_survival(statistic, len(columns) - 1),
+    )
+
+
+def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:
+    """`columns`, the two sides' counts per category, with the sparse categories pooled.
+
+    A category is sparse when the side with fewer samples expects fewer than `MIN_EXPECTED`
+    of it. The two smallest categories are merged until none is sparse, or one is left.
+    """
+    fewer = min(sum(column[0] for column in columns), sum(column[1] for column in columns))
+    total = sum(map(sum, columns))
+    left: list[tuple[int, int]] = sorted(columns, key=sum)
+    while len(left) > 1 and fewer * sum(left[0]) < MIN_EXPECTED * total:
+        merged = (left[0][0] + left[1][0], left[0][1] + left[1][1])
+        left = sorted([merged, *left[2:]], key=sum)
+    return left
+
+
+def chi_square_survival(statistic: float, df: int) -> float:
+    """The chance that a chi-square variable with `df` degrees of freedom is at least `statistic`.
+
+    In closed form, as integer degrees of freedom allow: a finite sum of the Poisson terms
+    for an even `df`, and the normal tail plus a finite sum for an odd one.
+
+    Raises:
+        ValueError: `df` is less than 1.
+    """
+    if df < 1:
+        msg = f"a chi-square distribution has at least 1 degree of freedom, not {df}"
+        raise ValueError(msg)
+    half = statistic / 2
+    if df % 2 == 0:
+        term, total = math.exp(-half), 0.0
+        for i in range(df // 2):
+            total += term
+            term *= half / (i + 1)
+        return min(1.0, total)
+    total = math.erfc(math.sqrt(half))
+    term = math.sqrt(2 * statistic / math.pi) * math.exp(-half)
+    for i in range(1, (df + 1) // 2):
+        total += term
+        term *= statistic / (2 * i + 1)
+    return min(1.0, total)
+
+
+def _require_samples(reference: Sequence[object], candidate: Sequence[object]) -> None:
+    for side, samples in (("Reference", reference), ("Candidate", candidate)):
+        if not samples:
+            msg = f"the {side} has no samples to test"
+            raise ValueError(msg)
+
+
+def _largest_gap(reference: Sequence[float], candidate: Sequence[float]) -> int:
+    """The largest gap between the sorted samples' cumulative shares, times n * m."""
+    n, m = len(reference), len(candidate)
+    return max(
+        abs(bisect.bisect_right(reference, value) * m - bisect.bisect_right(candidate, value) * n)
+        for value in (*reference, *candidate)
+    )
+
+
+def _reaching(gap: int, n: int, m: int) -> float:
+    """The share of the orderings of n and m values whose cumulative gap reaches `gap` / (n m).
+
+    An ordering is a lattice path from (0, 0) to (n, m); it stays inside while every point
+    (i, j) has |i m - j n| < gap. A gap of 0 is reached by every ordering.
+    """
+    if gap == 0:
+        return 1.0
+    inside = [1] + [0] * m  # the paths to (0, j) that stayed inside
+    for j in range(1, m + 1):
+        inside[j] = inside[j - 1] if j * n < gap else 0
+    for i in range(1, n + 1):
+        inside[0] = inside[0] if i * m < gap else 0
+        for j in range(1, m + 1):
+            inside[j] = inside[j] + inside[j - 1] if abs(i * m - j * n) < gap else 0
+    total = math.comb(n + m, n)
+    return float(Fraction(total - inside[m], total))
+
+
+def _pearson(columns: Sequence[tuple[int, int]]) -> float:
+    """Pearson's chi-square statistic of a two-row table, one (row 0, row 1) count per column."""
+    rows = (sum(column[0] for column in columns), sum(column[1] for column in columns))
+    total = sum(rows)
+    expected = [[row * sum(column) / total for row in rows] for column in columns]
+    return sum(
+        (observed - mean) ** 2 / mean
+        for column, means in zip(columns, expected, strict=True)
+        for observed, mean in zip(column, means, strict=True)
+    )

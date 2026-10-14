@@ -99,6 +99,7 @@ test needs it:
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict`; `window_takes` |
 | `measure.py` | `Measurement`, span extraction, stats |
+| `stats.py` | the two-sample tests of statistical Groups: `kolmogorov_smirnov`, `chi_square` → `Difference` (#24) |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
 
 ## Interfaces
@@ -2453,6 +2454,26 @@ class Stats:
     p95: float                      # nearest rank
 
 def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
+
+# stats.py (#24): two-sample tests, in-repo (the standard library only; no scipy).
+@frozen
+class Difference:
+    test: str                       # "Kolmogorov-Smirnov" or "chi-square"
+    effect: str                     # the effect size's name: "D", or "V" (Cramér's V)
+    effect_size: float              # 0 (alike) to 1
+    p_value: float
+
+def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference: ...
+    # D, and the exact p-value (Hodges' lattice-path count, as scipy's method="exact");
+    # repeated values make it conservative. ValueError if a side has no samples.
+def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference: ...
+    # Pearson's test of homogeneity of the two-row table, after pooled(); V = sqrt(chi2 / N).
+    # One column left: V 0, p 1. ValueError if a side has no samples.
+MIN_EXPECTED = 5
+def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
+    # merges the two smallest categories until the smaller side expects at least
+    # MIN_EXPECTED of each, or one is left
+def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form; df >= 1
 
 # run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
 #                     keep_transcripts=False) -> RunResult
