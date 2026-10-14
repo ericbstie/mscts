@@ -17,7 +17,7 @@ from support.selfcheck import selfcheck_params
 from mscts import group as group_module
 from mscts import run as run_module
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict
-from mscts.group import DEFAULT_RUNS, Group, GroupContext, GroupKind, Script
+from mscts.group import DEFAULT_RUNS, CommandMissing, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
 from mscts.run import Attached, Server, run, run_results, selfcheck
 from mscts.settle import PlayersStillOnline
@@ -280,6 +280,34 @@ async def test_a_play_that_raises_on_the_candidate_fails_each_sample_name(
         detail="the Candidate failed: LookupError: no spawn point",
         test_cases=("x",),
     )
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_fails_one_play_stops_and_fails_the_group(
+    run_token: str, tmp_path: Path
+) -> None:
+    plays: Counter[int] = Counter()
+
+    def make(reference: Attached, candidate: Attached) -> Group:
+        del reference
+        port = candidate.endpoint.port
+
+        async def script(context: GroupContext) -> None:
+            plays[context.endpoint.port] += 1
+            if context.endpoint.port == port and context.play == 1:
+                root = "tick"
+                raise CommandMissing(root)
+            context.sample("x", 0.0)
+
+        return _statistical(script, runs=4)
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    assert (verdict.outcome, verdict.detail) == (
+        Outcome.MISMATCH,
+        "the Candidate failed: missing /tick",
+    )
+    assert sorted(plays.values()) == [2, 4]  # the Candidate's later plays are not played
 
 
 @pytest.mark.asyncio
