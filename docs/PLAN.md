@@ -1163,9 +1163,15 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.blocks_player`: `DIGGER` — the Bot that digs and places; `WATCHER` — the Bot that
   receives the cracks and particles of a dig; `DIGGER_AT`, `WATCHER_AT` and `CONTROL_AT` — where
   the three stand, clear of every block a Group sets; `PACKETS` — what a window compares;
+  `SURVIVAL_PACKETS` — the same without the cracks and the particles, which the clock times;
+  `TICK_S` — how long a server tick lasts; `Sleep` — how a survival dig waits;
+  `accept_ticks` and `delayed_ticks` — how many ticks of dig the server needs before it accepts
+  a finish, and how many ticks a player must have lived for a refused one to break the block a
+  tick later; `EARLY_CASES` — the finishes sent far too early; `FINISHES` — every survival dig,
+  in the order played; `survival` — plays `blocks/dig-survival` with a given `Sleep`;
   `PLACE_CASES` and `ATTACHED_CASES` — what the placements of the two place Groups are;
-  `dig_creative`, `place` and `place_attached` — the `blocks/dig-creative`, `blocks/place` and
-  `blocks/place-attached` scripts.
+  `dig_survival`, `dig_creative`, `place` and `place_attached` — the `blocks/dig-survival`,
+  `blocks/dig-creative`, `blocks/place` and `blocks/place-attached` scripts.
 - `groups.blocks_physics`: `WATCHER` — the Bot that is told what falls and what breaks;
   `SETTLE_TICKS` — how many ticks the world steps after Control builds, before the first window;
   `GRAVITY_PACKETS` — what a `blocks/gravity` window compares; `GRAVITY_CASES` — what each of

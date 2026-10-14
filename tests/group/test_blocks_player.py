@@ -6,6 +6,7 @@ ticks stepped). What a server answers is never asserted: the fake only answers t
 Control's markers.
 """
 
+import asyncio
 from dataclasses import dataclass, replace
 
 import pytest
@@ -23,10 +24,13 @@ from tests.group.test_ticks import barriers_before_steps
 
 PLAYER_ACTION, USE_ITEM_ON = "minecraft:player_action", "minecraft:use_item_on"
 MOVE_ROT = "minecraft:move_player_rot"
-START = 0
+START, STOP = 0, 3
 COMMANDS = tree("setblock", "fill", "tp", "tick", "gamerule", "kill", "item", "summon", "tellraw")
 PLACE_IDS = ("blocks/place", "blocks/place-attached")
-GROUP_IDS = ("blocks/dig-creative", *PLACE_IDS)
+SURVIVAL = "blocks/dig-survival"
+STEPPED_IDS = ("blocks/dig-creative", *PLACE_IDS)
+"""The Groups that step the world after each dig or placement."""
+GROUP_IDS = (*STEPPED_IDS, SURVIVAL)
 PLACE_CASES = {
     "blocks/place": blocks_player.PLACE_CASES,
     "blocks/place-attached": blocks_player.ATTACHED_CASES,
@@ -55,6 +59,8 @@ class Play:
     commands: tuple[str, ...]
     barriers: tuple[int, ...]
     """For each dig or placement a step follows: the digger's barrier requests in between."""
+    slept: tuple[float, ...] = ()
+    """What `blocks/dig-survival` waited, in seconds, in order."""
 
 
 def control_commands(transcript: Transcript) -> list[tuple[int, str]]:
@@ -140,11 +146,21 @@ async def played(group_id: str) -> Play:
 
 
 async def play(group_id: str) -> Play:
+    """Play `group_id` against the fake; `blocks/dig-survival` with a sleep that only records."""
     transcript = Transcript(group_id=group_id, server="fake")
     server = ControlServer(commands=COMMANDS)
+    slept: list[float] = []
+
+    async def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        await asyncio.sleep(0)
+
     async with playing(server, transcript) as context:
-        await GROUPS[group_id].run(context)
-    return read(transcript)
+        if group_id == SURVIVAL:
+            await blocks_player.survival(context, sleep)
+        else:
+            await GROUPS[group_id].run(context)
+    return replace(read(transcript), slept=tuple(slept))
 
 
 def actions(window: Window) -> list[int]:
@@ -155,7 +171,8 @@ def actions(window: Window) -> list[int]:
 def test_each_group_has_the_drop_masks_and_no_prerequisite(group_id: str) -> None:
     group = GROUPS[group_id]
 
-    assert group.kind is GroupKind.TICK_EXACT
+    # A player's dig ticks run on the clock in a frozen world, so dig-survival cannot step them.
+    assert group.kind is (GroupKind.EXACT if group_id == SURVIVAL else GroupKind.TICK_EXACT)
     assert group.requires == ()
     assert group.masks == blocks.DROP_MASKS
 
@@ -164,7 +181,7 @@ def test_only_dig_creative_asks_for_creative_mode() -> None:
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert GROUPS["blocks/dig-creative"].spec(default).game_mode is GameMode.CREATIVE
-    assert all(GROUPS[group_id].spec(default) == default for group_id in PLACE_IDS)
+    assert all(GROUPS[group_id].spec(default) == default for group_id in (*PLACE_IDS, SURVIVAL))
     assert GROUPS["blocks/dig-creative"].spec(default) == replace(
         default, game_mode=GameMode.CREATIVE
     )
@@ -196,7 +213,7 @@ async def test_control_freezes_and_undoes_its_settings_after_the_last_window(gro
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", STEPPED_IDS)
 async def test_the_dig_or_placement_reaches_the_server_before_the_step(group_id: str) -> None:
     result = await played(group_id)
 
@@ -212,6 +229,104 @@ async def test_the_creative_digger_only_starts_and_never_finishes() -> None:
     assert {window.ticks for window in result.windows} == {1}
     assert all("tick step 1" in window.before for window in result.windows)
     assert any("iron_sword" in " ".join(window.before) for window in result.windows)
+
+
+MINING = {
+    ("minecraft:stone", "minecraft:air"): (1.0, 1.5, 100),
+    ("minecraft:stone", "minecraft:wooden_pickaxe"): (2.0, 1.5, 30),
+    ("minecraft:stone", "minecraft:iron_pickaxe"): (6.0, 1.5, 30),
+    ("minecraft:dirt", "minecraft:air"): (1.0, 0.5, 30),
+    ("minecraft:obsidian", "minecraft:diamond_pickaxe"): (8.0, 50.0, 30),
+}
+"""A tool's speed on a block, the block's hardness, and the divisor: 30 with the tool the block
+needs (or when it needs none), 100 without (`BlockState.getDestroyProgress`)."""
+
+
+def test_the_survival_windows_leave_out_the_packets_the_server_sends_on_its_clock() -> None:
+    assert set(blocks_player.SURVIVAL_PACKETS) == set(blocks_player.PACKETS) - {
+        "minecraft:block_destruction",
+        "minecraft:level_event",
+    }
+
+
+@pytest.mark.parametrize(
+    ("speed", "hardness", "divisor", "ticks"),
+    [
+        (2.0, 1.5, 30, 15),  # a wooden pickaxe on stone: 0.0444 a tick, 0.7 at the 16th tick
+        (6.0, 1.5, 30, 5),  # an iron pickaxe on stone
+        (1.0, 0.5, 30, 10),  # a hand on dirt
+        (1.0, 1.5, 100, 104),  # a hand on stone
+        (8.0, 50.0, 30, 131),  # a diamond pickaxe on obsidian
+    ],
+)
+def test_accept_ticks_counts_the_ticks_of_dig_the_server_needs_before_it_accepts_a_finish(
+    speed: float, hardness: float, divisor: int, ticks: int
+) -> None:
+    assert blocks_player.accept_ticks(speed, hardness, divisor) == ticks
+
+
+@pytest.mark.parametrize(
+    ("speed", "hardness", "divisor", "ticks"),
+    [
+        (1.0, 1.5, 100, 149),  # a hand on stone: 1/150 a tick, 1 in binary32 at 150
+        (8.0, 50.0, 30, 187),  # a diamond pickaxe on obsidian: 0.00533 a tick
+    ],
+)
+def test_delayed_ticks_counts_how_long_a_player_lives_before_an_early_finish_breaks_the_block(
+    speed: float, hardness: float, divisor: int, ticks: int
+) -> None:
+    assert blocks_player.delayed_ticks(speed, hardness, divisor) == ticks
+
+
+def test_the_early_finishes_use_the_tool_each_block_needs_and_finish_as_soon_as_they_start() -> (
+    None
+):
+    assert [(case.dig.block, case.dig.tool) for case in blocks_player.EARLY_CASES] == [
+        ("minecraft:stone", "minecraft:air"),
+        ("minecraft:obsidian", "minecraft:diamond_pickaxe"),
+    ]
+    for case in blocks_player.EARLY_CASES:
+        assert case.ticks == 1
+        assert blocks_player.accept_ticks(*MINING[case.dig.block, case.dig.tool]) > 100
+
+
+def test_the_early_finishes_come_first_while_the_digger_is_new() -> None:
+    # Each is refused for good only from a player alive under `delayed_ticks` (7.5 s for stone
+    # by hand): the digger has just joined.
+    early = len(blocks_player.EARLY_CASES)
+    assert blocks_player.FINISHES[:early] == blocks_player.EARLY_CASES
+
+
+@pytest.mark.asyncio
+async def test_the_survival_digger_starts_in_one_window_and_finishes_in_the_next() -> None:
+    result = await played(SURVIVAL)
+    cases = blocks_player.FINISHES
+
+    assert len(result.windows) == 2 * len(cases)
+    for starting, finishing, case in zip(
+        result.windows[::2], result.windows[1::2], cases, strict=True
+    ):
+        assert actions(starting) == [START]
+        assert actions(finishing) == [STOP]
+        assert f"setblock 8 -60 6 {case.dig.block}" in starting.before
+        assert f"item replace entity digger hotbar.0 with {case.dig.tool}" in starting.before
+        assert finishing.before == ()  # nothing between the start and the finish but the wait
+    assert {window.ticks for window in result.windows} == {0}  # the clock times it, not a step
+    assert result.slept == tuple(case.ticks * blocks_player.TICK_S for case in cases)
+
+
+@pytest.mark.asyncio
+async def test_each_survival_dig_ends_with_air_no_items_and_a_tick() -> None:
+    result = await played(SURVIVAL)
+
+    # Air disarms the destroy a refused finish leaves, on the digger's next tick.
+    for before in (*(window.before for window in result.windows[2::2]), result.after):
+        taking_away = before[: before.index("tick step 1") + 1]
+        assert taking_away[-3:] == (
+            "setblock 8 -60 6 minecraft:air",
+            "kill @e[type=minecraft:item]",
+            "tick step 1",
+        )
 
 
 @pytest.mark.asyncio
