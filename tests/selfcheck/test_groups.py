@@ -21,7 +21,12 @@ from pathlib import Path
 
 import pytest
 from support.reference import attached, own_reference
-from support.selfcheck import keep_timelines_and_describe, needs_instances_of_their_own, repeat_from
+from support.selfcheck import (
+    keep_timelines_and_describe,
+    needs_instances_of_their_own,
+    repeat_from,
+    repetitions,
+)
 
 from mscts.compare import Outcome
 from mscts.group import Group, resolve
@@ -47,6 +52,7 @@ async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
     tmp_path: Path,
 ) -> None:
     groups = resolve([group_id])
+    repeat = repetitions(groups, repeat)
     result = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
     verdicts = result.verdicts
     assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * repeat

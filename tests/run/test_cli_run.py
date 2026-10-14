@@ -12,7 +12,7 @@ import pytest
 from mscts import cli, install, report_json
 from mscts import group as group_module
 from mscts.adapters.base import Adapter, Installation, ProvisionError
-from mscts.group import Group, GroupKind
+from mscts.group import Group, GroupContext, GroupKind
 from mscts.groups import status
 from mscts.report import Report, render_markdown, render_text
 from mscts.target import Target
@@ -432,6 +432,79 @@ def test_a_piped_run_is_plain(fakes: Fakes, capsys: pytest.CaptureFixture[str]) 
     _, out, _ = _run(capsys, "--candidate", "pumpkin", "--repeat", "1")
 
     assert "\x1b" not in out, out
+
+
+async def _spawn_distance(context: GroupContext) -> None:
+    context.sample("spawn.distance", 2.0)
+
+
+_SPREAD = Group(id="test/spread", run=_spawn_distance, kind=GroupKind.STATISTICAL, runs=3)
+_TICKS = Group(id="test/ticks", run=status.basic, kind=GroupKind.TICK_EXACT)
+
+
+@pytest.fixture
+def statistical(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Register a statistical Group, `test/spread`, and a tick-exact one, `test/ticks`."""
+    for registered in (_SPREAD, _TICKS):
+        monkeypatch.setitem(group_module._REGISTERED, registered.id, registered)  # noqa: SLF001
+
+
+@pytest.mark.usefixtures("statistical")
+def test_statistical_plays_the_statistical_groups_too(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fakes()
+
+    code, out, err = _run(
+        capsys, "--candidate", "pumpkin", "--group", "test/*", "--repeat", "1", "--statistical"
+    )
+
+    assert code == 0, err
+    assert "running test/spread" in err
+    assert "✓ test/spread/spawn.distance\n" in out, out
+
+
+@pytest.mark.usefixtures("statistical")
+def test_without_statistical_a_statistical_group_is_skipped_and_says_so(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fakes()
+
+    code, out, err = _run(capsys, "--candidate", "pumpkin", "--group", "test/*", "--repeat", "1")
+
+    assert code == 0, err
+    assert "skipping test/spread: it is statistical; add --statistical to play it\n" in err
+    assert "running test/ticks" in err
+    assert "test/spread" not in out, out
+
+
+@pytest.mark.usefixtures("statistical")
+def test_a_glob_of_statistical_groups_alone_fails_without_statistical(
+    fakes: Fakes, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fakes()
+
+    code, out, err = _run(capsys, "--candidate", "pumpkin", "--group", "test/spread")
+
+    assert (code, out) == (1, "")
+    expected = (
+        "mscts: --group 'test/spread' matches only statistical Groups (test/spread): "
+        "add --statistical to play them\n"
+    )
+    assert err == expected
+
+
+def test_the_help_names_statistical(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+
+    with pytest.raises(SystemExit):
+        cli.main(["run", "--help"])
+
+    out = capsys.readouterr().out
+    assert "[--statistical]" in out
+    assert "also play statistical Groups, each many times on each server" in out
 
 
 class _Stream:

@@ -10,10 +10,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
+from _pytest.mark import ParameterSet
 
 import mscts.groups  # noqa: F401 - registers the shipped Groups
 from mscts.compare import Outcome, Verdict
-from mscts.group import GROUPS, Group
+from mscts.group import GROUPS, Group, GroupKind
 from mscts.run import RunResult
 from mscts.spec import ServerSpec
 from mscts.timeline import timeline
@@ -127,7 +128,32 @@ def needs_instances_of_their_own(groups: Sequence[Group], pair_spec: ServerSpec)
     )
 
 
+def selfcheck_params(groups: Mapping[str, Group]) -> list[ParameterSet]:
+    """One `group_id` per Group in `groups`, a statistical Group's marked `statistical`.
+
+    So the unit tier, which leaves the `statistical` mark out, never plays one, and
+    `mise run test:statistical` does.
+    """
+    return [
+        pytest.param(group_id, marks=pytest.mark.statistical)
+        if group.kind is GroupKind.STATISTICAL
+        else pytest.param(group_id)
+        for group_id, group in groups.items()
+    ]
+
+
+def repetitions(groups: Sequence[Group], repeat: int) -> int:
+    """How many times a Self-check plays `groups`: once if one is statistical, else `repeat`.
+
+    A statistical Group's Self-check is one Reference against Reference comparison of its
+    `runs` plays per side, which must not reject (#24): it rejects by chance at most 1% of
+    the time, so `repeat` of them would fail by chance `repeat` times as often.
+    """
+    statistical = any(group.kind is GroupKind.STATISTICAL for group in groups)
+    return 1 if statistical else repeat
+
+
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Give every test that takes a `group_id` one run per registered Group."""
     if "group_id" in metafunc.fixturenames:
-        metafunc.parametrize("group_id", list(GROUPS))
+        metafunc.parametrize("group_id", selfcheck_params(GROUPS))

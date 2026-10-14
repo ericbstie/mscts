@@ -11,12 +11,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from support.selfcheck import repetitions, selfcheck_params
 
+from mscts import group as group_module
 from mscts import run as run_module
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import DEFAULT_RUNS, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
-from mscts.run import Attached, run
+from mscts.run import Attached, Server, run, selfcheck
 from mscts.settle import PlayersStillOnline
 from tests.run.fakes import FakeAdapter, attached
 
@@ -365,3 +367,40 @@ async def test_a_reference_played_alone_that_samples_nothing_is_an_error(
 
     assert verdict.outcome is Outcome.ERROR
     assert verdict.detail.startswith("the Reference recorded no samples")
+
+
+@pytest.mark.asyncio
+async def test_a_statistical_selfcheck_compares_two_references_and_does_not_reject(
+    fake_server: Callable[..., Server], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    group = _statistical(_drawing(shifted_port=0))
+    monkeypatch.setitem(group_module._REGISTERED, group.id, group)  # noqa: SLF001
+
+    verdicts = await selfcheck(
+        [group.id], reference=fake_server("vanilla"), workdir=tmp_path, repeat=1
+    )
+
+    assert [(verdict.outcome, verdict.test_cases) for verdict in verdicts] == [
+        (Outcome.MATCH, ("x",))
+    ]
+
+
+def test_the_selfcheck_tier_leaves_a_statistical_group_to_the_statistical_tier() -> None:
+    groups = {
+        "test/exact": Group(id="test/exact", run=_drawing(0)),
+        "test/statistical": _statistical(_drawing(0)),
+    }
+
+    params = selfcheck_params(groups)
+
+    assert [(param.values, [mark.name for mark in param.marks]) for param in params] == [
+        (("test/exact",), []),
+        (("test/statistical",), ["statistical"]),
+    ]
+
+
+def test_a_statistical_selfcheck_is_one_comparison_whatever_the_repeat() -> None:
+    exact = Group(id="test/exact", run=_drawing(0))
+
+    assert repetitions([exact], 20) == 20
+    assert repetitions([exact, _statistical(_drawing(0))], 20) == 1

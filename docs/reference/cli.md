@@ -68,7 +68,7 @@ install command and exits with code 1.
 ## `mscts run`
 
 ```
-mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N] [--statistical] [-v | --verbose] [--out DIR]
 ```
 
 Starts vanilla and the Candidate, plays the chosen Groups against both,
@@ -96,6 +96,7 @@ no colours, and neither do `report.md` and `report.json`.
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
 | `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds, so it takes about 14 seconds for each repetition. |
 | `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
+| `--statistical` | off | Also play the statistical Groups `--group` matches. Each one plays 50 times on each server, unless the Group sets another number, so they are slow. Without this option they are skipped, and a line on stderr names each one. |
 | `-v`, `--verbose` | off | Also show the Reference's installed version, Target, repetitions, both values under each test case that differs, and time per Group. |
 | `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |
 
