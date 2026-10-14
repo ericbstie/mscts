@@ -35,3 +35,14 @@ with `scripts/research/javap.py` on the 26.3 server jar.
 - `mscts run --candidate pumpkin --group entities/summon` makes that failure a `mismatch` led by
   "Candidate failed: TimeoutError: ...", and lists every other Divergence of the play with it
   (57 test cases failed in all).
+
+## Pumpkin drops loot with `mob_drops` off
+
+*Live*, on the same build, once `remove_tagged_until_gone` no longer asks with `execute`:
+
+- Pumpkin answers `gamerule mob_drops false` with `commands.gamerule.set`, and a query then
+  says `false`. A pig killed after that still drops an item (`minecraft:item`).
+- So after the clean-up of `entities/summon` the watcher still tracks 12 items beside the killed
+  mobs, which carry no tag. The clean-up raises "watcher still tracked an entity after 60
+  barriers", and `mscts run` makes that a `mismatch` with the play's other Divergences (57 test
+  cases failed).
