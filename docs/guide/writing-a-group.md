@@ -396,6 +396,8 @@ other category. If that leaves two categories, one of them still rare,
 Fisher's exact test is used instead. The
 p-values of a Group's names are corrected together (Holm-Bonferroni), so a
 Group with several names still fails by chance at most 1% of the time.
+A name that holds a single number or category on both servers has nothing
+to test, so it passes and is left out of that correction.
 
 Each name is a test case. One that fails shows the test, how far apart the
 samples are (the statistic D for numbers, Cramér's V for categories, from 0

@@ -124,10 +124,11 @@ async def test_a_divergence_names_the_p_value_after_holms_correction(
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
         draw = _drawing(shifted_port=candidate.endpoint.port)
+        alike = random.Random(2)
 
         async def script(context: GroupContext) -> None:
             await draw(context)
-            context.sample("y", 1.0)
+            context.sample("y", alike.random())  # from one distribution on both sides
 
         return _statistical(script)
 

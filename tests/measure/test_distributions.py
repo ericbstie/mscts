@@ -17,6 +17,7 @@ from fractions import Fraction
 import pytest
 
 from mscts.stats import (
+    Difference,
     chi_square,
     chi_square_survival,
     fisher_exact,
@@ -131,6 +132,13 @@ def test_chi_square_survival_matches_scipy(statistic: float, df: int, p: float) 
     assert chi_square_survival(statistic, df) == pytest.approx(p, rel=1e-9)
 
 
+def _chi_square(reference: list[str], candidate: list[str]) -> Difference:
+    """`chi_square`, which must find a test to run."""
+    found = chi_square(reference, candidate)
+    assert found is not None
+    return found
+
+
 def test_chi_square_survival_needs_a_degree_of_freedom() -> None:
     with pytest.raises(ValueError, match="at least 1 degree of freedom, not 0"):
         chi_square_survival(1.0, 0)
@@ -140,7 +148,7 @@ def test_chi_square_of_homogeneity_matches_a_contingency_table() -> None:
     reference = ["a"] * 20 + ["b"] * 15 + ["c"] * 15
     candidate = ["a"] * 10 + ["b"] * 25 + ["c"] * 15
 
-    found = chi_square(reference, candidate)
+    found = _chi_square(reference, candidate)
 
     assert found.test == "chi-square"
     assert found.effect == "V"
@@ -164,7 +172,7 @@ def test_the_side_with_fewer_samples_decides_what_is_pooled() -> None:
 
 def test_a_category_only_the_candidate_has_is_never_pooled_out_of_sight() -> None:
     # Review B's probe: 9 pigs in 50 pool into "other", and leave a sparse 2 x 2 table.
-    found = chi_square(["zombie"] * 50, ["zombie"] * 41 + ["pig"] * 9)
+    found = _chi_square(["zombie"] * 50, ["zombie"] * 41 + ["pig"] * 9)
 
     assert found.test == "Fisher's exact"
     assert found.p_value == pytest.approx(0.002634204400259044, rel=1e-9)
@@ -187,7 +195,7 @@ def test_fishers_exact_test_matches_scipy(
 
 def test_a_rare_category_joins_other_not_a_real_one() -> None:
     # Review B's probe: the 9 pigs were merged into the husks, which hid them.
-    found = chi_square(
+    found = _chi_square(
         ["zombie"] * 30 + ["husk"] * 20, ["zombie"] * 25 + ["husk"] * 16 + ["pig"] * 9
     )
 
@@ -201,14 +209,12 @@ def test_a_category_with_five_expected_is_not_pooled() -> None:
     assert sorted(pooled(columns)) == columns
 
 
-def test_one_category_left_after_pooling_finds_no_difference() -> None:
-    found = chi_square(["a"] * 3, ["a", "b"])
-
-    assert (found.effect_size, found.p_value) == (0.0, 1.0)
+def test_one_category_left_after_pooling_is_no_test() -> None:
+    assert chi_square(["a"] * 3, ["a", "b"]) is None
 
 
 def test_disjoint_categories_reject() -> None:
-    found = chi_square(["a"] * 50, ["b"] * 50)
+    found = _chi_square(["a"] * 50, ["b"] * 50)
 
     assert found.effect_size == pytest.approx(1.0)
     assert found.p_value < 1e-20

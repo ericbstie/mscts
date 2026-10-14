@@ -2500,9 +2500,9 @@ class Difference:
 def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference: ...
     # D, and the exact p-value given the pooled values (Hodges' lattice-path count, read
     # only where the pooled values change, so ties too). ValueError if a side has no samples.
-def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference: ...
+def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference | None: ...
     # Pearson's test of homogeneity of the two-row table, after pooled(); V = sqrt(chi2 / N).
-    # Two columns left, one sparse: fisher_exact instead. One column left: V 0, p 1.
+    # Two columns left, one sparse: fisher_exact instead. One column left: None (no test).
     # ValueError if a side has no samples.
 MIN_EXPECTED = 5
 def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
@@ -2529,7 +2529,9 @@ class Decision:
 def decide(reference: Mapping[str, Sequence[Sample]],
            candidate: Mapping[str, Sequence[Sample]]) -> tuple[Decision, ...]: ...
     # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
-    # by chi_square, the tested names' p-values corrected together by holm
+    # by chi_square, the tested names' p-values corrected together by holm; a name no
+    # test can tell apart (one number, or one category after pooling, on both sides) is
+    # left out of holm and does not reject
 def holm(p_values: Sequence[float]) -> list[float]: ...   # Holm-Bonferroni, same order
 def summary(samples: Sequence[Sample]) -> Summary: ...
 

@@ -80,20 +80,23 @@ def decide(
 
     Numbers are tested with `kolmogorov_smirnov`, categories with `chi_square`, and the
     p-values of the names tested are corrected together (`holm`), so a Group with several
-    names still rejects one by chance at most `ALPHA` of the time. Each name's samples on a
-    side are all numbers or all categories, as `GroupContext.sample` keeps them.
+    names still rejects one by chance at most `ALPHA` of the time. A name no test can tell
+    apart (one category, or one number, on both sides) is left out of the correction, and
+    does not reject. Each name's samples on a side are all numbers or all categories, as
+    `GroupContext.sample` keeps them.
     """
     names = sorted({*reference, *candidate})
-    differences = {
-        name: difference
+    comparable = {
+        name: _tested(reference[name], candidate[name])
         for name in names
-        if (difference := _tested(reference.get(name, ()), candidate.get(name, ()))) is not None
+        if _comparable(reference.get(name, ()), candidate.get(name, ()))
     }
+    differences = {name: found for name, found in comparable.items() if found is not None}
     adjusted = dict(zip(differences, holm([d.p_value for d in differences.values()]), strict=True))
     return tuple(
         Decision(
             name=name,
-            rejected=name not in adjusted or adjusted[name] <= ALPHA,
+            rejected=name not in comparable or adjusted.get(name, 1.0) <= ALPHA,
             difference=differences.get(name),
             p_value=adjusted.get(name),
             reference=summary(reference.get(name, ())),
@@ -131,19 +134,24 @@ def summary(samples: Sequence[Sample]) -> Summary:
     return {"samples": len(samples), "median": median, "quartiles": [lower, upper]}
 
 
-def _tested(reference: Sequence[Sample], candidate: Sequence[Sample]) -> Difference | None:
-    """The two-sample test of one name's samples, or None if they cannot be tested.
-
-    They cannot when a side has none, or one side's are numbers and the other's categories.
-    """
+def _comparable(reference: Sequence[Sample], candidate: Sequence[Sample]) -> bool:
+    """Whether one name's samples can be compared: each side has some, of one kind."""
     if not reference or not candidate:
-        return None
-    words = [isinstance(side[0], str) for side in (reference, candidate)]
-    if words == [True, True]:
+        return False
+    return isinstance(reference[0], str) == isinstance(candidate[0], str)
+
+
+def _tested(reference: Sequence[Sample], candidate: Sequence[Sample]) -> Difference | None:
+    """The two-sample test of one name's comparable samples, or None if none applies.
+
+    None applies to one number, or one category after pooling, on both sides.
+    """
+    if isinstance(reference[0], str):
         return chi_square([str(sample) for sample in reference], [str(s) for s in candidate])
-    if words == [False, False]:
-        return kolmogorov_smirnov(_numbers(reference), _numbers(candidate))
-    return None
+    numbers = _numbers(reference), _numbers(candidate)
+    if len({*numbers[0], *numbers[1]}) == 1:
+        return None
+    return kolmogorov_smirnov(*numbers)
 
 
 def _numbers(samples: Sequence[Sample]) -> list[float]:
@@ -174,13 +182,13 @@ def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -
     )
 
 
-def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference:
+def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference | None:
     """The chi-square test of homogeneity of two samples of categories.
 
     Categories under `MIN_EXPECTED` expected samples on a side are pooled first into one
     other category (`pooled`). If that leaves two categories, one of them still expected
     fewer than `MIN_EXPECTED` times, Fisher's exact test is used instead (`fisher_exact`).
-    One category left means no difference can be shown: V 0, p-value 1.
+    One category left means no test can tell the two samples apart: None.
 
     Raises:
         ValueError: A side has no samples.
@@ -189,7 +197,7 @@ def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference
     ours, theirs = Counter(reference), Counter(candidate)
     columns = pooled([(ours[name], theirs[name]) for name in sorted(ours | theirs)])
     if len(columns) < 2:  # noqa: PLR2004 - a test of homogeneity needs two categories
-        return Difference(test="chi-square", effect="V", effect_size=0.0, p_value=1.0)
+        return None
     statistic = _pearson(columns)
     total = len(reference) + len(candidate)
     effect_size = math.sqrt(statistic / total)

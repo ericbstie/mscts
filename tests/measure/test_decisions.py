@@ -73,6 +73,20 @@ def test_holm_corrects_over_a_groups_names() -> None:
     assert together[0].p_value == pytest.approx(2 * _DISJOINT_P)
 
 
+def test_a_name_no_test_can_tell_apart_is_left_out_of_holms_correction() -> None:
+    # One category on both sides, or one number: no test can find a difference in them.
+    decisions = decide(
+        {"x": _LOW, "mob": ["zombie"] * 5, "y": [1.0] * 5},
+        {"x": _HIGH, "mob": ["zombie"] * 5, "y": [1.0] * 5},
+    )
+
+    assert [(d.name, d.rejected, d.difference, d.p_value) for d in decisions[:2]] == [
+        ("mob", False, None, None),
+        ("x", True, Difference("Kolmogorov-Smirnov", "D", 1.0, _DISJOINT_P), _DISJOINT_P),
+    ]
+    assert (decisions[2].rejected, decisions[2].p_value) == (False, None)
+
+
 def test_a_name_one_side_never_sampled_rejects_untested() -> None:
     decisions = decide({"x": _LOW, "y": _LOW}, {"x": _LOW})
 
