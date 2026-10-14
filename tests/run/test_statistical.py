@@ -21,7 +21,7 @@ from mscts.group import DEFAULT_RUNS, CommandMissing, Group, GroupContext, Group
 from mscts.net import Endpoint
 from mscts.run import Attached, Server, run, run_results, selfcheck
 from mscts.settle import PlayersStillOnline
-from mscts.stats import PER_PLAY, Difference, Shares, Spread
+from mscts.stats import PER_PLAY, PERMUTATION, Difference, Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
 
 _RUNS = 50
@@ -404,6 +404,60 @@ async def test_categories_are_judged_by_chi_square(run_token: str, tmp_path: Pat
     assert divergence.tested.test == "chi-square"
     assert divergence.tested.effect_size == pytest.approx(1.0)
     assert divergence.candidate == Shares(samples=50, shares=(("minecraft:skeleton", 1.0),))
+
+
+def _looting(namespaces: dict[int, str], *, seed: int = 4) -> Script:
+    """A script sampling one of 13 items per play, under the namespace of its Instance's port."""
+    rng = random.Random(seed)
+
+    async def loot(context: GroupContext) -> None:
+        namespace = namespaces.get(context.endpoint.port, "minecraft")
+        context.sample("loot", f"{namespace}:item{rng.randrange(13)}")
+
+    return loot
+
+
+@pytest.mark.asyncio
+async def test_categories_all_too_rare_to_pool_still_mismatch(
+    run_token: str, tmp_path: Path
+) -> None:
+    def make(reference: Attached, candidate: Attached) -> Group:
+        del reference
+        return _statistical(_looting({candidate.endpoint.port: "pumpkin"}))
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    (divergence,) = verdict.divergences
+    assert divergence.tested is not None
+    assert divergence.tested.test == PERMUTATION
+
+
+@pytest.mark.asyncio
+async def test_alike_categories_all_too_rare_to_pool_match(run_token: str, tmp_path: Path) -> None:
+    verdict = await _judged(lambda *_: _statistical(_looting({})), run_token, tmp_path)
+
+    assert (verdict.outcome, verdict.test_cases) == (Outcome.MATCH, ("loot",))
+
+
+@pytest.mark.asyncio
+async def test_a_few_plays_of_one_category_against_another_mismatch(
+    run_token: str, tmp_path: Path
+) -> None:
+    def make(reference: Attached, candidate: Attached) -> Group:
+        del reference
+        port = candidate.endpoint.port
+
+        async def script(context: GroupContext) -> None:
+            mob = "minecraft:pig" if context.endpoint.port == port else "minecraft:zombie"
+            context.sample("mob", mob)
+
+        return _statistical(script, runs=9)
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    (divergence,) = verdict.divergences
+    assert divergence.tested is not None
+    assert divergence.tested.test == "Fisher's exact"
 
 
 @pytest.mark.asyncio

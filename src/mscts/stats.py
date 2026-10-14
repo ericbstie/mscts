@@ -7,6 +7,7 @@ standard library, and a statistical Group needs nothing else scipy has.
 import bisect
 import dataclasses
 import math
+import random
 import statistics
 from collections import Counter
 from collections.abc import Mapping, Sequence
@@ -196,7 +197,7 @@ class Decision:
 
 
 def decide(
-    reference: Mapping[str, Series], candidate: Mapping[str, Series]
+    reference: Mapping[str, Series], candidate: Mapping[str, Series], *, rng: random.Random
 ) -> tuple[Decision, ...]:
     """Each sample name either side has, in name order: do the two sides' samples differ?
 
@@ -206,7 +207,8 @@ def decide(
     (`holm`), so a Group still rejects a name by chance at most `ALPHA` of the time. A test
     nothing can tell apart (one value on both sides, or one category after pooling) is left
     out of the correction. A name is rejected if either of its tests rejects; its
-    `difference` is then the one with the smaller corrected p-value.
+    `difference` is then the one with the smaller corrected p-value. A permutation test
+    draws from `rng`, seeded with `PERMUTATION_SEED` for a Verdict.
     """
     names = sorted({*reference, *candidate})
     comparable = {
@@ -219,7 +221,7 @@ def decide(
     tests = [
         (name, found)
         for name, (ours, theirs) in comparable.items()
-        for found in (_tested(ours, theirs), _counted(ours, theirs))
+        for found in (_tested(ours, theirs, rng), _counted(ours, theirs))
         if found is not None
     ]
     adjusted = holm([found.p_value for _, found in tests])
@@ -281,13 +283,13 @@ def summary(series: Series | None) -> Summary:
             return Spread(samples=len(values), median=median, quartiles=(lower, upper))
 
 
-def _tested(reference: Series, candidate: Series) -> Difference | None:
+def _tested(reference: Series, candidate: Series, rng: random.Random) -> Difference | None:
     """The two-sample test of one name's samples, of one kind on both sides, or None.
 
     None if no test applies: one number, or one category after pooling, on both sides.
     """
     if isinstance(reference, Categories) and isinstance(candidate, Categories):
-        return chi_square(reference.values, candidate.values)
+        return chi_square(reference.values, candidate.values, rng=rng)
     if isinstance(reference, Numbers) and isinstance(candidate, Numbers):
         if len({*reference.values, *candidate.values}) == 1:
             return None
@@ -319,22 +321,37 @@ def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -
     )
 
 
-def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference | None:
+PERMUTATIONS = 10_000
+"""How many relabellings a permutation test draws: enough to place p against `ALPHA`."""
+PERMUTATION_SEED = 24
+"""The seed of every permutation test a Verdict runs (issue #24), so a Verdict is the same
+on every Run with the same samples (ADR-0006)."""
+PERMUTATION = "chi-square permutation"
+"""The permutation test of Pearson's statistic, as a `Difference` names it."""
+
+
+def chi_square(
+    reference: Sequence[str], candidate: Sequence[str], *, rng: random.Random
+) -> Difference | None:
     """The chi-square test of homogeneity of two samples of categories.
 
     Categories under `MIN_EXPECTED` expected samples on a side are pooled first into one
     other category (`pooled`). If that leaves two categories, one of them still expected
     fewer than `MIN_EXPECTED` times, Fisher's exact test is used instead (`fisher_exact`).
-    One category left means no test can tell the two samples apart: None.
+    If pooling leaves one category, every category was too rare, and the table as it was
+    is tested exactly: by Fisher's test if it has two categories, else by a permutation
+    test drawing from `rng` (`permutation_chi_square`). One category on both sides means
+    no test can tell the two samples apart: None.
 
     Raises:
         ValueError: A side has no samples.
     """
     _require_samples(reference, candidate)
     ours, theirs = Counter(reference), Counter(candidate)
-    columns = pooled([(ours[name], theirs[name]) for name in sorted(ours | theirs)])
+    raw = [(ours[name], theirs[name]) for name in sorted(ours | theirs)]
+    columns = pooled(raw)
     if len(columns) < 2:  # noqa: PLR2004 - a test of homogeneity needs two categories
-        return None
+        return _rare(reference, candidate, raw, rng)
     statistic = _pearson(columns)
     total = len(reference) + len(candidate)
     effect_size = math.sqrt(statistic / total)
@@ -348,6 +365,60 @@ def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference
         effect_size=effect_size,
         p_value=chi_square_survival(statistic, len(columns) - 1),
     )
+
+
+def _rare(
+    reference: Sequence[str],
+    candidate: Sequence[str],
+    raw: Sequence[tuple[int, int]],
+    rng: random.Random,
+) -> Difference | None:
+    """The exact test of `raw`, a table whose categories were all too rare to pool; or None.
+
+    None for one category: nothing to tell apart. Fisher's test for two, else a permutation
+    test of the samples (`permutation_chi_square`).
+    """
+    if len(raw) < 2:  # noqa: PLR2004 - a test of homogeneity needs two categories
+        return None
+    effect_size = math.sqrt(_pearson(raw) / sum(map(sum, raw)))
+    if len(raw) == 2:  # noqa: PLR2004 - a 2 x 2 table
+        first, second = raw
+        return Difference("Fisher's exact", "V", effect_size, fisher_exact(first, second))
+    p_value = permutation_chi_square(reference, candidate, rng)
+    return Difference(PERMUTATION, "V", effect_size, p_value)
+
+
+def permutation_chi_square(
+    reference: Sequence[str],
+    candidate: Sequence[str],
+    rng: random.Random,
+    permutations: int = PERMUTATIONS,
+) -> float:
+    """The permutation test of Pearson's statistic: how often a relabelling is as far apart.
+
+    The pooled samples are shuffled `permutations` times, drawing from `rng`, and each
+    shuffle is split into a Reference of as many samples and a Candidate of the rest. The
+    p-value is (k + 1) / (permutations + 1), k the shuffles whose statistic is at least the
+    samples' own, to a relative 1e-9 so that a table equal to it counts.
+    """
+    names = sorted({*reference, *candidate})
+    index = {name: number for number, name in enumerate(names)}
+    labels = [index[value] for value in (*reference, *candidate)]
+    observed = _pearson(_table(labels, len(reference), len(names)))
+    at_least = 0
+    for _ in range(permutations):
+        rng.shuffle(labels)
+        if _pearson(_table(labels, len(reference), len(names))) >= observed * (1 - 1e-9):
+            at_least += 1
+    return (at_least + 1) / (permutations + 1)
+
+
+def _table(labels: Sequence[int], first: int, categories: int) -> list[tuple[int, int]]:
+    """The two-row table of `labels`: the first `first` are row 0, the rest row 1."""
+    rows = ([0] * categories, [0] * categories)
+    for position, label in enumerate(labels):
+        rows[position >= first][label] += 1
+    return list(zip(*rows, strict=True))
 
 
 def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]:

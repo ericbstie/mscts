@@ -401,7 +401,11 @@ the same distribution. Numbers get a Kolmogorov-Smirnov test and
 categories a chi-square test, at the 1% level. Categories too rare to test,
 with fewer than 5 samples expected on a server, are pooled first into one
 other category. If that leaves two categories, one of them still rare,
-Fisher's exact test is used instead. The
+Fisher's exact test is used instead. If every category is rare, as with
+many categories or few plays, the categories are tested as they are:
+Fisher's exact test for two, else a permutation test of the chi-square
+statistic. That test shuffles the samples 10,000 times from a fixed seed,
+so the same samples always give the same result. The
 p-values of a Group's names are corrected together (Holm-Bonferroni), so a
 Group with several names still fails by chance at most 1% of the time.
 Each name also gets a second test, of how many samples each play

@@ -5,6 +5,7 @@ import contextlib
 import dataclasses
 import json
 import logging
+import random
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
@@ -20,7 +21,7 @@ from mscts.net import Endpoint
 from mscts.runner import free_endpoint, running
 from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
 from mscts.spec import ServerSpec
-from mscts.stats import Decision, SampleLog, Series, decide
+from mscts.stats import PERMUTATION_SEED, Decision, SampleLog, Series, decide
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
@@ -375,9 +376,10 @@ def judge_samples(
             detail=f"the Candidate failed: {what}",
             test_cases=names,
         )
-    divergences = tuple(
-        _distribution(decision) for decision in decide(reference, candidate) if decision.rejected
-    )
+    # A seeded generator for a reproducible test, not a secret.
+    seeded = random.Random(PERMUTATION_SEED)  # noqa: S311  # nosec B311
+    decisions = decide(reference, candidate, rng=seeded)
+    divergences = tuple(_distribution(decision) for decision in decisions if decision.rejected)
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH if divergences else Outcome.MATCH,

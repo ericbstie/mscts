@@ -17,7 +17,7 @@ from mscts.codec.packets import Codec
 from mscts.group import Group
 from mscts.net import Endpoint
 from mscts.run import run_group
-from mscts.stats import SampleLog, Series, decide
+from mscts.stats import PERMUTATION_SEED, SampleLog, Series, decide
 from mscts.target import TARGET
 from tests.net.fakes import SPAWN, JoinScript, join_server, serve
 
@@ -69,7 +69,8 @@ async def _self_check(group: Group) -> bool:
         serve(CODEC, join_server([], _keeping_players(seed=1))) as reference,
         serve(CODEC, join_server([], _keeping_players(seed=2))) as candidate,
     ):
-        decisions = decide(await _sampled(group, reference), await _sampled(group, candidate))
+        sides = (await _sampled(group, reference), await _sampled(group, candidate))
+        decisions = decide(*sides, rng=random.Random(PERMUTATION_SEED))
     return any(decision.rejected for decision in decisions)
 
 

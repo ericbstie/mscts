@@ -12,11 +12,15 @@ count of every relabelling of the pooled values instead.
 
 import itertools
 import math
+import random
 from fractions import Fraction
 
 import pytest
 
 from mscts.stats import (
+    PERMUTATION,
+    PERMUTATION_SEED,
+    PERMUTATIONS,
     Difference,
     chi_square,
     chi_square_survival,
@@ -134,7 +138,7 @@ def test_chi_square_survival_matches_scipy(statistic: float, df: int, p: float) 
 
 def _chi_square(reference: list[str], candidate: list[str]) -> Difference:
     """`chi_square`, which must find a test to run."""
-    found = chi_square(reference, candidate)
+    found = chi_square(reference, candidate, rng=random.Random(PERMUTATION_SEED))
     assert found is not None
     return found
 
@@ -209,8 +213,51 @@ def test_a_category_with_five_expected_is_not_pooled() -> None:
     assert sorted(pooled(columns)) == columns
 
 
-def test_one_category_left_after_pooling_is_no_test() -> None:
-    assert chi_square(["a"] * 3, ["a", "b"]) is None
+def test_one_category_on_both_sides_is_no_test() -> None:
+    assert chi_square(["a"] * 3, ["a"] * 2, rng=random.Random(PERMUTATION_SEED)) is None
+
+
+def test_two_categories_all_too_rare_to_pool_get_fishers_test_on_the_raw_table() -> None:
+    # The re-review's probe: runs=9, a zombie in every play against a pig in every play.
+    found = _chi_square(["zombie"] * 9, ["pig"] * 9)
+
+    assert found.test == "Fisher's exact"
+    assert found.p_value == pytest.approx(2 / math.comb(18, 9), rel=1e-12)
+    assert found.effect_size == pytest.approx(1.0)
+
+
+def _items(namespace: str) -> list[str]:
+    """50 samples of 13 categories, each too rare to test on its own."""
+    return [f"{namespace}:item{i % 13}" for i in range(50)]
+
+
+def test_many_categories_all_too_rare_to_pool_get_a_permutation_test() -> None:
+    # The re-review's probe: 13 categories a side and none in common.
+    found = _chi_square(_items("minecraft"), _items("pumpkin"))
+
+    assert found.test == PERMUTATION
+    assert found.p_value == 1 / (PERMUTATIONS + 1)  # no relabelling is as far apart
+    assert found.effect_size == pytest.approx(1.0)
+
+
+def test_a_permutation_test_of_alike_categories_finds_no_difference() -> None:
+    shuffled = _items("minecraft")
+    random.Random(1).shuffle(shuffled)
+
+    found = _chi_square(_items("minecraft"), shuffled)
+
+    assert (found.test, found.p_value) == (PERMUTATION, 1.0)
+
+
+def test_a_permutation_test_gives_the_same_p_value_from_the_same_seed() -> None:
+    rng = random.Random(7)
+    reference = [rng.choice("abcdefghijklm") for _ in range(30)]
+    candidate = [rng.choice("abcdefghijklmnop") for _ in range(30)]
+
+    first, second = (_chi_square(reference, candidate) for _ in range(2))
+
+    assert first == second
+    assert 0.0 < first.p_value < 1.0
 
 
 def test_disjoint_categories_reject() -> None:
@@ -222,4 +269,4 @@ def test_disjoint_categories_reject() -> None:
 
 def test_chi_square_needs_samples_on_both_sides() -> None:
     with pytest.raises(ValueError, match="no samples"):
-        chi_square([], ["a"])
+        chi_square([], ["a"], rng=random.Random(PERMUTATION_SEED))

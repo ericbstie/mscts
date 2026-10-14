@@ -1,13 +1,18 @@
 """How a statistical Group's samples are judged, name by name (#24)."""
 
+import random
+from collections.abc import Mapping
+
 import pytest
 
 from mscts.stats import (
     ALPHA,
+    PERMUTATION_SEED,
     Categories,
     Decision,
     Difference,
     Numbers,
+    Series,
     Shares,
     Spread,
     decide,
@@ -19,6 +24,12 @@ _LOW = Numbers((1.0, 2.0, 3.0, 4.0, 5.0), _ONCE)
 _HIGH = Numbers((6.0, 7.0, 8.0, 9.0, 10.0), _ONCE)
 _DISJOINT_P = 2 / 252  # kolmogorov_smirnov(_LOW, _HIGH).p_value
 _LOW_SPREAD = Spread(samples=5, median=3.0, quartiles=(2.0, 4.0))
+
+
+def _decide(
+    reference: Mapping[str, Series], candidate: Mapping[str, Series]
+) -> tuple[Decision, ...]:
+    return decide(reference, candidate, rng=random.Random(PERMUTATION_SEED))
 
 
 def _categories(*groups: tuple[str, int]) -> Categories:
@@ -41,7 +52,7 @@ def test_the_level_is_one_percent() -> None:
 
 
 def test_alike_numbers_match_with_both_summaries() -> None:
-    (decision,) = decide(
+    (decision,) = _decide(
         {"spawn.distance": _LOW}, {"spawn.distance": Numbers(tuple(reversed(_LOW.values)), _ONCE)}
     )
 
@@ -56,7 +67,7 @@ def test_alike_numbers_match_with_both_summaries() -> None:
 
 
 def test_shifted_numbers_reject_with_the_effect_size() -> None:
-    (decision,) = decide({"x": _LOW}, {"x": _HIGH})
+    (decision,) = _decide({"x": _LOW}, {"x": _HIGH})
 
     assert decision.rejected
     assert decision.difference is not None
@@ -66,7 +77,7 @@ def test_shifted_numbers_reject_with_the_effect_size() -> None:
 
 
 def test_categories_are_tested_by_chi_square_with_their_shares() -> None:
-    (decision,) = decide(
+    (decision,) = _decide(
         {"mob": _categories(("zombie", 50))},
         {"mob": _categories(("zombie", 20), ("skeleton", 30))},
     )
@@ -80,14 +91,14 @@ def test_categories_are_tested_by_chi_square_with_their_shares() -> None:
 
 def test_shares_are_rounded_to_three_decimals() -> None:
     three = _categories(("a", 1), ("b", 2))
-    (decision,) = decide({"c": three}, {"c": three})
+    (decision,) = _decide({"c": three}, {"c": three})
 
     assert decision.reference == Shares(samples=3, shares=(("a", 0.333), ("b", 0.667)))
 
 
 def test_holm_corrects_over_a_groups_names() -> None:
-    alone = decide({"x": _LOW}, {"x": _HIGH})
-    together = decide({"x": _LOW, "y": _LOW}, {"x": _HIGH, "y": _LOW})
+    alone = _decide({"x": _LOW}, {"x": _HIGH})
+    together = _decide({"x": _LOW, "y": _LOW}, {"x": _HIGH, "y": _LOW})
 
     assert [decision.rejected for decision in alone] == [True]
     assert [(decision.name, decision.rejected) for decision in together] == [
@@ -100,7 +111,7 @@ def test_holm_corrects_over_a_groups_names() -> None:
 def test_a_name_no_test_can_tell_apart_is_left_out_of_holms_correction() -> None:
     # One category on both sides, or one number: no test can find a difference in them.
     zombies, ones = _categories(("zombie", 5)), Numbers((1.0,) * 5, _ONCE)
-    decisions = decide(
+    decisions = _decide(
         {"x": _LOW, "mob": zombies, "y": ones}, {"x": _HIGH, "mob": zombies, "y": ones}
     )
 
@@ -112,7 +123,7 @@ def test_a_name_no_test_can_tell_apart_is_left_out_of_holms_correction() -> None
 
 
 def test_a_name_one_side_never_sampled_rejects_untested() -> None:
-    decisions = decide({"x": _LOW, "y": _LOW}, {"x": _LOW})
+    decisions = _decide({"x": _LOW, "y": _LOW}, {"x": _LOW})
 
     assert decisions[1] == Decision(
         name="y",
@@ -126,20 +137,20 @@ def test_a_name_one_side_never_sampled_rejects_untested() -> None:
 
 
 def test_a_name_only_the_candidate_sampled_rejects_untested() -> None:
-    (decision,) = decide({}, {"x": Categories(("a",), (1,))})
+    (decision,) = _decide({}, {"x": Categories(("a",), (1,))})
 
     assert (decision.rejected, decision.difference, decision.reference) == (True, None, None)
 
 
 def test_numbers_against_categories_reject_untested() -> None:
-    (decision,) = decide({"x": _LOW}, {"x": _categories(("a", 5))})
+    (decision,) = _decide({"x": _LOW}, {"x": _categories(("a", 5))})
 
     assert (decision.rejected, decision.difference, decision.p_value) == (True, None, None)
     assert decision.candidate == Shares(samples=5, shares=(("a", 1.0),))
 
 
 def test_names_come_in_name_order() -> None:
-    decisions = decide({"b": _LOW, "a": _LOW}, {"a": _LOW, "b": _LOW})
+    decisions = _decide({"b": _LOW, "a": _LOW}, {"a": _LOW, "b": _LOW})
 
     assert [decision.name for decision in decisions] == ["a", "b"]
 
@@ -152,7 +163,7 @@ def test_far_fewer_samples_per_play_reject_though_the_values_cannot_be_told_apar
     zombies = Categories(("zombie",) * 500, (10,) * 50)
     pigs = Categories(("pig",) * 2, (1, 1) + (0,) * 48)
 
-    (decision,) = decide({"mob": zombies}, {"mob": pigs})
+    (decision,) = _decide({"mob": zombies}, {"mob": pigs})
 
     assert decision.rejected
     assert decision.difference is not None
@@ -164,7 +175,7 @@ def test_one_sample_against_fifty_rejects_by_its_count() -> None:
     near_zero = Numbers(tuple(i / 100 for i in range(50)), (1,) * 50)
     far = Numbers((1000.0,), (1,) + (0,) * 49)
 
-    (decision,) = decide({"spawn.distance": near_zero}, {"spawn.distance": far})
+    (decision,) = _decide({"spawn.distance": near_zero}, {"spawn.distance": far})
 
     assert decision.rejected
     assert decision.difference is not None
@@ -174,6 +185,6 @@ def test_one_sample_against_fifty_rejects_by_its_count() -> None:
 def test_the_counts_are_corrected_with_the_values() -> None:
     # Both tests of each name join Holm's correction: two names, each with values and counts.
     shifted = Numbers(_HIGH.values, (1, 1, 1, 2, 0))
-    decisions = decide({"x": _LOW, "y": _LOW}, {"x": shifted, "y": _LOW})
+    decisions = _decide({"x": _LOW, "y": _LOW}, {"x": shifted, "y": _LOW})
 
     assert decisions[0].p_value == pytest.approx(3 * _DISJOINT_P)

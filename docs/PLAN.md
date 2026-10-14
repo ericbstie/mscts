@@ -2513,9 +2513,12 @@ class Difference:
 def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference: ...
     # D, and the exact p-value given the pooled values (Hodges' lattice-path count, read
     # only where the pooled values change, so ties too). ValueError if a side has no samples.
-def chi_square(reference: Sequence[str], candidate: Sequence[str]) -> Difference | None: ...
+def chi_square(reference: Sequence[str], candidate: Sequence[str], *,
+               rng: random.Random) -> Difference | None: ...
     # Pearson's test of homogeneity of the two-row table, after pooled(); V = sqrt(chi2 / N).
-    # Two columns left, one sparse: fisher_exact instead. One column left: None (no test).
+    # Two columns left, one sparse: fisher_exact instead. One column left (every category
+    # sparse): the raw table, by fisher_exact if it has two columns, else by
+    # permutation_chi_square (test PERMUTATION); one raw column: None (no test).
     # ValueError if a side has no samples.
 MIN_EXPECTED = 5
 def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
@@ -2524,6 +2527,13 @@ def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
 def fisher_exact(first: tuple[int, int], second: tuple[int, int]) -> float: ...
     # two-sided, in integers: the tables no likelier than this one, given the margins
 def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form; df >= 1
+def permutation_chi_square(reference: Sequence[str], candidate: Sequence[str],
+                           rng: random.Random, permutations: int = PERMUTATIONS) -> float: ...
+    # Pearson's statistic over `permutations` shuffles of the pooled samples drawn from rng;
+    # p = (k + 1) / (permutations + 1), k the shuffles at least as far apart
+PERMUTATIONS = 10_000
+PERMUTATION_SEED = 24               # judge_samples seeds decide's rng with it (ADR-0006)
+PERMUTATION = "chi-square permutation"
 
 ALPHA = 0.01                        # each sample name's level, after Holm's correction
 type Sample = float | str           # a number, or a category
@@ -2556,8 +2566,8 @@ class Decision:
     p_value: float | None           # Holm-adjusted over the Group's tested names
     reference: Summary
     candidate: Summary
-def decide(reference: Mapping[str, Series],
-           candidate: Mapping[str, Series]) -> tuple[Decision, ...]: ...
+def decide(reference: Mapping[str, Series], candidate: Mapping[str, Series], *,
+           rng: random.Random) -> tuple[Decision, ...]: ...
     # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
     # by chi_square, and each name's per_play counts by kolmogorov_smirnov (test PER_PLAY,
     # "Kolmogorov-Smirnov on samples per play"); every test's p-value corrected together by
