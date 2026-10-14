@@ -19,3 +19,19 @@ with `scripts/research/javap.py` on the 26.3 server jar.
 - So `@e[tag=...]` never matches a body that is dying, and `execute if entity @e[tag=...]`
   fails as soon as `kill` has run. A clean-up that waits for that answer returns while every
   body is still there; only the players that track the bodies can tell when they are gone.
+
+## Pumpkin has no `/execute`
+
+*Live*, on Pumpkin nightly f1c0871, with Control and a watcher Bot beside the 17 entities of
+`entities/summon`:
+
+- Every `execute if entity @e[tag=...]` is answered with `command.unknown.command` (naming
+  `execute`) and a `command.context.here` line, before and after the `kill`. So
+  `remove_tagged` never hears `commands.execute.conditional.fail`: it asks 20 times and raises
+  "an entity tagged mscts_entities was still there after 20 asks", on every `entities/*` Group.
+- Pumpkin does kill the tagged entities. `kill @e[tag=mscts_entities]` answers
+  `commands.kill.success.multiple` (12), a second `kill` answers
+  `argument.entity.notfound.entity`, and 40 barriers later the watcher tracks none of the 12.
+- `mscts run --candidate pumpkin --group entities/summon` makes that failure a `mismatch` led by
+  "Candidate failed: TimeoutError: ...", and lists every other Divergence of the play with it
+  (57 test cases failed in all).
