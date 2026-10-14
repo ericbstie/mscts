@@ -99,7 +99,7 @@ test needs it:
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict`; `window_takes` |
 | `measure.py` | `Measurement`, span extraction, stats |
-| `stats.py` | the two-sample tests of statistical Groups: `kolmogorov_smirnov`, `chi_square` → `Difference` (#24) |
+| `stats.py` | the two-sample tests of statistical Groups: `kolmogorov_smirnov`, `categories_test` → `Difference` (#24) |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
 
 ## Interfaces
@@ -2505,7 +2505,8 @@ def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 # stats.py (#24): two-sample tests, in-repo (the standard library only; no scipy).
 @frozen
 class Difference:
-    test: str                       # "Kolmogorov-Smirnov", "chi-square" or "Fisher's exact"
+    test: str                       # "Kolmogorov-Smirnov", "chi-square", "Fisher's exact",
+                                    # PERMUTATION or PER_PLAY
     effect: str                     # the effect size's name: "D", or "V" (Cramér's V)
     effect_size: float              # 0 (alike) to 1
     p_value: float
@@ -2513,7 +2514,7 @@ class Difference:
 def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference: ...
     # D, and the exact p-value given the pooled values (Hodges' lattice-path count, read
     # only where the pooled values change, so ties too). ValueError if a side has no samples.
-def chi_square(reference: Sequence[str], candidate: Sequence[str], *,
+def categories_test(reference: Sequence[str], candidate: Sequence[str], *,
                rng: random.Random) -> Difference | None: ...
     # Pearson's test of homogeneity of the two-row table, after pooled(); V = sqrt(chi2 / N).
     # Two columns left, one sparse: fisher_exact instead. One column left (every category
@@ -2569,7 +2570,7 @@ class Decision:
 def decide(reference: Mapping[str, Series], candidate: Mapping[str, Series], *,
            rng: random.Random) -> tuple[Decision, ...]: ...
     # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
-    # by chi_square, and each name's per_play counts by kolmogorov_smirnov (test PER_PLAY,
+    # by categories_test, and each name's per_play counts by kolmogorov_smirnov (test PER_PLAY,
     # "Kolmogorov-Smirnov on samples per play"); every test's p-value corrected together by
     # holm; a test nothing can tell apart (one value on both sides, or one category after
     # pooling) is left out of holm; a name rejects if either test does, its difference and

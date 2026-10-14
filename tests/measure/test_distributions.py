@@ -22,7 +22,7 @@ from mscts.stats import (
     PERMUTATION_SEED,
     PERMUTATIONS,
     Difference,
-    chi_square,
+    categories_test,
     chi_square_survival,
     fisher_exact,
     kolmogorov_smirnov,
@@ -137,8 +137,8 @@ def test_chi_square_survival_matches_scipy(statistic: float, df: int, p: float) 
 
 
 def _chi_square(reference: list[str], candidate: list[str]) -> Difference:
-    """`chi_square`, which must find a test to run."""
-    found = chi_square(reference, candidate, rng=random.Random(PERMUTATION_SEED))
+    """`categories_test`, which must find a test to run."""
+    found = categories_test(reference, candidate, rng=random.Random(PERMUTATION_SEED))
     assert found is not None
     return found
 
@@ -214,7 +214,7 @@ def test_a_category_with_five_expected_is_not_pooled() -> None:
 
 
 def test_one_category_on_both_sides_is_no_test() -> None:
-    assert chi_square(["a"] * 3, ["a"] * 2, rng=random.Random(PERMUTATION_SEED)) is None
+    assert categories_test(["a"] * 3, ["a"] * 2, rng=random.Random(PERMUTATION_SEED)) is None
 
 
 def test_two_categories_all_too_rare_to_pool_get_fishers_test_on_the_raw_table() -> None:
@@ -269,4 +269,4 @@ def test_disjoint_categories_reject() -> None:
 
 def test_chi_square_needs_samples_on_both_sides() -> None:
     with pytest.raises(ValueError, match="no samples"):
-        chi_square([], ["a"], rng=random.Random(PERMUTATION_SEED))
+        categories_test([], ["a"], rng=random.Random(PERMUTATION_SEED))

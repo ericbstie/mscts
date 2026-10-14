@@ -24,7 +24,8 @@ class Difference:
     """How two samples differ, by a two-sample test.
 
     Attributes:
-        test: The test: `Kolmogorov-Smirnov` or `chi-square`.
+        test: The test: `Kolmogorov-Smirnov`, `chi-square`, `Fisher's exact`,
+            `PERMUTATION` or `PER_PLAY`.
         effect: The name of its effect size: `D` or `V` (Cramér's V).
         effect_size: How far apart the two samples are, from 0 (alike) to 1.
         p_value: The chance of a difference at least this large if both samples came from
@@ -202,7 +203,7 @@ def decide(
     """Each sample name either side has, in name order: do the two sides' samples differ?
 
     Each name gets two tests: its values (numbers by `kolmogorov_smirnov`, categories by
-    `chi_square`), and how many samples each play recorded (`kolmogorov_smirnov` on the
+    `categories_test`), and how many samples each play recorded (`kolmogorov_smirnov` on the
     per-play counts, `PER_PLAY`). The p-values of every test are corrected together
     (`holm`), so a Group still rejects a name by chance at most `ALPHA` of the time. A test
     nothing can tell apart (one value on both sides, or one category after pooling) is left
@@ -224,11 +225,7 @@ def decide(
         for found in (_tested(ours, theirs, rng), _counted(ours, theirs))
         if found is not None
     ]
-    adjusted = holm([found.p_value for _, found in tests])
-    best: dict[str, tuple[float, Difference]] = {}
-    for (name, found), p_value in zip(tests, adjusted, strict=True):
-        if name not in best or p_value < best[name][0]:
-            best[name] = (p_value, found)
+    best = _smallest_per_name(tests, holm([found.p_value for _, found in tests]))
     return tuple(
         Decision(
             name=name,
@@ -240,6 +237,17 @@ def decide(
         )
         for name in names
     )
+
+
+def _smallest_per_name(
+    tests: Sequence[tuple[str, Difference]], adjusted: Sequence[float]
+) -> dict[str, tuple[float, Difference]]:
+    """For each name `tests` holds, its test with the smallest of the `adjusted` p-values."""
+    best: dict[str, tuple[float, Difference]] = {}
+    for (name, found), p_value in zip(tests, adjusted, strict=True):
+        if name not in best or p_value < best[name][0]:
+            best[name] = (p_value, found)
+    return best
 
 
 PER_PLAY = "Kolmogorov-Smirnov on samples per play"
@@ -289,7 +297,7 @@ def _tested(reference: Series, candidate: Series, rng: random.Random) -> Differe
     None if no test applies: one number, or one category after pooling, on both sides.
     """
     if isinstance(reference, Categories) and isinstance(candidate, Categories):
-        return chi_square(reference.values, candidate.values, rng=rng)
+        return categories_test(reference.values, candidate.values, rng=rng)
     if isinstance(reference, Numbers) and isinstance(candidate, Numbers):
         if len({*reference.values, *candidate.values}) == 1:
             return None
@@ -330,10 +338,10 @@ PERMUTATION = "chi-square permutation"
 """The permutation test of Pearson's statistic, as a `Difference` names it."""
 
 
-def chi_square(
+def categories_test(
     reference: Sequence[str], candidate: Sequence[str], *, rng: random.Random
 ) -> Difference | None:
-    """The chi-square test of homogeneity of two samples of categories.
+    """The test of homogeneity of two samples of categories: chi-square, or an exact one.
 
     Categories under `MIN_EXPECTED` expected samples on a side are pooled first into one
     other category (`pooled`). If that leaves two categories, one of them still expected

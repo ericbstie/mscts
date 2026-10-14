@@ -598,6 +598,8 @@ async def selfcheck(
     and one launched from `reference` as the other. The Groups' prerequisites are
     played too, first (`group.resolve`). Every Verdict must be `match` (G2: 20 out
     of 20); anything else is a missing Mask or a flaky Group, never a Reference bug.
+    A statistical Group gives one Verdict whatever `repeat` is (`run_results`), and two
+    References still fail it by chance at most `stats.ALPHA` of the time.
 
     Raises:
         KeyError: A Group id is not registered; nothing was started.
