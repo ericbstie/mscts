@@ -1429,9 +1429,7 @@ class Bot:
             ProtocolError: The Bot is not in play, or the server disconnected it.
             TimeoutError: The answers had not arrived within `timeout_s`.
         """
-        if not self.in_play:
-            msg = f"sync needs a Bot in play, not one in {self._connection.state}"
-            raise ProtocolError(msg)
+        self._require_play("sync")
         async with self._operation(self._timeout_s):
             answered = await self._ask_for_statistics()
             for _ in range(SYNC_REQUESTS - 1):
