@@ -25,7 +25,7 @@ from mscts.stats import PER_PLAY, Difference, Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
 
 _RUNS = 50
-_SHIFTED_P = 0.0005822568814776495
+_SHIFTED_P = 9.909301386655975e-05
 """KS's p-value for `_drawing`'s seed 1 with the Candidate shifted: 50 plays a side."""
 
 
@@ -121,16 +121,16 @@ async def test_shifted_samples_mismatch_with_the_effect_size(
             path=None,
             reference=Spread(
                 samples=50,
-                median=0.1660829264260152,
-                quartiles=(-0.39263126161364337, 0.6631373849211302),
+                median=0.1797408827794904,
+                quartiles=(-0.46918570636268175, 0.6631373849211302),
             ),
             candidate=Spread(
                 samples=50,
-                median=0.8637264218594136,
-                quartiles=(0.021744350624680386, 1.4127839367477568),
+                median=0.9216907259108541,
+                quartiles=(0.2867810606895361, 1.4102354782724074),
             ),
             test_case="x",
-            tested=Difference("Kolmogorov-Smirnov", "D", 0.4, _SHIFTED_P),
+            tested=Difference("Kolmogorov-Smirnov", "D", 0.44, _SHIFTED_P),
         ),
     )
 
@@ -171,6 +171,24 @@ async def test_each_side_plays_the_group_runs_times(run_token: str, tmp_path: Pa
     assert sorted(plays.values()) == [7, 7]
 
 
+@pytest.mark.asyncio
+async def test_the_two_sides_take_turns(run_token: str, tmp_path: Path) -> None:
+    played: list[int] = []
+    sides: list[int] = []
+
+    async def script(context: GroupContext) -> None:
+        played.append(context.endpoint.port)
+        context.sample("x", 0.0)
+
+    def make(reference: Attached, candidate: Attached) -> Group:
+        sides.extend([reference.endpoint.port, candidate.endpoint.port])
+        return _statistical(script, runs=3)
+
+    await _judged(make, run_token, tmp_path)
+
+    assert played == sides * 3
+
+
 def _failing_on(port: int, *, after: int) -> Script:
     """A script that samples `x`, and raises on the Instance at `port` once `after` played."""
     rng = random.Random(3)
@@ -187,7 +205,7 @@ def _failing_on(port: int, *, after: int) -> Script:
 
 
 @pytest.mark.asyncio
-async def test_a_play_that_raises_on_the_reference_is_an_error_and_the_candidate_is_not_played(
+async def test_a_play_that_raises_on_the_reference_is_an_error_and_ends_both_sides(
     run_token: str, tmp_path: Path
 ) -> None:
     plays: Counter[int] = Counter()
@@ -209,7 +227,29 @@ async def test_a_play_that_raises_on_the_reference_is_an_error_and_the_candidate
         Outcome.ERROR,
         detail="the Reference failed: LookupError: no spawn point",
     )
-    assert sorted(plays.values()) == [4]
+    assert sorted(plays.values()) == [3, 4]  # the Candidate's fourth play is not played
+
+
+@pytest.mark.asyncio
+async def test_the_reference_plays_on_after_the_candidate_fails_and_its_failure_comes_first(
+    run_token: str, tmp_path: Path
+) -> None:
+    def make(reference: Attached, candidate: Attached) -> Group:
+        on_candidate = _failing_on(candidate.endpoint.port, after=0)
+        on_reference = _failing_on(reference.endpoint.port, after=5)
+
+        async def script(context: GroupContext) -> None:
+            await on_candidate(context)
+            await on_reference(context)
+
+        return _statistical(script)
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    assert (verdict.outcome, verdict.detail) == (
+        Outcome.ERROR,
+        "the Reference failed: LookupError: no spawn point",
+    )
 
 
 @pytest.mark.asyncio

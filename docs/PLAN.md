@@ -1816,11 +1816,12 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # compare(reference, reference, masks), which the Report fails, as for #262; the
     # Reference raising, or that self-comparison raising, is `error` as in judge. Its
     # Measurements and `elapsed_s` are the Reference's play; no Transcripts are kept.
-    # #24: a statistical Group is played `runs` times on the Reference, then (unless the
-    # Reference failed) `runs` times on the Candidate, each side's samples pooled by name,
-    # and judged by judge_samples; before each play but the first, the side is waited on
+    # #24: a statistical Group is played `runs` times on each side, the sides taking turns
+    # (Reference, Candidate, Reference, ...), each side's samples pooled by name, and
+    # judged by judge_samples; before each play but the first, the side is waited on
     # (until_no_player_online), a failing wait being that side's GroupError (its message
-    # the wait's, as above). The first failing play ends that side's plays. It measures
+    # the wait's, as above). The first failing play ends that side's plays; the
+    # Reference's ends both, and after the Candidate's the Reference plays on. It measures
     # nothing and keeps no Transcript. Played on the Reference alone (#266), it plays
     # once, for its sample names. ValueError for a Group
     # listed twice, listed before a Group it requires or requiring one not listed (resolve

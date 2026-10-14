@@ -695,38 +695,47 @@ class _Instances:
         )
 
     async def _both_sampled(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
-        """Play statistical `group` `runs` times on the Reference, then on the Candidate.
+        """Play statistical `group` `runs` times on each side, the two sides taking turns.
 
-        Its Verdict is `judge_samples`. The Candidate is not played if the Reference failed:
-        the Verdict is `error` then, whatever the Candidate would record. A statistical
-        Group measures nothing, and keeps no Transcript.
+        Reference, Candidate, Reference, ...: so both sides play over the same span of
+        their worlds' time. Its Verdict is `judge_samples`. A side's first failure ends its
+        plays (`_sampled_once`), and the Reference's ends both: the Verdict is `error` then,
+        whatever the Candidate would record. After the Candidate's, the Reference plays on,
+        so a later Reference failure is still `error`. A statistical Group measures nothing,
+        and keeps no Transcript.
         """
         started = perf_counter()
-        reference = await self._sampled(group, 0, endpoints[0])
-        candidate = {} if isinstance(reference, GroupError) else None
-        if candidate is None:
-            candidate = await self._sampled(group, 1, endpoints[1])
+        logs = (SampleLog(), SampleLog())
+        failed: list[GroupError | None] = [None, None]
+        for played in range(group.runs):
+            for role, endpoint in enumerate(endpoints):
+                if failed[0] is None and failed[role] is None:
+                    failed[role] = await self._sampled_once(
+                        group, role, endpoint, logs[role], first=not played
+                    )
+        reference, candidate = (
+            log.series() if failure is None else failure
+            for log, failure in zip(logs, failed, strict=True)
+        )
         verdict = judge_samples(group, reference, candidate)
         return _Play(verdict, elapsed_s=perf_counter() - started)
 
-    async def _sampled(self, group: Group, role: int, endpoint: Endpoint) -> Samples | GroupError:
-        """Play statistical `group` `runs` times on side `role`: what it recorded, or why not.
+    async def _sampled_once(
+        self, group: Group, role: int, endpoint: Endpoint, samples: SampleLog, *, first: bool
+    ) -> GroupError | None:
+        """Play statistical `group` once more on side `role`, into `samples`; why not, if not.
 
-        Before each play but the first, which `play` waited for, it waits for the Instance
-        to have no player online, as before each Group. The first play that raises, or the
-        first wait that does, ends the plays: its GroupError is the side's failure.
+        Before each play but the `first`, which `play` waited for, it waits for the Instance
+        to have no player online, as before each Group. The play raising, or the wait,
+        is the side's failure.
         """
-        samples = SampleLog()
-        for played in range(group.runs):
-            left = await _left_online(endpoint) if played else None
-            if left is not None:
-                transcript = Transcript(group_id=group.id, server=self._sides[role].name)
-                return GroupError(transcript, _left_what(left))
-            samples.new_play()
-            attempt = await self._attempt(group, role, endpoint, samples=samples)
-            if isinstance(attempt, GroupError):
-                return attempt
-        return samples.series()
+        left = None if first else await _left_online(endpoint)
+        if left is not None:
+            transcript = Transcript(group_id=group.id, server=self._sides[role].name)
+            return GroupError(transcript, _left_what(left))
+        samples.new_play()
+        attempt = await self._attempt(group, role, endpoint, samples=samples)
+        return attempt if isinstance(attempt, GroupError) else None
 
     async def _reference_alone(self, group: Group, endpoint: Endpoint, verdict: Verdict) -> _Play:
         """Play `group` on the Reference alone, the Candidate's side not compared (#266).

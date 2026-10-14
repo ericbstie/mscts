@@ -371,7 +371,8 @@ line names the command.
 
 A `statistical` Group is for mechanics that are random in vanilla, such as
 where a joining player spawns or which mob appears. It plays many times on
-each server, 50 unless it sets `runs=`, and records samples with
+each server, 50 unless it sets `runs=`, with the two servers taking turns
+so both play over the same span of their worlds' time. It records samples with
 `context.sample(name, value)`. A value is a number or a category (a
 string), and one name holds only numbers or only categories:
 
