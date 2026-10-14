@@ -108,8 +108,10 @@ joins, and the last ones after the on-time finishes, which keep it in the world 
 seconds.
 
 Each on-time finish waits at least a second past the least the server accepts, so that a server
-that runs late still accepts it. Stone with an iron pickaxe needs 5 ticks, which the windows around
-it already take, so it has no early finish.
+that runs late still accepts it. The other three digs have no early finish that the server refuses
+for good: it breaks them a tick later from a player that has been in the world for 22 ticks
+(stone with a wooden pickaxe), 14 (dirt by hand) or 7 (stone with an iron pickaxe), and the digger
+is older than that before its first window.
 
 ### Falling blocks and blocks that lose their support
 
