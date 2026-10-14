@@ -240,7 +240,7 @@ async def _fight(context: GroupContext, cases: tuple[_Case, ...]) -> None:
             target = await find_when_tracked(fighter, "husk", near)
             async with context.observe(*case.packets):
                 await case.act(fighter, target)
-                await context.step(2)
+                await context.step_after(fighter, ticks=2)
             await case.after(fighter)
             tags = [_husk_tag(lane, number) for number in range(len(case.around) + 1)]
             await _read_back(context, fighter, tags)
@@ -443,9 +443,9 @@ async def immunity(context: GroupContext) -> None:
             targets = [await find_when_tracked(bot, "husk", husk) for bot in (first, second)]
             async with context.observe(*PACKETS):
                 await first.attack(targets[0])
-                await context.step(pair.steps)
+                await context.step_after(first, ticks=pair.steps)
                 await second.attack(targets[1])
-                await context.step(2)
+                await context.step_after(second, ticks=2)
 
 
 # `combat/pvp`: a Bot hits another Bot.
@@ -473,7 +473,7 @@ async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprin
     target = await find_when_tracked(attacker, "player", (_VICTIM_X, -60.0, lane_z))
     async with context.observe(*packets):
         await attacker.attack(target)
-        await context.step(2)
+        await context.step_after(attacker, ticks=2)
     if sprint:
         await _stop_sprinting(attacker)
 
