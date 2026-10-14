@@ -1541,6 +1541,7 @@ class Divergence:
                                     # the path's, the raw one for network traffic, for any
                                     # other field one); "" for bot and failed (Group-level)
     observability: Observability = Observability.GAMEPLAY
+    tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
     #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
@@ -1560,9 +1561,11 @@ class Divergence:
     # distribution: a statistical Group's sample name rejected (made by run.judge_samples,
     #   never by compare, #24): bot and packet "", index 0, test_case the sample name,
     #   reference and candidate each side's stats.Summary (Spread, Shares, or None for
-    #   no samples; report.json writes them as {"samples": n, ...}), path the test
-    #   ("Kolmogorov-Smirnov D = 0.40, p = 0.00058": effect size to 2 decimals, Holm-adjusted
-    #   p to 2 significant digits), or None when untested (stats.Decision.difference None).
+    #   no samples; report.json writes them as {"samples": n, ...}), path None, tested the
+    #   test that rejected, its p_value Holm-adjusted, or None when untested
+    #   (stats.Decision.difference None); report.json writes it as "tested" only when set.
+    #   The Report formats it ("Kolmogorov-Smirnov D = 0.40, p = 0.00058": effect size to 2
+    #   decimals, p to 2 significant digits).
 
 @frozen
 class Verdict:

@@ -21,10 +21,12 @@ from mscts.group import DEFAULT_RUNS, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
 from mscts.run import Attached, Server, run, selfcheck
 from mscts.settle import PlayersStillOnline
-from mscts.stats import PER_PLAY, Shares, Spread
+from mscts.stats import PER_PLAY, Difference, Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
 
 _RUNS = 50
+_SHIFTED_P = 0.0005822568814776495
+"""KS's p-value for `_drawing`'s seed 1 with the Candidate shifted: 50 plays a side."""
 
 
 def _drawing(shifted_port: int, *, seed: int = 1, plays: Counter[int] | None = None) -> Script:
@@ -102,7 +104,7 @@ async def test_shifted_samples_mismatch_with_the_effect_size(
             index=0,
             kind="distribution",
             packet="",
-            path="Kolmogorov-Smirnov D = 0.40, p = 0.00058",
+            path=None,
             reference=Spread(
                 samples=50,
                 median=0.1660829264260152,
@@ -114,6 +116,7 @@ async def test_shifted_samples_mismatch_with_the_effect_size(
                 quartiles=(0.021744350624680386, 1.4127839367477568),
             ),
             test_case="x",
+            tested=Difference("Kolmogorov-Smirnov", "D", 0.4, _SHIFTED_P),
         ),
     )
 
@@ -136,9 +139,9 @@ async def test_a_divergence_names_the_p_value_after_holms_correction(
     verdict = await _judged(make, run_token, tmp_path)
 
     assert verdict.test_cases == ("x", "y")
-    assert [divergence.path for divergence in verdict.divergences] == [
-        "Kolmogorov-Smirnov D = 0.40, p = 0.0012"  # twice the 0.00058 of `x` alone
-    ]
+    [divergence] = verdict.divergences
+    assert divergence.tested is not None
+    assert divergence.tested.p_value == pytest.approx(2 * _SHIFTED_P)  # Holm's, of 2 names
 
 
 @pytest.mark.asyncio
@@ -276,8 +279,8 @@ async def test_a_candidate_that_samples_a_name_in_fewer_plays_mismatches(
     verdict = await _judged(make, run_token, tmp_path)
 
     (divergence,) = verdict.divergences
-    assert divergence.path is not None
-    assert divergence.path.startswith(f"{PER_PLAY} D = 0.95, p = ")
+    assert divergence.tested is not None
+    assert (divergence.tested.test, divergence.tested.effect_size) == (PER_PLAY, 0.95)
 
 
 @pytest.mark.asyncio
@@ -295,8 +298,9 @@ async def test_categories_are_judged_by_chi_square(run_token: str, tmp_path: Pat
     verdict = await _judged(make, run_token, tmp_path)
 
     (divergence,) = verdict.divergences
-    assert divergence.path is not None
-    assert divergence.path.startswith("chi-square V = 1.00, p = ")
+    assert divergence.tested is not None
+    assert divergence.tested.test == "chi-square"
+    assert divergence.tested.effect_size == pytest.approx(1.0)
     assert divergence.candidate == Shares(samples=50, shares=(("minecraft:skeleton", 1.0),))
 
 

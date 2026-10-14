@@ -382,20 +382,16 @@ def judge_samples(
 def _distribution(decision: Decision) -> Divergence:
     """The `distribution` Divergence of a rejected sample name."""
     found = decision.difference
-    tested = None
-    if found is not None:
-        tested = (
-            f"{found.test} {found.effect} = {found.effect_size:.2f}, p = {decision.p_value:.2g}"
-        )
     return Divergence(
         bot="",
         index=0,
         kind="distribution",
         packet="",
-        path=tested,
+        path=None,
         reference=decision.reference,
         candidate=decision.candidate,
         test_case=decision.name,
+        tested=None if found is None else dataclasses.replace(found, p_value=decision.p_value),
     )
 
 

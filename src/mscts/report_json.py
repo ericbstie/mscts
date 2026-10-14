@@ -15,6 +15,7 @@ against Pumpkin wrote 88 MB without it, 35,000 Divergences in a Verdict, nearly 
 the elements of one list. Each Verdict's `omitted` counts those left out.
 """
 
+import dataclasses
 import json
 import math
 import typing
@@ -34,7 +35,7 @@ from mscts.compare import (
 from mscts.measure import Measurement
 from mscts.report import GroupLine, Line, Report, Totals, report_lines, totals
 from mscts.run import GroupResult, SideSummary
-from mscts.stats import Shares, Spread, Summary
+from mscts.stats import Difference, Shares, Spread, Summary
 from mscts.target import Target
 
 MAX_PER_TEST_CASE = 20
@@ -186,7 +187,7 @@ def _is_whole_packet(divergence: Divergence) -> bool:
 
 def _divergence(divergence: Divergence) -> dict[str, object]:
     side = _summary if divergence.kind == "distribution" else _value
-    return {
+    written: dict[str, object] = {
         "bot": divergence.bot,
         "index": divergence.index,
         "kind": divergence.kind,
@@ -197,6 +198,9 @@ def _divergence(divergence: Divergence) -> dict[str, object]:
         "test_case": divergence.test_case,
         "observability": divergence.observability.value,
     }
+    if divergence.tested is not None:
+        written["tested"] = dataclasses.asdict(divergence.tested)
+    return written
 
 
 def _summary(value: object) -> dict[str, object]:
@@ -425,6 +429,20 @@ def _read_divergence(data: _Object) -> Divergence:
         candidate=side(data, "candidate"),
         test_case=data.text("test_case"),
         observability=Observability(data.choice("observability", tuple(Observability))),
+        tested=_read_tested(data),
+    )
+
+
+def _read_tested(data: _Object) -> Difference | None:
+    """The `stats.Difference` `_divergence` wrote at "tested", or None if it wrote none."""
+    if "tested" not in data.entries():
+        return None
+    tested = data.object("tested")
+    return Difference(
+        tested.text("test"),
+        tested.text("effect"),
+        tested.number("effect_size"),
+        tested.number("p_value"),
     )
 
 

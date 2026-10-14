@@ -526,8 +526,11 @@ def _distribution_values(report: Report, divergence: Divergence) -> _Line:
     `Kolmogorov-Smirnov D = 0.40, p = 0.00058: vanilla 50 samples, median 0.1661, quartiles
     -0.3926 and 0.6631; pumpkin ...`, the p corrected for the Group's other names.
     """
+    tested = divergence.tested
     return (
-        divergence.path or "not tested",
+        "not tested"
+        if tested is None
+        else f"{tested.test} {tested.effect} = {tested.effect_size:.2f}, p = {tested.p_value:.2g}",
         f": {report.reference.name} ",
         *_samples(divergence.reference),
         f"; {report.candidate.name} ",
