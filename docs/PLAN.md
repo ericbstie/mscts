@@ -1481,11 +1481,14 @@ class Group:
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
     kind: GroupKind = GroupKind.EXACT
+    runs: int = DEFAULT_RUNS        # #24: a statistical Group's plays per server per Verdict;
+                                    # other kinds ignore it. ValueError if less than 1
+DEFAULT_RUNS = 50
 
 GROUPS: Mapping[str, Group]         # the registered Groups, by id, in registration order:
                                     # a read-only view; mscts.groups registers its own on import
 def group(id: str, *, requires=(), masks=(), spec=identity,
-          kind=GroupKind.EXACT) -> Callable[[Script], Script]: ...
+          kind=GroupKind.EXACT, runs=DEFAULT_RUNS) -> Callable[[Script], Script]: ...
     # the decorator: registers Group(id, the function, ...) and returns the function;
     # ValueError if `id` is registered already
 def resolve(group_ids: Iterable[str], groups: Mapping[str, Group] = GROUPS
@@ -1528,8 +1531,8 @@ class Divergence:
     index: int                      # position in the Bot's normalized stream, from 0: the
                                     # reference stream for missing and field, the candidate
                                     # stream for unexpected; 0 for bot
-    kind: Literal["bot", "missing", "unexpected", "field", "failed"]
-    packet: str                     # the packet name ("" for bot and failed)
+    kind: Literal["bot", "missing", "unexpected", "field", "failed", "distribution"]
+    packet: str                     # the packet name ("" for bot, failed and distribution)
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT (a chunk, light update
     candidate: object               # or forgotten chunk one side has: "chunk <x> <z>", step 4)
@@ -1554,6 +1557,11 @@ class Divergence:
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
+    # distribution: a statistical Group's sample name rejected (made by run.judge_samples,
+    #   never by compare, #24): bot and packet "", index 0, test_case the sample name,
+    #   reference and candidate each side's stats.Summary, path the test
+    #   ("Kolmogorov-Smirnov D = 0.40, p = 0.00058": effect size to 2 decimals, Holm-adjusted
+    #   p to 2 significant digits), or None when untested (stats.Decision.difference None).
 
 @frozen
 class Verdict:
@@ -1716,9 +1724,20 @@ class Attached:                     # one side of a Run: an Instance someone els
 type Side = Server | Attached
 
 async def run_group(group: Group, endpoint: Endpoint, *, server: str,
-                    timeout_s: float = GROUP_TIMEOUT_S) -> Transcript: ...
+                    timeout_s: float = GROUP_TIMEOUT_S,
+                    samples: dict[str, list[Sample]] | None = None) -> Transcript: ...
     # one Instance; closes every Bot however it ends; GroupError if the Group raised, or if
-    # GroupContext.end (called once the Group completes, before closing) refused a disconnect
+    # GroupContext.end (called once the Group completes, before closing) refused a disconnect;
+    # the Group's samples are added to `samples` (GroupContext's samples=)
+type Samples = dict[str, list[Sample]]   # a statistical Group's samples on one server, by name
+def judge_samples(group: Group, reference: Samples | GroupError,
+                  candidate: Samples | GroupError) -> Verdict: ...
+    # #24, a statistical Group's Verdict; test_cases the Reference's sample names, sorted.
+    # The Reference's GroupError: `error` "the Reference failed: ..."; the Reference recorded
+    # no sample: `error` "the Reference recorded no samples: ...". The Candidate's GroupError:
+    # `mismatch` led by its `failed` Divergence, as in judge (the Report fails each name).
+    # Else stats.decide: `match`, or `mismatch` with a `distribution` Divergence per rejected
+    # name, in name order.
 def judge(group: Group, reference: Transcript | GroupError,
           candidate: Transcript | GroupError) -> Verdict: ...
     # The Verdict rule (audit H3): a Candidate failure (a GroupError on the Candidate and
@@ -1790,7 +1809,13 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # compare(reference, reference, masks), which the Report fails, as for #262; the
     # Reference raising, or that self-comparison raising, is `error` as in judge. Its
     # Measurements and `elapsed_s` are the Reference's play; no Transcripts are kept.
-    # NotImplementedError for a statistical Group (M6b); ValueError for one
+    # #24: a statistical Group is played `runs` times on the Reference, then (unless the
+    # Reference failed) `runs` times on the Candidate, each side's samples pooled by name,
+    # and judged by judge_samples; before each play but the first, the side is waited on
+    # (until_no_player_online), a failing wait being that side's GroupError (its message
+    # the wait's, as above). The first failing play ends that side's plays. It measures
+    # nothing and keeps no Transcript. Played on the Reference alone (#266), it plays
+    # once, for its sample names. ValueError for a Group
     # listed twice, listed before a Group it requires or requiring one not listed (resolve
     # orders them; review B LOW-R2), or whose `spec` does not give an Attached side's spec
     # (host and port aside: it would run against the wrong config), before anything

@@ -20,6 +20,7 @@ from mscts.net import Endpoint
 from mscts.runner import free_endpoint, running
 from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
 from mscts.spec import ServerSpec
+from mscts.stats import Decision, Sample, decide
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
@@ -207,19 +208,25 @@ def status_version(transcript: Transcript) -> str | None:
 
 
 async def run_group(
-    group: Group, endpoint: Endpoint, *, server: str, timeout_s: float = GROUP_TIMEOUT_S
+    group: Group,
+    endpoint: Endpoint,
+    *,
+    server: str,
+    timeout_s: float = GROUP_TIMEOUT_S,
+    samples: dict[str, list[Sample]] | None = None,
 ) -> Transcript:
     """Play `group` against the Instance at `endpoint`, and return its Transcript.
 
     `server` is the Adapter's name, for the Transcript. Every Bot is closed at the end,
     once a disconnect still queued for any of them has failed it (`GroupContext.end`).
+    Each sample the Group records (`GroupContext.sample`) is added to `samples`.
 
     Raises:
         GroupError: The Group raised, or a Bot had a disconnect nothing took; the error
             holds the Transcript so far.
     """
     transcript = Transcript(group_id=group.id, server=server)
-    context = GroupContext(endpoint, transcript, timeout_s=timeout_s)
+    context = GroupContext(endpoint, transcript, timeout_s=timeout_s, samples=samples)
     try:
         await group.run(context)
         await context.end()
@@ -329,6 +336,69 @@ def _group_raised(
     )
 
 
+type Samples = dict[str, list[Sample]]
+"""What a statistical Group recorded over its plays on one server, by sample name."""
+
+
+def judge_samples(
+    group: Group, reference: Samples | GroupError, candidate: Samples | GroupError
+) -> Verdict:
+    """The Verdict on statistical `group`, from what its plays recorded on each server.
+
+    Its test cases are the Reference's sample names. Then:
+
+    - A play raised on the Reference (`GroupError`), or the Reference recorded no sample:
+      `error`, the Reference or the Group having failed.
+    - A play raised on the Candidate: `mismatch`, led by a `failed` Divergence as in
+      `judge`, so the Report fails each sample name.
+    - Else each name is decided (`stats.decide`): `match` if none is rejected, else
+      `mismatch` with one `distribution` Divergence per rejected name, in name order.
+    """
+    if isinstance(reference, GroupError):
+        return _error(group, f"the Reference failed: {reference}")
+    if not reference:
+        detail = "the Reference recorded no samples: a statistical Group records them with "
+        return _error(group, f"{detail}context.sample")
+    names = tuple(sorted(reference))
+    if isinstance(candidate, GroupError):
+        return Verdict(
+            group_id=group.id,
+            outcome=Outcome.MISMATCH,
+            divergences=_group_failed(candidate),
+            detail=f"the Candidate failed: {_candidate_failure(candidate)}",
+            test_cases=names,
+        )
+    divergences = tuple(
+        _distribution(decision) for decision in decide(reference, candidate) if decision.rejected
+    )
+    return Verdict(
+        group_id=group.id,
+        outcome=Outcome.MISMATCH if divergences else Outcome.MATCH,
+        divergences=divergences,
+        test_cases=names,
+    )
+
+
+def _distribution(decision: Decision) -> Divergence:
+    """The `distribution` Divergence of a rejected sample name."""
+    found = decision.difference
+    tested = None
+    if found is not None:
+        tested = (
+            f"{found.test} {found.effect} = {found.effect_size:.2f}, p = {decision.p_value:.2g}"
+        )
+    return Divergence(
+        bot="",
+        index=0,
+        kind="distribution",
+        packet="",
+        path=tested,
+        reference=decision.reference,
+        candidate=decision.candidate,
+        test_case=decision.name,
+    )
+
+
 def prerequisite_verdict(group: Group, verdicts: Mapping[str, Verdict]) -> Verdict | None:
     """The Verdict `group` gets if a prerequisite did not pass in `verdicts`, else None.
 
@@ -432,8 +502,10 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     end, however the Run ends. An Attached side is played at its Endpoint as it is,
     and neither started nor stopped.
 
+    A statistical Group is played `runs` times on each side for each Verdict
+    (`judge_samples`), the Reference's plays first.
+
     Raises:
-        NotImplementedError: A Group is `statistical`, which needs M6b.
         ValueError: A Group is listed twice, or before a Group it requires, or a Group
             it requires is not listed (`mscts.group.resolve` adds and orders them), or a
             Group needs a ServerSpec an Attached side was not launched from. Nothing was
@@ -519,9 +591,6 @@ async def selfcheck(
 def _check(groups: Sequence[Group], sides: Sequence[Side]) -> None:
     seen: set[str] = set()
     for group in groups:
-        if group.kind is GroupKind.STATISTICAL:
-            msg = f"{group.id} is {group.kind}: only exact and tick-exact Groups can run before M6b"
-            raise NotImplementedError(msg)
         if group.id in seen:
             msg = f"{group.id} is listed twice"
             raise ValueError(msg)
@@ -613,6 +682,8 @@ class _Instances:
 
     async def _both(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it."""
+        if group.kind is GroupKind.STATISTICAL:
+            return await self._both_sampled(group, endpoints)
         started = perf_counter()
         attempts = [
             await self._attempt(group, role, endpoint) for role, endpoint in enumerate(endpoints)
@@ -627,14 +698,53 @@ class _Instances:
             transcripts=(reference, candidate) if self._kept(verdict) else None,
         )
 
+    async def _both_sampled(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
+        """Play statistical `group` `runs` times on the Reference, then on the Candidate.
+
+        Its Verdict is `judge_samples`. The Candidate is not played if the Reference failed:
+        the Verdict is `error` then, whatever the Candidate would record. A statistical
+        Group measures nothing, and keeps no Transcript.
+        """
+        started = perf_counter()
+        reference = await self._sampled(group, 0, endpoints[0])
+        candidate = {} if isinstance(reference, GroupError) else None
+        if candidate is None:
+            candidate = await self._sampled(group, 1, endpoints[1])
+        verdict = judge_samples(group, reference, candidate)
+        return _Play(verdict, elapsed_s=perf_counter() - started)
+
+    async def _sampled(self, group: Group, role: int, endpoint: Endpoint) -> Samples | GroupError:
+        """Play statistical `group` `runs` times on side `role`: what it recorded, or why not.
+
+        Before each play but the first, which `play` waited for, it waits for the Instance
+        to have no player online, as before each Group. The first play that raises, or the
+        first wait that does, ends the plays: its GroupError is the side's failure.
+        """
+        samples: Samples = {}
+        for played in range(group.runs):
+            left = await _left_online(endpoint) if played else None
+            if left is not None:
+                transcript = Transcript(group_id=group.id, server=self._sides[role].name)
+                return GroupError(transcript, _left_what(left))
+            attempt = await self._attempt(group, role, endpoint, samples=samples)
+            if isinstance(attempt, GroupError):
+                return attempt
+        return samples
+
     async def _reference_alone(self, group: Group, endpoint: Endpoint, verdict: Verdict) -> _Play:
         """Play `group` on the Reference alone, the Candidate's side not compared (#266).
 
         `verdict` says why the Candidate's side is not compared. It is the Verdict, listing
         each test case of the Reference's play, which the Report then fails, so skipping the
-        Candidate never scores better than sending every value wrong (`_not_compared`).
+        Candidate never scores better than sending every value wrong (`_not_compared`). A
+        statistical Group is played once, for its sample names (`_not_sampled`).
         """
         started = perf_counter()
+        if group.kind is GroupKind.STATISTICAL:
+            samples: Samples = {}
+            attempt = await self._attempt(group, 0, endpoint, samples=samples)
+            sampled = attempt if isinstance(attempt, GroupError) else samples
+            return _Play(_not_sampled(group, sampled, verdict), elapsed_s=perf_counter() - started)
         attempt = await self._attempt(group, 0, endpoint)
         return _Play(
             _not_compared(group, attempt, verdict),
@@ -643,13 +753,19 @@ class _Instances:
         )
 
     async def _attempt(
-        self, group: Group, role: int, endpoint: Endpoint
+        self,
+        group: Group,
+        role: int,
+        endpoint: Endpoint,
+        *,
+        samples: Samples | None = None,
     ) -> Transcript | GroupError:
         """Play `group` on side `role` at `endpoint`, and learn what it shows about the side.
 
         The version its first status_response names, and whether it left its world frozen.
+        Its samples are added to `samples`.
         """
-        attempt = await _attempt(group, endpoint, server=self._sides[role].name)
+        attempt = await _attempt(group, endpoint, server=self._sides[role].name, samples=samples)
         if self._versions[role] is None:
             self._versions[role] = status_version(_transcript(attempt))
         if isinstance(attempt, GroupError) and attempt.left_frozen:
@@ -814,11 +930,41 @@ def _unsettled_by(left: Exception) -> str:
     return f"failed: {_left_what(left)}"
 
 
-async def _attempt(group: Group, endpoint: Endpoint, *, server: str) -> Transcript | GroupError:
+async def _attempt(
+    group: Group, endpoint: Endpoint, *, server: str, samples: Samples | None = None
+) -> Transcript | GroupError:
     try:
-        return await run_group(group, endpoint, server=server)
+        return await run_group(group, endpoint, server=server, samples=samples)
     except GroupError as error:
         return error
+
+
+async def _left_online(endpoint: Endpoint) -> Exception | None:
+    """Wait for the Instance at `endpoint` to have no player online; what the wait raised, if any.
+
+    `PlayersStillOnline` if a player is still online after `SETTLE_TIMEOUT_S`. Any other
+    Exception is the side's failure too, as in `_unsettled`.
+
+    Raises:
+        BaseException: The wait raised one that is not an Exception.
+    """
+    wait = until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+    [result] = await asyncio.gather(wait, return_exceptions=True)
+    if isinstance(result, BaseException) and not isinstance(result, Exception):
+        raise result
+    return result
+
+
+def _not_sampled(group: Group, reference: Samples | GroupError, verdict: Verdict) -> Verdict:
+    """`verdict`, on a Candidate side not compared, listing the Reference's sample names.
+
+    As `_not_compared` does for the other kinds; the Reference failing, or recording no
+    sample, is `error`, as in `judge_samples`.
+    """
+    own = judge_samples(group, reference, reference)
+    if own.outcome is Outcome.ERROR:
+        return own
+    return dataclasses.replace(verdict, test_cases=own.test_cases)
 
 
 def _transcript(attempt: Transcript | GroupError) -> Transcript:

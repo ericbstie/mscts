@@ -704,6 +704,9 @@ def _until_names(until: str | tuple[str, ...] | None) -> tuple[str, ...] | None:
 type Script = Callable[[GroupContext], Awaitable[None]]
 """A Group's script: what it does against one Instance."""
 
+DEFAULT_RUNS = 50
+"""How many times a statistical Group is played on each server unless it says (`runs`)."""
+
 
 @dataclass(frozen=True, slots=True)
 class Group:
@@ -717,6 +720,8 @@ class Group:
             gameplay meaning (ADR-0006).
         spec: How it changes the Run's ServerSpec.
         kind: How it is judged (ADR-0006).
+        runs: How many times a statistical Group is played on each server for one Verdict;
+            other kinds ignore it.
     """
 
     id: str
@@ -725,6 +730,17 @@ class Group:
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
     kind: GroupKind = GroupKind.EXACT
+    runs: int = DEFAULT_RUNS
+
+    def __post_init__(self) -> None:
+        """Refuse a Group that runs less than once.
+
+        Raises:
+            ValueError: `runs` is less than 1.
+        """
+        if self.runs < 1:
+            msg = f"{self.id} runs at least once, not {self.runs}"
+            raise ValueError(msg)
 
 
 _REGISTERED: dict[str, Group] = {}
@@ -736,13 +752,14 @@ GROUPS: Mapping[str, Group] = MappingProxyType(_REGISTERED)
 """
 
 
-def group(
+def group(  # noqa: PLR0913 - one keyword per field of the Group it registers
     id: str,  # noqa: A002 - the Group's id, as PLAN names it
     *,
     requires: tuple[str, ...] = (),
     masks: tuple[Mask, ...] = (),
     spec: Callable[[ServerSpec], ServerSpec] = identity,
     kind: GroupKind = GroupKind.EXACT,
+    runs: int = DEFAULT_RUNS,
 ) -> Callable[[Script], Script]:
     """Return a decorator that registers its function as the script of Group `id`.
 
@@ -755,7 +772,7 @@ def group(
             msg = f"a Group called {id!r} is registered already"
             raise ValueError(msg)
         _REGISTERED[id] = Group(
-            id=id, run=run, requires=requires, masks=masks, spec=spec, kind=kind
+            id=id, run=run, requires=requires, masks=masks, spec=spec, kind=kind, runs=runs
         )
         return run
 

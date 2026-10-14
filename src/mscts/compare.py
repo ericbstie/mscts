@@ -365,7 +365,7 @@ that is not a player has the same UUID: then it shows that entity's number.
 """
 
 
-type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
+type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed", "distribution"]
 
 
 class Observability(StrEnum):
@@ -411,9 +411,17 @@ class Divergence:
             Candidate failure, `run.judge`; never made by `compare`). `bot` is the Bot
             that failed, or "" when the Group's own script raised; `packet` is "",
             `index` 0, `reference` ABSENT.
-        packet: The packet name; "" for `bot` and `failed`.
+            `distribution`: a statistical Group's samples of one name do not come from
+            one distribution (`run.judge_samples`; never made by `compare`). `bot` and
+            `packet` are "", `index` 0, `test_case` the sample name; `reference` and
+            `candidate` are each side's `stats.Summary`; `path` is the test that
+            rejected, `Kolmogorov-Smirnov D = 0.42, p = 0.00031` (the effect size, and the
+            p-value after Holm's correction), or None if a side has no samples of the
+            name, or one side's are numbers and the other's categories.
+        packet: The packet name; "" for `bot`, `failed` and `distribution`.
         path: Where in the matched Packets they differ, or None for their whole
-            payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
+            payload. Always None for `bot`, `missing`, `unexpected` and `failed`; the
+            test for `distribution`.
         reference: The value in the reference, or ABSENT. For `bot`, the number of
             the Bot's Events. For a gameplay difference in a chunk's blocks, biomes or
             light, a text that names the chunk and the first positions that differ, with
