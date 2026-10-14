@@ -417,7 +417,8 @@ category. A name that one server never records fails as well, so record
 each name in every play. If a play fails on vanilla, the Group is an error.
 If it fails on the Candidate, each of its test cases fails.
 
-These Groups are slow, so `mscts run` plays them only with `--statistical`.
-A statistical Group's Self-check is one comparison of vanilla against
+These Groups are slow, so `mscts run` plays them only with `--statistical`,
+and once per Run whatever `--repeat` is, since every extra comparison could
+fail by chance too. A statistical Group's Self-check is one comparison of vanilla against
 vanilla, run by `mise run test:statistical`, and it must not fail. Two
 vanilla servers still fail it by chance 1% of the time.

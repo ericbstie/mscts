@@ -12,14 +12,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
-from support.selfcheck import repetitions, selfcheck_params
+from support.selfcheck import selfcheck_params
 
 from mscts import group as group_module
 from mscts import run as run_module
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import DEFAULT_RUNS, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
-from mscts.run import Attached, Server, run, selfcheck
+from mscts.run import Attached, Server, run, run_results, selfcheck
 from mscts.settle import PlayersStillOnline
 from mscts.stats import PER_PLAY, Difference, Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
@@ -493,14 +493,14 @@ async def test_a_reference_played_alone_that_samples_nothing_is_an_error(
 
 
 @pytest.mark.asyncio
-async def test_a_statistical_selfcheck_compares_two_references_and_does_not_reject(
+async def test_a_statistical_selfcheck_is_one_comparison_of_two_references_whatever_the_repeat(
     fake_server: Callable[..., Server], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     group = _statistical(_drawing(shifted_port=0))
     monkeypatch.setitem(group_module._REGISTERED, group.id, group)  # noqa: SLF001
 
     verdicts = await selfcheck(
-        [group.id], reference=fake_server("vanilla"), workdir=tmp_path, repeat=1
+        [group.id], reference=fake_server("vanilla"), workdir=tmp_path, repeat=3
     )
 
     assert [(verdict.outcome, verdict.test_cases) for verdict in verdicts] == [
@@ -522,8 +522,31 @@ def test_the_selfcheck_tier_leaves_a_statistical_group_to_the_statistical_tier()
     ]
 
 
-def test_a_statistical_selfcheck_is_one_comparison_whatever_the_repeat() -> None:
-    exact = Group(id="test/exact", run=_drawing(0))
+async def _idle(context: GroupContext) -> None:
+    del context
 
-    assert repetitions([exact], 20) == 20
-    assert repetitions([exact, _statistical(_drawing(0))], 20) == 1
+
+@pytest.mark.asyncio
+async def test_a_statistical_group_plays_once_per_run_whatever_the_repeat(
+    run_token: str, tmp_path: Path
+) -> None:
+    plays: Counter[int] = Counter()
+    statistical = _statistical(_drawing(0, plays=plays), runs=4)
+    after = Group(id="test/after", run=_idle, requires=(statistical.id,))
+    async with (
+        attached(FakeAdapter("vanilla", run_token), tmp_path / "reference") as reference,
+        attached(FakeAdapter("pumpkin", run_token), tmp_path / "candidate") as candidate,
+    ):
+        result = await run_results(
+            [statistical, after], reference, candidate, workdir=tmp_path, repeat=3
+        )
+
+    assert sorted(plays.values()) == [4, 4]
+    assert [len(group.verdicts) for group in result.results] == [1, 3]
+    assert [verdict.group_id for verdict in result.verdicts] == [
+        "test/statistical",
+        "test/after",
+        "test/after",
+        "test/after",
+    ]
+    assert all(verdict.outcome is Outcome.MATCH for verdict in result.verdicts)

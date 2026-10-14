@@ -1823,7 +1823,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # the wait's, as above). The first failing play ends that side's plays; the
     # Reference's ends both, and after the Candidate's the Reference plays on. It measures
     # nothing and keeps no Transcript. Played on the Reference alone (#266), it plays
-    # once, for its sample names. ValueError for a Group
+    # once, for its sample names. It is played in the first repetition only, whatever
+    # `repeat` is (its runs are its repetitions); a Group requiring it gets that Verdict
+    # in every repetition. ValueError for a Group
     # listed twice, listed before a Group it requires or requiring one not listed (resolve
     # orders them; review B LOW-R2), or whose `spec` does not give an Attached side's spec
     # (host and port aside: it would run against the wrong config), before anything
@@ -1834,7 +1836,8 @@ async def selfcheck(group_ids: Sequence[str], *, reference: Server, workdir: Pat
     # run(resolve(group_ids), attached or reference, reference, ...): two Reference
     # Instances (one of them `attached`, if given, which must be of reference's Adapter:
     # ValueError), the prerequisites included; KeyError (unknown id) before anything
-    # starts. G2: all `match`.
+    # starts. G2: all `match`. A statistical Group is one comparison, whatever `repeat`
+    # is (run plays it once).
     # (The `mscts selfcheck` command wraps it; the caller gets `reference`'s Installation with install.require.)
 ```
 
@@ -2569,7 +2572,8 @@ def summary(series: Series | None) -> Summary: ...
 @frozen
 class GroupResult:
     group_id: str
-    verdicts: tuple[Verdict, ...]                    # one per repetition
+    verdicts: tuple[Verdict, ...]                    # one per repetition (one in all,
+                                                     # for a statistical Group)
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition (the
@@ -2594,7 +2598,8 @@ class RunResult:
     results: tuple[GroupResult, ...]
     reference: SideSummary
     candidate: SideSummary
-    verdicts: tuple[Verdict, ...]   # property: repetition after repetition
+    verdicts: tuple[Verdict, ...]   # property: repetition after repetition, each Group's
+                                    # that had one (a statistical Group's in the first)
 
 @frozen
 class Report:                       # report.py

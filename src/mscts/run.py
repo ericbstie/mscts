@@ -162,10 +162,16 @@ class RunResult:
 
     @property
     def verdicts(self) -> tuple[Verdict, ...]:
-        """Every Verdict, repetition after repetition, each in the order played."""
-        repeat = len(self.results[0].verdicts) if self.results else 0
+        """Every Verdict, repetition after repetition, each in the order played.
+
+        A statistical Group's one Verdict is in the first repetition (`run_results`).
+        """
+        repeat = max((len(result.verdicts) for result in self.results), default=0)
         return tuple(
-            result.verdicts[repetition] for repetition in range(repeat) for result in self.results
+            result.verdicts[repetition]
+            for repetition in range(repeat)
+            for result in self.results
+            if repetition < len(result.verdicts)
         )
 
 
@@ -498,8 +504,10 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     end, however the Run ends. An Attached side is played at its Endpoint as it is,
     and neither started nor stopped.
 
-    A statistical Group is played `runs` times on each side for each Verdict
-    (`judge_samples`), the Reference's plays first.
+    A statistical Group is played `runs` times on each side, the sides taking turns, for
+    its one Verdict (`judge_samples`): in the first repetition only, whatever `repeat`
+    is, as its `runs` are its repetitions and each more Verdict would add to the chance
+    of a false mismatch. A Group that requires it gets that Verdict in every repetition.
 
     Raises:
         ValueError: A Group is listed twice, or before a Group it requires, or a Group
@@ -517,6 +525,9 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
         for repetition in range(1, repeat + 1):
             done: dict[str, Verdict] = {}
             for group in groups:
+                if group.kind is GroupKind.STATISTICAL and plays[group.id]:
+                    done[group.id] = plays[group.id][0].verdict  # its `runs` are its repeats
+                    continue
                 verdict = prerequisite_verdict(group, done)
                 if verdict is None or verdict.outcome is Outcome.MISMATCH:
                     await instances.start(group)  # first, so progress reads in order

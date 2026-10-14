@@ -142,17 +142,6 @@ def selfcheck_params(groups: Mapping[str, Group]) -> list[ParameterSet]:
     ]
 
 
-def repetitions(groups: Sequence[Group], repeat: int) -> int:
-    """How many times a Self-check plays `groups`: once if one is statistical, else `repeat`.
-
-    A statistical Group's Self-check is one Reference against Reference comparison of its
-    `runs` plays per side, which must not reject (#24): it rejects by chance at most 1% of
-    the time, so `repeat` of them would fail by chance `repeat` times as often.
-    """
-    statistical = any(group.kind is GroupKind.STATISTICAL for group in groups)
-    return 1 if statistical else repeat
-
-
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Give every test that takes a `group_id` one run per registered Group."""
     if "group_id" in metafunc.fixturenames:

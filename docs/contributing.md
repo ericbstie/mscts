@@ -56,8 +56,9 @@ soon as it is registered, with no test file to write for it. A Group
 that changes the server's settings with `spec` gets two servers of its own,
 which adds two boots.
 
-Each Group is played 3 times. `MSCTS_SELFCHECK_REPEAT` changes that, and `-k`
-picks Groups by id:
+Each Group is played 3 times, except a statistical one, which is one
+comparison. `MSCTS_SELFCHECK_REPEAT` changes that, and `-k` picks Groups
+by id:
 
 ```sh
 MSCTS_SELFCHECK_REPEAT=20 uv run pytest -m selfcheck -k 'status/'
