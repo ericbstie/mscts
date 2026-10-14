@@ -406,6 +406,14 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-14 | workers (#37, #38) | Most wall-clock time went to waiting for the live lock behind #360's stress series; the lead's own tiers waited over 2 h each | **defer**: #374 (the lock is not first come, first served); a repeat of the train 31 complaint, so it is a process bug now |
+| 2026-10-14 | worker (#37) | A 20-play probe matched, then the Self-check failed 2 of 20 on falling-block movement (the tracker clock) | **adopt**: timing handbook line, every entity packet a tick-exact Group compares needs a reason the tracker clock cannot shift it |
+| 2026-10-14 | worker (#37) | A probe listing put each packet one step early | **adopt**: timing handbook line, count steps from the Marks |
+| 2026-10-14 | worker (#38) | A scheduled fluid tick survived into the next play through the chunk save | **adopt**: timing handbook line |
+| 2026-10-14 | worker (#38) | The Pumpkin Report is 15 MB, almost all configuration tag differences | **reject** for now: #256 (a shifted list element) is the cause and waits on the maintainer |
+| 2026-10-14 | workers (#37, #38) | No case titles for `add_transient_block` | **defer**: #373 |
+| 2026-10-14 | lead (train 33) | The lead's `pkill -f pytest`, meant for its own rebase, killed a worker's stress run | **adopt**: tech-lead skill, never kill by a name pattern on the shared host; kill by the pid you started |
+| 2026-10-14 | lead (train 33) | The lead's live tiers were killed at the 2 h background cap while they waited for the lock | **adopt**: tech-lead skill, start a live tier that may wait detached (`setsid nohup`), writing its exit code to a file, and wait on that file |
 | 2026-10-11 | worker (#360) | The stress runs for five Group families took about 14 h | **adopt**: a brief that asks for stress runs states each family's play time on main, and long families go to separate workers |
 | 2026-10-11 | worker (#360) | The worktree's local `main` was stale (9cdf1ed) though origin/main was the brief's base | **adopt**: the brief template's Base line says `git fetch origin main` and `git merge --ff-only origin/main` |
 | 2026-10-11 | worker (#360) | A background stress driver was killed at the 2 h cap | **reject**: common.md already gives the longest background timeout; a multi-hour run is split per family instead (above) |
@@ -737,6 +745,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-14 | The tech-lead skill: kill only by pid on the shared host, and start live tiers that may wait for the lock detached | Train 33: a pattern kill stopped a worker's stress run, and two of the lead's tiers died at the 2 h background cap while waiting |
 | 2026-10-11 | The brief template's Base line fetches and merges `origin/main`; a brief that asks for stress runs gives each Group family's play time on main and splits long families across workers | Train 32: a worker started from a stale local `main`, and #360's stress runs for five families took about 14 h |
 | 2026-10-10 | Workers never bypass the live lock on a shared host, run `mscts run` only while holding no other live run, and run long commands in the background with the longest timeout; the test-group skill plans a Group's windows against the Self-check's 90 s play | Train 30: two container restarts, and two Groups trimmed after a 20-play Self-check timed out |
 | 2026-10-09 | Each lead's handoff note ends with its session's total tokens, its number of batches and of wakes, and the PRs it merged | Maintainer: yes. The 2026-10-09 context change is judged by wakes per batch and tokens per merged PR, and measuring that took a thread reading session usage by hand each time |

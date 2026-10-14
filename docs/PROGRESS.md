@@ -195,6 +195,19 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-14: train 33
+
+- Train 33 (#371, then #372): `blocks/gravity` and `blocks/support` (#37);
+  `fluids/water-spread`, `fluids/lava-spread`, `fluids/sources` and
+  `fluids/interactions` (#38). The anvil falls one block, and falling-block
+  movement is not compared: vanilla sends it on the entity tracker's clock,
+  which runs in frozen ticks too. Each new Group passed its Self-check 20 of
+  20. On the train's tip every commit checked, reference 35 of 35,
+  candidate 15 of 15. Pumpkin fails every fluid Group on the flow itself.
+- #360's lighter barrier (PR #367) is in its stress runs.
+- Filed: #373 (`add_transient_block` titles), #374 (the live lock is not
+  first come, first served).
+
 ### 2026-10-11: train 32
 
 - Train 32 (#365, then #366): `entities/summon`, `entities/data-changes`
