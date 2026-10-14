@@ -818,7 +818,7 @@ CHAT_SALT = 0                       # the salt they carry
 TICK_GAP_S = 0.005                  # sync's wait from an answer's arrival to its next request
 SYNC_REQUESTS = 3                   # how many statistics requests sync sends (#169)
 HANDLED_REQUESTS = 2                # how many wait_until_handled sends, back to back (#360)
-SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request
+SYNC_PASSED_OVER = "sync:passed-over"  # the Mark (+ " <Bot name>") for an award_stats stamped before its request; sync and wait_until_handled
 class Replies:                      # an Answer: what a Bot answers by itself, as each packet arrives
     async def __call__(self, connection: Connection, packet: Packet) -> None: ...
     # As the 26.3 client does (javap): login_finished → login_acknowledged, then configuration

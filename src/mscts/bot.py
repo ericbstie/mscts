@@ -113,10 +113,12 @@ a real answer among the two taken.
 """
 
 SYNC_PASSED_OVER = "sync:passed-over"
-"""The label of the Mark `sync` leaves for an `award_stats` that came before its request.
+"""The label of the Mark left for an `award_stats` that came before its request.
 
-A server that answers twice, or sends statistics nobody asked for; followed by the Bot's
-name. Compare reads only `observe:` Marks, so it changes no Verdict.
+`sync` and `wait_until_handled` both leave it: they share the request and its pass-over,
+so inside a `step_after` it comes from `wait_until_handled`. A server that answers twice,
+or sends statistics nobody asked for; followed by the Bot's name. Compare reads only
+`observe:` Marks, so it changes no Verdict.
 """
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
