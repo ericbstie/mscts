@@ -1332,8 +1332,17 @@ class Transcript:                   # a plain data holder: no I/O
     # to_jsonl() / from_jsonl() — payload as hex, fields as JSON
 
 class GroupContext:
-    def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None: ...
+    def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float,
+                 samples: dict[str, list[Sample]] | None = None) -> None: ...
+                                    # samples: where sample() adds, after the samples of the
+                                    # side's earlier plays (#24); None: a dict of its own
     endpoint: Endpoint
+    def sample(self, name: str, value: Sample) -> None: ...   # #24: appends value to
+                                    # samples[name]. ValueError: an empty name, a number that is
+                                    # not finite, or a number for a name holding categories (or
+                                    # the other way round); TypeError: not int, float or str
+                                    # (a bool is refused)
+    samples: Mapping[str, Sequence[Sample]]   # property: every sample so far, by name
     control: Control                # an OperatorBot (ADR-0001), the same one on every read;
                                     # its Bot is one of the context's Bots (closed, synced
                                     # and drained with them, and named by raised_by)
