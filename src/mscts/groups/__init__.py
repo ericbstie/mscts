@@ -2,6 +2,7 @@
 
 from mscts.groups import (
     blocks,
+    blocks_physics,
     blocks_player,
     chat,
     chunks,
@@ -22,6 +23,7 @@ from mscts.groups import (
 
 __all__ = [
     "blocks",
+    "blocks_physics",
     "blocks_player",
     "chat",
     "chunks",

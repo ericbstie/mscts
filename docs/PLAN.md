@@ -1156,6 +1156,13 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `PLACE_CASES` and `ATTACHED_CASES` — what the placements of the two place Groups are;
   `dig_creative`, `place` and `place_attached` — the `blocks/dig-creative`, `blocks/place` and
   `blocks/place-attached` scripts.
+- `groups.blocks_physics`: `WATCHER` — the Bot that is told what falls and what breaks;
+  `SETTLE_TICKS` — how many ticks the world steps after Control builds, before the first window;
+  `GRAVITY_PACKETS` — what a `blocks/gravity` window compares; `GRAVITY_CASES` — what each of
+  its windows builds, removes and steps; `GRAVITY_MASKS` — the random fields of the `add_entity`
+  of the item a falling block breaks into; `gravity` — the `blocks/gravity` script;
+  `SUPPORT_PACKETS` and `SUPPORT_CASES` — the same for `blocks/support`; `support` — the
+  `blocks/support` script.
 - `groups.players`: `FIRST` — the player in the world first, who watches; `SECOND` — the
   player who joins, changes game mode and leaves next to it; `PACKETS` — what a window
   compares; `join_seen`, `leave_seen`, `mode_seen` and `server_full` — the
