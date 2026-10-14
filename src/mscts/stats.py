@@ -5,6 +5,7 @@ standard library, and a statistical Group needs nothing else scipy has.
 """
 
 import bisect
+import dataclasses
 import math
 import statistics
 from collections import Counter
@@ -44,16 +45,28 @@ type Sample = float | str
 
 @dataclass(frozen=True, slots=True)
 class Numbers:
-    """One name's samples on one server, all numbers, in the order recorded."""
+    """One name's samples on one server, all numbers.
+
+    Attributes:
+        values: The samples, in the order recorded.
+        per_play: How many of them each play recorded, a count for every play, 0 included.
+    """
 
     values: tuple[float, ...]
+    per_play: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class Categories:
-    """One name's samples on one server, all categories, in the order recorded."""
+    """One name's samples on one server, all categories.
+
+    Attributes:
+        values: The samples, in the order recorded.
+        per_play: How many of them each play recorded, a count for every play, 0 included.
+    """
 
     values: tuple[str, ...]
+    per_play: tuple[int, ...]
 
 
 type Series = Numbers | Categories
@@ -64,11 +77,18 @@ class SampleLog:
     """What a statistical Group records on one server over its plays, by sample name."""
 
     def __init__(self) -> None:
-        """Start empty."""
+        """Start empty, before the first play."""
         self._values: dict[str, list[Sample]] = {}
+        self._plays: list[Counter[str]] = []  # each play's count of samples, by name
+
+    def new_play(self) -> None:
+        """Start the next play: the samples added from now on are its own."""
+        self._plays.append(Counter())
 
     def add(self, name: str, value: Sample) -> None:
-        """Record `value`, a number or a category, as a sample called `name`.
+        """Record `value`, a number or a category, as a sample called `name` in this play.
+
+        Before the first `new_play`, it starts one.
 
         Raises:
             ValueError: `name` is empty; or `value` is a number that is not finite; or
@@ -93,18 +113,24 @@ class SampleLog:
                 f"numbers or categories, never both"
             )
             raise ValueError(msg)
+        if not self._plays:
+            self.new_play()
         earlier.append(value)
+        self._plays[-1][name] += 1
 
     def series(self) -> dict[str, Series]:
         """Each name's samples so far, in the order the names were first recorded."""
-        return {name: _series(values) for name, values in self._values.items()}
+        return {
+            name: _series(values, tuple(play[name] for play in self._plays))
+            for name, values in self._values.items()
+        }
 
 
-def _series(values: Sequence[Sample]) -> Series:
+def _series(values: Sequence[Sample], per_play: tuple[int, ...]) -> Series:
     """`values`, of one kind as `SampleLog.add` keeps them, as that kind's Series."""
     if isinstance(values[0], str):
-        return Categories(tuple(str(value) for value in values))
-    return Numbers(tuple(float(value) for value in values))
+        return Categories(tuple(str(value) for value in values), per_play)
+    return Numbers(tuple(float(value) for value in values), per_play)
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,33 +195,56 @@ def decide(
 ) -> tuple[Decision, ...]:
     """Each sample name either side has, in name order: do the two sides' samples differ?
 
-    Numbers are tested with `kolmogorov_smirnov`, categories with `chi_square`, and the
-    p-values of the names tested are corrected together (`holm`), so a Group with several
-    names still rejects one by chance at most `ALPHA` of the time. A name no test can tell
-    apart (one category, or one number, on both sides) is left out of the correction, and
-    does not reject.
+    Each name gets two tests: its values (numbers by `kolmogorov_smirnov`, categories by
+    `chi_square`), and how many samples each play recorded (`kolmogorov_smirnov` on the
+    per-play counts, `PER_PLAY`). The p-values of every test are corrected together
+    (`holm`), so a Group still rejects a name by chance at most `ALPHA` of the time. A test
+    nothing can tell apart (one value on both sides, or one category after pooling) is left
+    out of the correction. A name is rejected if either of its tests rejects; its
+    `difference` is then the one with the smaller corrected p-value.
     """
     names = sorted({*reference, *candidate})
     comparable = {
-        name: _tested(ours, theirs)
+        name: (ours, theirs)
         for name in names
         if (ours := reference.get(name)) is not None
         and (theirs := candidate.get(name)) is not None
         and type(ours) is type(theirs)
     }
-    differences = {name: found for name, found in comparable.items() if found is not None}
-    adjusted = dict(zip(differences, holm([d.p_value for d in differences.values()]), strict=True))
+    tests = [
+        (name, found)
+        for name, (ours, theirs) in comparable.items()
+        for found in (_tested(ours, theirs), _counted(ours, theirs))
+        if found is not None
+    ]
+    adjusted = holm([found.p_value for _, found in tests])
+    best: dict[str, tuple[float, Difference]] = {}
+    for (name, found), p_value in zip(tests, adjusted, strict=True):
+        if name not in best or p_value < best[name][0]:
+            best[name] = (p_value, found)
     return tuple(
         Decision(
             name=name,
-            rejected=name not in comparable or adjusted.get(name, 1.0) <= ALPHA,
-            difference=differences.get(name),
-            p_value=adjusted.get(name),
+            rejected=name not in comparable or best.get(name, (1.0,))[0] <= ALPHA,
+            difference=best[name][1] if name in best else None,
+            p_value=best[name][0] if name in best else None,
             reference=summary(reference.get(name)),
             candidate=summary(candidate.get(name)),
         )
         for name in names
     )
+
+
+PER_PLAY = "Kolmogorov-Smirnov on samples per play"
+"""The test of how many samples of a name each play recorded, as a `Difference` names it."""
+
+
+def _counted(reference: Series, candidate: Series) -> Difference | None:
+    """The test of one name's per-play counts, or None if every play recorded as many."""
+    if len({*reference.per_play, *candidate.per_play}) == 1:
+        return None
+    found = kolmogorov_smirnov(reference.per_play, candidate.per_play)
+    return dataclasses.replace(found, test=PER_PLAY)
 
 
 def holm(p_values: Sequence[float]) -> list[float]:

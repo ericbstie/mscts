@@ -21,7 +21,7 @@ from mscts.group import DEFAULT_RUNS, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
 from mscts.run import Attached, Server, run, selfcheck
 from mscts.settle import PlayersStillOnline
-from mscts.stats import Shares, Spread
+from mscts.stats import PER_PLAY, Shares, Spread
 from tests.run.fakes import FakeAdapter, attached
 
 _RUNS = 50
@@ -256,6 +256,28 @@ async def test_a_name_the_candidate_never_sampled_mismatches_untested(
             test_case="mob",
         ),
     )
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_samples_a_name_in_fewer_plays_mismatches(
+    run_token: str, tmp_path: Path
+) -> None:
+    def make(reference: Attached, candidate: Attached) -> Group:
+        del reference
+        port, played = candidate.endpoint.port, Counter[int]()
+
+        async def script(context: GroupContext) -> None:
+            played[context.endpoint.port] += 1
+            if context.endpoint.port != port or played[port] == 1:
+                context.sample("x", float(played[context.endpoint.port]))
+
+        return _statistical(script, runs=20)
+
+    verdict = await _judged(make, run_token, tmp_path)
+
+    (divergence,) = verdict.divergences
+    assert divergence.path is not None
+    assert divergence.path.startswith(f"{PER_PLAY} D = 0.95, p = ")
 
 
 @pytest.mark.asyncio

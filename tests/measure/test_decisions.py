@@ -14,15 +14,17 @@ from mscts.stats import (
     holm,
 )
 
-_LOW = Numbers((1.0, 2.0, 3.0, 4.0, 5.0))
-_HIGH = Numbers((6.0, 7.0, 8.0, 9.0, 10.0))
+_ONCE = (1,) * 5  # one sample in each of five plays
+_LOW = Numbers((1.0, 2.0, 3.0, 4.0, 5.0), _ONCE)
+_HIGH = Numbers((6.0, 7.0, 8.0, 9.0, 10.0), _ONCE)
 _DISJOINT_P = 2 / 252  # kolmogorov_smirnov(_LOW, _HIGH).p_value
 _LOW_SPREAD = Spread(samples=5, median=3.0, quartiles=(2.0, 4.0))
 
 
 def _categories(*groups: tuple[str, int]) -> Categories:
-    """`count` samples of each category, in order."""
-    return Categories(tuple(name for name, count in groups for _ in range(count)))
+    """`count` samples of each category, in order, one in each play."""
+    values = tuple(name for name, count in groups for _ in range(count))
+    return Categories(values, (1,) * len(values))
 
 
 def test_holm_scales_each_p_value_by_its_rank_and_keeps_them_in_order() -> None:
@@ -40,7 +42,7 @@ def test_the_level_is_one_percent() -> None:
 
 def test_alike_numbers_match_with_both_summaries() -> None:
     (decision,) = decide(
-        {"spawn.distance": _LOW}, {"spawn.distance": Numbers(tuple(reversed(_LOW.values)))}
+        {"spawn.distance": _LOW}, {"spawn.distance": Numbers(tuple(reversed(_LOW.values)), _ONCE)}
     )
 
     assert decision == Decision(
@@ -97,7 +99,7 @@ def test_holm_corrects_over_a_groups_names() -> None:
 
 def test_a_name_no_test_can_tell_apart_is_left_out_of_holms_correction() -> None:
     # One category on both sides, or one number: no test can find a difference in them.
-    zombies, ones = _categories(("zombie", 5)), Numbers((1.0,) * 5)
+    zombies, ones = _categories(("zombie", 5)), Numbers((1.0,) * 5, _ONCE)
     decisions = decide(
         {"x": _LOW, "mob": zombies, "y": ones}, {"x": _HIGH, "mob": zombies, "y": ones}
     )
@@ -124,7 +126,7 @@ def test_a_name_one_side_never_sampled_rejects_untested() -> None:
 
 
 def test_a_name_only_the_candidate_sampled_rejects_untested() -> None:
-    (decision,) = decide({}, {"x": Categories(("a",))})
+    (decision,) = decide({}, {"x": Categories(("a",), (1,))})
 
     assert (decision.rejected, decision.difference, decision.reference) == (True, None, None)
 
@@ -140,3 +142,38 @@ def test_names_come_in_name_order() -> None:
     decisions = decide({"b": _LOW, "a": _LOW}, {"a": _LOW, "b": _LOW})
 
     assert [decision.name for decision in decisions] == ["a", "b"]
+
+
+_PER_PLAY = "Kolmogorov-Smirnov on samples per play"
+
+
+def test_far_fewer_samples_per_play_reject_though_the_values_cannot_be_told_apart() -> None:
+    # Review B's probe: 10 zombies in each of 50 plays, against 2 pigs in 2 of 50 plays.
+    zombies = Categories(("zombie",) * 500, (10,) * 50)
+    pigs = Categories(("pig",) * 2, (1, 1) + (0,) * 48)
+
+    (decision,) = decide({"mob": zombies}, {"mob": pigs})
+
+    assert decision.rejected
+    assert decision.difference is not None
+    assert (decision.difference.test, decision.difference.effect_size) == (_PER_PLAY, 1.0)
+
+
+def test_one_sample_against_fifty_rejects_by_its_count() -> None:
+    # Review B's probe: one number in 50 plays could never reach ALPHA by its value alone.
+    near_zero = Numbers(tuple(i / 100 for i in range(50)), (1,) * 50)
+    far = Numbers((1000.0,), (1,) + (0,) * 49)
+
+    (decision,) = decide({"spawn.distance": near_zero}, {"spawn.distance": far})
+
+    assert decision.rejected
+    assert decision.difference is not None
+    assert decision.difference.test == _PER_PLAY
+
+
+def test_the_counts_are_corrected_with_the_values() -> None:
+    # Both tests of each name join Holm's correction: two names, each with values and counts.
+    shifted = Numbers(_HIGH.values, (1, 1, 1, 2, 0))
+    decisions = decide({"x": _LOW, "y": _LOW}, {"x": shifted, "y": _LOW})
+
+    assert decisions[0].p_value == pytest.approx(3 * _DISJOINT_P)

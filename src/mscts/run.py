@@ -726,6 +726,7 @@ class _Instances:
             if left is not None:
                 transcript = Transcript(group_id=group.id, server=self._sides[role].name)
                 return GroupError(transcript, _left_what(left))
+            samples.new_play()
             attempt = await self._attempt(group, role, endpoint, samples=samples)
             if isinstance(attempt, GroupError):
                 return attempt

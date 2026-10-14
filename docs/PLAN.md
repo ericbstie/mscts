@@ -2516,11 +2516,14 @@ def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form
 ALPHA = 0.01                        # each sample name's level, after Holm's correction
 type Sample = float | str           # a number, or a category
 @frozen
-class Numbers: values: tuple[float, ...]   # one name's samples on one server
+class Numbers: values: tuple[float, ...]; per_play: tuple[int, ...]
+                                    # one name's samples on one server, and how many each
+                                    # play recorded (0 included)
 @frozen
-class Categories: values: tuple[str, ...]
+class Categories: values: tuple[str, ...]; per_play: tuple[int, ...]
 type Series = Numbers | Categories
 class SampleLog:                    # one server's samples over a Group's plays
+    def new_play(self) -> None: ...  # the runner calls it before each play
     def add(self, name: str, value: Sample) -> None: ...   # the checks GroupContext.sample
                                     # documents, a name's kind kept over every play
     def series(self) -> dict[str, Series]: ...   # by name, in first-recorded order
@@ -2543,9 +2546,11 @@ class Decision:
 def decide(reference: Mapping[str, Series],
            candidate: Mapping[str, Series]) -> tuple[Decision, ...]: ...
     # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
-    # by chi_square, the tested names' p-values corrected together by holm; a name no
-    # test can tell apart (one number, or one category after pooling, on both sides) is
-    # left out of holm and does not reject
+    # by chi_square, and each name's per_play counts by kolmogorov_smirnov (test PER_PLAY,
+    # "Kolmogorov-Smirnov on samples per play"); every test's p-value corrected together by
+    # holm; a test nothing can tell apart (one value on both sides, or one category after
+    # pooling) is left out of holm; a name rejects if either test does, its difference and
+    # p_value the test with the smaller corrected p
 def holm(p_values: Sequence[float]) -> list[float]: ...   # Holm-Bonferroni, same order
 def summary(series: Series | None) -> Summary: ...
 

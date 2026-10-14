@@ -30,18 +30,20 @@ def test_samples_are_recorded_by_name_in_order() -> None:
     context.sample("spawn.distance", 4)
 
     assert samples.series() == {
-        "spawn.distance": Numbers((3.2, 4.0)),
-        "spawn.mob": Categories(("minecraft:zombie",)),
+        "spawn.distance": Numbers((3.2, 4.0), (2,)),
+        "spawn.mob": Categories(("minecraft:zombie",), (1,)),
     }
 
 
-def test_samples_add_to_those_of_earlier_plays() -> None:
+def test_samples_add_to_those_of_earlier_plays_and_count_per_play() -> None:
     samples = SampleLog()
-    _context(samples).sample("spawn.distance", 1.0)
+    for values in ([1.0], [], [2.0, 3.0]):
+        samples.new_play()
+        context = _context(samples)
+        for value in values:
+            context.sample("spawn.distance", value)
 
-    _context(samples).sample("spawn.distance", 2.0)
-
-    assert samples.series() == {"spawn.distance": Numbers((1.0, 2.0))}
+    assert samples.series() == {"spawn.distance": Numbers((1.0, 2.0, 3.0), (1, 0, 2))}
 
 
 def test_a_context_without_a_record_keeps_its_samples_to_itself() -> None:
@@ -49,7 +51,7 @@ def test_a_context_without_a_record_keeps_its_samples_to_itself() -> None:
 
     context.sample("x", 1.0)
 
-    assert context.samples == {"x": Numbers((1.0,))}
+    assert context.samples == {"x": Numbers((1.0,), (1,))}
 
 
 def test_a_category_after_numbers_of_one_name_is_refused() -> None:
