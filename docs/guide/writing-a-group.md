@@ -383,10 +383,17 @@ from mscts.group import GroupContext, GroupKind, group
 
 @group("spawn/join-distance", kind=GroupKind.STATISTICAL, runs=50)
 async def join_distance(context: GroupContext) -> None:
-    player = await context.bot("player")
+    player = await context.bot(f"spawn{context.play}")
     await player.join()
     context.sample("spawn.distance", math.hypot(player.position.x, player.position.z))
 ```
+
+A statistical Group must make its plays independent of each other. All
+of them run on the same server, which keeps what each one leaves behind:
+a player's saved position, entities, the time of day and the weather. A
+player who joins again comes back where they left, so the example joins a
+new player in each play, named by `context.play`, the play's number from
+0. Undo anything else a play changes before the next one starts.
 
 For each name, mscts asks whether the two servers' samples could come from
 the same distribution. Numbers get a Kolmogorov-Smirnov test and

@@ -208,6 +208,7 @@ class JoinScript:
         after_batch: Frames written in the same write as the first `chunk_batch_finished`,
             so they arrive with it, before `Bot.join` returns; or None.
         then: Run last, before waiting for the client to close, or None.
+        spawn: Where the join teleport puts the player of a name, or None for `SPAWN`.
     """
 
     compression_threshold: int | None = 256
@@ -218,6 +219,7 @@ class JoinScript:
     first_batch: Sequence[Mapping[str, object]] = (EMPTY_CHUNK,)
     after_batch: Callable[[Peer], bytes] | None = None
     then: Handler | None = None
+    spawn: Callable[[str], Mapping[str, float]] | None = None
 
 
 _DISCONNECT_REASON = bytes.fromhex("08 0004") + b"kick"  # an NBT String text component
@@ -329,7 +331,7 @@ class _Join:
             velocity_y=0.0,
             velocity_z=0.0,
             flags=0,
-            **SPAWN,
+            **(SPAWN if self.script.spawn is None else self.script.spawn(peer.name)),
         )
         await self.expect(peer, "minecraft:accept_teleportation")
         await peer.send("minecraft:chunk_batch_start")

@@ -85,6 +85,11 @@ class SampleLog:
         """Start the next play: the samples added from now on are its own."""
         self._plays.append(Counter())
 
+    @property
+    def play(self) -> int:
+        """The index of the play started last, from 0; 0 before the first."""
+        return max(len(self._plays) - 1, 0)
+
     def add(self, name: str, value: Sample) -> None:
         """Record `value`, a number or a category, as a sample called `name` in this play.
 

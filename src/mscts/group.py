@@ -242,6 +242,15 @@ class GroupContext:
         return self._control
 
     @property
+    def play(self) -> int:
+        """Which of a statistical Group's plays on this Instance this is, from 0.
+
+        Always 0 for another kind. A Group names its Bots by it, so that no play joins a
+        player an earlier play left behind (`SampleLog.play`).
+        """
+        return self._samples.play
+
+    @property
     def samples(self) -> Mapping[str, Series]:
         """Every sample recorded so far, by name, in the order recorded."""
         return self._samples.series()

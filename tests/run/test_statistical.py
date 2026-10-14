@@ -87,6 +87,20 @@ async def test_samples_from_one_distribution_match(run_token: str, tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_each_play_knows_its_index_on_each_side(run_token: str, tmp_path: Path) -> None:
+    played: dict[int, list[int]] = {}
+
+    async def script(context: GroupContext) -> None:
+        played.setdefault(context.endpoint.port, []).append(context.play)
+        context.sample("x", 0.0)
+
+    verdict = await _judged(lambda _r, _c: _statistical(script, runs=3), run_token, tmp_path)
+
+    assert verdict.outcome is Outcome.MATCH
+    assert list(played.values()) == [[0, 1, 2], [0, 1, 2]]
+
+
+@pytest.mark.asyncio
 async def test_shifted_samples_mismatch_with_the_effect_size(
     run_token: str, tmp_path: Path
 ) -> None:

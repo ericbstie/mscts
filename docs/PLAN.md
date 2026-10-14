@@ -1337,6 +1337,9 @@ class GroupContext:
                                     # samples: where sample() adds, after the samples of the
                                     # side's earlier plays (#24); None: a log of its own
     endpoint: Endpoint
+    play: int                       # property, #24: a statistical Group's play on this
+                                    # side, 0 to runs - 1 (SampleLog.play; 0 for other
+                                    # kinds); its Bots are named by it
     def sample(self, name: str, value: Sample) -> None: ...   # #24: SampleLog.add on its
                                     # log. ValueError: an empty name, a number that is
                                     # not finite, or a number for a name holding categories (or
@@ -2527,6 +2530,7 @@ class Categories: values: tuple[str, ...]; per_play: tuple[int, ...]
 type Series = Numbers | Categories
 class SampleLog:                    # one server's samples over a Group's plays
     def new_play(self) -> None: ...  # the runner calls it before each play
+    play: int                       # property: the last new_play's index from 0; 0 before
     def add(self, name: str, value: Sample) -> None: ...   # the checks GroupContext.sample
                                     # documents, a name's kind kept over every play
     def series(self) -> dict[str, Series]: ...   # by name, in first-recorded order

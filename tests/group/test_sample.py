@@ -35,6 +35,17 @@ def test_samples_are_recorded_by_name_in_order() -> None:
     }
 
 
+def test_the_play_is_the_index_of_the_one_started_last() -> None:
+    samples = SampleLog()
+    plays = [_context(samples).play]
+    for _ in range(3):
+        samples.new_play()
+        plays.append(_context(samples).play)
+
+    assert plays == [0, 0, 1, 2]
+    assert _context().play == 0
+
+
 def test_samples_add_to_those_of_earlier_plays_and_count_per_play() -> None:
     samples = SampleLog()
     for values in ([1.0], [], [2.0, 3.0]):
