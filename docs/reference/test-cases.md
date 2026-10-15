@@ -3362,3 +3362,27 @@ Which item the entity holds or wears in a slot. A difference shows another item 
 **Equipment slot**
 
 Where the entity holds or wears the item: a hand, or an armour slot. A difference shows the item somewhere else.
+
+## `spawn.distance`
+
+**Join distance from the spawn**
+
+How far a new player appears from the middle of the world spawn block, on the ground plane. It is compared as a distribution over many players. A difference shows servers that place new players closer to or farther from the spawn.
+
+## `spawn.x`
+
+**Join position east of the spawn**
+
+How far east of the middle of the world spawn block a new player appears, in blocks. A negative number is west. It is compared as a distribution over many players. A server that puts every player on the spawn block differs from one that spreads them.
+
+## `spawn.y`
+
+**Join height**
+
+The height at which a new player appears. It is compared as a distribution over many players. A difference shows servers that put new players on another block.
+
+## `spawn.z`
+
+**Join position south of the spawn**
+
+How far south of the middle of the world spawn block a new player appears, in blocks. A negative number is north. It is compared as a distribution over many players. A server that puts every player on the spawn block differs from one that spreads them.

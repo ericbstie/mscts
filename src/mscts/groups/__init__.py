@@ -19,6 +19,7 @@ from mscts.groups import (
     player_hunger,
     player_modes,
     players,
+    spawn,
     status,
 )
 
@@ -41,5 +42,6 @@ __all__ = [
     "player_hunger",
     "player_modes",
     "players",
+    "spawn",
     "status",
 ]
