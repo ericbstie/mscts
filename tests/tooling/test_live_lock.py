@@ -159,6 +159,35 @@ def test_a_newcomer_waits_behind_a_waiter_that_queued_first(tmp_path: Path) -> N
             assert finish(late) == 0
 
 
+def test_waiters_run_in_the_order_they_asked(tmp_path: Path) -> None:
+    with command(tmp_path) as holder:
+        assert line(holder.stdout) == "started"
+        until_the_wrapper_names_its_command(tmp_path, holder)
+        with command(tmp_path) as first:
+            assert line(first.stderr).startswith("waiting for another live tier to finish")
+            with command(tmp_path) as second:
+                assert line(second.stderr).startswith("waiting for another live tier to finish")
+                assert finish(holder) == 0
+                assert line(first.stdout) == "started"
+                assert second.stdout is not None
+                assert not select.select([second.stdout], [], [], 0.3)[0]
+                assert finish(first) == 0
+                assert line(second.stdout) == "started"
+                assert finish(second) == 0
+
+
+def test_a_waiter_that_dies_in_the_queue_holds_no_one_up(tmp_path: Path) -> None:
+    with command(tmp_path) as holder:
+        assert line(holder.stdout) == "started"
+        until_the_wrapper_names_its_command(tmp_path, holder)
+        with frozen_waiter(tmp_path, holder) as dead, command(tmp_path) as next_in_line:
+            assert line(next_in_line.stderr).startswith("waiting for another live tier to finish")
+            dead.kill()
+            assert dead.wait(timeout=5) == -signal.SIGKILL
+            assert line(next_in_line.stdout) == "started"
+            assert finish(next_in_line) == 0
+
+
 @pytest.mark.parametrize("exit_code", [0, 7])
 def test_the_command_exit_code_passes_through(tmp_path: Path, exit_code: int) -> None:
     with command(tmp_path, exit_code) as process:

@@ -87,8 +87,9 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
   runs the full live tiers once, on the train's tip.
   Candidate tests assert observable outcomes, never a field a Candidate may
   legitimately get wrong.
-- Live-tier mise tasks share `<cache>/live-tier.lock` (#138). A second
-  waits for the holder; `MSCTS_LIVE_LOCK=0` bypasses it on a machine known
+- Live-tier mise tasks share `<cache>/live-tier.lock` (#138). Others
+  wait for the holder and get the lock in the order they asked (#374), and a
+  waiter that dies drops out of the queue; `MSCTS_LIVE_LOCK=0` bypasses it on a machine known
   to have enough capacity. The unit tier takes no lock.
   Never bypass it on a shared host, and run `mscts run` against a
   Candidate only while you hold no other live run: too many Instances at
