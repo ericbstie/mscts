@@ -30,7 +30,18 @@ CONTROL, CLOCK = "control", "clock"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 SYSTEM_CHAT, SET_TIME = "minecraft:system_chat", "minecraft:set_time"
-COMMANDS = tree("gamerule", "tick", "tellraw", "time", "weather", "tp", "setblock", "fill")
+COMMANDS = tree(
+    "gamerule",
+    "tick",
+    "tellraw",
+    "time",
+    "weather",
+    "tp",
+    "setblock",
+    "fill",
+    "advancement",
+    "spawnpoint",
+)
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
 TIME_TICKS = 4
@@ -389,6 +400,8 @@ def test_sleep_sets_a_bed_and_takes_it_and_every_rule_back() -> None:
         "tick freeze",
         "setblock 2 -60 0 minecraft:red_bed[part=foot,facing=east]",
         "setblock 3 -60 0 minecraft:red_bed[part=head,facing=east]",
+        "advancement revoke sleeper only minecraft:adventure/sleep_in_bed",
+        "spawnpoint sleeper 0 -60 0",
         "gamerule players_sleeping_percentage 100",
         *AT_MIDNIGHT,
     )

@@ -30,7 +30,7 @@ from dataclasses import replace
 
 from mscts.bot import Bot, Face
 from mscts.codec.packets import Packet
-from mscts.group import GroupContext, GroupKind, group
+from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import join_at_spawn, pin_joins
 from mscts.spec import ServerSpec
 
@@ -159,7 +159,7 @@ _COMMANDS = (
 """From total ticks 0: each named time of the day, read back; an absolute time; two adds; and
 each query. `time query daytime` is the query 26.3 removed, so vanilla refuses it. `time query
 gametime` is left out: the game time counts every tick since the world was made, so it differs
-between two Instances (#63)."""
+between two Instances (#399)."""
 
 
 @group("time/commands", spec=_operator)
@@ -213,6 +213,17 @@ game events."""
 _DAWN_PACKETS = SLEEP_PACKETS[1:]
 """What the window of the step to dawn compares: not the chat, since Control steps the world in
 it, and the clock, an operator, hears that as admin chat."""
+
+
+async def _first_night(control: Control) -> None:
+    """Make the sleeper's first night in the bed like its first ever, every time it is played.
+
+    The first time a player sleeps it gets the advancement `adventure/sleep_in_bed`, and the bed
+    becomes its spawn point; vanilla announces both. Both are kept with the player, so the
+    advancement is revoked, and the spawn point moved off the bed.
+    """
+    await control.run(f"advancement revoke {SLEEPER} only minecraft:adventure/sleep_in_bed")
+    await control.run(f"spawnpoint {SLEEPER} 0 -60 0")
 
 
 async def _alone(context: GroupContext, clock: Bot) -> None:
@@ -291,6 +302,7 @@ async def sleep(context: GroupContext) -> None:
         for x, part in _BED:
             await control.run(f"setblock {x} -60 0 minecraft:red_bed[part={part},facing=east]")
         undo.push_async_callback(control.run, "fill 2 -60 0 3 -60 0 minecraft:air strict")
+        await _first_night(control)
         undo.push_async_callback(control.run, "gamerule players_sleeping_percentage 100")
         await _at_midnight(context, clock, 100)
         async with context.observe(*SLEEP_PACKETS):
