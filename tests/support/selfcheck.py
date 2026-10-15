@@ -75,18 +75,19 @@ type PlayOnce = Callable[[Path], Awaitable[RunResult]]
 
 
 async def play_and_replay(
-    groups: Sequence[Group], play: PlayOnce, workdir: Path
+    groups: Sequence[Group], play: PlayOnce, replay: PlayOnce, workdir: Path
 ) -> tuple[RunResult, ...]:
-    """Play `groups` once, and once more with fresh plays if that was a chance rejection.
+    """Play `groups` with `play`, and with `replay` too if that was a chance rejection.
 
-    The plays are `first` and `replay` under `workdir`. The replay is played only when
+    The plays are `first` and `replay` under `workdir`. `replay` is called only when
     `may_replay` says the first was nothing but a statistical Group's rejection by chance
-    (#388), so what is given back is one Run, or two.
+    (#388), so what is given back is one Run, or two. It is a play of its own, not `play`
+    again: the caller gives it Instances that carry nothing over from the first.
     """
     first = await play(workdir / "first")
     if not may_replay(groups, first.verdicts):
         return (first,)
-    return (first, await play(workdir / "replay"))
+    return (first, await replay(workdir / "replay"))
 
 
 def describe_failure(plays: Sequence[RunResult], where: Path) -> str:

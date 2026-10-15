@@ -56,8 +56,12 @@ async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
     tmp_path: Path,
 ) -> None:
     groups = resolve([group_id])
-    play = functools.partial(_play, groups, (reference, second_reference), cache_dir, repeat=repeat)
-    plays = await play_and_replay(groups, play, tmp_path)
+    pair = (reference, second_reference)
+    play = functools.partial(_play, groups, pair, cache_dir, repeat=repeat)
+    # The replay gets Instances of its own: the shared pair keeps each Bot's saved position
+    # (`spawn/*`), so a replay on it would sample the first play's again.
+    replay = functools.partial(_play_on_own, groups, cache_dir, repeat=repeat)
+    plays = await play_and_replay(groups, play, replay, tmp_path)
     # A statistical Group is one comparison whatever the repeat (#24): `run_results`.
     assert [len(played.verdicts) for played in plays[0].results] == [
         1 if group.kind is GroupKind.STATISTICAL else repeat for group in groups
@@ -81,6 +85,13 @@ async def _play(
         return await run_results(
             groups, first, second, workdir=workdir, repeat=repeat, keep_transcripts=True
         )
+    return await _play_on_own(groups, cache_dir, workdir, repeat)
+
+
+async def _play_on_own(
+    groups: tuple[Group, ...], cache_dir: Path, workdir: Path, repeat: int
+) -> RunResult:
+    """Play `groups` on two Instances launched for this play alone, and stopped after it."""
     with own_reference(cache_dir) as server:
         return await run_results(
             groups, server, server, workdir=workdir, repeat=repeat, keep_transcripts=True
