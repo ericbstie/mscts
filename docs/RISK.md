@@ -61,6 +61,11 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #394 | medium | medium | lead's diff read | 0 | none: research note and probe, no product code |
+| #391 | | high | first review, second review, re-review | 1, 1 (the same: an uncompared packet ended a run of resends), 1 (runs crossed a window boundary) | five Self-checks of `blocks`, `entities`, `combat` before the reviews and five after the first fix, 26 of 26 each; one after the window fix, 27 of 27; none caught a bug |
+| #393 | | medium | lead's diff read | 0 | none: no barrier or window change; statistical tier 7 of 7 on the train tip |
+| #390 | medium | medium | lead's diff read | 1: the replay played on the shared pair, so `spawn/*` re-sampled the first play's positions | none: no barrier or window change; the lead forced the replay live once, 1 of 1 |
+| #392 | | medium | lead's diff read | 0 | five Self-checks of `combat/pvp-off`, 20 of 20 each; no mutation sweep |
 | #386 |  | medium | lead's diff read | 0 | none: no barrier or window change; each Group's statistical Self-check passed |
 | #385 |  | medium | lead's diff read | 0 | none: no barrier or window change; statistical Self-check passed for both Groups |
 | #379 |  | high | lead's diff read, first review, second review, re-review | 0, 1, 2, 1 | none: no barrier or window change |

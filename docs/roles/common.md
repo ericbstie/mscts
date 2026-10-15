@@ -110,3 +110,4 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - End each issue with the Worker report exactly as docs/PROCESS.md
   specifies, including the lines you propose for your lane's handbook.
   State your worktree path, branch and PR URL.
+- Start any live run that can outlast a few minutes with `setsid nohup` in a scratch script, and wait on its rc file within your turn: a background run that outlives your turn is killed.
