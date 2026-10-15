@@ -86,21 +86,38 @@ ZOMBIE_ID = 100
 """The entity id the fake gives the first entity Control summons; the next gets 101."""
 
 
+type Sent = tuple[str, Mapping[str, object]]
+"""A packet the fake sends the Bot: its name and fields."""
+
+type Step = tuple[int, Sent]
+"""A packet the fake sends the Bot once the world runs, and the tick it is sent on."""
+
+START = 1000
+"""The game time when Control first reads it."""
+
+
 @dataclass
 class MobsServer:
     """A fake server for the mobs Groups.
 
-    Each summon becomes an `add_entity` to the Bot, with ids from `ZOMBIE_ID` on. Once Control
-    steps the world (`tick step`), the Bot is sent `after_step`. Each `time query gametime`
-    is answered with the next of `gametimes`. A kill of the tagged entities removes them all.
+    Each summon becomes an `add_entity` to the Bot, with ids from `ZOMBIE_ID` on. A kill of
+    the tagged entities removes them all. Control first reads the game time `START`. Once it
+    steps the world (`tick step`), the Bot is sent the first of `after_step`; each later
+    `time query gametime` is answered with `START` plus the tick of the last packet sent, and
+    then the next packet is sent. So a play reads the tick of each packet once: on seeing it,
+    or once it has waited `_IDLE_S` for the next. Once every packet is sent, the time is `end`,
+    and one tick more at each read after.
     """
 
-    gametimes: list[int] = field(default_factory=list)
-    after_step: Sequence[tuple[str, Mapping[str, object]]] = ()
+    after_step: Sequence[Step] = ()
+    end: int = 10_000
     seen: list[Packet] = field(default_factory=list)
     _bot: Peer | None = None
     _summoned: list[int] = field(default_factory=list)
     _added: int = 0
+    _now: int = 0
+    _sent: int = 0
+    _stepped: bool = False
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -126,16 +143,27 @@ class MobsServer:
             token = json.loads(command.removeprefix(MARKER))
             await peer.send("minecraft:system_chat", content=text(token), overlay=False)
         elif command == TIME_QUERY:
-            answer = gametime_answer(self.gametimes.pop(0))
+            answer = gametime_answer(START + self._now)
+            if self._stepped:  # the next packet goes first, so the Bot has it when Control reads
+                await self._next()
             await peer.send("minecraft:system_chat", content=answer, overlay=False)
         elif (summon := _SUMMON.match(command)) is not None:
             await self._add(summon)
         elif command.startswith("tick step "):
-            for name, fields in self.after_step:
-                await self._to_bot(name, **fields)
+            self._stepped = True
+            await self._next()
         elif command == f"kill @e[tag={TAG}]" and self._summoned:
             await self._to_bot("minecraft:remove_entities", entity_ids=list(self._summoned))
             self._summoned.clear()
+
+    async def _next(self) -> None:
+        """Send the Bot the next packet of `after_step`, or move the time on past them all."""
+        if self._sent < len(self.after_step):
+            self._now, (name, fields) = self.after_step[self._sent]
+            self._sent += 1
+            await self._to_bot(name, **fields)
+        else:
+            self._now = max(self.end, self._now + 1)
 
     async def _add(self, summon: re.Match[str]) -> None:
         entity_id = ZOMBIE_ID + self._added
@@ -160,6 +188,12 @@ class MobsServer:
     async def _to_bot(self, name: str, /, **fields: object) -> None:
         assert self._bot is not None, "Control acted before the Bot joined"
         await self._bot.send(name, **fields)
+
+
+@pytest.fixture(autouse=True)
+def _short_idle(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A play waits 0.1 s, not a second, for a packet before it reads the game time."""
+    monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.1)
 
 
 @dataclass(frozen=True)
@@ -332,12 +366,13 @@ OPEN_SETUP = (
 def _chase() -> MobsServer:
     """The zombie comes half a block closer in its second move, and then hits the Bot."""
     return MobsServer(
-        gametimes=[1000, 1028, 1148],
         after_step=(
-            moved(ZOMBIE_ID, -0.25),
-            moved(ZOMBIE_ID, -0.25),
-            moved(ZOMBIE_ID, -0.25),
-            hurt(PLAYER_ID),
+            (25, moved(ZOMBIE_ID, -0.25)),
+            (28, moved(ZOMBIE_ID, -0.25)),
+            (31, moved(ZOMBIE_ID, -0.25)),
+            (100, hurt(ZOMBIE_ID)),  # the zombie's own hurt is not a hit
+            (148, hurt(PLAYER_ID)),
+            (160, hurt(PLAYER_ID)),
         ),
     )
 
@@ -362,12 +397,9 @@ async def test_chase_open_samples_when_the_zombie_came_half_a_block_closer_and_h
 
 
 @pytest.mark.asyncio
-async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_has_run(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.2)
-    # The zombie comes 0.4 blocks closer, then nothing: the budget runs out at the third read.
-    server = MobsServer(gametimes=[1000, 1100, 1299, 1300], after_step=(moved(ZOMBIE_ID, -0.4),))
+async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_has_run() -> None:
+    # The zombie comes 0.4 blocks closer at tick 100, then nothing: tick 300 ends the play.
+    server = MobsServer(after_step=((100, moved(ZOMBIE_ID, -0.4)),), end=300)
 
     result = await replay("mobs/chase-open", server)
 
@@ -375,11 +407,9 @@ async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_h
     assert result.commands[len(OPEN_SETUP) :] == (
         TIME_QUERY,
         TIME_QUERY,
-        TIME_QUERY,
         *TEARDOWN,
         "tick unfreeze",
     )
-    assert server.gametimes == []
 
 
 # `mobs/chase-maze`
@@ -404,13 +434,12 @@ MAZE_SETUP = (
 def _through_the_gap() -> MobsServer:
     """The zombie walks to the gap at z 5 (8 blocks west, 4.5 north), through it, and hits."""
     return MobsServer(
-        gametimes=[1000, 1105, 1179],
         after_step=(
-            moved(ZOMBIE_ID, -4.0, 4.5),
-            moved(ZOMBIE_ID, -3.0),  # x 9.5: not yet in the gap
-            moved(ZOMBIE_ID, -1.0),  # x 8.5: in it
-            moved(ZOMBIE_ID, -1.0),
-            hurt(PLAYER_ID),
+            (40, moved(ZOMBIE_ID, -4.0, 4.5)),
+            (90, moved(ZOMBIE_ID, -3.0)),  # x 9.5: not yet in the gap
+            (105, moved(ZOMBIE_ID, -1.0)),  # x 8.5: in it
+            (120, moved(ZOMBIE_ID, -1.0)),
+            (179, hurt(PLAYER_ID)),
         ),
     )
 
@@ -477,28 +506,37 @@ def cracked(x: int, y: int, z: int, stage: int = 0) -> tuple[str, dict[str, obje
     }
 
 
-def door_gone(section_x: int = 0) -> tuple[str, dict[str, object]]:
+def door_gone(section_x: int = 0, state: int = 0) -> tuple[str, dict[str, object]]:
     """A `section_blocks_update` that turns both halves of the door to air, as vanilla sends.
 
-    With `section_x` 1, it is the same change 16 blocks east of the door.
+    With `section_x` 1, it is the same change 16 blocks east of the door; with `state` 1, the
+    door turns to stone.
     """
+    blocks = [{"x": 5, "y": y, "z": 0, "state": state} for y in (4, 5)]
     return "minecraft:section_blocks_update", {
         "section": {"x": section_x, "y": -4, "z": 0},
-        "blocks": [{"x": 5, "y": 4, "z": 0, "state": 0}, {"x": 5, "y": 5, "z": 0, "state": 0}],
+        "blocks": blocks,
     }
+
+
+def block_changed(x: int, y: int, z: int, state: int) -> tuple[str, dict[str, object]]:
+    """A `block_update` of the block at x, y, z to `state`."""
+    return "minecraft:block_update", {"pos": {"x": x, "y": y, "z": z}, "block_state": state}
 
 
 def _broken_in() -> MobsServer:
     """The zombie cracks another block, then the door, and breaks the door: as on hard."""
     return MobsServer(
-        gametimes=[1000, 1031, 1271],
         after_step=(
-            cracked(6, -60, 1),
-            cracked(5, -59, 0),
-            cracked(5, -59, 0, stage=1),
-            door_gone(section_x=1),
-            ("minecraft:block_update", {"pos": {"x": 5, "y": -60, "z": 0}, "block_state": 1}),
-            door_gone(),
+            (10, cracked(6, -60, 1)),
+            (31, cracked(5, -59, 0)),
+            (55, cracked(5, -59, 0, stage=1)),
+            (100, door_gone(section_x=1)),
+            (150, door_gone(state=1)),
+            (200, block_changed(5, -60, 0, 1)),
+            (230, block_changed(5, -58, 0, 0)),
+            (271, door_gone()),
+            (280, door_gone()),
         ),
     )
 
@@ -529,8 +567,7 @@ async def test_doors_hard_samples_when_the_zombie_began_to_break_the_door_and_br
 
 @pytest.mark.asyncio
 async def test_a_door_broken_with_one_block_update_counts_too() -> None:
-    gone = ("minecraft:block_update", {"pos": {"x": 5, "y": -59, "z": 0}, "block_state": 0})
-    server = MobsServer(gametimes=[1000, 1265], after_step=(gone,))
+    server = MobsServer(after_step=((265, block_changed(5, -59, 0, 0)),))
 
     result = await replay("mobs/doors-hard", server)
 
@@ -542,7 +579,7 @@ DOORS_NORMAL_TICKS = 300
 
 @pytest.mark.asyncio
 async def test_doors_normal_pens_the_same_zombie_for_a_shorter_budget() -> None:
-    server = MobsServer(gametimes=[1000, 1031, 1271], after_step=(door_gone(),))
+    server = MobsServer(after_step=((271, door_gone()),))
     result = await replay("mobs/doors-normal", server, PLAY_NUMBER)
 
     assert result.bot == "doornormal7"
@@ -551,28 +588,23 @@ async def test_doors_normal_pens_the_same_zombie_for_a_shorter_budget() -> None:
 
 
 @pytest.mark.parametrize(
-    ("after_step", "gametimes", "door"),
+    ("after_step", "door"),
     [
-        ((), [1000, 1150, 1300], "held"),
-        ((cracked(6, -60, 1),), [1000, 1150, 1300], "held"),
-        ((cracked(5, -60, 0),), [1000, 1040, 1150, 1300], "cracked"),
-        ((cracked(5, -60, 0), door_gone()), [1000, 1040, 1280], "broken"),
+        ((), "held"),
+        (((40, cracked(6, -60, 1)),), "held"),
+        (((40, cracked(5, -60, 0)),), "cracked"),
+        (((40, cracked(5, -60, 0)), (280, door_gone())), "broken"),
     ],
 )
 @pytest.mark.asyncio
 async def test_doors_normal_samples_whether_the_door_held_cracked_or_broke(
-    monkeypatch: pytest.MonkeyPatch,
-    after_step: Sequence[tuple[str, Mapping[str, object]]],
-    gametimes: list[int],
-    door: str,
+    after_step: Sequence[Step], door: str
 ) -> None:
-    monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.2)
-    server = MobsServer(gametimes=gametimes, after_step=after_step)
+    server = MobsServer(after_step=after_step, end=300)
 
     result = await replay("mobs/doors-normal", server)
 
     assert result.samples == {"doors_normal.door": (door,)}
-    assert server.gametimes == []
     assert result.commands[-3:] == ("tick unfreeze", PEN_CLEAR, "tick unfreeze")
 
 
@@ -600,8 +632,12 @@ TARGETS_SETUP = (
 def _goes_for(victim: int) -> MobsServer:
     """The zombie moves, then hits `victim`: the Bot (`PLAYER_ID`) or the villager."""
     return MobsServer(
-        gametimes=[1000, 1079],
-        after_step=(moved(ZOMBIE_ID, -1.0), hurt(victim)),
+        after_step=(
+            (30, moved(ZOMBIE_ID, -1.0)),
+            (50, hurt(ZOMBIE_ID)),
+            (79, hurt(victim)),
+            (90, hurt(PLAYER_ID + VILLAGER_ID - victim)),
+        ),
     )
 
 
@@ -632,13 +668,9 @@ async def test_targets_samples_the_villager_when_the_zombie_hits_it_first() -> N
 
 
 @pytest.mark.asyncio
-async def test_targets_samples_no_one_when_the_zombie_hits_no_one_in_its_budget(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.2)
-    server = MobsServer(gametimes=[1000, 1300], after_step=(hurt(ZOMBIE_ID),))
+async def test_targets_samples_no_one_when_the_zombie_hits_no_one_in_its_budget() -> None:
+    server = MobsServer(after_step=((50, hurt(ZOMBIE_ID)),), end=300)
 
     result = await replay("mobs/targets", server)
 
     assert result.samples == {"targets.first": ("none",)}
-    assert server.gametimes == []
