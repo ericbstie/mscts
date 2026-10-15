@@ -130,7 +130,7 @@ what the change touches, not the area its files live in, by this nudge:
 | --- | --- |
 | `scrutiny::low` | The worker's tests, `mise run check`, the changed tier once. The lead reads the diff. |
 | `scrutiny::medium` | Low, plus a mutation sweep of the changed branches, the Self-check 20 of 20, and the reference tier on the rebased branch. |
-| `scrutiny::high` | Medium, plus two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. |
+| `scrutiny::high` | Medium, plus two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. When the fixes add a test or a branch to the comparison core, a third review checks the fixes. |
 
 A change that touches timing, at any level, also needs the Self-check 20
 of 20 five times in a row under `repeat.py --stress` and a javap account of
@@ -213,8 +213,9 @@ Out of scope: <what not to touch>
 Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), never
               a wire field a Candidate may legitimately get wrong: that is a Divergence
               for the Comparison to report, not a harness assertion.
-Stress runs: <when the level asks for them, each Group family's play time on main,
-             so the worker can size the five runs; a long family goes to a worker of its own>
+Stress runs: <when the level asks for them or for a 20-run Self-check, each Group family's
+             play time on main, so the worker can size the runs; a long family goes to a
+             worker of its own>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist;
            timings are measured on a committed tree, with `--durations` of the touched
            tests and the load average; a timing claim compares clean main and the branch
@@ -406,6 +407,15 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-15 | workers (#24, #347) | The live lock was held for over an hour by another worker's Self-check series; one worker never ran its live tier, the other waited between stress runs | **defer**: #374, a third repeat of the complaint |
+| 2026-10-15 | worker (#368, twice) | A 20-run Self-check took 13.7 min a run because the brief did not give the Groups' play times | **adopt**: the brief template's Stress runs line gives each Group family's play time on main for any 20-run Self-check |
+| 2026-10-15 | worker (#369) | `mise run commit` ran the 4 min check and committed nothing, because nothing was staged | **adopt**: common.md, `git add` before `mise run commit` |
+| 2026-10-15 | worker (#347) | `gh pr create` returns 403 here (GraphQL is blocked) | **adopt**: common.md, open and edit PRs with the GitHub MCP tools |
+| 2026-10-15 | worker (#24) | A mutant's old text also matched another function, so a survivor was misread | **adopt**: common.md, each mutant's old text unique in its file |
+| 2026-10-15 | worker (#24) | A fake Adapter whose Instances accept a Bot join would let a fake-driven test go through `run()` | **reject**: one use so far |
+| 2026-10-15 | worker (#368) | `repeat.py` block-buffers its run lines when redirected | **adopt**: common.md, run it with `PYTHONUNBUFFERED=1` |
+| 2026-10-15 | worker (#368) | The issue's cause (Pumpkin keeps the entities) was a guess; one Control command showed a missing `/execute` | **reject**: triage runs no live Instance; the brief named the live check |
+| 2026-10-15 | reviews (#379) | The re-review found a blocking bug the two reviews missed, in code the fixes added | **adopt**: a `scrutiny::high` PR whose fixes add a test or a branch to the comparison core gets a re-review of the fixes |
 | 2026-10-14 | worker (#360) | About 13 h of stress runs for five families, shared with two workers on 4 CPUs, most of it lock contention | **defer**: #374; timing handbook line, one outer lock per series |
 | 2026-10-14 | worker (#360) | Its first timing run spun busy loops while waiting for the lock | **adopt**: the same handbook line |
 | 2026-10-14 | worker (#360) | The new fake server crashed on closed sockets until it followed the `ticking_server` pattern | **reject**: the pattern is in the fakes; one increment |
@@ -749,6 +759,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-15 | A `scrutiny::high` PR whose fixes add a test or a branch to the comparison core gets a third review of the fixes; the brief template gives play times for any 20-run Self-check; common.md: stage before `mise run commit`, PRs through the GitHub MCP tools, unique mutant text, unbuffered `repeat.py` | Train 34: #379's re-review found a blocking bug in its fixes; a 20-run Self-check took 4.5 h unplanned; four worker retrospectives |
 | 2026-10-14 | The tech-lead skill: kill only by pid on the shared host, and start live tiers that may wait for the lock detached | Train 33: a pattern kill stopped a worker's stress run, and two of the lead's tiers died at the 2 h background cap while waiting |
 | 2026-10-11 | The brief template's Base line fetches and merges `origin/main`; a brief that asks for stress runs gives each Group family's play time on main and splits long families across workers | Train 32: a worker started from a stale local `main`, and #360's stress runs for five families took about 14 h |
 | 2026-10-10 | Workers never bypass the live lock on a shared host, run `mscts run` only while holding no other live run, and run long commands in the background with the longest timeout; the test-group skill plans a Group's windows against the Self-check's 90 s play | Train 30: two container restarts, and two Groups trimmed after a 20-play Self-check timed out |

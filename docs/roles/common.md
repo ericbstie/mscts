@@ -24,16 +24,19 @@ the project wins:
   reader decide" wins.
 Read your issue and its comments first (GitHub MCP tools, loaded with
 ToolSearch; repo ericbstie/mscts; no `gh`).
+Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 
 - Every commit passes `mise run check`. Commit only with
-  `mise run commit -- -F /abs/msg.txt`, and push after each commit. Never
+  `mise run commit -- -F /abs/msg.txt`, and push after each commit. Stage
+  your files with `git add` first: it commits only what is staged. Never
   `git stash`. The check includes `plan`: every new public top-level name in
   src/ needs a docs/PLAN.md entry in the same commit.
 - Tests red first (pin tests of recorded payloads and mutant killers
   excepted: say so in the commit message). A mutation sweep with
   `scripts/mutate.py --batch spec.json --jobs 4 -- <tests>` (red-green,
   Known traps), output redirected to a log in your scratch dir. Name the
-  narrowest test selection that kills the mutants, and pass `--timeout 300`.
+  narrowest test selection that kills the mutants, and pass `--timeout 300`. Make
+  each mutant's old text unique in its file, or it may change another function.
 - A Group test module plays each Group once per process and its tests read
   that play: `play(group_id)` caches in a module dict (`_PLAYS`), and
   `replay(group_id, server)` plays uncached for a test that needs its own
@@ -43,7 +46,8 @@ ToolSearch; repo ericbstie/mscts; no `gh`).
   `mscts run` per glob.
 - Repeat a selection with
   `uv run scripts/repeat.py --times N [--stress] -- <pytest args>` (one
-  line per run, the union of failures). Never hand-roll a loop. Use
+  line per run, the union of failures). Set `PYTHONUNBUFFERED=1` when you redirect it,
+  or its lines arrive only at the end. Never hand-roll a loop. Use
   `--stress` only when your brief or issue asks: it slows every other
   agent's tiers on this host.
 - Run the mutation sweep before the docs commits, so a bug it finds is
