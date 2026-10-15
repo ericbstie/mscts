@@ -22,6 +22,7 @@ from mscts.groups import (
     players,
     spawn,
     status,
+    time,
 )
 
 __all__ = [
@@ -46,4 +47,5 @@ __all__ = [
     "players",
     "spawn",
     "status",
+    "time",
 ]
