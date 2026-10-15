@@ -1199,8 +1199,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `critical`, `knockback` and `sweep` — the `combat/melee-mob`, `combat/critical`,
   `combat/knockback` and `combat/sweep` scripts; `STRIKER` and `TAPPER` — the two Bots of
   `combat/immunity`; `ATTACKER` and `VICTIM` — the two Bots of `combat/pvp`; `PVP_PACKETS` and
-  `PVP_SPRINT_PACKETS` — what its windows compare; `immunity` and `pvp` — the `combat/immunity`
-  and `combat/pvp` scripts.
+  `PVP_SPRINT_PACKETS` — what its windows compare; `immunity`, `pvp` and `pvp_off` — the
+  `combat/immunity`, `combat/pvp` and `combat/pvp-off` scripts.
 - `groups.combat_damage`: `VICTIM` — the Bot that is hurt; `PACKETS` — what a window compares;
   `Source` — one kind of damage (its damage type, and whether the marker deals it); `SOURCES` —
   the twelve kinds of damage the Groups compare; `damage_command` — the `/damage` command for

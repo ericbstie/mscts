@@ -478,9 +478,8 @@ async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprin
         await _stop_sprinting(attacker)
 
 
-@group("combat/pvp", spec=normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
-async def pvp(context: GroupContext) -> None:
-    """A Bot hits another Bot with a diamond sword while standing, then while sprinting."""
+async def _duel(context: GroupContext, sprints: tuple[bool, ...]) -> None:
+    """Arm the attacker, then hit the victim once per entry of `sprints`, in a lane of its own."""
     async with _arena(context):
         attacker = await context.bot(ATTACKER)
         await attacker.join()
@@ -489,5 +488,30 @@ async def pvp(context: GroupContext) -> None:
         await _refill(context.control, ATTACKER)
         await context.control.run(f"item replace entity {ATTACKER} hotbar.0 with {_SWORD}")
         await _refill(context.control, VICTIM)
-        for lane, sprint in enumerate((False, True)):
-            await _pvp_hit(context, attacker, 2.5 + 4 * lane, sprint=sprint)
+        for lane, sprint in enumerate(sprints):
+            await _pvp_hit(context, attacker, _lane_z(lane), sprint=sprint)
+
+
+@group("combat/pvp", spec=normal, masks=(PITCH_MASK,), kind=GroupKind.TICK_EXACT)
+async def pvp(context: GroupContext) -> None:
+    """A Bot hits another Bot with a diamond sword while standing, then while sprinting."""
+    await _duel(context, (False, True))
+
+
+# `combat/pvp-off`: the same hit with player versus player damage off.
+
+
+@contextlib.asynccontextmanager
+async def _pvp_disabled(control: Control) -> AsyncIterator[None]:
+    """Turn the `pvp` game rule off (26.3 `GameRules.PVP`, on by default); turn it on again."""
+    async with contextlib.AsyncExitStack() as undo:
+        undo.push_async_callback(control.run, "gamerule pvp true")
+        await control.run("gamerule pvp false")
+        yield
+
+
+@group("combat/pvp-off", spec=normal, kind=GroupKind.TICK_EXACT)
+async def pvp_off(context: GroupContext) -> None:
+    """A Bot hits another Bot with a diamond sword while the `pvp` game rule is off."""
+    async with _pvp_disabled(context.control):
+        await _duel(context, (False,))
