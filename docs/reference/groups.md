@@ -317,9 +317,14 @@ peaceful removes a hostile mob. In the Groups with a fighter, the fighter is an 
 
 The world is frozen (`/tick freeze`) and Control steps it, so a husk stands where it is put
 and moves only when a Group steps. A window compares the damage (`damage_event`), the husk's
-health (`set_entity_data`), its velocity (`set_entity_motion`), the sounds and the particles.
-It leaves out the husk's position packets: vanilla resends the position of a husk that stands
-still about every 3 seconds, so one lands in a window now and then.
+health (`set_entity_data`), its velocity (`set_entity_motion`), the sounds and the particles, and
+the swing of the arm that hit (`swing_animation`). It leaves out the husk's position packets:
+vanilla resends the position of a husk that stands still about every 3 seconds, so one lands in
+a window now and then.
+
+A swing goes to the players who see the swinger, never to the swinger. So the swing is in the
+windows of `combat/immunity`, `combat/pvp` and `combat/pvp-off`, where a second Bot watches,
+and not in the windows with a fighter alone.
 
 A window of its own follows each hit. In it the fighter copies the `Health`, `Motion` and `Pos` of
 each husk to command storage (`data modify storage`) and reads them back (`data get storage`), and

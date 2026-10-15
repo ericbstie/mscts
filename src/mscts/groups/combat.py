@@ -46,9 +46,13 @@ PACKETS = (
     "minecraft:set_entity_data",
     "minecraft:sound",
     "minecraft:animate",
+    "minecraft:swing_animation",
     "minecraft:level_particles",
 )
-"""The packets a window compares: the hit, the husk's reaction, and the swing."""
+"""The packets a window compares: the hit, the husk's reaction, and the swing.
+
+A swing reaches the players who see the swinger, never the swinger: only the Groups with two
+Bots (`combat/immunity`, `combat/pvp`, `combat/pvp-off`) have a window that holds one."""
 
 PITCH_MASK = Mask(
     "minecraft:sound",

@@ -319,6 +319,7 @@ def test_the_windows_compare_the_hit_and_what_it_does_to_the_husk() -> None:
         "minecraft:set_entity_data",
         "minecraft:sound",
         "minecraft:animate",
+        "minecraft:swing_animation",
         "minecraft:level_particles",
     )
 
