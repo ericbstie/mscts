@@ -686,6 +686,40 @@ A frozen world does not freeze its players, so the Bot picks up what it can reac
 
 Whether two orbs merge depends on their entity ids in vanilla, so `entities/item-merge` lays no orbs.
 
+## Mobs (`mobs`)
+
+How a zombie finds, reaches and attacks a player who stands still. A mob's AI draws on a random
+source of its own, so no two plays go the same way, on one server or on two. These Groups are
+statistical: each plays many times on each server, and its Verdict compares how the samples are
+spread ([#24](https://github.com/ericbstie/mscts/issues/24)). They run only with
+`--statistical`.
+
+Each play joins a Bot of its own, puts it in place, and has Control build what the play needs.
+Control freezes the world, summons the mobs, reads the game time (`/time query gametime`) and
+steps the world a fixed number of ticks: the play's tick budget. Whenever the Bot is told of
+something a sample is about, such as the zombie moving, a hit (`damage_event`) or a door
+breaking, Control reads the game time again. A sample is the number of ticks between the two
+readings. A play that runs out of ticks records nothing for what did not happen. When the play
+ends, Control kills the mobs and anything they dropped, waits until the Bot is told they are
+gone, and takes the blocks away.
+
+Each zombie is summoned with NBT, which makes vanilla skip what it draws at random for a new
+mob: its equipment, whether it is a baby, and whether it can break doors. It wears a leather
+helmet, so that it does not burn in daylight, and it never despawns.
+
+| Id | Kind | Runs | What it does | Samples |
+| --- | --- | --- | --- | --- |
+| `mobs/chase-open` | statistical | 25 | A zombie appears 16 blocks east of the Bot, on open ground. The world steps 300 ticks. | `chase_open.moved`: the tick the zombie is first half a block closer. `chase_open.hit`: the tick it first hurts the Bot. |
+| `mobs/chase-maze` | statistical | 20 | The same, with an oak fence across the way, 8 blocks east of the Bot, with one gap 4.5 blocks off the line. The zombie sees the Bot over the fence but cannot jump it. The world steps 400 ticks. | `chase_maze.gap`: the tick the zombie gets into the gap. `chase_maze.hit`: the tick it first hurts the Bot. |
+| `mobs/doors-hard` | statistical | 15 | On hard difficulty, a zombie that can break doors stands in a pen of oak fences with an oak door on its west side. The Bot stands 3 blocks from the door, in the zombie's sight. The world steps 400 ticks. | `doors_hard.started`: the tick the door first cracks. `doors_hard.broken`: the tick it breaks. |
+| `mobs/doors-normal` | statistical | 10 | The same pen on normal difficulty, where vanilla's zombies break no doors. The world steps 300 ticks. | `doors_normal.door`: `held`, `cracked` or `broken`. |
+| `mobs/targets` | statistical | 15 | At noon, a zombie stands 8 blocks east of the Bot, and a villager without a job 8 blocks east of the zombie. The world steps 300 ticks. | `targets.first`: whom the zombie hurts first, `player`, `villager` or `none`. `targets.hit`: the tick it does. |
+
+A zombie breaks doors only on hard, and a Group plays on one difficulty, so the doors have two
+Groups. A zombie looks for a player before a villager, and must see the player but not the
+villager. The time stays at noon in `mobs/targets`, since what a villager does follows the time
+of day.
+
 ## Fluids (`fluids`)
 
 How far and how fast water and lava spread, when they make a new source, and what they turn into
