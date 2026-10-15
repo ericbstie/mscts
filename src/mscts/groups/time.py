@@ -19,14 +19,16 @@ afterwards, because every Group is played on the same two Instances.
 
 Kinds: `time/advance` is tick-exact, as each window reads the time after an exact number of
 stepped ticks. `time/commands` is exact: the world never steps, and only the commands move the
-time.
+time. `time/sleep` is exact, not tick-exact: a sleeping player falls into a deep sleep on its
+own ticks, which run while the world is frozen, so the night skip follows the wall clock. Its
+windows compare the order of what comes, and the clock reads the time back after each.
 """
 
 import contextlib
 from collections.abc import Callable
 from dataclasses import replace
 
-from mscts.bot import Bot
+from mscts.bot import Bot, Face
 from mscts.codec.packets import Packet
 from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import join_at_spawn, pin_joins
@@ -176,3 +178,129 @@ async def commands(context: GroupContext) -> None:
         for command in _COMMANDS:
             async with context.observe(_CHAT):
                 await _ask(clock, command)
+
+
+# `time/sleep`: a player lies down at midnight, with 100% and then 50% of players needed.
+
+SLEEPER = "sleeper"
+"""The Bot that sleeps; not an operator."""
+
+_BED = ((2, "foot"), (3, "head"))
+"""The bed's two blocks, at x 2 and 3, y -60, z 0, facing east (+x)."""
+
+_SLEEPER_AT = "0.5 -60 0.5 -90 0"
+"""Where the sleeper stands to lie down: west of the bed's foot, facing it."""
+
+_MIDNIGHT = 18000
+_BEFORE_DAWN = 23460
+"""A time at which a sleeping player is still in bed: vanilla gets one up at 23478."""
+
+_DAWN_STEPS = 40
+
+_QUIET_TIMES = 6
+"""How many 20-tick `set_time` the clock waits for while a player sleeps and the night goes on:
+6 span at least 100 ticks, the time a player takes to fall into a deep sleep."""
+
+SLEEP_PACKETS = (
+    _CHAT,
+    "minecraft:animate",
+    "minecraft:set_entity_data",
+    "minecraft:game_event",
+)
+"""What a sleep window compares: the sleep messages, leaving the bed, the sleeping pose and the
+game events."""
+
+_DAWN_PACKETS = SLEEP_PACKETS[1:]
+"""What the window of the step to dawn compares: not the chat, since Control steps the world in
+it, and the clock, an operator, hears that as admin chat."""
+
+
+async def _alone(context: GroupContext, clock: Bot) -> None:
+    """Make Control leave, and wait until the clock is told it has.
+
+    Control is a player too, and counts towards the players needed to sleep (`SleepStatus`).
+    """
+    await context.control.leave()
+    await clock.expect("minecraft:player_info_remove", timeout_s=_WAIT_S)
+
+
+async def _at_midnight(context: GroupContext, clock: Bot, percentage: int) -> None:
+    """Set the sleeping percentage, the time to midnight and the sleeper by the bed; then leave.
+
+    Control leaves last (`_alone`), and the clock drains the admin chat it heard meanwhile.
+    """
+    control = context.control
+    await control.run(f"gamerule players_sleeping_percentage {percentage}")
+    await control.run(f"time set {_MIDNIGHT}")
+    await control.run(f"tp {SLEEPER} {_SLEEPER_AT}")
+    await _alone(context, clock)
+    await clock.drain()
+
+
+async def _lie_down(sleeper: Bot) -> None:
+    """Use the bed's foot from above, as a client does to sleep in it."""
+    x, _ = _BED[0]
+    await sleeper.place(x, -60, 0, Face.UP)
+
+
+async def _quiet(clock: Bot) -> None:
+    """Wait until at least 100 server ticks have passed (`_QUIET_TIMES`)."""
+    for _ in range(_QUIET_TIMES):
+        await clock.expect(_TIME, timeout_s=_WAIT_S, where=_heartbeat)
+
+
+async def _read_day(context: GroupContext, clock: Bot) -> None:
+    """The clock reads the day and the days passed, in a window of its own."""
+    await clock.drain()
+    async with context.observe(_CHAT):
+        await _ask(clock, "time query day")
+        await _ask(clock, "time query day repetition")
+
+
+async def _to_dawn(context: GroupContext, clock: Bot, game_time: int) -> None:
+    """Step the world from just before dawn until a sleeping player is up, in a window.
+
+    Returns once a `set_time` carries the game time the step reaches: `game_time` and the
+    steps.
+    """
+    control = context.control
+    await control.run(f"time set {_BEFORE_DAWN}")
+    await clock.drain()
+    async with context.observe(*_DAWN_PACKETS):
+        await control.run(f"tick step {_DAWN_STEPS}")
+        await clock.expect(_TIME, timeout_s=_WAIT_S, where=_reached(game_time + _DAWN_STEPS))
+
+
+@group("time/sleep", spec=_operator)
+async def sleep(context: GroupContext) -> None:
+    """A player sleeps at midnight while another stays up: first all, then half, are needed.
+
+    With `players_sleeping_percentage` 100, one sleeper of two is not enough: the night goes on,
+    and the sleeper gets up when the world steps to dawn. With 50 it is enough: the night is
+    skipped once the sleeper has slept 100 ticks, with the world frozen. Control leaves before
+    each player lies down, so the two Bots are the only players. The clock reads the day after
+    each part.
+    """
+    control = context.control
+    async with contextlib.AsyncExitStack() as undo:
+        await _calm(context, undo)
+        clock = await join_at_spawn(context, undo, CLOCK)
+        sleeper = await join_at_spawn(context, undo, SLEEPER)
+        await context.freeze()
+        game_time = await _now(clock)
+        for x, part in _BED:
+            await control.run(f"setblock {x} -60 0 minecraft:red_bed[part={part},facing=east]")
+        undo.push_async_callback(control.run, "fill 2 -60 0 3 -60 0 minecraft:air strict")
+        undo.push_async_callback(control.run, "gamerule players_sleeping_percentage 100")
+        await _at_midnight(context, clock, 100)
+        async with context.observe(*SLEEP_PACKETS):
+            await _lie_down(sleeper)
+            await _quiet(clock)
+        await _read_day(context, clock)
+        await _to_dawn(context, clock, game_time)
+        await _read_day(context, clock)
+        await _at_midnight(context, clock, 50)
+        async with context.observe(*SLEEP_PACKETS):
+            await _lie_down(sleeper)
+            await clock.expect("minecraft:animate", timeout_s=_WAIT_S)
+        await _read_day(context, clock)
