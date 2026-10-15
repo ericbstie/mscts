@@ -241,6 +241,30 @@ def test_a_run_ends_at_a_tick_mark() -> None:
     assert _diff(reference, candidate) == [("field", "entity_id"), ("field", "entity_id")]
 
 
+def test_a_resend_on_another_tick_is_compared_on_its_own_tick() -> None:
+    # Re-review P8: the Candidate sends the first entity's resend a tick early, in the
+    # second entity's run, so the runs differ and so does the tick.
+    reference = _window((100, 200), data(200), f"{TICK_MARK}1", data(100), f"{TICK_MARK}2")
+    candidate = _window((5, 9), data(9), data(5), f"{TICK_MARK}1", f"{TICK_MARK}2")
+    assert _diff(reference, candidate) == [
+        ("field", "entity_id"),
+        ("field", "(tick)"),
+        ("field", "entity_id"),
+    ]
+
+
+def test_a_run_ends_at_a_window_end() -> None:
+    # Re-review P7: window 1 should move the first entity and window 2 the second; the
+    # Candidate moves each in the other's window.
+    reference = _window(
+        (100, 200), motion(100, 0.1), OBSERVE_CLOSE, set_time(), OBSERVE_OPEN, motion(200, 0.1)
+    )
+    candidate = _window(
+        (5, 9), motion(9, 0.1), OBSERVE_CLOSE, set_time(), OBSERVE_OPEN, motion(5, 0.1)
+    )
+    assert _diff(reference, candidate) == [("field", "entity_id"), ("field", "entity_id")]
+
+
 def test_an_entity_first_heard_of_in_the_run_keeps_its_place() -> None:
     # Its number is the order it arrives in, so the run cannot be sorted by it.
     reference = _play(data(100, 1), data(200, 2))

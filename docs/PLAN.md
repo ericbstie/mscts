@@ -2089,11 +2089,14 @@ proves it necessary:
      (`compare._by_entity`): numbers first, by value, then names, then
      entities the Bot has not heard of yet, in the order they arrived,
      since that order gives their numbers. The sort is stable, so the
-     resends of one entity keep their order. A tick Mark ends a run, so
+     resends of one entity keep their order. A window's end ends a run
+     (`compare._same_step`): each window is a step of the Group, and both
+     sides close it at the same barrier. A tick Mark ends a run too, so
      in a tick-exact Group a run holds one tick's resends, and each still
      carries the tick it arrived on, which is compared. Elsewhere a
-     Transcript holds no tick ends, and a run may span ticks: the order
-     of different entities' resends across those ticks is not compared.
+     Transcript holds no tick ends, and a run may span the ticks of one
+     window: the order of different entities' resends across those ticks
+     is not compared.
      The gaps between arrivals do not tell ticks apart: on one live
      vanilla play one tick's resends came up to 3.2 ms apart, and two
      ticks' as little as 25.7 ms, or 0 ms when the reader stalled (the

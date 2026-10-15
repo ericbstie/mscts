@@ -774,9 +774,9 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     (`_by_entity`). So the same resends get the same places on both sides however each server
     ordered them, as long as both sides named and numbered those entities alike: an entity
     a Bot first hears of in the run keeps its place, since its number comes from it. A run
-    ends at a tick Mark, so in a tick-exact Group it holds one tick's resends; elsewhere it
-    may hold several ticks', and the order of different entities' resends across those ticks
-    is not compared.
+    ends at a window's end and at a tick Mark, so in a tick-exact Group it holds one tick's
+    resends; elsewhere it may hold several ticks' of one window, and the order of different
+    entities' resends across those ticks is not compared.
     """
     windows = _Windows.of(transcript, bot)
     ticks = _Ticks.of(transcript, bot)
@@ -808,6 +808,8 @@ class _Arrival(NamedTuple):
         observed: Whether an Observation window takes it, or the Transcript has none.
         compared: Whether it is compared: observed, and no `*` Mask drops it.
         tick: For a play Packet of a tick-exact Group, the tick it arrived on; else None.
+        window: The index of the last `observe:` Mark at or before it (`_Windows.latest`),
+            so the same for every Packet of one window; -1 if there is none.
     """
 
     event: Event
@@ -815,6 +817,7 @@ class _Arrival(NamedTuple):
     observed: bool
     compared: bool
     tick: int | None
+    window: int
 
     @classmethod
     def of(
@@ -829,7 +832,9 @@ class _Arrival(NamedTuple):
         packet = event.packet
         observed = windows is None or windows.observes(event)
         tick = ticks.of_arrival(event.t_ns) if ticks and packet.state is State.PLAY else None
-        return cls(event, context, observed, observed and packet.name not in masks.dropped, tick)
+        window = windows.latest(event.t_ns) if windows else -1
+        compared = observed and packet.name not in masks.dropped
+        return cls(event, context, observed, compared, tick, window)
 
 
 def _take(arrival: _Arrival, masks: _Masks, numbers: "_Numbers") -> _Normalized | None:
@@ -872,8 +877,9 @@ between Instances. The client applies each to the entity it names, and to no oth
 is one."""
 
 _NAMING = frozenset({"minecraft:add_entity", "minecraft:remove_entities"})
-"""The packets that start or end an entity's name or number when they are not compared
-(`_Numbers.spawned`, `_Numbers.removed`)."""
+"""The packets that may name or number an entity, or end its name or number, when they are
+not compared: an `add_entity` outside every window (`_Numbers.spawned`), and any
+`remove_entities` (`_Numbers.removed`). A run ends at each, even one that names nothing."""
 
 
 def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
@@ -886,9 +892,11 @@ def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
     is not compared at all. Neither reads or changes an entity's name or number, except an
     `add_entity` or `remove_entities` (`_NAMING`), which ends the run.
 
-    In a tick-exact Group a run also ends at a tick Mark: a resend on the next tick starts
-    the next run. Elsewhere a Transcript holds no tick ends, so a run may span ticks: the
-    gaps between arrivals do not tell them apart (one tick's resends came up to 3.2 ms
+    A run also ends at a window's end: a resend in the next Observation window starts the
+    next run, since each window is a step of the Group. In a tick-exact Group a run also
+    ends at a tick Mark: a resend on the next tick starts the next run. Elsewhere a
+    Transcript holds no tick ends, so a run may span the ticks of one window: the gaps
+    between arrivals do not tell them apart (one tick's resends came up to 3.2 ms
     apart on a live vanilla play, two ticks' as little as 25.7 ms or none,
     docs/research/2026-10-15-unordered-resends.md).
     """
@@ -897,17 +905,22 @@ def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
     for arrival in arrivals:
         packet = arrival.event.packet
         resend = arrival.compared and _resend_entity(packet) is not None
-        if resend and (not run or arrival.tick == run[0].tick):
+        if resend and (not run or _same_step(arrival, run[0])):
             run.append(arrival)
         elif not arrival.compared and packet.name not in _NAMING:
             held.append(arrival)
         else:
             yield from _ended(run, held)
             run = [arrival] if resend else []
-            held = list[_Arrival]()
+            held = []
             if not resend:
                 yield [arrival]
     yield from _ended(run, held)
+
+
+def _same_step(arrival: _Arrival, other: _Arrival) -> bool:
+    """Whether `arrival` and `other` came in the same window and on the same tick."""
+    return (arrival.window, arrival.tick) == (other.window, other.tick)
 
 
 def _ended(run: list[_Arrival], held: list[_Arrival]) -> Iterator[list[_Arrival]]:
@@ -1209,11 +1222,15 @@ class _Windows:
             return True
         if is_heartbeat(packet):
             return False
-        latest = bisect.bisect_right(self.times, event.t_ns) - 1
+        latest = self.latest(event.t_ns)
         if latest < 0:
             return False
         narrowed = self.names[latest]
         return narrowed is not None and (not narrowed or packet.name in narrowed)
+
+    def latest(self, t_ns: int) -> int:
+        """The index of the last Mark at or before `t_ns`; -1 if there is none."""
+        return bisect.bisect_right(self.times, t_ns) - 1
 
 
 @dataclass(frozen=True, slots=True)
