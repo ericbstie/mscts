@@ -426,4 +426,7 @@ These Groups are slow, so `mscts run` plays them only with `--statistical`,
 and once per Run whatever `--repeat` is, since every extra comparison could
 fail by chance too. A statistical Group's Self-check is one comparison of vanilla against
 vanilla, run by `mise run test:statistical`, and it must not fail. Two
-vanilla servers still fail it by chance 1% of the time.
+vanilla servers are rejected by chance 1% of the time, so a rejected
+Self-check is played once more with fresh plays and fails only if both
+reject, which happens by chance about 1 time in 10,000 per Group. A Self-check
+that errors fails at once.
