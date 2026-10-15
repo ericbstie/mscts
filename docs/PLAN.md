@@ -1649,7 +1649,9 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # boot; docs/research/2026-10-01-control.md), login's
                                     # dimension_names, update_attributes' attributes,
                                     # update_recipes' property sets and update_advancements'
-                                    # removed ids and progress (#30, #106)
+                                    # removed ids and progress (#30, #106), a chunk's
+                                    # heightmaps and block entities (#22), and
+                                    # section_blocks_update's blocks (#320)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -1996,6 +1998,18 @@ proves it necessary:
      block entities in a map keyed by `BlockPos`:
      `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
      those sent for one position keep their order.
+     `play` / `minecraft:section_blocks_update` (#320): `blocks` is sorted
+     by position (y, z, x), stably. Vanilla sends them in hash order
+     (`javap` on the 26.3 server: `ChunkHolder.broadcastChanges` writes the
+     section's changed positions in the iteration order of a
+     `ShortOpenHashSet`; docs/research/2026-10-03-blocks-fill-under-load.md).
+     The client sets each block at its own position in turn
+     (`ClientboundSectionBlocksUpdatePacket.runUpdates`, then
+     `ClientLevel.setServerVerifiedBlockState` with flags 19: on the client
+     `Level.updateNeighborsAt` is empty, and flag 16 skips the shape
+     updates), so blocks at different positions can come in any order, and
+     a position sent twice ends with its last state, which the stable sort
+     keeps last.
    - the order of packets about different chunks, and where they fall
      among packets whose handling reads no chunk. A *chunk packet* is a
      `level_chunk_with_light`, `light_update` or `forget_level_chunk`:

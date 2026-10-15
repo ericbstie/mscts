@@ -297,6 +297,15 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "entities in a map keyed by BlockPos (LevelChunk.replaceWithPacketData), loading "
             "those sent for one position in turn."
         ),
+        "minecraft:section_blocks_update": (
+            "blocks, sorted by position (y, z, x). Vanilla sends them in hash order: "
+            "ChunkHolder.broadcastChanges writes the section's changed positions in the "
+            "iteration order of a ShortOpenHashSet. The client sets each block at its own "
+            "position in turn (ClientboundSectionBlocksUpdatePacket.runUpdates, then "
+            "ClientLevel.setServerVerifiedBlockState with flags 19: on the client "
+            "Level.updateNeighborsAt does nothing, and flag 16 skips the shape updates), so a "
+            "position sent twice keeps the last state."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
@@ -1604,6 +1613,17 @@ def _block_position(item: _Value) -> tuple[int, ...] | None:
     return tuple(numbers) if len(numbers) == len(position) else None
 
 
+def _sorted_section_blocks(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Order `blocks` by position, y then z then x.
+
+    The sort is stable, so a position sent twice keeps the order of its states: the client
+    sets each in turn, and keeps the last.
+    """
+    if "blocks" not in fields:
+        return fields
+    return {**fields, "blocks": _sorted_on(fields["blocks"], _block_position)}
+
+
 def _sorting(field: str, key: str | None) -> Callable[[dict[str, _Value]], dict[str, _Value]]:
     """Sort the list `field` of a packet's fields, as `_sorted_by` does with `key`."""
 
@@ -1621,6 +1641,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:update_recipes": _sorted_update_recipes,
         "minecraft:update_advancements": _sorted_update_advancements,
         "minecraft:level_chunk_with_light": _sorted_level_chunk,
+        "minecraft:section_blocks_update": _sorted_section_blocks,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""
