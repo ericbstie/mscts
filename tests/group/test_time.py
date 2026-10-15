@@ -10,6 +10,7 @@ time on by the ticks of each `tick step`.
 import asyncio
 import functools
 import json
+import time
 import uuid
 from collections.abc import Callable
 from contextlib import suppress
@@ -35,6 +36,9 @@ PLAY_TIMEOUT_S = 120.0
 TIME_TICKS = 4
 """How many ticks apart the fake sends `set_time` (vanilla: 20)."""
 START_GAME_TIME = 500
+RUNNING_PACE = 10_000
+"""How far the fake's game time moves a second before the freeze: far, so that a Group that read
+the game time from a `set_time` sent before the freeze would wait for far too little."""
 USE_ITEM_ON = "minecraft:use_item_on"
 ANIMATE, INFO_REMOVE = "minecraft:animate", "minecraft:player_info_remove"
 PERCENTAGE = "gamerule players_sleeping_percentage "
@@ -43,29 +47,42 @@ SKIP_TICKS = 8
 than a barrier, so a window that did not wait for the skip would end before it."""
 DAWN_TICK = 18
 """On which tick of a step the fake gets a sleeper up with 100% needed."""
+LATE_TICKS = 5
+"""How many ticks the fake takes to answer a player's command, and to tell the others that
+Control has left: longer than a barrier, so a window that did not wait for it would miss it."""
 
 
 @dataclass
 class TimeServer:
-    """A fake server that joins like vanilla and keeps a game time that only steps move.
+    """A fake server that joins like vanilla and keeps a game time.
 
+    The game time moves on `RUNNING_PACE` a second from `START_GAME_TIME` until
+    `tick freeze`, and then only by the ticks of each `tick step`, one at a time. Every player
+    but Control is sent `set_time` with the game time, and no clock, every `TIME_TICKS` ticks.
     It answers Control's markers, the barrier (a tick apart), and each command of a player but
-    Control with a `system_chat` a tick later. `tick step N` moves the game time on by N a tick
-    at a time. Every player but Control is sent `set_time` with the game time, and no clock,
-    every `TIME_TICKS` ticks.
+    Control with a `system_chat`, `LATE_TICKS` later.
 
     A `use_item_on` lies the player down: every player but Control is told so a tick later.
     With `players_sleeping_percentage` 50 the sleeper gets up `SKIP_TICKS` later, and with 100
     on the 18th tick of a step (`animate`). When Control leaves, the others are told
-    (`player_info_remove`).
+    (`player_info_remove`), `LATE_TICKS` later.
     """
 
     seen: list[Packet] = field(default_factory=list)
     players: dict[str, Peer] = field(default_factory=dict)
-    game_time: int = START_GAME_TIME
+    started: float = field(default_factory=time.monotonic)
+    frozen_at: int | None = None
+    """The game time when the world froze, or None while it runs."""
+    stepped: int = 0
     percentage: int = 100
     sleeping: bool = False
     later: set[asyncio.Task[None]] = field(default_factory=set)
+
+    @property
+    def game_time(self) -> int:
+        if self.frozen_at is None:
+            return START_GAME_TIME + int((time.monotonic() - self.started) * RUNNING_PACE)
+        return self.frozen_at + self.stepped
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -93,12 +110,18 @@ class TimeServer:
                 clock.cancel()
             if peer.name == CONTROL:
                 del self.players[CONTROL]
-                await self._everyone(INFO_REMOVE, uuids=[uuid.UUID(int=1)])
+                self.later.add(asyncio.create_task(self._left()))
+
+    async def _left(self) -> None:
+        await asyncio.sleep(LATE_TICKS * TICK_S)
+        await self._everyone(INFO_REMOVE, uuids=[uuid.UUID(int=1)])
 
     async def _command(self, peer: Peer, command: str) -> None:
         if command.startswith(MARKER):
             token = json.loads(command.removeprefix(MARKER))
             await peer.send(SYSTEM_CHAT, content=text(token), overlay=False)
+        elif command == "tick freeze":
+            self.frozen_at = self.game_time
         elif command.startswith("tick step "):
             self.later.add(asyncio.create_task(self._step(int(command.rsplit(maxsplit=1)[-1]))))
         elif command.startswith(PERCENTAGE):
@@ -128,20 +151,20 @@ class TimeServer:
     async def _step(self, ticks: int) -> None:
         for tick in range(1, ticks + 1):
             await asyncio.sleep(TICK_S)
-            self.game_time += 1
+            self.stepped += 1
             if self.sleeping and tick == DAWN_TICK:
                 await self._get_up()
 
     async def _answer(self, peer: Peer, command: str) -> None:
-        await asyncio.sleep(TICK_S)
+        await asyncio.sleep(LATE_TICKS * TICK_S)
         with suppress(ConnectionError):
             await peer.send(SYSTEM_CHAT, content=text(command), overlay=False)
 
     async def _tick(self, peer: Peer) -> None:
         with suppress(ConnectionError):
-            while True:
-                await asyncio.sleep(TIME_TICKS * TICK_S)
+            while True:  # the first as the player enters play, before any freeze
                 await peer.send(SET_TIME, game_time=self.game_time, clocks=[])
+                await asyncio.sleep(TIME_TICKS * TICK_S)
 
 
 async def _play(group_id: str, server: TimeServer) -> Transcript:
@@ -155,10 +178,17 @@ async def _play(group_id: str, server: TimeServer) -> Transcript:
     return transcript
 
 
+FROZEN_AT: dict[str, int] = {}
+"""The fake's game time when each Group played froze the world."""
+
+
 @functools.cache
 def play(group_id: str) -> tuple[Transcript, Play]:
     """Play `group_id` against a fake server once; its Transcript and what was read from it."""
-    transcript = asyncio.run(_play(group_id, TimeServer()))
+    server = TimeServer()
+    transcript = asyncio.run(_play(group_id, server))
+    assert server.frozen_at is not None
+    FROZEN_AT[group_id] = server.frozen_at
     return transcript, read(transcript)
 
 
@@ -257,7 +287,7 @@ def test_advance_opens_each_window_once_a_set_time_shows_the_step_has_ended() ->
 
     opens = marks(transcript, lambda label: label.startswith(OBSERVE_OPEN))
     times = received(transcript, CLOCK, SET_TIME)
-    targets = [START_GAME_TIME + sum((1, 20, 100, 1, 20, 100)[: k + 1]) for k in range(6)]
+    targets = [FROZEN_AT["time/advance"] + sum((1, 20, 100, 1, 20, 100)[: k + 1]) for k in range(6)]
     for opened_at, target in zip(opens, targets, strict=True):
         assert any(t < opened_at and game_time(packet) >= target for t, packet in times)
 
@@ -308,6 +338,14 @@ def test_commands_run_each_time_command_as_the_clock_in_a_window_of_its_own() ->
         ((CLOCK, command),) for command in TIME_COMMANDS
     ]
     assert [window.before for window in result.windows][1:] == [()] * 15
+
+
+def test_commands_wait_in_each_window_for_the_answer() -> None:
+    transcript, _ = play("time/commands")
+
+    answers = [t for t, _ in received(transcript, CLOCK, SYSTEM_CHAT)]
+    held = [[t for t in answers if o < t < c] for o, c in windows(transcript)]
+    assert [len(window) for window in held] == [1] * 16
 
 
 # time/sleep
@@ -382,7 +420,12 @@ def test_sleep_lies_down_at_midnight_with_100_then_50_percent_needed() -> None:
     assert dawn.before == ("time set 23460",)
     assert dawn.sent == ((CONTROL, "tick step 40"),)
     assert lie_50.before == ("gamerule players_sleeping_percentage 50", *AT_MIDNIGHT)
-    lain = [t for t, _ in sent(transcript, SLEEPER, "minecraft:use_item_on")]
+    uses = sent(transcript, SLEEPER, "minecraft:use_item_on")
+    foot_from_above = ({"x": 2, "y": -60, "z": 0}, 1)  # Face.UP
+    assert [((p.fields or {})["pos"], (p.fields or {})["face"]) for _, p in uses] == [
+        foot_from_above
+    ] * 2
+    lain = [t for t, _ in uses]
     lie_windows = [windows(transcript)[k] for k in (0, 4)]
     assert len(lain) == 2
     assert all(o < t < c for t, (o, c) in zip(lain, lie_windows, strict=True))
@@ -404,12 +447,14 @@ def test_sleep_leaves_the_two_bots_alone_in_the_world_for_each_lie_down() -> Non
         assert not [t for t in by_control if gone < t < closed_at]
 
 
-def test_sleep_with_100_percent_waits_100_ticks_after_the_sleep_message() -> None:
+def test_sleep_with_100_percent_waits_100_ticks_after_lying_down() -> None:
     transcript, _ = play("time/sleep")
 
     opened_at, closed_at = windows(transcript)[0]
-    [said] = [t for t, p in received(transcript, CLOCK, SYSTEM_CHAT) if opened_at < t < closed_at]
-    heartbeats = [t for t, p in received(transcript, CLOCK, SET_TIME) if said < t < closed_at]
+    [said] = [t for t, _ in received(transcript, CLOCK, SYSTEM_CHAT) if opened_at < t < closed_at]
+    lain = sent(transcript, SLEEPER, "minecraft:use_item_on")[0][0]
+    heartbeats = [t for t, _ in received(transcript, CLOCK, SET_TIME) if lain < t < closed_at]
+    assert lain < said
     assert len(heartbeats) >= 6
 
 
@@ -418,7 +463,9 @@ def test_sleep_steps_to_dawn_until_a_set_time_shows_the_step_ended() -> None:
 
     opened_at, closed_at = windows(transcript)[2]
     times = received(transcript, CLOCK, SET_TIME)
-    assert any(opened_at < t < closed_at and game_time(p) >= START_GAME_TIME + 40 for t, p in times)
+    assert any(
+        opened_at < t < closed_at and game_time(p) >= FROZEN_AT["time/sleep"] + 40 for t, p in times
+    )
 
 
 def test_sleep_with_50_percent_waits_for_the_sleeper_to_leave_the_bed() -> None:
