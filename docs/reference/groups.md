@@ -353,15 +353,14 @@ are gone, so the next play starts without them. The Group fails if a husk is sti
 | `combat/pvp-off` | tick-exact | none | The same two Bots, with the `pvp` game rule off (`/gamerule pvp false`, which Control turns on again afterwards). `attacker` hits `victim` once with a diamond sword, standing. The window compares what the server sends about a hit that does no damage, and the victim's health (`set_health`). | none |
 
 Vanilla sends the data and the velocity of every entity a tick changed at the end of that tick, in
-the order of a hash of their entity ids, and the two Instances' ids differ. So when a hit changes
-two entities, the order of their packets differs between runs of vanilla itself. A sprinting hit
-changes the husk's health and the fighter's sprint flag, which the hit clears. So the windows of
-the sprinting hits in `combat/critical`, `combat/knockback` and `combat/pvp` leave out
-`set_entity_data`, and the health of the husk is read back; the victim's is in `set_health`.
-Whether the sprint stops is not compared. A rule that ignores the order of the tick-end resends
-of several entities (#320) would let it be. The window of `combat/sweep` compares only the damage,
-the sounds and the particles, because the sweep hurts four husks, and the health and velocity of
-each husk are read back.
+the order of a hash of their entity ids, and the two Instances' ids differ. A sprinting hit changes
+the husk's health and the fighter's sprint flag, which the hit clears, so the order of those two
+packets differs between runs of vanilla itself. The Comparison does not compare the order of the
+resends of different entities in one tick, so the windows of the sprinting hits in
+`combat/critical`, `combat/knockback` and `combat/pvp` compare `set_entity_data`: the husk's
+health, and whether the fighter's sprint stops. The window of `combat/sweep` compares only the
+damage, the sounds and the particles, because the sweep hurts four husks, and the health and
+velocity of each husk are read back.
 
 In `combat/knockback` the husk's velocity and position, in the window and in the readback, say how
 far a sprinting hit knocks it back.

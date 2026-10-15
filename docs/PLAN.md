@@ -1194,12 +1194,11 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `before_teleport` — the `movement/too-fast`, `movement/into-blocks`, `movement/flying` and
   `movement/before-teleport` scripts.
 - `groups.combat`: `FIGHTER` — the Bot that hits; `PACKETS` — what a window compares;
-  `SPRINT_PACKETS` — what a sprinting hit's window compares; `SWEEP_PACKETS` — what the sweep's
-  window compares; `PITCH_MASK` — the random pitch of a hurt mob's sound; `melee_mob`,
-  `critical`, `knockback` and `sweep` — the `combat/melee-mob`, `combat/critical`,
+  `SWEEP_PACKETS` — what the sweep's window compares; `PITCH_MASK` — the random pitch of a hurt
+  mob's sound; `melee_mob`, `critical`, `knockback` and `sweep` — the `combat/melee-mob`, `combat/critical`,
   `combat/knockback` and `combat/sweep` scripts; `STRIKER` and `TAPPER` — the two Bots of
-  `combat/immunity`; `ATTACKER` and `VICTIM` — the two Bots of `combat/pvp`; `PVP_PACKETS` and
-  `PVP_SPRINT_PACKETS` — what its windows compare; `immunity`, `pvp` and `pvp_off` — the
+  `combat/immunity`; `ATTACKER` and `VICTIM` — the two Bots of `combat/pvp`; `PVP_PACKETS` —
+  what its windows compare; `immunity`, `pvp` and `pvp_off` — the
   `combat/immunity`, `combat/pvp` and `combat/pvp-off` scripts.
 - `groups.combat_damage`: `VICTIM` — the Bot that is hurt; `PACKETS` — what a window compares;
   `Source` — one kind of damage (its damage type, and whether the marker deals it); `SOURCES` —
