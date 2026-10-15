@@ -14,20 +14,25 @@ here and only show up as a false `mismatch` against every Candidate.
 A Group whose `spec` changes the ServerSpec cannot play on that pair, which was booted at the
 default one. Its Self-check launches two Instances of its own for that ServerSpec instead,
 which costs two boots.
+
+A statistical Group rejects by chance 1 time in 100, so a Self-check that only its
+`distribution` tests rejected is played once more with fresh plays, and fails only if that
+is not `match` either (#388, `support.selfcheck.play_and_replay`).
 """
 
+import functools
 import os
 from pathlib import Path
 
 import pytest
 from support.reference import attached, own_reference
 from support.selfcheck import (
-    keep_timelines_and_describe,
+    describe_failure,
     needs_instances_of_their_own,
+    play_and_replay,
     repeat_from,
 )
 
-from mscts.compare import Outcome
 from mscts.group import Group, GroupKind, resolve
 from mscts.run import RunResult, run_results
 from mscts.runner import Instance
@@ -51,14 +56,15 @@ async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
     tmp_path: Path,
 ) -> None:
     groups = resolve([group_id])
-    result = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
-    verdicts = result.verdicts
+    play = functools.partial(_play, groups, (reference, second_reference), cache_dir, repeat=repeat)
+    plays = await play_and_replay(groups, play, tmp_path)
     # A statistical Group is one comparison whatever the repeat (#24): `run_results`.
-    assert [len(played.verdicts) for played in result.results] == [
+    assert [len(played.verdicts) for played in plays[0].results] == [
         1 if group.kind is GroupKind.STATISTICAL else repeat for group in groups
     ]
-    if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
-        message = keep_timelines_and_describe(result, tmp_path / "timelines")
+    # A statistical Group rejected by chance is played once more (#388).
+    message = describe_failure(plays, tmp_path / "timelines")
+    if message:
         pytest.fail(message, pytrace=False)
 
 

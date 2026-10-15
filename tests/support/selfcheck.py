@@ -6,7 +6,7 @@ else needs to be written when a Group is registered (#84).
 """
 
 import dataclasses
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -68,6 +68,43 @@ def _by_chance(verdict: Verdict, statistical: Collection[str]) -> bool:
         and bool(verdict.divergences)
         and all(divergence.kind == "distribution" for divergence in verdict.divergences)
     )
+
+
+type PlayOnce = Callable[[Path], Awaitable[RunResult]]
+"""Plays the Groups once, in the folder it is given, and gives the Run."""
+
+
+async def play_and_replay(
+    groups: Sequence[Group], play: PlayOnce, workdir: Path
+) -> tuple[RunResult, ...]:
+    """Play `groups` once, and once more with fresh plays if that was a chance rejection.
+
+    The plays are `first` and `replay` under `workdir`. The replay is played only when
+    `may_replay` says the first was nothing but a statistical Group's rejection by chance
+    (#388), so what is given back is one Run, or two.
+    """
+    first = await play(workdir / "first")
+    if not may_replay(groups, first.verdicts):
+        return (first,)
+    return (first, await play(workdir / "replay"))
+
+
+def describe_failure(plays: Sequence[RunResult], where: Path) -> str:
+    """Why the Self-check failed, or "" if its last play matched.
+
+    A replayed Self-check fails only if the replay did not match either, so the text names
+    the replay and the play it repeated, each as `keep_timelines_and_describe` writes it,
+    with their timelines in `first` and `replay` under `where`.
+    """
+    last = plays[-1]
+    if all(verdict.outcome is Outcome.MATCH for verdict in last.verdicts):
+        return ""
+    if len(plays) == 1:
+        return keep_timelines_and_describe(last, where)
+    first = keep_timelines_and_describe(plays[0], where / "first")
+    replay = keep_timelines_and_describe(last, where / "replay")
+    heading = "Played again after the first play was rejected."
+    return f"{heading}\nFirst play:\n{first}\nReplay:\n{replay}"
 
 
 def describe_unmatched(verdicts: Sequence[Verdict]) -> str:
