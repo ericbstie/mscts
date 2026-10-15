@@ -97,7 +97,14 @@ type Step = tuple[int, Sent]
 START = 1000
 """The game time when Control first reads it."""
 
+STEPPED = text("[control: Stepping 300 ticks]")
+"""What the fake tells the Bot, an operator, when Control steps the world."""
+
 CALIBRATION_TICKS = 40
+CALIBRATION_RUNS_OUT_S = (SYNC_REQUESTS + 1) * TICK_S
+"""How long after its answer the calibration step runs out: after `tick step` has returned
+through Control, whose barrier answers come a tick apart."""
+
 CALIBRATION_STAMP = 5
 """How far into the calibration step the `set_time` the play calibrates on is stamped."""
 
@@ -116,7 +123,10 @@ class MobsServer:
     A step of `CALIBRATION_TICKS` sends the Bot a `set_time` stamped with the frozen time,
     which a play must pass over, and one stamped `CALIBRATION_STAMP` ticks on, from the tick
     that ends a tick later. The next `time query gametime` is answered with that tick, plus
-    `lag`; then the step runs out, and the Bot is sent a `set_time` with the new frozen time.
+    `lag`; `CALIBRATION_RUNS_OUT_S` later the step runs out, and the Bot is sent a `set_time`
+    with the new frozen time. A summon before then fails the fake: no mob may live before the
+    play's step. Every step also tells the Bot, an operator, that Control stepped the world, in
+    a `system_chat` that is no answer (`TickCommand.step` tells every operator).
 
     Any other step plays: each `time query gametime` in it is answered with the game time
     before the step plus the tick of the last packet sent, plus `lag`, and the next packet of
@@ -125,13 +135,18 @@ class MobsServer:
     the query before it is unanswered. While the world steps, it runs a tick for each barrier
     answer a tick after the last (`Bot.sync`), as a real world runs on while a barrier waits.
     Once every packet is sent, the time is `end`, and one tick more at each read after.
+    With `hold`, the answer to that read of the play (from 0) comes after the next one's, as
+    Pumpkin's answers may.
     """
 
     after_step: Sequence[Step] = ()
     end: int = 10_000
     lag: int = 0
     """How many ticks late a query in a step is answered, after a packet: 1 on Pumpkin."""
+    hold: int | None = None
     seen: list[Packet] = field(default_factory=list)
+    reads: int = 0
+    """How many times the game time was read in the play's step."""
     _bot: Peer | None = None
     _summoned: list[int] = field(default_factory=list)
     _added: int = 0
@@ -140,6 +155,7 @@ class MobsServer:
     _now: int = 0
     _sent: int = 0
     _stepped: bool = False
+    _held: bytes | None = None
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -171,10 +187,12 @@ class MobsServer:
             await self._add(summon)
         elif command == f"tick step {CALIBRATION_TICKS}":
             self._calibrating = True
+            await self._to_bot("minecraft:system_chat", content=STEPPED, overlay=False)
             await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
             await self._to_bot_raw("minecraft:set_time", set_time(self._calibrated_on))
         elif command.startswith("tick step "):
             self._stepped = True
+            await self._to_bot("minecraft:system_chat", content=STEPPED, overlay=False)
         elif command == f"kill @e[tag={TAG}]" and self._summoned:
             await self._to_bot("minecraft:remove_entities", entity_ids=list(self._summoned))
             self._summoned.clear()
@@ -194,11 +212,24 @@ class MobsServer:
             answer = self._frozen
         if self._stepped:  # the next packet goes first, so the Bot has it when Control reads
             await self._next()
-        await peer.send("minecraft:system_chat", content=gametime_answer(answer), overlay=False)
-        if self._calibrating:  # the calibration step runs out
+        await self._answer(peer, gametime_answer(answer))
+        if self._calibrating:  # the step runs out after Control's barrier for it has passed
+            await asyncio.sleep(CALIBRATION_RUNS_OUT_S)
             self._calibrating = False
             self._frozen += CALIBRATION_TICKS
             await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
+
+    async def _answer(self, peer: Peer, content: bytes) -> None:
+        """Send `content`, unless it is the read `hold` names; then the held one, if any."""
+        play_read = self.reads if self._stepped else None
+        self.reads += int(self._stepped)
+        if play_read is not None and play_read == self.hold:
+            self._held = content
+            return
+        await peer.send("minecraft:system_chat", content=content, overlay=False)
+        if self._held is not None:
+            held, self._held = self._held, None
+            await peer.send("minecraft:system_chat", content=held, overlay=False)
 
     async def _next(self) -> None:
         """Send the Bot the next packet of `after_step`, or move the time on past them all."""
@@ -210,6 +241,7 @@ class MobsServer:
             self._now = max(self.end, self._now + 1)
 
     async def _add(self, summon: re.Match[str]) -> None:
+        assert not self._calibrating, "a mob was summoned while the calibration step ran"
         entity_id = ZOMBIE_ID + self._added
         self._added += 1
         self._summoned.append(entity_id)
@@ -510,8 +542,25 @@ async def test_an_event_arriving_while_a_read_is_unanswered_is_read_at_its_own_t
 
 
 @pytest.mark.asyncio
+async def test_answers_that_come_out_of_order_go_to_the_reads_in_the_order_of_their_ticks() -> None:
+    # The answer to the read of the step to the waypoint (the second read) comes after the
+    # answer to the read of the hit.
+    server = MobsServer(
+        after_step=((28, moved(ZOMBIE_ID, -0.5)), (30, hurt(PLAYER_ID))),
+        hold=1,
+    )
+
+    result = await replay("mobs/chase-open", server)
+
+    assert result.samples == {"chase_open.moved": (28.0,), "chase_open.hit": (30.0,)}
+
+
+@pytest.mark.asyncio
 async def test_a_calibration_answered_after_its_step_ran_out_fails_the_play() -> None:
-    server = MobsServer(after_step=_chase().after_step, lag=CALIBRATION_TICKS)
+    # Answered with the game time the step ends at: it may have run out first.
+    server = MobsServer(
+        after_step=_chase().after_step, lag=CALIBRATION_TICKS - CALIBRATION_STAMP - 1
+    )
 
     with pytest.raises(RuntimeError, match="calibration step ran out"):
         await replay("mobs/chase-open", server)
@@ -525,6 +574,7 @@ async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_h
     result = await replay("mobs/chase-open", server)
 
     assert result.samples == {}
+    assert server.reads == 3  # the third answer, 300, is the budget: no fourth read
     assert result.commands[len(OPEN_SETUP) :] == (*TEARDOWN, "deop open0", "tick unfreeze")
 
 
