@@ -81,12 +81,37 @@ digs. Control puts the digger, the watcher and itself at x 8.5, 12.5 and 4.5, y 
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
+| `blocks/dig-survival` | exact | none | In survival, the digger breaks a block one and a half blocks south of it. First it finishes two digs as soon as it has started them, which the server refuses: stone by hand, and obsidian with a diamond pickaxe. Then it finishes digs after the time a vanilla client takes, or a second past the least the server accepts, which break the block: stone with a wooden pickaxe, stone with an iron pickaxe, dirt by hand, stone by hand and obsidian with a diamond pickaxe. Last it finishes the first two digs early again, and the server breaks each block a tick later. Each dig is two windows: the start, then the finish. | none |
 | `blocks/dig-creative` | tick-exact | none | In creative mode, the digger breaks stone, dirt and obsidian by hand, each in one window, then tries stone with an iron sword, which cannot break blocks. | none |
 | `blocks/place` | tick-exact | none | The digger places stairs and logs on each of the six faces of a stone block, stairs while facing each of four ways, and a slab (bottom, top and doubled). | none |
 | `blocks/place-attached` | tick-exact | none | The digger places a door with the cursor on each side of the block, a torch (on top and on each side), and a bed facing each of four ways. Then it places stone onto short grass and onto a snow layer, which it replaces, and into the space of an armor stand, which the server refuses. | none |
 
 A dropped item has the same Masks as in the commands above: where it appears, its sideways speed and
 which way it faces.
+
+`blocks/dig-survival` cannot be tick-exact. The server counts a dig in the player's own ticks, and
+a frozen world still ticks its players, so stepping the world does not time a dig. The Group waits
+by the clock instead, outside any window. It compares what the finish changes: the block, the
+acknowledgement, the item that drops and the tool's wear. It leaves out the cracks and particles of
+the dig (`block_destruction`, and the `level_event` 2019 and 2020 that vanilla sends every tick),
+because how many a window holds depends on how long it lasts. That also leaves out `level_event`
+2001, the particles and sound of a block that breaks, which `blocks/dig-creative` compares.
+
+The server breaks the block at the finish when the ticks since the start, times the block's
+progress in a tick, reach 0.7. When they do not, it keeps the dig, and on the player's next tick it
+breaks the block anyway if the player's age in ticks at the start, times that progress, reaches 1.
+The age counts from the player's join or its last respawn. So an early finish from a player that
+has just joined is refused for good, and one from a player that has been in the world long enough
+breaks the block a tick later: 149 ticks (about 7.5 seconds) for stone by hand, and 187 for obsidian
+with a diamond pickaxe. The Group plays both. Its first early finishes come right after the digger
+joins, and the last ones after the on-time finishes, which keep it in the world for more than 21
+seconds.
+
+Each on-time finish waits at least a second past the least the server accepts, so that a server
+that runs late still accepts it. The other three digs have no early finish that the server refuses
+for good: it breaks them a tick later from a player that has been in the world for 22 ticks
+(stone with a wooden pickaxe), 14 (dirt by hand) or 7 (stone with an iron pickaxe), and the digger
+is older than that before its first window.
 
 ### Falling blocks and blocks that lose their support
 
@@ -688,8 +713,6 @@ source has had its last scheduled tick, which leaves none due for the next play.
 | --- | --- | --- |
 | Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
 | Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
-| Survival digging | `blocks/dig-survival`: finishing a dig early and on time | [#347](https://github.com/ericbstie/mscts/issues/347): the server's rule for accepting a finish is not known yet. |
-
 See [Project status](/status) for the order.
 
 ## How chunks are compared
