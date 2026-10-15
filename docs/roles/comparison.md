@@ -49,3 +49,5 @@ Newest first: one line per lesson, with the issue it came from.
 - #222: An exception from a Group or the settle wait on the Candidate alone is `mismatch`, whatever its type (the Reference ran the same code); `error` is only for the Reference failing or the Comparison raising. A harness bug that shows only on the Candidate now scores against it, so the Self-check and the reference tier are where harness bugs show.
 - #114: Any wait the Run gathers uses `return_exceptions=True`.
 - #114, #116: Changing a CONTEXT.md entry means changing its glossary entry in the same commit (`test_glossary`).
+- #320: a packet list the client applies element by element at distinct keys is compared order-free; cite the handler's javap.
+- #320: ordering a run by entity needs the ranks from before the run (`_Numbers.ranks()`); sort before `numbers.take`. A run ends at a window's end, a tick Mark (tick-exact only) and `add_entity`/`remove_entities`; an uncompared packet never ends one.

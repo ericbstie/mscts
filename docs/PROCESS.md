@@ -202,7 +202,8 @@ Read CLAUDE.md, docs/PROCESS.md (Worker contract + Worker report), and the
 red-green and protocol-research skills before starting.
 
 Issue: #<n> (the spec: Docs delta, Interface, Acceptance tests, Owns). Read it
-       and its comments first. Branch: issue-<n>-<slug>.
+       and its comments first. Branch: issue-<n>-<slug> (create it first:
+       the worktree starts on another name).
 Goal: <one sentence, in CONTEXT.md vocabulary>
 Increments (in order, one commit each; say whether a new dataclass field may default;
               a suggested signature keeps ≤ 5 parameters (PLR0913) or says "shape it")
@@ -407,6 +408,15 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-15 | workers (#53, #384, #387), lead (train 36) | A five-hour stress series held the live lock; three other live runs, the lead's tiers among them, waited up to 4.5 h | **defer**: #374, the fourth repeat; a lock that shows its holder and lets short runs between a series' runs |
+| 2026-10-15 | worker (#320) | Five Self-check runs of `blocks or entities or combat` take about 57 min each | **adopt**: the brief's Stress runs line gives the family's run time (already required; the lead left it out) |
+| 2026-10-15 | worker (#320) | Pumpkin was not in the shared cache, so the first candidate runs failed | **adopt**: the lead checks `mscts adapter list` before briefing a candidate run |
+| 2026-10-15 | worker (#320) | `mscts run` keeps no Transcripts, so a before/after Report compared different plays | **reject** for now: one use |
+| 2026-10-15 | workers (#388, #53, #384) | The worktree starts on `worktree-agent-...`, not the issue branch | **adopt**: the brief says to create the issue branch first |
+| 2026-10-15 | worker (#53) | A long live run started in the background was killed when the worker's turn ended | **adopt**: common.md, start live runs with `setsid nohup` and wait on an rc file within the turn |
+| 2026-10-15 | worker (#384) | The auto-mode classifier refused to kill a worker's own queued run | **reject**: the lead can stop it; the worker hands the run to the lead |
+| 2026-10-15 | worker (#387) | Pumpkin's source could not be fetched through the proxy (403) | **reject**: a live probe settled it |
+| 2026-10-15 | lead (train 36) | The #388 worker's replay reused the shared pair, which a Group docstring already ruled out | **adopt**: statistics handbook line |
 | 2026-10-15 | lead (train 35) | A container restart stopped worker B mid-research and the lead's tier runs; a resume by message continued from its findings file | **adopt** (no change): findings.txt and the resume rule worked |
 | 2026-10-15 | worker (#52) | A fake that popped scripted game times let mutants that sample on the wrong packet survive | **adopt**: statistics handbook line |
 | 2026-10-15 | worker (#52) | The rebase onto #385 conflicted where both appended to TITLES, test-cases.md and PLAN.md | **reject**: a keep-both resolution took 10 min; sorting those tables is a refactor nobody needs yet |

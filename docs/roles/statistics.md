@@ -36,3 +36,7 @@ Newest first: one line per lesson, with the issue it came from.
 - #47: whether two experience orbs merge depends on their entity ids (`(other.id - this.id) % 40 == 0`), and a player takes one orb in reach at random each tick: never compare orb merging, and give each orb its own window.
 - #47: items look for merges every 40 ticks of their own age: summon pairs a step apart so each merge lands on its own tick. A pickup that only partly fits sends only `container_set_slot`.
 - #47: `/item replace entity <p> container.*` replaces one slot without an error; fill an inventory one slot per command.
+- #388: a statistical Self-check that rejects only on `distribution` Divergences is replayed once, on two Instances launched for the replay alone (`tests/support/selfcheck.py`): on the shared pair a Bot name rejoins where it left.
+- #384: a Group names its players with `context.player_name(prefix)`, never `f"{prefix}{context.play}"`; prefix + 4 Run characters + play fit 16, so a prefix is at most 10 characters. Fake-server tests must not assert the random part.
+- #384: the summaries of a name rejected by `PER_PLAY` are of per-play counts, and the Report words them as plays.
+- #387: `time query gametime` sent in reply to a packet adds 0 ticks on vanilla and 1 on Pumpkin (docs/research/2026-10-15-time-query-lag.md). `set_time` carries the game time from before its tick; after `context.freeze()`, `bot.sync()` before reading one.

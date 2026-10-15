@@ -195,6 +195,29 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-15: train 36
+
+- #392 (part of #53) merged first, then a train of #390, #393 and #391,
+  then #394. On the train tip: reference 35 of 35, statistical tier 7 of
+  7. Before #392: reference 35 of 35 on a stack with #390.
+- #392: `combat/pvp-off`. In 26.3 `pvp` is a game rule, not a
+  server.properties key. Pumpkin still hurts a player with it off.
+- #390 (#388): a statistical Self-check that rejects only on
+  `distribution` Divergences is played once more on two fresh Instances,
+  and fails only if both reject (about 1 in 10,000 per Group).
+- #393 (#384): `GroupContext.player_name` gives each Run its own player
+  names; a rejected per-play count test shows the counts in the Report.
+- #391 (#320): `section_blocks_update.blocks` is compared by position,
+  and a run of resends for different entities by entity. A run ends at a
+  window's end, at a tick Mark in a tick-exact Group, and at
+  `add_entity`/`remove_entities`; uncompared packets go across it. Two
+  reviews found the same blocking bug, the re-review a second; all fixed.
+- #394 (#387): the time query adds 0 ticks to a `mobs/*` sample on
+  vanilla and 1 on Pumpkin. The fix (calibrate per Instance) stays on
+  #387.
+- #63's `needs-decision` was dropped by the maintainer; it is next in
+  #73's order.
+
 ### 2026-10-15: train 35
 
 - #385 (#72) and #386 (#52), merged one after the other, each on the
