@@ -6,7 +6,7 @@ else needs to be written when a Group is registered (#84).
 """
 
 import dataclasses
-from collections.abc import Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 
 import pytest
@@ -46,6 +46,66 @@ def repeat_from(environ: Mapping[str, str]) -> int:
         msg = f"{REPEAT_VAR} is {text!r}: it must be a whole number of at least 1"
         raise ValueError(msg)
     return repeat
+
+
+def may_replay(groups: Sequence[Group], verdicts: Sequence[Verdict]) -> bool:
+    """Whether `verdicts` is nothing but a statistical Group's rejection by chance.
+
+    So its Self-check is worth playing once more (#388): every Verdict that is not `match`
+    is a `mismatch` of a Group in `groups` that is statistical, whose Divergences are all
+    `distribution` ones, and there is at least one. An `error`, a `failed` Divergence or
+    any other kind of Group fails at once.
+    """
+    statistical = {group.id for group in groups if group.kind is GroupKind.STATISTICAL}
+    unmatched = [verdict for verdict in verdicts if verdict.outcome is not Outcome.MATCH]
+    return bool(unmatched) and all(_by_chance(verdict, statistical) for verdict in unmatched)
+
+
+def _by_chance(verdict: Verdict, statistical: Collection[str]) -> bool:
+    return (
+        verdict.group_id in statistical
+        and verdict.outcome is Outcome.MISMATCH
+        and bool(verdict.divergences)
+        and all(divergence.kind == "distribution" for divergence in verdict.divergences)
+    )
+
+
+type PlayOnce = Callable[[Path], Awaitable[RunResult]]
+"""Plays the Groups once, in the folder it is given, and gives the Run."""
+
+
+async def play_and_replay(
+    groups: Sequence[Group], play: PlayOnce, replay: PlayOnce, workdir: Path
+) -> tuple[RunResult, ...]:
+    """Play `groups` with `play`, and with `replay` too if that was a chance rejection.
+
+    The plays are `first` and `replay` under `workdir`. `replay` is called only when
+    `may_replay` says the first was nothing but a statistical Group's rejection by chance
+    (#388), so what is given back is one Run, or two. It is a play of its own, not `play`
+    again: the caller gives it Instances that carry nothing over from the first.
+    """
+    first = await play(workdir / "first")
+    if not may_replay(groups, first.verdicts):
+        return (first,)
+    return (first, await replay(workdir / "replay"))
+
+
+def describe_failure(plays: Sequence[RunResult], where: Path) -> str:
+    """Why the Self-check failed, or "" if its last play matched.
+
+    A replayed Self-check fails only if the replay did not match either, so the text names
+    the replay and the play it repeated, each as `keep_timelines_and_describe` writes it,
+    with their timelines in `first` and `replay` under `where`.
+    """
+    last = plays[-1]
+    if all(verdict.outcome is Outcome.MATCH for verdict in last.verdicts):
+        return ""
+    if len(plays) == 1:
+        return keep_timelines_and_describe(last, where)
+    first = keep_timelines_and_describe(plays[0], where / "first")
+    replay = keep_timelines_and_describe(last, where / "replay")
+    heading = "Played again after the first play was rejected."
+    return f"{heading}\nFirst play:\n{first}\nReplay:\n{replay}"
 
 
 def describe_unmatched(verdicts: Sequence[Verdict]) -> str:
