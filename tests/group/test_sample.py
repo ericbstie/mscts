@@ -46,6 +46,30 @@ def test_the_play_is_the_index_of_the_one_started_last() -> None:
     assert _context().play == 0
 
 
+def test_a_player_name_holds_the_prefix_the_run_and_the_play() -> None:
+    samples = SampleLog()
+    names = []
+    for _ in range(3):
+        samples.new_play()
+        names.append(_context(samples).player_name("spawn"))
+
+    assert names == [f"spawn{samples.run}{play}" for play in range(3)]
+    assert len(set(names)) == 3
+
+
+def test_player_names_differ_between_two_logs() -> None:
+    first, second = SampleLog(), SampleLog()
+
+    assert _context(first).player_name("spawn") != _context(second).player_name("spawn")
+
+
+def test_a_player_name_is_at_most_sixteen_characters() -> None:
+    assert len(_context().player_name("spawnexact")) == 15  # prefix, 4 of the run, the play
+
+    with pytest.raises(ValueError, match="'longprefixname' is too long"):
+        _context().player_name("longprefixname")
+
+
 def test_samples_add_to_those_of_earlier_plays_and_count_per_play() -> None:
     samples = SampleLog()
     for values in ([1.0], [], [2.0, 3.0]):

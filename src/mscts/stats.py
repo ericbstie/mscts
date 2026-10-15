@@ -8,7 +8,9 @@ import bisect
 import dataclasses
 import math
 import random
+import secrets
 import statistics
+import string
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -75,11 +77,23 @@ type Series = Numbers | Categories
 """One name's samples on one server: numbers or categories, never both."""
 
 
+_RUN_ALPHABET = string.ascii_letters + string.digits
+_RUN_LENGTH = 4
+"""Four of the 62 characters a player name allows: 14.8 million values, in 4 of its 16."""
+
+
 class SampleLog:
-    """What a statistical Group records on one server over its plays, by sample name."""
+    """What a statistical Group records on one server over its plays, by sample name.
+
+    Attributes:
+        run: A few random characters, one value for all the plays the log holds. A Group
+            puts them in the names of the players it joins, so that a second Run on an
+            Attached Instance does not rejoin the players the first one left behind.
+    """
 
     def __init__(self) -> None:
-        """Start empty, before the first play."""
+        """Start empty, before the first play, with a `run` of its own."""
+        self.run = "".join(secrets.choice(_RUN_ALPHABET) for _ in range(_RUN_LENGTH))
         self._values: dict[str, list[Sample]] = {}
         self._plays: list[Counter[str]] = []  # each play's count of samples, by name
 

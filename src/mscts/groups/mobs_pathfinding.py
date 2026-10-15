@@ -146,7 +146,7 @@ async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[Bot]:
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
-        name = f"{layout.bot}{context.play}"
+        name = context.player_name(layout.bot)
         bot = await context.bot(name)
         await bot.join()
         x, y, z = layout.bot_at

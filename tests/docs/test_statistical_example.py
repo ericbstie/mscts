@@ -23,7 +23,7 @@ from tests.net.fakes import SPAWN, JoinScript, join_server, serve
 
 GUIDE = Path(__file__).resolve().parents[2] / "docs" / "guide" / "writing-a-group.md"
 CODEC = Codec.for_target(TARGET)
-_FRESH_NAME = 'context.bot(f"spawn{context.play}")'
+_FRESH_NAME = 'context.bot(context.player_name("spawn"))'
 
 
 def _example() -> str:
