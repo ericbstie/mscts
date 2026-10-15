@@ -594,6 +594,11 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "set_equipment.equipment[].item.count": "Equipped item count",
         "set_equipment.equipment[].item.item": "Equipped item type",
         "set_equipment.equipment[].slot": "Equipment slot",
+        # spawn (#72)
+        "spawn.distance": "Join distance from the spawn",
+        "spawn.x": "Join position east of the spawn",
+        "spawn.y": "Join height",
+        "spawn.z": "Join position south of the spawn",
     }
 )
 """Known test case name → the short title checked against the docs reference."""
