@@ -66,6 +66,7 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
   `docs/reference/test-cases.md` land in the same commit.
 - Push your first commit early, and start every Edit or Write path with
   your worktree's path: a lost worktree loses only what was never pushed.
+- Before `mise run commit`, run `uv run ty check` and `uv run ruff check`: `mise run fix` does not add a missing `@override`, and each failed commit costs a 4-minute check.
 - Run `mise run fix` before each test run (red-green Known traps lists
   ruff's recurring rules).
 - One plain command per Bash call: no `&&`, `;`, heredocs, `sed -i`, or

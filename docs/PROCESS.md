@@ -407,6 +407,14 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-15 | lead (train 35) | A container restart stopped worker B mid-research and the lead's tier runs; a resume by message continued from its findings file | **adopt** (no change): findings.txt and the resume rule worked |
+| 2026-10-15 | worker (#52) | A fake that popped scripted game times let mutants that sample on the wrong packet survive | **adopt**: statistics handbook line |
+| 2026-10-15 | worker (#52) | The rebase onto #385 conflicted where both appended to TITLES, test-cases.md and PLAN.md | **reject**: a keep-both resolution took 10 min; sorting those tables is a refactor nobody needs yet |
+| 2026-10-15 | worker (#52) | The first Self-check waited about 10 min for the live lock | **defer**: #374 |
+| 2026-10-15 | worker (#52) | No helper for "freeze, read the game time, step, sample the tick of an event" | **reject** for now: one family uses it; #387 may change how the tick is read |
+| 2026-10-15 | worker (#72) | The issue named `PlayerList.placeNewPlayer`; the placement is in `PrepareSpawnTask.start`, found by a throwaway jar scan for callers | **reject**: one use; the handbook line records the class |
+| 2026-10-15 | worker (#72) | A first commit failed `mise run check` on ruff E501 and ty's missing `@override`, twice 4 min | **adopt**: common.md, run `ty check` and `ruff check` before committing |
+| 2026-10-15 | worker (#72) | A new test file failed at collection, not on an assertion, until a stub existed | **reject**: red-green already says an import error is not red |
 | 2026-10-15 | workers (#24, #347) | The live lock was held for over an hour by another worker's Self-check series; one worker never ran its live tier, the other waited between stress runs | **defer**: #374, a third repeat of the complaint |
 | 2026-10-15 | worker (#368, twice) | A 20-run Self-check took 13.7 min a run because the brief did not give the Groups' play times | **adopt**: the brief template's Stress runs line gives each Group family's play time on main for any 20-run Self-check |
 | 2026-10-15 | worker (#369) | `mise run commit` ran the 4 min check and committed nothing, because nothing was staged | **adopt**: common.md, `git add` before `mise run commit` |

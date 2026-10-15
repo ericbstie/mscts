@@ -61,6 +61,8 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #386 |  | medium | lead's diff read | 0 | none: no barrier or window change; each Group's statistical Self-check passed |
+| #385 |  | medium | lead's diff read | 0 | none: no barrier or window change; statistical Self-check passed for both Groups |
 | #379 |  | high | lead's diff read, first review, second review, re-review | 0, 1, 2, 1 | none: no barrier or window change |
 | #381 | medium | medium | lead's diff read | 0 | 5, all green: `blocks/dig-survival` 100 of 100 plays |
 | #380 | medium | medium | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 for each touched Group |
