@@ -2345,6 +2345,36 @@ Which entity plays the animation. mscts compares the entity each server refers t
 
 Which animation the client plays, such as a swing of the arm or a critical hit.
 
+## `swing_animation`
+
+**Arm swing**
+
+A packet that tells the client to play a swing of an entity's arm, such as the swing of a player who attacks. A server that leaves it out, or sends it for another entity, shows the player no swing.
+
+## `swing_animation.entity_id`
+
+**Entity swinging**
+
+Which entity swings its arm. mscts compares the entity each server refers to, rather than its server-assigned number.
+
+## `swing_animation.hand`
+
+**Hand that swings**
+
+Which hand swings, the main hand or the off hand.
+
+## `swing_animation.animation.type`
+
+**Swing style**
+
+How the arm swings: no swing, a whack or a stab. The item in the hand decides it.
+
+## `swing_animation.animation.duration`
+
+**Swing duration**
+
+How many ticks the swing lasts. The client plays the swing for that long.
+
 ## `level_particles`
 
 **Particles**
