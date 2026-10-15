@@ -261,7 +261,12 @@ def test_the_groups_package_imports_the_module_so_that_every_run_has_its_groups(
     assert mscts.groups.mobs_pathfinding is mobs_pathfinding
 
 
-SPECS = {"mobs/chase-open": Difficulty.NORMAL, "mobs/chase-maze": Difficulty.NORMAL}
+SPECS = {
+    "mobs/chase-open": Difficulty.NORMAL,
+    "mobs/chase-maze": Difficulty.NORMAL,
+    "mobs/doors-hard": Difficulty.HARD,
+    "mobs/doors-normal": Difficulty.NORMAL,
+}
 
 
 @pytest.mark.parametrize("group_id", sorted(SPECS))
@@ -437,3 +442,134 @@ async def test_chase_maze_takes_the_fence_down_after_the_mobs_have_gone() -> Non
         MAZE_CLEAR,
         "tick unfreeze",
     )
+
+
+# `mobs/doors-hard` and `mobs/doors-normal`
+
+PEN = (
+    "fill 5 -60 -1 7 -60 1 minecraft:oak_fence",
+    "setblock 6 -60 0 minecraft:air",
+    "setblock 5 -60 0 minecraft:oak_door[facing=east,half=lower]",
+    "setblock 5 -59 0 minecraft:oak_door[facing=east,half=upper]",
+)
+PEN_CLEAR = "fill 5 -60 -1 7 -59 1 minecraft:air"
+
+
+def doors_setup(bot: str, budget: int) -> tuple[str, ...]:
+    return (
+        "tp control 96.5 -60 96.5",
+        f"tp {bot} 0.5 -60.0 3.5",
+        *PEN,
+        "tick freeze",
+        summoned("zombie", "6.5 -60.0 0.5", f"{ZOMBIE},CanBreakDoors:1b"),
+        TIME_QUERY,
+        f"tick step {budget}",
+    )
+
+
+def cracked(x: int, y: int, z: int, stage: int = 0) -> tuple[str, dict[str, object]]:
+    """A `block_destruction` by the zombie of the block at x, y, z."""
+    return "minecraft:block_destruction", {
+        "entity_id": ZOMBIE_ID,
+        "pos": {"x": x, "y": y, "z": z},
+        "stage": stage,
+    }
+
+
+def door_gone(section_x: int = 0) -> tuple[str, dict[str, object]]:
+    """A `section_blocks_update` that turns both halves of the door to air, as vanilla sends.
+
+    With `section_x` 1, it is the same change 16 blocks east of the door.
+    """
+    return "minecraft:section_blocks_update", {
+        "section": {"x": section_x, "y": -4, "z": 0},
+        "blocks": [{"x": 5, "y": 4, "z": 0, "state": 0}, {"x": 5, "y": 5, "z": 0, "state": 0}],
+    }
+
+
+def _broken_in() -> MobsServer:
+    """The zombie cracks another block, then the door, and breaks the door: as on hard."""
+    return MobsServer(
+        gametimes=[1000, 1031, 1271],
+        after_step=(
+            cracked(6, -60, 1),
+            cracked(5, -59, 0),
+            cracked(5, -59, 0, stage=1),
+            door_gone(section_x=1),
+            ("minecraft:block_update", {"pos": {"x": 5, "y": -60, "z": 0}, "block_state": 1}),
+            door_gone(),
+        ),
+    )
+
+
+_SERVERS["mobs/doors-hard"] = _broken_in
+
+
+@pytest.mark.asyncio
+async def test_doors_hard_pens_a_zombie_that_can_break_doors_behind_an_oak_door() -> None:
+    result = await play("mobs/doors-hard")
+
+    assert result.bot == "doorhard7"
+    assert result.commands[: len(doors_setup("doorhard7", 400))] == doors_setup("doorhard7", 400)
+
+
+@pytest.mark.asyncio
+async def test_doors_hard_samples_when_the_zombie_began_to_break_the_door_and_broke_it() -> None:
+    result = await play("mobs/doors-hard")
+
+    assert result.samples == {"doors_hard.started": (31.0,), "doors_hard.broken": (271.0,)}
+    assert result.commands[-len(TEARDOWN) - 3 :] == (
+        TIME_QUERY,
+        *TEARDOWN,
+        PEN_CLEAR,
+        "tick unfreeze",
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_door_broken_with_one_block_update_counts_too() -> None:
+    gone = ("minecraft:block_update", {"pos": {"x": 5, "y": -59, "z": 0}, "block_state": 0})
+    server = MobsServer(gametimes=[1000, 1265], after_step=(gone,))
+
+    result = await replay("mobs/doors-hard", server)
+
+    assert result.samples == {"doors_hard.broken": (265.0,)}
+
+
+DOORS_NORMAL_TICKS = 300
+
+
+@pytest.mark.asyncio
+async def test_doors_normal_pens_the_same_zombie_for_a_shorter_budget() -> None:
+    server = MobsServer(gametimes=[1000, 1031, 1271], after_step=(door_gone(),))
+    result = await replay("mobs/doors-normal", server, PLAY_NUMBER)
+
+    assert result.bot == "doornormal7"
+    setup = doors_setup("doornormal7", DOORS_NORMAL_TICKS)
+    assert result.commands[: len(setup)] == setup
+
+
+@pytest.mark.parametrize(
+    ("after_step", "gametimes", "door"),
+    [
+        ((), [1000, 1150, 1300], "held"),
+        ((cracked(6, -60, 1),), [1000, 1150, 1300], "held"),
+        ((cracked(5, -60, 0),), [1000, 1040, 1150, 1300], "cracked"),
+        ((cracked(5, -60, 0), door_gone()), [1000, 1040, 1280], "broken"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_doors_normal_samples_whether_the_door_held_cracked_or_broke(
+    monkeypatch: pytest.MonkeyPatch,
+    after_step: Sequence[tuple[str, Mapping[str, object]]],
+    gametimes: list[int],
+    door: str,
+) -> None:
+    monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.2)
+    server = MobsServer(gametimes=gametimes, after_step=after_step)
+
+    result = await replay("mobs/doors-normal", server)
+
+    assert result.samples == {"doors_normal.door": (door,)}
+    assert server.gametimes == []
+    assert result.commands[-3:] == ("tick unfreeze", PEN_CLEAR, "tick unfreeze")

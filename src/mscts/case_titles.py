@@ -604,6 +604,9 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "chase_open.hit": "Zombie's first hit",
         "chase_maze.gap": "Zombie finding the gap in a fence",
         "chase_maze.hit": "Zombie's first hit past a fence",
+        "doors_hard.started": "Zombie starting on a door",
+        "doors_hard.broken": "Zombie breaking a door",
+        "doors_normal.door": "Door a zombie hits on normal",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

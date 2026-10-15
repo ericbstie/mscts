@@ -3410,3 +3410,21 @@ How many ticks a zombie summoned 16 blocks from a player takes to get into the o
 **Zombie's first hit past a fence**
 
 How many ticks the same zombie takes to hurt the player for the first time. A difference means zombies get around a wall and hit players at another pace than in vanilla. A play in which the zombie has not hit the player within 400 ticks records no tick.
+
+## `doors_hard.started`
+
+**Zombie starting on a door**
+
+How many ticks a zombie that can break doors, penned in behind an oak door with a player in sight, takes on hard difficulty to start breaking the door: the first crack the server shows on it. The `mobs/doors-hard` Group measures it over many plays and compares how the ticks are spread. A difference means zombies go for a door sooner or later than in vanilla.
+
+## `doors_hard.broken`
+
+**Zombie breaking a door**
+
+How many ticks the same zombie takes to break the door. In vanilla it hits the door for 240 ticks. A difference means zombies take another time to break a door, or start on it at another time. A play in which the door still stands after 400 ticks records no tick.
+
+## `doors_normal.door`
+
+**Door a zombie hits on normal**
+
+What happens to the same door on normal difficulty within 300 ticks: `held`, `cracked` or `broken`. In vanilla a zombie breaks doors only on hard, so the door holds. The `mobs/doors-normal` Group records it over many plays. A difference means zombies break doors, or start to, on normal.

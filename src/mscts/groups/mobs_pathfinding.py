@@ -19,15 +19,16 @@ so two Instances differ in every play: the samples are compared as distributions
 
 import contextlib
 import math
-from collections.abc import AsyncIterator, Callable, Iterable
-from dataclasses import dataclass
+from collections.abc import AsyncIterator, Callable, Iterable, Mapping
+from dataclasses import dataclass, replace
+from typing import cast
 
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
 from mscts.entities import Entity
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, normal, remove_tagged_until_gone
-from mscts.spec import CONTROL_PLAYER
+from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
 _TAG = "mscts_mobs"
 """What every mob a play summons is tagged with, so that it removes only those."""
@@ -287,3 +288,124 @@ async def chase_maze(context: GroupContext) -> None:
             hit="chase_maze.hit",
         ),
     )
+
+
+# `mobs/doors-hard` and `mobs/doors-normal`: a zombie that can break doors (`CanBreakDoors`),
+# penned in by oak fences with an oak door on the west side. The Bot stands 3 blocks south of
+# the door, where the zombie sees it over the fence: so the zombie goes for it, its path runs
+# through the door, and it walks into the door. A zombie breaks a door only on hard
+# (`Zombie.DOOR_BREAKING_PREDICATE`): it hits it for 240 ticks (`BreakDoorGoal`), and the
+# server shows the door cracking (`block_destruction`) from the first of them.
+
+_DOOR = (5, 0)
+"""The x and z of the door; its halves are at y -60 and -59."""
+
+_DOOR_YS = (-60, -59)
+_AIR = 0
+"""The block state id of air."""
+
+_CRACK = "minecraft:block_destruction"
+_BLOCK = "minecraft:block_update"
+_SECTION = "minecraft:section_blocks_update"
+_SECTION_SIZE = 16
+
+
+def _pen(bot: str) -> _Layout:
+    """The pen with its door, the zombie in it, and the Bot called `bot` in sight of it."""
+    door = "minecraft:oak_door[facing=east,half={}]"
+    return _Layout(
+        bot=bot,
+        bot_at=(0.5, -60.0, 3.5),
+        summons=(_summon("zombie", (6.5, -60.0, 0.5), f"{_ZOMBIE_NBT},CanBreakDoors:1b"),),
+        build=(
+            "fill 5 -60 -1 7 -60 1 minecraft:oak_fence",
+            "setblock 6 -60 0 minecraft:air",
+            f"setblock 5 -60 0 {door.format('lower')}",
+            f"setblock 5 -59 0 {door.format('upper')}",
+        ),
+        clear=("fill 5 -60 -1 7 -59 1 minecraft:air",),
+    )
+
+
+def _cracks_the_door(packet: Packet) -> bool:
+    """Whether `packet` shows a block of the door cracking."""
+    if packet.name != _CRACK:
+        return False
+    x, _, z = _xyz((packet.fields or {})["pos"])
+    return (x, z) == _DOOR
+
+
+_DOOR_HALVES = tuple((_DOOR[0], y, _DOOR[1]) for y in _DOOR_YS)
+_DOOR_IN_SECTIONS = tuple(
+    (tuple(axis // _SECTION_SIZE for axis in half), tuple(axis % _SECTION_SIZE for axis in half))
+    for half in _DOOR_HALVES
+)
+"""Each half of the door as a `section_blocks_update` names it: its section, then where in it."""
+
+
+def _breaks_the_door(packet: Packet) -> bool:
+    """Whether `packet` turns a half of the door to air, in one block or in its section."""
+    fields = packet.fields or {}
+    if packet.name == _BLOCK:
+        return fields["block_state"] == _AIR and _xyz(fields["pos"]) in _DOOR_HALVES
+    if packet.name != _SECTION:
+        return False
+    section = _xyz(fields["section"])
+    blocks = cast("list[Mapping[str, object]]", fields["blocks"])
+    return any(
+        block["state"] == _AIR and (section, _xyz(block)) in _DOOR_IN_SECTIONS for block in blocks
+    )
+
+
+def _xyz(value: object) -> tuple[object, object, object]:
+    """The x, y and z of `value`, a position the codec decoded."""
+    position = cast("Mapping[str, object]", value)
+    return position["x"], position["y"], position["z"]
+
+
+async def _besiege(context: GroupContext, layout: _Layout, budget: int) -> dict[str, int]:
+    """Play `layout` for `budget` ticks: the tick the door first cracked and the tick it broke.
+
+    Each is left out if it did not happen; the play ends when the door breaks.
+    """
+    seen: dict[str, int] = {}
+    async with _arena(context, layout) as bot:
+        clock = await _start(context.control, budget)
+        while (packet := await _next(bot, clock, budget, (_CRACK, _BLOCK, _SECTION))) is not None:
+            if _breaks_the_door(packet):
+                seen["broken"] = await clock.ticks()
+                return seen
+            if "started" not in seen and _cracks_the_door(packet):
+                seen["started"] = await clock.ticks()
+    return seen
+
+
+def _hard(spec: ServerSpec) -> ServerSpec:
+    """Play on hard difficulty, the only one on which a zombie breaks doors."""
+    return replace(spec, difficulty=Difficulty.HARD)
+
+
+DOORS_HARD_TICKS = 400
+"""The tick budget on hard: vanilla's zombie starts on the door by tick 31 and breaks it 240
+ticks later, by tick 271."""
+
+
+@group("mobs/doors-hard", spec=_hard, kind=GroupKind.STATISTICAL, runs=15)
+async def doors_hard(context: GroupContext) -> None:
+    """Sample the tick the zombie starts to break the door, and the tick the door breaks."""
+    seen = await _besiege(context, _pen("doorhard"), DOORS_HARD_TICKS)
+    for event, tick in seen.items():
+        context.sample(f"doors_hard.{event}", tick)
+
+
+DOORS_NORMAL_TICKS = 300
+"""The tick budget on normal: long enough for the door to crack, and to break, had the zombie
+been on hard."""
+
+
+@group("mobs/doors-normal", spec=normal, kind=GroupKind.STATISTICAL, runs=10)
+async def doors_normal(context: GroupContext) -> None:
+    """Sample whether the door held, cracked or broke, as a category."""
+    seen = await _besiege(context, _pen("doornormal"), DOORS_NORMAL_TICKS)
+    door = "broken" if "broken" in seen else "cracked" if "started" in seen else "held"
+    context.sample("doors_normal.door", door)
