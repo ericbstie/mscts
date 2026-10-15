@@ -2064,6 +2064,30 @@ proves it necessary:
      only to the rate it asks the server for
      (`ChunkBatchSizeCalculator.onBatchFinished`, then
      `chunk_batch_received`).
+   - the order of resends about different entities (#320). A *resend*
+     is a `set_entity_data`, `set_entity_motion`, `update_attributes`,
+     `rotate_head`, `move_entity_pos`, `move_entity_pos_rot`,
+     `move_entity_rot` or `entity_position_sync` (`compare._RESENDS`):
+     each holds one `entity_id`, and the client applies it to that entity
+     only (`javap` on the 26.3 client: `ClientPacketListener`'s handlers
+     look the entity up by id and set its data, velocity, attributes,
+     head or position). At the end of each tick vanilla sends them for
+     every tracked entity that changed in the iteration order of
+     `ChunkMap.entityMap`, an `Int2ObjectOpenHashMap` keyed by the raw
+     entity id (`ChunkMap.tick`, `ServerEntity.sendChanges`), and raw ids
+     differ between Instances
+     (`docs/research/2026-10-15-unordered-resends.md`). A *run of
+     resends* is a longest stretch of them in a Bot's stream, after the
+     chunk runs are sorted; any other packet ends one. Each run is
+     taken in the order of its entities' names and numbers so far
+     (`compare._by_entity`): numbers first, by value, then names, then
+     entities the Bot has not heard of yet, in the order they arrived,
+     since that order gives their numbers. The sort is stable, so the
+     resends of one entity keep their order. A run may span ticks: a
+     Transcript holds no tick ends but a tick-exact Group's tick Marks,
+     and there every packet still carries the tick it arrived on, which
+     is compared. `set_passengers` (two entities) and bundles (the
+     projectile power) end a run.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,

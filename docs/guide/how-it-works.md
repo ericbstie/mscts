@@ -123,6 +123,11 @@ session id each login gets. Two runs of vanilla never agree on them, so
 mscts leaves them out for every Group. Vanilla also sends the tag lists in
 an order that changes each time it starts. The client reads them into
 lookup tables, so mscts sorts them by name before comparing them.
+At the end of each tick, vanilla sends what changed about each entity
+in an order that follows the server's entity ids. The client applies each of
+these packets to its own entity, so when several entities change at
+once, mscts compares their packets entity by entity. The packets about
+one entity keep their order.
 
 Otherwise mscts never masks anything a player could observe, even if it
 is random. Random mechanics, such as mob spawning and loot, will instead

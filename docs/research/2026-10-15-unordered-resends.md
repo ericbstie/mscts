@@ -22,3 +22,34 @@ and server jars (`scripts/research/javap.py`).
   updates. So each change sets only the block at its own position: blocks
   at different positions can come in any order, and a position sent twice
   ends with its last state.
+
+## Tick-end entity resends — javap
+
+- Server: `ChunkMap.<init>` makes `entityMap` an `Int2ObjectOpenHashMap`
+  keyed by the raw entity id. `ChunkMap.tick` first runs
+  `updateChunkTracking` for each player, then walks
+  `entityMap.values()`: for an entity whose section changed it runs
+  `TrackedEntity.updatePlayers` (an `add_entity` bundle or
+  `remove_entities`), and for one that changed section, needs a sync or
+  is in entity-ticking range it runs `ServerEntity.sendChanges`.
+- `ServerEntity.sendChanges` can send `set_passengers`, a map's data,
+  `move_entity_rot`, a move packet (`move_entity_pos`,
+  `move_entity_pos_rot` or `entity_position_sync`), `move_minecart_along_track`,
+  `set_entity_motion` (or a bundle of it with `projectile_power`),
+  `rotate_head`, and through `sendDirtyEntityData` `set_entity_data` and
+  `update_attributes`. So the resends of several entities in one tick
+  come in the hash order of their raw ids, which differ between
+  Instances (#35: 17 of 20 plays with 4 drops did not match).
+- Client: `ClientPacketListener.handleSetEntityData`
+  (`getEntity`, `SynchedEntityData.assignValues`),
+  `handleSetEntityMotion` (`lerpMotion`), `handleUpdateAttributes`
+  (the entity's `AttributeMap`), `handleRotateMob` (`lerpHeadTo`),
+  `handleMoveEntity` (`moveOrInterpolateTo`, `setOnGround`) and
+  `handleEntityPositionSync` (`moveOrInterpolateTo` or `snapTo`, and
+  `positionRider` when the local player rides it) each act on the entity
+  the packet's id names. So resends for different entities can come in
+  any order. Those for one entity are applied in turn and keep their
+  order. `set_passengers` names two entities and is left out.
+- What bounds a tick: a Transcript records no tick ends, except the tick
+  Marks of a tick-exact Group. There each packet's tick is compared on its
+  own, so a run of resends needs no tick bound.

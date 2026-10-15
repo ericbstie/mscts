@@ -533,7 +533,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     """Diff the Candidate's Transcript of a Group against the Reference's.
 
     Each Bot's stream is normalized first: the chunks in a row are sorted by position
-    (`_by_position`); then, if the Transcript has Observation windows, the play Packets they
+    (`_by_position`), and the resends in a row for different entities by entity (`_RESENDS`,
+    `_by_entity`); then, if the Transcript has Observation windows, the play Packets they
     do not observe are left out (`_Windows.observes`); the Packets a `*` Mask names are
     dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
@@ -768,7 +769,10 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     If the Transcript has tick Marks (`TICK_MARK`), each play Packet holds the tick it
     arrived on (`_Ticks`). All of this runs over the Bot's Packets once its chunk packets
     are put in order (`_by_position`). The sort moves only chunk packets, which carry no
-    entity ids, so it changes no entity's name or number.
+    entity ids, so it changes no entity's name or number. Each run of resends
+    (`_resend_runs`) is then taken in the order of its entities' names and numbers so far
+    (`_by_entity`), so an entity named or numbered before the run gets the same place on both
+    sides however the server ordered the run.
     """
     windows = _Windows.of(transcript, bot)
     ticks = _Ticks.of(transcript, bot)
@@ -781,18 +785,97 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     )
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
-    for event, context in zip(events, _Context.each(events), strict=True):
-        packet = event.packet
-        if windows is not None and not windows.observes(event):
-            numbers.spawned(packet, masks)
-        elif packet.name not in masks.dropped:
-            numbers.take(packet)
-            normalized = _normalize(packet, masks, numbers, context)
-            if ticks is not None and packet.state is State.PLAY:
-                normalized = replace(normalized, tick=ticks.of_arrival(event.t_ns))
-            stream.append(normalized)
-        numbers.removed(packet)
+    for run in _resend_runs(list(zip(events, _Context.each(events), strict=True))):
+        for event, context in _by_entity(run, numbers.ids):
+            packet = event.packet
+            if windows is not None and not windows.observes(event):
+                numbers.spawned(packet, masks)
+            elif packet.name not in masks.dropped:
+                numbers.take(packet)
+                normalized = _normalize(packet, masks, numbers, context)
+                if ticks is not None and packet.state is State.PLAY:
+                    normalized = replace(normalized, tick=ticks.of_arrival(event.t_ns))
+                stream.append(normalized)
+            numbers.removed(packet)
     return stream
+
+
+_RESENDS = frozenset(
+    {
+        "minecraft:set_entity_data",
+        "minecraft:set_entity_motion",
+        "minecraft:update_attributes",
+        "minecraft:rotate_head",
+        "minecraft:move_entity_pos",
+        "minecraft:move_entity_pos_rot",
+        "minecraft:move_entity_rot",
+        "minecraft:entity_position_sync",
+    }
+)
+"""The play packets of vanilla's tick-end resends that are each about the one entity whose
+`entity_id` they hold (#320, docs/research/2026-10-15-unordered-resends.md).
+
+At the end of each tick `ChunkMap.tick` walks its tracked entities, an `Int2ObjectOpenHashMap`
+keyed by the raw entity id, and `ServerEntity.sendChanges` sends what changed about each: so
+the resends of several entities come in an order that follows their raw ids, which differ
+between Instances. The client applies each to the entity it names, and to no other
+(`ClientPacketListener.handleSetEntityData`, `handleSetEntityMotion`,
+`handleUpdateAttributes`, `handleRotateMob`, `handleMoveEntity`, `handleEntityPositionSync`).
+`set_passengers` names two entities, and the projectile power comes in a bundle, so neither
+is one."""
+
+type _Arrival = tuple[Event, _Context]
+"""A Bot's clientbound Event, with the context its canonical form needs."""
+
+
+def _resend_runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
+    """`arrivals` in their order, split into runs: each run of resends, and each other one alone.
+
+    A run of resends is a longest stretch of packets in `_RESENDS` (`_resend_entity`). It may
+    span ticks: what bounds a tick is not in a Transcript but in a tick-exact Group's tick
+    Marks, and there each packet keeps the tick it arrived on, which is compared on its own.
+    """
+    run: list[_Arrival] = []
+    for arrival in arrivals:
+        if _resend_entity(arrival[0].packet) is not None:
+            run.append(arrival)
+            continue
+        if run:
+            yield run
+            run = []
+        yield [arrival]
+    if run:
+        yield run
+
+
+def _by_entity(run: Sequence[_Arrival], names: Mapping[int, str]) -> list[_Arrival]:
+    """`run` stably sorted by the entity each packet is about (`_entity_order`).
+
+    So the resends of one entity keep their order, as the client applies them in turn.
+    """
+    return sorted(run, key=lambda arrival: _entity_order(arrival[0].packet, names))
+
+
+def _entity_order(packet: Packet, names: Mapping[int, str]) -> tuple[int, int, str]:
+    """Where `packet`'s entity sorts among a run's, by its name or number in `names`.
+
+    Numbers first, in their order (`#2` before `#10`), then names, then entities the Bot has
+    not heard of yet, which keep the order they arrived in: their numbers come from it.
+    """
+    name = names.get(entity) if (entity := _resend_entity(packet)) is not None else None
+    if name is None:
+        return (2, 0, "")
+    if (number := name.removeprefix("#")).isdecimal():
+        return (0, int(number), "")
+    return (1, 0, name)
+
+
+def _resend_entity(packet: Packet) -> int | None:
+    """The entity id of `packet` if it is a resend (`_RESENDS`) that holds one; else None."""
+    if packet.state is not State.PLAY or packet.name not in _RESENDS or packet.fields is None:
+        return None
+    entity = packet.fields.get("entity_id")
+    return entity if type(entity) is int else None
 
 
 _CHUNK_PACKETS = frozenset(
