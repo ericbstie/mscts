@@ -21,6 +21,13 @@ natural spawning, #51 spawners, #52 pathfinding, #72 spawn spread.
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #52: a statistical Group's Self-check has the 900 s timeout of `tests/selfcheck/test_groups.py` and covers 2 boots plus 2 × `runs` plays: pick `runs` from the measured play so it takes about 600 s.
+- #52: to time a sample in ticks, freeze the world, read `time query gametime`, `tick step N`, and read the game time again on each event. Vanilla gives the time as a Long, Pumpkin as a String. The query's round trip adds ticks (#387).
+- #52: Pumpkin drops loot from a `/kill`ed mob whatever `mob_drops` or the NBT say: `kill @e[type=minecraft:item]` before `remove_tagged_until_gone`.
+- #52: a fake that decides a sample's tick sends one packet per game-time read; a fake that pops scripted game times lets a sample taken on the wrong packet pass.
+- #72: a joining player is placed in the configuration phase (`PrepareSpawnTask.start`): at its saved position if it has one, else by `PlayerSpawnFinder.findSpawn`. A play needs a fresh name, not a fresh world. `respawn_radius` 0 is the spawn column; 10 is a 21 × 21 square.
+- #72: a name whose samples are one value on both servers passes and leaves the Holm correction, so an exact Group fails only if the servers' single values differ.
+- #72: in tests, subclass `BlocksServer` (override `__call__` with `@override`) to give `JoinScript` a per-name spawn pose.
 - #24: statistical tests are in the repo, on the standard library, checked against scipy in a scratch venv and pinned; scipy is no dependency. KS is exact and conditional on ties (the gap checked only at tie-block boundaries); scipy's `method="exact"` is not conditional.
 - #24: a statistical Group makes its plays independent: a Bot name rejoins where it left (vanilla saves the player), and entities, time and weather carry over. Use `context.play` for a fresh name.
 - #24: test every permutation path on a mid-range p: a case at p = 1 or 1/10,001 lets mutants survive. Test pooling with very unequal row totals.

@@ -195,6 +195,26 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-15: train 35
+
+- #385 (#72) and #386 (#52), merged one after the other, each on the
+  then-current main: reference 35 of 35 each time; statistical tier 2 of
+  2 after #385, 7 of 7 after #386 (41 min).
+- #385 (#72): `spawn/join-position` and `spawn/join-position-exact`, the
+  first real statistical Groups. A new player is placed in the
+  configuration phase (`PrepareSpawnTask.start`), so a play needs a fresh
+  name, not a fresh world (docs/research/2026-10-15-spawn-position.md).
+  Against Pumpkin the missing spread shows on `spawn.x`, `spawn.z` and
+  `spawn.distance`; the exact Group matches.
+- #386 (#52): `mobs/chase-open`, `mobs/chase-maze`, `mobs/doors-hard`,
+  `mobs/doors-normal` and `mobs/targets`. Samples are tick counts read
+  with `time query gametime` while the frozen world steps a fixed budget.
+  Pumpkin completes with 2 of 12 test cases passing.
+- Both at `scrutiny::medium` (the lead lowered #72 from high: no core
+  change was needed). Filed #387 (a tick sample includes the time query's
+  round trip) and #388 (the statistical tier fails by chance about 7% of
+  runs).
+
 ### 2026-10-15: train 34
 
 - Train 34 (#378, #380, #381, then #379), stacked in that order. On the
