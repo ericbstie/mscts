@@ -95,26 +95,44 @@ type Step = tuple[int, Sent]
 START = 1000
 """The game time when Control first reads it."""
 
+CALIBRATION_TICKS = 40
+CALIBRATION_STAMP = 5
+"""How far into the calibration step the `set_time` the play calibrates on is stamped."""
+
+
+def set_time(game_time: int) -> bytes:
+    """A `set_time` payload: the game time, a Long, then no clocks."""
+    return game_time.to_bytes(8, "big") + b"\x00"
+
 
 @dataclass
 class MobsServer:
     """A fake server for the mobs Groups.
 
     Each summon becomes an `add_entity` to the Bot, with ids from `ZOMBIE_ID` on. A kill of
-    the tagged entities removes them all. Control first reads the game time `START`. Once it
-    steps the world (`tick step`), the Bot is sent the first of `after_step`; each later
-    `time query gametime` is answered with `START` plus the tick of the last packet sent, and
-    then the next packet is sent. So a play reads the tick of each packet once: on seeing it,
-    or once it has waited `_IDLE_S` for the next. Once every packet is sent, the time is `end`,
-    and one tick more at each read after.
+    the tagged entities removes them all. The frozen world's game time is `START` at first.
+    A step of `CALIBRATION_TICKS` sends the Bot a `set_time` stamped with the frozen time,
+    which a play must pass over, and one stamped `CALIBRATION_STAMP` ticks on, from the tick
+    that ends a tick later. The next `time query gametime` is answered with that tick, plus
+    `lag`; then the step runs out, and the Bot is sent a `set_time` with the new frozen time.
+
+    Any other step plays: the Bot is sent the first of `after_step`; each later
+    `time query gametime` is answered with the game time before the step plus the tick of the
+    last packet sent, plus `lag`, and then the next packet is sent. So a play reads the tick
+    of each packet once: on seeing it, or once it has waited `_IDLE_S` for the next. Once
+    every packet is sent, the time is `end`, and one tick more at each read after.
     """
 
     after_step: Sequence[Step] = ()
     end: int = 10_000
+    lag: int = 0
+    """How many ticks late a query in a step is answered, after a packet: 1 on Pumpkin."""
     seen: list[Packet] = field(default_factory=list)
     _bot: Peer | None = None
     _summoned: list[int] = field(default_factory=list)
     _added: int = 0
+    _frozen: int = START
+    _calibrating: bool = False
     _now: int = 0
     _sent: int = 0
     _stepped: bool = False
@@ -143,18 +161,40 @@ class MobsServer:
             token = json.loads(command.removeprefix(MARKER))
             await peer.send("minecraft:system_chat", content=text(token), overlay=False)
         elif command == TIME_QUERY:
-            answer = gametime_answer(START + self._now)
-            if self._stepped:  # the next packet goes first, so the Bot has it when Control reads
-                await self._next()
-            await peer.send("minecraft:system_chat", content=answer, overlay=False)
+            await self._time(peer)
         elif (summon := _SUMMON.match(command)) is not None:
             await self._add(summon)
+        elif command == f"tick step {CALIBRATION_TICKS}":
+            self._calibrating = True
+            await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
+            await self._to_bot_raw("minecraft:set_time", set_time(self._calibrated_on))
         elif command.startswith("tick step "):
             self._stepped = True
             await self._next()
         elif command == f"kill @e[tag={TAG}]" and self._summoned:
             await self._to_bot("minecraft:remove_entities", entity_ids=list(self._summoned))
             self._summoned.clear()
+
+    @property
+    def _calibrated_on(self) -> int:
+        """The game time of the `set_time` a play calibrates on."""
+        return self._frozen + CALIBRATION_STAMP
+
+    async def _time(self, peer: Peer) -> None:
+        """Answer `time query gametime`: frozen, in the calibration step, or in a play."""
+        if self._calibrating:
+            answer = self._calibrated_on + 1 + self.lag
+        elif self._stepped:
+            answer = self._frozen + self._now + self.lag
+        else:
+            answer = self._frozen
+        if self._stepped:  # the next packet goes first, so the Bot has it when Control reads
+            await self._next()
+        await peer.send("minecraft:system_chat", content=gametime_answer(answer), overlay=False)
+        if self._calibrating:  # the calibration step runs out
+            self._calibrating = False
+            self._frozen += CALIBRATION_TICKS
+            await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
 
     async def _next(self) -> None:
         """Send the Bot the next packet of `after_step`, or move the time on past them all."""
@@ -188,6 +228,10 @@ class MobsServer:
     async def _to_bot(self, name: str, /, **fields: object) -> None:
         assert self._bot is not None, "Control acted before the Bot joined"
         await self._bot.send(name, **fields)
+
+    async def _to_bot_raw(self, name: str, payload: bytes) -> None:
+        assert self._bot is not None, "Control acted before the Bot joined"
+        await self._bot.write(self._bot.raw_frame(name, payload))
 
 
 @pytest.fixture(autouse=True)
@@ -278,6 +322,9 @@ ZOMBIE = (
     'PersistenceRequired:1b,DeathLootTable:"minecraft:empty",drop_chances:{head:0.0f},'
     'equipment:{head:{id:"minecraft:leather_helmet",count:1}}'
 )
+
+CALIBRATE = (TIME_QUERY, f"tick step {CALIBRATION_TICKS}", TIME_QUERY)
+"""What Control runs to calibrate the play's clock, in the frozen world before the summons."""
 
 TEARDOWN = (
     f"kill @e[tag={TAG}]",
@@ -389,6 +436,7 @@ OPEN_SETUP = (
     "tp control 96.5 -60 96.5",
     "tp open7 0.5 -60.0 0.5",
     "tick freeze",
+    *CALIBRATE,
     summoned("zombie", "16.5 -60.0 0.5", ZOMBIE),
     TIME_QUERY,
     "tick step 300",
@@ -429,6 +477,25 @@ async def test_chase_open_samples_when_the_zombie_came_half_a_block_closer_and_h
 
 
 @pytest.mark.asyncio
+async def test_a_server_that_answers_a_tick_late_gives_the_same_samples() -> None:
+    # Pumpkin answers a query sent after a packet a tick later than vanilla: the play's
+    # calibration measures that, and every sample subtracts it.
+    server = MobsServer(after_step=_chase().after_step, lag=1)
+
+    result = await replay("mobs/chase-open", server)
+
+    assert result.samples == {"chase_open.moved": (28.0,), "chase_open.hit": (148.0,)}
+
+
+@pytest.mark.asyncio
+async def test_a_calibration_answered_after_its_step_ran_out_fails_the_play() -> None:
+    server = MobsServer(after_step=_chase().after_step, lag=CALIBRATION_TICKS)
+
+    with pytest.raises(RuntimeError, match="calibration step ran out"):
+        await replay("mobs/chase-open", server)
+
+
+@pytest.mark.asyncio
 async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_has_run() -> None:
     # The zombie comes 0.4 blocks closer at tick 100, then nothing: tick 300 ends the play.
     server = MobsServer(after_step=((100, moved(ZOMBIE_ID, -0.4)),), end=300)
@@ -457,6 +524,7 @@ MAZE_SETUP = (
     "tp maze7 0.5 -60.0 0.5",
     *MAZE_WALL,
     "tick freeze",
+    *CALIBRATE,
     summoned("zombie", "16.5 -60.0 0.5", ZOMBIE),
     TIME_QUERY,
     "tick step 400",
@@ -523,6 +591,7 @@ def doors_setup(bot: str, budget: int) -> tuple[str, ...]:
         f"tp {bot} 0.5 -60.0 3.5",
         *PEN,
         "tick freeze",
+        *CALIBRATE,
         summoned("zombie", "6.5 -60.0 0.5", f"{ZOMBIE},CanBreakDoors:1b"),
         TIME_QUERY,
         f"tick step {budget}",
@@ -655,6 +724,7 @@ TARGETS_SETUP = (
     "time set noon",
     "gamerule advance_time false",
     "tick freeze",
+    *CALIBRATE,
     summoned("zombie", "8.5 -60.0 0.5", ZOMBIE),
     summoned("villager", "16.5 -60.0 0.5", VILLAGER),
     TIME_QUERY,
