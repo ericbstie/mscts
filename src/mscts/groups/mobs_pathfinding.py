@@ -19,11 +19,12 @@ so two Instances differ in every play: the samples are compared as distributions
 
 import contextlib
 import math
-from collections.abc import AsyncIterator, Iterable
+from collections.abc import AsyncIterator, Callable, Iterable
 from dataclasses import dataclass
 
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
+from mscts.entities import Entity
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, normal, remove_tagged_until_gone
 from mscts.spec import CONTROL_PLAYER
@@ -110,11 +111,15 @@ class _Layout:
         bot: The Bot's name before the play's number.
         bot_at: Where the Bot stands.
         summons: The mobs, summoned in the frozen world.
+        build: The commands that place the play's blocks, before the world is frozen.
+        clear: The commands that take them away again, once the mobs have gone.
     """
 
     bot: str
     bot_at: _Position
     summons: tuple[str, ...]
+    build: tuple[str, ...] = ()
+    clear: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,7 +140,7 @@ async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[Bot]:
 
     Control goes away first, so that no mob takes it for a target. Once the play is over, the
     mobs go, then anything they dropped (Pumpkin drops loot whatever the NBT and the game
-    rule), and the Bot waits until it is told their bodies are gone.
+    rule), and the Bot waits until it is told their bodies are gone; the blocks go last.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
@@ -145,6 +150,10 @@ async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[Bot]:
         await bot.join()
         x, y, z = layout.bot_at
         await control.run(f"tp {name} {x} {y} {z}")
+        for command in reversed(layout.clear):
+            undo.push_async_callback(control.run, command)
+        for command in layout.build:
+            await control.run(command)
         undo.push_async_callback(remove_tagged_until_gone, control, _TAG, bot)
         undo.push_async_callback(control.run, "kill @e[type=minecraft:item]")
         undo.push_async_callback(control.run, f"kill @e[tag={_TAG}]")
@@ -177,10 +186,38 @@ def _hurts_the_bot(bot: Bot, packet: Packet) -> bool:
     return packet.name == _DAMAGE and (packet.fields or {}).get("entity_id") not in bot.entities
 
 
-def _horizontal_distance(bot: Bot, entity_id: int, point: _Position) -> float:
-    """How far the entity `entity_id` that `bot` tracks is from `point`, not counting height."""
-    entity = bot.entities[entity_id]
-    return math.hypot(entity.x - point[0], entity.z - point[2])
+@dataclass(frozen=True, slots=True)
+class _Chase:
+    """A zombie chasing the Bot, and the two ticks a play of it samples.
+
+    Attributes:
+        layout: What the play sets up; its only zombie chases the Bot.
+        budget: How many ticks the world runs.
+        waypoint: The name of the sample of the first tick the zombie is where `reached` says.
+        reached: Whether the zombie, as the Bot last saw it, has got to the waypoint.
+        hit: The name of the sample of the tick the zombie first hurts the Bot.
+    """
+
+    layout: _Layout
+    budget: int
+    waypoint: str
+    reached: Callable[[Entity], bool]
+    hit: str
+
+
+async def _chase(context: GroupContext, chase: _Chase) -> None:
+    """Play `chase`: sample when the zombie first gets to its waypoint, and when it first hits."""
+    async with _arena(context, chase.layout) as bot:
+        zombie = bot.entities.find("zombie").id
+        clock = await _start(context.control, chase.budget)
+        reached = False
+        while (packet := await _next(bot, clock, chase.budget, (_DAMAGE, *_MOVES))) is not None:
+            if _hurts_the_bot(bot, packet):
+                context.sample(chase.hit, await clock.ticks())
+                return
+            if not reached and chase.reached(bot.entities[zombie]):
+                reached = True
+                context.sample(chase.waypoint, await clock.ticks())
 
 
 # `mobs/chase-open`: a zombie 16 blocks from the Bot on open ground.
@@ -194,24 +231,59 @@ _OPEN = _Layout(
 CHASE_TICKS = 300
 """The tick budget of a chase in the open: vanilla's zombie hits the Bot at about tick 150."""
 
-_CLOSER_BY = 0.5
-"""How much closer to the Bot than where it was summoned the zombie must be to have moved."""
+_MOVED_WITHIN = 15.5
+"""How near the Bot the zombie, summoned 16 blocks away, must be to have moved towards it."""
 
 
 @group("mobs/chase-open", spec=normal, kind=GroupKind.STATISTICAL, runs=25)
 async def chase_open(context: GroupContext) -> None:
     """Sample the tick the zombie is first half a block closer, and the tick it first hits."""
-    async with _arena(context, _OPEN) as bot:
-        zombie = bot.entities.find("zombie").id
-        summoned_at = _horizontal_distance(bot, zombie, _OPEN.bot_at)
-        clock = await _start(context.control, CHASE_TICKS)
-        moved = False
-        while (packet := await _next(bot, clock, CHASE_TICKS, (_DAMAGE, *_MOVES))) is not None:
-            if _hurts_the_bot(bot, packet):
-                context.sample("chase_open.hit", await clock.ticks())
-                return
-            if not moved and _horizontal_distance(bot, zombie, _OPEN.bot_at) <= (
-                summoned_at - _CLOSER_BY
-            ):
-                moved = True
-                context.sample("chase_open.moved", await clock.ticks())
+    await _chase(
+        context,
+        _Chase(
+            layout=_OPEN,
+            budget=CHASE_TICKS,
+            waypoint="chase_open.moved",
+            reached=lambda zombie: math.hypot(zombie.x - 0.5, zombie.z - 0.5) <= _MOVED_WITHIN,
+            hit="chase_open.hit",
+        ),
+    )
+
+
+# `mobs/chase-maze`: the same chase, with a fence between them that has one gap, 4.5 blocks
+# north of the straight line. Fences are 1.5 blocks high: the zombie sees the Bot over the
+# fence, and so goes for it, but cannot jump it.
+
+_FENCE_X = 8
+_MAZE = _Layout(
+    bot="maze",
+    bot_at=(0.5, -60.0, 0.5),
+    summons=(_summon("zombie", (16.5, -60.0, 0.5), _ZOMBIE_NBT),),
+    build=(
+        f"fill {_FENCE_X} -60 -10 {_FENCE_X} -60 4 minecraft:oak_fence",
+        f"fill {_FENCE_X} -60 6 {_FENCE_X} -60 10 minecraft:oak_fence",
+    ),
+    clear=(f"fill {_FENCE_X} -60 -10 {_FENCE_X} -60 10 minecraft:air",),
+)
+
+MAZE_TICKS = 400
+"""The tick budget of a chase through the gap: vanilla's zombie hits the Bot at about tick 180."""
+
+_IN_THE_GAP = _FENCE_X + 0.9
+"""The zombie's x once it is in the gap: its edge, 0.3 blocks from its centre, is in the fence's
+block, where only the gap lets it be."""
+
+
+@group("mobs/chase-maze", spec=normal, kind=GroupKind.STATISTICAL, runs=20)
+async def chase_maze(context: GroupContext) -> None:
+    """Sample the tick the zombie first gets into the gap, and the tick it first hits."""
+    await _chase(
+        context,
+        _Chase(
+            layout=_MAZE,
+            budget=MAZE_TICKS,
+            waypoint="chase_maze.gap",
+            reached=lambda zombie: zombie.x < _IN_THE_GAP,
+            hit="chase_maze.hit",
+        ),
+    )

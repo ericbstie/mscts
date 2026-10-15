@@ -261,7 +261,7 @@ def test_the_groups_package_imports_the_module_so_that_every_run_has_its_groups(
     assert mscts.groups.mobs_pathfinding is mobs_pathfinding
 
 
-SPECS = {"mobs/chase-open": Difficulty.NORMAL}
+SPECS = {"mobs/chase-open": Difficulty.NORMAL, "mobs/chase-maze": Difficulty.NORMAL}
 
 
 @pytest.mark.parametrize("group_id", sorted(SPECS))
@@ -374,3 +374,66 @@ async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_h
         "tick unfreeze",
     )
     assert server.gametimes == []
+
+
+# `mobs/chase-maze`
+
+MAZE_WALL = (
+    "fill 8 -60 -10 8 -60 4 minecraft:oak_fence",
+    "fill 8 -60 6 8 -60 10 minecraft:oak_fence",
+)
+MAZE_CLEAR = "fill 8 -60 -10 8 -60 10 minecraft:air"
+
+MAZE_SETUP = (
+    "tp control 96.5 -60 96.5",
+    "tp maze7 0.5 -60.0 0.5",
+    *MAZE_WALL,
+    "tick freeze",
+    summoned("zombie", "16.5 -60.0 0.5", ZOMBIE),
+    TIME_QUERY,
+    "tick step 400",
+)
+
+
+def _through_the_gap() -> MobsServer:
+    """The zombie walks to the gap at z 5 (8 blocks west, 4.5 north), through it, and hits."""
+    return MobsServer(
+        gametimes=[1000, 1105, 1179],
+        after_step=(
+            moved(ZOMBIE_ID, -4.0, 4.5),
+            moved(ZOMBIE_ID, -3.0),  # x 9.5: not yet in the gap
+            moved(ZOMBIE_ID, -1.0),  # x 8.5: in it
+            moved(ZOMBIE_ID, -1.0),
+            hurt(PLAYER_ID),
+        ),
+    )
+
+
+_SERVERS["mobs/chase-maze"] = _through_the_gap
+
+
+@pytest.mark.asyncio
+async def test_chase_maze_builds_a_fence_with_a_gap_between_the_bot_and_the_zombie() -> None:
+    result = await play("mobs/chase-maze")
+
+    assert result.bot == "maze7"
+    assert result.commands[: len(MAZE_SETUP)] == MAZE_SETUP
+
+
+@pytest.mark.asyncio
+async def test_chase_maze_samples_when_the_zombie_got_into_the_gap_and_hit() -> None:
+    result = await play("mobs/chase-maze")
+
+    assert result.samples == {"chase_maze.gap": (105.0,), "chase_maze.hit": (179.0,)}
+
+
+@pytest.mark.asyncio
+async def test_chase_maze_takes_the_fence_down_after_the_mobs_have_gone() -> None:
+    result = await play("mobs/chase-maze")
+
+    assert result.commands[-len(TEARDOWN) - 3 :] == (
+        TIME_QUERY,
+        *TEARDOWN,
+        MAZE_CLEAR,
+        "tick unfreeze",
+    )

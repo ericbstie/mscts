@@ -3398,3 +3398,15 @@ How many ticks a zombie summoned 16 blocks from a player takes to come half a bl
 **Zombie's first hit**
 
 How many ticks the same zombie takes to hurt the player for the first time. A difference means zombies reach and hit players at another pace than in vanilla. A play in which the zombie has not hit the player within 300 ticks records no tick.
+
+## `chase_maze.gap`
+
+**Zombie finding the gap in a fence**
+
+How many ticks a zombie summoned 16 blocks from a player takes to get into the only gap of an oak fence between them, 4.5 blocks off the straight line. The zombie sees the player over the fence but cannot jump it. The `mobs/chase-maze` Group measures it over many plays and compares how the ticks are spread. A difference means zombies find a way around a wall sooner or later than in vanilla.
+
+## `chase_maze.hit`
+
+**Zombie's first hit past a fence**
+
+How many ticks the same zombie takes to hurt the player for the first time. A difference means zombies get around a wall and hit players at another pace than in vanilla. A play in which the zombie has not hit the player within 400 ticks records no tick.

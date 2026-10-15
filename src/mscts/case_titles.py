@@ -602,6 +602,8 @@ TITLES: Mapping[str, str] = MappingProxyType(
         # mobs (#52): the samples of the statistical mobs Groups
         "chase_open.moved": "Zombie starting a chase",
         "chase_open.hit": "Zombie's first hit",
+        "chase_maze.gap": "Zombie finding the gap in a fence",
+        "chase_maze.hit": "Zombie's first hit past a fence",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

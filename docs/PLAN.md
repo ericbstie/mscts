@@ -1286,7 +1286,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `time query gametime`, which each play reads before it steps the world and again whenever
   it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
   `chase_open` — the `mobs/chase-open` script, which samples when a zombie 16 blocks away is
-  half a block closer to the Bot and when it first hits it.
+  half a block closer to the Bot and when it first hits it; `MAZE_TICKS` — the tick budget of
+  `mobs/chase-maze`; `chase_maze` — the `mobs/chase-maze` script, the same chase with an oak
+  fence between them that has one gap, which samples when the zombie gets into the gap and
+  when it first hits.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
