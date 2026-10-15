@@ -1297,7 +1297,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   zombie between the Bot and a villager and samples whom it hurts first, and when.
 - `groups.time`: `CLOCK` — the operator Bot that reads the time back with `time query`;
   `advance` — the `time/advance` script, which steps a frozen world 1, 20 and 100 ticks with
-  `advance_time` true and false and reads the day after each step.
+  `advance_time` true and false and reads the day after each step; `commands` — the
+  `time/commands` script, which sets, adds to and queries the time from 0, one window a
+  command.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control

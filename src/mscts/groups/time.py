@@ -18,7 +18,8 @@ chat, and the clock drains what it heard before each. Every rule a Group sets is
 afterwards, because every Group is played on the same two Instances.
 
 Kinds: `time/advance` is tick-exact, as each window reads the time after an exact number of
-stepped ticks.
+stepped ticks. `time/commands` is exact: the world never steps, and only the commands move the
+time.
 """
 
 import contextlib
@@ -131,3 +132,47 @@ async def advance(context: GroupContext) -> None:
                 await clock.drain()
                 async with context.observe(_CHAT):
                     await _ask(clock, "time query day")
+
+
+# `time/commands`: the clock sets, adds to and reads the time.
+
+_COMMANDS = (
+    "time set day",
+    "time query time",
+    "time set noon",
+    "time query time",
+    "time set night",
+    "time query time",
+    "time set midnight",
+    "time query time",
+    "time set 1000",
+    "time add 100",
+    "time query day",
+    "time add 24000",
+    "time query day",
+    "time query day repetition",
+    "time query time",
+    "time query daytime",
+)
+"""From total ticks 0: each named time of the day, read back; an absolute time; two adds; and
+each query. `time query daytime` is the query 26.3 removed, so vanilla refuses it. `time query
+gametime` is left out: the game time counts every tick since the world was made, so it differs
+between two Instances (#63)."""
+
+
+@group("time/commands", spec=_operator)
+async def commands(context: GroupContext) -> None:
+    """The clock runs each time command in a frozen world, in a window of its own.
+
+    The world is frozen, so only the commands move the time. Control sets the clock to 0 first,
+    and each window holds the command's answer.
+    """
+    async with contextlib.AsyncExitStack() as undo:
+        await _calm(context, undo)
+        clock = await join_at_spawn(context, undo, CLOCK)
+        await context.freeze()
+        await context.control.run("time set 0")
+        await clock.drain()
+        for command in _COMMANDS:
+            async with context.observe(_CHAT):
+                await _ask(clock, command)

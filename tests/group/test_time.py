@@ -219,3 +219,51 @@ def test_advance_opens_each_window_once_a_set_time_shows_the_step_has_ended() ->
     targets = [START_GAME_TIME + sum((1, 20, 100, 1, 20, 100)[: k + 1]) for k in range(6)]
     for opened_at, target in zip(opens, targets, strict=True):
         assert any(t < opened_at and game_time(packet) >= target for t, packet in times)
+
+
+# time/commands
+
+TIME_COMMANDS = (
+    "time set day",
+    "time query time",
+    "time set noon",
+    "time query time",
+    "time set night",
+    "time query time",
+    "time set midnight",
+    "time query time",
+    "time set 1000",
+    "time add 100",
+    "time query day",
+    "time add 24000",
+    "time query day",
+    "time query day repetition",
+    "time query time",
+    "time query daytime",
+)
+
+
+def test_commands_is_registered_exact_with_the_clock_an_operator() -> None:
+    group = GROUPS["time/commands"]
+
+    assert group.kind is GroupKind.EXACT
+    assert group.requires == ()
+    assert group.masks == ()
+    assert group.spec(ServerSpec(host="127.0.0.1", port=25566)) == operator_spec()
+
+
+def test_commands_start_from_a_frozen_clock_at_0_and_put_every_rule_back() -> None:
+    result = played("time/commands")
+
+    assert result.first == (*CALM, "tick freeze", "time set 0")
+    assert result.after == ("tp clock 0.5 -60 0.5", *UNCALM, "tick unfreeze")
+
+
+def test_commands_run_each_time_command_as_the_clock_in_a_window_of_its_own() -> None:
+    result = played("time/commands")
+
+    assert [window.label for window in result.windows] == [opened(SYSTEM_CHAT)] * 16
+    assert [window.sent for window in result.windows] == [
+        ((CLOCK, command),) for command in TIME_COMMANDS
+    ]
+    assert [window.before for window in result.windows][1:] == [()] * 15
