@@ -36,7 +36,7 @@ from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
 from types import MappingProxyType
-from typing import Literal, NoReturn, Self, cast, override
+from typing import Literal, NamedTuple, NoReturn, Self, cast, override
 from uuid import UUID
 
 from mscts.codec.entity_ids import EACH, Each, EntityIdPath, Step, Variant
@@ -769,10 +769,11 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     If the Transcript has tick Marks (`TICK_MARK`), each play Packet holds the tick it
     arrived on (`_Ticks`). All of this runs over the Bot's Packets once its chunk packets
     are put in order (`_by_position`). The sort moves only chunk packets, which carry no
-    entity ids, so it changes no entity's name or number. Each run of resends
-    (`_resend_runs`) is then taken in the order of its entities' names and numbers so far
-    (`_by_entity`), so an entity named or numbered before the run gets the same place on both
-    sides however the server ordered the run.
+    entity ids, so it changes no entity's name or number. Each run of compared resends
+    (`_runs`) is then taken in the order of its entities' names and numbers before the run
+    (`_by_entity`). So the same resends get the same places on both sides however each server
+    ordered them, as long as both sides named and numbered those entities alike: an entity
+    a Bot first hears of in the run keeps its place, since its number comes from it.
     """
     windows = _Windows.of(transcript, bot)
     ticks = _Ticks.of(transcript, bot)
@@ -783,21 +784,64 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
             if event.bot == bot and event.packet.direction is Direction.CLIENTBOUND
         ]
     )
+    arrivals = [
+        _Arrival.of(event, context, windows, masks, ticks)
+        for event, context in zip(events, _Context.each(events), strict=True)
+    ]
     numbers = _Numbers(ids={}, uuids={})
     stream: list[_Normalized] = []
-    for run in _resend_runs(list(zip(events, _Context.each(events), strict=True))):
-        for event, context in _by_entity(run, numbers.ids):
-            packet = event.packet
-            if windows is not None and not windows.observes(event):
-                numbers.spawned(packet, masks)
-            elif packet.name not in masks.dropped:
-                numbers.take(packet)
-                normalized = _normalize(packet, masks, numbers, context)
-                if ticks is not None and packet.state is State.PLAY:
-                    normalized = replace(normalized, tick=ticks.of_arrival(event.t_ns))
-                stream.append(normalized)
-            numbers.removed(packet)
+    for run in _runs(arrivals):
+        taken = [_take(arrival, masks, numbers) for arrival in _by_entity(run, numbers.ranks())]
+        stream.extend(normalized for normalized in taken if normalized is not None)
     return stream
+
+
+class _Arrival(NamedTuple):
+    """One of a Bot's clientbound Events, with what `_stream` needs to take it.
+
+    Attributes:
+        event: The Event.
+        context: What its canonical form needs (`_Context`).
+        observed: Whether an Observation window takes it, or the Transcript has none.
+        compared: Whether it is compared: observed, and no `*` Mask drops it.
+        tick: For a play Packet of a tick-exact Group, the tick it arrived on; else None.
+    """
+
+    event: Event
+    context: "_Context"
+    observed: bool
+    compared: bool
+    tick: int | None
+
+    @classmethod
+    def of(
+        cls,
+        event: Event,
+        context: "_Context",
+        windows: "_Windows | None",
+        masks: _Masks,
+        ticks: "_Ticks | None",
+    ) -> Self:
+        """`event`, with `context`, as the Bot's `windows`, `masks` and `ticks` see it."""
+        packet = event.packet
+        observed = windows is None or windows.observes(event)
+        tick = ticks.of_arrival(event.t_ns) if ticks and packet.state is State.PLAY else None
+        return cls(event, context, observed, observed and packet.name not in masks.dropped, tick)
+
+
+def _take(arrival: _Arrival, masks: _Masks, numbers: "_Numbers") -> _Normalized | None:
+    """Note `arrival` in `numbers`, and return it normalized if it is compared; else None."""
+    packet = arrival.event.packet
+    normalized = None
+    if not arrival.observed:
+        numbers.spawned(packet, masks)
+    elif arrival.compared:
+        numbers.take(packet)
+        normalized = _normalize(packet, masks, numbers, arrival.context)
+        if arrival.tick is not None:
+            normalized = replace(normalized, tick=arrival.tick)
+    numbers.removed(packet)
+    return normalized
 
 
 _RESENDS = frozenset(
@@ -824,50 +868,65 @@ between Instances. The client applies each to the entity it names, and to no oth
 `set_passengers` names two entities, and the projectile power comes in a bundle, so neither
 is one."""
 
-type _Arrival = tuple[Event, _Context]
-"""A Bot's clientbound Event, with the context its canonical form needs."""
+_NAMING = frozenset({"minecraft:add_entity", "minecraft:remove_entities"})
+"""The packets that start or end an entity's name or number when they are not compared
+(`_Numbers.spawned`, `_Numbers.removed`)."""
 
 
-def _resend_runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
-    """`arrivals` in their order, split into runs: each run of resends, and each other one alone.
+def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
+    """`arrivals` split into runs: each run of compared resends, and each other one alone.
 
-    A run of resends is a longest stretch of packets in `_RESENDS` (`_resend_entity`). It may
-    span ticks: what bounds a tick is not in a Transcript but in a tick-exact Group's tick
-    Marks, and there each packet keeps the tick it arrived on, which is compared on its own.
+    A run of resends is a longest stretch of compared packets in `_RESENDS`
+    (`_resend_entity`). A packet that is not compared goes across a run, as `_by_position`
+    lets a neutral packet go across a run of chunks (#33), and comes after it: a heartbeat
+    comes on the server's clock, whose phase differs between Instances, and a dropped packet
+    is not compared at all. Neither reads or changes an entity's name or number, except an
+    `add_entity` or `remove_entities` (`_NAMING`), which ends the run.
     """
     run: list[_Arrival] = []
+    held: list[_Arrival] = []  # what goes across the run
     for arrival in arrivals:
-        if _resend_entity(arrival[0].packet) is not None:
+        packet = arrival.event.packet
+        if arrival.compared and _resend_entity(packet) is not None:
             run.append(arrival)
-            continue
-        if run:
-            yield run
-            run = []
-        yield [arrival]
+        elif not arrival.compared and packet.name not in _NAMING:
+            held.append(arrival)
+        else:
+            yield from _ended(run, held)
+            run = list[_Arrival]()
+            held = list[_Arrival]()
+            yield [arrival]
+    yield from _ended(run, held)
+
+
+def _ended(run: list[_Arrival], held: list[_Arrival]) -> Iterator[list[_Arrival]]:
+    """A run that ended, if any, then each packet that went across it, alone."""
     if run:
         yield run
+    for arrival in held:
+        yield [arrival]
 
 
-def _by_entity(run: Sequence[_Arrival], names: Mapping[int, str]) -> list[_Arrival]:
-    """`run` stably sorted by the entity each packet is about (`_entity_order`).
+def _by_entity(
+    run: Sequence[_Arrival], ranks: Mapping[int, tuple[int, int, str]]
+) -> list[_Arrival]:
+    """`run` stably sorted by the rank of the entity each packet is about (`_Numbers.ranks`).
 
-    So the resends of one entity keep their order, as the client applies them in turn.
+    An entity with no rank comes last. So the resends of one entity keep their order, as the
+    client applies them in turn, and those of entities the Bot has not heard of yet keep the
+    order they arrived in, which their numbers come from.
     """
-    return sorted(run, key=lambda arrival: _entity_order(arrival[0].packet, names))
+    return sorted(run, key=lambda arrival: _rank(arrival.event.packet, ranks))
 
 
-def _entity_order(packet: Packet, names: Mapping[int, str]) -> tuple[int, int, str]:
-    """Where `packet`'s entity sorts among a run's, by its name or number in `names`.
+def _rank(packet: Packet, ranks: Mapping[int, tuple[int, int, str]]) -> tuple[int, int, str]:
+    """The rank of `packet`'s entity in `ranks`, or `_UNRANKED`."""
+    entity = _resend_entity(packet)
+    return _UNRANKED if entity is None else ranks.get(entity, _UNRANKED)
 
-    Numbers first, in their order (`#2` before `#10`), then names, then entities the Bot has
-    not heard of yet, which keep the order they arrived in: their numbers come from it.
-    """
-    name = names.get(entity) if (entity := _resend_entity(packet)) is not None else None
-    if name is None:
-        return (2, 0, "")
-    if (number := name.removeprefix("#")).isdecimal():
-        return (0, int(number), "")
-    return (1, 0, name)
+
+_UNRANKED = (2, 0, "")
+"""Where an entity the Bot has not heard of yet sorts in a run: after every named one."""
 
 
 def _resend_entity(packet: Packet) -> int | None:
@@ -1273,12 +1332,24 @@ class _Numbers:
         uuids: Each entity UUID's number, counted on their own.
         numbered: How many entity ids have taken a number.
         names: How many entities have taken each name, before its suffix.
+        numbers: The number of each entity id in `ids` that took one, as an int.
     """
 
     ids: dict[int, str]
     uuids: dict[UUID, str]
     numbered: int = 0
     names: dict[str, int] = dataclasses.field(default_factory=dict)
+    numbers: dict[int, int] = dataclasses.field(default_factory=dict)
+
+    def ranks(self) -> dict[int, tuple[int, int, str]]:
+        """Where each entity known so far sorts in a run of resends, as of now (`_by_entity`).
+
+        Numbered entities first, by number, then named ones, by name.
+        """
+        return {
+            entity: (0, self.numbers[entity], "") if entity in self.numbers else (1, 0, name)
+            for entity, name in self.ids.items()
+        }
 
     def spawned(self, packet: Packet, masks: _Masks) -> None:
         """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.
@@ -1322,6 +1393,7 @@ class _Numbers:
             if type(found) is int and found not in self.ids:
                 self.numbered += 1
                 self.ids[found] = f"#{self.numbered}"
+                self.numbers[found] = self.numbered
         if not _is_player(packet.fields):
             for found in _found(packet.fields, uuids):
                 if isinstance(found, UUID):
@@ -1339,6 +1411,7 @@ class _Numbers:
         for found in _found(packet.fields, ids):
             if type(found) is int:
                 self.ids.pop(found, None)
+                self.numbers.pop(found, None)
 
     def apply(self, packet: Packet, fields: dict[str, _Value]) -> None:
         """Replace each entity id and entity UUID in `fields`, a copy of `packet`'s fields.

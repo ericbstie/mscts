@@ -127,7 +127,10 @@ At the end of each tick, vanilla sends what changed about each entity
 in an order that follows the server's entity ids. The client applies each of
 these packets to its own entity, so when several entities change at
 once, mscts compares their packets entity by entity. The packets about
-one entity keep their order.
+one entity keep their order. This works only when both servers named and
+numbered those entities alike: if a Bot heard of two new entities in a
+different order on each server, their numbers differ, and so does the
+order mscts compares their packets in.
 
 Otherwise mscts never masks anything a player could observe, even if it
 is random. Random mechanics, such as mob spawning and loot, will instead

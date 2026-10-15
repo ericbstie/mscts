@@ -2078,7 +2078,13 @@ proves it necessary:
      differ between Instances
      (`docs/research/2026-10-15-unordered-resends.md`). A *run of
      resends* is a longest stretch of them in a Bot's stream, after the
-     chunk runs are sorted; any other packet ends one. Each run is
+     chunk runs are sorted, among the compared packets: any other
+     compared packet ends one, and so do `add_entity` and
+     `remove_entities`, which name and number entities. Any other packet
+     that is not compared (outside every window, or dropped by a `*`
+     Mask) goes across the run and comes after it, as a neutral packet
+     goes across a chunk run (#33): a heartbeat comes on the server's
+     clock, whose phase differs between Instances. Each run is
      taken in the order of its entities' names and numbers so far
      (`compare._by_entity`): numbers first, by value, then names, then
      entities the Bot has not heard of yet, in the order they arrived,

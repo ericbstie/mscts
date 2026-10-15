@@ -7,8 +7,12 @@ resends of each entity, in their order, matter. The entities are named and numbe
 Comparison does (#21).
 """
 
+from collections.abc import Callable
+
+import pytest
+
 from mscts.codec.packets import Packet
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, compare
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, WHOLE_PACKET, Mask, compare
 from mscts.transcript import Transcript
 from tests.compare.build import packet, transcript
 
@@ -129,6 +133,79 @@ def test_each_resend_keeps_its_own_tick() -> None:
         OBSERVE_CLOSE,
     )
     assert _diff(reference, candidate) == [("field", "(tick)")]
+
+
+def set_time() -> Packet:
+    return packet("minecraft:set_time", b"\x00")
+
+
+def keep_alive() -> Packet:
+    return packet("minecraft:keep_alive", b"\x00")
+
+
+def _window(ids: tuple[int, int], *items: Packet | str) -> Transcript:
+    """`items` in a window opened after the `add_entity` of `ids`, at x 0.5 and 1.5.
+
+    A packet is alice's, and a string the label of a Mark.
+    """
+    first, second = ids
+    return transcript(
+        ("alice", add_entity(first, 0.5)),
+        ("alice", add_entity(second, 1.5)),
+        OBSERVE_OPEN,
+        *(item if isinstance(item, str) else ("alice", item) for item in items),
+        OBSERVE_CLOSE,
+    )
+
+
+@pytest.mark.parametrize("clock", [set_time, keep_alive], ids=["set_time", "keep_alive"])
+def test_a_heartbeat_on_another_tick_does_not_end_a_run(clock: Callable[[], Packet]) -> None:
+    # Review A, P1: the same resends in the same order; only the clock packet's phase differs.
+    reference = _window(
+        (100, 200),
+        *(motion(100, 0.1), motion(200, 0.1), clock()),
+        *(motion(100, 0.2), motion(200, 0.2), motion(100, 0.3), motion(200, 0.3)),
+    )
+    candidate = _window(
+        (100, 200),
+        *(motion(100, 0.1), motion(200, 0.1), motion(100, 0.2), motion(200, 0.2)),
+        *(clock(), motion(100, 0.3), motion(200, 0.3)),
+    )
+    assert _diff(reference, candidate) == []
+
+
+def test_a_heartbeat_at_the_end_does_not_end_a_run() -> None:
+    # Review B: A1 B1 set_time A2 B2 against A1 B1 A2 B2 set_time.
+    reference = _window(
+        (100, 200),
+        motion(100, 0.1),
+        motion(200, 0.1),
+        set_time(),
+        motion(100, 0.2),
+        motion(200, 0.2),
+    )
+    candidate = _window(
+        (100, 200),
+        motion(100, 0.1),
+        motion(200, 0.1),
+        motion(100, 0.2),
+        motion(200, 0.2),
+        set_time(),
+    )
+    assert _diff(reference, candidate) == []
+
+
+def test_a_packet_a_mask_drops_does_not_end_a_run() -> None:
+    reference = _play(
+        *(add_entity(100, 0.5), add_entity(200, 1.5)),
+        *(motion(100, 0.1), motion(200, 0.1), block(), motion(100, 0.2), motion(200, 0.2)),
+    )
+    candidate = _play(
+        *(add_entity(5, 0.5), add_entity(9, 1.5)),
+        *(motion(5, 0.1), motion(9, 0.1), motion(5, 0.2), motion(9, 0.2), block()),
+    )
+    dropped = [Mask("minecraft:block_update", WHOLE_PACKET, "a test")]
+    assert compare(reference, candidate, dropped).divergences == ()
 
 
 def test_an_entity_first_heard_of_in_the_run_keeps_its_place() -> None:
