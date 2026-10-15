@@ -599,6 +599,9 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "spawn.x": "Join position east of the spawn",
         "spawn.y": "Join height",
         "spawn.z": "Join position south of the spawn",
+        # mobs (#52): the samples of the statistical mobs Groups
+        "chase_open.moved": "Zombie starting a chase",
+        "chase_open.hit": "Zombie's first hit",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

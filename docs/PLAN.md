@@ -1282,6 +1282,11 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
   `spawn.distance`); `join_position_exact` — the `spawn/join-position-exact` script, the same
   with `respawn_radius` 0 (`pin_joins`).
+- `groups.mobs_pathfinding`: `gametime` — the game time in a server's answer to
+  `time query gametime`, which each play reads before it steps the world and again whenever
+  it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
+  `chase_open` — the `mobs/chase-open` script, which samples when a zombie 16 blocks away is
+  half a block closer to the Bot and when it first hits it.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control

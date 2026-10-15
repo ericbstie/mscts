@@ -3386,3 +3386,15 @@ The height at which a new player appears. It is compared as a distribution over 
 **Join position south of the spawn**
 
 How far south of the middle of the world spawn block a new player appears, in blocks. A negative number is north. It is compared as a distribution over many players. A server that puts every player on the spawn block differs from one that spreads them.
+
+## `chase_open.moved`
+
+**Zombie starting a chase**
+
+How many ticks a zombie summoned 16 blocks from a player takes to come half a block closer to them. The `mobs/chase-open` Group measures it over many plays and compares how the ticks are spread. A difference means zombies notice a player sooner or later than in vanilla.
+
+## `chase_open.hit`
+
+**Zombie's first hit**
+
+How many ticks the same zombie takes to hurt the player for the first time. A difference means zombies reach and hit players at another pace than in vanilla. A play in which the zombie has not hit the player within 300 ticks records no tick.
