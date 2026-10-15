@@ -1282,6 +1282,20 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
   `spawn.distance`); `join_position_exact` — the `spawn/join-position-exact` script, the same
   with `respawn_radius` 0 (`pin_joins`).
+- `groups.mobs_pathfinding`: `gametime` — the game time in a server's answer to
+  `time query gametime`, which each play reads before it steps the world and again whenever
+  it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
+  `chase_open` — the `mobs/chase-open` script, which samples when a zombie 16 blocks away is
+  half a block closer to the Bot and when it first hits it; `MAZE_TICKS` — the tick budget of
+  `mobs/chase-maze`; `chase_maze` — the `mobs/chase-maze` script, the same chase with an oak
+  fence between them that has one gap, which samples when the zombie gets into the gap and
+  when it first hits; `DOORS_HARD_TICKS` and `DOORS_NORMAL_TICKS` — the tick budgets of
+  `mobs/doors-hard` and `mobs/doors-normal`; `doors_hard` — the `mobs/doors-hard` script,
+  which pens a zombie that can break doors behind an oak door and samples when it starts on
+  the door and when the door breaks; `doors_normal` — the `mobs/doors-normal` script, the
+  same pen on normal, which samples whether the door held, cracked or broke; `TARGETS_TICKS`
+  — the tick budget of `mobs/targets`; `targets` — the `mobs/targets` script, which puts a
+  zombie between the Bot and a villager and samples whom it hurts first, and when.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
