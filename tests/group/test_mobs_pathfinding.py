@@ -319,6 +319,22 @@ def test_each_group_is_statistical_needs_nothing_masks_nothing_and_sets_its_diff
     )
 
 
+RUNS = {
+    "mobs/chase-open": 25,
+    "mobs/chase-maze": 20,
+    "mobs/doors-hard": 15,
+    "mobs/doors-normal": 10,
+    "mobs/targets": 15,
+}
+"""How many plays each Group has on each server: as many as fit its Self-check in about 10
+minutes, from the length of a vanilla play."""
+
+
+@pytest.mark.parametrize("group_id", sorted(RUNS))
+def test_each_group_plays_as_many_times_as_its_budget_of_time_allows(group_id: str) -> None:
+    assert GROUPS[group_id].runs == RUNS[group_id]
+
+
 # The clock: the game time Control reads
 
 
@@ -344,6 +360,18 @@ def test_the_game_time_is_read_from_its_answer_among_other_messages() -> None:
     said = [_answer(text("Summoned new Zombie")), _answer(gametime_answer(2**40))]
 
     assert mobs_pathfinding.gametime(said) == 2**40
+
+
+def test_a_number_in_another_answer_is_not_the_game_time() -> None:
+    daytime = GAMETIME_ANSWER.replace(b"gametime", b"daytime_")
+    said = [_answer(daytime), _answer(gametime_answer(77))]
+
+    assert mobs_pathfinding.gametime(said) == 77
+
+
+def test_an_answer_with_the_key_but_no_arguments_is_no_game_time() -> None:
+    with pytest.raises(ValueError, match="no answer to time query gametime"):
+        mobs_pathfinding.gametime([_answer(text("commands.time.query.gametime"))])
 
 
 def test_no_answer_with_the_game_time_is_a_value_error() -> None:
@@ -592,6 +620,7 @@ async def test_doors_normal_pens_the_same_zombie_for_a_shorter_budget() -> None:
     [
         ((), "held"),
         (((40, cracked(6, -60, 1)),), "held"),
+        (((40, block_changed(5, -60, 0, 1)),), "held"),
         (((40, cracked(5, -60, 0)),), "cracked"),
         (((40, cracked(5, -60, 0)), (280, door_gone())), "broken"),
     ],
