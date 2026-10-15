@@ -59,7 +59,9 @@ GROUP_IDS = (
     "combat/sweep",
     "combat/immunity",
     "combat/pvp",
+    "combat/pvp-off",
 )
+PVP_OFF = "combat/pvp-off"
 FIGHTER_GROUPS = GROUP_IDS[:4]
 PLAYER = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:player")
 VICTIM_ID = 200
@@ -351,6 +353,7 @@ async def test_every_window_is_narrowed_to_the_packets_of_its_case(group_id: str
         "combat/sweep": [combat.SWEEP_PACKETS],
         "combat/immunity": [combat.PACKETS] * 3,
         "combat/pvp": [combat.PVP_PACKETS, combat.PVP_SPRINT_PACKETS],
+        PVP_OFF: [combat.PVP_PACKETS],
     }[group_id]
     assert [window.label for window in result.windows] == [label(p) for p in expected]
 
@@ -365,8 +368,10 @@ async def test_the_arena_is_set_before_the_first_window_and_undone_after_the_las
 ) -> None:
     result = await play(group_id)
 
+    off = group_id == PVP_OFF
     before = commands(result.first)
-    assert before[:4] == [
+    assert before[: 4 + off] == [
+        *(["gamerule pvp false"] if off else []),
         "gamerule player_movement_check false",
         "gamerule respawn_radius 0",
         "gamerule natural_health_regeneration false",
@@ -384,6 +389,7 @@ async def test_the_arena_is_set_before_the_first_window_and_undone_after_the_las
         "gamerule natural_health_regeneration true",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
+        *(["gamerule pvp true"] if off else []),
         "tick unfreeze",  # the Group's end, which `playing` runs as a Run does
     ]
 
@@ -470,6 +476,7 @@ HITTERS = {
     **dict.fromkeys(FIGHTER_GROUPS, (combat.FIGHTER,)),
     "combat/immunity": (combat.STRIKER, combat.TAPPER),
     "combat/pvp": (combat.ATTACKER,),
+    PVP_OFF: (combat.ATTACKER,),
 }
 
 
@@ -701,6 +708,37 @@ def test_a_sprinting_pvp_hit_compares_the_victims_health_but_not_the_entity_data
     assert (*combat.PACKETS, "minecraft:set_health") == combat.PVP_PACKETS
     assert "minecraft:set_entity_data" not in combat.PVP_SPRINT_PACKETS
     assert "minecraft:set_health" in combat.PVP_SPRINT_PACKETS
+
+
+# combat/pvp-off
+
+
+@pytest.mark.asyncio
+async def test_pvp_off_hits_the_other_bot_once_in_one_window_and_never_sprints() -> None:
+    result = await play(PVP_OFF)
+
+    (window,) = result.windows
+    attacks = [i for i in window.inside if i.what == "minecraft:attack"]
+    assert [(a.bot, a.fields["entity_id"]) for a in attacks] == [("attacker", VICTIM_ID)]
+    assert commands(window.inside).count(STEP) == 2
+    assert commands(window.before).count(STEP) == 15
+    assert not [i for i in sent(result.transcript) if i.what == "minecraft:player_command"]
+
+
+@pytest.mark.asyncio
+async def test_pvp_off_sets_up_the_bots_as_pvp_does() -> None:
+    off, on = await play(PVP_OFF), await play("combat/pvp")
+
+    def setup(result: Play) -> list[str]:
+        """Control's commands up to the first window, but the rule's."""
+        return [c for c in commands(result.windows[0].before) if "pvp" not in c]
+
+    assert "gamerule pvp false" in commands(off.windows[0].before)
+    assert setup(off) == setup(on)
+
+
+def test_pvp_off_compares_what_pvp_does_and_masks_nothing() -> None:
+    assert GROUPS[PVP_OFF].masks == ()
 
 
 class _Lookup:

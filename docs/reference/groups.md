@@ -350,6 +350,7 @@ are gone, so the next play starts without them. The Group fails if a husk is sti
 | `combat/sweep` | tick-exact | none | The fighter hits a husk with a diamond sword on the ground, with three more husks 0.9 blocks from it. The sweep hurts all three. | none |
 | `combat/immunity` | tick-exact | none | Two Bots, `striker` with a diamond sword and `tapper` with a bare hand, hit one husk a few ticks apart: the striker then the tapper after 5 ticks, the tapper then the striker after 5, and the striker then the tapper after 11. A hurt husk ignores a hit that is not stronger than the last until its immunity is down to 10 ticks. | none |
 | `combat/pvp` | tick-exact | none | A Bot called `attacker` hits another Bot, `victim`, with a diamond sword, standing and then sprinting. The window also compares the victim's health (`set_health`). | none |
+| `combat/pvp-off` | tick-exact | none | The same two Bots, with the `pvp` game rule off (`/gamerule pvp false`, which Control turns on again afterwards). `attacker` hits `victim` once with a diamond sword, standing. The window compares what the server sends about a hit that does no damage, and the victim's health (`set_health`). | none |
 
 Vanilla sends the data and the velocity of every entity a tick changed at the end of that tick, in
 the order of a hash of their entity ids, and the two Instances' ids differ. So when a hit changes
@@ -368,7 +369,8 @@ far a sprinting hit knocks it back.
 A Player keeps its health and its food from play to play, so each Bot is given health and
 saturation (`effect give`) before the first hit. In `combat/immunity` the tapper stands a block
 behind the striker, out of the sweep of the striker's sword. `combat/pvp` runs with player
-versus player damage on, which is the server default; a server with it off is not covered.
+versus player damage on, which is the server default, and `combat/pvp-off` with it off. The
+sprinting hit is not played with it off.
 
 ### Damage and armor
 
