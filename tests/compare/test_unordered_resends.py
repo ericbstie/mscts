@@ -1,0 +1,275 @@
+"""A run of resends for different entities is compared by entity, not by arrival (#320).
+
+At the end of each tick vanilla sends what changed about each tracked entity (its data,
+velocity, attributes, position and head) in the hash order of the entities' raw ids, which
+differ between Instances. The client applies each resend to the entity it names, so only the
+resends of each entity, in their order, matter. The entities are named and numbered as every
+Comparison does (#21).
+"""
+
+from collections.abc import Callable
+
+import pytest
+
+from mscts.codec.packets import Packet
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, WHOLE_PACKET, Mask, compare
+from mscts.transcript import Transcript
+from tests.compare.build import packet, transcript
+
+KIND = 1
+"""An entity type id: not the player's, so an entity spawned before a window is named by it."""
+
+
+def add_entity(entity_id: int, x: float) -> Packet:
+    """An `add_entity` of an entity at `x`."""
+    return packet(
+        "minecraft:add_entity",
+        fields={"entity_id": entity_id, "type": KIND, "x": x, "y": -60.0, "z": 0.5},
+    )
+
+
+def data(entity_id: int, value: int = 1) -> Packet:
+    """A `set_entity_data` of `entity_id` with one entry, `value`."""
+    return packet(
+        "minecraft:set_entity_data",
+        fields={"entity_id": entity_id, "entries": [{"index": 0, "serializer": 0, "value": value}]},
+    )
+
+
+def motion(entity_id: int, y: float) -> Packet:
+    """A `set_entity_motion` of `entity_id`, moving at `y` up."""
+    return packet(
+        "minecraft:set_entity_motion",
+        fields={"entity_id": entity_id, "velocity": {"x": 0.0, "y": y, "z": 0.0}},
+    )
+
+
+def block() -> Packet:
+    return packet("minecraft:block_update", b"\x01")
+
+
+def _diff(reference: Transcript, candidate: Transcript) -> list[tuple[str, str | None]]:
+    divergences = compare(reference, candidate, []).divergences
+    return [(d.kind, d.path) for d in divergences]
+
+
+def _play(*packets: Packet) -> Transcript:
+    return transcript(*(("alice", each) for each in packets))
+
+
+def test_resends_of_different_entities_in_another_order_are_no_difference() -> None:
+    # The Candidate numbers its entities 5 and 9 where vanilla has 100 and 200.
+    reference = _play(add_entity(100, 0.5), add_entity(200, 1.5), data(100), motion(200, 0.2))
+    candidate = _play(add_entity(5, 0.5), add_entity(9, 1.5), motion(9, 0.2), data(5))
+    assert _diff(reference, candidate) == []
+
+
+def test_a_resend_only_one_side_sent_is_a_difference_that_names_it() -> None:
+    reference = _play(add_entity(100, 0.5), add_entity(200, 1.5), data(200, 3), data(100))
+    candidate = _play(add_entity(5, 0.5), add_entity(9, 1.5), data(5))
+    divergences = compare(reference, candidate, []).divergences
+    assert [(d.kind, d.reference) for d in divergences] == [
+        (
+            "missing",
+            {"entity_id": "#2", "entries": [{"index": 0, "serializer": 0, "value": 3}]},
+        )
+    ]
+
+
+def test_resends_of_one_entity_keep_their_order() -> None:
+    reference = _play(add_entity(100, 0.5), motion(100, 0.1), motion(100, 0.2))
+    candidate = _play(add_entity(5, 0.5), motion(5, 0.2), motion(5, 0.1))
+    assert _diff(reference, candidate) == [
+        ("field", "velocity.y"),
+        ("field", "velocity.y"),
+    ]
+
+
+def test_another_packet_ends_a_run() -> None:
+    reference = _play(add_entity(100, 0.5), add_entity(200, 1.5), data(100), block(), data(200))
+    candidate = _play(add_entity(5, 0.5), add_entity(9, 1.5), data(9), block(), data(5))
+    assert _diff(reference, candidate) == [("field", "entity_id"), ("field", "entity_id")]
+
+
+def test_entities_spawned_before_the_window_are_ordered_by_their_names() -> None:
+    reference = transcript(
+        ("alice", add_entity(100, 1.5)),
+        ("alice", add_entity(200, 0.5)),
+        OBSERVE_OPEN,
+        ("alice", data(200)),
+        ("alice", data(100, 2)),
+        OBSERVE_CLOSE,
+    )
+    candidate = transcript(
+        ("alice", add_entity(5, 1.5)),
+        ("alice", add_entity(9, 0.5)),
+        OBSERVE_OPEN,
+        ("alice", data(5, 2)),
+        ("alice", data(9)),
+        OBSERVE_CLOSE,
+    )
+    assert _diff(reference, candidate) == []
+
+
+def test_each_resend_keeps_its_own_tick() -> None:
+    reference = transcript(
+        ("alice", add_entity(100, 0.5)),
+        ("alice", add_entity(200, 1.5)),
+        OBSERVE_OPEN,
+        f"{TICK_MARK}1",
+        ("alice", data(200)),
+        ("alice", data(100)),
+        f"{TICK_MARK}2",
+        OBSERVE_CLOSE,
+    )
+    candidate = transcript(
+        ("alice", add_entity(5, 0.5)),
+        ("alice", add_entity(9, 1.5)),
+        OBSERVE_OPEN,
+        ("alice", data(5)),
+        ("alice", data(9)),
+        f"{TICK_MARK}1",
+        f"{TICK_MARK}2",
+        OBSERVE_CLOSE,
+    )
+    assert _diff(reference, candidate) == [("field", "(tick)"), ("field", "(tick)")]
+
+
+def set_time() -> Packet:
+    return packet("minecraft:set_time", b"\x00")
+
+
+def keep_alive() -> Packet:
+    return packet("minecraft:keep_alive", b"\x00")
+
+
+def _window(ids: tuple[int, int], *items: Packet | str) -> Transcript:
+    """`items` in a window opened after the `add_entity` of `ids`, at x 0.5 and 1.5.
+
+    A packet is alice's, and a string the label of a Mark.
+    """
+    first, second = ids
+    return transcript(
+        ("alice", add_entity(first, 0.5)),
+        ("alice", add_entity(second, 1.5)),
+        OBSERVE_OPEN,
+        *(item if isinstance(item, str) else ("alice", item) for item in items),
+        OBSERVE_CLOSE,
+    )
+
+
+@pytest.mark.parametrize("clock", [set_time, keep_alive], ids=["set_time", "keep_alive"])
+def test_a_heartbeat_on_another_tick_does_not_end_a_run(clock: Callable[[], Packet]) -> None:
+    # Review A, P1: the same resends in the same order; only the clock packet's phase differs.
+    reference = _window(
+        (100, 200),
+        *(motion(100, 0.1), motion(200, 0.1), clock()),
+        *(motion(100, 0.2), motion(200, 0.2), motion(100, 0.3), motion(200, 0.3)),
+    )
+    candidate = _window(
+        (100, 200),
+        *(motion(100, 0.1), motion(200, 0.1), motion(100, 0.2), motion(200, 0.2)),
+        *(clock(), motion(100, 0.3), motion(200, 0.3)),
+    )
+    assert _diff(reference, candidate) == []
+
+
+def test_a_heartbeat_at_the_end_does_not_end_a_run() -> None:
+    # Review B: A1 B1 set_time A2 B2 against A1 B1 A2 B2 set_time.
+    reference = _window(
+        (100, 200),
+        motion(100, 0.1),
+        motion(200, 0.1),
+        set_time(),
+        motion(100, 0.2),
+        motion(200, 0.2),
+    )
+    candidate = _window(
+        (100, 200),
+        motion(100, 0.1),
+        motion(200, 0.1),
+        motion(100, 0.2),
+        motion(200, 0.2),
+        set_time(),
+    )
+    assert _diff(reference, candidate) == []
+
+
+def test_a_packet_a_mask_drops_does_not_end_a_run() -> None:
+    reference = _play(
+        *(add_entity(100, 0.5), add_entity(200, 1.5)),
+        *(motion(100, 0.1), motion(200, 0.1), block(), motion(100, 0.2), motion(200, 0.2)),
+    )
+    candidate = _play(
+        *(add_entity(5, 0.5), add_entity(9, 1.5)),
+        *(motion(5, 0.1), motion(9, 0.1), motion(5, 0.2), motion(9, 0.2), block()),
+    )
+    dropped = [Mask("minecraft:block_update", WHOLE_PACKET, "a test")]
+    assert compare(reference, candidate, dropped).divergences == ()
+
+
+def test_resends_on_other_ticks_are_compared_in_tick_order() -> None:
+    # Review A, P2, in a tick-exact Group: the Candidate sends all of B's changes after A's.
+    reference = _window(
+        (100, 200),
+        *(motion(100, 0.1), motion(200, 0.1)),
+        f"{TICK_MARK}1",
+        *(motion(100, 0.2), motion(200, 0.2)),
+        f"{TICK_MARK}2",
+        *(motion(100, 0.3), motion(200, 0.3)),
+        f"{TICK_MARK}3",
+    )
+    candidate = _window(
+        (5, 9),
+        motion(5, 0.1),
+        f"{TICK_MARK}1",
+        motion(5, 0.2),
+        f"{TICK_MARK}2",
+        *(motion(5, 0.3), motion(9, 0.1), motion(9, 0.2), motion(9, 0.3)),
+        f"{TICK_MARK}3",
+    )
+    assert ("field", "entity_id") in _diff(reference, candidate)
+
+
+def test_a_run_ends_at_a_tick_mark() -> None:
+    # The Candidate changes the two entities on each other's ticks. Within each tick the run
+    # is sorted on its own, so tick 1 shows the other entity, not two packets a tick off.
+    reference = _window(
+        (100, 200), motion(100, 0.1), f"{TICK_MARK}1", motion(200, 0.1), f"{TICK_MARK}2"
+    )
+    candidate = _window((5, 9), motion(9, 0.1), f"{TICK_MARK}1", motion(5, 0.1), f"{TICK_MARK}2")
+    assert _diff(reference, candidate) == [("field", "entity_id"), ("field", "entity_id")]
+
+
+def test_a_resend_on_another_tick_is_compared_on_its_own_tick() -> None:
+    # Re-review P8: the Candidate sends the first entity's resend a tick early, in the
+    # second entity's run, so the runs differ and so does the tick.
+    reference = _window((100, 200), data(200), f"{TICK_MARK}1", data(100), f"{TICK_MARK}2")
+    candidate = _window((5, 9), data(9), data(5), f"{TICK_MARK}1", f"{TICK_MARK}2")
+    assert _diff(reference, candidate) == [
+        ("field", "entity_id"),
+        ("field", "(tick)"),
+        ("field", "entity_id"),
+    ]
+
+
+def test_a_run_ends_at_a_window_end() -> None:
+    # Re-review P7: window 1 should move the first entity and window 2 the second; the
+    # Candidate moves each in the other's window.
+    reference = _window(
+        (100, 200), motion(100, 0.1), OBSERVE_CLOSE, set_time(), OBSERVE_OPEN, motion(200, 0.1)
+    )
+    candidate = _window(
+        (5, 9), motion(9, 0.1), OBSERVE_CLOSE, set_time(), OBSERVE_OPEN, motion(5, 0.1)
+    )
+    assert _diff(reference, candidate) == [("field", "entity_id"), ("field", "entity_id")]
+
+
+def test_an_entity_first_heard_of_in_the_run_keeps_its_place() -> None:
+    # Its number is the order it arrives in, so the run cannot be sorted by it.
+    reference = _play(data(100, 1), data(200, 2))
+    candidate = _play(data(9, 2), data(5, 1))
+    assert _diff(reference, candidate) == [
+        ("field", "entries[0].value"),
+        ("field", "entries[0].value"),
+    ]

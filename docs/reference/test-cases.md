@@ -1196,10 +1196,10 @@ and a list of changes. Each change has its own test cases, below.
 
 **Block change in a section**
 
-One change in the list, or a change only one server sent. mscts compares
-the list in the order it is sent. Vanilla sends it in the order of a
-hash set, so a server that sends the same changes in another order also
-differs here.
+One change in the list, or a change only one server sent. The client sets
+each block at its own position, so the order of the list is not
+compared: mscts sorts it by position, y first, then z, then x. Changes to
+the same position keep their order, since the last one stays.
 
 ## `section_blocks_update.blocks[].state`
 

@@ -123,6 +123,20 @@ session id each login gets. Two runs of vanilla never agree on them, so
 mscts leaves them out for every Group. Vanilla also sends the tag lists in
 an order that changes each time it starts. The client reads them into
 lookup tables, so mscts sorts them by name before comparing them.
+At the end of each tick, vanilla sends what changed about each entity
+in an order that follows the server's entity ids. The client applies each of
+these packets to its own entity, so when several entities change at
+once, mscts compares their packets entity by entity. The packets about
+one entity keep their order. This works only when both servers named and
+numbered those entities alike: if a Bot heard of two new entities in a
+different order on each server, their numbers differ, and so does the
+order mscts compares their packets in. mscts does this within each part
+of the Group that it compares, so a change that comes in the wrong part
+still shows up. In a `tick-exact` Group, it does this within each tick. In
+any other Group it cannot tell where a tick ends, so within one part it does
+this across ticks too: if one server sends an entity's changes a tick before
+another entity's and the other server sends them the other way round, mscts
+does not report it.
 
 Otherwise mscts never masks anything a player could observe, even if it
 is random. Random mechanics, such as mob spawning and loot, will instead

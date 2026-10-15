@@ -1649,7 +1649,9 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # boot; docs/research/2026-10-01-control.md), login's
                                     # dimension_names, update_attributes' attributes,
                                     # update_recipes' property sets and update_advancements'
-                                    # removed ids and progress (#30, #106)
+                                    # removed ids and progress (#30, #106), a chunk's
+                                    # heightmaps and block entities (#22), and
+                                    # section_blocks_update's blocks (#320)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -1996,6 +1998,18 @@ proves it necessary:
      block entities in a map keyed by `BlockPos`:
      `LevelChunk.replaceWithPacketData` loads each one sent in turn, so
      those sent for one position keep their order.
+     `play` / `minecraft:section_blocks_update` (#320): `blocks` is sorted
+     by position (y, z, x), stably. Vanilla sends them in hash order
+     (`javap` on the 26.3 server: `ChunkHolder.broadcastChanges` writes the
+     section's changed positions in the iteration order of a
+     `ShortOpenHashSet`; docs/research/2026-10-03-blocks-fill-under-load.md).
+     The client sets each block at its own position in turn
+     (`ClientboundSectionBlocksUpdatePacket.runUpdates`, then
+     `ClientLevel.setServerVerifiedBlockState` with flags 19: on the client
+     `Level.updateNeighborsAt` is empty, and flag 16 skips the shape
+     updates), so blocks at different positions can come in any order, and
+     a position sent twice ends with its last state, which the stable sort
+     keeps last.
    - the order of packets about different chunks, and where they fall
      among packets whose handling reads no chunk. A *chunk packet* is a
      `level_chunk_with_light`, `light_update` or `forget_level_chunk`:
@@ -2050,6 +2064,44 @@ proves it necessary:
      only to the rate it asks the server for
      (`ChunkBatchSizeCalculator.onBatchFinished`, then
      `chunk_batch_received`).
+   - the order of resends about different entities (#320). A *resend*
+     is a `set_entity_data`, `set_entity_motion`, `update_attributes`,
+     `rotate_head`, `move_entity_pos`, `move_entity_pos_rot`,
+     `move_entity_rot` or `entity_position_sync` (`compare._RESENDS`):
+     each holds one `entity_id`, and the client applies it to that entity
+     only (`javap` on the 26.3 client: `ClientPacketListener`'s handlers
+     look the entity up by id and set its data, velocity, attributes,
+     head or position). At the end of each tick vanilla sends them for
+     every tracked entity that changed in the iteration order of
+     `ChunkMap.entityMap`, an `Int2ObjectOpenHashMap` keyed by the raw
+     entity id (`ChunkMap.tick`, `ServerEntity.sendChanges`), and raw ids
+     differ between Instances
+     (`docs/research/2026-10-15-unordered-resends.md`). A *run of
+     resends* is a longest stretch of them in a Bot's stream, after the
+     chunk runs are sorted, among the compared packets: any other
+     compared packet ends one, and so do `add_entity` and
+     `remove_entities`, which name and number entities. Any other packet
+     that is not compared (outside every window, or dropped by a `*`
+     Mask) goes across the run and comes after it, as a neutral packet
+     goes across a chunk run (#33): a heartbeat comes on the server's
+     clock, whose phase differs between Instances. Each run is
+     taken in the order of its entities' names and numbers so far
+     (`compare._by_entity`): numbers first, by value, then names, then
+     entities the Bot has not heard of yet, in the order they arrived,
+     since that order gives their numbers. The sort is stable, so the
+     resends of one entity keep their order. A window's end ends a run
+     (`compare._same_step`): each window is a step of the Group, and both
+     sides close it at the same barrier. A tick Mark ends a run too, so
+     in a tick-exact Group a run holds one tick's resends, and each still
+     carries the tick it arrived on, which is compared. Elsewhere a
+     Transcript holds no tick ends, and a run may span the ticks of one
+     window: the order of different entities' resends across those ticks
+     is not compared.
+     The gaps between arrivals do not tell ticks apart: on one live
+     vanilla play one tick's resends came up to 3.2 ms apart, and two
+     ticks' as little as 25.7 ms, or 0 ms when the reader stalled (the
+     research note). `set_passengers` (two entities) and bundles (the
+     projectile power) end a run.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
