@@ -23,6 +23,12 @@ _CORPSE_POLLS = 20
 """How often Control asks whether a killed entity is left: a corpse goes in about 1 s, a poll
 takes about 0.3 s."""
 
+_GONE_SYNCS = 60
+"""How many barriers a Bot waits for the killed entities to go: each is at least a tick, and a
+body goes 20 ticks after its death."""
+
+_PLAYER = "minecraft:player"
+
 _NONE_LEFT = b"conditional.fail"
 """What vanilla's `execute if entity` answers, as a translation key, when nothing matched."""
 
@@ -95,26 +101,65 @@ async def find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float
 
 
 async def remove_tagged(control: Control, tag: str) -> None:
-    """Kill every entity tagged `tag`, leaving no loot and no experience, and wait for them.
+    """Kill every entity tagged `tag`, leaving no loot and no experience; unfreeze the world.
 
     A mob a player hit drops experience, and loot, where it dies; both need `mob_drops`
     (`LivingEntity.die` runs `dropAllDeathLoot` and `dropExperience`, and each checks it), which
-    is off while the mobs die. A corpse stays for 20 ticks of its own (`LivingEntity.tickDeath`),
-    so the world runs again until none is left: the next play puts new mobs where these stood,
-    and would be told apart from them only by the order they were heard in.
+    is off while the mobs die. Control then asks until no tagged entity is alive. A killed mob's
+    body stays for 20 ticks of its own, and `@e` never matches it while it dies
+    (docs/research/2026-10-14-tagged-cleanup.md), so this returns before the bodies are gone:
+    a Group with a Bot beside them waits for them with `remove_tagged_until_gone`.
 
     Raises:
         TimeoutError: An entity was still there after `_CORPSE_POLLS` asks.
     """
+    await _kill_tagged(control, tag)
+    for _ in range(_CORPSE_POLLS):
+        said = await control.run(f"execute if entity @e[tag={tag}]")
+        if any(_NONE_LEFT in packet.payload for packet in said):
+            return
+    msg = f"an entity tagged {tag} was still there after {_CORPSE_POLLS} asks"
+    raise TimeoutError(msg)
+
+
+async def remove_tagged_until_gone(control: Control, tag: str, bot: Bot) -> None:
+    """Kill every entity tagged `tag`, and wait until `bot` tracks no entity but players.
+
+    `bot` stands beside the entities, so that their chunk stays loaded, and tracks no other
+    entity but players. A body left when the next play freezes the world would stay there, and
+    finish dying inside one of its windows, a tick that depends on when the freeze came
+    (measured on #365: 3 Self-check plays of 20).
+
+    Control never asks whether a tagged entity is left (`execute if entity`), as
+    `remove_tagged` does: the Bot's wait covers it, and a server without `/execute` (Pumpkin)
+    would fail a clean-up the Group does not test (docs/research/2026-10-14-tagged-cleanup.md).
+
+    Raises:
+        TimeoutError: `bot` still tracked another entity after `_GONE_SYNCS` barriers.
+    """
+    await _kill_tagged(control, tag)
+    await _until_only_players(bot)
+
+
+async def _kill_tagged(control: Control, tag: str) -> None:
+    """Kill every entity tagged `tag` with `mob_drops` off, then unfreeze the world."""
     try:
         await control.run("gamerule mob_drops false")
         await control.run(f"kill @e[tag={tag}]")
     finally:
         await control.run("gamerule mob_drops true")
     await control.run("tick unfreeze")
-    for _ in range(_CORPSE_POLLS):
-        said = await control.run(f"execute if entity @e[tag={tag}]")
-        if any(_NONE_LEFT in packet.payload for packet in said):
+
+
+async def _until_only_players(bot: Bot) -> None:
+    """Pass barriers until `bot` tracks no entity but players.
+
+    Raises:
+        TimeoutError: `bot` still tracked another entity after `_GONE_SYNCS` barriers.
+    """
+    for _ in range(_GONE_SYNCS):
+        if all(entity.type == _PLAYER for entity in bot.entities.values()):
             return
-    msg = f"an entity tagged {tag} was still there after {_CORPSE_POLLS} asks"
+        await bot.sync()
+    msg = f"{bot.name} still tracked an entity after {_GONE_SYNCS} barriers"
     raise TimeoutError(msg)
