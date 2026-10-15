@@ -80,6 +80,9 @@ class Control(Protocol):
 MARKER_PREFIX = "mscts-barrier-"
 """The start of each token Control's barrier says to itself (`tellraw`)."""
 
+_MAX_PLAYER_NAME = 16
+"""The most characters a player name has."""
+
 _SYSTEM_CHAT = "minecraft:system_chat"
 _COMMANDS = "minecraft:commands"
 
@@ -245,10 +248,29 @@ class GroupContext:
     def play(self) -> int:
         """Which of a statistical Group's plays on this Instance this is, from 0.
 
-        Always 0 for another kind. A Group names its Bots by it, so that no play joins a
-        player an earlier play left behind (`SampleLog.play`).
+        Always 0 for another kind. A Group names its Bots with `player_name`, so that no
+        play joins a player an earlier play left behind (`SampleLog.play`).
         """
         return self._samples.play
+
+    def player_name(self, prefix: str) -> str:
+        """`prefix`, then the Run's four random characters, then the play: a new player's name.
+
+        No two plays of one Run get the same name, and a later Run on the same Attached
+        Instance gets other names, so no play joins a player that an earlier play or Run
+        left behind (`SampleLog.run`).
+
+        Raises:
+            ValueError: The name is longer than the 16 characters a player name has.
+        """
+        name = f"{prefix}{self._samples.run}{self.play}"
+        if len(name) > _MAX_PLAYER_NAME:
+            msg = (
+                f"{prefix!r} is too long: with the Run's characters and the play, "
+                f"{name!r} is {len(name)} characters, over the {_MAX_PLAYER_NAME} a name has"
+            )
+            raise ValueError(msg)
+        return name
 
     @property
     def samples(self) -> Mapping[str, Series]:

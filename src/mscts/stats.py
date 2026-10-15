@@ -8,7 +8,9 @@ import bisect
 import dataclasses
 import math
 import random
+import secrets
 import statistics
+import string
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from collections.abc import Set as AbstractSet
@@ -75,11 +77,23 @@ type Series = Numbers | Categories
 """One name's samples on one server: numbers or categories, never both."""
 
 
+_RUN_ALPHABET = string.ascii_letters + string.digits
+_RUN_LENGTH = 4
+"""Four of the 62 characters a player name allows: 14.8 million values, in 4 of its 16."""
+
+
 class SampleLog:
-    """What a statistical Group records on one server over its plays, by sample name."""
+    """What a statistical Group records on one server over its plays, by sample name.
+
+    Attributes:
+        run: A few random characters, one value for all the plays the log holds. A Group
+            puts them in the names of the players it joins, so that a second Run on an
+            Attached Instance does not rejoin the players the first one left behind.
+    """
 
     def __init__(self) -> None:
-        """Start empty, before the first play."""
+        """Start empty, before the first play, with a `run` of its own."""
+        self.run = "".join(secrets.choice(_RUN_ALPHABET) for _ in range(_RUN_LENGTH))
         self._values: dict[str, list[Sample]] = {}
         self._plays: list[Counter[str]] = []  # each play's count of samples, by name
 
@@ -185,8 +199,9 @@ class Decision:
         difference: The test, its effect size and its own p-value; None with no test.
         p_value: The test's p-value after Holm's correction over the Group's tested names;
             None with no test.
-        reference: The Reference's samples in brief (`Summary`).
-        candidate: The Candidate's samples in brief.
+        reference: The Reference's samples in brief (`Summary`); of how many each play
+            recorded if `difference` is the `PER_PLAY` test.
+        candidate: The Candidate's samples in brief, the same way.
     """
 
     name: str
@@ -232,11 +247,18 @@ def decide(
             rejected=name not in comparable or best.get(name, (1.0,))[0] <= ALPHA,
             difference=best[name][1] if name in best else None,
             p_value=best[name][0] if name in best else None,
-            reference=summary(reference.get(name)),
-            candidate=summary(candidate.get(name)),
+            reference=_shown(reference.get(name), best.get(name)),
+            candidate=_shown(candidate.get(name), best.get(name)),
         )
         for name in names
     )
+
+
+def _shown(series: Series | None, best: tuple[float, Difference] | None) -> Summary:
+    """`series` in brief: its per-play counts if `best` is the test of those, else its values."""
+    if series is not None and best is not None and best[1].test == PER_PLAY:
+        return summary(Numbers(tuple(map(float, series.per_play)), series.per_play))
+    return summary(series)
 
 
 def _smallest_per_name(

@@ -1278,7 +1278,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `fluids/lava-spread` script; `sources` — the `fluids/sources` script; `interactions` — the
   `fluids/interactions` script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
-  `context.play` joins, and the offsets of where it appears from the middle of the world
+  `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
   `spawn.distance`); `join_position_exact` — the `spawn/join-position-exact` script, the same
   with `respawn_radius` 0 (`pin_joins`).
@@ -1358,7 +1358,10 @@ class GroupContext:
     endpoint: Endpoint
     play: int                       # property, #24: a statistical Group's play on this
                                     # side, 0 to runs - 1 (SampleLog.play; 0 for other
-                                    # kinds); its Bots are named by it
+                                    # kinds)
+    def player_name(self, prefix: str) -> str: ...   # prefix + SampleLog.run + play: a new
+                                    # player's name, unique across plays and Runs on one
+                                    # Instance. ValueError: over 16 characters
     def sample(self, name: str, value: Sample) -> None: ...   # #24: SampleLog.add on its
                                     # log. ValueError: an empty name, a number that is
                                     # not finite, or a number for a name holding categories (or
@@ -2565,6 +2568,8 @@ class Numbers: values: tuple[float, ...]; per_play: tuple[int, ...]
 class Categories: values: tuple[str, ...]; per_play: tuple[int, ...]
 type Series = Numbers | Categories
 class SampleLog:                    # one server's samples over a Group's plays
+    run: str                        # 4 random letters and digits, fixed for the log: a
+                                    # Group's player names hold it (GroupContext.player_name)
     def new_play(self) -> None: ...  # the runner calls it before each play
     play: int                       # property: the last new_play's index from 0; 0 before
     def add(self, name: str, value: Sample) -> None: ...   # the checks GroupContext.sample

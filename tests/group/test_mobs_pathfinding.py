@@ -246,7 +246,11 @@ async def replay(group_id: str, server: MobsServer, play_number: int = 0) -> Pla
         await GROUPS[group_id].run(context)
     transcript = context._transcript  # noqa: SLF001 - the test reads what the play recorded
     samples = {name: series.values for name, series in context.samples.items()}
-    return Play(_commands(transcript), _bot_name(transcript), samples)
+    joined = _bot_name(transcript)
+    run = context.player_name("").removesuffix(str(context.play))  # random, so left out
+    bot = joined.replace(run, "", 1)
+    commands = tuple(command.replace(joined, bot) for command in _commands(transcript))
+    return Play(commands, bot, samples)
 
 
 PLAY_NUMBER = 7

@@ -263,8 +263,8 @@ Categories can also read `Fisher's exact V = ...`, when two categories are
 left and one is rare, or `chi-square permutation V = ...`, when every
 category is rare. A name can also fail on how many samples each play
 recorded: `Kolmogorov-Smirnov on samples per play D = ...`. Its summaries
-are still of the samples themselves, not of the counts, so they can look
-alike.
+are of the counts, one per play: `vanilla 50 plays, median 10 samples per
+play, quartiles 10 and 10`.
 
 D and V are the effect sizes, from 0 to 1. The p already allows for the
 Group's other tests (Holm's correction). A name only one server

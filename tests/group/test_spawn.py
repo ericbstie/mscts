@@ -6,6 +6,7 @@ player is never asserted: that is what the statistical tier compares.
 """
 
 import math
+import re
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
@@ -39,6 +40,11 @@ SAMPLES = {
 SET_SPAWN = "setworldspawn 0 -60 0"
 
 
+def _without_run(name: str) -> str:
+    """`name` of a spawn player, `<prefix><run><play>`, as `<prefix><play>`."""
+    return re.sub(r"^(spawn(?:pos|exact))[A-Za-z0-9]{4}(\d+)$", r"\1\2", name)
+
+
 @dataclass
 class SpawnServer(BlocksServer):
     """A fake server that puts every player at `pose` and answers Control's commands.
@@ -66,12 +72,15 @@ class SpawnServer(BlocksServer):
             await join_server(self.seen, script)(peer)
 
     def told(self) -> list[str]:
-        """What the Bots did, in order: `join <name>`, and every command but a marker."""
+        """What the Bots did, in order: `join <name>`, and every command but a marker.
+
+        A name reads `<prefix><play>`: the Run's random characters are left out.
+        """
         told = []
         for packet in self.seen:
             fields = packet.fields or {}
             if packet.name == "minecraft:hello":
-                told.append(f"join {fields['name']}")
+                told.append("join " + _without_run(str(fields["name"])))
             elif packet.name == CHAT_COMMAND and not str(fields["command"]).startswith(MARKER):
                 told.append(str(fields["command"]))
         return told
@@ -162,7 +171,7 @@ async def test_the_exact_group_sets_the_radius_to_0_and_puts_the_rules_back_afte
 async def test_the_exact_group_puts_the_rules_back_when_the_player_cannot_join() -> None:
     server = SpawnServer(places=1)  # Control only
 
-    with pytest.raises(ProtocolError, match="disconnected spawnexact0"):
+    with pytest.raises(ProtocolError, match=r"disconnected spawnexact[A-Za-z0-9]{4}0"):
         await play(EXACT_ID, server=server)
 
     assert server.told()[-2:] == [

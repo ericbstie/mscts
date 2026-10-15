@@ -171,6 +171,16 @@ def test_far_fewer_samples_per_play_reject_though_the_values_cannot_be_told_apar
     assert (decision.difference.test, decision.difference.effect_size) == (_PER_PLAY, 1.0)
 
 
+def test_a_rejection_by_count_summarises_the_counts_not_the_values() -> None:
+    zombies = Categories(("zombie",) * 500, (10,) * 50)
+    pigs = Categories(("pig",) * 2, (1, 1) + (0,) * 48)
+
+    (decision,) = _decide({"mob": zombies}, {"mob": pigs})
+
+    assert decision.reference == Spread(samples=50, median=10.0, quartiles=(10.0, 10.0))
+    assert decision.candidate == Spread(samples=50, median=0.0, quartiles=(0.0, 0.0))
+
+
 def test_one_sample_against_fifty_rejects_by_its_count() -> None:
     # Review B's probe: one number in 50 plays could never reach ALPHA by its value alone.
     near_zero = Numbers(tuple(i / 100 for i in range(50)), (1,) * 50)

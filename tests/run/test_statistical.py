@@ -102,6 +102,27 @@ async def test_each_play_knows_its_index_on_each_side(run_token: str, tmp_path: 
 
 
 @pytest.mark.asyncio
+async def test_two_runs_on_one_attached_instance_never_name_a_player_alike(
+    run_token: str, tmp_path: Path
+) -> None:
+    named: list[str] = []
+
+    async def script(context: GroupContext) -> None:
+        named.append(context.player_name("spawn"))
+        context.sample("x", 0.0)
+
+    async with (
+        attached(FakeAdapter("vanilla", run_token), tmp_path / "reference") as reference,
+        attached(FakeAdapter("pumpkin", run_token), tmp_path / "candidate") as candidate,
+    ):
+        for _ in range(2):
+            await run([_statistical(script, runs=3)], reference, candidate, workdir=tmp_path)
+
+    assert len(named) == 2 * 2 * 3  # Runs, sides, plays
+    assert len(set(named)) == len(named)
+
+
+@pytest.mark.asyncio
 async def test_shifted_samples_mismatch_with_the_effect_size(
     run_token: str, tmp_path: Path
 ) -> None:
