@@ -51,5 +51,29 @@ and server jars (`scripts/research/javap.py`).
   any order. Those for one entity are applied in turn and keep their
   order. `set_passengers` names two entities and is left out.
 - What bounds a tick: a Transcript records no tick ends, except the tick
-  Marks of a tick-exact Group. There each packet's tick is compared on its
-  own, so a run of resends needs no tick bound.
+  Marks of a tick-exact Group, so only there does a tick Mark end a run of
+  resends. Review A of #391 showed why a run needs that bound: one server
+  sending A1 A2 A3 B1 B2 B3 and the other A1 B1 A2 B2 A3 B3, a tick apart
+  each, matched as one run.
+
+## Gaps between arrivals do not mark a tick — live, 2026-10-15
+
+Whether a gap in arrival stamps (`Event.t_ns`) larger than half a tick
+(25 ms) could end a run outside tick-exact Groups. Measured on one
+Reference-against-Reference play of each Group below, at a load of 1 to 4,
+with the gap between each two resends adjacent in a Bot's stream:
+
+- `entities/summon` (the watcher): 60 pairs, 40 of them 0.00 ms apart
+  (one socket read), the rest 40 ms or more. Clustering the resends at a
+  5 ms split, the widest cluster spans 3.19 ms.
+- `blocks/fill`: 5 pairs, all 0.00 ms.
+- `entities/item-merge` (the watcher): 48 pairs, 21 of them 0.00 ms, one
+  25.66 ms, the rest 40 ms or more. The 25.66 ms pair lies on two ticks:
+  the `award_stats` that come once a tick, 50 ms apart, put the second
+  packet on the next tick, and the first was stamped 21 ms late, in the
+  same read as a `set_time`.
+
+So one tick's resends came at most 3.2 ms apart, and two ticks' as little
+as 25.7 ms; when the reader stalls, two ticks' packets are stamped
+together, 0 ms apart. A half-tick gap does not separate them, so mscts
+does not use one: outside tick-exact Groups a run may span ticks.

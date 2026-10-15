@@ -773,7 +773,10 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     (`_runs`) is then taken in the order of its entities' names and numbers before the run
     (`_by_entity`). So the same resends get the same places on both sides however each server
     ordered them, as long as both sides named and numbered those entities alike: an entity
-    a Bot first hears of in the run keeps its place, since its number comes from it.
+    a Bot first hears of in the run keeps its place, since its number comes from it. A run
+    ends at a tick Mark, so in a tick-exact Group it holds one tick's resends; elsewhere it
+    may hold several ticks', and the order of different entities' resends across those ticks
+    is not compared.
     """
     windows = _Windows.of(transcript, bot)
     ticks = _Ticks.of(transcript, bot)
@@ -882,20 +885,28 @@ def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
     comes on the server's clock, whose phase differs between Instances, and a dropped packet
     is not compared at all. Neither reads or changes an entity's name or number, except an
     `add_entity` or `remove_entities` (`_NAMING`), which ends the run.
+
+    In a tick-exact Group a run also ends at a tick Mark: a resend on the next tick starts
+    the next run. Elsewhere a Transcript holds no tick ends, so a run may span ticks: the
+    gaps between arrivals do not tell them apart (one tick's resends came up to 3.2 ms
+    apart on a live vanilla play, two ticks' as little as 25.7 ms or none,
+    docs/research/2026-10-15-unordered-resends.md).
     """
     run: list[_Arrival] = []
     held: list[_Arrival] = []  # what goes across the run
     for arrival in arrivals:
         packet = arrival.event.packet
-        if arrival.compared and _resend_entity(packet) is not None:
+        resend = arrival.compared and _resend_entity(packet) is not None
+        if resend and (not run or arrival.tick == run[0].tick):
             run.append(arrival)
         elif not arrival.compared and packet.name not in _NAMING:
             held.append(arrival)
         else:
             yield from _ended(run, held)
-            run = list[_Arrival]()
+            run = [arrival] if resend else []
             held = list[_Arrival]()
-            yield [arrival]
+            if not resend:
+                yield [arrival]
     yield from _ended(run, held)
 
 

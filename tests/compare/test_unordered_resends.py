@@ -116,8 +116,8 @@ def test_each_resend_keeps_its_own_tick() -> None:
         ("alice", add_entity(100, 0.5)),
         ("alice", add_entity(200, 1.5)),
         OBSERVE_OPEN,
-        ("alice", data(200)),
         f"{TICK_MARK}1",
+        ("alice", data(200)),
         ("alice", data(100)),
         f"{TICK_MARK}2",
         OBSERVE_CLOSE,
@@ -126,13 +126,13 @@ def test_each_resend_keeps_its_own_tick() -> None:
         ("alice", add_entity(5, 0.5)),
         ("alice", add_entity(9, 1.5)),
         OBSERVE_OPEN,
-        ("alice", data(9)),
         ("alice", data(5)),
+        ("alice", data(9)),
         f"{TICK_MARK}1",
         f"{TICK_MARK}2",
         OBSERVE_CLOSE,
     )
-    assert _diff(reference, candidate) == [("field", "(tick)")]
+    assert _diff(reference, candidate) == [("field", "(tick)"), ("field", "(tick)")]
 
 
 def set_time() -> Packet:
@@ -206,6 +206,39 @@ def test_a_packet_a_mask_drops_does_not_end_a_run() -> None:
     )
     dropped = [Mask("minecraft:block_update", WHOLE_PACKET, "a test")]
     assert compare(reference, candidate, dropped).divergences == ()
+
+
+def test_resends_on_other_ticks_are_compared_in_tick_order() -> None:
+    # Review A, P2, in a tick-exact Group: the Candidate sends all of B's changes after A's.
+    reference = _window(
+        (100, 200),
+        *(motion(100, 0.1), motion(200, 0.1)),
+        f"{TICK_MARK}1",
+        *(motion(100, 0.2), motion(200, 0.2)),
+        f"{TICK_MARK}2",
+        *(motion(100, 0.3), motion(200, 0.3)),
+        f"{TICK_MARK}3",
+    )
+    candidate = _window(
+        (5, 9),
+        motion(5, 0.1),
+        f"{TICK_MARK}1",
+        motion(5, 0.2),
+        f"{TICK_MARK}2",
+        *(motion(5, 0.3), motion(9, 0.1), motion(9, 0.2), motion(9, 0.3)),
+        f"{TICK_MARK}3",
+    )
+    assert ("field", "entity_id") in _diff(reference, candidate)
+
+
+def test_a_run_ends_at_a_tick_mark() -> None:
+    # The Candidate changes the two entities on each other's ticks. Within each tick the run
+    # is sorted on its own, so tick 1 shows the other entity, not two packets a tick off.
+    reference = _window(
+        (100, 200), motion(100, 0.1), f"{TICK_MARK}1", motion(200, 0.1), f"{TICK_MARK}2"
+    )
+    candidate = _window((5, 9), motion(9, 0.1), f"{TICK_MARK}1", motion(5, 0.1), f"{TICK_MARK}2")
+    assert _diff(reference, candidate) == [("field", "entity_id"), ("field", "entity_id")]
 
 
 def test_an_entity_first_heard_of_in_the_run_keeps_its_place() -> None:
