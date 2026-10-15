@@ -13,6 +13,8 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
+from pathlib import Path
 from types import FrameType
 from typing import cast
 
@@ -31,25 +33,108 @@ TIER_ADAPTERS: dict[str, type[Adapter]] = {
 }
 
 
-def _take_lock(descriptor: int) -> None:
-    while True:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            os.lseek(descriptor, 0, os.SEEK_SET)
-            holder = os.read(descriptor, 64).strip()
-            if holder.isdigit():
-                print(
-                    f"waiting for another live tier to finish (pid {holder.decode('ascii')})",
-                    file=sys.stderr,
-                    flush=True,
-                )
-                fcntl.flock(descriptor, fcntl.LOCK_EX)
+@contextlib.contextmanager
+def _queue_mutex(queue: Path) -> Iterator[None]:
+    """Serialise changes to the queue: a ticket is never seen before it is locked."""
+    descriptor = os.open(queue / "mutex", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(descriptor)
+
+
+def _tickets(queue: Path) -> list[str]:
+    """The tickets in arrival order: a number from a counter, then the waiter's pid."""
+    return sorted(entry.name for entry in queue.iterdir() if entry.name != "mutex")
+
+
+def _take_ticket(queue: Path) -> tuple[Path, int]:
+    """Join the back of the queue. The waiter holds a flock on its ticket until it leaves.
+
+    A ticket whose flock is free belongs to a waiter that died, so it is not waited for.
+    """
+    with _queue_mutex(queue):
+        last = max((int(name.partition("-")[0]) for name in _tickets(queue)), default=0)
+        ticket = queue / f"{last + 1:012d}-{os.getpid()}"
+        descriptor = os.open(ticket, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+    return ticket, descriptor
+
+
+def _waiter_is_dead(ticket: Path) -> bool:
+    """Whether nobody holds `ticket`'s flock: its waiter died, or has left the queue."""
+    try:
+        descriptor = os.open(ticket, os.O_RDWR)
+    except FileNotFoundError:
+        return True
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    finally:
+        os.close(descriptor)
+    return True
+
+
+def _live_ticket_ahead(queue: Path, mine: str) -> str | None:
+    """The first ticket ahead of `mine` whose waiter is alive; the dead ones are removed."""
+    with _queue_mutex(queue):
+        for name in _tickets(queue):
+            if name >= mine:
+                return None
+            if not _waiter_is_dead(queue / name):
+                return name
+            (queue / name).unlink(missing_ok=True)
+    return None
+
+
+def _wait_for_ticket(ticket: Path) -> None:
+    """Block until the waiter holding `ticket` has taken the lock, or died."""
+    try:
+        descriptor = os.open(ticket, os.O_RDWR)
+    except FileNotFoundError:
+        return
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+    finally:
+        os.close(descriptor)
+
+
+def _say_waiting(pid: str) -> None:
+    print(f"waiting for another live tier to finish (pid {pid})", file=sys.stderr, flush=True)
+
+
+def _take_lock(descriptor: int, queue: Path) -> None:
+    """Take the lock in the order waiters arrived (#374).
+
+    Only the head of the queue asks for the lock, so a newcomer cannot slip in ahead of a
+    waiter that `flock` has woken but not yet scheduled.
+    """
+    ticket, ticket_descriptor = _take_ticket(queue)
+    try:
+        while True:
+            ahead = _live_ticket_ahead(queue, ticket.name)
+            if ahead is not None:
+                _say_waiting(ahead.partition("-")[2])
+                _wait_for_ticket(queue / ahead)
+                continue
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                holder = os.read(descriptor, 64).strip()
+                if holder.isdigit():
+                    _say_waiting(holder.decode("ascii"))
+                    fcntl.flock(descriptor, fcntl.LOCK_EX)
+                    return
+                # The first holder has acquired the lock but has not published its pid (#138).
+                time.sleep(0.01)
+            else:
                 return
-            # The first holder has acquired the lock but has not published its pid (#138).
-            time.sleep(0.01)
-        else:
-            return
+    finally:
+        ticket.unlink(missing_ok=True)
+        os.close(ticket_descriptor)
 
 
 def _write_pid(descriptor: int, pid: int) -> None:
@@ -123,10 +208,11 @@ def main() -> None:
         code = _run_command(command)
     else:
         cache = cache_dir()
-        cache.mkdir(parents=True, exist_ok=True)
+        queue = cache / "live-tier.queue"
+        queue.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(cache / "live-tier.lock", os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            _take_lock(descriptor)
+            _take_lock(descriptor, queue)
             _write_pid(descriptor, os.getpid())
             code = _run_command(command, descriptor)
         finally:

@@ -126,6 +126,39 @@ def test_a_second_live_tier_waits_then_runs_when_the_holder_exits(
             assert second.stderr.read() == ""
 
 
+@contextmanager
+def frozen_waiter(tmp_path: Path, holder: subprocess.Popen[str]) -> Iterator[subprocess.Popen[str]]:
+    """Queue a waiter behind `holder`, freeze it, and let `holder` finish: the lock is free.
+
+    A frozen waiter cannot take the lock, so a newcomer that is not queued behind it can
+    take it first every time (a woken waiter and a fresh process otherwise race, #374).
+    """
+    with command(tmp_path) as waiter:
+        assert line(waiter.stderr).startswith("waiting for another live tier to finish")
+        os.kill(waiter.pid, signal.SIGSTOP)
+        _, status = os.waitpid(waiter.pid, os.WUNTRACED)
+        assert os.WIFSTOPPED(status)
+        assert finish(holder) == 0
+        yield waiter
+
+
+def test_a_newcomer_waits_behind_a_waiter_that_queued_first(tmp_path: Path) -> None:
+    with command(tmp_path) as holder:
+        assert line(holder.stdout) == "started"
+        until_the_wrapper_names_its_command(tmp_path, holder)
+        with frozen_waiter(tmp_path, holder) as first, command(tmp_path) as late:
+            assert late.stdout is not None
+            assert late.stderr is not None
+            ready, _, _ = select.select([late.stdout, late.stderr], [], [], 5)
+            assert late.stdout not in ready, "a newcomer took the lock ahead of a queued waiter"
+            assert line(late.stderr).startswith("waiting for another live tier to finish")
+            os.kill(first.pid, signal.SIGCONT)
+            assert line(first.stdout) == "started"
+            assert finish(first) == 0
+            assert line(late.stdout) == "started"
+            assert finish(late) == 0
+
+
 @pytest.mark.parametrize("exit_code", [0, 7])
 def test_the_command_exit_code_passes_through(tmp_path: Path, exit_code: int) -> None:
     with command(tmp_path, exit_code) as process:
