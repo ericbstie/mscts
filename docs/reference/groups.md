@@ -707,12 +707,23 @@ together. In a frozen world the scheduled ticks of the fluids run only on the ti
 steps, so each placement takes effect on the tick its delay says. A window lasts until every
 source has had its last scheduled tick, which leaves none due for the next play.
 
+## Spawning (`spawn`)
+
+Where a new player first appears. Vanilla spreads new players over the blocks within `respawn_radius` of the world spawn, 10 by default, instead of stacking them on one block, and picks a safe one. Both Groups are `statistical`: each plays many times on each server and compares the distributions of what it records, and `mscts run` plays them only with `--statistical` (see [Writing a Group](/guide/writing-a-group)).
+
+In each play, Control sets the world spawn to the block at 0, -60, 0 (`/setworldspawn 0 -60 0`) and a player joins under a name that no earlier play of the Run used. Vanilla keeps a player's position when it leaves, so a name that joined before comes back where it left. Each play records four samples, which are the test cases: how far the player stands east (`spawn.x`) and south (`spawn.z`) of the middle of the spawn block, its height (`spawn.y`) and its distance from the middle of the block (`spawn.distance`).
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `spawn/join-position` | statistical | none | A new player joins with `respawn_radius` at its default. Vanilla places it on a random block within 10 blocks of the spawn along each axis. | none |
+| `spawn/join-position-exact` | statistical | none | The same, with `gamerule respawn_radius 0` and the check that repeats a join's first position off (`gamerule player_movement_check false`). Vanilla places every player on the spawn block's column. Once the player has joined, both rules are set back to vanilla's defaults, not to the values the server had before. | none |
+
 ## Planned
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
 | Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
-| Spawning and loot | Distributions over many runs | The `statistical` kind, in its own opt-in tier. |
+| Mob spawning and loot | Distributions over many runs | Its Groups. The `statistical` kind they use exists, in its own opt-in tier. |
 See [Project status](/status) for the order.
 
 ## How chunks are compared
