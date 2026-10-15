@@ -1280,7 +1280,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.play` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
-  `spawn.distance`).
+  `spawn.distance`); `join_position_exact` — the `spawn/join-position-exact` script, the same
+  with `respawn_radius` 0 (`pin_joins`).
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `CONTROL_AT` — where Control
