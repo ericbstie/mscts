@@ -29,6 +29,10 @@ lead routes each change and both review it.
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #347: a survival dig's acceptance counts the player's own `ServerPlayerGameMode.gameTicks`, which a frozen world still advances: time survival digs by the clock (0.05 s a tick), not by stepping.
+- #347: a STOP refused at the 0.7 check arms a delayed destroy that breaks the block a tick later once the player has been alive (since its join or respawn) for 1/progress - 1 ticks. An "early finish is refused" case holds only right after a join or respawn, and only for slow digs.
+- #347: disarm a leftover delayed destroy after each dig: set the cell to air, then step 1. In survival windows leave out `block_destruction` and `level_event`: they come every tick.
+- #347: pin float math to binary32 (a `struct` round-trip), or float64 mutants survive.
 - #61: after `bot.close_container()`, pass `bot.sync()` before Control's next command: they travel on two connections, and vanilla can run them in either order, which leaves the Bot's InventoryTracker stale (#62 hit the same with a crafting table and `/clear`).
 - #61: a `/give` over one stack makes two item entities in one tick, and the end-of-tick resend of their data follows entity-id hash order: that window leaves `set_entity_data` out. A `context.step` costs about 0.3 s, so four 41-tick windows came to 106 s, over the Self-check's 90 s.
 - #61: a Candidate that never opens a container makes the Bot's next click land in its own inventory menu. The Group checks for `open_screen` first and fails naming the container.

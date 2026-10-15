@@ -42,6 +42,8 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #368: `@e` selectors carry `Entity::isAlive`, so `execute if entity @e[...]` fails the moment `kill` runs, and a killed body stays 20 ticks (`LivingEntity.tickDeath`). To know the bodies are gone, wait until a Bot beside them tracks only players (`_world.remove_tagged_until_gone`).
+- #368: Pumpkin (nightly f1c0871) has no `/execute` (`command.unknown.command`), and drops a killed mob's loot with `mob_drops` false.
 - #360: `Bot.wait_until_handled` proves the server handled what a Bot sent in about one packet pass (about 50 ms); use it before a step. Use `sync` (3 passes) only when you need everything the action caused. The proof is measured on vanilla only (#376).
 - #360: run a family's stress series under one outer `live_lock.py`, so the runs do not wait for the lock one by one; for runs past the 2 h background cap, detach the driver with `setsid` and prefix watcher lines with the file name.
 - #37: in a frozen world `ChunkMap.tick` still runs `ServerEntity.sendChanges` every server tick, so an entity's periodic `move_entity_pos`, `set_entity_motion` and `entity_position_sync` follow the wall clock and cannot be compared tick-exact. One-off packets (`add_entity`, `remove_entities`, a dirty `set_entity_data`) stay on their step.

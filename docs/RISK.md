@@ -36,6 +36,10 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | every category rare pooled into one column, and the name was never tested | the re-review | no |
+| 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | sample counts never compared: 500 samples against 2 matched | the second review | no |
+| 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | a category only one side had was pooled into another and matched | the second review | no |
+| 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | a statistical Group's plays were not independent: a Bot name rejoined at its saved place | the first review | no |
 | 2026-10-09 | #330 | comparison core | unknown | the tick Divergence of a chunk batch marker | the first review of #341 | yes |
 | 2026-10-09 | #342 | comparison core | unknown | the status `description` canonical form | the first review of #341 | yes |
 | 2026-10-09 | #330 | comparison core | #341 (`scrutiny::high`) | a not-scored line ignored `NETWORK_TRAFFIC_ONLY_PASSES` | both reviews of #341 | no |
@@ -57,6 +61,10 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #379 |  | high | lead's diff read, first review, second review, re-review | 0, 1, 2, 1 | none: no barrier or window change |
+| #381 | medium | medium | lead's diff read | 0 | 5, all green: `blocks/dig-survival` 100 of 100 plays |
+| #380 | medium | medium | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 for each touched Group |
+| #378 | low | low | lead's diff read | 0 | none |
 | #367 | high | high | lead's diff read, first review, second review | 0, 0, 0 | 5 per family, all green: inventory 100 of 100 plays, movement 200 of 200, blocks 300 of 300, combat 600 of 600, `player/fall` 100 of 100 (its first series was killed by the lead and rerun from the start); the full 3-request barrier of the first branch had overrun `player/fall`'s budget |
 | #372 |  | high, lowered to medium (no core change) | lead's diff read | 0 | none: no barrier or window change; the worker found a scheduled fluid tick saved with the chunk and run in the next play (1 of 2 plays), fixed before the PR |
 | #371 |  | high, lowered to medium (no core change) | lead's diff read | 0 | none: no barrier or window change; the worker's Self-check matched 18 of 20 while it compared falling-block movement, which it then left out |

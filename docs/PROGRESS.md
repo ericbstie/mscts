@@ -195,6 +195,32 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-15: train 34
+
+- Train 34 (#378, #380, #381, then #379), stacked in that order. On the
+  train's tip every commit checked, reference 35 of 35, candidate 15 of 15.
+- #379 (#24): `statistical` Groups. A statistical Group plays `runs` times
+  per side (50 by default), the sides taking turns, and records named
+  samples with `context.sample`. Each name is judged by a test (exact
+  Kolmogorov–Smirnov conditional on ties; chi-square with pooling;
+  Fisher's exact test or a seeded permutation test when pooling leaves
+  too little), and so is its count per play, with Holm's correction at
+  α = 0.01. `mscts run --statistical` plays them once per Run whatever
+  `--repeat` says. The live `spawn/join-position` check moved to #72.
+  Two reviews and a re-review found 4 blocking bugs, all fixed first.
+- #381 (#347, #36): `blocks/dig-survival`. A STOP refused at the 0.7 check
+  still breaks the block a tick later through the delayed destroy once the
+  player has been alive long enough since its join or respawn
+  (docs/research/2026-10-14-dig-finish.md). The Group is `exact`, timed
+  by the clock, since a frozen world still ticks players. Five stress
+  runs passed.
+- #380 (#368): `_world.remove_tagged_until_gone` kills a Group's tagged
+  entities and waits until a Bot beside them tracks only players; it
+  never asks with `execute`, which Pumpkin lacks. Pumpkin still fails
+  the entities Groups' clean-up: it drops loot with `mob_drops` off.
+- #378 (#369): a live tier with its Installation missing fails before it
+  waits for the live lock, and names the install command.
+
 ### 2026-10-14: train 33
 
 - Train 33 (#371, then #372): `blocks/gravity` and `blocks/support` (#37);
