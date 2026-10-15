@@ -21,6 +21,7 @@ from mscts.compare import (
 from mscts.measure import Measurement
 from mscts.report import Report
 from mscts.run import GroupResult, SideSummary
+from mscts.stats import Difference, Shares, Spread, Summary
 from mscts.target import TARGET
 
 
@@ -68,6 +69,37 @@ def _report(*divergences: Divergence) -> Report:
 
 def test_a_report_reads_back_as_the_same_report() -> None:
     report = _report(_divergence("mscts", {"text": "mscts", "extra": [1, 2.5, True, None]}))
+
+    assert report_json.loads(report_json.dumps(report)) == report
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate", "tested"),
+    [
+        (
+            Spread(50, 0.25, (-1.5, 2.0)),
+            Spread(49, 1.0, (0.5, 3.0)),
+            Difference("Kolmogorov-Smirnov", "D", 0.4, 0.00058),
+        ),
+        (Shares(50, (("husk", 0.4), ("zombie", 0.6))), None, None),
+    ],
+    ids=["numbers", "categories"],
+)
+def test_a_distribution_s_summaries_and_test_read_back_as_themselves(
+    reference: Summary, candidate: Summary, tested: Difference | None
+) -> None:
+    rejected = Divergence(
+        bot="",
+        index=0,
+        kind="distribution",
+        packet="",
+        path=None,
+        reference=reference,
+        candidate=candidate,
+        test_case="spawn.distance",
+        tested=tested,
+    )
+    report = _report(rejected)
 
     assert report_json.loads(report_json.dumps(report)) == report
 

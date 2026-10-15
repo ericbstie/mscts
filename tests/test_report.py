@@ -18,6 +18,7 @@ from mscts.compare import (
 )
 from mscts.report import LineResult, Report, render_markdown, render_text, report_lines
 from mscts.run import GroupResult, SideSummary
+from mscts.stats import Difference, Shares, Spread, Summary
 from mscts.target import TARGET
 
 
@@ -497,3 +498,70 @@ def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
     )
     text = render_text(_report(_result(_verdict(late))), verbose=True)
     assert "block_update\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text
+
+
+def _distribution(name: str, tested: Difference | None, **sides: Summary) -> Divergence:
+    return Divergence(
+        bot="",
+        index=0,
+        kind="distribution",
+        packet="",
+        path=None,
+        reference=sides["reference"],
+        candidate=sides["candidate"],
+        test_case=name,
+        tested=tested,
+    )
+
+
+def test_one_sample_is_a_sample_in_the_summaries() -> None:
+    one = _distribution(
+        "x",
+        Difference("Kolmogorov-Smirnov on samples per play", "D", 0.98, 1e-27),
+        reference=Spread(samples=1, median=1000.0, quartiles=(1000.0, 1000.0)),
+        candidate=Shares(samples=1, shares=(("minecraft:pig", 1.0),)),
+    )
+    verdict = Verdict("spawn/join", Outcome.MISMATCH, (one,))
+
+    text = render_text(_report(_result(verdict)), verbose=True)
+
+    assert "vanilla 1 sample, median 1000," in text, text
+    assert "pumpkin 1 sample, minecraft:pig 100%" in text, text
+
+
+def test_verbose_shows_a_distribution_s_test_and_both_sides_summaries() -> None:
+    numbers = _distribution(
+        "distance",
+        Difference("Kolmogorov-Smirnov", "D", 0.4, 0.00058),
+        reference=Spread(samples=50, median=0.16608, quartiles=(-0.39263, 0.66314)),
+        candidate=Spread(samples=50, median=0.86373, quartiles=(0.02174, 1.41278)),
+    )
+    categories = _distribution(
+        "mob",
+        Difference("chi-square", "V", 0.52, 0.0031),
+        reference=Shares(samples=50, shares=(("minecraft:zombie", 0.6), ("minecraft:husk", 0.4))),
+        candidate=Shares(samples=40, shares=(("minecraft:zombie", 1.0),)),
+    )
+    untested = _distribution(
+        "drop",
+        None,
+        reference=Shares(samples=10, shares=(("minecraft:bone", 1.0),)),
+        candidate=None,
+    )
+    verdict = Verdict("spawn/join", Outcome.MISMATCH, (numbers, categories, untested))
+    text = render_text(_report(_result(verdict)), verbose=True)
+    assert (
+        "✗ spawn/join/distance\n"
+        "  Kolmogorov-Smirnov D = 0.40, p = 0.00058: vanilla 50 samples, median 0.1661,"
+        " quartiles -0.3926 and 0.6631; pumpkin 50 samples, median 0.8637,"
+        " quartiles 0.02174 and 1.413\n"
+    ) in text, text
+    assert (
+        "✗ spawn/join/drop\n"
+        "  not tested: vanilla 10 samples, minecraft:bone 100%; pumpkin no samples\n"
+    ) in text, text
+    assert (
+        "✗ spawn/join/mob\n"
+        "  chi-square V = 0.52, p = 0.0031: vanilla 50 samples, minecraft:zombie 60%,"
+        " minecraft:husk 40%; pumpkin 40 samples, minecraft:zombie 100%\n"
+    ) in text, text

@@ -268,20 +268,6 @@ async def test_a_group_with_its_own_spec_gets_instances_of_its_own(
 
 
 @pytest.mark.asyncio
-async def test_a_statistical_group_cannot_run_yet(fake_server: MakeServer, tmp_path: Path) -> None:
-    group = Group(id="test/kind", run=status.basic, kind=GroupKind.STATISTICAL)
-    reference = fake_server("one")
-
-    with pytest.raises(
-        NotImplementedError,
-        match="test/kind is statistical: only exact and tick-exact Groups can run",
-    ):
-        await run([group], reference, fake_server("two"), workdir=tmp_path / "run")
-
-    assert _adapter(reference).prepared == []
-
-
-@pytest.mark.asyncio
 async def test_a_tick_exact_group_runs(fake_server: MakeServer, tmp_path: Path) -> None:
     group = Group(id="test/kind", run=status.basic, kind=GroupKind.TICK_EXACT)
 

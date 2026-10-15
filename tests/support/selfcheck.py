@@ -10,10 +10,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 import pytest
+from _pytest.mark import ParameterSet
 
 import mscts.groups  # noqa: F401 - registers the shipped Groups
 from mscts.compare import Outcome, Verdict
-from mscts.group import GROUPS, Group
+from mscts.group import GROUPS, Group, GroupKind
 from mscts.run import RunResult
 from mscts.spec import ServerSpec
 from mscts.timeline import timeline
@@ -127,7 +128,21 @@ def needs_instances_of_their_own(groups: Sequence[Group], pair_spec: ServerSpec)
     )
 
 
+def selfcheck_params(groups: Mapping[str, Group]) -> list[ParameterSet]:
+    """One `group_id` per Group in `groups`, a statistical Group's marked `statistical`.
+
+    So the unit tier, which leaves the `statistical` mark out, never plays one, and
+    `mise run test:statistical` does.
+    """
+    return [
+        pytest.param(group_id, marks=pytest.mark.statistical)
+        if group.kind is GroupKind.STATISTICAL
+        else pytest.param(group_id)
+        for group_id, group in groups.items()
+    ]
+
+
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
     """Give every test that takes a `group_id` one run per registered Group."""
     if "group_id" in metafunc.fixturenames:
-        metafunc.parametrize("group_id", list(GROUPS))
+        metafunc.parametrize("group_id", selfcheck_params(GROUPS))

@@ -52,8 +52,8 @@ description = "reference tier (live vanilla Instance)"
 run = "uv run python scripts/with_temproot.py --keep-on-failure -- uv run python scripts/live_lock.py --tier reference -- uv run pytest -m reference"
 
 [tasks."test:selfcheck"]
-description = "Self-check tier: every registered Group against two live vanilla Instances"
-run = "uv run python scripts/with_temproot.py --keep-on-failure -- uv run python scripts/live_lock.py --tier selfcheck -- uv run pytest -m selfcheck"
+description = "Self-check tier: every registered Group but the statistical ones against two live vanilla Instances"
+run = "uv run python scripts/with_temproot.py --keep-on-failure -- uv run python scripts/live_lock.py --tier selfcheck -- uv run pytest -m 'selfcheck and not statistical'"
 
 [tasks."test:candidate"]
 description = "candidate tier (live Candidate Instance)"
@@ -61,7 +61,7 @@ run = "uv run python scripts/with_temproot.py --keep-on-failure -- uv run python
 
 [tasks."test:statistical"]
 description = "statistical tier (opt-in, slow; ADR-0006)"
-run = "uv run python scripts/with_temproot.py --keep-on-failure -- uv run pytest -m statistical"
+run = "uv run python scripts/with_temproot.py --keep-on-failure -- uv run python scripts/live_lock.py -- uv run pytest -m statistical"
 
 [tasks."regen:packets"]
 description = "Regenerate and verify the committed packets.json and registry_names.json (--write to update them); needs install:reference"

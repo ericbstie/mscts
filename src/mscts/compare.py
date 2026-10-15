@@ -45,6 +45,7 @@ from mscts.codec.registry_names import registry_names
 from mscts.codec.schemas.play.chunks import BIOMES, BLOCK_STATES, PalettedContainer
 from mscts.codec.wire import WireError
 from mscts.spec import CONTROL_PLAYER
+from mscts.stats import Difference
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
 
@@ -365,7 +366,7 @@ that is not a player has the same UUID: then it shows that entity's number.
 """
 
 
-type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed"]
+type DivergenceKind = Literal["bot", "missing", "unexpected", "field", "failed", "distribution"]
 
 
 class Observability(StrEnum):
@@ -411,9 +412,15 @@ class Divergence:
             Candidate failure, `run.judge`; never made by `compare`). `bot` is the Bot
             that failed, or "" when the Group's own script raised; `packet` is "",
             `index` 0, `reference` ABSENT.
-        packet: The packet name; "" for `bot` and `failed`.
+            `distribution`: a statistical Group's samples of one name do not come from
+            one distribution (`run.judge_samples`; never made by `compare`). `bot` and
+            `packet` are "", `index` 0, `test_case` the sample name; `reference` and
+            `candidate` are each side's `stats.Summary`; `tested` is the test that
+            rejected.
+        packet: The packet name; "" for `bot`, `failed` and `distribution`.
         path: Where in the matched Packets they differ, or None for their whole
-            payload. Always None for `bot`, `missing`, `unexpected` and `failed`.
+            payload. Always None for `bot`, `missing`, `unexpected`, `failed` and
+            `distribution`.
         reference: The value in the reference, or ABSENT. For `bot`, the number of
             the Bot's Events. For a gameplay difference in a chunk's blocks, biomes or
             light, a text that names the chunk and the first positions that differ, with
@@ -431,6 +438,9 @@ class Divergence:
             or `chunk_batch_finished`, or one on another tick (`TICK_PATH`), which leave
             the client's world as it is. `gameplay`:
             every other Divergence, including every `bot` and `failed` one.
+        tested: For `distribution`, the test that rejected, its p-value after Holm's
+            correction; None if a side has no samples of the name, or one side's are
+            numbers and the other's categories. None for every other kind.
     """
 
     bot: str
@@ -442,6 +452,7 @@ class Divergence:
     candidate: object
     test_case: str
     observability: Observability = Observability.GAMEPLAY
+    tested: Difference | None = None
 
     def __post_init__(self) -> None:
         """Refuse a `bot` or `failed` Divergence that is network traffic.

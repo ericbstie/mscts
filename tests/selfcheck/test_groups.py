@@ -21,10 +21,14 @@ from pathlib import Path
 
 import pytest
 from support.reference import attached, own_reference
-from support.selfcheck import keep_timelines_and_describe, needs_instances_of_their_own, repeat_from
+from support.selfcheck import (
+    keep_timelines_and_describe,
+    needs_instances_of_their_own,
+    repeat_from,
+)
 
 from mscts.compare import Outcome
-from mscts.group import Group, resolve
+from mscts.group import Group, GroupKind, resolve
 from mscts.run import RunResult, run_results
 from mscts.runner import Instance
 
@@ -49,7 +53,10 @@ async def test_selfcheck(  # noqa: PLR0913, PLR0917 - a test is its fixtures
     groups = resolve([group_id])
     result = await _play(groups, (reference, second_reference), cache_dir, tmp_path, repeat)
     verdicts = result.verdicts
-    assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * repeat
+    # A statistical Group is one comparison whatever the repeat (#24): `run_results`.
+    assert [len(played.verdicts) for played in result.results] == [
+        1 if group.kind is GroupKind.STATISTICAL else repeat for group in groups
+    ]
     if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
         message = keep_timelines_and_describe(result, tmp_path / "timelines")
         pytest.fail(message, pytrace=False)

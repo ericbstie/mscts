@@ -190,25 +190,34 @@ def _status(arguments: argparse.Namespace, _world: _World) -> int:
     return 0
 
 
-_PLAYABLE_KINDS = frozenset({GroupKind.EXACT, GroupKind.TICK_EXACT})
+def _groups(pattern: str, *, statistical: bool) -> tuple[tuple[Group, ...], tuple[str, ...]]:
+    """The registered Groups whose id matches `pattern`, with their prerequisites, to play.
 
-
-def _groups(pattern: str) -> tuple[Group, ...]:
-    """The registered Groups a Run plays whose id matches `pattern`, with their prerequisites.
-
-    A Run plays exact and tick-exact Groups; statistical ones need M6b.
+    Statistical Groups are played only if `statistical`: the ids of those left out come
+    second.
     """
-    playable = sorted(
-        group_id for group_id, group in GROUPS.items() if group.kind in _PLAYABLE_KINDS
-    )
-    chosen = [group_id for group_id in playable if fnmatch.fnmatchcase(group_id, pattern)]
-    if not chosen:
+    matching = sorted(group_id for group_id in GROUPS if fnmatch.fnmatchcase(group_id, pattern))
+    playable = [
+        group_id
+        for group_id, group in GROUPS.items()
+        if statistical or group.kind is not GroupKind.STATISTICAL
+    ]
+    chosen = [group_id for group_id in matching if group_id in playable]
+    left_out = tuple(group_id for group_id in matching if group_id not in playable)
+    if left_out and not chosen:
         msg = (
-            f"no registered exact or tick-exact Group matches --group {pattern!r}; "
-            f"the registered ones are {', '.join(playable)}"
+            f"--group {pattern!r} matches only statistical Groups ({', '.join(left_out)}): "
+            "add --statistical to play them"
         )
         raise _UsageError(msg)
-    return resolve(chosen)
+    if not chosen:
+        kinds = "" if statistical else "exact or tick-exact "
+        msg = (
+            f"no registered {kinds}Group matches --group {pattern!r}; "
+            f"the registered ones are {', '.join(sorted(playable))}"
+        )
+        raise _UsageError(msg)
+    return resolve(chosen), left_out
 
 
 def _server(name: str, *, now: install.Clock) -> run.Server:
@@ -220,7 +229,9 @@ def _server(name: str, *, now: install.Clock) -> run.Server:
 
 
 def _run(arguments: argparse.Namespace, world: _World) -> int:
-    groups = _groups(str(arguments.group))
+    groups, left_out = _groups(str(arguments.group), statistical=bool(arguments.statistical))
+    for group_id in left_out:
+        sys.stderr.write(f"skipping {group_id}: it is statistical; add --statistical to play it\n")
     repeat = int(arguments.repeat)
     if repeat < 1:
         msg = f"--repeat must be at least 1, not {repeat}"
@@ -349,6 +360,11 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_REPEAT,
         metavar="N",
         help=f"how many times to play each Group (default: {DEFAULT_REPEAT})",
+    )
+    running.add_argument(
+        "--statistical",
+        action="store_true",
+        help="also play statistical Groups, each many times on each server",
     )
     running.add_argument(
         "-v",

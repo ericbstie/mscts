@@ -99,6 +99,7 @@ test needs it:
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict`; `window_takes` |
 | `measure.py` | `Measurement`, span extraction, stats |
+| `stats.py` | the two-sample tests of statistical Groups: `kolmogorov_smirnov`, `categories_test` → `Difference` (#24) |
 | `report.py`, `cli.py` | `Report`, the `mscts` command |
 
 ## Interfaces
@@ -1331,8 +1332,20 @@ class Transcript:                   # a plain data holder: no I/O
     # to_jsonl() / from_jsonl() — payload as hex, fields as JSON
 
 class GroupContext:
-    def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None: ...
+    def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float,
+                 samples: SampleLog | None = None) -> None: ...
+                                    # samples: where sample() adds, after the samples of the
+                                    # side's earlier plays (#24); None: a log of its own
     endpoint: Endpoint
+    play: int                       # property, #24: a statistical Group's play on this
+                                    # side, 0 to runs - 1 (SampleLog.play; 0 for other
+                                    # kinds); its Bots are named by it
+    def sample(self, name: str, value: Sample) -> None: ...   # #24: SampleLog.add on its
+                                    # log. ValueError: an empty name, a number that is
+                                    # not finite, or a number for a name holding categories (or
+                                    # the other way round); TypeError: not int, float or str
+                                    # (a bool is refused)
+    samples: Mapping[str, Series]   # property: every sample so far, by name (SampleLog.series)
     control: Control                # an OperatorBot (ADR-0001), the same one on every read;
                                     # its Bot is one of the context's Bots (closed, synced
                                     # and drained with them, and named by raised_by)
@@ -1471,11 +1484,14 @@ class Group:
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
     kind: GroupKind = GroupKind.EXACT
+    runs: int = DEFAULT_RUNS        # #24: a statistical Group's plays per server per Verdict;
+                                    # other kinds ignore it. ValueError if less than 1
+DEFAULT_RUNS = 50
 
 GROUPS: Mapping[str, Group]         # the registered Groups, by id, in registration order:
                                     # a read-only view; mscts.groups registers its own on import
 def group(id: str, *, requires=(), masks=(), spec=identity,
-          kind=GroupKind.EXACT) -> Callable[[Script], Script]: ...
+          kind=GroupKind.EXACT, runs=DEFAULT_RUNS) -> Callable[[Script], Script]: ...
     # the decorator: registers Group(id, the function, ...) and returns the function;
     # ValueError if `id` is registered already
 def resolve(group_ids: Iterable[str], groups: Mapping[str, Group] = GROUPS
@@ -1518,8 +1534,8 @@ class Divergence:
     index: int                      # position in the Bot's normalized stream, from 0: the
                                     # reference stream for missing and field, the candidate
                                     # stream for unexpected; 0 for bot
-    kind: Literal["bot", "missing", "unexpected", "field", "failed"]
-    packet: str                     # the packet name ("" for bot and failed)
+    kind: Literal["bot", "missing", "unexpected", "field", "failed", "distribution"]
+    packet: str                     # the packet name ("" for bot, failed and distribution)
     path: str | None                # None: the whole payload (and always for bot/missing/unexpected)
     reference: object               # the packet's value, or ABSENT (a chunk, light update
     candidate: object               # or forgotten chunk one side has: "chunk <x> <z>", step 4)
@@ -1528,6 +1544,7 @@ class Divergence:
                                     # the path's, the raw one for network traffic, for any
                                     # other field one); "" for bot and failed (Group-level)
     observability: Observability = Observability.GAMEPLAY
+    tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
     #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
@@ -1544,6 +1561,14 @@ class Divergence:
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
+    # distribution: a statistical Group's sample name rejected (made by run.judge_samples,
+    #   never by compare, #24): bot and packet "", index 0, test_case the sample name,
+    #   reference and candidate each side's stats.Summary (Spread, Shares, or None for
+    #   no samples; report.json writes them as {"samples": n, ...}), path None, tested the
+    #   test that rejected, its p_value Holm-adjusted, or None when untested
+    #   (stats.Decision.difference None); report.json writes it as "tested" only when set.
+    #   The Report formats it ("Kolmogorov-Smirnov D = 0.40, p = 0.00058": effect size to 2
+    #   decimals, p to 2 significant digits).
 
 @frozen
 class Verdict:
@@ -1706,9 +1731,22 @@ class Attached:                     # one side of a Run: an Instance someone els
 type Side = Server | Attached
 
 async def run_group(group: Group, endpoint: Endpoint, *, server: str,
-                    timeout_s: float = GROUP_TIMEOUT_S) -> Transcript: ...
+                    timeout_s: float = GROUP_TIMEOUT_S,
+                    samples: SampleLog | None = None) -> Transcript: ...
     # one Instance; closes every Bot however it ends; GroupError if the Group raised, or if
-    # GroupContext.end (called once the Group completes, before closing) refused a disconnect
+    # GroupContext.end (called once the Group completes, before closing) refused a disconnect;
+    # the Group's samples are added to `samples` (GroupContext's samples=)
+type Samples = Mapping[str, Series]   # a statistical Group's samples on one server, by name
+def judge_samples(group: Group, reference: Samples | Exception,
+                  candidate: Samples | Exception) -> Verdict: ...
+    # #24, a statistical Group's Verdict; test_cases the Reference's sample names, sorted.
+    # A side's Exception is its failure: a play's GroupError, or what the wait for no player
+    # online between plays raised (PlayersStillOnline, ...). The Reference's: `error` "the
+    # Reference failed: ..."; the Reference recorded no sample: `error` "the Reference
+    # recorded no samples: ...". The Candidate's: `mismatch` led by its `failed` Divergence
+    # (bot the GroupError's, else ""), as in judge (the Report fails each name).
+    # Else stats.decide: `match`, or `mismatch` with a `distribution` Divergence per rejected
+    # name, in name order.
 def judge(group: Group, reference: Transcript | GroupError,
           candidate: Transcript | GroupError) -> Verdict: ...
     # The Verdict rule (audit H3): a Candidate failure (a GroupError on the Candidate and
@@ -1780,7 +1818,16 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # compare(reference, reference, masks), which the Report fails, as for #262; the
     # Reference raising, or that self-comparison raising, is `error` as in judge. Its
     # Measurements and `elapsed_s` are the Reference's play; no Transcripts are kept.
-    # NotImplementedError for a statistical Group (M6b); ValueError for one
+    # #24: a statistical Group is played `runs` times on each side, the sides taking turns
+    # (Reference, Candidate, Reference, ...), each side's samples pooled by name, and
+    # judged by judge_samples; before each play but the first, the side is waited on
+    # (until_no_player_online), a failing wait being that side's GroupError (its message
+    # the wait's, as above). The first failing play ends that side's plays; the
+    # Reference's ends both, and after the Candidate's the Reference plays on. It measures
+    # nothing and keeps no Transcript. Played on the Reference alone (#266), it plays
+    # once, for its sample names. It is played in the first repetition only, whatever
+    # `repeat` is (its runs are its repetitions); a Group requiring it gets that Verdict
+    # in every repetition. ValueError for a Group
     # listed twice, listed before a Group it requires or requiring one not listed (resolve
     # orders them; review B LOW-R2), or whose `spec` does not give an Attached side's spec
     # (host and port aside: it would run against the wrong config), before anything
@@ -1791,7 +1838,8 @@ async def selfcheck(group_ids: Sequence[str], *, reference: Server, workdir: Pat
     # run(resolve(group_ids), attached or reference, reference, ...): two Reference
     # Instances (one of them `attached`, if given, which must be of reference's Adapter:
     # ValueError), the prerequisites included; KeyError (unknown id) before anything
-    # starts. G2: all `match`.
+    # starts. G2: all `match`. A statistical Group is one comparison, whatever `repeat`
+    # is (run plays it once).
     # (The `mscts selfcheck` command wraps it; the caller gets `reference`'s Installation with install.require.)
 ```
 
@@ -2454,6 +2502,82 @@ class Stats:
 
 def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 
+# stats.py (#24): two-sample tests, in-repo (the standard library only; no scipy).
+@frozen
+class Difference:
+    test: str                       # "Kolmogorov-Smirnov", "chi-square", "Fisher's exact",
+                                    # PERMUTATION or PER_PLAY
+    effect: str                     # the effect size's name: "D", or "V" (Cramér's V)
+    effect_size: float              # 0 (alike) to 1
+    p_value: float
+
+def kolmogorov_smirnov(reference: Sequence[float], candidate: Sequence[float]) -> Difference: ...
+    # D, and the exact p-value given the pooled values (Hodges' lattice-path count, read
+    # only where the pooled values change, so ties too). ValueError if a side has no samples.
+def categories_test(reference: Sequence[str], candidate: Sequence[str], *,
+               rng: random.Random) -> Difference | None: ...
+    # Pearson's test of homogeneity of the two-row table, after pooled(); V = sqrt(chi2 / N).
+    # Two columns left, one sparse: fisher_exact instead. One column left (every category
+    # sparse): the raw table, by fisher_exact if it has two columns, else by
+    # permutation_chi_square (test PERMUTATION); one raw column: None (no test).
+    # ValueError if a side has no samples.
+MIN_EXPECTED = 5
+def pooled(columns: Sequence[tuple[int, int]]) -> list[tuple[int, int]]: ...
+    # adds the categories the smaller side expects fewer than MIN_EXPECTED of into one
+    # other category, last; never merges one into a real category
+def fisher_exact(first: tuple[int, int], second: tuple[int, int]) -> float: ...
+    # two-sided, in integers: the tables no likelier than this one, given the margins
+def chi_square_survival(statistic: float, df: int) -> float: ...   # closed form; df >= 1
+def permutation_chi_square(reference: Sequence[str], candidate: Sequence[str],
+                           rng: random.Random, permutations: int = PERMUTATIONS) -> float: ...
+    # Pearson's statistic over `permutations` shuffles of the pooled samples drawn from rng;
+    # p = (k + 1) / (permutations + 1), k the shuffles at least as far apart
+PERMUTATIONS = 10_000
+PERMUTATION_SEED = 24               # judge_samples seeds decide's rng with it (ADR-0006)
+PERMUTATION = "chi-square permutation"
+
+ALPHA = 0.01                        # each sample name's level, after Holm's correction
+type Sample = float | str           # a number, or a category
+@frozen
+class Numbers: values: tuple[float, ...]; per_play: tuple[int, ...]
+                                    # one name's samples on one server, and how many each
+                                    # play recorded (0 included)
+@frozen
+class Categories: values: tuple[str, ...]; per_play: tuple[int, ...]
+type Series = Numbers | Categories
+class SampleLog:                    # one server's samples over a Group's plays
+    def new_play(self) -> None: ...  # the runner calls it before each play
+    play: int                       # property: the last new_play's index from 0; 0 before
+    def add(self, name: str, value: Sample) -> None: ...   # the checks GroupContext.sample
+                                    # documents, a name's kind kept over every play
+    def series(self) -> dict[str, Series]: ...   # by name, in first-recorded order
+@frozen
+class Spread: samples: int; median: float; quartiles: tuple[float, float]
+                                    # statistics.quantiles, inclusive
+@frozen
+class Shares: samples: int; shares: tuple[tuple[str, float], ...]
+                                    # each category's share to 3 decimals, in category order
+type Summary = Spread | Shares | None   # None: no samples
+@frozen
+class Decision:
+    name: str                       # the sample name, "spawn.distance"
+    rejected: bool                  # adjusted p_value <= ALPHA, or no test (below)
+    difference: Difference | None   # None: a side has no samples of the name, or one side's
+                                    # are numbers and the other's categories
+    p_value: float | None           # Holm-adjusted over the Group's tested names
+    reference: Summary
+    candidate: Summary
+def decide(reference: Mapping[str, Series], candidate: Mapping[str, Series], *,
+           rng: random.Random) -> tuple[Decision, ...]: ...
+    # every name either side has, in name order: numbers by kolmogorov_smirnov, categories
+    # by categories_test, and each name's per_play counts by kolmogorov_smirnov (test PER_PLAY,
+    # "Kolmogorov-Smirnov on samples per play"); every test's p-value corrected together by
+    # holm; a test nothing can tell apart (one value on both sides, or one category after
+    # pooling) is left out of holm; a name rejects if either test does, its difference and
+    # p_value the test with the smaller corrected p
+def holm(p_values: Sequence[float]) -> list[float]: ...   # Holm-Bonferroni, same order
+def summary(series: Series | None) -> Summary: ...
+
 # run.py: run_results(groups, reference, candidate, *, workdir, repeat=1,
 #                     keep_transcripts=False) -> RunResult
 # plays exactly as run() does (run() returns its .verdicts); a repetition the Candidate
@@ -2461,7 +2585,8 @@ def stats(values: Sequence[float]) -> Stats: ...   # ValueError on no values
 @frozen
 class GroupResult:
     group_id: str
-    verdicts: tuple[Verdict, ...]                    # one per repetition
+    verdicts: tuple[Verdict, ...]                    # one per repetition (one in all,
+                                                     # for a statistical Group)
     reference: tuple[tuple[Measurement, ...], ...]   # one tuple per repetition
     candidate: tuple[tuple[Measurement, ...], ...]
     elapsed_s: tuple[float, ...] = () # both plays and Comparison per repetition (the
@@ -2486,7 +2611,8 @@ class RunResult:
     results: tuple[GroupResult, ...]
     reference: SideSummary
     candidate: SideSummary
-    verdicts: tuple[Verdict, ...]   # property: repetition after repetition
+    verdicts: tuple[Verdict, ...]   # property: repetition after repetition, each Group's
+                                    # that had one (a statistical Group's in the first)
 
 @frozen
 class Report:                       # report.py
@@ -2638,7 +2764,7 @@ mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--
 | --- | --- | --- | --- |
 | unit | (default) | nothing external: localhost sockets and short helper processes only | `mise run check` (lint, format, types, bandit, unit tests) |
 | reference | `@pytest.mark.reference` | Java 25; vanilla installed (`mise run install:reference`, which the web SessionStart hook runs) | `mise run test:reference` |
-| selfcheck | `@pytest.mark.selfcheck` | Java 25; vanilla installed. One test per registered Group (`tests/selfcheck/`, parametrised from `GROUPS`): its Self-check on two Reference Instances booted once for the tier, 3 times by default (`MSCTS_SELFCHECK_REPEAT`); `-k` picks Groups by id | `mise run test:selfcheck` |
+| selfcheck | `@pytest.mark.selfcheck` | Java 25; vanilla installed. One test per registered Group (`tests/selfcheck/`, parametrised from `GROUPS`): its Self-check on two Reference Instances booted once for the tier, 3 times by default (`MSCTS_SELFCHECK_REPEAT`); `-k` picks Groups by id; a statistical Group's is marked `statistical` too and left to that tier (`-m 'selfcheck and not statistical'`) | `mise run test:selfcheck` |
 | candidate | `@pytest.mark.candidate` | a Candidate installed (`mscts adapter install pumpkin [--from PATH]`) | `mise run test:candidate` |
 | statistical | `@pytest.mark.statistical` | live servers, many repetitions (slow) | `mise run test:statistical` (opt-in; ADR-0006) |
 
@@ -2714,8 +2840,15 @@ the nether roof, …).
 
 **M6b — Statistical mechanics (ADR-0006).** The `statistical` tier and Run
 profile, a distribution test with a stated confidence level, and a
-per-kind Self-check. Then join spawn position, mob spawn rates, loot
-tables and random ticks.
+per-kind Self-check. Landed in #24: a statistical Group plays `runs`
+times per server (50 by default) and records named samples
+(`GroupContext.sample`); each name is judged by a two-sample
+Kolmogorov-Smirnov test (numbers) or a chi-square test of homogeneity
+(categories, pooled under 5 expected), at α = 0.01 after Holm-Bonferroni
+over the Group's names (`stats.py`, `run.judge_samples`); `mscts run`
+plays them only with `--statistical`, and their Self-check is one
+Reference against Reference comparison in the `statistical` tier. Then
+join spawn position (#72), mob spawn rates, loot tables and random ticks.
 
 **M7 — Performance.** Repetitions with statistics, multi-Bot load (N
 concurrent joins, chunk throughput), and process metrics (RSS, CPU).

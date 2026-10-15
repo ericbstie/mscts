@@ -23,6 +23,7 @@ from mscts.codec.schemas.play.commands import root_literals
 from mscts.compare import HEARTBEAT, OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN, TICK_MARK, Mask
 from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
+from mscts.stats import Sample, SampleLog, Series
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
 
@@ -211,10 +212,22 @@ class GroupContext:
             it: the Instance is not fit for another Group (#228).
     """
 
-    def __init__(self, endpoint: Endpoint, transcript: Transcript, *, timeout_s: float) -> None:
-        """Play against `endpoint`, recording to `transcript`, each Bot bounded by `timeout_s`."""
+    def __init__(
+        self,
+        endpoint: Endpoint,
+        transcript: Transcript,
+        *,
+        timeout_s: float,
+        samples: SampleLog | None = None,
+    ) -> None:
+        """Play against `endpoint`, recording to `transcript`, each Bot bounded by `timeout_s`.
+
+        Each `sample` is added to `samples`, after those it holds already (a statistical
+        Group's earlier plays on the same server); without it, to a log of the context's own.
+        """
         self.endpoint = endpoint
         self._transcript = transcript
+        self._samples = SampleLog() if samples is None else samples
         self._timeout_s = timeout_s
         self._bots: dict[str, Bot] = {}
         self._unconnected: tuple[str, Exception] | None = None
@@ -227,6 +240,35 @@ class GroupContext:
     def control(self) -> Control:
         """The Control channel: an Operator Bot, called `control`, that joins on first use."""
         return self._control
+
+    @property
+    def play(self) -> int:
+        """Which of a statistical Group's plays on this Instance this is, from 0.
+
+        Always 0 for another kind. A Group names its Bots by it, so that no play joins a
+        player an earlier play left behind (`SampleLog.play`).
+        """
+        return self._samples.play
+
+    @property
+    def samples(self) -> Mapping[str, Series]:
+        """Every sample recorded so far, by name, in the order recorded."""
+        return self._samples.series()
+
+    def sample(self, name: str, value: Sample) -> None:
+        """Record `value`, a number or a category, as a sample called `name`.
+
+        A statistical Group's Verdict compares, name by name, the samples it recorded over
+        all its plays on each server (`mscts.stats.decide`). A name holds numbers or
+        categories, never both, over all the plays on one server.
+
+        Raises:
+            ValueError: `name` is empty; or `value` is a number that is not finite; or
+                `name` holds numbers and `value` is a category, or the other way round.
+            TypeError: `value` is neither a number (int or float, not bool) nor a category
+                (str).
+        """
+        self._samples.add(name, value)
 
     async def bot(self, name: str) -> Bot:
         """Connect a Bot called `name`, recording to this Group's Transcript.
@@ -652,6 +694,9 @@ def _until_names(until: str | tuple[str, ...] | None) -> tuple[str, ...] | None:
 type Script = Callable[[GroupContext], Awaitable[None]]
 """A Group's script: what it does against one Instance."""
 
+DEFAULT_RUNS = 50
+"""How many times a statistical Group is played on each server unless it says (`runs`)."""
+
 
 @dataclass(frozen=True, slots=True)
 class Group:
@@ -665,6 +710,8 @@ class Group:
             gameplay meaning (ADR-0006).
         spec: How it changes the Run's ServerSpec.
         kind: How it is judged (ADR-0006).
+        runs: How many times a statistical Group is played on each server for one Verdict;
+            other kinds ignore it.
     """
 
     id: str
@@ -673,6 +720,17 @@ class Group:
     masks: tuple[Mask, ...] = ()
     spec: Callable[[ServerSpec], ServerSpec] = identity
     kind: GroupKind = GroupKind.EXACT
+    runs: int = DEFAULT_RUNS
+
+    def __post_init__(self) -> None:
+        """Refuse a Group that runs less than once.
+
+        Raises:
+            ValueError: `runs` is less than 1.
+        """
+        if self.runs < 1:
+            msg = f"{self.id} runs at least once, not {self.runs}"
+            raise ValueError(msg)
 
 
 _REGISTERED: dict[str, Group] = {}
@@ -684,13 +742,14 @@ GROUPS: Mapping[str, Group] = MappingProxyType(_REGISTERED)
 """
 
 
-def group(
+def group(  # noqa: PLR0913 - one keyword per field of the Group it registers
     id: str,  # noqa: A002 - the Group's id, as PLAN names it
     *,
     requires: tuple[str, ...] = (),
     masks: tuple[Mask, ...] = (),
     spec: Callable[[ServerSpec], ServerSpec] = identity,
     kind: GroupKind = GroupKind.EXACT,
+    runs: int = DEFAULT_RUNS,
 ) -> Callable[[Script], Script]:
     """Return a decorator that registers its function as the script of Group `id`.
 
@@ -703,7 +762,7 @@ def group(
             msg = f"a Group called {id!r} is registered already"
             raise ValueError(msg)
         _REGISTERED[id] = Group(
-            id=id, run=run, requires=requires, masks=masks, spec=spec, kind=kind
+            id=id, run=run, requires=requires, masks=masks, spec=spec, kind=kind, runs=runs
         )
         return run
 

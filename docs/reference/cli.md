@@ -68,7 +68,7 @@ install command and exits with code 1.
 ## `mscts run`
 
 ```
-mscts run --candidate <adapter> [--group GLOB] [--repeat N] [-v | --verbose] [--out DIR]
+mscts run --candidate <adapter> [--group GLOB] [--repeat N] [--statistical] [-v | --verbose] [--out DIR]
 ```
 
 Starts vanilla and the Candidate, plays the chosen Groups against both,
@@ -95,7 +95,8 @@ no colours, and neither do `report.md` and `report.json`.
 | --- | --- | --- |
 | `--candidate <adapter>` | required | The Candidate's Adapter. |
 | `--group GLOB` | `status/*` | Group ids to play, matched as a shell glob. mscts adds their prerequisites. The default includes `status/with-player`, which joins a player and waits 6 seconds, so it takes about 14 seconds for each repetition. |
-| `--repeat N` | `5` | How many times to play each Group. Must be at least 1. |
+| `--repeat N` | `5` | How many times to play each Group. Must be at least 1. A statistical Group is not repeated: its own plays are its repetitions. |
+| `--statistical` | off | Also play the statistical Groups `--group` matches. Each one plays 50 times on each server, unless the Group sets another number, once whatever `--repeat` is, so they are slow. Without this option they are skipped, and a line on stderr names each one. |
 | `-v`, `--verbose` | off | Also show the Reference's installed version, Target, repetitions, both values under each test case that differs, and time per Group. |
 | `--out DIR` | none | Also write the Report to `DIR/report.json` and `DIR/report.md`. |
 
@@ -148,7 +149,7 @@ The repository defines these tasks in `mise.toml`:
 | `mise run check` | Lint, format check, type check, bandit and the unit tests. Every commit must pass it. |
 | `mise run fix` | `ruff format` and autofixable lint. |
 | `mise run test:reference` | Tests against a live vanilla server. |
-| `mise run test:selfcheck` | Every registered Group against two live vanilla servers. |
+| `mise run test:selfcheck` | Every registered Group but the statistical ones against two live vanilla servers. |
 | `mise run test:candidate` | Tests against a live Candidate server. |
 | `mise run test:statistical` | Opt-in statistical tests. |
 | `mise run docs:dev` | This site, served locally with live reload. |

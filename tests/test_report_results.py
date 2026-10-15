@@ -11,6 +11,7 @@ from mscts.group import Group
 from mscts.groups import status
 from mscts.report import CaseResult, GroupLine, Line, LineResult, Totals, report_lines, totals
 from mscts.run import GroupError, judge
+from mscts.stats import Spread
 from mscts.transcript import Transcript
 from tests.compare.build import GROUP, packet, transcript
 from tests.test_report import _field, _listed, _report, _result, _verdict
@@ -484,3 +485,30 @@ def test_a_field_that_shows_only_network_traffic_is_listed_when_it_differs() -> 
     assert CaseResult(
         GROUP, "container_set_slot.state_id", LineResult.NOT_SCORED, network_traffic_only=True
     ) in _slot_lines(9)
+
+
+def _rejected(name: str) -> Divergence:
+    """A `distribution` Divergence: the sample name `name` was rejected (#24)."""
+    return Divergence(
+        bot="",
+        index=0,
+        kind="distribution",
+        packet="",
+        path="Kolmogorov-Smirnov D = 0.40, p = 0.00058",
+        reference=Spread(samples=50, median=0.17, quartiles=(-0.39, 0.66)),
+        candidate=Spread(samples=50, median=0.86, quartiles=(0.02, 1.41)),
+        test_case=name,
+    )
+
+
+def test_a_rejected_sample_name_fails_only_itself_not_the_names_under_it() -> None:
+    verdict = Verdict(
+        "spawn/join",
+        Outcome.MISMATCH,
+        (_rejected("spawn"),),
+        test_cases=("spawn", "spawn.distance"),
+    )
+    assert report_lines(_report(_result(verdict))) == (
+        CaseResult("spawn/join", "spawn", LineResult.FAIL),
+        CaseResult("spawn/join", "spawn.distance", LineResult.PASS),
+    )

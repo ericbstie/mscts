@@ -49,14 +49,16 @@ uv run pytest tests/path/test_file.py::test_name
 ### The `selfcheck` tier
 
 `mise run test:selfcheck` plays every registered Group against two vanilla
-servers and expects `match` every time. That is a Self-check. The tier has
+servers and expects `match` every time. Statistical Groups are left to
+`mise run test:statistical`, which plays each one's Self-check once. That is a Self-check. The tier has
 one test for each Group, named by the Group's id, so a Group is covered as
 soon as it is registered, with no test file to write for it. A Group
 that changes the server's settings with `spec` gets two servers of its own,
 which adds two boots.
 
-Each Group is played 3 times. `MSCTS_SELFCHECK_REPEAT` changes that, and `-k`
-picks Groups by id:
+Each Group is played 3 times, except a statistical one, which is one
+comparison. `MSCTS_SELFCHECK_REPEAT` changes that, and `-k` picks Groups
+by id:
 
 ```sh
 MSCTS_SELFCHECK_REPEAT=20 uv run pytest -m selfcheck -k 'status/'
