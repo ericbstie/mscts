@@ -1,13 +1,14 @@
 """Mob pathfinding Groups: how a zombie notices, reaches and attacks a player who stands still.
 
-Each play joins a Bot of its own, puts it at a fixed place and has Control build the play's
-layout. Then the world is frozen. In a short step of its own, the play measures how many ticks
-a read of the game time after a packet adds on this Instance: its offset (`_calibrate`). Then
-Control summons the mobs, so that none of them moves before the clock starts. Control reads the
-game time and steps the world a fixed number of ticks (`tick step`): the play's tick budget.
-The Bot reads what the server sends it about the mobs, and when something a sample is about
-arrives (the zombie's move, a `damage_event`, the door's block change), Control reads the game
-time again. A sample is the number of ticks between the two readings, less the offset. A frozen
+Each play joins a Bot of its own, an operator, puts it at a fixed place and has Control build
+the play's layout. Then the world is frozen. In a short step of its own, the play measures how
+many ticks a read of the game time after a packet adds on this Instance: its offset
+(`_calibrate`). Then Control summons the mobs, so that none of them moves before the clock
+starts. Control reads the game time and steps the world a fixed number of ticks (`tick step`):
+the play's tick budget. The Bot reads what the server sends it about the mobs, and when
+something a sample is about arrives (the zombie's move, a `damage_event`, the door's block
+change), the Bot reads the game time itself, without waiting for the answer before it reads on
+(`_Clock`). A sample is the number of ticks between the two readings, less the offset. A frozen
 world does not advance its game time, so the first tick the mobs live is tick 1.
 
 Every mob is summoned with NBT, which makes vanilla skip `Mob.finalizeSpawn`, where a summoned
@@ -18,10 +19,11 @@ play removes only its own. Mobs' AI draws on a random source of each mob, not th
 so two Instances differ in every play: the samples are compared as distributions (#24).
 """
 
+import asyncio
 import contextlib
 import math
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import cast
 
 from mscts.bot import Bot
@@ -42,11 +44,14 @@ _ZOMBIE_NBT = (
 daylight burns unless its head is covered (`Zombie.aiStep`)."""
 
 _IDLE_S = 1.0
-"""How long the Bot waits for a packet before Control reads the game time to see whether the
-tick budget has run out."""
+"""How long the Bot waits for a packet before it reads the game time to see whether the tick
+budget has run out."""
 
-_SET_TIME_WAIT_S = 10.0
-"""How long the Bot waits for a `set_time`, which a server sends every 20 ticks (1 s)."""
+_WAIT_S = 10.0
+"""How long the Bot waits for a `set_time`, which a server sends every 20 ticks (1 s), or for an
+answer to its read of the game time."""
+
+_SYSTEM_CHAT = "minecraft:system_chat"
 
 _TIME_QUERY = "time query gametime"
 _GAMETIME_KEY = b"commands.time.query.gametime"
@@ -138,37 +143,78 @@ class _Layout:
     clear: tuple[str, ...] = ()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _Clock:
-    """The ticks the world has run since the play's mobs were summoned, read through Control.
+    """The play's clock: the Bot, an operator, reads the game time on its own connection.
+
+    A read does not wait for its answer: the Bot sends `time query gametime` and reads on, so
+    an event that arrives while an earlier read is unanswered is read as it arrives too. The
+    answers come back in the order sent on vanilla; Pumpkin runs each command in a task of its
+    own. The reads are made in the order of the ticks they are about, so once every read is
+    answered, the answers, smallest first, go to the reads in the order they were made.
 
     Attributes:
-        control: What reads the game time.
+        bot: The play's Bot, which reads the game time.
         start: The game time before the play's step.
         offset: How many ticks a read after a packet adds on this Instance (`_calibrate`).
     """
 
-    control: Control
+    bot: Bot
     start: int
     offset: int
+    _reads: list[str | None] = field(default_factory=list)
+    _answers: list[int] = field(default_factory=list)
 
-    async def ticks(self) -> int:
-        """How many ticks the world has run since the start."""
-        return gametime(await self.control.run(_TIME_QUERY)) - self.start
+    async def read(self, name: str | None) -> None:
+        """Ask the game time for the sample called `name`; None to look at the budget."""
+        self._reads.append(name)
+        await self.bot.command(_TIME_QUERY)
 
-    async def tick_of_event(self) -> int:
-        """The tick of a packet the Bot has just received: `ticks` less the offset."""
-        return await self.ticks() - self.offset
+    def take(self, packet: Packet) -> None:
+        """Keep the ticks since the start in `packet`, a `system_chat`, if it is an answer."""
+        answer = _answer(packet)
+        if answer is not None:
+            self._answers.append(answer - self.start)
+
+    def ran(self, budget: int) -> bool:
+        """Whether an answer shows that `budget` ticks have run."""
+        return any(ticks >= budget for ticks in self._answers)
+
+    async def samples(self) -> dict[str, int]:
+        """Wait until every read is answered; the tick of each sample read, less the offset."""
+        while len(self._answers) < len(self._reads):
+            self.take(await self.bot.expect(_SYSTEM_CHAT, timeout_s=_WAIT_S, where=_answers))
+        answers = sorted(self._answers)
+        return {
+            name: ticks - self.offset
+            for name, ticks in zip(self._reads, answers, strict=False)
+            if name is not None
+        }
+
+
+def _answer(packet: Packet) -> int | None:
+    """The game time `packet` gives, if it answers `time query gametime`."""
+    try:
+        return gametime((packet,))
+    except ValueError:
+        return None
+
+
+def _answers(packet: Packet) -> bool:
+    """Whether `packet` answers `time query gametime`."""
+    return _answer(packet) is not None
 
 
 @contextlib.asynccontextmanager
-async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[tuple[Bot, int]]:
-    """Join the play's Bot, set `layout` up in a frozen world; yield the Bot and the offset.
+async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[tuple[Bot, _Clock]]:
+    """Join the play's Bot, set `layout` up in a frozen world; yield the Bot and its clock.
 
-    Control goes away first, so that no mob takes it for a target. The offset is calibrated
-    in the frozen world before the mobs are summoned (`_calibrate`). Once the play is over,
-    the mobs go, then anything they dropped (Pumpkin drops loot whatever the NBT and the game
-    rule), and the Bot waits until it is told their bodies are gone; the blocks go last.
+    Control goes away first, so that no mob takes it for a target. The Bot is made an
+    operator, so that it reads the game time itself. Its offset is calibrated in the frozen
+    world before the mobs are summoned (`_calibrate`). Once the play is over, the mobs go, then
+    anything they dropped (Pumpkin drops loot whatever the NBT and the game rule), and the Bot
+    waits until it is told their bodies are gone; the blocks go, and the Bot stops being an
+    operator, last.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
@@ -178,6 +224,8 @@ async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[tuple[
         await bot.join()
         x, y, z = layout.bot_at
         await control.run(f"tp {name} {x} {y} {z}")
+        await control.run(f"op {name}")
+        undo.push_async_callback(control.run, f"deop {name}")
         for command in reversed(layout.clear):
             undo.push_async_callback(control.run, command)
         for command in layout.build:
@@ -190,7 +238,7 @@ async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[tuple[
         for summon in layout.summons:
             await control.run(summon)
         await bot.sync()
-        yield bot, offset
+        yield bot, _Clock(bot, gametime(await control.run(_TIME_QUERY)), offset)
 
 
 async def _calibrate(control: Control, bot: Bot) -> int:
@@ -199,7 +247,7 @@ async def _calibrate(control: Control, bot: Bot) -> int:
     Control steps the frozen world `_CALIBRATION_TICKS` ticks. The packet is the first
     `set_time` the Bot receives that was stamped after the step began: a server stamps it
     with the game time from before its tick, so it comes from the tick that ends one later
-    (docs/research/2026-10-15-time-query-lag.md). Control reads the game time on receiving it,
+    (docs/research/2026-10-15-time-query-lag.md). The Bot reads the game time on receiving it,
     as a play does on an event, and the offset is how far the answer is past that tick. Then
     the Bot waits for a `set_time` that shows the step has run out.
 
@@ -208,39 +256,56 @@ async def _calibrate(control: Control, bot: Bot) -> int:
     """
     start = gametime(await control.run(_TIME_QUERY))
     end = start + _CALIBRATION_TICKS
-    await control.run(f"tick step {_CALIBRATION_TICKS}")
-    sent_in = await _set_time_after(bot, start) + 1
-    answer = gametime(await control.run(_TIME_QUERY))
+    async with _stepping(control, _CALIBRATION_TICKS):
+        sent_in = await _set_time_after(bot, start) + 1
+        await bot.command(_TIME_QUERY)
+        answer = gametime([await bot.expect(_SYSTEM_CHAT, timeout_s=_WAIT_S, where=_answers)])
+        await _set_time_after(bot, end - 1)
     if answer >= end:
         msg = f"the calibration step ran out before the game time was read: {answer} >= {end}"
         raise RuntimeError(msg)
-    await _set_time_after(bot, end - 1)
     return answer - sent_in
 
 
 async def _set_time_after(bot: Bot, game_time: int) -> int:
     """The game time of the next `set_time` `bot` receives stamped after `game_time`."""
     packet = await bot.expect(
-        _SET_TIME, timeout_s=_SET_TIME_WAIT_S, where=lambda packet: _stamped(packet) > game_time
+        _SET_TIME, timeout_s=_WAIT_S, where=lambda packet: _stamped(packet) > game_time
     )
     return _stamped(packet)
 
 
-async def _start(control: Control, budget: int, offset: int) -> _Clock:
-    """Read the game time, then let the frozen world run `budget` ticks; the play's clock."""
-    clock = _Clock(control, gametime(await control.run(_TIME_QUERY)), offset)
-    await control.run(f"tick step {budget}")
-    return clock
+@contextlib.asynccontextmanager
+async def _stepping(control: Control, ticks: int) -> AsyncIterator[None]:
+    """Let the frozen world run `ticks` ticks while the body reads what the Bot is sent.
+
+    Control returns a few ticks into the step, once its marker is answered and its barrier
+    passed (about 150 ms on vanilla), so a body that waited for it would read the first
+    packets of the step late. It waits for Control on the way out.
+    """
+    step = asyncio.ensure_future(control.run(f"tick step {ticks}"))
+    try:
+        yield
+    finally:
+        await step
 
 
 async def _next(bot: Bot, clock: _Clock, budget: int, names: tuple[str, ...]) -> Packet | None:
-    """The next packet called one of `names` to arrive at `bot`; None once `budget` has run."""
-    while True:
+    """The next packet called one of `names` to arrive at `bot`; None once `budget` has run.
+
+    It takes the answers to the clock's reads on the way. When nothing has come for `_IDLE_S`,
+    the clock is read to see whether the budget has run.
+    """
+    while not clock.ran(budget):
         try:
-            return await bot.expect(*names, timeout_s=_IDLE_S)
+            packet = await bot.expect(*names, _SYSTEM_CHAT, timeout_s=_IDLE_S)
         except TimeoutError:
-            if await clock.ticks() >= budget:
-                return None
+            await clock.read(None)
+            continue
+        if packet.name in names:
+            return packet
+        clock.take(packet)
+    return None
 
 
 def _hurts_the_bot(bot: Bot, packet: Packet) -> bool:
@@ -269,17 +334,24 @@ class _Chase:
 
 async def _chase(context: GroupContext, chase: _Chase) -> None:
     """Play `chase`: sample when the zombie first gets to its waypoint, and when it first hits."""
-    async with _arena(context, chase.layout) as (bot, offset):
+    async with _arena(context, chase.layout) as (bot, clock):
         zombie = bot.entities.find("zombie").id
-        clock = await _start(context.control, chase.budget, offset)
-        reached = False
-        while (packet := await _next(bot, clock, chase.budget, (_DAMAGE, *_MOVES))) is not None:
-            if _hurts_the_bot(bot, packet):
-                context.sample(chase.hit, await clock.tick_of_event())
-                return
-            if not reached and chase.reached(bot.entities[zombie]):
-                reached = True
-                context.sample(chase.waypoint, await clock.tick_of_event())
+        async with _stepping(context.control, chase.budget):
+            reached = False
+            while (packet := await _next(bot, clock, chase.budget, (_DAMAGE, *_MOVES))) is not None:
+                if _hurts_the_bot(bot, packet):
+                    await clock.read(chase.hit)
+                    break
+                if not reached and chase.reached(bot.entities[zombie]):
+                    reached = True
+                    await clock.read(chase.waypoint)
+        _sample_each(context, await clock.samples())
+
+
+def _sample_each(context: GroupContext, samples: Mapping[str, int]) -> None:
+    """Record each of `samples`, a tick by its sample's name."""
+    for name, tick in samples.items():
+        context.sample(name, tick)
 
 
 # `mobs/chase-open`: a zombie 16 blocks from the Bot on open ground.
@@ -429,16 +501,18 @@ async def _besiege(context: GroupContext, layout: _Layout, budget: int) -> dict[
 
     Each is left out if it did not happen; the play ends when the door breaks.
     """
-    seen: dict[str, int] = {}
-    async with _arena(context, layout) as (bot, offset):
-        clock = await _start(context.control, budget, offset)
-        while (packet := await _next(bot, clock, budget, (_CRACK, _BLOCK, _SECTION))) is not None:
-            if _breaks_the_door(packet):
-                seen["broken"] = await clock.tick_of_event()
-                return seen
-            if "started" not in seen and _cracks_the_door(packet):
-                seen["started"] = await clock.tick_of_event()
-    return seen
+    async with _arena(context, layout) as (bot, clock):
+        async with _stepping(context.control, budget):
+            started = False
+            names = (_CRACK, _BLOCK, _SECTION)
+            while (packet := await _next(bot, clock, budget, names)) is not None:
+                if _breaks_the_door(packet):
+                    await clock.read("broken")
+                    break
+                if not started and _cracks_the_door(packet):
+                    started = True
+                    await clock.read("started")
+        return await clock.samples()
 
 
 def _hard(spec: ServerSpec) -> ServerSpec:
@@ -501,17 +575,18 @@ TARGETS_TICKS = 300
 @group("mobs/targets", spec=normal, kind=GroupKind.STATISTICAL, runs=15)
 async def targets(context: GroupContext) -> None:
     """Sample whom the zombie hurts first, the Bot or the villager, and the tick it does."""
-    async with _arena(context, _BETWEEN) as (bot, offset):
+    async with _arena(context, _BETWEEN) as (bot, clock):
         villager = bot.entities.find("villager").id
-        clock = await _start(context.control, TARGETS_TICKS, offset)
-        while (packet := await _next(bot, clock, TARGETS_TICKS, (_DAMAGE,))) is not None:
-            if _hurts_the_bot(bot, packet):
-                first = "player"
-            elif (packet.fields or {}).get("entity_id") == villager:
-                first = "villager"
-            else:
-                continue
-            context.sample("targets.first", first)
-            context.sample("targets.hit", await clock.tick_of_event())
-            return
-        context.sample("targets.first", "none")
+        first = "none"
+        async with _stepping(context.control, TARGETS_TICKS):
+            while (packet := await _next(bot, clock, TARGETS_TICKS, (_DAMAGE,))) is not None:
+                if _hurts_the_bot(bot, packet):
+                    first = "player"
+                elif (packet.fields or {}).get("entity_id") == villager:
+                    first = "villager"
+                else:
+                    continue
+                await clock.read("targets.hit")
+                break
+        context.sample("targets.first", first)
+        _sample_each(context, await clock.samples())

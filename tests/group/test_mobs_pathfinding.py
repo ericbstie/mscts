@@ -32,7 +32,9 @@ from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
 CONTROL = "control"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
-COMMANDS = tree("gamerule", "tp", "tick", "summon", "kill", "time", "fill", "setblock", "tellraw")
+COMMANDS = tree(
+    "gamerule", "tp", "tick", "summon", "kill", "time", "fill", "setblock", "tellraw", "op", "deop"
+)
 TAG = "mscts_mobs"
 TIME_QUERY = "time query gametime"
 
@@ -116,11 +118,13 @@ class MobsServer:
     that ends a tick later. The next `time query gametime` is answered with that tick, plus
     `lag`; then the step runs out, and the Bot is sent a `set_time` with the new frozen time.
 
-    Any other step plays: the Bot is sent the first of `after_step`; each later
-    `time query gametime` is answered with the game time before the step plus the tick of the
-    last packet sent, plus `lag`, and then the next packet is sent. So a play reads the tick
-    of each packet once: on seeing it, or once it has waited `_IDLE_S` for the next. Once
-    every packet is sent, the time is `end`, and one tick more at each read after.
+    Any other step plays: each `time query gametime` in it is answered with the game time
+    before the step plus the tick of the last packet sent, plus `lag`, and the next packet of
+    `after_step` is sent just before the answer. So a play reads the tick of each packet once:
+    on seeing it, or once it has waited `_IDLE_S` for the next; and each packet arrives while
+    the query before it is unanswered. While the world steps, it runs a tick for each barrier
+    answer a tick after the last (`Bot.sync`), as a real world runs on while a barrier waits.
+    Once every packet is sent, the time is `end`, and one tick more at each read after.
     """
 
     after_step: Sequence[Step] = ()
@@ -152,6 +156,7 @@ class MobsServer:
                 requests += 1
                 if (requests - 1) % SYNC_REQUESTS != 0:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
+                    self._now += int(self._stepped)  # and a stepping world runs on meanwhile
                 await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
             elif packet.name == CHAT_COMMAND:
                 await self._command(peer, str((packet.fields or {})["command"]))
@@ -170,7 +175,6 @@ class MobsServer:
             await self._to_bot_raw("minecraft:set_time", set_time(self._calibrated_on))
         elif command.startswith("tick step "):
             self._stepped = True
-            await self._next()
         elif command == f"kill @e[tag={TAG}]" and self._summoned:
             await self._to_bot("minecraft:remove_entities", entity_ids=list(self._summoned))
             self._summoned.clear()
@@ -323,8 +327,9 @@ ZOMBIE = (
     'equipment:{head:{id:"minecraft:leather_helmet",count:1}}'
 )
 
-CALIBRATE = (TIME_QUERY, f"tick step {CALIBRATION_TICKS}", TIME_QUERY)
-"""What Control runs to calibrate the play's clock, in the frozen world before the summons."""
+CALIBRATE = (TIME_QUERY, f"tick step {CALIBRATION_TICKS}")
+"""What Control runs to calibrate the play's clock, in the frozen world before the summons: the
+Bot reads the game time after the `set_time` itself."""
 
 TEARDOWN = (
     f"kill @e[tag={TAG}]",
@@ -435,6 +440,7 @@ def test_no_answer_with_the_game_time_is_a_value_error() -> None:
 OPEN_SETUP = (
     "tp control 96.5 -60 96.5",
     "tp open7 0.5 -60.0 0.5",
+    "op open7",
     "tick freeze",
     *CALIBRATE,
     summoned("zombie", "16.5 -60.0 0.5", ZOMBIE),
@@ -473,7 +479,7 @@ async def test_chase_open_samples_when_the_zombie_came_half_a_block_closer_and_h
     result = await play("mobs/chase-open")
 
     assert result.samples == {"chase_open.moved": (28.0,), "chase_open.hit": (148.0,)}
-    assert result.commands[-len(TEARDOWN) - 2 :] == (TIME_QUERY, *TEARDOWN, "tick unfreeze")
+    assert result.commands[-len(TEARDOWN) - 2 :] == (*TEARDOWN, "deop open7", "tick unfreeze")
 
 
 @pytest.mark.asyncio
@@ -485,6 +491,22 @@ async def test_a_server_that_answers_a_tick_late_gives_the_same_samples() -> Non
     result = await replay("mobs/chase-open", server)
 
     assert result.samples == {"chase_open.moved": (28.0,), "chase_open.hit": (148.0,)}
+
+
+@pytest.mark.asyncio
+async def test_an_event_arriving_while_a_read_is_unanswered_is_read_at_its_own_tick() -> None:
+    # The hit is sent while the read of the step to the waypoint is still unanswered.
+    server = MobsServer(
+        after_step=(
+            (25, moved(ZOMBIE_ID, -0.25)),
+            (28, moved(ZOMBIE_ID, -0.25)),
+            (30, hurt(PLAYER_ID)),
+        ),
+    )
+
+    result = await replay("mobs/chase-open", server)
+
+    assert result.samples == {"chase_open.moved": (28.0,), "chase_open.hit": (30.0,)}
 
 
 @pytest.mark.asyncio
@@ -503,12 +525,7 @@ async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_h
     result = await replay("mobs/chase-open", server)
 
     assert result.samples == {}
-    assert result.commands[len(OPEN_SETUP) :] == (
-        TIME_QUERY,
-        TIME_QUERY,
-        *TEARDOWN,
-        "tick unfreeze",
-    )
+    assert result.commands[len(OPEN_SETUP) :] == (*TEARDOWN, "deop open0", "tick unfreeze")
 
 
 # `mobs/chase-maze`
@@ -522,6 +539,7 @@ MAZE_CLEAR = "fill 8 -60 -10 8 -60 10 minecraft:air"
 MAZE_SETUP = (
     "tp control 96.5 -60 96.5",
     "tp maze7 0.5 -60.0 0.5",
+    "op maze7",
     *MAZE_WALL,
     "tick freeze",
     *CALIBRATE,
@@ -567,9 +585,9 @@ async def test_chase_maze_takes_the_fence_down_after_the_mobs_have_gone() -> Non
     result = await play("mobs/chase-maze")
 
     assert result.commands[-len(TEARDOWN) - 3 :] == (
-        TIME_QUERY,
         *TEARDOWN,
         MAZE_CLEAR,
+        "deop maze7",
         "tick unfreeze",
     )
 
@@ -589,6 +607,7 @@ def doors_setup(bot: str, budget: int) -> tuple[str, ...]:
     return (
         "tp control 96.5 -60 96.5",
         f"tp {bot} 0.5 -60.0 3.5",
+        f"op {bot}",
         *PEN,
         "tick freeze",
         *CALIBRATE,
@@ -659,9 +678,9 @@ async def test_doors_hard_samples_when_the_zombie_began_to_break_the_door_and_br
 
     assert result.samples == {"doors_hard.started": (31.0,), "doors_hard.broken": (271.0,)}
     assert result.commands[-len(TEARDOWN) - 3 :] == (
-        TIME_QUERY,
         *TEARDOWN,
         PEN_CLEAR,
+        "deop doorhard7",
         "tick unfreeze",
     )
 
@@ -707,7 +726,7 @@ async def test_doors_normal_samples_whether_the_door_held_cracked_or_broke(
     result = await replay("mobs/doors-normal", server)
 
     assert result.samples == {"doors_normal.door": (door,)}
-    assert result.commands[-3:] == ("tick unfreeze", PEN_CLEAR, "tick unfreeze")
+    assert result.commands[-4:] == ("tick unfreeze", PEN_CLEAR, "deop doornormal0", "tick unfreeze")
 
 
 # `mobs/targets`
@@ -721,6 +740,7 @@ VILLAGER_ID = ZOMBIE_ID + 1
 TARGETS_SETUP = (
     "tp control 96.5 -60 96.5",
     "tp target7 0.5 -60.0 0.5",
+    "op target7",
     "time set noon",
     "gamerule advance_time false",
     "tick freeze",
@@ -760,7 +780,12 @@ async def test_targets_samples_whom_the_zombie_hits_first_and_when() -> None:
     result = await play("mobs/targets")
 
     assert result.samples == {"targets.first": ("player",), "targets.hit": (79.0,)}
-    assert result.commands[-3:] == ("tick unfreeze", "gamerule advance_time true", "tick unfreeze")
+    assert result.commands[-4:] == (
+        "tick unfreeze",
+        "gamerule advance_time true",
+        "deop target7",
+        "tick unfreeze",
+    )
 
 
 @pytest.mark.asyncio
