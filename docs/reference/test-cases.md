@@ -3428,3 +3428,15 @@ How many ticks the same zombie takes to break the door. In vanilla it hits the d
 **Door a zombie hits on normal**
 
 What happens to the same door on normal difficulty within 300 ticks: `held`, `cracked` or `broken`. In vanilla a zombie breaks doors only on hard, so the door holds. The `mobs/doors-normal` Group records it over many plays. A difference means zombies break doors, or start to, on normal.
+
+## `targets.first`
+
+**Zombie's first victim**
+
+Whom a zombie hurts first when it stands 8 blocks from a player and 8 blocks from a villager without a job, on the line between them: `player`, `villager`, or `none` if it hurts neither within 300 ticks. In vanilla a zombie goes for a player it can see before a villager. The `mobs/targets` Group records it over many plays. A difference means zombies choose their targets another way than in vanilla.
+
+## `targets.hit`
+
+**Zombie's first hit of a victim**
+
+How many ticks the same zombie takes to hurt the player or the villager for the first time. A difference means zombies choose a target, or reach it, at another pace than in vanilla.

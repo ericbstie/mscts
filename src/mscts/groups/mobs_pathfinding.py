@@ -409,3 +409,48 @@ async def doors_normal(context: GroupContext) -> None:
     seen = await _besiege(context, _pen("doornormal"), DOORS_NORMAL_TICKS)
     door = "broken" if "broken" in seen else "cracked" if "started" in seen else "held"
     context.sample("doors_normal.door", door)
+
+
+# `mobs/targets`: a zombie 8 blocks from the Bot and 8 from an unemployed villager, on the
+# line between them. A zombie looks for a player to attack before a villager
+# (`NearestAttackableTargetGoal` at target priorities 2 and 3), and needs to see the player
+# but not the villager. The time of day stays at noon: what a villager does follows it.
+
+_VILLAGER_NBT = (
+    'PersistenceRequired:1b,DeathLootTable:"minecraft:empty",'
+    'VillagerData:{type:"minecraft:plains",profession:"minecraft:none",level:1}'
+)
+"""A villager that never despawns and drops nothing, with no job, so it keeps to no workplace."""
+
+_BETWEEN = _Layout(
+    bot="target",
+    bot_at=(0.5, -60.0, 0.5),
+    summons=(
+        _summon("zombie", (8.5, -60.0, 0.5), _ZOMBIE_NBT),
+        _summon("villager", (16.5, -60.0, 0.5), _VILLAGER_NBT),
+    ),
+    build=("time set noon", "gamerule advance_time false"),
+    clear=("gamerule advance_time true",),
+)
+
+TARGETS_TICKS = 300
+"""The tick budget: vanilla's zombie hits the Bot by about tick 90."""
+
+
+@group("mobs/targets", spec=normal, kind=GroupKind.STATISTICAL, runs=15)
+async def targets(context: GroupContext) -> None:
+    """Sample whom the zombie hurts first, the Bot or the villager, and the tick it does."""
+    async with _arena(context, _BETWEEN) as bot:
+        villager = bot.entities.find("villager").id
+        clock = await _start(context.control, TARGETS_TICKS)
+        while (packet := await _next(bot, clock, TARGETS_TICKS, (_DAMAGE,))) is not None:
+            if _hurts_the_bot(bot, packet):
+                first = "player"
+            elif (packet.fields or {}).get("entity_id") == villager:
+                first = "villager"
+            else:
+                continue
+            context.sample("targets.first", first)
+            context.sample("targets.hit", await clock.ticks())
+            return
+        context.sample("targets.first", "none")

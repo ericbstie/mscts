@@ -607,6 +607,8 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "doors_hard.started": "Zombie starting on a door",
         "doors_hard.broken": "Zombie breaking a door",
         "doors_normal.door": "Door a zombie hits on normal",
+        "targets.first": "Zombie's first victim",
+        "targets.hit": "Zombie's first hit of a victim",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

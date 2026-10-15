@@ -266,6 +266,7 @@ SPECS = {
     "mobs/chase-maze": Difficulty.NORMAL,
     "mobs/doors-hard": Difficulty.HARD,
     "mobs/doors-normal": Difficulty.NORMAL,
+    "mobs/targets": Difficulty.NORMAL,
 }
 
 
@@ -573,3 +574,71 @@ async def test_doors_normal_samples_whether_the_door_held_cracked_or_broke(
     assert result.samples == {"doors_normal.door": (door,)}
     assert server.gametimes == []
     assert result.commands[-3:] == ("tick unfreeze", PEN_CLEAR, "tick unfreeze")
+
+
+# `mobs/targets`
+
+VILLAGER = (
+    'PersistenceRequired:1b,DeathLootTable:"minecraft:empty",'
+    'VillagerData:{type:"minecraft:plains",profession:"minecraft:none",level:1}'
+)
+VILLAGER_ID = ZOMBIE_ID + 1
+
+TARGETS_SETUP = (
+    "tp control 96.5 -60 96.5",
+    "tp target7 0.5 -60.0 0.5",
+    "time set noon",
+    "gamerule advance_time false",
+    "tick freeze",
+    summoned("zombie", "8.5 -60.0 0.5", ZOMBIE),
+    summoned("villager", "16.5 -60.0 0.5", VILLAGER),
+    TIME_QUERY,
+    "tick step 300",
+)
+
+
+def _goes_for(victim: int) -> MobsServer:
+    """The zombie moves, then hits `victim`: the Bot (`PLAYER_ID`) or the villager."""
+    return MobsServer(
+        gametimes=[1000, 1079],
+        after_step=(moved(ZOMBIE_ID, -1.0), hurt(victim)),
+    )
+
+
+_SERVERS["mobs/targets"] = lambda: _goes_for(PLAYER_ID)
+
+
+@pytest.mark.asyncio
+async def test_targets_puts_a_zombie_between_the_bot_and_a_villager_at_noon() -> None:
+    result = await play("mobs/targets")
+
+    assert result.bot == "target7"
+    assert result.commands[: len(TARGETS_SETUP)] == TARGETS_SETUP
+
+
+@pytest.mark.asyncio
+async def test_targets_samples_whom_the_zombie_hits_first_and_when() -> None:
+    result = await play("mobs/targets")
+
+    assert result.samples == {"targets.first": ("player",), "targets.hit": (79.0,)}
+    assert result.commands[-3:] == ("tick unfreeze", "gamerule advance_time true", "tick unfreeze")
+
+
+@pytest.mark.asyncio
+async def test_targets_samples_the_villager_when_the_zombie_hits_it_first() -> None:
+    result = await replay("mobs/targets", _goes_for(VILLAGER_ID))
+
+    assert result.samples == {"targets.first": ("villager",), "targets.hit": (79.0,)}
+
+
+@pytest.mark.asyncio
+async def test_targets_samples_no_one_when_the_zombie_hits_no_one_in_its_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.2)
+    server = MobsServer(gametimes=[1000, 1300], after_step=(hurt(ZOMBIE_ID),))
+
+    result = await replay("mobs/targets", server)
+
+    assert result.samples == {"targets.first": ("none",)}
+    assert server.gametimes == []
