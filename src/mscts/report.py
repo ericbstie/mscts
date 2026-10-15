@@ -11,7 +11,7 @@ from uuid import UUID
 import mscts.compare
 from mscts.compare import ABSENT, TICK_PATH, Divergence, Observability, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
-from mscts.stats import Shares, Spread
+from mscts.stats import PER_PLAY, Shares, Spread
 from mscts.target import Target
 
 _GROUP_TIMES = "Group times"
@@ -527,20 +527,28 @@ def _distribution_values(report: Report, divergence: Divergence) -> _Line:
     -0.3926 and 0.6631; pumpkin ...`, the p corrected for the Group's other names.
     """
     tested = divergence.tested
+    counts = tested is not None and tested.test == PER_PLAY
     return (
         "not tested"
         if tested is None
         else f"{tested.test} {tested.effect} = {tested.effect_size:.2f}, p = {tested.p_value:.2g}",
         f": {report.reference.name} ",
-        *_samples(divergence.reference),
+        *_samples(divergence.reference, per_play=counts),
         f"; {report.candidate.name} ",
-        *_samples(divergence.candidate),
+        *_samples(divergence.candidate, per_play=counts),
     )
 
 
-def _samples(summary: object) -> _Line:
-    """A side's `stats.Summary` in words: its count, then its median and quartiles or shares."""
+def _samples(summary: object, *, per_play: bool = False) -> _Line:
+    """A side's `stats.Summary` in words: its count, then its median and quartiles or shares.
+
+    With `per_play`, the summary is of how many samples each play recorded: `50 plays,
+    median 10 samples per play, quartiles 10 and 10`.
+    """
     match summary:
+        case Spread(plays, median, (lower, upper)) if per_play:
+            spread = f"median {median:.4g} samples per play, quartiles {lower:.4g} and {upper:.4g}"
+            return (f"{plays} plays, {spread}",)
         case Shares(samples, shares):
             line: list[str | _Literal] = [_count(samples)]
             for name, share in shares:

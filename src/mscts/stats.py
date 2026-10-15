@@ -185,8 +185,9 @@ class Decision:
         difference: The test, its effect size and its own p-value; None with no test.
         p_value: The test's p-value after Holm's correction over the Group's tested names;
             None with no test.
-        reference: The Reference's samples in brief (`Summary`).
-        candidate: The Candidate's samples in brief.
+        reference: The Reference's samples in brief (`Summary`); of how many each play
+            recorded if `difference` is the `PER_PLAY` test.
+        candidate: The Candidate's samples in brief, the same way.
     """
 
     name: str
@@ -232,11 +233,18 @@ def decide(
             rejected=name not in comparable or best.get(name, (1.0,))[0] <= ALPHA,
             difference=best[name][1] if name in best else None,
             p_value=best[name][0] if name in best else None,
-            reference=summary(reference.get(name)),
-            candidate=summary(candidate.get(name)),
+            reference=_shown(reference.get(name), best.get(name)),
+            candidate=_shown(candidate.get(name), best.get(name)),
         )
         for name in names
     )
+
+
+def _shown(series: Series | None, best: tuple[float, Difference] | None) -> Summary:
+    """`series` in brief: its per-play counts if `best` is the test of those, else its values."""
+    if series is not None and best is not None and best[1].test == PER_PLAY:
+        return summary(Numbers(tuple(map(float, series.per_play)), series.per_play))
+    return summary(series)
 
 
 def _smallest_per_name(
