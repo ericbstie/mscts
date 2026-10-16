@@ -63,10 +63,6 @@ _LONG, _INT, _STRING = 4, 3, 8
 
 _SET_TIME = "minecraft:set_time"
 
-_CALIBRATION_TICKS = 40
-"""How many ticks the calibration step runs: long enough for a `set_time` stamped after the
-step began, which a server sends every 20 ticks, and the answer to the query that follows it."""
-
 _DAMAGE = "minecraft:damage_event"
 _MOVES = (
     "minecraft:move_entity_pos",
@@ -258,11 +254,6 @@ def _answer(packet: Packet) -> int | None:
         return None
 
 
-def _answers(packet: Packet) -> bool:
-    """Whether `packet` answers `time query gametime`."""
-    return _answer(packet) is not None
-
-
 @contextlib.asynccontextmanager
 async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[tuple[Bot, _Clock]]:
     """Join the play's Bot, set `layout` up in a frozen world; yield the Bot and its clock.
@@ -295,40 +286,6 @@ async def _arena(context: GroupContext, layout: _Layout) -> AsyncIterator[tuple[
             await control.run(summon)
         await bot.sync()
         yield bot, _Clock(bot, gametime(await control.run(_TIME_QUERY)))
-
-
-async def _calibrate(control: Control, bot: Bot) -> int:
-    """How many ticks a read of the game time after a packet adds, on this Instance.
-
-    Control steps the frozen world `_CALIBRATION_TICKS` ticks. The packet is the first
-    `set_time` the Bot receives that was stamped after the step began: a server stamps it
-    with the game time from before its tick, so it comes from the tick that ends one later
-    (docs/research/2026-10-15-time-query-lag.md). The Bot reads the game time on receiving it,
-    as a play does on an event, and the offset is how far the answer is past that tick. Then
-    the Bot waits for a `set_time` that shows the step has run out.
-
-    Raises:
-        RuntimeError: The answer came once the step had run out, so it shows too few ticks.
-    """
-    start = gametime(await control.run(_TIME_QUERY))
-    end = start + _CALIBRATION_TICKS
-    async with _stepping(control, _CALIBRATION_TICKS):
-        sent_in = await _set_time_after(bot, start) + 1
-        await bot.command(_TIME_QUERY)
-        answer = gametime([await bot.expect(_SYSTEM_CHAT, timeout_s=_WAIT_S, where=_answers)])
-        await _set_time_after(bot, end - 1)
-    if answer >= end:
-        msg = f"the calibration step ran out before the game time was read: {answer} >= {end}"
-        raise RuntimeError(msg)
-    return answer - sent_in
-
-
-async def _set_time_after(bot: Bot, game_time: int) -> int:
-    """The game time of the next `set_time` `bot` receives stamped after `game_time`."""
-    packet = await bot.expect(
-        _SET_TIME, timeout_s=_WAIT_S, where=lambda packet: _stamped(packet) > game_time
-    )
-    return _stamped(packet)
 
 
 @contextlib.asynccontextmanager
