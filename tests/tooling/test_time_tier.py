@@ -452,13 +452,13 @@ def _repository_with_two_commits(tmp_path: Path) -> tuple[Path, str, str]:
     (repo / "a.py").write_text("one\n")
     _git("add", "a.py", cwd=repo)
     _git("commit", "-q", "-m", "first", cwd=repo)
-    _git("tag", "first", cwd=repo)
+    _git("tag", "-a", "first", "-m", "first", cwd=repo)
     (repo / "a.py").write_text("two\n")
     _git("commit", "-q", "-am", "second", cwd=repo)
     (repo / "a.py").write_text("three, not committed\n")
     (repo / "untracked.py").write_text("never added\n")
     head = _commit_of("HEAD", repo)
-    return repo, _commit_of("first", repo), head
+    return repo, _commit_of("first^{commit}", repo), head
 
 
 def _commit_of(name: str, repo: Path) -> str:
@@ -703,6 +703,7 @@ def test_main_times_the_revisions_under_one_live_lock_hold_and_prints_everything
     monkeypatch.delenv("MSCTS_LIVE_LOCK_HELD", raising=False)
     answers = iter(codes)
     seen: list[str] = []
+    selections: list[list[str]] = []
 
     def fake_copy(_repo: Path, commit: str, dest: Path) -> None:
         dest.mkdir(parents=True)
@@ -717,6 +718,7 @@ def test_main_times_the_revisions_under_one_live_lock_hold_and_prints_everything
             else:
                 held = "free"
         seen.append(f"run {held} {_stress_children()} {os.environ.get('MSCTS_LIVE_LOCK_HELD')}")
+        selections.append(argv[6:9])
         code = next(answers)
         summary = "1 failed in 2.00s" if code else "1 passed in 2.00s"
         return subprocess.CompletedProcess(argv, code, stdout=f"== {summary} ==\n", stderr="")
@@ -742,7 +744,11 @@ def test_main_times_the_revisions_under_one_live_lock_hold_and_prints_everything
             "2",
             "--stress",
             "--stress-workers",
-            "1",
+            "2",
+            "--",
+            "tests/selfcheck",
+            "-k",
+            "mobs/chase-open",
         ]
     )
 
@@ -750,14 +756,15 @@ def test_main_times_the_revisions_under_one_live_lock_hold_and_prints_everything
     held_by = str(os.getpid())
     assert seen == [
         "copy 0",
-        f"run locked 1 {held_by}",
+        f"run locked 2 {held_by}",
         "copy 1",
-        f"run locked 1 {held_by}",
+        f"run locked 2 {held_by}",
         "copy 0",
-        f"run locked 1 {held_by}",
+        f"run locked 2 {held_by}",
         "copy 1",
-        f"run locked 1 {held_by}",
+        f"run locked 2 {held_by}",
     ]
+    assert selections == [["tests/selfcheck", "-k", "mobs/chase-open"]] * 4
     lines = capsys.readouterr().out.splitlines()
     assert lines[:2] == ["main -> " + "0" * 40, "branch -> " + "1" * 40]
     assert sum(line.startswith("round ") for line in lines) == 4
