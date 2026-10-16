@@ -30,6 +30,10 @@ from tests.net.fakes import serve
 CONTROL = "control"
 PLAYER_ACTION = "minecraft:player_action"
 
+HANG_LIMIT_S = 1.5
+"""The limit on one Bot operation in a test that expects a TimeoutError from a hang. Only the
+hang may reach it: an idle host answers in about 0.1 s, and a stall (#410) is shorter."""
+
 
 def steps(seen: list[object]) -> list[object]:
     """The commands Control sent, but its markers."""
@@ -320,7 +324,7 @@ async def test_a_freeze_that_timed_out_is_still_unfrozen_when_the_group_closes()
 
     server = ControlServer(on_command=hang_on_freeze)
     transcript = Transcript(group_id="test/ticks", server="fake")
-    async with playing(server, transcript, timeout_s=0.5) as context:
+    async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
         with pytest.raises(TimeoutError):
             await context.freeze()
         server.answers_markers = True
@@ -341,7 +345,7 @@ PROBE = Group(id="test/ticks", run=_probe, kind=GroupKind.TICK_EXACT)
 async def played(server: ControlServer) -> Transcript | GroupError:
     async with serve(CODEC, server) as endpoint:
         try:
-            return await run_group(PROBE, endpoint, server="fake", timeout_s=0.5)
+            return await run_group(PROBE, endpoint, server="fake", timeout_s=HANG_LIMIT_S)
         except GroupError as error:
             return error
 
@@ -417,10 +421,6 @@ async def test_the_repeater_probe_steps_with_random_ticks_off() -> None:
     ]
 
 
-PROBE_PLAY_LIMIT_S = 1.5
-"""The probe tests' limit on one Bot operation. Only the hang at `tick step 1` may reach it:
-a stall (`PROBE_STALL_S`) is shorter, and an idle host answers in about 0.1 s (#410)."""
-
 PROBE_STALL_S = 0.7
 """How late the fake answers the probe's first Control command: a loaded host, and more than
 the 0.5 s limit the test had, which the stall ran out before the probe's `try` (#410)."""
@@ -455,7 +455,7 @@ async def test_the_repeater_probe_turns_random_ticks_back_on_when_it_fails() -> 
     transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
 
     async def failing() -> None:
-        async with playing(server, transcript, timeout_s=PROBE_PLAY_LIMIT_S) as context:
+        async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
             await REPEATER_STEPPED.run(context)
 
     with pytest.raises(TimeoutError):
