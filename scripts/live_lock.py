@@ -3,6 +3,7 @@
 
 The wrapper holds the descriptor while the command runs, then explicitly unlocks it.
 The command inherits a copy so it keeps the lock if the wrapper is killed (#138).
+A `live_lock.py` started inside a holder's command runs straight through (#411).
 """
 
 import argparse
@@ -13,7 +14,7 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, MutableMapping
 from pathlib import Path
 from types import FrameType
 from typing import cast
@@ -24,6 +25,9 @@ from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.adapters.vanilla import VanillaAdapter
 from mscts.cache import cache_dir
 from mscts.target import TARGET
+
+# A holder exports its pid under this name to its command, which then takes no lock (#411).
+HELD_VARIABLE = "MSCTS_LIVE_LOCK_HELD"
 
 # The Adapter whose Installation each live tier needs (as tests/support/tiers.py NEEDS).
 TIER_ADAPTERS: dict[str, type[Adapter]] = {
@@ -144,20 +148,29 @@ def _write_pid(descriptor: int, pid: int) -> None:
 
 
 @contextlib.contextmanager
-def hold_live_lock(cache: Path) -> Iterator[int]:
+def hold_live_lock(cache: Path, environ: MutableMapping[str, str]) -> Iterator[int | None]:
     """Hold the live-tier lock in `cache` for the block, and yield its descriptor.
 
     A command started in the block inherits the descriptor (`pass_fds`), so it keeps the
     lock if its parent is killed (#138). Leaving the block names no pid and unlocks.
+
+    `environ` names the holder to the block's commands (`HELD_VARIABLE`): one that asks
+    for the lock again is inside this hold, so it takes nothing and gets `None`. So does a
+    bypassed hold (`MSCTS_LIVE_LOCK=0`).
     """
+    if environ.get("MSCTS_LIVE_LOCK") == "0" or HELD_VARIABLE in environ:
+        yield None
+        return
     queue = cache / "live-tier.queue"
     queue.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(cache / "live-tier.lock", os.O_RDWR | os.O_CREAT, 0o600)
     try:
         _take_lock(descriptor, queue)
         _write_pid(descriptor, os.getpid())
+        environ[HELD_VARIABLE] = str(os.getpid())
         yield descriptor
     finally:
+        environ.pop(HELD_VARIABLE, None)
         os.ftruncate(descriptor, 0)  # a waiter must never name a finished holder's pid
         fcntl.flock(descriptor, fcntl.LOCK_UN)
         os.close(descriptor)
@@ -224,11 +237,8 @@ def main() -> None:
         parser.error("a command is required after --")
     if arguments.tier is not None:
         _require_installation(arguments.tier)
-    if os.environ.get("MSCTS_LIVE_LOCK") == "0":
-        code = _run_command(command)
-    else:
-        with hold_live_lock(cache_dir()) as descriptor:
-            code = _run_command(command, descriptor)
+    with hold_live_lock(cache_dir(), os.environ) as descriptor:
+        code = _run_command(command, descriptor)
     if code < 0:
         if -code != signal.SIGKILL:
             signal.signal(-code, signal.SIG_DFL)
