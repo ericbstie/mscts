@@ -90,7 +90,9 @@ class PlayerServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
     It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch. After the command `hurts_after`, it hurts the Bot every tick.
+    chunk batch. After the command `hurts_after`, it hurts the Bot every tick, until a `kill`:
+    as on vanilla, a Bot made fresh (`kill`, then respawn) is out of what hurt it, so no hit
+    comes before the next `hurts_after`.
     """
 
     seen: list[Packet] = field(default_factory=list)
@@ -126,22 +128,29 @@ class PlayerServer:
                     await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
                 elif packet.name == CHAT_COMMAND:
                     command = str((packet.fields or {})["command"])
-                    if command.startswith(MARKER):
-                        token = json.loads(command.removeprefix(MARKER))
-                        await peer.write(
-                            peer.frame("minecraft:system_chat", content=text(token), overlay=False)
-                        )
-                    elif self.kills_after and command.startswith(self.kills_after):
-                        await self.players[command.split()[1]].write(
-                            self.players[command.split()[1]].raw_frame(
-                                DEATH, b"\x02" + text("dead")
-                            )
-                        )
-                    elif hurting is None and self._hurts(command):
-                        hurting = asyncio.create_task(self._hurt())
+                    hurting = await self._command(peer, command, hurting)
         finally:
             if hurting is not None:
                 hurting.cancel()
+
+    async def _command(
+        self, peer: Peer, command: str, hurting: asyncio.Task[None] | None
+    ) -> asyncio.Task[None] | None:
+        """Answer `command` from `peer`; return the task that hurts the Bots after it, if any."""
+        if command.startswith(MARKER):
+            token = json.loads(command.removeprefix(MARKER))
+            await peer.write(
+                peer.frame("minecraft:system_chat", content=text(token), overlay=False)
+            )
+        elif self.kills_after and command.startswith(self.kills_after):
+            victim = self.players[command.split()[1]]
+            await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
+        elif hurting is None and self._hurts(command):
+            return asyncio.create_task(self._hurt())
+        elif hurting is not None and command.startswith("kill "):
+            hurting.cancel()  # respawned, the Bot is out of what hurt it
+            return None
+        return hurting
 
     def _hurts(self, command: str) -> bool:
         return self.hurts_after is not None and command.startswith(self.hurts_after)
