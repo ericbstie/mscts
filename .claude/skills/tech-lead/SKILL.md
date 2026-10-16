@@ -15,7 +15,8 @@ first.
 1. Orient. Read the previous lead's handoff note if there is one, `docs/PROGRESS.md`, the retrospective log in
    `docs/PROCESS.md`, and `git log --oneline -20`. List the open issues
    (`needs-triage`: triage it; `needs-decision`; an open issue in its **Blocked by** line: blocked; the rest: ready) and open PRs with the GitHub MCP tools.
-   Run `mise run check`.
+   Run `mise run check`. Before briefing a candidate run, check that
+   `mscts adapter list` shows the Candidate installed in the shared cache.
 2. Plan a batch of 1–3 ready issues whose "Owns" lists are disjoint
    (ADR-0009). Relay `needs-decision` issues to the maintainer.
 3. Start the whole batch in one message, one Agent call per worker:

@@ -40,3 +40,6 @@ Newest first: one line per lesson, with the issue it came from.
 - #384: a Group names its players with `context.player_name(prefix)`, never `f"{prefix}{context.play}"`; prefix + 4 Run characters + play fit 16, so a prefix is at most 10 characters. Fake-server tests must not assert the random part.
 - #384: the summaries of a name rejected by `PER_PLAY` are of per-play counts, and the Report words them as plays.
 - #387: `time query gametime` sent in reply to a packet adds 0 ticks on vanilla and 1 on Pumpkin (docs/research/2026-10-15-time-query-lag.md). `set_time` carries the game time from before its tick; after `context.freeze()`, `bot.sync()` before reading one.
+- #387: a Bot made operator reads the game time on its own connection, sending each query without waiting for the answer (about 1.5 ms on vanilla, one tick on Pumpkin, against about 150 ms for `Control.run`, which cannot run concurrently). Pumpkin may answer out of order: match the answers, smallest first, to the reads in the order made.
+- #387: an operator hears Control's `tick step` as a `system_chat` that is not an answer; skip it.
+- #387: one statistical stress Self-check of `mobs/*` takes about 48 min on this host.

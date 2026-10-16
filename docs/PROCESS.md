@@ -217,6 +217,8 @@ Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), neve
 Stress runs: <when the level asks for them or for a 20-run Self-check, each Group family's
              play time on main, so the worker can size the runs; a long family goes to a
              worker of its own>
+Candidate: <main's pass count against the Candidate for the Groups touched, and its
+           failure reasons, so the worker can tell its change from what main already fails>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist;
            timings are measured on a committed tree, with `--durations` of the touched
            tests and the load average; a timing claim compares clean main and the branch
@@ -408,6 +410,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-16 | worker (#63), #344 before | A Group's undo turned `spawn_mobs` on for every later play; the same bug as #344's, in another lane | **adopt**: common.md, moved from the player-actions handbook |
+| 2026-10-16 | worker (#387), train 36 before | Pumpkin was not in the shared cache when the brief asked for a candidate run | **adopt**: the tech-lead skill's orient step checks `mscts adapter list` (the second repeat) |
+| 2026-10-16 | worker (#387) | A candidate run could not judge the fix, because main already failed on Pumpkin for another reason | **adopt**: the brief template gives main's failure reasons with its pass count |
+| 2026-10-16 | worker (#63) | A fake's only near miss differed from the awaited packet in one field, so a mutant that dropped the other field's check survived | **adopt**: common.md line |
+| 2026-10-16 | worker (#387) | An unrelated unit test failed once during a rebase | **reject** a known-flake list: a flake is a bug, filed as #403 |
+| 2026-10-16 | workers (#53, #63, #387) | Live runs waited 1 to 4 h behind other workers' stress series | **adopt** (no change): #374 merged first in this train; measure the waits in the next |
+| 2026-10-16 | worker (#53) | The brief asked for the docs as a last commit, though they describe changed output | **adopt** (no change): the template already says so; the lead's brief erred |
+| 2026-10-16 | worker (#374) | `mise run commit` failed after the whole check on an empty index | **reject**: common.md says to stage first; one use |
+| 2026-10-16 | worker (#63) | `rebase --exec "mise run check"` took 95 min over 19 commits | **reject**: the price of green commits |
+| 2026-10-16 | lead (train 37) | A container restart stopped two workers and a stress series; a resume by message continued from their rc files | **adopt** (no change) |
 | 2026-10-15 | workers (#53, #384, #387), lead (train 36) | A five-hour stress series held the live lock; three other live runs, the lead's tiers among them, waited up to 4.5 h | **defer**: #374, the fourth repeat; a lock that shows its holder and lets short runs between a series' runs |
 | 2026-10-15 | worker (#320) | Five Self-check runs of `blocks or entities or combat` take about 57 min each | **adopt**: the brief's Stress runs line gives the family's run time (already required; the lead left it out) |
 | 2026-10-15 | worker (#320) | Pumpkin was not in the shared cache, so the first candidate runs failed | **adopt**: the lead checks `mscts adapter list` before briefing a candidate run |
@@ -777,6 +789,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-16 | The brief template gives main's Candidate pass count and failure reasons; the tech-lead skill checks the Candidate is installed before briefing a candidate run; common.md: never set a rule the Fixture already has, and a fake gives a near miss per checked field | Train 37: a worker spent 1.5 h telling a Pumpkin kick main already had from its change; Pumpkin missing from the cache for the second train running; `spawn_mobs` turned on by an undo for the second time (#344, #63); a surviving mutant behind a one-field near miss |
 | 2026-10-15 | A `scrutiny::high` PR whose fixes add a test or a branch to the comparison core gets a third review of the fixes; the brief template gives play times for any 20-run Self-check; common.md: stage before `mise run commit`, PRs through the GitHub MCP tools, unique mutant text, unbuffered `repeat.py` | Train 34: #379's re-review found a blocking bug in its fixes; a 20-run Self-check took 4.5 h unplanned; four worker retrospectives |
 | 2026-10-14 | The tech-lead skill: kill only by pid on the shared host, and start live tiers that may wait for the lock detached | Train 33: a pattern kill stopped a worker's stress run, and two of the lead's tiers died at the 2 h background cap while waiting |
 | 2026-10-11 | The brief template's Base line fetches and merges `origin/main`; a brief that asks for stress runs gives each Group family's play time on main and splits long families across workers | Train 32: a worker started from a stale local `main`, and #360's stress runs for five families took about 14 h |
