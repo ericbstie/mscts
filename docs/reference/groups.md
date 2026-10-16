@@ -599,8 +599,6 @@ The Bot predicts each click as the vanilla client does and sends its prediction.
 
 Vanilla throws an item a player drops with a random motion and yaw, so these Groups compare where a dropped item appears, what it is and how many, but not how it moves. The pitch of the `/give` pickup sound and of a chest's sound is random too, and only the pitch is left out.
 
-A `/give` of 100 stone makes two item entities in one tick. Vanilla sends each new entity's data again at the end of the tick, in an order that follows the entity ids, and two servers can number their entities differently. That window leaves out `set_entity_data`. The slots still show what was given, but which entity carried which stack is not compared.
-
 Swapping hands with F is not covered yet, because the Bot cannot press it ([#359](https://github.com/ericbstie/mscts/issues/359)).
 ## Crafting (`crafting`)
 
