@@ -359,7 +359,10 @@ class GroupContext:
         provided the setup waited for its feedback (`Control.run` does: the server runs a
         chat command between ticks, after the barrier's pass);
         then the window gets its `observe:open` Mark, followed by `names`, each after a
-        space. When the body completes, every Bot in play passes the barrier again, all at
+        space. The Mark is a nanosecond after the latest last answer of a Bot but Control
+        (now, if none passed a barrier), so a packet a Bot read right after that answer is
+        inside the window, where the body's `expect` may take it (#356). When the body
+        completes, every Bot in play passes the barrier again, all at
         once. Each Bot's window ends at its own barrier: it gets the Mark `observe:close
         <Bot name>` a nanosecond after its barrier's last answer arrived, whatever the other
         Bots are still waiting for (a Bot that passes none gets it once every barrier has
@@ -446,8 +449,8 @@ class GroupContext:
         try:
             # What setup caused may still be on its way to a Bot that is not Control: the
             # barrier first, so it arrives before the window opens on every Instance.
-            await self._sync()
-            opened = self._mark(" ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,)))))
+            label = " ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,))))
+            opened = self._mark(label, t_ns=_after_the_last_answer(await self._sync()))
             yield
             if ends is None:
                 self._mark_each(OBSERVE_CLOSE, await self._sync())
@@ -672,6 +675,19 @@ class GroupContext:
 
 _ANSWER = "minecraft:award_stats"
 """The barrier's answer (`Bot.sync`)."""
+
+
+def _after_the_last_answer(answered: Mapping[str, int]) -> int | None:
+    """When a window opens: a nanosecond after the latest last answer of a Bot but Control.
+
+    `answered` is when each Bot's barrier's last answer arrived, by the Bot's name. What a Bot
+    read up to its own answer is setup, and comes before the Mark. A frame read after the
+    latest answer comes after it, even one read with that answer, so the window holds what
+    its body takes. Control's receipts are never compared, so where Control's barrier ends
+    does not move the Mark. None if no Bot but Control passed a barrier.
+    """
+    compared = [t_ns for name, t_ns in answered.items() if name != CONTROL_PLAYER]
+    return max(compared) + 1 if compared else None
 
 
 @functools.cache

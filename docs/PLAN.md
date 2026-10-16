@@ -1393,7 +1393,10 @@ class GroupContext:
                                     # setup waited for its feedback, as Control.run does;
                                     # #141), then
                                     # Marks OBSERVE_OPEN (then the names, each after a space;
-                                    # play=False: OBSERVE_NO_PLAY, and no names or until);
+                                    # play=False: OBSERVE_NO_PLAY, and no names or until)
+                                    # 1 ns after the latest barrier's last answer of a Bot
+                                    # but Control (none passed one: now), so a packet a Bot
+                                    # read right after that answer is inside (#356);
                                     # when the body completes, every Bot in play and not
                                     # disconnected passes Bot.sync again (all at once; the
                                     # first error raises, as that Bot's failure), then a Mark

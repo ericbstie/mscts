@@ -368,7 +368,6 @@ def stragglers(transcript: Transcript) -> list[int]:
 
 
 @pytest.mark.asyncio
-@pytest.mark.xfail(raises=ProtocolError, reason="#356: the open Mark is after the straggler")
 async def test_a_packet_read_with_the_opening_barriers_last_answer_is_inside_the_window() -> None:
     # #356: the open Mark was stamped once every barrier had returned, so a frame that came
     # right after a Bot's last answer was before it, yet left for the window's expect to take.
@@ -384,6 +383,24 @@ async def test_a_packet_read_with_the_opening_barriers_last_answer_is_inside_the
     assert straggler == answers(transcript, "alice")[-1] + 1, "one read took both"
     assert opened.t_ns == straggler, "a nanosecond after the barrier's last answer"
     assert closed == Mark(t_ns=straggler + 1, label=OBSERVE_CLOSE)
+
+
+@pytest.mark.asyncio
+async def test_a_later_end_of_controls_barrier_does_not_move_the_open_mark() -> None:
+    # Control's receipts are never compared: its barrier, a tick slower here, must not leave
+    # what alice read after her own barrier before the window.
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(Straggler(late=frozenset({CONTROL_PLAYER})), transcript) as context:
+        alice = await _joined(context, "alice")
+        await context.control.run('tellraw @s "ready"')
+        await alice.command(STRAGGLE)
+        async with context.observe(until=DIFFICULTY, bot=alice):
+            await alice.expect(DIFFICULTY, timeout_s=2.0)
+
+    (straggler,) = stragglers(transcript)
+    opened, _ = transcript.marks[-2:]
+    assert opened.t_ns == straggler == answers(transcript, "alice")[-1] + 1
+    assert answers(transcript, CONTROL_PLAYER)[-1] > straggler, "Control's barrier ended later"
 
 
 @pytest.mark.asyncio
