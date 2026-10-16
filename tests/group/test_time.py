@@ -66,8 +66,9 @@ DAWN_TICK = 18
 PLAYER = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:player")
 ENTITY_IDS = {"clock": 1, "sleeper": 2}
 """The entity id the fake gives each player but Control."""
-STRAY = {"entity_id": 99, "action": 0}
-"""An `animate` of another entity the fake sends `STRAY_TICKS` before the night is skipped."""
+STRAYS = ({"entity_id": 99, "action": 0}, {"entity_id": ENTITY_IDS["sleeper"], "action": 1})
+"""The `animate`s the fake sends `STRAY_TICKS` before the night is skipped: another entity's
+wake, and the sleeper's critical hit (action 1), neither of which is the sleeper getting up."""
 STRAY_TICKS = 10
 """Longer than a barrier, so a window that ended on the stray `animate` would miss the skip."""
 LATE_TICKS = 5
@@ -188,7 +189,8 @@ class TimeServer:
         await self._everyone(SYSTEM_CHAT, content=text("sleeping"), overlay=True)
         if self.percentage == 50:
             await asyncio.sleep((SKIP_TICKS - STRAY_TICKS) * TICK_S)
-            await self._everyone(ANIMATE, **STRAY)
+            for stray in STRAYS:
+                await self._everyone(ANIMATE, **stray)
             await asyncio.sleep(STRAY_TICKS * TICK_S)
             await self._get_up()
 
