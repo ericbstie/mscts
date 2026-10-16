@@ -778,7 +778,7 @@ ends, every rule it changed is set back to vanilla's default.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `time/advance` | tick-exact | none | From day 1000, the world steps 1, 20 and 100 ticks, with `advance_time` on and then off. After each step, the clock reads `time query day` in a window of its own. | none |
-| `time/commands` | exact | none | From total ticks 0, the clock sets the time to `day`, `noon`, `night` and `midnight`, reading `time query time` after each, then sets 1000, adds 100 and 24000, and reads `time query day`, `time query day repetition`, `time query time` and `time query daytime`. Each command has a window of its own. | none |
+| `time/commands` | exact | none | From total ticks 0, the clock sets the time to `day`, `noon`, `night` and `midnight`, reading `time query time` after each. It then sets 1000, adds 100 and reads `time query day`, adds 24000, and reads `time query day`, `time query day repetition`, `time query time` and `time query daytime`. Each command has a window of its own. | none |
 | `time/sleep` | exact | none | A second Bot, `sleeper`, lies down in a bed at midnight while the clock stays up. With `players_sleeping_percentage` 100 the night goes on for 100 ticks, then the world steps to dawn and the sleeper gets up. With 50 the clock reads the day about 50 ticks after the sleeper lies down, and then the night is skipped. The clock reads the day after each part. | none |
 
 In 26.3 the time of day is a world clock, separate from the game time. `time query day` answers
