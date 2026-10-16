@@ -1,5 +1,6 @@
 """Tick-exact Groups: `freeze` and `step` against a fake server, and the Marks they leave."""
 
+import json
 from collections.abc import Set as AbstractSet
 
 import pytest
@@ -21,6 +22,7 @@ from tests.group.test_control import (
     ControlServer,
     commands_sent,
     playing,
+    received,
     tree,
 )
 from tests.net.fakes import serve
@@ -415,43 +417,50 @@ async def test_the_repeater_probe_steps_with_random_ticks_off() -> None:
     ]
 
 
+PROBE_PLAY_LIMIT_S = 1.5
+"""The probe tests' limit on one Bot operation. Only the hang at `tick step 1` may reach it:
+a stall (`PROBE_STALL_S`) is shorter, and an idle host answers in about 0.1 s (#410)."""
+
+PROBE_STALL_S = 0.7
+"""How late the fake answers the probe's first Control command: a loaded host, and more than
+the 0.5 s limit the test had, which the stall ran out before the probe's `try` (#410)."""
+
+
+def marker_after(sent: list[object], command: str) -> str:
+    """The token of the marker Control sent right after `command`."""
+    marker = sent[sent.index(command) + 1]
+    return str(json.loads(str(marker).removeprefix(MARKER)))
+
+
+def said(transcript: Transcript, token: str) -> bool:
+    """Whether the server's chat to Control held `token`."""
+    return any(token.encode() in event.packet.payload for event in received(transcript))
+
+
 @pytest.mark.asyncio
 async def test_the_repeater_probe_turns_random_ticks_back_on_when_it_fails() -> None:
-    def hang_on_the_first_step(command: str) -> None:
+    # #410: the only TimeoutError is the hang at `tick step 1`. A limit that a stall before
+    # the probe's `try` ran out failed it with nothing to undo, and the test took that for
+    # the hang. The server answers again once the undo arrives, so the undo is answered.
+    def hang_on_the_first_step_until_the_undo(command: str) -> None:
         if command == "tick step 1":
             server.answers_markers = False
+        elif command == RANDOM_TICKS_ON:
+            server.answers_markers = True
 
-    server = ControlServer(commands=PROBE_TREE, on_command=hang_on_the_first_step)
+    stall = {f"tp {WATCHER} {WATCHER_AT}": PROBE_STALL_S}
+    server = ControlServer(
+        commands=PROBE_TREE, on_command=hang_on_the_first_step_until_the_undo, stalls=stall
+    )
     transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
 
     async def failing() -> None:
-        async with playing(server, transcript, timeout_s=0.5) as context:
+        async with playing(server, transcript, timeout_s=PROBE_PLAY_LIMIT_S) as context:
             await REPEATER_STEPPED.run(context)
 
     with pytest.raises(TimeoutError):
         await failing()
 
-    assert RANDOM_TICKS_ON in steps(commands_sent(server.seen))
-
-
-@pytest.mark.xfail(strict=True, reason="#410: red first; the next commit fixes the test")
-@pytest.mark.asyncio
-async def test_the_repeater_probe_fails_at_the_hang_even_when_the_server_stalls_before_it() -> None:
-    # #410: a loaded host stalls one operation past the play's limit. Before the `try`
-    # that fails the probe with nothing to undo, so the test took the stall for the hang.
-    def hang_on_the_first_step(command: str) -> None:
-        if command == "tick step 1":
-            server.answers_markers = False
-
-    stall = {f"tp {WATCHER} {WATCHER_AT}": 0.7}
-    server = ControlServer(commands=PROBE_TREE, on_command=hang_on_the_first_step, stalls=stall)
-    transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
-
-    async def failing() -> None:
-        async with playing(server, transcript, timeout_s=0.5) as context:
-            await REPEATER_STEPPED.run(context)
-
-    with pytest.raises(TimeoutError):
-        await failing()
-
-    assert RANDOM_TICKS_ON in steps(commands_sent(server.seen))
+    sent = commands_sent(server.seen)
+    assert steps(sent)[-3:] == ["tick step 1", RANDOM_TICKS_ON, "tick unfreeze"], sent
+    assert said(transcript, marker_after(sent, RANDOM_TICKS_ON)), "the undo was not answered"
