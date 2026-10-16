@@ -78,3 +78,10 @@ Ways to remove it, none implemented here:
   events that arrive while it runs, so it would need a step of its own before the mobs are
   summoned. It also assumes the lag stays the same for the whole play, which held for all
   240 events here.
+
+The fix landed with #387, in the second way. Each play calibrates in a 40-tick step before the
+mobs are summoned and subtracts the offset from every sample. The play's Bot is made an operator
+and reads the game time itself, without waiting for the answer, so no event waits behind an
+earlier read's `Control.run`. Verified live with the probe's method on the Bot's own connection
+(30 events each, serial and pipelined): its query adds 0 ticks on vanilla (1.5 ms median round
+trip) and 1 tick on Pumpkin (50 ms), and both servers accept `op` and `deop` from Control.
