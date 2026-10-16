@@ -1,8 +1,10 @@
 """GroupContext.observe(until=...): a window that ends at a packet's arrival, with no barrier."""
 
 import asyncio
+import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 
 import pytest
 
@@ -15,7 +17,10 @@ from mscts.run import GroupError, judge, run_group
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
+from tests.group.test_control import MARKER, SYSTEM_CHAT, text, tree
 from tests.net.fakes import (
+    NO_STATISTICS,
+    TICK_S,
     Handler,
     JoinScript,
     Peer,
@@ -26,6 +31,7 @@ from tests.net.fakes import (
 
 CODEC = Codec.for_target(TARGET)
 REQUEST = "minecraft:client_command"
+AWARD_STATS = "minecraft:award_stats"
 BLOCK_UPDATE = "minecraft:block_update"
 BATCH_FINISHED = "minecraft:chunk_batch_finished"
 DIFFICULTY = "minecraft:change_difficulty"
@@ -295,6 +301,89 @@ async def test_until_with_bot_ends_the_window_at_that_bots_packet() -> None:
             _heard_by(transcript, "alice", DIFFICULTY, at=arrival)
 
     assert transcript.marks[-1] == Mark(t_ns=arrival + 1, label=OBSERVE_CLOSE)
+
+
+STRAGGLE = "straggle"
+STRAGGLER = b"\x02\x00"
+"""The payload of the change_difficulty that follows a barrier (normal, unlocked): the join's
+is another."""
+
+
+@dataclass
+class Straggler:
+    """A fake server that follows a barrier's last answer with a change_difficulty, in one write.
+
+    It joins like vanilla, with a command tree that has `tellraw`, and gives a marker its token
+    back, as Control needs. It answers a statistics request like vanilla: the first of a barrier's
+    at once, each other a tick (`TICK_S`) later. A player in `late` gets each answer a tick later
+    still. Once a player has sent the command `straggle`, the last answer of its next barrier is
+    followed by a change_difficulty in the same write, so the Bot reads both at once.
+    """
+
+    late: frozenset[str] = frozenset()
+    seen: list[Packet] = field(default_factory=list)
+
+    async def __call__(self, peer: Peer) -> None:
+        """Serve one connection: a Handler."""
+        await join_server(self.seen, JoinScript(commands=tree("tellraw"), then=self._play))(peer)
+
+    async def _play(self, peer: Peer) -> None:
+        requests = 0
+        straggle_at: int | None = None
+        async for packet in peer.packets():
+            self.seen.append(packet)
+            command = str((packet.fields or {}).get("command", ""))
+            if packet.name == REQUEST:
+                requests += 1
+                await self._answer(peer, requests, straggles=requests == straggle_at)
+            elif command == STRAGGLE:
+                straggle_at = requests + SYNC_REQUESTS
+            elif command.startswith(MARKER):
+                token = json.loads(command.removeprefix(MARKER))
+                await peer.write(peer.frame(SYSTEM_CHAT, content=text(token), overlay=False))
+
+    async def _answer(self, peer: Peer, request: int, *, straggles: bool) -> None:
+        if (request - 1) % SYNC_REQUESTS != 0:
+            await asyncio.sleep(TICK_S)
+        if peer.name in self.late:
+            await asyncio.sleep(TICK_S)
+        trailing = peer.raw_frame(DIFFICULTY, STRAGGLER) if straggles else b""
+        await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + trailing)
+
+
+def answers(transcript: Transcript, bot: str) -> list[int]:
+    return [
+        event.t_ns
+        for event in transcript.events
+        if event.bot == bot and event.packet.name == AWARD_STATS
+    ]
+
+
+def stragglers(transcript: Transcript) -> list[int]:
+    return [
+        event.t_ns
+        for event in transcript.events
+        if event.packet.name == DIFFICULTY and event.packet.payload == STRAGGLER
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.xfail(raises=ProtocolError, reason="#356: the open Mark is after the straggler")
+async def test_a_packet_read_with_the_opening_barriers_last_answer_is_inside_the_window() -> None:
+    # #356: the open Mark was stamped once every barrier had returned, so a frame that came
+    # right after a Bot's last answer was before it, yet left for the window's expect to take.
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(Straggler(), transcript) as context:
+        alice = await _joined(context, "alice")
+        await alice.command(STRAGGLE)
+        async with context.observe(until=DIFFICULTY, bot=alice):
+            await alice.expect(DIFFICULTY, timeout_s=2.0)
+
+    (straggler,) = stragglers(transcript)
+    opened, closed = transcript.marks[-2:]
+    assert straggler == answers(transcript, "alice")[-1] + 1, "one read took both"
+    assert opened.t_ns == straggler, "a nanosecond after the barrier's last answer"
+    assert closed == Mark(t_ns=straggler + 1, label=OBSERVE_CLOSE)
 
 
 @pytest.mark.asyncio
