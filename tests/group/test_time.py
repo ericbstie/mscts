@@ -17,6 +17,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 from mscts.bot import SYNC_REQUESTS
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
@@ -486,3 +487,15 @@ def test_sleep_with_50_percent_waits_for_the_sleeper_to_leave_the_bed() -> None:
 
     opened_at, closed_at = windows(transcript)[4]
     assert [t for t, _ in received(transcript, CLOCK, ANIMATE) if opened_at < t < closed_at]
+
+
+BED_AT = (
+    "set_entity_data.entries[].value.x",
+    "set_entity_data.entries[].value.y",
+    "set_entity_data.entries[].value.z",
+)
+"""The test cases a sleeping player's bed adds to a Report (a Pumpkin run of time/sleep)."""
+
+
+def test_each_test_case_of_a_sleeping_players_bed_has_a_title() -> None:
+    assert all(name in TITLES for name in BED_AT)
