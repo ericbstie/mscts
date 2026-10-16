@@ -307,6 +307,10 @@ STRAGGLE = "straggle"
 STRAGGLER = b"\x02\x00"
 """The payload of the change_difficulty that follows a barrier (normal, unlocked): the join's
 is another."""
+EARLY = (
+    f"{DIFFICULTY} arrived at alice after its barrier, but before the Observation window "
+    "opened after another Bot's barrier"
+)
 
 
 @dataclass
@@ -401,6 +405,27 @@ async def test_a_later_end_of_controls_barrier_does_not_move_the_open_mark() -> 
     opened, _ = transcript.marks[-2:]
     assert opened.t_ns == straggler == answers(transcript, "alice")[-1] + 1
     assert answers(transcript, CONTROL_PLAYER)[-1] > straggler, "Control's barrier ended later"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("named", [True, False], ids=["bot", "any-bot"])
+async def test_an_until_packet_between_a_bots_barrier_and_a_later_bots_fails_the_window(
+    named: bool,  # noqa: FBT001 - a parameter
+) -> None:
+    # With two Bots, the window opens after bob's slower barrier. What alice read after her
+    # own barrier but before that is outside the window, though it came after the setup: a
+    # window that took it can't tell whether the packet it waited for came inside (#356).
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(Straggler(late=frozenset({"bob"})), transcript) as context:
+        alice = await _joined(context, "alice")
+        await _joined(context, "bob")
+        await alice.command(STRAGGLE)
+        with pytest.raises(ProtocolError, match=EARLY):
+            async with context.observe(until=DIFFICULTY, bot=alice if named else None):
+                await alice.expect(DIFFICULTY, timeout_s=2.0)
+
+    (straggler,) = stragglers(transcript)
+    assert answers(transcript, "alice")[-1] < straggler < answers(transcript, "bob")[-1]
 
 
 @pytest.mark.asyncio

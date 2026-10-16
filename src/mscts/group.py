@@ -25,7 +25,7 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.stats import Sample, SampleLog, Series
 from mscts.target import TARGET
-from mscts.transcript import Mark, Transcript
+from mscts.transcript import Event, Mark, Transcript
 
 LOG = logging.getLogger(__name__)
 
@@ -419,7 +419,9 @@ class GroupContext:
                 `play` is False and `names` or `until` is given.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
             ProtocolError: The server disconnected a Bot, and the barrier or the drain
-                took the disconnect; or no `until` packet arrived inside the window.
+                took the disconnect; or no `until` packet arrived inside the window; or
+                one arrived at a Bot after its opening barrier, but before the window
+                opened after another Bot's (the body may have taken it).
         """
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
@@ -449,14 +451,16 @@ class GroupContext:
         try:
             # What setup caused may still be on its way to a Bot that is not Control: the
             # barrier first, so it arrives before the window opens on every Instance.
+            answered = await self._sync()
             label = " ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,))))
-            opened = self._mark(label, t_ns=_after_the_last_answer(await self._sync()))
+            opened = self._mark(label, t_ns=_after_the_last_answer(answered))
             yield
             if ends is None:
                 self._mark_each(OBSERVE_CLOSE, await self._sync())
                 await self._drain()
             else:
                 await self._drain()
+                self._refuse_early(ends, answered=answered, opened=opened, bot=bot)
                 # Compare puts a packet stamped at a Mark's time after the Mark, so the Mark
                 # goes a nanosecond after the arrival. A Connection stamps the frames of one
                 # read a nanosecond apart, so that is just before the next frame.
@@ -617,20 +621,55 @@ class GroupContext:
         Raises:
             ProtocolError: None did.
         """
-        arrivals = [
-            event.t_ns
-            for event in self._transcript.events
-            if event.t_ns >= since
-            and (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
-            and event.packet.name in names
-            and event.packet.state is State.PLAY
-            and event.packet.direction is Direction.CLIENTBOUND
-        ]
+        arrivals = [event.t_ns for event in self._until(names, bot=bot) if event.t_ns >= since]
         if not arrivals:
             at = "any Bot" if bot is None else bot.name
             msg = f"no {' or '.join(names)} arrived at {at} after the Observation window opened"
             raise ProtocolError(msg)
         return min(arrivals)
+
+    def _refuse_early(
+        self,
+        names: tuple[str, ...],
+        *,
+        answered: Mapping[str, int],
+        opened: int,
+        bot: Bot | None,
+    ) -> None:
+        """Fail if a packet called any of `names` came between a Bot's barrier and the open Mark.
+
+        `answered` is when each Bot's opening barrier's last answer arrived. The window opens
+        after the latest of them, so what an earlier Bot read in between came after the setup,
+        yet before the window: the body may have taken it as the packet it waited for, and
+        whether that came inside the window can't be told. Only `bot`'s packets count (with
+        no `bot`, any Bot's but Control's).
+
+        Raises:
+            ProtocolError: One did.
+        """
+        for event in self._until(names, bot=bot):
+            if answered.get(event.bot, opened) < event.t_ns < opened:
+                msg = (
+                    f"{event.packet.name} arrived at {event.bot} after its barrier, but before "
+                    "the Observation window opened after another Bot's barrier: whether the "
+                    "window holds the one it waited for can't be told"
+                )
+                raise ProtocolError(msg)
+
+    def _until(self, names: tuple[str, ...], *, bot: Bot | None) -> list[Event]:
+        """Every clientbound play packet called any of `names` that `bot` received.
+
+        With no `bot`, every one any Bot but Control received: Control's receipts are never
+        compared.
+        """
+        return [
+            event
+            for event in self._transcript.events
+            if (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
+            and event.packet.name in names
+            and event.packet.state is State.PLAY
+            and event.packet.direction is Direction.CLIENTBOUND
+        ]
 
     async def _drain(self) -> None:
         """Take what has already arrived at every Bot not closed, without waiting.

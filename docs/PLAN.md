@@ -1437,7 +1437,11 @@ class GroupContext:
                                     # ProtocolError naming the
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
-                                    # exception a Group raises), and no close Mark
+                                    # exception a Group raises), and no close Mark. One of
+                                    # those packets arrived at such a Bot after its own
+                                    # opening barrier's last answer but before the open Mark
+                                    # (another Bot's barrier ended later; the body may have
+                                    # taken it): ProtocolError too, the same Verdicts (#356)
     async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
                                     # Group froze already. end() unfreezes (a failure fails
                                     # the Group); after a failed Group, close() tries, and
