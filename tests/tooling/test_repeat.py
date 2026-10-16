@@ -5,14 +5,22 @@ Hermetic: no real pytest subprocess anywhere (a fake `run` stands in for `run_on
 gone, using the leak-guard pattern (tests/support/leak_guard.py).
 """
 
+import contextlib
+import fcntl
 import importlib.util
+import os
+import select
+import subprocess
 import sys
 import time
 import types
 import uuid
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
+from support.leak_guard import kill_survivors
 
 _REPEAT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "repeat.py"
 
@@ -180,3 +188,255 @@ def test_stress_load_cleans_up_even_when_the_block_raises(repeat: types.ModuleTy
         raise BoomError
 
     assert repeat.tagged_pids(f"MSCTS_REPEAT_STRESS={token}") == []
+
+
+# -- --live-lock: the lock is taken for each run (#411) -----------------------------
+
+
+def test_parse_args_reads_live_lock(repeat: types.ModuleType) -> None:
+    assert repeat.parse_args(["--", "tests/"]).live_lock is False
+    assert repeat.parse_args(["--live-lock", "--", "tests/"]).live_lock is True
+
+
+def _recorded(events: list[str], name: str, value: int | None = None) -> Callable[[], Any]:
+    @contextlib.contextmanager
+    def scope() -> Iterator[int | None]:
+        events.append(f"{name} in")
+        try:
+            yield value
+        finally:
+            events.append(f"{name} out")
+
+    return scope
+
+
+def _run_recording(events: list[str]) -> Callable[..., tuple[int, frozenset[str]]]:
+    def run(_uv: str, _args: object, inherit: Sequence[int]) -> tuple[int, frozenset[str]]:
+        events.append(f"run {tuple(inherit)}")
+        return 3, frozenset({"t"})
+
+    return run
+
+
+def test_a_locked_run_takes_the_lock_then_the_load_around_the_run_only(
+    repeat: types.ModuleType,
+) -> None:
+    events: list[str] = []
+    locked = repeat.locked_run(
+        _run_recording(events), hold=_recorded(events, "lock", 7), load=_recorded(events, "load")
+    )
+    assert locked("uv", ("t",)) == (3, frozenset({"t"}))
+    assert events == ["lock in", "load in", "run (7,)", "load out", "lock out"]
+
+
+def test_a_locked_run_with_nothing_to_inherit_passes_no_descriptor(
+    repeat: types.ModuleType,
+) -> None:
+    events: list[str] = []
+    locked = repeat.locked_run(
+        _run_recording(events), hold=_recorded(events, "lock"), load=_recorded(events, "load")
+    )
+    locked("uv", ("t",))
+    assert "run ()" in events
+
+
+def test_a_series_releases_the_lock_between_two_runs(repeat: types.ModuleType) -> None:
+    events: list[str] = []
+    locked = repeat.locked_run(
+        _run_recording(events), hold=_recorded(events, "lock", 7), load=_recorded(events, "load")
+    )
+    repeat.run_repeats("uv", ("t",), 2, run=locked)
+    assert [event for event in events if event.startswith("lock")] == [
+        "lock in",
+        "lock out",
+        "lock in",
+        "lock out",
+    ]
+    assert events.index("lock out") < events.index("lock in", 1)
+
+
+_STAND_IN_UV = """
+import fcntl, os, sys
+from pathlib import Path
+
+def lock_state():
+    try:
+        with (Path(os.environ["MSCTS_CACHE"]) / "live-tier.lock").open("r+") as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return "locked"
+            return "free"
+    except FileNotFoundError:
+        return "free"
+
+def stress_processes():
+    count = 0
+    mine = ("MSCTS_REPEAT_TEST=" + os.environ["MSCTS_REPEAT_TEST"]).encode()
+    for entry in Path("/proc").iterdir():
+        try:
+            environ = (entry / "environ").read_bytes().split(b"\\0")
+            if mine in environ and any(e.startswith(b"MSCTS_REPEAT_STRESS=") for e in environ):
+                count += 1
+        except OSError:
+            pass
+    return count
+
+with open(os.environ["STAND_IN_LOG"], "a") as log:
+    held_by = os.environ.get("MSCTS_LIVE_LOCK_HELD", "-")
+    print(lock_state(), stress_processes(), held_by, file=log, flush=True)
+if os.environ["STAND_IN_HOLDS"]:
+    sys.stdin.read()
+"""
+
+
+class _Series:
+    """A `repeat.py` process on a stand-in `uv`, which logs what it saw when each run began."""
+
+    def __init__(self, tmp_path: Path, *, holds_run: bool) -> None:
+        self.cache = tmp_path / "cache"
+        self.log = tmp_path / "runs.log"
+        self.holds_run = holds_run
+        self.token = uuid.uuid4().hex
+        self.stand_in = tmp_path / "bin" / "uv"
+        self.stand_in.parent.mkdir()
+        self.stand_in.write_text(f"#!{sys.executable}\n{_STAND_IN_UV}")
+        self.stand_in.chmod(0o755)
+
+    def start(self, *arguments: str) -> subprocess.Popen[str]:
+        env = {key: value for key, value in os.environ.items() if key != "MSCTS_LIVE_LOCK_HELD"}
+        env |= {
+            "PATH": f"{self.stand_in.parent}{os.pathsep}{env['PATH']}",
+            "MSCTS_CACHE": str(self.cache),
+            "MSCTS_LIVE_LOCK": "1",
+            "MSCTS_REPEAT_TEST": self.token,
+            "STAND_IN_LOG": str(self.log),
+            "STAND_IN_HOLDS": "1" if self.holds_run else "",
+        }
+        return subprocess.Popen(
+            [sys.executable, str(_REPEAT_PATH), *arguments, "--", "tests/"],
+            env=env,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+
+    def runs(self) -> list[str]:
+        return self.log.read_text().splitlines() if self.log.exists() else []
+
+
+@contextlib.contextmanager
+def _series(
+    tmp_path: Path, *, holds_run: bool = False
+) -> Iterator[tuple[_Series, Callable[..., subprocess.Popen[str]]]]:
+    series = _Series(tmp_path, holds_run=holds_run)
+    processes: list[subprocess.Popen[str]] = []
+
+    def start(*arguments: str) -> subprocess.Popen[str]:
+        processes.append(series.start(*arguments))
+        return processes[-1]
+
+    try:
+        yield series, start
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.kill()
+            process.wait(timeout=5)
+            for stream in (process.stdin, process.stdout, process.stderr):
+                assert stream is not None
+                stream.close()
+        assert kill_survivors(f"MSCTS_REPEAT_TEST={series.token}") == []
+
+
+def _finish(process: subprocess.Popen[str]) -> int:
+    process.communicate(timeout=30)
+    return process.wait()
+
+
+def test_a_live_lock_series_runs_every_run_under_the_lock(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        process = start("--times", "2", "--live-lock")
+        assert _finish(process) == 0
+        assert series.runs() == [f"locked 0 {process.pid}"] * 2
+        assert (series.cache / "live-tier.lock").read_text() == ""
+
+
+def test_a_series_without_the_flag_takes_no_lock(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        assert _finish(start("--times", "2")) == 0
+        assert series.runs() == ["free 0 -", "free 0 -"]
+        assert not (series.cache / "live-tier.lock").exists()
+
+
+def test_stress_runs_during_each_run_of_a_live_lock_series(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        arguments = ("--times", "2", "--live-lock", "--stress", "--stress-workers", "2")
+        process = start(*arguments)
+        assert _finish(process) == 0
+        assert series.runs() == [f"locked 2 {process.pid}"] * 2
+
+
+def test_stress_without_the_flag_covers_the_series_with_no_lock(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        assert _finish(start("--times", "2", "--stress", "--stress-workers", "1")) == 0
+        assert series.runs() == ["free 1 -", "free 1 -"]
+
+
+def _stress_processes(token: str) -> int:
+    """The stress processes of the series tagged `token`: other workers' series may run too."""
+    count = 0
+    mine = f"MSCTS_REPEAT_TEST={token}".encode()
+    for entry in Path("/proc").iterdir():
+        try:
+            environ = (entry / "environ").read_bytes().split(b"\0")
+            if mine in environ and any(e.startswith(b"MSCTS_REPEAT_STRESS=") for e in environ):
+                count += 1
+        except OSError:
+            continue
+    return count
+
+
+def test_stress_does_not_run_while_the_series_waits_for_the_lock(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        series.cache.mkdir()
+        with (series.cache / "live-tier.lock").open("w") as other_holder:
+            fcntl.flock(other_holder, fcntl.LOCK_EX)
+            other_holder.write(str(os.getpid()))
+            other_holder.flush()
+            process = start("--live-lock", "--stress", "--stress-workers", "1")
+            assert process.stderr is not None
+            ready, _, _ = select.select([process.stderr], [], [], 10)
+            assert ready, "the series did not say it was waiting"
+            assert process.stderr.readline().startswith("waiting for another live tier")
+            assert _stress_processes(series.token) == 0
+            assert series.runs() == []
+        assert _finish(process) == 0
+        assert series.runs() == [f"locked 1 {process.pid}"]
+
+
+def test_killing_a_series_keeps_the_lock_until_its_run_exits(tmp_path: Path) -> None:
+    with _series(tmp_path, holds_run=True) as (series, start):
+        process = start("--live-lock")
+        deadline = time.monotonic() + 10
+        while not series.runs():
+            assert time.monotonic() < deadline, "the run never started"
+            time.sleep(0.01)
+        process.kill()
+        process.wait(timeout=5)
+        with (series.cache / "live-tier.lock").open("r+") as lock:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            assert process.stdin is not None
+            process.stdin.close()
+            deadline = time.monotonic() + 10
+            while True:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    assert time.monotonic() < deadline, "the run's lock was never released"
+                    time.sleep(0.01)
+                else:
+                    break
