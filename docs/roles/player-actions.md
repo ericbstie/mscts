@@ -57,3 +57,5 @@ Newest first: one line per lesson, with the issue it came from.
 - #53: 26.3 sends `swing_animation` (entity, hand, a swing's type and duration) for a plain arm swing, only to the players who see the swinger; `animate` still carries crits and sweeps. A Group sees a swing only through a second Bot.
 - #53: since #391 a sprinting hit's `set_entity_data` (the target's health and the attacker's sprint flag) compares 20 of 20; never leave it out for two entities changed in one tick.
 - #53: a mutant that swaps a VarInt for a byte survives any test whose ids are under 128: pin a layout with an id of 128 or more.
+- #402: Pumpkin kicks a Bot with `Wrong teleport id` when Control's `tp` follows the join's accept by about a millisecond: it keeps one pending teleport and kicks any other id, where vanilla ignores a stale one (docs/research/2026-10-16-teleport-accept.md). The Bot's accepts are correct; it is a Candidate divergence.
+- #402: the Bot's Replies send `accept_teleportation` from the Connection's reader, on arrival, even outside a Bot operation. `scripts/research/teleport_accept.py --stale` shows how to drop one accept to test a server's handling.

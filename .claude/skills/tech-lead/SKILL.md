@@ -100,7 +100,9 @@ first.
   worker's state from memory: a wrong one reads as a decision (AS).
 - The ownership list in a brief names the shared test helpers
   (`tests/support/`, fakes) a parallel worker may import, not only `src/`.
-- A spec for a flaky failure names its cause as a hypothesis. Its first
+- A spec for a flaky failure first lists what the test's fakes key on
+  (#403: a port two random hosts can share). It names its cause as a
+  hypothesis. Its first
   increment reproduces the failure under load (a looping `mise run check`
   plus `scripts/research/probe_loop.py`) and keeps the failing Transcripts
   (AO, #88: the lead's cause was wrong).
@@ -129,5 +131,9 @@ first.
   **refactor** brief before adding features.
 - Keep briefs small: 3–6 increments. Large briefs hide surprises until
   too late.
+- A probe a worker writes goes in `scripts/research/`, never only in
+  the scratchpad, which ends with the session (#402).
+- Check that a worker's report has all five sections before removing
+  its worktree: a worker cannot be resumed without it (train 38).
 - Relay what matters to the user briefly. The workers' reports are not
   shown to them.

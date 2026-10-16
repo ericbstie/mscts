@@ -51,3 +51,4 @@ Newest first: one line per lesson, with the issue it came from.
 - #114, #116: Changing a CONTEXT.md entry means changing its glossary entry in the same commit (`test_glossary`).
 - #320: a packet list the client applies element by element at distinct keys is compared order-free; cite the handler's javap.
 - #320: ordering a run by entity needs the ranks from before the run (`_Numbers.ranks()`); sort before `numbers.take`. A run ends at a window's end, a tick Mark (tick-exact only) and `add_entity`/`remove_entities`; an uncompared packet never ends one.
+- #396: since #320, four item drops from one `/fill` and two stacks from one `/give` compare 20 of 20, `set_entity_data` included; no Group needs to keep several entities out of one tick.
