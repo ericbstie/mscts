@@ -3,6 +3,7 @@
 import asyncio
 import json
 import struct
+import time
 from collections.abc import AsyncIterator, Callable, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -86,8 +87,9 @@ class ControlServer:
     often does. The n-th statistics request gets an award_stats, followed in the same
     write by `after_answer[n]` if there is one; an even one is answered a tick (`TICK_S`)
     later, so each barrier of two requests shows a tick between its answers, as vanilla's
-    does. `on_command` is called with each command before it is answered. Every serverbound
-    Packet goes into `seen`.
+    does. `on_command` is called with each command before it is answered. A command in
+    `stalls` is answered, and everything after it, that many seconds late: a loaded host.
+    Every serverbound Packet goes into `seen`.
     """
 
     seen: list[Packet] = field(default_factory=list)
@@ -99,6 +101,7 @@ class ControlServer:
     new_commands: Mapping[str, object] | None = None
     on_command: Callable[[str], None] = lambda _: None
     rejoin_without_tree: bool = False
+    stalls: Mapping[str, float] = field(default_factory=dict)
     _requests: int = field(default=0, init=False)
     _held: list[str] = field(default_factory=list, init=False)
     _connections: int = field(default=0, init=False)
@@ -128,7 +131,10 @@ class ControlServer:
                 said = b"" if straggler is None else chat(peer, straggler)
                 await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + said)
             elif packet.name == CHAT_COMMAND:
-                await peer.write(self._answer(peer, str((packet.fields or {})["command"])))
+                command = str((packet.fields or {})["command"])
+                if command in self.stalls:
+                    await asyncio.sleep(self.stalls[command])
+                await peer.write(self._answer(peer, command))
 
     def _answer(self, peer: Peer, command: str) -> bytes:
         """What the server writes when `command` arrives: maybe nothing yet."""
@@ -187,6 +193,19 @@ async def test_a_play_outlasts_the_budget_of_one_fake_exchange(
         await context.control.run(SETBLOCK)
         await asyncio.sleep(4 * TICK_S)
         await context.control.run("tick freeze")
+
+
+@pytest.mark.asyncio
+async def test_a_stalled_command_is_answered_late() -> None:
+    # #410: a loaded host answers one operation after the limit; the stall stands for it.
+    transcript = Transcript(group_id="test/control", server="fake")
+    async with playing(ControlServer(stalls={SETBLOCK: 0.2}), transcript) as context:
+        await context.control.run("tick freeze")  # joins Control: not part of what is timed
+        began = time.monotonic()
+        await context.control.run(SETBLOCK)
+        stalled_s = time.monotonic() - began
+
+    assert stalled_s >= 0.2
 
 
 @pytest.mark.asyncio

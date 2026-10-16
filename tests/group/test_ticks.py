@@ -3,7 +3,7 @@
 from collections.abc import Set as AbstractSet
 
 import pytest
-from support.probe import REPEATER_STEPPED
+from support.probe import REPEATER_STEPPED, WATCHER, WATCHER_AT
 
 from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
@@ -422,6 +422,29 @@ async def test_the_repeater_probe_turns_random_ticks_back_on_when_it_fails() -> 
             server.answers_markers = False
 
     server = ControlServer(commands=PROBE_TREE, on_command=hang_on_the_first_step)
+    transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
+
+    async def failing() -> None:
+        async with playing(server, transcript, timeout_s=0.5) as context:
+            await REPEATER_STEPPED.run(context)
+
+    with pytest.raises(TimeoutError):
+        await failing()
+
+    assert RANDOM_TICKS_ON in steps(commands_sent(server.seen))
+
+
+@pytest.mark.xfail(strict=True, reason="#410: red first; the next commit fixes the test")
+@pytest.mark.asyncio
+async def test_the_repeater_probe_fails_at_the_hang_even_when_the_server_stalls_before_it() -> None:
+    # #410: a loaded host stalls one operation past the play's limit. Before the `try`
+    # that fails the probe with nothing to undo, so the test took the stall for the hang.
+    def hang_on_the_first_step(command: str) -> None:
+        if command == "tick step 1":
+            server.answers_markers = False
+
+    stall = {f"tp {WATCHER} {WATCHER_AT}": 0.7}
+    server = ControlServer(commands=PROBE_TREE, on_command=hang_on_the_first_step, stalls=stall)
     transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
 
     async def failing() -> None:
