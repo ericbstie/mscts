@@ -82,3 +82,7 @@ Newest first: one line per lesson, with the issue it came from.
   (`StreamWriter.drain` yields only when the transport is closing or
   paused), so "cancelled between two sends" needs a paused or closing
   socket.
+- #63: an operator Bot hears Control's commands as admin chat. To compare chat in a window where Control acts, `deop` the Bot before it and `op` it after.
+- #63: to compare when something happens on the wall clock (the 50% night skip, about 100 player ticks), add a read window before it is due, not only the order of what comes.
+- #63: counting `set_time` to span N ticks after an action needs one more, since the first counted may be sent before the action. Wait on any `set_time`, not only one with an empty clock.
+- #63: a player's advancements and bed spawn point persist in playerdata: revoke the advancement and move the spawn point off the bed so every play is a first night.

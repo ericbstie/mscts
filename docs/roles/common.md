@@ -112,3 +112,5 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
   specifies, including the lines you propose for your lane's handbook.
   State your worktree path, branch and PR URL.
 - Start any live run that can outlast a few minutes with `setsid nohup` in a scratch script, and wait on its rc file within your turn: a background run that outlives your turn is killed.
+- Never set a rule the Fixture world already has (`spawn_mobs` is off, ADR-0013): its undo sets vanilla's default and turns spawning on for every later play (#344, #63).
+- A fake gives each `where=` predicate a near miss for every field it checks: a near miss that differs in one field leaves the others' checks untested (#63).

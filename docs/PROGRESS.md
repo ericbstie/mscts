@@ -195,6 +195,36 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-16: train 37
+
+- #397, #401, #398 and #400 merged one after the other, each on the
+  then-current main. Reference tier: 35 of 35 on #397's, #401's and
+  #398's branches, 36 of 36 on #400's rebased tip.
+- #397 (#374): the live lock serves waiters in the order they asked,
+  through a ticket queue under `<cache>/live-tier.queue/`; a waiter that
+  dies drops out.
+- #401 (#53): the sprinting hits compare `set_entity_data` (the sprint
+  flag a hit clears), which #391's rule allows; `swing_animation` (new in
+  26.3, sent only to players who see the swinger) is decoded and
+  compared. Partial-charge hits stay out. #53 is closed.
+- #398 (#387): each `mobs/*` play calibrates its Instance's time-query
+  offset in a 40-tick step before the mobs are summoned and subtracts it;
+  the play's Bot, an operator, reads the game time itself without
+  waiting for the answer. Five stress Self-checks of `mobs/*`, 5 of 5;
+  `mobs/chase-open` takes 707 to 716 s of its 900 s limit (#404).
+  Against Pumpkin 0 of 13 pass (2 of 12 before), because of a Pumpkin
+  kick right after the join (#402).
+- #400 (#63): `time/advance`, `time/commands` and `time/sleep`, and a
+  `set_time` schema. `time query gametime` is left out (#399, closed by
+  the lead: the game time counts every tick since the world was made).
+  Two reviews: 0 blocking, 3 high, all fixed. A stress run caught a
+  `spawn_mobs` undo that turned spawning on for later plays. Against
+  Pumpkin 18 of 101 test cases pass; Pumpkin never puts the sleeper to
+  sleep.
+- Filed #396 (#320's follow-up: Groups that leave out a second drop or
+  `set_entity_data`), #402, #403 (a unit test once blamed the wrong side)
+  and #404.
+
 ### 2026-10-15: train 36
 
 - #392 (part of #53) merged first, then a train of #390, #393 and #391,

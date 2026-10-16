@@ -36,6 +36,11 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | the 50% sleep window compared only order: a skip at lie-down matched | the second review | no |
+| 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | the dawn window left out `system_chat`, hiding the wake-up message | the second review | no |
+| 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | a `set_time` that carries a clock never ended a wait: an invented failure | the second review | no |
+| 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | any `animate` ended the 50% sleep window | the first review | no |
+| 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | `spawn_mobs` turned on for every later play (a repeat of #344's) | a stress run | no |
 | 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | every category rare pooled into one column, and the name was never tested | the re-review | no |
 | 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | sample counts never compared: 500 samples against 2 matched | the second review | no |
 | 2026-10-14 | #24 | comparison core | #379 (`scrutiny::high`) | a category only one side had was pooled into another and matched | the second review | no |
@@ -61,6 +66,10 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #400 | | high | first review, second review | 0, 0 (3 high, all fixed) | five Self-checks of `time/*` before the reviews: run 1 failed on a `spawn_mobs` undo, fixed; five after the fixes, 20 of 20 each |
+| #398 | medium | medium | lead's diff read | 0 | five statistical Self-checks of `mobs/*`, 5 of 5 |
+| #401 | | medium | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 of six `combat/*` Groups |
+| #397 | low | low | lead's diff read | 0 | none: tooling |
 | #394 | medium | medium | lead's diff read | 0 | none: research note and probe, no product code |
 | #391 | | high | first review, second review, re-review | 1, 1 (the same: an uncompared packet ended a run of resends), 1 (runs crossed a window boundary) | five Self-checks of `blocks`, `entities`, `combat` before the reviews and five after the first fix, 26 of 26 each; one after the window fix, 27 of 27; none caught a bug |
 | #393 | | medium | lead's diff read | 0 | none: no barrier or window change; statistical tier 7 of 7 on the train tip |
