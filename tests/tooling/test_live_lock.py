@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import types
 import uuid
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -19,6 +20,7 @@ import pytest
 from support.leak_guard import kill_survivors
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "live_lock.py"
+HELD_VARIABLE = "MSCTS_LIVE_LOCK_HELD"
 CHILD = """
 import os, sys
 from pathlib import Path
@@ -31,16 +33,28 @@ sys.exit(int(sys.argv[1]))
 
 @contextmanager
 def command(
-    tmp_path: Path, exit_code: int = 0, *, bypass: bool = False, child: str = CHILD
+    tmp_path: Path,
+    exit_code: int = 0,
+    *,
+    bypass: bool = False,
+    inside_holder: bool = False,
+    child: str = CHILD,
 ) -> Iterator[subprocess.Popen[str]]:
+    """Start the wrapper on `child`, as a process of its own.
+
+    `inside_holder` runs it as a command of another holder would, with the variable that
+    holder exports. Otherwise it is an unrelated process, whatever this test run inherits.
+    """
     tag = f"MSCTS_LIVE_LOCK_TEST={uuid.uuid4().hex}"
-    env = {
-        **os.environ,
+    env = {key: value for key, value in os.environ.items() if key != HELD_VARIABLE}
+    env |= {
         "MSCTS_CACHE": str(tmp_path / "cache"),
         "MSCTS_LIVE_LOCK": "0" if bypass else "1",
         "MSCTS_LIVE_LOCK_TEST": tag.partition("=")[2],
         "MSCTS_LIVE_LOCK_TEST_PID": str(tmp_path / "child.pid"),
     }
+    if inside_holder:
+        env[HELD_VARIABLE] = "1"
     process = subprocess.Popen(
         [
             sys.executable,
@@ -220,6 +234,63 @@ def test_the_bypass_runs_while_another_live_tier_holds_the_lock(tmp_path: Path) 
         assert finish(first) == 0
 
 
+def test_the_holders_command_is_told_who_holds_the_lock(tmp_path: Path) -> None:
+    child = f"import os\nprint('held by', os.environ.get({HELD_VARIABLE!r}), flush=True)\n"
+    with command(tmp_path, child=child) as holder:
+        assert line(holder.stdout) == f"held by {holder.pid}"
+        assert finish(holder) == 0
+
+
+def test_a_command_inside_a_holders_command_runs_without_waiting(tmp_path: Path) -> None:
+    with command(tmp_path) as holder:
+        assert line(holder.stdout) == "started"
+        named = until_the_wrapper_names_its_command(tmp_path, holder)
+        with command(tmp_path, inside_holder=True) as nested:
+            assert line(nested.stdout) == "started"
+            assert (tmp_path / "cache" / "live-tier.lock").read_text().strip() == str(named)
+            assert finish(nested) == 0
+            assert nested.stderr is not None
+            assert nested.stderr.read() == ""
+        assert finish(holder) == 0
+
+
+def test_a_live_tier_run_by_a_holders_command_does_not_wait_for_its_holder(
+    tmp_path: Path,
+) -> None:
+    inner = [sys.executable, str(SCRIPT), "--", sys.executable, "-I", "-S", "-c", "print('inner')"]
+    child = f"import subprocess\nsubprocess.run({inner!r}, timeout=5, check=True)\nprint('done')\n"
+    with command(tmp_path, child=child) as holder:
+        assert line(holder.stdout) == "inner"
+        assert line(holder.stdout) == "done"
+        assert finish(holder) == 0
+
+
+def test_a_hold_marks_its_environment_for_the_block(tmp_path: Path) -> None:
+    live_lock = load_live_lock()
+    environ: dict[str, str] = {}
+    with live_lock.hold_live_lock(tmp_path, environ):
+        assert environ == {HELD_VARIABLE: str(os.getpid())}
+    assert environ == {}
+
+
+def test_a_hold_inside_a_holders_command_takes_nothing(tmp_path: Path) -> None:
+    live_lock = load_live_lock()
+    environ = {HELD_VARIABLE: "1"}
+    with live_lock.hold_live_lock(tmp_path, environ) as descriptor:
+        assert descriptor is None
+        assert not (tmp_path / "live-tier.lock").exists()
+    assert environ == {HELD_VARIABLE: "1"}
+
+
+def test_a_bypassed_hold_takes_nothing(tmp_path: Path) -> None:
+    live_lock = load_live_lock()
+    environ = {"MSCTS_LIVE_LOCK": "0"}
+    with live_lock.hold_live_lock(tmp_path, environ) as descriptor:
+        assert descriptor is None
+        assert not (tmp_path / "live-tier.lock").exists()
+    assert environ == {"MSCTS_LIVE_LOCK": "0"}
+
+
 def test_a_descendant_does_not_keep_the_lock_after_the_command_exits(tmp_path: Path) -> None:
     child = f"""
 import subprocess, sys
@@ -326,17 +397,36 @@ def test_a_finished_holder_leaves_no_pid_for_a_waiter_to_name(tmp_path: Path) ->
     assert (tmp_path / "cache" / "live-tier.lock").read_text() == ""
 
 
+def load_live_lock() -> types.ModuleType:
+    """Load scripts/live_lock.py by path (scripts/ is not an importable package)."""
+    spec = importlib.util.spec_from_file_location("live_lock", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_hold_keeps_the_lock_until_its_block_ends(tmp_path: Path) -> None:
+    live_lock = load_live_lock()
+    lock = tmp_path / "live-tier.lock"
+    with live_lock.hold_live_lock(tmp_path, {}) as descriptor:
+        assert isinstance(descriptor, int)
+        assert lock.read_text().strip() == str(os.getpid())
+        with lock.open("r+") as other, pytest.raises(BlockingIOError):
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert lock.read_text() == ""
+    with lock.open("r+") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def test_a_signal_that_arrives_before_the_command_starts_reaches_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # #211: the wrapper keeps such a signal and forwards it once the command has started.
     # Only the moment between its handlers going in and the command starting has no
     # command yet, so the signal arrives there, from inside the wrapper itself.
-    spec = importlib.util.spec_from_file_location("live_lock", SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    live_lock = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(live_lock)
+    live_lock = load_live_lock()
     real_popen = subprocess.Popen
 
     def signalled_first(

@@ -2,7 +2,8 @@
 """Flake hunter: run a pytest selection N times, optionally under CPU stress.
 
 Usage:
-    python3 scripts/repeat.py [--times N] [--stress] [--stress-workers N] -- <pytest args...>
+    python3 scripts/repeat.py [--times N] [--stress] [--stress-workers N] [--live-lock] --
+        <pytest args...>
 
 Runs `uv run pytest <pytest args...>` `--times` times in a row (default 1). With
 `--stress`, before the first run it spawns `--stress-workers` (default `os.cpu_count()`,
@@ -11,6 +12,11 @@ on a normal return, an exception, or Ctrl-C -- using the leak-guard pattern (Wor
 contract, docs/PROCESS.md; see also `tests/support/leak_guard.py`): each stress
 process's environment carries a token unique to this invocation, and cleanup SIGKILLs
 anything still tagged with it after asking nicely first.
+
+With `--live-lock`, each run takes the live-tier lock (`scripts/live_lock.py`), runs and
+releases it, so a short live run that queued meanwhile goes between two runs of the series
+(#411). `--stress` then loads the CPUs only while a run holds the lock. Never wrap a live
+series in an outer `live_lock.py`: that holds the lock for the whole series.
 
 Prints one line per run and a final report: how many runs passed, how many failed, and
 the union of failing test ids (from pytest's "FAILED <id> - ..." summary lines) across
@@ -21,18 +27,24 @@ failed.
 
 import argparse
 import contextlib
+import importlib.util
 import os
 import shutil
 import signal
 import subprocess
 import sys
 import time
+import types
 import uuid
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 type Run = Callable[[str, Sequence[str]], tuple[int, frozenset[str]]]
+type InheritingRun = Callable[[str, Sequence[str], Sequence[int]], tuple[int, frozenset[str]]]
+type Scope[T] = Callable[[], AbstractContextManager[T]]
 
 _BUSY_LOOP = "\nwhile True:\n    pass\n"
 _STRESS_TOKEN_NAME = "MSCTS_REPEAT_STRESS"  # noqa: S105 - an env var name, not a secret
@@ -86,6 +98,7 @@ class Args:
     times: int
     stress: bool
     stress_workers: int
+    live_lock: bool
 
 
 def split_argv(argv: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -114,6 +127,11 @@ def _build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="how many busy-loop processes (default: os.cpu_count(), i.e. nproc)",
+    )
+    parser.add_argument(
+        "--live-lock",
+        action="store_true",
+        help="take the live-tier lock for each run, not for the whole series",
     )
     return parser
 
@@ -146,6 +164,7 @@ def parse_args(argv: Sequence[str]) -> Args:
         times=parsed.times,
         stress=parsed.stress,
         stress_workers=workers,
+        live_lock=parsed.live_lock,
     )
 
 
@@ -195,10 +214,20 @@ def failing_ids_in(stdout: str) -> frozenset[str]:
     return frozenset(ids)
 
 
-def run_once(uv: str, pytest_args: Sequence[str]) -> tuple[int, frozenset[str]]:
-    """Run `uv run pytest <pytest_args>` once; return (exit code, failing test ids)."""
+def run_once(
+    uv: str, pytest_args: Sequence[str], inherit: Sequence[int] = ()
+) -> tuple[int, frozenset[str]]:
+    """Run `uv run pytest <pytest_args>` once; return (exit code, failing test ids).
+
+    The run inherits the descriptors in `inherit` (the live lock's, which it keeps if this
+    process is killed).
+    """
     result = subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
-        [uv, "run", "pytest", *pytest_args], capture_output=True, text=True, check=False
+        [uv, "run", "pytest", *pytest_args],
+        capture_output=True,
+        text=True,
+        check=False,
+        pass_fds=tuple(inherit),
     )
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
@@ -239,6 +268,20 @@ def run_repeats(
     )
 
 
+def locked_run(run: InheritingRun, *, hold: Scope[int | None], load: Scope[object]) -> Run:
+    """`run`, but each call holds the live lock, then the CPU load, for that run only (#411).
+
+    The load starts after the lock is taken, so it never runs while the series waits or
+    while another run holds the lock. `run` inherits the lock's descriptor, if `hold` has one.
+    """
+
+    def run_locked(uv: str, pytest_args: Sequence[str]) -> tuple[int, frozenset[str]]:
+        with hold() as descriptor, load():
+            return run(uv, pytest_args, () if descriptor is None else (descriptor,))
+
+    return run_locked
+
+
 def print_report(result: RepeatResult) -> int:
     """Print `result`'s summary; return the exit code (0 only if every run passed)."""
     print(f"{result.times} run(s): {result.passed} passed, {result.failed} failed")
@@ -247,6 +290,41 @@ def print_report(result: RepeatResult) -> int:
         for test_id in sorted(result.failing_ids):
             print(f"  {test_id}")
     return 0 if result.failed == 0 else 1
+
+
+def _load_live_lock() -> types.ModuleType:
+    """Import `live_lock.py` beside this file: it needs `mscts`, so only `--live-lock` loads it."""
+    path = Path(__file__).with_name("live_lock.py")
+    spec = importlib.util.spec_from_file_location("live_lock", path)
+    if spec is None or spec.loader is None:
+        raise ImportError(str(path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _each_run_load(args: Args) -> Scope[object]:
+    """The CPU load of one run: `--stress-workers` busy loops, or nothing without `--stress`."""
+    if not args.stress:
+        return contextlib.nullcontext
+
+    def load() -> AbstractContextManager[object]:
+        return stress_load(args.stress_workers, uuid.uuid4().hex)
+
+    return load
+
+
+def _live_lock_run(args: Args) -> Run:
+    """`run_once` with the live lock taken for each run, and the CPU load only while it is held."""
+    live_lock = _load_live_lock()
+    cache = live_lock.cache_dir()
+
+    def hold() -> AbstractContextManager[int | None]:
+        return cast(
+            "AbstractContextManager[int | None]", live_lock.hold_live_lock(cache, os.environ)
+        )
+
+    return locked_run(run_once, hold=hold, load=_each_run_load(args))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -260,7 +338,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if uv is None:
         print("repeat.py: no `uv` on PATH", file=sys.stderr)
         return 2
-    if args.stress:
+    if args.live_lock:
+        result = run_repeats(uv, args.pytest_args, args.times, run=_live_lock_run(args))
+    elif args.stress:
         token = uuid.uuid4().hex
         with stress_load(args.stress_workers, token):
             result = run_repeats(uv, args.pytest_args, args.times)

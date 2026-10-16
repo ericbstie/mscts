@@ -45,11 +45,15 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - `mscts run --group` takes one glob, and the last `--group` wins: run one
   `mscts run` per glob.
 - Repeat a selection with
-  `uv run scripts/repeat.py --times N [--stress] -- <pytest args>` (one
+  `uv run scripts/repeat.py --times N [--stress] [--live-lock] -- <pytest args>` (one
   line per run, the union of failures). Set `PYTHONUNBUFFERED=1` when you redirect it,
   or its lines arrive only at the end. Never hand-roll a loop. Use
   `--stress` only when your brief or issue asks: it slows every other
-  agent's tiers on this host.
+  agent's tiers on this host. A live selection (a Self-check, a reference or
+  candidate test) gets `--live-lock`: each run takes the live lock and
+  releases it, so a short live run that is waiting goes between two of your
+  runs. Never put a series under an outer `live_lock.py`: that holds the lock
+  until the last run (#411).
 - Run the mutation sweep before the docs commits, so a bug it finds is
   fixed while the code is fresh.
 - The docs checks run the guide's Python examples (#109): a fragment gets
@@ -90,7 +94,8 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Live-tier mise tasks share `<cache>/live-tier.lock` (#138). Others
   wait for the holder and get the lock in the order they asked (#374), and a
   waiter that dies drops out of the queue; `MSCTS_LIVE_LOCK=0` bypasses it on a machine known
-  to have enough capacity. The unit tier takes no lock.
+  to have enough capacity. A command started inside a holder's command takes no lock: the
+  holder exports `MSCTS_LIVE_LOCK_HELD`. The unit tier takes no lock.
   Never bypass it on a shared host, and run `mscts run` against a
   Candidate only while you hold no other live run: too many Instances at
   once restarted the container twice in train 30.
