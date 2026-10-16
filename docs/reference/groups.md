@@ -66,10 +66,6 @@ The server does not send a chest's items to a player who is only watching it, so
 see them in the block packets. The builder reads them with `/data get block`, and the message it
 gets back is compared.
 
-The `/fill` region holds one block that drops an item. Vanilla sends the items a tick drops in an
-order that follows their entity ids, and two servers can number their entities differently, so with
-several items the Reference would not match itself.
-
 ### Blocks a player breaks and places
 
 Two Bots, `digger` and `watcher`, join. The digger breaks and places blocks. The watcher stands
