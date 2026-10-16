@@ -9,6 +9,7 @@ tests) -- no network either way.
 import importlib.util
 import os
 import subprocess
+import sys
 import types
 from pathlib import Path
 
@@ -351,3 +352,157 @@ def test_last_pytest_summary_accepts_verbose_and_quiet_results_without_inventing
     time_tier: types.ModuleType, output: str, expected: str | None
 ) -> None:
     assert time_tier.last_pytest_summary(output) == expected
+
+
+# -- revisions: parse_args, append_selection, run_order (#412) ---------------------------
+
+
+def test_parse_args_defaults_to_the_working_tree(time_tier: types.ModuleType) -> None:
+    args = time_tier.parse_args(["test:reference"])
+    assert args.revisions == ()
+    assert args.rounds == 1
+    assert args.stress is False
+    assert args.pytest_args == ()
+
+
+def test_parse_args_reads_revisions_rounds_stress_and_the_selection(
+    time_tier: types.ModuleType,
+) -> None:
+    args = time_tier.parse_args(
+        [
+            "test:statistical",
+            "--rev",
+            "origin/main",
+            "--rev",
+            "HEAD",
+            "--rounds",
+            "3",
+            "--stress",
+            "--stress-workers",
+            "2",
+            "--",
+            "tests/selfcheck",
+            "-k",
+            "mobs/chase-open",
+        ]
+    )
+    assert args.task == "test:statistical"
+    assert args.revisions == ("origin/main", "HEAD")
+    assert args.rounds == 3
+    assert args.stress is True
+    assert args.stress_workers == 2
+    assert args.pytest_args == ("tests/selfcheck", "-k", "mobs/chase-open")
+
+
+@pytest.mark.parametrize(
+    ("argv", "message"),
+    [
+        (["t", "--rev", "main"], "at least two"),
+        (["t", "--rev", "main", "--rev", "main"], "twice"),
+        (["t", "--rev", "a", "--rev", "b", "--rounds", "0"], "--rounds"),
+        (["t", "--rev", "a", "--rev", "b", "--times", "2"], "--times"),
+        (["t", "--rounds", "2"], "--rev"),
+        (["t", "--stress"], "--rev"),
+        (["t", "--rev", "a", "--rev", "b", "--stress-workers", "0"], "--stress-workers"),
+    ],
+)
+def test_parse_args_rejects_a_comparison_it_cannot_run(
+    time_tier: types.ModuleType, argv: list[str], message: str
+) -> None:
+    with pytest.raises(time_tier.TimeTierError, match=message):
+        time_tier.parse_args(argv)
+
+
+def test_append_selection_goes_after_the_pytest_arguments_of_pytest_commands_only(
+    time_tier: types.ModuleType,
+) -> None:
+    commands = ["uv run ruff check", "uv run pytest -m statistical"]
+    assert time_tier.append_selection(commands, ("tests/selfcheck", "-k", "a b")) == [
+        "uv run ruff check",
+        "uv run pytest -m statistical tests/selfcheck -k 'a b'",
+    ]
+
+
+def test_append_selection_without_a_selection_changes_nothing(time_tier: types.ModuleType) -> None:
+    assert time_tier.append_selection(["uv run pytest"], ()) == ["uv run pytest"]
+
+
+def test_run_order_alternates_the_revisions_round_by_round(time_tier: types.ModuleType) -> None:
+    main = time_tier.Revision("main", "a" * 40)
+    branch = time_tier.Revision("branch", "b" * 40)
+    assert time_tier.run_order([main, branch], 3) == [
+        (1, main),
+        (1, branch),
+        (2, main),
+        (2, branch),
+        (3, main),
+        (3, branch),
+    ]
+
+
+def _repository_with_two_commits(tmp_path: Path) -> tuple[Path, str, str]:
+    """A throwaway repo: `a.py` is "one" at the first commit, "two" at the second."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git("init", "-q", cwd=repo)
+    (repo / "a.py").write_text("one\n")
+    _git("add", "a.py", cwd=repo)
+    _git("commit", "-q", "-m", "first", cwd=repo)
+    _git("tag", "first", cwd=repo)
+    (repo / "a.py").write_text("two\n")
+    _git("commit", "-q", "-am", "second", cwd=repo)
+    (repo / "a.py").write_text("three, not committed\n")
+    (repo / "untracked.py").write_text("never added\n")
+    head = _commit_of("HEAD", repo)
+    return repo, _commit_of("first", repo), head
+
+
+def _commit_of(name: str, repo: Path) -> str:
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    done = subprocess.run(
+        ["git", "rev-parse", name],  # noqa: S607
+        cwd=repo,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout.strip()
+
+
+def test_resolve_revisions_names_each_revisions_commit(
+    time_tier: types.ModuleType, tmp_path: Path
+) -> None:
+    repo, first, head = _repository_with_two_commits(tmp_path)
+    assert time_tier.resolve_revisions(repo, ["first", "HEAD"]) == [
+        time_tier.Revision("first", first),
+        time_tier.Revision("HEAD", head),
+    ]
+    assert len(first) == 40
+
+
+def test_resolve_revisions_rejects_a_revision_git_does_not_know(
+    time_tier: types.ModuleType, tmp_path: Path
+) -> None:
+    repo, _, _ = _repository_with_two_commits(tmp_path)
+    with pytest.raises(time_tier.TimeTierError, match="no-such-branch"):
+        time_tier.resolve_revisions(repo, ["HEAD", "no-such-branch"])
+
+
+def test_copy_revision_holds_the_committed_files_of_that_commit_only(
+    time_tier: types.ModuleType, tmp_path: Path
+) -> None:
+    repo, first, _ = _repository_with_two_commits(tmp_path)
+    dest = tmp_path / "copy"
+    time_tier.copy_revision(repo, first, dest)
+    assert (dest / "a.py").read_text() == "one\n"
+    assert not (dest / "untracked.py").exists()
+    assert (repo / "a.py").read_text() == "three, not committed\n"
+
+
+def test_a_command_in_a_copy_never_syncs_the_environment(
+    time_tier: types.ModuleType, tmp_path: Path
+) -> None:
+    code = "import os; print(os.environ['UV_NO_SYNC'], os.environ['PYTHONPATH'])"
+    done = time_tier.run_in_copy(tmp_path / "venv", tmp_path, [sys.executable, "-c", code])
+    assert done.stdout.strip() == f"1 {tmp_path / 'src'}"

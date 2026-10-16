@@ -28,12 +28,14 @@ printing all requested runs' reports.
 """
 
 import argparse
+import io
 import os
 import re
 import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import tomllib
@@ -42,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 DEFAULT_DURATIONS = 10
+MIN_REVISIONS = 2  # a comparison needs something to compare against
 
 
 class TimeTierError(Exception):
@@ -50,34 +53,106 @@ class TimeTierError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Args:
-    """One parsed invocation: which mise task to time, and how many times."""
+    """One parsed invocation: the mise task, how often, which revisions, and what to select.
+
+    Without `revisions` the working tree is timed `times` times. With them (two or more),
+    each of `rounds` rounds times every revision once, under `stress` if asked.
+    """
 
     task: str
     times: int
+    revisions: tuple[str, ...]
+    rounds: int
+    stress: bool
+    stress_workers: int
+    pytest_args: tuple[str, ...]
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="time_tier.py", description="Time a mise task in a throwaway copy of the tree."
+        prog="time_tier.py",
+        description="Time a mise task in a throwaway copy of the tree, or of two or more "
+        "revisions, alternating them under one live-lock hold. pytest arguments for the "
+        "task go after `--`.",
     )
     parser.add_argument("task", help="a task name from mise.toml, e.g. test:reference")
     parser.add_argument("--times", type=int, default=1, help="how many times to run (default 1)")
+    parser.add_argument(
+        "--rev",
+        action="append",
+        default=[],
+        help="a revision to time (give two or more): its `git archive` copy, not the working tree",
+    )
+    parser.add_argument("--rounds", type=int, default=1, help="rounds of every --rev (default 1)")
+    parser.add_argument(
+        "--stress", action="store_true", help="load every CPU with busy loops while timing a round"
+    )
+    parser.add_argument(
+        "--stress-workers",
+        type=int,
+        default=None,
+        help="how many busy-loop processes (default: os.cpu_count(), i.e. nproc)",
+    )
     return parser
+
+
+def _split_pytest_args(argv: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Split `argv` on the first "--" into (this script's arguments, the task's pytest ones)."""
+    if "--" not in argv:
+        return list(argv), []
+    index = argv.index("--")
+    return list(argv[:index]), list(argv[index + 1 :])
+
+
+def _check_revisions(revisions: Sequence[str], parsed: argparse.Namespace) -> None:
+    """Raise `TimeTierError` unless `parsed` describes a comparison of `revisions` that can run."""
+    if len(revisions) < MIN_REVISIONS:
+        msg = "--rev needs at least two revisions to compare"
+        raise TimeTierError(msg)
+    if len(set(revisions)) < len(revisions):
+        msg = "--rev names a revision twice"
+        raise TimeTierError(msg)
+    if parsed.rounds < 1:
+        msg = "--rounds must be at least 1"
+        raise TimeTierError(msg)
+    if parsed.times != 1:
+        msg = "--times runs the working tree: count a comparison with --rounds"
+        raise TimeTierError(msg)
+    if parsed.stress_workers is not None and parsed.stress_workers < 1:
+        msg = "--stress-workers must be at least 1"
+        raise TimeTierError(msg)
 
 
 def parse_args(argv: Sequence[str]) -> Args:
     """Parse `argv` (without the program name) into `Args`.
 
     Raises:
-        TimeTierError: `--times` is not a positive integer.
+        TimeTierError: `--times` is not a positive integer, or the revisions cannot be
+            compared (fewer than two, one named twice, `--rounds` or `--stress-workers`
+            below 1, `--times` given), or `--rounds` or `--stress` is given without `--rev`.
         SystemExit: the arguments do not otherwise parse, or `task` is missing
             (argparse prints the usage message and exits with code 2).
     """
-    parsed = _build_parser().parse_args(argv)
+    own, pytest_args = _split_pytest_args(argv)
+    parsed = _build_parser().parse_args(own)
     if parsed.times < 1:
         msg = "--times must be at least 1"
         raise TimeTierError(msg)
-    return Args(task=parsed.task, times=parsed.times)
+    revisions = tuple(parsed.rev)
+    if revisions:
+        _check_revisions(revisions, parsed)
+    elif parsed.rounds != 1 or parsed.stress or parsed.stress_workers is not None:
+        msg = "--rounds, --stress and --stress-workers need --rev"
+        raise TimeTierError(msg)
+    return Args(
+        task=parsed.task,
+        times=parsed.times,
+        revisions=revisions,
+        rounds=parsed.rounds,
+        stress=parsed.stress,
+        stress_workers=parsed.stress_workers or os.cpu_count() or 1,
+        pytest_args=tuple(pytest_args),
+    )
 
 
 # -- mise.toml: which command(s) a task runs -----------------------------------------
@@ -111,6 +186,16 @@ def task_run_commands(mise_toml: Path, task: str) -> list[str]:
             return commands
     msg = f"task {task!r}'s 'run' field must be a string or a non-empty list of strings"
     raise TimeTierError(msg)
+
+
+def append_selection(commands: Sequence[str], selection: Sequence[str]) -> list[str]:
+    """`commands`, each one that runs `pytest` followed by the `selection` of tests to run."""
+    if not selection:
+        return list(commands)
+    return [
+        f"{command} {shlex.join(selection)}" if "pytest" in shlex.split(command) else command
+        for command in commands
+    ]
 
 
 def prepare_command(command: str, *, durations: int = DEFAULT_DURATIONS) -> list[str]:
@@ -174,6 +259,69 @@ def make_copy(repo_root: Path, dest: Path) -> None:
         shutil.copy2(source, target)
 
 
+# -- revisions: a commit, copied out of git (never a worktree: those write to the repository) --
+
+
+@dataclass(frozen=True, slots=True)
+class Revision:
+    """A revision as the user named it, and the commit it named when the script began."""
+
+    name: str
+    commit: str
+
+
+def _git_output(repo_root: Path, *args: str) -> bytes:
+    """What `git -C repo_root <args>` writes to stdout, with every `GIT_*` variable dropped.
+
+    Raises:
+        TimeTierError: git fails; its message is the error.
+    """
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    result = subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
+        [_git_executable(), "-C", str(repo_root), *args],
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if result.returncode != 0:
+        msg = f"git {' '.join(args)}: {result.stderr.decode(errors='replace').strip()}"
+        raise TimeTierError(msg)
+    return result.stdout
+
+
+def resolve_revisions(repo_root: Path, names: Sequence[str]) -> list[Revision]:
+    """The commit each of `names` is in `repo_root` now (a branch may move while rounds run).
+
+    Raises:
+        TimeTierError: a name is not a revision git knows.
+    """
+    return [
+        Revision(
+            name=name,
+            commit=_git_output(repo_root, "rev-parse", "--verify", f"{name}^{{commit}}")
+            .decode()
+            .strip(),
+        )
+        for name in names
+    ]
+
+
+def copy_revision(repo_root: Path, commit: str, dest: Path) -> None:
+    """Copy the files `commit` commits (not the working tree) from `repo_root` into `dest`.
+
+    `dest` must not already exist. Never writes to `repo_root`.
+    """
+    archive = _git_output(repo_root, "archive", "--format=tar", commit)
+    dest.mkdir(parents=True)
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(dest, filter="data")
+
+
+def run_order(revisions: Sequence[Revision], rounds: int) -> list[tuple[int, Revision]]:
+    """Each round's number with every revision, in turn: drift hits every revision alike."""
+    return [(number, revision) for number in range(1, rounds + 1) for revision in revisions]
+
+
 def _venv_path(repo_root: Path) -> Path:
     """`repo_root`'s synced virtualenv (`mise run sync` creates it at `<repo_root>/.venv`).
 
@@ -201,6 +349,7 @@ def run_in_copy(
     env["UV_PROJECT_ENVIRONMENT"] = str(venv)
     env["PYTHONPATH"] = str(copy_root / "src")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["UV_NO_SYNC"] = "1"  # a `uv run` inside the task would sync `venv` to this copy
     return subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
         argv, cwd=copy_root, env=env, capture_output=True, text=True, check=False
     )
