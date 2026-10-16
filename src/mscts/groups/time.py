@@ -30,7 +30,7 @@ import contextlib
 from collections.abc import Callable
 from dataclasses import replace
 
-from mscts.bot import Bot, Face
+from mscts.bot import Bot, Face, offline_uuid
 from mscts.codec.packets import Packet
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import join_at_spawn, pin_joins
@@ -228,6 +228,25 @@ async def _first_night(control: Control) -> None:
     await control.run(f"spawnpoint {SLEEPER} 0 -60 0")
 
 
+_WAKE_UP = 0
+"""`ClientboundAnimatePacket.WAKE_UP` in 26.3."""
+
+
+def _woke(clock: Bot) -> Callable[[Packet], bool]:
+    """Whether an `animate` is the sleeper getting up, as `clock`, which tracks it, is told.
+
+    Any other entity's `animate`, or another action, does not end a wait for it.
+    """
+    sleeper = offline_uuid(SLEEPER)
+    ids = {entity.id for entity in clock.entities.values() if entity.uuid == sleeper}
+
+    def holds(packet: Packet) -> bool:
+        fields = packet.fields or {}
+        return fields.get("entity_id") in ids and fields.get("action") == _WAKE_UP
+
+    return holds
+
+
 async def _alone(context: GroupContext, clock: Bot) -> None:
     """Make Control leave, and wait until the clock is told it has.
 
@@ -329,5 +348,5 @@ async def sleep(context: GroupContext) -> None:
             await _count_set_time(clock, _BEFORE_DEEP_SLEEP)
         await _read(context, clock, "time query day")
         async with context.observe(*SLEEP_PACKETS):
-            await clock.expect("minecraft:animate", timeout_s=_WAIT_S)
+            await clock.expect("minecraft:animate", timeout_s=_WAIT_S, where=_woke(clock))
         await _read_day(context, clock)

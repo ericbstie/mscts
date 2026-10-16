@@ -16,18 +16,20 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 
-from mscts.bot import SYNC_REQUESTS
+from mscts.bot import SYNC_REQUESTS, offline_uuid
 from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
+from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.spec import ServerSpec
+from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.group.test_control import CODEC, text, tree
 from tests.group.test_movement import Play, read
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server, serve
 
-CONTROL, CLOCK = "control", "clock"
+CONTROL, CLOCK, SLEEPER = "control", "clock", "sleeper"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 SYSTEM_CHAT, SET_TIME = "minecraft:system_chat", "minecraft:set_time"
@@ -61,6 +63,13 @@ SKIP_TICKS = 40
 than 3 `set_time` and a read, so the read comes before the skip, as on vanilla (100 ticks)."""
 DAWN_TICK = 18
 """On which tick of a step the fake gets a sleeper up with 100% needed."""
+PLAYER = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:player")
+ENTITY_IDS = {"clock": 1, "sleeper": 2}
+"""The entity id the fake gives each player but Control."""
+STRAY = {"entity_id": 99, "action": 0}
+"""An `animate` of another entity the fake sends `STRAY_TICKS` before the night is skipped."""
+STRAY_TICKS = 10
+"""Longer than a barrier, so a window that ended on the stray `animate` would miss the skip."""
 LATE_TICKS = 5
 """How many ticks the fake takes to answer a player's command, and to tell the others that
 Control has left: longer than a barrier, so a window that did not wait for it would miss it."""
@@ -106,6 +115,7 @@ class TimeServer:
             await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
 
     async def _play(self, peer: Peer) -> None:
+        await self._show(peer.name)
         self.players[peer.name] = peer
         clock = None if peer.name == CONTROL else asyncio.create_task(self._tick(peer))
         requests = 0
@@ -127,6 +137,24 @@ class TimeServer:
             if peer.name == CONTROL:
                 del self.players[CONTROL]
                 self.later.add(asyncio.create_task(self._left()))
+
+    async def _show(self, name: str) -> None:
+        """Tell every player but Control that player `name` is there (`add_entity`)."""
+        if name in ENTITY_IDS:
+            await self._everyone(
+                "minecraft:add_entity",
+                entity_id=ENTITY_IDS[name],
+                entity_uuid=offline_uuid(name),
+                type=PLAYER,
+                x=0.5,
+                y=-60.0,
+                z=0.5,
+                velocity={"scale": 0, "x": 0, "y": 0, "z": 0},
+                pitch=0,
+                yaw=0,
+                head_yaw=0,
+                data=0,
+            )
 
     async def _left(self) -> None:
         await asyncio.sleep(LATE_TICKS * TICK_S)
@@ -157,12 +185,14 @@ class TimeServer:
         self.sleeping = True
         await self._everyone(SYSTEM_CHAT, content=text("sleeping"), overlay=True)
         if self.percentage == 50:
-            await asyncio.sleep(SKIP_TICKS * TICK_S)
+            await asyncio.sleep((SKIP_TICKS - STRAY_TICKS) * TICK_S)
+            await self._everyone(ANIMATE, **STRAY)
+            await asyncio.sleep(STRAY_TICKS * TICK_S)
             await self._get_up()
 
     async def _get_up(self) -> None:
         self.sleeping = False
-        await self._everyone(ANIMATE, entity_id=2, action=0)
+        await self._everyone(ANIMATE, entity_id=ENTITY_IDS[SLEEPER], action=0)
 
     async def _step(self, ticks: int) -> None:
         for tick in range(1, ticks + 1):
@@ -374,7 +404,6 @@ def test_commands_wait_in_each_window_for_the_answer() -> None:
 
 # time/sleep
 
-SLEEPER = "sleeper"
 SLEEP = (SYSTEM_CHAT, ANIMATE, "minecraft:set_entity_data", "minecraft:game_event")
 READ_DAY = ((CLOCK, "time query day"), (CLOCK, "time query day repetition"))
 AT_MIDNIGHT = ("time set 18000", "tp sleeper 0.5 -60 0.5 -90 0")
@@ -508,7 +537,12 @@ def test_sleep_with_50_percent_reads_the_day_before_the_skip_then_waits_for_it()
     in_lie = [t for t, _ in received(transcript, CLOCK, SET_TIME) if lain < t < lie_50[1]]
     assert len(in_lie) >= 3
     assert not [t for t in animates if lie_50[0] < t < before_skip[1]]
-    assert [t for t in animates if skip[0] < t < skip[1]]
+    woke = [
+        t
+        for t, p in received(transcript, CLOCK, ANIMATE)
+        if p.fields == {"entity_id": ENTITY_IDS[SLEEPER], "action": 0}
+    ]
+    assert [t for t in woke if skip[0] < t < skip[1]]
 
 
 def test_a_set_time_that_carries_a_clock_ends_each_wait_as_one_without() -> None:
