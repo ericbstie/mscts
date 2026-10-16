@@ -375,13 +375,12 @@ async def test_give_runs_one_give_in_each_window_then_steps_a_tick() -> None:
 
 
 @pytest.mark.asyncio
-async def test_only_the_give_that_makes_two_items_leaves_out_their_entity_data() -> None:
-    # Vanilla resends each new entity's data at the end of the tick in the hash order of its id.
+async def test_every_give_compares_the_entity_data_of_the_item_it_makes() -> None:
+    # Vanilla resends each new entity's data at the end of the tick in the hash order of its id;
+    # the Comparison puts a run of resends for different entities in order by entity (#320).
     labels = [window.label for window in (await played(GIVE)).windows]
-    compared = label(GIVE_WINDOW)
-    no_data = label(tuple(name for name in GIVE_WINDOW if name != SET_ENTITY_DATA))
 
-    assert labels == [compared, compared, no_data, compared, compared]
+    assert labels == [label(GIVE_WINDOW)] * 5
 
 
 @pytest.mark.asyncio

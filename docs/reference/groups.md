@@ -66,10 +66,6 @@ The server does not send a chest's items to a player who is only watching it, so
 see them in the block packets. The builder reads them with `/data get block`, and the message it
 gets back is compared.
 
-The `/fill` region holds one block that drops an item. Vanilla sends the items a tick drops in an
-order that follows their entity ids, and two servers can number their entities differently, so with
-several items the Reference would not match itself.
-
 ### Blocks a player breaks and places
 
 Two Bots, `digger` and `watcher`, join. The digger breaks and places blocks. The watcher stands
@@ -602,8 +598,6 @@ What a survival player sees when it is given items, clicks them about and drops 
 The Bot predicts each click as the vanilla client does and sends its prediction. Vanilla sends nothing back for a click it agrees with, so a click window on vanilla is often empty. A server that resolves a click another way sends the slots it corrects, and those are compared.
 
 Vanilla throws an item a player drops with a random motion and yaw, so these Groups compare where a dropped item appears, what it is and how many, but not how it moves. The pitch of the `/give` pickup sound and of a chest's sound is random too, and only the pitch is left out.
-
-A `/give` of 100 stone makes two item entities in one tick. Vanilla sends each new entity's data again at the end of the tick, in an order that follows the entity ids, and two servers can number their entities differently. That window leaves out `set_entity_data`. The slots still show what was given, but which entity carried which stack is not compared.
 
 Swapping hands with F is not covered yet, because the Bot cannot press it ([#359](https://github.com/ericbstie/mscts/issues/359)).
 ## Crafting (`crafting`)

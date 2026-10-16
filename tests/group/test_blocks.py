@@ -553,11 +553,10 @@ async def test_fill_starts_from_a_region_with_blocks_in_both_sections_already_in
 
 
 @pytest.mark.asyncio
-async def test_fill_leaves_each_window_one_block_that_drops_an_item() -> None:
+async def test_fill_leaves_each_window_four_blocks_that_drop_an_item() -> None:
     # Vanilla resends each new item at the end of the tick in the hash order of its entity id,
-    # and the two Instances number their entities differently: two drops in a window can come
-    # in a different order on each side, which is no Divergence worth reporting. Glass drops
-    # nothing.
+    # and the two Instances number their entities differently; the Comparison puts a run of
+    # resends for different entities in order by entity (#320). Glass drops nothing.
     result = await played("blocks/fill")
 
     for window, command in zip(result.windows, fill_cases(result), strict=True):
@@ -566,7 +565,20 @@ async def test_fill_leaves_each_window_one_block_that_drops_an_item() -> None:
             for setup in placed(window)
             if setup.block != GLASS and command.box.holds(setup.at)
         ]
-        assert len(droppers) == 1, window.before
+        assert len(droppers) == 4, window.before
+
+
+@pytest.mark.asyncio
+async def test_fill_also_leaves_each_window_a_block_that_drops_nothing() -> None:
+    result = await played("blocks/fill")
+
+    for window, command in zip(result.windows, fill_cases(result), strict=True):
+        glass = [
+            setup
+            for setup in placed(window)
+            if setup.block == GLASS and command.box.holds(setup.at)
+        ]
+        assert len(glass) == 1, window.before
 
 
 _CLONE = re.compile(

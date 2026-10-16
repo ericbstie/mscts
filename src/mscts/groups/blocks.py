@@ -196,16 +196,18 @@ _FILL_CLEAR = f"fill {_FILL_BOX} minecraft:air"
 _FILL_BEFORE = (
     _FILL_CLEAR,
     "setblock 3 -49 3 minecraft:dirt",
-    "setblock 4 -48 4 minecraft:glass",
-    "setblock 5 -47 5 minecraft:glass",
-    "setblock 2 -50 4 minecraft:glass",
+    "setblock 4 -48 4 minecraft:dirt",
+    "setblock 5 -47 5 minecraft:dirt",
+    "setblock 2 -50 4 minecraft:dirt",
+    "setblock 6 -49 4 minecraft:glass",
 )
-"""Blocks already in the region, in both sections. Only the dirt drops an item.
+"""Blocks already in the region, in both sections. The four dirt blocks drop an item each.
 
 Vanilla resends each new item at the end of the tick, in the hash order of its entity id.
-The two Instances number their entities differently, so a window with two drops can
-send them in a different order on each side: this is no Divergence worth reporting, and
-it makes a Group flaky (measured: 17 of 20 plays did not match with four drops).
+The two Instances number their entities differently, so the resends of the four drops can
+come in a different order on each side. The Comparison puts a run of resends for different
+entities in order by entity (#320), so the four drops match. Before it, one dropping block
+per window was all the Group could hold (17 of 20 plays did not match with four drops).
 """
 
 _FILL_OPTIONS = (
