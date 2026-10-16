@@ -34,7 +34,7 @@ from mscts.bot import Bot, Face, offline_uuid
 from mscts.codec.packets import Packet
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import join_at_spawn, pin_joins
-from mscts.spec import ServerSpec
+from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 CLOCK = "clock"
 """The Bot that reads the time back, an operator."""
@@ -253,7 +253,13 @@ async def _alone(context: GroupContext, clock: Bot) -> None:
     Control is a player too, and counts towards the players needed to sleep (`SleepStatus`).
     """
     await context.control.leave()
-    await clock.expect("minecraft:player_info_remove", timeout_s=_WAIT_S)
+    await clock.expect("minecraft:player_info_remove", timeout_s=_WAIT_S, where=_control_gone)
+
+
+def _control_gone(packet: Packet) -> bool:
+    """Whether a `player_info_remove` names Control."""
+    uuids = (packet.fields or {}).get("uuids")
+    return isinstance(uuids, list) and offline_uuid(CONTROL_PLAYER) in uuids
 
 
 async def _at_midnight(context: GroupContext, clock: Bot, percentage: int) -> None:

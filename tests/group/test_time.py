@@ -157,8 +157,10 @@ class TimeServer:
             )
 
     async def _left(self) -> None:
+        """Tell the others another player has gone at once, and Control `LATE_TICKS` later."""
+        await self._everyone(INFO_REMOVE, uuids=[uuid.UUID(int=99)])
         await asyncio.sleep(LATE_TICKS * TICK_S)
-        await self._everyone(INFO_REMOVE, uuids=[uuid.UUID(int=1)])
+        await self._everyone(INFO_REMOVE, uuids=[offline_uuid(CONTROL)])
 
     async def _command(self, peer: Peer, command: str) -> None:
         if command.startswith(MARKER):
@@ -494,7 +496,12 @@ def test_sleep_lies_down_at_midnight_with_100_then_50_percent_needed() -> None:
 def test_sleep_leaves_the_two_bots_alone_in_the_world_for_each_lie_down() -> None:
     transcript, _ = play("time/sleep")
 
-    removed = [t for t, _ in received(transcript, CLOCK, INFO_REMOVE)]
+    control = offline_uuid(CONTROL)
+    removed = [
+        t
+        for t, p in received(transcript, CLOCK, INFO_REMOVE)
+        if (p.fields or {})["uuids"] == [control]
+    ]
     by_control = [
         e.t_ns
         for e in transcript.events
