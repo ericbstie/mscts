@@ -207,14 +207,15 @@ class _Clock:
         """Take `packet`, one the clock listens to: an answer's ticks, or a `set_time`."""
         if packet.name == _SET_TIME:
             await self._calibrate_on(_stamped(packet) - self.start)
-            return
-        answer = _answer(packet)
-        if answer is not None:
+        elif (answer := _answer(packet)) is not None:
             self._answers.append(answer - self.start)
 
     async def _calibrate_on(self, stamped: int) -> None:
-        """Read for the calibration on a `set_time` `stamped` ticks on, if it is the first since."""
-        if self._calibration is None and stamped > 0:
+        """Read for the calibration on a `set_time` `stamped` ticks on, if that is after the start.
+
+        The clock listens for no `set_time` once it has one, so this is the first.
+        """
+        if stamped > 0:
             self._calibration = _Calibration(read=len(self._reads), sent_in=stamped + 1)
             await self.read(None)
 
