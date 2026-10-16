@@ -141,6 +141,23 @@ def _take_lock(descriptor: int, queue: Path) -> None:
         os.close(ticket_descriptor)
 
 
+def _acquire(cache: Path) -> int:
+    """Take the live-tier lock in `cache` and return its descriptor.
+
+    A waiter that is interrupted holds nothing, so it closes its descriptor and leaves the
+    holder's pid alone.
+    """
+    queue = cache / "live-tier.queue"
+    queue.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(cache / "live-tier.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        _take_lock(descriptor, queue)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    return descriptor
+
+
 def _write_pid(descriptor: int, pid: int) -> None:
     holder = f"{pid}\n".encode("ascii")
     os.pwrite(descriptor, holder, 0)
@@ -161,11 +178,8 @@ def hold_live_lock(cache: Path, environ: MutableMapping[str, str]) -> Iterator[i
     if environ.get("MSCTS_LIVE_LOCK") == "0" or HELD_VARIABLE in environ:
         yield None
         return
-    queue = cache / "live-tier.queue"
-    queue.mkdir(parents=True, exist_ok=True)
-    descriptor = os.open(cache / "live-tier.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    descriptor = _acquire(cache)
     try:
-        _take_lock(descriptor, queue)
         _write_pid(descriptor, os.getpid())
         environ[HELD_VARIABLE] = str(os.getpid())
         yield descriptor
