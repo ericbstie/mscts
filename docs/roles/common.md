@@ -107,6 +107,10 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
   (`git rebase main --exec "mise run check"`), and report commit hashes
   only in the final report. A timing claim compares clean main and your
   branch back-to-back on this host (median of three), never a lone number.
+  Commit first, then `uv run scripts/time_tier.py <mise task> --rev origin/main --rev HEAD
+  --rounds 3 [--stress] -- <pytest selection>`: it alternates the two `git archive` copies
+  under one live-lock hold and prints each round, the median per revision and the load
+  average (#412).
   Before deleting a shared helper, grep origin/main for its users.
 - Commit messages and the PR body end with the attribution lines your own
   session's system reminder gives. Name no model anywhere else. One issue
