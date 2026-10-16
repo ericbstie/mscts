@@ -520,9 +520,10 @@ def test_sleep_with_100_percent_waits_100_ticks_after_lying_down() -> None:
     opened_at, closed_at = windows(transcript)[0]
     [said] = [t for t, _ in received(transcript, CLOCK, SYSTEM_CHAT) if opened_at < t < closed_at]
     lain = sent(transcript, SLEEPER, "minecraft:use_item_on")[0][0]
-    heartbeats = [t for t, _ in received(transcript, CLOCK, SET_TIME) if lain < t < closed_at]
+    times = [t for t, _ in received(transcript, CLOCK, SET_TIME) if opened_at < t < closed_at]
     assert lain < said
-    assert len(heartbeats) >= 6
+    # 7, the first of which may come before the lie-down: the other 6 span 100 ticks after it
+    assert len(times) >= 7
 
 
 def test_sleep_steps_to_dawn_until_a_set_time_shows_the_step_ended() -> None:

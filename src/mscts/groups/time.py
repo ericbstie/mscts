@@ -22,7 +22,7 @@ stepped ticks. `time/commands` is exact: the world never steps, and only the com
 time. `time/sleep` is exact, not tick-exact: a sleeping player falls into a deep sleep on its
 own ticks, which run while the world is frozen, so the night skip follows the wall clock. Its
 windows compare the order of what comes, and the clock reads the time back after each. When
-the night is skipped is read the same way: the clock reads the day 40 to 60 ticks after the
+the night is skipped is read the same way: the clock reads the day at most 60 ticks after the
 player lies down, before the skip at 100, so a server that skips at once shows another day.
 """
 
@@ -198,14 +198,16 @@ _BEFORE_DAWN = 23460
 
 _DAWN_STEPS = 40
 
-_QUIET_TIMES = 6
+_QUIET_TIMES = 7
 """How many `set_time` the clock waits for while a player sleeps and the night goes on (any
-`set_time`: vanilla sends one every 20 ticks, and no command runs meanwhile):
-6 span at least 100 ticks, the time a player takes to fall into a deep sleep."""
+`set_time`: vanilla sends one every 20 ticks, and no command runs meanwhile). The first may be
+sent before the player lies down; the other 6 span at least 100 ticks after it, the time a
+player takes to fall into a deep sleep."""
 
 _BEFORE_DEEP_SLEEP = 3
 """How many `set_time` the clock waits for after a player lies down with 50% needed, before it
-reads the day: 3 come 40 to 60 ticks after, and the night is skipped at 100."""
+reads the day: the first may come before, so 3 come 20 to 60 ticks after, and the night
+is skipped at 100."""
 
 SLEEP_PACKETS = (
     _CHAT,

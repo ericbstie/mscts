@@ -779,7 +779,7 @@ ends, every rule it changed is set back to vanilla's default.
 | --- | --- | --- | --- | --- |
 | `time/advance` | tick-exact | none | From day 1000, the world steps 1, 20 and 100 ticks, with `advance_time` on and then off. After each step, the clock reads `time query day` in a window of its own. | none |
 | `time/commands` | exact | none | From total ticks 0, the clock sets the time to `day`, `noon`, `night` and `midnight`, reading `time query time` after each. It then sets 1000, adds 100 and reads `time query day`, adds 24000, and reads `time query day`, `time query day repetition`, `time query time` and `time query daytime`. Each command has a window of its own. | none |
-| `time/sleep` | exact | none | A second Bot, `sleeper`, lies down in a bed at midnight while the clock stays up. With `players_sleeping_percentage` 100 the night goes on for 100 ticks, then the world steps to dawn and the sleeper gets up. With 50 the clock reads the day about 50 ticks after the sleeper lies down, and then the night is skipped. The clock reads the day after each part. | none |
+| `time/sleep` | exact | none | A second Bot, `sleeper`, lies down in a bed at midnight while the clock stays up. With `players_sleeping_percentage` 100 the night goes on for 100 ticks, then the world steps to dawn and the sleeper gets up. With 50 the clock reads the day at most 60 ticks after the sleeper lies down, and then the night is skipped. The clock reads the day after each part. | none |
 
 In 26.3 the time of day is a world clock, separate from the game time. `time query day` answers
 how far into the day the clock is, `time query day repetition` how many days have passed, and
@@ -801,7 +801,7 @@ A player falls into a deep sleep 100 of its own ticks after it lies down, and a 
 does not freeze its players, so the night is skipped about 5 seconds later whatever the world
 does. The windows compare the sleep messages, the sleeper leaving its bed, its pose and the
 game events in the order they come, not the tick they come on. To check that the night is not
-skipped too soon, the clock reads the day 40 to 60 ticks after the sleeper lies down. Vanilla announces the advancement for sleeping in a bed and the new
+skipped too soon, the clock reads the day at most 60 ticks after the sleeper lies down. Vanilla announces the advancement for sleeping in a bed and the new
 spawn point only the first time a player sleeps, so Control takes both back before the sleeper
 lies down. Control steps the world to dawn inside a window, and an operator sees Control's
 commands as chat, so the clock is no operator during that step.
