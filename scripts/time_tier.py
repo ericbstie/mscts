@@ -25,23 +25,55 @@ slowest tests (parsed out of pytest's own `--durations=10` section), and the
 always carries the load the machine was under, per the Worker contract.
 Exits non-zero if any timed command fails, after
 printing all requested runs' reports.
+
+Comparing revisions (#412), the way to back a timing claim:
+
+    uv run scripts/time_tier.py <mise task> --rev <old> --rev <new> [--rev ...] \
+        [--rounds N] [--stress [--stress-workers N]] [-- <pytest args>]
+
+Each `--rev` is resolved to a commit (printed), and copied with `git archive` instead of
+from the working tree. Every round times every revision once, in the order given, so the
+revisions alternate. `--` passes pytest arguments to the task's pytest commands, such as
+`-- tests/selfcheck -k mobs/chase-open`. All the rounds run under one hold of the live
+lock (`scripts/live_lock.py`). Their commands run with `MSCTS_LIVE_LOCK=0`, so a tier task's
+own `live_lock.py` does not wait for that hold, even in a revision older than #411.
+`--stress` loads every CPU (`scripts/repeat.py`'s `stress_load`) only while a round's
+command runs. It prints each round's time, last pytest summary and load average, then
+each revision's median, and exits non-zero if any round failed, after printing all of it.
 """
 
 import argparse
+import contextlib
+import importlib.util
+import io
 import os
 import re
 import shlex
 import shutil
+import statistics
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import tomllib
-from collections.abc import Callable, Sequence
+import types
+import uuid
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
+
+type Runner = Callable[[Path, Sequence[str]], subprocess.CompletedProcess[str]]
+type Scope[T] = Callable[[], AbstractContextManager[T]]
 
 DEFAULT_DURATIONS = 10
+MIN_REVISIONS = 2  # a comparison needs something to compare against
+SHORT_COMMIT = 12  # hex digits of a commit id in a report line
+# A copy's live_lock.py may predate the re-entrancy of #411, and would wait forever for the
+# lock this script holds; every version honours the bypass, and still checks the Installation.
+INSIDE_THE_HOLD = {"MSCTS_LIVE_LOCK": "0"}
 
 
 class TimeTierError(Exception):
@@ -50,34 +82,106 @@ class TimeTierError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Args:
-    """One parsed invocation: which mise task to time, and how many times."""
+    """One parsed invocation: the mise task, how often, which revisions, and what to select.
+
+    Without `revisions` the working tree is timed `times` times. With them (two or more),
+    each of `rounds` rounds times every revision once, under `stress` if asked.
+    """
 
     task: str
     times: int
+    revisions: tuple[str, ...]
+    rounds: int
+    stress: bool
+    stress_workers: int
+    pytest_args: tuple[str, ...]
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="time_tier.py", description="Time a mise task in a throwaway copy of the tree."
+        prog="time_tier.py",
+        description="Time a mise task in a throwaway copy of the tree, or of two or more "
+        "revisions, alternating them under one live-lock hold. pytest arguments for the "
+        "task go after `--`.",
     )
     parser.add_argument("task", help="a task name from mise.toml, e.g. test:reference")
     parser.add_argument("--times", type=int, default=1, help="how many times to run (default 1)")
+    parser.add_argument(
+        "--rev",
+        action="append",
+        default=[],
+        help="a revision to time (give two or more): its `git archive` copy, not the working tree",
+    )
+    parser.add_argument("--rounds", type=int, default=1, help="rounds of every --rev (default 1)")
+    parser.add_argument(
+        "--stress", action="store_true", help="load every CPU with busy loops while timing a round"
+    )
+    parser.add_argument(
+        "--stress-workers",
+        type=int,
+        default=None,
+        help="how many busy-loop processes (default: os.cpu_count(), i.e. nproc)",
+    )
     return parser
+
+
+def _split_pytest_args(argv: Sequence[str]) -> tuple[list[str], list[str]]:
+    """Split `argv` on the first "--" into (this script's arguments, the task's pytest ones)."""
+    if "--" not in argv:
+        return list(argv), []
+    index = argv.index("--")
+    return list(argv[:index]), list(argv[index + 1 :])
+
+
+def _check_revisions(revisions: Sequence[str], parsed: argparse.Namespace) -> None:
+    """Raise `TimeTierError` unless `parsed` describes a comparison of `revisions` that can run."""
+    if len(revisions) < MIN_REVISIONS:
+        msg = "--rev needs at least two revisions to compare"
+        raise TimeTierError(msg)
+    if len(set(revisions)) < len(revisions):
+        msg = "--rev names a revision twice"
+        raise TimeTierError(msg)
+    if parsed.rounds < 1:
+        msg = "--rounds must be at least 1"
+        raise TimeTierError(msg)
+    if parsed.times != 1:
+        msg = "--times runs the working tree: count a comparison with --rounds"
+        raise TimeTierError(msg)
+    if parsed.stress_workers is not None and parsed.stress_workers < 1:
+        msg = "--stress-workers must be at least 1"
+        raise TimeTierError(msg)
 
 
 def parse_args(argv: Sequence[str]) -> Args:
     """Parse `argv` (without the program name) into `Args`.
 
     Raises:
-        TimeTierError: `--times` is not a positive integer.
+        TimeTierError: `--times` is not a positive integer, or the revisions cannot be
+            compared (fewer than two, one named twice, `--rounds` or `--stress-workers`
+            below 1, `--times` given), or `--rounds` or `--stress` is given without `--rev`.
         SystemExit: the arguments do not otherwise parse, or `task` is missing
             (argparse prints the usage message and exits with code 2).
     """
-    parsed = _build_parser().parse_args(argv)
+    own, pytest_args = _split_pytest_args(argv)
+    parsed = _build_parser().parse_args(own)
     if parsed.times < 1:
         msg = "--times must be at least 1"
         raise TimeTierError(msg)
-    return Args(task=parsed.task, times=parsed.times)
+    revisions = tuple(parsed.rev)
+    if revisions:
+        _check_revisions(revisions, parsed)
+    elif parsed.rounds != 1 or parsed.stress or parsed.stress_workers is not None:
+        msg = "--rounds, --stress and --stress-workers need --rev"
+        raise TimeTierError(msg)
+    return Args(
+        task=parsed.task,
+        times=parsed.times,
+        revisions=revisions,
+        rounds=parsed.rounds,
+        stress=parsed.stress,
+        stress_workers=parsed.stress_workers or os.cpu_count() or 1,
+        pytest_args=tuple(pytest_args),
+    )
 
 
 # -- mise.toml: which command(s) a task runs -----------------------------------------
@@ -111,6 +215,16 @@ def task_run_commands(mise_toml: Path, task: str) -> list[str]:
             return commands
     msg = f"task {task!r}'s 'run' field must be a string or a non-empty list of strings"
     raise TimeTierError(msg)
+
+
+def append_selection(commands: Sequence[str], selection: Sequence[str]) -> list[str]:
+    """`commands`, each one that runs `pytest` followed by the `selection` of tests to run."""
+    if not selection:
+        return list(commands)
+    return [
+        f"{command} {shlex.join(selection)}" if "pytest" in shlex.split(command) else command
+        for command in commands
+    ]
 
 
 def prepare_command(command: str, *, durations: int = DEFAULT_DURATIONS) -> list[str]:
@@ -174,6 +288,69 @@ def make_copy(repo_root: Path, dest: Path) -> None:
         shutil.copy2(source, target)
 
 
+# -- revisions: a commit, copied out of git (never a worktree: those write to the repository) --
+
+
+@dataclass(frozen=True, slots=True)
+class Revision:
+    """A revision as the user named it, and the commit it named when the script began."""
+
+    name: str
+    commit: str
+
+
+def _git_output(repo_root: Path, *args: str) -> bytes:
+    """What `git -C repo_root <args>` writes to stdout, with every `GIT_*` variable dropped.
+
+    Raises:
+        TimeTierError: git fails; its message is the error.
+    """
+    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
+    result = subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
+        [_git_executable(), "-C", str(repo_root), *args],
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if result.returncode != 0:
+        msg = f"git {' '.join(args)}: {result.stderr.decode(errors='replace').strip()}"
+        raise TimeTierError(msg)
+    return result.stdout
+
+
+def resolve_revisions(repo_root: Path, names: Sequence[str]) -> list[Revision]:
+    """The commit each of `names` is in `repo_root` now (a branch may move while rounds run).
+
+    Raises:
+        TimeTierError: a name is not a revision git knows.
+    """
+    return [
+        Revision(
+            name=name,
+            commit=_git_output(repo_root, "rev-parse", "--verify", f"{name}^{{commit}}")
+            .decode()
+            .strip(),
+        )
+        for name in names
+    ]
+
+
+def copy_revision(repo_root: Path, commit: str, dest: Path) -> None:
+    """Copy the files `commit` commits (not the working tree) from `repo_root` into `dest`.
+
+    `dest` must not already exist. Never writes to `repo_root`.
+    """
+    archive = _git_output(repo_root, "archive", "--format=tar", commit)
+    dest.mkdir(parents=True)
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(dest, filter="data")
+
+
+def run_order(revisions: Sequence[Revision], rounds: int) -> list[tuple[int, Revision]]:
+    """Each round's number with every revision, in turn: drift hits every revision alike."""
+    return [(number, revision) for number in range(1, rounds + 1) for revision in revisions]
+
+
 def _venv_path(repo_root: Path) -> Path:
     """`repo_root`'s synced virtualenv (`mise run sync` creates it at `<repo_root>/.venv`).
 
@@ -188,19 +365,24 @@ def _venv_path(repo_root: Path) -> Path:
 
 
 def run_in_copy(
-    venv: Path, copy_root: Path, argv: Sequence[str]
+    venv: Path,
+    copy_root: Path,
+    argv: Sequence[str],
+    extra_env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `argv` inside `copy_root`, using `venv` as is (never syncing it).
 
     Same environment as `mutate.py`'s `run_pytest_in_copy`: `UV_PROJECT_ENVIRONMENT`
     points at the already-synced `venv`; `PYTHONPATH` puts `copy_root/src` ahead of
     `venv`'s own `mscts.pth` (which names the *original* checkout); `PYTHONDONTWRITEBYTECODE`
-    avoids a stale cached bytecode from a same-second copy.
+    avoids a stale cached bytecode from a same-second copy. `extra_env` is added last.
     """
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = str(venv)
     env["PYTHONPATH"] = str(copy_root / "src")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
+    env["UV_NO_SYNC"] = "1"  # a `uv run` inside the task would sync `venv` to this copy
+    env.update(extra_env or {})
     return subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
         argv, cwd=copy_root, env=env, capture_output=True, text=True, check=False
     )
@@ -346,6 +528,170 @@ def print_run_report(index: int, times: int, result: RunResult) -> None:
             print(f"    {line}")
 
 
+# -- timing revisions against each other, alternating, under one live-lock hold (#412) ---------
+
+
+@dataclass(frozen=True, slots=True)
+class Comparison:
+    """What to time: every one of `revisions` `rounds` times, running `commands` in a copy."""
+
+    repo_root: Path
+    revisions: Sequence[Revision]
+    rounds: int
+    commands: Sequence[str]
+
+
+@dataclass(frozen=True, slots=True)
+class Round:
+    """One timed run of one revision, in round `number`."""
+
+    number: int
+    revision: Revision
+    result: RunResult
+
+
+def revision_hooks(revision: Revision) -> CopyHooks:
+    """The copy of `revision`'s commit, with the real load reader and temp dir."""
+
+    def copy(repo_root: Path, dest: Path) -> None:
+        copy_revision(repo_root, revision.commit, dest)
+
+    return CopyHooks(make_copy=copy)
+
+
+def _under_load(run: Runner, load: Scope[object]) -> Runner:
+    """`run`, but each command runs with the CPU load on: only the timed part is loaded."""
+
+    def loaded(copy_root: Path, argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        with load():
+            return run(copy_root, argv)
+
+    return loaded
+
+
+def _short(commit: str) -> str:
+    return commit[:SHORT_COMMIT]
+
+
+def print_round_report(round_: Round, rounds: int) -> None:
+    """Print one round: its revision and commit, wall time, load average and last summary."""
+    result = round_.result
+    revision = round_.revision
+    print(
+        f"round {round_.number}/{rounds} {revision.name} ({_short(revision.commit)}): "
+        f"{result.total_s:.1f}s, load avg before {result.load_before:.2f}, "
+        f"after {result.load_after:.2f}"
+    )
+    if result.summary is not None:
+        print(f"  {result.summary}")
+
+
+def time_comparison(
+    plan: Comparison,
+    run: Runner,
+    *,
+    hold: Scope[object],
+    load: Scope[object],
+    hooks_for: Callable[[Revision], CopyHooks],
+) -> list[Round]:
+    """Time every revision of `plan` in turn, round by round, all under one `hold`.
+
+    Prints each round as it ends, since a round can take minutes. `load` is on only while
+    a command of a round runs: not during the copy, and not between rounds.
+    """
+    loaded = _under_load(run, load)
+    rounds: list[Round] = []
+    with hold():
+        for number, revision in run_order(plan.revisions, plan.rounds):
+            result = run_tier_once(plan.repo_root, plan.commands, loaded, hooks=hooks_for(revision))
+            rounds.append(Round(number, revision, result))
+            print_round_report(rounds[-1], plan.rounds)
+    return rounds
+
+
+def median_seconds(rounds: Sequence[Round]) -> dict[str, float]:
+    """The median wall time of each revision's rounds, in the order the revisions first appear."""
+    times: dict[str, list[float]] = {}
+    for round_ in rounds:
+        times.setdefault(round_.revision.name, []).append(round_.result.total_s)
+    return {name: statistics.median(seconds) for name, seconds in times.items()}
+
+
+def print_medians(rounds: Sequence[Round]) -> None:
+    """Print the median wall time of each revision, with its commit."""
+    commits = {round_.revision.name: round_.revision.commit for round_ in rounds}
+    print(f"median of {len({round_.number for round_ in rounds})} round(s):")
+    for name, seconds in median_seconds(rounds).items():
+        print(f"  {name} ({_short(commits[name])}): {seconds:.1f}s")
+
+
+# -- the scripts this one borrows: the live-lock hold and the CPU load ---------------------
+
+
+def _load_script(name: str) -> types.ModuleType:
+    """Import the script `name` beside this file (scripts/ is not an importable package)."""
+    path = Path(__file__).with_name(name)
+    spec = importlib.util.spec_from_file_location(path.stem, path)
+    if spec is None or spec.loader is None:
+        raise ImportError(str(path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _live_lock_hold() -> Scope[object]:
+    """One hold of the live lock; the mise tier tasks run inside it go straight through (#411)."""
+    live_lock = _load_script("live_lock.py")
+    cache = live_lock.cache_dir()
+
+    def hold() -> AbstractContextManager[object]:
+        return cast("AbstractContextManager[object]", live_lock.hold_live_lock(cache, os.environ))
+
+    return hold
+
+
+def _stress_load(args: Args) -> Scope[object]:
+    """`--stress-workers` busy loops while it is on, or nothing without `--stress`."""
+    if not args.stress:
+        return contextlib.nullcontext
+    repeat = _load_script("repeat.py")
+
+    def load() -> AbstractContextManager[object]:
+        return cast(
+            "AbstractContextManager[object]",
+            repeat.stress_load(args.stress_workers, uuid.uuid4().hex),
+        )
+
+    return load
+
+
+def _compare_revisions(args: Args, repo_root: Path, commands: Sequence[str], venv: Path) -> int:
+    """Time `args.revisions` against each other, print everything, and return the exit code."""
+    revisions = resolve_revisions(repo_root, args.revisions)
+    for revision in revisions:
+        print(f"{revision.name} -> {revision.commit}")
+    plan = Comparison(repo_root, revisions, args.rounds, commands)
+
+    def run(copy_root: Path, command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return run_in_copy(venv, copy_root, command, extra_env=INSIDE_THE_HOLD)
+
+    rounds = time_comparison(
+        plan, run, hold=_live_lock_hold(), load=_stress_load(args), hooks_for=revision_hooks
+    )
+    print_medians(rounds)
+    return int(any(round_.result.failed for round_ in rounds))
+
+
+def _time_working_tree(args: Args, repo_root: Path, commands: Sequence[str], run: Runner) -> int:
+    """Time the working tree `args.times` times, one report per run; return the exit code."""
+    failed = False
+    for index in range(1, args.times + 1):
+        result = run_tier_once(repo_root, commands, run)
+        print_run_report(index, args.times, result)
+        failed = failed or result.failed
+    return int(failed)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run what `argv` describes (`sys.argv[1:]` if None); return the exit code."""
     try:
@@ -357,23 +703,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         task_commands = task_run_commands(repo_root / "mise.toml", args.task)
         venv = _venv_path(repo_root)
+        commands = append_selection(task_commands, args.pytest_args)
+
+        def run(copy_root: Path, command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+            return run_in_copy(venv, copy_root, command)
+
+        if args.revisions:
+            return _compare_revisions(args, repo_root, commands, venv)
+        return _time_working_tree(args, repo_root, commands, run)
     except TimeTierError as exc:
         print(f"time_tier.py: {exc}", file=sys.stderr)
         return 2
-
-    def run(copy_root: Path, command: Sequence[str]) -> subprocess.CompletedProcess[str]:
-        return run_in_copy(venv, copy_root, command)
-
-    failed = False
-    for index in range(1, args.times + 1):
-        try:
-            result = run_tier_once(repo_root, task_commands, run)
-        except TimeTierError as exc:
-            print(f"time_tier.py: {exc}", file=sys.stderr)
-            return 2
-        print_run_report(index, args.times, result)
-        failed = failed or result.failed
-    return int(failed)
 
 
 if __name__ == "__main__":
