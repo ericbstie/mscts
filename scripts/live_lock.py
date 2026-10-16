@@ -143,6 +143,26 @@ def _write_pid(descriptor: int, pid: int) -> None:
     os.ftruncate(descriptor, len(holder))
 
 
+@contextlib.contextmanager
+def hold_live_lock(cache: Path) -> Iterator[int]:
+    """Hold the live-tier lock in `cache` for the block, and yield its descriptor.
+
+    A command started in the block inherits the descriptor (`pass_fds`), so it keeps the
+    lock if its parent is killed (#138). Leaving the block names no pid and unlocks.
+    """
+    queue = cache / "live-tier.queue"
+    queue.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(cache / "live-tier.lock", os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        _take_lock(descriptor, queue)
+        _write_pid(descriptor, os.getpid())
+        yield descriptor
+    finally:
+        os.ftruncate(descriptor, 0)  # a waiter must never name a finished holder's pid
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
 def _signal_group(process: subprocess.Popen[bytes], number: int) -> None:
     """Signal the command's whole group: `uv run` ignores SIGINT and waits for its child.
 
@@ -207,18 +227,8 @@ def main() -> None:
     if os.environ.get("MSCTS_LIVE_LOCK") == "0":
         code = _run_command(command)
     else:
-        cache = cache_dir()
-        queue = cache / "live-tier.queue"
-        queue.mkdir(parents=True, exist_ok=True)
-        descriptor = os.open(cache / "live-tier.lock", os.O_RDWR | os.O_CREAT, 0o600)
-        try:
-            _take_lock(descriptor, queue)
-            _write_pid(descriptor, os.getpid())
+        with hold_live_lock(cache_dir()) as descriptor:
             code = _run_command(command, descriptor)
-        finally:
-            os.ftruncate(descriptor, 0)  # a waiter must never name a finished holder's pid
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-            os.close(descriptor)
     if code < 0:
         if -code != signal.SIGKILL:
             signal.signal(-code, signal.SIG_DFL)

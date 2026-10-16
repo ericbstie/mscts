@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import tomllib
+import types
 import uuid
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -326,17 +327,36 @@ def test_a_finished_holder_leaves_no_pid_for_a_waiter_to_name(tmp_path: Path) ->
     assert (tmp_path / "cache" / "live-tier.lock").read_text() == ""
 
 
+def load_live_lock() -> types.ModuleType:
+    """Load scripts/live_lock.py by path (scripts/ is not an importable package)."""
+    spec = importlib.util.spec_from_file_location("live_lock", SCRIPT)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_hold_keeps_the_lock_until_its_block_ends(tmp_path: Path) -> None:
+    live_lock = load_live_lock()
+    lock = tmp_path / "live-tier.lock"
+    with live_lock.hold_live_lock(tmp_path) as descriptor:
+        assert isinstance(descriptor, int)
+        assert lock.read_text().strip() == str(os.getpid())
+        with lock.open("r+") as other, pytest.raises(BlockingIOError):
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    assert lock.read_text() == ""
+    with lock.open("r+") as other:
+        fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
 def test_a_signal_that_arrives_before_the_command_starts_reaches_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # #211: the wrapper keeps such a signal and forwards it once the command has started.
     # Only the moment between its handlers going in and the command starting has no
     # command yet, so the signal arrives there, from inside the wrapper itself.
-    spec = importlib.util.spec_from_file_location("live_lock", SCRIPT)
-    assert spec is not None
-    assert spec.loader is not None
-    live_lock = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(live_lock)
+    live_lock = load_live_lock()
     real_popen = subprocess.Popen
 
     def signalled_first(
