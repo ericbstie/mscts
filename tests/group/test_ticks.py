@@ -1,9 +1,10 @@
 """Tick-exact Groups: `freeze` and `step` against a fake server, and the Marks they leave."""
 
+import json
 from collections.abc import Set as AbstractSet
 
 import pytest
-from support.probe import REPEATER_STEPPED
+from support.probe import REPEATER_STEPPED, WATCHER, WATCHER_AT
 
 from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
@@ -21,12 +22,17 @@ from tests.group.test_control import (
     ControlServer,
     commands_sent,
     playing,
+    received,
     tree,
 )
 from tests.net.fakes import serve
 
 CONTROL = "control"
 PLAYER_ACTION = "minecraft:player_action"
+
+HANG_LIMIT_S = 1.5
+"""The limit on one Bot operation in a test that expects a TimeoutError from a hang. Only the
+hang may reach it: an idle host answers in about 0.1 s, and a stall (#410) is shorter."""
 
 
 def steps(seen: list[object]) -> list[object]:
@@ -318,7 +324,7 @@ async def test_a_freeze_that_timed_out_is_still_unfrozen_when_the_group_closes()
 
     server = ControlServer(on_command=hang_on_freeze)
     transcript = Transcript(group_id="test/ticks", server="fake")
-    async with playing(server, transcript, timeout_s=0.5) as context:
+    async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
         with pytest.raises(TimeoutError):
             await context.freeze()
         server.answers_markers = True
@@ -339,7 +345,7 @@ PROBE = Group(id="test/ticks", run=_probe, kind=GroupKind.TICK_EXACT)
 async def played(server: ControlServer) -> Transcript | GroupError:
     async with serve(CODEC, server) as endpoint:
         try:
-            return await run_group(PROBE, endpoint, server="fake", timeout_s=0.5)
+            return await run_group(PROBE, endpoint, server="fake", timeout_s=HANG_LIMIT_S)
         except GroupError as error:
             return error
 
@@ -415,20 +421,46 @@ async def test_the_repeater_probe_steps_with_random_ticks_off() -> None:
     ]
 
 
+PROBE_STALL_S = 0.7
+"""How late the fake answers the probe's first Control command: a loaded host, and more than
+the 0.5 s limit the test had, which the stall ran out before the probe's `try` (#410)."""
+
+
+def marker_after(sent: list[object], command: str) -> str:
+    """The token of the marker Control sent right after `command`."""
+    marker = sent[sent.index(command) + 1]
+    return str(json.loads(str(marker).removeprefix(MARKER)))
+
+
+def said(transcript: Transcript, token: str) -> bool:
+    """Whether the server's chat to Control held `token`."""
+    return any(token.encode() in event.packet.payload for event in received(transcript))
+
+
 @pytest.mark.asyncio
 async def test_the_repeater_probe_turns_random_ticks_back_on_when_it_fails() -> None:
-    def hang_on_the_first_step(command: str) -> None:
+    # #410: the only TimeoutError is the hang at `tick step 1`. A limit that a stall before
+    # the probe's `try` ran out failed it with nothing to undo, and the test took that for
+    # the hang. The server answers again once the undo arrives, so the undo is answered.
+    def hang_on_the_first_step_until_the_undo(command: str) -> None:
         if command == "tick step 1":
             server.answers_markers = False
+        elif command == RANDOM_TICKS_ON:
+            server.answers_markers = True
 
-    server = ControlServer(commands=PROBE_TREE, on_command=hang_on_the_first_step)
+    stall = {f"tp {WATCHER} {WATCHER_AT}": PROBE_STALL_S}
+    server = ControlServer(
+        commands=PROBE_TREE, on_command=hang_on_the_first_step_until_the_undo, stalls=stall
+    )
     transcript = Transcript(group_id=REPEATER_STEPPED.id, server="fake")
 
     async def failing() -> None:
-        async with playing(server, transcript, timeout_s=0.5) as context:
+        async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
             await REPEATER_STEPPED.run(context)
 
     with pytest.raises(TimeoutError):
         await failing()
 
-    assert RANDOM_TICKS_ON in steps(commands_sent(server.seen))
+    sent = commands_sent(server.seen)
+    assert steps(sent)[-3:] == ["tick step 1", RANDOM_TICKS_ON, "tick unfreeze"], sent
+    assert said(transcript, marker_after(sent, RANDOM_TICKS_ON)), "the undo was not answered"
