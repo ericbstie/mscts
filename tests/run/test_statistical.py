@@ -1,6 +1,6 @@
 """A statistical Group's Run: `runs` plays per side, judged as distributions (#24).
 
-The fake Group draws its samples from a seeded generator, shifted on the side whose port
+The fake Group draws its samples from a seeded generator, shifted on the side whose Endpoint
 the test names, so each test's draws, and so its Verdict, are always the same.
 """
 
@@ -21,8 +21,10 @@ from mscts.compare import ABSENT, Divergence, Outcome, Verdict
 from mscts.group import DEFAULT_RUNS, CommandMissing, Group, GroupContext, GroupKind, Script
 from mscts.net import Endpoint
 from mscts.run import Attached, Server, judge_samples, run, run_results, selfcheck
+from mscts.runner import free_endpoint
 from mscts.settle import PlayersStillOnline
 from mscts.stats import PER_PLAY, PERMUTATION, Difference, Shares, Spread
+from tests.run import fakes as run_fakes
 from tests.run.fakes import FakeAdapter, attached
 
 _RUNS = 50
@@ -30,15 +32,17 @@ _SHIFTED_P = 9.909301386655975e-05
 """KS's p-value for `_drawing`'s seed 1 with the Candidate shifted: 50 plays a side."""
 
 
-def _drawing(shifted_port: int, *, seed: int = 1, plays: Counter[int] | None = None) -> Script:
-    """A script sampling `x` from N(0, 1), or N(1, 1) on the Instance at `shifted_port`."""
+def _drawing(
+    shifted: Endpoint | None, *, seed: int = 1, plays: Counter[Endpoint] | None = None
+) -> Script:
+    """A script sampling `x` from N(0, 1), or N(1, 1) on the Instance at `shifted`."""
     rng = random.Random(seed)
 
     async def draw(context: GroupContext) -> None:
-        port = context.endpoint.port
+        endpoint = context.endpoint
         if plays is not None:
-            plays[port] += 1
-        context.sample("x", rng.gauss(1.0 if port == shifted_port else 0.0, 1.0))
+            plays[endpoint] += 1
+        context.sample("x", rng.gauss(1.0 if endpoint == shifted else 0.0, 1.0))
 
     return draw
 
@@ -63,20 +67,20 @@ async def _judged(make: _Scripted, run_token: str, tmp_path: Path) -> Verdict:
 
 def test_a_group_runs_fifty_times_per_side_by_default() -> None:
     assert DEFAULT_RUNS == 50
-    assert _statistical(_drawing(0)).runs == 50
-    assert Group(id="test/plain", run=_drawing(0)).runs == DEFAULT_RUNS
+    assert _statistical(_drawing(None)).runs == 50
+    assert Group(id="test/plain", run=_drawing(None)).runs == DEFAULT_RUNS
 
 
 def test_a_group_runs_at_least_once() -> None:
     with pytest.raises(ValueError, match="test/statistical runs at least once, not 0"):
-        _statistical(_drawing(0), runs=0)
+        _statistical(_drawing(None), runs=0)
 
 
 @pytest.mark.asyncio
 async def test_samples_from_one_distribution_match(run_token: str, tmp_path: Path) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference, candidate
-        return _statistical(_drawing(shifted_port=0))
+        return _statistical(_drawing(None))
 
     verdict = await _judged(make, run_token, tmp_path)
 
@@ -89,10 +93,10 @@ async def test_samples_from_one_distribution_match(run_token: str, tmp_path: Pat
 
 @pytest.mark.asyncio
 async def test_each_play_knows_its_index_on_each_side(run_token: str, tmp_path: Path) -> None:
-    played: dict[int, list[int]] = {}
+    played: dict[Endpoint, list[int]] = {}
 
     async def script(context: GroupContext) -> None:
-        played.setdefault(context.endpoint.port, []).append(context.play)
+        played.setdefault(context.endpoint, []).append(context.play)
         context.sample("x", 0.0)
 
     verdict = await _judged(lambda _r, _c: _statistical(script, runs=3), run_token, tmp_path)
@@ -128,7 +132,7 @@ async def test_shifted_samples_mismatch_with_the_effect_size(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        return _statistical(_drawing(shifted_port=candidate.endpoint.port))
+        return _statistical(_drawing(candidate.endpoint))
 
     verdict = await _judged(make, run_token, tmp_path)
 
@@ -163,7 +167,7 @@ async def test_a_divergence_names_the_p_value_after_holms_correction(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        draw = _drawing(shifted_port=candidate.endpoint.port)
+        draw = _drawing(candidate.endpoint)
         alike = random.Random(2)
 
         async def script(context: GroupContext) -> None:
@@ -182,11 +186,11 @@ async def test_a_divergence_names_the_p_value_after_holms_correction(
 
 @pytest.mark.asyncio
 async def test_each_side_plays_the_group_runs_times(run_token: str, tmp_path: Path) -> None:
-    plays: Counter[int] = Counter()
+    plays: Counter[Endpoint] = Counter()
 
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference, candidate
-        return _statistical(_drawing(0, plays=plays), runs=7)
+        return _statistical(_drawing(None, plays=plays), runs=7)
 
     await _judged(make, run_token, tmp_path)
 
@@ -195,15 +199,15 @@ async def test_each_side_plays_the_group_runs_times(run_token: str, tmp_path: Pa
 
 @pytest.mark.asyncio
 async def test_the_two_sides_take_turns(run_token: str, tmp_path: Path) -> None:
-    played: list[int] = []
-    sides: list[int] = []
+    played: list[Endpoint] = []
+    sides: list[Endpoint] = []
 
     async def script(context: GroupContext) -> None:
-        played.append(context.endpoint.port)
+        played.append(context.endpoint)
         context.sample("x", 0.0)
 
     def make(reference: Attached, candidate: Attached) -> Group:
-        sides.extend([reference.endpoint.port, candidate.endpoint.port])
+        sides.extend([reference.endpoint, candidate.endpoint])
         return _statistical(script, runs=3)
 
     await _judged(make, run_token, tmp_path)
@@ -211,14 +215,14 @@ async def test_the_two_sides_take_turns(run_token: str, tmp_path: Path) -> None:
     assert played == sides * 3
 
 
-def _failing_on(port: int, *, after: int) -> Script:
-    """A script that samples `x`, and raises on the Instance at `port` once `after` played."""
+def _failing_on(endpoint: Endpoint, *, after: int) -> Script:
+    """A script that samples `x`, and raises on the Instance at `endpoint` once `after` played."""
     rng = random.Random(3)
-    played: Counter[int] = Counter()
+    played: Counter[Endpoint] = Counter()
 
     async def draw(context: GroupContext) -> None:
-        played[context.endpoint.port] += 1
-        if context.endpoint.port == port and played[port] > after:
+        played[context.endpoint] += 1
+        if context.endpoint == endpoint and played[endpoint] > after:
             msg = "no spawn point"
             raise LookupError(msg)
         context.sample("x", rng.random())
@@ -230,14 +234,14 @@ def _failing_on(port: int, *, after: int) -> Script:
 async def test_a_play_that_raises_on_the_reference_is_an_error_and_ends_both_sides(
     run_token: str, tmp_path: Path
 ) -> None:
-    plays: Counter[int] = Counter()
+    plays: Counter[Endpoint] = Counter()
 
     def make(reference: Attached, candidate: Attached) -> Group:
         del candidate
-        failing = _failing_on(reference.endpoint.port, after=3)
+        failing = _failing_on(reference.endpoint, after=3)
 
         async def script(context: GroupContext) -> None:
-            plays[context.endpoint.port] += 1
+            plays[context.endpoint] += 1
             await failing(context)
 
         return _statistical(script)
@@ -257,8 +261,8 @@ async def test_the_reference_plays_on_after_the_candidate_fails_and_its_failure_
     run_token: str, tmp_path: Path
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
-        on_candidate = _failing_on(candidate.endpoint.port, after=0)
-        on_reference = _failing_on(reference.endpoint.port, after=5)
+        on_candidate = _failing_on(candidate.endpoint, after=0)
+        on_reference = _failing_on(reference.endpoint, after=5)
 
         async def script(context: GroupContext) -> None:
             await on_candidate(context)
@@ -280,7 +284,7 @@ async def test_a_play_that_raises_on_the_candidate_fails_each_sample_name(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        return _statistical(_failing_on(candidate.endpoint.port, after=3))
+        return _statistical(_failing_on(candidate.endpoint, after=3))
 
     verdict = await _judged(make, run_token, tmp_path)
 
@@ -308,15 +312,15 @@ async def test_a_play_that_raises_on_the_candidate_fails_each_sample_name(
 async def test_a_candidate_that_fails_one_play_stops_and_fails_the_group(
     run_token: str, tmp_path: Path
 ) -> None:
-    plays: Counter[int] = Counter()
+    plays: Counter[Endpoint] = Counter()
 
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        port = candidate.endpoint.port
+        endpoint = candidate.endpoint
 
         async def script(context: GroupContext) -> None:
-            plays[context.endpoint.port] += 1
-            if context.endpoint.port == port and context.play == 1:
+            plays[context.endpoint] += 1
+            if context.endpoint == endpoint and context.play == 1:
                 root = "tick"
                 raise CommandMissing(root)
             context.sample("x", 0.0)
@@ -338,11 +342,11 @@ async def test_a_candidate_play_s_failure_names_the_bot_it_came_out_of(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        port = candidate.endpoint.port
+        endpoint = candidate.endpoint
 
         async def script(context: GroupContext) -> None:
             context.sample("x", 0.0)
-            if context.endpoint.port == port:
+            if context.endpoint == endpoint:
                 await (await context.bot("alice")).join()  # a status fake cannot join it
 
         return _statistical(script, runs=2)
@@ -358,11 +362,11 @@ async def test_a_name_the_candidate_never_sampled_mismatches_untested(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del candidate
-        port = reference.endpoint.port
+        endpoint = reference.endpoint
 
         async def script(context: GroupContext) -> None:
             context.sample("x", 1.0)
-            if context.endpoint.port == port:
+            if context.endpoint == endpoint:
                 context.sample("mob", "minecraft:zombie")
 
         return _statistical(script, runs=10)
@@ -391,12 +395,12 @@ async def test_a_candidate_that_samples_a_name_in_fewer_plays_mismatches(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        port, played = candidate.endpoint.port, Counter[int]()
+        endpoint, played = candidate.endpoint, Counter[Endpoint]()
 
         async def script(context: GroupContext) -> None:
-            played[context.endpoint.port] += 1
-            if context.endpoint.port != port or played[port] == 1:
-                context.sample("x", float(played[context.endpoint.port]))
+            played[context.endpoint] += 1
+            if context.endpoint != endpoint or played[endpoint] == 1:
+                context.sample("x", float(played[context.endpoint]))
 
         return _statistical(script, runs=20)
 
@@ -411,10 +415,10 @@ async def test_a_candidate_that_samples_a_name_in_fewer_plays_mismatches(
 async def test_categories_are_judged_by_chi_square(run_token: str, tmp_path: Path) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        port = candidate.endpoint.port
+        endpoint = candidate.endpoint
 
         async def script(context: GroupContext) -> None:
-            mob = "minecraft:skeleton" if context.endpoint.port == port else "minecraft:zombie"
+            mob = "minecraft:skeleton" if context.endpoint == endpoint else "minecraft:zombie"
             context.sample("mob", mob)
 
         return _statistical(script)
@@ -428,12 +432,12 @@ async def test_categories_are_judged_by_chi_square(run_token: str, tmp_path: Pat
     assert divergence.candidate == Shares(samples=50, shares=(("minecraft:skeleton", 1.0),))
 
 
-def _looting(namespaces: dict[int, str], *, seed: int = 4) -> Script:
-    """A script sampling one of 13 items per play, under the namespace of its Instance's port."""
+def _looting(namespaces: dict[Endpoint, str], *, seed: int = 4) -> Script:
+    """A script sampling one of 13 items per play, under the namespace of its Instance."""
     rng = random.Random(seed)
 
     async def loot(context: GroupContext) -> None:
-        namespace = namespaces.get(context.endpoint.port, "minecraft")
+        namespace = namespaces.get(context.endpoint, "minecraft")
         context.sample("loot", f"{namespace}:item{rng.randrange(13)}")
 
     return loot
@@ -445,7 +449,7 @@ async def test_categories_all_too_rare_to_pool_still_mismatch(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        return _statistical(_looting({candidate.endpoint.port: "pumpkin"}))
+        return _statistical(_looting({candidate.endpoint: "pumpkin"}))
 
     verdict = await _judged(make, run_token, tmp_path)
 
@@ -477,10 +481,10 @@ async def test_a_few_plays_of_one_category_against_another_mismatch(
 ) -> None:
     def make(reference: Attached, candidate: Attached) -> Group:
         del reference
-        port = candidate.endpoint.port
+        endpoint = candidate.endpoint
 
         async def script(context: GroupContext) -> None:
-            mob = "minecraft:pig" if context.endpoint.port == port else "minecraft:zombie"
+            mob = "minecraft:pig" if context.endpoint == endpoint else "minecraft:zombie"
             context.sample("mob", mob)
 
         return _statistical(script, runs=9)
@@ -513,17 +517,20 @@ async def test_a_group_that_samples_nothing_on_the_reference_is_an_error(
     )
 
 
+_NO_INSTANCE = Endpoint("", 0)
+
+
 @dataclass
 class _StuckAfter:
-    """A wait for no player online that finds one still online at `port` after `after` waits."""
+    """A wait for no player online that finds one still online at `endpoint` after `after` waits."""
 
     after: int
-    port: int = 0
-    waits: Counter[int] = field(default_factory=Counter)
+    endpoint: Endpoint = _NO_INSTANCE  # until the Group is built
+    waits: Counter[Endpoint] = field(default_factory=Counter)
 
     async def __call__(self, endpoint: Endpoint, *, deadline_s: float) -> None:
-        self.waits[endpoint.port] += 1
-        if endpoint.port == self.port and self.waits[endpoint.port] > self.after:
+        self.waits[endpoint] += 1
+        if endpoint == self.endpoint and self.waits[endpoint] > self.after:
             raise PlayersStillOnline(1, ["steve"], deadline_s)
 
 
@@ -536,7 +543,7 @@ async def _judged_stuck(
     """
 
     def make(reference: Attached, candidate: Attached) -> Group:
-        stuck.port = (reference, candidate)[side].endpoint.port
+        stuck.endpoint = (reference, candidate)[side].endpoint
         return _statistical(script)
 
     return await _judged(make, run_token, tmp_path)
@@ -552,7 +559,7 @@ async def test_a_reference_with_a_player_still_online_between_runs_is_an_error(
     stuck = _StuckAfter(after=3)
     monkeypatch.setattr(run_module, "until_no_player_online", stuck)
 
-    verdict = await _judged_stuck(stuck, 0, _drawing(0), run_token, tmp_path)
+    verdict = await _judged_stuck(stuck, 0, _drawing(None), run_token, tmp_path)
 
     assert verdict == Verdict(
         "test/statistical", Outcome.ERROR, detail=f"the Reference failed: {_STILL_ONLINE}"
@@ -565,33 +572,66 @@ async def test_a_candidate_with_a_player_still_online_between_runs_fails_the_gro
 ) -> None:
     stuck = _StuckAfter(after=3)
     monkeypatch.setattr(run_module, "until_no_player_online", stuck)
-    plays: Counter[int] = Counter()
+    plays: Counter[Endpoint] = Counter()
 
-    verdict = await _judged_stuck(stuck, 1, _drawing(0, plays=plays), run_token, tmp_path)
+    verdict = await _judged_stuck(stuck, 1, _drawing(None, plays=plays), run_token, tmp_path)
 
     assert verdict.outcome is Outcome.MISMATCH
     assert verdict.detail == f"the Candidate failed: {_STILL_ONLINE}"
     assert [(d.kind, d.candidate) for d in verdict.divergences] == [("failed", _STILL_ONLINE)]
     assert verdict.test_cases == ("x",)
-    assert plays[stuck.port] == 3  # the fourth wait found the player
+    assert plays[stuck.endpoint] == 3  # the fourth wait found the player
+
+
+def _one_port() -> Callable[[], Endpoint]:
+    """A `free_endpoint` whose Endpoints keep hosts of their own but all take the first's port.
+
+    Two Instances on hosts of their own can share a port: `free_endpoint` gives about one
+    pair in 14 000 the same one (#403).
+    """
+    ports: list[int] = []
+
+    def shared() -> Endpoint:
+        endpoint = free_endpoint()
+        ports.append(endpoint.port)
+        return Endpoint(endpoint.host, ports[0])
+
+    return shared
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_stuck_on_the_reference_s_port_on_another_host_fails_the_group(
+    run_token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(run_fakes, "free_endpoint", _one_port())
+    stuck = _StuckAfter(after=3)
+    monkeypatch.setattr(run_module, "until_no_player_online", stuck)
+
+    verdict = await _judged_stuck(stuck, 1, _drawing(None), run_token, tmp_path)
+
+    assert len({endpoint.port for endpoint in stuck.waits}) == 1 < len(stuck.waits)
+    assert (verdict.outcome, verdict.detail) == (
+        Outcome.MISMATCH,
+        f"the Candidate failed: {_STILL_ONLINE}",
+    )
 
 
 @pytest.mark.asyncio
 async def test_a_wait_between_runs_cancelled_from_inside_is_raised(
     run_token: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    waits: Counter[int] = Counter()
+    waits: Counter[Endpoint] = Counter()
 
     async def cancelled_on_the_second(endpoint: Endpoint, *, deadline_s: float) -> None:
         del deadline_s
-        waits[endpoint.port] += 1
-        if waits[endpoint.port] == 2:  # the wait before the second play
+        waits[endpoint] += 1
+        if waits[endpoint] == 2:  # the wait before the second play
             raise asyncio.CancelledError
 
     monkeypatch.setattr(run_module, "until_no_player_online", cancelled_on_the_second)
 
     with pytest.raises(asyncio.CancelledError):
-        await _judged(lambda *_: _statistical(_drawing(0)), run_token, tmp_path)
+        await _judged(lambda *_: _statistical(_drawing(None)), run_token, tmp_path)
 
 
 @pytest.mark.asyncio
@@ -600,14 +640,14 @@ async def test_a_candidate_not_compared_lists_the_sample_names_of_one_reference_
 ) -> None:
     stuck = _StuckAfter(after=0)  # still online before the Group: the Candidate is not played
     monkeypatch.setattr(run_module, "until_no_player_online", stuck)
-    plays: Counter[int] = Counter()
+    plays: Counter[Endpoint] = Counter()
 
-    verdict = await _judged_stuck(stuck, 1, _drawing(0, plays=plays), run_token, tmp_path)
+    verdict = await _judged_stuck(stuck, 1, _drawing(None, plays=plays), run_token, tmp_path)
 
     assert (verdict.outcome, verdict.test_cases) == (Outcome.MISMATCH, ("x",))
     assert verdict.detail == f"the Candidate failed: {_STILL_ONLINE}"
     assert list(plays.values()) == [1]
-    assert stuck.port not in plays
+    assert stuck.endpoint not in plays
 
 
 @pytest.mark.asyncio
@@ -630,7 +670,7 @@ async def test_a_reference_played_alone_that_samples_nothing_is_an_error(
 async def test_a_statistical_selfcheck_is_one_comparison_of_two_references_whatever_the_repeat(
     fake_server: Callable[..., Server], tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    group = _statistical(_drawing(shifted_port=0))
+    group = _statistical(_drawing(None))
     monkeypatch.setitem(group_module._REGISTERED, group.id, group)  # noqa: SLF001
 
     verdicts = await selfcheck(
@@ -644,8 +684,8 @@ async def test_a_statistical_selfcheck_is_one_comparison_of_two_references_whate
 
 def test_the_selfcheck_tier_leaves_a_statistical_group_to_the_statistical_tier() -> None:
     groups = {
-        "test/exact": Group(id="test/exact", run=_drawing(0)),
-        "test/statistical": _statistical(_drawing(0)),
+        "test/exact": Group(id="test/exact", run=_drawing(None)),
+        "test/statistical": _statistical(_drawing(None)),
     }
 
     params = selfcheck_params(groups)
@@ -664,8 +704,8 @@ async def _idle(context: GroupContext) -> None:
 async def test_a_statistical_group_plays_once_per_run_whatever_the_repeat(
     run_token: str, tmp_path: Path
 ) -> None:
-    plays: Counter[int] = Counter()
-    statistical = _statistical(_drawing(0, plays=plays), runs=4)
+    plays: Counter[Endpoint] = Counter()
+    statistical = _statistical(_drawing(None, plays=plays), runs=4)
     after = Group(id="test/after", run=_idle, requires=(statistical.id,))
     async with (
         attached(FakeAdapter("vanilla", run_token), tmp_path / "reference") as reference,
