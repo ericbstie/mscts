@@ -35,7 +35,8 @@ Each `--rev` is resolved to a commit (printed), and copied with `git archive` in
 from the working tree. Every round times every revision once, in the order given, so the
 revisions alternate. `--` passes pytest arguments to the task's pytest commands, such as
 `-- tests/selfcheck -k mobs/chase-open`. All the rounds run under one hold of the live
-lock (`scripts/live_lock.py`), and the tier tasks run inside it go straight through.
+lock (`scripts/live_lock.py`). Their commands run with `MSCTS_LIVE_LOCK=0`, so a tier task's
+own `live_lock.py` does not wait for that hold, even in a revision older than #411.
 `--stress` loads every CPU (`scripts/repeat.py`'s `stress_load`) only while a round's
 command runs. It prints each round's time, last pytest summary and load average, then
 each revision's median, and exits non-zero if any round failed, after printing all of it.
@@ -58,7 +59,7 @@ import time
 import tomllib
 import types
 import uuid
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from pathlib import Path
@@ -70,6 +71,9 @@ type Scope[T] = Callable[[], AbstractContextManager[T]]
 DEFAULT_DURATIONS = 10
 MIN_REVISIONS = 2  # a comparison needs something to compare against
 SHORT_COMMIT = 12  # hex digits of a commit id in a report line
+# A copy's live_lock.py may predate the re-entrancy of #411, and would wait forever for the
+# lock this script holds; every version honours the bypass, and still checks the Installation.
+INSIDE_THE_HOLD = {"MSCTS_LIVE_LOCK": "0"}
 
 
 class TimeTierError(Exception):
@@ -361,20 +365,24 @@ def _venv_path(repo_root: Path) -> Path:
 
 
 def run_in_copy(
-    venv: Path, copy_root: Path, argv: Sequence[str]
+    venv: Path,
+    copy_root: Path,
+    argv: Sequence[str],
+    extra_env: Mapping[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run `argv` inside `copy_root`, using `venv` as is (never syncing it).
 
     Same environment as `mutate.py`'s `run_pytest_in_copy`: `UV_PROJECT_ENVIRONMENT`
     points at the already-synced `venv`; `PYTHONPATH` puts `copy_root/src` ahead of
     `venv`'s own `mscts.pth` (which names the *original* checkout); `PYTHONDONTWRITEBYTECODE`
-    avoids a stale cached bytecode from a same-second copy.
+    avoids a stale cached bytecode from a same-second copy. `extra_env` is added last.
     """
     env = dict(os.environ)
     env["UV_PROJECT_ENVIRONMENT"] = str(venv)
     env["PYTHONPATH"] = str(copy_root / "src")
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["UV_NO_SYNC"] = "1"  # a `uv run` inside the task would sync `venv` to this copy
+    env.update(extra_env or {})
     return subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
         argv, cwd=copy_root, env=env, capture_output=True, text=True, check=False
     )
@@ -657,12 +665,16 @@ def _stress_load(args: Args) -> Scope[object]:
     return load
 
 
-def _compare_revisions(args: Args, repo_root: Path, commands: Sequence[str], run: Runner) -> int:
+def _compare_revisions(args: Args, repo_root: Path, commands: Sequence[str], venv: Path) -> int:
     """Time `args.revisions` against each other, print everything, and return the exit code."""
     revisions = resolve_revisions(repo_root, args.revisions)
     for revision in revisions:
         print(f"{revision.name} -> {revision.commit}")
     plan = Comparison(repo_root, revisions, args.rounds, commands)
+
+    def run(copy_root: Path, command: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        return run_in_copy(venv, copy_root, command, extra_env=INSIDE_THE_HOLD)
+
     rounds = time_comparison(
         plan, run, hold=_live_lock_hold(), load=_stress_load(args), hooks_for=revision_hooks
     )
@@ -697,7 +709,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return run_in_copy(venv, copy_root, command)
 
         if args.revisions:
-            return _compare_revisions(args, repo_root, commands, run)
+            return _compare_revisions(args, repo_root, commands, venv)
         return _time_working_tree(args, repo_root, commands, run)
     except TimeTierError as exc:
         print(f"time_tier.py: {exc}", file=sys.stderr)

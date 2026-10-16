@@ -504,6 +504,16 @@ def test_copy_revision_holds_the_committed_files_of_that_commit_only(
     assert (repo / "a.py").read_text() == "three, not committed\n"
 
 
+def test_a_command_in_a_copy_gets_the_extra_environment_it_is_given(
+    time_tier: types.ModuleType, tmp_path: Path
+) -> None:
+    code = "import os; print(os.environ['EXTRA'])"
+    done = time_tier.run_in_copy(
+        tmp_path / "venv", tmp_path, [sys.executable, "-c", code], extra_env={"EXTRA": "here"}
+    )
+    assert done.stdout.strip() == "here"
+
+
 def test_a_command_in_a_copy_never_syncs_the_environment(
     time_tier: types.ModuleType, tmp_path: Path
 ) -> None:
@@ -704,12 +714,19 @@ def test_main_times_the_revisions_under_one_live_lock_hold_and_prints_everything
     answers = iter(codes)
     seen: list[str] = []
     selections: list[list[str]] = []
+    extras: list[dict[str, str] | None] = []
 
     def fake_copy(_repo: Path, commit: str, dest: Path) -> None:
         dest.mkdir(parents=True)
         seen.append(f"copy {commit[:1]}")
 
-    def fake_run(_venv: Path, _copy: Path, argv: list[str]) -> subprocess.CompletedProcess[str]:
+    def fake_run(
+        _venv: Path,
+        _copy: Path,
+        argv: list[str],
+        extra_env: dict[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        extras.append(extra_env)
         with (cache / "live-tier.lock").open("r+") as lock:
             try:
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -765,6 +782,7 @@ def test_main_times_the_revisions_under_one_live_lock_hold_and_prints_everything
         f"run locked 2 {held_by}",
     ]
     assert selections == [["tests/selfcheck", "-k", "mobs/chase-open"]] * 4
+    assert extras == [{"MSCTS_LIVE_LOCK": "0"}] * 4
     lines = capsys.readouterr().out.splitlines()
     assert lines[:2] == ["main -> " + "0" * 40, "branch -> " + "1" * 40]
     assert sum(line.startswith("round ") for line in lines) == 4
