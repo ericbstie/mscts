@@ -91,18 +91,14 @@ def _reached(game_time: int) -> Callable[[Packet], bool]:
     return holds
 
 
-def _heartbeat(packet: Packet) -> bool:
-    """Whether a `set_time` is the 20-tick one, which carries no clock."""
-    return (packet.fields or {}).get("clocks") == []
-
-
 async def _now(bot: Bot) -> int:
-    """The game time of a frozen world: what the next 20-tick `set_time` carries.
+    """The game time of a frozen world: what the next `set_time` carries.
 
-    The barrier first, so that a `set_time` stamped before the freeze is not the one read.
+    The barrier first, so that a `set_time` stamped before the freeze is not the one read. Any
+    `set_time` will do, with a clock or without: no command that sends one is pending.
     """
     await bot.sync()
-    return _game_time(await bot.expect(_TIME, timeout_s=_WAIT_S, where=_heartbeat))
+    return _game_time(await bot.expect(_TIME, timeout_s=_WAIT_S))
 
 
 # `time/advance`: a frozen world steps 1, 20 and 100 ticks, with `advance_time` true and false.
@@ -201,7 +197,8 @@ _BEFORE_DAWN = 23460
 _DAWN_STEPS = 40
 
 _QUIET_TIMES = 6
-"""How many 20-tick `set_time` the clock waits for while a player sleeps and the night goes on:
+"""How many `set_time` the clock waits for while a player sleeps and the night goes on (any
+`set_time`: vanilla sends one every 20 ticks, and no command runs meanwhile):
 6 span at least 100 ticks, the time a player takes to fall into a deep sleep."""
 
 SLEEP_PACKETS = (
@@ -260,7 +257,7 @@ async def _lie_down(sleeper: Bot) -> None:
 async def _quiet(clock: Bot) -> None:
     """Wait until at least 100 server ticks have passed (`_QUIET_TIMES`)."""
     for _ in range(_QUIET_TIMES):
-        await clock.expect(_TIME, timeout_s=_WAIT_S, where=_heartbeat)
+        await clock.expect(_TIME, timeout_s=_WAIT_S)
 
 
 async def _read_day(context: GroupContext, clock: Bot) -> None:

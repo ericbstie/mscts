@@ -88,6 +88,8 @@ class TimeServer:
     stepped: int = 0
     percentage: int = 100
     sleeping: bool = False
+    clocks: tuple[dict[str, object], ...] = ()
+    """The clocks each 20-tick `set_time` carries: none, like vanilla 26.3."""
     later: set[asyncio.Task[None]] = field(default_factory=set)
 
     @property
@@ -175,7 +177,7 @@ class TimeServer:
     async def _tick(self, peer: Peer) -> None:
         with suppress(ConnectionError):
             while True:  # the first as the player enters play, before any freeze
-                await peer.send(SET_TIME, game_time=self.game_time, clocks=[])
+                await peer.send(SET_TIME, game_time=self.game_time, clocks=list(self.clocks))
                 await asyncio.sleep(TIME_TICKS * TICK_S)
 
 
@@ -194,13 +196,21 @@ FROZEN_AT: dict[str, int] = {}
 """The fake's game time when each Group played froze the world."""
 
 
+OVERWORLD: dict[str, object] = {"clock": 0, "total_ticks": 0, "partial_tick": 0.0, "rate": 1.0}
+"""A clock in a 20-tick `set_time`, as a server that also sends the time of day there would."""
+
+
 @functools.cache
-def play(group_id: str) -> tuple[Transcript, Play]:
-    """Play `group_id` against a fake server once; its Transcript and what was read from it."""
-    server = TimeServer()
+def play(group_id: str, *, clocked: bool = False) -> tuple[Transcript, Play]:
+    """Play `group_id` against a fake server once; its Transcript and what was read from it.
+
+    With `clocked`, each 20-tick `set_time` carries the overworld clock.
+    """
+    server = TimeServer(clocks=(OVERWORLD,) if clocked else ())
     transcript = asyncio.run(_play(group_id, server))
     assert server.frozen_at is not None
-    FROZEN_AT[group_id] = server.frozen_at
+    if not clocked:
+        FROZEN_AT[group_id] = server.frozen_at
     return transcript, read(transcript)
 
 
@@ -487,6 +497,13 @@ def test_sleep_with_50_percent_waits_for_the_sleeper_to_leave_the_bed() -> None:
 
     opened_at, closed_at = windows(transcript)[4]
     assert [t for t, _ in received(transcript, CLOCK, ANIMATE) if opened_at < t < closed_at]
+
+
+def test_a_set_time_that_carries_a_clock_ends_each_wait_as_one_without() -> None:
+    for group_id in ("time/advance", "time/sleep"):
+        plain = [w.label for w in play(group_id)[1].windows]
+        clocked = [w.label for w in play(group_id, clocked=True)[1].windows]
+        assert clocked == plain
 
 
 BED_AT = (
