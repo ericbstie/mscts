@@ -768,6 +768,44 @@ In each play, Control sets the world spawn to the block at 0, -60, 0 (`/setworld
 | `spawn/join-position` | statistical | none | A new player joins with `respawn_radius` at its default. Vanilla places it on a random block within 10 blocks of the spawn along each axis. | none |
 | `spawn/join-position-exact` | statistical | none | The same, with `gamerule respawn_radius 0` and the check that repeats a join's first position off (`gamerule player_movement_check false`). Vanilla places every player on the spawn block's column. Once the player has joined, both rules are set back to vanilla's defaults, not to the values the server had before. | none |
 
+## Time (`time`)
+
+How the time of day moves, what the time commands set and answer, and whether sleeping skips
+the night. Each Group joins a Bot called `clock`, an operator, which reads the time back with
+`/time query`. Control freezes the world, stops the weather and clears the sky. When a Group
+ends, every rule it changed is set back to vanilla's default.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `time/advance` | tick-exact | none | From day 1000, the world steps 1, 20 and 100 ticks, with `advance_time` on and then off. After each step, the clock reads `time query day` in a window of its own. | none |
+| `time/commands` | exact | none | From total ticks 0, the clock sets the time to `day`, `noon`, `night` and `midnight`, reading `time query time` after each. It then sets 1000, adds 100 and reads `time query day`, adds 24000, and reads `time query day`, `time query day repetition`, `time query time` and `time query daytime`. Each command has a window of its own. | none |
+| `time/sleep` | exact | none | A second Bot, `sleeper`, lies down in a bed at midnight while the clock stays up. With `players_sleeping_percentage` 100 the night goes on for 100 ticks, then the world steps to dawn and the sleeper gets up. With 50 the clock reads the day at most 60 ticks after the sleeper lies down, and then the night is skipped. The clock reads the day after each part. | none |
+
+In 26.3 the time of day is a world clock, separate from the game time. `time query day` answers
+how far into the day the clock is, `time query day repetition` how many days have passed, and
+`time query time` its total ticks. `time query daytime` no longer exists, and vanilla answers it
+with an error. `time query gametime` is not compared: the game time counts every tick since the
+world was made, so two servers started at different moments answer differently
+([#399](https://github.com/ericbstie/mscts/issues/399)).
+
+The server also sends the time in `set_time`, every 20 ticks and whenever a command changes it.
+No window compares `set_time`, because how many arrive depends on how long a window lasts
+([#63](https://github.com/ericbstie/mscts/issues/63)). The Groups use it only to know when a
+step has ended: its game time shows how many ticks have run.
+
+In `time/sleep` Control leaves before the sleeper lies down, so the two Bots are the only
+players while it does: with 50% needed, one sleeper of two is enough. Control is back for the
+step to dawn, so three players are online when the sleeper is woken.
+
+A player falls into a deep sleep 100 of its own ticks after it lies down, and a frozen world
+does not freeze its players, so the night is skipped about 5 seconds later whatever the world
+does. The windows compare the sleep messages, the sleeper leaving its bed, its pose and the
+game events in the order they come, not the tick they come on. To check that the night is not
+skipped too soon, the clock reads the day at most 60 ticks after the sleeper lies down. Vanilla announces the advancement for sleeping in a bed and the new
+spawn point only the first time a player sleeps, so Control takes both back before the sleeper
+lies down. Control steps the world to dawn inside a window, and an operator sees Control's
+commands as chat, so the clock is no operator during that step.
+
 ## Planned
 
 | Mechanic | First Group | Needs |

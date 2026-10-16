@@ -614,6 +614,10 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "doors_normal.door": "Door a zombie hits on normal",
         "targets.first": "Zombie's first victim",
         "targets.hit": "Zombie's first hit of a victim",
+        # time (#63)
+        "set_entity_data.entries[].value.x": "Block x in entity data",
+        "set_entity_data.entries[].value.y": "Block y in entity data",
+        "set_entity_data.entries[].value.z": "Block z in entity data",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

@@ -3470,3 +3470,21 @@ Whom a zombie hurts first when it stands 8 blocks from a player and 8 blocks fro
 **Zombie's first hit of a victim**
 
 How many ticks the same zombie takes to hurt the player or the villager for the first time. A difference means zombies choose a target, or reach it, at another pace than in vanilla.
+
+## `set_entity_data.entries[].value.x`
+
+**Block x in entity data**
+
+The east-west position of a block an entity's data points at, such as the bed a player sleeps in. A difference draws the sleeping player in another place.
+
+## `set_entity_data.entries[].value.y`
+
+**Block y in entity data**
+
+The height of a block an entity's data points at, such as the bed a player sleeps in. A difference draws the sleeping player at another height.
+
+## `set_entity_data.entries[].value.z`
+
+**Block z in entity data**
+
+The north-south position of a block an entity's data points at, such as the bed a player sleeps in. A difference draws the sleeping player in another place.
