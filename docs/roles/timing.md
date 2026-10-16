@@ -86,3 +86,4 @@ Newest first: one line per lesson, with the issue it came from.
 - #63: to compare when something happens on the wall clock (the 50% night skip, about 100 player ticks), add a read window before it is due, not only the order of what comes.
 - #63: counting `set_time` to span N ticks after an action needs one more, since the first counted may be sent before the action. Wait on any `set_time`, not only one with an empty clock.
 - #63: a player's advancements and bed spawn point persist in playerdata: revoke the advancement and move the spawn point off the bed so every play is a first night.
+- #403: `free_endpoint` gives each Instance its own random host, so two Instances can share a port number (about 1 pair in 14 000 here). A test or fake that tells sides apart keys on the whole Endpoint, never on `.port`.

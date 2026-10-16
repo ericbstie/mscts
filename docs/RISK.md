@@ -36,6 +36,7 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-16 | #403 | tests | #379 (`scrutiny::high`) | a statistical Run's test told its sides apart by port, which two random hosts can share (1 in 14 000): the Reference was blamed | a tier run (the unit tier under `rebase -x`) | yes |
 | 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | the 50% sleep window compared only order: a skip at lie-down matched | the second review | no |
 | 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | the dawn window left out `system_chat`, hiding the wake-up message | the second review | no |
 | 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | a `set_time` that carries a clock never ended a wait: an invented failure | the second review | no |
@@ -66,6 +67,10 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #409 | medium | medium | lead's diff read | 0 | five statistical Self-checks of `mobs/*`, 5 of 5; mutation sweep 15 of 16 killed, the 16th timed out and was killed alone |
+| #408 | medium | medium | lead's diff read | 0 | none: no barrier or window timing change; Self-check 20 of 20 of `blocks/fill` and `inventory/give`; mutation sweep 8 of 9 killed, a pin test kills the 9th |
+| #407 | low | low | lead's diff read | 0 | none: research note and probe, no product code |
+| #406 | high | low | lead's diff read | 0 | none: test only (the lead lowered it once the cause was in the test); the test 5 of 5 under `repeat.py --stress` |
 | #400 | | high | first review, second review | 0, 0 (3 high, all fixed) | five Self-checks of `time/*` before the reviews: run 1 failed on a `spawn_mobs` undo, fixed; five after the fixes, 20 of 20 each |
 | #398 | medium | medium | lead's diff read | 0 | five statistical Self-checks of `mobs/*`, 5 of 5 |
 | #401 | | medium | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 of six `combat/*` Groups |

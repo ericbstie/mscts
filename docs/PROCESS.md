@@ -410,6 +410,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-16 | workers (#396, #404), trains 34 to 37 before | A stress series of `mobs/*` held the live lock for 3.3 h; two short Self-checks waited over an hour behind it | **defer**: #411, the fifth repeat; a series takes the lock per run |
+| 2026-10-16 | worker (#404) | Timing a Self-check main against the branch meant building the recipe from four scripts and tree copies | **defer**: #412 |
+| 2026-10-16 | worker (#404) | A timing round ran beside the worker's own mutation sweep | **adopt**: statistics handbook line (time after CPU-heavy work ends) |
+| 2026-10-16 | worker (#404) | `mise run test:statistical -- --collect-only` queued on the live lock | **reject**: one use; run pytest's `--collect-only` directly |
+| 2026-10-16 | worker (#404) | Waiting on an rc file meant re-arming a Bash wait about 20 times over 3.3 h | **reject**: a harness limit, not ours |
+| 2026-10-16 | worker (#403) | The issue and the triage pointed at a load-dependent wait; the cause was the fake keying sides on a port that two random hosts can share | **adopt**: the tech-lead skill's flaky-failure line asks what the fakes key on before a stress hunt; timing handbook line |
+| 2026-10-16 | worker (#403) | RUF009 slipped past `mise run fix` and failed a commit | **reject**: common.md already says to run `ruff check` before committing |
+| 2026-10-16 | lead (train 38) | The #402 brief said to keep the probe in the scratchpad, which is per-session and gone at the next session | **adopt**: the probe moved to `scripts/research/` before the merge; tech-lead skill line |
+| 2026-10-16 | lead (train 38) | The lead removed two workers' worktrees before noticing their reports had no Retrospective, and a worker cannot be resumed without its worktree | **adopt**: tech-lead skill line: check the report's five sections before removing a worktree |
+| 2026-10-16 | lead (train 38) | Worker PRs still subscribe the lead's session on creation: 4 noise wakes | **adopt** (no change): unsubscribed at once; the briefs said not to subscribe, which does not stop the harness |
 | 2026-10-16 | worker (#63), #344 before | A Group's undo turned `spawn_mobs` on for every later play; the same bug as #344's, in another lane | **adopt**: common.md, moved from the player-actions handbook |
 | 2026-10-16 | worker (#387), train 36 before | Pumpkin was not in the shared cache when the brief asked for a candidate run | **adopt**: the tech-lead skill's orient step checks `mscts adapter list` (the second repeat) |
 | 2026-10-16 | worker (#387) | A candidate run could not judge the fix, because main already failed on Pumpkin for another reason | **adopt**: the brief template gives main's failure reasons with its pass count |

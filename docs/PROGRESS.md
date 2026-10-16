@@ -195,6 +195,32 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-16: train 38
+
+- #406, #407, #408 and #409 merged one after the other, each on the
+  then-current main. Reference tier 36 of 36 on each rebased tip;
+  statistical tier 7 of 7 on #409's.
+- #406 (#403): the wrong side was blamed because the test told the
+  Reference and the Candidate apart by port, and `free_endpoint` gives
+  each Instance a random host, so two can share a port (about 1 in
+  14 000). A test-only fix; no Verdict rule changed, so the lead lowered
+  it from `scrutiny::high` to low. Likely the cause of #383 too.
+- #407 (#402): Pumpkin's divergence, not a Bot bug. Pumpkin keeps one
+  pending teleport and kicks an accept of an older id, which vanilla
+  ignores (javap). The Bot accepts in order with the right ids, so the
+  Report's `failed` Divergence stands and `mobs/*` keep failing against
+  Pumpkin. Probe: `scripts/research/teleport_accept.py`.
+- #408 (#396): `blocks/fill` drops four items per window and
+  `inventory/give` compares `set_entity_data` in every window, 20 of 20
+  each: #320's rule lifts both limits.
+- #409 (#404): each `mobs/*` play calibrates its offset on the first
+  `set_time` of its own step, and the 40-tick step is gone.
+  `mobs/chase-open`'s stress Self-check went from 709 s to 570 s
+  (median of three) of its 900 s limit.
+- Filed #410 (a unit test failed once during a rebase), #411 (a stress
+  series holds the live lock for hours, the fifth repeat) and #412 (a
+  script to time a Self-check, main against a branch).
+
 ### 2026-10-16: train 37
 
 - #397, #401, #398 and #400 merged one after the other, each on the
