@@ -50,3 +50,40 @@ nightly 5b53f06 (`5b53f064af8708ba33fcaa533b81ca29a53a3310`, `Pumpkin-MC/Pumpkin
 - A stale id: vanilla ignores it, Pumpkin kicks.
 - An accept with no teleport pending: vanilla ignores it unless its id is the counter's (then it
   disconnects), Pumpkin kicks whatever the id.
+
+## The Bot's order, live (verified, 2026-10-16)
+
+Two probes, kept in the scratch directory
+`/tmp/claude-0/-home-user-mscts/69129e96-dcb3-5303-a091-f7710baa105f/scratchpad/B/`
+(`teleport_probe.py` and `stale_probe.py`; `run_probe.sh` and `run_stale.sh` run them under the
+live lock; the rows are `vanilla.jsonl`, `pumpkin.jsonl`, `stale-vanilla.jsonl` and
+`stale-pumpkin.jsonl`). Each boots one Instance at the default ServerSpec and, per play, joins a new
+Bot, then has Control run `tp <bot> 0.5 -60 0.5` as soon as `bot.join()` returns, as `_arena` and
+`join_at_spawn` do. Pumpkin is nightly 5b53f06 and vanilla is 26.3.
+
+- **The Bot accepts each teleport with its own id, in order** (`teleport_probe.py`, 25 plays on
+  vanilla, 40 on Pumpkin, one Bot after another):
+  - in all 65 plays the Bot saw teleport 1, sent accept 1 (0.1 to 14.3 ms after it arrived), saw
+    teleport 2, and sent accept 2 (0.06 to 11.8 ms after it arrived), in that order;
+  - no play had an accept of an old id, and none had an accept before its teleport;
+  - Control's `tp` was sent 3.4 to 343 ms after accept 1 on vanilla and 0.6 to 345 ms after it on
+    Pumpkin.
+- **Pumpkin kicks some of these plays** (4 of 40: plays 2, 14, 19 and 23). The disconnect text is
+  `Wrong teleport id`, and it reached the Bot 50 to 70 ms after accept 2. The Bot's packets in
+  those plays are the same as in the 36 that were not kicked.
+  - The four kicked plays are those where Pumpkin ran the `tp` at once: teleport 2 reached the Bot
+    2.8 to 4.7 ms after Control sent it, and Control sent it 0.6 to 1.2 ms after accept 1. Of the
+    36 plays that were not kicked, 35 took 41.7 ms or more (the `tp` ran a tick later), and one
+    took 18.1 ms. Vanilla took 1.0 to 28.5 ms and kicked none.
+  - So Pumpkin set `awaiting_teleport` to 2 before it handled accept 1. The Bot sent accept 1
+    before the `tp`, but the two travel on two connections, and Pumpkin runs a `chat_command` in a
+    task of its own (#17), so the server can handle them in the other order.
+- **A stale accept on purpose** (`stale_probe.py`, 20 plays on each): the script drops the Bot's
+  accept of teleport 2, and then sends `accept_teleportation` with id 1.
+  - Vanilla: 20 of 20 plays not kicked.
+  - Pumpkin: 20 of 20 kicked with `Wrong teleport id`. In 4 of them (plays 1, 10, 11 and 17) the
+    kick came before the script sent its own accept 1. The only accept the Bot had sent was the
+    join's accept 1, so Pumpkin judged that one against teleport 2: the race above, caught
+    without a stale accept of ours.
+- The `tp` in the first probe is the same command the Groups send. This note does not check the
+  other Groups that `tp` a Bot after its join one by one.
