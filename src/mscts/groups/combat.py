@@ -46,9 +46,13 @@ PACKETS = (
     "minecraft:set_entity_data",
     "minecraft:sound",
     "minecraft:animate",
+    "minecraft:swing_animation",
     "minecraft:level_particles",
 )
-"""The packets a window compares: the hit, the husk's reaction, and the swing."""
+"""The packets a window compares: the hit, the husk's reaction, and the swing.
+
+A swing reaches the players who see the swinger, never the swinger: only the Groups with two
+Bots (`combat/immunity`, `combat/pvp`, `combat/pvp-off`) have a window that holds one."""
 
 PITCH_MASK = Mask(
     "minecraft:sound",
@@ -209,10 +213,10 @@ async def _ask(fighter: Bot, command: str) -> None:
 async def _read_back(context: GroupContext, fighter: Bot, tags: list[str]) -> None:
     """Read each husk's health, velocity and position back, in a window of its own.
 
-    The packets of a hit do not tell all of it: the health is in an entity's data, which the
-    sprint flag shares (see `SPRINT_PACKETS`), and the position is not compared at all. A
-    frozen husk keeps what the hit left until the world steps, so the answers are exact. Per
-    husk the fighter copies the three values to storage, then reads them in one answer.
+    The packets of a hit do not tell all of it: the position is not compared at all, and a
+    sweep's windows leave out the husks' health and velocity (`SWEEP_PACKETS`). A frozen husk
+    keeps what the hit left until the world steps, so the answers are exact. Per husk the
+    fighter copies the three values to storage, then reads them in one answer.
     """
     await fighter.drain()  # what Control said meanwhile reached the operator too
     async with context.observe(_SYSTEM_CHAT):
@@ -254,17 +258,6 @@ async def melee_mob(context: GroupContext) -> None:
 
 # `combat/critical`: a hit while falling, and one while sprinting.
 
-SPRINT_PACKETS = tuple(name for name in PACKETS if name != "minecraft:set_entity_data")
-"""What a sprinting hit's window compares: `PACKETS` without the entity data.
-
-A sprinting hit changes the data of two entities at the end of its tick: the husk's health and
-the fighter's sprint flag, which the hit clears. Vanilla sends them in the order of a hash of
-the entity ids (`ServerEntity` per tracked entity), and the two Instances' ids differ: 2 plays
-in 6 differed only in that order. So the window leaves out both: the husk's health is read back
-(`_read_back`), and whether the sprint stops is not compared. A rule that ignores the order of
-the tick-end resends of several entities (#320) would let it be.
-"""
-
 _SWORD = "minecraft:diamond_sword"
 _GROUND = -60.0
 _HOP = 1.0
@@ -302,7 +295,7 @@ async def _stop_sprinting(bot: Bot) -> None:
 
 _CRITICAL_CASES = (
     _Case(_SWORD, act=_fall_and_hit, before=_hop, after=_land),
-    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting, packets=SPRINT_PACKETS),
+    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting),
 )
 """A hit while falling, which is critical, and one while sprinting, which is not."""
 
@@ -317,7 +310,7 @@ async def critical(context: GroupContext) -> None:
 
 _KNOCKBACK_CASES = (
     _Case(_SWORD),
-    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting, packets=SPRINT_PACKETS),
+    _Case(_SWORD, before=_start_sprinting, after=_stop_sprinting),
 )
 """A hit while standing, and one while sprinting, which adds knockback and stops the sprint."""
 
@@ -454,9 +447,7 @@ ATTACKER = "attacker"
 VICTIM = "victim"
 
 PVP_PACKETS = (*PACKETS, "minecraft:set_health")
-PVP_SPRINT_PACKETS = (*SPRINT_PACKETS, "minecraft:set_health")
-"""What the windows compare: `PACKETS` and the victim's health, and the same without the entity
-data for a sprinting hit (`SPRINT_PACKETS`)."""
+"""What the windows compare: `PACKETS` and the victim's health."""
 
 _VICTIM_X = _FIGHTER_X + _REACH
 
@@ -469,9 +460,8 @@ async def _pvp_hit(context: GroupContext, attacker: Bot, lane_z: float, *, sprin
     await context.step(_CHARGE_STEPS)
     if sprint:
         await _start_sprinting(attacker)
-    packets = PVP_SPRINT_PACKETS if sprint else PVP_PACKETS
     target = await find_when_tracked(attacker, "player", (_VICTIM_X, -60.0, lane_z))
-    async with context.observe(*packets):
+    async with context.observe(*PVP_PACKETS):
         await attacker.attack(target)
         await context.step_after(attacker, ticks=2)
     if sprint:

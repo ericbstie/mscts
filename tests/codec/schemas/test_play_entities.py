@@ -692,6 +692,34 @@ def test_animate_decodes_and_re_encodes() -> None:
     round_trip("minecraft:animate", {"entity_id": 2, "action": 255}, "02 ff")
 
 
+def test_swing_animation_decodes_and_re_encodes() -> None:
+    # Recorded from vanilla 26.3: the player (1) swings its main hand (0) with the default
+    # swing (type 1, `whack`, for 6 ticks); other players see it, the swinger does not.
+    round_trip(
+        "minecraft:swing_animation",
+        {"entity_id": 1, "hand": 0, "animation": {"type": 1, "duration": 6}},
+        "01 00 01 06",
+    )
+    # Built by hand from `ClientboundSwingAnimationPacket`'s javap layout: an entity id, the
+    # hand (an `InteractionHand` id) and a `SwingAnimation` (its type's id, then a duration).
+    round_trip(
+        "minecraft:swing_animation",
+        {"entity_id": 300, "hand": 1, "animation": {"type": 2, "duration": 6}},
+        "ac02 01 02 06",
+    )
+    round_trip(
+        "minecraft:swing_animation",
+        {"entity_id": 2, "hand": 0, "animation": {"type": 1, "duration": 300}},
+        "02 00 01 ac02",
+    )
+    # The hand and the type are VarInts, not bytes: an id of 128 or more takes two.
+    round_trip(
+        "minecraft:swing_animation",
+        {"entity_id": 2, "hand": 200, "animation": {"type": 130, "duration": 0}},
+        "02 c801 8201 00",
+    )
+
+
 def test_hurt_animation_decodes_and_re_encodes() -> None:
     # Built by hand: the entity 300 is hit from a yaw of 90 degrees.
     round_trip("minecraft:hurt_animation", {"entity_id": 300, "yaw": 90.0}, "ac02 42b40000")
@@ -723,6 +751,7 @@ def test_take_item_entity_decodes_and_re_encodes() -> None:
         ("entity_event", ["entity_id"]),
         ("damage_event", ["entity_id", "source_cause_id", "source_direct_id"]),
         ("animate", ["entity_id"]),
+        ("swing_animation", ["entity_id"]),
         ("hurt_animation", ["entity_id"]),
         ("take_item_entity", ["collected_entity_id", "collector_entity_id"]),
     ],

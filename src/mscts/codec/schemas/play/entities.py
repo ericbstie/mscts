@@ -36,6 +36,13 @@ CLIENTBOUND: Mapping[str, Schema] = {
     # Entity Animation. The action is an Unsigned Byte on the wire (0 swing main arm, 2 leave
     # bed, 3 swing off hand, 4 critical hit, 5 magic critical hit).
     "minecraft:animate": Schema(entity_id=ENTITY_ID, action=UBYTE),
+    # Swing Animation (26.3, not on the wiki): the entity, the hand it swings and the swing (its
+    # type's id and its duration in ticks). The hand and the type are `idMapper`s, which answer
+    # the first constant for an id out of range, so they are plain VarInts here, as in
+    # interaction.py (javap `ClientboundSwingAnimationPacket`, `SwingAnimation`).
+    "minecraft:swing_animation": Schema(
+        entity_id=ENTITY_ID, hand=VAR_INT, animation=Schema(type=VAR_INT, duration=VAR_INT)
+    ),
     # Spawn Entity. The velocity is an LpVec3; the angles are in 1/256 of a turn. `data` is
     # the object data (a projectile's owner, a block's state, ...): its meaning depends on
     # the entity type.

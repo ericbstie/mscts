@@ -319,6 +319,7 @@ def test_the_windows_compare_the_hit_and_what_it_does_to_the_husk() -> None:
         "minecraft:set_entity_data",
         "minecraft:sound",
         "minecraft:animate",
+        "minecraft:swing_animation",
         "minecraft:level_particles",
     )
 
@@ -327,11 +328,9 @@ def label(packets: tuple[str, ...]) -> str:
     return f"{OBSERVE_OPEN} {' '.join(packets)}"
 
 
-def test_a_sprinting_hit_leaves_out_the_entity_data_and_a_sweep_the_end_of_tick_packets() -> None:
-    assert (
-        tuple(name for name in combat.PACKETS if name != "minecraft:set_entity_data")
-        == combat.SPRINT_PACKETS
-    )
+def test_a_sprinting_hit_compares_the_entity_data_and_a_sweep_does_not() -> None:
+    assert not hasattr(combat, "SPRINT_PACKETS")
+    assert not hasattr(combat, "PVP_SPRINT_PACKETS")
     assert "minecraft:set_entity_data" in combat.PACKETS
     assert combat.SWEEP_PACKETS == (
         "minecraft:damage_event",
@@ -348,11 +347,11 @@ async def test_every_window_is_narrowed_to_the_packets_of_its_case(group_id: str
 
     expected = {
         "combat/melee-mob": [combat.PACKETS] * 4,
-        "combat/critical": [combat.PACKETS, combat.SPRINT_PACKETS],
-        "combat/knockback": [combat.PACKETS, combat.SPRINT_PACKETS],
+        "combat/critical": [combat.PACKETS] * 2,
+        "combat/knockback": [combat.PACKETS] * 2,
         "combat/sweep": [combat.SWEEP_PACKETS],
         "combat/immunity": [combat.PACKETS] * 3,
-        "combat/pvp": [combat.PVP_PACKETS, combat.PVP_SPRINT_PACKETS],
+        "combat/pvp": [combat.PVP_PACKETS] * 2,
         PVP_OFF: [combat.PVP_PACKETS],
     }[group_id]
     assert [window.label for window in result.windows] == [label(p) for p in expected]
@@ -704,10 +703,8 @@ async def test_pvp_heals_the_victim_before_the_first_hit() -> None:
     assert heal in commands(result.first)
 
 
-def test_a_sprinting_pvp_hit_compares_the_victims_health_but_not_the_entity_data() -> None:
+def test_a_sprinting_pvp_hit_compares_the_victims_health_and_the_entity_data() -> None:
     assert (*combat.PACKETS, "minecraft:set_health") == combat.PVP_PACKETS
-    assert "minecraft:set_entity_data" not in combat.PVP_SPRINT_PACKETS
-    assert "minecraft:set_health" in combat.PVP_SPRINT_PACKETS
 
 
 # combat/pvp-off
