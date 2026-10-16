@@ -210,10 +210,6 @@ SLEEP_PACKETS = (
 """What a sleep window compares: the sleep messages, leaving the bed, the sleeping pose and the
 game events."""
 
-_DAWN_PACKETS = SLEEP_PACKETS[1:]
-"""What the window of the step to dawn compares: not the chat, since Control steps the world in
-it, and the clock, an operator, hears that as admin chat."""
-
 
 async def _first_night(control: Control) -> None:
     """Make the sleeper's first night in the bed like its first ever, every time it is played.
@@ -271,15 +267,20 @@ async def _read_day(context: GroupContext, clock: Bot) -> None:
 async def _to_dawn(context: GroupContext, clock: Bot, game_time: int) -> None:
     """Step the world from just before dawn until a sleeping player is up, in a window.
 
-    Returns once a `set_time` carries the game time the step reaches: `game_time` and the
-    steps.
+    Control steps the world inside the window, and an operator hears that as admin chat, so the
+    clock is no operator meanwhile: the window compares the chat too. Returns once a `set_time`
+    carries the game time the step reaches: `game_time` and the steps.
     """
     control = context.control
     await control.run(f"time set {_BEFORE_DAWN}")
-    await clock.drain()
-    async with context.observe(*_DAWN_PACKETS):
-        await control.run(f"tick step {_DAWN_STEPS}")
-        await clock.expect(_TIME, timeout_s=_WAIT_S, where=_reached(game_time + _DAWN_STEPS))
+    await control.run(f"deop {CLOCK}")
+    try:
+        await clock.drain()
+        async with context.observe(*SLEEP_PACKETS):
+            await control.run(f"tick step {_DAWN_STEPS}")
+            await clock.expect(_TIME, timeout_s=_WAIT_S, where=_reached(game_time + _DAWN_STEPS))
+    finally:
+        await control.run(f"op {CLOCK}")
 
 
 @group("time/sleep", spec=_operator)

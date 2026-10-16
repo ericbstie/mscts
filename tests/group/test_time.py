@@ -42,6 +42,8 @@ COMMANDS = tree(
     "fill",
     "advancement",
     "spawnpoint",
+    "op",
+    "deop",
 )
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
@@ -374,7 +376,6 @@ def test_commands_wait_in_each_window_for_the_answer() -> None:
 
 SLEEPER = "sleeper"
 SLEEP = (SYSTEM_CHAT, ANIMATE, "minecraft:set_entity_data", "minecraft:game_event")
-DAWN = SLEEP[1:]
 READ_DAY = ((CLOCK, "time query day"), (CLOCK, "time query day repetition"))
 AT_MIDNIGHT = ("time set 18000", "tp sleeper 0.5 -60 0.5 -90 0")
 
@@ -432,7 +433,7 @@ def test_sleep_lies_down_at_midnight_with_100_then_50_percent_needed() -> None:
     assert [window.label for window in result.windows] == [
         opened(*SLEEP),
         opened(SYSTEM_CHAT),
-        opened(*DAWN),
+        opened(*SLEEP),
         opened(SYSTEM_CHAT),
         opened(*SLEEP),
         opened(SYSTEM_CHAT),
@@ -441,8 +442,10 @@ def test_sleep_lies_down_at_midnight_with_100_then_50_percent_needed() -> None:
     # no command in the lie-down windows; a move is the sleeper's tick reporting where it is
     assert [what for _, what in lie_100.sent + lie_50.sent if isinstance(what, str)] == []
     assert (read_100.sent, read_dawn.sent, read_50.sent) == (READ_DAY,) * 3
-    assert dawn.before == ("time set 23460",)
+    # the clock is no operator while Control steps, so it hears no admin chat in the window
+    assert dawn.before == ("time set 23460", "deop clock")
     assert dawn.sent == ((CONTROL, "tick step 40"),)
+    assert read_dawn.before == ("op clock",)
     assert lie_50.before == ("gamerule players_sleeping_percentage 50", *AT_MIDNIGHT)
     uses = sent(transcript, SLEEPER, "minecraft:use_item_on")
     foot_from_above = ({"x": 2, "y": -60, "z": 0}, 1)  # Face.UP

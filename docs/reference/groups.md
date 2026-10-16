@@ -794,14 +794,15 @@ No window compares `set_time`, because how many arrive depends on how long a win
 step has ended: its game time shows how many ticks have run.
 
 In `time/sleep` Control leaves before the sleeper lies down, so the two Bots are the only
-players: with 50% needed, one sleeper of two is enough. A player falls into a deep sleep 100 of
+players while it does: with 50% needed, one sleeper of two is enough. Control is back for the
+step to dawn, so three players are online when the sleeper is woken. A player falls into a deep sleep 100 of
 its own ticks after it lies down, and a frozen world does not freeze its players, so the night
 is skipped about 5 seconds later whatever the world does. The windows compare the sleep
 messages, the sleeper leaving its bed, its pose and the game events in the order they come,
 not the tick they come on. Vanilla announces the advancement for sleeping in a bed and the new
 spawn point only the first time a player sleeps, so Control takes both back before the sleeper
-lies down. The step to dawn is compared without chat, because Control steps the
-world in that window and the clock, as an operator, sees Control's commands.
+lies down. Control steps the world to dawn inside a window, and an operator sees Control's
+commands as chat, so the clock is no operator during that step.
 
 ## Planned
 
