@@ -56,9 +56,9 @@ the game time from a `set_time` sent before the freeze would wait for far too li
 USE_ITEM_ON = "minecraft:use_item_on"
 ANIMATE, INFO_REMOVE = "minecraft:animate", "minecraft:player_info_remove"
 PERCENTAGE = "gamerule players_sleeping_percentage "
-SKIP_TICKS = 8
+SKIP_TICKS = 40
 """How many ticks after a player lies down the fake skips the night with 50% needed: longer
-than a barrier, so a window that did not wait for the skip would end before it."""
+than 3 `set_time` and a read, so the read comes before the skip, as on vanilla (100 ticks)."""
 DAWN_TICK = 18
 """On which tick of a step the fake gets a sleeper up with 100% needed."""
 LATE_TICKS = 5
@@ -437,10 +437,14 @@ def test_sleep_lies_down_at_midnight_with_100_then_50_percent_needed() -> None:
         opened(SYSTEM_CHAT),
         opened(*SLEEP),
         opened(SYSTEM_CHAT),
+        opened(*SLEEP),
+        opened(SYSTEM_CHAT),
     ]
-    lie_100, read_100, dawn, read_dawn, lie_50, read_50 = result.windows
+    lie_100, read_100, dawn, read_dawn, lie_50, before_skip, skip, read_50 = result.windows
     # no command in the lie-down windows; a move is the sleeper's tick reporting where it is
     assert [what for _, what in lie_100.sent + lie_50.sent if isinstance(what, str)] == []
+    assert [what for _, what in skip.sent if isinstance(what, str)] == []
+    assert before_skip.sent == ((CLOCK, "time query day"),)
     assert (read_100.sent, read_dawn.sent, read_50.sent) == (READ_DAY,) * 3
     # the clock is no operator while Control steps, so it hears no admin chat in the window
     assert dawn.before == ("time set 23460", "deop clock")
@@ -495,11 +499,16 @@ def test_sleep_steps_to_dawn_until_a_set_time_shows_the_step_ended() -> None:
     )
 
 
-def test_sleep_with_50_percent_waits_for_the_sleeper_to_leave_the_bed() -> None:
+def test_sleep_with_50_percent_reads_the_day_before_the_skip_then_waits_for_it() -> None:
     transcript, _ = play("time/sleep")
 
-    opened_at, closed_at = windows(transcript)[4]
-    assert [t for t, _ in received(transcript, CLOCK, ANIMATE) if opened_at < t < closed_at]
+    lie_50, before_skip, skip = windows(transcript)[4:7]
+    animates = [t for t, _ in received(transcript, CLOCK, ANIMATE)]
+    lain = sent(transcript, SLEEPER, "minecraft:use_item_on")[1][0]
+    in_lie = [t for t, _ in received(transcript, CLOCK, SET_TIME) if lain < t < lie_50[1]]
+    assert len(in_lie) >= 3
+    assert not [t for t in animates if lie_50[0] < t < before_skip[1]]
+    assert [t for t in animates if skip[0] < t < skip[1]]
 
 
 def test_a_set_time_that_carries_a_clock_ends_each_wait_as_one_without() -> None:

@@ -21,7 +21,9 @@ Kinds: `time/advance` is tick-exact, as each window reads the time after an exac
 stepped ticks. `time/commands` is exact: the world never steps, and only the commands move the
 time. `time/sleep` is exact, not tick-exact: a sleeping player falls into a deep sleep on its
 own ticks, which run while the world is frozen, so the night skip follows the wall clock. Its
-windows compare the order of what comes, and the clock reads the time back after each.
+windows compare the order of what comes, and the clock reads the time back after each. When
+the night is skipped is read the same way: the clock reads the day 40 to 60 ticks after the
+player lies down, before the skip at 100, so a server that skips at once shows another day.
 """
 
 import contextlib
@@ -201,6 +203,10 @@ _QUIET_TIMES = 6
 `set_time`: vanilla sends one every 20 ticks, and no command runs meanwhile):
 6 span at least 100 ticks, the time a player takes to fall into a deep sleep."""
 
+_BEFORE_DEEP_SLEEP = 3
+"""How many `set_time` the clock waits for after a player lies down with 50% needed, before it
+reads the day: 3 come 40 to 60 ticks after, and the night is skipped at 100."""
+
 SLEEP_PACKETS = (
     _CHAT,
     "minecraft:animate",
@@ -250,18 +256,23 @@ async def _lie_down(sleeper: Bot) -> None:
     await sleeper.place(x, -60, 0, Face.UP)
 
 
-async def _quiet(clock: Bot) -> None:
-    """Wait until at least 100 server ticks have passed (`_QUIET_TIMES`)."""
-    for _ in range(_QUIET_TIMES):
+async def _count_set_time(clock: Bot, times: int) -> None:
+    """Wait for `times` `set_time`: vanilla sends one every 20 ticks."""
+    for _ in range(times):
         await clock.expect(_TIME, timeout_s=_WAIT_S)
+
+
+async def _read(context: GroupContext, clock: Bot, *queries: str) -> None:
+    """The clock runs each of `queries`, in one window of its own."""
+    await clock.drain()
+    async with context.observe(_CHAT):
+        for query in queries:
+            await _ask(clock, query)
 
 
 async def _read_day(context: GroupContext, clock: Bot) -> None:
     """The clock reads the day and the days passed, in a window of its own."""
-    await clock.drain()
-    async with context.observe(_CHAT):
-        await _ask(clock, "time query day")
-        await _ask(clock, "time query day repetition")
+    await _read(context, clock, "time query day", "time query day repetition")
 
 
 async def _to_dawn(context: GroupContext, clock: Bot, game_time: int) -> None:
@@ -289,9 +300,9 @@ async def sleep(context: GroupContext) -> None:
 
     With `players_sleeping_percentage` 100, one sleeper of two is not enough: the night goes on,
     and the sleeper gets up when the world steps to dawn. With 50 it is enough: the night is
-    skipped once the sleeper has slept 100 ticks, with the world frozen. Control leaves before
-    each player lies down, so the two Bots are the only players. The clock reads the day after
-    each part.
+    skipped once the sleeper has slept 100 ticks, with the world frozen; the clock reads the day
+    once before that too. Control leaves before each player lies down, so the two Bots are the
+    only players then. The clock reads the day after each part.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
@@ -308,12 +319,15 @@ async def sleep(context: GroupContext) -> None:
         await _at_midnight(context, clock, 100)
         async with context.observe(*SLEEP_PACKETS):
             await _lie_down(sleeper)
-            await _quiet(clock)
+            await _count_set_time(clock, _QUIET_TIMES)
         await _read_day(context, clock)
         await _to_dawn(context, clock, game_time)
         await _read_day(context, clock)
         await _at_midnight(context, clock, 50)
         async with context.observe(*SLEEP_PACKETS):
             await _lie_down(sleeper)
+            await _count_set_time(clock, _BEFORE_DEEP_SLEEP)
+        await _read(context, clock, "time query day")
+        async with context.observe(*SLEEP_PACKETS):
             await clock.expect("minecraft:animate", timeout_s=_WAIT_S)
         await _read_day(context, clock)
