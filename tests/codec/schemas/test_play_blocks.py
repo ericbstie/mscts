@@ -17,6 +17,7 @@ from mscts.codec.schema import ENTITY_ID
 from mscts.codec.schemas import play
 
 BLOCK_UPDATE = "minecraft:block_update"
+ADD_TRANSIENT_BLOCK = "minecraft:add_transient_block"
 SECTION_BLOCKS_UPDATE = "minecraft:section_blocks_update"
 BLOCK_ENTITY_DATA = "minecraft:block_entity_data"
 BLOCK_EVENT = "minecraft:block_event"
@@ -41,6 +42,27 @@ def test_a_note_block_placement_decodes_to_its_block_state() -> None:
         {"pos": {"x": 8, "y": -60, "z": 8}, "block_state": 681},
         "0000020000008fc4a905",
     )
+
+
+# Add transient block: the same layout as a block update, sent to the players tracking a falling
+# block right after its `block_update`, when it lands (`FallingBlockEntity.tick`). Recorded from
+# the `blocks/gravity` Group on vanilla 26.3: sand (block state 121, one byte), white concrete
+# powder over water (18403, three bytes) and an anvil facing north (12962, two bytes).
+
+
+@pytest.mark.parametrize(
+    ("landing", "payload"),
+    [
+        ({"pos": {"x": 2, "y": -60, "z": 8}, "block_state": 121}, "0000008000008fc479"),
+        ({"pos": {"x": 5, "y": -60, "z": 8}, "block_state": 18403}, "0000014000008fc4e38f01"),
+        ({"pos": {"x": 8, "y": -60, "z": 8}, "block_state": 12962}, "0000020000008fc4a265"),
+    ],
+    ids=["sand", "concrete powder in water", "anvil"],
+)
+def test_a_falling_block_landing_decodes_to_its_position_and_block_state(
+    landing: dict[str, object], payload: str
+) -> None:
+    round_trip(ADD_TRANSIENT_BLOCK, landing, payload)
 
 
 # Update section blocks: the section's position, then each changed block as a VarLong: its state
