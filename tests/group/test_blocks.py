@@ -568,6 +568,19 @@ async def test_fill_leaves_each_window_four_blocks_that_drop_an_item() -> None:
         assert len(droppers) == 4, window.before
 
 
+@pytest.mark.asyncio
+async def test_fill_also_leaves_each_window_a_block_that_drops_nothing() -> None:
+    result = await played("blocks/fill")
+
+    for window, command in zip(result.windows, fill_cases(result), strict=True):
+        glass = [
+            setup
+            for setup in placed(window)
+            if setup.block == GLASS and command.box.holds(setup.at)
+        ]
+        assert len(glass) == 1, window.before
+
+
 _CLONE = re.compile(
     rf"clone {' '.join([_NUMBER] * 9)} (replace|masked|filtered \S+)(?: (normal|force|move))?"
 )
