@@ -10,7 +10,10 @@ Every case reads the time from `time query` feedback, which a window compares as
 `system_chat`. The client also learns it from `set_time`, but that is a heartbeat packet
 (`compare.HEARTBEAT`): vanilla sends it every 20 ticks, frozen or not, so no window compares
 it. A Group only waits on `set_time`: the 20-tick one carries the game time, so the first that
-carries the game time a step reaches shows the step has ended.
+carries the game time a step reaches shows the step has ended. This assumes the game time stands
+still while the world is frozen, as it does on vanilla. On a server whose game time runs on, the
+wait ends early and the clock reads the day too soon: still a difference, but one that shows in
+`time query day`.
 
 The time commands need an operator, so each Group's Bot `clock` is one. An operator hears every
 other operator's commands as admin chat, so Control runs nothing inside a window that compares
@@ -18,12 +21,15 @@ chat, and the clock drains what it heard before each. Every rule a Group sets is
 afterwards, because every Group is played on the same two Instances.
 
 Kinds: `time/advance` is tick-exact, as each window reads the time after an exact number of
-stepped ticks. `time/commands` is exact: the world never steps, and only the commands move the
-time. `time/sleep` is exact, not tick-exact: a sleeping player falls into a deep sleep on its
-own ticks, which run while the world is frozen, so the night skip follows the wall clock. Its
-windows compare the order of what comes, and the clock reads the time back after each. When
-the night is skipped is read the same way: the clock reads the day at most 60 ticks after the
-player lies down, before the skip at 100, so a server that skips at once shows another day.
+stepped ticks. It steps with `tick step` itself rather than `GroupContext.step`, which costs
+about 300 ms a tick (242 ticks a play), and its windows hold only answers to queries, so it
+makes no `tick:` Marks. `time/commands` is exact: the world never steps, and only the commands
+move the time. `time/sleep` is exact, not tick-exact: a sleeping player falls into a deep sleep
+on its own ticks, which run while the world is frozen, so the night skip follows the wall
+clock. Its windows compare the order of what comes, and the clock reads the time back after
+each. When the night is skipped is read the same way: the clock reads the day at most 60 ticks
+after the player lies down, before the skip at 100, so a server that skips at once shows
+another day.
 """
 
 import contextlib
@@ -65,10 +71,22 @@ async def _calm(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
     await control.run("weather clear")
 
 
-async def _ask(bot: Bot, command: str) -> None:
-    """Run `command` as `bot`, and wait for its answer."""
+async def _command_then_chat(bot: Bot, command: str) -> None:
+    """Run `command` as `bot`, and wait for the first `system_chat` that comes after it.
+
+    That is the command's answer when nothing else is said meanwhile, as in every window here:
+    Control runs nothing in them, and the clock drains what it heard before each.
+    """
     await bot.command(command)
     await bot.expect(_CHAT, timeout_s=_WAIT_S)
+
+
+async def _read(context: GroupContext, clock: Bot, *queries: str) -> None:
+    """The clock runs each of `queries`, in one window of its own."""
+    await clock.drain()
+    async with context.observe(_CHAT):
+        for query in queries:
+            await _command_then_chat(clock, query)
 
 
 def _game_time(packet: Packet) -> int:
@@ -93,7 +111,7 @@ def _reached(game_time: int) -> Callable[[Packet], bool]:
     return holds
 
 
-async def _now(bot: Bot) -> int:
+async def _frozen_game_time(bot: Bot) -> int:
     """The game time of a frozen world: what the next `set_time` carries.
 
     The barrier first, so that a `set_time` stamped before the freeze is not the one read. Any
@@ -101,6 +119,17 @@ async def _now(bot: Bot) -> int:
     """
     await bot.sync()
     return _game_time(await bot.expect(_TIME, timeout_s=_WAIT_S))
+
+
+async def _step(control: Control, clock: Bot, ticks: int, game_time: int) -> int:
+    """Step the frozen world `ticks` ticks from `game_time`, and return the game time reached.
+
+    Returns once a `set_time` to the clock carries it, so the step has ended.
+    """
+    await control.run(f"tick step {ticks}")
+    reached = game_time + ticks
+    await clock.expect(_TIME, timeout_s=_WAIT_S, where=_reached(reached))
+    return reached
 
 
 # `time/advance`: a frozen world steps 1, 20 and 100 ticks, with `advance_time` true and false.
@@ -124,17 +153,13 @@ async def advance(context: GroupContext) -> None:
         clock = await join_at_spawn(context, undo, CLOCK)
         undo.push_async_callback(control.run, "gamerule advance_time true")
         await context.freeze()
-        game_time = await _now(clock)
+        game_time = await _frozen_game_time(clock)
         for advancing in ("true", "false"):
             await control.run(f"gamerule advance_time {advancing}")
             await control.run(f"time set {_START}")
             for ticks in _STEPS:
-                await control.run(f"tick step {ticks}")
-                game_time += ticks
-                await clock.expect(_TIME, timeout_s=_WAIT_S, where=_reached(game_time))
-                await clock.drain()
-                async with context.observe(_CHAT):
-                    await _ask(clock, "time query day")
+                game_time = await _step(control, clock, ticks, game_time)
+                await _read(context, clock, "time query day")
 
 
 # `time/commands`: the clock sets, adds to and reads the time.
@@ -178,7 +203,7 @@ async def commands(context: GroupContext) -> None:
         await clock.drain()
         for command in _COMMANDS:
             async with context.observe(_CHAT):
-                await _ask(clock, command)
+                await _command_then_chat(clock, command)
 
 
 # `time/sleep`: a player lies down at midnight, with 100% and then 50% of players needed.
@@ -186,11 +211,11 @@ async def commands(context: GroupContext) -> None:
 SLEEPER = "sleeper"
 """The Bot that sleeps; not an operator."""
 
-_BED = ((2, "foot"), (3, "head"))
-"""The bed's two blocks, at x 2 and 3, y -60, z 0, facing east (+x)."""
+_FOOT = (2, -60, 0)
+"""The block of the bed's foot. The bed faces east (+x), so its head is the block east of it."""
 
-_SLEEPER_AT = "0.5 -60 0.5 -90 0"
-"""Where the sleeper stands to lie down: west of the bed's foot, facing it."""
+_STAND = (_FOOT[0] - 2, _FOOT[1], _FOOT[2])
+"""The block the sleeper stands on to lie down, west of the bed, and its spawn point before."""
 
 _MIDNIGHT = 18000
 _BEFORE_DAWN = 23460
@@ -218,6 +243,23 @@ SLEEP_PACKETS = (
 """What a sleep window compares: the sleep messages, leaving the bed, the sleeping pose and the
 game events."""
 
+_WAKE_UP = 0
+"""`ClientboundAnimatePacket.WAKE_UP` in 26.3."""
+
+
+def _at(block: tuple[int, int, int]) -> str:
+    """A block's position, as a command takes it."""
+    return " ".join(map(str, block))
+
+
+async def _place_bed(control: Control, undo: contextlib.AsyncExitStack) -> None:
+    """Set the bed at `_FOOT`, facing east, and push its removal."""
+    x, y, z = _FOOT
+    head = (x + 1, y, z)
+    for block, part in ((_FOOT, "foot"), (head, "head")):
+        await control.run(f"setblock {_at(block)} minecraft:red_bed[part={part},facing=east]")
+    undo.push_async_callback(control.run, f"fill {_at(_FOOT)} {_at(head)} minecraft:air strict")
+
 
 async def _first_night(control: Control) -> None:
     """Make the sleeper's first night in the bed like its first ever, every time it is played.
@@ -227,11 +269,7 @@ async def _first_night(control: Control) -> None:
     advancement is revoked, and the spawn point moved off the bed.
     """
     await control.run(f"advancement revoke {SLEEPER} only minecraft:adventure/sleep_in_bed")
-    await control.run(f"spawnpoint {SLEEPER} 0 -60 0")
-
-
-_WAKE_UP = 0
-"""`ClientboundAnimatePacket.WAKE_UP` in 26.3."""
+    await control.run(f"spawnpoint {SLEEPER} {_at(_STAND)}")
 
 
 def _woke(clock: Bot) -> Callable[[Packet], bool]:
@@ -264,37 +302,29 @@ def _control_gone(packet: Packet) -> bool:
     return isinstance(uuids, list) and offline_uuid(CONTROL_PLAYER) in uuids
 
 
-async def _at_midnight(context: GroupContext, clock: Bot, percentage: int) -> None:
+async def _alone_at_midnight(context: GroupContext, clock: Bot, percentage: int) -> None:
     """Set the sleeping percentage, the time to midnight and the sleeper by the bed; then leave.
 
     Control leaves last (`_alone`), and the clock drains the admin chat it heard meanwhile.
     """
     control = context.control
+    x, y, z = _STAND
     await control.run(f"gamerule players_sleeping_percentage {percentage}")
     await control.run(f"time set {_MIDNIGHT}")
-    await control.run(f"tp {SLEEPER} {_SLEEPER_AT}")
+    await control.run(f"tp {SLEEPER} {x + 0.5} {y} {z + 0.5} -90 0")
     await _alone(context, clock)
     await clock.drain()
 
 
 async def _lie_down(sleeper: Bot) -> None:
     """Use the bed's foot from above, as a client does to sleep in it."""
-    x, _ = _BED[0]
-    await sleeper.place(x, -60, 0, Face.UP)
+    await sleeper.place(*_FOOT, Face.UP)
 
 
 async def _count_set_time(clock: Bot, times: int) -> None:
     """Wait for `times` `set_time`: vanilla sends one every 20 ticks."""
     for _ in range(times):
         await clock.expect(_TIME, timeout_s=_WAIT_S)
-
-
-async def _read(context: GroupContext, clock: Bot, *queries: str) -> None:
-    """The clock runs each of `queries`, in one window of its own."""
-    await clock.drain()
-    async with context.observe(_CHAT):
-        for query in queries:
-            await _ask(clock, query)
 
 
 async def _read_day(context: GroupContext, clock: Bot) -> None:
@@ -305,9 +335,9 @@ async def _read_day(context: GroupContext, clock: Bot) -> None:
 async def _to_dawn(context: GroupContext, clock: Bot, game_time: int) -> None:
     """Step the world from just before dawn until a sleeping player is up, in a window.
 
-    Control steps the world inside the window, and an operator hears that as admin chat, so the
-    clock is no operator meanwhile: the window compares the chat too. Returns once a `set_time`
-    carries the game time the step reaches: `game_time` and the steps.
+    `game_time` is the frozen game time. Control steps the world inside the window, and an
+    operator hears that as admin chat, so the clock is no operator meanwhile: the window
+    compares the chat too.
     """
     control = context.control
     await control.run(f"time set {_BEFORE_DAWN}")
@@ -315,8 +345,7 @@ async def _to_dawn(context: GroupContext, clock: Bot, game_time: int) -> None:
     try:
         await clock.drain()
         async with context.observe(*SLEEP_PACKETS):
-            await control.run(f"tick step {_DAWN_STEPS}")
-            await clock.expect(_TIME, timeout_s=_WAIT_S, where=_reached(game_time + _DAWN_STEPS))
+            await _step(control, clock, _DAWN_STEPS, game_time)
     finally:
         await control.run(f"op {CLOCK}")
 
@@ -337,20 +366,18 @@ async def sleep(context: GroupContext) -> None:
         clock = await join_at_spawn(context, undo, CLOCK)
         sleeper = await join_at_spawn(context, undo, SLEEPER)
         await context.freeze()
-        game_time = await _now(clock)
-        for x, part in _BED:
-            await control.run(f"setblock {x} -60 0 minecraft:red_bed[part={part},facing=east]")
-        undo.push_async_callback(control.run, "fill 2 -60 0 3 -60 0 minecraft:air strict")
+        game_time = await _frozen_game_time(clock)
+        await _place_bed(control, undo)
         await _first_night(control)
         undo.push_async_callback(control.run, "gamerule players_sleeping_percentage 100")
-        await _at_midnight(context, clock, 100)
+        await _alone_at_midnight(context, clock, 100)
         async with context.observe(*SLEEP_PACKETS):
             await _lie_down(sleeper)
             await _count_set_time(clock, _QUIET_TIMES)
         await _read_day(context, clock)
         await _to_dawn(context, clock, game_time)
         await _read_day(context, clock)
-        await _at_midnight(context, clock, 50)
+        await _alone_at_midnight(context, clock, 50)
         async with context.observe(*SLEEP_PACKETS):
             await _lie_down(sleeper)
             await _count_set_time(clock, _BEFORE_DEEP_SLEEP)
