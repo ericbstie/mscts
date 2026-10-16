@@ -698,20 +698,22 @@ Each play joins a Bot of its own, puts it in place, and has Control build what t
 Control makes the Bot an operator, so that the Bot can read the game time itself
 (`/time query gametime`), and freezes the world.
 
-A reading sent in reply to a packet can come back a tick late: vanilla answers it before its
-next tick, Pumpkin a tick after. Each play measures this before the mobs are summoned, in a
-40-tick step of its own. Every 20 ticks a server sends each player the game time (`set_time`)
-as it was before the tick that sends it. When the Bot receives one sent during the step, it
-reads the game time, and how far the answer is past the end of that tick is the play's offset.
-
 Then Control summons the mobs, reads the game time and steps the world a fixed number of ticks:
 the play's tick budget. Whenever the Bot is told of something a sample is about, such as the
 zombie moving, a hit (`damage_event`) or a door breaking, it reads the game time again. It goes
 on reading what the server sends while the answer is on its way, so an event that comes in the
 meantime is read when it arrives. A sample is the number of ticks between the two readings,
-less the offset. A play that runs out of ticks records nothing for what did not happen. When
-the play ends, Control kills the mobs and anything they dropped, waits until the Bot is told
-they are gone, takes the blocks away, and makes the Bot an ordinary player again.
+less the play's offset.
+
+A reading sent in reply to a packet can come back a tick late: vanilla answers it before its
+next tick, Pumpkin a tick after. Each play measures this during its step. Every 20 ticks a
+server sends each player the game time (`set_time`) as it was before the tick that sends it.
+When the Bot receives the first one sent during the step, it reads the game time, and how far
+the answer is past the end of that tick is the play's offset.
+
+A play that runs out of ticks records nothing for what did not happen. When the play ends,
+Control kills the mobs and anything they dropped, waits until the Bot is told they are gone,
+takes the blocks away, and makes the Bot an ordinary player again.
 
 Each zombie is summoned with NBT, which makes vanilla skip what it draws at random for a new
 mob: its equipment, whether it is a baby, and whether it can break doors. It wears a leather

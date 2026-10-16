@@ -13,11 +13,12 @@ import uuid
 from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from contextlib import asynccontextmanager, suppress
 from dataclasses import dataclass, field
+from typing import cast
 
 import pytest
 
 import mscts.groups
-from mscts.bot import SYNC_REQUESTS
+from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet, State
 from mscts.codec.registry_names import registry_names
 from mscts.group import GROUPS, GroupContext, GroupKind
@@ -100,13 +101,8 @@ START = 1000
 STEPPED = text("[control: Stepping 300 ticks]")
 """What the fake tells the Bot, an operator, when Control steps the world."""
 
-CALIBRATION_TICKS = 40
-CALIBRATION_RUNS_OUT_S = (SYNC_REQUESTS + 1) * TICK_S
-"""How long after its answer the calibration step runs out: after `tick step` has returned
-through Control, whose barrier answers come a tick apart."""
-
 CALIBRATION_STAMP = 5
-"""How far into the calibration step the `set_time` the play calibrates on is stamped."""
+"""How far into the play's step the first `set_time` stamped after it began is stamped."""
 
 
 def set_time(game_time: int) -> bytes:
@@ -119,22 +115,24 @@ class MobsServer:
     """A fake server for the mobs Groups.
 
     Each summon becomes an `add_entity` to the Bot, with ids from `ZOMBIE_ID` on. A kill of
-    the tagged entities removes them all. The frozen world's game time is `START` at first.
-    A step of `CALIBRATION_TICKS` sends the Bot a `set_time` stamped with the frozen time,
-    which a play must pass over, and one stamped `CALIBRATION_STAMP` ticks on, from the tick
-    that ends a tick later. The next `time query gametime` is answered with that tick, plus
-    `lag`; `CALIBRATION_RUNS_OUT_S` later the step runs out, and the Bot is sent a `set_time`
-    with the new frozen time. A summon before then fails the fake: no mob may live before the
-    play's step. Every step also tells the Bot, an operator, that Control stepped the world, in
-    a `system_chat` that is no answer (`TickCommand.step` tells every operator).
+    the tagged entities removes them all. The frozen world's game time is `START`. A summon
+    once the world steps fails the fake: no mob may live before the play's step.
 
-    Any other step plays: each `time query gametime` in it is answered with the game time
-    before the step plus the tick of the last packet sent, plus `lag`, and the next packet of
-    `after_step` is sent just before the answer. So a play reads the tick of each packet once:
-    on seeing it, or once it has waited `_IDLE_S` for the next; and each packet arrives while
-    the query before it is unanswered. While the world steps, it runs a tick for each barrier
-    answer a tick after the last (`Bot.sync`), as a real world runs on while a barrier waits.
-    Once every packet is sent, the time is `end`, and one tick more at each read after.
+    A step tells the Bot, an operator, that Control stepped the world, in a `system_chat` that
+    is no answer (`TickCommand.step` tells every operator), and sends it a `set_time` stamped
+    with the frozen time, which a play must pass over. Another `set_time` is stamped `stamped`
+    ticks into the step and sent in the tick after, before that tick's packets of `after_step`:
+    a server stamps it with the game time from before its tick. Each `time query gametime` in
+    the step is answered with the game time before the step plus the tick of the last packet
+    sent, plus `lag`, and the next packet of the step is sent just before the answer: the
+    step's `set_time`, which a server sends unasked, just after it. So a play reads the tick of
+    each packet once: on seeing it, or once it has waited `_IDLE_S` for the next; and each
+    packet but the `set_time` arrives while the query before it is unanswered. The fake sends a
+    packet of the step only when asked the time: a play that ends on an event sees a `set_time`
+    after it only if it is the step's next packet. While the world steps, until it sends the
+    step's first packet, it runs a tick for each barrier answer a tick after the last
+    (`Bot.sync`), as a real world runs on while a barrier waits. Once every packet is sent, the
+    time is `end`, and one tick more at each read after.
     With `hold`, the answer to that read of the play (from 0) comes after the next one's, as
     Pumpkin's answers may.
     """
@@ -144,6 +142,8 @@ class MobsServer:
     lag: int = 0
     """How many ticks late a query in a step is answered, after a packet: 1 on Pumpkin."""
     hold: int | None = None
+    stamped: int = CALIBRATION_STAMP
+    """How many ticks into the play's step its `set_time` is stamped."""
     seen: list[Packet] = field(default_factory=list)
     reads: int = 0
     """How many times the game time was read in the play's step."""
@@ -151,9 +151,9 @@ class MobsServer:
     _summoned: list[int] = field(default_factory=list)
     _added: int = 0
     _frozen: int = START
-    _calibrating: bool = False
     _now: int = 0
     _sent: int = 0
+    _set_time_sent: bool = False
     _stepped: bool = False
     _held: bytes | None = None
 
@@ -172,7 +172,7 @@ class MobsServer:
                 requests += 1
                 if (requests - 1) % SYNC_REQUESTS != 0:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
-                    self._now += int(self._stepped)  # and a stepping world runs on meanwhile
+                    self._now += int(self._running_on)  # and a stepping world runs on meanwhile
                 await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
             elif packet.name == CHAT_COMMAND:
                 await self._command(peer, str((packet.fields or {})["command"]))
@@ -185,39 +185,39 @@ class MobsServer:
             await self._time(peer)
         elif (summon := _SUMMON.match(command)) is not None:
             await self._add(summon)
-        elif command == f"tick step {CALIBRATION_TICKS}":
-            self._calibrating = True
-            await self._to_bot("minecraft:system_chat", content=STEPPED, overlay=False)
-            await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
-            await self._to_bot_raw("minecraft:set_time", set_time(self._calibrated_on))
         elif command.startswith("tick step "):
             self._stepped = True
             await self._to_bot("minecraft:system_chat", content=STEPPED, overlay=False)
+            await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
         elif command == f"kill @e[tag={TAG}]" and self._summoned:
             await self._to_bot("minecraft:remove_entities", entity_ids=list(self._summoned))
             self._summoned.clear()
 
     @property
-    def _calibrated_on(self) -> int:
-        """The game time of the `set_time` a play calibrates on."""
-        return self._frozen + CALIBRATION_STAMP
+    def _running_on(self) -> bool:
+        """Whether the world steps and has sent none of the step's packets yet.
+
+        Once it has, the time is the tick of the last packet sent: the Bot reads on seeing
+        one, so a barrier answer that comes in between must not make the read late.
+        """
+        return self._stepped and self._sent == 0 and not self._set_time_sent
 
     async def _time(self, peer: Peer) -> None:
-        """Answer `time query gametime`: frozen, in the calibration step, or in a play."""
-        if self._calibrating:
-            answer = self._calibrated_on + 1 + self.lag
-        elif self._stepped:
-            answer = self._frozen + self._now + self.lag
+        """Answer `time query gametime`: frozen, or in the play's step.
+
+        In the step, the next packet goes first, so the Bot has it when it reads; but the
+        step's `set_time`, which a server sends unasked, comes after the answer.
+        """
+        if not self._stepped:
+            await self._answer(peer, gametime_answer(self._frozen))
+            return
+        answer = gametime_answer(self._frozen + self._now + self.lag)
+        if self._set_time_due():
+            await self._answer(peer, answer)
+            await self._send_set_time()
         else:
-            answer = self._frozen
-        if self._stepped:  # the next packet goes first, so the Bot has it when Control reads
             await self._next()
-        await self._answer(peer, gametime_answer(answer))
-        if self._calibrating:  # the step runs out after Control's barrier for it has passed
-            await asyncio.sleep(CALIBRATION_RUNS_OUT_S)
-            self._calibrating = False
-            self._frozen += CALIBRATION_TICKS
-            await self._to_bot_raw("minecraft:set_time", set_time(self._frozen))
+            await self._answer(peer, answer)
 
     async def _answer(self, peer: Peer, content: bytes) -> None:
         """Send `content`, unless it is the read `hold` names; then the held one, if any."""
@@ -231,6 +231,12 @@ class MobsServer:
             held, self._held = self._held, None
             await peer.send("minecraft:system_chat", content=held, overlay=False)
 
+    async def _send_set_time(self) -> None:
+        """Send the Bot the step's `set_time`, in the tick after its stamp."""
+        self._set_time_sent = True
+        self._now = self.stamped + 1
+        await self._to_bot_raw("minecraft:set_time", set_time(self._frozen + self.stamped))
+
     async def _next(self) -> None:
         """Send the Bot the next packet of `after_step`, or move the time on past them all."""
         if self._sent < len(self.after_step):
@@ -240,8 +246,17 @@ class MobsServer:
         else:
             self._now = max(self.end, self._now + 1)
 
+    def _set_time_due(self) -> bool:
+        """Whether the step's `set_time` is still to come, before the next packet of `after_step`.
+
+        It is sent in the tick after its stamp, before that tick's other packets.
+        """
+        if self._set_time_sent:
+            return False
+        return self._sent == len(self.after_step) or self.after_step[self._sent][0] > self.stamped
+
     async def _add(self, summon: re.Match[str]) -> None:
-        assert not self._calibrating, "a mob was summoned while the calibration step ran"
+        assert not self._stepped, "a mob was summoned while the world stepped"
         entity_id = ZOMBIE_ID + self._added
         self._added += 1
         self._summoned.append(entity_id)
@@ -271,9 +286,13 @@ class MobsServer:
 
 
 @pytest.fixture(autouse=True)
-def _short_idle(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A play waits 0.1 s, not a second, for a packet before it reads the game time."""
+def _short_waits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A play waits 0.1 s, not a second, for a packet before it reads the game time.
+
+    It waits 2 s, not ten, for a packet it must have: the fake sends at once.
+    """
     monkeypatch.setattr(mobs_pathfinding, "_IDLE_S", 0.1)
+    monkeypatch.setattr(mobs_pathfinding, "_WAIT_S", 2.0)
 
 
 @dataclass(frozen=True)
@@ -358,10 +377,6 @@ ZOMBIE = (
     'PersistenceRequired:1b,DeathLootTable:"minecraft:empty",drop_chances:{head:0.0f},'
     'equipment:{head:{id:"minecraft:leather_helmet",count:1}}'
 )
-
-CALIBRATE = (TIME_QUERY, f"tick step {CALIBRATION_TICKS}")
-"""What Control runs to calibrate the play's clock, in the frozen world before the summons: the
-Bot reads the game time after the `set_time` itself."""
 
 TEARDOWN = (
     f"kill @e[tag={TAG}]",
@@ -474,7 +489,6 @@ OPEN_SETUP = (
     "tp open7 0.5 -60.0 0.5",
     "op open7",
     "tick freeze",
-    *CALIBRATE,
     summoned("zombie", "16.5 -60.0 0.5", ZOMBIE),
     TIME_QUERY,
     "tick step 300",
@@ -543,11 +557,11 @@ async def test_an_event_arriving_while_a_read_is_unanswered_is_read_at_its_own_t
 
 @pytest.mark.asyncio
 async def test_answers_that_come_out_of_order_go_to_the_reads_in_the_order_of_their_ticks() -> None:
-    # The answer to the read of the step to the waypoint (the second read) comes after the
-    # answer to the read of the hit.
+    # The answer to the read of the step to the waypoint (the third read: the step's `set_time`
+    # and the zombie's move each come after one) comes after the answer to the read of the hit.
     server = MobsServer(
         after_step=((28, moved(ZOMBIE_ID, -0.5)), (30, hurt(PLAYER_ID))),
-        hold=1,
+        hold=2,
     )
 
     result = await replay("mobs/chase-open", server)
@@ -556,14 +570,80 @@ async def test_answers_that_come_out_of_order_go_to_the_reads_in_the_order_of_th
 
 
 @pytest.mark.asyncio
-async def test_a_calibration_answered_after_its_step_ran_out_fails_the_play() -> None:
+async def test_a_play_calibrates_in_its_own_step_and_steps_the_world_no_other_time() -> None:
+    result = await play("mobs/chase-open")
+
+    steps = [command for command in result.commands if command.startswith("tick step ")]
+    assert steps == ["tick step 300"]
+
+
+@pytest.mark.asyncio
+async def test_an_event_before_the_first_set_time_of_the_step_gets_its_sample() -> None:
+    # The zombie hits the Bot at tick 10, and the step's `set_time` is stamped 15: the play
+    # ends on the hit, then calibrates on that `set_time`, a tick late as on Pumpkin.
+    server = MobsServer(after_step=((10, hurt(PLAYER_ID)),), stamped=15, lag=1)
+
+    result = await replay("mobs/chase-open", server)
+
+    assert result.samples == {"chase_open.hit": (10.0,)}
+
+
+@pytest.mark.asyncio
+async def test_a_calibration_answered_once_the_budget_has_run_fails_the_play() -> None:
     # Answered with the game time the step ends at: it may have run out first.
-    server = MobsServer(
-        after_step=_chase().after_step, lag=CALIBRATION_TICKS - CALIBRATION_STAMP - 1
+    lag = mobs_pathfinding.CHASE_TICKS - CALIBRATION_STAMP - 1
+    server = MobsServer(after_step=_chase().after_step, lag=lag)
+
+    with pytest.raises(RuntimeError, match="step ran out before the calibration"):
+        await replay("mobs/chase-open", server)
+
+
+BUDGETS = {
+    "mobs/chase-open": mobs_pathfinding.CHASE_TICKS,
+    "mobs/chase-maze": mobs_pathfinding.MAZE_TICKS,
+    "mobs/doors-hard": mobs_pathfinding.DOORS_HARD_TICKS,
+    "mobs/doors-normal": mobs_pathfinding.DOORS_NORMAL_TICKS,
+    "mobs/targets": mobs_pathfinding.TARGETS_TICKS,
+}
+
+
+@pytest.mark.parametrize("group_id", sorted(BUDGETS))
+@pytest.mark.asyncio
+async def test_a_play_whose_budget_runs_out_before_any_set_time_fails(group_id: str) -> None:
+    # The only `set_time` after the step began is stamped with the game time it ended at.
+    budget = BUDGETS[group_id]
+    server = MobsServer(end=budget, stamped=budget)
+
+    with pytest.raises(RuntimeError, match="step ran out before the calibration"):
+        await replay(group_id, server)
+
+
+class Reader:
+    """A stand-in for a play's Bot that only sends the commands it is given."""
+
+    async def command(self, command: str) -> None:
+        """Send `command`: here, nowhere."""
+        del command
+
+
+def set_time_packet(game_time: int) -> Packet:
+    """A `set_time` the Bot received, stamped `game_time`."""
+    return Packet(
+        State.PLAY, Direction.CLIENTBOUND, "minecraft:set_time", 0, set_time(game_time), None
     )
 
-    with pytest.raises(RuntimeError, match="calibration step ran out"):
-        await replay("mobs/chase-open", server)
+
+@pytest.mark.asyncio
+async def test_the_clock_listens_for_set_time_only_until_it_has_calibrated() -> None:
+    # A server sends a `set_time` every second, as often as a play looks at its budget when
+    # nothing comes: a clock that listened on would leave the play no idle second to look.
+    clock = mobs_pathfinding._Clock(cast("Bot", Reader()), START)  # noqa: SLF001 - its own rule
+
+    await clock.take(set_time_packet(START))  # stamped before the step
+    assert clock.listens == ("minecraft:system_chat", "minecraft:set_time")
+
+    await clock.take(set_time_packet(START + CALIBRATION_STAMP))
+    assert clock.listens == ("minecraft:system_chat",)
 
 
 @pytest.mark.asyncio
@@ -574,7 +654,7 @@ async def test_a_chase_samples_nothing_it_did_not_see_and_ends_when_the_budget_h
     result = await replay("mobs/chase-open", server)
 
     assert result.samples == {}
-    assert server.reads == 3  # the third answer, 300, is the budget: no fourth read
+    assert server.reads == 4  # the fourth answer, 300, is the budget: no fifth read
     assert result.commands[len(OPEN_SETUP) :] == (*TEARDOWN, "deop open0", "tick unfreeze")
 
 
@@ -592,7 +672,6 @@ MAZE_SETUP = (
     "op maze7",
     *MAZE_WALL,
     "tick freeze",
-    *CALIBRATE,
     summoned("zombie", "16.5 -60.0 0.5", ZOMBIE),
     TIME_QUERY,
     "tick step 400",
@@ -660,7 +739,6 @@ def doors_setup(bot: str, budget: int) -> tuple[str, ...]:
         f"op {bot}",
         *PEN,
         "tick freeze",
-        *CALIBRATE,
         summoned("zombie", "6.5 -60.0 0.5", f"{ZOMBIE},CanBreakDoors:1b"),
         TIME_QUERY,
         f"tick step {budget}",
@@ -794,7 +872,6 @@ TARGETS_SETUP = (
     "time set noon",
     "gamerule advance_time false",
     "tick freeze",
-    *CALIBRATE,
     summoned("zombie", "8.5 -60.0 0.5", ZOMBIE),
     summoned("villager", "16.5 -60.0 0.5", VILLAGER),
     TIME_QUERY,
