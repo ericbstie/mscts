@@ -237,13 +237,13 @@ def operator_spec() -> ServerSpec:
 CALM = (
     "gamerule player_movement_check false",
     "gamerule respawn_radius 0",
-    "gamerule spawn_mobs false",
     "gamerule advance_weather false",
     "weather clear",
 )
+"""Not `spawn_mobs`: the Fixture world has it off (ADR-0013), and setting it back to vanilla's
+default after a play would let animals spawn in every later play."""
 UNCALM = (
     "gamerule advance_weather true",
-    "gamerule spawn_mobs true",
     "gamerule respawn_radius 10",
     "gamerule player_movement_check true",
 )

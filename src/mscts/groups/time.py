@@ -51,12 +51,15 @@ def _operator(spec: ServerSpec) -> ServerSpec:
 
 
 async def _calm(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
-    """Pin the joins, clear the weather and stop it and mob spawning; push each undo."""
+    """Pin the joins, clear the weather and stop it; push each undo.
+
+    Not `spawn_mobs`: the Fixture world has it off already (ADR-0013), and an undo to vanilla's
+    default would let animals spawn, and walk into the windows of every later play.
+    """
     control = context.control
     await pin_joins(control, undo)
-    for rule in ("spawn_mobs", "advance_weather"):
-        await control.run(f"gamerule {rule} false")
-        undo.push_async_callback(control.run, f"gamerule {rule} true")
+    await control.run("gamerule advance_weather false")
+    undo.push_async_callback(control.run, "gamerule advance_weather true")
     await control.run("weather clear")
 
 

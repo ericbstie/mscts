@@ -772,8 +772,8 @@ In each play, Control sets the world spawn to the block at 0, -60, 0 (`/setworld
 
 How the time of day moves, what the time commands set and answer, and whether sleeping skips
 the night. Each Group joins a Bot called `clock`, an operator, which reads the time back with
-`/time query`. Control freezes the world, stops the weather and mob spawning, and clears the
-sky. When a Group ends, every rule it changed is set back to vanilla's default.
+`/time query`. Control freezes the world, stops the weather and clears the sky. When a Group
+ends, every rule it changed is set back to vanilla's default.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
