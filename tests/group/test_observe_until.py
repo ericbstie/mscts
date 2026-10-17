@@ -307,6 +307,9 @@ STRAGGLE = "straggle"
 STRAGGLER = b"\x02\x00"
 """The payload of the change_difficulty that follows a barrier (normal, unlocked): the join's
 is another."""
+LATE_TICKS = 4
+"""How many ticks later a late player's answers come: more than a loop stall under load, so
+its barrier still ends after the others'."""
 ONE_BOT = "an until window can have only one Bot besides Control in play"
 
 
@@ -316,9 +319,9 @@ class Straggler:
 
     It joins like vanilla, with a command tree that has `tellraw`, and gives a marker its token
     back, as Control needs. It answers a statistics request like vanilla: the first of a barrier's
-    at once, each other a tick (`TICK_S`) later. A player in `late` gets each answer a tick later
-    still. Once a player has sent the command `straggle`, the last answer of its next barrier is
-    followed by a change_difficulty in the same write, so the Bot reads both at once.
+    at once, each other a tick (`TICK_S`) later. A player in `late` gets each answer `LATE_TICKS`
+    later still. Once a player has sent the command `straggle`, the last answer of its next
+    barrier is followed by a change_difficulty in the same write, so the Bot reads both at once.
     """
 
     late: frozenset[str] = frozenset()
@@ -347,7 +350,7 @@ class Straggler:
         if (request - 1) % SYNC_REQUESTS != 0:
             await asyncio.sleep(TICK_S)
         if peer.name in self.late:
-            await asyncio.sleep(TICK_S)
+            await asyncio.sleep(LATE_TICKS * TICK_S)
         trailing = peer.raw_frame(DIFFICULTY, STRAGGLER) if straggles else b""
         await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + trailing)
 
@@ -388,7 +391,7 @@ async def test_a_packet_read_with_the_opening_barriers_last_answer_is_inside_the
 
 @pytest.mark.asyncio
 async def test_a_later_end_of_controls_barrier_does_not_move_the_open_mark() -> None:
-    # Control's receipts are never compared: its barrier, a tick slower here, must not leave
+    # Control's receipts are never compared: its barrier, slower here, must not leave
     # what alice read after her own barrier before the window.
     transcript = Transcript(group_id="test/until", server="fake")
     async with playing(Straggler(late=frozenset({CONTROL_PLAYER})), transcript) as context:
