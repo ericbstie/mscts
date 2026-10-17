@@ -308,7 +308,8 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
         ),
         "minecraft:recipe_book_add": (
             "entries, those with the toast flag (1) first in their order, then the others "
-            "sorted by what each shows, with its display id and group number left out. At a "
+            "sorted by what each shows: its display id left out, and of its group number only "
+            "whether it has one. At a "
             "join vanilla sends a player's known recipes in identity hash order, with no toast "
             "flag: ServerRecipeBook keeps them in a Sets.newIdentityHashSet, which "
             "sendInitialRecipeBook iterates. The client puts each entry in its book, a HashMap "
@@ -1893,8 +1894,9 @@ def _sorted_section_blocks(fields: dict[str, _Value]) -> dict[str, _Value]:
 def _sorted_recipe_book_add(fields: dict[str, _Value]) -> dict[str, _Value]:
     """Put the `entries` with a toast first, in their order, then the others by what they show.
 
-    What an entry shows is its fields but its display id and group number (`_shown_entry`),
-    so the order depends on neither server's numbering. The sort is stable.
+    What an entry shows is its fields but its display id, and of its group number only
+    whether it has one (`_shown_entry`), so the order depends on neither server's numbering.
+    The sort is stable.
     """
     entries = fields.get("entries")
     if not isinstance(entries, list):
@@ -1915,10 +1917,15 @@ def _shows_toast(entry: _Value) -> bool:
 
 
 def _shown_entry(entry: _Value) -> str:
-    """A `recipe_book_add` entry as JSON with sorted keys, its display id and group left out."""
+    """A `recipe_book_add` entry as JSON with sorted keys, as the server's numbers leave it.
+
+    Its display id is left out, and its group number is only whether it has one.
+    """
     shown = entry
     if isinstance(entry, dict) and isinstance(contents := entry.get("contents"), dict):
-        kept = {key: value for key, value in contents.items() if key not in {"id", "group"}}
+        kept = {key: value for key, value in contents.items() if key != "id"}
+        if "group" in kept:
+            kept["group"] = kept["group"] is not None
         shown = {**entry, "contents": kept}
     return json.dumps(shown, sort_keys=True, default=repr)
 
