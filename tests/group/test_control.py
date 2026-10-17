@@ -158,6 +158,16 @@ class ControlServer:
         return frames
 
 
+def late(handler: Handler, delay_s: float) -> Handler:
+    """A Handler that serves a connection `delay_s` late: a loaded host, from the join on."""
+
+    async def delayed(peer: Peer) -> None:
+        await asyncio.sleep(delay_s)
+        await handler(peer)
+
+    return delayed
+
+
 @asynccontextmanager
 async def playing(
     handler: Handler, transcript: Transcript, *, timeout_s: float = 2.0
@@ -481,10 +491,17 @@ SETS_A_BLOCK = Group(id="test/sets-a-block", run=_setblock)
 async def test_a_candidate_that_never_answers_the_marker_fails_the_group() -> None:
     async with serve(CODEC, ControlServer()) as endpoint:
         reference = await run_group(SETS_A_BLOCK, endpoint, server="vanilla", timeout_s=2.0)
-    async with serve(CODEC, ControlServer(answers_markers=False)) as endpoint:
+    # #419: the only TimeoutError is the wait for the marker's answer. The join before it is
+    # slow, as on a loaded host: it finishes within the limit, and the marker is sent.
+    seen: list[Packet] = []
+    silent = ControlServer(seen, answers_markers=False)
+    async with serve(CODEC, late(silent, STALL_S)) as endpoint:
         with pytest.raises(GroupError) as caught:
-            await run_group(SETS_A_BLOCK, endpoint, server="candidate", timeout_s=0.5)
+            await run_group(SETS_A_BLOCK, endpoint, server="candidate", timeout_s=HANG_LIMIT_S)
 
+    assert commands_sent(seen) == [SETBLOCK, 'tellraw @s "mscts-barrier-1"'], (
+        "the marker was never sent"
+    )
     verdict = judge(SETS_A_BLOCK, reference, caught.value)
 
     assert verdict.outcome is Outcome.MISMATCH, verdict
