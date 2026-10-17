@@ -42,6 +42,9 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #410, #419: `timeout_s` bounds each Bot operation, not the play. A test that expects a TimeoutError from one hang uses `HANG_LIMIT_S` (tests/group/test_control.py), which only the hang reaches, runs a slower earlier step (`STALL_S`), and asserts the hang was reached: the commands the server saw end with the hung step and the undo, or the marker or barrier request it saw. For a hang after the join, stall the join with `late(handler, STALL_S)`; `ControlServer(stalls=...)` delays chat commands only.
+- #410: a fake that hangs answers again where the Group undoes, or the undo times out and `pytest.raises(TimeoutError)` accepts it by accident.
+- #418: a live-lock hold interrupted before it has the lock must not run the release. Take the lock before the `try` whose `finally` releases it.
 - #368: `@e` selectors carry `Entity::isAlive`, so `execute if entity @e[...]` fails the moment `kill` runs, and a killed body stays 20 ticks (`LivingEntity.tickDeath`). To know the bodies are gone, wait until a Bot beside them tracks only players (`_world.remove_tagged_until_gone`).
 - #368: Pumpkin (nightly f1c0871) has no `/execute` (`command.unknown.command`), and drops a killed mob's loot with `mob_drops` false.
 - #360: `Bot.wait_until_handled` proves the server handled what a Bot sent in about one packet pass (about 50 ms); use it before a step. Use `sync` (3 passes) only when you need everything the action caused. The proof is measured on vanilla only (#376).

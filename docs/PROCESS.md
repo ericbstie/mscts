@@ -222,7 +222,9 @@ Candidate: <main's pass count against the Candidate for the Groups touched, and 
 Done when: <observable condition, e.g. `mise run check` green + named tests exist;
            timings are measured on a committed tree, with `--durations` of the touched
            tests and the load average; a timing claim compares clean main and the branch
-           back-to-back on the same host, median of three>
+           back-to-back on the same host, median of three:
+           `uv run scripts/time_tier.py <task> --rev origin/main --rev HEAD --rounds 3
+           [--stress] -- <selection>`>
 Base: <main commit the brief was written against; the worker first runs
       `git fetch origin main` and `git merge --ff-only origin/main` in its worktree
       (its local `main` can be stale); before the PR it rebases onto origin/main
@@ -410,6 +412,28 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-17 | lead (train 39) | Both reviews of #415 found a should-fix that five stressed 20-play Self-checks had not | **adopt** (no change): `scrutiny::high` worked as meant |
+| 2026-10-17 | lead (train 39) | A two-Bot `until` window shares one open Mark, so it cannot open after each Bot's own barrier | **defer**: #424; #415 refuses such a window at open |
+| 2026-10-17 | lead (train 39) | Worker PRs subscribe the lead's session on creation: 7 noise wakes | **adopt** (no change): unsubscribed at once |
+| 2026-10-17 | lead (train 39) | A reference tier waited 2.5 h behind one 20-play `player/*` Self-check: a single run, which #411's per-run lock cannot split | **adopt**: the tech-lead skill times a family on main before briefing a 20-run Self-check |
+| 2026-10-17 | worker (#356), train 34 before | The brief gave no play times; a 20-play `player/*` Self-check takes about 3 h, so the worker waited for the lead to size the stress runs | **adopt**: tech-lead skill line (the second repeat: the brief template already asks for play times) |
+| 2026-10-17 | worker (#356) | A table of each Group's Self-check play time would size briefs | **reject**: `scripts/time_tier.py` (#412) measures a family when a brief needs it |
+| 2026-10-17 | worker (#356) | `player/starvation` takes about 100 s a play, over the Self-check's 90 s | **defer**: #423 |
+| 2026-10-17 | worker (#356) | The brief's hypothesis (two frames sharing a stamp) was wrong; the open Mark stamped at "now" was the cause | **adopt** (no change): the brief named it a hypothesis, as the tech-lead skill asks |
+| 2026-10-17 | worker (#373) | `scripts/research/javap.py` tried to download the jar instead of reading the cached one | **defer**: #425 |
+| 2026-10-17 | worker (#373) | "the `blocks/gravity` test" named no live test; working out what to run took 10 min | **adopt**: tech-lead skill line (name the Self-check node id and the `mscts run` command) |
+| 2026-10-17 | worker (#373) | The live lock was held about 3 h by a Self-check and a reference tier; the lock could show its holder's command and age | **reject**: the pid file names the holder and `ps` gives the rest; the wait came from an unsized Self-check (above) |
+| 2026-10-17 | worker (#418, #419) | Two issues in one worktree: the worker sat idle 25 min while a sweep read the tree | **adopt**: tech-lead skill line |
+| 2026-10-17 | worker (#419) | `ControlServer(stalls=...)` delays chat commands only, so a stall of another step changed nothing | **adopt**: timing handbook line |
+| 2026-10-17 | worker (#419) | Background waits were re-armed about 8 times; common.md could name each script's last line | **reject**: a harness limit, as logged 2026-10-16 |
+| 2026-10-17 | worker (#418) | Reading a mutation sweep's whole log cost 90 KB of tracebacks | **adopt**: red-green Known traps line |
+| 2026-10-17 | worker (#412) | A revision copy older than #411 ignores the re-entrancy variable and would wait on the hold `time_tier.py` takes | **adopt**: tech-lead skill line; the copies run with `MSCTS_LIVE_LOCK=0` inside the hold |
+| 2026-10-17 | worker (#411) | A test's stand-in counted other workers' stress processes; the merge train's per-commit check caught the red commit | **adopt** (no change): the worker's later commit scoped it to the test, and the lead folded it into the red commit |
+| 2026-10-17 | worker (#411) | A refused heredoc runs nothing of the compound command | **reject**: common.md already says no heredocs |
+| 2026-10-17 | worker (#411) | Each `mise run commit` took about 5 min, 11 commits | **reject**: the price of green commits |
+| 2026-10-17 | worker (#410) | The brief said "committed red-first" and `mise run commit` refuses red, so the worker committed a strict xfail | **adopt**: tech-lead skill line (red first, committed with its fix, red-green step 6); **reject** an xfail recipe |
+| 2026-10-17 | worker (#410) | `Monitor` sleep loops sent noise notices | **reject**: a harness limit, as logged 2026-10-16 |
+| 2026-10-17 | worker (#410) | The worktree guard refused a git command inside a subshell | **reject**: common.md already says one plain command per call |
 | 2026-10-16 | workers (#396, #404), trains 34 to 37 before | A stress series of `mobs/*` held the live lock for 3.3 h; two short Self-checks waited over an hour behind it | **defer**: #411, the fifth repeat; a series takes the lock per run |
 | 2026-10-16 | worker (#404) | Timing a Self-check main against the branch meant building the recipe from four scripts and tree copies | **defer**: #412 |
 | 2026-10-16 | worker (#404) | A timing round ran beside the worker's own mutation sweep | **adopt**: statistics handbook line (time after CPU-heavy work ends) |
@@ -799,6 +823,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-17 | The tech-lead skill: a brief says a test is seen red first and committed with its fix, names a Self-check's node id and `mscts run` command, gives play times measured on main before a 20-run Self-check, says which revisions lack the change a tool builds on, and gives one worker two issues only when neither waits on the other's runs. The brief template's timing claim names `scripts/time_tier.py`. red-green: read a sweep log with `grep` | Train 39: a strict xfail committed from the brief's wording; a worker spent 10 min finding what to run; an unsized 20-play Self-check held the live lock 2.5 h, the second repeat of the missing play times; a worker idle 25 min in a shared worktree; #412 merged |
 | 2026-10-16 | The brief template gives main's Candidate pass count and failure reasons; the tech-lead skill checks the Candidate is installed before briefing a candidate run; common.md: never set a rule the Fixture already has, and a fake gives a near miss per checked field | Train 37: a worker spent 1.5 h telling a Pumpkin kick main already had from its change; Pumpkin missing from the cache for the second train running; `spawn_mobs` turned on by an undo for the second time (#344, #63); a surviving mutant behind a one-field near miss |
 | 2026-10-15 | A `scrutiny::high` PR whose fixes add a test or a branch to the comparison core gets a third review of the fixes; the brief template gives play times for any 20-run Self-check; common.md: stage before `mise run commit`, PRs through the GitHub MCP tools, unique mutant text, unbuffered `repeat.py` | Train 34: #379's re-review found a blocking bug in its fixes; a 20-run Self-check took 4.5 h unplanned; four worker retrospectives |
 | 2026-10-14 | The tech-lead skill: kill only by pid on the shared host, and start live tiers that may wait for the lock detached | Train 33: a pattern kill stopped a worker's stress run, and two of the lead's tiers died at the 2 h background cap while waiting |

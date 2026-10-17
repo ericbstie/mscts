@@ -34,6 +34,8 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #373: a packet the Candidate leaves out adds its fields' test cases once it has a schema, so titling a packet field by field lowers the share of a Group the Candidate fails (Pumpkin on `blocks/gravity`: 14% to 13.1%, no pass changed). Say so in the PR.
+- #373: `compare(...).test_cases` lists every case compared, not only the ones that differ. A titles test that names the differing field asserts on `verdict.divergences` (`path`, `test_case`).
 - #43: `remove_tagged` stops when `execute if entity` matches nothing, which a dead body (20 ticks) never does. A Group that freezes the world after killing waits until a Bot is told the body is gone (`_world.remove_tagged_until_gone`, #368).
 - #43: keep the entities a window compares in chunk (0, 0): the join waits only for the first chunk batch, the 3×3 around (0, 0), and an entity further out can come and go before one Instance sent its chunk.
 - #43: `/summon` with any NBT skips `Mob.finalizeSpawn`: no random equipment, baby chance or attribute bonus. Loot from a death is a second entity changed that tick (#320), so a death compared tick by tick uses `DeathLootTable:"minecraft:empty"`.
