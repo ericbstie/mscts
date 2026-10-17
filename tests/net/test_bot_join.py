@@ -322,6 +322,25 @@ def test_expect_is_bounded(codec: Codec, transcript: Transcript) -> None:
     assert 0.05 <= elapsed < 0.5
 
 
+def test_expect_timing_out_says_which_bot_waited_for_which_packets_and_how_long(
+    codec: Codec, transcript: Transcript
+) -> None:
+    async def raises(bot: Bot) -> TimeoutError:
+        await bot.join()
+        with pytest.raises(TimeoutError) as caught:
+            await bot.expect("minecraft:keep_alive", DIFFICULTY, timeout_s=0.05)
+        assert bot.failure is caught.value
+        return caught.value
+
+    error, _ = with_bot(codec, transcript, join_server([]), raises)
+
+    assert str(error) == (
+        "alice waited 0.05 s for minecraft:keep_alive or minecraft:change_difficulty"
+    )
+    assert type(error) is TimeoutError
+    assert type(error.__cause__) is TimeoutError
+
+
 def test_expect_raises_when_the_server_disconnects_the_bot_first(
     codec: Codec, transcript: Transcript
 ) -> None:

@@ -900,13 +900,14 @@ class Bot:
             ValueError: A name is given twice.
             ProtocolError: The server disconnected the Bot, or asked for encryption,
                 before such a packet arrived.
-            TimeoutError: None arrived within `timeout_s`.
+            TimeoutError: None arrived within `timeout_s`; its text says which Bot waited
+                for which packets, and for how long.
         """
         names = (name, *others)
         if len(set(names)) < len(names):
             msg = f"expect names a packet twice: {', '.join(names)}"
             raise ValueError(msg)
-        async with self._operation(timeout_s):
+        async with self._operation(timeout_s, " or ".join(names)):
             while True:
                 packet = await self._connection.recv(timeout_s=timeout_s)
                 if packet.name in names and (where is None or where(packet)):
@@ -1556,14 +1557,28 @@ class Bot:
         await self._connection.close()
 
     @contextlib.asynccontextmanager
-    async def _operation(self, timeout_s: float) -> AsyncIterator[None]:
-        """Bound an operation by `timeout_s`, and keep what it raises as `failure`."""
+    async def _operation(
+        self, timeout_s: float, waiting_for: str | None = None
+    ) -> AsyncIterator[None]:
+        """Bound an operation by `timeout_s`, and keep what it raises as `failure`.
+
+        A TimeoutError with no text says that this Bot waited `timeout_s` seconds for
+        `waiting_for`. One that has text, an inner operation's, is kept as it is.
+        """
         try:
             async with asyncio.timeout(timeout_s):
                 yield
         except Exception as error:
-            self.failure = error
-            raise
+            waited = (
+                None
+                if waiting_for is None
+                else f"{self.name} waited {timeout_s} s for {waiting_for}"
+            )
+            failure = _worded(error, waited)
+            self.failure = failure
+            if failure is error:
+                raise
+            raise failure from error
 
     async def _handshake_for_status(self) -> None:
         if self._connection.state is State.HANDSHAKE:
@@ -1674,6 +1689,13 @@ def _ends_the_session(packet: Packet) -> bool:
             return True
         case _:
             return False
+
+
+def _worded(error: Exception, waited: str | None) -> Exception:
+    """`error`, except a TimeoutError with no text, which becomes one that says `waited`."""
+    if waited is not None and type(error) is TimeoutError and not str(error):
+        return TimeoutError(waited)
+    return error
 
 
 def _expect(packet: Packet, name: str) -> None:
