@@ -94,7 +94,9 @@ MODES = {
     "protocol error": Mode(
         _not_an_object, "ProtocolError: status_response json_response is not a JSON object"
     ),
-    "timeout": Mode(_silent, f"TimeoutError: no answer within {TIMEOUT_S} s"),
+    "timeout": Mode(
+        _silent, f"TimeoutError: status waited {TIMEOUT_S} s for minecraft:status_response"
+    ),
     "connection closed": Mode(_closes, "ConnectionClosedError: the server closed the connection"),
     "connection refused": Mode(None, "ConnectionRefusedError: "),
 }

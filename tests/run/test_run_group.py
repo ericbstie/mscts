@@ -69,6 +69,39 @@ async def test_a_group_that_raises_is_a_group_error_holding_what_was_recorded() 
 
 
 @pytest.mark.asyncio
+async def test_a_groups_own_wait_that_times_out_reads_its_own_limit_not_the_run_bound() -> None:
+    own_wait_s = 0.3
+    bound_s = 0.1
+
+    async def waits_for_a_pong_that_never_comes(context: GroupContext) -> None:
+        bot = await context.bot("alice")
+        await bot.status()
+        await bot.expect("minecraft:pong_response", timeout_s=own_wait_s)
+
+    group = Group(id="test/own-wait", run=waits_for_a_pong_that_never_comes)
+    async with serve(Codec.for_target(TARGET), status_server(_vanilla(), [])) as endpoint:
+        with pytest.raises(GroupError) as caught:
+            await run_group(group, endpoint, server="fake", timeout_s=bound_s)
+
+    assert str(caught.value) == "TimeoutError: alice waited 0.3 s for minecraft:pong_response"
+    assert caught.value.bot == "alice"
+
+
+@pytest.mark.asyncio
+async def test_a_timeout_with_no_text_of_its_own_reads_as_the_run_bound() -> None:
+    async def raises_a_bare_timeout(context: GroupContext) -> None:
+        del context
+        raise TimeoutError
+
+    error = await _attempt(
+        Group(id="test/bare", run=raises_a_bare_timeout), status_server(_vanilla(), [])
+    )
+
+    assert isinstance(error, GroupError)
+    assert str(error) == "TimeoutError: no answer within 1.0 s"
+
+
+@pytest.mark.asyncio
 async def test_a_group_error_closes_the_bots_it_opened() -> None:
     closed: list[bool] = []
 
