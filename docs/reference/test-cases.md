@@ -2710,16 +2710,20 @@ out is missing from the book.
 **Recipe display id**
 
 The number the server gives a recipe in this player's book. A click in
-the book sends it back to place the recipe. The client uses it only to
-look the recipe up, so the recipe book Groups mask its value.
+the book sends it back to place the recipe. Each server picks its own
+numbers, so the recipes are numbered again in the order they first
+come, `#1` first, and those numbers are compared. The book also lists
+its buttons in an order that follows the server's numbers, and that
+order is not compared.
 
 ## `recipe_book_add.entries[].contents.group`
 
 **Recipe book group**
 
 The group that shows several recipes as one button in the book, such as
-every kind of planks. A recipe in no group has none. The number itself
-is masked; whether a recipe has a group is compared.
+every kind of planks. A recipe in no group has none. Each server picks
+its own group numbers, so they are numbered again in the order they
+first come, as the display ids are.
 
 ## `recipe_book_add.entries[].contents.category`
 
@@ -2783,8 +2787,8 @@ The display ids of the recipes removed in one packet.
 
 **Display id removed**
 
-The display id of one recipe removed from the book. Its value is masked,
-so a removal is compared by how many recipes it takes out.
+The display id of one recipe removed from the book, numbered as the
+recipes added are, so a removal of another recipe differs.
 
 ## `place_ghost_recipe.recipe_display.type`
 

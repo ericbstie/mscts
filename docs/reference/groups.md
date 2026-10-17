@@ -193,7 +193,7 @@ What a player receives when it joins, up to the end of the first chunk batch: th
 
 The comparison ends when the first chunk batch is complete. Later batches, and the animals that walk into view, depend on timing.
 
-The recipe numbers in the recipe book are masked, as in the [crafting Groups](#crafting-crafting).
+The recipes in the recipe book are numbered again, as in the [crafting Groups](#crafting-crafting).
 
 ## Multiplayer (`players`)
 
@@ -623,10 +623,11 @@ A recipe book click names the recipe by the number the server gave it in the pla
 `recipe_book_add` the server sends. A server that sends none within 10 seconds fails the Group,
 and the Report names the recipe.
 
-The crafting Groups and `join/basic` mask these numbers, and the numbers of recipe groups. The
-client uses them only to look a recipe up, so a server that numbers its recipes another way
-shows the same recipe book. Whether a recipe is in a group is still compared. A removal is
-compared by how many recipes it takes out, not which.
+Each server picks these numbers, and the numbers of recipe groups, its own way. mscts numbers
+the recipes again in the order each Bot first gets them, and the groups the same way, so a
+server that numbers its recipes another way but keeps to it shows the same recipe book. A
+removal of another recipe, or a recipe put in another group, still differs. The book lists its
+buttons in an order that follows the server's numbers, and that order is not compared.
 
 A player unlocks recipes when an item first enters its inventory, once per player. The
 `recipe-book` Bot gets every item it uses before its book is emptied, so that no case unlocks a
