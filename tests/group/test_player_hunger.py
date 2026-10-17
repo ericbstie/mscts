@@ -538,6 +538,7 @@ def test_eating_windows_end_on_the_health_that_eating_sends() -> None:
 
 EXERCISER = "exerciser"
 SYSTEM_CHAT = "minecraft:system_chat"
+JUMP_KEY, ON_GROUND = 0x10, 0x01
 READ_BACK = tuple(
     (EXERCISER, f"data get entity exerciser {path}")
     for path in ("foodLevel", "foodSaturationLevel", "foodExhaustionLevel")
@@ -595,19 +596,19 @@ def test_exhaustion_waits_until_the_bot_is_told_the_husks_are_gone_before_it_lea
     assert gone < leaves
 
 
-def test_exhaustion_sprints_and_attacks_reading_the_food_back_after_each() -> None:
+def test_exhaustion_sprints_jumps_and_attacks_reading_the_food_back_after_each() -> None:
     transcript, result = play("player/exhaustion")
 
     assert [window.label for window in result.windows] == [
         opened(SET_HEALTH),
         opened(SYSTEM_CHAT, SET_HEALTH),
-    ] * 2
-    sprint, _, attacks, _ = result.windows
+    ] * 3
+    sprint, _, _, _, attacks, _ = result.windows
     # the sprint's own tick reports where the Bot is first (the fake teleports no one)
     assert sprint.sent[1:] == tuple(
         (EXERCISER, (-49.5 + step, -60.0, -20.5)) for step in range(1, 101)
     )
-    assert [window.sent for window in result.windows[1::2]] == [READ_BACK] * 2
+    assert [window.sent for window in result.windows[1::2]] == [READ_BACK] * 3
     assert set(attacks.sent) <= {(EXERCISER, (50.5, -60.0, -20.5))}  # a position reminder
     assert len(attacks.before) == 20
     assert all(c.startswith("summon minecraft:husk ") for c in attacks.before)
@@ -638,6 +639,34 @@ def test_exhaustion_follows_each_move_and_hit_with_a_barrier() -> None:
         else:
             steps.append("act" if packet.name == "minecraft:attack" else "sync")
     acts = "".join("a" if step == "act" else "s" for step in steps)
-    assert acts.count("a") >= 100 + 20
+    assert acts.count("a") >= 100 + 2 * 10 + 20
     # the first is the sprint's own tick, which reports where the Bot stands
     assert "aa" not in acts[acts.find("a") + 1 :]
+
+
+def test_exhaustion_jumps_10_times_in_place_with_4_barriers_a_jump() -> None:
+    transcript, _ = play("player/exhaustion")
+
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    steps = []
+    for e in transcript.events:
+        fields = e.packet.fields or {}
+        if not (
+            e.bot == EXERCISER
+            and e.packet.direction is Direction.SERVERBOUND
+            and opens[2] <= e.t_ns <= closes[2]
+        ):
+            continue
+        if e.packet.name == "minecraft:player_input" and fields["flags"] == JUMP_KEY:
+            steps.append("jump")
+        elif e.packet.name == "minecraft:move_player_pos":
+            assert (fields["x"], fields["z"]) == (50.5, -20.5)
+            on_ground = int(str(fields["flags"])) & ON_GROUND
+            moves: dict[tuple[object, int], str] = {(-59.58, 0): "up", (-60.0, ON_GROUND): "down"}
+            steps.append(moves[fields["y"], on_ground])
+        elif e.packet.name == CLIENT_COMMAND:
+            steps.append("ask")
+    up, down = ["ask"] * (3 * SYNC_REQUESTS), ["ask"] * SYNC_REQUESTS
+    # 4 barriers a jump, so that at least 8 player ticks run before the next
+    assert steps == ["jump", "up", *up, "down", *down] * 10 + ["ask"] * SYNC_REQUESTS
