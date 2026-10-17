@@ -1420,8 +1420,10 @@ class _RecipeNumbers:
     sends one back, is serverbound, so no Comparison sees it.
 
     Each is numbered by first appearance, in the order the Packets are compared (sorted,
-    `UNORDERED`), so neither server's numbering decides it. Display ids and group numbers
-    are counted on their own. A number lasts as long as the client keeps the key: a
+    `UNORDERED`), so neither server's numbering decides it. Display ids and groups are
+    counted on their own, and a group is its category and group number, the client's key:
+    vanilla gives a group one number across categories, which the client shows as one
+    button in each. A number lasts as long as the client keeps the key: a
     `recipe_book_remove` ends its ids' numbers (`ClientRecipeBook.remove`), and a
     `recipe_book_add` that replaces the book ends every number before its entries take
     theirs (`ClientRecipeBook.clear`). So a recipe the server adds again with another id
@@ -1430,7 +1432,7 @@ class _RecipeNumbers:
 
     Attributes:
         ids: The display ids' numbers.
-        groups: The group numbers' numbers.
+        groups: The groups' numbers, each group its category (as JSON) and group number.
     """
 
     ids: _Numbering = dataclasses.field(default_factory=_Numbering)
@@ -1483,7 +1485,8 @@ class _RecipeNumbers:
         if type(display_id := contents.get("id")) is int:
             contents["id"] = f"#{self.ids.of(display_id)}"
         if type(group := contents.get("group")) is int:
-            contents["group"] = f"#{self.groups.of(group)}"
+            category = json.dumps(contents.get("category"), sort_keys=True, default=repr)
+            contents["group"] = f"#{self.groups.of((category, group))}"
 
 
 def _recipe_contents(fields: Mapping[str, _Value]) -> Iterator[dict[str, _Value]]:

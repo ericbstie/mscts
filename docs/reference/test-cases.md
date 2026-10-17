@@ -2727,7 +2727,8 @@ order is not compared.
 The group that shows several recipes as one button in the book, such as
 every kind of planks. A recipe in no group has none. Each server picks
 its own group numbers, so they are numbered again in the order they
-first come, as the display ids are.
+first come, as the display ids are. A group is counted once in each
+category, since the book shows it as one button in each.
 
 ## `recipe_book_add.entries[].contents.category`
 
