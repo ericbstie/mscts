@@ -1425,7 +1425,12 @@ class GroupContext:
                                     # received at or after the open Mark (Control's receipts
                                     # are never compared; the earliest arrival over the Bots,
                                     # whatever order they were recorded in). ValueError:
-                                    # `bot` without `until`, or not one of this Group's Bots.
+                                    # `bot` without `until`, or not one of this Group's Bots;
+                                    # or more than one Bot but Control in play and not
+                                    # disconnected at the open, before any barrier (#356: one
+                                    # open Mark, after the slowest Bot's barrier, leaves what a
+                                    # faster Bot read in between outside the window; that
+                                    # needs an open Mark for each Bot).
                                     # The body must last until it
                                     # has arrived: one that ends sooner fails as below.
                                     # Compare puts a packet stamped at a Mark's time
@@ -1437,11 +1442,7 @@ class GroupContext:
                                     # ProtocolError naming the
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
-                                    # exception a Group raises), and no close Mark. One of
-                                    # those packets arrived at such a Bot after its own
-                                    # opening barrier's last answer but before the open Mark
-                                    # (another Bot's barrier ended later; the body may have
-                                    # taken it): ProtocolError too, the same Verdicts (#356)
+                                    # exception a Group raises), and no close Mark.
     async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
                                     # Group froze already. end() unfreezes (a failure fails
                                     # the Group); after a failed Group, close() tries, and

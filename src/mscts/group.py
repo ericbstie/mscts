@@ -387,6 +387,10 @@ class GroupContext:
         socket. The body must last until the packet has arrived (`Bot.join` does, for a
         join's packets): a body that ends sooner fails with the ProtocolError below.
 
+        Only one Bot besides Control can be in play when such a window opens. The window
+        opens after the slowest Bot's barrier, so what a faster Bot read after its own
+        barrier would be outside it, and whether its `until` packet came inside could not be
+        told: that needs an open Mark for each Bot. A Bot can still join inside the window.
         With `bot` too, only that Bot's `until` packet ends the window. Without it, with
         more than one Bot, where the window ends for the others is timing: each Bot's
         reader stamps a frame when it reads its own socket, and the readers run one after
@@ -416,12 +420,11 @@ class GroupContext:
                 `names` narrows the window and `until` has several names that it leaves out
                 (Compare would not see which of them ended it); or
                 `bot` is given without `until`, or is not one of this Group's Bots; or
+                `until` is given while more than one Bot besides Control is in play; or
                 `play` is False and `names` or `until` is given.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
             ProtocolError: The server disconnected a Bot, and the barrier or the drain
-                took the disconnect; or no `until` packet arrived inside the window; or
-                one arrived at a Bot after its opening barrier, but before the window
-                opened after another Bot's (the body may have taken it).
+                took the disconnect; or no `until` packet arrived inside the window.
         """
         if self._observing:
             msg = "the Group is in an Observation window already: windows do not nest"
@@ -447,6 +450,8 @@ class GroupContext:
         if bot is not None and self._bots.get(bot.name) is not bot:
             msg = f"{bot.name!r} is not one of this Group's Bots"
             raise ValueError(msg)
+        if ends is not None:
+            self._require_one_compared_bot()
         self._observing = True
         try:
             # What setup caused may still be on its way to a Bot that is not Control: the
@@ -460,7 +465,6 @@ class GroupContext:
                 await self._drain()
             else:
                 await self._drain()
-                self._refuse_early(ends, answered=answered, opened=opened, bot=bot)
                 # Compare puts a packet stamped at a Mark's time after the Mark, so the Mark
                 # goes a nanosecond after the arrival. A Connection stamps the frames of one
                 # read a nanosecond apart, so that is just before the next frame.
@@ -628,34 +632,6 @@ class GroupContext:
             raise ProtocolError(msg)
         return min(arrivals)
 
-    def _refuse_early(
-        self,
-        names: tuple[str, ...],
-        *,
-        answered: Mapping[str, int],
-        opened: int,
-        bot: Bot | None,
-    ) -> None:
-        """Fail if a packet called any of `names` came between a Bot's barrier and the open Mark.
-
-        `answered` is when each Bot's opening barrier's last answer arrived. The window opens
-        after the latest of them, so what an earlier Bot read in between came after the setup,
-        yet before the window: the body may have taken it as the packet it waited for, and
-        whether that came inside the window can't be told. Only `bot`'s packets count (with
-        no `bot`, any Bot's but Control's).
-
-        Raises:
-            ProtocolError: One did.
-        """
-        for event in self._until(names, bot=bot):
-            if answered.get(event.bot, opened) < event.t_ns < opened:
-                msg = (
-                    f"{event.packet.name} arrived at {event.bot} after its barrier, but before "
-                    "the Observation window opened after another Bot's barrier: whether the "
-                    "window holds the one it waited for can't be told"
-                )
-                raise ProtocolError(msg)
-
     def _until(self, names: tuple[str, ...], *, bot: Bot | None) -> list[Event]:
         """Every clientbound play packet called any of `names` that `bot` received.
 
@@ -681,6 +657,26 @@ class GroupContext:
             if not bot.closed and not bot.disconnected:
                 await bot.drain()
 
+    def _require_one_compared_bot(self) -> None:
+        """Raise ValueError if more than one Bot besides Control would pass the opening barrier.
+
+        An `until` window has one open Mark, after the slowest Bot's barrier: with a second
+        Bot, what the faster one read in between would be outside it.
+        """
+        compared = [bot.name for bot in self._barred() if bot.name != CONTROL_PLAYER]
+        if len(compared) > 1:
+            msg = (
+                f"an until window can have only one Bot besides Control in play, not "
+                f"{len(compared)} ({', '.join(compared)}): a Bot whose wait ends first could "
+                f"get the packet before the window opens, and telling that apart needs an open "
+                f"Mark for each Bot"
+            )
+            raise ValueError(msg)
+
+    def _barred(self) -> list[Bot]:
+        """The Bots a barrier covers: in play, and not disconnected."""
+        return [bot for bot in self._bots.values() if bot.in_play and not bot.disconnected]
+
     async def _sync(self) -> dict[str, int]:
         """Pass the barrier on every Bot in play at once; raise the first Bot's error.
 
@@ -702,11 +698,7 @@ class GroupContext:
 
         try:
             async with asyncio.TaskGroup() as barriers:
-                tasks = {
-                    name: barriers.create_task(barrier(bot))
-                    for name, bot in self._bots.items()
-                    if bot.in_play and not bot.disconnected
-                }
+                tasks = {bot.name: barriers.create_task(barrier(bot)) for bot in self._barred()}
         except ExceptionGroup as errors:
             raise errors.exceptions[0] from None
         return {name: task.result() for name, task in tasks.items()}
