@@ -405,6 +405,70 @@ def test_server_classpath_extracts_only_the_inner_jar_and_reuses_it(
     assert downloads.calls == [_MANIFEST, _VERSION, _JAR]
 
 
+def _install_vanilla(cache: Path, bundle: bytes) -> Path:
+    """Put `bundle` into `cache` as the recorded vanilla 26.3 Installation; return its jar."""
+    root = cache / "vanilla" / "26.3"
+    root.mkdir(parents=True)
+    jar = root / "server.jar"
+    jar.write_bytes(bundle)
+    record = {"sha256": hashlib.sha256(bundle).hexdigest(), "size": len(bundle), "version": "26.3"}
+    (root / "SOURCE.json").write_text(json.dumps(record), encoding="utf-8")
+    return jar
+
+
+def _bundle(inner: bytes) -> bytes:
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w") as archive:
+        archive.writestr("META-INF/versions/26.3/server-26.3.jar", inner)
+    return stream.getvalue()
+
+
+def test_server_classpath_reads_the_installed_vanilla_bundle_without_downloading(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    installed = _install_vanilla(tmp_path, _bundle(b"inner jar"))
+    downloads = Downloads(b"never fetched", "server")
+
+    jar = javap.classpath("server", downloads)
+
+    assert jar == tmp_path / "research" / "26.3" / "server-26.3.jar"
+    assert jar.read_bytes() == b"inner jar"
+    assert sorted(path.name for path in installed.parent.iterdir()) == [
+        "SOURCE.json",
+        "server.jar",
+    ]
+    assert downloads.calls == []
+
+
+def test_a_corrupt_installed_bundle_is_refused_rather_than_read_or_replaced_by_a_download(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    installed = _install_vanilla(tmp_path, _bundle(b"inner jar"))
+    installed.write_bytes(_bundle(b"another inner jar"))
+    downloads = Downloads(_bundle(b"downloaded inner jar"), "server")
+
+    with pytest.raises(ProvisionError, match=r"is not the recorded"):
+        javap.classpath("server", downloads)
+
+    assert downloads.calls == []
+    assert not (tmp_path / "research").exists()
+
+
+def test_server_classpath_downloads_the_bundle_when_vanilla_is_not_installed(
+    javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MSCTS_CACHE", str(tmp_path))
+    downloads = Downloads(_bundle(b"downloaded inner jar"), "server")
+
+    jar = javap.classpath("server", downloads)
+
+    assert jar.read_bytes() == b"downloaded inner jar"
+    assert downloads.calls == [_MANIFEST, _VERSION, _JAR]
+    assert not (tmp_path / "vanilla").exists()
+
+
 def test_server_requires_the_target_inner_jar(
     javap: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
