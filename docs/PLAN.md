@@ -1679,7 +1679,8 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # heightmaps and block entities (#22),
                                     # section_blocks_update's blocks (#320), and
                                     # recipe_book_add's entries with no toast flag, by what
-                                    # each shows, its display id and group left out (#363)
+                                    # each shows, not by the server's display id or group
+                                    # number (#363)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -2041,9 +2042,10 @@ proves it necessary:
      `play` / `minecraft:recipe_book_add` (#363): the `entries` with the
      toast flag (`flags` bit 1) come first, in the order they came; the
      others follow, sorted stably by what each shows: the entry as JSON
-     with sorted keys, its display id (`contents.id`) and group number
-     (`contents.group`) left out, since both are numbers the server picks
-     and the order must not depend on either server's numbering. At a join
+     with sorted keys, its display id (`contents.id`) left out and its
+     group number (`contents.group`) reduced to whether it has one, since
+     both are numbers the server picks and the order must not depend on
+     either server's numbering. At a join
      vanilla sends a player's known recipes in identity hash order, with
      no toast flag (`javap` on the 26.3 server: `ServerRecipeBook` keeps
      them in a `Sets.newIdentityHashSet`, which `sendInitialRecipeBook`

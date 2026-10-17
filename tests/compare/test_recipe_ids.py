@@ -71,6 +71,20 @@ def test_entries_with_no_toast_are_sorted_by_what_they_show_not_by_their_display
     assert _diff(reference, candidate) == []
 
 
+def test_entries_that_show_the_same_are_sorted_by_whether_they_have_a_group() -> None:
+    reference = book_add((PLANKS, 1, None, NO_TOAST), (PLANKS, 2, 5, NO_TOAST))
+    candidate = book_add((PLANKS, 3, 8, NO_TOAST), (PLANKS, 4, None, NO_TOAST))
+
+    assert _diff(reference, candidate) == []
+
+
+def test_entries_that_show_the_same_are_not_sorted_by_display_id() -> None:
+    reference = book_add((PLANKS, 1, None, NO_TOAST), (PLANKS, 2, 5, NO_TOAST))
+    candidate = book_add((PLANKS, 9, None, NO_TOAST), (PLANKS, 3, 5, NO_TOAST))
+
+    assert _diff(reference, candidate) == []
+
+
 def test_entries_with_a_toast_keep_their_order_since_the_toast_shows_them_in_turn() -> None:
     planks, sticks = (PLANKS, 7, None, TOAST), (STICKS, 4, None, TOAST)
 
