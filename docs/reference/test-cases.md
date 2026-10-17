@@ -2795,7 +2795,9 @@ sorted by their numbers.
 **Display id removed**
 
 The display id of one recipe removed from the book, numbered as the
-recipes added are, so a removal of another recipe differs.
+recipes added are, so a removal of another recipe differs if the recipe
+was added in a window. A removal of a recipe the player got before every
+window cannot be told from a removal of another such recipe.
 
 ## `place_ghost_recipe.recipe_display.type`
 
