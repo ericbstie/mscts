@@ -1393,7 +1393,10 @@ class GroupContext:
                                     # setup waited for its feedback, as Control.run does;
                                     # #141), then
                                     # Marks OBSERVE_OPEN (then the names, each after a space;
-                                    # play=False: OBSERVE_NO_PLAY, and no names or until);
+                                    # play=False: OBSERVE_NO_PLAY, and no names or until)
+                                    # 1 ns after the latest barrier's last answer of a Bot
+                                    # but Control (none passed one: now), so a packet a Bot
+                                    # read right after that answer is inside (#356);
                                     # when the body completes, every Bot in play and not
                                     # disconnected passes Bot.sync again (all at once; the
                                     # first error raises, as that Bot's failure), then a Mark
@@ -1422,7 +1425,12 @@ class GroupContext:
                                     # received at or after the open Mark (Control's receipts
                                     # are never compared; the earliest arrival over the Bots,
                                     # whatever order they were recorded in). ValueError:
-                                    # `bot` without `until`, or not one of this Group's Bots.
+                                    # `bot` without `until`, or not one of this Group's Bots;
+                                    # or more than one Bot but Control in play and not
+                                    # disconnected at the open, before any barrier (#356: one
+                                    # open Mark, after the slowest Bot's barrier, leaves what a
+                                    # faster Bot read in between outside the window; that
+                                    # needs an open Mark for each Bot).
                                     # The body must last until it
                                     # has arrived: one that ends sooner fails as below.
                                     # Compare puts a packet stamped at a Mark's time
@@ -1434,7 +1442,7 @@ class GroupContext:
                                     # ProtocolError naming the
                                     # packet (a Candidate's is a `mismatch` with a `failed`
                                     # Divergence, the Reference's an `error`, as for every
-                                    # exception a Group raises), and no close Mark
+                                    # exception a Group raises), and no close Mark.
     async def freeze(self) -> None: ...  # #23: control.run("tick freeze"); ValueError if the
                                     # Group froze already. end() unfreezes (a failure fails
                                     # the Group); after a failed Group, close() tries, and

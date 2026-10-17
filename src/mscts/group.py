@@ -25,7 +25,7 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 from mscts.stats import Sample, SampleLog, Series
 from mscts.target import TARGET
-from mscts.transcript import Mark, Transcript
+from mscts.transcript import Event, Mark, Transcript
 
 LOG = logging.getLogger(__name__)
 
@@ -359,7 +359,10 @@ class GroupContext:
         provided the setup waited for its feedback (`Control.run` does: the server runs a
         chat command between ticks, after the barrier's pass);
         then the window gets its `observe:open` Mark, followed by `names`, each after a
-        space. When the body completes, every Bot in play passes the barrier again, all at
+        space. The Mark is a nanosecond after the latest last answer of a Bot but Control
+        (now, if none passed a barrier), so a packet a Bot read right after that answer is
+        inside the window, where the body's `expect` may take it (#356). When the body
+        completes, every Bot in play passes the barrier again, all at
         once. Each Bot's window ends at its own barrier: it gets the Mark `observe:close
         <Bot name>` a nanosecond after its barrier's last answer arrived, whatever the other
         Bots are still waiting for (a Bot that passes none gets it once every barrier has
@@ -384,6 +387,10 @@ class GroupContext:
         socket. The body must last until the packet has arrived (`Bot.join` does, for a
         join's packets): a body that ends sooner fails with the ProtocolError below.
 
+        Only one Bot besides Control can be in play when such a window opens. The window
+        opens after the slowest Bot's barrier, so what a faster Bot read after its own
+        barrier would be outside it, and whether its `until` packet came inside could not be
+        told: that needs an open Mark for each Bot. A Bot can still join inside the window.
         With `bot` too, only that Bot's `until` packet ends the window. Without it, with
         more than one Bot, where the window ends for the others is timing: each Bot's
         reader stamps a frame when it reads its own socket, and the readers run one after
@@ -413,6 +420,7 @@ class GroupContext:
                 `names` narrows the window and `until` has several names that it leaves out
                 (Compare would not see which of them ended it); or
                 `bot` is given without `until`, or is not one of this Group's Bots; or
+                `until` is given while more than one Bot besides Control is in play; or
                 `play` is False and `names` or `until` is given.
             TimeoutError: A Bot's barrier got no answer in time; the Bot's `failure`.
             ProtocolError: The server disconnected a Bot, and the barrier or the drain
@@ -442,12 +450,17 @@ class GroupContext:
         if bot is not None and self._bots.get(bot.name) is not bot:
             msg = f"{bot.name!r} is not one of this Group's Bots"
             raise ValueError(msg)
+        if ends is not None:
+            self._require_one_compared_bot()
         self._observing = True
         try:
             # What setup caused may still be on its way to a Bot that is not Control: the
             # barrier first, so it arrives before the window opens on every Instance.
-            await self._sync()
-            opened = self._mark(" ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,)))))
+            answered = await self._sync()
+            label = " ".join((OBSERVE_OPEN, *(names if play else (OBSERVE_NO_PLAY,))))
+            opened = self._mark(
+                label, t_ns=_after_the_last_answer(answered, now_ns=self._transcript.now_ns())
+            )
             yield
             if ends is None:
                 self._mark_each(OBSERVE_CLOSE, await self._sync())
@@ -614,20 +627,27 @@ class GroupContext:
         Raises:
             ProtocolError: None did.
         """
-        arrivals = [
-            event.t_ns
-            for event in self._transcript.events
-            if event.t_ns >= since
-            and (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
-            and event.packet.name in names
-            and event.packet.state is State.PLAY
-            and event.packet.direction is Direction.CLIENTBOUND
-        ]
+        arrivals = [event.t_ns for event in self._received(names, bot=bot) if event.t_ns >= since]
         if not arrivals:
             at = "any Bot" if bot is None else bot.name
             msg = f"no {' or '.join(names)} arrived at {at} after the Observation window opened"
             raise ProtocolError(msg)
         return min(arrivals)
+
+    def _received(self, names: tuple[str, ...], *, bot: Bot | None) -> list[Event]:
+        """Every clientbound play packet called any of `names` that `bot` received.
+
+        With no `bot`, every one any Bot but Control received: Control's receipts are never
+        compared.
+        """
+        return [
+            event
+            for event in self._transcript.events
+            if (event.bot == bot.name if bot is not None else event.bot != CONTROL_PLAYER)
+            and event.packet.name in names
+            and event.packet.state is State.PLAY
+            and event.packet.direction is Direction.CLIENTBOUND
+        ]
 
     async def _drain(self) -> None:
         """Take what has already arrived at every Bot not closed, without waiting.
@@ -638,6 +658,26 @@ class GroupContext:
         for bot in self._bots.values():
             if not bot.closed and not bot.disconnected:
                 await bot.drain()
+
+    def _require_one_compared_bot(self) -> None:
+        """Raise ValueError if more than one Bot besides Control would pass the opening barrier.
+
+        An `until` window has one open Mark, after the slowest Bot's barrier: with a second
+        Bot, what the faster one read in between would be outside it.
+        """
+        compared = [bot.name for bot in self._barred() if bot.name != CONTROL_PLAYER]
+        if len(compared) > 1:
+            msg = (
+                f"an until window can have only one Bot besides Control in play, not "
+                f"{len(compared)} ({', '.join(compared)}): a Bot whose wait ends first could "
+                f"get the packet before the window opens, and telling that apart needs an open "
+                f"Mark for each Bot"
+            )
+            raise ValueError(msg)
+
+    def _barred(self) -> list[Bot]:
+        """The Bots a barrier covers: in play, and not disconnected."""
+        return [bot for bot in self._bots.values() if bot.in_play and not bot.disconnected]
 
     async def _sync(self) -> dict[str, int]:
         """Pass the barrier on every Bot in play at once; raise the first Bot's error.
@@ -660,11 +700,7 @@ class GroupContext:
 
         try:
             async with asyncio.TaskGroup() as barriers:
-                tasks = {
-                    name: barriers.create_task(barrier(bot))
-                    for name, bot in self._bots.items()
-                    if bot.in_play and not bot.disconnected
-                }
+                tasks = {bot.name: barriers.create_task(barrier(bot)) for bot in self._barred()}
         except ExceptionGroup as errors:
             raise errors.exceptions[0] from None
         return {name: task.result() for name, task in tasks.items()}
@@ -672,6 +708,20 @@ class GroupContext:
 
 _ANSWER = "minecraft:award_stats"
 """The barrier's answer (`Bot.sync`)."""
+
+
+def _after_the_last_answer(answered: Mapping[str, int], *, now_ns: int) -> int:
+    """When a window opens: a nanosecond after the latest last answer of a Bot but Control.
+
+    `answered` is when each Bot's barrier's last answer arrived, by the Bot's name. What a Bot
+    read up to its own answer is setup, and comes before the Mark. A frame read after the
+    latest answer comes after it, even one read with that answer, so the window holds what
+    its body takes. Control's receipts are never compared, so where Control's barrier ends
+    does not move the Mark. If no Bot but Control passed a barrier, there is no answer to
+    open after, and the window opens at `now_ns`.
+    """
+    compared = [t_ns for name, t_ns in answered.items() if name != CONTROL_PLAYER]
+    return max(compared) + 1 if compared else now_ns
 
 
 @functools.cache
