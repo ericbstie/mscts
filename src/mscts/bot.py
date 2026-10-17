@@ -123,6 +123,9 @@ or sends statistics nobody asked for; followed by the Bot's name. Compare reads 
 
 _STATUS_INTENT, _LOGIN_INTENT = 1, 2
 
+_STATISTICS_ANSWERS = "the minecraft:award_stats answers to its statistics requests"
+"""What a barrier (`sync`, `wait_until_handled`) that times out waited for."""
+
 _PERFORM_RESPAWN = 0
 """The `client_command` action the client sends from the death screen's respawn button
 (`ServerboundClientCommandPacket.Action`: PERFORM_RESPAWN 0, REQUEST_STATS 1; 26.3 javap)."""
@@ -671,7 +674,8 @@ class Bot:
 
     It speaks the Target's protocol version, and records everything it sends and
     receives to its Transcript under its name. Every operation, connecting included,
-    is bounded by `timeout_s` seconds, and raises TimeoutError past it.
+    is bounded by `timeout_s` seconds, and raises TimeoutError past it. Its text says
+    which Bot waited, for what and for how long: "alice waited 10.0 s for minecraft:block_update".
 
     Attributes:
         name: The Bot's name, as its Events record it.
@@ -797,7 +801,7 @@ class Bot:
             ProtocolError: The answer is not a `status_response` holding a JSON object.
             TimeoutError: There was no answer within `timeout_s`.
         """
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, "minecraft:status_response"):
             await self._handshake_for_status()
             await self._connection.send("minecraft:status_request")
             packet = await self._connection.recv(timeout_s=self._timeout_s)
@@ -813,7 +817,7 @@ class Bot:
             ProtocolError: The answer is not a `pong_response` echoing `payload`.
             TimeoutError: There was no answer within `timeout_s`.
         """
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, "minecraft:pong_response"):
             await self._handshake_for_status()
             await self._connection.send("minecraft:ping_request", timestamp=payload)
             packet = await self._connection.recv(timeout_s=self._timeout_s)
@@ -842,7 +846,7 @@ class Bot:
         if self._connection.state is not State.HANDSHAKE:
             msg = f"join needs a fresh Connection, not one in {self._connection.state}"
             raise ProtocolError(msg)
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, "the first minecraft:chunk_batch_finished"):
             await self._handshake(_LOGIN_INTENT)
             await self._connection.send(
                 "minecraft:hello", name=self.name, player_uuid=offline_uuid(self.name)
@@ -871,7 +875,8 @@ class Bot:
                 `timeout_s`: the server ignores the request while the player is alive.
         """
         self._require_play("respawn")
-        async with self._operation(self._timeout_s):
+        waited_for = "minecraft:respawn, then minecraft:chunk_batch_finished"
+        async with self._operation(self._timeout_s, waited_for):
             await self._connection.send("minecraft:client_command", action=_PERFORM_RESPAWN)
             await self.expect("minecraft:respawn", timeout_s=self._timeout_s)
             await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
@@ -927,7 +932,7 @@ class Bot:
         if not self.in_play:
             msg = f"command needs a Bot in play, not one in {self._connection.state}"
             raise ProtocolError(msg)
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:chat_command")):
             await self._connection.send("minecraft:chat_command", command=command)
 
     async def signed_command(self, command: str) -> None:
@@ -942,7 +947,7 @@ class Bot:
             ProtocolError: The Bot is not in play.
         """
         self._require_play("signed_command")
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:chat_command_signed")):
             await self._connection.send(
                 "minecraft:chat_command_signed",
                 command=command,
@@ -961,7 +966,7 @@ class Bot:
             ProtocolError: The Bot is not in play.
         """
         self._require_play("chat")
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:chat")):
             await self._connection.send(
                 "minecraft:chat", message=message, signature=None, **_UNSIGNED_CHAT
             )
@@ -986,7 +991,7 @@ class Bot:
             ("minecraft:chat", {"message": message, "signature": None, **_UNSIGNED_CHAT})
             for message in messages
         ]
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:chat")):
             await self._connection.send_all(chats)
 
     async def move(self, x: float, y: float, z: float, *, on_ground: bool = True) -> None:
@@ -1029,7 +1034,7 @@ class Bot:
             {"yaw": position.yaw, "pitch": position.pitch},
             _flags(self._controls),
         )
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("a client tick")):
             await self._connection.send_all([move, ("minecraft:client_tick_end", {})])
 
     async def look(self, yaw: float, pitch: float) -> None:
@@ -1124,7 +1129,7 @@ class Bot:
             *actions,
             *_client_tick(self._replies.pose, self._controls, reported, self._replies.entity_id),
         ]
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("a client tick")):
             for name, fields in sends:
                 await self._connection.send(name, **fields)
         if self._replies.reported is before:  # else a fresh player arrived while it sent
@@ -1273,7 +1278,7 @@ class Bot:
         self._require_play("close_container")
         window_id = self._replies.inventory.view().window_id
         self._replies.inventory.close()  # at once, as the client does, before what the send lets in
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:container_close")):
             await self._connection.send("minecraft:container_close", window_id=window_id)
 
     async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None:
@@ -1295,7 +1300,7 @@ class Bot:
         """
         self._require_play("click")
         fields = self._replies.inventory.click(slot, button, mode)
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:container_click")):
             await self._connection.send("minecraft:container_click", **fields)
 
     async def place_recipe(self, recipe_id: int, *, use_max_items: bool = False) -> None:
@@ -1312,7 +1317,7 @@ class Bot:
         """
         self._require_play("place_recipe")
         window_id = self._replies.inventory.view().window_id
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _to_take("minecraft:place_recipe")):
             await self._connection.send(
                 "minecraft:place_recipe",
                 window_id=window_id,
@@ -1433,7 +1438,7 @@ class Bot:
             TimeoutError: The answers had not arrived within `timeout_s`.
         """
         self._require_play("sync")
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _STATISTICS_ANSWERS):
             answered = await self._ask_for_statistics()
             for _ in range(SYNC_REQUESTS - 1):
                 await self._wait_until(answered + round(TICK_GAP_S * 1e9))
@@ -1469,7 +1474,7 @@ class Bot:
             TimeoutError: The answers had not arrived within `timeout_s`.
         """
         self._require_play("wait_until_handled")
-        async with self._operation(self._timeout_s):
+        async with self._operation(self._timeout_s, _STATISTICS_ANSWERS):
             await self._ask_for_statistics(requests=HANDLED_REQUESTS)
 
     async def _wait_until(self, t_ns: int) -> None:
@@ -1557,9 +1562,7 @@ class Bot:
         await self._connection.close()
 
     @contextlib.asynccontextmanager
-    async def _operation(
-        self, timeout_s: float, waiting_for: str | None = None
-    ) -> AsyncIterator[None]:
+    async def _operation(self, timeout_s: float, waiting_for: str) -> AsyncIterator[None]:
         """Bound an operation by `timeout_s`, and keep what it raises as `failure`.
 
         A TimeoutError with no text says that this Bot waited `timeout_s` seconds for
@@ -1569,12 +1572,7 @@ class Bot:
             async with asyncio.timeout(timeout_s):
                 yield
         except Exception as error:
-            waited = (
-                None
-                if waiting_for is None
-                else f"{self.name} waited {timeout_s} s for {waiting_for}"
-            )
-            failure = _worded(error, waited)
+            failure = _worded(error, f"{self.name} waited {timeout_s} s for {waiting_for}")
             self.failure = failure
             if failure is error:
                 raise
@@ -1691,11 +1689,16 @@ def _ends_the_session(packet: Packet) -> bool:
             return False
 
 
-def _worded(error: Exception, waited: str | None) -> Exception:
+def _worded(error: Exception, waited: str) -> Exception:
     """`error`, except a TimeoutError with no text, which becomes one that says `waited`."""
-    if waited is not None and type(error) is TimeoutError and not str(error):
+    if type(error) is TimeoutError and not str(error):
         return TimeoutError(waited)
     return error
+
+
+def _to_take(what: str) -> str:
+    """What a Bot that cannot send `what` waited for: the server to take it."""
+    return f"the server to take {what}"
 
 
 def _expect(packet: Packet, name: str) -> None:

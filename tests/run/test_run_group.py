@@ -88,6 +88,20 @@ async def test_a_groups_own_wait_that_times_out_reads_its_own_limit_not_the_run_
 
 
 @pytest.mark.asyncio
+async def test_a_timeout_with_no_text_of_its_own_reads_as_the_run_bound() -> None:
+    async def raises_a_bare_timeout(context: GroupContext) -> None:
+        del context
+        raise TimeoutError
+
+    error = await _attempt(
+        Group(id="test/bare", run=raises_a_bare_timeout), status_server(_vanilla(), [])
+    )
+
+    assert isinstance(error, GroupError)
+    assert str(error) == "TimeoutError: no answer within 1.0 s"
+
+
+@pytest.mark.asyncio
 async def test_a_group_error_closes_the_bots_it_opened() -> None:
     closed: list[bool] = []
 
