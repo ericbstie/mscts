@@ -17,12 +17,13 @@ from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
     FADE_READS,
     PERFORM_RESPAWN,
+    Hurt,
     PlayerServer,
 )
 from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS
-from mscts.compare import OBSERVE_OPEN
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
 from mscts.net import ProtocolError
@@ -65,18 +66,22 @@ BOTS = {
 }
 IMMUNE_TICKS = 10
 """Ticks between two hits of damage that comes every tick: a player is immune for 10 after one."""
+
+
 HURTS = {
-    "player/drowning": {"tp drowner 3.5 -62.0 2.5": 20},  # the air runs out again
-    "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": IMMUNE_TICKS},
+    "player/drowning": {"tp drowner 3.5 -62.0 2.5": Hurt(20)},  # the air runs out again
+    "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": Hurt(IMMUNE_TICKS)},
     "player/fire": {
-        "tp burner 7.5 -60.0 2.5": IMMUNE_TICKS,  # in fire
-        "tp burner 5.5 -61.0 2.5": IMMUNE_TICKS,  # in lava
-        "tp burner 11.5 -60.0 2.5": 20,  # burning on the dry grass (Entity.baseTick)
+        "tp burner 7.5 -60.0 2.5": Hurt(IMMUNE_TICKS),  # in fire
+        "tp burner 5.5 -61.0 2.5": Hurt(IMMUNE_TICKS),  # in lava
+        # Burning on the dry grass (Entity.baseTick): the burn due on the first tick out of the
+        # lava hurts nothing inside the lava hit's immunity, so the first comes 20 ticks later.
+        "tp burner 11.5 -60.0 2.5": Hurt(20, first_ticks=20),
     },
-    "player/freezing": {"tp freezer 9.5 -60.0 2.5": 40},  # tickCount % 40 (LivingEntity.aiStep)
+    "player/freezing": {"tp freezer 9.5 -60.0 2.5": Hurt(40)},  # every 40 ticks (aiStep)
 }
-"""Each `tp` after which the fake hurts the Bot, and the ticks between two hits there, as on
-vanilla, by Group: hits that come a tick apart would end a window before the Group's `tp`."""
+"""Each `tp` after which the fake hurts the Bot, and when, as on vanilla, by Group: hits that come
+a tick apart would end a window before the Group's `tp`."""
 KILLS_AFTER = {"player/void": "tp voider "}
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
@@ -93,6 +98,7 @@ async def _play(
     clock: Callable[[], float] = always_on_time,
     *,
     late: frozenset[str] = frozenset(),
+    due_at_once: bool = False,
 ) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
@@ -101,6 +107,7 @@ async def _play(
             hurts=HURTS.get(group_id, {}),
             kills_after=KILLS_AFTER.get(group_id),
             late=late,
+            due_at_once=due_at_once,
         ),
         timeout_s=PLAY_TIMEOUT_S,
     ) as endpoint:
@@ -649,6 +656,32 @@ def test_each_window_still_holds_its_tp_when_controls_barrier_ends_after_the_bot
     assert [window.sent for window in slow.windows] == [
         window.sent for window in played(group_id).windows
     ]
+
+
+def hits_between_windows(transcript: Transcript) -> list[int]:
+    """When each `set_health` that reached a Bot outside every window arrived."""
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    windows = list(zip(opens, closes, strict=True))
+    return [
+        event.t_ns
+        for event in transcript.events
+        if event.bot != CONTROL
+        and event.packet.name == "minecraft:set_health"
+        and not any(opened <= event.t_ns <= closed for opened, closed in windows)
+    ]
+
+
+@pytest.mark.parametrize("group_id", sorted(HURTS))
+def test_no_hit_falls_between_two_windows_even_when_every_hit_is_due_at_once(
+    group_id: str,
+) -> None:
+    # A hit is due on the wall clock, which a loaded host's event loop can reach late. The fake
+    # holds each hit until the Bot has passed the barrier that opens the next window, as a
+    # Group that is on time sees on vanilla (#432).
+    transcript, _ = asyncio.run(_play(group_id, due_at_once=True))
+
+    assert hits_between_windows(transcript) == []
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:

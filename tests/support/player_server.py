@@ -35,20 +35,45 @@ FADE_READS = (TIME_QUERY, TIME_QUERY)
 DEATH = "minecraft:player_combat_kill"
 
 
+@dataclass(frozen=True)
+class Hurt:
+    """How the fake hurts a Bot in a place: when the first hit comes, and how often.
+
+    Attributes:
+        period_ticks: The ticks between two hits.
+        first_ticks: The ticks from the `tp` there to the first hit.
+    """
+
+    period_ticks: int
+    first_ticks: int = 1
+
+
 @dataclass
 class PlayerServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
     It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch. After a `tp` in `hurts`, it hurts the Bot a tick later, and then once in
-    each of that place's periods, until the next `tp` or `kill`: as on vanilla, a Bot moved or
-    made fresh (`kill`, then respawn) is out of what hurt it.
+    chunk batch. After a `tp` in `hurts`, it hurts the Bot when that place's first hit is due,
+    and then once in each of its periods, until the next `tp` or `kill`: as on vanilla, a Bot
+    moved or made fresh (`kill`, then respawn) is out of what hurt it.
+
+    A hit is due on the wall clock, as on vanilla, but it is sent only once the Bot has passed a
+    barrier since the hit before it: the barrier that opens the window that waits for it. So the
+    order of a hit and the windows does not depend on the event loop being on time. On vanilla a
+    window that opens too late lets the hit through between two windows, which the Group fails
+    on (`check_gap`); the clock these tests give it (`always_on_time`) says the windows are on
+    time, and the fake keeps to that. What the Group does after a hit, before the next window
+    opens, still races the next hit, as on vanilla.
     """
 
     seen: list[Packet] = field(default_factory=list)
-    hurts: Mapping[str, int] = field(default_factory=dict)
-    """Each `tp` after which the fake sends `set_health` and `entity_event`, and the ticks
-    between two of them."""
+    hurts: Mapping[str, Hurt] = field(default_factory=dict)
+    """Each `tp` after which the fake sends `set_health` and `entity_event`, and when."""
+    due_at_once: bool = False
+    """Whether every hit is due at once, as if the event loop had stalled past each one: it is
+    then sent as soon as the Bot has passed the barrier."""
+    barrier_since_hit: asyncio.Event = field(default_factory=asyncio.Event)
+    """Set once a Bot but Control has passed a barrier since the last hit."""
     hurting: asyncio.Task[None] | None = None
     """The task that hurts the Bot, while it is somewhere that hurts."""
     kills_after: str | None = None
@@ -60,6 +85,10 @@ class PlayerServer:
     game_time: int = 0
     """The game time the next `time query gametime` answers: each answer moves it on by
     `FADE_TICKS`."""
+
+    def __post_init__(self) -> None:
+        """No hit has come yet, so the first is not held back."""
+        self.barrier_since_hit.set()
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -86,6 +115,8 @@ class PlayerServer:
                     if name in self.late:
                         await asyncio.sleep(TICK_S)
                     await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+                    if name != CONTROL and requests % SYNC_REQUESTS == 0:
+                        self.barrier_since_hit.set()
                 elif packet.name == CHAT_COMMAND:
                     command = str((packet.fields or {})["command"])
                     await self._command(peer, command)
@@ -116,13 +147,15 @@ class PlayerServer:
             self.hurting.cancel()
             self.hurting = None
 
-    async def _hurt(self, period_ticks: int) -> None:
-        """Hurt every player but Control a tick from now, then every `period_ticks` ticks."""
-        delay_s = TICK_S
+    async def _hurt(self, hurt: Hurt) -> None:
+        """Hurt every player but Control as `hurt` says, each hit after a barrier since the last."""
+        ticks = hurt.first_ticks
         with suppress(ConnectionError):
             while True:
-                await asyncio.sleep(delay_s)
-                delay_s = period_ticks * TICK_S
+                await asyncio.sleep(0 if self.due_at_once else ticks * TICK_S)
+                await self.barrier_since_hit.wait()
+                self.barrier_since_hit.clear()
+                ticks = hurt.period_ticks
                 for name, peer in list(self.players.items()):
                     if name != CONTROL:
                         await peer.send(
