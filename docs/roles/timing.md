@@ -42,6 +42,7 @@ timing, #40 pistons, #41 hoppers, #42 piston glitches, #46 entity motion,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #376: Pumpkin (nightly b57d821) handles a player's play packets, statistics requests included, in one FIFO from `Player::tick`, and answers `REQUEST_STATS` there; only chat commands, chat and the chat session get a task of their own. `step_after`'s proof held 100 of 100 on Pumpkin and on vanilla, idle and under `--stress 4` (docs/research/2026-10-17-stats-order.md, `scripts/research/stats_order.py`).
 - #356: an Observation window opens a nanosecond after the latest last barrier answer of a Bot other than Control, so a frame a Bot read with or after that answer is inside the window. Stamping the open Mark at "now", after Control's barrier, lost those frames. An `until` window refuses a second Bot besides Control in play: it would need an open Mark per Bot (#424).
 - #356: an `until` window cannot tell whether its end packet came from the body. A periodic packet (a burn or drown hit) can end it before the body's action; on vanilla `check_gap` guards that.
 - #356: a fake sends periodic packets at vanilla's period (fire and lava every 10 ticks, dry grass and drowning 20, freezing 40) and stops where vanilla stops. A fake that hurt every tick put a hit between a window's open and the Group's teleport once the open moved earlier.
