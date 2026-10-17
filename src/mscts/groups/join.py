@@ -10,7 +10,6 @@ import contextlib
 
 from mscts.group import GroupContext, group
 from mscts.groups._world import pin_joins
-from mscts.groups.crafting import RECIPE_ID_MASKS
 from mscts.settle import until_no_player_online
 
 _PLAYER = "alice"
@@ -26,7 +25,7 @@ player stayed would change what the next play's `set_health` sends
 (docs/research/2026-10-03-peaceful-saturation.md)."""
 
 
-@group("join/basic", masks=RECIPE_ID_MASKS)
+@group("join/basic")
 async def basic(context: GroupContext) -> None:
     """One player joins alone and receives the first chunk batch."""
     async with contextlib.AsyncExitStack() as undo:

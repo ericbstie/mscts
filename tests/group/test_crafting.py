@@ -293,29 +293,21 @@ def clicks(window: Window) -> list[tuple[int, int, int]]:
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_each_group_is_exact_masks_the_recipe_ids_and_keeps_the_default_spec(
-    group_id: str,
-) -> None:
+def test_each_group_is_exact_has_no_masks_and_keeps_the_default_spec(group_id: str) -> None:
     group = GROUPS[group_id]
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert group.kind is GroupKind.EXACT
     assert group.requires == ()
-    assert group.masks == crafting.RECIPE_ID_MASKS
+    assert group.masks == ()
     assert group.spec(default) == default
 
 
-def test_the_recipe_id_masks_hide_the_display_ids_and_group_numbers() -> None:
-    assert {(mask.packet, mask.path) for mask in crafting.RECIPE_ID_MASKS} == {
-        ("minecraft:recipe_book_add", "entries[*].contents.id"),
-        ("minecraft:recipe_book_add", "entries[*].contents.group"),
-        ("minecraft:recipe_book_remove", "recipes[*]"),
-    }
-    assert all("ClientRecipeBook" in mask.reason for mask in crafting.RECIPE_ID_MASKS)
+def _book(display_id: int, group: int | None, *, removed: int | None = None) -> Transcript:
+    """A Transcript of a Bot sent one recipe, with `display_id`, then the removal of `removed`.
 
-
-def _book(display_id: int, group: int | None) -> Transcript:
-    """A Transcript of a Bot sent one recipe, with `display_id`, then sent its removal."""
+    `removed` is `display_id` unless given.
+    """
     contents = {
         "id": display_id,
         "display": _DISPLAY,
@@ -326,18 +318,32 @@ def _book(display_id: int, group: int | None) -> Transcript:
     added = {"entries": [{"contents": contents, "flags": 3}], "replace": False}
     return built_transcript(
         ("alice", built_packet("minecraft:recipe_book_add", fields=added)),
-        ("alice", built_packet("minecraft:recipe_book_remove", fields={"recipes": [display_id]})),
+        (
+            "alice",
+            built_packet(
+                "minecraft:recipe_book_remove",
+                fields={"recipes": [display_id if removed is None else removed]},
+            ),
+        ),
     )
 
 
 def test_a_server_that_numbers_its_recipes_another_way_matches() -> None:
-    verdict = compare(_book(339, 4), _book(12, 0), crafting.RECIPE_ID_MASKS)
+    verdict = compare(_book(339, 4), _book(12, 0), GROUPS[BOOK].masks)
 
     assert verdict.outcome is Outcome.MATCH, verdict.detail
 
 
+def test_a_removal_of_another_recipe_than_the_one_added_diverges() -> None:
+    verdict = compare(_book(339, 4), _book(12, 0, removed=13), GROUPS[BOOK].masks)
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("recipes[0]", "#1", "#2")
+    ]
+
+
 def test_a_recipe_in_a_group_on_one_server_only_still_diverges() -> None:
-    verdict = compare(_book(339, 4), _book(339, None), crafting.RECIPE_ID_MASKS)
+    verdict = compare(_book(339, 4), _book(339, None), GROUPS[BOOK].masks)
 
     assert verdict.outcome is Outcome.MISMATCH
 
