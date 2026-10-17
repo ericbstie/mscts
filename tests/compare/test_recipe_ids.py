@@ -58,9 +58,9 @@ class Entry(NamedTuple):
         return {"contents": contents, "flags": self.flags}
 
 
-def book_add(*entries: Entry) -> Packet:
-    """A `recipe_book_add` of `entries`, added to the book."""
-    fields = {"entries": [entry.fields() for entry in entries], "replace": False}
+def book_add(*entries: Entry, replace: bool = False) -> Packet:
+    """A `recipe_book_add` of `entries`, added to the book, or in its place if `replace`."""
+    fields = {"entries": [entry.fields() for entry in entries], "replace": replace}
     return packet(BOOK_ADD, fields=fields)
 
 
@@ -229,16 +229,36 @@ def test_display_ids_are_numbered_in_the_sorted_order() -> None:
     assert _diff_all(reference, candidate) == [("recipes[0]", "#1", "#2")]
 
 
-def test_an_id_first_seen_in_a_removal_takes_the_next_number() -> None:
+def test_an_id_first_seen_in_a_removal_takes_a_number_the_removal_ends() -> None:
     reference = [book_remove(5), book_add(Entry(PLANKS, display_id=5, flags=TOAST))]
+    candidate = [book_remove(8), book_add(Entry(PLANKS, display_id=9, flags=TOAST))]
 
-    assert (
-        _diff_all(reference, [book_remove(8), book_add(Entry(PLANKS, display_id=8, flags=TOAST))])
-        == []
-    )
-    assert _diff_all(
-        reference, [book_remove(8), book_add(Entry(PLANKS, display_id=9, flags=TOAST))]
-    ) == [("entries[0].contents.id", "#1", "#2")]
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_recipe_added_again_after_its_removal_may_take_another_display_id() -> None:
+    planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
+    reference = [book_add(planks_as[0]), book_remove(5), book_add(planks_as[0])]
+    candidate = [book_add(planks_as[1]), book_remove(8), book_add(planks_as[2])]
+
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_number_ended_is_never_given_again() -> None:
+    planks, sticks = Entry(PLANKS, display_id=5), Entry(STICKS, display_id=6)
+    reference = [book_add(planks, sticks), book_remove(5), book_add(Entry(PLANKS, display_id=7))]
+    candidate = [book_add(planks, sticks), book_remove(5), book_add(Entry(PLANKS, display_id=6))]
+
+    assert _diff_all(reference, candidate) == [("entries[0].contents.id", "#3", "#2")]
+
+
+def test_a_book_replaced_ends_every_number() -> None:
+    planks_as = [Entry(PLANKS, display_id=each, group=each) for each in (5, 9)]
+    sticks_as = [Entry(STICKS, display_id=each) for each in (6, 5)]
+    reference = [book_add(planks_as[0], replace=True)] * 2 + [book_add(sticks_as[0])]
+    candidate = [book_add(planks_as[0], replace=True), book_add(planks_as[1], replace=True)]
+
+    assert _diff_all(reference, [*candidate, book_add(sticks_as[1])]) == []
 
 
 def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:

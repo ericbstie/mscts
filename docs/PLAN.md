@@ -2457,10 +2457,17 @@ proves it necessary:
    packets, read after the sort of step 1, so neither server's numbering
    decides it. They are `recipe_book_add`'s `entries[].contents.id` and
    `entries[].contents.group` (None, no group, stays None) and
-   `recipe_book_remove`'s `recipes[]` (`compare._RecipeNumbers`). An id
-   first seen in a removal takes the next number too, and a removal ends
-   no number: the server gives a recipe the same display id every time
-   (`RecipeManager.unpackRecipeInfo` numbers every display once).
+   `recipe_book_remove`'s `recipes[]` (`compare._RecipeNumbers`). A
+   number lasts as long as the client keeps the key: a removal ends the
+   numbers of its ids (`ClientRecipeBook.remove`), and an add with
+   `replace` ends every number before its entries take theirs
+   (`ClientRecipeBook.clear`). A number is never given twice. So a
+   Candidate that gives a recipe another id when it adds it again shows
+   what vanilla does (vanilla keeps the id:
+   `RecipeManager.unpackRecipeInfo` numbers every display once), and one
+   that gives a recipe's id to another while the first still holds it
+   differs. An id first seen in a removal takes the next number, which
+   the removal ends.
    `place_ghost_recipe` holds a display, not an id, and is compared as
    it is; `place_recipe`, which sends an id back, is serverbound. So a
    Candidate that numbers its recipes another way but keeps to it shows
