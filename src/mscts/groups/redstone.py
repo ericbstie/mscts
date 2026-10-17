@@ -266,3 +266,32 @@ async def torch(context: GroupContext) -> None:
         await _observe(context, _BURNOUT, _BURNOUT_TICKS)
         await fast_forward(context.control, _RESTART_FAST_FORWARD)
         await _observe(context, (), _RECOVERY_TICKS)
+
+
+# `redstone/observer`: an observer at x 3 that watches the block west of it, and one at x 8 that
+# watches the block east of it, where Control places a third observer that watches it back.
+
+_OBSERVER_BUILD = (_set(3, 3, "observer[facing=west]"), _set(8, 8, "observer[facing=east]"))
+"""`/setblock` updates a placed block's shape from its neighbours (`BlockInput.place`), which
+starts an observer's pulse: both pulse on ticks 2 to 4."""
+
+_OBSERVER = (
+    _At(0, _set(2, 3, "stone")),
+    _At(6, _set(2, 3, "air")),
+    _At(12, _set(9, 8, "observer[facing=west]")),
+    _At(24, _set(9, 8, "air")),
+)
+"""An observer is powered 2 ticks after the block it watches changes, for 2 ticks
+(`ObserverBlock.startSignal`, `ObserverBlock.tick`), unless a pulse is already due: the stone
+falls inside the first observer's placement pulse, and the air makes it pulse on ticks 8 to 10.
+The third observer and the second watch each other: they pulse in turn from tick 14, a clock,
+until the third goes on tick 24, and the second is off on tick 26."""
+
+_OBSERVER_TICKS = 30
+
+
+@group("redstone/observer", kind=GroupKind.TICK_EXACT)
+async def observer(context: GroupContext) -> None:
+    """An observer pulses when the block it watches changes; two facing each other make a clock."""
+    async with _arena(context, _OBSERVER_BUILD):
+        await _observe(context, _OBSERVER, _OBSERVER_TICKS)
