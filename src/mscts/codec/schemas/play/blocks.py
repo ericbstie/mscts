@@ -85,6 +85,9 @@ _SECTION_BLOCK: WireType[dict[str, int]] = _SectionBlock()
 CLIENTBOUND: Mapping[str, Schema] = {
     # Block Update: the block at `pos` is now `block_state`.
     "minecraft:block_update": Schema(pos=POSITION, block_state=VAR_INT),
+    # Add Transient Block: a falling block landed at `pos` as `block_state`. Sent after the
+    # landing's `block_update`, with the same layout.
+    "minecraft:add_transient_block": Schema(pos=POSITION, block_state=VAR_INT),
     # Update Section Blocks: two or more blocks of one chunk section changed in a tick. Each is
     # its position in the section (0 to 15 on each axis) and block state, in the order sent.
     "minecraft:section_blocks_update": Schema(

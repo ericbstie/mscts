@@ -24,6 +24,44 @@ comparison, because vanilla draws them at random.
 The UUID of an entity that appears. For another player, it is that
 player's UUID, the same one their player list entry holds.
 
+## `add_transient_block`
+
+**Falling block landing**
+
+A falling block, such as sand, landing at one position. Vanilla sends it
+right after the `block_update` that places the block. A server that leaves
+it out, or sends it for another block or position, differs from vanilla
+here. Its fields have their own test cases, below.
+
+## `add_transient_block.block_state`
+
+**Falling block landing state**
+
+The state of the block that landed. Each combination of a block and its
+properties, such as which way an anvil faces, has its own number, so a
+different number is a different block or a differently turned one.
+
+## `add_transient_block.pos.x`
+
+**Falling block landing x**
+
+The x coordinate of the block that landed. A different value lands it in a
+different place.
+
+## `add_transient_block.pos.y`
+
+**Falling block landing y**
+
+The y coordinate of the block that landed. A different value lands it in a
+different place.
+
+## `add_transient_block.pos.z`
+
+**Falling block landing z**
+
+The z coordinate of the block that landed. A different value lands it in a
+different place.
+
 ## `block_entity_data`
 
 **Block entity data**

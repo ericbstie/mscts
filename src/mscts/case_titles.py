@@ -7,6 +7,11 @@ TITLES: Mapping[str, str] = MappingProxyType(
     {
         "add_entity": "Entity appearing",
         "add_entity.entity_uuid": "Entity UUID",
+        "add_transient_block": "Falling block landing",
+        "add_transient_block.block_state": "Falling block landing state",
+        "add_transient_block.pos.x": "Falling block landing x",
+        "add_transient_block.pos.y": "Falling block landing y",
+        "add_transient_block.pos.z": "Falling block landing z",
         "block_entity_data": "Block entity data",
         "block_update": "Single block change",
         "block_update.block_state": "Single block change state",
