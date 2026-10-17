@@ -144,3 +144,76 @@ async def repeater(context: GroupContext) -> None:
     """Repeaters of each delay, a locked one, and one fed a 1-tick pulse, switch on time."""
     async with _arena(context, _REPEATER_BUILD):
         await _observe(context, _REPEATER, _REPEATER_TICKS)
+
+
+# `redstone/comparator`: three comparators at x 3 facing west, so that their rear input is the
+# block at x 2, each with 3 dust after it (x 4 to 6), which show the strength of its output.
+
+
+def _side_input(z: int, toward: int) -> tuple[str, ...]:
+    """A redstone block 3 blocks from the comparator at z, and 2 dust from it to its side.
+
+    The dust beside the comparator is 14 strong. `toward` is 1 if the comparator is south of the
+    redstone block, -1 if north.
+    """
+    return (
+        _set(3, z - 3 * toward, "redstone_block"),
+        _set(3, z - 2 * toward, "redstone_wire"),
+        _set(3, z - toward, "redstone_wire"),
+    )
+
+
+def _comparator_at(z: int, mode: str) -> tuple[str, ...]:
+    """A comparator in `mode` at x 3, z, facing west, and 3 dust after it."""
+    return (
+        _set(3, z, f"comparator[facing=west,mode={mode}]"),
+        f"fill 4 -60 {z} 6 -60 {z} minecraft:redstone_wire",
+    )
+
+
+_CHEST = "2 -60 13"
+
+_COMPARATOR_BUILD = (
+    *_side_input(4, 1),
+    *_comparator_at(4, "compare"),
+    *_side_input(8, -1),
+    *_comparator_at(8, "subtract"),
+    f"setblock {_CHEST} minecraft:chest",
+    *_comparator_at(13, "compare"),
+)
+"""At z 4 a comparator in compare mode, its side fed 14 from the north; at z 8 one in subtract
+mode, fed 14 from the south; at z 13 one in compare mode that reads an empty chest behind it."""
+
+
+def _chest_slot(slot: int, stack: str) -> str:
+    """Put `stack` in the chest's `slot`, with `/item`."""
+    return f"item replace block {_CHEST} container.{slot} with minecraft:{stack}"
+
+
+_FILLED = (1, 2, 3)
+"""The slots filled after the first: 4 stacks of 64 of the chest's 27 slots."""
+
+_COMPARATOR = (
+    _At(0, _set(2, 4, "redstone_block")),
+    _At(0, _set(2, 8, "redstone_block")),
+    _At(4, _set(3, 1, "air")),
+    _At(4, _set(3, 11, "air")),
+    _At(8, _chest_slot(0, "stone 64")),
+    *(_At(12, _chest_slot(slot, "stone 64")) for slot in _FILLED),
+    *(_At(16, _chest_slot(slot, "air")) for slot in (0, *_FILLED)),
+)
+"""A comparator switches 2 ticks after its inputs change (`ComparatorBlock.getDelay`). A rear
+input of 15 against a side of 14 gives 15 in compare mode and 1 in subtract mode on tick 2;
+without the side input, from tick 4, the subtract one gives 15 on tick 6. A chest with one stack
+of 64 gives 1 on tick 10, with four stacks 3 on tick 14, and empty 0 on tick 18
+(`AbstractContainerMenu.getRedstoneSignalFromContainer`)."""
+
+_COMPARATOR_TICKS = 19
+"""The chest's comparator goes off on tick 18; one tick more."""
+
+
+@group("redstone/comparator", kind=GroupKind.TICK_EXACT)
+async def comparator(context: GroupContext) -> None:
+    """Comparators compare and subtract their inputs, and read a chest filled with `/item`."""
+    async with _arena(context, _COMPARATOR_BUILD):
+        await _observe(context, _COMPARATOR, _COMPARATOR_TICKS)
