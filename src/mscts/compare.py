@@ -31,7 +31,7 @@ import json
 import re
 import struct
 from array import array
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
@@ -1364,75 +1364,89 @@ def _replaced(value: _Value, trie: _Trie, number: Callable[[_Value], _Value]) ->
     return value
 
 
-_RECIPE_NUMBERED: Mapping[str, tuple[_Trie, _Trie]] = MappingProxyType(
-    {
-        "minecraft:recipe_book_add": (
-            _Trie.of([("entries", EACH, "contents", "id")]),
-            _Trie.of([("entries", EACH, "contents", "group")]),
-        ),
-        "minecraft:recipe_book_remove": (_Trie.of([("recipes", EACH)]), _Trie.of([])),
-    }
-)
-"""Where each clientbound packet holds recipe display ids, and recipe book group numbers.
+_RECIPE_BOOK_ADD = "minecraft:recipe_book_add"
+_RECIPE_BOOK_REMOVE = "minecraft:recipe_book_remove"
 
-Both are numbers the server picks: the client looks a recipe up by its display id
-(`ClientRecipeBook.known`, a HashMap) and puts the recipes of one category and group number
-in one button (`categorizeAndGroupRecipes`, a HashBasedTable). `place_ghost_recipe` shows a
-display, with no id, and `place_recipe`, which sends one back, is serverbound, so no
-Comparison sees it.
-"""
+
+@dataclass(slots=True)
+class _Numbering:
+    """Keys numbered by first appearance: `#1` is the first.
+
+    Attributes:
+        numbers: Each key's number.
+    """
+
+    numbers: dict[Hashable, int] = dataclasses.field(default_factory=dict)
+
+    def of(self, key: Hashable) -> str:
+        """`key`'s number, written `#<n>`: the next one if it has none."""
+        number = self.numbers.setdefault(key, len(self.numbers) + 1)
+        return f"#{number}"
 
 
 @dataclass(slots=True)
 class _RecipeNumbers:
     """The numbers of the recipe display ids and group numbers in a Bot's compared Packets.
 
+    Both are numbers the server picks: the client looks a recipe up by its display id
+    (`ClientRecipeBook.known`, a HashMap) and puts the recipes of one category and group
+    number in one button (`categorizeAndGroupRecipes`, a HashBasedTable). They are
+    `recipe_book_add`'s `entries[].contents.id` and `.group`, and `recipe_book_remove`'s
+    `recipes[]`. `place_ghost_recipe` shows a display, with no id, and `place_recipe`, which
+    sends one back, is serverbound, so no Comparison sees it.
+
     Each is numbered by first appearance, in the order the Packets are compared (sorted,
-    `UNORDERED`), so neither server's numbering decides it: `#1` is the first. Display ids
-    and group numbers are counted on their own. An id first seen in a `recipe_book_remove`
-    takes the next number too: the server gives a recipe the same id every time.
+    `UNORDERED`), so neither server's numbering decides it. Display ids and group numbers
+    are counted on their own. An id first seen in a `recipe_book_remove` takes the next
+    number too: the server gives a recipe the same id every time.
 
     Attributes:
-        ids: Each display id's number.
-        groups: Each group number's number.
+        ids: The display ids' numbers.
+        groups: The group numbers' numbers.
     """
 
-    ids: dict[int, str] = dataclasses.field(default_factory=dict)
-    groups: dict[int, str] = dataclasses.field(default_factory=dict)
+    ids: _Numbering = dataclasses.field(default_factory=_Numbering)
+    groups: _Numbering = dataclasses.field(default_factory=_Numbering)
 
-    def take(self, packet: Packet) -> None:
-        """Number the display ids and group numbers in `packet`, the next compared one."""
-        tries = _RECIPE_NUMBERED.get(packet.name)
-        if tries is None or packet.fields is None:
-            return
-        fields = _copy(packet, packet.fields)
-        for numbers, trie in zip((self.ids, self.groups), tries, strict=True):
-            for found in _found(fields, trie):
-                if type(found) is int:
-                    numbers.setdefault(found, f"#{len(numbers) + 1}")
+    def number(self, packet: Packet, copies: Sequence[dict[str, _Value]]) -> None:
+        """Number the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
 
-    def apply(self, packet: Packet, fields: dict[str, _Value]) -> None:
-        """Replace each display id and group number in `fields`, a copy of `packet`'s fields."""
-        tries = _RECIPE_NUMBERED.get(packet.name)
-        if tries is None:
-            return
-        for numbers, trie in zip((self.ids, self.groups), tries, strict=True):
-            _replaced(fields, trie, _numbered(numbers))
+        `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
+        the first copy's order numbers them.
+        """
+        for copy in copies:
+            if packet.name == _RECIPE_BOOK_ADD:
+                for contents in _recipe_contents(copy):
+                    self._number_contents(contents)
+            elif packet.name == _RECIPE_BOOK_REMOVE and isinstance(
+                recipes := copy.get("recipes"), list
+            ):
+                recipes[:] = [self.ids.of(each) if type(each) is int else each for each in recipes]
+
+    def _number_contents(self, contents: dict[str, _Value]) -> None:
+        """Number the display id and group number of `contents`, one entry's."""
+        if type(display_id := contents.get("id")) is int:
+            contents["id"] = self.ids.of(display_id)
+        if type(group := contents.get("group")) is int:
+            contents["group"] = self.groups.of(group)
 
 
-def _numbered(numbers: Mapping[int, str]) -> Callable[[_Value], _Value]:
-    """Replace an int `numbers` has by its number; anything else stays as it is."""
-    return lambda value: numbers.get(value, value) if type(value) is int else value
+def _recipe_contents(fields: Mapping[str, _Value]) -> Iterator[dict[str, _Value]]:
+    """The `contents` of each entry of `fields`, a `recipe_book_add`'s, that has them."""
+    entries = fields.get("entries")
+    for entry in entries if isinstance(entries, list) else ():
+        if isinstance(entry, dict) and isinstance(contents := entry.get("contents"), dict):
+            yield contents
 
 
 @dataclass(slots=True)
 class _Numbers:
-    """The names of the entities in a Bot's stream so far, `_stream` feeding it in order.
+    """The names and numbers of a Bot's entities so far, and of its recipes, fed in order.
 
     An entity spawned outside the windows is named by its `add_entity` (`spawned`); any
     other entity id, and each entity UUID, is numbered by first appearance in the compared
-    Packets (`take`): `#1` is the first. So are the recipe display ids and group numbers
-    (`recipes`).
+    Packets (`take`): `#1` is the first. The recipes are numbered on their own (`recipes`,
+    `_normalize`).
 
     Attributes:
         ids: Each entity id's name or number.
@@ -1493,9 +1507,8 @@ class _Numbers:
         Without windows, the first is the Bot's own player, from `login`. An id of None (no
         entity) is not an entity, and neither is the UUID of a player (`ENTITY_UUIDS`). An id
         first seen in a `remove_entities` takes no number: the entity is gone, and a number
-        would shift every later one. The recipes are numbered too (`_RecipeNumbers.take`).
+        would shift every later one.
         """
-        self.recipes.take(packet)
         if packet.fields is None or packet.name == _REMOVE_ENTITIES:
             return
         ids, uuids = _entity_tries(packet.state, packet.name)
@@ -1529,9 +1542,8 @@ class _Numbers:
         A player's UUID took no number, so it stays as it is, unless an entity that is not
         a player had it too: then it shows that entity's number. An id a `remove_entities`
         removes that the Bot never heard of shows `#?` (`_UNKNOWN_ENTITY`): its value is the
-        server's counter, which is timing. So does each recipe display id and group number.
+        server's counter, which is timing.
         """
-        self.recipes.apply(packet, fields)
         ids, uuids = _entity_tries(packet.state, packet.name)
         # `take` has given every other id of the packet a name or number already.
         _replaced(
@@ -1657,6 +1669,7 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     if canonical is None:
         fields = _copy(packet, packet.fields)
         numbers.apply(packet, fields)
+        numbers.recipes.number(packet, (fields,))
         masked = _hide_all(fields, paths)
         return _Normalized(packet=packet, fields=fields, masked=masked)
     raw = _copy(packet, packet.fields)
@@ -1667,6 +1680,7 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     fields = canonical(_copy(packet, packet.fields), context)
     for copy in (raw, parsed, unmasked, fields):
         numbers.apply(packet, copy)
+    numbers.recipes.number(packet, (raw, parsed, unmasked, fields))
     for copy in (raw, parsed):
         _hide_all(copy, paths)
     masked = _hide_all(fields, paths)

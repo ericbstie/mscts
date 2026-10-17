@@ -2457,7 +2457,7 @@ proves it necessary:
    packets, read after the sort of step 1, so neither server's numbering
    decides it. They are `recipe_book_add`'s `entries[].contents.id` and
    `entries[].contents.group` (None, no group, stays None) and
-   `recipe_book_remove`'s `recipes[]` (`compare._RECIPE_NUMBERED`). An id
+   `recipe_book_remove`'s `recipes[]` (`compare._RecipeNumbers`). An id
    first seen in a removal takes the next number too, and a removal ends
    no number: the server gives a recipe the same display id every time
    (`RecipeManager.unpackRecipeInfo` numbers every display once).
