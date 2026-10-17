@@ -2058,7 +2058,10 @@ proves it necessary:
      (`RecipeToast.addOrUpdate`), an `ArrayList` the toast shows one after
      another, so those keep their order. (An entry that repeats another's
      display id and shows something else may move past it, so which of
-     the two the client keeps is not compared; vanilla never repeats one.)
+     the two the client keeps is not compared; vanilla never repeats one.
+     Two entries that show the same keep the order between them that each
+     server sent, which shows in their numbers only where their groups
+     differ.)
    - the order of packets about different chunks, and where they fall
      among packets whose handling reads no chunk. A *chunk packet* is a
      `level_chunk_with_light`, `light_update` or `forget_level_chunk`:
