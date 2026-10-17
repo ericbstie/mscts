@@ -1680,7 +1680,8 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # section_blocks_update's blocks (#320), and
                                     # recipe_book_add's entries with no toast flag, by what
                                     # each shows, not by the server's display id or group
-                                    # number (#363)
+                                    # number, and recipe_book_remove's ids, by the numbers
+                                    # they take (#363)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -2062,6 +2063,15 @@ proves it necessary:
      Two entries that show the same keep the order between them that each
      server sent, which shows in their numbers only where their groups
      differ.)
+     `play` / `minecraft:recipe_book_remove` (#363): `recipes` is sorted
+     by the numbers its display ids take in step 2, once they are
+     numbered, since each server picks its ids. Vanilla lists them in the
+     order of the collection it is given (`ServerRecipeBook.removeRecipes`).
+     The client removes each id from its book at its own key and refreshes
+     the book once after all of them (`javap` on the 26.3 client:
+     `ClientPacketListener.handleRecipeBookRemove` calls
+     `ClientRecipeBook.remove`, a `HashMap.remove` and a `HashSet.remove`,
+     for each id, then `refreshRecipeBook`), so their order is not kept.
    - the order of packets about different chunks, and where they fall
      among packets whose handling reads no chunk. A *chunk packet* is a
      `level_chunk_with_light`, `light_update` or `forget_level_chunk`:

@@ -2785,7 +2785,9 @@ Recipes the client removes from the player's recipe book.
 
 **Display ids removed**
 
-The display ids of the recipes removed in one packet.
+The display ids of the recipes removed in one packet. The client removes
+each one on its own, so they can come in any order, and are compared
+sorted by their numbers.
 
 ## `recipe_book_remove.recipes[]`
 
