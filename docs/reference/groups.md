@@ -756,6 +756,38 @@ together. In a frozen world the scheduled ticks of the fluids run only on the ti
 steps, so each placement takes effect on the tick its delay says. A window lasts until every
 source has had its last scheduled tick, which leaves none due for the next play.
 
+## Redstone (`redstone`)
+
+When repeaters, comparators, torches, observers and dust switch, tick by tick, and in what order
+dust updates the blocks around it. A Bot called `watcher` stands at the spawn. Control stops
+random ticks, freezes the world, and builds what a Group needs with `/setblock` on the grass of
+the spawn chunk. Then, in an Observation window, Control places and removes the blocks that power
+each circuit and steps the world one tick at a time. The window compares the blocks that change
+on each tick, a piston's block event, a torch burning out (`level_event` 1502), and any sound.
+Whether a component is powered, whether a torch is lit and how strong a dust is are all part of a
+block's state.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `redstone/repeater` | tick-exact | none | Control powers four repeaters with delays 1 to 4, a locked repeater, and a repeater with a delay of 4 for a single tick. Later it removes their inputs and the lock. The world steps 19 ticks. Vanilla switches a repeater 2 ticks per unit of delay after its input changes, turns the locked one on only once its lock is gone, and stretches the 1-tick pulse to 8 ticks. | none |
+| `redstone/comparator` | tick-exact | none | Control powers a comparator in compare mode and one in subtract mode from behind, each with a signal of 14 at its side, then removes the side signals. A third comparator reads a chest behind it, which Control fills with 1 stack, then 4, then empties. The world steps 19 ticks. Vanilla switches a comparator 2 ticks after its inputs change: the compare one outputs 15, the subtract one 1 and then 15, and the chest's one 1, 3 and 0, which the dust after each shows. | none |
+| `redstone/torch` | tick-exact | none | Control powers the block under a torch and takes the power away 4 ticks later, then does the same to a second torch 8 times, every 4 ticks. It steps the world 155 ticks at once outside any window, then 5 ticks more. The windows step 43 ticks in all. Vanilla turns a torch off 2 ticks after its block is powered and on 2 ticks after the power goes. The 8th time the second torch turns off within 60 ticks, it burns out, and it lights again 160 ticks later. | none |
+| `redstone/observer` | tick-exact | none | Control places stone in front of an observer, then takes it away. Then it places a third observer facing a second one, which faces it back, and takes it away 12 ticks later. The world steps 30 ticks. Vanilla powers an observer for 2 ticks, 2 ticks after the block in front of it changes, and also once after `/setblock` places it. The two observers facing each other pulse in turn, a clock that stops when one goes. | none |
+| `redstone/dust` | tick-exact | none | Control powers a line of 16 dust for one tick. Then, a tick apart, it places dust beside a lone dust, turns that dust into stone, puts dust on the stone, and puts stone above the lone dust, then takes them away. The world steps 10 ticks. Vanilla changes dust in the tick its neighbour changes: the line's strength falls by 1 a block, from 15 to 0 at the 16th, and the lone dust connects to the dust beside it, climbs onto the stone, and loses the climb while stone is above it. | none |
+| `redstone/update-order` | tick-exact | none | Control builds two copies of one case at different places: a dust between two blocks of stone, and beside each stone a piston, both facing the same block. It powers and unpowers each dust, 5 ticks apart. The world steps 21 ticks. Vanilla updates the blocks around a dust in an order set by where the dust is, so only the piston it updates first extends: the north one in the first copy, the south one in the second. | none |
+
+`redstone/update-order` masks the pitch of `sound`: vanilla draws a piston's pitch at random.
+Which sound plays, where and at what volume is still compared.
+
+Vanilla sends no comparator's output strength: it is kept in the comparator's block entity, not
+in its block state. So each comparator has dust after it, whose strength shows the output.
+
+In a frozen world, scheduled ticks run only on the ticks the world steps, so each change takes
+effect on the tick its delay says. A window lasts until the last component has switched, so that
+no tick is left due: the server would save it with the chunk, and it would run in the next play.
+When a Group ends, Control clears what it built with `/fill ... strict`, which updates none of
+the blocks beside the ones it clears, so it schedules no tick either.
+
 ## Spawning (`spawn`)
 
 Where a new player first appears. Vanilla spreads new players over the blocks within `respawn_radius` of the world spawn, 10 by default, instead of stacking them on one block, and picks a safe one. Both Groups are `statistical`: each plays many times on each server and compares the distributions of what it records, and `mscts run` plays them only with `--statistical` (see [Writing a Group](/guide/writing-a-group)).
@@ -809,7 +841,7 @@ commands as chat, so the clock is no operator during that step.
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
-| Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
+| Pistons, hoppers and redstone glitches | Tick-by-tick observation under `/tick freeze` and `/tick step`, as in [Redstone](#redstone-redstone) | Their Groups. The `tick-exact` kind they use exists. |
 | Mob spawning and loot | Distributions over many runs | Its Groups. The `statistical` kind they use exists, in its own opt-in tier. |
 See [Project status](/status) for the order.
 
