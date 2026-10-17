@@ -99,6 +99,7 @@ async def _play(
     *,
     late: frozenset[str] = frozenset(),
     due_at_once: bool = False,
+    held: bool = True,
 ) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
@@ -108,6 +109,7 @@ async def _play(
             kills_after=KILLS_AFTER.get(group_id),
             late=late,
             due_at_once=due_at_once,
+            held=held,
         ),
         timeout_s=PLAY_TIMEOUT_S,
     ) as endpoint:
@@ -697,27 +699,20 @@ def test_a_lava_hit_that_comes_as_soon_as_it_can_does_not_reach_the_dry_grass_wi
     ]
 
 
-def lava_left_late() -> Callable[[], float]:
-    """A clock that reads 0 s at each hit, then 0.5 s from the move out of the lava on.
-
-    That move comes later than the 8 ticks (0.4 s) the lava's next hit allows, and every later
-    window opens on time.
-    """
-    now = iter([0.0, 0.0])
-    return lambda: next(now, 0.5)
-
-
-def test_fire_fails_when_the_bot_leaves_the_lava_after_its_next_hit_may_have_come() -> None:
-    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
-        asyncio.run(_play("player/fire", clock=lava_left_late()))
+def test_fire_fails_when_the_next_lava_hit_comes_before_the_bot_is_moved_out() -> None:
+    # Hits sent the moment they are due, without waiting for a barrier: the second lava hit
+    # comes before the move out of the lava, which the Group sees by the order of the packets,
+    # however late the Bot reads them.
+    with pytest.raises(ProtocolError, match="took another hit before it was moved out"):
+        asyncio.run(_play("player/fire", due_at_once=True, held=False))
 
 
 def after_the_move_out(seconds: float) -> Callable[[], float]:
-    """A clock that reads 0 s at each hit and at the move out of the lava, then `seconds`.
+    """A clock that reads 0 s at each hit, then `seconds` once the Bot is out of the lava.
 
     So the dry-grass window opens `seconds` after the lava's hit, and every later one on time.
     """
-    now = iter([0.0, 0.0, 0.0])
+    now = iter([0.0, 0.0])
     return lambda: next(now, seconds)
 
 

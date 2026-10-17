@@ -262,6 +262,11 @@ _SET_HEALTH = "minecraft:set_health"
 _DAMAGE_TIMEOUT_S = 60.0
 """How long a window waits for a hit: drowning takes 320 ticks, 16 s at 20 ticks a second."""
 
+_MOVED = "minecraft:player_position"
+
+_MOVE_TIMEOUT_S = 10.0
+"""How long the Bot waits for the server to move it after a `/tp`."""
+
 _TICK_S = 0.05
 
 _SLACK_TICKS = 2
@@ -309,6 +314,25 @@ class _Hits:
         """Wait for the Bot's next `set_health`, and note when it came, for `check_gap`."""
         await self._bot.expect(_SET_HEALTH, timeout_s=_DAMAGE_TIMEOUT_S)
         self._last_hit = clock()
+
+    async def moved_before_the_next_hit(self) -> None:
+        """Wait for the Bot's `player_position` after a `/tp`; fail if a `set_health` comes first.
+
+        For a move out of what hurts the Bot, made right after a hit. The server sends the
+        `player_position` when it runs the move, so a hit that comes before it was sent before
+        the move: the windows from here on would hold another health. Unlike `check_gap`, this
+        holds however late the Bot reads its packets.
+
+        Raises:
+            ProtocolError: The next hit came before the move.
+        """
+        packet = await self._bot.expect(_MOVED, _SET_HEALTH, timeout_s=_MOVE_TIMEOUT_S)
+        if packet.name == _SET_HEALTH:
+            msg = (
+                f"{self._bot.name} took another hit before it was moved out of what hurt it: "
+                "the windows would hold another health from here on"
+            )
+            raise ProtocolError(msg)
 
     @contextlib.asynccontextmanager
     async def window(
@@ -477,7 +501,7 @@ async def fire(context: GroupContext) -> None:
             # the hit's immunity makes the burn due then (fire 300) hurt nothing, so the first
             # burn on the dry grass comes 20 ticks later (at 280) on every server.
             await _tp(context, bot, _at(_DRY_LANE, -60.0))
-            hits.check_gap(_INVULNERABLE_TICKS)
+            await hits.moved_before_the_next_hit()
         async with hits.window(PACKETS, period_ticks=_BURN_PERIOD):
             pass
         async with context.observe(*PACKETS):

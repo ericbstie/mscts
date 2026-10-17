@@ -11,7 +11,15 @@ from mscts.codec.packets import Packet
 from support.bot_join import RESPAWN
 from support.control import CHAT_COMMAND, CLIENT_COMMAND, CONTROL, MARKER, text, tree
 from support.gametime import gametime_answer
-from tests.net.fakes import EMPTY_CHUNK, NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
+from tests.net.fakes import (
+    EMPTY_CHUNK,
+    NO_STATISTICS,
+    SPAWN,
+    TICK_S,
+    JoinScript,
+    Peer,
+    join_server,
+)
 
 PERFORM_RESPAWN = 0
 
@@ -85,6 +93,10 @@ class PlayerServer:
     game_time: int = 0
     """The game time the next `time query gametime` answers: each answer moves it on by
     `FADE_TICKS`."""
+    teleports: int = 0
+    """How many `player_position` the fake has sent: the last teleport id."""
+    held: bool = True
+    """Whether each hit waits for a barrier since the last; False sends it when it is due."""
 
     def __post_init__(self) -> None:
         """No hit has come yet, so the first is not held back."""
@@ -139,8 +151,27 @@ class PlayerServer:
             await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
         elif command.startswith(("tp ", "kill ")):
             self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
+            if command.startswith("tp "):
+                await self._teleport(command)
             if command in self.hurts:
                 self.hurting = asyncio.create_task(self._hurt(self.hurts[command]))
+
+    async def _teleport(self, command: str) -> None:
+        """Send the player a `tp` moves its `player_position`, as vanilla does when it runs it."""
+        _, name, *at = command.split()
+        peer = self.players.get(name)
+        if peer is not None:
+            self.teleports += 1
+            x, y, z = (float(part) for part in at)
+            await peer.send(
+                "minecraft:player_position",
+                **{**SPAWN, "x": x, "y": y, "z": z},
+                teleport_id=self.teleports,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                velocity_z=0.0,
+                flags=0,
+            )
 
     def _stop_hurting(self) -> None:
         if self.hurting is not None:
@@ -153,7 +184,8 @@ class PlayerServer:
         with suppress(ConnectionError):
             while True:
                 await asyncio.sleep(0 if self.due_at_once else ticks * TICK_S)
-                await self.barrier_since_hit.wait()
+                if self.held:
+                    await self.barrier_since_hit.wait()
                 self.barrier_since_hit.clear()
                 ticks = hurt.period_ticks
                 for name, peer in list(self.players.items()):
