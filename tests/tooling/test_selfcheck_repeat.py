@@ -1,7 +1,15 @@
 """How many times the Self-check tier plays each Group: 3, or MSCTS_SELFCHECK_REPEAT (#84)."""
 
 import pytest
-from support.selfcheck import DEFAULT_REPEAT, REPEAT_VAR, repeat_from
+from support.selfcheck import (
+    DEFAULT_REPEAT,
+    MIN_LIMIT_S,
+    PLAY_LIMIT_S,
+    REPEAT_VAR,
+    SLOW_PLAY_LIMIT_S,
+    repeat_from,
+    time_limit_s,
+)
 
 
 def test_a_group_is_played_3_times_by_default() -> None:
@@ -26,3 +34,23 @@ def test_anything_but_a_whole_number_of_at_least_1_is_refused_naming_the_variabl
         ValueError, match=rf"MSCTS_SELFCHECK_REPEAT is {text!r}: it must be a whole"
     ):
         repeat_from({REPEAT_VAR: text})
+
+
+def test_a_group_gets_the_default_play_limit_unless_it_is_listed() -> None:
+    assert time_limit_s("blocks/clone", 20) == PLAY_LIMIT_S * 20
+    assert "blocks/clone" not in SLOW_PLAY_LIMIT_S
+
+
+def test_a_listed_group_gets_its_own_play_limit() -> None:
+    assert time_limit_s("player/starvation", 20) == SLOW_PLAY_LIMIT_S["player/starvation"] * 20
+    assert time_limit_s("player/starvation", 20) > time_limit_s("blocks/clone", 20)
+
+
+def test_every_listed_group_has_more_than_the_default_play_limit() -> None:
+    assert all(limit > PLAY_LIMIT_S for limit in SLOW_PLAY_LIMIT_S.values())
+
+
+@pytest.mark.parametrize("group_id", ["blocks/clone", "player/starvation"])
+def test_the_limit_is_at_least_the_minimum_whatever_the_repeat(group_id: str) -> None:
+    assert time_limit_s(group_id, 1) == MIN_LIMIT_S
+    assert time_limit_s(group_id, 3) == MIN_LIMIT_S

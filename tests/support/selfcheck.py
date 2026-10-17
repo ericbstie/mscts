@@ -2,10 +2,12 @@
 
 `tests/selfcheck/conftest.py` imports `pytest_generate_tests` from here, so a test that takes a
 `group_id` runs once for each Group in `GROUPS`, with the Group's id as its test id. Nothing
-else needs to be written when a Group is registered (#84).
+else needs to be written when a Group is registered (#84). Each case carries its Group's time
+limit (`time_limit_s`): 90 s a play, and more for the few Groups in `SLOW_PLAY_LIMIT_S` (#423).
 """
 
 import dataclasses
+import os
 from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 
@@ -23,6 +25,21 @@ from mscts.transcript import Transcript
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
 """How many times a Group is played by default; a Group's PR runs 20 once, by hand."""
+PLAY_LIMIT_S = 90
+"""Seconds a play of a Group may take, unless `SLOW_PLAY_LIMIT_S` lists it (#182).
+
+It was twice the 45 s a play of `blocks/clone`, then the slowest Group; the Groups that have
+since outgrown it are listed."""
+MIN_LIMIT_S = 900
+"""The least a Self-check's time limit is, whatever the repeat: two boots and a few plays."""
+SLOW_PLAY_LIMIT_S: Mapping[str, int] = {
+    # 112 s a play on main (3 plays: 336.6 s; load average 0.76 before, 1.18 after), twice that
+    # for headroom, as the default has (#423).
+    "player/starvation": 225,
+}
+"""Seconds a play may take, for the Groups that need more than `PLAY_LIMIT_S`. A Group goes in
+with its play time measured on main (`mise run test:selfcheck` with `--durations`) and the load
+average, and twice that as its limit."""
 MAX_VERDICTS = 3
 """How many Verdicts that are not `match` a failure message lists."""
 MAX_DIVERGENCES = 5
@@ -46,6 +63,11 @@ def repeat_from(environ: Mapping[str, str]) -> int:
         msg = f"{REPEAT_VAR} is {text!r}: it must be a whole number of at least 1"
         raise ValueError(msg)
     return repeat
+
+
+def time_limit_s(group_id: str, repeat: int) -> int:
+    """Seconds pytest lets `group_id`'s Self-check run when each play is played `repeat` times."""
+    return max(MIN_LIMIT_S, SLOW_PLAY_LIMIT_S.get(group_id, PLAY_LIMIT_S) * repeat)
 
 
 def may_replay(groups: Sequence[Group], verdicts: Sequence[Verdict]) -> bool:
@@ -202,7 +224,24 @@ def selfcheck_params(groups: Mapping[str, Group]) -> list[ParameterSet]:
     ]
 
 
+def with_time_limits(params: Sequence[ParameterSet], repeat: int) -> list[ParameterSet]:
+    """`params` (each a `group_id`) with the pytest timeout of its Group at `repeat` plays.
+
+    The limit is a mark on each case: pytest-timeout reads the closest `timeout` mark when a
+    test starts, so a module-wide mark cannot give one Group more time than the rest.
+    """
+    return [
+        pytest.param(
+            *param.values,
+            id=param.id,
+            marks=[*param.marks, pytest.mark.timeout(time_limit_s(str(param.values[0]), repeat))],
+        )
+        for param in params
+    ]
+
+
 def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
-    """Give every test that takes a `group_id` one run per registered Group."""
+    """Give every test that takes a `group_id` one run per registered Group, with its limit."""
     if "group_id" in metafunc.fixturenames:
-        metafunc.parametrize("group_id", selfcheck_params(GROUPS))
+        cases = with_time_limits(selfcheck_params(GROUPS), repeat_from(os.environ))
+        metafunc.parametrize("group_id", cases)
