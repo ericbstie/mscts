@@ -758,6 +758,15 @@ source has had its last scheduled tick, which leaves none due for the next play.
 
 ## Redstone (`redstone`)
 
+When repeaters, comparators, torches, observers and dust switch, tick by tick, and in what order
+dust updates the blocks around it. A Bot called `watcher` stands at the spawn. Control stops
+random ticks, freezes the world, and builds what a Group needs with `/setblock` on the grass of
+the spawn chunk. Then, in an Observation window, Control places and removes the blocks that power
+each circuit and steps the world one tick at a time. The window compares the blocks that change
+on each tick, a piston's block event, a torch burning out (`level_event` 1502), and any sound.
+Whether a component is powered, whether a torch is lit and how strong a dust is are all part of a
+block's state.
+
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `redstone/repeater` | tick-exact | none | Control powers four repeaters with delays 1 to 4, a locked repeater, and a repeater with a delay of 4 for a single tick. Later it removes their inputs and the lock. The world steps 19 ticks. Vanilla switches a repeater 2 ticks per unit of delay after its input changes, turns the locked one on only once its lock is gone, and stretches the 1-tick pulse to 8 ticks. | none |
@@ -769,6 +778,15 @@ source has had its last scheduled tick, which leaves none due for the next play.
 
 `redstone/update-order` masks the pitch of `sound`: vanilla draws a piston's pitch at random.
 Which sound plays, where and at what volume is still compared.
+
+Vanilla sends no comparator's output strength: it is kept in the comparator's block entity, not
+in its block state. So each comparator has dust after it, whose strength shows the output.
+
+In a frozen world, scheduled ticks run only on the ticks the world steps, so each change takes
+effect on the tick its delay says. A window lasts until the last component has switched, so that
+no tick is left due: the server would save it with the chunk, and it would run in the next play.
+When a Group ends, Control clears what it built with `/fill ... strict`, which updates none of
+the blocks beside the ones it clears, so it schedules no tick either.
 
 ## Spawning (`spawn`)
 
@@ -823,7 +841,7 @@ commands as chat, so the clock is no operator during that step.
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
-| Redstone and glitches | Tick-by-tick observation under `/tick freeze` and `/tick step` | Its Groups. The `tick-exact` kind they use exists. |
+| Pistons, hoppers and redstone glitches | Tick-by-tick observation under `/tick freeze` and `/tick step`, as in [Redstone](#redstone-redstone) | Their Groups. The `tick-exact` kind they use exists. |
 | Mob spawning and loot | Distributions over many runs | Its Groups. The `statistical` kind they use exists, in its own opt-in tier. |
 See [Project status](/status) for the order.
 
