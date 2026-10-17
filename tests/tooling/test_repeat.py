@@ -10,6 +10,7 @@ import fcntl
 import importlib.util
 import os
 import select
+import signal
 import subprocess
 import sys
 import time
@@ -415,6 +416,24 @@ def test_stress_does_not_run_while_the_series_waits_for_the_lock(tmp_path: Path)
             assert series.runs() == []
         assert _finish(process) == 0
         assert series.runs() == [f"locked 1 {process.pid}"]
+
+
+def test_an_interrupted_series_keeps_the_holders_pid_in_place(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        series.cache.mkdir()
+        with (series.cache / "live-tier.lock").open("w") as other_holder:
+            fcntl.flock(other_holder, fcntl.LOCK_EX)
+            other_holder.write(f"{os.getpid()}\n")
+            other_holder.flush()
+            process = start("--live-lock")
+            assert process.stderr is not None
+            ready, _, _ = select.select([process.stderr], [], [], 10)
+            assert ready, "the series did not say it was waiting"
+            assert process.stderr.readline().startswith("waiting for another live tier")
+            process.send_signal(signal.SIGINT)
+            assert process.wait(timeout=10) != 0
+            assert (series.cache / "live-tier.lock").read_text().strip() == str(os.getpid())
+            assert series.runs() == []
 
 
 def test_killing_a_series_keeps_the_lock_until_its_run_exits(tmp_path: Path) -> None:

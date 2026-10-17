@@ -397,6 +397,20 @@ def test_a_finished_holder_leaves_no_pid_for_a_waiter_to_name(tmp_path: Path) ->
     assert (tmp_path / "cache" / "live-tier.lock").read_text() == ""
 
 
+def test_a_waiter_interrupted_while_it_waits_keeps_the_holders_pid_in_place(
+    tmp_path: Path,
+) -> None:
+    with command(tmp_path) as holder:
+        assert line(holder.stdout) == "started"
+        named = until_the_wrapper_names_its_command(tmp_path, holder)
+        with command(tmp_path) as waiter:
+            assert line(waiter.stderr).startswith("waiting for another live tier to finish")
+            os.kill(waiter.pid, signal.SIGINT)
+            assert waiter.wait(timeout=5) != 0
+        assert (tmp_path / "cache" / "live-tier.lock").read_text().strip() == str(named)
+        assert finish(holder) == 0
+
+
 def load_live_lock() -> types.ModuleType:
     """Load scripts/live_lock.py by path (scripts/ is not an importable package)."""
     spec = importlib.util.spec_from_file_location("live_lock", SCRIPT)
@@ -418,6 +432,33 @@ def test_a_hold_keeps_the_lock_until_its_block_ends(tmp_path: Path) -> None:
     assert lock.read_text() == ""
     with lock.open("r+") as other:
         fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def lowest_free_descriptor() -> int:
+    """The number the next `open` would get: a leaked descriptor changes it."""
+    descriptor = os.dup(0)
+    os.close(descriptor)
+    return descriptor
+
+
+def test_a_hold_interrupted_while_it_waits_leaves_the_pid_and_no_descriptor_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    live_lock = load_live_lock()
+    lock = tmp_path / "live-tier.lock"
+    lock.write_text("4242\n")
+
+    def interrupted(_descriptor: int, _queue: Path) -> None:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(live_lock, "_take_lock", interrupted)
+    next_free_before = lowest_free_descriptor()
+
+    with pytest.raises(KeyboardInterrupt), live_lock.hold_live_lock(tmp_path, {}):
+        pass
+
+    assert lock.read_text() == "4242\n"
+    assert lowest_free_descriptor() == next_free_before
 
 
 def test_a_signal_that_arrives_before_the_command_starts_reaches_it(
