@@ -443,11 +443,13 @@ difficulty, because peaceful stops most damage.
 
 Natural regeneration and random ticks are off, so nothing but the Group changes the Bot's health
 or the blocks. (Mobs do not spawn either, but that is the Fixture world's rule, not the Group's.)
+The Group clears the weather and stops its cycle (`advance_weather`), because rain puts out a
+burning player and a storm can start on one server and not on the other.
 A server saves a player where it leaves. Control is online before the Group starts, so it joins
 where the last Group left it, which is 96 blocks from the spawn. The Group moves it there so that
 its entity never reaches a window. Each Bot joins where the last play left it, and the Group puts
 it back at the spawn when it ends, so that it does not rejoin inside a block. Once a Group is over,
-the two rules are set back to their values and the blocks it set are removed.
+the three rules are set back to their values and the blocks it set are removed.
 
 A frozen world does not freeze a player: it ticks 20 times a second either way. A fall is
 different, because vanilla works out its damage when it reads the move that lands. So `player/fall`

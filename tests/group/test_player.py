@@ -42,7 +42,9 @@ CONTROL = "control"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 PERFORM_RESPAWN = 0
-COMMANDS = tree("gamerule", "tp", "tick", "setblock", "effect", "fill", "kill", "tellraw")
+COMMANDS = tree(
+    "gamerule", "tp", "tick", "setblock", "effect", "fill", "kill", "tellraw", "weather"
+)
 PLAY_TIMEOUT_S = 300.0
 """How long a fake serves a Bot: a play takes about 30 s when the host is idle, and several
 times that under load."""
@@ -291,9 +293,11 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
 ) -> None:
     transcript, result = play(group_id)
 
-    assert result.first[:5] == (
+    assert result.first[:7] == (
         "gamerule player_movement_check false",
         "gamerule respawn_radius 0",
+        "gamerule advance_weather false",
+        "weather clear",
         "gamerule natural_health_regeneration false",
         "gamerule random_tick_speed 0",
         "tp control 96.5 -60 96.5",
@@ -304,9 +308,10 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
     commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
     first_tp = next(t for t, what in commands if str(what).startswith("tp control"))
     assert first_tp < hello
-    assert result.after[-5:] == (
+    assert result.after[-6:] == (
         "gamerule random_tick_speed 3",
         "gamerule natural_health_regeneration true",
+        "gamerule advance_weather true",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
         "tick unfreeze",
@@ -633,6 +638,17 @@ def test_fire_waits_for_a_hit_in_each_place_but_the_water() -> None:
         opened(*player.PACKETS),
         opened(*player.PACKETS),
     ]
+
+
+def test_the_fire_windows_open_with_the_weather_cleared_and_its_cycle_stopped() -> None:
+    # Rain puts out a burning player, so a storm the weather cycle started during an earlier
+    # Group would end the burn on the dry grass on one Instance only (#426).
+    result = played("player/fire")
+
+    stopped = result.first.index("gamerule advance_weather false")
+    assert result.first.index("weather clear") > stopped
+    assert result.first.index("tick freeze") > stopped
+    assert result.after.count("gamerule advance_weather true") == 1
 
 
 def test_fire_builds_water_lava_and_fire_after_the_freeze_and_restores_the_world() -> None:

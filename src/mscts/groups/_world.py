@@ -55,6 +55,18 @@ async def pin_joins(control: Control, undo: contextlib.AsyncExitStack) -> None:
     undo.push_async_callback(control.run, f"{_RESPAWN_RADIUS} 10")
 
 
+async def calm_weather(control: Control, undo: contextlib.AsyncExitStack) -> None:
+    """Stop the weather cycle and clear the weather, through `control`; push the undo.
+
+    Turns `advance_weather` off, pushing onto `undo` the command that turns it back on
+    (vanilla's default), then runs `weather clear`. A storm that the cycle started during an
+    earlier Group would otherwise reach the windows on one Instance only (#426).
+    """
+    await control.run("gamerule advance_weather false")
+    undo.push_async_callback(control.run, "gamerule advance_weather true")
+    await control.run("weather clear")
+
+
 async def join_at_spawn(context: GroupContext, undo: contextlib.AsyncExitStack, name: str) -> Bot:
     """Join a Bot, and have it put back at the spawn when the Group ends.
 
