@@ -229,6 +229,13 @@ def test_the_order_of_a_removal_is_no_difference() -> None:
     assert _diff_all([added, book_remove(9, 7)], [added, book_remove(7, 9)]) == []
 
 
+def test_a_removed_value_that_is_no_display_id_is_compared_after_the_ids() -> None:
+    def removal(*recipes: object) -> Packet:
+        return packet(BOOK_REMOVE, fields={"recipes": list(recipes)})
+
+    assert _diff_all([removal(None, 7)], [removal(7, "x")]) == [("recipes[1]", None, "x")]
+
+
 def test_a_removal_is_compared_sorted_with_its_reason() -> None:
     reason = UNORDERED[BOOK_REMOVE]
 
