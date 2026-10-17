@@ -24,6 +24,10 @@ def _items(*filters: str) -> str:
     return f"@e[{','.join(('type=minecraft:item,x=0.5,y=-60,z=0.5,distance=..20', *filters))}]"
 
 
+WATCHER_AT = "4.5 -60 0.5"
+"""Where a watcher stands: in the spawn's chunk, a few blocks from the Bot, so that the server
+tells it about the Bot, and not on the Bot, which a player standing in it would push."""
+
 _BEFORE = "mscts_inventory_before"
 """The tag an item already there carries while a Group plays."""
 
@@ -59,11 +63,13 @@ PICKUP_PITCH = Mask(
 
 
 @contextlib.asynccontextmanager
-async def _arena(context: GroupContext, name: str) -> AsyncIterator[Bot]:
+async def _arena(context: GroupContext, name: str, *watchers: str) -> AsyncIterator[Bot]:
     """Join the Bot `name` empty, in survival, at the spawn looking down; freeze the world.
 
-    Undoes it all on exit, each undo even if another fails: the new items go first, before the
-    Bot is emptied, since a player picks up an item with no pickup delay as soon as it has room.
+    Each of `watchers` joins first, in survival, and stands at `WATCHER_AT`: it receives what the
+    server tells the other players about `name`. Undoes it all on exit, each undo even if another
+    fails: the new items go first, before the Bot is emptied, since a player picks up an item with
+    no pickup delay as soon as it has room.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
@@ -71,9 +77,14 @@ async def _arena(context: GroupContext, name: str) -> AsyncIterator[Bot]:
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
         await control.run(f"tag {_items()} add {_BEFORE}")
         undo.push_async_callback(control.run, f"tag {_items()} remove {_BEFORE}")
+        for watcher in watchers:
+            await join_at_spawn(context, undo, watcher)
         bot = await join_at_spawn(context, undo, name)
         undo.push_async_callback(control.run, f"clear {name}")
         undo.push_async_callback(control.run, _KILL_NEW_ITEMS)
+        for watcher in watchers:
+            await control.run(f"gamemode survival {watcher}")
+            await control.run(f"tp {watcher} {WATCHER_AT}")
         await control.run(f"gamemode survival {name}")
         await control.run(f"clear {name}")
         await control.run(f"tp {name} {SPAWN_AT} 0 90")
@@ -202,6 +213,46 @@ async def drop(context: GroupContext) -> None:
             async with context.observe(*DROP_PACKETS):
                 await bot.drop(all=case.all)
                 await context.step_after(bot, ticks=case.ticks)
+
+
+# `inventory/offhand`
+
+_SWAPPER, _WATCHER = "swapper", "watcher"
+
+OFFHAND_PACKETS = (
+    "minecraft:container_set_slot",
+    "minecraft:set_player_inventory",
+    "minecraft:entity_event",
+    "minecraft:set_equipment",
+)
+"""What a swap window compares: the Bot's slots, and what the watcher is told of the swap.
+
+Vanilla tells the watcher of a swap with the entity event SWAP_ITEMS (55), not with the new
+equipment: `LivingEntity.handleHandSwap` sends the event when the main hand now holds what the
+off hand held and the other way round, and takes both slots out of the equipment it sends
+(26.3 javap). A server that sends `set_equipment` instead shows up as that packet in the window.
+"""
+
+SWAPS = (
+    ("hotbar.0 with minecraft:stone 64",),
+    ("weapon.offhand with minecraft:torch 8",),
+    ("hotbar.0 with minecraft:stone 64", "weapon.offhand with minecraft:torch 8"),
+)
+"""What the Bot holds before each swap, set with `/item replace`: an item in the main hand only,
+in the off hand only, and in both. The Bot holds its first hotbar slot."""
+
+
+@group("inventory/offhand")
+async def offhand(context: GroupContext) -> None:
+    """The Bot swaps hands with an item in one hand, in the other and in both, a watcher beside."""
+    async with _arena(context, _SWAPPER, _WATCHER) as bot:
+        for held in SWAPS:
+            await context.control.run(f"clear {_SWAPPER}")
+            for entry in held:
+                await context.control.run(f"item replace entity {_SWAPPER} {entry}")
+            async with context.observe(*OFFHAND_PACKETS):
+                await bot.swap_hands()
+                await context.step_after(bot)
 
 
 # `inventory/clicks-inventory` and `inventory/clicks-chest`

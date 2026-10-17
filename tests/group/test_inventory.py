@@ -32,16 +32,23 @@ from tests.group.test_control import (
 from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import Peer
 
-GIVE, DROP = "inventory/give", "inventory/drop"
+GIVE, DROP, OFFHAND = "inventory/give", "inventory/drop", "inventory/offhand"
 CLICKS_INVENTORY, CLICKS_CHEST = "inventory/clicks-inventory", "inventory/clicks-chest"
-GROUP_IDS = (GIVE, DROP, CLICKS_INVENTORY, CLICKS_CHEST)
+GROUP_IDS = (GIVE, DROP, OFFHAND, CLICKS_INVENTORY, CLICKS_CHEST)
 KINDS = {
     GIVE: GroupKind.EXACT,
     DROP: GroupKind.TICK_EXACT,
+    OFFHAND: GroupKind.EXACT,
     CLICKS_INVENTORY: GroupKind.EXACT,
     CLICKS_CHEST: GroupKind.EXACT,
 }
-BOTS = {GIVE: "giver", DROP: "dropper", CLICKS_INVENTORY: "clicker", CLICKS_CHEST: "clicker"}
+BOTS = {
+    GIVE: "giver",
+    DROP: "dropper",
+    OFFHAND: "swapper",
+    CLICKS_INVENTORY: "clicker",
+    CLICKS_CHEST: "clicker",
+}
 COMMANDS = tree(
     "gamerule",
     "tp",
@@ -55,8 +62,8 @@ COMMANDS = tree(
     "setblock",
     "tellraw",
 )
-DROP_ITEM, DROP_ALL_ITEMS = 5, 4
-"""The `player_action` actions of Q and Ctrl+Q (`ServerboundPlayerActionPacket$Action`)."""
+DROP_ITEM, DROP_ALL_ITEMS, SWAP_ITEM_WITH_OFFHAND = 5, 4, 7
+"""The `player_action` actions of Q, Ctrl+Q and F (`ServerboundPlayerActionPacket$Action`)."""
 CONTROL = "control"
 SET_ENTITY_DATA = "minecraft:set_entity_data"
 PLAYER_ACTION, CONTAINER_CLICK = "minecraft:player_action", "minecraft:container_click"
@@ -104,6 +111,13 @@ DROP_WINDOW = (
     "minecraft:sound",
 )
 """What a drop window compares: the slot, the item thrown, and the item picked up."""
+OFFHAND_WINDOW = (
+    "minecraft:container_set_slot",
+    "minecraft:set_player_inventory",
+    "minecraft:entity_event",
+    "minecraft:set_equipment",
+)
+"""What a swap window compares: the Bot's slots, and what a second Bot is told of the swap."""
 CLICK_WINDOW = (
     "minecraft:open_screen",
     "minecraft:container_set_content",
@@ -124,6 +138,9 @@ def label(packets: tuple[str, ...]) -> str:
 
 UNDONE_FIRST = {CLICKS_CHEST: ("setblock 2 -60 0 minecraft:air",)}
 """What a Group undoes before the undo every Group shares."""
+WATCHER_BACK = {OFFHAND: ("tp watcher 0.5 -60 0.5",)}
+"""What a Group with a watcher undoes between the Bot's `tp` and the tag: the watcher joined
+before the Bot, so it is put back after it."""
 
 ITEMS = "@e[type=minecraft:item,x=0.5,y=-60,z=0.5,distance=..20"
 TAG = "mscts_inventory_before"
@@ -339,6 +356,7 @@ async def test_control_kills_the_new_items_then_clears_the_bot_and_undoes_the_re
     after = after[len(own) :]
     assert after[:3] == (KILL_NEW_ITEMS, f"clear {bot}", f"tp {bot} 0.5 -60 0.5")
     assert after[3:] == (
+        *WATCHER_BACK.get(group_id, ()),
         f"tag {ITEMS}] remove {TAG}",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
@@ -471,6 +489,60 @@ async def test_each_drop_starts_from_its_item_alone_in_the_first_hotbar_slot() -
             "minecraft:air",
         )
     ]
+
+
+# `inventory/offhand`
+
+
+def test_offhand_masks_nothing() -> None:
+    assert GROUPS[OFFHAND].masks == ()
+
+
+@pytest.mark.asyncio
+async def test_every_swap_window_compares_the_slots_and_what_a_watcher_is_told() -> None:
+    # LivingEntity.handleHandSwap: vanilla sends the watcher entity_event 55, not set_equipment;
+    # a server that sends the equipment shows as that packet.
+    labels = [window.label for window in (await played(OFFHAND)).windows]
+
+    assert labels == [label(OFFHAND_WINDOW)] * 3
+
+
+@pytest.mark.asyncio
+async def test_the_bot_presses_f_once_in_each_window_and_the_world_steps_a_tick() -> None:
+    windows = (await played(OFFHAND)).windows
+
+    assert [actions(window) for window in windows] == [[SWAP_ITEM_WITH_OFFHAND]] * 3
+    assert [window.commands for window in windows] == [("tick step 1",)] * 3
+
+
+@pytest.mark.asyncio
+async def test_each_swap_reaches_the_server_before_the_step_after_it() -> None:
+    result = await played(OFFHAND)
+
+    assert len(result.barriers) == len(result.windows)
+    assert set(result.barriers) == {HANDLED_REQUESTS}
+
+
+@pytest.mark.asyncio
+async def test_each_swap_starts_from_an_item_in_the_main_hand_the_off_hand_and_both() -> None:
+    main = "item replace entity swapper hotbar.0 with minecraft:stone 64"
+    off = "item replace entity swapper weapon.offhand with minecraft:torch 8"
+    windows = (await played(OFFHAND)).windows
+
+    assert [window.before[-2:] for window in windows] == [
+        ("clear swapper", main),
+        ("clear swapper", off),
+        (main, off),
+    ]
+    assert windows[2].before[-3] == "clear swapper"
+
+
+@pytest.mark.asyncio
+async def test_a_watcher_joins_before_the_bot_and_stands_a_few_blocks_from_it() -> None:
+    first = (await played(OFFHAND)).first
+
+    assert first.index("gamemode survival watcher") < first.index("tick freeze")
+    assert "tp watcher 4.5 -60 0.5" in first
 
 
 # `inventory/clicks-inventory` and `inventory/clicks-chest`

@@ -1238,7 +1238,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   what a give window compares; `GIVES` — the items and counts given, one window each; `give` —
   the `inventory/give` script; `DROP_PACKETS` — what a drop window compares; `PICKUP_TICKS` —
   the ticks a window steps to see a thrown item picked up; `DROPS` — what the Bot holds for each
-  drop, and whether it drops the whole stack; `drop` — the `inventory/drop` script; `CHEST` —
+  drop, and whether it drops the whole stack; `drop` — the `inventory/drop` script;
+  `WATCHER_AT` — where a second Bot stands to be told about the first; `OFFHAND_PACKETS` — what
+  a swap window compares; `SWAPS` — what the Bot holds before each swap of its hands; `offhand`
+  — the `inventory/offhand` script; `CHEST` —
   where the chest the Bot clicks in stands; `CLICK_PACKETS` — what a click window compares;
   `CHEST_PITCH` — the Mask on the pitch of a chest's sound; `KIT` — what the Bot holds before
   each half of the clicks; `Click` — a slot, button and mode; `CHEST_CLICKS` and
