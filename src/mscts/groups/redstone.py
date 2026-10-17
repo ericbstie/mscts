@@ -295,3 +295,46 @@ async def observer(context: GroupContext) -> None:
     """An observer pulses when the block it watches changes; two facing each other make a clock."""
     async with _arena(context, _OBSERVER_BUILD):
         await _observe(context, _OBSERVER, _OBSERVER_TICKS)
+
+
+# `redstone/dust`: a line of dust at z 3 from x 2, which a redstone block at x 1 powers, and a
+# lone dust at x 6, z 10, beside which Control builds and cuts a climb.
+
+_DUST_BUILD = (
+    "fill 2 -60 3 15 -60 3 minecraft:redstone_wire",
+    "fill 15 -60 4 15 -60 5 minecraft:redstone_wire",
+    _set(6, 10, "redstone_wire"),
+)
+"""The line is 16 dust long: 14 along z 3, then 2 along x 15."""
+
+
+def _raised(x: int, z: int, block: str) -> str:
+    """The `/setblock` of `block` at x, -59, z: a block above the grass."""
+    return f"setblock {x} -59 {z} minecraft:{block}"
+
+
+_DUST = (
+    _At(0, _set(1, 3, "redstone_block")),
+    _At(1, _set(1, 3, "air")),
+    _At(2, _set(7, 10, "redstone_wire")),
+    _At(3, _set(7, 10, "stone")),
+    _At(4, _raised(7, 10, "redstone_wire")),
+    _At(5, _raised(6, 10, "stone")),
+    _At(6, _raised(6, 10, "air")),
+    _At(7, _raised(7, 10, "air")),
+    _At(8, _set(7, 10, "air")),
+)
+"""Dust has no delay: the line's dust is 15 to 1 on tick 1, one less each block, and the 16th
+stays 0; all is 0 on tick 2. Then a tick apart: the lone dust connects to dust beside it, is a
+cross when the dust is stone, climbs to dust on the stone (`east=up`), is a cross again while
+stone above it cuts the climb, then climbs, and is a cross when the climb goes
+(`RedstoneWireBlock.getConnectingSide`)."""
+
+_DUST_TICKS = 10
+
+
+@group("redstone/dust", kind=GroupKind.TICK_EXACT)
+async def dust(context: GroupContext) -> None:
+    """Dust carries power 15 blocks at once, and connects, climbs and is cut on the next tick."""
+    async with _arena(context, _DUST_BUILD):
+        await _observe(context, _DUST, _DUST_TICKS)

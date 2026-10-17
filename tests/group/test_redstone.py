@@ -23,7 +23,8 @@ REPEATER = "redstone/repeater"
 COMPARATOR = "redstone/comparator"
 TORCH = "redstone/torch"
 OBSERVER = "redstone/observer"
-GROUP_IDS = (REPEATER, COMPARATOR, TORCH, OBSERVER)
+DUST = "redstone/dust"
+GROUP_IDS = (REPEATER, COMPARATOR, TORCH, OBSERVER, DUST)
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw")
 WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
@@ -336,3 +337,45 @@ async def test_observer_changes_what_one_watches_then_makes_a_clock_of_the_other
         *steps(6),
     )
     assert window.ticks == 30
+
+
+# `redstone/dust`
+
+
+@pytest.mark.asyncio
+async def test_dust_builds_a_line_16_long_and_a_lone_dust() -> None:
+    first = (await play(DUST)).first
+
+    assert first[5:] == (
+        "fill 2 -60 3 15 -60 3 minecraft:redstone_wire",
+        "fill 15 -60 4 15 -60 5 minecraft:redstone_wire",
+        "setblock 6 -60 10 minecraft:redstone_wire",
+    )
+
+
+@pytest.mark.asyncio
+async def test_dust_powers_the_line_for_a_tick_then_builds_and_cuts_a_climb_a_tick_apart() -> None:
+    # Dust changes in the tick its neighbour does: each change shows on the next step.
+    (window,) = (await play(DUST)).windows
+
+    assert window.commands == (
+        "setblock 1 -60 3 minecraft:redstone_block",
+        STEP,
+        "setblock 1 -60 3 minecraft:air",
+        STEP,
+        "setblock 7 -60 10 minecraft:redstone_wire",
+        STEP,
+        "setblock 7 -60 10 minecraft:stone",
+        STEP,
+        "setblock 7 -59 10 minecraft:redstone_wire",
+        STEP,
+        "setblock 6 -59 10 minecraft:stone",
+        STEP,
+        "setblock 6 -59 10 minecraft:air",
+        STEP,
+        "setblock 7 -59 10 minecraft:air",
+        STEP,
+        "setblock 7 -60 10 minecraft:air",
+        *steps(2),
+    )
+    assert window.ticks == 10
