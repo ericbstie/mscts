@@ -29,7 +29,7 @@ from mscts.inventory import (
 from mscts.net import ProtocolError
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.net.fakes import with_bot
+from tests.net.fakes import status_server, with_bot
 from tests.net.test_bot_entities import added, entity_server
 from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN, TICK_END
 from tests.net.test_bot_replies import answers, arrived
@@ -491,6 +491,47 @@ def test_drop_refuses_while_a_container_is_open() -> None:
     _, sent = inventory_after([open_screen(CHEST, GENERIC_9X3)], script)
     assert refused
     assert sent == []
+
+
+def test_swap_hands_says_so_in_one_tick_and_changes_no_slot_itself() -> None:
+    # Minecraft.handleKeybinds: player_action SWAP_ITEM_WITH_OFFHAND (7) at the origin facing
+    # down with sequence 0; the client swaps nothing before the server answers.
+    async def script(bot: Bot) -> None:
+        await bot.swap_hands()
+
+    held = [player_slot(0, slot(STONE, 64)), player_slot(40, slot(SWORD, 1))]
+    view, sent = inventory_after(held, script)
+    fields = {"action": 7, "pos": {"x": 0, "y": 0, "z": 0}, "face": 0, "sequence": 0}
+    assert sent == [("minecraft:player_action", fields), TICK_END]
+    assert view.player[0] == stack("stone", 64)
+    assert view.player[40] == stack("diamond_sword", 1)
+
+
+def test_swap_hands_refuses_while_a_container_is_open() -> None:
+    # The client reads the swap key only with no screen open (Minecraft.tick).
+    refused: list[str] = []
+
+    async def script(bot: Bot) -> None:
+        with pytest.raises(
+            ProtocolError, match=r"swap_hands needs .* call close_container"
+        ) as raised:
+            await bot.swap_hands()
+        refused.append(str(raised.value))
+
+    _, sent = inventory_after([open_screen(CHEST, GENERIC_9X3)], script)
+    assert refused
+    assert sent == []
+
+
+def test_swap_hands_refuses_a_bot_that_is_not_in_play() -> None:
+    transcript = Transcript(group_id="test/inventory", server="fake")
+
+    async def use(bot: Bot) -> None:
+        with pytest.raises(ProtocolError, match="swap_hands needs a Bot in play"):
+            await bot.swap_hands()
+
+    with_bot(CODEC, transcript, status_server("{}", []), use)
+    assert transcript.events == []
 
 
 def test_inventory_is_a_snapshot() -> None:

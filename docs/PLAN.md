@@ -576,6 +576,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def interact(self, entity: Entity, at: tuple[float, float, float] = (0.0, 0.0, 0.0),
                        *, off_hand: bool = False) -> None: ...         # interact
     async def drop(self, *, all: bool = False) -> None: ...            # player_action DROP_ITEM / DROP_ALL_ITEMS
+    async def swap_hands(self) -> None: ...                            # player_action SWAP_ITEM_WITH_OFFHAND
     async def click(self, slot: int, button: int = 0, mode: str = "pickup") -> None: ...  # container_click
     async def close_container(self) -> None: ...                       # container_close, outside a tick
     async def place_recipe(self, recipe_id: int, *, use_max_items: bool = False) -> None: ...  # place_recipe
@@ -681,7 +682,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # (one item, or the stack with all=True), then player_action DROP_ITEM (5) or
     # DROP_ALL_ITEMS (4) at 0 0 0, face down, sequence 0, sent with an empty hand too
     # (MultiPlayerGameMode.dropItem); refused with a container open (ProtocolError: the client
-    # reads the drop key only with no screen). close_container (#28): back to the inventory menu,
+    # reads the drop key only with no screen). swap_hands (#359): one client tick, as above:
+    # player_action SWAP_ITEM_WITH_OFFHAND (7) at 0 0 0, face down, sequence 0
+    # (Minecraft.handleKeybinds); the client swaps no slot itself, so the Bot predicts nothing;
+    # refused with a container open, like drop. close_container (#28): back to the inventory menu,
     # then container_close with the old menu's window id (0 with none open: the inventory
     # screen), sent at once and not in a tick (LocalPlayer.closeContainer). click (#28): on a
     # Bot in play, InventoryTracker.click predicts the click, then container_click goes at
@@ -1234,7 +1238,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   what a give window compares; `GIVES` — the items and counts given, one window each; `give` —
   the `inventory/give` script; `DROP_PACKETS` — what a drop window compares; `PICKUP_TICKS` —
   the ticks a window steps to see a thrown item picked up; `DROPS` — what the Bot holds for each
-  drop, and whether it drops the whole stack; `drop` — the `inventory/drop` script; `CHEST` —
+  drop, and whether it drops the whole stack; `drop` — the `inventory/drop` script;
+  `WATCHER_AT` — where a second Bot stands to be told about the first; `OFFHAND_PACKETS` — what
+  a swap window compares; `SWAPS` — what the Bot holds before each swap of its hands; `offhand`
+  — the `inventory/offhand` script; `CHEST` —
   where the chest the Bot clicks in stands; `CLICK_PACKETS` — what a click window compares;
   `CHEST_PITCH` — the Mask on the pitch of a chest's sound; `KIT` — what the Bot holds before
   each half of the clicks; `Click` — a slot, button and mode; `CHEST_CLICKS` and
