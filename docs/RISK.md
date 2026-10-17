@@ -74,6 +74,7 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #415 | high | high | first review, second review | 0, 0 (3 should-fix, all fixed) | five stressed 20-play Self-checks of `player/drowning` before the reviews, 5 of 5; the first 50-run unit stress caught the player fake hurting after `fresh`, fixed; after the fixes one stressed 20-play Self-check each of `player/fire` and `player/drowning`, 20 of 20, and the unit tests 50 of 50; Self-check tier 74 of 74 on the tip; mutation sweep 11 of 11 killed |
 | #422 | high | medium | lead's diff read | 0 | none: no barrier or window change (the lead lowered it: the schema's fields are a position and a VarInt, so equal bytes and equal fields agree); Self-check 20 of 20 of `blocks/gravity`; mutation sweep 16 of 16 killed |
 | #421 | low | low | lead's diff read | 0 | none: tests only; the three tests 50 of 50 under `repeat.py --stress` |
 | #420 | low | low | lead's diff read | 0 | none: tooling; 50 of 50 under `repeat.py --stress`; mutation sweep 7 of 7 killed |

@@ -412,6 +412,10 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-17 | worker (#356) | The Reference's own weather changed between two candidate runs of `player/*`, and tracing a Reference timeout through report.json took 20 min | **defer**: #426 (weather cycle left on), #427 (the Report names the wait that timed out) |
+| 2026-10-17 | worker (#356) | A container restart killed the live chain; the rerun cost 55 min | **adopt** (no change): resumed by message, it restarted only what had not finished |
+| 2026-10-17 | worker (#356) | `mise run commit` checks the index, so an unstaged lint fix failed twice | **reject**: common.md says to stage first, as logged 2026-10-16 |
+| 2026-10-17 | worker (#356) | The worktree sandbox refused a `git rebase` with a redirect | **reject**: common.md already says one plain command per call |
 | 2026-10-17 | lead (train 39) | Both reviews of #415 found a should-fix that five stressed 20-play Self-checks had not | **adopt** (no change): `scrutiny::high` worked as meant |
 | 2026-10-17 | lead (train 39) | A two-Bot `until` window shares one open Mark, so it cannot open after each Bot's own barrier | **defer**: #424; #415 refuses such a window at open |
 | 2026-10-17 | lead (train 39) | Worker PRs subscribe the lead's session on creation: 7 noise wakes | **adopt** (no change): unsubscribed at once |
