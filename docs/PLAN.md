@@ -2484,8 +2484,13 @@ proves it necessary:
    `place_ghost_recipe` holds a display, not an id, and is compared as
    it is; `place_recipe`, which sends an id back, is serverbound. So a
    Candidate that numbers its recipes another way but keeps to it shows
-   the same book, and a removal or a group of another recipe than the
-   Reference's differs (`#2` against `#1`). Javap on the 26.3 client:
+   the same book, and a group of another recipe than the Reference's
+   differs (`#2` against `#1`), as does a removal of another recipe, if
+   the recipe was added in a compared packet. Limit: a recipe added
+   before the windows is first seen in its removal, so two removals of
+   different such recipes compare equal; no Group removes one (an
+   entity has its `add_entity` name for this, `_Numbers.spawned`, and a
+   recipe has nothing like it). Javap on the 26.3 client:
    the client keeps its book in a `HashMap` keyed by display id
    (`ClientRecipeBook.known`) and puts the recipes of one category and
    group number in one button (`categorizeAndGroupRecipes`, a

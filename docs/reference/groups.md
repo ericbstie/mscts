@@ -626,7 +626,9 @@ and the Report names the recipe.
 Each server picks these numbers, and the numbers of recipe groups, its own way. mscts numbers
 the recipes again in the order each Bot first gets them, and the groups the same way, so a
 server that numbers its recipes another way but keeps to it shows the same recipe book. A
-removal of another recipe, or a recipe put in another group, still differs. The book lists its
+recipe put in another group still differs, and so does a removal of another recipe, if the
+recipe was added in a window. A removal of a recipe the Bot got before every window cannot be
+told from a removal of another such recipe; no Group removes one. The book lists its
 buttons in an order that follows the server's numbers, and that order is not compared.
 
 A player unlocks recipes when an item first enters its inventory, once per player. The
