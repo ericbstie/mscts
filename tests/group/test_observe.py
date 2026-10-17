@@ -16,7 +16,7 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import text
+from tests.group.test_control import HANG_LIMIT_S, STALL_S, late, text
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
@@ -808,10 +808,14 @@ OBSERVING = Group(id="test/observe", run=_join_and_observe)
 async def test_a_candidate_that_never_answers_the_barrier_fails_rather_than_errs() -> None:
     async with serve(CODEC, play_server([])) as endpoint:
         reference = await run_group(OBSERVING, endpoint, server="vanilla", timeout_s=2.0)
-    async with serve(CODEC, play_server([], never_answer)) as endpoint:
+    # #419: the only TimeoutError is the wait for the barrier's first answer. The join before
+    # it is slow, as on a loaded host: it finishes within the limit, and the barrier is sent.
+    seen: list[Packet] = []
+    async with serve(CODEC, late(play_server(seen, never_answer), STALL_S)) as endpoint:
         with pytest.raises(GroupError) as caught:
-            await run_group(OBSERVING, endpoint, server="candidate", timeout_s=0.5)
+            await run_group(OBSERVING, endpoint, server="candidate", timeout_s=HANG_LIMIT_S)
 
+    assert REQUEST in [packet.name for packet in seen], "the barrier was never sent"
     verdict = judge(OBSERVING, reference, caught.value)
 
     assert verdict.outcome is Outcome.MISMATCH, verdict
