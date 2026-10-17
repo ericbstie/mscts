@@ -756,6 +756,12 @@ together. In a frozen world the scheduled ticks of the fluids run only on the ti
 steps, so each placement takes effect on the tick its delay says. A window lasts until every
 source has had its last scheduled tick, which leaves none due for the next play.
 
+## Redstone (`redstone`)
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `redstone/repeater` | tick-exact | none | Control powers four repeaters with delays 1 to 4, a locked repeater, and a repeater with a delay of 4 for a single tick. Later it removes their inputs and the lock. The world steps 19 ticks. Vanilla switches a repeater 2 ticks per unit of delay after its input changes, turns the locked one on only once its lock is gone, and stretches the 1-tick pulse to 8 ticks. | none |
+
 ## Spawning (`spawn`)
 
 Where a new player first appears. Vanilla spreads new players over the blocks within `respawn_radius` of the world spawn, 10 by default, instead of stacking them on one block, and picks a safe one. Both Groups are `statistical`: each plays many times on each server and compares the distributions of what it records, and `mscts run` plays them only with `--statistical` (see [Writing a Group](/guide/writing-a-group)).
