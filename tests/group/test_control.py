@@ -40,6 +40,12 @@ PLAY_TIMEOUT_S = 60.0
 """How long a fake serves a Bot: a whole play, which takes blocks/clone 2 to 4 s when the
 host is idle and more than twice that under load (#209). It is below pytest's timeout, so
 a hung fake still fails with where it hung."""
+HANG_LIMIT_S = 1.5
+"""The limit on one Bot operation in a test that expects a TimeoutError from a hang. Only the
+hang may reach it: an idle host answers in about 0.1 s, and a stall (#410) is shorter."""
+STALL_S = 0.7
+"""How late a fake answers a command in a test of a stall: a loaded host. It is more than the
+0.5 s limit these tests had and less than `HANG_LIMIT_S` (#419)."""
 
 
 def tree(*roots: str, root_index: int = 0) -> dict[str, object]:
@@ -450,9 +456,10 @@ async def test_a_control_bot_that_is_still_open_is_never_replaced() -> None:
 async def test_a_rejoined_control_needs_the_tree_its_own_join_sent() -> None:
     seen: list[Packet] = []
     transcript = Transcript(group_id="test/control", server="fake")
-    async with playing(
-        ControlServer(seen, rejoin_without_tree=True), transcript, timeout_s=0.5
-    ) as context:
+    # #419: the only TimeoutError is the wait for the tree. The first run is slow, as on a
+    # loaded host, and finishes within the limit; the second join is the one that hangs.
+    server = ControlServer(seen, rejoin_without_tree=True, stalls={SETBLOCK: STALL_S})
+    async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
         await context.control.run(SETBLOCK)
         await context.control.leave()
         with pytest.raises(TimeoutError) as caught:
@@ -460,6 +467,7 @@ async def test_a_rejoined_control_needs_the_tree_its_own_join_sent() -> None:
 
     assert context.raised_by(caught.value) == "control"
     assert commands_sent(seen) == [SETBLOCK, 'tellraw @s "mscts-barrier-1"']
+    assert [packet.name for packet in seen].count("minecraft:hello") == 2, "Control never rejoined"
 
 
 async def _setblock(context: GroupContext) -> None:

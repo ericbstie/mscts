@@ -18,6 +18,7 @@ from tests.group.test_control import (
     CHAT_COMMAND,
     CLIENT_COMMAND,
     CODEC,
+    HANG_LIMIT_S,
     MARKER,
     ControlServer,
     commands_sent,
@@ -29,10 +30,6 @@ from tests.net.fakes import serve
 
 CONTROL = "control"
 PLAYER_ACTION = "minecraft:player_action"
-
-HANG_LIMIT_S = 1.5
-"""The limit on one Bot operation in a test that expects a TimeoutError from a hang. Only the
-hang may reach it: an idle host answers in about 0.1 s, and a stall (#410) is shorter."""
 
 
 def steps(seen: list[object]) -> list[object]:
