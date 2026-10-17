@@ -677,9 +677,11 @@ def test_fire_visits_fire_lava_the_dry_grass_and_the_water_in_that_order() -> No
     assert [window.sent for window in result.windows] == [
         ((CONTROL, "tp burner 7.5 -60.0 2.5"),),
         ((CONTROL, "tp burner 5.5 -61.0 2.5"),),
-        ((CONTROL, "tp burner 11.5 -60.0 2.5"),),
+        (),
         ((CONTROL, "tp burner 3.5 -61.0 2.5"),),
     ]
+    # The Bot leaves the lava once its hit has ended the lava's window (#436).
+    assert result.windows[2].before == ("tp burner 11.5 -60.0 2.5",)
 
 
 def test_fire_waits_for_a_hit_in_each_place_but_the_water() -> None:
@@ -831,6 +833,55 @@ def test_no_hit_falls_between_two_windows_even_when_every_hit_is_due_at_once(
     transcript, _ = asyncio.run(_play(group_id, due_at_once=True))
 
     assert hits_between_windows(transcript) == []
+
+
+def test_a_lava_hit_that_comes_as_soon_as_it_can_does_not_reach_the_dry_grass_window() -> None:
+    # On a loaded host the next lava hit, 10 ticks after the last, came before the Group's tp
+    # onto the dry grass and ended that window (#436). The fake sends every hit as soon as the
+    # Bot has passed a barrier since the last: the Bot leaves the lava before that barrier.
+    _, stalled = asyncio.run(_play("player/fire", due_at_once=True))
+
+    assert [window.sent for window in stalled.windows] == [
+        window.sent for window in played("player/fire").windows
+    ]
+
+
+def lava_left_late() -> Callable[[], float]:
+    """A clock that reads 0 s at each hit, then 0.5 s from the move out of the lava on.
+
+    That move comes later than the 8 ticks (0.4 s) the lava's next hit allows, and every later
+    window opens on time.
+    """
+    now = iter([0.0, 0.0])
+    return lambda: next(now, 0.5)
+
+
+def test_fire_fails_when_the_bot_leaves_the_lava_after_its_next_hit_may_have_come() -> None:
+    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
+        asyncio.run(_play("player/fire", clock=lava_left_late()))
+
+
+def after_the_move_out(seconds: float) -> Callable[[], float]:
+    """A clock that reads 0 s at each hit and at the move out of the lava, then `seconds`.
+
+    So the dry-grass window opens `seconds` after the lava's hit, and every later one on time.
+    """
+    now = iter([0.0, 0.0, 0.0])
+    return lambda: next(now, seconds)
+
+
+def test_fire_fails_when_the_dry_grass_window_opens_after_the_first_burn_may_have_come() -> None:
+    # Out of the lava before the barrier, the Bot's first burn can come before the dry-grass
+    # window opens, if that barrier stalls for about a second: 18 ticks (0.9 s) are allowed.
+    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
+        asyncio.run(_play("player/fire", clock=after_the_move_out(1.0)))
+
+
+def test_fire_plays_on_when_the_dry_grass_window_opens_after_the_lavas_next_hit_was_due() -> None:
+    # Out of the lava, no lava hit can come: only the first burn, 20 ticks after the move out.
+    _, result = asyncio.run(_play("player/fire", clock=after_the_move_out(0.5)))
+
+    assert len(result.windows) == len(played("player/fire").windows)
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:
