@@ -25,6 +25,7 @@ from mscts.net import ProtocolError
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_control import CODEC, text, tree
+from tests.group.test_mobs_pathfinding import gametime_answer
 from tests.group.test_movement import MOVES, Play, _sent, read
 from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import (
@@ -42,7 +43,14 @@ CONTROL = "control"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
 PERFORM_RESPAWN = 0
-COMMANDS = tree("gamerule", "tp", "tick", "setblock", "effect", "fill", "kill", "tellraw")
+COMMANDS = tree(
+    "gamerule", "tp", "tick", "setblock", "effect", "fill", "kill", "tellraw", "weather", "time"
+)
+TIME_QUERY = "time query gametime"
+FADE_TICKS = 100
+"""How far the fake's game time moves on between two reads: as far as a storm takes to fade."""
+FADE_READS = (TIME_QUERY, TIME_QUERY)
+"""Control reads the game time when the weather is cleared, and once the world has run on."""
 PLAY_TIMEOUT_S = 300.0
 """How long a fake serves a Bot: a play takes about 30 s when the host is idle, and several
 times that under load."""
@@ -114,6 +122,9 @@ class PlayerServer:
     """Each connected player's connection, by name."""
     late: frozenset[str] = frozenset()
     """The players whose statistics requests are each answered a tick later still."""
+    game_time: int = 0
+    """The game time the next `time query gametime` answers: each answer moves it on by
+    `FADE_TICKS`."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -153,6 +164,10 @@ class PlayerServer:
             await peer.write(
                 peer.frame("minecraft:system_chat", content=text(token), overlay=False)
             )
+        elif command == TIME_QUERY:
+            answer = gametime_answer(self.game_time)
+            self.game_time += FADE_TICKS
+            await peer.write(peer.frame("minecraft:system_chat", content=answer, overlay=False))
         elif self.kills_after and command.startswith(self.kills_after):
             victim = self.players[command.split()[1]]
             await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
@@ -291,9 +306,12 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
 ) -> None:
     transcript, result = play(group_id)
 
-    assert result.first[:5] == (
+    assert result.first[:9] == (
         "gamerule player_movement_check false",
         "gamerule respawn_radius 0",
+        "gamerule advance_weather false",
+        "weather clear",
+        *FADE_READS,
         "gamerule natural_health_regeneration false",
         "gamerule random_tick_speed 0",
         "tp control 96.5 -60 96.5",
@@ -304,9 +322,10 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
     commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
     first_tp = next(t for t, what in commands if str(what).startswith("tp control"))
     assert first_tp < hello
-    assert result.after[-5:] == (
+    assert result.after[-6:] == (
         "gamerule random_tick_speed 3",
         "gamerule natural_health_regeneration true",
+        "gamerule advance_weather true",
         "gamerule respawn_radius 10",
         "gamerule player_movement_check true",
         "tick unfreeze",
@@ -633,6 +652,21 @@ def test_fire_waits_for_a_hit_in_each_place_but_the_water() -> None:
         opened(*player.PACKETS),
         opened(*player.PACKETS),
     ]
+
+
+def test_the_fire_windows_open_with_the_weather_cleared_and_its_cycle_stopped() -> None:
+    # Rain puts out a burning player, so a storm the weather cycle started during an earlier
+    # Group would end the burn on the dry grass on one Instance only (#426).
+    result = played("player/fire")
+
+    stopped = result.first.index("gamerule advance_weather false")
+    cleared = result.first.index("weather clear")
+    assert cleared > stopped
+    # `weather clear` sets the weather, but the rain level falls 0.01 a running tick: the
+    # Group waits until the world has run the 100 ticks a storm takes to fade, then freezes it.
+    assert result.first[cleared + 1 : cleared + 3] == FADE_READS
+    assert result.first.index("tick freeze") > cleared + 2
+    assert result.after.count("gamerule advance_weather true") == 1
 
 
 def test_fire_builds_water_lava_and_fire_after_the_freeze_and_restores_the_world() -> None:

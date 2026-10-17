@@ -39,7 +39,7 @@ from dataclasses import replace
 from mscts.bot import Bot, Face, offline_uuid
 from mscts.codec.packets import Packet
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import join_at_spawn, pin_joins
+from mscts.groups._world import calm_weather, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 CLOCK = "clock"
@@ -64,11 +64,8 @@ async def _calm(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
     Not `spawn_mobs`: the Fixture world has it off already (ADR-0013), and an undo to vanilla's
     default would let animals spawn, and walk into the windows of every later play.
     """
-    control = context.control
-    await pin_joins(control, undo)
-    await control.run("gamerule advance_weather false")
-    undo.push_async_callback(control.run, "gamerule advance_weather true")
-    await control.run("weather clear")
+    await pin_joins(context.control, undo)
+    await calm_weather(context.control, undo)
 
 
 async def _command_then_chat(bot: Bot, command: str) -> None:

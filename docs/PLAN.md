@@ -1281,9 +1281,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
   `spawn.distance`); `join_position_exact` — the `spawn/join-position-exact` script, the same
   with `respawn_radius` 0 (`pin_joins`).
-- `groups.mobs_pathfinding`: `gametime` — the game time in a server's answer to
-  `time query gametime`, which each play reads before it steps the world and again whenever
-  it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
+- `groups.mobs_pathfinding`: each play reads the game time (`_world.gametime`) before it
+  steps the world and again whenever it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
   `chase_open` — the `mobs/chase-open` script, which samples when a zombie 16 blocks away is
   half a block closer to the Bot and when it first hits it; `MAZE_TICKS` — the tick budget of
   `mobs/chase-maze`; `chase_maze` — the `mobs/chase-maze` script, the same chase with an oak
@@ -1305,7 +1304,13 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `players_sleeping_percentage` 100 and then 50.
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
-  `players` and `chunks` Groups). `CONTROL_AT` — where Control
+  `players` and `chunks` Groups). `calm_weather` — turn `advance_weather` off and clear the
+  weather, through Control, pushing the undo (the `time`, `player` and `player_modes` Groups);
+  `until_the_weather_fades` — return once the world has run the 100 ticks a cleared storm takes
+  to fade, read from the game time (the `player` and `player_modes` Groups); `gametime` — the
+  game time in a server's answer to `time query gametime` (that wait, and the
+  `mobs_pathfinding` Groups).
+  `CONTROL_AT` — where Control
   puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when its Group ends;
   `join_at_spawn` — join a Bot and push the `tp` that puts it back at the spawn; `fresh` — kill a
   Bot and respawn it, with full health and food and no immunity (the `player` and `combat_damage`

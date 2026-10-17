@@ -6,7 +6,10 @@ and `immediate_respawn`.
 `player/respawn` kills it and has it respawn, at the world spawn and at a spawn point.
 
 The Bots are put back at the spawn, in survival, when the Group ends, and every rule is set back,
-because every Group is played on the same two Instances. Control stands far from the Bots: it is a
+because every Group is played on the same two Instances. The weather is cleared and its cycle
+stopped: a player who respawns in rain is sent the weather, and a storm the cycle started during
+an earlier Group would come on one Instance only. Then the world runs on until a storm has
+faded (`until_the_weather_fades`) before any Bot joins. Control stands far from the Bots: it is a
 player too, and it joins where the last Group left it, which may be in their view
 (docs/roles/player-actions.md, #300).
 A dead Bot's drops are taken away, so that Control and the Bot do not pick them up.
@@ -19,7 +22,7 @@ from dataclasses import dataclass, replace
 from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import pin_joins
+from mscts.groups._world import calm_weather, pin_joins, until_the_weather_fades
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
 type _Place = tuple[float, float]
@@ -48,7 +51,7 @@ def _normal(spec: ServerSpec) -> ServerSpec:
 
 @contextlib.asynccontextmanager
 async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
-    """Pin the joins and move Control away; undo it all on exit.
+    """Pin the joins, clear the weather and move Control away; undo it all on exit.
 
     Yields the stack of undos, for what the body sets: they run first, each even if another
     fails.
@@ -56,6 +59,8 @@ async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSta
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
+        await calm_weather(control, undo)
+        await until_the_weather_fades(control)
         await control.run(f"tp {CONTROL_PLAYER} {_CONTROL_AT}")
         yield undo
 

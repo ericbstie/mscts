@@ -16,9 +16,11 @@ The Bot joins where the server saved it (`pin_joins`), and the Group moves it an
 from every block it sets (docs/roles/player-actions.md, #300): a block set where a player stands
 makes it crawl and choke on one Instance only. Each Bot is put back at the spawn when the Group
 ends, so that it does not rejoin inside a block. Natural regeneration is off, so health stays what
-the damage left it. Every setting is put back afterwards, because every Group is played on the same
-two Instances. (Mobs do not spawn: the Fixture world has `spawn_mobs` off, ADR-0013, and no Group
-turns it on.)
+the damage left it. The weather is cleared and its cycle stopped: rain puts out a burning player,
+and a storm the cycle started during an earlier Group would come on one Instance only. Then the
+world runs on until a storm has faded (`until_the_weather_fades`) before it is frozen. Every
+setting is put back afterwards, because every Group is played on the same two Instances. (Mobs do
+not spawn: the Fixture world has `spawn_mobs` off, ADR-0013, and no Group turns it on.)
 """
 
 import contextlib
@@ -29,7 +31,15 @@ from dataclasses import dataclass
 from mscts.bot import Bot
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, normal, pin_joins
+from mscts.groups._world import (
+    CONTROL_AT,
+    calm_weather,
+    fresh,
+    join_at_spawn,
+    normal,
+    pin_joins,
+    until_the_weather_fades,
+)
 from mscts.net import ProtocolError
 from mscts.spec import CONTROL_PLAYER
 
@@ -77,7 +87,7 @@ type _Point = tuple[float, float, float]
 async def _environment(
     context: GroupContext, restore: tuple[str, ...]
 ) -> AsyncIterator[contextlib.AsyncExitStack]:
-    """Set the join and game rules and move Control away; undo each on exit.
+    """Set the join and game rules, clear the weather and move Control away; undo each on exit.
 
     `restore` are the commands that put back every block the Group sets. Yields the stack of
     undos, for what the body sets: they run first, then the block restores, then the rules. Each
@@ -86,6 +96,8 @@ async def _environment(
     control: Control = context.control
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
+        await calm_weather(control, undo)
+        await until_the_weather_fades(control)
         for rule, value, back in _RULES:
             undo.push_async_callback(control.run, f"gamerule {rule} {back}")
             await control.run(f"gamerule {rule} {value}")
