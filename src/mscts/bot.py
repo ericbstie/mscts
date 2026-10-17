@@ -179,7 +179,7 @@ type _Send = tuple[str, dict[str, object]]
 
 
 _START_DESTROY_BLOCK, _ABORT_DESTROY_BLOCK, _STOP_DESTROY_BLOCK = 0, 2, 3
-_DROP_ALL_ITEMS, _DROP_ITEM, _RELEASE_USE_ITEM = 4, 5, 6
+_DROP_ALL_ITEMS, _DROP_ITEM, _RELEASE_USE_ITEM, _SWAP_ITEM_WITH_OFFHAND = 4, 5, 6, 7
 """`ServerboundPlayerActionPacket.Action` ordinals (26.3 javap; the wiki misses one at 1)."""
 
 _MAIN_HAND, _OFF_HAND = 0, 1
@@ -1338,13 +1338,32 @@ class Bot:
                 the drop key only with no screen open.
         """
         self._require_play("drop")
-        if self._replies.inventory.view().window_id != 0:
-            msg = "drop needs no container open: call close_container first"
-            raise ProtocolError(msg)
+        self._require_no_container("drop")
         selected = self._replies.interaction.selected_slot
         self._replies.inventory.remove_from_selected(selected, whole=all)
         action = _DROP_ALL_ITEMS if all else _DROP_ITEM
         await self._tick((_player_action(action, (0, 0, 0), Face.DOWN, 0),))
+
+    async def swap_hands(self) -> None:
+        """Swap the main hand's item with the off hand's (F), in one client tick.
+
+        The tick sends `player_action` SWAP_ITEM_WITH_OFFHAND at the origin facing down, with
+        sequence 0 (`Minecraft.handleKeybinds`). The client changes no slot itself: the swap
+        shows only in what the server sends back. One call is one tick (see `tick`).
+
+        Raises:
+            ProtocolError: The Bot is not in play, or a container is open: the client reads
+                the swap key only with no screen open.
+        """
+        self._require_play("swap_hands")
+        self._require_no_container("swap_hands")
+        await self._tick((_player_action(_SWAP_ITEM_WITH_OFFHAND, (0, 0, 0), Face.DOWN, 0),))
+
+    def _require_no_container(self, operation: str) -> None:
+        """Refuse `operation` while a container is open: the client reads its key with no screen."""
+        if self._replies.inventory.view().window_id != 0:
+            msg = f"{operation} needs no container open: call close_container first"
+            raise ProtocolError(msg)
 
     async def attack(self, entity: Entity) -> None:
         """Hit `entity` with the held item, in one client tick.
