@@ -324,6 +324,34 @@ async def _sprint(bot: Bot) -> None:
     await bot.sprint(False)  # noqa: FBT003
 
 
+_JUMPS = 10
+_JUMP_Y = -59.58
+"""Where a jump's one airborne move puts the Bot: 0.42 up, as far as a vanilla jump rises in its
+first tick (`LivingEntity.jumpFromGround`)."""
+_AIRBORNE_SYNCS = 3
+"""How many barriers the Bot waits for in the air; one more follows the landing."""
+
+
+async def _jump_each(bot: Bot, x: float) -> None:
+    """Jump `_JUMPS` times in place at (x, _LANE_Z), walking, with 4 barriers a jump.
+
+    Vanilla counts a jump when a move leaves the ground while the player is on it
+    (`ServerGamePacketListenerImpl.handlePlayerPositionChange`). Between two moves it moves the
+    player itself each player tick, then puts it back, but keeps whether that move ended on the
+    ground (`tickPlayer`, `Entity.move`). A jump's speed carries that move up for 6 ticks, so a
+    jump within 6 ticks of the last one is not counted (docs/research/2026-10-17-jump-ticks.md).
+    A barrier's three answers come from three packet passes, each followed by a player tick, so
+    4 barriers make at least 8 player ticks before the next jump.
+    """
+    for _ in range(_JUMPS):
+        await bot.jump()
+        await bot.move(x, _JUMP_Y, _LANE_Z, on_ground=False)
+        for _ in range(_AIRBORNE_SYNCS):
+            await bot.sync()
+        await bot.move(x, -60.0, _LANE_Z)
+        await bot.sync()
+
+
 def _ring(x: float) -> list[tuple[float, float]]:
     """Where the husks stand: `_HUSKS` places on a circle of radius `_RING` around (x, _LANE_Z)."""
     return [
@@ -351,17 +379,18 @@ async def _attack_each(context: GroupContext, bot: Bot, ring: list[tuple[float, 
 
 @group("player/exhaustion", spec=_operator)
 async def exhaustion(context: GroupContext) -> None:
-    """A Bot sprints 100 blocks and hits 20 husks, reading its food back after each.
+    """A Bot sprints 100 blocks, jumps 10 times and hits 20 husks, reading its food back after each.
 
     The Bot keeps its full health, so it never heals, and the only exhaustion is what it does.
     Each move and hit is followed by a barrier, so the Bot's player ticks between two of them, as
-    it does for a vanilla client, and its exhaustion adds up the same way on every server. It
-    does not jump: in 1 Self-check play of 15 the two servers counted a different number of
-    jumps (#57; follow-up #354).
+    it does for a vanilla client, and its exhaustion adds up the same way on every server. Each
+    jump waits for 4 barriers, at least 8 player ticks, before the next (`_jump_each`): with 2,
+    vanilla counted every other jump (#354).
 
-    The windows compare only `set_health`, which on vanilla neither the sprint nor the hits
-    send, so the readback carries the comparison. They leave out `sound` and `entity_event`:
-    the attack sound and what a hit does follow the attack charge, which grows in real time.
+    The windows compare only `set_health`, which on vanilla neither the sprint, the jumps nor
+    the hits send, so the readback carries the comparison. They leave out `sound` and
+    `entity_event`: the attack sound and what a hit does follow the attack charge, which grows in
+    real time.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
@@ -373,6 +402,9 @@ async def exhaustion(context: GroupContext) -> None:
         await control.run(f"tp {bot.name} {_START_X} -60 {_LANE_Z} -90 0")
         async with context.observe(_SET_HEALTH):
             await _sprint(bot)
+        await _read_back(context, bot)
+        async with context.observe(_SET_HEALTH):
+            await _jump_each(bot, _START_X + _RUN)
         await _read_back(context, bot)
         await _attack_each(context, bot, _ring(_START_X + _RUN))
         await _read_back(context, bot)
