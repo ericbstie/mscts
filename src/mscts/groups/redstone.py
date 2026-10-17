@@ -21,6 +21,7 @@ import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
+from mscts.compare import Mask
 from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, fast_forward, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER
@@ -338,3 +339,55 @@ async def dust(context: GroupContext) -> None:
     """Dust carries power 15 blocks at once, and connects, climbs and is cut on the next tick."""
     async with _arena(context, _DUST_BUILD):
         await _observe(context, _DUST, _DUST_TICKS)
+
+
+# `redstone/update-order`: two copies of one case, at x 5 and x 10. In each, a cross of dust at
+# z 10 points north and south into stone, and beside each stone, to the west, a piston faces the
+# block between them, at z 10: both push into it, so only one can extend.
+
+
+def _pistons(x: int) -> tuple[str, ...]:
+    """The case whose dust is at x, -60, 10: the stones, the pistons, then the dust."""
+    return (
+        _set(x, 9, "stone"),
+        _set(x, 11, "stone"),
+        _set(x - 1, 9, "piston[facing=south]"),
+        _set(x - 1, 11, "piston[facing=north]"),
+        _set(x, 10, "redstone_wire[north=side,south=side,east=side,west=side]"),
+    )
+
+
+_ORDER_AT = (5, 10)
+"""The x of each copy's dust. The dust updates its neighbours in the order of a `HashSet` of their
+positions, which hashes them by where they are (`DefaultRedstoneWireEvaluator`,
+`Vec3i.hashCode`): at x 5 it updates the stone to the north first, at x 10 the one to the south."""
+
+_ORDER_BUILD = tuple(command for x in _ORDER_AT for command in _pistons(x))
+
+_ORDER = (
+    *(_At(5 * copy, _raised(x, 10, "redstone_block")) for copy, x in enumerate(_ORDER_AT)),
+    *(_At(10 + 5 * copy, _raised(x, 10, "air")) for copy, x in enumerate(_ORDER_AT)),
+)
+"""A redstone block on each dust powers it, 5 ticks apart, then goes. The piston beside the stone
+the dust updates first extends on the next tick: the north one at x 5, the south one at x 10.
+The other one's block event finds the block taken and does nothing (`PistonBaseBlock.moveBlocks`).
+A piston's head is out 2 ticks after its block event, and it is back 2 ticks after it retracts:
+the last on tick 18."""
+
+_ORDER_TICKS = 21
+
+_PISTON_PITCH = Mask(
+    "minecraft:sound",
+    "pitch",
+    "Vanilla draws it at random for a piston (26.3 javap): `PistonBaseBlock.triggerEvent` plays "
+    "the extend sound with pitch nextFloat() * 0.25 + 0.6 and the retract sound with "
+    "nextFloat() * 0.15 + 0.6. The pistons are the only things that play a sound in "
+    "`redstone/update-order`; which sound plays, where and at what volume is still compared.",
+)
+
+
+@group("redstone/update-order", kind=GroupKind.TICK_EXACT, masks=(_PISTON_PITCH,))
+async def update_order(context: GroupContext) -> None:
+    """Which of two pistons a dust powers first, by where the dust is."""
+    async with _arena(context, _ORDER_BUILD):
+        await _observe(context, _ORDER, _ORDER_TICKS)

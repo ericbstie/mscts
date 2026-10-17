@@ -24,7 +24,9 @@ COMPARATOR = "redstone/comparator"
 TORCH = "redstone/torch"
 OBSERVER = "redstone/observer"
 DUST = "redstone/dust"
-GROUP_IDS = (REPEATER, COMPARATOR, TORCH, OBSERVER, DUST)
+UPDATE_ORDER = "redstone/update-order"
+UNMASKED = (REPEATER, COMPARATOR, TORCH, OBSERVER, DUST)
+GROUP_IDS = (*UNMASKED, UPDATE_ORDER)
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw")
 WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
@@ -93,16 +95,18 @@ def steps(ticks: int) -> tuple[str, ...]:
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-def test_each_group_is_registered_tick_exact_with_the_default_spec_and_no_mask(
-    group_id: str,
-) -> None:
+def test_each_group_is_registered_tick_exact_with_the_default_spec(group_id: str) -> None:
     group = GROUPS[group_id]
     default = ServerSpec(host="127.0.0.1", port=25566)
 
     assert group.kind is GroupKind.TICK_EXACT
     assert group.requires == ()
-    assert group.masks == ()
     assert group.spec(default) == default
+
+
+@pytest.mark.parametrize("group_id", UNMASKED)
+def test_each_group_without_a_piston_masks_nothing(group_id: str) -> None:
+    assert GROUPS[group_id].masks == ()
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
@@ -379,3 +383,49 @@ async def test_dust_powers_the_line_for_a_tick_then_builds_and_cuts_a_climb_a_ti
         *steps(2),
     )
     assert window.ticks == 10
+
+
+# `redstone/update-order`
+
+
+def test_update_order_masks_only_the_pistons_random_pitch() -> None:
+    (mask,) = GROUPS[UPDATE_ORDER].masks
+
+    assert (mask.packet, mask.path) == ("minecraft:sound", "pitch")
+
+
+@pytest.mark.asyncio
+async def test_update_order_builds_two_copies_of_dust_between_two_pistons() -> None:
+    first = (await play(UPDATE_ORDER)).first
+    cross = "redstone_wire[north=side,south=side,east=side,west=side]"
+    copies = [
+        (
+            f"setblock {x} -60 9 minecraft:stone",
+            f"setblock {x} -60 11 minecraft:stone",
+            f"setblock {x - 1} -60 9 minecraft:piston[facing=south]",
+            f"setblock {x - 1} -60 11 minecraft:piston[facing=north]",
+            f"setblock {x} -60 10 minecraft:{cross}",
+        )
+        for x in (5, 10)
+    ]
+
+    assert first[5:] == (*copies[0], *copies[1])
+
+
+@pytest.mark.asyncio
+async def test_update_order_powers_and_unpowers_each_copy_5_ticks_apart() -> None:
+    # A piston has extended 2 ticks after its block event and retracted 2 ticks after the next:
+    # each change waits until the last has ended.
+    (window,) = (await play(UPDATE_ORDER)).windows
+
+    assert window.commands == (
+        "setblock 5 -59 10 minecraft:redstone_block",
+        *steps(5),
+        "setblock 10 -59 10 minecraft:redstone_block",
+        *steps(5),
+        "setblock 5 -59 10 minecraft:air",
+        *steps(5),
+        "setblock 10 -59 10 minecraft:air",
+        *steps(6),
+    )
+    assert window.ticks == 21
