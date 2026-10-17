@@ -41,6 +41,7 @@ COMMANDS = tree(
     "tag",
     "spawnpoint",
     "tellraw",
+    "weather",
 )
 PLAY_TIMEOUT_S = 300.0
 
@@ -190,9 +191,11 @@ def test_the_bots_join_in_order(group_id: str) -> None:
 def test_the_joins_are_pinned_and_control_moves_away_before_any_bot_joins(group_id: str) -> None:
     transcript, result = play(group_id)
 
-    assert result.first[:3] == (
+    assert result.first[:5] == (
         "gamerule player_movement_check false",
         "gamerule respawn_radius 0",
+        "gamerule advance_weather false",
+        "weather clear",
         "tp control 96.5 -60 96.5",
     )
     hello = next(
@@ -205,7 +208,22 @@ def test_the_joins_are_pinned_and_control_moves_away_before_any_bot_joins(group_
     )
     assert moved < hello
     undone = [command for command in result.after if command != "tick unfreeze"]
-    assert undone[-2:] == ["gamerule respawn_radius 10", "gamerule player_movement_check true"]
+    assert undone[-3:] == [
+        "gamerule advance_weather true",
+        "gamerule respawn_radius 10",
+        "gamerule player_movement_check true",
+    ]
+
+
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_every_window_opens_with_the_weather_cleared_and_its_cycle_stopped(group_id: str) -> None:
+    # A respawn in rain is sent the weather (`game_event` 1, 7 and 8), so a storm the weather
+    # cycle started during an earlier Group would reach one Instance's windows only (#426).
+    result = played(group_id)
+
+    stopped = result.first.index("gamerule advance_weather false")
+    assert result.first.index("weather clear") > stopped
+    assert result.after.count("gamerule advance_weather true") == 1
 
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)

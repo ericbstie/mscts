@@ -517,7 +517,7 @@ servers, and between plays on one server.
 
 ### Game modes, death and respawn
 
-What a game mode changes, and what happens to a player who dies. The server runs on normal difficulty. Control stands at x 96.5 and z 96.5, out of every Bot's view, and each Bot is put back at the spawn in survival when the Group ends.
+What a game mode changes, and what happens to a player who dies. The server runs on normal difficulty. Control stands at x 96.5 and z 96.5, out of every Bot's view, and each Bot is put back at the spawn in survival when the Group ends. The Group clears the weather and stops its cycle (`advance_weather`), because a player who respawns in rain is sent the weather, and a storm can start on one server and not on the other.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

@@ -1306,7 +1306,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups._world`: `pin_joins` — set `respawn_radius` 0 and turn `player_movement_check` off,
   through Control, pushing their undos onto the Group's `AsyncExitStack` (`join/basic`, the
   `players` and `chunks` Groups). `calm_weather` — turn `advance_weather` off and clear the
-  weather, through Control, pushing the undo (the `time` and `player` Groups).
+  weather, through Control, pushing the undo (the `time`, `player` and `player_modes` Groups).
   `CONTROL_AT` — where Control
   puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when its Group ends;
   `join_at_spawn` — join a Bot and push the `tp` that puts it back at the spawn; `fresh` — kill a
