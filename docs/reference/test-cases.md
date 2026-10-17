@@ -2696,7 +2696,11 @@ inventory's 2 × 2 grid.
 
 **Recipe book entries**
 
-The recipes added in one packet.
+The recipes added in one packet. The toast that announces new recipes
+shows them one after another, so the recipes it shows are compared in
+the order they came. The others can come in any order: at a join,
+vanilla sends a player's recipes in an order that changes from one boot
+to the next. They are compared sorted by what each shows.
 
 ## `recipe_book_add.entries[]`
 
