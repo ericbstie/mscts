@@ -1277,7 +1277,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `fluids/lava-spread` script; `sources` — the `fluids/sources` script; `interactions` — the
   `fluids/interactions` script.
 - `groups.redstone`: `repeater` — the `redstone/repeater` script; `comparator` — the
-  `redstone/comparator` script; `torch` — the `redstone/torch` script.
+  `redstone/comparator` script; `torch` — the `redstone/torch` script; `observer` — the
+  `redstone/observer` script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,

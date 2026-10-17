@@ -22,7 +22,8 @@ from tests.net.fakes import Peer
 REPEATER = "redstone/repeater"
 COMPARATOR = "redstone/comparator"
 TORCH = "redstone/torch"
-GROUP_IDS = (REPEATER, COMPARATOR, TORCH)
+OBSERVER = "redstone/observer"
+GROUP_IDS = (REPEATER, COMPARATOR, TORCH, OBSERVER)
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw")
 WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
@@ -302,3 +303,36 @@ async def test_torch_fast_forwards_then_steps_until_the_burnt_out_torch_lights_a
 
     assert recovery.before == (TIME_QUERY, f"tick step {FAST_FORWARD}", TIME_QUERY)
     assert recovery.commands == steps(5)
+
+
+# `redstone/observer`
+
+
+@pytest.mark.asyncio
+async def test_observer_builds_two_observers_facing_away_from_each_other() -> None:
+    first = (await play(OBSERVER)).first
+
+    assert first[5:] == (
+        "setblock 3 -60 3 minecraft:observer[facing=west]",
+        "setblock 8 -60 8 minecraft:observer[facing=east]",
+    )
+
+
+@pytest.mark.asyncio
+async def test_observer_changes_what_one_watches_then_makes_a_clock_of_the_other() -> None:
+    # An observer pulses for 2 ticks, 2 ticks after the block it watches changes
+    # (`ObserverBlock.startSignal`): a third observer facing the second makes a clock, which
+    # stops when it goes.
+    (window,) = (await play(OBSERVER)).windows
+
+    assert window.commands == (
+        "setblock 2 -60 3 minecraft:stone",
+        *steps(6),
+        "setblock 2 -60 3 minecraft:air",
+        *steps(6),
+        "setblock 9 -60 8 minecraft:observer[facing=west]",
+        *steps(12),
+        "setblock 9 -60 8 minecraft:air",
+        *steps(6),
+    )
+    assert window.ticks == 30
