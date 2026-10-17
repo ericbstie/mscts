@@ -499,9 +499,10 @@ The Bot is made fresh before the fire and again before the lava: a player is imm
 after a hit, and a lava tick inside them hurts only by the excess, so the lava's full hit would
 fall between two windows.
 The Bot leaves the lava as soon as the hit there has come, before the next window opens, so its
-move onto the dry grass is in no window. It must leave within 9 ticks of that hit, so that the burn
-starts from the same count of ticks on every server. The last window ends a barrier after the water
-puts the fire out.
+move onto the dry grass is in no window. If the next lava hit, 10 ticks later, reaches the Bot
+before the move does, the Group fails. Leaving within those ticks also makes the burn start from
+the same count of ticks on every server. The last window ends a barrier after the water puts the
+fire out.
 The Group masks the pitch of `sound`: the burn and extinguish sounds draw it at random. Other
 sounds have a fixed pitch (a note block's is its gameplay), so the Mask is this Group's and not
 every Comparison's. How the pitch is distributed belongs to a statistical Group (#24).

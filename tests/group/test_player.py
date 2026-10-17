@@ -31,6 +31,7 @@ from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
+    SPAWN,
     TICK_S,
     JoinScript,
     Peer,
@@ -154,6 +155,10 @@ class PlayerServer:
     game_time: int = 0
     """The game time the next `time query gametime` answers: each answer moves it on by
     `FADE_TICKS`."""
+    teleports: int = 0
+    """How many `player_position` the fake has sent: the last teleport id."""
+    held: bool = True
+    """Whether each hit waits for a barrier since the last; False sends it when it is due."""
 
     def __post_init__(self) -> None:
         """No hit has come yet, so the first is not held back."""
@@ -208,8 +213,27 @@ class PlayerServer:
             await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
         elif command.startswith(("tp ", "kill ")):
             self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
+            if command.startswith("tp "):
+                await self._teleport(command)
             if command in self.hurts:
                 self.hurting = asyncio.create_task(self._hurt(self.hurts[command]))
+
+    async def _teleport(self, command: str) -> None:
+        """Send the player a `tp` moves its `player_position`, as vanilla does when it runs it."""
+        _, name, *at = command.split()
+        peer = self.players.get(name)
+        if peer is not None:
+            self.teleports += 1
+            x, y, z = (float(part) for part in at)
+            await peer.send(
+                "minecraft:player_position",
+                **{**SPAWN, "x": x, "y": y, "z": z},
+                teleport_id=self.teleports,
+                velocity_x=0.0,
+                velocity_y=0.0,
+                velocity_z=0.0,
+                flags=0,
+            )
 
     def _stop_hurting(self) -> None:
         if self.hurting is not None:
@@ -222,7 +246,8 @@ class PlayerServer:
         with suppress(ConnectionError):
             while True:
                 await asyncio.sleep(0 if self.due_at_once else ticks * TICK_S)
-                await self.barrier_since_hit.wait()
+                if self.held:
+                    await self.barrier_since_hit.wait()
                 self.barrier_since_hit.clear()
                 ticks = hurt.period_ticks
                 for name, peer in list(self.players.items()):
@@ -244,6 +269,7 @@ async def _play(
     *,
     late: frozenset[str] = frozenset(),
     due_at_once: bool = False,
+    held: bool = True,
 ) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
@@ -253,6 +279,7 @@ async def _play(
             kills_after=KILLS_AFTER.get(group_id),
             late=late,
             due_at_once=due_at_once,
+            held=held,
         ),
         timeout_s=PLAY_TIMEOUT_S,
     ) as endpoint:
@@ -846,27 +873,20 @@ def test_a_lava_hit_that_comes_as_soon_as_it_can_does_not_reach_the_dry_grass_wi
     ]
 
 
-def lava_left_late() -> Callable[[], float]:
-    """A clock that reads 0 s at each hit, then 0.5 s from the move out of the lava on.
-
-    That move comes later than the 8 ticks (0.4 s) the lava's next hit allows, and every later
-    window opens on time.
-    """
-    now = iter([0.0, 0.0])
-    return lambda: next(now, 0.5)
-
-
-def test_fire_fails_when_the_bot_leaves_the_lava_after_its_next_hit_may_have_come() -> None:
-    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
-        asyncio.run(_play("player/fire", clock=lava_left_late()))
+def test_fire_fails_when_the_next_lava_hit_comes_before_the_bot_is_moved_out() -> None:
+    # Hits sent the moment they are due, without waiting for a barrier: the second lava hit
+    # comes before the move out of the lava, which the Group sees by the order of the packets,
+    # however late the Bot reads them.
+    with pytest.raises(ProtocolError, match="took another hit before it was moved out"):
+        asyncio.run(_play("player/fire", due_at_once=True, held=False))
 
 
 def after_the_move_out(seconds: float) -> Callable[[], float]:
-    """A clock that reads 0 s at each hit and at the move out of the lava, then `seconds`.
+    """A clock that reads 0 s at each hit, then `seconds` once the Bot is out of the lava.
 
     So the dry-grass window opens `seconds` after the lava's hit, and every later one on time.
     """
-    now = iter([0.0, 0.0, 0.0])
+    now = iter([0.0, 0.0])
     return lambda: next(now, seconds)
 
 
