@@ -21,7 +21,6 @@ is not `match` either (#388, `support.selfcheck.play_and_replay`).
 """
 
 import functools
-import os
 from pathlib import Path
 
 import pytest
@@ -30,7 +29,6 @@ from support.selfcheck import (
     describe_failure,
     needs_instances_of_their_own,
     play_and_replay,
-    repeat_from,
 )
 
 from mscts.group import Group, GroupKind, resolve
@@ -40,10 +38,9 @@ from mscts.runner import Instance
 pytestmark = [
     pytest.mark.selfcheck,
     pytest.mark.asyncio(loop_scope="session"),
-    # 90 s per play, at least 900 s (#182). The slowest Group, blocks/clone, takes about
-    # 45 s per play (40 plays: 1750 to 1890 s), so a slower host or --stress keeps room.
+    # The time limit is a mark on each case, from `support.selfcheck.time_limit_s`: 90 s a
+    # play (at least 900 s) and more for the Groups in `SLOW_PLAY_LIMIT_S` (#182, #423).
     # Bot operations have their own bounds.
-    pytest.mark.timeout(max(900, 90 * repeat_from(os.environ))),
 ]
 
 
