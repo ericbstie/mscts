@@ -2447,6 +2447,29 @@ proves it necessary:
    first seen in a `remove_entities` takes no number: the entity is
    gone, and a number would shift every later one. It is written `#?`
    there, as its value is the server's counter.
+   Recipe display ids and recipe book group numbers (#363) are numbers
+   the server picks, and become `#<n>` the same way, each counted on its
+   own: the n-th display id (or group number) in the Bot's compared
+   packets, read after the sort of step 1, so neither server's numbering
+   decides it. They are `recipe_book_add`'s `entries[].contents.id` and
+   `entries[].contents.group` (None, no group, stays None) and
+   `recipe_book_remove`'s `recipes[]` (`compare._RECIPE_NUMBERED`). An id
+   first seen in a removal takes the next number too, and a removal ends
+   no number: the server gives a recipe the same display id every time
+   (`RecipeManager.unpackRecipeInfo` numbers every display once).
+   `place_ghost_recipe` holds a display, not an id, and is compared as
+   it is; `place_recipe`, which sends an id back, is serverbound. So a
+   Candidate that numbers its recipes another way but keeps to it shows
+   the same book, and a removal or a group of another recipe than the
+   Reference's differs (`#2` against `#1`). Javap on the 26.3 client:
+   the client keeps its book in a `HashMap` keyed by display id
+   (`ClientRecipeBook.known`) and puts the recipes of one category and
+   group number in one button (`categorizeAndGroupRecipes`, a
+   `HashBasedTable`). Not compared: the book lists its buttons in that
+   map's iteration order (`rebuildCollections` iterates `known.values()`,
+   and `RecipeBookComponent.updateCollections` and `RecipeBookPage`
+   sort nothing), which follows the ids' values (`RecipeDisplayId` is a
+   record of one `int`, so its hash is the id).
 3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream

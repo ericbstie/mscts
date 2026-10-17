@@ -66,9 +66,9 @@ def test_the_order_of_entries_with_no_toast_is_no_difference() -> None:
 
 def test_entries_with_no_toast_are_sorted_by_what_they_show_not_by_their_display_id() -> None:
     reference = book_add((STICKS, 4, None, NO_TOAST), (PLANKS, 7, None, NO_TOAST))
-    candidate = book_add((PLANKS, 8, None, NO_TOAST), (STICKS, 4, None, NO_TOAST))
+    candidate = book_add((PLANKS, 3, None, NO_TOAST), (STICKS, 9, None, NO_TOAST))
 
-    assert _diff(reference, candidate) == [("entries[0].contents.id", 7, 8)]
+    assert _diff(reference, candidate) == []
 
 
 def test_entries_with_a_toast_keep_their_order_since_the_toast_shows_them_in_turn() -> None:
@@ -88,3 +88,100 @@ def test_recipe_book_entries_are_compared_sorted_with_their_reason() -> None:
 
     assert "Sets.newIdentityHashSet" in reason
     assert "RecipeToast" in reason
+
+
+BOOK_REMOVE = "minecraft:recipe_book_remove"
+
+
+def book_remove(*display_ids: int) -> Packet:
+    """A `recipe_book_remove` of `display_ids`."""
+    return packet(BOOK_REMOVE, fields={"recipes": list(display_ids)})
+
+
+def ghost(result: int) -> Packet:
+    """A `place_ghost_recipe` in the inventory's grid of the recipe that makes `result`."""
+    return packet(
+        "minecraft:place_ghost_recipe", fields={"window_id": 0, "recipe_display": _display(result)}
+    )
+
+
+def _diff_all(
+    reference: list[Packet], candidate: list[Packet]
+) -> list[tuple[str | None, object, object]]:
+    verdict = compare(
+        transcript(*(("alice", each) for each in reference)),
+        transcript(*(("alice", each) for each in candidate)),
+        [],
+    )
+    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+
+
+def test_a_server_that_numbers_every_recipe_another_way_but_consistently_matches() -> None:
+    reference = [
+        book_add((PLANKS, 7, 3, NO_TOAST), (STICKS, 4, 3, NO_TOAST)),
+        book_remove(4),
+        book_add((STICKS, 4, 3, TOAST)),
+    ]
+    candidate = [
+        book_add((STICKS, 55, 9, NO_TOAST), (PLANKS, 100, 9, NO_TOAST)),
+        book_remove(55),
+        book_add((STICKS, 55, 9, TOAST)),
+    ]
+
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_removal_of_another_recipe_than_the_reference_removes_differs() -> None:
+    reference = [book_add((PLANKS, 7, None, NO_TOAST), (STICKS, 4, None, NO_TOAST)), book_remove(4)]
+    candidate = [
+        book_add((PLANKS, 100, None, NO_TOAST), (STICKS, 55, None, NO_TOAST)),
+        book_remove(100),
+    ]
+
+    assert _diff_all(reference, candidate) == [("recipes[0]", "#2", "#1")]
+
+
+def test_display_ids_are_numbered_in_the_sorted_order() -> None:
+    reference = [book_add((STICKS, 4, None, NO_TOAST), (PLANKS, 7, None, NO_TOAST)), book_remove(7)]
+    candidate = [book_add((PLANKS, 9, None, NO_TOAST), (STICKS, 4, None, NO_TOAST)), book_remove(4)]
+
+    assert _diff_all(reference, candidate) == [("recipes[0]", "#1", "#2")]
+
+
+def test_an_id_first_seen_in_a_removal_takes_the_next_number() -> None:
+    reference = [book_remove(5), book_add((PLANKS, 5, None, TOAST))]
+
+    assert _diff_all(reference, [book_remove(8), book_add((PLANKS, 8, None, TOAST))]) == []
+    assert _diff_all(reference, [book_remove(8), book_add((PLANKS, 9, None, TOAST))]) == [
+        ("entries[0].contents.id", "#1", "#2")
+    ]
+
+
+def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:
+    reference = [book_add((PLANKS, 7, 3, NO_TOAST), (STICKS, 4, 8, NO_TOAST))]
+    candidate = [book_add((PLANKS, 100, 9, NO_TOAST), (STICKS, 55, 9, NO_TOAST))]
+
+    assert _diff_all(reference, candidate) == [("entries[1].contents.group", "#2", "#1")]
+
+
+def test_a_recipe_in_a_group_on_one_server_only_differs() -> None:
+    reference = [book_add((PLANKS, 7, 3, NO_TOAST))]
+    candidate = [book_add((PLANKS, 7, None, NO_TOAST))]
+
+    assert _diff_all(reference, candidate) == [("entries[0].contents.group", "#1", None)]
+
+
+def test_a_ghost_recipe_of_another_recipe_than_the_one_added_differs() -> None:
+    reference = [book_add((PLANKS, 7, None, TOAST)), ghost(PLANKS)]
+    candidate = [book_add((PLANKS, 100, None, TOAST)), ghost(STICKS)]
+
+    assert _diff_all(reference, candidate) == [
+        ("recipe_display.value.result.value", PLANKS, STICKS)
+    ]
+
+
+def test_each_bot_numbers_its_own_recipes() -> None:
+    reference = transcript(("alice", book_add((PLANKS, 7, None, TOAST))), ("bob", book_remove(7)))
+    candidate = transcript(("alice", book_add((PLANKS, 9, None, TOAST))), ("bob", book_remove(4)))
+
+    assert compare(reference, candidate, []).divergences == ()
