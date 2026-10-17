@@ -52,8 +52,8 @@ _FADE_TICKS = 100
 """How many running ticks a storm takes to fade: its rain and thunder levels go from 1 to 0 by
 0.01 a tick."""
 
-_FADE_READS = 10
-"""How often Control reads the game time again before the wait for the weather gives up."""
+_TIME_READS = 10
+"""How often Control reads the game time again before a wait for ticks to run gives up."""
 
 _TICK_S = 0.05
 
@@ -95,21 +95,51 @@ async def until_the_weather_fades(control: Control) -> None:
     leaves them where they are (`ServerLevel.advanceWeatherCycle`, 26.3 javap). A player in a
     world whose rain level is above 0.2 is in rain (`Level.isRaining`), and is sent the weather
     when it respawns. So a Group that clears a storm and freezes the world at once still
-    plays in it (#426). Control reads the game time (`time query gametime`), and again after
-    a wait as long as the ticks still to run, until they have run.
+    plays in it (#426). Control reads the game time (`time query gametime`), then waits until
+    the ticks have run (`_until_ran`).
 
     Raises:
-        TimeoutError: The world had not run them after `_FADE_READS` more reads: it is frozen.
+        TimeoutError: The world had not run them after `_TIME_READS` more reads: it is frozen.
         ValueError: The server's answer held no game time (`gametime`).
     """
     cleared = gametime(await control.run(_TIME_QUERY))
+    await _until_ran(control, cleared, _FADE_TICKS, "for the weather to fade")
+
+
+async def fast_forward(control: Control, ticks: int) -> None:
+    """Step the frozen world on `ticks` ticks at once, outside any window; return once they ran.
+
+    For a wait too long to step a tick at a time, about 0.3 s each. Control reads the game time,
+    runs `tick step <ticks>`, which answers before the ticks have run, then waits until they
+    have (`_until_ran`). A frozen world's game time moves on only on the ticks it steps
+    (docs/research/2026-10-03-tick-step.md). The steps get no tick Mark: no Bot passes a barrier.
+
+    Raises:
+        TimeoutError: The world had not run them after `_TIME_READS` more reads.
+        ValueError: The server's answer held no game time (`gametime`).
+    """
+    since = gametime(await control.run(_TIME_QUERY))
+    await control.run(f"tick step {ticks}")
+    await _until_ran(control, since, ticks, "of a fast-forward")
+
+
+async def _until_ran(control: Control, since: int, ticks: int, purpose: str) -> None:
+    """Return once the game time is `ticks` past `since`.
+
+    Control reads the game time, and again after a wait as long as the ticks still to run.
+    `purpose` ends the timeout's message, e.g. `for the weather to fade`.
+
+    Raises:
+        TimeoutError: The world had not run them after `_TIME_READS` reads.
+        ValueError: The server's answer held no game time (`gametime`).
+    """
     ran = 0
-    for _ in range(_FADE_READS):
-        ran = gametime(await control.run(_TIME_QUERY)) - cleared
-        if ran >= _FADE_TICKS:
+    for _ in range(_TIME_READS):
+        ran = gametime(await control.run(_TIME_QUERY)) - since
+        if ran >= ticks:
             return
-        await asyncio.sleep((_FADE_TICKS - ran) * _TICK_S)
-    msg = f"the world ran {ran} of {_FADE_TICKS} ticks for the weather to fade"
+        await asyncio.sleep((ticks - ran) * _TICK_S)
+    msg = f"the world ran {ran} of {ticks} ticks {purpose}"
     raise TimeoutError(msg)
 
 

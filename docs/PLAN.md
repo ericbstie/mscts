@@ -1277,7 +1277,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `fluids/lava-spread` script; `sources` — the `fluids/sources` script; `interactions` — the
   `fluids/interactions` script.
 - `groups.redstone`: `repeater` — the `redstone/repeater` script; `comparator` — the
-  `redstone/comparator` script.
+  `redstone/comparator` script; `torch` — the `redstone/torch` script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
@@ -1309,9 +1309,10 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `players` and `chunks` Groups). `calm_weather` — turn `advance_weather` off and clear the
   weather, through Control, pushing the undo (the `time`, `player` and `player_modes` Groups);
   `until_the_weather_fades` — return once the world has run the 100 ticks a cleared storm takes
-  to fade, read from the game time (the `player` and `player_modes` Groups); `gametime` — the
-  game time in a server's answer to `time query gametime` (that wait, and the
-  `mobs_pathfinding` Groups).
+  to fade, read from the game time (the `player` and `player_modes` Groups); `fast_forward` —
+  step a frozen world on many ticks at once with `tick step <n>`, outside any window, and return
+  once the game time says they ran (`redstone/torch`); `gametime` — the game time in a server's
+  answer to `time query gametime` (those waits, and the `mobs_pathfinding` Groups).
   `CONTROL_AT` — where Control
   puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when its Group ends;
   `join_at_spawn` — join a Bot and push the `tp` that puts it back at the spawn; `fresh` — kill a

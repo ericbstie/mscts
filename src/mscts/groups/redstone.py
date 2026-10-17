@@ -22,7 +22,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, join_at_spawn, pin_joins
+from mscts.groups._world import CONTROL_AT, fast_forward, join_at_spawn, pin_joins
 from mscts.spec import CONTROL_PLAYER
 
 _WATCHER = "watcher"
@@ -217,3 +217,52 @@ async def comparator(context: GroupContext) -> None:
     """Comparators compare and subtract their inputs, and read a chest filled with `/item`."""
     async with _arena(context, _COMPARATOR_BUILD):
         await _observe(context, _COMPARATOR, _COMPARATOR_TICKS)
+
+
+# `redstone/torch`: two torches, each on a block of stone that Control swaps for a redstone block
+# to power it, and back.
+
+_TORCH_BUILD = (
+    _set(3, 3, "stone"),
+    "setblock 3 -59 3 minecraft:redstone_torch",
+    _set(8, 8, "stone"),
+    "setblock 8 -59 8 minecraft:redstone_torch",
+)
+
+_INVERSION = (_At(0, _set(3, 3, "redstone_block")), _At(4, _set(3, 3, "stone")))
+"""A torch turns off 2 ticks after its block is powered, and on 2 ticks after the power goes
+(`RedstoneTorchBlock.TOGGLE_DELAY`): off on tick 2, on on tick 6."""
+
+_INVERSION_TICKS = 7
+
+_TOGGLES = 8
+"""The times a torch may turn off within 60 ticks (`RedstoneTorchBlock.MAX_RECENT_TOGGLES`)."""
+
+_BURNOUT = tuple(
+    at
+    for power in range(0, 4 * _TOGGLES, 4)
+    for at in (_At(power, _set(8, 8, "redstone_block")), _At(power + 2, _set(8, 8, "stone")))
+)
+"""The second torch's block is powered every 4 ticks, for 2 ticks, 8 times. The torch turns off
+on tick 2 and on tick 4, and so on, until it turns off the 8th time, on tick 30: then it burns
+out (level event 1502) and stays off, and ticks again 160 ticks later
+(`RedstoneTorchBlock.RESTART_DELAY`)."""
+
+_BURNOUT_TICKS = 31
+"""The window ends a tick after the last power goes, on tick 30."""
+
+_RESTART_FAST_FORWARD = 155
+"""The ticks stepped at once after the burnout, outside a window: the restart is due 160 ticks
+after tick 30, on the 4th step after them."""
+
+_RECOVERY_TICKS = 5
+
+
+@group("redstone/torch", kind=GroupKind.TICK_EXACT)
+async def torch(context: GroupContext) -> None:
+    """A torch inverts its block's power; a torch toggled 8 times in 60 ticks burns out."""
+    async with _arena(context, _TORCH_BUILD):
+        await _observe(context, _INVERSION, _INVERSION_TICKS)
+        await _observe(context, _BURNOUT, _BURNOUT_TICKS)
+        await fast_forward(context.control, _RESTART_FAST_FORWARD)
+        await _observe(context, (), _RECOVERY_TICKS)

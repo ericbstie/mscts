@@ -5,6 +5,9 @@ Marks (the Observation windows and the ticks stepped). What a server answers is 
 the fake answers Control's markers and the barrier.
 """
 
+from dataclasses import dataclass
+from typing import override
+
 import pytest
 
 from mscts.group import GROUPS, GroupKind
@@ -13,11 +16,14 @@ from mscts.transcript import Transcript
 from tests.group import test_control
 from tests.group.test_control import ControlServer, playing, tree
 from tests.group.test_entities_items import Play, read
+from tests.group.test_mobs_pathfinding import gametime_answer
+from tests.net.fakes import Peer
 
 REPEATER = "redstone/repeater"
 COMPARATOR = "redstone/comparator"
-GROUP_IDS = (REPEATER, COMPARATOR)
-COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "tellraw")
+TORCH = "redstone/torch"
+GROUP_IDS = (REPEATER, COMPARATOR, TORCH)
+COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw")
 WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
     "minecraft:level_event minecraft:sound"
@@ -25,6 +31,28 @@ WINDOW = (
 """The open Mark of every window."""
 
 STEP = "tick step 1"
+TIME_QUERY = "time query gametime"
+FAST_FORWARD = 155
+"""The ticks `redstone/torch` steps at once, outside a window."""
+
+
+@dataclass
+class ClockServer(ControlServer):
+    """A ControlServer that also answers `time query gametime`.
+
+    Each answer is `FAST_FORWARD` ticks after the last, so a fast-forward has run by the next
+    read.
+    """
+
+    game_time: int = 0
+
+    @override
+    def _answer(self, peer: Peer, command: str) -> bytes:
+        if command != TIME_QUERY:
+            return super()._answer(peer, command)
+        answer = gametime_answer(self.game_time)
+        self.game_time += FAST_FORWARD
+        return peer.frame("minecraft:system_chat", content=answer, overlay=False)
 
 
 async def replay(group_id: str, server: ControlServer) -> Play:
@@ -42,7 +70,7 @@ _PLAYS: dict[str, Play] = {}
 async def play(group_id: str) -> Play:
     """The play of `group_id` against a default fake server, played the first time it is asked."""
     if group_id not in _PLAYS:
-        _PLAYS[group_id] = await replay(group_id, ControlServer(commands=COMMANDS))
+        _PLAYS[group_id] = await replay(group_id, ClockServer(commands=COMMANDS))
     return _PLAYS[group_id]
 
 
@@ -220,3 +248,57 @@ async def test_comparator_feeds_the_rears_removes_the_sides_then_fills_and_empti
         *steps(3),
     )
     assert window.ticks == 19
+
+
+# `redstone/torch`
+
+
+@pytest.mark.asyncio
+async def test_torch_builds_two_torches_each_on_a_block_of_stone() -> None:
+    first = (await play(TORCH)).first
+
+    assert first[5:] == (
+        "setblock 3 -60 3 minecraft:stone",
+        "setblock 3 -59 3 minecraft:redstone_torch",
+        "setblock 8 -60 8 minecraft:stone",
+        "setblock 8 -59 8 minecraft:redstone_torch",
+    )
+
+
+@pytest.mark.asyncio
+async def test_torch_powers_the_first_torchs_block_then_takes_the_power_away() -> None:
+    inversion = (await play(TORCH)).windows[0]
+
+    assert inversion.commands == (
+        "setblock 3 -60 3 minecraft:redstone_block",
+        *steps(4),
+        "setblock 3 -60 3 minecraft:stone",
+        *steps(3),
+    )
+
+
+@pytest.mark.asyncio
+async def test_torch_powers_the_second_torchs_block_8_times_every_4_ticks() -> None:
+    # The 8th time a torch turns off within 60 ticks, it burns out
+    # (`RedstoneTorchBlock.MAX_RECENT_TOGGLES`): it is off 2 ticks after each power. The window
+    # ends a tick after the last power goes.
+    burnout = (await play(TORCH)).windows[1]
+    toggle = (
+        "setblock 8 -60 8 minecraft:redstone_block",
+        *steps(2),
+        "setblock 8 -60 8 minecraft:stone",
+        *steps(2),
+    )
+
+    assert burnout.commands == (toggle * 8)[:-1]
+    assert burnout.ticks == 31
+
+
+@pytest.mark.asyncio
+async def test_torch_fast_forwards_then_steps_until_the_burnt_out_torch_lights_again() -> None:
+    # A burnt-out torch ticks again 160 ticks later (`RedstoneTorchBlock.RESTART_DELAY`), on
+    # the 4th step after the fast-forward.
+    recovery = (await play(TORCH)).windows[2]
+
+    assert recovery.before == (TIME_QUERY, f"tick step {FAST_FORWARD}", TIME_QUERY)
+    assert recovery.commands == steps(5)
