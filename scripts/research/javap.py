@@ -15,7 +15,8 @@ from subprocess import run as _run
 from mscts import cache
 from mscts.adapters.base import Fetch, PrepareError, ProvisionError
 from mscts.adapters.fetch import https_get
-from mscts.adapters.vanilla import resolve_java
+from mscts.adapters.vanilla import VanillaAdapter, resolve_java
+from mscts.install import installed
 from mscts.target import TARGET
 
 _MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
@@ -170,9 +171,17 @@ def cached_libraries(patterns: list[str], fetch: Fetch = https_get) -> list[Path
     return jars
 
 
+def _server_bundle(fetch: Fetch) -> Path:
+    """The installed vanilla bundle, verified by its record; downloaded only if not installed."""
+    installation = installed(VanillaAdapter(), TARGET, cache.cache_dir())
+    if installation is None:
+        return cached_jar("server", fetch)
+    return installation.root / VanillaAdapter.binary
+
+
 def classpath(side: str, fetch: Fetch = https_get) -> Path:
     """The client jar or the server's inner jar, extracted from the verified bundle."""
-    jar = cached_jar(side, fetch)
+    jar = _server_bundle(fetch) if side == "server" else cached_jar(side, fetch)
     if side == "client":
         return jar
     version = TARGET.minecraft_version
@@ -183,7 +192,9 @@ def classpath(side: str, fetch: Fetch = https_get) -> Path:
     except (zipfile.BadZipFile, KeyError) as error:
         msg = f"{jar} has no readable {member}: {error}"
         raise ProvisionError(msg) from error
-    inner = jar.with_name(f"server-{version}.jar")
+    research = cache.cache_dir() / "research" / version
+    research.mkdir(parents=True, exist_ok=True)
+    inner = research / f"server-{version}.jar"
     if not inner.exists() or inner.read_bytes() != body:
         _write(inner, body)
     return inner
