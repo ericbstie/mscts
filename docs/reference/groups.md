@@ -444,7 +444,8 @@ difficulty, because peaceful stops most damage.
 Natural regeneration and random ticks are off, so nothing but the Group changes the Bot's health
 or the blocks. (Mobs do not spawn either, but that is the Fixture world's rule, not the Group's.)
 The Group clears the weather and stops its cycle (`advance_weather`), because rain puts out a
-burning player and a storm can start on one server and not on the other.
+burning player and a storm can start on one server and not on the other. A storm fades over 100
+ticks after the weather is cleared, so the Group lets the world run them before it freezes it.
 A server saves a player where it leaves. Control is online before the Group starts, so it joins
 where the last Group left it, which is 96 blocks from the spawn. The Group moves it there so that
 its entity never reaches a window. Each Bot joins where the last play left it, and the Group puts
@@ -517,7 +518,7 @@ servers, and between plays on one server.
 
 ### Game modes, death and respawn
 
-What a game mode changes, and what happens to a player who dies. The server runs on normal difficulty. Control stands at x 96.5 and z 96.5, out of every Bot's view, and each Bot is put back at the spawn in survival when the Group ends. The Group clears the weather and stops its cycle (`advance_weather`), because a player who respawns in rain is sent the weather, and a storm can start on one server and not on the other.
+What a game mode changes, and what happens to a player who dies. The server runs on normal difficulty. Control stands at x 96.5 and z 96.5, out of every Bot's view, and each Bot is put back at the spawn in survival when the Group ends. The Group clears the weather and stops its cycle (`advance_weather`), because a player who respawns in rain is sent the weather, and a storm can start on one server and not on the other. A storm fades over 100 ticks after the weather is cleared, so the Group lets the world run them before any Bot joins.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |

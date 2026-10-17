@@ -1,6 +1,7 @@
 """The clean-up of a Group's tagged entities: what Control runs, and when it returns."""
 
 import uuid
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -8,8 +9,11 @@ import pytest
 from mscts.codec.packets import Direction, Packet, State
 from mscts.entities import Entity
 from mscts.groups import _world
-from mscts.groups._world import remove_tagged_until_gone
+from mscts.groups._world import remove_tagged_until_gone, until_the_weather_fades
 from tests.group.test_combat import NONE_LEFT
+from tests.group.test_mobs_pathfinding import gametime_answer
+
+_TIME_QUERY = "time query gametime"
 
 if TYPE_CHECKING:
     from mscts.bot import Bot
@@ -63,6 +67,49 @@ class _World:
 
     async def sync(self) -> None:
         self.syncs += 1
+
+
+class _Clock:
+    """Control in a world whose game time reads `times`, one a `time query gametime`."""
+
+    def __init__(self, *times: int) -> None:
+        self.commands: list[str] = []
+        self._times = iter(times)
+
+    async def run(self, command: str) -> tuple[Packet, ...]:
+        self.commands.append(command)
+        answer = _answer(gametime_answer(next(self._times)))
+        return (answer,) if command == _TIME_QUERY else ()
+
+    async def leave(self) -> None:
+        """Nothing to close."""
+
+
+def _answer(content: bytes) -> Packet:
+    return replace(_said(""), fields={"content": content, "overlay": False})
+
+
+@pytest.mark.asyncio
+async def test_the_weather_has_faded_once_the_world_has_run_100_ticks() -> None:
+    # `weather clear` sets neither the rain nor the thunder level: each moves 0.01 a running
+    # tick toward the weather (`ServerLevel.advanceWeatherCycle`), so a storm fades in 100.
+    control = _Clock(2000, 2099, 2100)
+
+    await until_the_weather_fades(control)
+
+    assert control.commands == [_TIME_QUERY] * 3
+
+
+@pytest.mark.asyncio
+async def test_a_world_whose_time_stands_still_ends_the_wait_for_the_weather_with_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_world, "_FADE_TICKS", 2)
+    control = _Clock(*[5] * 20)
+
+    with pytest.raises(TimeoutError, match="the world ran 0 of 2 ticks"):
+        await until_the_weather_fades(control)
+    assert len(control.commands) == _world._FADE_READS + 1  # noqa: SLF001
 
 
 @pytest.mark.asyncio

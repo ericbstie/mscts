@@ -22,7 +22,7 @@ so two Instances differ in every play: the samples are compared as distributions
 import asyncio
 import contextlib
 import math
-from collections.abc import AsyncIterator, Callable, Iterable, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import cast
 
@@ -30,7 +30,7 @@ from mscts.bot import Bot
 from mscts.codec.packets import Packet
 from mscts.entities import Entity
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, normal, remove_tagged_until_gone
+from mscts.groups._world import CONTROL_AT, gametime, normal, remove_tagged_until_gone
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
 _TAG = "mscts_mobs"
@@ -54,13 +54,6 @@ answer to its read of the game time."""
 _SYSTEM_CHAT = "minecraft:system_chat"
 
 _TIME_QUERY = "time query gametime"
-_GAMETIME_KEY = b"commands.time.query.gametime"
-_WITH = b"\x09\x00\x04with"
-"""The `with` list of a translated text component, as network NBT: its arguments."""
-
-_LONG, _INT, _STRING = 4, 3, 8
-"""The NBT tag types a server may give the game time as: vanilla a Long, Pumpkin a String."""
-
 _SET_TIME = "minecraft:set_time"
 
 _DAMAGE = "minecraft:damage_event"
@@ -73,40 +66,6 @@ _MOVES = (
 """The packets that tell a client where an entity has moved."""
 
 type _Position = tuple[float, float, float]
-
-
-def gametime(said: Iterable[Packet]) -> int:
-    """The game time in the answer to `time query gametime` among the system chat in `said`.
-
-    Raises:
-        ValueError: None of `said` is that answer.
-    """
-    for packet in said:
-        content = (packet.fields or {}).get("content")
-        if isinstance(content, bytes) and _GAMETIME_KEY in content:
-            value = _first_argument(content)
-            if value is not None:
-                return value
-    msg = f"no answer to {_TIME_QUERY} among what the server said"
-    raise ValueError(msg)
-
-
-def _first_argument(content: bytes) -> int | None:
-    """The first argument of the translated text component `content`, if it is a number."""
-    at = content.find(_WITH)
-    if at < 0:
-        return None
-    kind = content[at + len(_WITH)]
-    value = content[at + len(_WITH) + 5 :]  # past the element type and the list's length
-    if kind == _LONG:
-        return int.from_bytes(value[:8], "big", signed=True)
-    if kind == _INT:
-        return int.from_bytes(value[:4], "big", signed=True)
-    if kind == _STRING:
-        size = int.from_bytes(value[:2], "big")
-        text = value[2 : 2 + size].decode(errors="replace")
-        return int(text) if text.lstrip("-").isdigit() else None
-    return None
 
 
 def _stamped(packet: Packet) -> int:

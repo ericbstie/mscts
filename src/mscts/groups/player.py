@@ -17,7 +17,8 @@ from every block it sets (docs/roles/player-actions.md, #300): a block set where
 makes it crawl and choke on one Instance only. Each Bot is put back at the spawn when the Group
 ends, so that it does not rejoin inside a block. Natural regeneration is off, so health stays what
 the damage left it. The weather is cleared and its cycle stopped: rain puts out a burning player,
-and a storm the cycle started during an earlier Group would come on one Instance only. Every
+and a storm the cycle started during an earlier Group would come on one Instance only. Then the
+world runs on until a storm has faded (`until_the_weather_fades`) before it is frozen. Every
 setting is put back afterwards, because every Group is played on the same two Instances. (Mobs do
 not spawn: the Fixture world has `spawn_mobs` off, ADR-0013, and no Group turns it on.)
 """
@@ -37,6 +38,7 @@ from mscts.groups._world import (
     join_at_spawn,
     normal,
     pin_joins,
+    until_the_weather_fades,
 )
 from mscts.net import ProtocolError
 from mscts.spec import CONTROL_PLAYER
@@ -95,6 +97,7 @@ async def _environment(
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
         await calm_weather(control, undo)
+        await until_the_weather_fades(control)
         for rule, value, back in _RULES:
             undo.push_async_callback(control.run, f"gamerule {rule} {back}")
             await control.run(f"gamerule {rule} {value}")

@@ -1,9 +1,12 @@
 """World setup that more than one Group uses."""
 
+import asyncio
 import contextlib
+from collections.abc import Iterable
 from dataclasses import replace
 
 from mscts.bot import Bot
+from mscts.codec.packets import Packet
 from mscts.entities import Entity
 from mscts.group import Control, GroupContext
 from mscts.spec import Difficulty, ServerSpec
@@ -37,6 +40,23 @@ _MOVEMENT_CHECK = "gamerule player_movement_check"
 (docs/research/2026-09-26-join.md; `ServerGamePacketListenerImpl.shouldCheckPlayerMovement`
 returns false when the rule is off)."""
 
+_TIME_QUERY = "time query gametime"
+_GAMETIME_KEY = b"commands.time.query.gametime"
+_WITH = b"\x09\x00\x04with"
+"""The `with` list of a translated text component, as network NBT: its arguments."""
+
+_LONG, _INT, _STRING = 4, 3, 8
+"""The NBT tag types a server may give the game time as: vanilla a Long, Pumpkin a String."""
+
+_FADE_TICKS = 100
+"""How many running ticks a storm takes to fade: its rain and thunder levels go from 1 to 0 by
+0.01 a tick."""
+
+_FADE_READS = 10
+"""How often Control reads the game time again before the wait for the weather gives up."""
+
+_TICK_S = 0.05
+
 _RESPAWN_RADIUS = "gamerule respawn_radius"
 """How far from the world spawn a player may spawn: 10 by default in 26.3, at random. At 0
 both Instances spawn the player at the same place, so they send the same chunks (measured on
@@ -65,6 +85,66 @@ async def calm_weather(control: Control, undo: contextlib.AsyncExitStack) -> Non
     await control.run("gamerule advance_weather false")
     undo.push_async_callback(control.run, "gamerule advance_weather true")
     await control.run("weather clear")
+
+
+async def until_the_weather_fades(control: Control) -> None:
+    """Return once the world has run `_FADE_TICKS` ticks, read from the game time.
+
+    `weather clear` changes the weather at once, but not the rain and thunder levels the
+    clients are sent: each moves 0.01 a running tick toward the weather, and a frozen world
+    leaves them where they are (`ServerLevel.advanceWeatherCycle`, 26.3 javap). A player in a
+    world whose rain level is above 0.2 is in rain (`Level.isRaining`), and is sent the weather
+    when it respawns. So a Group that clears a storm and freezes the world at once still
+    plays in it (#426). Control reads the game time (`time query gametime`), and again after
+    a wait as long as the ticks still to run, until they have run.
+
+    Raises:
+        TimeoutError: The world had not run them after `_FADE_READS` more reads: it is frozen.
+        ValueError: The server's answer held no game time (`gametime`).
+    """
+    cleared = gametime(await control.run(_TIME_QUERY))
+    ran = 0
+    for _ in range(_FADE_READS):
+        ran = gametime(await control.run(_TIME_QUERY)) - cleared
+        if ran >= _FADE_TICKS:
+            return
+        await asyncio.sleep((_FADE_TICKS - ran) * _TICK_S)
+    msg = f"the world ran {ran} of {_FADE_TICKS} ticks for the weather to fade"
+    raise TimeoutError(msg)
+
+
+def gametime(said: Iterable[Packet]) -> int:
+    """The game time in the answer to `time query gametime` among the system chat in `said`.
+
+    Raises:
+        ValueError: None of `said` is that answer.
+    """
+    for packet in said:
+        content = (packet.fields or {}).get("content")
+        if isinstance(content, bytes) and _GAMETIME_KEY in content:
+            value = _first_argument(content)
+            if value is not None:
+                return value
+    msg = f"no answer to {_TIME_QUERY} among what the server said"
+    raise ValueError(msg)
+
+
+def _first_argument(content: bytes) -> int | None:
+    """The first argument of the translated text component `content`, if it is a number."""
+    at = content.find(_WITH)
+    if at < 0:
+        return None
+    kind = content[at + len(_WITH)]
+    value = content[at + len(_WITH) + 5 :]  # past the element type and the list's length
+    if kind == _LONG:
+        return int.from_bytes(value[:8], "big", signed=True)
+    if kind == _INT:
+        return int.from_bytes(value[:4], "big", signed=True)
+    if kind == _STRING:
+        size = int.from_bytes(value[:2], "big")
+        text = value[2 : 2 + size].decode(errors="replace")
+        return int(text) if text.lstrip("-").isdigit() else None
+    return None
 
 
 async def join_at_spawn(context: GroupContext, undo: contextlib.AsyncExitStack, name: str) -> Bot:
