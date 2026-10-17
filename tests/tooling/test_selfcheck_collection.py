@@ -58,23 +58,24 @@ def test_there_is_a_test_for_every_registered_group_and_no_other(suite: pytest.P
 
 
 @pytest.mark.parametrize(
-    ("repeat", "timeout_s", "starvation_s"),
+    ("repeat", "budgets"),
     [
-        (None, 900, 900),
-        ("", 900, 900),
-        ("1", 900, 900),
-        ("3", 900, 900),
-        ("20", 1800, 4500),
-        ("40", 3600, 9000),
+        (None, (900, 900, 900)),
+        ("", (900, 900, 900)),
+        ("1", (900, 900, 900)),
+        ("3", (900, 900, 900)),
+        ("20", (1800, 4500, 3840)),
+        ("40", (3600, 9000, 7680)),
     ],
 )
 def test_the_collected_selfchecks_have_a_bounded_timeout_for_the_repeat_count(
     pytester: pytest.Pytester,
     monkeypatch: pytest.MonkeyPatch,
     repeat: str | None,
-    timeout_s: int,
-    starvation_s: int,
+    budgets: tuple[int, int, int],
 ) -> None:
+    """`budgets`: the seconds of any Group, of `player/starvation` and of `player/fall`."""
+    timeout_s, starvation_s, fall_s = budgets
     if repeat is None:
         monkeypatch.delenv("MSCTS_SELFCHECK_REPEAT", raising=False)
     else:
@@ -95,7 +96,10 @@ def pytest_collection_finish(session):
     result = pytester.runpytest("--collect-only", "-q")
 
     assert result.ret == pytest.ExitCode.OK
-    limits = dict.fromkeys(GROUPS, timeout_s) | {"player/starvation": starvation_s}
+    limits = dict.fromkeys(GROUPS, timeout_s) | {
+        "player/starvation": starvation_s,
+        "player/fall": fall_s,
+    }
     result.stdout.fnmatch_lines(
         [f"selfcheck budget {group_id} {limits[group_id]}" for group_id in GROUPS]
     )
