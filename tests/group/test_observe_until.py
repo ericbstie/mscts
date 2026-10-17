@@ -408,6 +408,21 @@ async def test_a_later_end_of_controls_barrier_does_not_move_the_open_mark() -> 
 
 
 @pytest.mark.asyncio
+async def test_a_window_with_two_bots_opens_after_the_slower_bots_barrier() -> None:
+    # What bob's barrier takes is still setup at bob, even after alice's barrier has ended.
+    transcript = Transcript(group_id="test/until", server="fake")
+    async with playing(Straggler(late=frozenset({"bob"})), transcript) as context:
+        await _joined(context, "alice")
+        await _joined(context, "bob")
+        async with context.observe():
+            pass
+
+    opened = next(mark for mark in transcript.marks if mark.label == OBSERVE_OPEN)
+    assert answers(transcript, "alice")[2] < answers(transcript, "bob")[0], "bob's ends later"
+    assert opened.t_ns == answers(transcript, "bob")[2] + 1
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("named", [True, False], ids=["bot", "any-bot"])
 async def test_an_until_window_with_two_bots_besides_control_in_play_is_refused_at_once(
     named: bool,  # noqa: FBT001 - a parameter
