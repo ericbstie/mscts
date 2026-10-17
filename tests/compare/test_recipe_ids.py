@@ -222,6 +222,20 @@ def test_a_removal_of_another_recipe_than_the_reference_removes_differs() -> Non
     assert _diff_all(reference, candidate) == [("recipes[0]", "#2", "#1")]
 
 
+def test_the_order_of_a_removal_is_no_difference() -> None:
+    added = book_add(Entry(PLANKS, display_id=7), Entry(STICKS, display_id=4))
+
+    assert _diff_all([added, book_remove(7, 4)], [added, book_remove(4, 7)]) == []
+    assert _diff_all([added, book_remove(9, 7)], [added, book_remove(7, 9)]) == []
+
+
+def test_a_removal_is_compared_sorted_with_its_reason() -> None:
+    reason = UNORDERED[BOOK_REMOVE]
+
+    assert "handleRecipeBookRemove" in reason
+    assert "ClientRecipeBook.remove" in reason
+
+
 def test_display_ids_are_numbered_in_the_sorted_order() -> None:
     reference = [book_add(Entry(STICKS, display_id=4), Entry(PLANKS, display_id=7)), book_remove(7)]
     candidate = [book_add(Entry(PLANKS, display_id=9), Entry(STICKS, display_id=4)), book_remove(4)]

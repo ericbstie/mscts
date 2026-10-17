@@ -319,6 +319,15 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "toast (RecipeToast.addOrUpdate), which shows its recipes one after another in "
             "the order they came, so those keep their order."
         ),
+        "minecraft:recipe_book_remove": (
+            "recipes, sorted by the numbers their display ids take, after they are numbered: "
+            "each server picks its ids, so their own order would follow its numbering. Vanilla "
+            "lists them in the order of the collection it is given (ServerRecipeBook"
+            ".removeRecipes). The client removes each id from its book at its own key "
+            "(ClientPacketListener.handleRecipeBookRemove: ClientRecipeBook.remove, a "
+            "HashMap.remove and a HashSet.remove for each), then refreshes the book once, so "
+            "their order is not kept."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
@@ -327,7 +336,9 @@ not keep and that may change from one boot (or join) to the next, and the map or
 client reads the list into. The sort key is the key of the client's map or set,
 and the sort is stable, so of a key sent twice the last stays last. The recipe book's key is
 a number the server picks, so its entries are sorted by what they show instead, and the ones
-the client also shows in turn keep their order (`_sorted_recipe_book_add`). That order is never a
+the client also shows in turn keep their order (`_sorted_recipe_book_add`); a recipe book
+removal holds only such numbers, so it is sorted once they are numbered (`_RecipeNumbers`).
+That order is never a
 Divergence, not even a network traffic one (docs/research/2026-10-01-control.md, #30).
 """
 
@@ -1370,7 +1381,7 @@ _RECIPE_BOOK_REMOVE = "minecraft:recipe_book_remove"
 
 @dataclass(slots=True)
 class _Numbering:
-    """Keys numbered by first appearance, `#1` first, until a number ends; none is given twice.
+    """Keys numbered from 1 by first appearance, until a number ends; none is given twice.
 
     Attributes:
         numbers: Each key's number, until it ends.
@@ -1380,13 +1391,13 @@ class _Numbering:
     numbers: dict[Hashable, int] = dataclasses.field(default_factory=dict)
     given: int = 0
 
-    def of(self, key: Hashable) -> str:
-        """`key`'s number, written `#<n>`: the next one if it has none."""
+    def of(self, key: Hashable) -> int:
+        """`key`'s number: the next one if it has none."""
         number = self.numbers.get(key)
         if number is None:
             self.given += 1
             number = self.numbers[key] = self.given
-        return f"#{number}"
+        return number
 
     def end(self, key: Hashable) -> None:
         """End `key`'s number, if it has one: it takes the next one if it comes again."""
@@ -1452,10 +1463,16 @@ class _RecipeNumbers:
     def _number_removal(
         self, fields: Mapping[str, object], copies: Sequence[dict[str, _Value]]
     ) -> None:
-        """Number `copies`, of a `recipe_book_remove`'s `fields`, then end the ids' numbers."""
+        """Number `copies`, of a `recipe_book_remove`'s `fields`, then end the ids' numbers.
+
+        Each copy's ids are sorted by their numbers (`UNORDERED`), and anything that is not
+        an id follows them, in order.
+        """
         for copy in copies:
             if isinstance(recipes := copy.get("recipes"), list):
-                recipes[:] = [self.ids.of(each) if type(each) is int else each for each in recipes]
+                numbers = sorted(self.ids.of(each) for each in recipes if type(each) is int)
+                others = [each for each in recipes if type(each) is not int]
+                recipes[:] = [f"#{number}" for number in numbers] + others
         removed = fields.get("recipes")
         for display_id in removed if isinstance(removed, list) else ():
             if type(display_id) is int:
@@ -1464,9 +1481,9 @@ class _RecipeNumbers:
     def _number_contents(self, contents: dict[str, _Value]) -> None:
         """Number the display id and group number of `contents`, one entry's."""
         if type(display_id := contents.get("id")) is int:
-            contents["id"] = self.ids.of(display_id)
+            contents["id"] = f"#{self.ids.of(display_id)}"
         if type(group := contents.get("group")) is int:
-            contents["group"] = self.groups.of(group)
+            contents["group"] = f"#{self.groups.of(group)}"
 
 
 def _recipe_contents(fields: Mapping[str, _Value]) -> Iterator[dict[str, _Value]]:
