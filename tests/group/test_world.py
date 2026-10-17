@@ -1,5 +1,6 @@
 """The clean-up of a Group's tagged entities: what Control runs, and when it returns."""
 
+import time
 import uuid
 from dataclasses import replace
 from typing import TYPE_CHECKING, cast
@@ -93,11 +94,13 @@ def _answer(content: bytes) -> Packet:
 async def test_the_weather_has_faded_once_the_world_has_run_100_ticks() -> None:
     # `weather clear` sets neither the rain nor the thunder level: each moves 0.01 a running
     # tick toward the weather (`ServerLevel.advanceWeatherCycle`), so a storm fades in 100.
-    control = _Clock(2000, 2099, 2100)
+    control = _Clock(2000, 2098, 2100)
 
+    started = time.monotonic()
     await until_the_weather_fades(control)
 
     assert control.commands == [_TIME_QUERY] * 3
+    assert time.monotonic() - started >= 0.09  # it waited the 2 ticks left before it read again
 
 
 @pytest.mark.asyncio
