@@ -1677,8 +1677,10 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # dimension_names, update_attributes' attributes,
                                     # update_recipes' property sets and update_advancements'
                                     # removed ids and progress (#30, #106), a chunk's
-                                    # heightmaps and block entities (#22), and
-                                    # section_blocks_update's blocks (#320)
+                                    # heightmaps and block entities (#22),
+                                    # section_blocks_update's blocks (#320), and
+                                    # recipe_book_add's entries with no toast flag, by what
+                                    # each shows, its display id and group left out (#363)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -2037,6 +2039,25 @@ proves it necessary:
      updates), so blocks at different positions can come in any order, and
      a position sent twice ends with its last state, which the stable sort
      keeps last.
+     `play` / `minecraft:recipe_book_add` (#363): the `entries` with the
+     toast flag (`flags` bit 1) come first, in the order they came; the
+     others follow, sorted stably by what each shows: the entry as JSON
+     with sorted keys, its display id (`contents.id`) and group number
+     (`contents.group`) left out, since both are numbers the server picks
+     and the order must not depend on either server's numbering. At a join
+     vanilla sends a player's known recipes in identity hash order, with
+     no toast flag (`javap` on the 26.3 server: `ServerRecipeBook` keeps
+     them in a `Sets.newIdentityHashSet`, which `sendInitialRecipeBook`
+     iterates; `addRecipes`, for a recipe given, sets the toast flag from
+     `Recipe.showNotification`). The client puts each entry in its book, a
+     `HashMap` keyed by display id, and highlights it in a `HashSet`
+     (`ClientPacketListener.handleRecipeBookAdd`, `ClientRecipeBook.add`
+     and `addHighlight`), so the order of those entries is not kept. An
+     entry with the toast flag is also added to the recipe toast
+     (`RecipeToast.addOrUpdate`), an `ArrayList` the toast shows one after
+     another, so those keep their order. (An entry that repeats another's
+     display id and shows something else may move past it, so which of
+     the two the client keeps is not compared; vanilla never repeats one.)
    - the order of packets about different chunks, and where they fall
      among packets whose handling reads no chunk. A *chunk packet* is a
      `level_chunk_with_light`, `light_update` or `forget_level_chunk`:

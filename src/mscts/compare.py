@@ -306,13 +306,27 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "Level.updateNeighborsAt does nothing, and flag 16 skips the shape updates), so a "
             "position sent twice keeps the last state."
         ),
+        "minecraft:recipe_book_add": (
+            "entries, those with the toast flag (1) first in their order, then the others "
+            "sorted by what each shows, with its display id and group number left out. At a "
+            "join vanilla sends a player's known recipes in identity hash order, with no toast "
+            "flag: ServerRecipeBook keeps them in a Sets.newIdentityHashSet, which "
+            "sendInitialRecipeBook iterates. The client puts each entry in its book, a HashMap "
+            "keyed by display id (ClientPacketListener.handleRecipeBookAdd, then "
+            "ClientRecipeBook.add), and highlights it in a HashSet, so the order of those "
+            "entries is not kept. An entry with the toast flag is also added to the recipe "
+            "toast (RecipeToast.addOrUpdate), which shows its recipes one after another in "
+            "the order they came, so those keep their order."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
 reason: the hash collection vanilla iterates to send the list, in an order the client does
 not keep and that may change from one boot (or join) to the next, and the map or set the
 client reads the list into. The sort key is the key of the client's map or set,
-and the sort is stable, so of a key sent twice the last stays last. That order is never a
+and the sort is stable, so of a key sent twice the last stays last. The recipe book's key is
+a number the server picks, so its entries are sorted by what they show instead, and the ones
+the client also shows in turn keep their order (`_sorted_recipe_book_add`). That order is never a
 Divergence, not even a network traffic one (docs/research/2026-10-01-control.md, #30).
 """
 
@@ -1808,6 +1822,39 @@ def _sorted_section_blocks(fields: dict[str, _Value]) -> dict[str, _Value]:
     return {**fields, "blocks": _sorted_on(fields["blocks"], _block_position)}
 
 
+def _sorted_recipe_book_add(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Put the `entries` with a toast first, in their order, then the others by what they show.
+
+    What an entry shows is its fields but its display id and group number (`_shown_entry`),
+    so the order depends on neither server's numbering. The sort is stable.
+    """
+    entries = fields.get("entries")
+    if not isinstance(entries, list):
+        return fields
+    toasts = [entry for entry in entries if _shows_toast(entry)]
+    others = [entry for entry in entries if not _shows_toast(entry)]
+    return {**fields, "entries": toasts + sorted(others, key=_shown_entry)}
+
+
+_TOAST_FLAG = 1
+"""`ClientboundRecipeBookAddPacket$Entry.FLAG_NOTIFICATION`: the entry's recipe joins the toast."""
+
+
+def _shows_toast(entry: _Value) -> bool:
+    """Whether a `recipe_book_add` entry has the toast flag; one with no int flags counts as so."""
+    flags = entry.get("flags") if isinstance(entry, dict) else None
+    return type(flags) is not int or bool(flags & _TOAST_FLAG)
+
+
+def _shown_entry(entry: _Value) -> str:
+    """A `recipe_book_add` entry as JSON with sorted keys, its display id and group left out."""
+    shown = entry
+    if isinstance(entry, dict) and isinstance(contents := entry.get("contents"), dict):
+        kept = {key: value for key, value in contents.items() if key not in {"id", "group"}}
+        shown = {**entry, "contents": kept}
+    return json.dumps(shown, sort_keys=True, default=repr)
+
+
 def _sorting(field: str, key: str | None) -> Callable[[dict[str, _Value]], dict[str, _Value]]:
     """Sort the list `field` of a packet's fields, as `_sorted_by` does with `key`."""
 
@@ -1826,6 +1873,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:update_advancements": _sorted_update_advancements,
         "minecraft:level_chunk_with_light": _sorted_level_chunk,
         "minecraft:section_blocks_update": _sorted_section_blocks,
+        "minecraft:recipe_book_add": _sorted_recipe_book_add,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""
