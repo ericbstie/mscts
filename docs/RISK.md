@@ -36,6 +36,13 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-17 | #356 | timing core | #415 (`scrutiny::high`) | the early-packet refusal of a two-Bot `until` window depended on which Bot's reader stamped last | the first review | no |
+| 2026-10-17 | #356 | tests | #415 (`scrutiny::high`) | the player fake hurt every tick after the lava teleport, so the dry-grass window lost its teleport under a 50 ms stall | the second review | no |
+| 2026-10-16 | #411 | tooling | #414 (`scrutiny::low`) | a test's stand-in counted every stress process on the host, other workers' too | a tier run (the merge train's per-commit check) | no |
+| 2026-10-16 | #418 | tooling | unknown | a live-lock waiter interrupted before it had the lock emptied the holder's pid file | a later issue's worker (#411) | yes |
+| 2026-10-16 | #419 | tests | unknown | three tests accepted a TimeoutError from any step, #410's shape | the lead | yes |
+| 2026-10-16 | #410 | tests | unknown | the repeater probe test accepted a TimeoutError from any step, so under load it timed out before its hang | a tier run (the unit tier under `rebase -x`) | yes |
+| 2026-10-10 | #356 | timing core | unknown | a window's open Mark was stamped after Control's barrier, so a frame a Bot read with its own last answer fell before the Mark | a tier run (the unit tier) | yes |
 | 2026-10-16 | #403 | tests | #379 (`scrutiny::high`) | a statistical Run's test told its sides apart by port, which two random hosts can share (1 in 14 000): the Reference was blamed | a tier run (the unit tier under `rebase -x`) | yes |
 | 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | the 50% sleep window compared only order: a skip at lie-down matched | the second review | no |
 | 2026-10-16 | #63 | Groups | #400 (`scrutiny::high`) | the dawn window left out `system_chat`, hiding the wake-up message | the second review | no |
@@ -67,6 +74,13 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #415 | high | high | first review, second review | 0, 0 (3 should-fix, all fixed) | five stressed 20-play Self-checks of `player/drowning` before the reviews, 5 of 5; the first 50-run unit stress caught the player fake hurting after `fresh`, fixed; after the fixes one stressed 20-play Self-check each of `player/fire` and `player/drowning`, 20 of 20, and the unit tests 50 of 50; Self-check tier 74 of 74 on the tip; mutation sweep 11 of 11 killed |
+| #422 | high | medium | lead's diff read | 0 | none: no barrier or window change (the lead lowered it: the schema's fields are a position and a VarInt, so equal bytes and equal fields agree); Self-check 20 of 20 of `blocks/gravity`; mutation sweep 16 of 16 killed |
+| #421 | low | low | lead's diff read | 0 | none: tests only; the three tests 50 of 50 under `repeat.py --stress` |
+| #420 | low | low | lead's diff read | 0 | none: tooling; 50 of 50 under `repeat.py --stress`; mutation sweep 7 of 7 killed |
+| #417 | low | low | lead's diff read | 0 | none: tooling; mutation sweep 31 of 31 killed |
+| #414 | | low | lead's diff read | 0 | none: tooling; mutation sweep 20 of 20 killed; the merge train's per-commit check caught one red commit |
+| #416 | low | low | lead's diff read | 0 | none: test only; the test 100 of 100 under `repeat.py --stress` |
 | #409 | medium | medium | lead's diff read | 0 | five statistical Self-checks of `mobs/*`, 5 of 5; mutation sweep 15 of 16 killed, the 16th timed out and was killed alone |
 | #408 | medium | medium | lead's diff read | 0 | none: no barrier or window timing change; Self-check 20 of 20 of `blocks/fill` and `inventory/give`; mutation sweep 8 of 9 killed, a pin test kills the 9th |
 | #407 | low | low | lead's diff read | 0 | none: research note and probe, no product code |

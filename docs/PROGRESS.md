@@ -195,6 +195,37 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-17: train 39
+
+- #416, #414 and #417 merged as one train (reference tier 36 of 36 on
+  its tip), then #420 and #421 (36 of 36), then #422 (36 of 36,
+  candidate tier 15 of 15), then #415 (36 of 36, Self-check tier 74 of
+  74 on its tip). The train's per-commit check caught one red commit
+  in #414 before it merged.
+- #416 (#410): the repeater probe test timed out under load before its
+  hang. It now uses a limit only the hang reaches and asserts the hang
+  was reached. #421 (#419) did the same for three more tests and moved
+  `HANG_LIMIT_S`, `STALL_S` and `late` to tests/group/test_control.py.
+- #414 (#411): `scripts/repeat.py --live-lock` takes the live lock per
+  run, so a short run waits for at most one run of a series (1.0 s
+  against 9.1 s in `scripts/research/lock_wait.py`). A command run under
+  a hold goes straight through (`MSCTS_LIVE_LOCK_HELD`). #420 (#418): a
+  waiter interrupted before it has the lock no longer empties the
+  holder's pid file.
+- #417 (#412): `scripts/time_tier.py --rev A --rev B --rounds N` times
+  a selection at two revisions, alternating, under one hold.
+- #422 (#373): `add_transient_block` decodes field by field and its
+  Divergences read "Falling block landing". Pumpkin never sends it.
+- #415 (#356): an Observation window opens a nanosecond after the
+  latest last barrier answer of a Bot besides Control, not after
+  Control's; a frame read with that answer was lost before. An `until`
+  window refuses a second Bot besides Control (per-Bot open Marks:
+  #424). The player fake hurts at vanilla's period.
+- Filed #418, #419, #423 (`player/starvation` overruns the 90 s a play),
+  #424, #425 (`javap.py` downloads a cached jar), #426 (player Groups
+  leave the weather cycle on) and #427 (a Group's TimeoutError always
+  names the 10 s bound). Closed #383 (likely #403's cause).
+
 ### 2026-10-16: train 38
 
 - #406, #407, #408 and #409 merged one after the other, each on the

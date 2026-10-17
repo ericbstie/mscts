@@ -135,5 +135,21 @@ first.
   the scratchpad, which ends with the session (#402).
 - Check that a worker's report has all five sections before removing
   its worktree: a worker cannot be resumed without it (train 38).
+- A brief says a test is seen red first and committed with its fix
+  (red-green step 6), never "committed red first": the #410 worker
+  read that as committing a strict xfail.
+- A brief that asks for a Self-check names its node id
+  (`tests/selfcheck/test_groups.py::test_selfcheck[<group id>]`) and the
+  `mscts run --candidate <name> --group <id>` command (#373).
+- Before briefing a 20-run Self-check, time the family on main
+  (`scripts/time_tier.py`) and give each Group's play time: the #356
+  brief gave none, and one 20-play run of `player/*` held the live lock
+  for 2.5 h while a reference tier waited.
+- A brief for a tool that runs other revisions of the repo says which of
+  them lack the change it builds on (#412: copies of main had no
+  re-entrant lock).
+- Give one worker two issues only when neither waits on a run the
+  other could use: the #418 and #419 worker sat idle 25 min in one
+  worktree.
 - Relay what matters to the user briefly. The workers' reports are not
   shown to them.
