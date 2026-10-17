@@ -18,7 +18,7 @@ import pytest
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.codec.packets import Packet
-from mscts.compare import OBSERVE_OPEN
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
 from mscts.net import ProtocolError
@@ -81,18 +81,35 @@ BOTS = {
 }
 IMMUNE_TICKS = 10
 """Ticks between two hits of damage that comes every tick: a player is immune for 10 after one."""
+
+
+@dataclass(frozen=True)
+class Hurt:
+    """How the fake hurts a Bot in a place: when the first hit comes, and how often.
+
+    Attributes:
+        period_ticks: The ticks between two hits.
+        first_ticks: The ticks from the `tp` there to the first hit.
+    """
+
+    period_ticks: int
+    first_ticks: int = 1
+
+
 HURTS = {
-    "player/drowning": {"tp drowner 3.5 -62.0 2.5": 20},  # the air runs out again
-    "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": IMMUNE_TICKS},
+    "player/drowning": {"tp drowner 3.5 -62.0 2.5": Hurt(20)},  # the air runs out again
+    "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": Hurt(IMMUNE_TICKS)},
     "player/fire": {
-        "tp burner 7.5 -60.0 2.5": IMMUNE_TICKS,  # in fire
-        "tp burner 5.5 -61.0 2.5": IMMUNE_TICKS,  # in lava
-        "tp burner 11.5 -60.0 2.5": 20,  # burning on the dry grass (Entity.baseTick)
+        "tp burner 7.5 -60.0 2.5": Hurt(IMMUNE_TICKS),  # in fire
+        "tp burner 5.5 -61.0 2.5": Hurt(IMMUNE_TICKS),  # in lava
+        # Burning on the dry grass (Entity.baseTick): the burn due on the first tick out of the
+        # lava hurts nothing inside the lava hit's immunity, so the first comes 20 ticks later.
+        "tp burner 11.5 -60.0 2.5": Hurt(20, first_ticks=20),
     },
-    "player/freezing": {"tp freezer 9.5 -60.0 2.5": 40},  # tickCount % 40 (LivingEntity.aiStep)
+    "player/freezing": {"tp freezer 9.5 -60.0 2.5": Hurt(40)},  # every 40 ticks (aiStep)
 }
-"""Each `tp` after which the fake hurts the Bot, and the ticks between two hits there, as on
-vanilla, by Group: hits that come a tick apart would end a window before the Group's `tp`."""
+"""Each `tp` after which the fake hurts the Bot, and when, as on vanilla, by Group: hits that come
+a tick apart would end a window before the Group's `tp`."""
 KILLS_AFTER = {"player/void": "tp voider "}
 DEATH = "minecraft:player_combat_kill"
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
@@ -105,15 +122,27 @@ class PlayerServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
     It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch. After a `tp` in `hurts`, it hurts the Bot a tick later, and then once in
-    each of that place's periods, until the next `tp` or `kill`: as on vanilla, a Bot moved or
-    made fresh (`kill`, then respawn) is out of what hurt it.
+    chunk batch. After a `tp` in `hurts`, it hurts the Bot when that place's first hit is due,
+    and then once in each of its periods, until the next `tp` or `kill`: as on vanilla, a Bot
+    moved or made fresh (`kill`, then respawn) is out of what hurt it.
+
+    A hit is due on the wall clock, as on vanilla, but it is sent only once the Bot has passed a
+    barrier since the hit before it: the barrier that opens the window that waits for it. So the
+    order of a hit and the windows does not depend on the event loop being on time. On vanilla a
+    window that opens too late lets the hit through between two windows, which the Group fails
+    on (`check_gap`); the clock these tests give it (`always_on_time`) says the windows are on
+    time, and the fake keeps to that. What the Group does after a hit, before the next window
+    opens, still races the next hit, as on vanilla.
     """
 
     seen: list[Packet] = field(default_factory=list)
-    hurts: Mapping[str, int] = field(default_factory=dict)
-    """Each `tp` after which the fake sends `set_health` and `entity_event`, and the ticks
-    between two of them."""
+    hurts: Mapping[str, Hurt] = field(default_factory=dict)
+    """Each `tp` after which the fake sends `set_health` and `entity_event`, and when."""
+    due_at_once: bool = False
+    """Whether every hit is due at once, as if the event loop had stalled past each one: it is
+    then sent as soon as the Bot has passed the barrier."""
+    barrier_since_hit: asyncio.Event = field(default_factory=asyncio.Event)
+    """Set once a Bot but Control has passed a barrier since the last hit."""
     hurting: asyncio.Task[None] | None = None
     """The task that hurts the Bot, while it is somewhere that hurts."""
     kills_after: str | None = None
@@ -125,6 +154,10 @@ class PlayerServer:
     game_time: int = 0
     """The game time the next `time query gametime` answers: each answer moves it on by
     `FADE_TICKS`."""
+
+    def __post_init__(self) -> None:
+        """No hit has come yet, so the first is not held back."""
+        self.barrier_since_hit.set()
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -151,6 +184,8 @@ class PlayerServer:
                     if name in self.late:
                         await asyncio.sleep(TICK_S)
                     await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+                    if name != CONTROL and requests % SYNC_REQUESTS == 0:
+                        self.barrier_since_hit.set()
                 elif packet.name == CHAT_COMMAND:
                     command = str((packet.fields or {})["command"])
                     await self._command(peer, command)
@@ -181,13 +216,15 @@ class PlayerServer:
             self.hurting.cancel()
             self.hurting = None
 
-    async def _hurt(self, period_ticks: int) -> None:
-        """Hurt every player but Control a tick from now, then every `period_ticks` ticks."""
-        delay_s = TICK_S
+    async def _hurt(self, hurt: Hurt) -> None:
+        """Hurt every player but Control as `hurt` says, each hit after a barrier since the last."""
+        ticks = hurt.first_ticks
         with suppress(ConnectionError):
             while True:
-                await asyncio.sleep(delay_s)
-                delay_s = period_ticks * TICK_S
+                await asyncio.sleep(0 if self.due_at_once else ticks * TICK_S)
+                await self.barrier_since_hit.wait()
+                self.barrier_since_hit.clear()
+                ticks = hurt.period_ticks
                 for name, peer in list(self.players.items()):
                     if name != CONTROL:
                         await peer.send(
@@ -206,6 +243,7 @@ async def _play(
     clock: Callable[[], float] = always_on_time,
     *,
     late: frozenset[str] = frozenset(),
+    due_at_once: bool = False,
 ) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
@@ -214,6 +252,7 @@ async def _play(
             hurts=HURTS.get(group_id, {}),
             kills_after=KILLS_AFTER.get(group_id),
             late=late,
+            due_at_once=due_at_once,
         ),
         timeout_s=PLAY_TIMEOUT_S,
     ) as endpoint:
@@ -766,6 +805,32 @@ def test_each_window_still_holds_its_tp_when_controls_barrier_ends_after_the_bot
     assert [window.sent for window in slow.windows] == [
         window.sent for window in played(group_id).windows
     ]
+
+
+def hits_between_windows(transcript: Transcript) -> list[int]:
+    """When each `set_health` that reached a Bot outside every window arrived."""
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    windows = list(zip(opens, closes, strict=True))
+    return [
+        event.t_ns
+        for event in transcript.events
+        if event.bot != CONTROL
+        and event.packet.name == "minecraft:set_health"
+        and not any(opened <= event.t_ns <= closed for opened, closed in windows)
+    ]
+
+
+@pytest.mark.parametrize("group_id", sorted(HURTS))
+def test_no_hit_falls_between_two_windows_even_when_every_hit_is_due_at_once(
+    group_id: str,
+) -> None:
+    # A hit is due on the wall clock, which a loaded host's event loop can reach late. The fake
+    # holds each hit until the Bot has passed the barrier that opens the next window, as a
+    # Group that is on time sees on vanilla (#432).
+    transcript, _ = asyncio.run(_play(group_id, due_at_once=True))
+
+    assert hits_between_windows(transcript) == []
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:
