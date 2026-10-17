@@ -1370,18 +1370,31 @@ _RECIPE_BOOK_REMOVE = "minecraft:recipe_book_remove"
 
 @dataclass(slots=True)
 class _Numbering:
-    """Keys numbered by first appearance: `#1` is the first.
+    """Keys numbered by first appearance, `#1` first, until a number ends; none is given twice.
 
     Attributes:
-        numbers: Each key's number.
+        numbers: Each key's number, until it ends.
+        given: How many numbers have been given.
     """
 
     numbers: dict[Hashable, int] = dataclasses.field(default_factory=dict)
+    given: int = 0
 
     def of(self, key: Hashable) -> str:
         """`key`'s number, written `#<n>`: the next one if it has none."""
-        number = self.numbers.setdefault(key, len(self.numbers) + 1)
+        number = self.numbers.get(key)
+        if number is None:
+            self.given += 1
+            number = self.numbers[key] = self.given
         return f"#{number}"
+
+    def end(self, key: Hashable) -> None:
+        """End `key`'s number, if it has one: it takes the next one if it comes again."""
+        self.numbers.pop(key, None)
+
+    def end_all(self) -> None:
+        """End every key's number."""
+        self.numbers.clear()
 
 
 @dataclass(slots=True)
@@ -1397,8 +1410,12 @@ class _RecipeNumbers:
 
     Each is numbered by first appearance, in the order the Packets are compared (sorted,
     `UNORDERED`), so neither server's numbering decides it. Display ids and group numbers
-    are counted on their own. An id first seen in a `recipe_book_remove` takes the next
-    number too: the server gives a recipe the same id every time.
+    are counted on their own. A number lasts as long as the client keeps the key: a
+    `recipe_book_remove` ends its ids' numbers (`ClientRecipeBook.remove`), and a
+    `recipe_book_add` that replaces the book ends every number before its entries take
+    theirs (`ClientRecipeBook.clear`). So a recipe the server adds again with another id
+    shows the same, and an id given to another recipe while the first still holds it does
+    not. An id first seen in a removal takes the next number, which the removal ends.
 
     Attributes:
         ids: The display ids' numbers.
@@ -1414,14 +1431,35 @@ class _RecipeNumbers:
         `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
         the first copy's order numbers them.
         """
+        if packet.fields is None:
+            return
+        if packet.name == _RECIPE_BOOK_ADD:
+            self._number_add(packet.fields, copies)
+        elif packet.name == _RECIPE_BOOK_REMOVE:
+            self._number_removal(packet.fields, copies)
+
+    def _number_add(
+        self, fields: Mapping[str, object], copies: Sequence[dict[str, _Value]]
+    ) -> None:
+        """Number `copies`, of a `recipe_book_add`'s `fields`, after ending all if it replaces."""
+        if fields.get("replace") is True:
+            self.ids.end_all()
+            self.groups.end_all()
         for copy in copies:
-            if packet.name == _RECIPE_BOOK_ADD:
-                for contents in _recipe_contents(copy):
-                    self._number_contents(contents)
-            elif packet.name == _RECIPE_BOOK_REMOVE and isinstance(
-                recipes := copy.get("recipes"), list
-            ):
+            for contents in _recipe_contents(copy):
+                self._number_contents(contents)
+
+    def _number_removal(
+        self, fields: Mapping[str, object], copies: Sequence[dict[str, _Value]]
+    ) -> None:
+        """Number `copies`, of a `recipe_book_remove`'s `fields`, then end the ids' numbers."""
+        for copy in copies:
+            if isinstance(recipes := copy.get("recipes"), list):
                 recipes[:] = [self.ids.of(each) if type(each) is int else each for each in recipes]
+        removed = fields.get("recipes")
+        for display_id in removed if isinstance(removed, list) else ():
+            if type(display_id) is int:
+                self.ids.end(display_id)
 
     def _number_contents(self, contents: dict[str, _Value]) -> None:
         """Number the display id and group number of `contents`, one entry's."""
