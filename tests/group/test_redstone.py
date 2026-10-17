@@ -15,8 +15,9 @@ from tests.group.test_control import ControlServer, playing, tree
 from tests.group.test_entities_items import Play, read
 
 REPEATER = "redstone/repeater"
-GROUP_IDS = (REPEATER,)
-COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "tellraw")
+COMPARATOR = "redstone/comparator"
+GROUP_IDS = (REPEATER, COMPARATOR)
+COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "tellraw")
 WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
     "minecraft:level_event minecraft:sound"
@@ -161,6 +162,61 @@ async def test_repeater_powers_every_input_feeds_a_1_tick_pulse_then_unlocks_and
         "setblock 3 -60 12 minecraft:air",
         *steps(6),
         "setblock 2 -60 10 minecraft:air",
+        *steps(3),
+    )
+    assert window.ticks == 19
+
+
+# `redstone/comparator`
+
+
+@pytest.mark.asyncio
+async def test_comparator_builds_a_compare_and_a_subtract_case_and_one_that_reads_a_chest() -> None:
+    first = (await play(COMPARATOR)).first
+
+    assert first[5:] == (
+        "setblock 3 -60 1 minecraft:redstone_block",
+        "setblock 3 -60 2 minecraft:redstone_wire",
+        "setblock 3 -60 3 minecraft:redstone_wire",
+        "setblock 3 -60 4 minecraft:comparator[facing=west,mode=compare]",
+        "fill 4 -60 4 6 -60 4 minecraft:redstone_wire",
+        "setblock 3 -60 11 minecraft:redstone_block",
+        "setblock 3 -60 10 minecraft:redstone_wire",
+        "setblock 3 -60 9 minecraft:redstone_wire",
+        "setblock 3 -60 8 minecraft:comparator[facing=west,mode=subtract]",
+        "fill 4 -60 8 6 -60 8 minecraft:redstone_wire",
+        "setblock 2 -60 13 minecraft:chest",
+        "setblock 3 -60 13 minecraft:comparator[facing=west,mode=compare]",
+        "fill 4 -60 13 6 -60 13 minecraft:redstone_wire",
+    )
+
+
+@pytest.mark.asyncio
+async def test_comparator_feeds_the_rears_removes_the_sides_then_fills_and_empties_the_chest() -> (
+    None
+):
+    # A comparator switches 2 ticks after its inputs (ComparatorBlock.getDelay): each change
+    # comes 4 ticks after the last, and the chest's comparator is off on tick 18.
+    (window,) = (await play(COMPARATOR)).windows
+    stone = "with minecraft:stone 64"
+
+    assert window.commands == (
+        "setblock 2 -60 4 minecraft:redstone_block",
+        "setblock 2 -60 8 minecraft:redstone_block",
+        *steps(4),
+        "setblock 3 -60 1 minecraft:air",
+        "setblock 3 -60 11 minecraft:air",
+        *steps(4),
+        f"item replace block 2 -60 13 container.0 {stone}",
+        *steps(4),
+        f"item replace block 2 -60 13 container.1 {stone}",
+        f"item replace block 2 -60 13 container.2 {stone}",
+        f"item replace block 2 -60 13 container.3 {stone}",
+        *steps(4),
+        "item replace block 2 -60 13 container.0 with minecraft:air",
+        "item replace block 2 -60 13 container.1 with minecraft:air",
+        "item replace block 2 -60 13 container.2 with minecraft:air",
+        "item replace block 2 -60 13 container.3 with minecraft:air",
         *steps(3),
     )
     assert window.ticks == 19
