@@ -9,7 +9,7 @@ request, and nothing else.
 import asyncio
 import functools
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 from unittest import mock
@@ -71,15 +71,22 @@ BOTS = {
     "player/fire": ("burner",),
     "player/freezing": ("freezer",),
 }
-HURTS_AFTER = {
-    "player/drowning": "tp drowner ",
-    "player/suffocation": "tp suffocator ",
-    "player/fire": "tp burner ",
-    "player/freezing": "tp freezer ",
+IMMUNE_TICKS = 10
+"""Ticks between two hits of damage that comes every tick: a player is immune for 10 after one."""
+HURTS = {
+    "player/drowning": {"tp drowner 3.5 -62.0 2.5": 20},  # the air runs out again
+    "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": IMMUNE_TICKS},
+    "player/fire": {
+        "tp burner 7.5 -60.0 2.5": IMMUNE_TICKS,  # in fire
+        "tp burner 5.5 -61.0 2.5": IMMUNE_TICKS,  # in lava
+        "tp burner 11.5 -60.0 2.5": 20,  # burning on the dry grass (Entity.baseTick)
+    },
+    "player/freezing": {"tp freezer 9.5 -60.0 2.5": 40},  # tickCount % 40 (LivingEntity.aiStep)
 }
+"""Each `tp` after which the fake hurts the Bot, and the ticks between two hits there, as on
+vanilla, by Group: hits that come a tick apart would end a window before the Group's `tp`."""
 KILLS_AFTER = {"player/void": "tp voider "}
 DEATH = "minecraft:player_combat_kill"
-"""A command after which the fake hurts the Bot every 50 ms, in a Group that waits for a hit."""
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
 """A move's `flags` when the Bot reports it is on the ground."""
@@ -90,18 +97,23 @@ class PlayerServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
     It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch. After the command `hurts_after`, it hurts the Bot every tick, until a `kill`:
-    as on vanilla, a Bot made fresh (`kill`, then respawn) is out of what hurt it, so no hit
-    comes before the next `hurts_after`.
+    chunk batch. After a `tp` in `hurts`, it hurts the Bot a tick later, and then once in
+    each of that place's periods, until the next `tp` or `kill`: as on vanilla, a Bot moved or
+    made fresh (`kill`, then respawn) is out of what hurt it.
     """
 
     seen: list[Packet] = field(default_factory=list)
-    hurts_after: str | None = None
-    """A command after which the fake sends `set_health` and `entity_event` every 50 ms."""
+    hurts: Mapping[str, int] = field(default_factory=dict)
+    """Each `tp` after which the fake sends `set_health` and `entity_event`, and the ticks
+    between two of them."""
+    hurting: asyncio.Task[None] | None = None
+    """The task that hurts the Bot, while it is somewhere that hurts."""
     kills_after: str | None = None
     """A command after which the fake sends `player_combat_kill`, once."""
     players: dict[str, Peer] = field(default_factory=dict)
     """Each connected player's connection, by name."""
+    late: frozenset[str] = frozenset()
+    """The players whose statistics requests are each answered a tick later still."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -110,9 +122,9 @@ class PlayerServer:
 
     async def _play(self, peer: Peer) -> None:
         requests = 0
-        hurting: asyncio.Task[None] | None = None
         hellos = [p for p in self.seen if p.name == "minecraft:hello"]
-        self.players[str((hellos[-1].fields or {})["name"])] = peer
+        name = str((hellos[-1].fields or {})["name"])
+        self.players[name] = peer
         try:
             async for packet in peer.packets():
                 self.seen.append(packet)
@@ -125,18 +137,17 @@ class PlayerServer:
                     requests += 1
                     if (requests - 1) % SYNC_REQUESTS != 0:
                         await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
+                    if name in self.late:
+                        await asyncio.sleep(TICK_S)
                     await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
                 elif packet.name == CHAT_COMMAND:
                     command = str((packet.fields or {})["command"])
-                    hurting = await self._command(peer, command, hurting)
+                    await self._command(peer, command)
         finally:
-            if hurting is not None:
-                hurting.cancel()
+            self._stop_hurting()
 
-    async def _command(
-        self, peer: Peer, command: str, hurting: asyncio.Task[None] | None
-    ) -> asyncio.Task[None] | None:
-        """Answer `command` from `peer`; return the task that hurts the Bots after it, if any."""
+    async def _command(self, peer: Peer, command: str) -> None:
+        """Answer `command` from `peer`."""
         if command.startswith(MARKER):
             token = json.loads(command.removeprefix(MARKER))
             await peer.write(
@@ -145,21 +156,23 @@ class PlayerServer:
         elif self.kills_after and command.startswith(self.kills_after):
             victim = self.players[command.split()[1]]
             await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
-        elif hurting is None and self._hurts(command):
-            return asyncio.create_task(self._hurt())
-        elif hurting is not None and command.startswith("kill "):
-            hurting.cancel()  # respawned, the Bot is out of what hurt it
-            return None
-        return hurting
+        elif command.startswith(("tp ", "kill ")):
+            self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
+            if command in self.hurts:
+                self.hurting = asyncio.create_task(self._hurt(self.hurts[command]))
 
-    def _hurts(self, command: str) -> bool:
-        return self.hurts_after is not None and command.startswith(self.hurts_after)
+    def _stop_hurting(self) -> None:
+        if self.hurting is not None:
+            self.hurting.cancel()
+            self.hurting = None
 
-    async def _hurt(self) -> None:
-        """Hurt every player but Control, every tick, until cancelled."""
+    async def _hurt(self, period_ticks: int) -> None:
+        """Hurt every player but Control a tick from now, then every `period_ticks` ticks."""
+        delay_s = TICK_S
         with suppress(ConnectionError):
             while True:
-                await asyncio.sleep(TICK_S)
+                await asyncio.sleep(delay_s)
+                delay_s = period_ticks * TICK_S
                 for name, peer in list(self.players.items()):
                     if name != CONTROL:
                         await peer.send(
@@ -174,12 +187,19 @@ def always_on_time() -> float:
 
 
 async def _play(
-    group_id: str, clock: Callable[[], float] = always_on_time
+    group_id: str,
+    clock: Callable[[], float] = always_on_time,
+    *,
+    late: frozenset[str] = frozenset(),
 ) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
     async with serve(
         CODEC,
-        PlayerServer(hurts_after=HURTS_AFTER.get(group_id), kills_after=KILLS_AFTER.get(group_id)),
+        PlayerServer(
+            hurts=HURTS.get(group_id, {}),
+            kills_after=KILLS_AFTER.get(group_id),
+            late=late,
+        ),
         timeout_s=PLAY_TIMEOUT_S,
     ) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
@@ -698,6 +718,20 @@ def test_a_window_that_opens_after_the_next_hit_fails_the_group_instead_of_compa
 ) -> None:
     with pytest.raises(ProtocolError, match="the next may have come between the windows"):
         asyncio.run(_play(group_id, clock=jumping_clock()))
+
+
+@pytest.mark.parametrize("group_id", sorted(HURTS))
+def test_each_window_still_holds_its_tp_when_controls_barrier_ends_after_the_bots(
+    group_id: str,
+) -> None:
+    # A window opens at its Bot's own barrier (#356), and the Group sends the tp once Control's
+    # has ended too. On vanilla no hit comes in between: hits come at least 10 ticks apart, and
+    # the window before ended on one. A fake that hurt every tick put a hit there.
+    _, slow = asyncio.run(_play(group_id, late=frozenset({CONTROL})))
+
+    assert [window.sent for window in slow.windows] == [
+        window.sent for window in played(group_id).windows
+    ]
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:
