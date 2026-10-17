@@ -49,3 +49,15 @@ y -60 (on the ground), a barrier.
   jump 5 or 6 ticks after the last counted one was missed (50 of 50), and every one 11 or 12
   ticks after was counted (48 of 48). The play matched only because both sides took 6 ticks a
   jump. A side that takes 7 for some jumps counts more of them.
+- *Live*, 10 plays as above, beside a looping `mise run check`: 2 plays did not match. In
+  each, one side counted 26 of the 50 jumps and the other 25, the gap #57 saw. Of the 1000
+  jumps, all 498 that came 6 ticks after the last counted one were missed, the 2 that came 7
+  ticks after were counted (one in each play that did not match), and all 480 that came 12 or
+  13 ticks after were counted. One 7-tick jump on one side shifts which of the later jumps count.
+- A barrier (`Bot.sync`) sends each of its three requests once its last answer is
+  `TICK_GAP_S` old, so on vanilla its answers come from three packet passes, and a player
+  tick runs after each pass. Four barriers after a jump make at least 8 player ticks before the
+  next, more than the 7 a jump needs.
+- *Live*, 20 plays with three barriers in the air and one after the landing, beside a looping
+  `mise run check`: all 20 matched, and all 2000 jumps were counted. Each jump took 12 player
+  ticks (1943 of 1957 measured), and never fewer than 10.
