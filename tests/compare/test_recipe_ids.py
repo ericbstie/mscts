@@ -286,6 +286,22 @@ def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:
     assert _diff_all(reference, candidate) == [("entries[1].contents.group", "#2", "#1")]
 
 
+def test_one_group_number_in_two_categories_is_two_groups_as_in_the_client() -> None:
+    shared = [
+        Entry(PLANKS, display_id=7, group=3),
+        Entry(STICKS, display_id=4, group=3, category=1),
+    ]
+    apart = [Entry(PLANKS, display_id=7, group=3), Entry(STICKS, display_id=4, group=8, category=1)]
+    one_number = [Entry(PLANKS, display_id=7, group=9), Entry(STICKS, display_id=4, group=9)]
+
+    assert _diff_all([book_add(*shared)], [book_add(*apart)]) == []
+    assert _diff_all([book_add(*apart)], [book_add(*shared)]) == []
+    assert _diff_all([book_add(*apart)], [book_add(*one_number)]) == [
+        ("entries[1].contents.category", 1, 0),
+        ("entries[1].contents.group", "#2", "#1"),
+    ]
+
+
 def test_no_group_takes_no_number() -> None:
     reference = [book_add(Entry(PLANKS, display_id=1), Entry(STICKS, display_id=2, group=7))]
     candidate = [

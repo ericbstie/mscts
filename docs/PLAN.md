@@ -2466,7 +2466,10 @@ proves it necessary:
    own: the n-th display id (or group number) in the Bot's compared
    packets, read after the sort of step 1, so neither server's numbering
    decides it. They are `recipe_book_add`'s `entries[].contents.id` and
-   `entries[].contents.group` (None, no group, stays None) and
+   `entries[].contents.group` (None, no group, stays None; a group is its
+   category and group number, the client's key, since vanilla gives a
+   group one number across categories, as for `iron_ingot` in smelting,
+   blasting and crafting, and the client shows one button in each) and
    `recipe_book_remove`'s `recipes[]` (`compare._RecipeNumbers`). A
    number lasts as long as the client keeps the key: a removal ends the
    numbers of its ids (`ClientRecipeBook.remove`), and an add with
