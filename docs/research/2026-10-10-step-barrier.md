@@ -76,4 +76,5 @@ play, both sides, under stress, against the Self-check's 90 s. So `step_after` n
   Candidate that answers `REQUEST_STATS` outside the queue its action handlers use (for
   example from its network task) can answer both requests before it handles the action,
   and the reorder #360 describes can still move that action a tick late. No Candidate's
-  order has been measured here.
+  order has been measured here. Pumpkin's is in docs/research/2026-10-17-stats-order.md: it
+  answers in order.
