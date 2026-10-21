@@ -110,7 +110,7 @@ async def test_a_world_whose_time_stands_still_ends_the_wait_for_the_weather_wit
     monkeypatch.setattr(_world, "_FADE_TICKS", 2)
     control = _Clock(*[5] * 20)
 
-    with pytest.raises(TimeoutError, match="the world ran 0 of 2 ticks"):
+    with pytest.raises(TimeoutError, match="the world ran 0 of 2 ticks for the weather to fade"):
         await until_the_weather_fades(control)
     assert len(control.commands) == _world._TIME_READS + 1  # noqa: SLF001
 
