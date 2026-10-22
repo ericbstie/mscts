@@ -1509,14 +1509,11 @@ class _RecipeNumbers:
     def _number_removal(self, copies: Sequence[dict[str, _Value]]) -> None:
         """Number `copies`, each a copy of a `recipe_book_remove`'s fields.
 
-        Each copy's ids are sorted by their numbers (`UNORDERED`), and anything that is not
-        an id follows them, in order.
+        Each copy's ids are sorted by their numbers (`UNORDERED`).
         """
         for copy in copies:
             if isinstance(recipes := copy.get("recipes"), list):
-                numbers = sorted(self.ids.of(each) for each in recipes if type(each) is int)
-                others = [each for each in recipes if type(each) is not int]
-                recipes[:] = [f"#{number}" for number in numbers] + others
+                recipes[:] = _sorted_numbers(recipes, self.ids)
 
     def _number_contents(self, contents: dict[str, _Value]) -> None:
         """Number the display id and group number of `contents`, one entry's."""
@@ -1524,6 +1521,16 @@ class _RecipeNumbers:
             contents["id"] = f"#{self.ids.of(display_id)}"
         if (group := _group(contents)) is not None:
             contents["group"] = f"#{self.groups.of(group)}"
+
+
+def _sorted_numbers(recipes: Sequence[_Value], ids: _Numbering) -> list[_Value]:
+    """`recipes`, a removal's, each display id as its number in `ids`, sorted by number.
+
+    An id with no number takes the next. Anything that is not an id follows the ids, in order.
+    """
+    numbers = sorted(ids.of(each) for each in recipes if type(each) is int)
+    others = [each for each in recipes if type(each) is not int]
+    return [f"#{number}" for number in numbers] + others
 
 
 def _group(contents: Mapping[str, object]) -> _Group | None:
@@ -1777,10 +1784,10 @@ def _player_type() -> int:
 
 
 def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Context) -> _Normalized:
-    """Copy `packet`'s fields; sort, canonicalize, number the entities, and apply the Masks.
+    """Copy `packet`'s fields; sort, canonicalize, number, and apply the Masks.
 
-    Sorting is `UNORDERED`'s, the numbers are `numbers`', and the canonical form may use
-    `context`.
+    Sorting is `UNORDERED`'s, the numbers of the entities and the recipes are `numbers`',
+    and the canonical form may use `context`.
     """
     if packet.fields is None:
         return _Normalized(packet=packet, fields=None)
