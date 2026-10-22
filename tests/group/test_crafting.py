@@ -462,6 +462,11 @@ async def test_the_bot_takes_a_result_of_its_2x2_grid_twice_then_puts_it_back() 
 
     assert len(result.windows) == first + 2 * (1 + crafting.TAKES)
     assert clicks(put) == _spread(crafting.INVENTORY_0, stacks)
+    assert put.sent[0][1]["carried_item"] == {  # the logs, picked up from inventory.0
+        "item": _ITEMS.index("minecraft:oak_log"),
+        "count": 2,
+        "components": {"added": [], "removed": []},
+    }
     assert [clicks(window) for window in takes] == _takes(crafting.INVENTORY_0)
     assert put.before[-2:] == _fills(crafting.CRAFTER, ("minecraft:oak_log 2",))
     assert all(window.control == () for window in (put, *takes))

@@ -1242,10 +1242,17 @@ def test_a_click_on_the_crafting_result_takes_it_whole_and_one_of_each_grid_item
     # ResultContainer.removeItem takes the whole stack whatever the count, and ResultSlot.onTake
     # takes one item from each cell that holds one. The client does not craft: the result stays
     # empty until the server sends the next one.
-    tracker = holding({0: ("stick", 4), 1: ("oak_planks", 2), 3: ("oak_planks", 1)})
-    changed = [(0, None), (1, hashed("oak_planks", 1)), (3, None)]
+    stacks = {0: ("stick", 4), 1: ("oak_planks", 2), 3: ("oak_planks", 1), 4: ("oak_planks", 1)}
+    tracker = holding({**stacks, 9: ("oak_planks", 5)})
+    changed = [(0, None), (1, hashed("oak_planks", 1)), (3, None), (4, None)]
     sent = click_sent(0, changed, hashed("stick", 4), button=button)
     assert tracker.click(0, button, "pickup") == sent
+
+
+def test_a_take_from_another_slot_leaves_the_grid_as_it_is() -> None:
+    # Only ResultSlot.onTake uses the grid: a plain Slot's does nothing.
+    tracker = holding({1: ("oak_planks", 2), 9: ("stone", 5)})
+    assert tracker.click(9, 0, "pickup") == click_sent(9, [(9, None)], hashed("stone", 5))
 
 
 @pytest.mark.parametrize("button", [0, 1], ids=["left", "right"])
@@ -1271,11 +1278,17 @@ def test_a_take_onto_a_cursor_without_room_or_of_another_item_changes_nothing(
     assert tracker.click(0, 0, "pickup") == click_sent(0, [], hashed(*carried))
 
 
-def test_a_take_from_a_grid_holding_an_item_with_a_crafting_remainder_is_refused() -> None:
-    # ResultSlot.onTake puts the bucket back in the cell or in the inventory: not predicted.
-    tracker = holding({0: ("cake", 1), 1: ("milk_bucket", 1), 2: ("sugar", 1)})
+@pytest.mark.parametrize(
+    "item", ["water_bucket", "lava_bucket", "milk_bucket", "dragon_breath", "honey_bottle"]
+)
+def test_a_take_from_a_grid_holding_an_item_with_a_crafting_remainder_is_refused(
+    item: str,
+) -> None:
+    # ResultSlot.onTake puts the bucket or bottle back in the cell or in the inventory: the Bot
+    # does not predict it. These five are every item with a craftRemainder in Items.
+    tracker = holding({0: ("cake", 1), 1: (item, 1), 2: ("sugar", 1)})
     before = tracker.view()
-    with pytest.raises(ValueError, match="milk_bucket"):
+    with pytest.raises(ValueError, match=item):
         tracker.click(0, 0, "pickup")
     assert tracker.view() == before
 
@@ -1320,6 +1333,14 @@ def test_a_shift_click_in_a_table_goes_where_the_client_puts_it(
     tracker = holding({**grid, start: ("stone", 5)}, menu=TABLE)
     sent = click_sent(start, [(start, None), (end, hashed("stone", 5))], None, mode=1)
     assert tracker.click(start, 0, "quick_move") == in_chest(sent)
+
+
+def test_a_shift_click_into_a_tables_grid_passes_over_its_result() -> None:
+    # moveItemStackTo(1, 10): the result is not one of the slots, so the same item there takes
+    # nothing, though a merge does not ask the slot whether it may take the item.
+    tracker = holding({0: ("stick", 4), 10: ("stick", 5)}, menu=TABLE)
+    sent = click_sent(10, [(10, None), (1, hashed("stick", 5))], None, mode=1)
+    assert tracker.click(10, 0, "quick_move") == in_chest(sent)
 
 
 def test_a_tables_result_takes_nothing_from_the_cursor_or_a_double_click() -> None:
