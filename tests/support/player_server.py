@@ -1,8 +1,9 @@
 """A fake server for the player Groups: it hurts, kills and respawns the Bot as vanilla does."""
 
 import asyncio
+import itertools
 import json
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -102,11 +103,22 @@ class Drown:
             a play 15 s longer.
         other_event: An entity event that is not the bubbles, which the fake sends on the first
             tick under water if given: a near miss for a Group that waits for the bubbles.
+        burst: How many ticks after the first time the air runs out come back to back, as on a
+            server that runs the ticks it owes after it fell behind. With `AIR_RUNS_OUT` or
+            more, the air runs out again before any command the Bot's bubbles prompt arrives.
     """
 
     period_ticks: int = AIR_RUNS_OUT
     air: int = 3
     other_event: int | None = None
+    burst: int = 0
+
+
+def _waits(drown: Drown) -> Iterator[float]:
+    """The wall-clock wait before each tick of `drown`: none for the ticks of its burst."""
+    yield from itertools.repeat(TICK_S, drown.air + AIR_RUNS_OUT)
+    yield from itertools.repeat(0.0, drown.burst)
+    yield from itertools.repeat(TICK_S)
 
 
 @dataclass
@@ -256,6 +268,8 @@ class PlayerServer:
         """Drown every player but Control as `drown` says, a tick at a time, until one dies.
 
         A tick is `TICK_S` of the wall clock, as a player's is on vanilla: no barrier holds it.
+        The ticks of a burst do not wait at all, so nothing else on the event loop runs between
+        them.
         """
         air, runs_out = drown.air, AIR_RUNS_OUT
         with suppress(ConnectionError):
@@ -264,12 +278,14 @@ class PlayerServer:
                 await self._to_bots(
                     "minecraft:entity_event", entity_id=ENTITY_ID, event_id=drown.other_event
                 )
-            while True:
-                await asyncio.sleep(TICK_S)
+            for wait_s in _waits(drown):
+                if wait_s:
+                    await asyncio.sleep(wait_s)
                 air -= 1
                 if air <= -runs_out:
                     air, runs_out = 0, drown.period_ticks
-                    if await self._air_runs_out():
+                    killed = await self._air_runs_out()
+                    if killed:
                         return
                 await self._to_bots(
                     "minecraft:set_entity_data",

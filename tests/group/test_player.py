@@ -734,9 +734,11 @@ def test_a_window_that_opens_after_the_next_hit_fails_the_group_instead_of_compa
         asyncio.run(_play(group_id, clock=jumping_clock()))
 
 
-def test_drowning_fails_when_the_damage_is_turned_on_after_the_air_may_have_run_out_again() -> None:
+def test_drowning_fails_when_the_air_runs_out_again_before_the_damage_is_turned_on() -> None:
+    # A server catching up runs the 20 ticks after the first bubbles back to back, so the air
+    # runs out again before Control's gamerule arrives: the clock alone could not tell (#457).
     with pytest.raises(ProtocolError, match="before drowning_damage was on"):
-        asyncio.run(_play("player/drowning", clock=jumping_clock()))
+        drowned(Drown(burst=25))
 
 
 @pytest.mark.parametrize("group_id", sorted(HURTS))

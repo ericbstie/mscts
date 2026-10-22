@@ -279,21 +279,6 @@ when the last window closed, a little after the hit."""
 clock = time.monotonic
 """The clock that times the gap between a hit and the next window. Tests replace it."""
 
-_MISSED_BETWEEN_WINDOWS = (
-    "the next may have come between the windows, and the windows would hold another health "
-    "from here on"
-)
-
-_ENTITY_EVENT = "minecraft:entity_event"
-
-_BUBBLES = 67
-"""The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
-`LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
-
-
-def _is_bubbles(packet: Packet) -> bool:
-    return (packet.fields or {}).get("event_id") == _BUBBLES
-
 
 class _Hits:
     """The windows that end on a Bot's hits, and the time between them.
@@ -310,10 +295,8 @@ class _Hits:
         self._bot = bot
         self._last_hit: float | None = None
 
-    def check_gap(self, period_ticks: int, *, missed: str = _MISSED_BETWEEN_WINDOWS) -> None:
+    def check_gap(self, period_ticks: int) -> None:
         """Fail if the last hit is older than a hit `period_ticks` ticks apart allows.
-
-        `missed` says what the Group would have missed: it ends the error's text.
 
         Raises:
             ProtocolError: The next hit may already have come, unseen.
@@ -325,21 +308,14 @@ class _Hits:
         if waited_s > allowed_s:
             msg = (
                 f"{self._bot.name} was {waited_s:.2f} s past its last hit, but hits come "
-                f"{period_ticks} ticks apart: {missed}"
+                f"{period_ticks} ticks apart: the next may have come between the windows, and "
+                "the windows would hold another health from here on"
             )
             raise ProtocolError(msg)
 
     async def hit(self) -> None:
         """Wait for the Bot's next `set_health`, and note when it came, for `check_gap`."""
         await self._bot.expect(_SET_HEALTH, timeout_s=_DAMAGE_TIMEOUT_S)
-        self._last_hit = clock()
-
-    async def bubbles(self) -> None:
-        """Wait for the Bot's next drowning bubbles, and note when they came, for `check_gap`.
-
-        Vanilla sends them each time a drowning player's air runs out, hurt or not.
-        """
-        await self._bot.expect(_ENTITY_EVENT, timeout_s=_DAMAGE_TIMEOUT_S, where=_is_bubbles)
         self._last_hit = clock()
 
     async def moved_before_the_next_hit(self) -> None:
@@ -386,16 +362,60 @@ class _Hits:
 
 _DROWNER = "drowner"
 _DROWNING_DAMAGE = "gamerule drowning_damage"
-_DROWNING_PERIOD = 20
-"""Ticks between two times a drowning player's air runs out: it is back at 0 and runs out again."""
 
-_HARM = "effect give {bot} minecraft:instant_damage 1 1 true"
-"""Takes 12 of a fresh Bot's 20 health (6 << 1, magic damage): drowning hits of 2 kill it in 4."""
+_ENTITY_EVENT = "minecraft:entity_event"
 
-_MISSED_THE_TURN_ON = (
-    "the air may have run out again before drowning_damage was on, and the window would hold "
-    "another round of bubbles without a hit"
-)
+_BUBBLES = 67
+"""The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
+`LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
+
+
+def _is_bubbles(packet: Packet) -> bool:
+    return (packet.fields or {}).get("event_id") == _BUBBLES
+
+
+def _is_hit_or_bubbles(packet: Packet) -> bool:
+    """For a `set_health` or an `entity_event`: the health, or the bubbles."""
+    return packet.name == _SET_HEALTH or _is_bubbles(packet)
+
+
+async def _harm(control: Control, bot: Bot) -> None:
+    """Take 12 of a fresh Bot's 20 health (6 << 1, magic damage): 4 drowning hits of 2 kill it."""
+    await control.run(f"effect give {bot.name} minecraft:instant_damage 1 1 true")
+
+
+async def _set_drowning_damage(control: Control, *, on: bool) -> None:
+    await control.run(f"{_DROWNING_DAMAGE} {'true' if on else 'false'}")
+
+
+async def _air_runs_out(bot: Bot) -> None:
+    """Wait for the Bot's next drowning bubbles: vanilla sends them hurt or not."""
+    await bot.expect(_ENTITY_EVENT, timeout_s=_DAMAGE_TIMEOUT_S, where=_is_bubbles)
+
+
+async def _hurt_when_the_air_runs_out_again(bot: Bot) -> None:
+    """Wait for the Bot's next bubbles and the hit after them; fail if more bubbles come first.
+
+    For the first time the air runs out after `drowning_damage` was turned on. Vanilla sends the
+    bubbles, then the hit's `set_health`, in one tick, and the next bubbles 20 ticks later. Bubbles
+    with no hit before the next mean the air ran out again before the rule was on: the window
+    would hold a second round without a hit, which the other server's might not. Like
+    `moved_before_the_next_hit`, this reads the order of the Bot's own packets, so it holds
+    however late the Bot reads them and however fast the server runs the ticks it owes.
+
+    Raises:
+        ProtocolError: The air ran out again with no hit.
+    """
+    await _air_runs_out(bot)
+    packet = await bot.expect(
+        _SET_HEALTH, _ENTITY_EVENT, timeout_s=_DAMAGE_TIMEOUT_S, where=_is_hit_or_bubbles
+    )
+    if packet.name == _ENTITY_EVENT:
+        msg = (
+            f"{bot.name}'s air ran out again with no hit before drowning_damage was on: the "
+            "window would hold another round of bubbles without a hit"
+        )
+        raise ProtocolError(msg)
 
 
 @group("player/drowning", spec=normal)
@@ -403,8 +423,8 @@ async def drowning(context: GroupContext) -> None:
     """A Bot with 8 health stays under water until it drowns, in one window.
 
     `drowning_damage` is off when the Bot goes under: the first time its air runs out, it gets the
-    bubbles and no hit. Then the rule is turned on, and four hits kill it. The Bot respawns in a
-    window of its own.
+    bubbles and no hit. Then the rule is turned on, and four hits kill it: the Group fails if the
+    air ran out again before the rule was on. The Bot respawns in a window of its own.
 
     The window opens while the Bot's air is full, so it holds every air value the server sends,
     between every two hits; it ends on the death. A server that drowns a player less often sends
@@ -416,15 +436,14 @@ async def drowning(context: GroupContext) -> None:
         for command in _WATER.build:
             await context.control.run(command)
         await fresh(context, bot)
-        await context.control.run(_HARM.format(bot=bot.name))
-        undo.push_async_callback(context.control.run, f"{_DROWNING_DAMAGE} true")
-        await context.control.run(f"{_DROWNING_DAMAGE} false")
-        hits = _Hits(context, bot)
+        await _harm(context.control, bot)
+        undo.push_async_callback(_set_drowning_damage, context.control, on=True)
+        await _set_drowning_damage(context.control, on=False)
         async with context.observe(*PACKETS, until=_DEATH, bot=bot):
             await _tp(context, bot, _at(_WATER.lane, -62.0))
-            await hits.bubbles()
-            await context.control.run(f"{_DROWNING_DAMAGE} true")
-            hits.check_gap(_DROWNING_PERIOD, missed=_MISSED_THE_TURN_ON)
+            await _air_runs_out(bot)
+            await _set_drowning_damage(context.control, on=True)
+            await _hurt_when_the_air_runs_out_again(bot)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
         async with context.observe(*PACKETS):
             await bot.respawn()
