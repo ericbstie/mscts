@@ -117,6 +117,13 @@ def test_a_tag_compared_after_an_extra_one_names_both_its_indexes() -> None:
     ]
 
 
+def test_the_entries_of_every_tag_of_every_registry_are_lined_up() -> None:
+    fewer = ("minecraft:item", [("minecraft:logs", [5])])
+    assert _gameplay(_compare(State.CONFIGURATION, [BLOCK, ITEM], [BLOCK, fewer])) == [
+        ("tagged_registries[1].tags[0].entries[0]", 4, ABSENT)
+    ]
+
+
 def test_a_tag_the_candidate_leaves_out_is_one_divergence() -> None:
     fewer = ("minecraft:block", [BLOCK[1][1]])
     assert _gameplay(_compare(State.CONFIGURATION, [BLOCK], [fewer])) == [

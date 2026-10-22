@@ -17,6 +17,7 @@ from mscts.compare import (
     ABSENT,
     _Edit,
     _fewest_edits,
+    _Moved,
     _pairs,
     _Path,
     _render,
@@ -94,6 +95,10 @@ def test_an_element_only_the_candidate_has_and_a_moved_pair_have_different_paths
         ("l[1]", ABSENT, "c"),
         ("l[1→3]", "b", "a"),
     ]
+
+
+def test_a_moved_index_names_no_index_where_indexes_are_left_out() -> None:
+    assert _render(("l", _Moved(1, 3), "v"), index_free=True) == "l[].v"
 
 
 def test_no_two_differences_of_small_lists_share_a_path() -> None:
