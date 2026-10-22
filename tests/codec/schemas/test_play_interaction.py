@@ -1,9 +1,9 @@
 """The schemas a Bot uses to dig, place and use items, round-tripped through hand-built bytes."""
 
 import struct
-from collections.abc import Mapping
 
 import pytest
+from support.play import round_trip_packet
 
 from mscts.codec.packets import Codec, CodecError, Direction, State
 
@@ -15,17 +15,10 @@ BLOCK = {"x": 3, "y": -60, "z": -2}
 BLOCK_BYTES = struct.pack(">q", 3 << 38 | (-2 & (1 << 26) - 1) << 12 | (-60 & 0xFFF))
 
 
-def round_trip(direction: Direction, name: str, fields: Mapping[str, object], data: bytes) -> None:
-    assert CODEC.packet_id(State.PLAY, direction, name) == data[0]
-    assert CODEC.encode(State.PLAY, direction, name, fields) == data
-    packet = CODEC.decode(State.PLAY, direction, data)
-    assert (packet.name, packet.fields) == (name, fields)
-
-
 def test_player_action_is_the_action_the_block_its_face_as_a_byte_and_the_sequence() -> None:
     fields = {"action": 3, "pos": BLOCK, "face": 1, "sequence": 300}  # stop digging, top face
     data = bytes([0x29, 0x03]) + BLOCK_BYTES + bytes([0x01, 0xAC, 0x02])
-    round_trip(SERVERBOUND, "minecraft:player_action", fields, data)
+    round_trip_packet(SERVERBOUND, "minecraft:player_action", fields, data)
 
 
 def test_player_action_has_nine_actions() -> None:
@@ -61,25 +54,29 @@ def test_use_item_on_is_the_hand_the_block_hit_and_the_sequence() -> None:
         + struct.pack(">3f", 0.5, 1.0, 0.25)
         + bytes([0x01, 0x00, 0x02])
     )
-    round_trip(SERVERBOUND, "minecraft:use_item_on", fields, data)
+    round_trip_packet(SERVERBOUND, "minecraft:use_item_on", fields, data)
 
 
 def test_use_item_is_the_hand_the_sequence_and_the_rotation() -> None:
     fields = {"hand": 0, "sequence": 7, "yaw": -90.5, "pitch": 12.0}
     data = bytes([0x43, 0x00, 0x07]) + struct.pack(">2f", -90.5, 12.0)
-    round_trip(SERVERBOUND, "minecraft:use_item", fields, data)
+    round_trip_packet(SERVERBOUND, "minecraft:use_item", fields, data)
 
 
 def test_set_carried_item_is_the_slot_as_a_short() -> None:
-    round_trip(SERVERBOUND, "minecraft:set_carried_item", {"slot": 8}, bytes([0x36, 0x00, 0x08]))
+    round_trip_packet(
+        SERVERBOUND, "minecraft:set_carried_item", {"slot": 8}, bytes([0x36, 0x00, 0x08])
+    )
 
 
 def test_punch_has_no_fields() -> None:
-    round_trip(SERVERBOUND, "minecraft:punch", {}, bytes([0x2E]))
+    round_trip_packet(SERVERBOUND, "minecraft:punch", {}, bytes([0x2E]))
 
 
 def test_attack_is_the_entity_id() -> None:
-    round_trip(SERVERBOUND, "minecraft:attack", {"entity_id": 300}, bytes([0x01, 0xAC, 0x02]))
+    round_trip_packet(
+        SERVERBOUND, "minecraft:attack", {"entity_id": 300}, bytes([0x01, 0xAC, 0x02])
+    )
 
 
 def test_interact_is_the_entity_the_hand_where_on_it_and_whether_sneaking() -> None:
@@ -93,14 +90,14 @@ def test_interact_is_the_entity_the_hand_where_on_it_and_whether_sneaking() -> N
         + (packed >> 16).to_bytes(4, "big")
         + bytes([0x01])
     )
-    round_trip(SERVERBOUND, "minecraft:interact", fields, data)
+    round_trip_packet(SERVERBOUND, "minecraft:interact", fields, data)
 
 
 def test_block_changed_ack_is_the_sequence() -> None:
     data = bytes([CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:block_changed_ack"), 0x05])
-    round_trip(CLIENTBOUND, "minecraft:block_changed_ack", {"sequence": 5}, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:block_changed_ack", {"sequence": 5}, data)
 
 
 def test_set_held_slot_is_the_slot() -> None:
     data = bytes([CODEC.packet_id(State.PLAY, CLIENTBOUND, "minecraft:set_held_slot"), 0x04])
-    round_trip(CLIENTBOUND, "minecraft:set_held_slot", {"slot": 4}, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:set_held_slot", {"slot": 4}, data)

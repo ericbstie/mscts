@@ -1,29 +1,13 @@
 """Play schemas of Target 26.3 that the Bot handles, round-tripped through hand-built bytes."""
 
-import struct
-from collections.abc import Mapping
-
 import pytest
+from support.play import round_trip_packet
+from support.wire import doubles, floats, string
 
 from mscts.codec.packets import Codec, Direction, State
 
 CODEC = Codec.load("26.3")
 CLIENTBOUND, SERVERBOUND = Direction.CLIENTBOUND, Direction.SERVERBOUND
-
-
-def round_trip(direction: Direction, name: str, fields: Mapping[str, object], data: bytes) -> None:
-    assert CODEC.packet_id(State.PLAY, direction, name) == data[0]
-    assert CODEC.encode(State.PLAY, direction, name, fields) == data
-    packet = CODEC.decode(State.PLAY, direction, data)
-    assert (packet.name, packet.fields) == (name, fields)
-
-
-def doubles(*values: float) -> bytes:
-    return struct.pack(f">{len(values)}d", *values)
-
-
-def floats(*values: float) -> bytes:
-    return struct.pack(f">{len(values)}f", *values)
 
 
 def test_player_position_is_id_pose_velocity_rotation_and_flags() -> None:
@@ -45,25 +29,27 @@ def test_player_position_is_id_pose_velocity_rotation_and_flags() -> None:
         + floats(-90.5, 0.0)
         + bytes.fromhex("00000018")
     )
-    round_trip(CLIENTBOUND, "minecraft:player_position", fields, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:player_position", fields, data)
 
 
 def test_accept_teleportation_echoes_the_pose() -> None:
     fields = {"teleport_id": 1, "x": 6.5, "y": -60.0, "z": 7.5, "yaw": -90.5, "pitch": 0.0}
     data = bytes([0x00, 0x01]) + doubles(6.5, -60.0, 7.5) + floats(-90.5, 0.0)
-    round_trip(SERVERBOUND, "minecraft:accept_teleportation", fields, data)
+    round_trip_packet(SERVERBOUND, "minecraft:accept_teleportation", fields, data)
 
 
 @pytest.mark.parametrize(("direction", "packet_id"), [(CLIENTBOUND, 0x2D), (SERVERBOUND, 0x1C)])
 def test_keep_alive_is_a_long_both_ways(direction: Direction, packet_id: int) -> None:
     data = bytes([packet_id]) + (1_790_000_000_000).to_bytes(8, "big")
-    round_trip(direction, "minecraft:keep_alive", {"keep_alive_id": 1_790_000_000_000}, data)
+    round_trip_packet(direction, "minecraft:keep_alive", {"keep_alive_id": 1_790_000_000_000}, data)
 
 
 def test_the_chunk_batch_packets() -> None:
-    round_trip(CLIENTBOUND, "minecraft:chunk_batch_start", {}, bytes([0x0C]))
-    round_trip(CLIENTBOUND, "minecraft:chunk_batch_finished", {"batch_size": 9}, bytes([0x0B, 9]))
-    round_trip(
+    round_trip_packet(CLIENTBOUND, "minecraft:chunk_batch_start", {}, bytes([0x0C]))
+    round_trip_packet(
+        CLIENTBOUND, "minecraft:chunk_batch_finished", {"batch_size": 9}, bytes([0x0B, 9])
+    )
+    round_trip_packet(
         SERVERBOUND,
         "minecraft:chunk_batch_received",
         {"chunks_per_tick": 9.0},
@@ -73,12 +59,12 @@ def test_the_chunk_batch_packets() -> None:
 
 def test_player_loaded_has_no_fields() -> None:
     # Player Loaded, wiki revision 3790659: "no fields" (26.3 javap: StreamCodec.unit).
-    round_trip(SERVERBOUND, "minecraft:player_loaded", {}, bytes([0x2C]))
+    round_trip_packet(SERVERBOUND, "minecraft:player_loaded", {}, bytes([0x2C]))
 
 
 def test_the_configuration_switch_packets_have_no_fields() -> None:
-    round_trip(CLIENTBOUND, "minecraft:start_configuration", {}, bytes([0x78]))
-    round_trip(SERVERBOUND, "minecraft:configuration_acknowledged", {}, bytes([0x10]))
+    round_trip_packet(CLIENTBOUND, "minecraft:start_configuration", {}, bytes([0x78]))
+    round_trip_packet(SERVERBOUND, "minecraft:configuration_acknowledged", {}, bytes([0x10]))
 
 
 def test_update_tags_in_play_is_registries_of_tags_of_ids() -> None:
@@ -130,10 +116,6 @@ LOGIN = {
 }
 
 
-def string(text: str) -> bytes:
-    return bytes([len(text)]) + text.encode()
-
-
 LOGIN_BYTES = (
     bytes([0x32])  # id: minecraft:login
     + (42).to_bytes(4, "big")
@@ -156,7 +138,7 @@ LOGIN_BYTES = (
 
 
 def test_login_decodes_every_field_in_order() -> None:
-    round_trip(CLIENTBOUND, "minecraft:login", LOGIN, LOGIN_BYTES)
+    round_trip_packet(CLIENTBOUND, "minecraft:login", LOGIN, LOGIN_BYTES)
 
 
 def test_login_death_location_is_a_dimension_and_a_position() -> None:
@@ -196,4 +178,4 @@ def test_respawn_is_the_spawn_info_then_the_data_kept() -> None:
         + bytes([63])
         + b"\x03"
     )
-    round_trip(CLIENTBOUND, "minecraft:respawn", fields, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:respawn", fields, data)

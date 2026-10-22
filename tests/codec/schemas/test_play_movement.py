@@ -1,9 +1,9 @@
 """The movement schemas a Bot sends as its player moves, round-tripped through hand-built bytes."""
 
-import struct
 from collections.abc import Mapping
 
 import pytest
+from support.wire import doubles, floats
 
 from mscts.codec.packets import Codec, CodecError, Direction, State
 
@@ -16,14 +16,6 @@ def round_trip(name: str, fields: Mapping[str, object], data: bytes) -> None:
     assert CODEC.encode(State.PLAY, SERVERBOUND, name, fields) == data
     packet = CODEC.decode(State.PLAY, SERVERBOUND, data)
     assert (packet.name, packet.fields) == (name, fields)
-
-
-def doubles(*values: float) -> bytes:
-    return struct.pack(f">{len(values)}d", *values)
-
-
-def floats(*values: float) -> bytes:
-    return struct.pack(f">{len(values)}f", *values)
 
 
 def test_move_player_pos_is_a_position_and_flags() -> None:

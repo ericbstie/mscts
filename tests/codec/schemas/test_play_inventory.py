@@ -1,9 +1,9 @@
 """The container schemas, round-tripped through hand-built bytes (26.3 jar layouts, #28)."""
 
 import struct
-from collections.abc import Mapping
 
 import pytest
+from support.play import round_trip_packet
 
 from mscts.codec.packets import Codec, CodecError, Direction, State
 
@@ -17,16 +17,9 @@ HASHED_STONE_BYTES = bytes([0x01, 0x01, 0x40, 0x00, 0x00])  # present, item, cou
 CHEST_TITLE = bytes([0x08, 0x00, 0x05]) + b"Chest"  # a network NBT String tag
 
 
-def round_trip(direction: Direction, name: str, fields: Mapping[str, object], data: bytes) -> None:
-    assert CODEC.packet_id(State.PLAY, direction, name) == data[0]
-    assert CODEC.encode(State.PLAY, direction, name, fields) == data
-    packet = CODEC.decode(State.PLAY, direction, data)
-    assert (packet.name, packet.fields) == (name, fields)
-
-
 def test_open_screen_is_the_window_its_menu_type_and_its_title() -> None:
     fields = {"window_id": 3, "window_type": 2, "window_title": CHEST_TITLE}
-    round_trip(
+    round_trip_packet(
         CLIENTBOUND, "minecraft:open_screen", fields, bytes([0x3C, 0x03, 0x02]) + CHEST_TITLE
     )
 
@@ -35,7 +28,7 @@ def test_mount_screen_open_is_the_window_the_columns_and_an_int_entity_id() -> N
     # ClientboundMountScreenOpenPacket.write: writeContainerId, writeVarInt, writeInt.
     fields = {"window_id": 2, "inventory_columns": 5, "entity_id": 300}
     data = bytes([0x2A, 0x02, 0x05]) + struct.pack(">i", 300)
-    round_trip(CLIENTBOUND, "minecraft:mount_screen_open", fields, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:mount_screen_open", fields, data)
     paths = CODEC.entity_id_paths(State.PLAY, CLIENTBOUND, "minecraft:mount_screen_open")
     assert paths == (("entity_id",),)
 
@@ -43,19 +36,19 @@ def test_mount_screen_open_is_the_window_the_columns_and_an_int_entity_id() -> N
 def test_container_set_content_is_every_slot_then_the_cursor() -> None:
     fields = {"window_id": 0, "state_id": 300, "slot_data": [None, STONE], "carried_item": None}
     data = bytes([0x12, 0x00, 0xAC, 0x02, 0x02, 0x00]) + STONE_BYTES + bytes([0x00])
-    round_trip(CLIENTBOUND, "minecraft:container_set_content", fields, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:container_set_content", fields, data)
 
 
 def test_container_set_slot_is_the_window_the_state_a_short_slot_and_the_stack() -> None:
     fields = {"window_id": 1, "state_id": 5, "slot": 36, "slot_data": STONE}
     data = bytes([0x14, 0x01, 0x05, 0x00, 0x24]) + STONE_BYTES
-    round_trip(CLIENTBOUND, "minecraft:container_set_slot", fields, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:container_set_slot", fields, data)
 
 
 def test_container_set_data_is_the_window_and_two_shorts() -> None:
     fields = {"window_id": 2, "property": 3, "value": -1}
     data = bytes([0x13, 0x02, 0x00, 0x03, 0xFF, 0xFF])
-    round_trip(CLIENTBOUND, "minecraft:container_set_data", fields, data)
+    round_trip_packet(CLIENTBOUND, "minecraft:container_set_data", fields, data)
 
 
 @pytest.mark.parametrize(
@@ -63,18 +56,22 @@ def test_container_set_data_is_the_window_and_two_shorts() -> None:
 )
 def test_container_close_is_the_window(direction: Direction) -> None:
     packet_id = 0x11 if direction is CLIENTBOUND else 0x13
-    round_trip(direction, "minecraft:container_close", {"window_id": 7}, bytes([packet_id, 0x07]))
+    round_trip_packet(
+        direction, "minecraft:container_close", {"window_id": 7}, bytes([packet_id, 0x07])
+    )
 
 
 def test_set_cursor_item_is_one_stack() -> None:
-    round_trip(
+    round_trip_packet(
         CLIENTBOUND, "minecraft:set_cursor_item", {"slot_data": STONE}, bytes([0x62]) + STONE_BYTES
     )
 
 
 def test_set_player_inventory_is_an_inventory_index_and_a_stack() -> None:
     fields = {"slot": 40, "slot_data": None}
-    round_trip(CLIENTBOUND, "minecraft:set_player_inventory", fields, bytes([0x6E, 0x28, 0x00]))
+    round_trip_packet(
+        CLIENTBOUND, "minecraft:set_player_inventory", fields, bytes([0x6E, 0x28, 0x00])
+    )
 
 
 def test_container_click_carries_each_changed_slot_as_a_hashed_stack() -> None:
@@ -97,7 +94,7 @@ def test_container_click_carries_each_changed_slot_as_a_hashed_stack() -> None:
         + HASHED_STONE_BYTES
         + bytes([0x00])
     )
-    round_trip(SERVERBOUND, "minecraft:container_click", fields, data)
+    round_trip_packet(SERVERBOUND, "minecraft:container_click", fields, data)
 
 
 def test_container_click_carries_at_most_128_changed_slots() -> None:

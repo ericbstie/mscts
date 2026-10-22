@@ -11,6 +11,8 @@ import dataclasses
 from pathlib import Path
 from typing import cast
 
+from support.narrow import dict_list
+
 from mscts.codec.packets import Codec, Packet, State
 from mscts.compare import RANDOM_FIELDS, UNORDERED, Mask, Outcome, compare
 from tests.compare.build import CLIENTBOUND, transcript
@@ -33,24 +35,21 @@ def join(boot: int) -> tuple[Packet, Packet]:
     )
 
 
-def _list(value: object) -> list[dict[str, object]]:
-    assert isinstance(value, list)
-    return cast("list[dict[str, object]]", value)
-
-
 def order(update_tags: Packet) -> list[tuple[object, list[object]]]:
     """Each registry, in the order sent, with its tag names in the order sent."""
     return [
-        (registry["registry"], [tag["tag_name"] for tag in _list(registry["tags"])])
-        for registry in _list((update_tags.fields or {})["tagged_registries"])
+        (registry["registry"], [tag["tag_name"] for tag in dict_list(registry["tags"])])
+        for registry in dict_list((update_tags.fields or {})["tagged_registries"])
     ]
 
 
 def as_maps(update_tags: Packet) -> dict[object, dict[object, object]]:
     """What the client reads it into: each registry's tags by name, each with its entries."""
     return {
-        registry["registry"]: {tag["tag_name"]: tag["entries"] for tag in _list(registry["tags"])}
-        for registry in _list((update_tags.fields or {})["tagged_registries"])
+        registry["registry"]: {
+            tag["tag_name"]: tag["entries"] for tag in dict_list(registry["tags"])
+        }
+        for registry in dict_list((update_tags.fields or {})["tagged_registries"])
     }
 
 

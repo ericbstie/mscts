@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from support.narrow import dict_list
 
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State
 from mscts.codec.wire import Writer
@@ -28,21 +29,18 @@ def recorded(file: str) -> Packet:
     return CODEC.decode(State.PLAY, CLIENTBOUND, _framed((DATA / file).read_bytes()))
 
 
-def _list(value: object) -> list[dict[str, object]]:
-    assert isinstance(value, list)
-    return cast("list[dict[str, object]]", value)
-
-
 @pytest.mark.parametrize("file", BOOTS)
 def test_a_recorded_join_decodes_and_encodes_byte_for_byte(file: str) -> None:
     packet = recorded(file)
 
     fields = packet.fields
     assert fields is not None
-    sets = {entry["property_set_id"]: entry["items"] for entry in _list(fields["property_sets"])}
+    sets = {
+        entry["property_set_id"]: entry["items"] for entry in dict_list(fields["property_sets"])
+    }
     assert len(sets) == 9
     assert len(cast("list[int]", sets["minecraft:furnace_input"])) == 163
-    stonecutter = _list(fields["stonecutter_recipes"])
+    stonecutter = dict_list(fields["stonecutter_recipes"])
     assert len(stonecutter) == 351
     assert stonecutter[0] == {
         "ingredients": {"ids": [6]},
