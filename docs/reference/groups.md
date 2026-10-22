@@ -633,8 +633,8 @@ and the Report names the recipe.
 Each server picks these numbers, and the numbers of recipe groups, its own way. mscts numbers
 the recipes again in the order each Bot first gets them, and the groups the same way, so a
 server that numbers its recipes another way but keeps to it shows the same recipe book. A
-removal of another recipe still differs if the recipe was added in a window and has not been
-taken or replaced outside the windows since. A recipe put in another group still differs if a
+removal of another recipe still differs if the Bot last got the recipe in a window and it has
+not been taken or replaced since. A recipe put in another group still differs if a
 recipe in that group was added in a window and, since then, the group has never been empty when
 a recipe was added or removed in a window, and the book has not been replaced outside the
 windows. Other such removals and groups cannot be told apart yet

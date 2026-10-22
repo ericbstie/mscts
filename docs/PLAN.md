@@ -2526,7 +2526,8 @@ proves it necessary:
    recipes it knows (`rebuildCollections` over `known.values()`), and an
    id added again leaves its old group (`known.put`). A number is never
    given twice. So a Candidate that gives a recipe another id, or its
-   group another number, when it adds it again shows what vanilla does
+   group another number once a compared packet has found the group
+   empty, when it adds it again shows what vanilla does
    (vanilla keeps the id:
    `RecipeManager.unpackRecipeInfo` numbers every display once), and one
    that gives a recipe's id to another while the first still holds it
