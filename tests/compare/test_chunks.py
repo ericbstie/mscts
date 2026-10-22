@@ -1133,6 +1133,21 @@ def test_block_light_empty_and_an_array_of_zeros_are_network_traffic_only() -> N
     assert _network_traffic_only(verdict_of(_lit(block={1: EMPTY}), _lit(block={1: DARK})))
 
 
+def test_network_traffic_compares_the_arrays_sent_index_by_index() -> None:
+    # A network traffic Divergence reads the raw, parsed and canonical values at one path, so
+    # its lists are never lined up (#256): each path names the same array on both sides.
+    verdict = verdict_of(_lit(block={1: EMPTY, 2: FULL}), _lit(block={1: DARK, 2: FULL}))
+
+    assert [
+        (d.path, d.reference, d.candidate)
+        for d in verdict.divergences
+        if d.path and d.path.startswith("light.block_light_arrays")
+    ] == [
+        ("light.block_light_arrays[0]", FULL, DARK),
+        ("light.block_light_arrays[1]", ABSENT, FULL),
+    ]
+
+
 @pytest.mark.parametrize("name", [CHUNK, "minecraft:light_update"])
 def test_sky_light_below_the_world_empty_and_an_array_of_zeros_are_no_difference(
     name: str,
@@ -1355,6 +1370,62 @@ def test_a_light_update_naming_fewer_sections_differs_only_where_the_other_names
 
 
 AIR_SECTION = section(single(AIR), block_count=0)
+
+
+def test_sections_one_higher_differ_at_each_height_not_lined_up() -> None:
+    # A section's index is its height, so the sections are never lined up (#256): lined up,
+    # one air section at the bottom and one fewer at the top would be the whole difference.
+    sections = overworld(FLAT_BOTTOM)
+    sections[1] = section(
+        paletted([STONE] + [AIR] * 4095, [AIR, STONE], bits=4, width=4), block_count=1
+    )
+    higher = [AIR_SECTION, *sections[:-1]]
+
+    verdict = verdict_of(chunk(sections), chunk(higher))
+
+    assert {d.path.split(".")[0] for d in verdict.gameplay if d.path} == {
+        "sections[0]",
+        "sections[1]",
+        "sections[2]",
+    }
+
+
+def test_a_section_only_the_reference_has_is_left_out_at_its_height() -> None:
+    sections = overworld(FLAT_BOTTOM)
+
+    verdict = verdict_of(chunk(sections), chunk(sections[:-1]))
+
+    assert [(d.path, d.candidate) for d in verdict.gameplay] == [
+        (
+            "light.block[25]",
+            "chunk 0 0 (y from the world's bottom), y 384 to 399: no such light section",
+        ),
+        (
+            "light.sky[25]",
+            "chunk 0 0 (y from the world's bottom), y 384 to 399: no such light section",
+        ),
+        ("sections[23]", ABSENT),
+    ]
+
+
+@pytest.mark.parametrize("layer", ["sky", "block"])
+def test_light_one_section_higher_differs_at_each_height_not_lined_up(layer: str) -> None:
+    def lit(sections: _Layer) -> Packet:
+        return _lit(**{layer: sections})
+
+    verdict = verdict_of(lit({1: FULL, 2: DARK}), lit({2: FULL, 3: DARK}))
+
+    assert [d.path for d in verdict.gameplay] == [f"light.{layer}[{i}]" for i in (1, 2, 3)]
+
+
+@pytest.mark.parametrize("layer", ["sky", "block"])
+def test_a_light_update_one_section_higher_differs_at_each_height(layer: str) -> None:
+    def updated(sections: _Layer) -> Packet:
+        return light_update(light(**{layer: sections}))
+
+    verdict = verdict_of(updated({1: FULL, 2: DARK}), updated({2: FULL, 3: DARK}))
+
+    assert [d.path for d in verdict.gameplay] == [f"data.{layer}[{i}]" for i in (1, 2, 3)]
 
 
 def test_sections_past_the_most_a_level_has_are_one_value() -> None:

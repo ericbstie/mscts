@@ -2902,13 +2902,7 @@ def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[i
     Between the prefix and the suffix this takes O(n·m) time and memory, and that
     part is short when the streams mostly agree.
     """
-    shorter = min(len(reference), len(candidate))
-    prefix = 0
-    while prefix < shorter and reference[prefix] == candidate[prefix]:
-        prefix += 1
-    suffix = 0
-    while suffix < shorter - prefix and reference[-1 - suffix] == candidate[-1 - suffix]:
-        suffix += 1
+    prefix, suffix = _common_ends(reference, candidate)
     ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
     middle = _longest_common_subsequence(reference[prefix:ref_stop], candidate[prefix:cand_stop])
     return [
@@ -2916,6 +2910,18 @@ def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[i
         *((prefix + ref_index, prefix + cand_index) for ref_index, cand_index in middle),
         *((ref_stop + offset, cand_stop + offset) for offset in range(suffix)),
     ]
+
+
+def _common_ends(reference: Sequence[Hashable], candidate: Sequence[Hashable]) -> tuple[int, int]:
+    """How long the two sequences' common prefix is, then their common suffix after it."""
+    shorter = min(len(reference), len(candidate))
+    prefix = 0
+    while prefix < shorter and reference[prefix] == candidate[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < shorter - prefix and reference[-1 - suffix] == candidate[-1 - suffix]:
+        suffix += 1
+    return prefix, suffix
 
 
 def _longest_common_subsequence(
@@ -2969,13 +2975,7 @@ def _align_timed(
     full_candidate = [
         (key, _tick_order(tick)) for key, tick in zip(candidate, candidate_ticks, strict=True)
     ]
-    shorter = min(len(reference), len(candidate))
-    prefix = 0
-    while prefix < shorter and full_reference[prefix] == full_candidate[prefix]:
-        prefix += 1
-    suffix = 0
-    while suffix < shorter - prefix and full_reference[-1 - suffix] == full_candidate[-1 - suffix]:
-        suffix += 1
+    prefix, suffix = _common_ends(full_reference, full_candidate)
     ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
     middle = _best_timed_subsequence(
         full_reference[prefix:ref_stop], full_candidate[prefix:cand_stop]
@@ -3246,7 +3246,8 @@ def _diff_matched(
         masked = reference.masked | candidate.masked
         shown = _SHOWN.get((state, name))
         sides = (reference.fields, candidate.fields)
-        for path, ref_value, cand_value in _pairs(reference.fields, candidate.fields, ()):
+        in_place = _WORLD_LISTS.get((state, name), frozenset()).__contains__
+        for path, ref_value, cand_value in _pairs(*sides, (), in_place):
             shape = tuple(0 if isinstance(step, int) else step for step in path)
             if shape not in names:
                 names[shape] = _test_case(state, name, shape)
@@ -3330,31 +3331,169 @@ type _Pair = tuple[_Path, _Value | Absent, _Value | Absent]
 
 
 def _diff(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -> Iterator[_Pair]:
-    """Yield each pair `_pairs` compares whose two values differ, in path order."""
-    return (pair for pair in _pairs(reference, candidate, path) if not _same(pair[1], pair[2]))
+    """Yield each pair `_pairs` compares whose two values differ, in path order.
+
+    Every list is compared index by index, so a path reads the same element on each side.
+    """
+    pairs = _pairs(reference, candidate, path, _every_list)
+    return (pair for pair in pairs if not _same(pair[1], pair[2]))
 
 
-def _pairs(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -> Iterator[_Pair]:
+type _InPlace = Callable[[_Path], bool]
+"""Whether `_pairs` compares the list at a path index by index, rather than lined up."""
+
+
+def _every_list(_path: _Path) -> bool:
+    """`_InPlace` for comparing every list index by index."""
+    return True
+
+
+_WORLD_LISTS: Mapping[tuple[State, str], frozenset[_Path]] = MappingProxyType(
+    {
+        (State.PLAY, "minecraft:level_chunk_with_light"): frozenset(
+            {("sections",), ("light", "sky"), ("light", "block")}
+        ),
+        (State.PLAY, "minecraft:light_update"): frozenset({("data", "sky"), ("data", "block")}),
+    }
+)
+"""The canonical lists, by packet, whose index is a height in the world: a chunk's sections
+from the bottom up, and the light section each layer's light goes to (`_canonical_light`).
+They are compared index by index (`_InPlace`): an element at another index is at another
+height, and a Divergence names its positions from its index (`_shown_chunk`)."""
+
+
+def _pairs(
+    reference: _Value | Absent, candidate: _Value | Absent, path: _Path, in_place: _InPlace
+) -> Iterator[_Pair]:
     """Yield (path, reference value, candidate value) for each pair compared, in path order.
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
-    is ABSENT on the other. Lists are compared index by index, and elements past the
-    end of the shorter one are ABSENT. Anything else is a leaf, compared as a whole.
+    is ABSENT on the other. Lists are compared index by index where `in_place` says so,
+    elements past the end of the shorter one being ABSENT; else lined up
+    (`_fewest_edits`). Anything else is a leaf, compared as a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
         for key in sorted(reference.keys() | candidate.keys()):
-            yield from _pairs(reference.get(key, ABSENT), candidate.get(key, ABSENT), (*path, key))
+            values = (reference.get(key, ABSENT), candidate.get(key, ABSENT))
+            yield from _pairs(*values, (*path, key), in_place)
     elif isinstance(reference, list) and isinstance(candidate, list):
-        for index in range(max(len(reference), len(candidate))):
-            yield from _pairs(
-                _element(reference, index), _element(candidate, index), (*path, index)
+        edits = (
+            _index_by_index(len(reference), len(candidate))
+            if in_place(path)
+            else _fewest_edits(
+                [_identity(item) for item in reference], [_identity(item) for item in candidate]
             )
+        )
+        for ref_index, cand_index in edits:
+            if ref_index is not None and cand_index is not None:
+                values = (reference[ref_index], candidate[cand_index])
+                yield from _pairs(*values, (*path, ref_index), in_place)
+            elif ref_index is not None:
+                yield (*path, ref_index), reference[ref_index], ABSENT
+            elif cand_index is not None:
+                yield (*path, cand_index), ABSENT, candidate[cand_index]
     else:
         yield path, reference, candidate
 
 
-def _element(items: Sequence[_Value], index: int) -> _Value | Absent:
-    return items[index] if index < len(items) else ABSENT
+type _Edit = tuple[int | None, int | None]
+"""One step from a reference list to a candidate list: the indexes of two elements compared
+with each other, or the index of an element only the reference or only the candidate has,
+and None on the other side. Never None on both."""
+
+
+def _index_by_index(ref_length: int, cand_length: int) -> list[_Edit]:
+    """The elements at each index compared, then those past the end of the shorter list."""
+    shorter = min(ref_length, cand_length)
+    return [
+        *((index, index) for index in range(shorter)),
+        *((index, None) for index in range(shorter, ref_length)),
+        *((None, index) for index in range(shorter, cand_length)),
+    ]
+
+
+def _identity(value: _Value) -> str:
+    """What a list element is lined up on: its whole value as JSON, keys sorted.
+
+    Two elements `_pairs` finds no difference between have the same identity, and JSON
+    keeps apart what Python calls equal (1, 1.0 and true; 0.0 and -0.0). Bytes and UUIDs
+    are written as an object holding their text. Two different elements with one identity
+    are compared with each other, so that changes how they are lined up, never what differs.
+    """
+    return json.dumps(value, sort_keys=True, default=_json_leaf)
+
+
+def _json_leaf(value: object) -> dict[str, str]:
+    """A leaf that JSON has no type for, as `_identity` writes it."""
+    if isinstance(value, bytes):
+        return {"bytes": value.hex()}
+    return {"uuid": str(value)}
+
+
+def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_Edit]:
+    """Line up two lists of identities (#256), returning the steps in order.
+
+    The steps are as few as can be, each an element compared with another, which counts
+    only if they differ, or an element only one side has. So a shifted element is no
+    difference: `a, b, c, d` against `b, c, d` is `a` alone, and one element changed in
+    place is one change. Of the fewest, the choice is fixed so that swapping the two sides
+    mirrors it: the common prefix and suffix are compared as they stand, and in between,
+    equal elements are compared with each other, then two elements are compared in place
+    whenever that keeps the steps fewest, else the smaller one, whichever side it is on, is
+    the one only its side has.
+
+    Between the prefix and the suffix this takes O(n·m) time and memory, as `_align` does.
+    """
+    prefix, suffix = _common_ends(reference, candidate)
+    ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
+    middle = _middle_edits(reference[prefix:ref_stop], candidate[prefix:cand_stop])
+    return [
+        *((index, index) for index in range(prefix)),
+        *(_shifted(edit, prefix) for edit in middle),
+        *((ref_stop + offset, cand_stop + offset) for offset in range(suffix)),
+    ]
+
+
+def _shifted(edit: _Edit, by: int) -> _Edit:
+    """`edit` with each of its indexes `by` more."""
+    ref_index, cand_index = edit
+    return (
+        None if ref_index is None else ref_index + by,
+        None if cand_index is None else cand_index + by,
+    )
+
+
+def _middle_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_Edit]:
+    """Trace `_fewest_edits` between the common prefix and suffix."""
+    rows, columns = len(reference), len(candidate)
+    # fewest[i][j]: the fewest steps from reference[i:] to candidate[j:] that differ. The
+    # last row starts as it stays: from nothing, each candidate element is one step.
+    fewest = [array("L", range(columns, -1, -1)) for _ in range(rows + 1)]
+    for i in range(rows - 1, -1, -1):
+        row, below, key = fewest[i], fewest[i + 1], reference[i]
+        row[columns] = rows - i
+        for j in range(columns - 1, -1, -1):
+            row[j] = (
+                below[j + 1] if key == candidate[j] else 1 + min(below[j + 1], below[j], row[j + 1])
+            )
+    edits: list[_Edit] = []
+    i = j = 0
+    while i < rows and j < columns:
+        here = fewest[i][j]
+        if reference[i] == candidate[j] or here == 1 + fewest[i + 1][j + 1]:
+            edits.append((i, j))
+            i, j = i + 1, j + 1
+        elif here == 1 + fewest[i + 1][j] and (
+            here != 1 + fewest[i][j + 1] or reference[i] < candidate[j]
+        ):
+            edits.append((i, None))
+            i += 1
+        else:
+            edits.append((None, j))
+            j += 1
+    edits.extend((index, None) for index in range(i, rows))
+    edits.extend((None, index) for index in range(j, columns))
+    return edits
 
 
 def _same(reference: _Value | Absent, candidate: _Value | Absent) -> bool:
