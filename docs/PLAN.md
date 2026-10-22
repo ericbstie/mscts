@@ -796,7 +796,10 @@ class InventoryTracker:
     # key 0 first, then positions down), and the hashed cursor. ValueError, nothing changed:
     # an unknown mode, a slot outside a Short or a button outside a Byte, a slot the click
     # must name that the menu lacks, a menu other than the inventory's, a chest's, a
-    # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), the crafting result, a bundle, a
+    # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), a click on the crafting result
+    # but a pickup (which takes the whole result, ResultContainer.removeItem, and one item from
+    # each grid cell, ResultSlot.onTake), a take from a grid holding an item with a crafting
+    # remainder (Items: three buckets, honey bottle, dragon's breath), a bundle, a
     # swap whose slot stack would go back through Inventory.add, or a changed slot or cursor
     # stack with a component patch (its hash needs the component's encoding).
 CLICK_MODES: Mapping[str, int]      # pickup 0, quick_move 1, swap 2, clone 3, throw 4, quick_craft 5, pickup_all 6

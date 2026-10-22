@@ -263,12 +263,19 @@ class InventoryTracker:
         adventure player: a clone, or a drag of a full stack to each slot, changes nothing, and
         an armor slot gives up nothing enchanted with curse of binding.
 
+        A pickup on the crafting result takes the whole result and one item from each grid
+        cell that holds one (`ResultSlot.onTake`); the client does not craft, so the result
+        stays empty until the server sends the next one.
+
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
-                a chest's, a dispenser's, a hopper's or a shulker box's; the crafting result; a
-                bundle; a swap that puts the slot's stack elsewhere; or a changed slot's or the
-                cursor's stack with a component patch, which it cannot hash. Nothing changes.
+                a chest's, a dispenser's, a hopper's or a shulker box's; a click on the crafting
+                result other than a pickup; a take from a grid that holds an item with a
+                crafting remainder (a bucket of milk, water or lava, a honey bottle, dragon's
+                breath); a bundle; a swap that puts the slot's stack elsewhere; or a changed
+                slot's or the cursor's stack with a component patch, which it cannot hash.
+                Nothing changes.
         """
         number = CLICK_MODES.get(mode)
         if number is None:
@@ -281,8 +288,8 @@ class InventoryTracker:
         if menu.layout is None or menu.menu not in _CLICK_MENUS:
             msg = f"the Bot does not predict a click in a {menu.menu} menu"
             raise ValueError(msg)
-        if menu.window_id == 0 and slot == _RESULT:
-            msg = "the Bot does not predict a click on the crafting result"
+        if menu.window_id == 0 and slot == _RESULT and number != _PICKUP:
+            msg = f"the Bot predicts no {mode} click on the crafting result, only a pickup"
             raise ValueError(msg)
         saved = (list(self._player), list(menu.own), menu.carried, menu.quickcraft_status)
         saved_drag = (menu.quickcraft_type, set(menu.quickcraft_slots))
@@ -474,6 +481,17 @@ _INVENTORY_OFF_HAND = 45
 _INVENTORY_HOTBAR = 36
 _INVENTORY_END = 45
 _RESULT = 0
+_CRAFTING_REMAINDERS = frozenset(
+    {
+        "minecraft:water_bucket",
+        "minecraft:lava_bucket",
+        "minecraft:milk_bucket",
+        "minecraft:dragon_breath",
+        "minecraft:honey_bottle",
+    }
+)
+"""The items with a crafting remainder (`Item.Properties.craftRemainder` in `Items`, javap): a
+bucket for the buckets, a glass bottle for the others."""
 _SHORT, _BYTE = 1 << 15, 1 << 7
 
 
@@ -499,6 +517,8 @@ class _Click:
         self.is_inventory = menu.window_id == 0
         self.shulker = menu.menu == "minecraft:shulker_box"
         self.own_size = len(menu.own)
+        self.grid = range(_RESULT + 1, _CRAFTING) if self.is_inventory else range(0)
+        """The crafting grid's slots, after the result: none in a menu without one."""
 
     def get(self, index: int) -> Stack | None:
         in_player, at = self.places[index]
@@ -521,9 +541,13 @@ class _Click:
         limit = 1 if self.is_inventory and index in _ARMOR else _CONTAINER_MAX
         return min(limit, _max_stack_size(stack))
 
+    def is_result(self, index: int) -> bool:
+        """Whether slot `index` is a crafting result (`ResultSlot`)."""
+        return self.is_inventory and index == _RESULT
+
     def may_place(self, index: int, stack: Stack) -> bool:
         """`Slot.mayPlace`: armor slots take their own slot's items; a shulker box no box."""
-        if self.is_inventory and index == _RESULT:
+        if self.is_result(index):
             return False
         if self.is_inventory and index in _ARMOR:
             return _equipment_slot(stack) == _ARMOR[index]
@@ -548,7 +572,7 @@ class _Click:
 
     def can_take_for_pick_all(self, index: int) -> bool:
         """`canTakeItemForPickAll`: the inventory menu never takes from its crafting result."""
-        return not (self.is_inventory and index == _RESULT)
+        return not self.is_result(index)
 
     def run(self, slot: int, button: int, mode: int) -> None:
         """`doClick`."""
@@ -672,6 +696,7 @@ class _Click:
             taken = self.try_remove(slot, held.count if primary else (held.count + 1) // 2, None)
             if taken is not None:
                 self.carried = taken
+                self.on_take(slot)
         else:
             self.pickup_onto(slot, held, carried, primary=primary)
 
@@ -708,7 +733,9 @@ class _Click:
     def try_remove(self, index: int, count: int, limit: int | None) -> Stack | None:
         """`Slot.tryRemove`: up to `count` (and `limit`, if given) taken from the slot, or None.
 
-        A slot whose stack it may not put back (`allowModification`) gives only its whole stack.
+        A slot whose stack it may not put back (`allowModification`) gives only its whole stack,
+        and the crafting result gives its whole stack whatever the count
+        (`ResultContainer.removeItem`).
         """
         held = self.get(index)
         if held is None or not self.may_pickup(index):
@@ -719,9 +746,27 @@ class _Click:
         taken = min(count, ceiling)
         if taken <= 0:
             return None
-        taken = min(taken, held.count)
+        taken = held.count if self.is_result(index) else min(taken, held.count)
         self.put(index, _counted(held, held.count - taken))
         return _counted(held, taken)
+
+    def on_take(self, slot: int) -> None:
+        """`Slot.onTake`: a take from the crafting result uses one item from each grid cell.
+
+        Raises:
+            _UnpredictableError: A cell holds an item with a crafting remainder, which
+                `ResultSlot.onTake` puts back in the cell or in the inventory.
+        """
+        if not self.is_result(slot):
+            return
+        for index in self.grid:
+            held = self.get(index)
+            if held is None:
+                continue
+            if held.item in _CRAFTING_REMAINDERS:
+                msg = f"the Bot does not predict a craft that leaves a remainder ({held.item})"
+                raise _UnpredictableError(msg)
+            self.put(index, _counted(held, held.count - 1))
 
     def quick_move(self, slot: int) -> Stack | None:
         """`quickMoveStack`: the stack as it was if any of it moved, else None."""
