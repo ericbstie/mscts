@@ -2606,9 +2606,12 @@ proves it necessary:
    index by index. On a tie between an element left out and one extra,
    the smaller element is the one on its own, whichever side it is on,
    so swapping the sides mirrors the result; the common prefix and
-   suffix are paired as they stand. A pair is compared at the
-   reference's index; an element only one side has is one Divergence at
-   its index in its own list, `ABSENT` on the other side. So `a, b, c,
+   suffix are paired as they stand. An element only one side has is one
+   Divergence at its index in its own list, `ABSENT` on the other side.
+   A pair is compared at the reference's index, which Masks and test
+   cases go by; when the candidate's index differs, the Divergence path
+   shows both (`tags[1→3]`, `compare._Moved`), so no two Divergences
+   share a path. So `a, b, c,
    d` against `b, c, d` is one Divergence, `a` left out, where comparing
    index by index gave four, and the tags, which `UNORDERED` sorts, are
    compared as a multiset. In a join against Pumpkin nightly 44d881c, the 521 tags

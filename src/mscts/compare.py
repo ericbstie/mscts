@@ -597,8 +597,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     (`_align_timed`): the copy of a repeated packet on a tick the other side lacks is the
     one left unmatched.
 
-    Two matched Packets with fields are diffed field by field (see `_diff`), giving one
-    gameplay `field` Divergence per differing leaf, in path order. If they have a
+    Two matched Packets with fields are diffed field by field (see `_pairs`), giving one
+    gameplay `field` Divergence per differing leaf, in path order, except in a list that
+    is lined up (`_LINED_UP`), which is in the order of its steps. If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
     and values, when the unmasked canonical values at that path (for a chunk, the canonical
@@ -3373,11 +3374,13 @@ still compared with their counterparts."""
 def _pairs(
     reference: _Value | Absent, candidate: _Value | Absent, path: _Path, lined_up: _LinedUp
 ) -> Iterator[_Pair]:
-    """Yield (path, reference value, candidate value) for each pair compared, in path order.
+    """Yield (path, reference value, candidate value) for each pair compared.
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
-    is ABSENT on the other. Lists are lined up where `lined_up` says so (`_fewest_edits`);
-    else compared index by index, elements past the end of the shorter one being ABSENT.
+    is ABSENT on the other. Lists are lined up where `lined_up` says so (`_fewest_edits`),
+    in the order of its steps: an element only one side has is at its own index, and a pair
+    at the reference's (`_Moved` if the candidate's differs). Other lists are compared
+    index by index, in path order, elements past the end of the shorter one being ABSENT.
     Anything else is a leaf, compared as a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
@@ -3395,13 +3398,31 @@ def _pairs(
         for ref_index, cand_index in edits:
             if ref_index is not None and cand_index is not None:
                 values = (reference[ref_index], candidate[cand_index])
-                yield from _pairs(*values, (*path, ref_index), lined_up)
+                step = ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
+                yield from _pairs(*values, (*path, step), lined_up)
             elif ref_index is not None:
                 yield (*path, ref_index), reference[ref_index], ABSENT
             elif cand_index is not None:
                 yield (*path, cand_index), ABSENT, candidate[cand_index]
     else:
         yield path, reference, candidate
+
+
+class _Moved(int):
+    """A list index in a path where `_pairs` compared elements at two different indexes.
+
+    It is the reference's index, which Masks, test cases and `_at` go by, and it keeps the
+    candidate's, which `_render` shows next to it (`tags[2→5]`). So the path of a pair
+    is never that of an element only the candidate has, at its own index.
+    """
+
+    candidate: int
+
+    def __new__(cls, reference: int, candidate: int) -> Self:
+        """The reference's index `reference`, with the candidate's index `candidate`."""
+        step = super().__new__(cls, reference)
+        step.candidate = candidate
+        return step
 
 
 type _Edit = tuple[int | None, int | None]
@@ -3535,6 +3556,8 @@ def _render(path: _MaskPath, *, index_free: bool = False) -> str:
     for step in path:
         if isinstance(step, Each):
             parts.append(_EACH)
+        elif isinstance(step, _Moved) and not index_free:
+            parts.append(f"[{step}→{step.candidate}]")
         elif isinstance(step, int):
             parts.append("[]" if index_free else f"[{step}]")
         elif _IDENTIFIER.fullmatch(step):

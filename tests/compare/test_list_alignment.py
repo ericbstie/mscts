@@ -78,10 +78,25 @@ def test_a_repeated_element_left_out_is_one_missing_element() -> None:
     assert _diff({"l": ["a", "a", "b"]}, {"l": ["a", "b"]}) == [("l[1]", "a", ABSENT)]
 
 
-def test_an_element_compared_in_place_after_a_shift_is_at_its_reference_index() -> None:
+def test_two_elements_compared_at_different_indexes_name_both() -> None:
     reference = {"l": ["x", "a", {"v": [1, 2, 3]}]}
     candidate = {"l": ["a", {"v": [1, 3]}]}
-    assert _diff(reference, candidate) == [("l[0]", "x", ABSENT), ("l[2].v[1]", 2, ABSENT)]
+    assert _diff(reference, candidate) == [("l[0]", "x", ABSENT), ("l[2→1].v[1]", 2, ABSENT)]
+
+
+def test_an_element_only_the_candidate_has_and_a_moved_pair_have_different_paths() -> None:
+    # The reviews' case: named by the reference's index alone, the pair b, a was l[1] too.
+    assert _diff({"l": ["a", "b"]}, {"l": ["b", "c", "a", "a"]}) == [
+        ("l[0]", ABSENT, "b"),
+        ("l[1]", ABSENT, "c"),
+        ("l[1→3]", "b", "a"),
+    ]
+
+
+def test_no_two_differences_of_small_lists_share_a_path() -> None:
+    for reference, candidate in itertools.product(_small_lists(), repeat=2):
+        paths = [path for path, _, _ in _diff({"l": reference}, {"l": candidate})]
+        assert len(paths) == len(set(paths)), (reference, candidate, paths)
 
 
 def test_nested_lists_are_lined_up_too() -> None:
@@ -155,11 +170,13 @@ def _differing(reference: Sequence[str], candidate: Sequence[str], edits: list[_
     return sum(i is None or j is None or reference[i] != candidate[j] for i, j in edits)
 
 
+def _small_lists() -> list[list[str]]:
+    """Every list up to length 4 over three values."""
+    return [list(items) for length in range(5) for items in itertools.product("abc", repeat=length)]
+
+
 def test_every_small_list_is_lined_up_in_order_in_fewest_steps_and_mirrored_by_a_swap() -> None:
-    lists = [
-        list(items) for length in range(5) for items in itertools.product("abc", repeat=length)
-    ]
-    for reference, candidate in itertools.product(lists, repeat=2):
+    for reference, candidate in itertools.product(_small_lists(), repeat=2):
         edits = _fewest_edits(reference, candidate)
         assert [i for i, _ in edits if i is not None] == list(range(len(reference)))
         assert [j for _, j in edits if j is not None] == list(range(len(candidate)))

@@ -238,7 +238,9 @@ position is what the client goes by, such as a container's slot. The tags
 of `update_tags` and the ids in each tag are lined up before they are
 compared. A tag or an id that one server sends and the other leaves out is
 one difference, at its position in the list that has it, and the ones after
-it are still compared with their counterparts. Binary values
+it are still compared with their counterparts. When the two compared are at
+different positions, the path names both, vanilla's first: `tags[1→3]` is
+vanilla's second tag and the Candidate's fourth. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts
 could not read is compared byte by byte and shown in hexadecimal: 256 of

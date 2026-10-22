@@ -98,6 +98,25 @@ def test_a_tag_only_the_candidate_sends_is_one_divergence_whatever_follows_it() 
     )
 
 
+def test_a_tag_compared_after_an_extra_one_names_both_its_indexes() -> None:
+    changed = ("minecraft:block", [("c:barrels", [7]), BLOCK[1][0], ("minecraft:logs", [4])])
+    divergences = _compare(State.CONFIGURATION, [BLOCK], [changed])
+    assert [(d.path, d.reference, d.candidate, d.test_case) for d in divergences] == [
+        (
+            "tagged_registries[0].tags[0]",
+            ABSENT,
+            {"tag_name": "c:barrels", "entries": [7]},
+            "configuration:update_tags.tagged_registries[].tags[]",
+        ),
+        (
+            "tagged_registries[0].tags[1→2].entries[0]",
+            3,
+            4,
+            "configuration:update_tags.tagged_registries[].tags[].entries[]",
+        ),
+    ]
+
+
 def test_a_tag_the_candidate_leaves_out_is_one_divergence() -> None:
     fewer = ("minecraft:block", [BLOCK[1][1]])
     assert _gameplay(_compare(State.CONFIGURATION, [BLOCK], [fewer])) == [
