@@ -65,7 +65,7 @@ class Build:
 
 
 class Net(Protocol):           # HTTPS only; sha1 and size are the publisher's, where it lists them
-    def get(self, url: str, sha1: str | None = None) -> bytes: ...
+    def get(self, url: str) -> bytes: ...
     def json(self, url: str, sha1: str | None = None) -> Any: ...
     def download(
         self, url: str, into: Path, sha1: str | None = None, size: int | None = None
@@ -189,8 +189,8 @@ none installs without one.
 
 **Pass on the publisher's own checksum.** If the publisher lists a sha1 or
 size for a file, as Mojang does, pass them to `net.download`, or the sha1
-to `net.get` and `net.json`. `net` refuses a file that does not match them
-and writes nothing.
+to `net.json`. `net` refuses a file that does not match them and writes
+nothing.
 
 **Only the Minecraft version mscts tests.** Refuse a build for any other
 version with `UnsupportedError`, in `install` when you can tell from the

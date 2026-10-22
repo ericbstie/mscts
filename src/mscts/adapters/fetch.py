@@ -112,20 +112,20 @@ class HttpsNet:
         _require_https(url, "fetch")
         return self._fetch(url)
 
-    def get(self, url: str, sha1: str | None = None) -> bytes:
-        """The body at `url`; ProvisionError unless its sha1 is `sha1`, where one is given."""
-        body = self._read(url).body
+    def get(self, url: str) -> bytes:
+        """The body at `url`."""
+        return self._read(url).body
+
+    def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - the publisher's shape
+        """The JSON document at `url`, parsed; ProvisionError unless its sha1 is a given `sha1`."""
+        body = self.get(url)
         if sha1 is not None and _sha1(body) != sha1:
             msg = (
                 f"{url} is not what its publisher lists: sha1 {_sha1(body)}, where its "
                 f"publisher lists sha1 {sha1}."
             )
             raise ProvisionError(msg)
-        return body
-
-    def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - the publisher's shape
-        """The JSON document at `url`, parsed, checked as `get` checks it."""
-        return json.loads(self.get(url, sha1))
+        return json.loads(body)
 
     def download(
         self, url: str, into: Path, sha1: str | None = None, size: int | None = None

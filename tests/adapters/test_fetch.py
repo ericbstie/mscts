@@ -85,7 +85,6 @@ def sha1(body: bytes) -> str:
 def test_net_gets_a_body_and_parses_a_json_document() -> None:
     net: Net = HttpsNet(FakePublisher())  # ty checks that it is the Net an Adapter gets
     assert net.get(DOCUMENT) == BODY
-    assert net.get(DOCUMENT, sha1=sha1(BODY)) == BODY
     assert net.json(DOCUMENT) == {"version": "1.4.0"}
     assert net.json(DOCUMENT, sha1=sha1(BODY)) == {"version": "1.4.0"}
 
@@ -103,17 +102,14 @@ def test_net_refuses_a_url_that_is_not_https_before_fetching(url: str, tmp_path:
     assert list(tmp_path.iterdir()) == []
 
 
-def test_net_refuses_a_body_that_is_not_the_one_its_publisher_lists() -> None:
-    net = HttpsNet(FakePublisher())
+def test_net_refuses_a_json_document_that_is_not_the_one_its_publisher_lists() -> None:
     listed = "0" * 40
-    said = (
+    with pytest.raises(ProvisionError) as raised:
+        HttpsNet(FakePublisher()).json(DOCUMENT, sha1=listed)
+    assert str(raised.value) == (
         f"{DOCUMENT} is not what its publisher lists: sha1 {sha1(BODY)}, where its publisher "
         f"lists sha1 {listed}."
     )
-    for call in (net.get, net.json):
-        with pytest.raises(ProvisionError) as raised:
-            call(DOCUMENT, sha1=listed)
-        assert str(raised.value) == said
 
 
 def test_net_downloads_into_a_file(tmp_path: Path) -> None:

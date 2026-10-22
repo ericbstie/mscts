@@ -914,12 +914,12 @@ class Build:                        # one build of a server, named as its publis
 type Fetch = Callable[[str], Download]  # fetch.https_get, or a fake in tests
 
 class Net(Protocol):                # what mscts hands an Adapter for the network (#188)
-    def get(self, url: str, sha1: str | None = None) -> bytes: ...
-    def json(self, url: str, sha1: str | None = None) -> Any: ...  # get, then json.loads
+    def get(self, url: str) -> bytes: ...
+    def json(self, url: str, sha1: str | None = None) -> Any: ...  # get, checked, json.loads
     def download(self, url: str, into: Path, sha1: str | None = None,
                  size: int | None = None) -> None: ...  # saves the body as `into`
     # Every URL HTTPS, else ProvisionError "refusing to fetch a non-HTTPS URL: <url>" before
-    # fetching. A body whose sha1 is not `sha1`: ProvisionError "<url> is not what its
+    # fetching. A JSON document whose sha1 is not `sha1`: ProvisionError "<url> is not what its
     # publisher lists: sha1 <actual>, where its publisher lists sha1 <sha1>."; a download whose
     # sha1 or size is not the one given: fetch.ChecksumError (a ProvisionError) "<url> is not
     # the file its publisher lists: sha1 <actual>, <n> bytes, where its publisher lists

@@ -94,12 +94,12 @@ class Net(Protocol):
     ProvisionError.
     """
 
-    def get(self, url: str, sha1: str | None = None) -> bytes:
-        """The body at `url`; ProvisionError unless its sha1 is `sha1`, where one is given."""
+    def get(self, url: str) -> bytes:
+        """The body at `url`."""
         ...
 
     def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - the publisher's shape
-        """The JSON document at `url`, parsed, checked as `get` checks it."""
+        """The JSON document at `url`, parsed; ProvisionError unless its sha1 is a given `sha1`."""
         ...
 
     def download(

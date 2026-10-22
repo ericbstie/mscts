@@ -32,8 +32,8 @@ class _Listing:
         self.net = HttpsNet(https_get)
         self.asked: list[tuple[str, str | None, int | None]] = []
 
-    def get(self, url: str, sha1: str | None = None) -> bytes:
-        return self.net.get(url, sha1)
+    def get(self, url: str) -> bytes:
+        return self.net.get(url)
 
     def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - Mojang's shape
         return self.net.json(url, sha1)
