@@ -3388,14 +3388,7 @@ def _pairs(
             values = (reference.get(key, ABSENT), candidate.get(key, ABSENT))
             yield from _pairs(*values, (*path, key), lined_up)
     elif isinstance(reference, list) and isinstance(candidate, list):
-        edits = (
-            _index_by_index(len(reference), len(candidate))
-            if not lined_up(path)
-            else _fewest_edits(
-                [_identity(item) for item in reference], [_identity(item) for item in candidate]
-            )
-        )
-        for ref_index, cand_index in edits:
+        for ref_index, cand_index in _list_edits(reference, candidate, lined_up=lined_up(path)):
             if ref_index is not None and cand_index is not None:
                 values = (reference[ref_index], candidate[cand_index])
                 step = ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
@@ -3425,10 +3418,21 @@ class _Moved(int):
         return step
 
 
-type _Edit = tuple[int | None, int | None]
+type _Edit = tuple[int, int] | tuple[int, None] | tuple[None, int]
 """One step from a reference list to a candidate list: the indexes of two elements compared
 with each other, or the index of an element only the reference or only the candidate has,
-and None on the other side. Never None on both."""
+and None on the other side."""
+
+
+def _list_edits(
+    reference: Sequence[_Value], candidate: Sequence[_Value], *, lined_up: bool
+) -> list[_Edit]:
+    """The steps `_pairs` compares two lists by: lined up on their identities, or not."""
+    if not lined_up:
+        return _index_by_index(len(reference), len(candidate))
+    return _fewest_edits(
+        [_identity(item) for item in reference], [_identity(item) for item in candidate]
+    )
 
 
 def _index_by_index(ref_length: int, cand_length: int) -> list[_Edit]:
@@ -3492,11 +3496,11 @@ def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_E
     """
     prefix, suffix = _common_ends(reference, candidate)
     ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
-    rows, columns = ref_stop - prefix, cand_stop - prefix
+    ref_middle, cand_middle = reference[prefix:ref_stop], candidate[prefix:cand_stop]
     middle = (
-        _middle_edits(reference[prefix:ref_stop], candidate[prefix:cand_stop])
-        if rows * columns <= _LINE_UP_LIMIT
-        else _index_by_index(rows, columns)
+        _traced(ref_middle, cand_middle, _fewest_table(ref_middle, cand_middle))
+        if len(ref_middle) * len(cand_middle) <= _LINE_UP_LIMIT
+        else _index_by_index(len(ref_middle), len(cand_middle))
     )
     return [
         *((index, index) for index in range(prefix)),
@@ -3507,18 +3511,19 @@ def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_E
 
 def _shifted(edit: _Edit, by: int) -> _Edit:
     """`edit` with each of its indexes `by` more."""
-    ref_index, cand_index = edit
-    return (
-        None if ref_index is None else ref_index + by,
-        None if cand_index is None else cand_index + by,
-    )
+    match edit:
+        case (int() as ref_index, int() as cand_index):
+            return ref_index + by, cand_index + by
+        case (int() as ref_index, None):
+            return ref_index + by, None
+        case (None, int() as cand_index):
+            return None, cand_index + by
 
 
-def _middle_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_Edit]:
-    """Trace `_fewest_edits` between the common prefix and suffix."""
+def _fewest_table(reference: Sequence[str], candidate: Sequence[str]) -> list[array[int]]:
+    """`fewest[i][j]`: the fewest steps from `reference[i:]` to `candidate[j:]` that differ."""
     rows, columns = len(reference), len(candidate)
-    # fewest[i][j]: the fewest steps from reference[i:] to candidate[j:] that differ. The
-    # last row starts as it stays: from nothing, each candidate element is one step.
+    # The last row starts as it stays: from nothing, each candidate element is one step.
     fewest = [array("L", range(columns, -1, -1)) for _ in range(rows + 1)]
     for i in range(rows - 1, -1, -1):
         row, below, key = fewest[i], fewest[i + 1], reference[i]
@@ -3527,6 +3532,14 @@ def _middle_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_E
             row[j] = (
                 below[j + 1] if key == candidate[j] else 1 + min(below[j + 1], below[j], row[j + 1])
             )
+    return fewest
+
+
+def _traced(
+    reference: Sequence[str], candidate: Sequence[str], fewest: Sequence[Sequence[int]]
+) -> list[_Edit]:
+    """The steps of `_fewest_edits` between the common ends, read from the front of `fewest`."""
+    rows, columns = len(reference), len(candidate)
     edits: list[_Edit] = []
     i = j = 0
     while i < rows and j < columns:
