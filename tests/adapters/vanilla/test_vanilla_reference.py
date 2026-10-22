@@ -3,12 +3,13 @@ import json
 import subprocess
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from mscts import install
 from mscts.adapters.base import Installation
-from mscts.adapters.fetch import https_get
+from mscts.adapters.fetch import HttpsNet, https_get
 from mscts.adapters.vanilla import WORLD_DATA_VERSION, VanillaAdapter
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
@@ -24,7 +25,27 @@ SERVER_JAR_SHA1 = "33680f5f2ac32864d6d7cf5e56a705fdb3e05f4c"
 SERVER_JAR_SIZE = 62294556
 
 
-def test_the_release_is_the_jar_mojangs_manifest_publishes() -> None:
+class _Listing:
+    """Mojang's real Net, except that `download` only records what it is asked for."""
+
+    def __init__(self) -> None:
+        self.net = HttpsNet(https_get)
+        self.asked: list[tuple[str, str | None, int | None]] = []
+
+    def get(self, url: str, sha1: str | None = None) -> bytes:
+        return self.net.get(url, sha1)
+
+    def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - Mojang's shape
+        return self.net.json(url, sha1)
+
+    def download(
+        self, url: str, into: Path, sha1: str | None = None, size: int | None = None
+    ) -> None:
+        del into
+        self.asked.append((url, sha1, size))
+
+
+def test_install_downloads_the_jar_mojangs_manifest_publishes(tmp_path: Path) -> None:
     manifest = json.loads(https_get(MANIFEST_URL).body)
     (listed,) = [v for v in manifest["versions"] if v["id"] == TARGET.minecraft_version]
     document = https_get(listed["url"]).body
@@ -32,12 +53,9 @@ def test_the_release_is_the_jar_mojangs_manifest_publishes() -> None:
     version = json.loads(document)
     assert version["javaVersion"]["majorVersion"] == TARGET.java_major
     server = version["downloads"]["server"]
-    release = VanillaAdapter().release(TARGET, None, https_get)
-    assert (release.url, release.sha1, release.size) == (
-        server["url"],
-        server["sha1"],
-        server["size"],
-    )
+    net = _Listing()
+    VanillaAdapter().install(TARGET, None, tmp_path / "server.jar", net)
+    assert net.asked == [(server["url"], server["sha1"], server["size"])]
 
 
 def test_the_installed_jar_is_the_published_26_3_jar(cache_dir: Path) -> None:

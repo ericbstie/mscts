@@ -85,7 +85,7 @@ test needs it:
 | `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
 | `inventory.py` | `InventoryTracker`: the player's inventory and the open container (`Inventory`, `Stack`) |
 | `spec.py` | `ServerSpec` and its enums |
-| `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read); `Net` (what an Adapter gets for the network) |
+| `adapters/base.py` | `Adapter`, `Build`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read); `Net` (what an Adapter gets for the network) |
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed; `HttpsNet`, the `Net` built on a `Fetch`, its `ChecksumError`, and the `Saved` record of each download |
 | `adapters/<name>/` | one folder per server, registered by an import and one entry in `cli.py`'s `ADAPTERS`; its tests in `tests/adapters/<name>/`. `adapters/vanilla/`: `MANIFEST_URL` (Mojang's version manifest). `adapters/pumpkin/`: `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit), and its pinned first-run `pumpkin.toml` with `SOURCE.md` |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
@@ -910,13 +910,6 @@ class Build:                        # one build of a server, named as its publis
     version: str                    # "26.3"; Pumpkin's own "0.2.0+26.3-26.51"; "nightly"
     commit: str | None = None       # the full commit, where the publisher names one
     # str(): "26.3", or "nightly 4426d11" (the commit's first 7 characters)
-
-@frozen
-class Release:                      # a build its publisher offers for download
-    build: Build
-    url: str                        # HTTPS
-    sha1: str | None = None         # the publisher's own hash, where it publishes one (Mojang)
-    size: int | None = None         # bytes, where the publisher states it
 
 type Fetch = Callable[[str], Download]  # fetch.https_get, or a fake in tests
 

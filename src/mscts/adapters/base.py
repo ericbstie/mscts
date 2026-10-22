@@ -75,16 +75,6 @@ class UnavailableError(ProvisionError):
 
 
 @dataclass(frozen=True, slots=True)
-class Release:
-    """A build its publisher offers for download, and what the download must be (ADR-0008)."""
-
-    build: Build
-    url: str  # HTTPS
-    sha1: str | None = None  # the publisher's own hash, where it publishes one (Mojang)
-    size: int | None = None  # bytes, where the publisher states it
-
-
-@dataclass(frozen=True, slots=True)
 class Download:
     """The body of a fetched URL, and the URL it finally came from."""
 
