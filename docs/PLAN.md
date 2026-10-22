@@ -2223,12 +2223,18 @@ proves it necessary:
      (`description`) and `players.sample` entries keep every member:
      their codecs are not shown to read by name only. Then the text
      components in it are canonical: a plain string `"x"` is written
-     `{"text": "x"}`. Evidence: minecraft.wiki *Text component format*
+     `{"text": "x"}`, and a list `[a, b, ...]` is written as `a` with
+     `b, ...` added at the end of its `extra` (`["a"]` is `{"text":
+     "a"}`). Evidence: minecraft.wiki *Text component format*
      (raw wikitext, oldid 3749600: "`"A"` and `{text: "A"}` are
      equivalent"), and the 26.3 jar, where
      `ComponentSerialization.createCodec` decodes a string with
      `Component.literal` and an object with only `text` into the same
-     literal with an empty style and no siblings. The text components
+     literal with an empty style and no siblings, and a list with
+     `createFromList`: the first's `copy()`, then `append` of each of the
+     rest, which builds the same `MutableComponent(contents, siblings,
+     style)` as the object (docs/research/2026-09-26-comparison.md, #342).
+     The text components
      are exactly: `json_response.description` (a text component in
      `ServerStatus.CODEC`, verified with `javap`), each element of a
      text component in list form, and each element of a text
@@ -2391,8 +2397,7 @@ proves it necessary:
      different `state_id` is network traffic only.
 
    Considered and **not** encoded (strict until evidence says otherwise;
-   see Open questions): the list form `["a", "b"]` ≡
-   `{"text": "a", "extra": ["b"]}`; an explicit `"type": "text"`; style
+   see Open questions): an explicit `"type": "text"`; style
    values equal to the defaults (`"bold": false`); a present but
    undecodable value that `lenientOptionalFieldOf` replaces by its
    default; and the client's lenient parsing (the status
@@ -3128,12 +3133,10 @@ then record the answer in an ADR:
   **Decided (#17):** it varies from boot to boot, so `compare.UNORDERED`
   sorts it before anything and its order is no Divergence (Comparison
   semantics, step 1).
-- Should the text component **list form** (`["a", "b"]` ≡
-  `{"text": "a", "extra": ["b"]}`, wiki oldid 3749600; the jar's
-  `createFromList` is `first.copy().append(rest)`) be canonical? No
-  Candidate has shown it yet. Likewise an explicit `"type": "text"`
-  (optional by the wiki), and the text components nested in `with`,
-  `separator` and hover events, which are not canonicalized yet.
+- Should an explicit `"type": "text"` (optional by the wiki) be
+  canonical in a text component? Likewise the text components nested in
+  `with`, `separator` and hover events, which are not canonicalized yet.
+  **Decided (#342):** the list form is canonical (Comparison semantics).
 - Alignment matches on (State, name) only, so two same-named packets in a
   different order are matched pairwise and report `field` Divergences,
   not a move. A content-aware alignment (e.g. matching on masked field

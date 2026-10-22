@@ -2117,18 +2117,35 @@ def _without_declared_defaults(status: dict[str, _Value]) -> dict[str, _Value]:
 
 
 def _text_component(component: _Value) -> _Value:
-    """Write each plain-string text component as `{"text": string}`.
+    """Write each text component as the object the client reads it as.
 
-    The components are `component` itself, each element of its list form, and each
-    element of its `extra`, recursively. Nothing else in it changes.
+    A plain string is `{"text": string}`, and a list is its first component with the rest
+    added to its `extra` (`_from_list`). The components are `component` itself, each
+    element of its list form, and each element of its `extra`, recursively. Nothing else
+    in it changes.
     """
     if isinstance(component, str):
         return {"text": component}
     if isinstance(component, list):
-        return [_text_component(element) for element in component]
+        return _from_list([_text_component(element) for element in component])
     if isinstance(component, dict) and isinstance(extra := component.get("extra"), list):
         return {**component, "extra": [_text_component(element) for element in extra]}
     return component
+
+
+def _from_list(components: list[_Value]) -> _Value:
+    """The text component the client builds from the list form `components`.
+
+    `ComponentSerialization.createFromList` copies the first and appends each of the
+    rest, so the rest go at the end of the first's `extra` (docs/research/
+    2026-09-26-comparison.md). The list stays as it is unless its first element is an
+    object whose `extra`, if it has one, is a list.
+    """
+    first = components[0] if components else None
+    if not isinstance(first, dict) or not isinstance(extra := first.get("extra", []), list):
+        return components
+    rest = components[1:]
+    return {**first, "extra": [*extra, *rest]} if rest else first
 
 
 def _strict_json(text: str) -> _Value | Absent:
