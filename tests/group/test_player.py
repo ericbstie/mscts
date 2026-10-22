@@ -8,6 +8,7 @@ request, and nothing else.
 
 import asyncio
 import functools
+import time
 from collections.abc import Callable
 from unittest import mock
 
@@ -728,6 +729,45 @@ def test_fire_plays_on_when_the_dry_grass_window_opens_after_the_lavas_next_hit_
     _, result = asyncio.run(_play("player/fire", clock=after_the_move_out(0.5)))
 
     assert len(result.windows) == len(played("player/fire").windows)
+
+
+def test_fire_notes_each_hit_once_the_bot_has_taken_it() -> None:
+    # The gap to the next window is measured from the note: one taken before the hit arrived
+    # would count the wait for the hit too. The burn on the dry grass is the hit the Bot waits
+    # for: it comes 20 ticks after the move there.
+    readings: list[int] = []
+
+    def noting_on_time() -> float:
+        readings.append(time.monotonic_ns())
+        return 0.0
+
+    transcript, _ = asyncio.run(_play("player/fire", clock=noting_on_time))
+
+    hits = [
+        transcript.start_ns + event.t_ns
+        for event in transcript.events
+        if event.bot != CONTROL and event.packet.name == "minecraft:set_health"
+    ]
+    # The first, second and fourth readings note the hits in fire, in lava and on the dry grass.
+    notes = (readings[0], readings[1], readings[3])
+    assert [sum(hit <= note for hit in hits) for note in notes] == [1, 2, 3]
+
+
+def until_the_water(seconds: float) -> Callable[[], float]:
+    """A clock that reads 0 s until the Bot has been moved into the water, then `seconds`.
+
+    Its first four readings note the hits in fire and lava, open the dry grass's window and note
+    its burn; the fifth comes after the move into the water.
+    """
+    now = iter([0.0] * 4)
+    return lambda: next(now, seconds)
+
+
+def test_fire_fails_when_the_move_into_the_water_comes_after_the_next_burn_may_have_come() -> None:
+    # Burns come 20 ticks apart: a move later than 18 ticks (0.9 s) after the last may come after
+    # the next burn, which the water's window would then hold on one server only.
+    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
+        asyncio.run(_play("player/fire", clock=until_the_water(1.0)))
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:
