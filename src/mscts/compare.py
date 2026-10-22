@@ -878,7 +878,7 @@ def _take(arrival: _Arrival, masks: _Masks, numbers: "_Numbers") -> _Normalized 
         if arrival.tick is not None:
             normalized = replace(normalized, tick=arrival.tick)
     else:
-        numbers.recipes.forget(packet)
+        numbers.recipes.follow(packet)
     numbers.removed(packet)
     return normalized
 
@@ -1410,6 +1410,15 @@ class _Numbering:
         """End every key's number."""
         self.numbers.clear()
 
+    def keep_only(self, keys: Iterable[Hashable]) -> None:
+        """End the number of every key that is not one of `keys`."""
+        kept = set(keys)
+        self.numbers = {key: number for key, number in self.numbers.items() if key in kept}
+
+
+type _Group = tuple[str, int]
+"""A recipe book group as the client keys its buttons: its category (as JSON) and number."""
+
 
 @dataclass(slots=True)
 class _RecipeNumbers:
@@ -1427,49 +1436,69 @@ class _RecipeNumbers:
     counted on their own, and a group is its category and group number, the client's key:
     vanilla gives a group one number across categories, which the client shows as one
     button in each. A number lasts as long as the client keeps the key, so every packet
-    the Bot receives can end one, compared or not (`forget`): a `recipe_book_remove` ends
+    the Bot receives can end one, compared or not (`follow`): a `recipe_book_remove` ends
     its ids' numbers (`ClientRecipeBook.remove`), and a `recipe_book_add` that replaces
     the book ends every number before its entries take theirs (`ClientRecipeBook.clear`).
-    So a recipe the server adds again with another id
-    shows the same, and an id given to another recipe while the first still holds it does
-    not. An id first seen in a removal takes the next number, which the removal ends.
+    A group's number ends once no recipe in the book is in the group: the client builds
+    its buttons from the recipes it knows (`rebuildCollections`). So a recipe the server
+    adds again with another id or group shows the same, and an id given to another recipe
+    while the first still holds it does not. An id first seen in a removal takes the next
+    number, which the removal ends.
 
     Attributes:
         ids: The display ids' numbers.
-        groups: The groups' numbers, each group its category (as JSON) and group number.
+        groups: The groups' numbers.
+        book: The group of each display id in the client's book, None for no group, from
+            every packet the Bot received, compared or not.
     """
 
     ids: _Numbering = dataclasses.field(default_factory=_Numbering)
     groups: _Numbering = dataclasses.field(default_factory=_Numbering)
+    book: dict[int, _Group | None] = dataclasses.field(default_factory=dict)
 
     def number(self, packet: Packet, copies: Sequence[dict[str, _Value]]) -> None:
         """Number the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
 
         `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
-        the first copy's order numbers them. A replace ends every number before its entries
-        take theirs, and a removal ends its ids' numbers after they are written (`forget`).
+        the first copy's order numbers them. An add is followed before its entries take
+        their numbers, and a removal after its ids' numbers are written (`follow`).
         """
         if packet.name == _RECIPE_BOOK_ADD:
-            self.forget(packet)
+            self.follow(packet)
             self._number_add(copies)
         elif packet.name == _RECIPE_BOOK_REMOVE:
             self._number_removal(copies)
-            self.forget(packet)
+            self.follow(packet)
 
-    def forget(self, packet: Packet) -> None:
-        """End the numbers of what `packet`, compared or not, takes from the client's book.
+    def follow(self, packet: Packet) -> None:
+        """Change the book as `packet`, compared or not, changes the client's, ending numbers.
 
         A `recipe_book_remove` ends its ids' numbers, and a `recipe_book_add` that replaces
-        the book ends every number.
+        the book ends every number. Then each group no recipe in the book is in ends.
         """
         if packet.fields is None:
             return
-        if packet.name == _RECIPE_BOOK_ADD and packet.fields.get("replace") is True:
+        if packet.name == _RECIPE_BOOK_ADD:
+            self._add(packet.fields)
+        elif packet.name == _RECIPE_BOOK_REMOVE:
+            self._remove(packet.fields)
+        else:
+            return
+        self.groups.keep_only(self.book.values())
+
+    def _add(self, fields: Mapping[str, object]) -> None:
+        """Put the entries of `fields`, a `recipe_book_add`'s, in the book, or in its place."""
+        if fields.get("replace") is True:
             self.ids.end_all()
             self.groups.end_all()
-        elif packet.name == _RECIPE_BOOK_REMOVE:
-            for display_id in _removed_ids(packet.fields):
-                self.ids.end(display_id)
+            self.book.clear()
+        self.book.update(_book_entries(fields))
+
+    def _remove(self, fields: Mapping[str, object]) -> None:
+        """Take the ids of `fields`, a removal's, out of the book, and end their numbers."""
+        for display_id in _removed_ids(fields):
+            self.ids.end(display_id)
+            self.book.pop(display_id, None)
 
     def _number_add(self, copies: Sequence[dict[str, _Value]]) -> None:
         """Number `copies`, each a copy of a `recipe_book_add`'s fields."""
@@ -1493,9 +1522,25 @@ class _RecipeNumbers:
         """Number the display id and group number of `contents`, one entry's."""
         if type(display_id := contents.get("id")) is int:
             contents["id"] = f"#{self.ids.of(display_id)}"
-        if type(group := contents.get("group")) is int:
-            category = json.dumps(contents.get("category"), sort_keys=True, default=repr)
-            contents["group"] = f"#{self.groups.of((category, group))}"
+        if (group := _group(contents)) is not None:
+            contents["group"] = f"#{self.groups.of(group)}"
+
+
+def _group(contents: Mapping[str, object]) -> _Group | None:
+    """The group of `contents`, one recipe book entry's, or None if it is in none."""
+    number = contents.get("group")
+    if type(number) is not int:
+        return None
+    return json.dumps(contents.get("category"), sort_keys=True, default=repr), number
+
+
+def _book_entries(fields: Mapping[str, object]) -> Iterator[tuple[int, _Group | None]]:
+    """The display id and group of each entry of `fields`, a `recipe_book_add`'s, that has an id."""
+    entries = fields.get("entries")
+    for entry in entries if isinstance(entries, list) else ():
+        contents = entry.get("contents") if isinstance(entry, dict) else None
+        if isinstance(contents, dict) and type(display_id := contents.get("id")) is int:
+            yield display_id, _group(cast("Mapping[str, object]", contents))
 
 
 def _removed_ids(fields: Mapping[str, object]) -> Iterator[int]:

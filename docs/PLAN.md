@@ -2519,9 +2519,13 @@ proves it necessary:
    or not, ends the numbers of its ids (`ClientRecipeBook.remove`), and
    an add with `replace`, compared or not, ends every number before its
    entries take theirs (`ClientRecipeBook.clear`), as a `remove_entities`
-   ends an entity's. A number is never given twice. So a
-   Candidate that gives a recipe another id when it adds it again shows
-   what vanilla does (vanilla keeps the id:
+   ends an entity's. A group's number ends once no recipe in the book is
+   in the group, counting the recipes of every add and removal, compared
+   or not: the client builds its buttons from the recipes it knows
+   (`rebuildCollections` over `known.values()`), and an id added again
+   leaves its old group (`known.put`). A number is never given twice. So
+   a Candidate that gives a recipe another id, or its group another
+   number, when it adds it again shows what vanilla does (vanilla keeps the id:
    `RecipeManager.unpackRecipeInfo` numbers every display once), and one
    that gives a recipe's id to another while the first still holds it
    differs. An id first seen in a removal takes the next number, which
