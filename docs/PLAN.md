@@ -2632,7 +2632,46 @@ proves it necessary:
    order is never significant: schema order is fixed, and JSON and NBT
    objects are unordered), and a key on one side only is `ABSENT` on the
    other. Lists are compared index by index, with `ABSENT` past the end
-   of the shorter one. Leaves are equal only with the same exact type
+   of the shorter one: in most of them the index is what the client goes
+   by, such as a container's slot, a network id or a section's height.
+   The lists `compare._LINED_UP` names, `update_tags`' tags of a
+   registry and ids of a tag, are lined up first (#256), by the fewest
+   steps from the reference's list to the candidate's: a step compares two elements,
+   and counts only if they differ, or is an element only one side has.
+   Elements are lined up on their whole value (as JSON with sorted keys,
+   so `1`, `1.0` and `true` stay apart). Equal elements are paired, and
+   two elements are compared in place whenever that keeps the steps
+   fewest, so a list whose values changed without moving still reads
+   index by index. On a tie between an element left out and one extra,
+   the smaller element is the one on its own, whichever side it is on,
+   so swapping the sides mirrors the result; the common prefix and
+   suffix are paired as they stand. An element only one side has is one
+   Divergence at its index in its own list, `ABSENT` on the other side.
+   A pair is compared at the reference's index, which Masks and test
+   cases go by; when the candidate's index differs, the Divergence path
+   shows both (`tags[1→3]`, `compare._Moved`), so a pair never shares a
+   path with an element only one side has. An element only the reference
+   has and one only the candidate has can still show at the same index
+   (#455). So `a, b, c,
+   d` against `b, c, d` is one Divergence, `a` left out, where comparing
+   index by index gave four, and the tags, which `UNORDERED` sorts, are
+   compared as a multiset. In a join against Pumpkin nightly 44d881c, the 521 tags
+   Pumpkin adds made 33,579 Divergences in `update_tags`' tag entries and 708 in
+   tag names; lined up, they are 521, one for each added tag. The raw
+   values a network traffic Divergence comes from are always compared
+   index by index, because they are read at one path on both sides. A
+   unit test checks every pair of
+   lists up to length 4 over 3 values: in order, in the fewest steps, and
+   mirrored by a swap. The cost is O(n·m) time and memory between the
+   common prefix and suffix, as for the packet alignment, and the
+   Comparison runs on the Run's event loop. So where there are more
+   than a million pairs of elements in between
+   (`compare._LINE_UP_LIMIT`, 0.4 s and 8 MB), those elements are
+   compared index by index instead. An element
+   that both moved and changed, next to elements one side added, can be
+   compared with a neighbour rather than its counterpart: the alignment
+   knows only whether two elements are equal, not how alike they are.
+   Leaves are equal only with the same exact type
    (`True` is not `1`, `1` is not `1.0`), and floats bit for bit (`-0.0`
    is not `0.0`, and a NaN equals itself, so a Self-check never trips on
    one). A value outside the model is a harness bug, so it raises

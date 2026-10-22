@@ -1596,7 +1596,9 @@ screens accept, and the stonecutter's recipes.
 
 One tag the server sends, such as `minecraft:logs`: a named list of
 blocks, items or other entries that recipes, block behaviour and
-commands refer to.
+commands refer to. A tag that only one server sends is one difference,
+shown whole, and the tags around it are still compared with their
+counterparts.
 
 ## `configuration:update_tags.tagged_registries[].tags[].entries[]`
 

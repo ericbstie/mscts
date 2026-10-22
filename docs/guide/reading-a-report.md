@@ -232,7 +232,15 @@ and distinct values all stay under the same line. A value that failed
 because the Candidate left out or replaced the packet or value holding
 it shows no values of its own. They are under the line of the packet or
 value that holds it. List values also name their element's path.
-A missing value reads `leaves it out`, while `null` is still a value. Binary values
+A missing value reads `leaves it out`, while `null` is still a value.
+Lists are compared position by position, because in most of them a
+position is what the client goes by, such as a container's slot. The tags
+of `update_tags` and the ids in each tag are lined up before they are
+compared. A tag or an id that one server sends and the other leaves out is
+one difference, at its position in the list that has it, and the ones after
+it are still compared with their counterparts. When the two compared are at
+different positions, the path names both, vanilla's first: `tags[1→3]` is
+vanilla's second tag and the Candidate's fourth. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
 value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts
 could not read is compared byte by byte and shown in hexadecimal: 256 of
@@ -340,9 +348,7 @@ mismatch`, and lists the test cases of vanilla's play. A Verdict with a
 `failed` difference fails every test case its Group has, in any
 repetition. A `blocked` Verdict was played on neither server and lists
 none. A Verdict keeps at most 20 differences of one test case, and
-its `omitted` counts the ones it left out. Without that limit, a default
-Run against Pumpkin would write an 88 MB file, almost all of it the elements of
-one tag list. A difference beyond the first 20 is still kept if it is the first of its
+its `omitted` counts the ones it left out. A difference beyond the first 20 is still kept if it is the first of its
 test case with its kind, observability and kind of value, so the lines
 and the score come out the same. A difference of a Group itself is never left out. The
 printed Report and `report.md` are not cut short, but a verbose Report read

@@ -597,8 +597,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     (`_align_timed`): the copy of a repeated packet on a tick the other side lacks is the
     one left unmatched.
 
-    Two matched Packets with fields are diffed field by field (see `_diff`), giving one
-    gameplay `field` Divergence per differing leaf, in path order. If they have a
+    Two matched Packets with fields are diffed field by field (see `_pairs`), giving one
+    gameplay `field` Divergence per differing leaf, in path order, except in a list that
+    is lined up (`_LINED_UP`), which is in the order of its steps. If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
     and values, when the unmasked canonical values at that path (for a chunk, the canonical
@@ -2945,13 +2946,7 @@ def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[i
     Between the prefix and the suffix this takes O(n·m) time and memory, and that
     part is short when the streams mostly agree.
     """
-    shorter = min(len(reference), len(candidate))
-    prefix = 0
-    while prefix < shorter and reference[prefix] == candidate[prefix]:
-        prefix += 1
-    suffix = 0
-    while suffix < shorter - prefix and reference[-1 - suffix] == candidate[-1 - suffix]:
-        suffix += 1
+    prefix, suffix = _common_ends(reference, candidate)
     ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
     middle = _longest_common_subsequence(reference[prefix:ref_stop], candidate[prefix:cand_stop])
     return [
@@ -2959,6 +2954,18 @@ def _align(reference: Sequence[_Key], candidate: Sequence[_Key]) -> list[tuple[i
         *((prefix + ref_index, prefix + cand_index) for ref_index, cand_index in middle),
         *((ref_stop + offset, cand_stop + offset) for offset in range(suffix)),
     ]
+
+
+def _common_ends(reference: Sequence[Hashable], candidate: Sequence[Hashable]) -> tuple[int, int]:
+    """How long the two sequences' common prefix is, then their common suffix after it."""
+    shorter = min(len(reference), len(candidate))
+    prefix = 0
+    while prefix < shorter and reference[prefix] == candidate[prefix]:
+        prefix += 1
+    suffix = 0
+    while suffix < shorter - prefix and reference[-1 - suffix] == candidate[-1 - suffix]:
+        suffix += 1
+    return prefix, suffix
 
 
 def _longest_common_subsequence(
@@ -3012,13 +3019,7 @@ def _align_timed(
     full_candidate = [
         (key, _tick_order(tick)) for key, tick in zip(candidate, candidate_ticks, strict=True)
     ]
-    shorter = min(len(reference), len(candidate))
-    prefix = 0
-    while prefix < shorter and full_reference[prefix] == full_candidate[prefix]:
-        prefix += 1
-    suffix = 0
-    while suffix < shorter - prefix and full_reference[-1 - suffix] == full_candidate[-1 - suffix]:
-        suffix += 1
+    prefix, suffix = _common_ends(full_reference, full_candidate)
     ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
     middle = _best_timed_subsequence(
         full_reference[prefix:ref_stop], full_candidate[prefix:cand_stop]
@@ -3135,10 +3136,15 @@ def _leaf_cases(
     """
     names: dict[_Path, str] = {}
     for leaf in _leaves(value, path):
-        shape = tuple(0 if isinstance(step, int) else step for step in leaf)
+        shape = _shape(leaf)
         if shape not in names and leaf not in masked:
             names[shape] = _test_case(state, name, shape)
     return set(names.values())
+
+
+def _shape(path: _Path) -> _Path:
+    """`path` with every list index 0: the same for each element of a list."""
+    return tuple(0 if isinstance(step, int) else step for step in path)
 
 
 def _leaves(value: _Value | Absent, path: _Path) -> Iterator[_Path]:
@@ -3289,8 +3295,9 @@ def _diff_matched(
         masked = reference.masked | candidate.masked
         shown = _SHOWN.get((state, name))
         sides = (reference.fields, candidate.fields)
-        for path, ref_value, cand_value in _pairs(reference.fields, candidate.fields, ()):
-            shape = tuple(0 if isinstance(step, int) else step for step in path)
+        lined_up = _LINED_UP.get(name, frozenset())
+        for path, ref_value, cand_value in _pairs(*sides, (), lambda at: _shape(at) in lined_up):
+            shape = _shape(path)
             if shape not in names:
                 names[shape] = _test_case(state, name, shape)
             if not _same(ref_value, cand_value):
@@ -3373,31 +3380,227 @@ type _Pair = tuple[_Path, _Value | Absent, _Value | Absent]
 
 
 def _diff(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -> Iterator[_Pair]:
-    """Yield each pair `_pairs` compares whose two values differ, in path order."""
-    return (pair for pair in _pairs(reference, candidate, path) if not _same(pair[1], pair[2]))
+    """Yield each pair `_pairs` compares whose two values differ, in path order.
+
+    Every list is compared index by index, so a path reads the same element on each side.
+    """
+    pairs = _pairs(reference, candidate, path, _no_list)
+    return (pair for pair in pairs if not _same(pair[1], pair[2]))
 
 
-def _pairs(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -> Iterator[_Pair]:
-    """Yield (path, reference value, candidate value) for each pair compared, in path order.
+type _LinedUp = Callable[[_Path], bool]
+"""Whether `_pairs` lines up the two lists at a path, rather than compare them index by index."""
+
+
+def _no_list(_path: _Path) -> bool:
+    """`_LinedUp` for comparing every list index by index."""
+    return False
+
+
+_LINED_UP: Mapping[str, frozenset[_Path]] = MappingProxyType(
+    {
+        "minecraft:update_tags": frozenset(
+            {("tagged_registries", 0, "tags"), ("tagged_registries", 0, "tags", 0, "entries")}
+        ),
+    }
+)
+"""The lists, by packet name in any State and by `_shape`, that are lined up (#256).
+
+Every other list is compared index by index: in many, the index is what the client goes by,
+such as a container's slot, a network id or a section's height, so an element at another
+index is a difference. The client reads a registry's tags into a map by name, and `UNORDERED`
+sorts them by name, so their index means nothing. A tag's entries stay in the order sent.
+Lined up, a tag or an id only one side sends is one difference, and the ones after it are
+still compared with their counterparts."""
+
+
+def _pairs(
+    reference: _Value | Absent, candidate: _Value | Absent, path: _Path, lined_up: _LinedUp
+) -> Iterator[_Pair]:
+    """Yield (path, reference value, candidate value) for each pair compared.
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
-    is ABSENT on the other. Lists are compared index by index, and elements past the
-    end of the shorter one are ABSENT. Anything else is a leaf, compared as a whole.
+    is ABSENT on the other. Lists are lined up where `lined_up` says so (`_fewest_edits`),
+    in the order of its steps: an element only one side has is at its own index, and a pair
+    at the reference's (`_Moved` if the candidate's differs). Other lists are compared
+    index by index, in path order, elements past the end of the shorter one being ABSENT.
+    Anything else is a leaf, compared as a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
         for key in sorted(reference.keys() | candidate.keys()):
-            yield from _pairs(reference.get(key, ABSENT), candidate.get(key, ABSENT), (*path, key))
+            values = (reference.get(key, ABSENT), candidate.get(key, ABSENT))
+            yield from _pairs(*values, (*path, key), lined_up)
     elif isinstance(reference, list) and isinstance(candidate, list):
-        for index in range(max(len(reference), len(candidate))):
-            yield from _pairs(
-                _element(reference, index), _element(candidate, index), (*path, index)
-            )
+        for ref_index, cand_index in _list_edits(reference, candidate, lined_up=lined_up(path)):
+            if ref_index is not None and cand_index is not None:
+                values = (reference[ref_index], candidate[cand_index])
+                step = ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
+                yield from _pairs(*values, (*path, step), lined_up)
+            elif ref_index is not None:
+                yield (*path, ref_index), reference[ref_index], ABSENT
+            elif cand_index is not None:
+                yield (*path, cand_index), ABSENT, candidate[cand_index]
     else:
         yield path, reference, candidate
 
 
-def _element(items: Sequence[_Value], index: int) -> _Value | Absent:
-    return items[index] if index < len(items) else ABSENT
+class _Moved(int):
+    """A list index in a path where `_pairs` compared elements at two different indexes.
+
+    It is the reference's index, which Masks, test cases and `_at` go by, and it keeps the
+    candidate's, which `_render` shows next to it (`tags[2→5]`). So the path of a pair
+    is never that of an element only the candidate has, at its own index.
+    """
+
+    candidate: int
+
+    def __new__(cls, reference: int, candidate: int) -> Self:
+        """The reference's index `reference`, with the candidate's index `candidate`."""
+        step = super().__new__(cls, reference)
+        step.candidate = candidate
+        return step
+
+
+type _Edit = tuple[int, int] | tuple[int, None] | tuple[None, int]
+"""One step from a reference list to a candidate list: the indexes of two elements compared
+with each other, or the index of an element only the reference or only the candidate has,
+and None on the other side."""
+
+
+def _list_edits(
+    reference: Sequence[_Value], candidate: Sequence[_Value], *, lined_up: bool
+) -> list[_Edit]:
+    """The steps `_pairs` compares two lists by: lined up on their identities, or not."""
+    if not lined_up:
+        return _index_by_index(len(reference), len(candidate))
+    return _fewest_edits(
+        [_identity(item) for item in reference], [_identity(item) for item in candidate]
+    )
+
+
+def _index_by_index(ref_length: int, cand_length: int) -> list[_Edit]:
+    """The elements at each index compared, then those past the end of the shorter list."""
+    shorter = min(ref_length, cand_length)
+    return [
+        *((index, index) for index in range(shorter)),
+        *((index, None) for index in range(shorter, ref_length)),
+        *((None, index) for index in range(shorter, cand_length)),
+    ]
+
+
+def _identity(value: _Value) -> str:
+    """What a list element is lined up on: its whole value as JSON, keys sorted.
+
+    Two elements `_pairs` finds no difference between have the same identity, and JSON
+    keeps apart what Python calls equal (1, 1.0 and true; 0.0 and -0.0). Bytes and UUIDs
+    are written as an object holding their text. Two different elements with one identity
+    are compared with each other, so that changes how they are lined up, never what differs.
+    """
+    return json.dumps(value, sort_keys=True, default=_json_leaf)
+
+
+def _json_leaf(value: object) -> dict[str, str]:
+    """Bytes or a UUID, which JSON has no type for, as `_identity` writes it.
+
+    Anything else is outside the value model, a harness bug: TypeError, as `json.dumps`
+    expects of its `default`.
+    """
+    if isinstance(value, bytes):
+        return {"bytes": value.hex()}
+    if isinstance(value, UUID):
+        return {"uuid": str(value)}
+    msg = f"a list element holds a {type(value).__name__}, which no codec value is"
+    raise TypeError(msg)
+
+
+_LINE_UP_LIMIT = 1_000_000
+"""The most pairs of elements `_fewest_edits` weighs between the common ends of two lists.
+
+`compare` runs on the Run's event loop, and weighing them takes about 0.4 µs and 8 bytes a
+pair: 0.4 s and 8 MB at the limit. The most pairs between the common ends of a tag list in
+a join against Pumpkin nightly 44d881c are 89,726."""
+
+
+def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_Edit]:
+    """Line up two lists of identities (#256), returning the steps in order.
+
+    The steps are as few as can be, each an element compared with another, which counts
+    only if they differ, or an element only one side has. So a shifted element is no
+    difference: `a, b, c, d` against `b, c, d` is `a` alone, and one element changed in
+    place is one change. Of the fewest, the choice is fixed so that swapping the two sides
+    mirrors it: the common prefix and suffix are compared as they stand, and in between,
+    equal elements are compared with each other, then two elements are compared in place
+    whenever that keeps the steps fewest, else the smaller one, whichever side it is on, is
+    the one only its side has.
+
+    Between the prefix and the suffix this takes O(n·m) time and memory, as `_align` does.
+    So if there are more than `_LINE_UP_LIMIT` pairs of elements there, the elements there
+    are compared index by index instead.
+    """
+    prefix, suffix = _common_ends(reference, candidate)
+    ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
+    ref_middle, cand_middle = reference[prefix:ref_stop], candidate[prefix:cand_stop]
+    middle = (
+        _traced(ref_middle, cand_middle, _fewest_table(ref_middle, cand_middle))
+        if len(ref_middle) * len(cand_middle) <= _LINE_UP_LIMIT
+        else _index_by_index(len(ref_middle), len(cand_middle))
+    )
+    return [
+        *((index, index) for index in range(prefix)),
+        *(_shifted(edit, prefix) for edit in middle),
+        *((ref_stop + offset, cand_stop + offset) for offset in range(suffix)),
+    ]
+
+
+def _shifted(edit: _Edit, by: int) -> _Edit:
+    """`edit` with each of its indexes `by` more."""
+    match edit:
+        case (int() as ref_index, int() as cand_index):
+            return ref_index + by, cand_index + by
+        case (int() as ref_index, None):
+            return ref_index + by, None
+        case (None, int() as cand_index):
+            return None, cand_index + by
+
+
+def _fewest_table(reference: Sequence[str], candidate: Sequence[str]) -> list[array[int]]:
+    """`fewest[i][j]`: the fewest steps from `reference[i:]` to `candidate[j:]` that differ."""
+    rows, columns = len(reference), len(candidate)
+    # The last row starts as it stays: from nothing, each candidate element is one step.
+    fewest = [array("L", range(columns, -1, -1)) for _ in range(rows + 1)]
+    for i in range(rows - 1, -1, -1):
+        row, below, key = fewest[i], fewest[i + 1], reference[i]
+        row[columns] = rows - i
+        for j in range(columns - 1, -1, -1):
+            row[j] = (
+                below[j + 1] if key == candidate[j] else 1 + min(below[j + 1], below[j], row[j + 1])
+            )
+    return fewest
+
+
+def _traced(
+    reference: Sequence[str], candidate: Sequence[str], fewest: Sequence[Sequence[int]]
+) -> list[_Edit]:
+    """The steps of `_fewest_edits` between the common ends, read from the front of `fewest`."""
+    rows, columns = len(reference), len(candidate)
+    edits: list[_Edit] = []
+    i = j = 0
+    while i < rows and j < columns:
+        here = fewest[i][j]
+        if reference[i] == candidate[j] or here == 1 + fewest[i + 1][j + 1]:
+            edits.append((i, j))
+            i, j = i + 1, j + 1
+        elif here == 1 + fewest[i + 1][j] and (
+            here != 1 + fewest[i][j + 1] or reference[i] < candidate[j]
+        ):
+            edits.append((i, None))
+            i += 1
+        else:
+            edits.append((None, j))
+            j += 1
+    edits.extend((index, None) for index in range(i, rows))
+    edits.extend((None, index) for index in range(j, columns))
+    return edits
 
 
 def _same(reference: _Value | Absent, candidate: _Value | Absent) -> bool:
@@ -3431,6 +3634,8 @@ def _render(path: _MaskPath, *, index_free: bool = False) -> str:
     for step in path:
         if isinstance(step, Each):
             parts.append(_EACH)
+        elif isinstance(step, _Moved) and not index_free:
+            parts.append(f"[{step}→{step.candidate}]")
         elif isinstance(step, int):
             parts.append("[]" if index_free else f"[{step}]")
         elif _IDENTIFIER.fullmatch(step):

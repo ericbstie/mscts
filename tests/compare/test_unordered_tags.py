@@ -10,8 +10,8 @@ built through the Target's real Codec, in configuration and in play.
 import pytest
 
 from mscts.codec.packets import Codec, Packet, State
-from mscts.compare import Divergence, Mask, Observability, compare
-from tests.compare.build import CLIENTBOUND, transcript
+from mscts.compare import ABSENT, Divergence, Mask, Observability, compare
+from tests.compare.build import CLIENTBOUND, divergence, transcript
 
 CODEC = Codec.load("26.3")
 STATES = pytest.mark.parametrize("state", [State.CONFIGURATION, State.PLAY], ids=str)
@@ -82,6 +82,75 @@ def test_the_order_of_a_tags_entries_is_a_gameplay_difference(state: State) -> N
     assert _gameplay(_compare(state, [ITEM, BLOCK], [reordered, ITEM])) == [
         ("tagged_registries[0].tags[0].entries[0]", 1, 2),
         ("tagged_registries[0].tags[0].entries[1]", 2, 1),
+    ]
+
+
+def test_a_tag_only_the_candidate_sends_is_one_divergence_whatever_follows_it() -> None:
+    extra = ("minecraft:block", [("c:barrels", [7]), *BLOCK[1]])
+    assert _compare(State.CONFIGURATION, [BLOCK, ITEM], [ITEM, extra]) == (
+        divergence(
+            "field",
+            packet="minecraft:update_tags",
+            path="tagged_registries[0].tags[0]",
+            candidate={"tag_name": "c:barrels", "entries": [7]},
+            test_case="configuration:update_tags.tagged_registries[].tags[]",
+        ),
+    )
+
+
+def test_a_tag_compared_after_an_extra_one_names_both_its_indexes() -> None:
+    changed = ("minecraft:block", [("c:barrels", [7]), BLOCK[1][0], ("minecraft:logs", [4])])
+    divergences = _compare(State.CONFIGURATION, [BLOCK], [changed])
+    assert [(d.path, d.reference, d.candidate, d.test_case) for d in divergences] == [
+        (
+            "tagged_registries[0].tags[0]",
+            ABSENT,
+            {"tag_name": "c:barrels", "entries": [7]},
+            "configuration:update_tags.tagged_registries[].tags[]",
+        ),
+        (
+            "tagged_registries[0].tags[1→2].entries[0]",
+            3,
+            4,
+            "configuration:update_tags.tagged_registries[].tags[].entries[]",
+        ),
+    ]
+
+
+def test_the_entries_of_every_tag_of_every_registry_are_lined_up() -> None:
+    fewer = ("minecraft:item", [("minecraft:logs", [5])])
+    assert _gameplay(_compare(State.CONFIGURATION, [BLOCK, ITEM], [BLOCK, fewer])) == [
+        ("tagged_registries[1].tags[0].entries[0]", 4, ABSENT)
+    ]
+
+
+def test_a_tag_the_candidate_leaves_out_is_one_divergence() -> None:
+    fewer = ("minecraft:block", [BLOCK[1][1]])
+    assert _gameplay(_compare(State.CONFIGURATION, [BLOCK], [fewer])) == [
+        (
+            "tagged_registries[0].tags[0]",
+            {"tag_name": "minecraft:climbable", "entries": [1, 2]},
+            ABSENT,
+        )
+    ]
+
+
+def test_a_repeated_tag_left_out_is_one_divergence() -> None:
+    repeated = ("minecraft:block", [BLOCK[1][0], *BLOCK[1]])
+    assert _gameplay(_compare(State.PLAY, [repeated], [BLOCK])) == [
+        (
+            "tagged_registries[0].tags[1]",
+            {"tag_name": "minecraft:climbable", "entries": [1, 2]},
+            ABSENT,
+        )
+    ]
+
+
+def test_an_id_a_tag_leaves_out_is_one_divergence() -> None:
+    logs = ("minecraft:block", [("minecraft:logs", [*range(10, 20)])])
+    fewer = ("minecraft:block", [("minecraft:logs", [*range(11, 20)])])
+    assert _gameplay(_compare(State.CONFIGURATION, [logs], [fewer])) == [
+        ("tagged_registries[0].tags[0].entries[0]", 10, ABSENT)
     ]
 
 
