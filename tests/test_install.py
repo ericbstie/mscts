@@ -11,10 +11,9 @@ from support.pumpkin import ASSET_URL, COMMIT, FakeGitHub, fake_pumpkin, refs, r
 from mscts.adapters.base import (
     Build,
     Download,
-    Fetch,
     Installation,
+    Net,
     ProvisionError,
-    Release,
     Source,
     UnavailableError,
 )
@@ -452,17 +451,85 @@ def test_a_commit_in_capitals_names_the_same_build(tmp_path: Path) -> None:
 
 
 class _ChecksummedPumpkin(PumpkinAdapter):
-    """A Pumpkin whose publisher lists a sha1, and whose label names another commit."""
+    """A Pumpkin whose publisher lists a sha1 and size the nightly does not have."""
 
     @override
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        del target, version, fetch
-        build = Build(version="nightly", commit=OTHER)
-        return Release(build=build, url=NIGHTLY_URL, sha1="0" * 40, size=1)
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        del target, version
+        net.download(NIGHTLY_URL, into, sha1="0" * 40, size=1)
+        return Build(version="nightly", commit=OTHER)
 
 
-def test_a_checksum_mismatch_never_names_the_label_s_commit(tmp_path: Path) -> None:
+def test_a_checksum_mismatch_says_how_to_run_that_file_anyway(tmp_path: Path) -> None:
     with pytest.raises(ProvisionError) as raised:
         install_release(_ChecksummedPumpkin(), TARGET, tmp_path, None, FakeGitHub())
-    assert str(raised.value).startswith(f"{NIGHTLY_URL} is not pumpkin nightly: sha1 "), raised
-    assert "8f3c2a1" not in str(raised.value)
+    assert str(raised.value) == (
+        f"{NIGHTLY_URL} is not the file its publisher lists: sha1 "
+        f"{hashlib.sha1(NIGHTLY, usedforsecurity=False).hexdigest()}, {len(NIGHTLY)} bytes, "
+        f"where its publisher lists sha1 {'0' * 40}, 1 bytes.\n"
+        "To run that file anyway, save it and run `mscts adapter install pumpkin --from <file>`"
+    )
+    assert list((tmp_path / "pumpkin").iterdir()) == []  # no staging directory left
+
+
+class _Recording(PumpkinAdapter):
+    """A Pumpkin that records the file mscts asks it to put the nightly at."""
+
+    def __init__(self) -> None:
+        self.into: list[Path] = []
+
+    @override
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        self.into.append(into)
+        assert into.parent.is_dir()
+        assert not into.exists()
+        return super().install(target, version, into, net)
+
+
+def test_the_adapter_installs_into_a_staging_file_named_for_its_binary(tmp_path: Path) -> None:
+    adapter = _Recording()
+    done = install_release(adapter, TARGET, tmp_path, None, FakeGitHub())
+    (into,) = adapter.into
+    assert (into.name, into.parent.parent) == ("pumpkin", tmp_path / "pumpkin")
+    assert into.parent.name.startswith(".26.3.")
+    assert into.parent.name.endswith(".part")
+    assert not into.parent.exists()  # moved into the cache in one rename
+    assert done.installation.root == root_of(tmp_path)
+
+
+class _Builder(PumpkinAdapter):
+    """A Pumpkin that writes the build itself, as an Adapter that compiles one would."""
+
+    @override
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        del target, version, net
+        into.write_bytes(NIGHTLY)
+        return Build(version="nightly", commit=COMMIT)
+
+
+class _NamelessBuilder(PumpkinAdapter):
+    """A Pumpkin that writes a build naming no commit itself, and returns one with a commit."""
+
+    @override
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        del target, version, net
+        into.write_bytes(fake_pumpkin(commit="unknown"))
+        return Build(version="nightly", commit=COMMIT)
+
+
+def test_a_written_build_that_names_no_commit_is_refused_when_install_names_one(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ProvisionError) as raised:
+        install_release(_NamelessBuilder(), TARGET, tmp_path, None, FakeGitHub())
+    assert str(raised.value).startswith(
+        "the pumpkin build names no commit, so which pumpkin nightly it is cannot be told."
+    )
+    assert list((tmp_path / "pumpkin").iterdir()) == []
+
+
+def test_a_build_the_adapter_wrote_itself_records_no_url(tmp_path: Path) -> None:
+    done = install_release(_Builder(), TARGET, tmp_path, None, FakeGitHub())
+    assert done.message == f"installed pumpkin nightly 4426d11 into {root_of(tmp_path)}"
+    source = recorded(tmp_path)
+    assert (source["url"], source["final_url"], source["sha256"]) == (None, None, SHA256)

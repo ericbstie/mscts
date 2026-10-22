@@ -10,17 +10,16 @@ import zipfile
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import cast
+from typing import Any
 
 from mscts.adapters import fixture_world, nbt
 from mscts.adapters.base import (
     Build,
-    Fetch,
     Installation,
     LaunchPlan,
+    Net,
     PrepareError,
     ProvisionError,
-    Release,
     UnsupportedError,
 )
 from mscts.net import Endpoint
@@ -358,25 +357,11 @@ def resolve_java(target: Target, java: Path | str | None = None) -> Path:
     return resolved
 
 
-def _json_field(where: str, document: object, *path: str) -> object:
-    """The value at `path` in a JSON `document` from `where`; ProvisionError if it has none."""
-    value = document
-    for key in path:
-        if not isinstance(value, Mapping) or key not in value:
-            msg = f"{where} has no {'.'.join(path)}"
-            raise ProvisionError(msg)
-        value = cast("Mapping[str, object]", value)[key]
-    return value
-
-
-def _version_url(manifest: bytes, version: str) -> tuple[str, str]:
-    """The URL and sha1 of `version`'s version JSON, as Mojang's manifest lists them."""
-    listed = _json_field(MANIFEST_URL, json.loads(manifest), "versions")
-    for entry in listed if isinstance(listed, list) else []:
-        if _json_field(MANIFEST_URL, entry, "id") == version:
-            url = _json_field(MANIFEST_URL, entry, "url")
-            sha1 = _json_field(MANIFEST_URL, entry, "sha1")
-            return str(url), str(sha1)
+def _listed(manifest: Any, version: str) -> Any:  # noqa: ANN401 - Mojang's shape
+    """`version`'s entry in Mojang's version `manifest`; ProvisionError if it lists none."""
+    for entry in manifest["versions"]:
+        if entry["id"] == version:
+            return entry
     msg = f"{MANIFEST_URL} lists no {version}"
     raise ProvisionError(msg)
 
@@ -396,29 +381,19 @@ class VanillaAdapter:
         """
         self._java = java
 
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The server jar Mojang publishes for `target`, the only vanilla version mscts tests.
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        """Put the server jar Mojang publishes for `target`, the only version tested, at `into`.
 
-        Read from Mojang's version manifest, and checked by the sha1 it lists for the
-        version JSON, which gives the jar's URL, sha1 and size.
+        Mojang's version manifest lists the version JSON, by its sha1, which lists the jar's
+        URL, sha1 and size.
         """
-        wanted = target.minecraft_version
-        if version is not None and version != wanted:
+        if version not in {None, target.minecraft_version}:
             asked = f"{self.name}@{version}"
             raise UnsupportedError(asked, target=target)
-        url, sha1 = _version_url(fetch(MANIFEST_URL).body, wanted)
-        body = fetch(url).body
-        actual = hashlib.sha1(body, usedforsecurity=False).hexdigest()  # Mojang's own check
-        if actual != sha1:
-            msg = f"{url} is not the version JSON {MANIFEST_URL} lists: sha1 {actual}, not {sha1}"
-            raise ProvisionError(msg)
-        server = _json_field(url, json.loads(body), "downloads", "server")
-        return Release(
-            build=Build(version=wanted),
-            url=str(_json_field(url, server, "url")),
-            sha1=str(_json_field(url, server, "sha1")),
-            size=int(str(_json_field(url, server, "size"))),
-        )
+        entry = _listed(net.json(MANIFEST_URL), target.minecraft_version)
+        server = net.json(entry["url"], sha1=entry["sha1"])["downloads"]["server"]
+        net.download(server["url"], into, sha1=server["sha1"], size=server["size"])
+        return Build(version=target.minecraft_version)
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version `binary` names; ProvisionError unless it is a server jar for `target`."""

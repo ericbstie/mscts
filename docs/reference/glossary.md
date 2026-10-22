@@ -25,10 +25,11 @@ The custom server implementation being measured
 
 ### Adapter
 
-The only server-specific code. It says where to download its
-server's latest build for the Target, reads which build a binary is and
-checks that it can run it, and turns a ServerSpec into a LaunchPlan.
-It never installs anything. The Reference and every Candidate each have one.
+The only server-specific code. It downloads its server's latest
+build for the Target into a file mscts gives it, reads which build a
+binary is and checks that it can run it, and turns a ServerSpec into a
+LaunchPlan. mscts keeps the Installations. The Reference and every
+Candidate each have one.
 
 ### ServerSpec
 
@@ -45,7 +46,7 @@ its own.
 The binaries installed for an Adapter and a Target,
 cached on disk with their build (its version, and its commit where
 the publisher names one), their sha256 and their source (the URL the
-Adapter gave, or a `--from` file). It is created only by
+Adapter downloaded them from, or a `--from` file). It is created only by
 `mscts adapter install`, or after an explicit prompt (ADR-0008).
 
 ### LaunchPlan

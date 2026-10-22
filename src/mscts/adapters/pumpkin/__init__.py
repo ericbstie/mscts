@@ -15,12 +15,11 @@ from types import MappingProxyType
 from mscts.adapters import fixture_world, nbt
 from mscts.adapters.base import (
     Build,
-    Fetch,
     Installation,
     LaunchPlan,
+    Net,
     PrepareError,
     ProvisionError,
-    Release,
     ShortCommitError,
     UnsupportedError,
 )
@@ -574,11 +573,11 @@ class PumpkinAdapter:
     binary = BINARY
     latest_aliases = frozenset({_NIGHTLY})  # `pumpkin@nightly` is plain `pumpkin`
 
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The nightly, the only build Pumpkin publishes, at the commit its tag names.
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        """Put the nightly, the only build Pumpkin publishes, at `into`: at its tag's commit.
 
         Whatever `version` names, the nightly is the only file to look at: whether it is that
-        build, only the file says (install checks it). The tag's commit may be ahead of the
+        build, only the file says (mscts checks it). The tag's commit may be ahead of the
         file's for a few minutes. A commit shorter than 7 characters is refused unfetched.
         The nightly's Minecraft version shows only in the binary, so `check` refuses one for
         another `target`.
@@ -586,8 +585,9 @@ class PumpkinAdapter:
         del target
         if version is not None:
             _refuse_too_short(self.name, version)
-        commit = _nightly_commit(fetch(TAGS_URL).body)
-        return Release(build=Build(version=_NIGHTLY, commit=commit), url=NIGHTLY_URL)
+        commit = _nightly_commit(net.get(TAGS_URL))
+        net.download(NIGHTLY_URL, into)
+        return Build(version=_NIGHTLY, commit=commit)
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version and commit `binary` names; ProvisionError unless it is for `target`.

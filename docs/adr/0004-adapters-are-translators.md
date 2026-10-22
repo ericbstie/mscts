@@ -1,6 +1,9 @@
 # ADR-0004: Adapters only translate; readiness is a status ping
 
-Status: accepted (2026-09-25)
+Status: accepted (2026-09-25). Amended by #188 (2026-10-22): `provision`
+is now `install`, which puts a build at a staging file mscts gives it;
+mscts checks the file and moves it into the cache (ADR-0008, its #188
+amendment).
 
 ## Context
 

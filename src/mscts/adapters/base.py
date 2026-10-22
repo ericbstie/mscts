@@ -1,13 +1,14 @@
-"""The Adapter contract: find a release, check a binary, prepare a LaunchPlan (ADR-0004).
+"""The Adapter contract: install a build, check a binary, prepare a LaunchPlan (ADR-0004).
 
-Installations are install.py's (ADR-0008): an Adapter says where its builds are, and reads
-what it needs through the `fetch` it is given, but never installs anything.
+Installations are install.py's (ADR-0008, #188): an Adapter puts its build at the staging
+file it is given, reading through the `net` it is given; mscts checks it, records it and
+moves it into the cache.
 """
 
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, override
+from typing import Any, Protocol, override
 
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec
@@ -74,16 +75,6 @@ class UnavailableError(ProvisionError):
 
 
 @dataclass(frozen=True, slots=True)
-class Release:
-    """A build its publisher offers for download, and what the download must be (ADR-0008)."""
-
-    build: Build
-    url: str  # HTTPS
-    sha1: str | None = None  # the publisher's own hash, where it publishes one (Mojang)
-    size: int | None = None  # bytes, where the publisher states it
-
-
-@dataclass(frozen=True, slots=True)
 class Download:
     """The body of a fetched URL, and the URL it finally came from."""
 
@@ -95,6 +86,29 @@ type Fetch = Callable[[str], Download]
 """How an Adapter and install.py read a URL: fetch.https_get, or a fake in tests."""
 
 
+class Net(Protocol):
+    """What mscts hands an Adapter for the network: HTTPS only, and each refusal worded.
+
+    A failure to connect or read raises OSError or http.client.HTTPException, which mscts
+    words. A URL that is not HTTPS, or a body that is not what its publisher lists, raises
+    ProvisionError.
+    """
+
+    def get(self, url: str) -> bytes:
+        """The body at `url`."""
+        ...
+
+    def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - the publisher's shape
+        """The JSON document at `url`, parsed; ProvisionError unless its sha1 is a given `sha1`."""
+        ...
+
+    def download(
+        self, url: str, into: Path, sha1: str | None = None, size: int | None = None
+    ) -> None:
+        """Save the body at `url` as `into`, refused unless it has the sha1 and size given."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class Source:
     """Where an Installation's binary came from, as its SOURCE.json records it (ADR-0008)."""
@@ -103,7 +117,7 @@ class Source:
     size: int
     version: str | None = None  # its Build's (None only in a SOURCE.json written before #156)
     commit: str | None = None  # its Build's
-    url: str | None = None  # the URL it was downloaded from (its Release's)
+    url: str | None = None  # the URL it was downloaded from, as the Adapter asked for it
     final_url: str | None = None  # where that URL finally redirected to
     from_path: str | None = None  # the `--from` file it was copied from
     installed_at: str | None = None  # ISO 8601, UTC
@@ -143,13 +157,15 @@ class Adapter(Protocol):
     # Versions that mean the latest build, as no version does: Pumpkin's {"nightly"}.
     latest_aliases: frozenset[str]
 
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The latest build for `target`, or the build `version` names (`<name>@<version>`).
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        """Put the build for `target` (or the one `version` names) at `into`, and say which it is.
 
-        Facts only, never CLI text: UnsupportedError if that build is not for `target`,
-        UnavailableError if it cannot be downloaded, ShortCommitError if a commit name is
-        too short, else ProvisionError saying what is wrong. mscts keeps typed refusals
-        unchanged and adds how to install a build from a file to other ProvisionErrors.
+        Reads only through `net`. `into` is a file in a staging directory mscts owns; mscts
+        checks it and moves it into the cache. Facts only, never CLI text: UnsupportedError
+        if that build is not for `target`, UnavailableError if it cannot be downloaded,
+        ShortCommitError if a commit name is too short, else ProvisionError saying what is
+        wrong. mscts keeps typed refusals unchanged and adds how to install a build from a
+        file to other errors.
         """
         ...
 

@@ -3,17 +3,17 @@
 An Adapter is the only code in mscts that knows about a particular server.
 To compare a new server with vanilla, you write one Adapter. You never change a Group.
 
-An Adapter does not install, start or stop anything. It does three things:
+An Adapter does not start or stop anything. It does three things:
 
-- `release` says where to download the server's latest build for the
-  Minecraft version mscts tests, or the build a version names.
+- `install` downloads the server's latest build for the Minecraft version
+  mscts tests, or the build a version names, into a file mscts gives it.
 - `check` reads which build a file is, and refuses one it cannot run.
 - `prepare` writes that server's complete native config for a ServerSpec
   and returns a `LaunchPlan`, the command that starts it.
 
-mscts owns everything else: downloading and verifying the binary,
-installing it, launching the process, waiting for readiness, and stopping
-it. Everything you write lives in your Adapter's own folder.
+mscts owns everything else: where installed builds are kept, recording
+where each came from, launching the process, waiting for readiness, and
+stopping it. Everything you write lives in your Adapter's own folder.
 
 ::: info Work in progress
 This page describes the contract in
@@ -29,7 +29,7 @@ vanilla and Pumpkin Adapters are the best examples.
 from pathlib import Path
 from typing import Protocol
 
-from mscts.adapters.base import Build, Fetch, Installation, LaunchPlan, Release
+from mscts.adapters.base import Build, Installation, LaunchPlan, Net
 from mscts.spec import ServerSpec
 from mscts.target import Target
 
@@ -39,8 +39,8 @@ class Adapter(Protocol):
     binary: str  # the one file an Installation holds: "server.jar"
     latest_aliases: frozenset[str]  # versions that mean the latest build: {"nightly"}
 
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The latest build for `target`, or the one `<name>@<version>` names."""
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        """Put the latest build for `target`, or the one `<name>@<version>` names, at `into`."""
 
     def check(self, binary: Path, target: Target) -> Build:
         """The build `binary` is; ProvisionError unless this Adapter can run it."""
@@ -53,6 +53,7 @@ class Adapter(Protocol):
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Protocol
 
 from mscts.net import Endpoint
 
@@ -63,12 +64,12 @@ class Build:
     commit: str | None = None  # the full commit, where the publisher names one
 
 
-@dataclass(frozen=True, slots=True)
-class Release:
-    build: Build
-    url: str                   # HTTPS
-    sha1: str | None = None    # the publisher's own hash, where it publishes one
-    size: int | None = None    # bytes, where the publisher states it
+class Net(Protocol):           # HTTPS only; sha1 and size are the publisher's, where it lists them
+    def get(self, url: str) -> bytes: ...
+    def json(self, url: str, sha1: str | None = None) -> Any: ...
+    def download(
+        self, url: str, into: Path, sha1: str | None = None, size: int | None = None
+    ) -> None: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,19 +89,17 @@ publisher describes the latest build in a small JSON file, and the
 executable holds the text `myserver <version> for Minecraft <version>`.
 
 ```python
-import json
 import re
 from pathlib import Path
 from types import MappingProxyType
 
 from mscts.adapters.base import (
     Build,
-    Fetch,
     Installation,
     LaunchPlan,
+    Net,
     PrepareError,
     ProvisionError,
-    Release,
     UnavailableError,
     UnsupportedError,
 )
@@ -119,15 +118,16 @@ class MyServerAdapter:
     binary = BINARY
     latest_aliases = frozenset({"latest"})  # `myserver@latest` is plain `myserver`
 
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        latest = json.loads(fetch(LATEST).body)
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        latest = net.json(LATEST)
         if latest["minecraft"] != target.minecraft_version:
             msg = f"myserver has no build for Minecraft {target.minecraft_version} yet"
             raise ProvisionError(msg)
         build = Build(version=latest["version"])
         if version is not None and version != build.version:
             raise UnavailableError(self.name, version, latest=build)
-        return Release(build=build, url=latest["url"])
+        net.download(latest["url"], into)
+        return build
 
     def check(self, binary: Path, target: Target) -> Build:
         body = binary.read_bytes()
@@ -166,25 +166,34 @@ class MyServerAdapter:
 A real Adapter writes every setting the server reads, not only the ones
 shown here. See the rules below.
 
-## Rules for `release` and `check`
+## Rules for `install` and `check`
 
-**Read only through `fetch`.** `release` gets every URL it reads through the
-`fetch` it is given, never by itself. mscts announces each download, and
-your tests pass a fake `fetch` so they never touch the network.
+**Read only through `net`.** `install` reads every URL through the `net`
+it is given, never by itself. `net` accepts only HTTPS URLs, and mscts
+announces each download. Your tests build a `net` on a fake, so they never
+touch the network: `HttpsNet(fake)` from `mscts.adapters.fetch`, where
+`fake` takes a URL and returns a `Download`.
 
-**Name the build exactly.** Give the version your publisher uses, and the
-full commit when the publisher names one. Reports show both. The commit a
-release names is only used to find the file. mscts records the commit that
-`check` reads from the file itself. If the release names a commit, mscts
-refuses a download that names none. A `--from` file that names none installs
-without one.
+**Put the build at `into`.** `into` is a file in a directory that mscts
+owns. Save the build there with `net.download`, or write it yourself if
+you build it. mscts runs `check` on the file and moves it into its cache
+only if `check` passes, so a failed install leaves nothing behind. mscts
+records the URL you downloaded the file from.
 
-**Pass on the publisher's own checksum.** If the publisher lists a sha1 and
-size for the file, as Mojang does, put them in the `Release`. mscts checks
-the download against them.
+**Name the build exactly.** Return the version your publisher uses, and
+the full commit when the publisher names one. Reports show both. The
+commit `install` returns is only used to find the file. mscts records the
+commit that `check` reads from the file itself. If `install` returns a
+commit, mscts refuses a file that names none. A `--from` file that names
+none installs without one.
+
+**Pass on the publisher's own checksum.** If the publisher lists a sha1 or
+size for a file, as Mojang does, pass them to `net.download`, or the sha1
+to `net.json`. `net` refuses a file that does not match them and writes
+nothing.
 
 **Only the Minecraft version mscts tests.** Refuse a build for any other
-version with `UnsupportedError`, in `release` when you can tell from the
+version with `UnsupportedError`, in `install` when you can tell from the
 version, and always in `check`. Give it what was asked for (`myserver@1.2`
 or the file) and, when you know it, what the build is. mscts writes the
 message, which is the same for every Adapter.
@@ -192,9 +201,9 @@ message, which is the same for every Adapter.
 **Raise `ProvisionError` for anything else you expect,** such as a page
 that is not what you asked for. Say only what is wrong, never what to
 type: mscts adds how to install a build from a file. If anything else goes
-wrong in `release`, such as a page that does not parse, mscts says the
-build could not be found, gives the error and names `--from`, so a user
-never sees a traceback.
+wrong in `install`, such as a page that does not parse or lacks a field,
+mscts says the build could not be found, gives the error and names
+`--from`, so a user never sees a traceback.
 
 **Never substitute a build.** If the version asked for cannot be
 downloaded, raise `UnavailableError` with the latest build that can. mscts
@@ -263,9 +272,9 @@ then sends SIGTERM, then SIGKILL, waiting up to 30 seconds at each step.
 2. In `src/mscts/cli.py`, import your Adapter and add it to `ADAPTERS`,
    which maps each Adapter name the command knows to its class. Those
    two lines are the only change outside your folder.
-3. Write unit tests in `tests/adapters/<name>/`: `release` with a fake
-   `fetch`, `check` on small stand-in files, and `prepare` on the files
-   it writes and on each invariant.
+3. Write unit tests in `tests/adapters/<name>/`: `install` with a `net`
+   built on a fake, `check` on small stand-in files, and `prepare` on the
+   files it writes and on each invariant.
 
 ```text
 src/mscts/adapters/myserver/__init__.py   # the Adapter

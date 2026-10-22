@@ -1,7 +1,7 @@
 # ADR-0008: Explicit installs, a pinned registry, and Adapters as a first-class extension point
 
 Status: accepted (2026-09-26). Amended 2026-10-03 (#156): decision 3 is
-replaced, below.
+replaced, below. Amended by #188 (2026-10-22): the Adapter installs, below.
 
 ## Context
 
@@ -107,3 +107,17 @@ never replaced silently; to get a newer one, delete it and install again),
 the honest prompt (decision 2), and Adapters as an extension point
 (decision 4). Where to read a Pumpkin nightly's commit is recorded in
 `docs/research/2026-10-03-install.md`.
+
+## Amendment (2026-10-22): the Adapter installs (#188)
+
+Amended by #188, decided by Eric on 2026-10-21. How a build is obtained
+and verified can differ between servers, so an Adapter is a
+self-contained plug-in for its server. Item 2 of the amendment above
+changes: an Adapter's `install(target, version, into, net) -> Build`
+replaces `release` and the `Release` record. It puts the build at `into`,
+a staging file mscts owns, and reads only through `net` (HTTPS only;
+`net.download` checks the sha1 and size the publisher lists, item 5).
+mscts keeps the cache layout, `SOURCE.json`, the prompt, `--from`,
+"already installed" as a no-op, the staging directory and `check`, and
+moves the file into the cache only once `check` passes. Bundled Adapters
+are trusted; a developer chooses which other Adapters to trust.
