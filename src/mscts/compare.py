@@ -795,10 +795,12 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     is not compared never shifts the numbers of what is. An entity whose `add_entity` was
     left out of the windows is named by it instead (`_Numbers.spawned`), and any
     `remove_entities` ends the name or number of the ids it removes (`_Numbers.removed`).
-    If the Transcript has tick Marks (`TICK_MARK`), each play Packet holds the tick it
-    arrived on (`_Ticks`). All of this runs over the Bot's Packets once its chunk packets
-    are put in order (`_by_position`). The sort moves only chunk packets, which carry no
-    entity ids, so it changes no entity's name or number. Each run of compared resends
+    Every recipe book packet, compared or not, changes the book the recipe numbers follow
+    (`_Numbers.uncompared`, `_RecipeNumbers`). If the Transcript has tick Marks
+    (`TICK_MARK`), each play Packet holds the tick it arrived on (`_Ticks`). All of this
+    runs over the Bot's Packets once its chunk packets are put in order (`_by_position`).
+    The sort moves only chunk packets, which carry no entity ids, so it changes no
+    entity's name or number. Each run of compared resends
     (`_runs`) is then taken in the order of its entities' names and numbers before the run
     (`_by_entity`). So the same resends get the same places on both sides however each server
     ordered them, as long as both sides named and numbered those entities alike: an entity
@@ -878,7 +880,7 @@ def _take(arrival: _Arrival, masks: _Masks, numbers: "_Numbers") -> _Normalized 
         if arrival.tick is not None:
             normalized = replace(normalized, tick=arrival.tick)
     else:
-        numbers.recipes.follow(packet)
+        numbers.uncompared(packet)
     numbers.removed(packet)
     return normalized
 
@@ -921,7 +923,9 @@ def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
     lets a neutral packet go across a run of chunks (#33), and comes after it: a heartbeat
     comes on the server's clock, whose phase differs between Instances, and a dropped packet
     is not compared at all. Neither reads or changes an entity's name or number, except an
-    `add_entity` or `remove_entities` (`_NAMING`), which ends the run.
+    `add_entity` or `remove_entities` (`_NAMING`), which ends the run. A recipe book packet
+    changes recipe numbers, but no resend holds a recipe id, so taking one after the run
+    changes none.
 
     A run also ends at a window's end: a resend in the next Observation window starts the
     next run, since each window is a step of the Group. In a tick-exact Group a run also
@@ -1516,7 +1520,7 @@ class _RecipeNumbers:
         """
         for copy in copies:
             if isinstance(recipes := copy.get("recipes"), list):
-                recipes[:] = _sorted_numbers(recipes, self.ids)
+                recipes[:] = _numbered_and_sorted(recipes, self.ids)
 
     def _number_contents(self, contents: dict[str, _Value]) -> None:
         """Number the display id and group number of `contents`, one entry's."""
@@ -1526,7 +1530,7 @@ class _RecipeNumbers:
             contents["group"] = f"#{self.groups.of(group)}"
 
 
-def _sorted_numbers(recipes: Sequence[_Value], ids: _Numbering) -> list[_Value]:
+def _numbered_and_sorted(recipes: Sequence[_Value], ids: _Numbering) -> list[_Value]:
     """`recipes`, a removal's, each display id as its number in `ids`, sorted by number.
 
     An id with no number takes the next. Anything that is not an id follows the ids, in order.
@@ -1546,11 +1550,9 @@ def _group(contents: Mapping[str, object]) -> _Group | None:
 
 def _book_entries(fields: Mapping[str, object]) -> Iterator[tuple[int, _Group | None]]:
     """The display id and group of each entry of `fields`, a `recipe_book_add`'s, that has an id."""
-    entries = fields.get("entries")
-    for entry in entries if isinstance(entries, list) else ():
-        contents = entry.get("contents") if isinstance(entry, dict) else None
-        if isinstance(contents, dict) and type(display_id := contents.get("id")) is int:
-            yield display_id, _group(cast("Mapping[str, object]", contents))
+    for contents in _recipe_contents(fields):
+        if type(display_id := contents.get("id")) is int:
+            yield display_id, _group(contents)
 
 
 def _removed_ids(fields: Mapping[str, object]) -> Iterator[int]:
@@ -1561,12 +1563,12 @@ def _removed_ids(fields: Mapping[str, object]) -> Iterator[int]:
             yield display_id
 
 
-def _recipe_contents(fields: Mapping[str, _Value]) -> Iterator[dict[str, _Value]]:
+def _recipe_contents(fields: Mapping[str, object]) -> Iterator[dict[str, _Value]]:
     """The `contents` of each entry of `fields`, a `recipe_book_add`'s, that has them."""
     entries = fields.get("entries")
     for entry in entries if isinstance(entries, list) else ():
         if isinstance(entry, dict) and isinstance(contents := entry.get("contents"), dict):
-            yield contents
+            yield cast("dict[str, _Value]", contents)
 
 
 @dataclass(slots=True)
@@ -1575,8 +1577,9 @@ class _Numbers:
 
     An entity spawned outside the windows is named by its `add_entity` (`spawned`); any
     other entity id, and each entity UUID, is numbered by first appearance in the compared
-    Packets (`take`): `#1` is the first. The recipes are numbered on their own (`recipes`,
-    `_normalize`).
+    Packets (`take`): `#1` is the first. The recipes are numbered on their own (`recipes`):
+    a compared recipe book packet through `_normalize`, and one that is not compared
+    changes the book their numbers follow (`uncompared`).
 
     Attributes:
         ids: Each entity id's name or number.
@@ -1603,6 +1606,13 @@ class _Numbers:
             entity: (0, self.numbers[entity], "") if entity in self.numbers else (1, 0, name)
             for entity, name in self.ids.items()
         }
+
+    def uncompared(self, packet: Packet) -> None:
+        """Change the recipe book as `packet`, one not compared, changes the client's (`follow`).
+
+        A compared one changes it as it is numbered (`_normalize`), so each changes it once.
+        """
+        self.recipes.follow(packet)
 
     def spawned(self, packet: Packet, masks: _Masks) -> None:
         """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.
