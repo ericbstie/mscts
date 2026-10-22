@@ -2541,8 +2541,12 @@ proves it necessary:
    `HashBasedTable`). Not compared: the book lists its buttons in that
    map's iteration order (`rebuildCollections` iterates `known.values()`,
    and `RecipeBookComponent.updateCollections` and `RecipeBookPage`
-   sort nothing), which follows the ids' values (`RecipeDisplayId` is a
-   record of one `int`, so its hash is the id).
+   sort nothing). That order follows the ids (`RecipeDisplayId` is a
+   record of one `int`, so its hash is the id), the table size the map
+   has grown to since the login (it never shrinks, not even on `clear`),
+   and the order in which ids that share a bucket were put, so it is not
+   derived from the compared packets (#438,
+   docs/research/2026-10-22-recipe-button-order.md).
 3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream
