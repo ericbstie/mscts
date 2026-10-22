@@ -2167,11 +2167,11 @@ def _from_list(components: list[_Value]) -> _Value:
     2026-09-26-comparison.md). The list stays as it is unless its first element is an
     object whose `extra`, if it has one, is a list.
     """
-    first = components[0] if components else None
-    if not isinstance(first, dict) or not isinstance(extra := first.get("extra", []), list):
-        return components
-    rest = components[1:]
-    return {**first, "extra": [*extra, *rest]} if rest else first
+    match components:
+        case [dict() as first, *rest] if isinstance(extra := first.get("extra", []), list):
+            return {**first, "extra": [*extra, *rest]} if rest else first
+        case _:
+            return components
 
 
 def _strict_json(text: str) -> _Value | Absent:

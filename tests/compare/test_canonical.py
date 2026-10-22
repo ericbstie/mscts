@@ -105,6 +105,8 @@ def test_text_components_inside_a_description_are_canonical_too(
         # not canonicalized.
         ('"x"', '{"text":"x","bold":false}', [("json_response.description.bold", ABSENT, False)]),
         ('"x"', '{"type":"text","text":"x"}', [("json_response.description.type", ABSENT, "text")]),
+        # A list whose first element is not a text component.
+        ('"x"', '[1,"x"]', [("json_response.description", {"text": "x"}, [1, {"text": "x"}])]),
     ],
 )
 def test_spellings_not_shown_to_read_alike_stay_significant(
@@ -326,11 +328,19 @@ def test_the_version_ignores_a_key_it_does_not_name() -> None:
         ('{"description":{"text":"a","x":1}}', ("json_response.description.x", ABSENT, 1)),
         ('{"description":{"text":"a","x":null}}', ("json_response.description.x", ABSENT, None)),
         (
+            '{"description":[{"text":"a","extra":null},"b"]}',
+            (
+                "json_response.description",
+                {"text": "a"},
+                [{"text": "a", "extra": None}, {"text": "b"}],
+            ),
+        ),
+        (
             '{"description":{"text":"a"},"players":{"sample":[{"name":"a","x":null}]}}',
             ("json_response.players.sample[0].x", ABSENT, None),
         ),
     ],
-    ids=["description-key", "description-null", "sample-entry-null"],
+    ids=["description-key", "description-null", "description-list-null-extra", "sample-entry-null"],
 )
 def test_unknown_keys_and_nulls_elsewhere_stay_significant(
     candidate: str, divergence: tuple[str, object, object]
