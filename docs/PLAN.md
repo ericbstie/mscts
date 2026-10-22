@@ -85,8 +85,8 @@ test needs it:
 | `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
 | `inventory.py` | `InventoryTracker`: the player's inventory and the open container (`Inventory`, `Stack`) |
 | `spec.py` | `ServerSpec` and its enums |
-| `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read) |
-| `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed |
+| `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read); `Net` (what an Adapter gets for the network) |
+| `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed; `HttpsNet`, the `Net` built on a `Fetch`, and its `ChecksumError` |
 | `adapters/<name>/` | one folder per server, registered by an import and one entry in `cli.py`'s `ADAPTERS`; its tests in `tests/adapters/<name>/`. `adapters/vanilla/`: `MANIFEST_URL` (Mojang's version manifest). `adapters/pumpkin/`: `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit), and its pinned first-run `pumpkin.toml` with `SOURCE.md` |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `adapters/fixture_world.py` | what every Adapter writes into the Fixture world: its game rules (ADR-0013) |
@@ -919,6 +919,21 @@ class Release:                      # a build its publisher offers for download
     size: int | None = None         # bytes, where the publisher states it
 
 type Fetch = Callable[[str], Download]  # fetch.https_get, or a fake in tests
+
+class Net(Protocol):                # what mscts hands an Adapter for the network (#188)
+    def get(self, url: str, sha1: str | None = None) -> bytes: ...
+    def json(self, url: str, sha1: str | None = None) -> Any: ...  # get, then json.loads
+    def download(self, url: str, into: Path, sha1: str | None = None,
+                 size: int | None = None) -> None: ...  # saves the body as `into`
+    # Every URL HTTPS, else ProvisionError "refusing to fetch a non-HTTPS URL: <url>" before
+    # fetching. A body whose sha1 is not `sha1`: ProvisionError "<url> is not what its
+    # publisher lists: sha1 <actual>, where its publisher lists sha1 <sha1>."; a download whose
+    # sha1 or size is not the one given: fetch.ChecksumError (a ProvisionError) "<url> is not
+    # the file its publisher lists: sha1 <actual>, <n> bytes, where its publisher lists
+    # sha1 <sha1>, <size> bytes." (naming only what is given), and `into` is not written.
+    # A failed connection or read raises OSError or http.client.HTTPException; a document
+    # that is not JSON, ValueError: install.py words both.
+# fetch.HttpsNet(fetch: Fetch = https_get): the Net, reading every URL through `fetch`
 
 @frozen
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)

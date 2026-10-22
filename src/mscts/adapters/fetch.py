@@ -1,12 +1,15 @@
 """Downloading an Installation: HTTPS only, on every hop of every redirect."""
 
+import hashlib
 import http.client
+import json
 import ssl
 import urllib.request
-from typing import IO, override
+from pathlib import Path
+from typing import IO, Any, override
 from urllib.parse import urlsplit
 
-from mscts.adapters.base import Download, ProvisionError
+from mscts.adapters.base import Download, Fetch, ProvisionError
 
 # How many redirects one fetch may follow. A GitHub release asset takes one.
 MAX_REDIRECTS = 5
@@ -70,3 +73,59 @@ def https_get(url: str) -> Download:
         final = response.geturl()
         _require_https(final, "accept a response from")
         return Download(url=final, body=response.read())
+
+
+class ChecksumError(ProvisionError):
+    """A download that is not the file its publisher lists: mscts says how to run it anyway."""
+
+
+def _sha1(body: bytes) -> str:
+    """The publisher's own hash of `body` (Mojang's): an integrity check, not security."""
+    return hashlib.sha1(body, usedforsecurity=False).hexdigest()
+
+
+def _listed(sha1: str | None, size: int | None) -> str:
+    """What a publisher lists for a file, in words: `sha1 <hex>, <n> bytes`, or either."""
+    parts = [] if sha1 is None else [f"sha1 {sha1}"]
+    return ", ".join(parts if size is None else [*parts, f"{size} bytes"])
+
+
+class HttpsNet:
+    """The Net mscts hands an Adapter, built on a Fetch (https_get, or a fake in tests)."""
+
+    def __init__(self, fetch: Fetch = https_get) -> None:
+        """Read every URL through `fetch`, which may announce it."""
+        self._fetch = fetch
+
+    def _read(self, url: str) -> Download:
+        """`url` fetched; ProvisionError, before fetching, unless it is HTTPS."""
+        _require_https(url, "fetch")
+        return self._fetch(url)
+
+    def get(self, url: str, sha1: str | None = None) -> bytes:
+        """The body at `url`; ProvisionError unless its sha1 is `sha1`, where one is given."""
+        body = self._read(url).body
+        if sha1 is not None and _sha1(body) != sha1:
+            msg = (
+                f"{url} is not what its publisher lists: sha1 {_sha1(body)}, where its "
+                f"publisher lists sha1 {sha1}."
+            )
+            raise ProvisionError(msg)
+        return body
+
+    def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - the publisher's shape
+        """The JSON document at `url`, parsed, checked as `get` checks it."""
+        return json.loads(self.get(url, sha1))
+
+    def download(
+        self, url: str, into: Path, sha1: str | None = None, size: int | None = None
+    ) -> None:
+        """Save the body at `url` as `into`; ChecksumError unless it has the sha1 and size given."""
+        body = self._read(url).body
+        if (sha1 is not None and _sha1(body) != sha1) or (size is not None and len(body) != size):
+            msg = (
+                f"{url} is not the file its publisher lists: sha1 {_sha1(body)}, {len(body)} "
+                f"bytes, where its publisher lists {_listed(sha1, size)}."
+            )
+            raise ChecksumError(msg)
+        into.write_bytes(body)

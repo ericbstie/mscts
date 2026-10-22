@@ -7,7 +7,7 @@ what it needs through the `fetch` it is given, but never installs anything.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, override
+from typing import Any, Protocol, override
 
 from mscts.net import Endpoint
 from mscts.spec import ServerSpec
@@ -93,6 +93,29 @@ class Download:
 
 type Fetch = Callable[[str], Download]
 """How an Adapter and install.py read a URL: fetch.https_get, or a fake in tests."""
+
+
+class Net(Protocol):
+    """What mscts hands an Adapter for the network: HTTPS only, and each refusal worded.
+
+    A failure to connect or read raises OSError or http.client.HTTPException, which mscts
+    words. A URL that is not HTTPS, or a body that is not what its publisher lists, raises
+    ProvisionError.
+    """
+
+    def get(self, url: str, sha1: str | None = None) -> bytes:
+        """The body at `url`; ProvisionError unless its sha1 is `sha1`, where one is given."""
+        ...
+
+    def json(self, url: str, sha1: str | None = None) -> Any:  # noqa: ANN401 - the publisher's shape
+        """The JSON document at `url`, parsed, checked as `get` checks it."""
+        ...
+
+    def download(
+        self, url: str, into: Path, sha1: str | None = None, size: int | None = None
+    ) -> None:
+        """Save the body at `url` as `into`, refused unless it has the sha1 and size given."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
