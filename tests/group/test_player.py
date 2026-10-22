@@ -16,6 +16,7 @@ import pytest
 from support.control import CODEC
 from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
+    BUBBLES,
     DEATH,
     FADE_READS,
     PERFORM_RESPAWN,
@@ -484,6 +485,25 @@ def test_drowning_turns_the_damage_on_inside_the_window_once_the_first_bubbles_c
         and e.packet.fields == {"command": "gamerule drowning_damage true"}
     )
     assert bubbles < turned_on
+
+
+def test_drowning_turns_the_damage_on_after_the_bubbles_and_not_after_another_entity_event() -> (
+    None
+):
+    transcript = drowned(Drown(other_event=2))
+
+    events = [
+        (e.t_ns, (e.packet.fields or {})["event_id"])
+        for e in transcript.events
+        if e.bot == "drowner" and e.packet.name == "minecraft:entity_event"
+    ]
+    turned_on = next(
+        e.t_ns
+        for e in transcript.events
+        if e.packet.name == CHAT_COMMAND
+        and e.packet.fields == {"command": "gamerule drowning_damage true"}
+    )
+    assert [event for t, event in events if t < turned_on] == [2, BUBBLES]
 
 
 def test_drowning_ends_its_window_on_the_death_and_respawns_in_a_window_of_its_own() -> None:

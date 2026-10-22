@@ -100,10 +100,13 @@ class Drown:
             is `AIR_RUNS_OUT`.
         air: The air the Bot has when it is put under water; vanilla's is 300, which would make
             a play 15 s longer.
+        other_event: An entity event that is not the bubbles, which the fake sends on the first
+            tick under water if given: a near miss for a Group that waits for the bubbles.
     """
 
     period_ticks: int = AIR_RUNS_OUT
     air: int = 3
+    other_event: int | None = None
 
 
 @dataclass
@@ -256,6 +259,11 @@ class PlayerServer:
         """
         air, runs_out = drown.air, AIR_RUNS_OUT
         with suppress(ConnectionError):
+            if drown.other_event is not None:
+                await asyncio.sleep(TICK_S)
+                await self._to_bots(
+                    "minecraft:entity_event", entity_id=ENTITY_ID, event_id=drown.other_event
+                )
             while True:
                 await asyncio.sleep(TICK_S)
                 air -= 1
