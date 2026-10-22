@@ -7,18 +7,14 @@ Status packets are built through the Target's real Codec.
 """
 
 import pytest
+from support.compared import PUMPKIN_NIGHTLY, VANILLA, status
 
-from mscts.codec.packets import Codec, Packet, State
+from mscts.codec.packets import Codec, Packet
 from mscts.compare import ABSENT, Mask, compare
-from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
+from tests.compare.build import divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
 
-VANILLA = (
-    '{"description":"mscts","players":{"max":20,"online":0},'
-    '"version":{"name":"26.3","protocol":777}}'
-)
-"""What vanilla 26.3 answered for the default ServerSpec (docs/research, verified)."""
 
 PUMPKIN_STYLE = (
     '{"version":{"name":"26.3","protocol":777},'
@@ -28,13 +24,6 @@ PUMPKIN_STYLE = (
 )
 """Shaped like Pumpkin nightly's status (docs/research): sample [], a favicon, an object
 description."""
-
-
-def status(json_response: str) -> Packet:
-    data = CODEC.encode(
-        State.STATUS, CLIENTBOUND, "minecraft:status_response", {"json_response": json_response}
-    )
-    return CODEC.decode(State.STATUS, CLIENTBOUND, data)
 
 
 def _diff(reference: str, candidate: str, *masks: Mask) -> list[tuple[str | None, object, object]]:
@@ -224,15 +213,6 @@ def test_only_the_exact_declared_default_is_its_absence(
     candidate: str, divergence: tuple[str, object, object]
 ) -> None:
     assert _diff('{"players":{"max":20,"online":0}}', candidate) == [divergence]
-
-
-PUMPKIN_NIGHTLY = (
-    '{"version":{"name":"26.3","protocol":777},'
-    '"players":{"max":20,"online":0,"sample":[]},'
-    '"description":{"text":"mscts"},"favicon":null,"enforceSecureChat":true}'
-)
-"""Shaped like Pumpkin nightly-48cba7ee's live status: a null favicon, and a misspelled
-`enforceSecureChat` the client's codec never reads (docs/research)."""
 
 
 def test_pumpkin_nightlys_status_differs_from_vanillas_in_network_traffic_only() -> None:

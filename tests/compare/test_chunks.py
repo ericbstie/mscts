@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from pathlib import Path
 
 import pytest
+from support.compared import verdict_of
 
 from mscts.case_titles import TITLES
 from mscts.codec.packets import Codec, Packet, State
@@ -129,10 +130,6 @@ def chunk(
     return CODEC.decode(State.PLAY, CLIENTBOUND, data)
 
 
-def _verdict(reference: Packet, candidate: Packet) -> Verdict:
-    return compare(transcript(("alice", reference)), transcript(("alice", candidate)), [])
-
-
 def _gameplay(path: str, reference: str, candidate: str, test_case: str) -> Divergence:
     return divergence(
         "field",
@@ -157,7 +154,7 @@ def _gameplay(path: str, reference: str, candidate: str, test_case: str) -> Dive
 def test_the_same_blocks_under_another_palette_are_network_traffic_only(
     bottom: dict[str, object],
 ) -> None:
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(overworld(bottom)))
+    verdict = verdict_of(chunk(overworld(FLAT_BOTTOM)), chunk(overworld(bottom)))
 
     assert verdict.divergences
     assert verdict.gameplay == ()
@@ -184,7 +181,7 @@ def test_the_same_blocks_in_another_palette_order_are_no_difference(
 ) -> None:
     # Vanilla sends a section it holds in memory in the order its values were set (air first),
     # and one it read back from disk in entry order (PalettedContainer.pack): #172.
-    verdict = _verdict(chunk(overworld(reference)), chunk(overworld(candidate)))
+    verdict = verdict_of(chunk(overworld(reference)), chunk(overworld(candidate)))
 
     assert verdict.divergences == ()
 
@@ -193,7 +190,7 @@ def test_the_same_biomes_in_another_palette_order_are_no_difference() -> None:
     reference = paletted(TWO_BIOMES, [PLAINS, 3], bits=1, width=1)
     candidate = paletted(TWO_BIOMES, [3, PLAINS], bits=1, width=1)
 
-    verdict = _verdict(
+    verdict = verdict_of(
         chunk(overworld(FLAT_BOTTOM, biomes=reference)),
         chunk(overworld(FLAT_BOTTOM, biomes=candidate)),
     )
@@ -214,7 +211,7 @@ def test_a_hash_palette_longer_than_its_bits_allow_stays_as_sent() -> None:
     reference = paletted(values, LONG_PALETTE, bits=6, width=6)
     candidate = paletted(values, descending, bits=5, width=5)
 
-    verdict = _verdict(chunk(overworld(reference)), chunk(overworld(candidate)))
+    verdict = verdict_of(chunk(overworld(reference)), chunk(overworld(candidate)))
 
     assert _network_traffic_only(verdict)
 
@@ -225,7 +222,7 @@ def test_a_hash_palette_whose_sorted_index_would_not_fit_a_long_does_not_raise()
     reference = paletted([400] * 4096, [400], bits=8, width=8)
     candidate = paletted([400] * 4096, list(range(400, 100, -1)), bits=8, width=8)
 
-    verdict = _verdict(chunk(overworld(reference)), chunk(overworld(candidate)))
+    verdict = verdict_of(chunk(overworld(reference)), chunk(overworld(candidate)))
 
     assert _network_traffic_only(verdict)
 
@@ -234,7 +231,7 @@ def test_a_section_of_one_block_as_a_palette_is_network_traffic_only() -> None:
     sections = overworld(FLAT_BOTTOM)
     sections[5] = section(paletted([AIR] * 4096, [AIR], bits=4, width=4), block_count=0)
 
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(sections))
+    verdict = verdict_of(chunk(overworld(FLAT_BOTTOM)), chunk(sections))
 
     assert verdict.divergences
     assert verdict.gameplay == ()
@@ -254,7 +251,7 @@ PALETTE = [88, 10, 9, 0, STONE]
 def test_one_different_block_is_a_gameplay_difference_naming_its_position() -> None:
     stone = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
 
-    verdict = _verdict(
+    verdict = verdict_of(
         chunk(overworld(FLAT_BOTTOM), at=(2, -1)), chunk(overworld(stone), at=(2, -1))
     )
 
@@ -272,7 +269,7 @@ def test_the_first_three_positions_that_differ_are_named_and_the_rest_counted() 
     changed = {(x, 3, 0): STONE for x in range(5)}
     candidate = chunk(overworld(paletted(_with(changed), PALETTE, bits=4, width=4)))
 
-    (difference,) = _verdict(chunk(overworld(FLAT_BOTTOM)), candidate).divergences
+    (difference,) = verdict_of(chunk(overworld(FLAT_BOTTOM)), candidate).divergences
 
     assert difference.reference == "chunk 0 0: 0 -61 0 is 9, 1 -61 0 is 9, 2 -61 0 is 9 and 2 more"
     assert difference.candidate == "chunk 0 0: 0 -61 0 is 1, 1 -61 0 is 1, 2 -61 0 is 1 and 2 more"
@@ -282,7 +279,7 @@ def test_three_positions_that_differ_are_all_named() -> None:
     changed = {(x, 3, 0): STONE for x in range(3)}
     candidate = chunk(overworld(paletted(_with(changed), PALETTE, bits=4, width=4)))
 
-    (difference,) = _verdict(chunk(overworld(FLAT_BOTTOM)), candidate).divergences
+    (difference,) = verdict_of(chunk(overworld(FLAT_BOTTOM)), candidate).divergences
 
     assert difference.candidate == "chunk 0 0: 0 -61 0 is 1, 1 -61 0 is 1, 2 -61 0 is 1"
 
@@ -293,7 +290,7 @@ def test_a_block_in_a_higher_section_names_its_height() -> None:
         paletted([STONE] + [AIR] * 4095, [AIR, STONE], bits=4, width=4), block_count=1
     )
 
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(sections))
+    verdict = verdict_of(chunk(overworld(FLAT_BOTTOM)), chunk(sections))
 
     assert [(d.path, d.reference, d.candidate) for d in verdict.gameplay] == [
         ("sections[5].block_count", 0, 1),
@@ -304,8 +301,8 @@ def test_a_block_in_a_higher_section_names_its_height() -> None:
 def test_swapping_the_sides_swaps_the_positions_values() -> None:
     stone = chunk(overworld(paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)))
 
-    (forward,) = _verdict(chunk(overworld(FLAT_BOTTOM)), stone).divergences
-    (backward,) = _verdict(stone, chunk(overworld(FLAT_BOTTOM))).divergences
+    (forward,) = verdict_of(chunk(overworld(FLAT_BOTTOM)), stone).divergences
+    (backward,) = verdict_of(stone, chunk(overworld(FLAT_BOTTOM))).divergences
 
     assert (backward.reference, backward.candidate) == (forward.candidate, forward.reference)
 
@@ -314,7 +311,7 @@ def test_a_chunk_of_another_height_counts_y_from_the_worlds_bottom() -> None:
     stone = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
     reference = [section(FLAT_BOTTOM, block_count=1024)]
 
-    verdict = _verdict(chunk(reference), chunk([section(stone, block_count=1024)]))
+    verdict = verdict_of(chunk(reference), chunk([section(stone, block_count=1024)]))
 
     assert [(d.reference, d.candidate) for d in verdict.divergences] == [
         (
@@ -333,7 +330,7 @@ def test_a_chunk_as_high_as_the_nether_counts_y_from_0() -> None:
     reference = [section(FLAT_BOTTOM, block_count=1024), *NETHER_AIR]
     candidate = [section(STONE_BOTTOM, block_count=1024), *NETHER_AIR]
 
-    verdict = _verdict(chunk(reference), chunk(candidate))
+    verdict = verdict_of(chunk(reference), chunk(candidate))
 
     assert [(d.reference, d.candidate) for d in verdict.divergences] == [
         ("chunk 0 0: 5 2 7 is 10", "chunk 0 0: 5 2 7 is 1")
@@ -343,7 +340,7 @@ def test_a_chunk_as_high_as_the_nether_counts_y_from_0() -> None:
 def test_chunks_of_two_heights_count_y_from_the_worlds_bottom() -> None:
     candidate = [section(STONE_BOTTOM, block_count=1024), *NETHER_AIR]
 
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(candidate))
+    verdict = verdict_of(chunk(overworld(FLAT_BOTTOM)), chunk(candidate))
 
     shown = {d.path: (d.reference, d.candidate) for d in verdict.divergences}
     assert shown["sections[0].block_states"] == (
@@ -356,7 +353,7 @@ def test_an_entry_past_its_palette_is_a_difference_too() -> None:
     # The client reads it, and fails only when it looks the block up (`valueFor`).
     past = {"bits": 4, "palette": [88, 10, 9], "data": FLAT_BOTTOM["data"]}
 
-    (difference,) = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(overworld(past))).gameplay
+    (difference,) = verdict_of(chunk(overworld(FLAT_BOTTOM)), chunk(overworld(past))).gameplay
 
     assert (
         difference.reference == "chunk 0 0: 0 -60 0 is 0, 1 -60 0 is 0, 2 -60 0 is 0 and 3069 more"
@@ -372,7 +369,7 @@ def test_a_section_whose_every_entry_is_past_its_palette_names_its_positions() -
     sections = overworld(FLAT_BOTTOM)
     sections[1] = section(every, block_count=0)
 
-    (difference,) = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(sections)).gameplay
+    (difference,) = verdict_of(chunk(overworld(FLAT_BOTTOM)), chunk(sections)).gameplay
 
     assert difference.candidate == (
         "chunk 0 0: 0 -48 0 is past the palette, 1 -48 0 is past the palette, "
@@ -385,7 +382,9 @@ def test_one_different_biome_is_a_gameplay_difference_naming_its_cell() -> None:
     cells[(2 << 4) | (3 << 2) | 1] = 7  # the cell at x 1, y 2, z 3 of 4
     biomes = paletted(cells, [PLAINS, 7], bits=1, width=1)
 
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(overworld(FLAT_BOTTOM, biomes=biomes)))
+    verdict = verdict_of(
+        chunk(overworld(FLAT_BOTTOM)), chunk(overworld(FLAT_BOTTOM, biomes=biomes))
+    )
 
     assert verdict.divergences == (
         _gameplay(
@@ -402,16 +401,16 @@ def test_fields_the_codec_did_not_decode_are_compared_as_they_are() -> None:
         sections = [{"block_states": {"bits": bits}}, "not a section"]
         return packet(CHUNK, fields={"chunk_x": 0, "chunk_z": 0, "sections": sections})
 
-    verdict = _verdict(odd(0), odd(1))
+    verdict = verdict_of(odd(0), odd(1))
 
     assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
         ("sections[0].block_states.bits", 0, 1)
     ]
-    assert _verdict(packet(CHUNK, fields={"sections": "none"}), packet(CHUNK, fields={})).gameplay
+    assert verdict_of(packet(CHUNK, fields={"sections": "none"}), packet(CHUNK, fields={})).gameplay
     # A list with an element of no known type or position keeps its order.
     odd_lists = {"heightmaps": [{"type": 5}, {"type": "?"}], "block_entities": [{"y": 1}, "?"]}
     swapped = {key: value[::-1] for key, value in odd_lists.items()}
-    verdict = _verdict(packet(CHUNK, fields=odd_lists), packet(CHUNK, fields=swapped))
+    verdict = verdict_of(packet(CHUNK, fields=odd_lists), packet(CHUNK, fields=swapped))
     assert {str(d.path).split("[")[0] for d in verdict.gameplay} == {"heightmaps", "block_entities"}
 
 
@@ -422,7 +421,7 @@ def test_a_container_the_client_cannot_read_is_shown_as_it_is() -> None:
 
     unreadable = {"bits": 99, "palette": None, "data": b""}  # no palette has 99 bits
 
-    verdict = _verdict(holding(unreadable), holding(single(STONE)))
+    verdict = verdict_of(holding(unreadable), holding(single(STONE)))
 
     assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
         ("sections[0].block_states", unreadable, STONE)
@@ -438,7 +437,7 @@ def test_the_order_of_heightmaps_is_no_difference() -> None:
     reference = chunk(heightmaps=[heightmap(4), heightmap(1), heightmap(5)])
     candidate = chunk(heightmaps=[heightmap(5), heightmap(4), heightmap(1)])
 
-    assert _verdict(reference, candidate).divergences == ()
+    assert verdict_of(reference, candidate).divergences == ()
 
 
 def test_another_heightmap_is_a_difference_at_its_sorted_path() -> None:
@@ -446,7 +445,7 @@ def test_another_heightmap_is_a_difference_at_its_sorted_path() -> None:
     reference = chunk(heightmaps=[heightmap(5), heightmap(4), heightmap(1)])
     candidate = chunk(heightmaps=[heightmap(1), changed, heightmap(5)])
 
-    verdict = _verdict(reference, candidate)
+    verdict = verdict_of(reference, candidate)
 
     assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
         ("heightmaps[1].data[3]", 4, 9)
@@ -458,7 +457,7 @@ def test_a_heightmap_type_the_client_does_not_know_sorts_as_the_one_it_reads() -
     # type sent twice: so these two differ.
     unknown, known = heightmap(7, height=1), heightmap(0, height=2)
 
-    verdict = _verdict(chunk(heightmaps=[unknown, known]), chunk(heightmaps=[known, unknown]))
+    verdict = verdict_of(chunk(heightmaps=[unknown, known]), chunk(heightmaps=[known, unknown]))
 
     assert verdict.gameplay
 
@@ -476,7 +475,7 @@ def test_heightmaps_the_client_keeps_alike_are_network_traffic_only(
 ) -> None:
     # The verdict review of #122, finding 7: the client puts each into an EnumMap by its type,
     # reading an unknown id as 0, so the last of a type is the one it keeps.
-    verdict = _verdict(chunk(heightmaps=reference), chunk(heightmaps=candidate))
+    verdict = verdict_of(chunk(heightmaps=reference), chunk(heightmaps=candidate))
 
     assert _network_traffic_only(verdict)
 
@@ -488,7 +487,7 @@ def block_entity(x: int, y: int, z: int, *, kind: int = 7) -> dict[str, object]:
 def test_the_order_of_block_entities_at_different_positions_is_no_difference() -> None:
     a, b, c = block_entity(1, -60, 2), block_entity(3, -61, 0), block_entity(0, -60, 9)
 
-    verdict = _verdict(chunk(block_entities=[a, b, c]), chunk(block_entities=[c, a, b]))
+    verdict = verdict_of(chunk(block_entities=[a, b, c]), chunk(block_entities=[c, a, b]))
 
     assert verdict.divergences == ()
 
@@ -497,7 +496,9 @@ def test_block_entities_at_one_position_keep_their_order() -> None:
     # The client loads each in turn, so the last one sent ends up loaded last.
     first, second = block_entity(1, -60, 2, kind=7), block_entity(1, -60, 2, kind=8)
 
-    verdict = _verdict(chunk(block_entities=[first, second]), chunk(block_entities=[second, first]))
+    verdict = verdict_of(
+        chunk(block_entities=[first, second]), chunk(block_entities=[second, first])
+    )
 
     assert verdict.gameplay
 
@@ -510,7 +511,9 @@ def test_heightmaps_and_block_entities_are_compared_sorted_with_their_reason() -
 def test_the_same_biomes_under_another_palette_are_network_traffic_only() -> None:
     biomes = paletted([PLAINS] * 64, [PLAINS], bits=2, width=2)
 
-    verdict = _verdict(chunk(overworld(FLAT_BOTTOM)), chunk(overworld(FLAT_BOTTOM, biomes=biomes)))
+    verdict = verdict_of(
+        chunk(overworld(FLAT_BOTTOM)), chunk(overworld(FLAT_BOTTOM, biomes=biomes))
+    )
 
     assert verdict.divergences
     assert verdict.gameplay == ()
@@ -1127,7 +1130,7 @@ def _network_traffic_only(verdict: Verdict) -> bool:
 
 def test_block_light_empty_and_an_array_of_zeros_are_network_traffic_only() -> None:
     # No client code tells an empty DataLayer from one of zeros for block light.
-    assert _network_traffic_only(_verdict(_lit(block={1: EMPTY}), _lit(block={1: DARK})))
+    assert _network_traffic_only(verdict_of(_lit(block={1: EMPTY}), _lit(block={1: DARK})))
 
 
 @pytest.mark.parametrize("name", [CHUNK, "minecraft:light_update"])
@@ -1142,11 +1145,11 @@ def test_sky_light_below_the_world_empty_and_an_array_of_zeros_are_no_difference
     reference = make(light(sky={0: EMPTY, 1: FULL, 2: FULL}))
     candidate = make(light(sky={0: DARK, 1: FULL, 2: FULL}))
 
-    assert _verdict(reference, candidate).divergences == ()
+    assert verdict_of(reference, candidate).divergences == ()
 
 
 def test_sky_light_below_the_world_as_another_array_still_differs() -> None:
-    verdict = _verdict(_lit(sky={0: EMPTY, 1: FULL}), _lit(sky={0: FULL, 1: FULL}))
+    verdict = verdict_of(_lit(sky={0: EMPTY, 1: FULL}), _lit(sky={0: FULL, 1: FULL}))
 
     assert [d.path for d in verdict.gameplay] == ["light.sky[0]"]
 
@@ -1158,7 +1161,7 @@ def test_a_mask_sent_with_a_trailing_zero_byte_stays_network_traffic(mask: str) 
     candidate = light(sky={0: DARK, 1: FULL})
     candidate[mask] = bytes(candidate[mask]) + b"\x00"  # ty: ignore[invalid-argument-type]
 
-    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+    verdict = verdict_of(chunk(light_data=reference), chunk(light_data=candidate))
 
     assert [d.path for d in verdict.divergences] == [f"light.{mask}"]
     assert verdict.gameplay == ()
@@ -1167,7 +1170,7 @@ def test_a_mask_sent_with_a_trailing_zero_byte_stays_network_traffic(mask: str) 
 def test_sky_light_in_the_world_empty_and_an_array_of_zeros_differ_in_gameplay() -> None:
     # SkyLightEngine.setLightEnabled fills an empty stored sky section with 15 the next time
     # the client applies the chunk's light; an array of zeros stays dark.
-    verdict = _verdict(_lit(sky={2: EMPTY}), _lit(sky={2: DARK}))
+    verdict = verdict_of(_lit(sky={2: EMPTY}), _lit(sky={2: DARK}))
 
     assert verdict.divergences == (
         _gameplay(
@@ -1181,7 +1184,7 @@ def test_sky_light_in_the_world_empty_and_an_array_of_zeros_differ_in_gameplay()
 
 def test_a_light_section_not_sent_differs_from_an_empty_one() -> None:
     # The client keeps the light it had for a section neither mask names.
-    verdict = _verdict(_lit(block={3: EMPTY}), _lit())
+    verdict = verdict_of(_lit(block={3: EMPTY}), _lit())
 
     assert verdict.divergences == (
         _gameplay(
@@ -1195,7 +1198,7 @@ def test_a_light_section_not_sent_differs_from_an_empty_one() -> None:
 
 def test_a_light_section_past_a_chunks_height_is_no_such_light_section() -> None:
     # The verdict review of #122, finding 5: 25 sections have one more light section than 24.
-    verdict = _verdict(chunk(), chunk([*overworld(FLAT_BOTTOM), AIR_SECTION]))
+    verdict = verdict_of(chunk(), chunk([*overworld(FLAT_BOTTOM), AIR_SECTION]))
 
     shown = {d.path: (d.reference, d.candidate) for d in verdict.divergences}
     assert shown["light.sky[26]"] == (
@@ -1208,7 +1211,7 @@ def test_the_mask_wins_over_the_empty_mask() -> None:
     reference = light(sky={1: FULL})
     candidate = {**reference, "empty_sky_light_mask": _bit_set([1])}
 
-    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+    verdict = verdict_of(chunk(light_data=reference), chunk(light_data=candidate))
 
     assert [(d.path, d.observability) for d in verdict.divergences] == [
         ("light.empty_sky_light_mask", Observability.NETWORK_TRAFFIC)
@@ -1225,14 +1228,16 @@ def test_bits_past_the_light_sections_and_arrays_past_the_mask_are_never_read() 
         "sky_light_arrays": [FULL, DARK, DARK],
     }
 
-    assert _network_traffic_only(_verdict(chunk(light_data=reference), chunk(light_data=candidate)))
+    assert _network_traffic_only(
+        verdict_of(chunk(light_data=reference), chunk(light_data=candidate))
+    )
 
 
 def test_a_different_light_level_names_its_position() -> None:
     changed = bytearray(FULL)
     changed[((4 << 8) | (4 << 4) | 3) >> 1] = 0x0F  # x 3, y 4, z 4: an odd entry, the high bits
 
-    verdict = _verdict(_lit(sky={1: FULL}), _lit(sky={1: bytes(changed)}))
+    verdict = verdict_of(_lit(sky={1: FULL}), _lit(sky={1: bytes(changed)}))
 
     assert verdict.divergences == (
         _gameplay(
@@ -1247,7 +1252,7 @@ def test_a_different_light_level_names_its_position() -> None:
 def test_light_of_another_kind_is_summed_up() -> None:
     levels = DARK[:1024] + FULL[:1024]  # levels 0 and 15
 
-    verdict = _verdict(_lit(block={4: levels}), _lit(sky={4: DARK}))
+    verdict = verdict_of(_lit(block={4: levels}), _lit(sky={4: DARK}))
 
     assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
         (
@@ -1271,7 +1276,7 @@ def test_light_the_client_cannot_read_is_a_value_of_its_own(
     reference = light(sky={1: FULL})
     candidate = {**reference, "sky_light_arrays": arrays}
 
-    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+    verdict = verdict_of(chunk(light_data=reference), chunk(light_data=candidate))
 
     assert [(d.path, d.candidate) for d in verdict.gameplay] == [
         ("light.sky[1]", f"chunk 0 0, y -64 to -49: {shown}")
@@ -1289,7 +1294,7 @@ def test_pumpkins_light_differs_in_gameplay_where_vanilla_sends_none() -> None:
     # Vanilla sends sky arrays for light sections 1 and 2 and names no section above them;
     # Pumpkin sends 15s up to the top. The client keeps what it had where vanilla names none,
     # so that is a gameplay difference, never a canonical rule.
-    verdict = _verdict(_recorded("vanilla"), _recorded("pumpkin"))
+    verdict = verdict_of(_recorded("vanilla"), _recorded("pumpkin"))
 
     above = range(3, 26)
     assert {d.path for d in verdict.divergences} == {
@@ -1316,11 +1321,11 @@ def light_update(data: dict[str, object]) -> Packet:
 
 def test_a_light_update_follows_the_same_rules() -> None:
     # It has no sections to say how high the world is: y counts from the world's bottom.
-    equal = _verdict(
+    equal = verdict_of(
         light_update(light(sky={0: EMPTY}, block={1: EMPTY})),
         light_update(light(sky={0: DARK}, block={1: DARK})),
     )
-    differ = _verdict(light_update(light(sky={2: EMPTY})), light_update(light(sky={2: DARK})))
+    differ = verdict_of(light_update(light(sky={2: EMPTY})), light_update(light(sky={2: DARK})))
 
     assert _network_traffic_only(equal)
     assert [(d.path, d.reference, d.candidate) for d in differ.divergences] == [
@@ -1334,15 +1339,15 @@ def test_a_light_update_follows_the_same_rules() -> None:
 
 def test_a_light_update_is_read_over_256_light_sections() -> None:
     # No level has more (DimensionType's height is at most Y_SIZE, 4064 blocks).
-    read = _verdict(light_update(light()), light_update(light(sky={255: FULL})))
-    never_read = _verdict(light_update(light()), light_update(light(sky={256: FULL})))
+    read = verdict_of(light_update(light()), light_update(light(sky={255: FULL})))
+    never_read = verdict_of(light_update(light()), light_update(light(sky={256: FULL})))
 
     assert [d.path for d in read.gameplay] == ["data.sky[255]"]
     assert _network_traffic_only(never_read)
 
 
 def test_a_light_update_naming_fewer_sections_differs_only_where_the_other_names_one() -> None:
-    verdict = _verdict(
+    verdict = verdict_of(
         light_update(light(sky={1: FULL, 5: FULL})), light_update(light(sky={1: FULL}))
     )
 
@@ -1355,7 +1360,7 @@ AIR_SECTION = section(single(AIR), block_count=0)
 def test_sections_past_the_most_a_level_has_are_one_value() -> None:
     # The verdict review's probe: 20,000 sections made 59,930 Divergences. No level has more
     # than 254 sections, so none past them is read, and their light sections stop at 256.
-    verdict = _verdict(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 19976]))
+    verdict = verdict_of(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 19976]))
 
     shown = {d.path: d.candidate for d in verdict.divergences}
     assert shown["sections[254]"] == "19746 more sections"
@@ -1365,7 +1370,7 @@ def test_sections_past_the_most_a_level_has_are_one_value() -> None:
 
 
 def test_as_many_sections_as_the_most_a_level_has_are_each_compared() -> None:
-    verdict = _verdict(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 230]))
+    verdict = verdict_of(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 230]))
 
     assert "sections[253]" in {d.path for d in verdict.divergences}
     assert "sections[254]" not in {d.path for d in verdict.divergences}
@@ -1375,7 +1380,7 @@ def test_light_arrays_past_the_most_a_level_has_are_one_value() -> None:
     reference = light(sky={1: FULL})
     candidate = {**reference, "sky_light_arrays": [FULL, *[DARK] * 1000]}
 
-    verdict = _verdict(chunk(light_data=reference), chunk(light_data=candidate))
+    verdict = verdict_of(chunk(light_data=reference), chunk(light_data=candidate))
 
     assert _network_traffic_only(verdict)
     shown = {d.path: d.candidate for d in verdict.divergences}
@@ -1387,7 +1392,7 @@ def test_light_update_arrays_past_the_most_a_level_has_are_one_value() -> None:
     reference = light(sky={1: FULL})
     candidate = {**reference, "sky_light_arrays": [FULL, *[DARK] * 1000]}
 
-    verdict = _verdict(light_update(reference), light_update(candidate))
+    verdict = verdict_of(light_update(reference), light_update(candidate))
 
     assert _network_traffic_only(verdict)
     assert {d.path: d.candidate for d in verdict.divergences}[
@@ -1399,9 +1404,9 @@ def test_the_gameplay_test_cases_of_chunks_and_light_have_titles() -> None:
     stone = paletted(_with({(5, 2, 7): STONE}), PALETTE, bits=4, width=4)
     biome = direct([PLAINS] * 63 + [PLAINS + 1], bits=7)
     verdicts = [
-        _verdict(chunk(), chunk(overworld(stone, biomes=biome))),
-        _verdict(_lit(sky={2: EMPTY}, block={1: FULL}), _lit(sky={2: DARK}, block={1: DARK})),
-        _verdict(
+        verdict_of(chunk(), chunk(overworld(stone, biomes=biome))),
+        verdict_of(_lit(sky={2: EMPTY}, block={1: FULL}), _lit(sky={2: DARK}, block={1: DARK})),
+        verdict_of(
             light_update(light(sky={2: EMPTY}, block={1: FULL})),
             light_update(light(sky={2: DARK}, block={1: DARK})),
         ),

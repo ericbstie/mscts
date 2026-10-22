@@ -6,6 +6,7 @@ other Divergence is gameplay.
 """
 
 import pytest
+from support.compared import status
 
 from mscts.codec.packets import Codec, Packet, State
 from mscts.compare import (
@@ -22,13 +23,6 @@ from tests.compare.build import CLIENTBOUND, divergence, packet, transcript
 
 CODEC = Codec.load("26.3")
 NETWORK_TRAFFIC, GAMEPLAY = Observability.NETWORK_TRAFFIC, Observability.GAMEPLAY
-
-
-def status(json_response: str) -> Packet:
-    data = CODEC.encode(
-        State.STATUS, CLIENTBOUND, "minecraft:status_response", {"json_response": json_response}
-    )
-    return CODEC.decode(State.STATUS, CLIENTBOUND, data)
 
 
 def _verdict(reference: str, candidate: str, *masks: Mask) -> Verdict:

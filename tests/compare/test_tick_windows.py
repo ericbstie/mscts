@@ -1,6 +1,7 @@
 """Tick windows: a tick-exact Group compares what each Bot received on each tick."""
 
 import pytest
+from support.compared import block
 
 from mscts.codec.packets import Packet, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, Outcome, compare
@@ -13,10 +14,6 @@ OPEN, CLOSE = OBSERVE_OPEN, OBSERVE_CLOSE
 def tick(k: int, bot: str | None = None) -> str:
     """The label of the Mark that ends tick `k`, for `bot` or for every Bot."""
     return f"{TICK_MARK}{k}" if bot is None else f"{TICK_MARK}{k} {bot}"
-
-
-def block(state: int) -> Packet:
-    return packet("minecraft:block_update", bytes([state]))
 
 
 def test_the_same_packets_on_the_same_ticks_match() -> None:
