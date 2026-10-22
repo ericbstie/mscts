@@ -156,6 +156,11 @@ def test_bytes_and_uuids_line_up_by_value() -> None:
     assert _diff({"l": [first, second]}, {"l": [second]}) == [("l[0]", first, ABSENT)]
 
 
+def test_a_value_outside_the_model_in_a_lined_up_list_raises() -> None:
+    with pytest.raises(TypeError, match="frozenset"):
+        _diff({"l": [frozenset()]}, {"l": []})
+
+
 def _distance(reference: Sequence[str], candidate: Sequence[str]) -> int:
     """The fewest steps from one list to the other, by brute force over every edit."""
     if not reference or not candidate:

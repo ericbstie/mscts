@@ -3453,10 +3453,17 @@ def _identity(value: _Value) -> str:
 
 
 def _json_leaf(value: object) -> dict[str, str]:
-    """A leaf that JSON has no type for, as `_identity` writes it."""
+    """Bytes or a UUID, which JSON has no type for, as `_identity` writes it.
+
+    Anything else is outside the value model, a harness bug: TypeError, as `json.dumps`
+    expects of its `default`.
+    """
     if isinstance(value, bytes):
         return {"bytes": value.hex()}
-    return {"uuid": str(value)}
+    if isinstance(value, UUID):
+        return {"uuid": str(value)}
+    msg = f"a list element holds a {type(value).__name__}, which no codec value is"
+    raise TypeError(msg)
 
 
 _LINE_UP_LIMIT = 1_000_000
