@@ -2738,7 +2738,10 @@ The group that shows several recipes as one button in the book, such as
 every kind of planks. A recipe in no group has none. Each server picks
 its own group numbers, so they are numbered again in the order they
 first come, as the display ids are. A group is counted once in each
-category, since the book shows it as one button in each.
+category, since the book shows it as one button in each. If no recipe
+in the book is in a group when a recipe is added or removed in a
+window, the book has no button for it, so the group is numbered again
+if it comes back.
 
 ## `recipe_book_add.entries[].contents.category`
 
@@ -2805,9 +2808,11 @@ sorted by their numbers.
 **Display id removed**
 
 The display id of one recipe removed from the book, numbered as the
-recipes added are, so a removal of another recipe differs if the recipe
-was added in a window. A removal of a recipe the player got before every
-window cannot be told from a removal of another such recipe.
+recipes added are, so a removal of another recipe differs if the Bot
+last got the recipe in a window and it has not been taken or replaced
+since. The removal of any other recipe cannot be told from a
+removal of another such recipe yet
+([#462](https://github.com/ericbstie/mscts/issues/462)).
 
 ## `place_ghost_recipe.recipe_display.type`
 
