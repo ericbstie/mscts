@@ -6,9 +6,12 @@ the server's display id and group number left out. The toast shows the others on
 another in the order they came, so those keep their order.
 """
 
+from collections.abc import Sequence
 from typing import NamedTuple
 
 from mscts.codec.packets import Packet
+from mscts.compare import OBSERVE_CLOSE as CLOSE
+from mscts.compare import OBSERVE_OPEN as OPEN
 from mscts.compare import UNORDERED, compare
 from tests.compare.build import packet, transcript
 
@@ -187,14 +190,20 @@ def ghost(result: int) -> Packet:
 
 
 def _diff_all(
-    reference: list[Packet], candidate: list[Packet]
+    reference: Sequence[Packet | str], candidate: Sequence[Packet | str]
 ) -> list[tuple[str | None, object, object]]:
+    """The divergences of `reference` and `candidate`: alice's packets, and a string a Mark."""
     verdict = compare(
-        transcript(*(("alice", each) for each in reference)),
-        transcript(*(("alice", each) for each in candidate)),
+        transcript(*(_alices(each) for each in reference)),
+        transcript(*(_alices(each) for each in candidate)),
         [],
     )
     return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+
+
+def _alices(item: Packet | str) -> tuple[str, Packet] | str:
+    """`item` as `transcript` takes it: a packet alice receives, or the label of a Mark."""
+    return item if isinstance(item, str) else ("alice", item)
 
 
 def test_a_server_that_numbers_every_recipe_another_way_but_consistently_matches() -> None:
@@ -280,6 +289,44 @@ def test_a_book_replaced_ends_every_number() -> None:
     candidate = [book_add(planks_as[0], replace=True), book_add(planks_as[1], replace=True)]
 
     assert _diff_all(reference, [*candidate, book_add(sticks_as[1])]) == []
+
+
+def test_a_removal_outside_the_windows_ends_its_numbers() -> None:
+    planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
+    reference = [OPEN, book_add(planks_as[0]), CLOSE, book_remove(5)]
+    candidate = [OPEN, book_add(planks_as[1]), CLOSE, book_remove(8)]
+
+    assert (
+        _diff_all(
+            [*reference, OPEN, book_add(planks_as[0]), CLOSE],
+            [*candidate, OPEN, book_add(planks_as[2]), CLOSE],
+        )
+        == []
+    )
+
+
+def test_a_book_replaced_outside_the_windows_ends_every_number() -> None:
+    planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 2)]
+    reference = [
+        OPEN,
+        book_add(planks_as[0]),
+        CLOSE,
+        book_add(Entry(STICKS, display_id=6), replace=True),
+        OPEN,
+        book_add(planks_as[0]),
+        CLOSE,
+    ]
+    candidate = [
+        OPEN,
+        book_add(planks_as[1]),
+        CLOSE,
+        book_add(Entry(STICKS, display_id=1), replace=True),
+        OPEN,
+        book_add(planks_as[2]),
+        CLOSE,
+    ]
+
+    assert _diff_all(reference, candidate) == []
 
 
 def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:

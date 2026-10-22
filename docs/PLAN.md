@@ -2515,10 +2515,11 @@ proves it necessary:
    group one number across categories, as for `iron_ingot` in smelting,
    blasting and crafting, and the client shows one button in each) and
    `recipe_book_remove`'s `recipes[]` (`compare._RecipeNumbers`). A
-   number lasts as long as the client keeps the key: a removal ends the
-   numbers of its ids (`ClientRecipeBook.remove`), and an add with
-   `replace` ends every number before its entries take theirs
-   (`ClientRecipeBook.clear`). A number is never given twice. So a
+   number lasts as long as the client keeps the key: a removal, compared
+   or not, ends the numbers of its ids (`ClientRecipeBook.remove`), and
+   an add with `replace`, compared or not, ends every number before its
+   entries take theirs (`ClientRecipeBook.clear`), as a `remove_entities`
+   ends an entity's. A number is never given twice. So a
    Candidate that gives a recipe another id when it adds it again shows
    what vanilla does (vanilla keeps the id:
    `RecipeManager.unpackRecipeInfo` numbers every display once), and one
