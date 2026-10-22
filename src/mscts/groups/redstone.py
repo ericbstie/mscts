@@ -413,19 +413,24 @@ _PISTON_PACKETS = (
 sounds, world events, any block entity's data, and the item a piston breaks a block into."""
 
 
-def _piston(z: int, ahead: str) -> tuple[str, ...]:
-    """A piston at x 2, -60, z facing east, and the block `ahead` of it, at x 3."""
-    return (_set(2, z, "piston[facing=east]"), _set(3, z, ahead))
+def _place(x: int, y: int, z: int, block: str) -> str:
+    """The `/setblock` of `block` at x, y, z."""
+    return f"setblock {x} {y} {z} minecraft:{block}"
 
 
-def _power(tick: int, z: int) -> _At:
-    """Power the piston at x 2, -60, z on `tick`: a redstone block behind it."""
-    return _At(tick, _set(1, z, "redstone_block"))
+def _piston(z: int, ahead: str, *, y: int = -60, piston: str = "piston") -> tuple[str, ...]:
+    """A `piston` at x 2, y, z facing east, and the block `ahead` of it, at x 3."""
+    return (_place(2, y, z, f"{piston}[facing=east]"), _place(3, y, z, ahead))
 
 
-def _unpower(tick: int, z: int) -> _At:
-    """Take the redstone block behind the piston at x 2, -60, z away on `tick`."""
-    return _At(tick, _set(1, z, "air"))
+def _power(tick: int, z: int, *, y: int = -60) -> _At:
+    """Power the piston at x 2, y, z on `tick`: a redstone block behind it."""
+    return _At(tick, _place(1, y, z, "redstone_block"))
+
+
+def _unpower(tick: int, z: int, *, y: int = -60) -> _At:
+    """Take the redstone block behind the piston at x 2, y, z away on `tick`."""
+    return _At(tick, _place(1, y, z, "air"))
 
 
 # `redstone/piston-push`: a row of cases along z.
@@ -487,3 +492,51 @@ async def piston_push(context: GroupContext) -> None:
             await _observe(context, _PUSH, _PUSH_TICKS, _PISTON_PACKETS)
         finally:
             await context.control.run(_KILL_ITEMS)
+
+
+# `redstone/sticky`: sticky pistons along z; the two with slime and honey at y -59, above the
+# grass, which a slime or honey block would drag along.
+
+_STICKY_PISTON = "sticky_piston"
+
+_SLIME_Z, _HONEY_Z = 6, 10
+
+_STICKY_BUILD = (
+    *_piston(1, "stone", piston=_STICKY_PISTON),
+    *_piston(3, "stone", piston=_STICKY_PISTON),
+    *_piston(_SLIME_Z, "slime_block", y=-59, piston=_STICKY_PISTON),
+    _raised(3, _SLIME_Z + 1, "stone"),
+    _raised(3, _SLIME_Z - 1, "honey_block"),
+    *_piston(_HONEY_Z, "honey_block", y=-59, piston=_STICKY_PISTON),
+    _raised(3, _HONEY_Z + 1, "stone"),
+    _raised(3, _HONEY_Z - 1, "slime_block"),
+)
+"""At z 1 and 3 a sticky piston and a stone; at z 6 one that pushes a slime block, with a stone
+south of the slime and a honey block north of it; at z 10 one that pushes a honey block, with a
+stone south of it and a slime block north."""
+
+_STICKY = (
+    _power(0, 1),
+    _power(0, 3),
+    _power(0, _SLIME_Z, y=-59),
+    _power(0, _HONEY_Z, y=-59),
+    _unpower(1, 3),
+    _unpower(5, 1),
+    _unpower(5, _SLIME_Z, y=-59),
+    _unpower(5, _HONEY_Z, y=-59),
+)
+"""Each piston pushes on tick 1. The slime block and the honey block each take the stone beside
+them along, and leave the other one (`PistonStructureResolver.canStickToEachOther`). The piston
+at z 3 loses its power after 1 tick, while its stone still moves: on tick 2 it retracts with
+block event type 2, which puts the stone down where it was pushed (`PistonBaseBlock
+.checkIfExtend`, `triggerEvent`), and it is back on tick 4. The others pull theirs back on
+tick 6, in place on tick 8."""
+
+_STICKY_TICKS = 9
+
+
+@group("redstone/sticky", kind=GroupKind.TICK_EXACT, masks=(_PISTON_PITCH,))
+async def sticky(context: GroupContext) -> None:
+    """Sticky pistons pull back, drop their block after a 1-tick pulse, and move slime and honey."""
+    async with _arena(context, _STICKY_BUILD):
+        await _observe(context, _STICKY, _STICKY_TICKS, _PISTON_PACKETS)

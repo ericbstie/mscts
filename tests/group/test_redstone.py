@@ -24,9 +24,10 @@ OBSERVER = "redstone/observer"
 DUST = "redstone/dust"
 UPDATE_ORDER = "redstone/update-order"
 PISTON_PUSH = "redstone/piston-push"
+STICKY = "redstone/sticky"
 UNMASKED = (REPEATER, COMPARATOR, TORCH, OBSERVER, DUST)
 CIRCUIT_IDS = (*UNMASKED, UPDATE_ORDER)
-PISTON_IDS = (PISTON_PUSH,)
+PISTON_IDS = (PISTON_PUSH, STICKY)
 GROUP_IDS = (*CIRCUIT_IDS, *PISTON_IDS)
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw", "kill")
 WINDOW = (
@@ -394,8 +395,11 @@ async def test_dust_powers_the_line_for_a_tick_then_builds_and_cuts_a_climb_a_ti
 # `redstone/update-order`
 
 
-def test_update_order_masks_only_the_pistons_random_pitch() -> None:
-    (mask,) = GROUPS[UPDATE_ORDER].masks
+@pytest.mark.parametrize("group_id", [UPDATE_ORDER, STICKY])
+def test_each_group_whose_only_sound_is_a_pistons_masks_only_its_random_pitch(
+    group_id: str,
+) -> None:
+    (mask,) = GROUPS[group_id].masks
 
     assert (mask.packet, mask.path) == ("minecraft:sound", "pitch")
 
@@ -519,3 +523,50 @@ async def test_piston_push_takes_the_dropped_items_away_before_it_clears() -> No
     after = (await play(PISTON_PUSH)).after
 
     assert after == (KILL_ITEMS, *UNDO)
+
+
+# `redstone/sticky`
+
+
+@pytest.mark.asyncio
+async def test_sticky_builds_two_stones_and_a_slime_and_a_honey_block_above_the_grass() -> None:
+    # A slime block on the grass would drag the grass along (PistonStructureResolver).
+    first = (await play(STICKY)).first
+    sticky = "sticky_piston[facing=east]"
+
+    assert first[5:] == (
+        f"setblock 2 -60 1 minecraft:{sticky}",
+        "setblock 3 -60 1 minecraft:stone",
+        f"setblock 2 -60 3 minecraft:{sticky}",
+        "setblock 3 -60 3 minecraft:stone",
+        f"setblock 2 -59 6 minecraft:{sticky}",
+        "setblock 3 -59 6 minecraft:slime_block",
+        "setblock 3 -59 7 minecraft:stone",
+        "setblock 3 -59 5 minecraft:honey_block",
+        f"setblock 2 -59 10 minecraft:{sticky}",
+        "setblock 3 -59 10 minecraft:honey_block",
+        "setblock 3 -59 11 minecraft:stone",
+        "setblock 3 -59 9 minecraft:slime_block",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sticky_powers_every_piston_unpowers_one_after_a_tick_and_the_rest_after_5() -> None:
+    # A piston whose power goes while its block still moves leaves the block (type 2); the
+    # others pull theirs back once in place.
+    (window,) = (await play(STICKY)).windows
+
+    assert window.commands == (
+        behind(1, "redstone_block"),
+        behind(3, "redstone_block"),
+        "setblock 1 -59 6 minecraft:redstone_block",
+        "setblock 1 -59 10 minecraft:redstone_block",
+        STEP,
+        behind(3, "air"),
+        *steps(4),
+        behind(1, "air"),
+        "setblock 1 -59 6 minecraft:air",
+        "setblock 1 -59 10 minecraft:air",
+        *steps(4),
+    )
+    assert window.ticks == 9
