@@ -38,6 +38,13 @@ CRAFTER = "crafter"
 HOTBAR_0 = 36
 """The inventory menu's slot for the first hotbar slot (`InventoryMenu`: the result, the 2x2,
 the armor and the 27 come first)."""
+INVENTORY_0 = 9
+"""The inventory menu's slot for `inventory.0`, the first of the 27."""
+TABLE_INVENTORY_0 = 10
+"""A crafting table's slot for `inventory.0` (`CraftingMenu`: the result and the 3x3 come
+first)."""
+RESULT = 0
+"""The crafting result's slot, in the inventory menu and in a crafting table."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +71,19 @@ GRID_CASES = (
 """Planks from a log, sticks, a crafting table (shaped), bone meal from a bone (shapeless, in
 any cell), and two arrangements that make nothing: planks on a diagonal, and dirt."""
 
+TAKES = 2
+"""How many times the Bot clicks a result, each in a window of its own: onto an empty cursor,
+then onto what it took."""
+INVENTORY_TAKE = (Grid("minecraft:oak_log", 2, (1, 1)),)
+"""The stacks the Bot crafts from in its 2x2 grid: two logs in one cell, planks for two takes,
+which stack on the cursor."""
+TABLE_TAKE = (
+    Grid("minecraft:cobblestone", 6, (1, 1, 2, 2, 3, 3)),
+    Grid("minecraft:stick", 4, (5, 5, 8, 8)),
+)
+"""The stacks the Bot crafts from in a crafting table: a stone pickaxe's (shaped), twice over.
+A pickaxe does not stack, so the second take finds no room on the cursor and takes nothing."""
+
 
 async def _stage(context: GroupContext, undo: contextlib.AsyncExitStack, name: str) -> Bot:
     """Pin the joins, move Control away, join the Bot and empty it; undo it all on exit."""
@@ -86,20 +106,54 @@ async def _put(context: GroupContext, bot: Bot, case: Grid) -> None:
     await control.run(f"clear {bot.name}")
     await control.run(f"item replace entity {bot.name} hotbar.0 with {case.item} {case.count}")
     async with context.observe(*PACKETS):
-        await bot.click(HOTBAR_0)
-        for slot in case.slots:
-            await bot.click(slot, 1)
-        if bot.inventory.carried is not None:
-            await bot.click(HOTBAR_0)
+        await _spread(bot, HOTBAR_0, case.slots)
+
+
+async def _spread(bot: Bot, slot: int, cells: tuple[int, ...]) -> None:
+    """Pick up the stack in `slot`, right-click one item onto each of `cells`, put the rest back."""
+    await bot.click(slot)
+    for cell in cells:
+        await bot.click(cell, 1)
+    if bot.inventory.carried is not None:
+        await bot.click(slot)
+
+
+async def _take(context: GroupContext, bot: Bot, stacks: tuple[Grid, ...], first: int) -> None:
+    """Put `stacks` on the open grid in one window, then click its result `TAKES` times.
+
+    The stacks start in the menu's slots from `first` on (`inventory.0`). Each take has a
+    window of its own, which waits for the server's next result. The last also puts what the
+    cursor holds back in `first`, which the stacks emptied.
+    """
+    async with context.observe(*PACKETS):
+        for index, stack in enumerate(stacks):
+            await _spread(bot, first + index, stack.slots)
+    for take in range(1, TAKES + 1):
+        async with context.observe(*PACKETS):
+            await bot.click(RESULT)
+            if take == TAKES:
+                await bot.click(first)
+
+
+def _items(stacks: tuple[Grid, ...]) -> tuple[str, ...]:
+    """The stacks as `_fill` gives them: an item and a count each."""
+    return tuple(f"{stack.item} {stack.count}" for stack in stacks)
 
 
 @group("crafting/grid")
 async def grid(context: GroupContext) -> None:
-    """Items clicked into the inventory's 2x2 grid show a result, or none."""
+    """Items clicked into the 2x2 grid or a crafting table's 3x3 show a result, or none."""
     async with contextlib.AsyncExitStack() as undo:
         bot = await _stage(context, undo, CRAFTER)
         for case in GRID_CASES:
             await _put(context, bot, case)
+        await _fill(context, bot.name, _items(INVENTORY_TAKE))
+        await _take(context, bot, INVENTORY_TAKE, INVENTORY_0)
+        await _set_table(context, undo, bot)
+        await _fill(context, bot.name, _items(TABLE_TAKE))
+        await _open_table(bot)
+        await _take(context, bot, TABLE_TAKE, TABLE_INVENTORY_0)
+        await _close_table(bot)
 
 
 # `crafting/recipe-book`
@@ -223,9 +277,19 @@ async def _in_table(
     are separate connections, and nothing else orders the two.
     """
     await _fill(context, bot.name, case.items)
+    await _open_table(bot)
+    await _click(context, bot, ids, case)
+    await _close_table(bot)
+
+
+async def _open_table(bot: Bot) -> None:
+    """Use the crafting table, from where `_set_table` put the Bot."""
     x, y, z = TABLE
     await bot.place(x, y, z, Face.NORTH, (0.5, 0.5, 0.0))
-    await _click(context, bot, ids, case)
+
+
+async def _close_table(bot: Bot) -> None:
+    """Close the table, and wait until the server has given back what its grid held."""
     await bot.close_container()
     await bot.sync()
 

@@ -796,7 +796,13 @@ class InventoryTracker:
     # key 0 first, then positions down), and the hashed cursor. ValueError, nothing changed:
     # an unknown mode, a slot outside a Short or a button outside a Byte, a slot the click
     # must name that the menu lacks, a menu other than the inventory's, a chest's, a
-    # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), the crafting result, a bundle, a
+    # dispenser's, a hopper's, a shulker box's or a crafting table's (_CLICK_MENUS; a table's
+    # quickMoveStack: the grid to the player's slots, theirs to the grid first, then the 27 to
+    # the hotbar and back), a click on a crafting result
+    # but a pickup (which takes the whole result, ResultContainer.removeItem, onto an empty
+    # cursor or one of the same item with room for it all, and one item from each grid cell,
+    # ResultSlot.onTake), a take from a grid holding an item with a crafting
+    # remainder (Items: three buckets, honey bottle, dragon's breath), a bundle, a
     # swap whose slot stack would go back through Inventory.add, or a changed slot or cursor
     # stack with a component patch (its hash needs the component's encoding).
 CLICK_MODES: Mapping[str, int]      # pickup 0, quick_move 1, swap 2, clone 3, throw 4, quick_craft 5, pickup_all 6
@@ -1270,7 +1276,11 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.crafting`: `PACKETS` — what a window compares (the slots, the cursor, the ghost
   recipe and the recipe book); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
   inventory menu's slot of the first hotbar slot; `Grid` — one 2x2 case (a stack, the cells it
-  is clicked onto); `GRID_CASES` — the cases; `grid` — the `crafting/grid` script.
+  is clicked onto); `GRID_CASES` — the cases; `INVENTORY_0` and `TABLE_INVENTORY_0` — the
+  inventory menu's and a crafting table's slot of `inventory.0`; `RESULT` — the crafting
+  result's slot; `TAKES` — how many times the Bot takes a result, a window each;
+  `INVENTORY_TAKE` and `TABLE_TAKE` — the stacks it crafts from in the 2x2 grid (logs) and in a
+  crafting table (a stone pickaxe's); `grid` — the `crafting/grid` script.
   `BOOKWORM` — the Bot of `crafting/recipe-book`; `TABLE` — where its crafting table stands;
   `BOOK_RECIPES` — the recipes it is given, to read their display ids from `recipe_book_add`;
   `LOCKED` — the recipe taken from its book again; `Placement` — one recipe book click (the

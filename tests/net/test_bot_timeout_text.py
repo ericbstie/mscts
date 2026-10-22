@@ -75,7 +75,7 @@ async def _tick(bot: Bot) -> None:
 
 
 async def _click(bot: Bot) -> None:
-    await bot.click(9)  # a slot of the inventory; slot 0, the crafting result, is not predicted
+    await bot.click(9)  # a slot of the inventory's 27
 
 
 async def _place_recipe(bot: Bot) -> None:

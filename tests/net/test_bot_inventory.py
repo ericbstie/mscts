@@ -794,12 +794,24 @@ def test_a_middle_click_clone_changes_nothing_for_a_survival_player() -> None:
         ({}, 9, 0, "drag", "mode must be one of"),
         ({}, 40_000, 0, "pickup", "Short"),
         ({}, 9, 200, "pickup", "Byte"),
-        ({}, 0, 0, "pickup", "crafting result"),
+        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "quick_move", "crafting result"),
+        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "swap", "crafting result"),
+        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "throw", "crafting result"),
         ({}, OUTSIDE, 0, "swap", "not one of the menu's 46 slots"),
         ({9: ("bundle", 1)}, 9, 0, "pickup", "bundle"),
         ({5: ("diamond_helmet", 1), 36: ("carved_pumpkin", 5)}, 5, 0, "swap", "elsewhere"),
     ],
-    ids=["mode", "slot", "button", "result", "swap-outside", "bundle", "swap-back"],
+    ids=[
+        "mode",
+        "slot",
+        "button",
+        "result",
+        "result-swap",
+        "result-throw",
+        "swap-outside",
+        "bundle",
+        "swap-back",
+    ],
 )
 def test_a_click_the_bot_cannot_send_or_predict_is_refused_and_changes_nothing(
     stacks: dict[int, tuple[str, int]], slot_number: int, button: int, mode: str, match: str
@@ -1218,3 +1230,132 @@ def test_a_cursed_armor_slot_swaps_with_neither_the_cursor_nor_a_hotbar_key() ->
     assert tracker.click(5, 0, "pickup") == click_sent(5, [], hashed("diamond_helmet", 1))
     sent = click_sent(5, [], hashed("diamond_helmet", 1), mode=2)
     assert tracker.click(5, 0, "swap") == sent
+
+
+# The crafting result: ResultSlot and ResultContainer (26.3 client, javap).
+
+
+@pytest.mark.parametrize("button", [0, 1], ids=["left", "right"])
+def test_a_click_on_the_crafting_result_takes_it_whole_and_one_of_each_grid_item(
+    button: int,
+) -> None:
+    # ResultContainer.removeItem takes the whole stack whatever the count, and ResultSlot.onTake
+    # takes one item from each cell that holds one. The client does not craft: the result stays
+    # empty until the server sends the next one.
+    stacks = {0: ("stick", 4), 1: ("oak_planks", 2), 3: ("oak_planks", 1), 4: ("oak_planks", 1)}
+    tracker = holding({**stacks, 9: ("oak_planks", 5)})
+    changed = [(0, None), (1, hashed("oak_planks", 1)), (3, None), (4, None)]
+    sent = click_sent(0, changed, hashed("stick", 4), button=button)
+    assert tracker.click(0, button, "pickup") == sent
+
+
+def test_a_take_from_another_slot_leaves_the_grid_as_it_is() -> None:
+    # Only ResultSlot.onTake uses the grid: a plain Slot's does nothing.
+    tracker = holding({1: ("oak_planks", 2), 9: ("stone", 5)})
+    assert tracker.click(9, 0, "pickup") == click_sent(9, [(9, None)], hashed("stone", 5))
+
+
+@pytest.mark.parametrize("button", [0, 1], ids=["left", "right"])
+def test_a_take_onto_a_cursor_of_the_same_item_stacks_and_uses_the_grid(button: int) -> None:
+    # doClick: the result refuses the cursor (ResultSlot.mayPlace), so a cursor of the same item
+    # with room for the whole result takes it, whatever the button, then ResultSlot.onTake.
+    tracker = holding(
+        {0: ("stick", 4), 1: ("oak_planks", 2), 3: ("oak_planks", 1)}, carried=("stick", 60)
+    )
+    changed = [(0, None), (1, hashed("oak_planks", 1)), (3, None)]
+    sent = click_sent(0, changed, hashed("stick", 64), button=button)
+    assert tracker.click(0, button, "pickup") == sent
+
+
+@pytest.mark.parametrize(
+    "carried", [("stick", 61), ("oak_planks", 4)], ids=["no-room", "another-item"]
+)
+def test_a_take_onto_a_cursor_without_room_or_of_another_item_changes_nothing(
+    carried: tuple[str, int],
+) -> None:
+    # Slot.tryRemove gives nothing short of the whole result, and the result takes no stack.
+    tracker = holding({0: ("stick", 4), 1: ("oak_planks", 1)}, carried=carried)
+    assert tracker.click(0, 0, "pickup") == click_sent(0, [], hashed(*carried))
+
+
+@pytest.mark.parametrize(
+    "item", ["water_bucket", "lava_bucket", "milk_bucket", "dragon_breath", "honey_bottle"]
+)
+def test_a_take_from_a_grid_holding_an_item_with_a_crafting_remainder_is_refused(
+    item: str,
+) -> None:
+    # ResultSlot.onTake puts the bucket or bottle back in the cell or in the inventory: the Bot
+    # does not predict it. These five are every item with a craftRemainder in Items.
+    tracker = holding({0: ("cake", 1), 1: (item, 1), 2: ("sugar", 1)})
+    before = tracker.view()
+    with pytest.raises(ValueError, match=item):
+        tracker.click(0, 0, "pickup")
+    assert tracker.view() == before
+
+
+# A crafting table: CraftingMenu (26.3 client, javap). The result (slot 0), the 3x3 (1 to 9,
+# by row), the 27 (10 to 36), then the hotbar (37 to 45).
+
+TABLE = "minecraft:crafting"
+
+
+def test_a_click_on_a_tables_result_takes_it_and_one_of_each_of_its_nine_cells() -> None:
+    stacks = {
+        0: ("stone_pickaxe", 1),
+        1: ("cobblestone", 2),
+        2: ("cobblestone", 1),
+        3: ("cobblestone", 1),
+        5: ("stick", 1),
+        8: ("stick", 1),
+        9: ("dirt", 1),
+        10: ("cobblestone", 5),
+    }
+    tracker = holding(stacks, menu=TABLE)
+    changed = [(0, None), (1, hashed("cobblestone", 1)), (2, None), (3, None), (5, None)]
+    changed += [(8, None), (9, None)]
+    sent = in_chest(click_sent(0, changed, hashed("stone_pickaxe", 1)))
+    assert tracker.click(0, 0, "pickup") == sent
+
+
+@pytest.mark.parametrize(
+    ("start", "grid_full", "end"),
+    [(10, False, 1), (37, False, 1), (10, True, 37), (37, True, 10), (9, False, 10)],
+    ids=["27-to-grid", "hotbar-to-grid", "27-to-hotbar", "hotbar-to-27", "grid-out"],
+)
+def test_a_shift_click_in_a_table_goes_where_the_client_puts_it(
+    start: int,
+    grid_full: bool,  # noqa: FBT001
+    end: int,
+) -> None:
+    # CraftingMenu.quickMoveStack: the player's slots to the grid first, and if none moved, the
+    # 27 to the hotbar and the hotbar to the 27; the grid to the player's slots.
+    grid = dict.fromkeys(range(1, 10), ("diamond_sword", 1)) if grid_full else {}
+    tracker = holding({**grid, start: ("stone", 5)}, menu=TABLE)
+    sent = click_sent(start, [(start, None), (end, hashed("stone", 5))], None, mode=1)
+    assert tracker.click(start, 0, "quick_move") == in_chest(sent)
+
+
+def test_a_shift_click_into_a_tables_grid_passes_over_its_result() -> None:
+    # moveItemStackTo(1, 10): the result is not one of the slots, so the same item there takes
+    # nothing, though a merge does not ask the slot whether it may take the item.
+    tracker = holding({0: ("stick", 4), 10: ("stick", 5)}, menu=TABLE)
+    sent = click_sent(10, [(10, None), (1, hashed("stick", 5))], None, mode=1)
+    assert tracker.click(10, 0, "quick_move") == in_chest(sent)
+
+
+def test_a_tables_result_takes_nothing_from_the_cursor_or_a_double_click() -> None:
+    # ResultSlot.mayPlace is false, and CraftingMenu.canTakeItemForPickAll is false for it.
+    tracker = holding({0: ("stick", 4)}, menu=TABLE, carried=("stone", 5))
+    assert tracker.click(0, 0, "pickup") == in_chest(click_sent(0, [], hashed("stone", 5)))
+    tracker = holding({0: ("stick", 4), 20: ("stick", 3)}, menu=TABLE, carried=("stick", 1))
+    changed = [(20, None)]
+    sent = in_chest(click_sent(30, changed, hashed("stick", 4), mode=6))
+    assert tracker.click(30, 0, "pickup_all") == sent
+
+
+def test_a_shift_click_on_a_tables_result_is_refused() -> None:
+    tracker = holding({0: ("stick", 4), 1: ("oak_planks", 2)}, menu=TABLE)
+    before = tracker.view()
+    with pytest.raises(ValueError, match="crafting result"):
+        tracker.click(0, 0, "quick_move")
+    assert tracker.view() == before
