@@ -2622,7 +2622,11 @@ proves it necessary:
    unit test checks every pair of
    lists up to length 4 over 3 values: in order, in the fewest steps, and
    mirrored by a swap. The cost is O(n·m) time and memory between the
-   common prefix and suffix, as for the packet alignment. An element
+   common prefix and suffix, as for the packet alignment, and the
+   Comparison runs on the Run's event loop. So where there are more
+   than a million pairs of elements in between
+   (`compare._LINE_UP_LIMIT`, 0.4 s and 8 MB), those elements are
+   compared index by index instead. An element
    that both moved and changed, next to elements one side added, can be
    compared with a neighbour rather than its counterpart: the alignment
    knows only whether two elements are equal, not how alike they are.

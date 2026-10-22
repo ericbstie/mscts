@@ -3459,6 +3459,14 @@ def _json_leaf(value: object) -> dict[str, str]:
     return {"uuid": str(value)}
 
 
+_LINE_UP_LIMIT = 1_000_000
+"""The most pairs of elements `_fewest_edits` weighs between the common ends of two lists.
+
+`compare` runs on the Run's event loop, and weighing them takes about 0.4 µs and 8 bytes a
+pair: 0.4 s and 8 MB at the limit. The most pairs between the common ends of a tag list in
+a join against Pumpkin nightly 44d881c are 89,726."""
+
+
 def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_Edit]:
     """Line up two lists of identities (#256), returning the steps in order.
 
@@ -3472,10 +3480,17 @@ def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_E
     the one only its side has.
 
     Between the prefix and the suffix this takes O(n·m) time and memory, as `_align` does.
+    So if there are more than `_LINE_UP_LIMIT` pairs of elements there, the elements there
+    are compared index by index instead.
     """
     prefix, suffix = _common_ends(reference, candidate)
     ref_stop, cand_stop = len(reference) - suffix, len(candidate) - suffix
-    middle = _middle_edits(reference[prefix:ref_stop], candidate[prefix:cand_stop])
+    rows, columns = ref_stop - prefix, cand_stop - prefix
+    middle = (
+        _middle_edits(reference[prefix:ref_stop], candidate[prefix:cand_stop])
+        if rows * columns <= _LINE_UP_LIMIT
+        else _index_by_index(rows, columns)
+    )
     return [
         *((index, index) for index in range(prefix)),
         *(_shifted(edit, prefix) for edit in middle),

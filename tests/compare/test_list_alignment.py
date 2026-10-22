@@ -10,6 +10,9 @@ from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
 
+import pytest
+
+import mscts.compare
 from mscts.compare import (
     ABSENT,
     _Edit,
@@ -194,6 +197,25 @@ def test_a_tie_leaves_the_smaller_element_on_its_own_whichever_side_it_is_on() -
     # at the front and a left out at the end. The smaller, a, is the one on its own first.
     assert _fewest_edits(["a", "b", "a"], ["b", "a", "b"]) == [(0, None), (1, 0), (2, 1), (None, 2)]
     assert _fewest_edits(["b", "a", "b"], ["a", "b", "a"]) == [(None, 0), (0, 1), (1, 2), (2, None)]
+
+
+def test_lists_whose_middle_has_more_pairs_than_the_limit_are_compared_index_by_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Between the common ends, x, a, b against a, b, y is 3 by 3 pairs of elements.
+    reference, candidate = ["x", "a", "b"], ["a", "b", "y"]
+    monkeypatch.setattr(mscts.compare, "_LINE_UP_LIMIT", 9)
+    assert _fewest_edits(reference, candidate) == [(0, None), (1, 0), (2, 1), (None, 2)]
+    monkeypatch.setattr(mscts.compare, "_LINE_UP_LIMIT", 8)
+    assert _fewest_edits(reference, candidate) == [(0, 0), (1, 1), (2, 2)]
+
+
+@pytest.mark.timeout(10)
+def test_two_long_lists_differing_at_both_ends_are_compared_in_time() -> None:
+    # Lined up, 100,001 by 100,001 elements would take hours and 80 GB (review of #449).
+    differences = _diff({"l": ["x", *range(100_000)]}, {"l": [*range(100_000), "y"]})
+    assert differences[:2] == [("l[0]", "x", 0), ("l[1]", 0, 1)]
+    assert len(differences) == 100_001
 
 
 def test_values_python_calls_equal_are_not_lined_up_as_equal() -> None:
