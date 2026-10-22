@@ -2063,7 +2063,7 @@ def _canonical_status_response(fields: dict[str, _Value], _context: _Context) ->
     if isinstance(status, dict):
         status = _as_read(status)
         if "description" in status:
-            status = {**status, "description": _text_component(status["description"])}
+            status = {**status, "description": _description(status["description"])}
         status = _without_declared_defaults(status)
     return {**fields, "json_response": status}
 
@@ -2116,19 +2116,62 @@ def _without_declared_defaults(status: dict[str, _Value]) -> dict[str, _Value]:
     return result
 
 
-def _text_component(component: _Value) -> _Value:
-    """Write each plain-string text component as `{"text": string}`.
+def _description(description: _Value) -> _Value:
+    """The text component the client shows for the status's `description`, canonical.
 
-    The components are `component` itself, each element of its list form, and each
-    element of its `extra`, recursively. Nothing else in it changes.
+    A description with an empty list in it is `{"text": ""}`, the declared default: the
+    client's text component codec refuses it (`_has_empty_list`), and `ServerStatus.CODEC`
+    reads a description it cannot decode as `CommonComponents.EMPTY` (docs/research/
+    2026-09-26-comparison.md). Any other is `_text_component`.
+    """
+    if _has_empty_list(description):
+        return {"text": ""}
+    return _text_component(description)
+
+
+def _has_empty_list(component: _Value) -> bool:
+    """Whether `component`, or a text component in it, is an empty list or has an empty `extra`.
+
+    `ExtraCodecs.nonEmptyList` wraps both the list form and `extra`, so the client's codec
+    refuses either when it is empty, at any depth.
+    """
+    if isinstance(component, list):
+        return not component or any(_has_empty_list(element) for element in component)
+    if isinstance(component, dict) and isinstance(extra := component.get("extra"), list):
+        return not extra or any(_has_empty_list(element) for element in extra)
+    return False
+
+
+def _text_component(component: _Value) -> _Value:
+    """Write each text component as the object the client reads it as.
+
+    A plain string is `{"text": string}`, and a list is its first component with the rest
+    added to its `extra` (`_from_list`). The components are `component` itself, each
+    element of its list form, and each element of its `extra`, recursively. Nothing else
+    in it changes.
     """
     if isinstance(component, str):
         return {"text": component}
     if isinstance(component, list):
-        return [_text_component(element) for element in component]
+        return _from_list([_text_component(element) for element in component])
     if isinstance(component, dict) and isinstance(extra := component.get("extra"), list):
         return {**component, "extra": [_text_component(element) for element in extra]}
     return component
+
+
+def _from_list(components: list[_Value]) -> _Value:
+    """The text component the client builds from the list form `components`.
+
+    `ComponentSerialization.createFromList` copies the first and appends each of the
+    rest, so the rest go at the end of the first's `extra` (docs/research/
+    2026-09-26-comparison.md). The list stays as it is unless its first element is an
+    object whose `extra`, if it has one, is a list.
+    """
+    match components:
+        case [dict() as first, *rest] if isinstance(extra := first.get("extra", []), list):
+            return {**first, "extra": [*extra, *rest]} if rest else first
+        case _:
+            return components
 
 
 def _strict_json(text: str) -> _Value | Absent:

@@ -1437,6 +1437,13 @@ The description text, after mscts rewrites equivalent text components
 into one form. A different value changes the description a player reads in the
 server list.
 
+The client reads a list such as `["a", "b"]` as its first component with
+the rest added to that component's `extra`, so `["a", "b"]` and
+`{"text": "a", "extra": ["b"]}` show the same text. The client refuses
+a description that holds an empty list, such as `"extra": []`, and then
+shows no description at all. mscts compares such a description as if it
+were absent.
+
 ## `status_response.enforceSecureChat`
 
 **Unused secure chat flag**

@@ -101,30 +101,93 @@ def test_text_components_inside_a_description_are_canonical_too(
 @pytest.mark.parametrize(
     ("reference", "candidate", "divergences"),
     [
-        # The list form means "first, with the rest appended to its extra", but that
-        # equivalence is not encoded (PLAN open questions).
-        (
-            '["a","b"]',
-            '{"text":"a","extra":["b"]}',
-            [
-                (
-                    "json_response.description",
-                    [{"text": "a"}, {"text": "b"}],
-                    {"text": "a", "extra": [{"text": "b"}]},
-                )
-            ],
-        ),
-        # An explicit style value, an empty extra, an explicit type: not the same Component
-        # (or not valid), so not canonicalized.
+        # An explicit style value, an explicit type: not shown to be the same Component, so
+        # not canonicalized.
         ('"x"', '{"text":"x","bold":false}', [("json_response.description.bold", ABSENT, False)]),
-        ('"x"', '{"text":"x","extra":[]}', [("json_response.description.extra", ABSENT, [])]),
         ('"x"', '{"type":"text","text":"x"}', [("json_response.description.type", ABSENT, "text")]),
+        # A list whose first element is not a text component.
+        ('"x"', '[1,"x"]', [("json_response.description", {"text": "x"}, [1, {"text": "x"}])]),
     ],
 )
-def test_only_the_bare_string_equivalence_is_encoded(
+def test_spellings_not_shown_to_read_alike_stay_significant(
     reference: str, candidate: str, divergences: list[tuple[str, object, object]]
 ) -> None:
     assert _diff(f'{{"description":{reference}}}', f'{{"description":{candidate}}}') == divergences
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ('["a","b"]', '{"text":"a","extra":["b"]}'),
+        ('["a"]', '"a"'),
+        ('[{"text":"a","bold":true},"b"]', '{"text":"a","bold":true,"extra":["b"]}'),
+        ('[{"text":"a","extra":["x"]},"b"]', '{"text":"a","extra":["x","b"]}'),
+        ('[["a","b"],"c"]', '{"text":"a","extra":["b","c"]}'),
+        ('{"text":"a","extra":[["b","c"]]}', '{"text":"a","extra":[{"text":"b","extra":["c"]}]}'),
+    ],
+)
+def test_a_list_is_its_first_component_with_the_rest_added_to_its_extra(
+    reference: str, candidate: str
+) -> None:
+    # ComponentSerialization.createFromList: the first's copy, then append each of the rest
+    # (docs/research/2026-09-26-comparison.md).
+    assert _diff(f'{{"description":{reference}}}', f'{{"description":{candidate}}}') == []
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate", "divergences"),
+    [
+        (
+            '["a","b"]',
+            '{"text":"a","extra":["c"]}',
+            [("json_response.description.extra[0].text", "b", "c")],
+        ),
+        (
+            '["a","b"]',
+            '["b","a"]',
+            [
+                ("json_response.description.extra[0].text", "b", "a"),
+                ("json_response.description.text", "a", "b"),
+            ],
+        ),
+        (
+            '["a","b"]',
+            '{"text":"a","bold":true,"extra":["b"]}',
+            [("json_response.description.bold", ABSENT, True)],
+        ),
+        (
+            '[{"text":"a"},{"text":"b","bold":true}]',
+            '{"text":"a","bold":true,"extra":["b"]}',
+            [
+                ("json_response.description.bold", ABSENT, True),
+                ("json_response.description.extra[0].bold", True, ABSENT),
+            ],
+        ),
+    ],
+)
+def test_a_list_and_an_object_that_read_differently_still_differ(
+    reference: str, candidate: str, divergences: list[tuple[str, object, object]]
+) -> None:
+    assert _diff(f'{{"description":{reference}}}', f'{{"description":{candidate}}}') == divergences
+
+
+@pytest.mark.parametrize(
+    "refused",
+    [
+        '{"text":"x","extra":[]}',
+        "[]",
+        '{"text":"a","extra":[{"text":"b","extra":[]}]}',
+        '["a",[]]',
+        '[{"text":"a","extra":[]},"b"]',
+    ],
+)
+def test_a_description_with_an_empty_list_reads_as_no_description(refused: str) -> None:
+    # ExtraCodecs.nonEmptyList refuses it, and ServerStatus.CODEC reads a description it
+    # cannot decode as CommonComponents.EMPTY (docs/research/2026-09-26-comparison.md).
+    assert _diff("{}", f'{{"description":{refused}}}') == []
+    assert _diff('{"description":"x"}', f'{{"description":{refused}}}') == [
+        ("json_response.description", {"text": "x"}, ABSENT)
+    ]
 
 
 def test_strings_outside_the_description_are_not_text_components() -> None:
@@ -143,6 +206,7 @@ DECLARED_DEFAULTS = [
     ('{"players":{"max":20,"online":0},"enforcesSecureChat":false}', "enforcesSecureChat", False),
     ('{"players":{"max":20,"online":0},"description":""}', "description", ""),
     ('{"players":{"max":20,"online":0},"description":{"text":""}}', "description", {"text": ""}),
+    ('{"players":{"max":20,"online":0},"description":[""]}', "description", [""]),
 ]
 
 
@@ -158,7 +222,7 @@ def _network_traffic(reference: str, candidate: str) -> list[tuple[str | None, o
 @pytest.mark.parametrize(
     ("candidate", "path", "sent"),
     DECLARED_DEFAULTS,
-    ids=["sample", "enforcesSecureChat", "description", "description-object"],
+    ids=["sample", "enforcesSecureChat", "description", "description-object", "description-list"],
 )
 def test_a_declared_default_is_the_same_as_its_absence(
     candidate: str, path: str, sent: object
@@ -190,10 +254,6 @@ def test_a_declared_default_is_the_same_as_its_absence(
             ("json_response.description", ABSENT, {"text": " "}),
         ),
         (
-            '{"players":{"max":20,"online":0},"description":[""]}',
-            ("json_response.description", ABSENT, [{"text": ""}]),
-        ),
-        (
             '{"players":{"max":20,"online":0},"description":{"text":"","bold":false}}',
             ("json_response.description", ABSENT, {"text": "", "bold": False}),
         ),
@@ -204,7 +264,6 @@ def test_a_declared_default_is_the_same_as_its_absence(
         "secure-chat-true",
         "secure-chat-number",
         "description-space",
-        "description-list",
         "description-style",
         "favicon-has-no-default",
     ],
@@ -269,11 +328,19 @@ def test_the_version_ignores_a_key_it_does_not_name() -> None:
         ('{"description":{"text":"a","x":1}}', ("json_response.description.x", ABSENT, 1)),
         ('{"description":{"text":"a","x":null}}', ("json_response.description.x", ABSENT, None)),
         (
+            '{"description":[{"text":"a","extra":null},"b"]}',
+            (
+                "json_response.description",
+                {"text": "a"},
+                [{"text": "a", "extra": None}, {"text": "b"}],
+            ),
+        ),
+        (
             '{"description":{"text":"a"},"players":{"sample":[{"name":"a","x":null}]}}',
             ("json_response.players.sample[0].x", ABSENT, None),
         ),
     ],
-    ids=["description-key", "description-null", "sample-entry-null"],
+    ids=["description-key", "description-null", "description-list-null-extra", "sample-entry-null"],
 )
 def test_unknown_keys_and_nulls_elsewhere_stay_significant(
     candidate: str, divergence: tuple[str, object, object]
