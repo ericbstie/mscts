@@ -1315,7 +1315,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `redstone/comparator` script; `torch` — the `redstone/torch` script; `observer` — the
   `redstone/observer` script; `dust` — the `redstone/dust` script; `update_order` — the
   `redstone/update-order` script; `piston_push` — the `redstone/piston-push` script; `sticky` —
-  the `redstone/sticky` script.
+  the `redstone/sticky` script; `quasi_connectivity` — the `redstone/quasi-connectivity`
+  script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,

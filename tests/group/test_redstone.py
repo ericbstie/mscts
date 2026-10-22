@@ -25,9 +25,10 @@ DUST = "redstone/dust"
 UPDATE_ORDER = "redstone/update-order"
 PISTON_PUSH = "redstone/piston-push"
 STICKY = "redstone/sticky"
+QUASI = "redstone/quasi-connectivity"
 UNMASKED = (REPEATER, COMPARATOR, TORCH, OBSERVER, DUST)
 CIRCUIT_IDS = (*UNMASKED, UPDATE_ORDER)
-PISTON_IDS = (PISTON_PUSH, STICKY)
+PISTON_IDS = (PISTON_PUSH, STICKY, QUASI)
 GROUP_IDS = (*CIRCUIT_IDS, *PISTON_IDS)
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw", "kill")
 WINDOW = (
@@ -395,7 +396,7 @@ async def test_dust_powers_the_line_for_a_tick_then_builds_and_cuts_a_climb_a_ti
 # `redstone/update-order`
 
 
-@pytest.mark.parametrize("group_id", [UPDATE_ORDER, STICKY])
+@pytest.mark.parametrize("group_id", [UPDATE_ORDER, STICKY, QUASI])
 def test_each_group_whose_only_sound_is_a_pistons_masks_only_its_random_pitch(
     group_id: str,
 ) -> None:
@@ -570,3 +571,38 @@ async def test_sticky_powers_every_piston_unpowers_one_after_a_tick_and_the_rest
         *steps(4),
     )
     assert window.ticks == 9
+
+
+# `redstone/quasi-connectivity`
+
+QUASI_ZS = (3, 7, 11)
+"""The z of the piston, the dropper and the dispenser."""
+
+
+@pytest.mark.asyncio
+async def test_quasi_connectivity_builds_a_piston_a_dropper_and_a_dispenser() -> None:
+    first = (await play(QUASI)).first
+
+    assert first[5:] == (
+        "setblock 3 -60 3 minecraft:piston[facing=east]",
+        "setblock 3 -60 7 minecraft:dropper[facing=east]",
+        "setblock 3 -60 11 minecraft:dispenser[facing=east]",
+    )
+
+
+@pytest.mark.asyncio
+async def test_quasi_connectivity_powers_2_above_updates_beside_then_undoes_both_in_order() -> None:
+    # A redstone block 2 above makes no block next to them change; stone placed beside does.
+    (window,) = (await play(QUASI)).windows
+
+    assert window.commands == (
+        *(f"setblock 3 -58 {z} minecraft:redstone_block" for z in QUASI_ZS),
+        *steps(2),
+        *(f"setblock 2 -60 {z} minecraft:stone" for z in QUASI_ZS),
+        *steps(6),
+        *(f"setblock 3 -58 {z} minecraft:air" for z in QUASI_ZS),
+        *steps(2),
+        *(f"setblock 2 -60 {z} minecraft:air" for z in QUASI_ZS),
+        *steps(4),
+    )
+    assert window.ticks == 14

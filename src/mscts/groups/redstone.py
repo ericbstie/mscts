@@ -1,11 +1,12 @@
-"""Redstone Groups: when repeaters, comparators, torches, observers and dust switch, tick by tick.
+"""Redstone Groups: when repeaters, comparators, torches, observers, dust and pistons act.
 
 A Bot called `watcher` stands at the spawn. Control stops random ticks, freezes the world and
 builds a Group's circuits with `/setblock` on the grass of chunk (0, 0), the one the watcher is
 sent first. Then, in an Observation window, Control places or removes the redstone blocks that
 feed the circuits and steps the world a tick at a time, so the window compares which blocks change
 on which tick: whether a repeater, a comparator or an observer is powered, whether a torch is lit
-and how strong each dust is are block states.
+and how strong each dust is are block states. A piston's move is a block event, then blocks that
+move for 2 ticks: docs/research/2026-10-22-pistons.md.
 
 A frozen world's game time stands still, and its block ticks run only on the ticks it steps
 (docs/research/2026-10-03-tick-step.md), so a component that a command changes between two steps
@@ -540,3 +541,42 @@ async def sticky(context: GroupContext) -> None:
     """Sticky pistons pull back, drop their block after a 1-tick pulse, and move slime and honey."""
     async with _arena(context, _STICKY_BUILD):
         await _observe(context, _STICKY, _STICKY_TICKS, _PISTON_PACKETS)
+
+
+# `redstone/quasi-connectivity`: a piston, a dropper and a dispenser at x 3, facing east, each
+# with a redstone block 2 above it, at y -58, and stone that Control places behind it, at x 2.
+
+_QUASI = {"piston": 3, "dropper": 7, "dispenser": 11}
+"""The z of each block that reads power at the block above it."""
+
+_QUASI_BUILD = tuple(_set(3, z, f"{block}[facing=east]") for block, z in _QUASI.items())
+
+
+def _two_above(z: int, block: str) -> str:
+    """The `/setblock` of `block` 2 above the block at x 3, -60, z."""
+    return _place(3, -58, z, block)
+
+
+_QUASI_SCHEDULE = (
+    *(_At(0, _two_above(z, "redstone_block")) for z in _QUASI.values()),
+    *(_At(2, _set(2, z, "stone")) for z in _QUASI.values()),
+    *(_At(8, _two_above(z, "air")) for z in _QUASI.values()),
+    *(_At(10, _set(2, z, "air")) for z in _QUASI.values()),
+)
+"""A piston, a dropper and a dispenser count power next to the block above them as their own
+(`PistonBaseBlock.getNeighborSignal`, `DispenserBlock.neighborChanged`), but check it only when
+a block next to them changes. A redstone block 2 above changes only the blocks next to it, so
+nothing acts on it; the stone placed behind each, on tick 2, makes them check: the piston
+extends on tick 3, and the dropper and the dispenser are triggered at once and click 4 ticks
+later, on tick 6 (world event 1001: they are empty). The redstone blocks go on tick 8, and
+nothing changes until the stones go on tick 10: the piston retracts, back on tick 13, and the
+dropper and the dispenser are no longer triggered."""
+
+_QUASI_TICKS = 14
+
+
+@group("redstone/quasi-connectivity", kind=GroupKind.TICK_EXACT, masks=(_PISTON_PITCH,))
+async def quasi_connectivity(context: GroupContext) -> None:
+    """A piston, a dropper and a dispenser powered 2 blocks above act only once updated."""
+    async with _arena(context, _QUASI_BUILD):
+        await _observe(context, _QUASI_SCHEDULE, _QUASI_TICKS, _PISTON_PACKETS)
