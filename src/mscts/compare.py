@@ -31,7 +31,7 @@ import json
 import re
 import struct
 from array import array
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
@@ -306,13 +306,39 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "Level.updateNeighborsAt does nothing, and flag 16 skips the shape updates), so a "
             "position sent twice keeps the last state."
         ),
+        "minecraft:recipe_book_add": (
+            "entries, those with the toast flag (1) first in their order, then the others "
+            "sorted by what each shows: its display id left out, and of its group number only "
+            "whether it has one. At a "
+            "join vanilla sends a player's known recipes in identity hash order, with no toast "
+            "flag: ServerRecipeBook keeps them in a Sets.newIdentityHashSet, which "
+            "sendInitialRecipeBook iterates. The client puts each entry in its book, a HashMap "
+            "keyed by display id (ClientPacketListener.handleRecipeBookAdd, then "
+            "ClientRecipeBook.add), and highlights it in a HashSet, so the order of those "
+            "entries is not kept. An entry with the toast flag is also added to the recipe "
+            "toast (RecipeToast.addOrUpdate), which shows its recipes one after another in "
+            "the order they came, so those keep their order."
+        ),
+        "minecraft:recipe_book_remove": (
+            "recipes, sorted by the numbers their display ids take, after they are numbered: "
+            "each server picks its ids, so their own order would follow its numbering. Vanilla "
+            "lists them in the order of the collection it is given (ServerRecipeBook"
+            ".removeRecipes). The client removes each id from its book at its own key "
+            "(ClientPacketListener.handleRecipeBookRemove: ClientRecipeBook.remove, a "
+            "HashMap.remove and a HashSet.remove for each), then refreshes the book once, so "
+            "their order is not kept."
+        ),
     }
 )
 """The packets, in any State, whose unordered lists every Comparison sorts, each with the
 reason: the hash collection vanilla iterates to send the list, in an order the client does
 not keep and that may change from one boot (or join) to the next, and the map or set the
 client reads the list into. The sort key is the key of the client's map or set,
-and the sort is stable, so of a key sent twice the last stays last. That order is never a
+and the sort is stable, so of a key sent twice the last stays last. The recipe book's key is
+a number the server picks, so its entries are sorted by what they show instead, and the ones
+the client also shows in turn keep their order (`_sorted_recipe_book_add`); a recipe book
+removal holds only such numbers, so it is sorted once they are numbered (`_RecipeNumbers`).
+That order is never a
 Divergence, not even a network traffic one (docs/research/2026-10-01-control.md, #30).
 """
 
@@ -547,13 +573,15 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     `player <uuid>`), and every other entity id but one first seen in a
     `remove_entities`, and each of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the
     n-th in the Packets left in the stream, so nothing left out or dropped counts
-    (`_Numbers`); and in the Packets of a Mask's name, the value at its path is MASKED on
-    both sides, wherever present, unless it is None: a Mask hides a value, never whether
-    it is there, so a field or a list element one side lacks is still a Divergence, and a
-    masked field is no test case where it does not diverge. The Masks are one for each of
-    the `RANDOM_FIELDS`, then `masks`. Indices count the normalized stream, so they do not
-    shift when a re-run has more or fewer Packets left out or dropped; paths and values
-    are those of the sorted, canonical, numbered form.
+    (`_Numbers`), as does each recipe display id and recipe book group number, each counted
+    on its own over the sorted Packets (`_RecipeNumbers`); and in the Packets of a Mask's
+    name, the value at its path is MASKED on both sides, wherever present, unless it is
+    None: a Mask hides a value, never whether it is there, so a field or a list element
+    one side lacks is still a Divergence, and a masked field is no test case where it does
+    not diverge. The Masks are one for each of the `RANDOM_FIELDS`, then `masks`. Indices
+    count the normalized stream, so they do not shift when a re-run has more or fewer
+    Packets left out or dropped; paths and values are those of the sorted, canonical,
+    numbered form.
 
     Each Bot's two streams are aligned on their packet keys (State and name, and the position
     of a packet about one chunk), leaving as few Packets unmatched as possible; swapping the
@@ -1347,13 +1375,136 @@ def _replaced(value: _Value, trie: _Trie, number: Callable[[_Value], _Value]) ->
     return value
 
 
+_RECIPE_BOOK_ADD = "minecraft:recipe_book_add"
+_RECIPE_BOOK_REMOVE = "minecraft:recipe_book_remove"
+
+
+@dataclass(slots=True)
+class _Numbering:
+    """Keys numbered from 1 by first appearance, until a number ends; none is given twice.
+
+    Attributes:
+        numbers: Each key's number, until it ends.
+        given: How many numbers have been given.
+    """
+
+    numbers: dict[Hashable, int] = dataclasses.field(default_factory=dict)
+    given: int = 0
+
+    def of(self, key: Hashable) -> int:
+        """`key`'s number: the next one if it has none."""
+        number = self.numbers.get(key)
+        if number is None:
+            self.given += 1
+            number = self.numbers[key] = self.given
+        return number
+
+    def end(self, key: Hashable) -> None:
+        """End `key`'s number, if it has one: it takes the next one if it comes again."""
+        self.numbers.pop(key, None)
+
+    def end_all(self) -> None:
+        """End every key's number."""
+        self.numbers.clear()
+
+
+@dataclass(slots=True)
+class _RecipeNumbers:
+    """The numbers of the recipe display ids and group numbers in a Bot's compared Packets.
+
+    Both are numbers the server picks: the client looks a recipe up by its display id
+    (`ClientRecipeBook.known`, a HashMap) and puts the recipes of one category and group
+    number in one button (`categorizeAndGroupRecipes`, a HashBasedTable). They are
+    `recipe_book_add`'s `entries[].contents.id` and `.group`, and `recipe_book_remove`'s
+    `recipes[]`. `place_ghost_recipe` shows a display, with no id, and `place_recipe`, which
+    sends one back, is serverbound, so no Comparison sees it.
+
+    Each is numbered by first appearance, in the order the Packets are compared (sorted,
+    `UNORDERED`), so neither server's numbering decides it. Display ids and groups are
+    counted on their own, and a group is its category and group number, the client's key:
+    vanilla gives a group one number across categories, which the client shows as one
+    button in each. A number lasts as long as the client keeps the key: a
+    `recipe_book_remove` ends its ids' numbers (`ClientRecipeBook.remove`), and a
+    `recipe_book_add` that replaces the book ends every number before its entries take
+    theirs (`ClientRecipeBook.clear`). So a recipe the server adds again with another id
+    shows the same, and an id given to another recipe while the first still holds it does
+    not. An id first seen in a removal takes the next number, which the removal ends.
+
+    Attributes:
+        ids: The display ids' numbers.
+        groups: The groups' numbers, each group its category (as JSON) and group number.
+    """
+
+    ids: _Numbering = dataclasses.field(default_factory=_Numbering)
+    groups: _Numbering = dataclasses.field(default_factory=_Numbering)
+
+    def number(self, packet: Packet, copies: Sequence[dict[str, _Value]]) -> None:
+        """Number the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
+
+        `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
+        the first copy's order numbers them.
+        """
+        if packet.fields is None:
+            return
+        if packet.name == _RECIPE_BOOK_ADD:
+            self._number_add(packet.fields, copies)
+        elif packet.name == _RECIPE_BOOK_REMOVE:
+            self._number_removal(packet.fields, copies)
+
+    def _number_add(
+        self, fields: Mapping[str, object], copies: Sequence[dict[str, _Value]]
+    ) -> None:
+        """Number `copies`, of a `recipe_book_add`'s `fields`, after ending all if it replaces."""
+        if fields.get("replace") is True:
+            self.ids.end_all()
+            self.groups.end_all()
+        for copy in copies:
+            for contents in _recipe_contents(copy):
+                self._number_contents(contents)
+
+    def _number_removal(
+        self, fields: Mapping[str, object], copies: Sequence[dict[str, _Value]]
+    ) -> None:
+        """Number `copies`, of a `recipe_book_remove`'s `fields`, then end the ids' numbers.
+
+        Each copy's ids are sorted by their numbers (`UNORDERED`), and anything that is not
+        an id follows them, in order.
+        """
+        for copy in copies:
+            if isinstance(recipes := copy.get("recipes"), list):
+                numbers = sorted(self.ids.of(each) for each in recipes if type(each) is int)
+                others = [each for each in recipes if type(each) is not int]
+                recipes[:] = [f"#{number}" for number in numbers] + others
+        removed = fields.get("recipes")
+        for display_id in removed if isinstance(removed, list) else ():
+            if type(display_id) is int:
+                self.ids.end(display_id)
+
+    def _number_contents(self, contents: dict[str, _Value]) -> None:
+        """Number the display id and group number of `contents`, one entry's."""
+        if type(display_id := contents.get("id")) is int:
+            contents["id"] = f"#{self.ids.of(display_id)}"
+        if type(group := contents.get("group")) is int:
+            category = json.dumps(contents.get("category"), sort_keys=True, default=repr)
+            contents["group"] = f"#{self.groups.of((category, group))}"
+
+
+def _recipe_contents(fields: Mapping[str, _Value]) -> Iterator[dict[str, _Value]]:
+    """The `contents` of each entry of `fields`, a `recipe_book_add`'s, that has them."""
+    entries = fields.get("entries")
+    for entry in entries if isinstance(entries, list) else ():
+        if isinstance(entry, dict) and isinstance(contents := entry.get("contents"), dict):
+            yield contents
+
+
 @dataclass(slots=True)
 class _Numbers:
-    """The names of the entities in a Bot's stream so far, `_stream` feeding it in order.
+    """The names and numbers of a Bot's entities so far, and of its recipes, fed in order.
 
     An entity spawned outside the windows is named by its `add_entity` (`spawned`); any
     other entity id, and each entity UUID, is numbered by first appearance in the compared
-    Packets (`take`): `#1` is the first.
+    Packets (`take`): `#1` is the first. The recipes are numbered on their own (`recipes`,
+    `_normalize`).
 
     Attributes:
         ids: Each entity id's name or number.
@@ -1361,6 +1512,7 @@ class _Numbers:
         numbered: How many entity ids have taken a number.
         names: How many entities have taken each name, before its suffix.
         numbers: The number of each entity id in `ids` that took one, as an int.
+        recipes: The numbers of the recipe display ids and group numbers.
     """
 
     ids: dict[int, str]
@@ -1368,6 +1520,7 @@ class _Numbers:
     numbered: int = 0
     names: dict[str, int] = dataclasses.field(default_factory=dict)
     numbers: dict[int, int] = dataclasses.field(default_factory=dict)
+    recipes: _RecipeNumbers = dataclasses.field(default_factory=_RecipeNumbers)
 
     def ranks(self) -> dict[int, tuple[int, int, str]]:
         """Where each entity known so far sorts in a run of resends, as of now (`_by_entity`).
@@ -1574,6 +1727,7 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     if canonical is None:
         fields = _copy(packet, packet.fields)
         numbers.apply(packet, fields)
+        numbers.recipes.number(packet, (fields,))
         masked = _hide_all(fields, paths)
         return _Normalized(packet=packet, fields=fields, masked=masked)
     raw = _copy(packet, packet.fields)
@@ -1584,6 +1738,7 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     fields = canonical(_copy(packet, packet.fields), context)
     for copy in (raw, parsed, unmasked, fields):
         numbers.apply(packet, copy)
+    numbers.recipes.number(packet, (raw, parsed, unmasked, fields))
     for copy in (raw, parsed):
         _hide_all(copy, paths)
     masked = _hide_all(fields, paths)
@@ -1808,6 +1963,45 @@ def _sorted_section_blocks(fields: dict[str, _Value]) -> dict[str, _Value]:
     return {**fields, "blocks": _sorted_on(fields["blocks"], _block_position)}
 
 
+def _sorted_recipe_book_add(fields: dict[str, _Value]) -> dict[str, _Value]:
+    """Put the `entries` with a toast first, in their order, then the others by what they show.
+
+    What an entry shows is its fields but its display id, and of its group number only
+    whether it has one (`_shown_entry`), so the order depends on neither server's numbering.
+    The sort is stable.
+    """
+    entries = fields.get("entries")
+    if not isinstance(entries, list):
+        return fields
+    toasts = [entry for entry in entries if _shows_toast(entry)]
+    others = [entry for entry in entries if not _shows_toast(entry)]
+    return {**fields, "entries": toasts + sorted(others, key=_shown_entry)}
+
+
+_TOAST_FLAG = 1
+"""`ClientboundRecipeBookAddPacket$Entry.FLAG_NOTIFICATION`: the entry's recipe joins the toast."""
+
+
+def _shows_toast(entry: _Value) -> bool:
+    """Whether a `recipe_book_add` entry has the toast flag; one with no int flags counts as so."""
+    flags = entry.get("flags") if isinstance(entry, dict) else None
+    return type(flags) is not int or bool(flags & _TOAST_FLAG)
+
+
+def _shown_entry(entry: _Value) -> str:
+    """A `recipe_book_add` entry as JSON with sorted keys, as the server's numbers leave it.
+
+    Its display id is left out, and its group number is only whether it has one.
+    """
+    shown = entry
+    if isinstance(entry, dict) and isinstance(contents := entry.get("contents"), dict):
+        kept = {key: value for key, value in contents.items() if key != "id"}
+        if "group" in kept:
+            kept["group"] = kept["group"] is not None
+        shown = {**entry, "contents": kept}
+    return json.dumps(shown, sort_keys=True, default=repr)
+
+
 def _sorting(field: str, key: str | None) -> Callable[[dict[str, _Value]], dict[str, _Value]]:
     """Sort the list `field` of a packet's fields, as `_sorted_by` does with `key`."""
 
@@ -1826,6 +2020,7 @@ _SORTS: Mapping[str, Callable[[dict[str, _Value]], dict[str, _Value]]] = Mapping
         "minecraft:update_advancements": _sorted_update_advancements,
         "minecraft:level_chunk_with_light": _sorted_level_chunk,
         "minecraft:section_blocks_update": _sorted_section_blocks,
+        "minecraft:recipe_book_add": _sorted_recipe_book_add,
     }
 )
 """How each packet `UNORDERED` names is sorted, by name, in any State."""

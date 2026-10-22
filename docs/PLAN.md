@@ -1249,8 +1249,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   each; `clicks_inventory` and `clicks_chest` — the `inventory/clicks-inventory` and
   `inventory/clicks-chest` scripts.
 - `groups.crafting`: `PACKETS` — what a window compares (the slots, the cursor, the ghost
-  recipe and the recipe book); `RECIPE_ID_MASKS` — the Masks on the recipe display ids and
-  group numbers, which the client uses only as keys (the crafting Groups and `join/basic`); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
+  recipe and the recipe book); `CRAFTER` — the Bot of `crafting/grid`; `HOTBAR_0` — the
   inventory menu's slot of the first hotbar slot; `Grid` — one 2x2 case (a stack, the cells it
   is clicked onto); `GRID_CASES` — the cases; `grid` — the `crafting/grid` script.
   `BOOKWORM` — the Bot of `crafting/recipe-book`; `TABLE` — where its crafting table stands;
@@ -1677,8 +1676,12 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # dimension_names, update_attributes' attributes,
                                     # update_recipes' property sets and update_advancements'
                                     # removed ids and progress (#30, #106), a chunk's
-                                    # heightmaps and block entities (#22), and
-                                    # section_blocks_update's blocks (#320)
+                                    # heightmaps and block entities (#22),
+                                    # section_blocks_update's blocks (#320), and
+                                    # recipe_book_add's entries with no toast flag, by what
+                                    # each shows, not by the server's display id or group
+                                    # number, and recipe_book_remove's ids, by the numbers
+                                    # they take (#363)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -2037,6 +2040,38 @@ proves it necessary:
      updates), so blocks at different positions can come in any order, and
      a position sent twice ends with its last state, which the stable sort
      keeps last.
+     `play` / `minecraft:recipe_book_add` (#363): the `entries` with the
+     toast flag (`flags` bit 1) come first, in the order they came; the
+     others follow, sorted stably by what each shows: the entry as JSON
+     with sorted keys, its display id (`contents.id`) left out and its
+     group number (`contents.group`) reduced to whether it has one, since
+     both are numbers the server picks and the order must not depend on
+     either server's numbering. At a join
+     vanilla sends a player's known recipes in identity hash order, with
+     no toast flag (`javap` on the 26.3 server: `ServerRecipeBook` keeps
+     them in a `Sets.newIdentityHashSet`, which `sendInitialRecipeBook`
+     iterates; `addRecipes`, for a recipe given, sets the toast flag from
+     `Recipe.showNotification`). The client puts each entry in its book, a
+     `HashMap` keyed by display id, and highlights it in a `HashSet`
+     (`ClientPacketListener.handleRecipeBookAdd`, `ClientRecipeBook.add`
+     and `addHighlight`), so the order of those entries is not kept. An
+     entry with the toast flag is also added to the recipe toast
+     (`RecipeToast.addOrUpdate`), an `ArrayList` the toast shows one after
+     another, so those keep their order. (An entry that repeats another's
+     display id and shows something else may move past it, so which of
+     the two the client keeps is not compared; vanilla never repeats one.
+     Two entries that show the same keep the order between them that each
+     server sent, which shows in their numbers only where their groups
+     differ.)
+     `play` / `minecraft:recipe_book_remove` (#363): `recipes` is sorted
+     by the numbers its display ids take in step 2, once they are
+     numbered, since each server picks its ids. Vanilla lists them in the
+     order of the collection it is given (`ServerRecipeBook.removeRecipes`).
+     The client removes each id from its book at its own key and refreshes
+     the book once after all of them (`javap` on the 26.3 client:
+     `ClientPacketListener.handleRecipeBookRemove` calls
+     `ClientRecipeBook.remove`, a `HashMap.remove` and a `HashSet.remove`,
+     for each id, then `refreshRecipeBook`), so their order is not kept.
    - the order of packets about different chunks, and where they fall
      among packets whose handling reads no chunk. A *chunk packet* is a
      `level_chunk_with_light`, `light_update` or `forget_level_chunk`:
@@ -2426,6 +2461,44 @@ proves it necessary:
    first seen in a `remove_entities` takes no number: the entity is
    gone, and a number would shift every later one. It is written `#?`
    there, as its value is the server's counter.
+   Recipe display ids and recipe book group numbers (#363) are numbers
+   the server picks, and become `#<n>` the same way, each counted on its
+   own: the n-th display id (or group number) in the Bot's compared
+   packets, read after the sort of step 1, so neither server's numbering
+   decides it. They are `recipe_book_add`'s `entries[].contents.id` and
+   `entries[].contents.group` (None, no group, stays None; a group is its
+   category and group number, the client's key, since vanilla gives a
+   group one number across categories, as for `iron_ingot` in smelting,
+   blasting and crafting, and the client shows one button in each) and
+   `recipe_book_remove`'s `recipes[]` (`compare._RecipeNumbers`). A
+   number lasts as long as the client keeps the key: a removal ends the
+   numbers of its ids (`ClientRecipeBook.remove`), and an add with
+   `replace` ends every number before its entries take theirs
+   (`ClientRecipeBook.clear`). A number is never given twice. So a
+   Candidate that gives a recipe another id when it adds it again shows
+   what vanilla does (vanilla keeps the id:
+   `RecipeManager.unpackRecipeInfo` numbers every display once), and one
+   that gives a recipe's id to another while the first still holds it
+   differs. An id first seen in a removal takes the next number, which
+   the removal ends.
+   `place_ghost_recipe` holds a display, not an id, and is compared as
+   it is; `place_recipe`, which sends an id back, is serverbound. So a
+   Candidate that numbers its recipes another way but keeps to it shows
+   the same book, and a group of another recipe than the Reference's
+   differs (`#2` against `#1`), as does a removal of another recipe, if
+   the recipe was added in a compared packet. Limit: a recipe added
+   before the windows is first seen in its removal, so two removals of
+   different such recipes compare equal; no Group removes one (an
+   entity has its `add_entity` name for this, `_Numbers.spawned`, and a
+   recipe has nothing like it). Javap on the 26.3 client:
+   the client keeps its book in a `HashMap` keyed by display id
+   (`ClientRecipeBook.known`) and puts the recipes of one category and
+   group number in one button (`categorizeAndGroupRecipes`, a
+   `HashBasedTable`). Not compared: the book lists its buttons in that
+   map's iteration order (`rebuildCollections` iterates `known.values()`,
+   and `RecipeBookComponent.updateCollections` and `RecipeBookPage`
+   sort nothing), which follows the ids' values (`RecipeDisplayId` is a
+   record of one `int`, so its hash is the id).
 3. Apply **Masks**, which hide identifiers with no gameplay meaning, or
    ambient packets (ADR-0006: never anything a player could notice). A `*` Mask drops every packet of that name (in any
    State) from both streams before alignment; indices count the stream
