@@ -621,7 +621,7 @@ emptied and put back at the spawn.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `crafting/grid` | exact | none | A Bot, `crafter`, clicks items into the 2 × 2 grid of its inventory, one item a cell, in a window for each case: planks from a log, sticks, a crafting table, bone meal from a bone (shapeless), and two arrangements that make nothing. | none |
+| `crafting/grid` | exact | none | A Bot, `crafter`, clicks items into the 2 × 2 grid of its inventory, one item a cell, in a window for each case: planks from a log, sticks, a crafting table, bone meal from a bone (shapeless), and two arrangements that make nothing. Then it puts two logs in one cell and takes the planks twice, a window each: onto an empty cursor, then onto the planks it holds. Last, in a crafting table, it lays out the items of two stone pickaxes (shaped) and takes a pickaxe twice. A pickaxe does not stack, so the second take finds no room on the cursor and takes nothing. | none |
 | `crafting/recipe-book` | exact | none | A Bot, `bookworm`, clicks recipes in its recipe book, in a window each. In the 2 × 2 grid: planks, all the planks it can make, a crafting table with too few planks, and sticks, a recipe it does not know. Then in a crafting table: a stone pickaxe, a stone pickaxe with too little cobblestone, as many crafting tables as it can make, and sticks. | none |
 | `crafting/unlocking` | exact | none | Control gives a Bot, `learner`, the stick recipe and takes it, then gives and takes every recipe, in a window each. With `limited_crafting` on and then off, the Bot clicks an oak log into its grid while it knows no recipe. Last, Control revokes the advancement that unlocks oak planks and gives the Bot an oak log, which unlocks the recipe again. | none |
 
@@ -644,8 +644,9 @@ recipe of its own. A grid holds the items it was given until it is cleared. `/cl
 inventory's grid as well, and a crafting table gives its grid back when it is closed, so the
 Bot opens the table for each click and closes it after.
 
-The Bot does not take a crafted result, and does not click items into a crafting table's grid:
-it cannot yet predict those clicks the way the client does.
+The Bot takes a crafted result with a click, never with a shift-click. A shift-click crafts
+again for as long as the grid makes the same result, and the Bot cannot tell how long that is
+without knowing the recipes.
 
 ## Entities (`entities`)
 

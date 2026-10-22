@@ -406,9 +406,9 @@ async def test_the_bot_is_emptied_and_put_back_at_the_spawn_and_the_joins_unpinn
 @pytest.mark.asyncio
 async def test_each_grid_window_takes_the_stack_puts_one_on_each_cell_and_the_rest_back() -> None:
     result = await play(GRID)
+    windows = result.windows[: len(crafting.GRID_CASES)]
 
-    assert len(result.windows) == len(crafting.GRID_CASES)
-    for window, case in zip(result.windows, crafting.GRID_CASES, strict=True):
+    for window, case in zip(windows, crafting.GRID_CASES, strict=True):
         placed = [(slot, 1, 0) for slot in case.slots]
         back = [(crafting.HOTBAR_0, 0, 0)] if case.count > len(case.slots) else []
         assert clicks(window) == [(crafting.HOTBAR_0, 0, 0), *placed, *back]
@@ -434,6 +434,70 @@ async def test_a_grid_click_reports_the_one_item_it_put_in_the_cell() -> None:
         }
     ]
     assert sent[1]["carried_item"] is None
+
+
+def _spread(first: int, stacks: tuple[crafting.Grid, ...]) -> list[tuple[int, int, int]]:
+    """The clicks that put `stacks`, from slot `first` on, onto their cells, and the rest back."""
+    sent: list[tuple[int, int, int]] = []
+    for index, stack in enumerate(stacks):
+        slot = first + index
+        sent += [(slot, 0, 0), *((cell, 1, 0) for cell in stack.slots)]
+        sent += [(slot, 0, 0)] * (stack.count > len(stack.slots))
+    return sent
+
+
+def _takes(first: int) -> list[list[tuple[int, int, int]]]:
+    """The clicks of the take windows: the result each, then what was taken put in `first`."""
+    takes = [[(crafting.RESULT, 0, 0)] for _ in range(crafting.TAKES)]
+    takes[-1].append((first, 0, 0))
+    return takes
+
+
+@pytest.mark.asyncio
+async def test_the_bot_takes_a_result_of_its_2x2_grid_twice_then_puts_it_back() -> None:
+    result = await play(GRID)
+    first = len(crafting.GRID_CASES)
+    put, *takes = result.windows[first : first + 1 + crafting.TAKES]
+    stacks = crafting.INVENTORY_TAKE
+
+    assert len(result.windows) == first + 2 * (1 + crafting.TAKES)
+    assert clicks(put) == _spread(crafting.INVENTORY_0, stacks)
+    assert [clicks(window) for window in takes] == _takes(crafting.INVENTORY_0)
+    assert put.before[-2:] == _fills(crafting.CRAFTER, ("minecraft:oak_log 2",))
+    assert all(window.control == () for window in (put, *takes))
+
+
+@pytest.mark.asyncio
+async def test_the_bot_takes_a_stone_pickaxe_from_a_crafting_table_twice_then_puts_it_back() -> (
+    None
+):
+    result = await play(GRID)
+    first = len(crafting.GRID_CASES) + 1 + crafting.TAKES
+    put, *takes = result.windows[first:]
+    x, y, z = crafting.TABLE
+    items = ("minecraft:cobblestone 6", "minecraft:stick 4")
+
+    assert clicks(put) == _spread(crafting.TABLE_INVENTORY_0, crafting.TABLE_TAKE)
+    assert [clicks(window) for window in takes] == _takes(crafting.TABLE_INVENTORY_0)
+    assert {f["window_id"] for w in (put, *takes) for _, f in w.sent} == {TABLE_WINDOW}
+    assert put.before == (
+        f"setblock {x} {y} {z} minecraft:crafting_table",
+        f"tp {crafting.CRAFTER} 12.5 -60 12.5 0 0",
+        *_fills(crafting.CRAFTER, items),
+    )
+    assert result.table == ((USE_ITEM_ON, first), (CLOSE, len(result.windows)))
+    assert result.synced_after_close == (True,)
+    assert f"setblock {x} {y} {z} minecraft:air" in result.after
+    assert f"setblock {x} {y - 1} {z} minecraft:grass_block" in result.after
+
+
+def test_the_takes_craft_planks_and_a_shaped_stone_pickaxe_with_items_for_two() -> None:
+    assert crafting.TAKES == 2
+    assert (crafting.Grid("minecraft:oak_log", 2, (1, 1)),) == crafting.INVENTORY_TAKE
+    assert (
+        crafting.Grid("minecraft:cobblestone", 6, (1, 1, 2, 2, 3, 3)),
+        crafting.Grid("minecraft:stick", 4, (5, 5, 8, 8)),
+    ) == crafting.TABLE_TAKE
 
 
 def test_the_grid_cases_cover_shaped_shapeless_and_invalid_arrangements() -> None:
