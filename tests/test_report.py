@@ -5,6 +5,13 @@ from dataclasses import replace
 from uuid import UUID
 
 import pytest
+from support.report_builders import (
+    divergent_field,
+    group_result,
+    listed_verdict,
+    report_of,
+    report_verdict,
+)
 
 import mscts.compare
 from mscts.compare import (
@@ -12,64 +19,12 @@ from mscts.compare import (
     TICK_PATH,
     Divergence,
     DivergenceKind,
-    Observability,
     Outcome,
     Verdict,
 )
-from mscts.report import LineResult, Report, render_markdown, render_text, report_lines
-from mscts.run import GroupResult, SideSummary
+from mscts.report import LineResult, render_markdown, render_text, report_lines
+from mscts.run import SideSummary
 from mscts.stats import Difference, Shares, Spread, Summary
-from mscts.target import TARGET
-
-
-def _field(name: str, *, traffic: bool = False) -> Divergence:
-    return Divergence(
-        bot="status",
-        index=0,
-        kind="field",
-        packet="minecraft:status_response",
-        path=name,
-        reference="reference value",
-        candidate="candidate value",
-        test_case=name,
-        observability=Observability.NETWORK_TRAFFIC if traffic else Observability.GAMEPLAY,
-    )
-
-
-def _verdict(*divergences: Divergence, group_id: str = "status/basic") -> Verdict:
-    """A Verdict as compare makes it: a network traffic Divergence's test case is not listed.
-
-    So such a test case is one no compared pair names (#330). `_listed` lists it too.
-    """
-    gameplay = {d.test_case for d in divergences if d.observability is Observability.GAMEPLAY}
-    return Verdict(
-        group_id,
-        Outcome.MISMATCH if divergences else Outcome.MATCH,
-        divergences,
-        test_cases=tuple(sorted(gameplay - {""})),
-    )
-
-
-def _listed(*divergences: Divergence, group_id: str = "status/basic") -> Verdict:
-    """A Verdict that lists each Divergence's test case: compared as well, or before #330."""
-    names = {d.test_case for d in divergences} - {""}
-    return replace(_verdict(*divergences, group_id=group_id), test_cases=tuple(sorted(names)))
-
-
-def _result(*verdicts: Verdict) -> GroupResult:
-    return GroupResult(verdicts[0].group_id, verdicts, (), ())
-
-
-def _report(*results: GroupResult, elapsed_s: float = 41.0) -> Report:
-    return Report(
-        TARGET,
-        SideSummary("vanilla", "26.3", ()),
-        SideSummary("pumpkin", "Pumpkin 26.2", ()),
-        results,
-        ("--out is not implemented yet",),
-        elapsed_s,
-    )
-
 
 FAILED_ONE = "0 passed, 1 failed. (0%)\nTook 41 s\n"
 PASSED_ONE = "1 passed, 0 failed. (100%)\nTook 41 s\n"
@@ -80,10 +35,10 @@ def _compared(*names: str, group_id: str = "status/basic") -> Verdict:
 
 
 def test_the_default_output_is_one_line_per_test_case_then_totals_and_time() -> None:
-    report = _report(
-        _result(
+    report = report_of(
+        group_result(
             replace(
-                _verdict(_field("status_response.description")),
+                report_verdict(divergent_field("status_response.description")),
                 test_cases=("status_response.description", "status_response.players.max"),
             )
         )
@@ -98,20 +53,22 @@ def test_the_default_output_is_one_line_per_test_case_then_totals_and_time() -> 
 
 
 def test_a_run_without_differences_scores_100_percent() -> None:
-    report = _report(_result(_compared("status_response.players.max")))
+    report = report_of(group_result(_compared("status_response.players.max")))
     assert render_text(report) == (
         "Running tests against pumpkin\n✓ status/basic/status_response.players.max\n" + PASSED_ONE
     )
 
 
 def test_the_first_line_uses_only_the_candidate_adapter_name() -> None:
-    report = _report(_result(_verdict()))
+    report = report_of(group_result(report_verdict()))
     report = replace(report, candidate=SideSummary("vanilla", "26.3", ()))
     assert render_text(report).startswith("Running tests against vanilla\n")
 
 
 def test_a_compared_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -> None:
-    report = _report(_result(_listed(_field("status_response.favicon", traffic=True))))
+    report = report_of(
+        group_result(listed_verdict(divergent_field("status_response.favicon", traffic=True)))
+    )
     assert render_text(report) == (
         "Running tests against pumpkin\n"
         "✓ status/basic/status_response.favicon (network traffic only)\n" + PASSED_ONE
@@ -120,9 +77,9 @@ def test_a_compared_test_case_that_differs_only_in_network_traffic_passes_and_sa
 
 def test_a_network_traffic_difference_the_comparison_did_not_compare_is_not_scored() -> None:
     # #330: a field the canonical form leaves out is named only where the sides differ.
-    traffic = replace(_field("container_set_slot.state_id", traffic=True), path="state_id")
-    verdict = _verdict(traffic, _field("container_set_slot.window_id"))
-    assert render_text(_report(_result(verdict))) == (
+    traffic = replace(divergent_field("container_set_slot.state_id", traffic=True), path="state_id")
+    verdict = report_verdict(traffic, divergent_field("container_set_slot.window_id"))
+    assert render_text(report_of(group_result(verdict))) == (
         "Running tests against pumpkin\n"
         "· status/basic/container_set_slot.state_id (network traffic only, not scored)\n"
         "✗ status/basic/container_set_slot.window_id\n" + FAILED_ONE
@@ -131,7 +88,9 @@ def test_a_network_traffic_difference_the_comparison_did_not_compare_is_not_scor
 
 def test_a_report_json_from_before_330_scores_a_network_traffic_test_case_as_it_did() -> None:
     # It listed the test case of every Divergence, so a network traffic one still passes.
-    report = _report(_result(_listed(_field("status_response.favicon", traffic=True))))
+    report = report_of(
+        group_result(listed_verdict(divergent_field("status_response.favicon", traffic=True)))
+    )
     assert render_text(report).endswith(PASSED_ONE)
 
 
@@ -140,18 +99,20 @@ def test_a_network_traffic_difference_fails_if_network_traffic_does_not_pass(
 ) -> None:
     # The switch lives with Verdict, where run.prerequisite_verdict reads it too (#221).
     monkeypatch.setattr(mscts.compare, "NETWORK_TRAFFIC_ONLY_PASSES", False)
-    report = _report(_result(_verdict(_field("status_response.favicon", traffic=True))))
+    report = report_of(
+        group_result(report_verdict(divergent_field("status_response.favicon", traffic=True)))
+    )
     lines = report_lines(report)
     assert [line.result for line in lines] == [LineResult.FAIL], lines
 
 
 def test_each_test_case_is_listed_once_per_group_across_repetitions_and_values() -> None:
-    field = _field("status_response.players.max")
+    field = divergent_field("status_response.players.max")
     other = replace(field, reference=1, candidate=2, index=3)
     text = render_text(
-        _report(
-            _result(_verdict(field, other), _verdict(field)),
-            _result(_verdict(field, group_id="status/ping")),
+        report_of(
+            group_result(report_verdict(field, other), report_verdict(field)),
+            group_result(report_verdict(field, group_id="status/ping")),
         )
     )
     assert text == (
@@ -164,16 +125,18 @@ def test_each_test_case_is_listed_once_per_group_across_repetitions_and_values()
 
 
 def test_an_unknown_test_case_is_listed_by_name() -> None:
-    text = render_text(_report(_result(_verdict(_field("status_response.new_field")))))
+    text = render_text(
+        report_of(group_result(report_verdict(divergent_field("status_response.new_field"))))
+    )
     assert text == (
         "Running tests against pumpkin\n✗ status/basic/status_response.new_field\n" + FAILED_ONE
     )
 
 
 def test_list_elements_share_one_line_without_their_values_or_indices() -> None:
-    first = replace(_field("hurt_animation.entity_id"), path="entity_id")
+    first = replace(divergent_field("hurt_animation.entity_id"), path="entity_id")
     second = replace(first, path="entity_id", candidate="another name")
-    text = render_text(_report(_result(_verdict(first, second))))
+    text = render_text(report_of(group_result(report_verdict(first, second))))
     assert text == (
         "Running tests against pumpkin\n✗ status/basic/hurt_animation.entity_id\n" + FAILED_ONE
     )
@@ -181,22 +144,24 @@ def test_list_elements_share_one_line_without_their_values_or_indices() -> None:
 
 @pytest.mark.parametrize("kind", ["missing", "unexpected"])
 def test_a_whole_packet_difference_keeps_its_test_case_name(kind: DivergenceKind) -> None:
-    field = _field("status_response")
+    field = divergent_field("status_response")
     field = replace(field, kind=kind, path=None)
-    assert "✗ status/basic/status_response\n" in render_text(_report(_result(_verdict(field))))
+    assert "✗ status/basic/status_response\n" in render_text(
+        report_of(group_result(report_verdict(field)))
+    )
 
 
 def test_a_group_without_test_cases_to_list_has_one_line_with_its_reasons() -> None:
-    different = _verdict(_field("status_response.players.max"))
+    different = report_verdict(divergent_field("status_response.players.max"))
     blocked = Verdict("redstone/timing", Outcome.BLOCKED, detail="prerequisite x was not run")
     error = Verdict("status/error", Outcome.ERROR, detail="the Reference did not start")
     failed = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected during join", "")
     text = render_text(
-        _report(
-            _result(blocked),
-            _result(different),
-            _result(error),
-            _result(_verdict(failed, group_id="join/basic")),
+        report_of(
+            group_result(blocked),
+            group_result(different),
+            group_result(error),
+            group_result(report_verdict(failed, group_id="join/basic")),
         )
     )
     assert text == (
@@ -212,7 +177,7 @@ def test_a_group_without_test_cases_to_list_has_one_line_with_its_reasons() -> N
 
 
 def test_a_report_with_nothing_scored_has_no_score() -> None:
-    report = _report(_result(Verdict("status/basic", Outcome.ERROR, detail="failed")))
+    report = report_of(group_result(Verdict("status/basic", Outcome.ERROR, detail="failed")))
     assert render_text(report) == (
         "Running tests against pumpkin\n"
         "! status/basic Error: failed\n"
@@ -223,8 +188,15 @@ def test_a_report_with_nothing_scored_has_no_score() -> None:
 
 
 def test_counts_of_more_than_one_use_plurals_and_the_score_is_rounded_down() -> None:
-    errors = [_result(Verdict(f"status/e{n}", Outcome.ERROR, detail="failed")) for n in range(2)]
-    report = _report(_result(_compared(*"abcdefg"), _verdict(_field("x"), _field("y"))), *errors)
+    errors = [
+        group_result(Verdict(f"status/e{n}", Outcome.ERROR, detail="failed")) for n in range(2)
+    ]
+    report = report_of(
+        group_result(
+            _compared(*"abcdefg"), report_verdict(divergent_field("x"), divergent_field("y"))
+        ),
+        *errors,
+    )
     text = render_text(report)
     assert "\n7 passed, 2 failed. (77.7%)\n2 errors (not scored)\n" in text, text
 
@@ -232,13 +204,13 @@ def test_counts_of_more_than_one_use_plurals_and_the_score_is_rounded_down() -> 
 def test_a_group_lists_distinct_failure_details_once_in_one_line() -> None:
     error = Verdict("status/basic", Outcome.ERROR, detail="first reason")
     other = replace(error, detail="second reason")
-    text = render_text(_report(_result(error, error, other)))
+    text = render_text(report_of(group_result(error, error, other)))
     assert "! status/basic Error: first reason; Error: second reason\n" in text, text
 
 
 def test_a_bot_difference_without_a_test_case_still_names_its_group() -> None:
     bot = Divergence("status", 0, "bot", "", None, 4, 3, "")
-    text = render_text(_report(_result(_verdict(bot))))
+    text = render_text(report_of(group_result(report_verdict(bot))))
     assert text == (
         "Running tests against pumpkin\n"
         "✗ status/basic Bot 'status' exchanged 4 packets with the Reference, "
@@ -247,11 +219,11 @@ def test_a_bot_difference_without_a_test_case_still_names_its_group() -> None:
 
 
 def test_total_time_keeps_tenths_of_a_second() -> None:
-    assert render_text(_report(elapsed_s=0.25)).endswith("Took 0.2 s\n")
+    assert render_text(report_of(elapsed_s=0.25)).endswith("Took 0.2 s\n")
 
 
 def test_verbose_header_uses_installed_versions_instead_of_status_claims() -> None:
-    report = _report(_result(_verdict(_field("status_response.description"))))
+    report = report_of(group_result(report_verdict(divergent_field("status_response.description"))))
     report = replace(
         report,
         reference=replace(report.reference, installed_version="26.3"),
@@ -271,10 +243,14 @@ def test_verbose_header_uses_installed_versions_instead_of_status_claims() -> No
 
 def test_verbose_values_are_under_their_case_and_keep_distinct_values() -> None:
     field = replace(
-        _field("status_response.description"), reference="mscts", candidate={"text": "mscts"}
+        divergent_field("status_response.description"),
+        reference="mscts",
+        candidate={"text": "mscts"},
     )
     other = replace(field, candidate={"text": "other"})
-    report = _report(_result(_verdict(field), _verdict(field, replace(field, index=3), other)))
+    report = report_of(
+        group_result(report_verdict(field), report_verdict(field, replace(field, index=3), other))
+    )
     text = render_text(report, verbose=True)
     assert text.count("✗ status/basic/status_response.description\n") == 1
     assert text.count('  vanilla sends "mscts", pumpkin sends {"text": "mscts"}\n') == 1
@@ -282,9 +258,12 @@ def test_verbose_values_are_under_their_case_and_keep_distinct_values() -> None:
 
 
 def test_verbose_values_belong_to_their_own_group() -> None:
-    field = _field("status_response.players.max")
+    field = divergent_field("status_response.players.max")
     other = replace(field, candidate="other value")
-    report = _report(_result(_verdict(field)), _result(_verdict(other, group_id="status/ping")))
+    report = report_of(
+        group_result(report_verdict(field)),
+        group_result(report_verdict(other, group_id="status/ping")),
+    )
     text = render_text(report, verbose=True)
     assert (
         "✗ status/ping/status_response.players.max\n"
@@ -294,7 +273,9 @@ def test_verbose_values_belong_to_their_own_group() -> None:
 
 
 def test_verbose_shows_the_values_of_a_network_traffic_difference() -> None:
-    report = _report(_result(_listed(_field("status_response.favicon", traffic=True))))
+    report = report_of(
+        group_result(listed_verdict(divergent_field("status_response.favicon", traffic=True)))
+    )
     assert (
         "(network traffic only)\n"
         '  vanilla sends "reference value", pumpkin sends "candidate value"\n'
@@ -302,24 +283,26 @@ def test_verbose_shows_the_values_of_a_network_traffic_difference() -> None:
 
 
 def test_verbose_preserves_absent_null_and_bytes_without_inventing_values() -> None:
-    missing = replace(_field("new.field"), reference=ABSENT, candidate=None)
-    payload = replace(_field("new.payload"), reference=b"\x00\xff", candidate=b"\x01")
-    text = render_text(_report(_result(_verdict(missing, payload))), verbose=True)
+    missing = replace(divergent_field("new.field"), reference=ABSENT, candidate=None)
+    payload = replace(divergent_field("new.payload"), reference=b"\x00\xff", candidate=b"\x01")
+    text = render_text(report_of(group_result(report_verdict(missing, payload))), verbose=True)
     assert "/new.field\n  vanilla leaves it out, pumpkin sends null\n" in text, text
     assert "/new.payload\n  vanilla sends bytes 00ff, pumpkin sends bytes 01\n" in text, text
 
 
 def test_verbose_list_values_keep_the_element_path() -> None:
-    field = replace(_field("list[].name"), path="list[2].name")
+    field = replace(divergent_field("list[].name"), path="list[2].name")
     assert '  list[2].name: vanilla sends "reference value"' in render_text(
-        _report(_result(_verdict(field))), verbose=True
+        report_of(group_result(report_verdict(field))), verbose=True
     )
 
 
 def test_verbose_group_times_total_all_repetitions_and_mark_blocked_groups() -> None:
-    played = replace(_result(_verdict(), _verdict()), elapsed_s=(0.4, 0.6))
-    blocked = _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run"))
-    text = render_text(_report(played, blocked), verbose=True)
+    played = replace(group_result(report_verdict(), report_verdict()), elapsed_s=(0.4, 0.6))
+    blocked = group_result(
+        Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
+    )
+    text = render_text(report_of(played, blocked), verbose=True)
     assert "Group times\n  status/basic 1 s\n  join/basic not played\n" in text, text
     assert "Timings (ms)" not in text
     assert "Notes" not in text
@@ -331,20 +314,20 @@ def test_verbose_group_times_show_a_play_on_vanilla_alone() -> None:
     what = "prerequisite x was mismatch"
     failed = Divergence("", 0, "failed", "", None, ABSENT, what, "")
     unplayed = Verdict("join/basic", Outcome.MISMATCH, (failed,), f"the Candidate failed: {what}")
-    played = replace(_result(unplayed), elapsed_s=(0.5,))
-    text = render_text(_report(played), verbose=True)
+    played = replace(group_result(unplayed), elapsed_s=(0.5,))
+    text = render_text(report_of(played), verbose=True)
     assert "Group times\n  join/basic 0.5 s\n" in text, text
 
 
 def test_default_output_leaves_group_times_to_verbose() -> None:
-    result = replace(_result(_compared("a")), elapsed_s=(0.25,))
-    assert "Group times" not in render_text(_report(result))
+    result = replace(group_result(_compared("a")), elapsed_s=(0.25,))
+    assert "Group times" not in render_text(report_of(result))
 
 
 def test_verbose_renders_uuid_and_nested_binary_values() -> None:
     value = {"id": UUID("12345678-1234-5678-1234-567812345678"), "data": [b"\x00\xff"]}
-    field = replace(_field("new.record"), reference=value, candidate=ABSENT)
-    text = render_text(_report(_result(_verdict(field))), verbose=True)
+    field = replace(divergent_field("new.record"), reference=value, candidate=ABSENT)
+    text = render_text(report_of(group_result(report_verdict(field))), verbose=True)
     assert '"data": [{"bytes": "00ff"}]' in text, text
     assert '"id": "12345678-1234-5678-1234-567812345678"' in text, text
 
@@ -353,7 +336,7 @@ BUILT = SideSummary("pumpkin", "26.3", (), "nightly 4426d11 (sha256 b8382a8a…)
 
 
 def test_the_first_line_names_the_candidate_s_exact_build() -> None:
-    report = replace(_report(_result(_compared("a"))), candidate=BUILT)
+    report = replace(report_of(group_result(_compared("a"))), candidate=BUILT)
     assert render_text(report) == (
         "Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
         "✓ status/basic/a\n" + PASSED_ONE
@@ -361,14 +344,14 @@ def test_the_first_line_names_the_candidate_s_exact_build() -> None:
 
 
 def test_the_verbose_output_names_the_candidate_s_build_once() -> None:
-    report = replace(_report(_result(_verdict())), candidate=BUILT)
+    report = replace(report_of(group_result(report_verdict())), candidate=BUILT)
     text = render_text(report, verbose=True)
     assert text.count("nightly 4426d11") == 1, text
     assert text.startswith("Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)\n")
 
 
 def test_markdown_names_the_candidate_s_exact_build_in_the_heading() -> None:
-    report = replace(_report(_result(_compared("a"))), candidate=BUILT)
+    report = replace(report_of(group_result(_compared("a"))), candidate=BUILT)
     assert render_markdown(report) == (
         "# Running tests against pumpkin nightly 4426d11 (sha256 b8382a8a…)\n"
         "\n"
@@ -380,9 +363,14 @@ def test_markdown_names_the_candidate_s_exact_build_in_the_heading() -> None:
 
 
 def test_markdown_is_the_default_report_with_a_heading_and_names_as_code() -> None:
-    report = _report(
-        _result(_listed(_field("status_response.description"), _field("new.field", traffic=True))),
-        _result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")),
+    report = report_of(
+        group_result(
+            listed_verdict(
+                divergent_field("status_response.description"),
+                divergent_field("new.field", traffic=True),
+            )
+        ),
+        group_result(Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")),
     )
     assert render_markdown(report) == (
         "# Running tests against pumpkin\n"
@@ -397,14 +385,14 @@ def test_markdown_is_the_default_report_with_a_heading_and_names_as_code() -> No
 
 
 def test_markdown_of_a_run_with_no_groups_has_no_list() -> None:
-    assert render_markdown(_report()) == (
+    assert render_markdown(report_of()) == (
         "# Running tests against pumpkin\n\n0 passed, 0 failed.\\\nTook 41 s\n"
     )
 
 
 def test_verbose_markdown_keeps_the_header_values_and_group_times() -> None:
-    field = replace(_field("list[].name"), path="list[2].name", candidate=ABSENT)
-    report = _report(_result(_verdict(field)))
+    field = replace(divergent_field("list[].name"), path="list[2].name", candidate=ABSENT)
+    report = report_of(group_result(report_verdict(field)))
     report = replace(report, candidate=replace(report.candidate, installed_version="nightly-abc"))
     assert render_markdown(report, verbose=True) == (
         "# Running tests against pumpkin nightly-abc\n"
@@ -426,9 +414,12 @@ def test_verbose_markdown_keeps_the_header_values_and_group_times() -> None:
 
 
 def test_markdown_shows_server_text_as_it_is() -> None:
-    field = replace(_field("new.field"), reference="`a``b`", candidate=b"")
+    field = replace(divergent_field("new.field"), reference="`a``b`", candidate=b"")
     failed = Divergence("joiner", 0, "failed", "", None, ABSENT, "closed: <b>*now*</b> [x]_\\", "")
-    report = _report(_result(_verdict(field)), _result(_verdict(failed, group_id="join/basic")))
+    report = report_of(
+        group_result(report_verdict(field)),
+        group_result(report_verdict(failed, group_id="join/basic")),
+    )
     text = render_markdown(report, verbose=True)
     assert '  - vanilla sends ```"`a``b`"```, pumpkin sends bytes ``\n' in text, text
     assert (
@@ -440,7 +431,7 @@ def test_markdown_shows_server_text_as_it_is() -> None:
 def test_markdown_shows_a_line_break_in_server_text_without_breaking_the_line() -> None:
     forged = "x\n\n# pumpkin passes\r\nScore: 100%"
     failed = Divergence("joiner", 0, "failed", "", None, ABSENT, forged, "")
-    text = render_markdown(_report(_result(_verdict(failed, group_id="join/basic"))))
+    text = render_markdown(report_of(group_result(report_verdict(failed, group_id="join/basic"))))
     assert text == (
         "# Running tests against pumpkin\n"
         "\n"
@@ -460,18 +451,18 @@ def test_markdown_shows_a_line_break_in_server_text_without_breaking_the_line() 
     ids=["backticks", "trailing-backtick", "spaces", "plain"],
 )
 def test_markdown_code_keeps_its_edges(path: str, code: str) -> None:
-    field = replace(_field("p[]"), path=path)
-    text = render_markdown(_report(_result(_verdict(field))), verbose=True)
+    field = replace(divergent_field("p[]"), path=path)
+    text = render_markdown(report_of(group_result(report_verdict(field))), verbose=True)
     assert f"  - {code}: vanilla sends" in text, text
 
 
 def test_colour_marks_a_pass_green_a_failure_red_an_error_yellow_and_the_rest_grey() -> None:
     error = Verdict("status/error", Outcome.ERROR, detail="failed")
-    report = _report(
-        _result(_compared("a")),
-        _result(_verdict(_field("b"), group_id="status/ping")),
-        _result(error),
-        _result(_verdict(_field("c", traffic=True), group_id="status/other")),
+    report = report_of(
+        group_result(_compared("a")),
+        group_result(report_verdict(divergent_field("b"), group_id="status/ping")),
+        group_result(error),
+        group_result(report_verdict(divergent_field("c", traffic=True), group_id="status/other")),
     )
     text = render_text(report, color=True)
     assert "\x1b[32m✓\x1b[0m status/basic/a\n" in text, text
@@ -482,7 +473,9 @@ def test_colour_marks_a_pass_green_a_failure_red_an_error_yellow_and_the_rest_gr
 
 
 def test_the_report_has_no_colour_unless_asked() -> None:
-    report = _report(_result(_compared("a")), _result(_verdict(_field("b"))))
+    report = report_of(
+        group_result(_compared("a")), group_result(report_verdict(divergent_field("b")))
+    )
     assert "\x1b" not in render_text(report)
     assert "\x1b" not in render_markdown(report)
 
@@ -490,13 +483,13 @@ def test_the_report_has_no_colour_unless_asked() -> None:
 def test_verbose_shows_the_tick_each_server_sent_a_packet_on() -> None:
     # #23: a tick-exact Group's packet sent on another tick.
     late = replace(
-        _field("block_update"),
+        divergent_field("block_update"),
         packet="minecraft:block_update",
         path=TICK_PATH,
         reference=1,
         candidate=2,
     )
-    text = render_text(_report(_result(_verdict(late))), verbose=True)
+    text = render_text(report_of(group_result(report_verdict(late))), verbose=True)
     assert "block_update\n  (tick): vanilla sends 1, pumpkin sends 2\n" in text, text
 
 
@@ -523,7 +516,7 @@ def test_one_sample_is_a_sample_in_the_summaries() -> None:
     )
     verdict = Verdict("spawn/join", Outcome.MISMATCH, (one,))
 
-    text = render_text(_report(_result(verdict)), verbose=True)
+    text = render_text(report_of(group_result(verdict)), verbose=True)
 
     assert "vanilla 1 sample, median 1000," in text, text
     assert "pumpkin 1 sample, minecraft:pig 100%" in text, text
@@ -538,7 +531,7 @@ def test_a_count_test_summarises_samples_per_play() -> None:
     )
     verdict = Verdict("spawn/join", Outcome.MISMATCH, (counted,))
 
-    text = render_text(_report(_result(verdict)), verbose=True)
+    text = render_text(report_of(group_result(verdict)), verbose=True)
 
     assert (
         "Kolmogorov-Smirnov on samples per play D = 1.00, p = 1e-27: vanilla 50 plays,"
@@ -567,7 +560,7 @@ def test_verbose_shows_a_distribution_s_test_and_both_sides_summaries() -> None:
         candidate=None,
     )
     verdict = Verdict("spawn/join", Outcome.MISMATCH, (numbers, categories, untested))
-    text = render_text(_report(_result(verdict)), verbose=True)
+    text = render_text(report_of(group_result(verdict)), verbose=True)
     assert (
         "✗ spawn/join/distance\n"
         "  Kolmogorov-Smirnov D = 0.40, p = 0.00058: vanilla 50 samples, median 0.1661,"

@@ -12,6 +12,7 @@ from pathlib import Path
 from time import perf_counter
 
 import pytest
+from support.report_builders import report_of
 
 import mscts.run as run_module
 import mscts.settle as settle_module
@@ -22,7 +23,6 @@ from mscts.net import Endpoint
 from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
 from mscts.run import Attached, GroupResult, run, run_results
 from tests.run.occupancy import Occupancy, attached, named, never_answer
-from tests.test_report import _report
 
 DEADLINE_S = 0.3
 """The deadline the tests that wait for it give a Run: short, so they stay fast."""
@@ -163,7 +163,7 @@ async def test_a_candidate_that_never_empties_fails_each_test_case_of_the_refere
 
     assert verdict.outcome is Outcome.MISMATCH
     assert verdict.test_cases == own
-    lines = report_lines(_report(GroupResult(group.id, (verdict,), (), ())))
+    lines = report_lines(report_of(GroupResult(group.id, (verdict,), (), ())))
     assert lines[-1] == GroupLine(group.id, LineResult.FAIL, f"Candidate failed: {SAID}")
     assert totals(lines) == Totals(passed=0, failed=len(own) + 1, not_tested=0, errors=0)
 

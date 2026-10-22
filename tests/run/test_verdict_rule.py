@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from support.report_builders import group_result, report_of
 
 import mscts.run as run_module
 from mscts.codec.packets import Codec, Packet
@@ -29,7 +30,6 @@ from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.compare.build import divergence, packet, transcript
 from tests.net.fakes import VANILLA_STATUS, Handler, Peer, free_port, serve, status_server
-from tests.test_report import _report, _result
 
 BASIC = Group(id="status/basic", run=status.basic)
 TIMEOUT_S = 0.2
@@ -429,7 +429,7 @@ def _score(verdict: Verdict) -> tuple[float | None, int]:
     """The Score and failed lines of a Run of a passing Group, then `verdict`."""
     played = dataclasses.replace(SETS_BLOCKS, group_id=PASSING.id)
     passing = judge(PASSING, played, played)
-    counted = totals(report_lines(_report(_result(passing), _result(verdict))))
+    counted = totals(report_lines(report_of(group_result(passing), group_result(verdict))))
     return counted.score, counted.failed
 
 
