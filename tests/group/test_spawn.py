@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from typing import override
 
 import pytest
-from support.control import CODEC, PLAY_TIMEOUT_S, tree
+from support.blocks_server import BlocksServer
+from support.control import CHAT_COMMAND, CODEC, MARKER, PLAY_TIMEOUT_S, tree
 
 from mscts.codec.packets import State
 from mscts.group import DEFAULT_RUNS, GROUPS, GroupContext, GroupKind
@@ -22,7 +23,6 @@ from mscts.net import ProtocolError
 from mscts.spec import ServerSpec
 from mscts.stats import Numbers, SampleLog, Series
 from mscts.transcript import Transcript
-from tests.group.test_blocks import CHAT_COMMAND, MARKER, BlocksServer
 from tests.net.fakes import SPAWN, JoinScript, Peer, join_server, serve
 
 GROUP_ID = "spawn/join-position"
