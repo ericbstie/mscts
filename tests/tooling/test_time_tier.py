@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import pytest
+from support.hermetic_git import hermetic_git
 
 _TIME_TIER_PATH = Path(__file__).resolve().parents[2] / "scripts" / "time_tier.py"
 
@@ -159,26 +160,16 @@ def test_parse_slowest_durations_returns_empty_without_a_durations_section(
 # -- make_copy (a real, throwaway git repo under tmp_path; no network) -----------------
 
 
-def _git(*args: str, cwd: Path) -> None:
-    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    subprocess.run(
-        ["git", "-c", "user.email=test@example.com", "-c", "user.name=Test", *args],  # noqa: S607
-        cwd=cwd,
-        env=env,
-        check=True,
-    )
-
-
 def test_make_copy_copies_tracked_and_untracked_non_ignored_files(
     time_tier: types.ModuleType, tmp_path: Path
 ) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git("init", "-q", cwd=repo)
+    hermetic_git("init", "-q", cwd=repo)
     (repo / "a.py").write_text("tracked\n")
     (repo / ".gitignore").write_text("ignored.py\n")
-    _git("add", "a.py", ".gitignore", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", "a.py", ".gitignore", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "untracked.py").write_text("never added\n")
     (repo / "ignored.py").write_text("must not be copied\n")
 
@@ -448,13 +439,13 @@ def _repository_with_two_commits(tmp_path: Path) -> tuple[Path, str, str]:
     """A throwaway repo: `a.py` is "one" at the first commit, "two" at the second."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    _git("init", "-q", cwd=repo)
+    hermetic_git("init", "-q", cwd=repo)
     (repo / "a.py").write_text("one\n")
-    _git("add", "a.py", cwd=repo)
-    _git("commit", "-q", "-m", "first", cwd=repo)
-    _git("tag", "-a", "first", "-m", "first", cwd=repo)
+    hermetic_git("add", "a.py", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "first", cwd=repo)
+    hermetic_git("tag", "-a", "first", "-m", "first", cwd=repo)
     (repo / "a.py").write_text("two\n")
-    _git("commit", "-q", "-am", "second", cwd=repo)
+    hermetic_git("commit", "-q", "-am", "second", cwd=repo)
     (repo / "a.py").write_text("three, not committed\n")
     (repo / "untracked.py").write_text("never added\n")
     head = _commit_of("HEAD", repo)

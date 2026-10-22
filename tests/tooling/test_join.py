@@ -7,10 +7,10 @@ import uuid
 from pathlib import Path
 
 import pytest
+from support.chunks import level_chunk_payload, section_bytes, single_valued
 
 from mscts.codec.packets import Direction, Packet, State
 from mscts.transcript import Transcript
-from tests.tooling.test_chunkformat import _payload, _section, _single
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "join.py"
 
@@ -103,8 +103,8 @@ def test_report_prints_only_the_named_packets_decoded_or_as_hex(
 def test_report_decodes_the_first_n_chunks(
     join: types.ModuleType, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    section = _section(_single(5), _single(41), block_count=1)
-    payload = _payload(1, 2, [section] * join.chunkformat.OVERWORLD_SECTIONS)
+    section = section_bytes(single_valued(5), single_valued(41), block_count=1)
+    payload = level_chunk_payload(1, 2, [section] * join.chunkformat.OVERWORLD_SECTIONS)
     transcript = Transcript(group_id="t", server="vanilla")
     transcript.record(
         "bot", _packet("minecraft:level_chunk_with_light", None, payload=payload), t_ns=0
