@@ -24,8 +24,8 @@ from mscts.adapters.base import (
     Download,
     Fetch,
     Installation,
+    Net,
     ProvisionError,
-    Release,
     ShortCommitError,
     Source,
     UnavailableError,
@@ -33,7 +33,7 @@ from mscts.adapters.base import (
     build_it_yourself,
     install_command,
 )
-from mscts.adapters.fetch import https_get
+from mscts.adapters.fetch import ChecksumError, HttpsNet, Saved, https_get
 from mscts.target import Target
 
 SOURCE = "SOURCE.json"
@@ -143,21 +143,19 @@ def installed(adapter: Adapter, target: Target, cache_dir: Path) -> Installation
 
 
 def _write(
-    adapter: Adapter,
-    target: Target,
-    cache_dir: Path,
-    body: bytes,
-    source: Callable[[Build], Source],
+    adapter: Adapter, target: Target, cache_dir: Path, stage: Callable[[Path], Source]
 ) -> None:
-    """Check `body`, then put it and the SOURCE.json `source` makes of its Build in one rename."""
+    """Put the binary `stage` puts at a staging file, and the SOURCE.json it returns, in one rename.
+
+    The staging directory is removed whatever happens: a failed install leaves nothing behind.
+    """
     root = root_of(adapter, target, cache_dir)
     root.parent.mkdir(parents=True, exist_ok=True)
     staging = Path(tempfile.mkdtemp(dir=root.parent, prefix=f".{root.name}.", suffix=".part"))
     try:
         staging.chmod(0o755)
-        (staging / adapter.binary).write_bytes(body)
+        recorded = dataclasses.asdict(stage(staging / adapter.binary))
         (staging / adapter.binary).chmod(0o755)
-        recorded = dataclasses.asdict(source(adapter.check(staging / adapter.binary, target)))
         (staging / SOURCE).write_text(json.dumps(recorded, indent=2) + "\n", encoding="utf-8")
         try:
             staging.rename(root)
@@ -222,24 +220,6 @@ def _vacant(existing: Installation | None, adapter: Adapter, version: str | None
     raise ProvisionError(msg)
 
 
-def _published(adapter: Adapter, release: Release, download: Download) -> None:
-    """ProvisionError unless `download` has the sha1 and size its publisher lists, if any."""
-    body = download.body
-    sha1 = hashlib.sha1(body, usedforsecurity=False).hexdigest()  # the publisher's own check
-    if (release.size is None or len(body) == release.size) and (
-        release.sha1 is None or sha1 == release.sha1
-    ):
-        return
-    msg = (
-        f"{release.url} is not {adapter.name} {release.build.version}: sha1 {sha1}, {len(body)} "
-        "bytes, "
-        f"where its publisher lists sha1 {release.sha1}, {release.size} bytes.\n"
-        f"To run that file anyway, save it and run "
-        f"`{install_command(adapter.name, path='<file>')}`"
-    )
-    raise ProvisionError(msg)
-
-
 def install_release(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in, not read
     adapter: Adapter,
     target: Target,
@@ -249,7 +229,7 @@ def install_release(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in
     *,
     now: Clock = utc_now,
 ) -> Installed:
-    """Download the latest build for `target` (or `version`'s) into the cache, verified.
+    """Have `adapter` install the latest build for `target` (or `version`'s), then check it.
 
     A no-op if that build is installed already (with `version` None: whatever build is).
     With another build installed, the Adapter's refusal of `version` comes first, then
@@ -260,31 +240,33 @@ def install_release(  # noqa: PLR0913 - the IO it does (fetch, now) is passed in
     unchanged = None if existing is None else _unchanged(existing, adapter, version)
     if unchanged is not None:
         return unchanged
-    release = _release(adapter, target, version, fetch)
-    download = _verified_download(adapter, release, fetch)
+    net = HttpsNet(fetch)
     installed_at = _stamp(now())
 
-    def source(build: Build) -> Source:
-        downloaded = _what_was_downloaded(adapter.name, release, build, version)
+    def stage(into: Path) -> Source:
+        found = _install(adapter, target, version, into, net)
+        saved = net.saved.get(into)
+        build = _checked(adapter, target, version, into, saved)
+        downloaded = _what_was_downloaded(adapter.name, found, build, version, saved)
         _vacant(existing, adapter, version)
-        return _downloaded_source(release, download, downloaded, installed_at)
+        return _downloaded_source(into, saved, downloaded, installed_at)
 
-    try:
-        _write(adapter, target, cache_dir, download.body, source)
-    except UnsupportedError as error:  # it named the staging path, gone by now
-        raise _unsupported_download(adapter.name, version, release.url, error) from error
+    _write(adapter, target, cache_dir, stage)
     return _done(adapter, target, cache_dir)
 
 
-def _release(adapter: Adapter, target: Target, version: str | None, fetch: Fetch) -> Release:
-    """`adapter.release`, keeping typed refusals and adding hints to other failures (#206)."""
+def _install(adapter: Adapter, target: Target, version: str | None, into: Path, net: Net) -> Build:
+    """`adapter.install`, keeping typed refusals and adding hints to other failures (#206)."""
     yourself = f"`{install_command(adapter.name, path='<file>')}`"
     try:
-        return adapter.release(target, version, fetch)
+        return adapter.install(target, version, into, net)
     except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
         raise _download_failed(error, yourself) from error
     except (ShortCommitError, UnsupportedError, UnavailableError):
         raise
+    except ChecksumError as error:
+        msg = f"{error}\nTo run that file anyway, save it and run {yourself}"
+        raise ProvisionError(msg) from error
     except ProvisionError as error:
         msg = f"{error}\n{build_it_yourself(adapter.name)}"
         raise ProvisionError(msg) from error
@@ -302,14 +284,21 @@ def _asked(adapter: str, version: str | None) -> str:
     return f"{adapter}'s latest build" if version is None else f"{adapter}@{version}"
 
 
-def _unsupported_download(
-    adapter: str, version: str | None, url: str, error: UnsupportedError
-) -> ProvisionError:
-    """`error` about a downloaded file, said of what was asked for, and how to get another."""
-    asked = UnsupportedError(
-        f"{_asked(adapter, version)} ({url})", target=error.target, actual=error.actual
-    )
-    return ProvisionError(f"{asked}\n{build_it_yourself(adapter)}")
+def _checked(
+    adapter: Adapter, target: Target, version: str | None, into: Path, saved: Saved | None
+) -> Build:
+    """The Build the installed file names; an UnsupportedError said of what was asked for.
+
+    It never names the staging path, which is gone by the time anyone reads it.
+    """
+    try:
+        return adapter.check(into, target)
+    except UnsupportedError as error:
+        asked = _asked(adapter.name, version)
+        subject = asked if saved is None else f"{asked} ({saved.url})"
+        unsupported = UnsupportedError(subject, target=error.target, actual=error.actual)
+        msg = f"{unsupported}\n{build_it_yourself(adapter.name)}"
+        raise ProvisionError(msg) from error
 
 
 def _download_failed(error: Exception, yourself: str) -> ProvisionError:
@@ -321,48 +310,36 @@ def _download_failed(error: Exception, yourself: str) -> ProvisionError:
     return ProvisionError(msg)
 
 
-def _verified_download(adapter: Adapter, release: Release, fetch: Fetch) -> Download:
-    """`release`'s file, with the sha1 and size its publisher lists, if any."""
-    try:
-        download = fetch(release.url)
-    except (OSError, http.client.HTTPException) as error:  # URLError, TLS, a cut-off body
-        yourself = f"`{install_command(adapter.name, path='<file>')}`"
-        raise _download_failed(error, yourself) from error
-    _published(adapter, release, download)
-    return download
-
-
 def _what_was_downloaded(
-    adapter: str, release: Release, build: Build, version: str | None
+    adapter: str, found: Build, build: Build, version: str | None, saved: Saved | None
 ) -> Build:
-    """The build a downloaded file is: its release's name, and the commit the file names.
+    """The build an installed file is: the version `install` found, and the commit the file names.
 
-    The release's commit only found the file. ProvisionError if the file names none where
-    its release does; UnavailableError if it is not the build `version` names.
+    The commit `install` found only found the file. ProvisionError if the file names none
+    where `install` found one; UnavailableError if it is not the build `version` names.
     """
-    if release.build.commit is not None and build.commit is None:
+    if found.commit is not None and build.commit is None:
+        where = "the installed file" if saved is None else saved.url
         msg = (
-            f"{release.url} names no commit, so which {adapter} {release.build.version} it is "
-            f"cannot be told.\n{build_it_yourself(adapter)}"
+            f"{where} names no commit, so which {adapter} {found.version} it is cannot be "
+            f"told.\n{build_it_yourself(adapter)}"
         )
         raise ProvisionError(msg)
-    downloaded = Build(version=release.build.version, commit=build.commit)
+    downloaded = Build(version=found.version, commit=build.commit)
     if version is not None and not _names(downloaded, version):
         raise UnavailableError(adapter, version, latest=downloaded)
     return downloaded
 
 
-def _downloaded_source(
-    release: Release, download: Download, build: Build, installed_at: str
-) -> Source:
-    """What SOURCE.json records for `download` of `release`, the file being `build`."""
+def _downloaded_source(into: Path, saved: Saved | None, build: Build, installed_at: str) -> Source:
+    """What SOURCE.json records for the file at `into`, which is `build`, saved from `saved`."""
     return Source(
-        sha256=hashlib.sha256(download.body).hexdigest(),
-        size=len(download.body),
+        sha256=_sha256_of(into),
+        size=into.stat().st_size,
         version=build.version,
         commit=build.commit,
-        url=release.url,
-        final_url=download.url,
+        url=None if saved is None else saved.url,
+        final_url=None if saved is None else saved.final_url,
         installed_at=installed_at,
     )
 
@@ -381,10 +358,11 @@ def install_from(
         return _same_file(existing, adapter, path, hashlib.sha256(body).hexdigest())
     installed_at = _stamp(now())
 
-    def source(build: Build) -> Source:
-        return _supplied_source(path, body, build, installed_at)
+    def stage(into: Path) -> Source:
+        into.write_bytes(body)
+        return _supplied_source(path, body, adapter.check(into, target), installed_at)
 
-    _write(adapter, target, cache_dir, body, source)
+    _write(adapter, target, cache_dir, stage)
     return _done(adapter, target, cache_dir)
 
 
@@ -439,7 +417,8 @@ def _done(adapter: Adapter, target: Target, cache_dir: Path) -> Installed:
             f"installed {source.from_path} ({adapter.name} {source.build}, sha256 {source.sha256})"
         )
     else:
-        what = f"installed {adapter.name} {source.build} from {source.url}"
+        origin = "" if source.url is None else f" from {source.url}"
+        what = f"installed {adapter.name} {source.build}{origin}"
     return Installed(installation, changed=True, message=f"{what} into {installation.root}")
 
 

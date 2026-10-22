@@ -17,10 +17,11 @@ need is missing, add it here in the same commit that introduces it.
 - **Candidate**: the custom server implementation being measured
   (Pumpkin, Minestom, …). _Avoid_: SUT, implementation, custom server (in
   code).
-- **Adapter**: the only server-specific code. It says where to download its
-  server's latest build for the Target, reads which build a binary is and
-  checks that it can run it, and turns a ServerSpec into a LaunchPlan.
-  It never installs anything. The Reference and every Candidate each have one.
+- **Adapter**: the only server-specific code. It downloads its server's latest
+  build for the Target into a file mscts gives it, reads which build a
+  binary is and checks that it can run it, and turns a ServerSpec into a
+  LaunchPlan. mscts keeps the Installations. The Reference and every
+  Candidate each have one.
 - **ServerSpec**: a server-agnostic, declarative description of how a
   server must be configured (the host and port of its Endpoint, view
   distance, world preset, operators, …). Offline mode, no encryption, no
@@ -31,7 +32,7 @@ need is missing, add it here in the same commit that introduces it.
 - **Installation**: the binaries installed for an Adapter and a Target,
   cached on disk with their build (its version, and its commit where
   the publisher names one), their sha256 and their source (the URL the
-  Adapter gave, or a `--from` file). It is created only by
+  Adapter downloaded them from, or a `--from` file). It is created only by
   `mscts adapter install`, or after an explicit prompt (ADR-0008).
 - **LaunchPlan**: the argv, cwd, env and stop method an Adapter produces.
   It contains no process handling.

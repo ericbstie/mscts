@@ -1,7 +1,8 @@
-"""The Adapter contract: find a release, check a binary, prepare a LaunchPlan (ADR-0004).
+"""The Adapter contract: install a build, check a binary, prepare a LaunchPlan (ADR-0004).
 
-Installations are install.py's (ADR-0008): an Adapter says where its builds are, and reads
-what it needs through the `fetch` it is given, but never installs anything.
+Installations are install.py's (ADR-0008, #188): an Adapter puts its build at the staging
+file it is given, reading through the `net` it is given; mscts checks it, records it and
+moves it into the cache.
 """
 
 from collections.abc import Callable, Mapping
@@ -126,7 +127,7 @@ class Source:
     size: int
     version: str | None = None  # its Build's (None only in a SOURCE.json written before #156)
     commit: str | None = None  # its Build's
-    url: str | None = None  # the URL it was downloaded from (its Release's)
+    url: str | None = None  # the URL it was downloaded from, as the Adapter asked for it
     final_url: str | None = None  # where that URL finally redirected to
     from_path: str | None = None  # the `--from` file it was copied from
     installed_at: str | None = None  # ISO 8601, UTC
@@ -166,13 +167,15 @@ class Adapter(Protocol):
     # Versions that mean the latest build, as no version does: Pumpkin's {"nightly"}.
     latest_aliases: frozenset[str]
 
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release:
-        """The latest build for `target`, or the build `version` names (`<name>@<version>`).
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        """Put the build for `target` (or the one `version` names) at `into`, and say which it is.
 
-        Facts only, never CLI text: UnsupportedError if that build is not for `target`,
-        UnavailableError if it cannot be downloaded, ShortCommitError if a commit name is
-        too short, else ProvisionError saying what is wrong. mscts keeps typed refusals
-        unchanged and adds how to install a build from a file to other ProvisionErrors.
+        Reads only through `net`. `into` is a file in a staging directory mscts owns; mscts
+        checks it and moves it into the cache. Facts only, never CLI text: UnsupportedError
+        if that build is not for `target`, UnavailableError if it cannot be downloaded,
+        ShortCommitError if a commit name is too short, else ProvisionError saying what is
+        wrong. mscts keeps typed refusals unchanged and adds how to install a build from a
+        file to other errors.
         """
         ...
 

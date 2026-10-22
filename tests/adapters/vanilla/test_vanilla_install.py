@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
-from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, manifest
+from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, manifest, sha1
 
 from mscts.adapters.base import Build, ProvisionError, Source, UnsupportedError
 from mscts.adapters.fetch import ChecksumError, HttpsNet
@@ -95,9 +95,14 @@ def test_install_release_rejects_a_download_that_is_not_the_published_jar(
     tmp_path: Path, served: bytes
 ) -> None:
     assert served != PUBLISHED
-    with pytest.raises(ProvisionError, match=r"is not vanilla 26\.3"):
+    with pytest.raises(ProvisionError) as raised:
         install_release(VanillaAdapter(), TARGET, tmp_path, None, FakeMojang(served, jar=PUBLISHED))
-    assert not (tmp_path / "vanilla/26.3").exists()
+    assert str(raised.value) == (
+        f"{JAR_URL} is not the file its publisher lists: sha1 {sha1(served)}, {len(served)} "
+        f"bytes, where its publisher lists sha1 {sha1(PUBLISHED)}, {len(PUBLISHED)} bytes.\n"
+        "To run that file anyway, save it and run `mscts adapter install vanilla --from <file>`"
+    )
+    assert list((tmp_path / "vanilla").iterdir()) == []  # nothing installed, nothing staged
 
 
 def test_another_version_is_not_supported_even_with_26_3_installed(tmp_path: Path) -> None:
@@ -123,7 +128,7 @@ def test_a_garbled_manifest_names_the_adapter_and_the_from_command(
         "Download the build another way, then run "
         "`mscts adapter install vanilla --from <file>`"
     )
-    assert not (tmp_path / "vanilla").exists()
+    assert list((tmp_path / "vanilla").iterdir()) == []  # nothing installed, nothing staged
 
 
 def test_install_release_rejects_a_download_of_another_size_than_listed(tmp_path: Path) -> None:
@@ -132,9 +137,10 @@ def test_install_release_rejects_a_download_of_another_size_than_listed(tmp_path
     listed["downloads"]["server"]["size"] += 1
     mojang.bodies[VERSION_URL] = json.dumps(listed).encode()
     mojang.bodies[MANIFEST_URL] = manifest(mojang.bodies[VERSION_URL])
-    with pytest.raises(ProvisionError, match=r"is not vanilla 26\.3"):
+    with pytest.raises(ProvisionError) as raised:
         install_release(VanillaAdapter(), TARGET, tmp_path, None, mojang)
-    assert not (tmp_path / "vanilla/26.3").exists()
+    assert str(raised.value).startswith(f"{JAR_URL} is not the file its publisher lists: ")
+    assert list((tmp_path / "vanilla").iterdir()) == []
 
 
 def test_check_refuses_a_file_that_is_no_jar(tmp_path: Path) -> None:

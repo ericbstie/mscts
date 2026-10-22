@@ -5,6 +5,7 @@ import http.client
 import json
 import ssl
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any, override
 from urllib.parse import urlsplit
@@ -90,12 +91,21 @@ def _listed(sha1: str | None, size: int | None) -> str:
     return ", ".join(parts if size is None else [*parts, f"{size} bytes"])
 
 
+@dataclass(frozen=True, slots=True)
+class Saved:
+    """Where a file a Net saved came from: the URL asked for, and the URL it finally came from."""
+
+    url: str
+    final_url: str
+
+
 class HttpsNet:
     """The Net mscts hands an Adapter, built on a Fetch (https_get, or a fake in tests)."""
 
     def __init__(self, fetch: Fetch = https_get) -> None:
         """Read every URL through `fetch`, which may announce it."""
         self._fetch = fetch
+        self.saved: dict[Path, Saved] = {}  # each file `download` saved, and where from
 
     def _read(self, url: str) -> Download:
         """`url` fetched; ProvisionError, before fetching, unless it is HTTPS."""
@@ -121,7 +131,8 @@ class HttpsNet:
         self, url: str, into: Path, sha1: str | None = None, size: int | None = None
     ) -> None:
         """Save the body at `url` as `into`; ChecksumError unless it has the sha1 and size given."""
-        body = self._read(url).body
+        fetched = self._read(url)
+        body = fetched.body
         if (sha1 is not None and _sha1(body) != sha1) or (size is not None and len(body) != size):
             msg = (
                 f"{url} is not the file its publisher lists: sha1 {_sha1(body)}, {len(body)} "
@@ -129,3 +140,4 @@ class HttpsNet:
             )
             raise ChecksumError(msg)
         into.write_bytes(body)
+        self.saved[into] = Saved(url=url, final_url=fetched.url)

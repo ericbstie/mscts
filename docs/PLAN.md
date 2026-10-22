@@ -86,7 +86,7 @@ test needs it:
 | `inventory.py` | `InventoryTracker`: the player's inventory and the open container (`Inventory`, `Stack`) |
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Build`, `Release`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read); `Net` (what an Adapter gets for the network) |
-| `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed; `HttpsNet`, the `Net` built on a `Fetch`, and its `ChecksumError` |
+| `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed; `HttpsNet`, the `Net` built on a `Fetch`, its `ChecksumError`, and the `Saved` record of each download |
 | `adapters/<name>/` | one folder per server, registered by an import and one entry in `cli.py`'s `ADAPTERS`; its tests in `tests/adapters/<name>/`. `adapters/vanilla/`: `MANIFEST_URL` (Mojang's version manifest). `adapters/pumpkin/`: `NIGHTLY_URL` and `TAGS_URL` (the ref advertisement naming the `nightly` tag's commit), and its pinned first-run `pumpkin.toml` with `SOURCE.md` |
 | `adapters/nbt.py` | a minimal, strict NBT writer (`encode`, `gzipped`) for the world saves an Adapter writes |
 | `adapters/fixture_world.py` | what every Adapter writes into the Fixture world: its game rules (ADR-0013) |
@@ -933,7 +933,9 @@ class Net(Protocol):                # what mscts hands an Adapter for the networ
     # sha1 <sha1>, <size> bytes." (naming only what is given), and `into` is not written.
     # A failed connection or read raises OSError or http.client.HTTPException; a document
     # that is not JSON, ValueError: install.py words both.
-# fetch.HttpsNet(fetch: Fetch = https_get): the Net, reading every URL through `fetch`
+# fetch.HttpsNet(fetch: Fetch = https_get): the Net, reading every URL through `fetch`;
+#   its `saved: dict[Path, Saved]` maps each file `download` saved to a Saved(url,
+#   final_url): the URL asked for and the one it finally came from (install.py records both)
 
 @frozen
 class Source:                       # <root>/SOURCE.json: where the binary came from (ADR-0008)
@@ -941,7 +943,7 @@ class Source:                       # <root>/SOURCE.json: where the binary came 
     size: int
     version: str | None = None      # its Build's; None only in a SOURCE.json from before #156,
     commit: str | None = None       # whose Build installed() reads from the binary (adapter.check)
-    url: str | None = None          # downloaded from (its Release's URL) ...
+    url: str | None = None          # downloaded from (as the Adapter asked Net.download) ...
     final_url: str | None = None    # ... which redirected here
     from_path: str | None = None    # or copied from this `--from` file (absolute)
     installed_at: str | None = None # ISO 8601, UTC
@@ -980,20 +982,24 @@ class PrepareError(RuntimeError): ...     # prepare cannot produce a LaunchPlan 
 class Adapter(Protocol):
     name: str
     binary: str                     # the one file an Installation holds: "server.jar", "pumpkin"
-    # No provision: an Adapter never installs (ADR-0008). It says where its builds are
-    # (release) and what a file is (check); install.py owns Installations, so a third-party
-    # Adapter is name + binary + release + check + prepare, and gets `mscts adapter install`,
-    # --from, the prompt and verification for free. Runs and tests call
+    # An Adapter installs its build into a staging file (install) and says what a file is
+    # (check); install.py owns Installations (ADR-0008, #188): the cache layout, SOURCE.json,
+    # the prompt, --from, "already installed" and the staging directory. So a third-party
+    # Adapter is name + binary + install + check + prepare, about ten lines of install, and
+    # gets `mscts adapter install`, --from and the prompt for free. Runs and tests call
     # install.require(adapter, target, cache_dir).
     latest_aliases: frozenset[str]  # versions meaning the latest build, as None does: Pumpkin's
                                     # {"nightly"}; install_release maps them to None first
-    def release(self, target: Target, version: str | None, fetch: Fetch) -> Release: ...
-        # The latest build for target (version None), or the one `<name>@<version>` names,
-        # read only through `fetch`. Facts only: install.py adds the --from hint to any other
-        # ProvisionError. Otherwise ShortCommitError, UnsupportedError or UnavailableError: vanilla:
-        # "vanilla@26.4 is not supported: this mscts tests Minecraft 26.3." (nothing fetched),
-        # else the jar Mojang's version manifest lists for target (its version JSON checked
-        # by the manifest's sha1); Pumpkin: the nightly, Build("nightly", <the commit the
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build: ...
+        # Puts the latest build for target (version None), or the one `<name>@<version>`
+        # names, at `into` (the file `binary` in a staging directory install.py owns), reading
+        # only through `net`, and returns the Build it found: what was asked for and found;
+        # the file decides (install.py records the commit `check` reads). Facts only:
+        # install.py adds the --from hint to any other error. Otherwise ShortCommitError,
+        # UnsupportedError or UnavailableError: vanilla: "vanilla@26.4 is not supported: this
+        # mscts tests Minecraft 26.3." (nothing fetched), else the jar Mojang's version
+        # manifest lists for target (its version JSON checked by the manifest's sha1, the jar
+        # by its sha1 and size); Pumpkin: the nightly, Build("nightly", <the commit the
         # `nightly` tag names>) whatever `version` is: only the file says whether it is the
         # build `version` names (install.py checks it). A commit of 1-6 hex characters is
         # refused with ShortCommitError before anything is fetched.
@@ -1039,8 +1045,9 @@ class Adapter(Protocol):
 #   writes fixture_world.game_rules() to fixture_world.GAME_RULES_DAT, stamped with the
 #   server's DataVersion; tests/adapters/test_fixture_world.py checks every Adapter.
 # - an Installation is written only by install.py (one rename, complete or not at all), is
-#   never refreshed, and records its Source; install.py fetches only through the `fetch` it
-#   is given (https_get by default), so unit tests stay hermetic.
+#   never refreshed, and records its Source; an Adapter's install reads only through the
+#   Net install.py builds on the `fetch` it is given (https_get by default), so unit tests
+#   stay hermetic.
 
 # adapters/nbt.py: writes Java NBT files (never reads them). A Tag is Byte | Int | Long | Float |
 # Double (frozen wrappers of one value) | str | List(items: tuple[Tag, ...]) | IntArray(values) |
@@ -1068,12 +1075,16 @@ type Clock = Callable[[], datetime]       # the time now, timezone-aware; utc_no
                                           # passed in from cli.main(..., now=) (function design)
 def install_release(adapter, target, cache_dir, version: str | None, fetch: Fetch, *,
                     now: Clock = utc_now) -> Installed: ...
-    # adapter.release(target, version, fetch), then fetch(release.url): the publisher's sha1
-    # and size checked where it lists them; adapter.check in staging. Records the Release's
-    # version with the commit the file names (the release's commit only finds the file; a
-    # file naming none, where the release names one, is refused), and UnavailableError if
-    # that is not the build `version` names. An UnsupportedError from check names what was
-    # asked ("pumpkin's latest build (<url>)"), never the staging path, plus the --from hint.
+    # adapter.install(target, version, into, HttpsNet(fetch)), `into` being
+    # <cache>/<adapter>/.<minecraft_version>.<random>.part/<binary>, then adapter.check(into),
+    # then one rename into the cache; the staging directory is removed whatever happens.
+    # Records the found Build's version with the commit the file names (the found commit
+    # only finds the file; a file naming none, where install found one, is refused), and
+    # UnavailableError if that is not the build `version` names. The URL and final URL
+    # recorded are those of the download the Net saved as `into` (None if the Adapter wrote
+    # it itself). An UnsupportedError from check names what was asked ("pumpkin's latest
+    # build (<url>)"), never the staging path, plus the --from hint. A ChecksumError gets
+    # "To run that file anyway, save it and run `mscts adapter install <a> --from <file>`".
     # Installed already:
     # a no-op when `version` is None or names the installed Build (its version, or 7+ first
     # characters of its commit), saying "To check for a newer build, delete <root> and install again.";

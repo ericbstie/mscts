@@ -46,8 +46,9 @@ least the first 7 characters of the commit a nightly build was made from.
 `nightly` names the latest one, the same as giving no version.
 
 Pumpkin publishes only its latest nightly, so an older commit cannot be
-downloaded. mscts downloads the nightly to read which commit it is. If it
-is not the one you named, mscts installs nothing and says how to get it:
+downloaded. The Pumpkin Adapter downloads the nightly, and mscts reads
+which commit it is. If it is not the one you named, mscts installs nothing
+and says how to get it:
 
 ```
 downloading https://github.com/Pumpkin-MC/Pumpkin.git/info/refs?service=git-upload-pack ...
