@@ -1248,6 +1248,29 @@ def test_a_click_on_the_crafting_result_takes_it_whole_and_one_of_each_grid_item
     assert tracker.click(0, button, "pickup") == sent
 
 
+@pytest.mark.parametrize("button", [0, 1], ids=["left", "right"])
+def test_a_take_onto_a_cursor_of_the_same_item_stacks_and_uses_the_grid(button: int) -> None:
+    # doClick: the result refuses the cursor (ResultSlot.mayPlace), so a cursor of the same item
+    # with room for the whole result takes it, whatever the button, then ResultSlot.onTake.
+    tracker = holding(
+        {0: ("stick", 4), 1: ("oak_planks", 2), 3: ("oak_planks", 1)}, carried=("stick", 60)
+    )
+    changed = [(0, None), (1, hashed("oak_planks", 1)), (3, None)]
+    sent = click_sent(0, changed, hashed("stick", 64), button=button)
+    assert tracker.click(0, button, "pickup") == sent
+
+
+@pytest.mark.parametrize(
+    "carried", [("stick", 61), ("oak_planks", 4)], ids=["no-room", "another-item"]
+)
+def test_a_take_onto_a_cursor_without_room_or_of_another_item_changes_nothing(
+    carried: tuple[str, int],
+) -> None:
+    # Slot.tryRemove gives nothing short of the whole result, and the result takes no stack.
+    tracker = holding({0: ("stick", 4), 1: ("oak_planks", 1)}, carried=carried)
+    assert tracker.click(0, 0, "pickup") == click_sent(0, [], hashed(*carried))
+
+
 def test_a_take_from_a_grid_holding_an_item_with_a_crafting_remainder_is_refused() -> None:
     # ResultSlot.onTake puts the bucket back in the cell or in the inventory: not predicted.
     tracker = holding({0: ("cake", 1), 1: ("milk_bucket", 1), 2: ("sugar", 1)})

@@ -263,9 +263,10 @@ class InventoryTracker:
         adventure player: a clone, or a drag of a full stack to each slot, changes nothing, and
         an armor slot gives up nothing enchanted with curse of binding.
 
-        A pickup on the crafting result takes the whole result and one item from each grid
-        cell that holds one (`ResultSlot.onTake`); the client does not craft, so the result
-        stays empty until the server sends the next one.
+        A pickup on the crafting result takes the whole result, onto an empty cursor or onto a
+        cursor of the same item with room for all of it, and one item from each grid cell that
+        holds one (`ResultSlot.onTake`); the client does not craft, so the result stays empty
+        until the server sends the next one.
 
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
@@ -718,6 +719,7 @@ class _Click:
             taken = self.try_remove(slot, held.count, _max_stack_size(carried) - carried.count)
             if taken is not None:
                 self.carried = _counted(carried, carried.count + taken.count)
+                self.on_take(slot)
 
     def safe_insert(self, index: int, stack: Stack, count: int) -> Stack | None:
         """`Slot.safeInsert`: put up to `count` of `stack` in the slot; return what is left."""

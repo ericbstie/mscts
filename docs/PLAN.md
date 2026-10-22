@@ -799,8 +799,9 @@ class InventoryTracker:
     # dispenser's, a hopper's, a shulker box's or a crafting table's (_CLICK_MENUS; a table's
     # quickMoveStack: the grid to the player's slots, theirs to the grid first, then the 27 to
     # the hotbar and back), a click on a crafting result
-    # but a pickup (which takes the whole result, ResultContainer.removeItem, and one item from
-    # each grid cell, ResultSlot.onTake), a take from a grid holding an item with a crafting
+    # but a pickup (which takes the whole result, ResultContainer.removeItem, onto an empty
+    # cursor or one of the same item with room for it all, and one item from each grid cell,
+    # ResultSlot.onTake), a take from a grid holding an item with a crafting
     # remainder (Items: three buckets, honey bottle, dragon's breath), a bundle, a
     # swap whose slot stack would go back through Inventory.add, or a changed slot or cursor
     # stack with a component patch (its hash needs the component's encoding).
