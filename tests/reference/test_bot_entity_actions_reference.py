@@ -11,6 +11,7 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 
 import pytest
+from support.zombie import CLEANUP, SUMMON, ZOMBIE_AT
 
 from mscts.bot import Bot
 from mscts.codec.packets import Direction
@@ -20,7 +21,6 @@ from mscts.group import GroupContext
 from mscts.runner import Instance
 from mscts.spec import Difficulty
 from mscts.transcript import Transcript
-from tests.reference.test_bot_entities_reference import CLEANUP, SUMMON, ZOMBIE_AT
 
 pytestmark = pytest.mark.reference
 

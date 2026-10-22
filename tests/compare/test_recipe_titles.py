@@ -10,11 +10,11 @@ import itertools
 from collections.abc import Mapping
 
 import pytest
+from support.recipes import BOOK_ADD, CRAFTING_TABLE, RECIPE_DISPLAYS
 
 from mscts.case_titles import TITLES
 from mscts.compare import compare
 from mscts.transcript import Transcript
-from tests.codec.schemas.test_play_recipes import BOOK_ADD, CRAFTING_TABLE, RECIPE_DISPLAYS
 from tests.compare.build import packet, transcript
 
 LISTED = {
