@@ -9,13 +9,12 @@ from dataclasses import dataclass
 from typing import override
 
 import pytest
-from support.control import ControlServer, playing, tree
+from support.control import ControlServer, tree
+from support.control_play import Play, replay
 from support.gametime import gametime_answer
 
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
-from mscts.transcript import Transcript
-from tests.group.test_entities_items import Play, read
 from tests.net.fakes import Peer
 
 REPEATER = "redstone/repeater"
@@ -56,14 +55,6 @@ class ClockServer(ControlServer):
         answer = gametime_answer(self.game_time)
         self.game_time += FAST_FORWARD
         return peer.frame("minecraft:system_chat", content=answer, overlay=False)
-
-
-async def replay(group_id: str, server: ControlServer) -> Play:
-    """Play `group_id` against `server`; return what was read from its Transcript."""
-    transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(server, transcript) as context:
-        await GROUPS[group_id].run(context)
-    return read(transcript)
 
 
 _PLAYS: dict[str, Play] = {}

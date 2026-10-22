@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import pytest
-from support.bot_join import LOGIN
+from support.bot_join import login_frame
 from support.control import playing, text, tree
 from support.mobs import HUSK, NONE_LEFT
 from support.ticks import barriers_before_steps
@@ -29,12 +29,6 @@ from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
-
-
-def _login(peer: Peer) -> bytes:
-    """The `login` that names the player's entity id, which a sprint command carries."""
-    return peer.frame("minecraft:login", **LOGIN)
-
 
 CONTROL = "control"
 MARKER = "tellraw @s "
@@ -85,7 +79,7 @@ class CombatServer:
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
         with suppress(ConnectionError):
-            script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
+            script = JoinScript(commands=COMMANDS, after_batch=login_frame, then=self._play)
             await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:

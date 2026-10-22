@@ -181,3 +181,8 @@ def joined(
 
 
 PUNCH = ("minecraft:punch", {})
+
+
+def login_frame(peer: Peer) -> bytes:
+    """The `login` that names the player's entity id, which a sprint command carries."""
+    return peer.frame("minecraft:login", **LOGIN)

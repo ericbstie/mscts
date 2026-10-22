@@ -16,7 +16,7 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
-from support.bot_join import LOGIN, RESPAWN
+from support.bot_join import RESPAWN, login_frame
 from support.control import CODEC, text, tree
 from support.mobs import HUSK
 from support.moves import Play, opened, read
@@ -83,11 +83,6 @@ it would see the packet after it in its quiet time, after fewer than 6 `set_time
 ENDS = ("minecraft:remove_mob_effect", {"entity_id": 1, "effect": HUNGER})
 
 
-def _login(peer: Peer) -> bytes:
-    """The `login` that names the player's entity id, which a sprint command carries."""
-    return peer.frame("minecraft:login", **LOGIN)
-
-
 def health(value: float, food: int) -> tuple[str, Mapping[str, object]]:
     return (SET_HEALTH, {"health": value, "food": food, "saturation": 0.0})
 
@@ -115,7 +110,7 @@ class HungerServer:
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
         with suppress(ConnectionError):
-            script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
+            script = JoinScript(commands=COMMANDS, after_batch=login_frame, then=self._play)
             await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:

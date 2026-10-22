@@ -8,9 +8,10 @@ from contextlib import asynccontextmanager
 
 import pytest
 from support.control import HANG_LIMIT_S, STALL_S, late, text
+from support.transcripts import arrivals
 
 from mscts.bot import SYNC_REQUESTS, Bot
-from mscts.codec.packets import Codec, Direction, Packet
+from mscts.codec.packets import Codec, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN, Outcome, compare
 from mscts.group import Group, GroupContext
 from mscts.net import Endpoint, ProtocolError
@@ -72,14 +73,6 @@ def window(transcript: Transcript, bot: str = "alice") -> tuple[int, int]:
     (opened,) = [m for m in transcript.marks if m.label.split()[0] == OBSERVE_OPEN]
     (closed,) = [m for m in transcript.marks if m.label == f"{OBSERVE_CLOSE} {bot}"]
     return opened.t_ns, closed.t_ns
-
-
-def arrivals(transcript: Transcript, name: str) -> list[int]:
-    return [
-        event.t_ns
-        for event in transcript.events
-        if event.packet.name == name and event.packet.direction is Direction.CLIENTBOUND
-    ]
 
 
 @pytest.mark.asyncio

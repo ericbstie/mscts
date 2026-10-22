@@ -6,12 +6,11 @@ the fake answers Control's markers and the barrier.
 """
 
 import pytest
-from support.control import ControlServer, playing, tree
+from support.control import ControlServer, tree
+from support.control_play import Play, replay
 
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
-from mscts.transcript import Transcript
-from tests.group.test_entities_items import Play, read
 
 WATER_SPREAD = "fluids/water-spread"
 LAVA_SPREAD = "fluids/lava-spread"
@@ -29,14 +28,6 @@ WINDOW = (
 
 STEP = "tick step 1"
 FLOOR = "fill 0 -61 0 15 -61 15 minecraft:stone"
-
-
-async def replay(group_id: str, server: ControlServer) -> Play:
-    """Play `group_id` against `server`; return what was read from its Transcript."""
-    transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(server, transcript) as context:
-        await GROUPS[group_id].run(context)
-    return read(transcript)
 
 
 _PLAYS: dict[str, Play] = {}

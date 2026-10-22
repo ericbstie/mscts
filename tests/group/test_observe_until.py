@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 import pytest
 from support.control import MARKER, SYSTEM_CHAT, text, tree
+from support.transcripts import arrivals
 
 from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
@@ -97,14 +98,6 @@ async def play(*, until: str | None, later_state: int = 1) -> Transcript:
             await bot.command("batch")
             await asyncio.sleep(8 * GAP_S)
     return transcript
-
-
-def arrivals(transcript: Transcript, name: str) -> list[int]:
-    return [
-        event.t_ns
-        for event in transcript.events
-        if event.packet.name == name and event.packet.direction is Direction.CLIENTBOUND
-    ]
 
 
 @pytest.mark.asyncio
