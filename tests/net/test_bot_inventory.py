@@ -1255,3 +1255,63 @@ def test_a_take_from_a_grid_holding_an_item_with_a_crafting_remainder_is_refused
     with pytest.raises(ValueError, match="milk_bucket"):
         tracker.click(0, 0, "pickup")
     assert tracker.view() == before
+
+
+# A crafting table: CraftingMenu (26.3 client, javap). The result (slot 0), the 3x3 (1 to 9,
+# by row), the 27 (10 to 36), then the hotbar (37 to 45).
+
+TABLE = "minecraft:crafting"
+
+
+def test_a_click_on_a_tables_result_takes_it_and_one_of_each_of_its_nine_cells() -> None:
+    stacks = {
+        0: ("stone_pickaxe", 1),
+        1: ("cobblestone", 2),
+        2: ("cobblestone", 1),
+        3: ("cobblestone", 1),
+        5: ("stick", 1),
+        8: ("stick", 1),
+        9: ("dirt", 1),
+        10: ("cobblestone", 5),
+    }
+    tracker = holding(stacks, menu=TABLE)
+    changed = [(0, None), (1, hashed("cobblestone", 1)), (2, None), (3, None), (5, None)]
+    changed += [(8, None), (9, None)]
+    sent = in_chest(click_sent(0, changed, hashed("stone_pickaxe", 1)))
+    assert tracker.click(0, 0, "pickup") == sent
+
+
+@pytest.mark.parametrize(
+    ("start", "grid_full", "end"),
+    [(10, False, 1), (37, False, 1), (10, True, 37), (37, True, 10), (9, False, 10)],
+    ids=["27-to-grid", "hotbar-to-grid", "27-to-hotbar", "hotbar-to-27", "grid-out"],
+)
+def test_a_shift_click_in_a_table_goes_where_the_client_puts_it(
+    start: int,
+    grid_full: bool,  # noqa: FBT001
+    end: int,
+) -> None:
+    # CraftingMenu.quickMoveStack: the player's slots to the grid first, and if none moved, the
+    # 27 to the hotbar and the hotbar to the 27; the grid to the player's slots.
+    grid = dict.fromkeys(range(1, 10), ("diamond_sword", 1)) if grid_full else {}
+    tracker = holding({**grid, start: ("stone", 5)}, menu=TABLE)
+    sent = click_sent(start, [(start, None), (end, hashed("stone", 5))], None, mode=1)
+    assert tracker.click(start, 0, "quick_move") == in_chest(sent)
+
+
+def test_a_tables_result_takes_nothing_from_the_cursor_or_a_double_click() -> None:
+    # ResultSlot.mayPlace is false, and CraftingMenu.canTakeItemForPickAll is false for it.
+    tracker = holding({0: ("stick", 4)}, menu=TABLE, carried=("stone", 5))
+    assert tracker.click(0, 0, "pickup") == in_chest(click_sent(0, [], hashed("stone", 5)))
+    tracker = holding({0: ("stick", 4), 20: ("stick", 3)}, menu=TABLE, carried=("stick", 1))
+    changed = [(20, None)]
+    sent = in_chest(click_sent(30, changed, hashed("stick", 4), mode=6))
+    assert tracker.click(30, 0, "pickup_all") == sent
+
+
+def test_a_shift_click_on_a_tables_result_is_refused() -> None:
+    tracker = holding({0: ("stick", 4), 1: ("oak_planks", 2)}, menu=TABLE)
+    before = tracker.view()
+    with pytest.raises(ValueError, match="crafting result"):
+        tracker.click(0, 0, "quick_move")
+    assert tracker.view() == before

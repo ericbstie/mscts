@@ -796,7 +796,9 @@ class InventoryTracker:
     # key 0 first, then positions down), and the hashed cursor. ValueError, nothing changed:
     # an unknown mode, a slot outside a Short or a button outside a Byte, a slot the click
     # must name that the menu lacks, a menu other than the inventory's, a chest's, a
-    # dispenser's, a hopper's or a shulker box's (_CLICK_MENUS), a click on the crafting result
+    # dispenser's, a hopper's, a shulker box's or a crafting table's (_CLICK_MENUS; a table's
+    # quickMoveStack: the grid to the player's slots, theirs to the grid first, then the 27 to
+    # the hotbar and back), a click on a crafting result
     # but a pickup (which takes the whole result, ResultContainer.removeItem, and one item from
     # each grid cell, ResultSlot.onTake), a take from a grid holding an item with a crafting
     # remainder (Items: three buckets, honey bottle, dragon's breath), a bundle, a

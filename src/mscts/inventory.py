@@ -15,8 +15,8 @@ menu), and not again through window 0 once it closes. Every menu but the lectern
 and the hotbar after its own slots; the crafter's result comes after them.
 
 A click changes the open menu's slots as `AbstractContainerMenu.doClick` does on the client,
-in the inventory menu and the menus of chests, barrels, shulker boxes, dispensers, droppers
-and hoppers, and gives the `container_click` that reports it.
+in the inventory menu and the menus of chests, barrels, shulker boxes, dispensers, droppers,
+hoppers and crafting tables, and gives the `container_click` that reports it.
 """
 
 import math
@@ -270,12 +270,12 @@ class InventoryTracker:
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
-                a chest's, a dispenser's, a hopper's or a shulker box's; a click on the crafting
-                result other than a pickup; a take from a grid that holds an item with a
-                crafting remainder (a bucket of milk, water or lava, a honey bottle, dragon's
-                breath); a bundle; a swap that puts the slot's stack elsewhere; or a changed
-                slot's or the cursor's stack with a component patch, which it cannot hash.
-                Nothing changes.
+                a chest's, a dispenser's, a hopper's, a shulker box's or a crafting table's; a
+                click on the crafting result other than a pickup; a take from a grid that holds
+                an item with a crafting remainder (a bucket of milk, water or lava, a honey
+                bottle, dragon's breath); a bundle; a swap that puts the slot's stack elsewhere;
+                or a changed slot's or the cursor's stack with a component patch, which it
+                cannot hash. Nothing changes.
         """
         number = CLICK_MODES.get(mode)
         if number is None:
@@ -288,7 +288,7 @@ class InventoryTracker:
         if menu.layout is None or menu.menu not in _CLICK_MENUS:
             msg = f"the Bot does not predict a click in a {menu.menu} menu"
             raise ValueError(msg)
-        if menu.window_id == 0 and slot == _RESULT and number != _PICKUP:
+        if menu.menu in _GRIDS and slot == _RESULT and number != _PICKUP:
             msg = f"the Bot predicts no {mode} click on the crafting result, only a pickup"
             raise ValueError(msg)
         saved = (list(self._player), list(menu.own), menu.carried, menu.quickcraft_status)
@@ -462,10 +462,16 @@ _CLICK_MENUS = frozenset(
         "minecraft:generic_3x3",
         "minecraft:hopper",
         "minecraft:shulker_box",
+        "minecraft:crafting",
     }
 )
 """The menus whose `quickMoveStack` and slot rules the Bot predicts: `InventoryMenu`, `ChestMenu`,
-`DispenserMenu`, `HopperMenu` and `ShulkerBoxMenu`."""
+`DispenserMenu`, `HopperMenu`, `ShulkerBoxMenu` and `CraftingMenu`."""
+_TABLE = "minecraft:crafting"
+_TABLE_STORAGE, _TABLE_HOTBAR = 10, 37
+"""`CraftingMenu`'s first slot of the 27 and of the hotbar: the result and the 3x3 come first."""
+_GRIDS = MappingProxyType({None: range(1, _CRAFTING), _TABLE: range(1, _TABLE_STORAGE)})
+"""The crafting menus' grid slots, by menu: each has its result in slot 0 (`ResultSlot`)."""
 _OFF_HAND_BUTTON = 40
 """The swap button for the off hand (the F key): `Inventory` index 40."""
 _CONTAINER_MAX = 99
@@ -517,7 +523,7 @@ class _Click:
         self.is_inventory = menu.window_id == 0
         self.shulker = menu.menu == "minecraft:shulker_box"
         self.own_size = len(menu.own)
-        self.grid = range(_RESULT + 1, _CRAFTING) if self.is_inventory else range(0)
+        self.grid = _GRIDS.get(menu.menu, range(0))
         """The crafting grid's slots, after the result: none in a menu without one."""
 
     def get(self, index: int) -> Stack | None:
@@ -543,7 +549,7 @@ class _Click:
 
     def is_result(self, index: int) -> bool:
         """Whether slot `index` is a crafting result (`ResultSlot`)."""
-        return self.is_inventory and index == _RESULT
+        return bool(self.grid) and index == _RESULT
 
     def may_place(self, index: int, stack: Stack) -> bool:
         """`Slot.mayPlace`: armor slots take their own slot's items; a shulker box no box."""
@@ -571,7 +577,7 @@ class _Click:
         return not _binds(held, self.enchantments)
 
     def can_take_for_pick_all(self, index: int) -> bool:
-        """`canTakeItemForPickAll`: the inventory menu never takes from its crafting result."""
+        """`canTakeItemForPickAll`: a crafting menu never takes from its result."""
         return not self.is_result(index)
 
     def run(self, slot: int, button: int, mode: int) -> None:
@@ -773,14 +779,41 @@ class _Click:
         held = self.get(slot)
         if held is None:
             return None
-        start, end, backwards = (
-            self.inventory_target(slot, held) if self.is_inventory else self.chest_target(slot)
-        )
-        left, moved = self.move_to(held, held.count, start, end, backwards=backwards)
+        left, moved = held.count, False
+        for start, end, backwards in self.quick_move_targets(slot, held):
+            left, moved = self.move_to(held, left, start, end, backwards=backwards)
+            if moved:
+                break
         if not moved:
             return None
         self.put(slot, _counted(held, left))
         return held
+
+    def quick_move_targets(self, slot: int, held: Stack) -> tuple[tuple[int, int, bool], ...]:
+        """The slot ranges `quickMoveStack` tries in turn for `held`, until one takes some.
+
+        Each is a start, an end, and whether it fills from the end.
+        """
+        if self.is_inventory:
+            return (self.inventory_target(slot, held),)
+        if self.menu.menu == _TABLE:
+            return self.table_targets(slot)
+        return (self.chest_target(slot),)
+
+    def table_targets(self, slot: int) -> tuple[tuple[int, int, bool], ...]:
+        """`CraftingMenu.quickMoveStack`: the grid to the player's slots; theirs to the grid.
+
+        A stack of the player's slots that the grid takes none of goes from the 27 to the
+        hotbar, or from the hotbar to the 27.
+        """
+        if slot < _TABLE_STORAGE:
+            return ((_TABLE_STORAGE, self.size, False),)
+        rest = (
+            (_TABLE_HOTBAR, self.size, False)
+            if slot < _TABLE_HOTBAR
+            else (_TABLE_STORAGE, _TABLE_HOTBAR, False)
+        )
+        return ((_RESULT + 1, _TABLE_STORAGE, False), rest)
 
     def chest_target(self, slot: int) -> tuple[int, int, bool]:
         """`ChestMenu` and the like: a container slot to the player's, from the end; else back."""
