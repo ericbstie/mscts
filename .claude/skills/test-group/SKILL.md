@@ -70,6 +70,11 @@ puts back every block the Group changed, the ones under it included: a
 random tick turns grass under an opaque block to dirt on one Instance
 only (#62).
 
+Before the 20-play Self-check, read one vanilla Transcript of each
+window and check that every packet a window compares is in it: a
+window whose packet neither side sent matched 20 of 20 and compared
+nothing (#359).
+
 ## Where things go
 
 - Groups go in `src/mscts/groups/<mechanic>.py`, one module per mechanic

@@ -195,6 +195,30 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-17: train 40
+
+- #429, #430, #431, #434, #435 and #437 merged one at a time (reference
+  tier 36 of 36 on each tip that needed it). The project paused at
+  23:00Z with #439, #433, #440 and the fire branch open; train 41 took
+  them over.
+- #429 (#425): the research scripts read the installed vanilla jar
+  through `install.installed()`.
+- #430 (#423): each Self-check case carries its own pytest timeout;
+  `player/starvation` gets 225 s a play (`SLOW_PLAY_LIMIT_S`).
+- #431 (#427): a Bot operation's TimeoutError reads "<bot> waited
+  <limit> s for <what>". `Bot.connect` still raises a bare one.
+- #434 (#376): Pumpkin, like vanilla, answers `step_after`'s statistics
+  request only after the action, 100 of 100 idle and under load. No
+  barrier change.
+- #435 (#426): the nine player Groups that use the environment or the
+  arena clear the weather, stop its cycle and wait 100 game ticks for
+  the rain to fade.
+- #437 (#359): `Bot.swap_hands()` and `inventory/offhand`.
+- Filed #432 (a unit test of `player/fire` failed under load), #436 (a
+  late lava hit in `player/fire`), #438 (the recipe book's button order
+  is not compared) and #441 (one command prints a Group's vanilla
+  windows).
+
 ### 2026-10-17: train 39
 
 - #416, #414 and #417 merged as one train (reference tier 36 of 36 on

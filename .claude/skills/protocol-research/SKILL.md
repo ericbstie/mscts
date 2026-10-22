@@ -159,6 +159,13 @@ never depend on them.
 - Pumpkin sends an encryption request in offline mode unless
   `encryption = false`. Its Bedrock listener and telemetry are on by
   default.
+- A command's effect can depend on ticks running: `weather clear` sets
+  only WeatherData, and the rain fades 0.01 a tick, not at all while the
+  world is frozen (#426). Check with javap what a command sets and what a
+  tick then does with it.
+- `scripts/research/javap.py --out DIR` writes `DIR/<Class>.txt`.
+- Read a Candidate's source from raw.githubusercontent.com at the commit
+  the installed build names (for Pumpkin, from the crate's `mod.rs`).
 
 Record anything new under `docs/research/` and in this list if it will
 bite again.

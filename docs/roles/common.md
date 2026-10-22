@@ -123,3 +123,5 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Start any live run that can outlast a few minutes with `setsid nohup` in a scratch script, and wait on its rc file within your turn: a background run that outlives your turn is killed.
 - Never set a rule the Fixture world already has (`spawn_mobs` is off, ADR-0013): its undo sets vanilla's default and turns spawning on for every later play (#344, #63).
 - A fake gives each `where=` predicate a near miss for every field it checks: a near miss that differs in one field leaves the others' checks untested (#63).
+- Wait on a detached run's rc file with foreground polls of at most 590 s each, one Bash call per poll: a longer wait moves to the background, and `Monitor`'s sleep can return at once. A commit (`mise run commit`) takes about 5 min and `rebase -x` about 5 min a commit, so start both detached too.
+- A probe that needs load runs under `scripts/repeat.py --stress --live-lock`, which loads the CPUs only while the run holds the lock, not while it waits (#354).

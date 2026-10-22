@@ -1478,7 +1478,8 @@ class Bot:
         (`ServerStatsCounter.sendStats`), the only place vanilla sends `award_stats`. So
         an answer proves vanilla has handled every packet the Bot sent before that
         request. A Candidate that answers `REQUEST_STATS` outside the queue its action
-        handlers use gets no such proof: measured on vanilla only. Two requests keep the
+        handlers use gets no such proof. Pumpkin answers in order too, 100 of 100 idle and
+        under load (docs/research/2026-10-17-stats-order.md). Two requests keep the
         proof when one `award_stats` a Candidate sent unasked is taken as an answer (#169);
         two such `award_stats` can still end it before the server has handled the Bot's
         packets. Back to back, vanilla answers both in one pass, so the second costs about
