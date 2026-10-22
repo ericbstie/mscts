@@ -18,6 +18,8 @@ from dataclasses import dataclass, field
 
 from support.bot_join import LOGIN, RESPAWN
 from support.control import CODEC, text, tree
+from support.mobs import HUSK
+from support.moves import Play, opened, read
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
@@ -26,8 +28,6 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_hunger
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_combat import HUSK
-from tests.group.test_movement import Play, read
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -251,10 +251,6 @@ def play(group_id: str) -> tuple[Transcript, Play]:
 
 def played(group_id: str) -> Play:
     return play(group_id)[1]
-
-
-def opened(*names: str) -> str:
-    return f"{OBSERVE_OPEN} {' '.join(names)}"
 
 
 def received_in_windows(transcript: Transcript, bot: str) -> list[list[Packet]]:

@@ -17,6 +17,9 @@ from unittest import mock
 import pytest
 from support.bot_join import RESPAWN
 from support.control import CODEC, text, tree
+from support.gametime import gametime_answer
+from support.moves import MOVES, Play, moves_and_commands, opened, read
+from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.codec.packets import Packet
@@ -26,9 +29,6 @@ from mscts.groups import player
 from mscts.net import ProtocolError
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_mobs_pathfinding import gametime_answer
-from tests.group.test_movement import MOVES, Play, _sent, read
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -290,10 +290,6 @@ def test_the_windows_after_a_first_hit_compare_only_what_a_hit_sends() -> None:
     )
 
 
-def opened(*names: str) -> str:
-    return f"{OBSERVE_OPEN} {' '.join(names)}"
-
-
 def test_every_fall_window_is_narrowed_to_the_packets() -> None:
     result = played("player/fall")
 
@@ -319,7 +315,7 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
     hello = next(
         e.t_ns for e in transcript.events if e.packet.name == "minecraft:hello" and e.bot != CONTROL
     )
-    commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
+    commands = [(t, what) for t, who, what in moves_and_commands(transcript) if who == CONTROL]
     first_tp = next(t for t, what in commands if str(what).startswith("tp control"))
     assert first_tp < hello
     assert result.after[-6:] == (
@@ -454,11 +450,11 @@ def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
 
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
-    for opened, closed in zip(opens[: len(fall_cases())], closes, strict=False):
+    for opened_at, closed in zip(opens[: len(fall_cases())], closes, strict=False):
         flags = [
             int(str((e.packet.fields or {})["flags"])) & ON_GROUND
             for e in transcript.events
-            if e.bot == "faller" and e.packet.name in MOVES and opened <= e.t_ns <= closed
+            if e.bot == "faller" and e.packet.name in MOVES and opened_at <= e.t_ns <= closed
         ]
         assert flags[-1] == ON_GROUND
         assert not any(flags[:-1])

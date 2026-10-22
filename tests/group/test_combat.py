@@ -16,6 +16,8 @@ from typing import cast
 import pytest
 from support.bot_join import LOGIN
 from support.control import playing, text, tree
+from support.mobs import HUSK, NONE_LEFT
+from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
@@ -26,7 +28,6 @@ from mscts.groups import combat
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
 
 
@@ -41,7 +42,6 @@ CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_comma
 COMMANDS = tree(
     "gamerule", "tp", "tick", "summon", "item", "effect", "data", "kill", "execute", "tellraw"
 )
-HUSK = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:husk")
 MOVES = ("minecraft:move_player_pos", "minecraft:move_player_pos_rot")
 START_SPRINTING, STOP_SPRINTING = 1, 2
 STEP = "tick step 1"
@@ -50,7 +50,6 @@ HUSK_COMMAND = (
     "summon minecraft:husk 6.0 -60 2.5 "
     '{NoAI:1b,Silent:1b,OnGround:1b,Health:20f,Tags:["mscts_combat","mscts_combat"]}'
 )
-NONE_LEFT = "commands.execute.conditional.fail"
 
 GROUP_IDS = (
     "combat/melee-mob",

@@ -11,6 +11,7 @@ from dataclasses import dataclass, replace
 
 import pytest
 from support.control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
+from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction
@@ -19,7 +20,6 @@ from mscts.group import GROUPS, GroupKind
 from mscts.groups import blocks, blocks_player
 from mscts.spec import GameMode, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_ticks import barriers_before_steps
 
 PLAYER_ACTION, USE_ITEM_ON = "minecraft:player_action", "minecraft:use_item_on"
 MOVE_ROT = "minecraft:move_player_rot"

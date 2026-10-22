@@ -10,12 +10,12 @@ from typing import override
 
 import pytest
 from support.control import ControlServer, playing, tree
+from support.gametime import gametime_answer
 
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_entities_items import Play, read
-from tests.group.test_mobs_pathfinding import gametime_answer
 from tests.net.fakes import Peer
 
 REPEATER = "redstone/repeater"

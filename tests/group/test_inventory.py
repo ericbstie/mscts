@@ -19,6 +19,7 @@ from support.control import (
     playing,
     tree,
 )
+from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
@@ -28,7 +29,6 @@ from mscts.groups import inventory
 from mscts.inventory import CLICK_MODES, OUTSIDE
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import Peer
 
 GIVE, DROP, OFFHAND = "inventory/give", "inventory/drop", "inventory/offhand"

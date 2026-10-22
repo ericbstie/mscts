@@ -17,6 +17,7 @@ from typing import cast
 
 import pytest
 from support.control import CODEC, PLAY_TIMEOUT_S, text, tree
+from support.gametime import GAMETIME_ANSWER, gametime_answer
 
 import mscts.groups
 from mscts.bot import SYNC_REQUESTS, Bot
@@ -39,12 +40,6 @@ COMMANDS = tree(
 TAG = "mscts_mobs"
 TIME_QUERY = "time query gametime"
 
-GAMETIME_ANSWER = bytes.fromhex(
-    "0a09000477697468040000000100000000000000380800097472616e736c617465001c"
-    "636f6d6d616e64732e74696d652e71756572792e67616d6574696d650000"
-)[:-1]
-"""What vanilla 26.3 answered to `time query gametime` at game time 56: a system_chat's
-content, recorded live, without the overlay byte that follows it."""
 
 PUMPKIN_GAMETIME_ANSWER = bytes.fromhex(
     "0a0800097472616e736c617465001c636f6d6d616e64732e74696d652e71756572792e67616d6574696d65"
@@ -58,11 +53,6 @@ PLAYER_ID = 1
 """The Bot's own entity id: the fake never tells the Bot about it, as vanilla does not."""
 
 _SUMMON = re.compile(r"summon minecraft:(\w+) (\S+) (\S+) (\S+) ")
-
-
-def gametime_answer(value: int) -> bytes:
-    """Vanilla's answer to `time query gametime` at game time `value`."""
-    return GAMETIME_ANSWER[:13] + value.to_bytes(8, "big") + GAMETIME_ANSWER[21:]
 
 
 def moved(entity_id: int, dx: float, dz: float = 0.0) -> tuple[str, dict[str, object]]:
