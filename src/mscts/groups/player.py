@@ -29,6 +29,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from mscts.bot import Bot
+from mscts.codec.packets import Packet
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import (
@@ -259,6 +260,8 @@ async def fall(context: GroupContext) -> None:
 
 _SET_HEALTH = "minecraft:set_health"
 
+_DEATH = "minecraft:player_combat_kill"
+
 _DAMAGE_TIMEOUT_S = 60.0
 """How long a window waits for a hit: drowning takes 320 ticks, 16 s at 20 ticks a second."""
 
@@ -276,6 +279,21 @@ when the last window closed, a little after the hit."""
 clock = time.monotonic
 """The clock that times the gap between a hit and the next window. Tests replace it."""
 
+_MISSED_BETWEEN_WINDOWS = (
+    "the next may have come between the windows, and the windows would hold another health "
+    "from here on"
+)
+
+_ENTITY_EVENT = "minecraft:entity_event"
+
+_BUBBLES = 67
+"""The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
+`LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
+
+
+def _is_bubbles(packet: Packet) -> bool:
+    return (packet.fields or {}).get("event_id") == _BUBBLES
+
 
 class _Hits:
     """The windows that end on a Bot's hits, and the time between them.
@@ -292,8 +310,10 @@ class _Hits:
         self._bot = bot
         self._last_hit: float | None = None
 
-    def check_gap(self, period_ticks: int) -> None:
+    def check_gap(self, period_ticks: int, *, missed: str = _MISSED_BETWEEN_WINDOWS) -> None:
         """Fail if the last hit is older than a hit `period_ticks` ticks apart allows.
+
+        `missed` says what the Group would have missed: it ends the error's text.
 
         Raises:
             ProtocolError: The next hit may already have come, unseen.
@@ -305,14 +325,21 @@ class _Hits:
         if waited_s > allowed_s:
             msg = (
                 f"{self._bot.name} was {waited_s:.2f} s past its last hit, but hits come "
-                f"{period_ticks} ticks apart: the next may have come between the windows, and "
-                "the windows would hold another health from here on"
+                f"{period_ticks} ticks apart: {missed}"
             )
             raise ProtocolError(msg)
 
     async def hit(self) -> None:
         """Wait for the Bot's next `set_health`, and note when it came, for `check_gap`."""
         await self._bot.expect(_SET_HEALTH, timeout_s=_DAMAGE_TIMEOUT_S)
+        self._last_hit = clock()
+
+    async def bubbles(self) -> None:
+        """Wait for the Bot's next drowning bubbles, and note when they came, for `check_gap`.
+
+        Vanilla sends them each time a drowning player's air runs out, hurt or not.
+        """
+        await self._bot.expect(_ENTITY_EVENT, timeout_s=_DAMAGE_TIMEOUT_S, where=_is_bubbles)
         self._last_hit = clock()
 
     async def moved_before_the_next_hit(self) -> None:
@@ -355,20 +382,33 @@ class _Hits:
                 pass
 
 
-# `player/drowning`: a Bot stays under water until it drowns, a few times.
+# `player/drowning`: a Bot stays under water until it drowns.
 
 _DROWNER = "drowner"
 _DROWNING_DAMAGE = "gamerule drowning_damage"
-_HITS_AFTER = 3
 _DROWNING_PERIOD = 20
-"""Ticks between two drowning hits: the air is back at 0 and runs out again."""
+"""Ticks between two times a drowning player's air runs out: it is back at 0 and runs out again."""
+
+_HARM = "effect give {bot} minecraft:instant_damage 1 1 true"
+"""Takes 12 of a fresh Bot's 20 health (6 << 1, magic damage): drowning hits of 2 kill it in 4."""
+
+_MISSED_THE_TURN_ON = (
+    "the air may have run out again before drowning_damage was on, and the window would hold "
+    "another round of bubbles without a hit"
+)
 
 
 @group("player/drowning", spec=normal)
 async def drowning(context: GroupContext) -> None:
-    """A Bot stays under water until it takes damage and for three hits after.
+    """A Bot with 8 health stays under water until it drowns, in one window.
 
-    Then `drowning_damage` is turned off, and the Bot stays under water for one more hit's time.
+    `drowning_damage` is off when the Bot goes under: the first time its air runs out, it gets the
+    bubbles and no hit. Then the rule is turned on, and four hits kill it. The Bot respawns in a
+    window of its own.
+
+    The window opens while the Bot's air is full, so it holds every air value the server sends,
+    between every two hits; it ends on the death. A server that drowns a player less often sends
+    more air values, or fewer, between two hits.
     """
     async with _environment(context, _WATER.restore) as undo:
         bot = await join_at_spawn(context, undo, _DROWNER)
@@ -376,16 +416,18 @@ async def drowning(context: GroupContext) -> None:
         for command in _WATER.build:
             await context.control.run(command)
         await fresh(context, bot)
-        hits = _Hits(context, bot)
-        async with hits.window(PACKETS):
-            await _tp(context, bot, _at(_WATER.lane, -62.0))
-        await hits.more(_HITS_AFTER, period_ticks=_DROWNING_PERIOD)
+        await context.control.run(_HARM.format(bot=bot.name))
         undo.push_async_callback(context.control.run, f"{_DROWNING_DAMAGE} true")
         await context.control.run(f"{_DROWNING_DAMAGE} false")
-        # The bubbles still come when the damage does not: the window ends a barrier after them.
-        async with context.observe(*HIT_PACKETS):
-            hits.check_gap(_DROWNING_PERIOD)
-            await bot.expect("minecraft:entity_event", timeout_s=_DAMAGE_TIMEOUT_S)
+        hits = _Hits(context, bot)
+        async with context.observe(*PACKETS, until=_DEATH, bot=bot):
+            await _tp(context, bot, _at(_WATER.lane, -62.0))
+            await hits.bubbles()
+            await context.control.run(f"{_DROWNING_DAMAGE} true")
+            hits.check_gap(_DROWNING_PERIOD, missed=_MISSED_THE_TURN_ON)
+            await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
+        async with context.observe(*PACKETS):
+            await bot.respawn()
 
 
 # `player/suffocation`: a Bot inside a block of stone.
@@ -422,8 +464,6 @@ async def suffocation(context: GroupContext) -> None:
 _VOID_BOT = "voider"
 _VOID_AT: _Point = (0.5, -130.0, 0.5)
 """Vanilla hurts a player below the lowest block minus 64 (`Entity.checkBelowWorld`): y -128."""
-
-_DEATH = "minecraft:player_combat_kill"
 
 
 @group("player/void", spec=normal)
