@@ -36,6 +36,9 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-17 | #363 | comparison core | #433 (`scrutiny::high`) | a recipe book removal was compared in the order each server sent it | the first review, the second review | no |
+| 2026-10-17 | #436 | Groups | unknown | a lava hit that came late under load landed in the dry-grass window, and `check_gap` (#367) did not catch it | the Self-check (#435's 20 plays) | yes |
+| 2026-10-17 | #432 | tests | #415 (`scrutiny::high`) | the player fake's hit could beat the Bot's barrier under load, failing a unit test of the dry-grass window | a tier run (the unit tier under `rebase -x`) | yes |
 | 2026-10-17 | #356 | timing core | #415 (`scrutiny::high`) | the early-packet refusal of a two-Bot `until` window depended on which Bot's reader stamped last | the first review | no |
 | 2026-10-17 | #356 | tests | #415 (`scrutiny::high`) | the player fake hurt every tick after the lava teleport, so the dry-grass window lost its teleport under a 50 ms stall | the second review | no |
 | 2026-10-16 | #411 | tooling | #414 (`scrutiny::low`) | a test's stand-in counted every stress process on the host, other workers' too | a tier run (the merge train's per-commit check) | no |
@@ -74,6 +77,14 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #433 |  | high | first review, second review, third review of the fixes | 1, 1 (the same: removal order compared), 0 (2 should-fix, filed as #443) | none: no barrier or window change; Self-check 20 of 20 of the four Groups; mutation sweep 20 of 20 killed |
+| #439 |  | medium | lead's diff read | 0 | five stressed 20-play Self-checks of `player/exhaustion`, 5 of 5 (it changes how many ticks pass between jumps); Self-check 20 of 20; mutation sweep 11 of 11 killed |
+| #437 | high | medium (one send, no wait) | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 of `inventory/offhand`; mutation sweep 26 of 26 killed |
+| #435 | medium | medium | lead's diff read | 0 | none: no barrier change; Self-check 20 plays of the nine player Groups, 8 of them 20 of 20 and `player/fire` 19 of 20 (an older guard bug, #436); mutation sweep 16 of 16 killed |
+| #434 | high | low (a probe only) | lead's diff read | 0 | none: a probe; in order 100 of 100 on both servers, idle and under `--stress 4` |
+| #431 | high | low (only the message changes) | lead's diff read | 0 | none: the rebase's per-commit check caught the #432 flake once |
+| #430 | medium | low (test only) | lead's diff read | 0 | none: `player/starvation` 20 of 20 at 103 s a play |
+| #429 | low | low | lead's diff read | 0 | none: a research script |
 | #415 | high | high | first review, second review | 0, 0 (3 should-fix, all fixed) | five stressed 20-play Self-checks of `player/drowning` before the reviews, 5 of 5; the first 50-run unit stress caught the player fake hurting after `fresh`, fixed; after the fixes one stressed 20-play Self-check each of `player/fire` and `player/drowning`, 20 of 20, and the unit tests 50 of 50; Self-check tier 74 of 74 on the tip; mutation sweep 11 of 11 killed |
 | #422 | high | medium | lead's diff read | 0 | none: no barrier or window change (the lead lowered it: the schema's fields are a position and a VarInt, so equal bytes and equal fields agree); Self-check 20 of 20 of `blocks/gravity`; mutation sweep 16 of 16 killed |
 | #421 | low | low | lead's diff read | 0 | none: tests only; the three tests 50 of 50 under `repeat.py --stress` |

@@ -54,3 +54,8 @@ Newest first: one line per lesson, with the issue it came from.
 - #320: a packet list the client applies element by element at distinct keys is compared order-free; cite the handler's javap.
 - #320: ordering a run by entity needs the ranks from before the run (`_Numbers.ranks()`); sort before `numbers.take`. A run ends at a window's end, a tick Mark (tick-exact only) and `add_entity`/`remove_entities`; an uncompared packet never ends one.
 - #396: since #320, four item drops from one `/fill` and two stacks from one `/give` compare 20 of 20, `set_entity_data` included; no Group needs to keep several entities out of one tick.
+- #363: before you sort an unordered packet, check whether the client shows its order: `RecipeToast` shows the notified entries in the order sent. Sort only what the client uses as a key.
+- #363: renumbering must read the sorted copy (`_copy`), or the numbers follow each server's order.
+- #363: a sort key that leaves an id out must keep whether a nullable sibling is present (here, the group). Otherwise entries that tie keep each server's order.
+- #363: only clientbound packets are compared. Renumbering a serverbound field (`place_recipe`) does nothing.
+- #363: a number a Comparison gives (an entity's, a recipe's) must end when the client drops what it names, also outside the windows (#443).

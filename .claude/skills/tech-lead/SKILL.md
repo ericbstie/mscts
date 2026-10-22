@@ -19,15 +19,16 @@ first.
    `mscts adapter list` shows the Candidate installed in the shared cache.
 2. Plan a batch of 1–3 ready issues whose "Owns" lists are disjoint
    (ADR-0009). Relay `needs-decision` issues to the maintainer.
-3. Start the whole batch in one message, one Agent call per worker:
-   `isolation: "worktree"`, `run_in_background: false`,
-   `model: "opus"` for heavy or critical work and `"sonnet"` for
-   mechanical work (the issue's model label). Use the brief template in
-   PROCESS.md, and tell the worker to read the Worker contract, work its
-   issue on `issue-<n>-<slug>`, open one PR, and end with the short Worker
-   report (its Retrospective never goes on GitHub). The workers run side by
-   side and your turn resumes once, when the last report returns. Agent
-   calls in separate messages would run one after another.
+3. Start the whole batch as one Workflow run: one `agent()` per worker,
+   `isolation: 'worktree'`, gathered with `parallel()`; `model: 'sonnet'`
+   for mechanical work (the issue's model label), else the default. Use
+   the brief template in PROCESS.md, and tell the worker to read the
+   Worker contract, work its issue on `issue-<n>-<slug>`, open one PR,
+   unsubscribe this session from that PR
+   (`mcp__claude-code-remote__unsubscribe_pr_activity`), and end with the
+   short Worker report as its final text (its Retrospective never goes on
+   GitHub). You are woken once, when the last report returns. At most two
+   agents run at once on a 4-CPU host, so put the short jobs first.
 4. Before starting a batch, do lead work: review, write the next briefs,
    fix the process docs. Do not duplicate a worker's task.
 5. When the batch returns, for each worker:
@@ -67,6 +68,8 @@ first.
 - Rebase with `git rebase main -x "mise run check …"`. If a commit fails
   only under `rebase -x`, suspect inherited `GIT_*` env vars before
   suspecting the code.
+- Read a rebase's rc before pushing its branch; never chain the push
+  after the rebase (#431 was pushed before its red was read).
 - Leave the main checkout alone while a `rebase -x` runs in it: an
   edited file stops the rebase at its next pick ("You have unstaged
   changes"). Draft lead docs in the scratchpad and apply them after.
@@ -141,6 +144,14 @@ first.
 - A brief that asks for a Self-check names its node id
   (`tests/selfcheck/test_groups.py::test_selfcheck[<group id>]`) and the
   `mscts run --candidate <name> --group <id>` command (#373).
+  It also says that Self-check cases are built in
+  `tests/support/selfcheck.py` (#423).
+- A brief gives the live lock wait the worker can expect, and the lead
+  runs long Self-checks one after another: a few-minute probe waited 2 h
+  behind a 9-Group 20-play Self-check (#376).
+- Before a spec sorts or renumbers a packet's entries, javap how the
+  client uses their order: the recipe toast shows entries in the order
+  sent (#433).
 - Before briefing a 20-run Self-check, time the family on main
   (`scripts/time_tier.py`) and give each Group's play time: the #356
   brief gave none, and one 20-play run of `player/*` held the live lock
