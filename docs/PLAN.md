@@ -2535,12 +2535,20 @@ proves it necessary:
    `place_ghost_recipe` holds a display, not an id, and is compared as
    it is; `place_recipe`, which sends an id back, is serverbound. So a
    Candidate that numbers its recipes another way but keeps to it shows
-   the same book, and a group of another recipe than the Reference's
-   differs (`#2` against `#1`), as does a removal of another recipe, if
-   the recipe was added in a compared packet. Limit: a recipe the Bot
-   got outside the windows, or in a packet a `*` Mask drops, is first
-   seen in its removal, so two removals of different such recipes
-   compare equal; no Group removes one (an
+   the same book. A removal of another recipe differs only if the recipe
+   was added in a compared packet and no removal or replace that is not
+   compared has taken it out since. A recipe put in another group than
+   the Reference's differs (`#2` against `#1`) only if a recipe in that
+   group was added in a compared packet and no replace that is not
+   compared has emptied the book since. Limit (#462): an id has no number
+   while the Bot has got its recipe only in packets that are not
+   compared (outside the windows, or dropped by a `*` Mask) since the id
+   was last removed or the book last replaced, so its removal takes the
+   next number, and two removals of different such recipes compare
+   equal. A group such a replace ended is likewise numbered again at its
+   next compared add, so a recipe put in another group then compares
+   equal too. No Group compares the removal of such a recipe, or
+   replaces the book after a compared add (an
    entity has its `add_entity` name for this, `_Numbers.spawned`, and a
    recipe has nothing like it). Javap on the 26.3 client:
    the client keeps its book in a `HashMap` keyed by display id

@@ -2809,8 +2809,10 @@ sorted by their numbers.
 
 The display id of one recipe removed from the book, numbered as the
 recipes added are, so a removal of another recipe differs if the recipe
-was added in a window. A removal of a recipe the player got outside the
-windows cannot be told from a removal of another such recipe.
+was added in a window and has not been taken or replaced outside the
+windows since. The removal of any other recipe cannot be told from a
+removal of another such recipe yet
+([#462](https://github.com/ericbstie/mscts/issues/462)).
 
 ## `place_ghost_recipe.recipe_display.type`
 

@@ -340,6 +340,28 @@ def test_a_book_replaced_ends_every_number_before_its_entries_take_theirs() -> N
     assert _diff_all(reference, candidate) == []
 
 
+def test_a_removal_of_another_recipe_after_an_uncompared_replace_is_not_told_apart() -> None:
+    # A known limit, until #462: the replace ends both ids' numbers, and the uncompared add
+    # gives them none, so each removal takes the next number. #462 turns this red.
+    planks, sticks = Entry(PLANKS, display_id=5, flags=TOAST), Entry(STICKS, display_id=6)
+    common = [OPEN, book_add(planks, sticks), CLOSE, book_add(planks, sticks, replace=True)]
+    removal = [[OPEN, book_remove(each), CLOSE] for each in (5, 6)]
+
+    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == []
+
+
+def test_a_recipe_in_another_group_after_an_uncompared_replace_is_not_told_apart() -> None:
+    # A known limit, until #462: the replace ends group 3's number while planks still hold
+    # it, so sticks take the next number in either group. #462 turns this red.
+    planks = Entry(PLANKS, display_id=5, group=3, flags=TOAST)
+    common = [OPEN, book_add(planks), CLOSE, book_add(planks, replace=True)]
+
+    def sticks_in(group: int) -> list[Packet | str]:
+        return [OPEN, book_add(Entry(STICKS, display_id=6, group=group, flags=TOAST)), CLOSE]
+
+    assert _diff_all([*common, *sticks_in(3)], [*common, *sticks_in(7)]) == []
+
+
 def test_a_book_packet_that_did_not_decode_ends_no_number() -> None:
     planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
     undecoded = packet(BOOK_REMOVE, b"\xff")
