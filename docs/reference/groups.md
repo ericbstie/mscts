@@ -790,9 +790,14 @@ block's state.
 | `redstone/observer` | tick-exact | none | Control places stone in front of an observer, then takes it away. Then it places a third observer facing a second one, which faces it back, and takes it away 12 ticks later. The world steps 30 ticks. Vanilla powers an observer for 2 ticks, 2 ticks after the block in front of it changes, and also once after `/setblock` places it. The two observers facing each other pulse in turn, a clock that stops when one goes. | none |
 | `redstone/dust` | tick-exact | none | Control powers a line of 16 dust for one tick. Then, a tick apart, it places dust beside a lone dust, turns that dust into stone, puts dust on the stone, and puts stone above the lone dust, then takes them away. The world steps 10 ticks. Vanilla changes dust in the tick its neighbour changes: the line's strength falls by 1 a block, from 15 to 0 at the 16th, and the lone dust connects to the dust beside it, climbs onto the stone, and loses the climb while stone is above it. | none |
 | `redstone/update-order` | tick-exact | none | Control builds two copies of one case at different places: a dust between two blocks of stone, and beside each stone a piston, both facing the same block. It powers and unpowers each dust, 5 ticks apart. The world steps 21 ticks. Vanilla updates the blocks around a dust in an order set by where the dust is, so only the piston it updates first extends: the north one in the first copy, the south one in the second. | none |
+| `redstone/piston-push` | tick-exact | none | Control builds a row of pistons, each facing 1, 12 or 13 stones, obsidian, bedrock, a chest, an extended piston, a torch or a poppy. It powers each piston with a redstone block, the poppy's 2 ticks after the rest, and takes each power away 4 ticks later. The world steps 10 ticks. Vanilla pushes 1 and 12 blocks, and moves nothing when the row is 13 long or the first block is one that cannot move: that piston does nothing at all. The torch and the poppy break, each into an item. A piston acts on the tick after its power changes, and its blocks are in place 2 ticks later. | none |
 
-`redstone/update-order` masks the pitch of `sound`: vanilla draws a piston's pitch at random.
-Which sound plays, where and at what volume is still compared.
+The piston Groups also compare block entities' data and the items a piston breaks a block into.
+
+The Groups with pistons mask the pitch of `sound`: vanilla draws a piston's pitch at random.
+Which sound plays, where and at what volume is still compared. `redstone/piston-push` also
+masks where each item a piston breaks a block into appears and how it moves, which vanilla also
+draws at random. Which item it is, and how many, is still compared.
 
 Vanilla sends no comparator's output strength: it is kept in the comparator's block entity, not
 in its block state. So each comparator has dust after it, whose strength shows the output.

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from mscts.compare import Mask
 from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import CONTROL_AT, fast_forward, join_at_spawn, pin_joins
+from mscts.groups.blocks import DROP_MASKS
 from mscts.spec import CONTROL_PLAYER
 
 _WATCHER = "watcher"
@@ -89,9 +90,14 @@ async def _arena(context: GroupContext, build: tuple[str, ...]) -> AsyncIterator
         yield
 
 
-async def _observe(context: GroupContext, schedule: tuple[_At, ...], ticks: int) -> None:
-    """In one window, step the world `ticks` ticks, running each command of `schedule` on time."""
-    async with context.observe(*_PACKETS):
+async def _observe(
+    context: GroupContext,
+    schedule: tuple[_At, ...],
+    ticks: int,
+    packets: tuple[str, ...] = _PACKETS,
+) -> None:
+    """In one window of `packets`, step the world `ticks` ticks, running `schedule` on time."""
+    async with context.observe(*packets):
         for tick in range(ticks):
             for at in schedule:
                 if at.tick == tick:
@@ -381,8 +387,9 @@ _PISTON_PITCH = Mask(
     "pitch",
     "Vanilla draws it at random for a piston (26.3 javap): `PistonBaseBlock.triggerEvent` plays "
     "the extend sound with pitch nextFloat() * 0.25 + 0.6 and the retract sound with "
-    "nextFloat() * 0.15 + 0.6. The pistons are the only things that play a sound in "
-    "`redstone/update-order`; which sound plays, where and at what volume is still compared.",
+    "nextFloat() * 0.15 + 0.6. The pistons are the only things that play a sound in the "
+    "redstone Groups with this Mask; which sound plays, where and at what volume is still "
+    "compared.",
 )
 
 
@@ -391,3 +398,92 @@ async def update_order(context: GroupContext) -> None:
     """Which of two pistons a dust powers first, by where the dust is."""
     async with _arena(context, _ORDER_BUILD):
         await _observe(context, _ORDER, _ORDER_TICKS)
+
+
+# The piston Groups: each case a piston at x 2 facing east, unless it says otherwise, so that a
+# redstone block Control places at x 1, behind it, powers it, and what it pushes starts at x 3.
+
+_PISTON_PACKETS = (
+    *_PACKETS,
+    "minecraft:block_entity_data",
+    "minecraft:add_entity",
+    "minecraft:set_entity_data",
+)
+"""What a piston window compares: every block that changes, the pistons' block events and
+sounds, world events, any block entity's data, and the item a piston breaks a block into."""
+
+
+def _piston(z: int, ahead: str) -> tuple[str, ...]:
+    """A piston at x 2, -60, z facing east, and the block `ahead` of it, at x 3."""
+    return (_set(2, z, "piston[facing=east]"), _set(3, z, ahead))
+
+
+def _power(tick: int, z: int) -> _At:
+    """Power the piston at x 2, -60, z on `tick`: a redstone block behind it."""
+    return _At(tick, _set(1, z, "redstone_block"))
+
+
+def _unpower(tick: int, z: int) -> _At:
+    """Take the redstone block behind the piston at x 2, -60, z away on `tick`."""
+    return _At(tick, _set(1, z, "air"))
+
+
+# `redstone/piston-push`: a row of cases along z.
+
+_STONES = {1: 1, 3: 12, 5: 13}
+"""The z of each row of stone in front of a piston, and how long it is."""
+
+_STOPS = {7: "obsidian", 8: "bedrock", 9: "chest", 11: "piston[facing=up,extended=true]"}
+"""The z of each block a piston cannot move: one that will not move, one that cannot be broken,
+one with a block entity, and an extended piston."""
+
+_POPS = {13: "torch", 15: "poppy"}
+"""The z of each block that breaks when a piston pushes it."""
+
+_PUSH_BUILD = (
+    *(f"fill 3 -60 {z} {2 + length} -60 {z} minecraft:stone" for z, length in _STONES.items()),
+    *(_set(2, z, "piston[facing=east]") for z in _STONES),
+    _set(4, 11, "redstone_block"),
+    *(command for z, block in _STOPS.items() for command in _piston(z, block)),
+    _raised(3, 11, "piston_head[facing=up]"),
+    *(command for z, block in _POPS.items() for command in _piston(z, block)),
+)
+"""The rows of stone and their pistons; the blocks that stop a piston, with the extended
+piston's power, a redstone block east of it, placed first so that it does not retract, and its
+head; the torch and the poppy on the grass."""
+
+_PUSH_FIRST = (*_STONES, *_STOPS, 13)
+"""The rows powered on tick 0: all but the poppy's, powered on tick 2, so that the torch and the
+poppy break into their items on ticks of their own."""
+
+_PUSH = (
+    *(_power(0, z) for z in _PUSH_FIRST),
+    _power(2, 15),
+    *(_unpower(4, z) for z in _PUSH_FIRST),
+    _unpower(6, 15),
+)
+"""A piston's block event runs on the next tick: the blocks in front of it become moving blocks,
+and they are in place 2 ticks later (`PistonMovingBlockEntity.tick`). 12 stones move; 13 do not,
+and neither does a block that is immovable, cannot be broken, has a block entity, or is an
+extended piston: that piston has no block event (`PistonStructureResolver.resolve`). The torch and
+the poppy break into an item each, on ticks 1 and 3. Each piston retracts on the tick after its
+power goes, and is back 2 ticks later: the last on tick 9."""
+
+_PUSH_TICKS = 10
+
+_KILL_ITEMS = "kill @e[type=minecraft:item]"
+"""Takes away the items the torch and the poppy broke into, so that the next play has none."""
+
+
+@group(
+    "redstone/piston-push",
+    kind=GroupKind.TICK_EXACT,
+    masks=(_PISTON_PITCH, *DROP_MASKS),
+)
+async def piston_push(context: GroupContext) -> None:
+    """Pistons push 1 and 12 blocks, not 13 or a block that stops them, and break a torch."""
+    async with _arena(context, _PUSH_BUILD):
+        try:
+            await _observe(context, _PUSH, _PUSH_TICKS, _PISTON_PACKETS)
+        finally:
+            await context.control.run(_KILL_ITEMS)
