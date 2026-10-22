@@ -7,10 +7,9 @@ from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 
 import pytest
+from support.block_probe import at_block
+from support.control import SETBLOCK
 
-from mscts.codec.packets import Packet
-from mscts.codec.schema import POSITION
-from mscts.codec.wire import Reader
 from mscts.group import GroupContext
 from mscts.runner import Instance
 from mscts.transcript import Transcript
@@ -18,13 +17,6 @@ from mscts.transcript import Transcript
 pytestmark = pytest.mark.reference
 
 _TIMEOUT_S = 10.0
-BLOCK = {"x": 1, "y": -60, "z": 1}
-SETBLOCK = "setblock 1 -60 1 minecraft:stone"
-
-
-def at_block(packet: Packet) -> bool:
-    """Whether a `block_update` is for BLOCK: its payload starts with the position."""
-    return POSITION.read(Reader(packet.payload)) == BLOCK
 
 
 @pytest.mark.timeout(180)  # its own boot and stop, two joins and a command
