@@ -19,6 +19,8 @@ unless a line says *live* (two vanilla 26.3 Instances, 20 plays, 2026-10-22).
   stop or step a player's ticks, so its air runs on the wall clock.
 - `ServerPlayer.doTick` runs `Player.tick` (and with it `baseTick`) first, and sends `set_health`
   at its end when the health, the food or whether saturation is 0 changed.
+- `HealOrHarmMobEffect.applyEffectTick` hurts a harmed entity with `hurtServer(magic, 6 <<
+  amplifier)`, so `instant_damage` at amplifier 1 takes 12.
 
 ## What the Bot sees (*live*)
 
