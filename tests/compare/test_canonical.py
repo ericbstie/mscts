@@ -101,10 +101,9 @@ def test_text_components_inside_a_description_are_canonical_too(
 @pytest.mark.parametrize(
     ("reference", "candidate", "divergences"),
     [
-        # An explicit style value, an empty extra, an explicit type: not the same Component
-        # (or not valid), so not canonicalized.
+        # An explicit style value, an explicit type: not shown to be the same Component, so
+        # not canonicalized.
         ('"x"', '{"text":"x","bold":false}', [("json_response.description.bold", ABSENT, False)]),
-        ('"x"', '{"text":"x","extra":[]}', [("json_response.description.extra", ABSENT, [])]),
         ('"x"', '{"type":"text","text":"x"}', [("json_response.description.type", ABSENT, "text")]),
     ],
 )
@@ -168,6 +167,25 @@ def test_a_list_and_an_object_that_read_differently_still_differ(
     reference: str, candidate: str, divergences: list[tuple[str, object, object]]
 ) -> None:
     assert _diff(f'{{"description":{reference}}}', f'{{"description":{candidate}}}') == divergences
+
+
+@pytest.mark.parametrize(
+    "refused",
+    [
+        '{"text":"x","extra":[]}',
+        "[]",
+        '{"text":"a","extra":[{"text":"b","extra":[]}]}',
+        '["a",[]]',
+        '[{"text":"a","extra":[]},"b"]',
+    ],
+)
+def test_a_description_with_an_empty_list_reads_as_no_description(refused: str) -> None:
+    # ExtraCodecs.nonEmptyList refuses it, and ServerStatus.CODEC reads a description it
+    # cannot decode as CommonComponents.EMPTY (docs/research/2026-09-26-comparison.md).
+    assert _diff("{}", f'{{"description":{refused}}}') == []
+    assert _diff('{"description":"x"}', f'{{"description":{refused}}}') == [
+        ("json_response.description", {"text": "x"}, ABSENT)
+    ]
 
 
 def test_strings_outside_the_description_are_not_text_components() -> None:

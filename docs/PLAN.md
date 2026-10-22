@@ -2234,7 +2234,11 @@ proves it necessary:
      `createFromList`: the first's `copy()`, then `append` of each of the
      rest, which builds the same `MutableComponent(contents, siblings,
      style)` as the object (docs/research/2026-09-26-comparison.md, #342).
-     The text components
+     A description with an empty list anywhere in its text components
+     (`"extra": []`, or `[]` as a list form) is `{"text": ""}`:
+     `ExtraCodecs.nonEmptyList` wraps both the list form and `extra`, so
+     the client's codec refuses it, and `lenientOptionalFieldOf` reads a
+     refused description as `CommonComponents.EMPTY`. The text components
      are exactly: `json_response.description` (a text component in
      `ServerStatus.CODEC`, verified with `javap`), each element of a
      text component in list form, and each element of a text
@@ -2400,7 +2404,8 @@ proves it necessary:
    see Open questions): an explicit `"type": "text"`; style
    values equal to the defaults (`"bold": false`); a present but
    undecodable value that `lenientOptionalFieldOf` replaces by its
-   default; and the client's lenient parsing (the status
+   default, except a description with an empty list (above); and the
+   client's lenient parsing (the status
    JSON is read by Gson's `JsonParser.parseString`, in lenient mode,
    which accepts unquoted keys and single quotes; and DFU's
    `JsonOps.getNumberValue` accepts any JSON number, so `20.0` where an

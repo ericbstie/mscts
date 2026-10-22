@@ -2063,7 +2063,7 @@ def _canonical_status_response(fields: dict[str, _Value], _context: _Context) ->
     if isinstance(status, dict):
         status = _as_read(status)
         if "description" in status:
-            status = {**status, "description": _text_component(status["description"])}
+            status = {**status, "description": _description(status["description"])}
         status = _without_declared_defaults(status)
     return {**fields, "json_response": status}
 
@@ -2114,6 +2114,32 @@ def _without_declared_defaults(status: dict[str, _Value]) -> dict[str, _Value]:
     if isinstance(players, dict) and players.get("sample", ABSENT) == []:
         result["players"] = {key: value for key, value in players.items() if key != "sample"}
     return result
+
+
+def _description(description: _Value) -> _Value:
+    """The text component the client shows for the status's `description`, canonical.
+
+    A description with an empty list in it is `{"text": ""}`, the declared default: the
+    client's text component codec refuses it (`_has_empty_list`), and `ServerStatus.CODEC`
+    reads a description it cannot decode as `CommonComponents.EMPTY` (docs/research/
+    2026-09-26-comparison.md). Any other is `_text_component`.
+    """
+    if _has_empty_list(description):
+        return {"text": ""}
+    return _text_component(description)
+
+
+def _has_empty_list(component: _Value) -> bool:
+    """Whether `component`, or a text component in it, is an empty list or has an empty `extra`.
+
+    `ExtraCodecs.nonEmptyList` wraps both the list form and `extra`, so the client's codec
+    refuses either when it is empty, at any depth.
+    """
+    if isinstance(component, list):
+        return not component or any(_has_empty_list(element) for element in component)
+    if isinstance(component, dict) and isinstance(extra := component.get("extra"), list):
+        return not extra or any(_has_empty_list(element) for element in extra)
+    return False
 
 
 def _text_component(component: _Value) -> _Value:
