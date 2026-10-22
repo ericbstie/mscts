@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, cast, override
 import pytest
 from support.control import CODEC, tree
 from support.moves import Play, opened, read
+from support.player_server import FADE_READS, PERFORM_RESPAWN, PlayerServer
 
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
@@ -21,7 +22,6 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_modes
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_player import FADE_READS, PERFORM_RESPAWN, PlayerServer
 from tests.net.fakes import JoinScript, Peer, join_server, serve
 
 if TYPE_CHECKING:
