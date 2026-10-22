@@ -2610,8 +2610,10 @@ proves it necessary:
    Divergence at its index in its own list, `ABSENT` on the other side.
    A pair is compared at the reference's index, which Masks and test
    cases go by; when the candidate's index differs, the Divergence path
-   shows both (`tags[1→3]`, `compare._Moved`), so no two Divergences
-   share a path. So `a, b, c,
+   shows both (`tags[1→3]`, `compare._Moved`), so a pair never shares a
+   path with an element only one side has. An element only the reference
+   has and one only the candidate has can still show at the same index
+   (#455). So `a, b, c,
    d` against `b, c, d` is one Divergence, `a` left out, where comparing
    index by index gave four, and the tags, which `UNORDERED` sorts, are
    compared as a multiset. In a join against Pumpkin nightly 44d881c, the 521 tags
