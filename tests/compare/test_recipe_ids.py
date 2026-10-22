@@ -448,6 +448,30 @@ def test_the_order_of_two_book_packets_that_are_not_compared_ends_no_group_numbe
     )
 
 
+def test_a_group_emptied_outside_the_windows_is_numbered_again_at_the_next_add() -> None:
+    sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
+
+    def planks_in(group: int) -> list[Packet | str]:
+        return [OPEN, book_add(Entry(PLANKS, display_id=5, group=group, flags=TOAST)), CLOSE]
+
+    assert (
+        _diff_all(
+            [*sticks, book_remove(6), *planks_in(3)], [*sticks, book_remove(6), *planks_in(8)]
+        )
+        == []
+    )
+
+
+def test_a_group_emptied_in_a_window_is_numbered_again_if_it_is_filled_outside() -> None:
+    def planks_then_bread(group: int) -> list[Packet | str]:
+        sticks = book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST))
+        bread = book_add(Entry(BREAD, display_id=7, group=group, flags=TOAST))
+        planks = book_add(Entry(PLANKS, display_id=5, group=group))
+        return [OPEN, sticks, book_remove(6), CLOSE, planks, OPEN, bread, CLOSE]
+
+    assert _diff_all(planks_then_bread(3), planks_then_bread(12)) == []
+
+
 def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:
     reference = [
         book_add(Entry(PLANKS, display_id=7, group=3), Entry(STICKS, display_id=4, group=8))

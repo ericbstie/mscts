@@ -635,8 +635,9 @@ the recipes again in the order each Bot first gets them, and the groups the same
 server that numbers its recipes another way but keeps to it shows the same recipe book. A
 removal of another recipe still differs if the recipe was added in a window and has not been
 taken or replaced outside the windows since. A recipe put in another group still differs if a
-recipe in that group was added in a window and the book has not been replaced outside the
-windows since. Other such removals and groups cannot be told apart yet
+recipe in that group was added in a window and, since then, the group has never been empty when
+a recipe was added or removed in a window, and the book has not been replaced outside the
+windows. Other such removals and groups cannot be told apart yet
 ([#462](https://github.com/ericbstie/mscts/issues/462)); no Group compares one. The order of
 the book's buttons is not compared. It follows the server's numbers, how many recipes the book
 has held since the Bot joined, and the order the recipes came in.

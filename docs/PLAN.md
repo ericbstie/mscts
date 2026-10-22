@@ -2524,10 +2524,10 @@ proves it necessary:
    recipe in the book in the group, so the order of two packets that are
    not compared ends none: the client builds its buttons from the
    recipes it knows (`rebuildCollections` over `known.values()`), and an
-   id added again
-   leaves its old group (`known.put`). A number is never given twice. So
-   a Candidate that gives a recipe another id, or its group another
-   number, when it adds it again shows what vanilla does (vanilla keeps the id:
+   id added again leaves its old group (`known.put`). A number is never
+   given twice. So a Candidate that gives a recipe another id, or its
+   group another number, when it adds it again shows what vanilla does
+   (vanilla keeps the id:
    `RecipeManager.unpackRecipeInfo` numbers every display once), and one
    that gives a recipe's id to another while the first still holds it
    differs. An id first seen in a removal takes the next number, which
@@ -2539,16 +2539,19 @@ proves it necessary:
    was added in a compared packet and no removal or replace that is not
    compared has taken it out since. A recipe put in another group than
    the Reference's differs (`#2` against `#1`) only if a recipe in that
-   group was added in a compared packet and no replace that is not
-   compared has emptied the book since. Limit (#462): an id has no number
+   group was added in a compared packet, and since then no compared
+   packet has found the group empty and no replace that is not compared
+   has emptied the book. Limit (#462): an id has no number
    while the Bot has got its recipe only in packets that are not
    compared (outside the windows, or dropped by a `*` Mask) since the id
    was last removed or the book last replaced, so its removal takes the
    next number, and two removals of different such recipes compare
-   equal. A group such a replace ended is likewise numbered again at its
-   next compared add, so a recipe put in another group then compares
-   equal too. No Group compares the removal of such a recipe, or
-   replaces the book after a compared add (an
+   equal. A group whose number such a replace, or a compared packet
+   that found it empty, ended is likewise numbered again at its next
+   compared add, even if packets that are not compared filled it in
+   between, so a recipe put in another group then compares equal too.
+   No Group compares the removal of such a recipe, or replaces the book
+   after a compared add (an
    entity has its `add_entity` name for this, `_Numbers.spawned`, and a
    recipe has nothing like it). Javap on the 26.3 client:
    the client keeps its book in a `HashMap` keyed by display id
