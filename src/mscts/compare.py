@@ -3092,10 +3092,15 @@ def _leaf_cases(
     """
     names: dict[_Path, str] = {}
     for leaf in _leaves(value, path):
-        shape = tuple(0 if isinstance(step, int) else step for step in leaf)
+        shape = _shape(leaf)
         if shape not in names and leaf not in masked:
             names[shape] = _test_case(state, name, shape)
     return set(names.values())
+
+
+def _shape(path: _Path) -> _Path:
+    """`path` with every list index 0: the same for each element of a list."""
+    return tuple(0 if isinstance(step, int) else step for step in path)
 
 
 def _leaves(value: _Value | Absent, path: _Path) -> Iterator[_Path]:
@@ -3246,9 +3251,9 @@ def _diff_matched(
         masked = reference.masked | candidate.masked
         shown = _SHOWN.get((state, name))
         sides = (reference.fields, candidate.fields)
-        in_place = _WORLD_LISTS.get((state, name), frozenset()).__contains__
-        for path, ref_value, cand_value in _pairs(*sides, (), in_place):
-            shape = tuple(0 if isinstance(step, int) else step for step in path)
+        lined_up = _LINED_UP.get(name, frozenset())
+        for path, ref_value, cand_value in _pairs(*sides, (), lambda at: _shape(at) in lined_up):
+            shape = _shape(path)
             if shape not in names:
                 names[shape] = _test_case(state, name, shape)
             if not _same(ref_value, cand_value):
@@ -3335,51 +3340,54 @@ def _diff(reference: _Value | Absent, candidate: _Value | Absent, path: _Path) -
 
     Every list is compared index by index, so a path reads the same element on each side.
     """
-    pairs = _pairs(reference, candidate, path, _every_list)
+    pairs = _pairs(reference, candidate, path, _no_list)
     return (pair for pair in pairs if not _same(pair[1], pair[2]))
 
 
-type _InPlace = Callable[[_Path], bool]
-"""Whether `_pairs` compares the list at a path index by index, rather than lined up."""
+type _LinedUp = Callable[[_Path], bool]
+"""Whether `_pairs` lines up the two lists at a path, rather than compare them index by index."""
 
 
-def _every_list(_path: _Path) -> bool:
-    """`_InPlace` for comparing every list index by index."""
-    return True
+def _no_list(_path: _Path) -> bool:
+    """`_LinedUp` for comparing every list index by index."""
+    return False
 
 
-_WORLD_LISTS: Mapping[tuple[State, str], frozenset[_Path]] = MappingProxyType(
+_LINED_UP: Mapping[str, frozenset[_Path]] = MappingProxyType(
     {
-        (State.PLAY, "minecraft:level_chunk_with_light"): frozenset(
-            {("sections",), ("light", "sky"), ("light", "block")}
+        "minecraft:update_tags": frozenset(
+            {("tagged_registries", 0, "tags"), ("tagged_registries", 0, "tags", 0, "entries")}
         ),
-        (State.PLAY, "minecraft:light_update"): frozenset({("data", "sky"), ("data", "block")}),
     }
 )
-"""The canonical lists, by packet, whose index is a height in the world: a chunk's sections
-from the bottom up, and the light section each layer's light goes to (`_canonical_light`).
-They are compared index by index (`_InPlace`): an element at another index is at another
-height, and a Divergence names its positions from its index (`_shown_chunk`)."""
+"""The lists, by packet name in any State and by `_shape`, that are lined up (#256).
+
+Every other list is compared index by index: in many, the index is what the client goes by,
+such as a container's slot, a network id or a section's height, so an element at another
+index is a difference. The client reads a registry's tags into a map by name, and `UNORDERED`
+sorts them by name, so their index means nothing. A tag's entries stay in the order sent.
+Lined up, a tag or an id only one side sends is one difference, and the ones after it are
+still compared with their counterparts."""
 
 
 def _pairs(
-    reference: _Value | Absent, candidate: _Value | Absent, path: _Path, in_place: _InPlace
+    reference: _Value | Absent, candidate: _Value | Absent, path: _Path, lined_up: _LinedUp
 ) -> Iterator[_Pair]:
     """Yield (path, reference value, candidate value) for each pair compared, in path order.
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
-    is ABSENT on the other. Lists are compared index by index where `in_place` says so,
-    elements past the end of the shorter one being ABSENT; else lined up
-    (`_fewest_edits`). Anything else is a leaf, compared as a whole.
+    is ABSENT on the other. Lists are lined up where `lined_up` says so (`_fewest_edits`);
+    else compared index by index, elements past the end of the shorter one being ABSENT.
+    Anything else is a leaf, compared as a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
         for key in sorted(reference.keys() | candidate.keys()):
             values = (reference.get(key, ABSENT), candidate.get(key, ABSENT))
-            yield from _pairs(*values, (*path, key), in_place)
+            yield from _pairs(*values, (*path, key), lined_up)
     elif isinstance(reference, list) and isinstance(candidate, list):
         edits = (
             _index_by_index(len(reference), len(candidate))
-            if in_place(path)
+            if not lined_up(path)
             else _fewest_edits(
                 [_identity(item) for item in reference], [_identity(item) for item in candidate]
             )
@@ -3387,7 +3395,7 @@ def _pairs(
         for ref_index, cand_index in edits:
             if ref_index is not None and cand_index is not None:
                 values = (reference[ref_index], candidate[cand_index])
-                yield from _pairs(*values, (*path, ref_index), in_place)
+                yield from _pairs(*values, (*path, ref_index), lined_up)
             elif ref_index is not None:
                 yield (*path, ref_index), reference[ref_index], ABSENT
             elif cand_index is not None:

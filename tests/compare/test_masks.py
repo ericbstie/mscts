@@ -158,11 +158,14 @@ def test_a_field_mask_reaches_into_mappings_and_lists() -> None:
 def test_a_field_mask_on_a_list_element_keeps_it_in_the_list() -> None:
     """The element is hidden where it stands: how long the list is still counts.
 
-    Taking it out would close the list up, and line up what is left: [9, 1, 2] against
-    [1, 2] would be no difference. Kept, the hidden elements line up with each other.
+    Taking it out would close the list up, and compare each later element with the
+    other side's element at another index.
     """
     assert _fields_diff({"l": [9, 1, 2]}, {"l": [8, 1, 2]}, _mask("l[0]")) == []
-    assert _fields_diff({"l": [9, 1, 2]}, {"l": [1, 2]}, _mask("l[0]")) == [("l[1]", 1, ABSENT)]
+    assert _fields_diff({"l": [9, 1, 2]}, {"l": [1, 2]}, _mask("l[0]")) == [
+        ("l[1]", 1, 2),
+        ("l[2]", 2, ABSENT),
+    ]
 
 
 def test_a_field_mask_on_an_index_past_the_end_hides_nothing_there() -> None:
@@ -182,10 +185,10 @@ def test_a_star_index_masks_every_element_of_a_list() -> None:
 def test_a_star_index_hides_values_but_not_whether_they_are_there() -> None:
     reference = {"l": [{"id": 1}, {"id": None}, {"id": 2}]}
     candidate = {"l": [{"id": 3}, {"id": 4}, {}, {"id": 5}]}
-    # Hidden alike, the first and last ids line up; the empty element is the extra one.
     assert _fields_diff(reference, candidate, _mask("l[*].id")) == [
         ("l[1].id", None, MASKED),
-        ("l[2]", ABSENT, {}),
+        ("l[2].id", MASKED, ABSENT),
+        ("l[3]", ABSENT, {"id": MASKED}),
     ]
 
 

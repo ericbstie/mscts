@@ -95,7 +95,8 @@ def test_the_order_of_dimension_names_is_no_difference() -> None:
 
 def test_a_missing_dimension_name_is_a_difference_at_its_sorted_path() -> None:
     assert _diff(login([OVERWORLD, NETHER, END]), login([NETHER, OVERWORLD])) == [
-        ("dimension_names[1]", END, ABSENT)
+        ("dimension_names[1]", END, NETHER),
+        ("dimension_names[2]", NETHER, ABSENT),
     ]
 
 

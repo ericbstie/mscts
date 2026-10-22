@@ -2592,8 +2592,12 @@ proves it necessary:
    value model. Mappings are compared key by key in sorted order (key
    order is never significant: schema order is fixed, and JSON and NBT
    objects are unordered), and a key on one side only is `ABSENT` on the
-   other. Lists are lined up first (#256), by the fewest steps from the
-   reference's list to the candidate's: a step compares two elements,
+   other. Lists are compared index by index, with `ABSENT` past the end
+   of the shorter one: in most of them the index is what the client goes
+   by, such as a container's slot, a network id or a section's height.
+   The lists `compare._LINED_UP` names, `update_tags`' tags of a
+   registry and ids of a tag, are lined up first (#256), by the fewest
+   steps from the reference's list to the candidate's: a step compares two elements,
    and counts only if they differ, or is an element only one side has.
    Elements are lined up on their whole value (as JSON with sorted keys,
    so `1`, `1.0` and `true` stay apart). Equal elements are paired, and
@@ -2606,15 +2610,13 @@ proves it necessary:
    reference's index; an element only one side has is one Divergence at
    its index in its own list, `ABSENT` on the other side. So `a, b, c,
    d` against `b, c, d` is one Divergence, `a` left out, where comparing
-   index by index gave four, and a list `UNORDERED` sorts is compared as
-   a multiset. In a join against Pumpkin nightly 44d881c, the 521 tags
+   index by index gave four, and the tags, which `UNORDERED` sorts, are
+   compared as a multiset. In a join against Pumpkin nightly 44d881c, the 521 tags
    Pumpkin adds made 33,579 Divergences in `update_tags`' tag entries and 708 in
-   tag names; lined up, they are 521, one for each added tag. A chunk's
-   sections and light layers (`compare._WORLD_LISTS`) are still compared
-   index by index, with `ABSENT` past the end of the shorter one: their
-   index is a height, which a Divergence names positions from (step 2).
-   So are the raw values a network traffic Divergence comes from, which
-   are read at one path on both sides. A unit test checks every pair of
+   tag names; lined up, they are 521, one for each added tag. The raw
+   values a network traffic Divergence comes from are always compared
+   index by index, because they are read at one path on both sides. A
+   unit test checks every pair of
    lists up to length 4 over 3 values: in order, in the fewest steps, and
    mirrored by a swap. The cost is O(n·m) time and memory between the
    common prefix and suffix, as for the packet alignment. An element

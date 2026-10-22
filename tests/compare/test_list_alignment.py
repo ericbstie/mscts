@@ -1,28 +1,63 @@
-"""compare() lines up two lists before it compares their elements (#256).
+"""compare() lines up the lists `_LINED_UP` names before it compares their elements (#256).
 
 An element one side has and the other lacks is one Divergence, at its index in the list
 that has it; the elements around it are no difference. Elements that are not lined up,
-as many on each side, are compared in place.
+as many on each side, are compared in place. Every other list is compared index by index.
 """
 
 import itertools
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
+from typing import cast
 from uuid import UUID
 
-from mscts.compare import ABSENT, _Edit, _fewest_edits, compare
+from mscts.compare import (
+    ABSENT,
+    _Edit,
+    _fewest_edits,
+    _pairs,
+    _Path,
+    _render,
+    _same,
+    _Value,
+    compare,
+)
 from tests.compare.build import packet, transcript
 
 
-def _diff(
-    reference: Mapping[str, object], candidate: Mapping[str, object]
-) -> list[tuple[str | None, object, object]]:
-    """(path, reference, candidate) of each Divergence between two test:p Packets."""
+def _lined_up(_path: _Path) -> bool:
+    return True
+
+
+def _diff(reference: object, candidate: object) -> list[tuple[str, object, object]]:
+    """(path, reference, candidate) of each difference, with every list lined up."""
+    pairs = _pairs(cast("_Value", reference), cast("_Value", candidate), (), _lined_up)
+    return [(_render(path), ref, cand) for path, ref, cand in pairs if not _same(ref, cand)]
+
+
+def _slots(first: int, items: Sequence[str]) -> list[object]:
+    stacks = [{"item": item, "count": 1, "components": {}} for item in items]
+    return [*([None] * first), *stacks, *([None] * (46 - first - len(stacks)))]
+
+
+def test_a_list_that_is_not_named_is_compared_index_by_index() -> None:
+    # A container's slot index is the slot: items one slot later are in the wrong slots,
+    # each a difference, never lined up as the same items (review of #449).
+    def content(slots: list[object]) -> dict[str, object]:
+        return {"window_id": 0, "state_id": 1, "slot_data": slots, "carried_item": None}
+
+    reference = _slots(36, ["stone", "dirt", "oak_log"])
+    candidate = _slots(37, ["stone", "dirt", "oak_log"])
     verdict = compare(
-        transcript(("alice", packet("test:p", fields=reference))),
-        transcript(("alice", packet("test:p", fields=candidate))),
+        transcript(("alice", packet("minecraft:container_set_content", fields=content(reference)))),
+        transcript(("alice", packet("minecraft:container_set_content", fields=content(candidate)))),
         [],
     )
-    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("slot_data[36]", reference[36], None),
+        ("slot_data[37].item", "dirt", "stone"),
+        ("slot_data[38].item", "oak_log", "dirt"),
+        ("slot_data[39]", None, candidate[39]),
+    ]
 
 
 def test_an_element_left_out_at_the_front_is_one_missing_element() -> None:
