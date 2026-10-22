@@ -10,7 +10,7 @@ import pytest
 from mscts.codec.packets import Direction, Packet, State
 from mscts.entities import Entity
 from mscts.groups import _world
-from mscts.groups._world import remove_tagged_until_gone, until_the_weather_fades
+from mscts.groups._world import fast_forward, remove_tagged_until_gone, until_the_weather_fades
 from tests.group.test_combat import NONE_LEFT
 from tests.group.test_mobs_pathfinding import gametime_answer
 
@@ -110,9 +110,30 @@ async def test_a_world_whose_time_stands_still_ends_the_wait_for_the_weather_wit
     monkeypatch.setattr(_world, "_FADE_TICKS", 2)
     control = _Clock(*[5] * 20)
 
-    with pytest.raises(TimeoutError, match="the world ran 0 of 2 ticks"):
+    with pytest.raises(TimeoutError, match="the world ran 0 of 2 ticks for the weather to fade"):
         await until_the_weather_fades(control)
-    assert len(control.commands) == _world._FADE_READS + 1  # noqa: SLF001
+    assert len(control.commands) == _world._TIME_READS + 1  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_a_fast_forward_steps_the_ticks_at_once_and_returns_once_they_ran() -> None:
+    # `tick step 155` answers before its ticks have run: the game time says when they have.
+    control = _Clock(500, 0, 600, 655)
+
+    await fast_forward(control, 155)
+
+    assert control.commands == [_TIME_QUERY, "tick step 155", _TIME_QUERY, _TIME_QUERY]
+
+
+@pytest.mark.asyncio
+async def test_a_fast_forward_whose_ticks_never_run_ends_with_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(_world, "_TICK_S", 0.0)
+    control = _Clock(*[5] * 20)
+
+    with pytest.raises(TimeoutError, match="the world ran 0 of 155 ticks of a fast-forward"):
+        await fast_forward(control, 155)
 
 
 @pytest.mark.asyncio
