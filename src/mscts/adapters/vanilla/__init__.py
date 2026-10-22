@@ -10,7 +10,7 @@ import zipfile
 from collections.abc import Mapping
 from pathlib import Path
 from types import MappingProxyType
-from typing import cast
+from typing import Any, cast
 
 from mscts.adapters import fixture_world, nbt
 from mscts.adapters.base import (
@@ -18,6 +18,7 @@ from mscts.adapters.base import (
     Fetch,
     Installation,
     LaunchPlan,
+    Net,
     PrepareError,
     ProvisionError,
     Release,
@@ -381,6 +382,15 @@ def _version_url(manifest: bytes, version: str) -> tuple[str, str]:
     raise ProvisionError(msg)
 
 
+def _listed(manifest: Any, version: str) -> Any:  # noqa: ANN401 - Mojang's shape
+    """`version`'s entry in Mojang's version `manifest`; ProvisionError if it lists none."""
+    for entry in manifest["versions"]:
+        if entry["id"] == version:
+            return entry
+    msg = f"{MANIFEST_URL} lists no {version}"
+    raise ProvisionError(msg)
+
+
 class VanillaAdapter:
     """Finds and checks a vanilla server jar, and prepares it for a ServerSpec."""
 
@@ -419,6 +429,20 @@ class VanillaAdapter:
             sha1=str(_json_field(url, server, "sha1")),
             size=int(str(_json_field(url, server, "size"))),
         )
+
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        """Put the server jar Mojang publishes for `target`, the only version tested, at `into`.
+
+        Mojang's version manifest lists the version JSON, by its sha1, which lists the jar's
+        URL, sha1 and size.
+        """
+        if version not in {None, target.minecraft_version}:
+            asked = f"{self.name}@{version}"
+            raise UnsupportedError(asked, target=target)
+        entry = _listed(net.json(MANIFEST_URL), target.minecraft_version)
+        server = net.json(entry["url"], sha1=entry["sha1"])["downloads"]["server"]
+        net.download(server["url"], into, sha1=server["sha1"], size=server["size"])
+        return Build(version=target.minecraft_version)
 
     def check(self, binary: Path, target: Target) -> Build:
         """The version `binary` names; ProvisionError unless it is a server jar for `target`."""

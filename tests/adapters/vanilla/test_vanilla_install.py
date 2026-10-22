@@ -6,11 +6,64 @@ import pytest
 from support.vanilla import JAR_URL, VERSION_URL, FakeMojang, fake_jar, manifest
 
 from mscts.adapters.base import Build, ProvisionError, Source, UnsupportedError
+from mscts.adapters.fetch import ChecksumError, HttpsNet
 from mscts.adapters.vanilla import MANIFEST_URL, VanillaAdapter
 from mscts.install import install_release, installed
 from mscts.target import TARGET
 
 PUBLISHED = fake_jar()
+
+
+@pytest.mark.parametrize("version", [None, "26.3"])
+def test_install_puts_the_jar_mojang_lists_for_the_target_into_the_file(
+    tmp_path: Path, version: str | None
+) -> None:
+    mojang = FakeMojang()
+    into = tmp_path / "server.jar"
+    assert VanillaAdapter().install(TARGET, version, into, HttpsNet(mojang)) == Build("26.3")
+    assert into.read_bytes() == PUBLISHED
+    assert mojang.fetched == [MANIFEST_URL, VERSION_URL, JAR_URL]
+
+
+@pytest.mark.parametrize("version", ["26.4", "26.2", "1.21.8"])
+def test_install_of_another_version_is_not_supported_and_fetches_nothing(
+    tmp_path: Path, version: str
+) -> None:
+    mojang = FakeMojang()
+    with pytest.raises(UnsupportedError) as raised:
+        VanillaAdapter().install(TARGET, version, tmp_path / "server.jar", HttpsNet(mojang))
+    assert (
+        str(raised.value) == f"vanilla@{version} is not supported: this mscts tests Minecraft 26.3."
+    )
+    assert mojang.fetched == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_install_refuses_a_version_json_that_is_not_the_one_the_manifest_lists(
+    tmp_path: Path,
+) -> None:
+    mojang = FakeMojang()
+    mojang.bodies[VERSION_URL] += b" "
+    with pytest.raises(ProvisionError) as raised:
+        VanillaAdapter().install(TARGET, None, tmp_path / "server.jar", HttpsNet(mojang))
+    assert str(raised.value).startswith(f"{VERSION_URL} is not what its publisher lists: ")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_install_from_a_manifest_without_the_target_says_so(tmp_path: Path) -> None:
+    mojang = FakeMojang()
+    mojang.bodies[MANIFEST_URL] = json.dumps({"versions": []}).encode()
+    with pytest.raises(ProvisionError) as raised:
+        VanillaAdapter().install(TARGET, None, tmp_path / "server.jar", HttpsNet(mojang))
+    assert str(raised.value) == f"{MANIFEST_URL} lists no 26.3"
+
+
+def test_install_refuses_a_jar_that_is_not_the_one_mojang_lists(tmp_path: Path) -> None:
+    mojang = FakeMojang(PUBLISHED + b"\0", jar=PUBLISHED)
+    with pytest.raises(ChecksumError) as raised:
+        VanillaAdapter().install(TARGET, None, tmp_path / "server.jar", HttpsNet(mojang))
+    assert str(raised.value).startswith(f"{JAR_URL} is not the file its publisher lists: ")
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize("version", [None, "26.3"])
