@@ -8,14 +8,13 @@ the fake answers Control's markers and the barrier.
 from dataclasses import dataclass
 
 import pytest
+from support.control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group import test_control
-from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
 MERGE, DESPAWN, PICKUP = "entities/item-merge", "entities/item-despawn", "entities/item-pickup"
 GROUP_IDS = (MERGE, DESPAWN, PICKUP)
@@ -133,12 +132,7 @@ async def play(group_id: str) -> Play:
     return _PLAYS[group_id]
 
 
-@pytest.fixture(autouse=True)
-def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
-
-
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.usefixtures("long_play")]
 
 
 # Every Group

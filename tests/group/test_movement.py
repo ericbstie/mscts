@@ -13,6 +13,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import playing, text, tree
 
 from mscts import run
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
@@ -23,7 +24,6 @@ from mscts.groups import movement
 from mscts.net import ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
 from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, SPAWN, TICK_S, JoinScript, Peer, join_server
 

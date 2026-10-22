@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import pytest
+from support.control import chat, playing, tree
 
 from mscts import run
 from mscts.bot import SYNC_REQUESTS, TICK_GAP_S
@@ -24,7 +25,6 @@ from mscts.net import Endpoint
 from mscts.spec import ServerSpec
 from mscts.transcript import Event, Transcript
 from tests.group.test_blocks import sent
-from tests.group.test_control import chat, playing, tree
 from tests.net.fakes import EMPTY_CHUNK, NO_STATISTICS, JoinScript, Peer, join_server
 
 TICK_S = 2 * TICK_GAP_S

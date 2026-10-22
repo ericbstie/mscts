@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import override
 
 import pytest
+from support.control import playing, tree
 
 from mscts.codec.packets import Direction, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
@@ -21,7 +22,6 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Mark, Transcript
 from tests.group.test_blocks import BlocksServer, sent
-from tests.group.test_control import playing, tree
 from tests.net.fakes import JoinScript, Peer, join_server
 
 ADA, BOB, CONTROL = "ada", "bob", "control"

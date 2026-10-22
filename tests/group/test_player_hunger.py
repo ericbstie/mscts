@@ -17,6 +17,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 from support.bot_join import LOGIN, RESPAWN
+from support.control import CODEC, text, tree
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
@@ -26,7 +27,6 @@ from mscts.groups import player_hunger
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_combat import HUSK
-from tests.group.test_control import CODEC, text, tree
 from tests.group.test_movement import Play, read
 from tests.net.fakes import (
     EMPTY_CHUNK,

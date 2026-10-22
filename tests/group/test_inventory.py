@@ -11,6 +11,14 @@ from dataclasses import dataclass, field
 from typing import cast, override
 
 import pytest
+from support.control import (
+    CHAT_COMMAND,
+    CLIENT_COMMAND,
+    MARKER,
+    ControlServer,
+    playing,
+    tree,
+)
 
 from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
@@ -20,15 +28,6 @@ from mscts.groups import inventory
 from mscts.inventory import CLICK_MODES, OUTSIDE
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group import test_control
-from tests.group.test_control import (
-    CHAT_COMMAND,
-    CLIENT_COMMAND,
-    MARKER,
-    ControlServer,
-    playing,
-    tree,
-)
 from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import Peer
 
@@ -303,12 +302,7 @@ async def played(group_id: str) -> Play:
     return _PLAYS[group_id]
 
 
-@pytest.fixture(autouse=True)
-def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
-
-
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.usefixtures("long_play")]
 
 
 # Every Group

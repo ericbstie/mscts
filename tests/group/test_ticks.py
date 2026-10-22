@@ -4,16 +4,7 @@ import json
 from collections.abc import Set as AbstractSet
 
 import pytest
-from support.probe import REPEATER_STEPPED, WATCHER, WATCHER_AT
-
-from mscts.bot import HANDLED_REQUESTS, Face
-from mscts.codec.packets import Direction, Packet
-from mscts.codec.schemas.play.stats import REQUEST_STATS
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Outcome
-from mscts.group import CommandMissing, Group, GroupContext, GroupKind
-from mscts.run import GroupError, judge, run_group
-from mscts.transcript import Event, Transcript
-from tests.group.test_control import (
+from support.control import (
     AWARD_STATS,
     CHAT_COMMAND,
     CLIENT_COMMAND,
@@ -26,6 +17,15 @@ from tests.group.test_control import (
     received,
     tree,
 )
+from support.probe import REPEATER_STEPPED, WATCHER, WATCHER_AT
+
+from mscts.bot import HANDLED_REQUESTS, Face
+from mscts.codec.packets import Direction, Packet
+from mscts.codec.schemas.play.stats import REQUEST_STATS
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, Outcome
+from mscts.group import CommandMissing, Group, GroupContext, GroupKind
+from mscts.run import GroupError, judge, run_group
+from mscts.transcript import Event, Transcript
 from tests.net.fakes import serve
 
 CONTROL = "control"

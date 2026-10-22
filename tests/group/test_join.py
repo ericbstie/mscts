@@ -5,6 +5,7 @@ sent and the Marks. What a server answers is never asserted.
 """
 
 import pytest
+from support.control import playing
 
 from mscts.bot import Bot
 from mscts.case_titles import TITLES
@@ -16,7 +17,6 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
 from tests.group.test_blocks import BlocksServer, sent
-from tests.group.test_control import playing
 
 GROUP_ID = "join/basic"
 ALICE, CONTROL = "alice", "control"

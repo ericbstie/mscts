@@ -4,6 +4,7 @@ import functools
 from pathlib import Path
 
 import pytest
+from support.control import ControlServer, commands_sent, tree
 
 from mscts import run as run_module
 from mscts.compare import Outcome, Verdict
@@ -11,7 +12,6 @@ from mscts.group import Group, GroupContext, GroupKind
 from mscts.net import Endpoint
 from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
 from mscts.run import GroupResult, run
-from tests.group.test_control import ControlServer, commands_sent, tree
 from tests.run.occupancy import attached
 from tests.test_report import _report
 

@@ -2,6 +2,7 @@ import json
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import playing
 
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Packet
@@ -12,7 +13,6 @@ from mscts.net import Endpoint
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.group.test_blocks import BlocksServer
-from tests.group.test_control import playing
 from tests.net.fakes import VANILLA_STATUS, Peer, serve, status_server
 
 

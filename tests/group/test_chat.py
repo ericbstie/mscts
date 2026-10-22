@@ -15,6 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field, replace
 
 import pytest
+from support.control import playing, text, tree
 
 from mscts.bot import SYNC_REQUESTS, TICK_GAP_S
 from mscts.codec.packets import Direction, Packet
@@ -23,7 +24,6 @@ from mscts.group import GROUPS, GroupKind
 from mscts.groups import chat
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
 from tests.net.fakes import NO_STATISTICS, JoinScript, Peer, join_server
 
 TICK_S = 2 * TICK_GAP_S

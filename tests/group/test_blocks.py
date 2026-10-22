@@ -13,6 +13,7 @@ from dataclasses import dataclass, field, replace
 from typing import Self
 
 import pytest
+from support.control import chat, playing, tree
 
 from mscts.bot import SYNC_REQUESTS, TICK_GAP_S
 from mscts.codec.packets import Direction, Packet
@@ -21,7 +22,6 @@ from mscts.group import GROUPS, GroupKind
 from mscts.groups import blocks
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
 from tests.net.fakes import NO_STATISTICS, JoinScript, Peer, join_server
 
 TICK_S = 2 * TICK_GAP_S
@@ -43,11 +43,6 @@ START = (
     "gamerule random_tick_speed 0",
 )
 """What Control starts with: it moves the builder and itself into place, then freezes the world."""
-
-
-def chat(peer: Peer, message: str) -> bytes:
-    """A system_chat frame saying `message`."""
-    return peer.frame(SYSTEM_CHAT, content=text(message), overlay=False)
 
 
 @dataclass

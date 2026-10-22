@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import MARKER, SYSTEM_CHAT, text, tree
 
 from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
@@ -17,7 +18,6 @@ from mscts.run import GroupError, judge, run_group
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
-from tests.group.test_control import MARKER, SYSTEM_CHAT, text, tree
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,

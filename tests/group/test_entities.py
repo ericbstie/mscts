@@ -12,6 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import playing, text, tree
 
 import mscts.groups
 from mscts.bot import SYNC_REQUESTS
@@ -23,7 +24,6 @@ from mscts.groups import _world, entities
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
 
 CONTROL = "control"

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import pytest
+from support.control import CODEC, PLAY_TIMEOUT_S, text, tree
 
 import mscts.groups
 from mscts.bot import SYNC_REQUESTS, Bot
@@ -27,7 +28,6 @@ from mscts.spec import Difficulty, ServerSpec
 from mscts.stats import Sample, SampleLog
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import CODEC, PLAY_TIMEOUT_S, text, tree
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server, serve
 
 CONTROL = "control"

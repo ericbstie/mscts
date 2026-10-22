@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import pytest
+from support.control import HANG_LIMIT_S, STALL_S, late, text
 
 from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet
@@ -16,7 +17,6 @@ from mscts.net import Endpoint, ProtocolError
 from mscts.run import GroupError, judge, run_group
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import HANG_LIMIT_S, STALL_S, late, text
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,

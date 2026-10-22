@@ -9,12 +9,11 @@ from dataclasses import dataclass
 from typing import override
 
 import pytest
+from support.control import ControlServer, playing, tree
 
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group import test_control
-from tests.group.test_control import ControlServer, playing, tree
 from tests.group.test_entities_items import Play, read
 from tests.group.test_mobs_pathfinding import gametime_answer
 from tests.net.fakes import Peer
@@ -78,12 +77,7 @@ async def play(group_id: str) -> Play:
     return _PLAYS[group_id]
 
 
-@pytest.fixture(autouse=True)
-def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
-
-
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.usefixtures("long_play")]
 
 
 def steps(ticks: int) -> tuple[str, ...]:

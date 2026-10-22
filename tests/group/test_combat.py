@@ -15,6 +15,7 @@ from typing import cast
 
 import pytest
 from support.bot_join import LOGIN
+from support.control import playing, text, tree
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
@@ -25,7 +26,6 @@ from mscts.groups import combat
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
 from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
 
