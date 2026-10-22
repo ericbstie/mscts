@@ -1,23 +1,12 @@
-import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from support.leak_guard import kill_survivors
 
 from mscts.adapters.base import Installation
 from mscts.run import Server
 from mscts.target import TARGET
-from tests.run.fakes import TOKEN_VAR, FakeAdapter
-
-
-@pytest.fixture
-def run_token() -> Iterator[str]:
-    """A token for this test's fake Instances; fails the test if one outlives it."""
-    token = uuid.uuid4().hex
-    yield token
-    leaked = kill_survivors(f"{TOKEN_VAR}={token}")
-    assert not leaked, f"fake Instances outlived the test: {leaked}"
+from tests.run.fakes import FakeAdapter
 
 
 @pytest.fixture

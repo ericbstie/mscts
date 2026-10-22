@@ -8,19 +8,15 @@ Divergences, is replayed with fresh plays; anything else fails at once.
 from pathlib import Path
 
 import pytest
+from support.groups import nothing
 from support.selfcheck import describe_failure, may_replay, play_and_replay
 
 from mscts.compare import Divergence, DivergenceKind, Outcome, Verdict
-from mscts.group import Group, GroupContext, GroupKind
+from mscts.group import Group, GroupKind
 from mscts.run import GroupResult, RunResult, SideSummary
 
-
-async def _nothing(_: GroupContext) -> None:
-    pass
-
-
-STATISTICAL = Group(id="spawn/join-position", run=_nothing, kind=GroupKind.STATISTICAL)
-EXACT = Group(id="status/basic", run=_nothing)
+STATISTICAL = Group(id="spawn/join-position", run=nothing, kind=GroupKind.STATISTICAL)
+EXACT = Group(id="status/basic", run=nothing)
 
 
 def divergence(kind: DivergenceKind) -> Divergence:

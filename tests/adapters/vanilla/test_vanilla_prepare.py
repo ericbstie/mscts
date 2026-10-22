@@ -20,11 +20,6 @@ def installation(tmp_path: Path) -> Installation:
     return Installation(adapter="vanilla", target=TARGET, root=tmp_path / "cache/vanilla/26.3")
 
 
-@pytest.fixture
-def workdir(tmp_path: Path) -> Path:
-    return tmp_path / "work"
-
-
 def test_prepare_accepts_the_eula(installation: Installation, workdir: Path) -> None:
     VanillaAdapter().prepare(installation, ServerSpec(host=HOST, port=25599), workdir)
     assert (workdir / "eula.txt").read_bytes() == b"eula=true\n"

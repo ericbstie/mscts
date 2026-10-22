@@ -1,9 +1,8 @@
-from collections.abc import Iterator
 from typing import cast
 
 import pytest
+from support.groups import nothing
 
-from mscts import group as group_module
 from mscts.compare import Mask
 from mscts.group import (
     GROUPS,
@@ -17,22 +16,8 @@ from mscts.group import (
 from mscts.spec import ServerSpec
 
 
-async def _nothing(_: GroupContext) -> None:
-    pass
-
-
-@pytest.fixture
-def registering() -> Iterator[None]:
-    """Let a test register Groups; forget them afterwards, so no other test sees them."""
-    registered = group_module._REGISTERED  # noqa: SLF001 - undo what the test registered
-    before = dict(registered)
-    yield
-    registered.clear()
-    registered.update(before)
-
-
 def test_a_group_is_exact_with_no_prerequisites_masks_or_spec_changes_by_default() -> None:
-    plain = Group(id="test/plain", run=_nothing)
+    plain = Group(id="test/plain", run=nothing)
     spec = ServerSpec(host="127.0.0.1", port=25566)
 
     assert plain.kind is GroupKind.EXACT
@@ -70,19 +55,19 @@ def test_the_decorator_registers_the_group_with_its_options() -> None:
 
 @pytest.mark.usefixtures("registering")
 def test_the_decorator_registers_how_many_times_a_statistical_group_runs() -> None:
-    group("test/spread", kind=GroupKind.STATISTICAL, runs=7)(_nothing)
+    group("test/spread", kind=GroupKind.STATISTICAL, runs=7)(nothing)
 
     assert GROUPS["test/spread"].runs == 7
 
 
 @pytest.mark.usefixtures("registering")
 def test_the_decorator_returns_the_function_itself() -> None:
-    assert group("test/same")(_nothing) is _nothing
+    assert group("test/same")(nothing) is nothing
 
 
 @pytest.mark.usefixtures("registering")
 def test_a_duplicate_id_is_refused_and_the_first_stays() -> None:
-    group("test/twice")(_nothing)
+    group("test/twice")(nothing)
 
     async def other(_: GroupContext) -> None:
         pass
@@ -90,13 +75,13 @@ def test_a_duplicate_id_is_refused_and_the_first_stays() -> None:
     with pytest.raises(ValueError, match="a Group called 'test/twice' is registered already"):
         group("test/twice")(other)
 
-    assert GROUPS["test/twice"].run is _nothing
+    assert GROUPS["test/twice"].run is nothing
 
 
 @pytest.mark.usefixtures("registering")
 def test_the_registered_groups_are_in_registration_order() -> None:
     for name in ("test/b", "test/a", "test/c"):
-        group(name)(_nothing)
+        group(name)(nothing)
 
     assert [name for name in GROUPS if name.startswith("test/")] == [
         "test/b",
@@ -107,14 +92,14 @@ def test_the_registered_groups_are_in_registration_order() -> None:
 
 def test_the_registered_groups_are_a_read_only_view() -> None:
     with pytest.raises(TypeError):
-        cast("dict[str, Group]", GROUPS)["test/sneaky"] = Group(id="test/sneaky", run=_nothing)
+        cast("dict[str, Group]", GROUPS)["test/sneaky"] = Group(id="test/sneaky", run=nothing)
 
 
 def test_resolve_puts_prerequisites_first_and_each_group_once() -> None:
     groups = {
-        "test/base": Group(id="test/base", run=_nothing),
-        "test/middle": Group(id="test/middle", run=_nothing, requires=("test/base",)),
-        "test/top": Group(id="test/top", run=_nothing, requires=("test/middle", "test/base")),
+        "test/base": Group(id="test/base", run=nothing),
+        "test/middle": Group(id="test/middle", run=nothing, requires=("test/base",)),
+        "test/top": Group(id="test/top", run=nothing, requires=("test/middle", "test/base")),
     }
 
     resolved = resolve(["test/top", "test/base"], groups)
@@ -124,8 +109,8 @@ def test_resolve_puts_prerequisites_first_and_each_group_once() -> None:
 
 def test_resolve_refuses_a_prerequisite_cycle() -> None:
     groups = {
-        "test/x": Group(id="test/x", run=_nothing, requires=("test/y",)),
-        "test/y": Group(id="test/y", run=_nothing, requires=("test/x",)),
+        "test/x": Group(id="test/x", run=nothing, requires=("test/y",)),
+        "test/y": Group(id="test/y", run=nothing, requires=("test/x",)),
     }
 
     with pytest.raises(ValueError, match="cycle"):
@@ -133,7 +118,7 @@ def test_resolve_refuses_a_prerequisite_cycle() -> None:
 
 
 def test_resolve_refuses_an_unknown_id_or_prerequisite_naming_it() -> None:
-    groups = {"test/x": Group(id="test/x", run=_nothing, requires=("test/gone",))}
+    groups = {"test/x": Group(id="test/x", run=nothing, requires=("test/gone",))}
 
     with pytest.raises(KeyError, match="no Group is registered as 'test/nowhere'"):
         resolve(["test/nowhere"], groups)

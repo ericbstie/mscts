@@ -2,19 +2,17 @@
 
 import importlib.util
 import types
-import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
-from support.leak_guard import kill_survivors
 
 from mscts.adapters.base import Installation
 from mscts.net import Endpoint
 from mscts.runner import free_endpoint
 from mscts.spec import Difficulty, GameMode, ServerSpec, WorldPreset
 from mscts.target import TARGET
-from tests.run.fakes import TOKEN_VAR, FakeAdapter
+from tests.run.fakes import FakeAdapter
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "boot.py"
 _ENDPOINT = Endpoint(host="127.0.0.1", port=25565)
@@ -114,15 +112,6 @@ def test_spec_from_overrides_rejects_a_value_of_the_wrong_type(boot: types.Modul
 def test_spec_from_overrides_rejects_an_unknown_enum_value(boot: types.ModuleType) -> None:
     with pytest.raises(ValueError, match=r"difficulty=.*extreme"):
         boot.spec_from_overrides(["difficulty=extreme"], _ENDPOINT)
-
-
-@pytest.fixture
-def run_token() -> Iterator[str]:
-    """A token for this test's fake Instances; fails the test if one outlives it."""
-    token = uuid.uuid4().hex
-    yield token
-    leaked = kill_survivors(f"{TOKEN_VAR}={token}")
-    assert not leaked, f"fake Instances outlived the test: {leaked}"
 
 
 @pytest.fixture
