@@ -329,6 +329,42 @@ def test_a_book_replaced_outside_the_windows_ends_every_number() -> None:
     assert _diff_all(reference, candidate) == []
 
 
+def test_a_book_replaced_ends_every_number_before_its_entries_take_theirs() -> None:
+    planks, sticks_as = (
+        Entry(PLANKS, display_id=5),
+        [Entry(STICKS, display_id=each) for each in (5, 6)],
+    )
+    reference = [book_add(planks), book_add(sticks_as[0], replace=True)]
+    candidate = [book_add(planks), book_add(sticks_as[1], replace=True)]
+
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_book_packet_that_did_not_decode_ends_no_number() -> None:
+    planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
+    undecoded = packet(BOOK_REMOVE, b"\xff")
+    reference = [
+        OPEN,
+        book_add(planks_as[0]),
+        CLOSE,
+        undecoded,
+        OPEN,
+        book_add(planks_as[0]),
+        CLOSE,
+    ]
+    candidate = [
+        OPEN,
+        book_add(planks_as[1]),
+        CLOSE,
+        undecoded,
+        OPEN,
+        book_add(planks_as[2]),
+        CLOSE,
+    ]
+
+    assert _diff_all(reference, candidate) == [("entries[0].contents.id", "#1", "#2")]
+
+
 def _planks_again(group: int, *, before: Sequence[Packet | str] = ()) -> list[Packet | str]:
     """After `before`, planks in group 3 are added and taken, then added again in `group`."""
     planks = Entry(PLANKS, display_id=5, group=3, flags=TOAST)
@@ -354,6 +390,13 @@ def test_a_recipe_got_outside_the_windows_keeps_its_group_number() -> None:
     assert _diff_all(_planks_again(3, before=sticks), _planks_again(4, before=sticks)) == [
         ("entries[0].contents.group", "#1", "#2")
     ]
+
+
+def test_a_book_replaced_takes_its_recipes_out_of_their_groups() -> None:
+    sticks_as = [Entry(STICKS, display_id=6, group=3), Entry(STICKS, display_id=7)]
+    replaced = [book_add(sticks_as[0]), book_add(sticks_as[1], replace=True)]
+
+    assert _diff_all(_planks_again(3, before=replaced), _planks_again(4, before=replaced)) == []
 
 
 def test_a_recipe_added_again_in_another_group_ends_the_number_of_the_group_it_left() -> None:
