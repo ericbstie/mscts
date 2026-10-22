@@ -8,6 +8,7 @@ login, or a respawn into another dimension) starts with none.
 from collections.abc import Mapping, Sequence
 
 import pytest
+from support.bot_join import CODEC, LOGIN, RESPAWN
 
 from mscts.bot import Bot
 from mscts.transcript import Transcript
@@ -20,7 +21,6 @@ from tests.net.fakes import (
     join_server,
     with_bot,
 )
-from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN
 
 type Sent = tuple[str, Mapping[str, object]]
 

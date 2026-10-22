@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 import pytest
+from support.bot_join import CODEC, LOGIN, RESPAWN, TICK_END
 
 from mscts.bot import Bot, Replies
 from mscts.codec.packets import State
@@ -31,7 +32,6 @@ from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import status_server, with_bot
 from tests.net.test_bot_entities import added, entity_server
-from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN, TICK_END
 from tests.net.test_bot_replies import answers, arrived
 
 if TYPE_CHECKING:

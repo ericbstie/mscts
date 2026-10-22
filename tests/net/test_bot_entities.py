@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 
 import pytest
+from support.bot_join import CODEC, LOGIN, RESPAWN
 
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
@@ -17,7 +18,6 @@ from mscts.entities import Entity, EntityTracker, java_round
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.net.fakes import Handler, JoinScript, Peer, answer_each_tick, join_server, with_bot
-from tests.net.test_bot_move import CODEC, LOGIN, RESPAWN
 
 TYPES = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
 ZOMBIE = TYPES.index("minecraft:zombie")

@@ -12,6 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
+from support.bot_join import RESPAWN
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Packet
@@ -32,7 +33,6 @@ from tests.net.fakes import (
     join_server,
     serve,
 )
-from tests.net.test_bot_move import RESPAWN
 
 CONTROL = "control"
 VICTIM = "victim"

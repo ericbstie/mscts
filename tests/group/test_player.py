@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from unittest import mock
 
 import pytest
+from support.bot_join import RESPAWN
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.codec.packets import Packet
@@ -37,7 +38,6 @@ from tests.net.fakes import (
     join_server,
     serve,
 )
-from tests.net.test_bot_move import RESPAWN
 
 CONTROL = "control"
 MARKER = "tellraw @s "

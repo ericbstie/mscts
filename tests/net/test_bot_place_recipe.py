@@ -6,13 +6,13 @@ changes no slot itself: the server fills the grid (javap).
 """
 
 import pytest
+from support.bot_join import CODEC
 
 from mscts.bot import Bot
 from mscts.net import ProtocolError
 from mscts.transcript import Transcript
 from tests.net.fakes import status_server, with_bot
 from tests.net.test_bot_inventory import CHEST, GENERIC_9X3, inventory_after, open_screen
-from tests.net.test_bot_move import CODEC
 
 CRAFTING_TABLE = 339
 """The crafting table's display id in a fresh vanilla 26.3 Instance's recipe book."""

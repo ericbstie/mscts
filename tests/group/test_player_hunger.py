@@ -16,6 +16,8 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
+from support.bot_join import LOGIN, RESPAWN
+
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
@@ -35,7 +37,6 @@ from tests.net.fakes import (
     join_server,
     serve,
 )
-from tests.net.test_bot_move import LOGIN, RESPAWN
 
 CONTROL = "control"
 MARKER = "tellraw @s "

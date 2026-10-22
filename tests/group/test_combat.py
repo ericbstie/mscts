@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import pytest
+from support.bot_join import LOGIN
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
@@ -27,7 +28,6 @@ from mscts.transcript import Transcript
 from tests.group.test_control import playing, text, tree
 from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
-from tests.net.test_bot_move import LOGIN
 
 
 def _login(peer: Peer) -> bytes:
