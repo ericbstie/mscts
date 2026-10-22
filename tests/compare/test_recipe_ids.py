@@ -72,8 +72,8 @@ def _diff(reference: Packet, candidate: Packet) -> list[tuple[str | None, object
     return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
 
 
-PLANKS, STICKS = 20, 30
-"""What two recipes make: the planks recipe's display sorts first."""
+PLANKS, STICKS, BREAD = 20, 30, 40
+"""What three recipes make: the planks recipe's display sorts first."""
 
 
 def test_the_order_of_entries_with_no_toast_is_no_difference() -> None:
@@ -405,6 +405,25 @@ def test_a_recipe_added_again_in_another_group_ends_the_number_of_the_group_it_l
     candidate = [*planks_in, book_add(Entry(STICKS, display_id=6, group=9))]
 
     assert _diff_all(reference, candidate) == []
+
+
+def test_the_order_of_two_book_packets_that_are_not_compared_ends_no_group_number() -> None:
+    first = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
+    last = [OPEN, book_add(Entry(BREAD, display_id=7, group=3, flags=TOAST)), CLOSE]
+    planks = book_add(Entry(PLANKS, display_id=5, group=3))
+    in_window = f"{OPEN} minecraft:set_time"
+
+    assert (
+        _diff_all([*first, planks, book_remove(6), *last], [*first, book_remove(6), planks, *last])
+        == []
+    )
+    assert (
+        _diff_all(
+            [*first, in_window, planks, book_remove(6), CLOSE, *last],
+            [*first, in_window, book_remove(6), planks, CLOSE, *last],
+        )
+        == []
+    )
 
 
 def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:

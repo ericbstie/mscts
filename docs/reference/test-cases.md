@@ -2738,9 +2738,10 @@ The group that shows several recipes as one button in the book, such as
 every kind of planks. A recipe in no group has none. Each server picks
 its own group numbers, so they are numbered again in the order they
 first come, as the display ids are. A group is counted once in each
-category, since the book shows it as one button in each. Once no recipe
-in the book is in a group, the book has no button for it, so the group
-is numbered again if it comes back.
+category, since the book shows it as one button in each. If no recipe
+in the book is in a group when a recipe is added or removed in a
+window, the book has no button for it, so the group is numbered again
+if it comes back.
 
 ## `recipe_book_add.entries[].contents.category`
 

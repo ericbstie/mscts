@@ -1439,11 +1439,12 @@ class _RecipeNumbers:
     the Bot receives can end one, compared or not (`follow`): a `recipe_book_remove` ends
     its ids' numbers (`ClientRecipeBook.remove`), and a `recipe_book_add` that replaces
     the book ends every number before its entries take theirs (`ClientRecipeBook.clear`).
-    A group's number ends once no recipe in the book is in the group: the client builds
-    its buttons from the recipes it knows (`rebuildCollections`). So a recipe the server
-    adds again with another id or group shows the same, and an id given to another recipe
-    while the first still holds it does not. An id first seen in a removal takes the next
-    number, which the removal ends.
+    A group's number ends once a compared packet finds no recipe in the book in the group:
+    the client builds its buttons from the recipes it knows (`rebuildCollections`), and
+    what the book held between two packets that are not compared is not compared either
+    (`number`). So a recipe the server adds again with another id or group shows the
+    same, and an id given to another recipe while the first still holds it does not. An
+    id first seen in a removal takes the next number, which the removal ends.
 
     Attributes:
         ids: The display ids' numbers.
@@ -1461,20 +1462,25 @@ class _RecipeNumbers:
 
         `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
         the first copy's order numbers them. An add is followed before its entries take
-        their numbers, and a removal after its ids' numbers are written (`follow`).
+        their numbers, and a removal after its ids' numbers are written (`follow`). Each
+        group no recipe in the book is in ends before an add and after a removal, so only
+        what the book holds at a compared packet ends a group, never the order of two
+        packets that are not compared.
         """
         if packet.name == _RECIPE_BOOK_ADD:
+            self.groups.keep_only(self.book.values())
             self.follow(packet)
             self._number_add(copies)
         elif packet.name == _RECIPE_BOOK_REMOVE:
             self._number_removal(copies)
             self.follow(packet)
+            self.groups.keep_only(self.book.values())
 
     def follow(self, packet: Packet) -> None:
-        """Change the book as `packet`, compared or not, changes the client's, ending numbers.
+        """Change the book as `packet`, compared or not, changes the client's, ending id numbers.
 
         A `recipe_book_remove` ends its ids' numbers, and a `recipe_book_add` that replaces
-        the book ends every number. Then each group no recipe in the book is in ends.
+        the book ends every number.
         """
         if packet.fields is None:
             return
@@ -1482,9 +1488,6 @@ class _RecipeNumbers:
             self._add(packet.fields)
         elif packet.name == _RECIPE_BOOK_REMOVE:
             self._remove(packet.fields)
-        else:
-            return
-        self.groups.keep_only(self.book.values())
 
     def _add(self, fields: Mapping[str, object]) -> None:
         """Put the entries of `fields`, a `recipe_book_add`'s, in the book, or in its place."""
