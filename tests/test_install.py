@@ -507,6 +507,27 @@ class _Builder(PumpkinAdapter):
         return Build(version="nightly", commit=COMMIT)
 
 
+class _NamelessBuilder(PumpkinAdapter):
+    """A Pumpkin that writes a build naming no commit itself, and returns one with a commit."""
+
+    @override
+    def install(self, target: Target, version: str | None, into: Path, net: Net) -> Build:
+        del target, version, net
+        into.write_bytes(fake_pumpkin(commit="unknown"))
+        return Build(version="nightly", commit=COMMIT)
+
+
+def test_a_written_build_that_names_no_commit_is_refused_when_install_names_one(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ProvisionError) as raised:
+        install_release(_NamelessBuilder(), TARGET, tmp_path, None, FakeGitHub())
+    assert str(raised.value).startswith(
+        "the pumpkin build names no commit, so which pumpkin nightly it is cannot be told."
+    )
+    assert list((tmp_path / "pumpkin").iterdir()) == []
+
+
 def test_a_build_the_adapter_wrote_itself_records_no_url(tmp_path: Path) -> None:
     done = install_release(_Builder(), TARGET, tmp_path, None, FakeGitHub())
     assert done.message == f"installed pumpkin nightly 4426d11 into {root_of(tmp_path)}"

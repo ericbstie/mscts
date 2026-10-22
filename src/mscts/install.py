@@ -319,7 +319,7 @@ def _what_was_downloaded(
     where `install` found one; UnavailableError if it is not the build `version` names.
     """
     if found.commit is not None and build.commit is None:
-        where = "the installed file" if saved is None else saved.url
+        where = f"the {adapter} build" if saved is None else saved.url
         msg = (
             f"{where} names no commit, so which {adapter} {found.version} it is cannot be "
             f"told.\n{build_it_yourself(adapter)}"
