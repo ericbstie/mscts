@@ -9,10 +9,10 @@ import uuid
 
 import pytest
 from support.items import stack
+from support.wire import read_all, written
 
 from mscts.codec.entity_data import ENTITY_DATA, SERIALIZERS
-from mscts.codec.schema import WireType
-from mscts.codec.wire import Reader, WireError, Writer
+from mscts.codec.wire import WireError
 
 SERIALIZER_NAMES = (
     "byte",
@@ -138,19 +138,6 @@ SAMPLES: list[tuple[str, str, object]] = [
     ("humanoid_arm", "01", 1),
     ("dye_color", "0f", 15),
 ]
-
-
-def written[T](wire_type: WireType[T], value: object) -> bytes:
-    writer = Writer()
-    wire_type.write(writer, value)
-    return writer.to_bytes()
-
-
-def read_all[T](wire_type: WireType[T], data: bytes) -> T:
-    reader = Reader(data)
-    value = wire_type.read(reader)
-    reader.expect_end()
-    return value
 
 
 def entry(index: int, serializer: str, value: object) -> dict[str, object]:

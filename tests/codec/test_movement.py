@@ -5,10 +5,10 @@ move delta, `PositionPath` and `PositionStep` for the position path.
 """
 
 import pytest
+from support.wire import read_all, written
 
 from mscts.codec.movement import MOVE_DELTA, POSITION_PATH
 from mscts.codec.wire import Reader, WireError
-from tests.codec.test_schema_types import read_all, written
 
 # A move delta is a VarInt of properties (bit 0 on ground, the rest the number of steps), then
 # with no steps three shorts (a change of position in 1/4096 of a block), else each step's ticks

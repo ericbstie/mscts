@@ -5,10 +5,11 @@ options), not produced by the Codec.
 """
 
 import pytest
+from support.wire import read_all, written
 
 from mscts.codec.particles import PARTICLE, POSITION_SOURCE
-from mscts.codec.schema import EntityId, Schema, WireType
-from mscts.codec.wire import Reader, WireError, Writer
+from mscts.codec.schema import EntityId, Schema
+from mscts.codec.wire import WireError
 
 PARTICLE_NAMES = (
     "minecraft:angry_villager",
@@ -165,19 +166,6 @@ WITH_OPTIONS = {
     "dust_pillar",
     "block_crumble",
 }
-
-
-def written[T](wire_type: WireType[T], value: object) -> bytes:
-    writer = Writer()
-    wire_type.write(writer, value)
-    return writer.to_bytes()
-
-
-def read_all[T](wire_type: WireType[T], data: bytes) -> T:
-    reader = Reader(data)
-    value = wire_type.read(reader)
-    reader.expect_end()
-    return value
 
 
 def particle(name: str, options: object = None) -> dict[str, object]:
