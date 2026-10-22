@@ -5,44 +5,22 @@ is fed the decoded fields of recorded packets, as the Bot's reader feeds it.
 """
 
 import dataclasses
-import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 
 import pytest
+from support.bot_entities import UUID, added, entity_server
 from support.bot_join import CODEC, LOGIN, RESPAWN
 
 from mscts.bot import Bot
-from mscts.codec.packets import Packet
 from mscts.codec.registry_names import registry_names
 from mscts.entities import Entity, EntityTracker, java_round
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.net.fakes import Handler, JoinScript, Peer, answer_each_tick, join_server, with_bot
+from tests.net.fakes import with_bot
 
 TYPES = registry_names(TARGET.minecraft_version, "minecraft:entity_type")
 ZOMBIE = TYPES.index("minecraft:zombie")
 PIG = TYPES.index("minecraft:pig")
-UUID = uuid.UUID(int=7)
-
-
-def added(entity_id: int, kind: int, x: float, y: float, z: float) -> tuple[str, dict[str, object]]:
-    """An `add_entity` at `x, y, z` facing nowhere in particular, not moving."""
-    return (
-        "minecraft:add_entity",
-        {
-            "entity_id": entity_id,
-            "entity_uuid": UUID,
-            "type": kind,
-            "x": x,
-            "y": y,
-            "z": z,
-            "velocity": {"scale": 0, "x": 0, "y": 0, "z": 0},
-            "pitch": 0,
-            "yaw": 0,
-            "head_yaw": 0,
-            "data": 0,
-        },
-    )
 
 
 def tracked(*packets: tuple[str, Mapping[str, object]]) -> EntityTracker:
@@ -283,30 +261,6 @@ def test_a_type_id_outside_the_registry_is_named_by_its_number() -> None:
     tracker = tracked(added(41, len(TYPES), 1.5, -60.0, 2.5))
 
     assert tracker.entities[41].type == f"#{len(TYPES)}"
-
-
-def entity_server(
-    seen: list[Packet], packets: Sequence[tuple[str, Mapping[str, object]]]
-) -> Handler:
-    """Join like vanilla, send `packets` after the Bot's first tick, and answer `sync`."""
-
-    async def then(peer: Peer) -> None:
-        requests = 0
-        sent = False
-        async for packet in peer.packets():
-            seen.append(packet)
-            if packet.name == "minecraft:client_command":
-                requests += 1
-                await answer_each_tick(peer, requests)
-            elif not sent and packet.name == "minecraft:client_tick_end":
-                sent = True
-                for name, fields in packets:
-                    await peer.send(name, **fields)
-
-    def login_frame(peer: Peer) -> bytes:
-        return peer.frame("minecraft:login", **LOGIN)
-
-    return join_server(seen, JoinScript(after_batch=login_frame, then=then))
 
 
 def known(*packets: tuple[str, Mapping[str, object]]) -> dict[int, Entity]:
