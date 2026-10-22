@@ -121,6 +121,36 @@ Divergences: `"enforceSecureChat": true` and `"favicon": null`.
   an empty style and no siblings. `"extra": []` is *not* valid (the list
   must be non-empty). The list form `["a", "b"]` decodes like
   `{"text": "a", "extra": ["b"]}`.
+- What the client ends up with (#342), read with `javap -c -p -constants`
+  on the 26.3 **client** jar and its DataFixerUpper 10.0.21:
+  - A plain string `"x"` is `Component.literal("x")`, the same component
+    as `{"text": "x"}` (above). `lambda$createCodec$2` maps the inner
+    either with `Component::literal` and `ComponentSerialization::createFromList`.
+  - A list `[a, b, ...]` is `createFromList`: `a.copy()`, then
+    `MutableComponent.append` of each of `b, ...`. `Component.copy()` is
+    `new MutableComponent(getContents(), new ArrayList(getSiblings()),
+    getStyle())`, and `append` is `siblings.add`. So the list is the
+    component `a`, with `b, ...` added at the end of its `extra`. An
+    object is built by the same `MutableComponent(contents, siblings,
+    style)` constructor (`lambda$createCodec$0`), so `["a", "b"]` and
+    `{"text": "a", "extra": ["b"]}` are the same component, and `["a"]` is
+    `"a"`. The list's elements and `extra`'s are decoded by `CODEC`
+    itself (`Codec.recursive("Component", createCodec)` in `<clinit>`).
+  - An empty list is refused wherever the component codec meets one:
+    `ExtraCodecs.nonEmptyList(codec)` is `codec.validate(list ->
+    list.isEmpty() ? DataResult.error(...) : DataResult.success(list))`,
+    and it wraps both the list form and `extra`
+    (`optionalFieldOf("extra", List.of())`, which is not lenient). The
+    error reaches the description: `EitherCodec.decode` succeeds only
+    when one side succeeds, and `ListCodec$DecoderState` turns one
+    element's error into the list's.
+  - `ServerStatus.CODEC` reads `description` with
+    `lenientOptionalFieldOf("description", CommonComponents.EMPTY)`.
+    `OptionalFieldCodec.decode` returns `Optional.empty()` whenever the
+    lenient field's value is an error, partial result or not. So a
+    description with `"extra": []` or `[]` anywhere in it is shown as
+    no description at all: `{"text": "x", "extra": []}` reads as
+    `CommonComponents.EMPTY`, not as `"x"`.
 - minecraft.wiki *Text component format*, raw wikitext at oldid 3749600
   (2026-08-29), says the same: "A string containing plain text to display
   directly. This is the same as an object that only has a text tag. For
