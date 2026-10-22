@@ -262,6 +262,11 @@ _SET_HEALTH = "minecraft:set_health"
 _DAMAGE_TIMEOUT_S = 60.0
 """How long a window waits for a hit: drowning takes 320 ticks, 16 s at 20 ticks a second."""
 
+_MOVED = "minecraft:player_position"
+
+_MOVE_TIMEOUT_S = 10.0
+"""How long the Bot waits for the server to move it after a `/tp`."""
+
 _TICK_S = 0.05
 
 _SLACK_TICKS = 2
@@ -299,9 +304,33 @@ class _Hits:
         waited_s = clock() - self._last_hit
         if waited_s > allowed_s:
             msg = (
-                f"{self._bot.name} was {waited_s:.2f} s since its last hit when the next window "
-                f"opened, but hits come {period_ticks} ticks apart: the next may have come "
-                "between the windows, and the windows would hold another health from here on"
+                f"{self._bot.name} was {waited_s:.2f} s past its last hit, but hits come "
+                f"{period_ticks} ticks apart: the next may have come between the windows, and "
+                "the windows would hold another health from here on"
+            )
+            raise ProtocolError(msg)
+
+    async def hit(self) -> None:
+        """Wait for the Bot's next `set_health`, and note when it came, for `check_gap`."""
+        await self._bot.expect(_SET_HEALTH, timeout_s=_DAMAGE_TIMEOUT_S)
+        self._last_hit = clock()
+
+    async def moved_before_the_next_hit(self) -> None:
+        """Wait for the Bot's `player_position` after a `/tp`; fail if a `set_health` comes first.
+
+        For a move out of what hurts the Bot, made right after a hit. The server sends the
+        `player_position` when it runs the move, so a hit that comes before it was sent before
+        the move: the windows from here on would hold another health. Unlike `check_gap`, this
+        holds however late the Bot reads its packets.
+
+        Raises:
+            ProtocolError: The next hit came before the move.
+        """
+        packet = await self._bot.expect(_MOVED, _SET_HEALTH, timeout_s=_MOVE_TIMEOUT_S)
+        if packet.name == _SET_HEALTH:
+            msg = (
+                f"{self._bot.name} took another hit before it was moved out of what hurt it: "
+                "the windows would hold another health from here on"
             )
             raise ProtocolError(msg)
 
@@ -309,7 +338,7 @@ class _Hits:
     async def window(
         self, names: tuple[str, ...], *, period_ticks: int | None = None
     ) -> AsyncIterator[None]:
-        """A window that runs the body, then waits for the Bot's next `set_health` and ends on it.
+        """A window that runs the body, then waits for the Bot's next hit and ends on it.
 
         With `period_ticks`, the time since the last hit is checked after the body (`check_gap`).
         """
@@ -317,8 +346,7 @@ class _Hits:
             yield
             if period_ticks is not None:
                 self.check_gap(period_ticks)
-            await self._bot.expect(_SET_HEALTH, timeout_s=_DAMAGE_TIMEOUT_S)
-        self._last_hit = clock()
+            await self.hit()
 
     async def more(self, count: int, *, period_ticks: int) -> None:
         """Wait for `count` more hits, each in a window of its own."""
@@ -450,7 +478,8 @@ async def fire(context: GroupContext) -> None:
     The Bot is made fresh between fire and lava: a player is immune for 10 ticks after a hit, and
     a lava tick inside them hurts only by the excess, so the lava's full hit would come 10 ticks
     after the fire's, whichever window is open then. Each stop ends on the first hit after it. The
-    last window ends a barrier after the water puts the fire out.
+    Bot leaves the lava as soon as its hit has come, so its move onto the dry grass is in no
+    window. The last window ends a barrier after the water puts the fire out.
     """
     sites = (_WATER, _LAVA, _FIRE)
     async with _environment(context, tuple(c for site in sites for c in site.restore)) as undo:
@@ -463,12 +492,18 @@ async def fire(context: GroupContext) -> None:
             await _tp(context, bot, _at(_FIRE.lane, _FIRE.lands_at))
         await fresh(context, bot)
         hits = _Hits(context, bot)
-        async with hits.window(PACKETS):
+        async with context.observe(*PACKETS, until=_SET_HEALTH, bot=bot):
             await _tp(context, bot, _at(_LAVA.lane, _LAVA.lands_at))
-        # The first tick out of lava must come at most 9 ticks after its last hit, or the burn
-        # (remaining fire 300 at the first) is a full hit and a second lava hit ends the window.
-        async with hits.window(PACKETS, period_ticks=_INVULNERABLE_TICKS):
+            await hits.hit()
+            # Out of the lava before its next hit, 10 ticks after this one, and before the barrier
+            # that opens the next window, which a loaded host can stall past them (#436). The
+            # window ends on the hit, so the move is outside it. A tick out of the lava inside
+            # the hit's immunity makes the burn due then (fire 300) hurt nothing, so the first
+            # burn on the dry grass comes 20 ticks later (at 280) on every server.
             await _tp(context, bot, _at(_DRY_LANE, -60.0))
+            await hits.moved_before_the_next_hit()
+        async with hits.window(PACKETS, period_ticks=_BURN_PERIOD):
+            pass
         async with context.observe(*PACKETS):
             await _tp(context, bot, _at(_WATER.lane, _WATER.lands_at))
             hits.check_gap(_BURN_PERIOD)

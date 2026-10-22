@@ -33,6 +33,9 @@ since outgrown it are listed."""
 MIN_LIMIT_S = 900
 """The least a Self-check's time limit is, whatever the repeat: two boots and a few plays."""
 SLOW_PLAY_LIMIT_S: Mapping[str, int] = {
+    # 96 s a play on main 55ee515 (3 plays: 287.3 s; load average 5.3 when it queued, 3.7 after),
+    # twice that (#436).
+    "player/fall": 192,
     # 112 s a play on main (3 plays: 336.6 s; load average 0.76 before, 1.18 after), twice that
     # for headroom, as the default has (#423).
     "player/starvation": 225,
