@@ -18,6 +18,7 @@ from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
     FADE_READS,
     PERFORM_RESPAWN,
+    Drown,
     Hurt,
     PlayerServer,
 )
@@ -70,7 +71,7 @@ IMMUNE_TICKS = 10
 
 
 HURTS = {
-    "player/drowning": {"tp drowner 3.5 -62.0 2.5": Hurt(20)},  # the air runs out again
+    "player/drowning": {"tp drowner 3.5 -62.0 2.5": Drown()},  # the air runs out every 20 ticks
     "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": Hurt(IMMUNE_TICKS)},
     "player/fire": {
         "tp burner 7.5 -60.0 2.5": Hurt(IMMUNE_TICKS),  # in fire
@@ -102,25 +103,30 @@ async def _play(
     due_at_once: bool = False,
     held: bool = True,
 ) -> tuple[Transcript, Play]:
+    server = PlayerServer(
+        hurts=HURTS.get(group_id, {}),
+        kills_after=KILLS_AFTER.get(group_id),
+        late=late,
+        due_at_once=due_at_once,
+        held=held,
+    )
+    transcript = await _play_on(group_id, server, clock)
+    return transcript, read(transcript)
+
+
+async def _play_on(
+    group_id: str, server: PlayerServer, clock: Callable[[], float] = always_on_time
+) -> Transcript:
+    """Play `group_id` against `server`, with `clock` timing the hits; its Transcript."""
     transcript = Transcript(group_id=group_id, server="fake")
-    async with serve(
-        CODEC,
-        PlayerServer(
-            hurts=HURTS.get(group_id, {}),
-            kills_after=KILLS_AFTER.get(group_id),
-            late=late,
-            due_at_once=due_at_once,
-            held=held,
-        ),
-        timeout_s=PLAY_TIMEOUT_S,
-    ) as endpoint:
+    async with serve(CODEC, server, timeout_s=PLAY_TIMEOUT_S) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
             with mock.patch.object(player, "clock", clock):
                 await GROUPS[group_id].run(context)
         finally:
             await context.close()
-    return transcript, read(transcript)
+    return transcript
 
 
 @functools.cache

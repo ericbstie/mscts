@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Packet
-from support.bot_join import RESPAWN
+from support.bot_join import ENTITY_ID, RESPAWN
 from support.control import CHAT_COMMAND, CLIENT_COMMAND, CONTROL, MARKER, text, tree
 from support.gametime import gametime_answer
 from tests.net.fakes import (
@@ -43,6 +43,13 @@ FADE_READS = (TIME_QUERY, TIME_QUERY)
 DEATH = "minecraft:player_combat_kill"
 
 
+DROWNING_DAMAGE = "gamerule drowning_damage "
+
+
+HARMS = "minecraft:instant_damage 1 1 true"
+"""How an `effect give` command that harms a Bot ends."""
+
+
 @dataclass(frozen=True)
 class Hurt:
     """How the fake hurts a Bot in a place: when the first hit comes, and how often.
@@ -54,6 +61,49 @@ class Hurt:
 
     period_ticks: int
     first_ticks: int = 1
+
+
+AIR_RUNS_OUT = 20
+"""How far below 0 a drowning player's air goes before the first hit (`shouldTakeDrowningDamage`:
+air <= -20)."""
+
+DROWNING_HIT = 2.0
+"""The damage of one drowning hit (`LivingEntity.baseTick`: `hurtServer(drown, 2.0)`)."""
+
+HARM = 12.0
+"""The damage `effect give <bot> minecraft:instant_damage 1 1 true` does: 6 << 1."""
+
+FULL_HEALTH = 20.0
+
+BUBBLES = 67
+"""The entity event a drowning player's air reset sends (`broadcastEntityEvent(this, 67)`)."""
+
+AIR_INDEX = 1
+"""The entity data entry that holds an entity's air."""
+
+INT = "int"
+"""The entity data serializer of the air: a VarInt."""
+
+
+@dataclass(frozen=True)
+class Drown:
+    """How the fake drowns a Bot put under water: its air runs down a point a tick.
+
+    The air starts at `air` and goes down by one a tick, sent each tick in `set_entity_data`.
+    The first time it reaches -`AIR_RUNS_OUT`, as on vanilla, the fake sends the bubbles
+    (`entity_event` 67), and with `drowning_damage` on, a hit of `DROWNING_HIT`: the `set_health`,
+    or the death once the health is gone. Then the air is 0 again, which the next
+    `set_entity_data` says. Each later time comes `period_ticks` after the last.
+
+    Attributes:
+        period_ticks: The ticks between two times the air runs out after the first: vanilla's
+            is `AIR_RUNS_OUT`.
+        air: The air the Bot has when it is put under water; vanilla's is 300, which would make
+            a play 15 s longer.
+    """
+
+    period_ticks: int = AIR_RUNS_OUT
+    air: int = 3
 
 
 @dataclass
@@ -72,11 +122,18 @@ class PlayerServer:
     on (`check_gap`); the clock these tests give it (`always_on_time`) says the windows are on
     time, and the fake keeps to that. What the Group does after a hit, before the next window
     opens, still races the next hit, as on vanilla.
+
+    A place in `hurts` given as a `Drown` is different: the fake runs down the Bot's air a tick
+    at a time on the wall clock, and never holds a hit back for a barrier.
     """
 
     seen: list[Packet] = field(default_factory=list)
-    hurts: Mapping[str, Hurt] = field(default_factory=dict)
+    hurts: Mapping[str, Hurt | Drown] = field(default_factory=dict)
     """Each `tp` after which the fake sends `set_health` and `entity_event`, and when."""
+    drowning_damage: bool = True
+    """The game rule `drowning_damage`, which Control's `gamerule` sets."""
+    health: float = FULL_HEALTH
+    """The health of the Bot the fake drowns: full after a respawn, less after a harm or a hit."""
     due_at_once: bool = False
     """Whether every hit is due at once, as if the event loop had stalled past each one: it is
     then sent as soon as the Bot has passed the barrier."""
@@ -116,6 +173,7 @@ class PlayerServer:
             async for packet in peer.packets():
                 self.seen.append(packet)
                 if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
+                    self.health = FULL_HEALTH
                     await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
                     await peer.send("minecraft:chunk_batch_start")
                     await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
@@ -148,13 +206,26 @@ class PlayerServer:
             await peer.write(peer.frame("minecraft:system_chat", content=answer, overlay=False))
         elif self.kills_after and command.startswith(self.kills_after):
             victim = self.players[command.split()[1]]
-            await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
+            await self._kill(victim)
+        elif command.startswith(DROWNING_DAMAGE):
+            self.drowning_damage = command.removeprefix(DROWNING_DAMAGE) == "true"
+        elif command.startswith("effect give ") and command.endswith(HARMS):
+            victim = self.players[command.split()[2]]
+            self.health -= HARM
+            await victim.send("minecraft:set_health", health=self.health, food=20, saturation=5.0)
         elif command.startswith(("tp ", "kill ")):
             self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
             if command.startswith("tp "):
                 await self._teleport(command)
-            if command in self.hurts:
-                self.hurting = asyncio.create_task(self._hurt(self.hurts[command]))
+            hurt = self.hurts.get(command)
+            if isinstance(hurt, Drown):
+                self.hurting = asyncio.create_task(self._drown(hurt))
+            elif hurt is not None:
+                self.hurting = asyncio.create_task(self._hurt(hurt))
+
+    @staticmethod
+    async def _kill(victim: Peer) -> None:
+        await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
 
     async def _teleport(self, command: str) -> None:
         """Send the player a `tp` moves its `player_position`, as vanilla does when it runs it."""
@@ -177,6 +248,46 @@ class PlayerServer:
         if self.hurting is not None:
             self.hurting.cancel()
             self.hurting = None
+
+    async def _drown(self, drown: Drown) -> None:
+        """Drown every player but Control as `drown` says, a tick at a time, until one dies.
+
+        A tick is `TICK_S` of the wall clock, as a player's is on vanilla: no barrier holds it.
+        """
+        air, runs_out = drown.air, AIR_RUNS_OUT
+        with suppress(ConnectionError):
+            while True:
+                await asyncio.sleep(TICK_S)
+                air -= 1
+                if air <= -runs_out:
+                    air, runs_out = 0, drown.period_ticks
+                    if await self._air_runs_out():
+                        return
+                await self._to_bots(
+                    "minecraft:set_entity_data",
+                    entity_id=ENTITY_ID,
+                    entries=[{"index": AIR_INDEX, "serializer": INT, "value": air}],
+                )
+
+    async def _air_runs_out(self) -> bool:
+        """Send the bubbles, and the hit if `drowning_damage` is on; True if it killed the Bot."""
+        await self._to_bots("minecraft:entity_event", entity_id=ENTITY_ID, event_id=BUBBLES)
+        if not self.drowning_damage:
+            return False
+        self.health -= DROWNING_HIT
+        if self.health <= 0:
+            for peer in self._bots():
+                await self._kill(peer)
+            return True
+        await self._to_bots("minecraft:set_health", health=self.health, food=20, saturation=5.0)
+        return False
+
+    def _bots(self) -> list[Peer]:
+        return [peer for name, peer in self.players.items() if name != CONTROL]
+
+    async def _to_bots(self, name: str, **fields: object) -> None:
+        for peer in self._bots():
+            await peer.send(name, **fields)
 
     async def _hurt(self, hurt: Hurt) -> None:
         """Hurt every player but Control as `hurt` says, each hit after a barrier since the last."""
