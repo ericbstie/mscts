@@ -2535,9 +2535,10 @@ proves it necessary:
    Candidate that numbers its recipes another way but keeps to it shows
    the same book, and a group of another recipe than the Reference's
    differs (`#2` against `#1`), as does a removal of another recipe, if
-   the recipe was added in a compared packet. Limit: a recipe added
-   before the windows is first seen in its removal, so two removals of
-   different such recipes compare equal; no Group removes one (an
+   the recipe was added in a compared packet. Limit: a recipe the Bot
+   got outside the windows, or in a packet a `*` Mask drops, is first
+   seen in its removal, so two removals of different such recipes
+   compare equal; no Group removes one (an
    entity has its `add_entity` name for this, `_Numbers.spawned`, and a
    recipe has nothing like it). Javap on the 26.3 client:
    the client keeps its book in a `HashMap` keyed by display id

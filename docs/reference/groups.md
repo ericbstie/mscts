@@ -634,7 +634,7 @@ Each server picks these numbers, and the numbers of recipe groups, its own way. 
 the recipes again in the order each Bot first gets them, and the groups the same way, so a
 server that numbers its recipes another way but keeps to it shows the same recipe book. A
 recipe put in another group still differs, and so does a removal of another recipe, if the
-recipe was added in a window. A removal of a recipe the Bot got before every window cannot be
+recipe was added in a window. A removal of a recipe the Bot got outside the windows cannot be
 told from a removal of another such recipe; no Group removes one. The order of the book's
 buttons is not compared. It follows the server's numbers, how many recipes the book has held
 since the Bot joined, and the order the recipes came in.
