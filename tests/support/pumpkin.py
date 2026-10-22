@@ -1,5 +1,7 @@
 """Stand-ins for Pumpkin's binaries and for GitHub, which publishes them: never run."""
 
+from pathlib import Path
+
 from mscts.adapters.base import Download
 from mscts.adapters.pumpkin import NIGHTLY_URL, TAGS_URL
 
@@ -44,3 +46,7 @@ class FakeGitHub:
     def __call__(self, url: str) -> Download:
         self.fetched.append(url)
         return Download(url=ASSET_URL if url == NIGHTLY_URL else url, body=self.bodies[url])
+
+
+def root_of(cache: Path) -> Path:
+    return cache / "pumpkin/26.3"

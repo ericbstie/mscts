@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import MARKER, SYSTEM_CHAT, text, tree
+from support.transcripts import arrivals
 
 from mscts.bot import SYNC_REQUESTS, Bot
 from mscts.codec.packets import Codec, Direction, Packet, State
@@ -17,7 +19,6 @@ from mscts.run import GroupError, judge, run_group
 from mscts.spec import CONTROL_PLAYER
 from mscts.target import TARGET
 from mscts.transcript import Mark, Transcript
-from tests.group.test_control import MARKER, SYSTEM_CHAT, text, tree
 from tests.net.fakes import (
     NO_STATISTICS,
     TICK_S,
@@ -97,14 +98,6 @@ async def play(*, until: str | None, later_state: int = 1) -> Transcript:
             await bot.command("batch")
             await asyncio.sleep(8 * GAP_S)
     return transcript
-
-
-def arrivals(transcript: Transcript, name: str) -> list[int]:
-    return [
-        event.t_ns
-        for event in transcript.events
-        if event.packet.name == name and event.packet.direction is Direction.CLIENTBOUND
-    ]
 
 
 @pytest.mark.asyncio

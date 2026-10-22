@@ -8,25 +8,13 @@ slots (`ItemStack.OPTIONAL_STREAM_CODEC`).
 
 import pytest
 from support.items import stack
+from support.wire import read_all, written
 
 from mscts.codec.equipment import EQUIPMENT, SLOTS, EquipmentList
-from mscts.codec.schema import BYTE, WireType
-from mscts.codec.wire import Reader, WireError, Writer
+from mscts.codec.schema import BYTE
+from mscts.codec.wire import WireError
 
 BYTES = EquipmentList(BYTE)
-
-
-def written[T](wire_type: WireType[T], value: object) -> bytes:
-    writer = Writer()
-    wire_type.write(writer, value)
-    return writer.to_bytes()
-
-
-def read_all[T](wire_type: WireType[T], data: bytes) -> T:
-    reader = Reader(data)
-    value = wire_type.read(reader)
-    reader.expect_end()
-    return value
 
 
 def test_the_slots_are_the_equipment_slots_of_26_3_in_ordinal_order() -> None:

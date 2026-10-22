@@ -11,6 +11,14 @@ from dataclasses import dataclass, field
 from typing import cast, override
 
 import pytest
+from support.control import (
+    CLIENT_COMMAND,
+    ControlServer,
+    playing,
+    tree,
+)
+from support.control_play import control_commands
+from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS, Face
 from mscts.codec.packets import Direction, Packet
@@ -20,16 +28,6 @@ from mscts.groups import inventory
 from mscts.inventory import CLICK_MODES, OUTSIDE
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group import test_control
-from tests.group.test_control import (
-    CHAT_COMMAND,
-    CLIENT_COMMAND,
-    MARKER,
-    ControlServer,
-    playing,
-    tree,
-)
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import Peer
 
 GIVE, DROP, OFFHAND = "inventory/give", "inventory/drop", "inventory/offhand"
@@ -171,18 +169,6 @@ class Play:
     """For each drop a step follows: the Bot's barrier requests in between."""
 
 
-def _commands(transcript: Transcript) -> list[tuple[int, str]]:
-    """Control's commands with when, but its markers."""
-    commands = [
-        (event.t_ns, str((event.packet.fields or {})["command"]))
-        for event in transcript.events
-        if event.bot == CONTROL
-        and event.packet.direction is Direction.SERVERBOUND
-        and event.packet.name == CHAT_COMMAND
-    ]
-    return [(t_ns, command) for t_ns, command in commands if not command.startswith(MARKER)]
-
-
 def read(transcript: Transcript, bot: str) -> Play:
     """The windows of `transcript`, each from its open Mark to its last close Mark."""
     labels = [mark.label for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
@@ -199,7 +185,7 @@ def read(transcript: Transcript, bot: str) -> Play:
         and event.packet.direction is Direction.SERVERBOUND
         and event.packet.name in ACTIONS
     ]
-    control = _commands(transcript)
+    control = control_commands(transcript)
     windows, previous = [], 0
     for label, opened, closed in zip(labels, opens, closes, strict=True):
         windows.append(
@@ -303,12 +289,7 @@ async def played(group_id: str) -> Play:
     return _PLAYS[group_id]
 
 
-@pytest.fixture(autouse=True)
-def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
-
-
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.usefixtures("long_play")]
 
 
 # Every Group

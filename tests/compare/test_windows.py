@@ -3,6 +3,7 @@
 from dataclasses import replace
 
 import pytest
+from support.compared import block
 
 from mscts.codec.packets import Packet, State
 from mscts.compare import (
@@ -27,10 +28,6 @@ def opening(*names: str) -> str:
 
 def chat(text: str) -> Packet:
     return packet("minecraft:system_chat", text.encode())
-
-
-def block(state: int) -> Packet:
-    return packet("minecraft:block_update", bytes([state]))
 
 
 def test_a_packet_outside_the_window_is_not_compared() -> None:

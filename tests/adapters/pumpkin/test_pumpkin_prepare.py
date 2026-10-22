@@ -21,11 +21,6 @@ def installation(tmp_path: Path) -> Installation:
     return Installation(adapter="pumpkin", target=TARGET, root=tmp_path / "cache/pumpkin/26.3")
 
 
-@pytest.fixture
-def workdir(tmp_path: Path) -> Path:
-    return tmp_path / "work"
-
-
 def nothing_in(workdir: Path) -> bool:
     return not workdir.exists() or not any(workdir.iterdir())
 

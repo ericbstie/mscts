@@ -16,6 +16,11 @@ from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
+from support.bot_join import RESPAWN, login_frame
+from support.control import CODEC, text, tree
+from support.mobs import HUSK
+from support.moves import Play, opened, read
+
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
@@ -23,9 +28,6 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_hunger
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_combat import HUSK
-from tests.group.test_control import CODEC, text, tree
-from tests.group.test_movement import Play, read
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -35,7 +37,6 @@ from tests.net.fakes import (
     join_server,
     serve,
 )
-from tests.net.test_bot_move import LOGIN, RESPAWN
 
 CONTROL = "control"
 MARKER = "tellraw @s "
@@ -82,11 +83,6 @@ it would see the packet after it in its quiet time, after fewer than 6 `set_time
 ENDS = ("minecraft:remove_mob_effect", {"entity_id": 1, "effect": HUNGER})
 
 
-def _login(peer: Peer) -> bytes:
-    """The `login` that names the player's entity id, which a sprint command carries."""
-    return peer.frame("minecraft:login", **LOGIN)
-
-
 def health(value: float, food: int) -> tuple[str, Mapping[str, object]]:
     return (SET_HEALTH, {"health": value, "food": food, "saturation": 0.0})
 
@@ -114,7 +110,7 @@ class HungerServer:
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
         with suppress(ConnectionError):
-            script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
+            script = JoinScript(commands=COMMANDS, after_batch=login_frame, then=self._play)
             await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
@@ -250,10 +246,6 @@ def play(group_id: str) -> tuple[Transcript, Play]:
 
 def played(group_id: str) -> Play:
     return play(group_id)[1]
-
-
-def opened(*names: str) -> str:
-    return f"{OBSERVE_OPEN} {' '.join(names)}"
 
 
 def received_in_windows(transcript: Transcript, bot: str) -> list[list[Packet]]:

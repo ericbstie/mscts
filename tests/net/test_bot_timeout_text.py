@@ -1,10 +1,10 @@
 """What a Bot operation's TimeoutError says (#427): which Bot waited, for what, and how long."""
 
-import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 import pytest
+from support.hang import hang
 
 from mscts.bot import Bot
 from mscts.codec.packets import Codec
@@ -21,11 +21,6 @@ JOINED_LIMIT_S = 0.2
 class Case:
     operation: Callable[[Bot], Awaitable[object]]
     waited_for: str
-
-
-async def hang(*args: object, **kwargs: object) -> None:
-    del args, kwargs
-    await asyncio.Event().wait()
 
 
 async def silent(peer: Peer) -> None:

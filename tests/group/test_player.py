@@ -8,49 +8,33 @@ request, and nothing else.
 
 import asyncio
 import functools
-import json
-from collections.abc import Callable, Mapping
-from contextlib import suppress
-from dataclasses import dataclass, field
+from collections.abc import Callable
 from unittest import mock
 
 import pytest
+from support.control import CODEC
+from support.moves import MOVES, Play, moves_and_commands, opened, read
+from support.player_server import (
+    FADE_READS,
+    PERFORM_RESPAWN,
+    PlayerServer,
+)
+from support.ticks import barriers_before_steps
 
-from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
-from mscts.codec.packets import Packet
+from mscts.bot import HANDLED_REQUESTS
 from mscts.compare import OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
 from mscts.net import ProtocolError
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import CODEC, text, tree
-from tests.group.test_mobs_pathfinding import gametime_answer
-from tests.group.test_movement import MOVES, Play, _sent, read
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import (
-    EMPTY_CHUNK,
-    NO_STATISTICS,
-    TICK_S,
-    JoinScript,
-    Peer,
-    join_server,
     serve,
 )
-from tests.net.test_bot_move import RESPAWN
 
 CONTROL = "control"
 MARKER = "tellraw @s "
 CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
-PERFORM_RESPAWN = 0
-COMMANDS = tree(
-    "gamerule", "tp", "tick", "setblock", "effect", "fill", "kill", "tellraw", "weather", "time"
-)
-TIME_QUERY = "time query gametime"
-FADE_TICKS = 100
-"""How far the fake's game time moves on between two reads: as far as a storm takes to fade."""
-FADE_READS = (TIME_QUERY, TIME_QUERY)
-"""Control reads the game time when the weather is cleared, and once the world has run on."""
 PLAY_TIMEOUT_S = 300.0
 """How long a fake serves a Bot: a play takes about 30 s when the host is idle, and several
 times that under load."""
@@ -94,106 +78,9 @@ HURTS = {
 """Each `tp` after which the fake hurts the Bot, and the ticks between two hits there, as on
 vanilla, by Group: hits that come a tick apart would end a window before the Group's `tp`."""
 KILLS_AFTER = {"player/void": "tp voider "}
-DEATH = "minecraft:player_combat_kill"
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
 """A move's `flags` when the Bot reports it is on the ground."""
-
-
-@dataclass
-class PlayerServer:
-    """A fake server that joins like vanilla and answers Control's markers and the barrier.
-
-    It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch. After a `tp` in `hurts`, it hurts the Bot a tick later, and then once in
-    each of that place's periods, until the next `tp` or `kill`: as on vanilla, a Bot moved or
-    made fresh (`kill`, then respawn) is out of what hurt it.
-    """
-
-    seen: list[Packet] = field(default_factory=list)
-    hurts: Mapping[str, int] = field(default_factory=dict)
-    """Each `tp` after which the fake sends `set_health` and `entity_event`, and the ticks
-    between two of them."""
-    hurting: asyncio.Task[None] | None = None
-    """The task that hurts the Bot, while it is somewhere that hurts."""
-    kills_after: str | None = None
-    """A command after which the fake sends `player_combat_kill`, once."""
-    players: dict[str, Peer] = field(default_factory=dict)
-    """Each connected player's connection, by name."""
-    late: frozenset[str] = frozenset()
-    """The players whose statistics requests are each answered a tick later still."""
-    game_time: int = 0
-    """The game time the next `time query gametime` answers: each answer moves it on by
-    `FADE_TICKS`."""
-
-    async def __call__(self, peer: Peer) -> None:
-        """Serve one connection: a Handler."""
-        with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
-
-    async def _play(self, peer: Peer) -> None:
-        requests = 0
-        hellos = [p for p in self.seen if p.name == "minecraft:hello"]
-        name = str((hellos[-1].fields or {})["name"])
-        self.players[name] = peer
-        try:
-            async for packet in peer.packets():
-                self.seen.append(packet)
-                if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
-                    await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
-                    await peer.send("minecraft:chunk_batch_start")
-                    await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
-                    await peer.send("minecraft:chunk_batch_finished", batch_size=1)
-                elif packet.name == CLIENT_COMMAND:
-                    requests += 1
-                    if (requests - 1) % SYNC_REQUESTS != 0:
-                        await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
-                    if name in self.late:
-                        await asyncio.sleep(TICK_S)
-                    await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
-                elif packet.name == CHAT_COMMAND:
-                    command = str((packet.fields or {})["command"])
-                    await self._command(peer, command)
-        finally:
-            self._stop_hurting()
-
-    async def _command(self, peer: Peer, command: str) -> None:
-        """Answer `command` from `peer`."""
-        if command.startswith(MARKER):
-            token = json.loads(command.removeprefix(MARKER))
-            await peer.write(
-                peer.frame("minecraft:system_chat", content=text(token), overlay=False)
-            )
-        elif command == TIME_QUERY:
-            answer = gametime_answer(self.game_time)
-            self.game_time += FADE_TICKS
-            await peer.write(peer.frame("minecraft:system_chat", content=answer, overlay=False))
-        elif self.kills_after and command.startswith(self.kills_after):
-            victim = self.players[command.split()[1]]
-            await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
-        elif command.startswith(("tp ", "kill ")):
-            self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
-            if command in self.hurts:
-                self.hurting = asyncio.create_task(self._hurt(self.hurts[command]))
-
-    def _stop_hurting(self) -> None:
-        if self.hurting is not None:
-            self.hurting.cancel()
-            self.hurting = None
-
-    async def _hurt(self, period_ticks: int) -> None:
-        """Hurt every player but Control a tick from now, then every `period_ticks` ticks."""
-        delay_s = TICK_S
-        with suppress(ConnectionError):
-            while True:
-                await asyncio.sleep(delay_s)
-                delay_s = period_ticks * TICK_S
-                for name, peer in list(self.players.items()):
-                    if name != CONTROL:
-                        await peer.send(
-                            "minecraft:set_health", health=19.0, food=20, saturation=5.0
-                        )
-                        await peer.send("minecraft:entity_event", entity_id=2, event_id=67)
 
 
 def always_on_time() -> float:
@@ -290,10 +177,6 @@ def test_the_windows_after_a_first_hit_compare_only_what_a_hit_sends() -> None:
     )
 
 
-def opened(*names: str) -> str:
-    return f"{OBSERVE_OPEN} {' '.join(names)}"
-
-
 def test_every_fall_window_is_narrowed_to_the_packets() -> None:
     result = played("player/fall")
 
@@ -319,7 +202,7 @@ def test_the_rules_are_set_before_the_bots_join_and_put_back_after_the_blocks(
     hello = next(
         e.t_ns for e in transcript.events if e.packet.name == "minecraft:hello" and e.bot != CONTROL
     )
-    commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
+    commands = [(t, what) for t, who, what in moves_and_commands(transcript) if who == CONTROL]
     first_tp = next(t for t, what in commands if str(what).startswith("tp control"))
     assert first_tp < hello
     assert result.after[-6:] == (
@@ -454,11 +337,11 @@ def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
 
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
-    for opened, closed in zip(opens[: len(fall_cases())], closes, strict=False):
+    for opened_at, closed in zip(opens[: len(fall_cases())], closes, strict=False):
         flags = [
             int(str((e.packet.fields or {})["flags"])) & ON_GROUND
             for e in transcript.events
-            if e.bot == "faller" and e.packet.name in MOVES and opened <= e.t_ns <= closed
+            if e.bot == "faller" and e.packet.name in MOVES and opened_at <= e.t_ns <= closed
         ]
         assert flags[-1] == ON_GROUND
         assert not any(flags[:-1])

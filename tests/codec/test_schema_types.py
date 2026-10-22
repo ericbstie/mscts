@@ -4,6 +4,7 @@ import uuid
 from typing import cast
 
 import pytest
+from support.wire import read_all, written
 
 from mscts.codec.schema import (
     BOOL,
@@ -32,22 +33,9 @@ from mscts.codec.schema import (
     String,
     WireType,
 )
-from mscts.codec.wire import Reader, WireError, Writer
+from mscts.codec.wire import Reader, WireError
 
 SAMPLE_UUID = uuid.UUID("12345678-1234-5678-1234-567812345678")
-
-
-def written[T](wire_type: WireType[T], value: object) -> bytes:
-    writer = Writer()
-    wire_type.write(writer, value)
-    return writer.to_bytes()
-
-
-def read_all[T](wire_type: WireType[T], data: bytes) -> T:
-    reader = Reader(data)
-    value = wire_type.read(reader)
-    reader.expect_end()
-    return value
 
 
 @pytest.mark.parametrize(("value", "encoded"), [(True, "01"), (False, "00")])

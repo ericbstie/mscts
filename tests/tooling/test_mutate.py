@@ -7,13 +7,12 @@ Hermetic: no real pytest subprocess anywhere (a fake `run`/`run_in_copy`, or a f
 
 import importlib.util
 import json
-import os
-import subprocess
 import types
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+from support.hermetic_git import hermetic_git
 
 _MUTATE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "mutate.py"
 
@@ -559,21 +558,8 @@ def test_parse_batch_spec_raises_on_a_duplicate_id(
 # -- make_copy (a real, throwaway git repo under tmp_path; no network) -----------------
 
 
-def _git(*args: str, cwd: Path) -> None:
-    # Hermetic git: drop every GIT_* variable (under `git rebase -x`, GIT_DIR points at
-    # the real repository, so a test's `git init/config/commit` would write into it), and
-    # pass the identity per command instead of writing any config.
-    env = {key: value for key, value in os.environ.items() if not key.startswith("GIT_")}
-    subprocess.run(
-        ["git", "-c", "user.email=test@example.com", "-c", "user.name=Test", *args],  # noqa: S607
-        cwd=cwd,
-        env=env,
-        check=True,
-    )
-
-
 def _init_repo(root: Path) -> None:
-    _git("init", "-q", cwd=root)
+    hermetic_git("init", "-q", cwd=root)
 
 
 def test_make_copy_copies_tracked_files_including_uncommitted_edits(
@@ -585,8 +571,8 @@ def test_make_copy_copies_tracked_files_including_uncommitted_edits(
     (repo / "a.py").write_text("original\n")
     (repo / "sub").mkdir()
     (repo / "sub" / "b.py").write_text("nested\n")
-    _git("add", "a.py", "sub/b.py", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", "a.py", "sub/b.py", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "a.py").write_text("edited\n")  # uncommitted
 
     dest = tmp_path / "copy"
@@ -605,8 +591,8 @@ def test_make_copy_also_copies_an_untracked_non_ignored_file(
     repo.mkdir()
     _init_repo(repo)
     (repo / "a.py").write_text("original\n")
-    _git("add", "a.py", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", "a.py", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "untracked.py").write_text("never added\n")
 
     dest = tmp_path / "copy"
@@ -623,8 +609,8 @@ def test_make_copy_does_not_copy_a_gitignored_file(
     repo.mkdir()
     _init_repo(repo)
     (repo / ".gitignore").write_text("ignored.py\n")
-    _git("add", ".gitignore", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", ".gitignore", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "ignored.py").write_text("should stay out\n")
 
     dest = tmp_path / "copy"
@@ -642,14 +628,14 @@ def test_make_copy_ignores_a_git_dir_inherited_from_the_environment(
     other.mkdir()
     _init_repo(other)
     (other / "elsewhere.py").write_text("wrong repo\n")
-    _git("add", "elsewhere.py", cwd=other)
-    _git("commit", "-q", "-m", "other", cwd=other)
+    hermetic_git("add", "elsewhere.py", cwd=other)
+    hermetic_git("commit", "-q", "-m", "other", cwd=other)
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo)
     (repo / "a.py").write_text("right repo\n")
-    _git("add", "a.py", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", "a.py", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     monkeypatch.setenv("GIT_DIR", str(other / ".git"))
 
     dest = tmp_path / "copy"
@@ -666,8 +652,8 @@ def test_make_copy_skips_a_tracked_file_deleted_in_the_working_tree(
     repo.mkdir()
     _init_repo(repo)
     (repo / "a.py").write_text("original\n")
-    _git("add", "a.py", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", "a.py", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "a.py").unlink()
 
     dest = tmp_path / "copy"
@@ -686,8 +672,8 @@ def test_run_one_batch_mutation_finds_a_new_untracked_test_file(
     repo.mkdir()
     _init_repo(repo)
     (repo / "a.py").write_text("committed\n")
-    _git("add", "a.py", cwd=repo)
-    _git("commit", "-q", "-m", "initial", cwd=repo)
+    hermetic_git("add", "a.py", cwd=repo)
+    hermetic_git("commit", "-q", "-m", "initial", cwd=repo)
     (repo / "test_new.py").write_text("value = 1\n")  # a new test file, never git add-ed
 
     seen: list[str] = []

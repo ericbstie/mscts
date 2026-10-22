@@ -6,12 +6,12 @@ Also, Pumpkin honours the Fixture world's game rules the Adapter writes (ADR-001
 from pathlib import Path
 
 import pytest
+from support.block_probe import at_block
+from support.control import SETBLOCK
 from support.reference import booted
 
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.codec.packets import Packet
-from mscts.codec.schema import POSITION
-from mscts.codec.wire import Reader
 from mscts.group import GroupContext
 from mscts.net import Endpoint
 from mscts.transcript import Transcript
@@ -19,13 +19,6 @@ from mscts.transcript import Transcript
 pytestmark = pytest.mark.candidate
 
 _TIMEOUT_S = 10.0
-BLOCK = {"x": 1, "y": -60, "z": 1}
-SETBLOCK = "setblock 1 -60 1 minecraft:stone"
-
-
-def at_block(packet: Packet) -> bool:
-    """Whether a `block_update` is for BLOCK: its payload starts with the position."""
-    return POSITION.read(Reader(packet.payload)) == BLOCK
 
 
 async def set_a_block(endpoint: Endpoint, transcript: Transcript) -> tuple[Packet, ...]:

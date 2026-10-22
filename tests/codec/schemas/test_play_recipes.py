@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from support.narrow import dict_list
+from support.recipes import BOOK_ADD, CRAFTING_TABLE, RECIPE_DISPLAYS
 
 from mscts.codec.packets import Codec, CodecError, Direction, Packet, State
 from mscts.codec.wire import Writer
@@ -28,21 +30,18 @@ def recorded(file: str) -> Packet:
     return CODEC.decode(State.PLAY, CLIENTBOUND, _framed((DATA / file).read_bytes()))
 
 
-def _list(value: object) -> list[dict[str, object]]:
-    assert isinstance(value, list)
-    return cast("list[dict[str, object]]", value)
-
-
 @pytest.mark.parametrize("file", BOOTS)
 def test_a_recorded_join_decodes_and_encodes_byte_for_byte(file: str) -> None:
     packet = recorded(file)
 
     fields = packet.fields
     assert fields is not None
-    sets = {entry["property_set_id"]: entry["items"] for entry in _list(fields["property_sets"])}
+    sets = {
+        entry["property_set_id"]: entry["items"] for entry in dict_list(fields["property_sets"])
+    }
     assert len(sets) == 9
     assert len(cast("list[int]", sets["minecraft:furnace_input"])) == 163
-    stonecutter = _list(fields["stonecutter_recipes"])
+    stonecutter = dict_list(fields["stonecutter_recipes"])
     assert len(stonecutter) == 351
     assert stonecutter[0] == {
         "ingredients": {"ids": [6]},
@@ -141,25 +140,9 @@ def test_a_slot_display_of_no_known_type_is_refused() -> None:
 
 
 SERVERBOUND = Direction.SERVERBOUND
-BOOK_ADD = "minecraft:recipe_book_add"
 JOIN_BOOK = "vanilla-26.3-join-recipe_book_add.bin"
 """The second `recipe_book_add` a fresh vanilla 26.3 Instance sent a joining player (#62): the
 crafting table, which every new player knows."""
-NO_COMPONENTS = {"added": [], "removed": []}
-PLANKS = {"type": "minecraft:tag", "value": {"tag": "minecraft:planks"}}
-CRAFTING_TABLE = {
-    "type": "minecraft:crafting_shaped",
-    "value": {
-        "width": 2,
-        "height": 2,
-        "ingredients": [PLANKS] * 4,
-        "result": {
-            "type": "minecraft:item_stack",
-            "value": {"item": 405, "count": 1, "components": NO_COMPONENTS},
-        },
-        "crafting_station": {"type": "minecraft:item", "value": 405},
-    },
-}
 
 
 def _encoded(direction: Direction, name: str, payload: bytes) -> bytes:
@@ -189,52 +172,6 @@ def test_the_recipe_book_a_joining_player_gets_decodes_and_encodes_byte_for_byte
     assert CODEC.encode(State.PLAY, CLIENTBOUND, BOOK_ADD, fields) == _encoded(
         CLIENTBOUND, BOOK_ADD, payload
     )
-
-
-ITEM_7 = {"type": "minecraft:item", "value": 7}
-RECIPE_DISPLAYS = {
-    "crafting_shapeless": (
-        {
-            "type": "minecraft:crafting_shapeless",
-            "value": {"ingredients": [ITEM_7], "result": ITEM_7, "crafting_station": ITEM_7},
-        },
-        b"\x00\x01\x04\x07\x04\x07\x04\x07",
-    ),
-    "furnace": (
-        {
-            "type": "minecraft:furnace",
-            "value": {
-                "ingredient": ITEM_7,
-                "fuel": {"type": "minecraft:any_fuel", "value": None},
-                "result": ITEM_7,
-                "crafting_station": ITEM_7,
-                "duration": 200,
-                "experience": 0.5,
-            },
-        },
-        b"\x02\x04\x07\x01\x04\x07\x04\x07\xc8\x01\x3f\x00\x00\x00",
-    ),
-    "stonecutter": (
-        {
-            "type": "minecraft:stonecutter",
-            "value": {"input": ITEM_7, "result": ITEM_7, "crafting_station": ITEM_7},
-        },
-        b"\x03\x04\x07\x04\x07\x04\x07",
-    ),
-    "smithing": (
-        {
-            "type": "minecraft:smithing",
-            "value": {
-                "template": ITEM_7,
-                "base": ITEM_7,
-                "addition": ITEM_7,
-                "result": ITEM_7,
-                "crafting_station": ITEM_7,
-            },
-        },
-        b"\x04" + b"\x04\x07" * 5,
-    ),
-}
 
 
 @pytest.mark.parametrize(("display", "data"), RECIPE_DISPLAYS.values(), ids=RECIPE_DISPLAYS.keys())

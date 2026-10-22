@@ -4,6 +4,13 @@ from collections.abc import Mapping
 from dataclasses import replace
 
 import pytest
+from support.report_builders import (
+    divergent_field,
+    group_result,
+    listed_verdict,
+    report_of,
+    report_verdict,
+)
 
 import mscts.compare
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
@@ -14,7 +21,6 @@ from mscts.run import GroupError, judge
 from mscts.stats import Spread
 from mscts.transcript import Transcript
 from tests.compare.build import GROUP, packet, transcript
-from tests.test_report import _field, _listed, _report, _result, _verdict
 
 
 def _compared(*names: str, group_id: str = "status/basic") -> Verdict:
@@ -23,9 +29,9 @@ def _compared(*names: str, group_id: str = "status/basic") -> Verdict:
 
 
 def test_each_compared_test_case_of_each_group_has_a_result_in_play_order() -> None:
-    report = _report(
-        _result(_compared("b", "a")),
-        _result(_verdict(_field("c"), group_id="status/ping")),
+    report = report_of(
+        group_result(_compared("b", "a")),
+        group_result(report_verdict(divergent_field("c"), group_id="status/ping")),
     )
     assert report_lines(report) == (
         CaseResult("status/basic", "a", LineResult.PASS),
@@ -35,7 +41,7 @@ def test_each_compared_test_case_of_each_group_has_a_result_in_play_order() -> N
 
 
 def test_test_cases_compared_in_different_repetitions_are_listed_once_and_sorted() -> None:
-    report = _report(_result(_compared("b"), _compared("a", "b")))
+    report = report_of(group_result(_compared("b"), _compared("a", "b")))
     assert report_lines(report) == (
         CaseResult("status/basic", "a", LineResult.PASS),
         CaseResult("status/basic", "b", LineResult.PASS),
@@ -43,14 +49,20 @@ def test_test_cases_compared_in_different_repetitions_are_listed_once_and_sorted
 
 
 def test_a_test_case_that_differs_in_any_repetition_fails() -> None:
-    report = _report(_result(_compared("a"), _verdict(_field("a")), _compared("a")))
+    report = report_of(
+        group_result(_compared("a"), report_verdict(divergent_field("a")), _compared("a"))
+    )
     assert report_lines(report) == (CaseResult("status/basic", "a", LineResult.FAIL),)
 
 
 def test_a_compared_test_case_that_differs_only_in_network_traffic_passes_and_says_so() -> None:
-    traffic = _listed(_field("a", traffic=True))
-    mixed = _verdict(_field("b", traffic=True), replace(_field("b"), index=1))
-    assert report_lines(_report(_result(traffic), _result(replace(mixed, group_id="x/y")))) == (
+    traffic = listed_verdict(divergent_field("a", traffic=True))
+    mixed = report_verdict(
+        divergent_field("b", traffic=True), replace(divergent_field("b"), index=1)
+    )
+    assert report_lines(
+        report_of(group_result(traffic), group_result(replace(mixed, group_id="x/y")))
+    ) == (
         CaseResult("status/basic", "a", LineResult.PASS, network_traffic_only=True),
         CaseResult("x/y", "b", LineResult.FAIL),
     )
@@ -58,7 +70,7 @@ def test_a_compared_test_case_that_differs_only_in_network_traffic_passes_and_sa
 
 def test_a_blocked_group_is_one_failing_line_that_was_not_tested() -> None:
     blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite status/basic was not run")
-    assert report_lines(_report(_result(blocked, blocked))) == (
+    assert report_lines(report_of(group_result(blocked, blocked))) == (
         GroupLine(
             "join/basic",
             LineResult.NOT_TESTED,
@@ -72,10 +84,10 @@ def test_a_failed_prerequisite_fails_each_test_case_the_group_has_in_any_repetit
     # never played, fails each, as if it had sent every value wrong.
     what = "prerequisite status/basic was mismatch"
     failed = replace(FAILED, bot="", candidate=what)
-    unplayed = replace(_verdict(failed, group_id="join/basic"), test_cases=("a",))
+    unplayed = replace(report_verdict(failed, group_id="join/basic"), test_cases=("a",))
     passed = _compared("a", "b", group_id="join/basic")
 
-    assert report_lines(_report(_result(unplayed, passed))) == (
+    assert report_lines(report_of(group_result(unplayed, passed))) == (
         CaseResult("join/basic", "a", LineResult.FAIL),
         CaseResult("join/basic", "b", LineResult.FAIL),
         GroupLine("join/basic", LineResult.FAIL, f"Candidate failed: {what}"),
@@ -89,7 +101,7 @@ def test_a_blocked_verdict_fails_no_test_case() -> None:
     )
     passed = _compared("a", group_id="join/basic")
 
-    assert report_lines(_report(_result(blocked, passed))) == (
+    assert report_lines(report_of(group_result(blocked, passed))) == (
         CaseResult("join/basic", "a", LineResult.PASS),
         GroupLine("join/basic", LineResult.NOT_TESTED, "Not tested: prerequisite x was not run"),
     )
@@ -97,7 +109,7 @@ def test_a_blocked_verdict_fails_no_test_case() -> None:
 
 def test_an_error_group_is_one_line_left_out_of_the_score() -> None:
     error = Verdict("status/basic", Outcome.ERROR, detail="the Reference did not start")
-    assert report_lines(_report(_result(error))) == (
+    assert report_lines(report_of(group_result(error))) == (
         GroupLine("status/basic", LineResult.ERROR, "Error: the Reference did not start"),
     )
 
@@ -107,22 +119,22 @@ FAILED = Divergence("joiner", 0, "failed", "", None, ABSENT, "disconnected", "")
 
 
 def test_a_candidate_failure_fails_its_group_and_each_of_its_test_cases() -> None:
-    verdict = replace(_verdict(FAILED, group_id="join/basic"), test_cases=("a",))
+    verdict = replace(report_verdict(FAILED, group_id="join/basic"), test_cases=("a",))
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
     blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
     reasons = (
         "Candidate failed: disconnected; Error: vanilla stopped; "
         "Not tested: prerequisite x was not run"
     )
-    assert report_lines(_report(_result(verdict, error, blocked))) == (
+    assert report_lines(report_of(group_result(verdict, error, blocked))) == (
         CaseResult("join/basic", "a", LineResult.FAIL),
         GroupLine("join/basic", LineResult.FAIL, reasons),
     )
 
 
 def test_a_candidate_failure_fails_the_test_cases_of_the_groups_other_repetitions() -> None:
-    failed = _verdict(FAILED)  # no test case: the Group was not compared in this one (#262)
-    report = _report(_result(_compared("a", "b"), failed, _compared("a")))
+    failed = report_verdict(FAILED)  # no test case: the Group was not compared in this one (#262)
+    report = report_of(group_result(_compared("a", "b"), failed, _compared("a")))
     assert report_lines(report) == (
         CaseResult("status/basic", "a", LineResult.FAIL),
         CaseResult("status/basic", "b", LineResult.FAIL),
@@ -131,8 +143,8 @@ def test_a_candidate_failure_fails_the_test_cases_of_the_groups_other_repetition
 
 
 def test_a_candidate_failure_fails_a_test_case_that_differs_only_in_network_traffic() -> None:
-    traffic = replace(_verdict(_field("a", traffic=True)), test_cases=("a", "b"))
-    report = _report(_result(traffic, _verdict(FAILED)))
+    traffic = replace(report_verdict(divergent_field("a", traffic=True)), test_cases=("a", "b"))
+    report = report_of(group_result(traffic, report_verdict(FAILED)))
     assert report_lines(report) == (
         CaseResult("status/basic", "a", LineResult.FAIL, network_traffic_only=False),
         CaseResult("status/basic", "b", LineResult.FAIL),
@@ -141,8 +153,8 @@ def test_a_candidate_failure_fails_a_test_case_that_differs_only_in_network_traf
 
 
 def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line() -> None:
-    failed = _verdict(FAILED)
-    assert report_lines(_report(_result(failed, failed))) == (
+    failed = report_verdict(FAILED)
+    assert report_lines(report_of(group_result(failed, failed))) == (
         GroupLine("status/basic", LineResult.FAIL, "Candidate failed: disconnected"),
     )
 
@@ -150,13 +162,13 @@ def test_a_candidate_failure_in_every_repetition_with_no_test_case_is_one_line()
 def test_a_group_that_was_not_tested_and_errored_is_not_tested() -> None:
     error = Verdict("join/basic", Outcome.ERROR, detail="vanilla stopped")
     blocked = Verdict("join/basic", Outcome.BLOCKED, detail="prerequisite x was not run")
-    [line] = report_lines(_report(_result(error, blocked)))
+    [line] = report_lines(report_of(group_result(error, blocked)))
     assert line.result is LineResult.NOT_TESTED
 
 
 def test_a_bot_difference_fails_its_group() -> None:
     bot = Divergence("status", 0, "bot", "", None, 4, 3, "")
-    [line] = report_lines(_report(_result(_verdict(bot))))
+    [line] = report_lines(report_of(group_result(report_verdict(bot))))
     assert line == GroupLine(
         "status/basic",
         LineResult.FAIL,
@@ -166,7 +178,7 @@ def test_a_bot_difference_fails_its_group() -> None:
 
 def test_a_bot_only_one_side_had_exchanged_no_packets_with_the_other() -> None:
     bot = Divergence("status", 0, "bot", "", None, 4, ABSENT, "")
-    [line] = report_lines(_report(_result(_verdict(bot))))
+    [line] = report_lines(report_of(group_result(report_verdict(bot))))
     assert isinstance(line, GroupLine)
     assert line.reasons.endswith("4 packets with the Reference, 0 with the Candidate")
 
@@ -204,7 +216,7 @@ def test_replacing_a_compound_field_scores_no_higher_than_sending_each_leaf_wron
 
     def score(fields: Mapping[str, object]) -> float:
         verdict = compare(play("x/a", compound), play("x/a", fields), ())
-        result = totals(report_lines(_report(_result(passing), _result(verdict)))).score
+        result = totals(report_lines(report_of(group_result(passing), group_result(verdict)))).score
         assert result is not None
         return result
 
@@ -223,7 +235,9 @@ def test_replacing_a_compound_of_empty_ones_scores_no_higher_than_filling_them_w
             ),
             (),
         )
-        lines = report_lines(_report(_result(compare(passing, passing, ())), _result(verdict)))
+        lines = report_lines(
+            report_of(group_result(compare(passing, passing, ())), group_result(verdict))
+        )
         result = totals(lines).score
         assert result is not None
         return result
@@ -242,7 +256,7 @@ def test_the_leaves_of_a_replaced_compound_fail_and_its_siblings_do_not() -> Non
         transcript(("alice", packet("minecraft:foo", fields={"a": 0, "ab": 2})), group_id="x/a"),
         (),
     )
-    assert report_lines(_report(_result(verdict))) == (
+    assert report_lines(report_of(group_result(verdict))) == (
         CaseResult("x/a", "foo.a", LineResult.FAIL),
         CaseResult("x/a", "foo.a.b", LineResult.FAIL),
         CaseResult("x/a", "foo.ab", LineResult.PASS),
@@ -258,7 +272,7 @@ def test_a_list_replaced_by_a_scalar_fails_each_of_its_elements_test_cases() -> 
         transcript(("alice", packet("minecraft:foo", fields={"a": 0, "ab": 2})), group_id="x/a"),
         (),
     )
-    assert report_lines(_report(_result(verdict))) == (
+    assert report_lines(report_of(group_result(verdict))) == (
         CaseResult("x/a", "foo.a", LineResult.FAIL),
         CaseResult("x/a", "foo.a[].b", LineResult.FAIL),
         CaseResult("x/a", "foo.ab", LineResult.PASS),
@@ -295,7 +309,9 @@ def test_a_chunk_packet_left_out_fails_each_of_its_fields() -> None:
     assert missing.reference == "chunk 3 4"
 
     lines = [
-        line for line in report_lines(_report(_result(verdict))) if isinstance(line, CaseResult)
+        line
+        for line in report_lines(report_of(group_result(verdict)))
+        if isinstance(line, CaseResult)
     ]
     light = [line for line in lines if line.test_case.startswith("light_update")]
     assert len(light) > 1
@@ -303,9 +319,9 @@ def test_a_chunk_packet_left_out_fails_each_of_its_fields() -> None:
 
 
 def test_a_compound_sent_in_another_format_marks_only_its_own_test_case() -> None:
-    traffic = replace(_field("x.a", traffic=True), reference={"b": 1}, candidate="b")
-    verdict = replace(_verdict(traffic), test_cases=("x.a", "x.a.b"))
-    assert report_lines(_report(_result(verdict))) == (
+    traffic = replace(divergent_field("x.a", traffic=True), reference={"b": 1}, candidate="b")
+    verdict = replace(report_verdict(traffic), test_cases=("x.a", "x.a.b"))
+    assert report_lines(report_of(group_result(verdict))) == (
         CaseResult("status/basic", "x.a", LineResult.PASS, network_traffic_only=True),
         CaseResult("status/basic", "x.a.b", LineResult.PASS),
     )
@@ -328,7 +344,7 @@ def test_leaving_a_packet_out_or_crashing_scores_no_higher_than_sending_it_wrong
     crashed = replace(left_out, divergences=(failed, *left_out.divergences))
 
     def score(verdict: Verdict) -> float:
-        result = totals(report_lines(_report(_result(passing), _result(verdict)))).score
+        result = totals(report_lines(report_of(group_result(passing), group_result(verdict)))).score
         assert result is not None
         return result
 
@@ -345,7 +361,7 @@ def test_the_fields_of_a_packet_left_out_fail() -> None:
         transcript(("alice", packet("minecraft:bar", fields={})), group_id="x/a"),
         (),
     )
-    lines = report_lines(_report(_result(left_out)))
+    lines = report_lines(report_of(group_result(left_out)))
     assert {line.test_case: line.result for line in lines if isinstance(line, CaseResult)} == {
         "bar": LineResult.FAIL,
         "foo": LineResult.FAIL,
@@ -363,7 +379,7 @@ def test_a_packet_the_candidate_sent_undecodable_fails_each_field_of_the_referen
         (),
     )
 
-    lines = report_lines(_report(_result(verdict)))
+    lines = report_lines(report_of(group_result(verdict)))
     assert {line.test_case: line.result for line in lines if isinstance(line, CaseResult)} == {
         "foo": LineResult.FAIL,
         "foo.a.b": LineResult.FAIL,
@@ -381,7 +397,7 @@ def test_a_packet_only_the_candidate_sent_fails_its_own_test_case_alone() -> Non
         (),
     )
 
-    lines = report_lines(_report(_result(verdict)))
+    lines = report_lines(report_of(group_result(verdict)))
     assert {line.test_case: line.result for line in lines if isinstance(line, CaseResult)} == {
         "foo": LineResult.FAIL,
         "foo.a": LineResult.PASS,
@@ -404,7 +420,7 @@ def test_failing_a_whole_group_scores_no_higher_than_sending_each_value_wrong() 
 
     def score(candidate: Transcript | GroupError) -> float:
         verdict = judge(group, reference, candidate)
-        result = totals(report_lines(_report(_result(passing), _result(verdict)))).score
+        result = totals(report_lines(report_of(group_result(passing), group_result(verdict)))).score
         assert result is not None
         return result
 
@@ -427,7 +443,7 @@ def _slot_lines(state_id: int) -> tuple[Line, ...]:
         return transcript(("alice", packet("minecraft:container_set_slot", fields=fields)))
 
     verdict = compare(play(SLOT), play({**SLOT, "window_id": 2, "state_id": state_id}), ())
-    return report_lines(_report(_result(verdict)))
+    return report_lines(report_of(group_result(verdict)))
 
 
 @pytest.mark.parametrize("state_id", [5, 9], ids=["equal", "different"])
@@ -440,9 +456,9 @@ def test_a_field_that_shows_only_network_traffic_never_counts_toward_the_score(
 
 def test_a_test_case_a_gameplay_divergence_names_is_scored_even_if_not_listed() -> None:
     # Mutant R3 of #330: only a test case that network traffic alone names is not scored.
-    mixed = (_field("b", traffic=True), replace(_field("b"), index=1))
+    mixed = (divergent_field("b", traffic=True), replace(divergent_field("b"), index=1))
     verdict = Verdict("status/basic", Outcome.MISMATCH, mixed, test_cases=())
-    assert report_lines(_report(_result(verdict))) == (
+    assert report_lines(report_of(group_result(verdict))) == (
         CaseResult("status/basic", "b", LineResult.FAIL),
     )
 
@@ -470,8 +486,8 @@ def test_a_candidate_failure_leaves_a_test_case_no_compared_pair_names_not_score
         )
 
     traffic = compare(play(SLOT), play({**SLOT, "state_id": 9}), ())
-    crashed = replace(_verdict(FAILED, group_id=GROUP), test_cases=traffic.test_cases)
-    lines = report_lines(_report(_result(traffic, crashed)))
+    crashed = replace(report_verdict(FAILED, group_id=GROUP), test_cases=traffic.test_cases)
+    lines = report_lines(report_of(group_result(traffic, crashed)))
     assert [(line.test_case, line.result) for line in lines if isinstance(line, CaseResult)] == [
         ("container_set_slot.slot", LineResult.FAIL),
         ("container_set_slot.slot_data.count", LineResult.FAIL),
@@ -508,7 +524,7 @@ def test_a_rejected_sample_name_fails_only_itself_not_the_names_under_it() -> No
         (_rejected("spawn"),),
         test_cases=("spawn", "spawn.distance"),
     )
-    assert report_lines(_report(_result(verdict))) == (
+    assert report_lines(report_of(group_result(verdict))) == (
         CaseResult("spawn/join", "spawn", LineResult.FAIL),
         CaseResult("spawn/join", "spawn.distance", LineResult.PASS),
     )

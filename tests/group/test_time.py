@@ -16,6 +16,9 @@ from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 
+from support.control import CODEC, text, tree
+from support.moves import Play, opened, read
+
 from mscts.bot import SYNC_REQUESTS, offline_uuid
 from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
@@ -25,8 +28,6 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.spec import ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import CODEC, text, tree
-from tests.group.test_movement import Play, read
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server, serve
 
 CONTROL, CLOCK, SLEEPER = "control", "clock", "sleeper"
@@ -252,10 +253,6 @@ def play(group_id: str, *, clocked: bool = False) -> tuple[Transcript, Play]:
 
 def played(group_id: str) -> Play:
     return play(group_id)[1]
-
-
-def opened(*names: str) -> str:
-    return f"{OBSERVE_OPEN} {' '.join(names)}"
 
 
 def marks(transcript: Transcript, test: Callable[[str], bool]) -> list[int]:

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import override
 
 import pytest
-from support.pumpkin import ASSET_URL, COMMIT, FakeGitHub, fake_pumpkin, refs
+from support.pumpkin import ASSET_URL, COMMIT, FakeGitHub, fake_pumpkin, refs, root_of
 
 from mscts.adapters.base import (
     Build,
@@ -26,10 +26,6 @@ NIGHTLY = fake_pumpkin()
 SHA256 = hashlib.sha256(NIGHTLY).hexdigest()
 ADAPTER = PumpkinAdapter()
 OTHER = "8f3c2a1d00000000000000000000000000000000"
-
-
-def root_of(cache: Path) -> Path:
-    return cache / "pumpkin/26.3"
 
 
 def recorded(cache: Path) -> dict[str, object]:

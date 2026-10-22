@@ -14,6 +14,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import CODEC, chat, tree
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Direction, Packet
@@ -26,7 +27,6 @@ from mscts.target import TARGET
 from mscts.transcript import Transcript
 from tests.compare.build import packet as built_packet
 from tests.compare.build import transcript as built_transcript
-from tests.group.test_control import CODEC, chat, tree
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server, serve
 
 CONTROL = "control"

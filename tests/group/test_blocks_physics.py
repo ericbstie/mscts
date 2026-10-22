@@ -5,55 +5,20 @@ Marks (the Observation windows and the ticks stepped). What a server answers is 
 the fake answers Control's markers and the barrier.
 """
 
-from dataclasses import dataclass
-
 import pytest
+from support.control import ControlServer, playing, tree
+from support.control_play import Play, Window, control_commands
 
-from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group import test_control
-from tests.group.test_control import CHAT_COMMAND, MARKER, ControlServer, playing, tree
 
 GRAVITY, SUPPORT = "blocks/gravity", "blocks/support"
 GROUP_IDS = (GRAVITY, SUPPORT)
 COMMANDS = tree("gamerule", "tp", "tick", "setblock", "fill", "kill", "tellraw")
-CONTROL = "control"
 KILL_ITEMS = "kill @e[type=minecraft:item]"
 STEP = "tick step 1"
-
-
-@dataclass(frozen=True)
-class Window:
-    """One Observation window: its open Mark, Control's commands before it and in it, its ticks."""
-
-    label: str
-    before: tuple[str, ...]
-    commands: tuple[str, ...]
-    ticks: int
-
-
-@dataclass(frozen=True)
-class Play:
-    """A played Group: its windows, and Control's commands before the first and after the last."""
-
-    windows: tuple[Window, ...]
-    first: tuple[str, ...]
-    after: tuple[str, ...]
-
-
-def _commands(transcript: Transcript) -> list[tuple[int, str]]:
-    """Control's commands with when, but its markers."""
-    commands = [
-        (event.t_ns, str((event.packet.fields or {})["command"]))
-        for event in transcript.events
-        if event.bot == CONTROL
-        and event.packet.direction is Direction.SERVERBOUND
-        and event.packet.name == CHAT_COMMAND
-    ]
-    return [(t_ns, command) for t_ns, command in commands if not command.startswith(MARKER)]
 
 
 def read(transcript: Transcript) -> Play:
@@ -64,7 +29,7 @@ def read(transcript: Transcript) -> Play:
     ticks = [
         m.t_ns for m in transcript.marks if m.label.startswith(TICK_MARK) and " " not in m.label
     ]
-    control = _commands(transcript)
+    control = control_commands(transcript)
     windows, previous = [], 0
     for opened, closed in zip(opens, closes, strict=True):
         windows.append(
@@ -95,12 +60,7 @@ async def play(group_id: str) -> Play:
     return _PLAYS[group_id]
 
 
-@pytest.fixture(autouse=True)
-def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
-
-
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.usefixtures("long_play")]
 
 
 # Both Groups

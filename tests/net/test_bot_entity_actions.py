@@ -11,6 +11,17 @@ import uuid
 from collections.abc import Awaitable, Callable, Mapping
 
 import pytest
+from support.bot_join import (
+    CODEC,
+    LOGIN,
+    PUNCH,
+    RESPAWN,
+    TICK_END,
+    TICK_PACKETS,
+    Sent,
+    joined,
+    ticks_sent,
+)
 
 from mscts.bot import Bot
 from mscts.codec.packets import Packet
@@ -26,17 +37,6 @@ from tests.net.fakes import (
     join_server,
     status_server,
     with_bot,
-)
-from tests.net.test_bot_blocks import PUNCH
-from tests.net.test_bot_move import (
-    CODEC,
-    LOGIN,
-    RESPAWN,
-    TICK_END,
-    TICK_PACKETS,
-    Sent,
-    joined,
-    ticks_sent,
 )
 
 NAMES = TICK_PACKETS | {"minecraft:attack", "minecraft:interact", "minecraft:punch"}

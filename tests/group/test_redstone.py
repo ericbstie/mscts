@@ -9,14 +9,12 @@ from dataclasses import dataclass
 from typing import override
 
 import pytest
+from support.control import ControlServer, tree
+from support.control_play import Play, replay
+from support.gametime import gametime_answer
 
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
-from mscts.transcript import Transcript
-from tests.group import test_control
-from tests.group.test_control import ControlServer, playing, tree
-from tests.group.test_entities_items import Play, read
-from tests.group.test_mobs_pathfinding import gametime_answer
 from tests.net.fakes import Peer
 
 REPEATER = "redstone/repeater"
@@ -59,14 +57,6 @@ class ClockServer(ControlServer):
         return peer.frame("minecraft:system_chat", content=answer, overlay=False)
 
 
-async def replay(group_id: str, server: ControlServer) -> Play:
-    """Play `group_id` against `server`; return what was read from its Transcript."""
-    transcript = Transcript(group_id=group_id, server="fake")
-    async with playing(server, transcript) as context:
-        await GROUPS[group_id].run(context)
-    return read(transcript)
-
-
 _PLAYS: dict[str, Play] = {}
 """Each Group's play against a default fake server; no test changes it."""
 
@@ -78,12 +68,7 @@ async def play(group_id: str) -> Play:
     return _PLAYS[group_id]
 
 
-@pytest.fixture(autouse=True)
-def long_play(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(test_control, "PLAY_TIMEOUT_S", 280.0)
-
-
-pytestmark = pytest.mark.timeout(300)
+pytestmark = [pytest.mark.timeout(300), pytest.mark.usefixtures("long_play")]
 
 
 def steps(ticks: int) -> tuple[str, ...]:

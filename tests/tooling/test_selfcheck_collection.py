@@ -4,31 +4,16 @@ Each test runs a small suite inline, with the same hook the tier's `tests/selfch
 imports, so registering a Group is the only thing that adds a test.
 """
 
-from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from support.groups import nothing
 
 import mscts.groups  # noqa: F401 - registers the shipped Groups
-from mscts import group as group_module
-from mscts.group import GROUPS, GroupContext, group
+from mscts.group import GROUPS, group
 
 CONFTEST = "from support.selfcheck import pytest_generate_tests  # noqa: F401\n"
 TEST = "def test_selfcheck(group_id):\n    pass\n"
-
-
-async def _nothing(_: GroupContext) -> None:
-    pass
-
-
-@pytest.fixture
-def registering() -> Iterator[None]:
-    """Let a test register Groups; forget them afterwards, so no other test sees them."""
-    registered = group_module._REGISTERED  # noqa: SLF001 - undo what the test registered
-    before = dict(registered)
-    yield
-    registered.clear()
-    registered.update(before)
 
 
 @pytest.fixture
@@ -43,7 +28,7 @@ def suite(pytester: pytest.Pytester) -> pytest.Pytester:
 
 @pytest.mark.usefixtures("registering")
 def test_registering_a_group_adds_one_test_named_by_its_id(suite: pytest.Pytester) -> None:
-    group("fake/added")(_nothing)
+    group("fake/added")(nothing)
 
     result = suite.runpytest("--collect-only", "-q")
 

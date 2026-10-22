@@ -10,14 +10,10 @@ number (`BlockStatePredictionHandler.startPredicting`); cancelling and releasing
 from collections.abc import Awaitable, Callable, Mapping
 
 import pytest
-
-from mscts.bot import Bot, Face
-from mscts.net import ProtocolError
-from mscts.transcript import Transcript
-from tests.net.fakes import SPAWN, status_server, with_bot
-from tests.net.test_bot_move import (
+from support.bot_join import (
     CODEC,
     LOGIN,
+    PUNCH,
     RESPAWN,
     TICK_END,
     TICK_PACKETS,
@@ -25,6 +21,11 @@ from tests.net.test_bot_move import (
     joined,
     ticks_sent,
 )
+
+from mscts.bot import Bot, Face
+from mscts.net import ProtocolError
+from mscts.transcript import Transcript
+from tests.net.fakes import SPAWN, status_server, with_bot
 
 ACTION_PACKETS = frozenset(
     {
@@ -40,7 +41,6 @@ NAMES = TICK_PACKETS | ACTION_PACKETS
 START, ABORT, STOP, RELEASE = 0, 2, 3, 6
 BLOCK = {"x": 3, "y": -61, "z": -2}
 ORIGIN = {"x": 0, "y": 0, "z": 0}
-PUNCH = ("minecraft:punch", {})
 
 
 def acts(

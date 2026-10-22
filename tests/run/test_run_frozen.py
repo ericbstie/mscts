@@ -4,6 +4,8 @@ import functools
 from pathlib import Path
 
 import pytest
+from support.control import ControlServer, commands_sent, tree
+from support.report_builders import report_of
 
 from mscts import run as run_module
 from mscts.compare import Outcome, Verdict
@@ -11,9 +13,7 @@ from mscts.group import Group, GroupContext, GroupKind
 from mscts.net import Endpoint
 from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
 from mscts.run import GroupResult, run
-from tests.group.test_control import ControlServer, commands_sent, tree
 from tests.run.occupancy import attached
-from tests.test_report import _report
 
 GROUP_TIMEOUT_S = 0.5
 """Each Bot operation's bound here: short, since the frozen side never answers its unfreeze."""
@@ -125,7 +125,7 @@ async def test_a_candidate_left_frozen_fails_each_test_case_of_the_references_pl
     played = await _reference_test_cases(tmp_path / "reference")
 
     assert verdict.test_cases == played
-    lines = report_lines(_report(GroupResult(JOINS.id, (verdict,), (), ())))
+    lines = report_lines(report_of(GroupResult(JOINS.id, (verdict,), (), ())))
     what = f"{STAYS_FROZEN.id} left its world frozen"
     assert lines[-1] == GroupLine(JOINS.id, LineResult.FAIL, f"Candidate failed: {what}")
     assert totals(lines) == Totals(passed=0, failed=len(played) + 1, not_tested=0, errors=0)

@@ -12,6 +12,9 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
+from support.bot_join import RESPAWN
+from support.control import CODEC, text, tree
+from support.moves import Play, read
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Packet
@@ -21,8 +24,6 @@ from mscts.groups import combat_damage
 from mscts.groups.combat_damage import Source
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import CODEC, text, tree
-from tests.group.test_movement import Play, read
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -32,7 +33,6 @@ from tests.net.fakes import (
     join_server,
     serve,
 )
-from tests.net.test_bot_move import RESPAWN
 
 CONTROL = "control"
 VICTIM = "victim"

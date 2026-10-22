@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import cast
 
 import pytest
+from support.wire import string
 
 from mscts.codec.packets import Codec, CodecError, Direction, State
 from mscts.codec.registry_names import registry_names
@@ -78,10 +79,6 @@ def node(**fields: object) -> dict[str, object]:
         "suggestions_type": None,
     }
     return blank | fields
-
-
-def string(text: str) -> bytes:
-    return bytes([len(text)]) + text.encode()
 
 
 def round_trip(data: bytes, value: dict[str, object]) -> None:

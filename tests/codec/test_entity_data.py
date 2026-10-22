@@ -6,6 +6,7 @@ The hex payloads are built by hand from the `StreamCodec` layouts, not produced 
 import uuid
 
 import pytest
+from support.wire import read_all, written
 
 from mscts.codec.entity_data import (
     OPTIONAL_BLOCK_STATE,
@@ -15,22 +16,9 @@ from mscts.codec.entity_data import (
     RESOLVABLE_PROFILE,
 )
 from mscts.codec.schema import WireType
-from mscts.codec.wire import Reader, WireError, Writer
+from mscts.codec.wire import WireError
 
 SAMPLE_UUID = uuid.UUID("12345678-1234-5678-1234-567812345678")
-
-
-def written[T](wire_type: WireType[T], value: object) -> bytes:
-    writer = Writer()
-    wire_type.write(writer, value)
-    return writer.to_bytes()
-
-
-def read_all[T](wire_type: WireType[T], data: bytes) -> T:
-    reader = Reader(data)
-    value = wire_type.read(reader)
-    reader.expect_end()
-    return value
 
 
 # Optional block state: a VarInt block state id, 0 meaning none (EntityDataSerializers$2).

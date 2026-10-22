@@ -9,10 +9,11 @@ import copy
 from pathlib import Path
 from typing import cast
 
+from support.compared import verdict_of
+
 from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.wire import Writer
-from mscts.compare import MASKED, RANDOM_FIELDS, Divergence, Outcome, Verdict, compare
-from tests.compare.build import transcript
+from mscts.compare import MASKED, RANDOM_FIELDS, Divergence, Outcome
 
 CODEC = Codec.load("26.3")
 CLIENTBOUND = Direction.CLIENTBOUND
@@ -39,10 +40,6 @@ def _with_obtained(obtained: list[list[int | None]]) -> Packet:
     return CODEC.decode(State.PLAY, CLIENTBOUND, data)
 
 
-def _verdict(reference: Packet, candidate: Packet) -> Verdict:
-    return compare(transcript(("alice", reference)), transcript(("alice", candidate)), [])
-
-
 def _paths(divergences: tuple[Divergence, ...]) -> list[tuple[str | None, object, object]]:
     return [(d.path, d.reference, d.candidate) for d in divergences]
 
@@ -57,7 +54,7 @@ def test_two_vanilla_joins_send_the_same_advancements_but_when_they_were_obtaine
     first, second = recorded(1), recorded(2)
     assert first.payload != second.payload
 
-    verdict = _verdict(first, second)
+    verdict = verdict_of(first, second)
 
     assert verdict.outcome is Outcome.MATCH, verdict.divergences
     assert "update_advancements.progress[].criteria[].obtained" not in verdict.test_cases
@@ -67,12 +64,12 @@ def test_two_vanilla_joins_send_the_same_advancements_but_when_they_were_obtaine
 def test_criteria_obtained_at_other_times_match() -> None:
     reference = _with_obtained([[5, 6], [7]])
     candidate = _with_obtained([[8, 9], [10]])
-    assert _paths(_verdict(reference, candidate).divergences) == []
+    assert _paths(verdict_of(reference, candidate).divergences) == []
 
 
 def test_a_criterion_obtained_on_one_side_only_is_a_difference() -> None:
     reference = _with_obtained([[None, 6], [None]])
     candidate = _with_obtained([[None, 6], [7]])
-    verdict = _verdict(reference, candidate)
+    verdict = verdict_of(reference, candidate)
     assert _paths(verdict.divergences) == [("progress[1].criteria[0].obtained", None, MASKED)]
     assert "update_advancements.progress[].criteria[].obtained" in verdict.test_cases

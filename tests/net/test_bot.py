@@ -4,6 +4,7 @@ import asyncio
 import json
 
 import pytest
+from support.hang import hang
 
 from mscts.bot import Bot
 from mscts.codec.packets import Codec, Direction, Packet
@@ -182,11 +183,6 @@ def test_status_times_out_when_the_server_does_not_answer(
 
     elapsed, _ = with_bot(codec, transcript, server, raises, timeout_s=0.05)
     assert 0.05 <= elapsed < 0.5
-
-
-async def hang(*args: object, **kwargs: object) -> None:
-    del args, kwargs
-    await asyncio.Event().wait()
 
 
 @pytest.mark.parametrize("operation", ["status", "ping"])

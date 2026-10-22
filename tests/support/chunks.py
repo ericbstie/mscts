@@ -6,10 +6,12 @@ code, and tests need no reachable `scripts` package for it.
 """
 
 import importlib.util
+import struct
 import types
 from pathlib import Path
 
 from mscts.codec.packets import Direction, Packet, State
+from mscts.codec.wire import Writer
 from mscts.transcript import Transcript
 
 _CHUNKFORMAT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "chunkformat.py"
@@ -96,3 +98,45 @@ def play_packets(transcript: Transcript, name: str) -> list[Packet]:
         if (event.packet.state, event.packet.direction, event.packet.name)
         == (State.PLAY, Direction.CLIENTBOUND, name)
     ]
+
+
+def single_valued(value: int) -> bytes:
+    """A "single valued" Paletted Container: bits 0, then the one VarInt id."""
+    return Writer().raw(bytes([0])).var_int(value).to_bytes()
+
+
+def packed_longs(indices: list[int], width: int) -> bytes:
+    """Entries of `width` bits in big-endian Longs, lowest bits first, none split across two."""
+    per_long = 64 // width
+    data = b""
+    for start in range(0, len(indices), per_long):
+        word = 0
+        for offset, index in enumerate(indices[start : start + per_long]):
+            word |= index << (offset * width)
+        data += struct.pack(">Q", word)
+    return data
+
+
+def indirect_container(values: list[int], palette: list[int], bits: int, width: int) -> bytes:
+    """A list or hash palette container: `bits` sent, the palette, entries at `width` bits.
+
+    The client reads block states sent with 1 to 4 bits at 4 bits per entry, biomes at the
+    bits sent (`Strategy.getConfigurationForBitCount`).
+    """
+    writer = Writer().raw(bytes([bits])).var_int(len(palette))
+    for entry in palette:
+        writer.var_int(entry)
+    return writer.raw(packed_longs([palette.index(value) for value in values], width)).to_bytes()
+
+
+def section_bytes(states: bytes, biomes: bytes, *, block_count: int = 0) -> bytes:
+    return struct.pack(">hh", block_count, 0) + states + biomes
+
+
+def level_chunk_payload(x: int, z: int, sections: list[bytes]) -> bytes:
+    """A whole `level_chunk_with_light` of `sections`: no heightmaps, block entities or light."""
+    data = b"".join(sections)
+    writer = Writer().int_(x).int_(z).var_int(0).var_int(len(data)).raw(data).var_int(0)
+    for _ in range(6):  # four empty light masks, no sky arrays, no block arrays
+        writer.var_int(0)
+    return writer.to_bytes()

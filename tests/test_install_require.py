@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import override
 
 import pytest
-from support.pumpkin import FakeGitHub, fake_pumpkin
+from support.pumpkin import FakeGitHub, fake_pumpkin, root_of
 
 from mscts import install
 from mscts.adapters.base import ProvisionError
@@ -16,10 +16,6 @@ from mscts.install import Terminal, install_from, install_release, require
 from mscts.target import TARGET
 
 ADAPTER = PumpkinAdapter()
-
-
-def root_of(cache: Path) -> Path:
-    return cache / "pumpkin/26.3"
 
 
 class Keyboard(io.StringIO):

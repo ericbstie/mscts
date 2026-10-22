@@ -14,6 +14,10 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import pytest
+from support.bot_join import login_frame
+from support.control import playing, text, tree
+from support.mobs import HUSK, NONE_LEFT
+from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS, Bot
 from mscts.codec.packets import Direction, Packet
@@ -24,16 +28,7 @@ from mscts.groups import combat
 from mscts.spec import Difficulty, ServerSpec
 from mscts.target import TARGET
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, TICK_S, JoinScript, Peer, join_server
-from tests.net.test_bot_move import LOGIN
-
-
-def _login(peer: Peer) -> bytes:
-    """The `login` that names the player's entity id, which a sprint command carries."""
-    return peer.frame("minecraft:login", **LOGIN)
-
 
 CONTROL = "control"
 MARKER = "tellraw @s "
@@ -41,7 +36,6 @@ CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_comma
 COMMANDS = tree(
     "gamerule", "tp", "tick", "summon", "item", "effect", "data", "kill", "execute", "tellraw"
 )
-HUSK = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:husk")
 MOVES = ("minecraft:move_player_pos", "minecraft:move_player_pos_rot")
 START_SPRINTING, STOP_SPRINTING = 1, 2
 STEP = "tick step 1"
@@ -50,7 +44,6 @@ HUSK_COMMAND = (
     "summon minecraft:husk 6.0 -60 2.5 "
     '{NoAI:1b,Silent:1b,OnGround:1b,Health:20f,Tags:["mscts_combat","mscts_combat"]}'
 )
-NONE_LEFT = "commands.execute.conditional.fail"
 
 GROUP_IDS = (
     "combat/melee-mob",
@@ -86,7 +79,7 @@ class CombatServer:
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
         with suppress(ConnectionError):
-            script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
+            script = JoinScript(commands=COMMANDS, after_batch=login_frame, then=self._play)
             await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:

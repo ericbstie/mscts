@@ -9,11 +9,11 @@ would have more test cases than one that sends vanilla's bytes.
 from collections.abc import Mapping
 
 import pytest
+from support.compared import PUMPKIN_NIGHTLY, VANILLA, status, verdict_of
 
 from mscts.codec.packets import Packet
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, Verdict, compare
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK, TICK_PATH, compare
 from tests.compare.build import packet, transcript
-from tests.compare.test_canonical import PUMPKIN_NIGHTLY, VANILLA, status
 
 STONE = {"count": 64, "item": 1, "components": {"added": [], "removed": []}}
 SLOT = {"window_id": 1, "state_id": 5, "slot": 36, "slot_data": STONE}
@@ -42,19 +42,15 @@ SENT_TWO_WAYS = {
 """For each kind: what vanilla sends, and another spelling that is network traffic only."""
 
 
-def _verdict(reference: Packet, candidate: Packet) -> Verdict:
-    return compare(transcript(("alice", reference)), transcript(("alice", candidate)), [])
-
-
 @pytest.mark.parametrize("kind", SENT_TWO_WAYS)
 def test_a_network_traffic_difference_adds_no_test_case(kind: str) -> None:
     vanilla, other = SENT_TWO_WAYS[kind]
 
-    differing = _verdict(vanilla, other)
+    differing = verdict_of(vanilla, other)
 
     assert differing.divergences
     assert differing.gameplay == ()
-    assert differing.test_cases == _verdict(vanilla, vanilla).test_cases
+    assert differing.test_cases == verdict_of(vanilla, vanilla).test_cases
 
 
 @pytest.mark.parametrize(

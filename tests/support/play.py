@@ -25,6 +25,16 @@ def round_trip(name: str, fields: Mapping[str, object], payload: str) -> None:
     assert (packet.name, packet.fields) == (name, fields)
 
 
+def round_trip_packet(
+    direction: Direction, name: str, fields: Mapping[str, object], data: bytes
+) -> None:
+    """The packet `name` in `direction` encodes `fields` to `data`, whose first byte is its id."""
+    assert CODEC.packet_id(State.PLAY, direction, name) == data[0]
+    assert CODEC.encode(State.PLAY, direction, name, fields) == data
+    packet = CODEC.decode(State.PLAY, direction, data)
+    assert (packet.name, packet.fields) == (name, fields)
+
+
 def decode_error(name: str, payload: str) -> str:
     """Why the Codec refuses `payload` (hex) as packet `name`."""
     with pytest.raises(CodecError) as caught:

@@ -1,48 +1,12 @@
 """What a Bot answers by itself, as each packet arrives, the way the vanilla client does."""
 
-import asyncio
 import math
-from typing import TYPE_CHECKING, cast
 
 import pytest
+from support.bot_replies import answers, arrived
 
 from mscts.bot import CHUNKS_PER_TICK, Replies
-from mscts.codec.packets import Direction, Packet, State
-
-if TYPE_CHECKING:
-    from mscts.net import Connection
-
-
-class Sent:
-    """A stand-in Connection that only records what is sent through it."""
-
-    def __init__(self) -> None:
-        self.sent: list[tuple[str, dict[str, object]]] = []
-
-    async def send(self, name: str, /, **fields: object) -> None:
-        self.sent.append((name, fields))
-
-
-def arrived(state: State, name: str, **fields: object) -> Packet:
-    return Packet(
-        state=state,
-        direction=Direction.CLIENTBOUND,
-        name=name,
-        packet_id=0,
-        payload=b"",
-        fields=fields,
-    )
-
-
-def answers(replies: Replies, *packets: Packet) -> list[tuple[str, dict[str, object]]]:
-    connection = Sent()
-
-    async def feed() -> None:
-        for packet in packets:
-            await replies(cast("Connection", connection), packet)
-
-    asyncio.run(feed())
-    return connection.sent
+from mscts.codec.packets import Packet, State
 
 
 def teleport(teleport_id: int, **pose: object) -> Packet:

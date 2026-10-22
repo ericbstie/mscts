@@ -1,10 +1,10 @@
 """The field types the entity packets need: each reads what it writes and refuses what it cannot."""
 
 import pytest
+from support.wire import read_all, written
 
 from mscts.codec.schema import LP_VEC3
 from mscts.codec.wire import Reader, WireError
-from tests.codec.test_schema_types import read_all, written
 
 # LpVec3 (net.minecraft.network.LpVec3, 26.3 javap). One byte 0x00 is the zero vector. Else six
 # bytes: `lowest`, `middle`, then a big-endian u32 `high`; packed = high << 16 | middle << 8 |

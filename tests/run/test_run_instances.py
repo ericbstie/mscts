@@ -3,6 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import pytest
+from support.report_builders import report_of
 
 from mscts import run as run_module
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict
@@ -13,7 +14,6 @@ from mscts.report import GroupLine, LineResult, Totals, report_lines, totals
 from mscts.run import GroupResult, Server, run, run_results
 from mscts.spec import ServerSpec
 from tests.run.fakes import FakeAdapter
-from tests.test_report import _report
 
 BASIC = Group(id="status/basic", run=status.basic)
 PING = Group(id="status/ping", run=status.ping, requires=("status/basic",))
@@ -93,7 +93,7 @@ async def test_a_group_whose_prerequisite_the_candidate_failed_fails_vanillas_te
     own = await _test_cases(PING, fake_server, tmp_path / "own")
 
     assert ping.test_cases == own
-    lines = report_lines(_report(GroupResult(PING.id, (ping,), (), ())))
+    lines = report_lines(report_of(GroupResult(PING.id, (ping,), (), ())))
     reason = "Candidate failed: prerequisite status/basic was mismatch"
     assert lines[-1] == GroupLine(PING.id, LineResult.FAIL, reason)
     assert totals(lines) == Totals(passed=0, failed=len(own) + 1, not_tested=0, errors=0)
@@ -161,7 +161,7 @@ async def test_an_identical_candidate_scores_full_marks_when_vanilla_fails_a_pre
         Verdict(PING.id, Outcome.ERROR, detail="prerequisite status/basic was error"),
     )
     assert after.verdicts[0].detail == "prerequisite status/ping was error"
-    counted = totals(report_lines(_report(*result.results)))
+    counted = totals(report_lines(report_of(*result.results)))
     assert (counted.failed, counted.errors, counted.score) == (0, 3, 1.0)
 
 
@@ -204,7 +204,7 @@ async def test_a_reference_error_in_one_repetition_fails_no_test_case_of_what_re
     flaked, ping = result.results
     assert [verdict.outcome for verdict in flaked.verdicts] == [Outcome.MATCH, Outcome.ERROR]
     assert [verdict.outcome for verdict in ping.verdicts] == [Outcome.MATCH, Outcome.ERROR]
-    cases = [line for line in report_lines(_report(ping)) if not isinstance(line, GroupLine)]
+    cases = [line for line in report_lines(report_of(ping)) if not isinstance(line, GroupLine)]
     assert cases
     assert {line.result for line in cases} == {LineResult.PASS}
 

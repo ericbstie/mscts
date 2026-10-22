@@ -1,9 +1,10 @@
 """Tagged: a VarInt picks one of several named variants, each with its own payload or none."""
 
 import pytest
+from support.wire import read_all, written
 
 from mscts.codec.schema import BYTE, FLOAT, VAR_INT, Schema, SchemaError, Tagged, WireType
-from mscts.codec.wire import Reader, WireError, Writer
+from mscts.codec.wire import WireError
 
 SHAPE = Tagged(
     "shape",
@@ -14,19 +15,6 @@ SHAPE = Tagged(
         ("box", Schema(width=BYTE, height=BYTE)),
     ),
 )
-
-
-def written[T](wire_type: WireType[T], value: object) -> bytes:
-    writer = Writer()
-    wire_type.write(writer, value)
-    return writer.to_bytes()
-
-
-def read_all[T](wire_type: WireType[T], data: bytes) -> T:
-    reader = Reader(data)
-    value = wire_type.read(reader)
-    reader.expect_end()
-    return value
 
 
 @pytest.mark.parametrize(

@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, cast, override
 
 import pytest
+from support.control import CODEC, tree
+from support.moves import Play, opened, read
+from support.player_server import FADE_READS, PERFORM_RESPAWN, PlayerServer
 
 from mscts.codec.packets import Direction
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Mask
@@ -19,9 +22,6 @@ from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player_modes
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import CODEC, tree
-from tests.group.test_movement import Play, read
-from tests.group.test_player import FADE_READS, PERFORM_RESPAWN, PlayerServer
 from tests.net.fakes import JoinScript, Peer, join_server, serve
 
 if TYPE_CHECKING:
@@ -129,10 +129,6 @@ def play(group_id: str) -> tuple[Transcript, Play]:
 
 def played(group_id: str) -> Play:
     return play(group_id)[1]
-
-
-def opened(*names: str) -> str:
-    return f"{OBSERVE_OPEN} {' '.join(names)}"
 
 
 def respawn_requests(group_id: str, bot: str) -> list[int]:

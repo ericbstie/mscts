@@ -6,13 +6,13 @@ from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import pytest
+from support.gametime import gametime_answer
+from support.mobs import NONE_LEFT
 
 from mscts.codec.packets import Direction, Packet, State
 from mscts.entities import Entity
 from mscts.groups import _world
 from mscts.groups._world import fast_forward, remove_tagged_until_gone, until_the_weather_fades
-from tests.group.test_combat import NONE_LEFT
-from tests.group.test_mobs_pathfinding import gametime_answer
 
 _TIME_QUERY = "time query gametime"
 

@@ -13,6 +13,9 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
+from support.control import CHAT_COMMAND, CLIENT_COMMAND, CONTROL, MARKER, playing, text, tree
+from support.moves import MOVES, Play, moves_and_commands, read
+from support.ticks import barriers_before_steps
 
 from mscts import run
 from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
@@ -23,14 +26,8 @@ from mscts.groups import movement
 from mscts.net import ProtocolError
 from mscts.spec import ServerSpec
 from mscts.transcript import Transcript
-from tests.group.test_control import playing, text, tree
-from tests.group.test_ticks import barriers_before_steps
 from tests.net.fakes import NO_STATISTICS, SPAWN, TICK_S, JoinScript, Peer, join_server
 
-CONTROL = "control"
-MARKER = "tellraw @s "
-CHAT_COMMAND, CLIENT_COMMAND = "minecraft:chat_command", "minecraft:client_command"
-MOVES = ("minecraft:move_player_pos", "minecraft:move_player_pos_rot")
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "gamemode", "tellraw")
 KICKED = bytes.fromhex("08 0004") + b"kick"
 """A disconnect's reason: an NBT String text component."""
@@ -161,73 +158,6 @@ def _invalid(move: Packet) -> bool:
     )
 
 
-@dataclass(frozen=True)
-class Window:
-    """One Observation window: its label, and what was sent inside it, in order.
-
-    Attributes:
-        label: Its open Mark's label.
-        sent: Each Bot's moves, as `(bot, (x, y, z))`, and Control's commands, as
-            `("control", command)`, in the order they were sent; markers left out.
-        before: Control's commands since the last window closed.
-    """
-
-    label: str
-    sent: tuple[tuple[str, object], ...]
-    before: tuple[str, ...]
-
-    def moves(self, bot: str) -> list[tuple[float, float, float]]:
-        return [what for who, what in self.sent if who == bot]  # ty: ignore[invalid-return-type]
-
-
-@dataclass(frozen=True)
-class Play:
-    """A played Group: each window, Control's commands before the first and after the last."""
-
-    windows: tuple[Window, ...]
-    first: tuple[str, ...]
-    after: tuple[str, ...]
-
-
-def _sent(transcript: Transcript) -> list[tuple[int, str, object]]:
-    """Every move and every command but a marker, with when and by whom."""
-    sent: list[tuple[int, str, object]] = []
-    for event in transcript.events:
-        if event.packet.direction is not Direction.SERVERBOUND:
-            continue
-        fields = event.packet.fields or {}
-        if event.packet.name in MOVES:
-            sent.append((event.t_ns, event.bot, (fields["x"], fields["y"], fields["z"])))
-        elif event.packet.name == CHAT_COMMAND and not str(fields["command"]).startswith(MARKER):
-            sent.append((event.t_ns, event.bot, str(fields["command"])))
-    return sent
-
-
-def read(transcript: Transcript) -> Play:
-    """The windows of `transcript`, each from its open Mark to the end of every Bot's."""
-    sent = _sent(transcript)
-    opens = [mark.t_ns for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
-    labels = [mark.label for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
-    closes = [mark.t_ns for mark in transcript.marks if mark.label == OBSERVE_CLOSE]
-    assert len(opens) == len(closes), transcript.marks
-    windows = []
-    previous = 0
-    for label, opened, closed in zip(labels, opens, closes, strict=True):
-        windows.append(
-            Window(
-                label=label,
-                sent=tuple((who, what) for t, who, what in sent if opened <= t <= closed),
-                before=tuple(
-                    str(what) for t, who, what in sent if previous <= t < opened and who == CONTROL
-                ),
-            )
-        )
-        previous = closed
-    control = [(t, str(what)) for t, who, what in sent if who == CONTROL]
-    first = tuple(c for t, c in control if t < opens[0]) if opens else ()
-    return Play(tuple(windows), first, tuple(c for t, c in control if t > previous))
-
-
 async def play(group_id: str, server: MovementServer | None = None) -> tuple[Transcript, Play]:
     """Play `group_id` against a fake server; return its Transcript and what was read from it."""
     transcript = Transcript(group_id=group_id, server="fake")
@@ -295,7 +225,7 @@ async def test_the_bots_join_with_the_movement_check_off_and_it_is_on_after(grou
         for event in transcript.events
         if event.packet.name == "minecraft:hello" and event.bot in BOTS[group_id]
     ]
-    commands = [(t, what) for t, who, what in _sent(transcript) if who == CONTROL]
+    commands = [(t, what) for t, who, what in moves_and_commands(transcript) if who == CONTROL]
     off = next(t for t, command in commands if command == CHECK_OFF)
     on = next(t for t, command in commands if command == CHECK_ON)
     assert len(hellos) == len(BOTS[group_id])
@@ -313,7 +243,7 @@ async def test_the_movement_check_is_turned_on_when_turning_it_off_times_out(gro
         with pytest.raises(TimeoutError):
             await GROUPS[group_id].run(context)
 
-    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    control = [what for _, who, what in moves_and_commands(transcript) if who == CONTROL]
     assert control == [CHECK_OFF, CHECK_ON]
 
 
@@ -348,7 +278,7 @@ async def test_the_speed_flying_and_invalid_groups_play_in_a_running_world(group
     # movement/invalid: vanilla sends back a clamped move only when its speed check runs.
     transcript, _ = await play(group_id)
 
-    commands = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    commands = [what for _, who, what in moves_and_commands(transcript) if who == CONTROL]
     assert not any(str(command).startswith("tick ") for command in commands)
 
 
@@ -375,7 +305,7 @@ async def test_too_fast_sends_several_moves_in_one_tick_with_no_barrier_between(
         [(8.5 + 2 * k, -60.0, 8.5) for k in range(1, 7)],
     ]
     last = [mark.t_ns for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)][-1]
-    moves = [t for t, who, what in _sent(transcript) if who == "runner" and t > last]
+    moves = [t for t, who, what in moves_and_commands(transcript) if who == "runner" and t > last]
     requests = [
         event.t_ns
         for event in transcript.events
@@ -531,7 +461,7 @@ async def test_flying_puts_survival_back_when_the_gamemode_command_times_out() -
         with pytest.raises(TimeoutError):
             await GROUPS["movement/flying"].run(context)
 
-    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    control = [what for _, who, what in moves_and_commands(transcript) if who == CONTROL]
     assert control[-3:] == [creative, "gamemode survival creative_flyer", CHECK_ON]
 
 
@@ -559,7 +489,7 @@ async def test_flying_undoes_its_settings_when_the_flyer_is_never_kicked(
         with pytest.raises(TimeoutError):
             await GROUPS["movement/flying"].run(context)
 
-    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    control = [what for _, who, what in moves_and_commands(transcript) if who == CONTROL]
     assert control[-2:] == ["gamemode survival creative_flyer", CHECK_ON]
 
 
@@ -664,5 +594,5 @@ async def test_invalid_fails_a_server_that_does_not_kick_and_undoes_the_check(
         with pytest.raises(TimeoutError):
             await GROUPS["movement/invalid"].run(context)
 
-    control = [what for _, who, what in _sent(transcript) if who == CONTROL]
+    control = [what for _, who, what in moves_and_commands(transcript) if who == CONTROL]
     assert control[-1] == CHECK_ON

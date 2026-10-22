@@ -31,3 +31,8 @@ def java_25(make_java: MakeJava, monkeypatch: pytest.MonkeyPatch) -> Path:
     java = make_java("jdk-25")
     monkeypatch.setenv("MSCTS_JAVA", str(java))
     return java
+
+
+@pytest.fixture
+def workdir(tmp_path: Path) -> Path:
+    return tmp_path / "work"
