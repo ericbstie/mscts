@@ -2725,9 +2725,10 @@ out is missing from the book.
 The number the server gives a recipe in this player's book. A click in
 the book sends it back to place the recipe. Each server picks its own
 numbers, so the recipes are numbered again in the order they first
-come, `#1` first, and those numbers are compared. The book also lists
-its buttons in an order that follows the server's numbers, and that
-order is not compared.
+come, `#1` first, and those numbers are compared. The book lists its
+buttons in an order that follows the server's numbers, how many recipes
+the book has held since the player joined, and the order the recipes
+came in. That order is not compared.
 
 ## `recipe_book_add.entries[].contents.group`
 
