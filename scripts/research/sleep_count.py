@@ -16,8 +16,9 @@ with 100% needed. That count came up short under load once.
 
 Each run plays the Group once with a fresh fake and reads its Transcript: the window's open and
 close Marks, each Bot's last barrier answer before the open, and every `set_time` the clock read
-from its last answer before the open to the close. The Group's `_count_set_time` takes the first
-`_QUIET_TIMES` of those. Each is placed against the open Mark:
+from its last answer before the open to the close. Before #454's fix, the Group counted the first
+`_QUIET_TIMES` of those (`counted`); since, the clock first takes what it read before the sleeper
+lies down, and counts only the rest. Each counted one is placed against the open Mark:
 
 - `before`: read after the clock's last answer but before the open, so it is setup, outside the
   window, and yet the Group counted it;
