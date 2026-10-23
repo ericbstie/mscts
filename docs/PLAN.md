@@ -1644,7 +1644,8 @@ class Divergence:
     #   as int values, the packet's test case) one packet a tick-exact Group got on
     #   different ticks (#23), followed by the two packets' differences, or (path
     #   ORDER_PATH, network traffic, registry_id's test case, at the first matched
-    #   registry_data) the registries both sides sent, in each side's order (#451);
+    #   registry_data of a run of the reference's) the registries of the run both sides
+    #   sent, in each side's order (#451);
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
@@ -2227,11 +2228,12 @@ proves it necessary:
      `docs/research/2026-10-23-registry-order.md`). Vanilla sends one
      packet a registry, in that same list's order
      (`RegistrySynchronization.packRegistries`). The order is still
-     reported, as network traffic (ADR-0007): if the matched packets of the
-     runs came in different orders, one `field` Divergence at `ORDER_PATH`,
-     at the first of them, holds each side's registry ids of them in the
-     order it sent them (`compare._registry_order`). A packet moves only
-     within its run, so the runs keep their order on both sides.
+     reported, as network traffic (ADR-0007): for each run of the
+     reference whose matched packets came in different orders, one `field`
+     Divergence at `ORDER_PATH`, at the first of them, holds each side's
+     registry ids of them in the order it sent them
+     (`compare._registry_orders`). A packet moves only within its run, so
+     the runs keep their order on both sides.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,

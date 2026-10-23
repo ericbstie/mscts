@@ -601,8 +601,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Packets unmatched as possible; swapping the sides mirrors the alignment. Between two
     matched pairs, `missing` Divergences come before `unexpected` ones. An unmatched chunk,
     light update or forgotten chunk shows `chunk <x> <z>`, any other Packet its value. If the
-    matched `registry_data` came in another order on each side, the first of them is
-    preceded by one network traffic `field` Divergence at `ORDER_PATH` (`_registry_order`).
+    matched `registry_data` of a run of the reference's came in another order on each side,
+    the first of them is preceded by one network traffic `field` Divergence at `ORDER_PATH`
+    (`_registry_orders`).
 
     In a tick-exact Group (its Transcript has `TICK_MARK` Marks), each play Packet holds the
     tick it arrived on (`_Ticks`), and the Packets are aligned as without ticks. Two matched
@@ -3326,7 +3327,7 @@ def _compare_streams(
         if timed
         else _align(ref_keys, cand_keys)
     )
-    order = _registry_order(bot, reference, candidate, pairs)
+    orders = _registry_orders(bot, reference, candidate, pairs)
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):
@@ -3338,29 +3339,55 @@ def _compare_streams(
             yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):
             matched = (reference[ref_index], candidate[cand_index])
-            if order is not None and order.index == ref_index:
+            if (order := orders.get(ref_index)) is not None:
                 yield order
             yield from _diff_ticks(bot, ref_index, *matched)
             yield from _diff_matched(bot, ref_index, *matched, compared)
         next_reference, next_candidate = ref_index + 1, cand_index + 1
 
 
-def _registry_order(
+class _MatchedRegistry(NamedTuple):
+    """Two matched `registry_data` the codec read (`_matched_registries`).
+
+    Attributes:
+        index: The reference packet's index in its normalized stream.
+        reference: Where the reference packet came.
+        candidate: Where the candidate packet came.
+    """
+
+    index: int
+    reference: _RegistryPlace
+    candidate: _RegistryPlace
+
+
+def _registry_orders(
     bot: str,
     reference: Sequence[_Normalized],
     candidate: Sequence[_Normalized],
     pairs: Sequence[tuple[int, int]],
-) -> Divergence | None:
-    """The order of the matched packets of the runs of registries, if the sides' differ.
+) -> dict[int, Divergence]:
+    """The order of the matched packets of each run of registries of the reference, by index.
 
-    One network traffic `field` Divergence at `ORDER_PATH`, at the first of those packets,
-    with each side's registry ids of them in the order it sent them (`_RegistryPlace.arrived`),
-    and the test case of `registry_id`: the client loads the registries by key, whatever their
-    order (`_by_registry`). None if both sent them in one order. It covers every run of the
-    stream: the sort moves a packet only within its run, so packets of different runs keep
-    their order on both sides.
+    For each run whose matched packets the sides sent in different orders, its order
+    (`_registry_order`), by the index of the first of them. The sort moves a packet only
+    within its run, so packets of different runs keep their order on both sides.
     """
     matched = _matched_registries(reference, candidate, pairs)
+    runs = groupby(matched, key=lambda pair: pair.reference.run)
+    orders = (_registry_order(bot, reference, list(run)) for _, run in runs)
+    return {order.index: order for order in orders if order is not None}
+
+
+def _registry_order(
+    bot: str, reference: Sequence[_Normalized], matched: Sequence[_MatchedRegistry]
+) -> Divergence | None:
+    """The order of the `matched` packets of one run of registries, if the sides' differ.
+
+    One network traffic `field` Divergence at `ORDER_PATH`, at the first of them, with each
+    side's registry ids of them in the order it sent them (`_RegistryPlace.arrived`), and the
+    test case of `registry_id`: the client loads the registries by key, whatever their order
+    (`_by_registry`). None if both sent them in one order.
+    """
     sent_reference = _sent_order(pair.reference for pair in matched)
     sent_candidate = _sent_order(pair.candidate for pair in matched)
     if sent_reference == sent_candidate:
@@ -3377,20 +3404,6 @@ def _registry_order(
         test_case=_test_case(first.state, first.name, ("registry_id",)),
         observability=Observability.NETWORK_TRAFFIC,
     )
-
-
-class _MatchedRegistry(NamedTuple):
-    """Two matched `registry_data` the codec read (`_matched_registries`).
-
-    Attributes:
-        index: The reference packet's index in its normalized stream.
-        reference: Where the reference packet came.
-        candidate: Where the candidate packet came.
-    """
-
-    index: int
-    reference: _RegistryPlace
-    candidate: _RegistryPlace
 
 
 def _matched_registries(

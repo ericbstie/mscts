@@ -9,7 +9,7 @@ from typing import cast
 from support.registries import registry
 
 from mscts.codec.packets import State
-from mscts.compare import ORDER_PATH, Observability, compare
+from mscts.compare import ABSENT, ORDER_PATH, Observability, compare
 from tests.compare.build import divergence, packet, transcript
 
 _BIOME = "minecraft:worldgen/biome"
@@ -87,18 +87,38 @@ def test_the_order_compared_is_that_of_the_registries_both_sides_send() -> None:
     assert (order.reference, order.candidate) == ([_BIOME, _ENCHANTMENT], [_ENCHANTMENT, _BIOME])
 
 
-def test_the_order_covers_every_run_of_registries() -> None:
-    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
-    between = packet("minecraft:update_enabled_features", state=State.CONFIGURATION)
+def test_each_configuration_has_its_own_order_divergence() -> None:
+    # Review A of #451: a reconfiguration whose order alone differs is reported there.
+    biome, damage = registry(_BIOME, 3), registry(_DAMAGE, 3)
+    finish = packet("minecraft:finish_configuration", state=State.CONFIGURATION)
+    reconfigure = packet("minecraft:start_configuration")
+    first = (("alice", biome), ("alice", damage), ("alice", finish), ("alice", reconfigure))
 
     verdict = compare(
-        transcript(("alice", biome), ("alice", damage), ("alice", between), ("alice", enchantment)),
-        transcript(("alice", damage), ("alice", biome), ("alice", between), ("alice", enchantment)),
+        transcript(*first, ("alice", biome), ("alice", damage)),
+        transcript(*first, ("alice", damage), ("alice", biome)),
         [],
     )
 
-    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
-        (ORDER_PATH, [_BIOME, _DAMAGE, _ENCHANTMENT], [_DAMAGE, _BIOME, _ENCHANTMENT])
+    assert [(d.index, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (4, ORDER_PATH, [_BIOME, _DAMAGE], [_DAMAGE, _BIOME])
+    ]
+
+
+def test_the_order_of_a_run_paired_across_two_of_the_other_sides_runs() -> None:
+    # A registry_data the codec cannot read ends a run: it may be another of a run's registries.
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+    unread = packet(_REGISTRY_DATA, b"\x00", state=State.CONFIGURATION)
+
+    verdict = compare(
+        transcript(("alice", damage), ("alice", enchantment), ("alice", biome)),
+        transcript(("alice", enchantment), ("alice", damage), ("alice", unread), ("alice", biome)),
+        [],
+    )
+
+    assert [(d.kind, d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        ("field", ORDER_PATH, [_DAMAGE, _ENCHANTMENT, _BIOME], [_ENCHANTMENT, _DAMAGE, _BIOME]),
+        ("unexpected", None, ABSENT, "00"),
     ]
 
 
