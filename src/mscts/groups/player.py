@@ -113,6 +113,35 @@ async def _tp(context: GroupContext, bot: Bot, at: _Point) -> None:
     await context.control.run(f"tp {bot.name} {x} {y} {z}")
 
 
+_ENTITY_EVENT = "minecraft:entity_event"
+
+_POOF = 60
+"""The entity event vanilla sends a dead player 20 ticks after its death, unless it has respawned
+(26.3 javap: `LivingEntity.tickDeath` calls `broadcastEntityEvent(this, 60)` once `deathTime` is
+20, and `ServerChunkCache.sendToTrackingPlayersAndSelf` sends it to the player too)."""
+
+
+def _is_poof(packet: Packet) -> bool:
+    return packet.name == _ENTITY_EVENT and (packet.fields or {}).get("event_id") == _POOF
+
+
+async def _respawn(context: GroupContext, bot: Bot) -> None:
+    """Respawn the dead Bot in a window of its own; fail if entity event 60 comes first.
+
+    The window opens a few ticks after the death, and the respawn comes long before the 20 ticks
+    that event 60 waits for. A Bot that stalls about a second after the death gets the event
+    inside the window on one Instance, and maybe not on the other: the windows would differ for
+    the harness's timing. So the Bot fails the respawn instead (`Bot.respawn`'s `unless`), which
+    on the Reference is an `error`. The Bot's own packets show the order, so this holds however
+    late it reads them. No other entity in these Groups dies, so any event 60 is the Bot's.
+
+    Raises:
+        ProtocolError: Event 60 came before the `respawn`.
+    """
+    async with context.observe(*PACKETS):
+        await bot.respawn(unless=_is_poof)
+
+
 # `player/fall`: a Bot reports a fall onto each surface, from each height.
 
 _FALLER = "faller"
@@ -363,8 +392,6 @@ class _Hits:
 _DROWNER = "drowner"
 _DROWNING_DAMAGE = "gamerule drowning_damage"
 
-_ENTITY_EVENT = "minecraft:entity_event"
-
 _BUBBLES = 67
 """The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
 `LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
@@ -487,7 +514,10 @@ _VOID_AT: _Point = (0.5, -130.0, 0.5)
 
 @group("player/void", spec=normal)
 async def void(context: GroupContext) -> None:
-    """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns."""
+    """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns.
+
+    The Group fails if entity event 60 comes before the respawn (`_respawn`).
+    """
     async with _environment(context, ()) as undo:
         bot = await join_at_spawn(context, undo, _VOID_BOT)
         await context.freeze()
@@ -495,8 +525,7 @@ async def void(context: GroupContext) -> None:
         async with context.observe(*PACKETS, until=_DEATH, bot=bot):
             await _tp(context, bot, _VOID_AT)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
-        async with context.observe(*PACKETS):
-            await bot.respawn()
+        await _respawn(context, bot)
 
 
 # `player/fire`: a Bot in fire, in lava, out of it still burning, then in water.

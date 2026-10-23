@@ -9,10 +9,11 @@ request, and nothing else.
 import asyncio
 import functools
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from unittest import mock
 
 import pytest
+from support.bot_join import ENTITY_ID
 from support.control import CODEC
 from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
@@ -20,6 +21,7 @@ from support.player_server import (
     DEATH,
     FADE_READS,
     PERFORM_RESPAWN,
+    POOF,
     Drown,
     Hurt,
     PlayerServer,
@@ -864,6 +866,51 @@ def test_fire_fails_when_the_move_into_the_water_comes_after_the_next_burn_may_h
     # the next burn, which the water's window would then hold on one server only.
     with pytest.raises(ProtocolError, match="the next may have come between the windows"):
         asyncio.run(_play("player/fire", clock=until_the_water(1.0)))
+
+
+# A respawn that comes late
+
+# Vanilla sends a dead player entity event 60 at 20 ticks after its death (`LivingEntity.tickDeath`)
+# unless it has respawned. A Bot that stalls that long after the death gets the event inside the
+# respawn window on one Instance and maybe not on the other: the Group fails instead (#463).
+
+LATE_POOF = ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF})
+RESPAWNING = ("player/void",)
+
+
+def respawned_late(group_id: str, *before: tuple[str, Mapping[str, object]]) -> Transcript:
+    """Play `group_id` against a fake that sends `before` just before each `respawn`."""
+    server = PlayerServer(
+        hurts=HURTS.get(group_id, {}),
+        kills_after=KILLS_AFTER.get(group_id),
+        before_respawn=before,
+    )
+    return asyncio.run(_play_on(group_id, server))
+
+
+@pytest.mark.parametrize("group_id", RESPAWNING)
+def test_a_respawn_window_fails_the_group_when_entity_event_60_comes_before_the_respawn(
+    group_id: str,
+) -> None:
+    refused = (
+        r"got minecraft:entity_event \{'entity_id': 300, 'event_id': 60\} before minecraft:respawn"
+    )
+    with pytest.raises(ProtocolError, match=refused):
+        respawned_late(group_id, LATE_POOF)
+
+
+def test_a_respawn_window_plays_on_after_another_event_before_the_respawn() -> None:
+    # A near miss for each field the Group checks: another entity event, and a level event 60.
+    other_event = ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF + 1})
+    level_event = (
+        "minecraft:level_event",
+        {"event_id": POOF, "pos": {"x": 0, "y": 0, "z": 0}, "data": 0, "global_event": False},
+    )
+    transcript = respawned_late("player/void", other_event, level_event)
+
+    assert [window.sent for window in read(transcript).windows] == [
+        window.sent for window in played("player/void").windows
+    ]
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:

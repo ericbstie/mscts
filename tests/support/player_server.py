@@ -79,6 +79,9 @@ FULL_HEALTH = 20.0
 BUBBLES = 67
 """The entity event a drowning player's air reset sends (`broadcastEntityEvent(this, 67)`)."""
 
+POOF = 60
+"""The entity event a dead player is sent 20 ticks after its death (`LivingEntity.tickDeath`)."""
+
 AIR_INDEX = 1
 """The entity data entry that holds an entity's air."""
 
@@ -169,6 +172,10 @@ class PlayerServer:
     """How many `player_position` the fake has sent: the last teleport id."""
     held: bool = True
     """Whether each hit waits for a barrier since the last; False sends it when it is due."""
+    before_respawn: tuple[tuple[str, Mapping[str, object]], ...] = ()
+    """The packets, by name and fields, the fake sends just before each `respawn`: what vanilla
+    has sent a dead player whose respawn request comes 20 ticks or more after its death is entity
+    event 60 (`LivingEntity.tickDeath`), as if the Bot had stalled that long."""
 
     def __post_init__(self) -> None:
         """No hit has come yet, so the first is not held back."""
@@ -189,6 +196,8 @@ class PlayerServer:
                 self.seen.append(packet)
                 if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
                     self.health = FULL_HEALTH
+                    for before, fields in self.before_respawn:
+                        await peer.send(before, **fields)
                     await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
                     await peer.send("minecraft:chunk_batch_start")
                     await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
