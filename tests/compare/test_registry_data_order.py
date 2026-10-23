@@ -153,6 +153,22 @@ def test_a_configuration_packet_before_the_registries_is_where_it_is_after_them(
     assert verdict.divergences == ()
 
 
+def test_a_packet_a_run_goes_across_is_compared_after_the_runs_registries() -> None:
+    biome, damage = registry(_BIOME, 3), registry(_DAMAGE, 3)
+    sent, answer = (
+        packet("minecraft:keep_alive", payload, state=State.CONFIGURATION)
+        for payload in (b"\x01", b"\x02")
+    )
+
+    verdict = compare(
+        transcript(("alice", biome), ("alice", sent), ("alice", damage)),
+        transcript(("alice", biome), ("alice", answer), ("alice", damage)),
+        [],
+    )
+
+    assert [(d.index, d.packet) for d in verdict.divergences] == [(2, "minecraft:keep_alive")]
+
+
 def test_registries_in_another_order_across_a_configuration_packet_are_one_order() -> None:
     # Review B of #451, P2c: only the order differs, as network traffic.
     biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
