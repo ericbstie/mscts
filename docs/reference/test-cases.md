@@ -2808,18 +2808,14 @@ Recipes the client removes from the player's recipe book.
 
 The display ids of the recipes removed in one packet. The client removes
 each one on its own, so they can come in any order, and are compared
-sorted by their numbers.
+sorted by their numbers, then their names.
 
 ## `recipe_book_remove.recipes[]`
 
 **Display id removed**
 
-The display id of one recipe removed from the book, numbered as the
-recipes added are, so a removal of another recipe differs if the Bot
-last got the recipe in a window and it has not been taken or replaced
-since. The removal of any other recipe cannot be told from a
-removal of another such recipe yet
-([#462](https://github.com/ericbstie/mscts/issues/462)).
+The display id of one recipe removed from the book, numbered or named
+as the recipes added are, so a removal of another recipe differs.
 
 ## `place_ghost_recipe.recipe_display.type`
 
