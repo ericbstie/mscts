@@ -1777,7 +1777,7 @@ def test_case(state: State, packet: str, path: str | None) -> str: ...
     # for the packet as a whole) of the clientbound `packet` in `state`, by the scheme in
     # Comparison semantics: `status_response.players.sample[].name`, `play:keep_alive.id`.
     # `test_case(state, d.packet, d.path) == d.test_case` for every Divergence `d` but a
-    # `bot` one, arrows included.
+    # `bot` one or a tick one (at `TICK_PATH`), arrows included.
     # ValueError if `path` is malformed or not spelled as a Divergence path would be.
 ```
 
@@ -2733,8 +2733,9 @@ proves it necessary:
    lists up to length 4 over 3 values: in order, in the fewest steps, and
    mirrored by a swap. Another checks every reference list up to length 4
    against every candidate list up to length 6 for a repeated path: the
-   shortest lists whose paths repeated before #455 are 4 against 6, and a
-   property checks whole pairs of packets over random Transcripts. The
+   shortest lists whose paths repeated before #455 are 4 against 6. A
+   property checks whole pairs of packets over random Transcripts, but no
+   packet it makes has a lined-up list, so it does not reach #455's case. The
    cost is O(n·m) time and memory between the
    common prefix and suffix, as for the packet alignment, and the
    Comparison runs on the Run's event loop. So where a list has more
