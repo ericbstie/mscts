@@ -2648,8 +2648,11 @@ proves it necessary:
    forgotten chunk: two at different positions are never one packet sent
    two ways, so each is `missing` or `unexpected`, and shows
    `chunk <x> <z>` rather than its fields; a chunk the codec cannot
-   read has the position of its first two Ints, if it has 8 bytes),
-   so as few packets as possible are reported `missing` or `unexpected`.
+   read has the position of its first two Ints, if it has 8 bytes; and
+   the registry of a `registry_data` the codec read, #451: the client
+   collects each registry's entries apart, so a registry only one side
+   sends is one `missing` or `unexpected` packet and the others pair by
+   registry), so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
    mirrors it: match the common prefix and suffix as they stand (so of
    repeated packets the prefix matches the earliest and the suffix the

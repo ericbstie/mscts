@@ -596,13 +596,13 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Packets left out or dropped; paths and values are those of the sorted, canonical,
     numbered form.
 
-    Each Bot's two streams are aligned on their packet keys (State and name, and the position
-    of a packet about one chunk), leaving as few Packets unmatched as possible; swapping the
-    sides mirrors the alignment. Between two matched pairs, `missing` Divergences come before
-    `unexpected` ones. An unmatched chunk, light update or forgotten chunk shows
-    `chunk <x> <z>`, any other Packet its value. If the matched `registry_data` came in
-    another order on each side, the first of them is preceded by one network traffic
-    `field` Divergence at `ORDER_PATH` (`_registry_order`).
+    Each Bot's two streams are aligned on their packet keys (State and name, the position
+    of a packet about one chunk, and the registry of a `registry_data`), leaving as few
+    Packets unmatched as possible; swapping the sides mirrors the alignment. Between two
+    matched pairs, `missing` Divergences come before `unexpected` ones. An unmatched chunk,
+    light update or forgotten chunk shows `chunk <x> <z>`, any other Packet its value. If the
+    matched `registry_data` came in another order on each side, the first of them is
+    preceded by one network traffic `field` Divergence at `ORDER_PATH` (`_registry_order`).
 
     In a tick-exact Group (its Transcript has `TICK_MARK` Marks), each play Packet holds the
     tick it arrived on (`_Ticks`), and the Packets are aligned as without ticks. Two matched
@@ -3058,13 +3058,21 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 type _Key = tuple[str, ...]
 """What a Packet is aligned on (`_key`): its State, its name and, for a packet about one chunk,
 its position (`chunk x z`; empty for any other Packet). The client keeps a chunk and its light by
-position, so two such packets at different positions are never one Packet sent two ways. Not its
-tick in a tick-exact Group: two matched Packets on different ticks are a Divergence of their own
-(`_diff_ticks`), so a run of packets each a tick late still matches one for one (#23)."""
+position, so two such packets at different positions are never one Packet sent two ways. And for a
+`registry_data`, its registry (`_registry_of`; empty for any other Packet): the client collects
+each registry's entries apart, so a registry only one side sends is one Packet left unmatched
+(#451). Not its tick in a tick-exact Group: two matched Packets on different ticks are a
+Divergence of their own (`_diff_ticks`), so a run of packets each a tick late still matches one
+for one (#23)."""
 
 
 def _key(entry: _Normalized) -> _Key:
-    return (entry.packet.state.value, entry.packet.name, _place_text(entry.packet))
+    return (
+        entry.packet.state.value,
+        entry.packet.name,
+        _place_text(entry.packet),
+        _registry_of(entry),
+    )
 
 
 def _place_text(packet: Packet) -> str:
@@ -3272,15 +3280,12 @@ def _registry_order(
     One network traffic `field` Divergence at `ORDER_PATH`, at the first of those packets,
     with each side's registry ids of them in the order it sent them (`_Normalized.arrived`),
     and the test case of `registry_id`: the client loads the registries by key, whatever their
-    order (`_by_registry`). None if both sent them in one order. It covers every run of the
+    order (`_by_registry`). None if both sent them in one order. A packet of a run pairs only
+    with one of the same registry (`_key`), which is in a run too. It covers every run of the
     stream: the sort moves a packet only within its run, so packets of different runs keep
     their order on both sides.
     """
-    matched = [
-        (ref_index, cand_index)
-        for ref_index, cand_index in pairs
-        if reference[ref_index].arrived is not None and candidate[cand_index].arrived is not None
-    ]
+    matched = [pair for pair in pairs if reference[pair[0]].arrived is not None]
     sent_reference = _in_arrival_order([reference[ref_index] for ref_index, _ in matched])
     sent_candidate = _in_arrival_order([candidate[cand_index] for _, cand_index in matched])
     if sent_reference == sent_candidate:

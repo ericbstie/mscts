@@ -4,10 +4,13 @@ The client collects each registry's packets apart and loads the registries by ke
 `finish_configuration` (docs/research/2026-10-23-registry-order.md).
 """
 
+from typing import cast
+
 from support.registries import registry
 
+from mscts.codec.packets import State
 from mscts.compare import ORDER_PATH, Observability, compare
-from tests.compare.build import divergence, transcript
+from tests.compare.build import divergence, packet, transcript
 
 _BIOME = "minecraft:worldgen/biome"
 _DAMAGE = "minecraft:damage_type"
@@ -48,6 +51,62 @@ def test_registries_sent_in_another_order_are_one_network_traffic_divergence() -
             observability=Observability.NETWORK_TRAFFIC,
         ),
     )
+
+
+def test_a_registry_only_one_side_sends_is_one_divergence_and_the_rest_are_paired() -> None:
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+    both = transcript(("alice", biome), ("alice", damage), ("alice", enchantment))
+    without_damage = transcript(("alice", biome), ("alice", enchantment))
+
+    missing = compare(both, without_damage, []).divergences
+    unexpected = compare(without_damage, both, []).divergences
+
+    assert [(d.kind, d.index, d.packet, _registry_in(d.reference)) for d in missing] == [
+        ("missing", 0, _REGISTRY_DATA, _DAMAGE)
+    ]
+    assert [(d.kind, d.index, d.packet, _registry_in(d.candidate)) for d in unexpected] == [
+        ("unexpected", 0, _REGISTRY_DATA, _DAMAGE)
+    ]
+
+
+def test_the_order_compared_is_that_of_the_registries_both_sides_send() -> None:
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+
+    verdict = compare(
+        transcript(("alice", biome), ("alice", damage), ("alice", enchantment)),
+        transcript(("alice", enchantment), ("alice", biome)),
+        [],
+    )
+
+    assert [(d.kind, d.index, d.path) for d in verdict.divergences] == [
+        ("missing", 0, None),
+        ("field", 1, ORDER_PATH),
+    ]
+    missing, order = verdict.divergences
+    assert _registry_in(missing.reference) == _DAMAGE
+    assert (order.reference, order.candidate) == ([_BIOME, _ENCHANTMENT], [_ENCHANTMENT, _BIOME])
+
+
+def test_the_order_covers_every_run_of_registries() -> None:
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+    between = packet("minecraft:update_enabled_features", state=State.CONFIGURATION)
+
+    verdict = compare(
+        transcript(("alice", biome), ("alice", damage), ("alice", between), ("alice", enchantment)),
+        transcript(("alice", damage), ("alice", biome), ("alice", between), ("alice", enchantment)),
+        [],
+    )
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (ORDER_PATH, [_BIOME, _DAMAGE, _ENCHANTMENT], [_DAMAGE, _BIOME, _ENCHANTMENT])
+    ]
+
+
+def _registry_in(value: object) -> object:
+    """The registry id of a `registry_data` that a Divergence shows whole; else `value`."""
+    if not isinstance(value, dict):
+        return value
+    return cast("dict[str, object]", value)["registry_id"]
 
 
 def test_two_packets_of_one_registry_are_compared_in_the_order_they_came() -> None:
