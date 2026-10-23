@@ -73,7 +73,13 @@ only (#62).
 Before the 20-play Self-check, read one vanilla Transcript of each
 window and check that every packet a window compares is in it: a
 window whose packet neither side sent matched 20 of 20 and compared
-nothing (#359).
+nothing (#359). `mise exec -- uv run scripts/research/windows.py
+<group id>` plays the Group once on one vanilla Instance and prints
+each window: its number and the packets it is narrowed to, then each
+packet in it with the time since the window opened, its tick (a
+tick-exact Group), the Bot, `sent`, `compared` or `not compared`, and
+its decoded fields (`--full` for all of them). Look for a window
+with no `compared` line, and for a narrowed packet that is not in it.
 
 ## Where things go
 
