@@ -71,6 +71,60 @@ it out, or sends other data, shows a blank sign or different text. A
 chest's items are not sent in it. The `blocks` Groups read them with a
 command instead and compare the answer as `system_chat`.
 
+## `block_event`
+
+**Block action**
+
+A block doing something at one position, such as a piston extending. A
+server that sends an action vanilla does not, or leaves one out, shows the
+player a block that does not move when it should, or moves when it should
+not. Its fields have their own test cases, below.
+
+## `block_event.action_id`
+
+**Block action type**
+
+Which action the block does. The number means what the block says: for a
+piston, 0 is extending, and 1 or 2 is retracting. A different number is a
+different action.
+
+## `block_event.action_parameter`
+
+**Block action parameter**
+
+Extra detail for the action, whose meaning also depends on the block. For a
+piston it is the direction it faces. A different value does the action in
+another direction.
+
+## `block_event.block`
+
+**Block action block type**
+
+The kind of block that does the action, such as a piston. It names the
+block, not its state. A different block type can make the same numbers mean
+another action.
+
+## `block_event.pos.x`
+
+**Block action x**
+
+The x coordinate of the block that acts. A different value makes a
+different block act.
+
+## `block_event.pos.y`
+
+**Block action y**
+
+The y coordinate of the block that acts. A different value makes a
+different block act.
+
+## `block_event.pos.z`
+
+**Block action z**
+
+The z coordinate of the block that acts. A different value makes a
+different block act.
+
 ## `block_update`
 
 **Single block change**
