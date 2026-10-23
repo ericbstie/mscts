@@ -15,6 +15,7 @@ import pytest
 import mscts.compare
 from mscts.compare import (
     ABSENT,
+    _Added,
     _Edit,
     _fewest_edits,
     _Moved,
@@ -109,10 +110,13 @@ def test_a_reference_only_and_a_candidate_only_element_at_one_index_have_differe
 
 def test_a_moved_index_names_no_index_where_indexes_are_left_out() -> None:
     assert _render(("l", _Moved(1, 3), "v"), index_free=True) == "l[].v"
+    assert _render(("l", _Added(3), "v"), index_free=True) == "l[].v"
 
 
 def test_no_two_differences_of_small_lists_share_a_path() -> None:
-    for reference, candidate in itertools.product(_small_lists(), repeat=2):
+    # The shortest lists over three values whose paths repeated before #455 are 4 against 6
+    # (84 pairs, and as many 6 against 4, its mirror). The candidate's go up to 6.
+    for reference, candidate in itertools.product(_small_lists(), _small_lists(6)):
         paths = [path for path, _, _ in _diff({"l": reference}, {"l": candidate})]
         assert len(paths) == len(set(paths)), (reference, candidate, paths)
 
@@ -193,9 +197,13 @@ def _differing(reference: Sequence[str], candidate: Sequence[str], edits: list[_
     return sum(i is None or j is None or reference[i] != candidate[j] for i, j in edits)
 
 
-def _small_lists() -> list[list[str]]:
-    """Every list up to length 4 over three values."""
-    return [list(items) for length in range(5) for items in itertools.product("abc", repeat=length)]
+def _small_lists(longest: int = 4) -> list[list[str]]:
+    """Every list up to length `longest` over three values."""
+    return [
+        list(items)
+        for length in range(longest + 1)
+        for items in itertools.product("abc", repeat=length)
+    ]
 
 
 def test_every_small_list_is_lined_up_in_order_in_fewest_steps_and_mirrored_by_a_swap() -> None:
