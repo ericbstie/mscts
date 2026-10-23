@@ -647,9 +647,10 @@ and the Report names the recipe.
 Each server picks these numbers, and the numbers of recipe groups, its own way. mscts numbers
 the recipes again in the order each Bot first gets them in a window. A recipe the Bot first gets
 outside the windows is named by what it shows instead, and a group is written as the recipes it
-holds. So a server that numbers its recipes and groups another way but keeps to it shows the
-same recipe book, while a removal of another recipe, or a recipe put in another group, differs.
-Two recipes that show the same are told apart only by the order the server sent them. The order
+holds. A recipe keeps its name or number when the server gives it another number later. So a
+server that numbers its recipes and groups another way but keeps to it shows the same recipe
+book, while a removal of another recipe, or a recipe put in another group, differs. Two recipes
+that show the same are written the same, so a removal does not show which of them went. The order
 of the book's buttons is not compared. It follows the server's numbers, how many recipes the
 book has held since the Bot joined, and the order the recipes came in.
 

@@ -1727,8 +1727,8 @@ UNORDERED: Mapping[str, str]        # packet name -> reason: the packets (any St
                                     # section_blocks_update's blocks (#320), and
                                     # recipe_book_add's entries with no toast flag, by what
                                     # each shows, not by the server's display id or group
-                                    # number, and recipe_book_remove's ids, by the numbers
-                                    # they take (#363)
+                                    # number, and recipe_book_remove's ids, by the names and
+                                    # numbers they take (#363, #462)
 RANDOM_FIELDS: Mapping[str, str]    # "<packet>.<path>" -> reason: the fields vanilla draws at
                                     # random, or reads from its clock, on every run, whose
                                     # values no exact Group compares (ADR-0011):
@@ -2111,11 +2111,10 @@ proves it necessary:
      display id and shows something else may move past it, so which of
      the two the client keeps is not compared; vanilla never repeats one.
      Two entries that show the same keep the order between them that each
-     server sent, which shows in their numbers only where their groups
-     differ.)
+     server sent, which shows only where their groups differ.)
      `play` / `minecraft:recipe_book_remove` (#363): `recipes` is sorted
-     by the numbers its display ids take in step 2, once they are
-     numbered, since each server picks its ids. Vanilla lists them in the
+     by the names and numbers its display ids take in step 2, once they
+     are written, since each server picks its ids. Vanilla lists them in the
      order of the collection it is given (`ServerRecipeBook.removeRecipes`).
      The client removes each id from its book at its own key and refreshes
      the book once after all of them (`javap` on the 26.3 client:
@@ -2547,38 +2546,40 @@ proves it necessary:
    first seen in a `remove_entities` takes no number: the entity is
    gone, and a number would shift every later one. It is written `#?`
    there, as its value is the server's counter.
-   Recipe display ids (#363) are numbers the server picks, and become
-   `#<n>` the same way, counted on their own: the n-th display id in the
-   Bot's compared packets, read after the sort of step 1, so neither
-   server's numbering decides it. They are `recipe_book_add`'s
-   `entries[].contents.id` and `recipe_book_remove`'s `recipes[]`
-   (`compare._RecipeNumbers`). A display id the Bot first gets in an add
-   that is not compared (outside the windows, or dropped by a `*` Mask)
-   is named by what its entry shows instead (#462), as an entity is by
-   its `add_entity`: the entry as JSON with sorted keys, without its
-   display id and flags, and with of its group number only whether it
-   has one. An id whose name another id holds takes the first free of
-   `<name> #2`, `<name> #3` and on. A removal's ids are sorted with the
-   numbers first, by number, then the names. A name or number lasts as
-   long as the client keeps the id: a removal, compared or not, ends its
-   ids' (`ClientRecipeBook.remove`), and an add with `replace`, compared
-   or not, ends every one before its entries take theirs
-   (`ClientRecipeBook.clear`), as does a `login`, compared or not, since
-   the client gives the player it makes a new, empty book
+   Recipe display ids (#363) are numbers the server picks. They are
+   `recipe_book_add`'s `entries[].contents.id` and `recipe_book_remove`'s
+   `recipes[]` (`compare._RecipeNumbers`), and each is written as the
+   name or number of the recipe the book holds at it. A recipe is what
+   its entry shows (#462): the entry as JSON with sorted keys, after the
+   Group's Masks, without its display id and flags, and with of its
+   group number only whether it has one. A recipe the Bot first gets in
+   a compared packet becomes `#<n>` as an entity does, counted on its
+   own: the n-th recipe in the Bot's compared packets, read after the
+   sort of step 1, so neither server's numbering decides it. One the Bot
+   first gets in an add that is not compared (outside the windows, or
+   dropped by a `*` Mask) is named by what it shows instead, as an
+   entity is by its `add_entity`. A recipe keeps its name or number for
+   the rest of the Transcript, and recipes that show the same are
+   written the same. A removal's ids are sorted with the numbers first,
+   by number, then the names. The book follows every add, removal and
+   `login`, compared or not: a removal takes its ids out
+   (`ClientRecipeBook.remove`), an add with `replace` empties the book
+   first (`ClientRecipeBook.clear`), and a `login` empties it, since the
+   client gives the player it makes a new, empty book
    (`ClientPacketListener.handleLogin`; a respawn keeps the old one,
-   `handleRespawn`), as a `remove_entities` ends an entity's. A number is
-   never given twice. So a Candidate that gives a recipe another id when
-   it adds it again shows what vanilla does (vanilla keeps the id:
-   `RecipeManager.unpackRecipeInfo` numbers every display once), one that
-   gives a recipe's id to another while the first still holds it
-   differs, and so does a removal of another recipe, wherever the Bot
-   got it. An id first seen in a removal takes the next number, which
-   the removal ends.
+   `handleRespawn`). An add that puts another recipe at an id the book
+   holds is written `<recipe> in place of <recipe>`, as the client puts
+   the new one in the old one's place (`known.put`). An id the book
+   holds no recipe at, in a removal, takes the next number, which the
+   removal ends. A number is never given twice. So a Candidate that
+   gives a recipe another id when it adds it again shows what vanilla
+   does (vanilla keeps the id: `RecipeManager.unpackRecipeInfo` numbers
+   every display once). One that gives an id to another recipe differs,
+   and so does a removal of another recipe, wherever the Bot got it.
    `recipe_book_add`'s `entries[].contents.group` (None, no group, stays
    None) is written as the names and numbers of the recipes the book
    holds in that group once the add is in it, sorted as a removal's,
-   joined with `, ` (#462). The book follows every add, removal and
-   `login`, compared or not. A group is its category and group number,
+   joined with `, ` (#462). A group is its category and group number,
    the client's key, since vanilla gives a group one number across
    categories, as for `iron_ingot` in smelting, blasting and crafting,
    and the client shows one button in each. The client builds its
@@ -2590,9 +2591,9 @@ proves it necessary:
    `place_ghost_recipe` holds a display, not an id, and is compared as
    it is; `place_recipe`, which sends an id back, is serverbound. So a
    Candidate that numbers its recipes another way but keeps to it shows
-   the same book. Recipes whose entries show the same are named and
-   numbered in the order the server sent them, so two such recipes can
-   read differently on the two sides though the client shows them alike.
+   the same book. Two recipes whose entries show the same are written
+   the same, so a removal of one does not show which of them went. Only
+   a later compared add into one of their groups shows it.
    Javap on the 26.3 client:
    the client keeps its book in a `HashMap` keyed by display id
    (`ClientRecipeBook.known`) and puts the recipes of one category and
