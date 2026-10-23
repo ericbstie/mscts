@@ -590,8 +590,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     `player <uuid>`), and every other entity id but one first seen in a
     `remove_entities`, and each of the `ENTITY_UUIDS` but a player's, becomes `#<n>`, the
     n-th in the Packets left in the stream, so nothing left out or dropped counts
-    (`_Numbers`), as does each recipe display id and recipe book group number, each counted
-    on its own over the sorted Packets (`_RecipeNumbers`); and in the Packets of a Mask's
+    (`_Numbers`), as does each recipe display id, counted on its own over the sorted Packets
+    or named by what it shows if first got outside them, and each recipe book group number
+    becomes the names and numbers of its recipes (`_RecipeNumbers`); and in the Packets of a Mask's
     name, the value at its path is MASKED on both sides, wherever present, unless it is
     None: a Mask hides a value, never whether it is there, so a field or a list element
     one side lacks is still a Divergence, and a masked field is no test case where it does
@@ -1584,11 +1585,6 @@ class _Numbering:
         self.numbers.clear()
         self.names.clear()
 
-    def keep_only(self, keys: Iterable[Hashable]) -> None:
-        """End the number of every key that is not one of `keys`."""
-        kept = set(keys)
-        self.numbers = {key: number for key, number in self.numbers.items() if key in kept}
-
 
 def _free(name: str, held: set[str]) -> str:
     """`name`, or the first of `<name> #2`, `<name> #3` and on, that is not in `held`."""
@@ -1605,7 +1601,7 @@ type _Group = tuple[str, int]
 
 @dataclass(slots=True)
 class _RecipeNumbers:
-    """The numbers of the recipe display ids and group numbers in a Bot's compared Packets.
+    """The names and numbers of the recipe display ids, and the group numbers, a Bot receives.
 
     Both are numbers the server picks: the client looks a recipe up by its display id
     (`ClientRecipeBook.known`, a HashMap) and puts the recipes of one category and group
@@ -1614,52 +1610,48 @@ class _RecipeNumbers:
     `recipes[]`. `place_ghost_recipe` shows a display, with no id, and `place_recipe`, which
     sends one back, is serverbound, so no Comparison sees it.
 
-    Each is numbered by first appearance, in the order the Packets are compared (sorted,
-    `UNORDERED`), so neither server's numbering decides it. A display id first got in a packet
-    that is not compared is named by what its entry shows instead (`uncompared`), as an
-    entity spawned outside the windows is, so it moves no number. Display ids and groups are
-    counted on their own, and a group is its category and group number, the client's key:
-    vanilla gives a group one number across categories, which the client shows as one
-    button in each. A number lasts as long as the client keeps the key, so every packet
-    the Bot receives can end one, compared or not (`follow`): a `recipe_book_remove` ends
-    its ids' numbers (`ClientRecipeBook.remove`), and a `recipe_book_add` that replaces
-    the book ends every number before its entries take theirs (`ClientRecipeBook.clear`).
-    A group's number ends once a compared packet finds no recipe in the book in the group:
-    the client builds its buttons from the recipes it knows (`rebuildCollections`), and
-    what the book held between two packets that are not compared is not compared either
-    (`number`). So a recipe the server adds again with another id or group shows the
-    same, and an id given to another recipe while the first still holds it does not. An
-    id first seen in a removal takes the next number, which the removal ends.
+    A display id is numbered by first appearance, in the order the Packets are compared
+    (sorted, `UNORDERED`), so neither server's numbering decides it. A display id first got
+    in a packet that is not compared is named by what its entry shows instead
+    (`uncompared`), as an entity spawned outside the windows is, so it moves no number. A
+    name or number lasts as long as the client keeps the id, so every packet the Bot
+    receives can end one, compared or not (`follow`): a `recipe_book_remove` ends its ids'
+    (`ClientRecipeBook.remove`), and a `recipe_book_add` that replaces the book ends every
+    one before its entries take theirs (`ClientRecipeBook.clear`). So a recipe the server
+    adds again with another id shows the same, and an id given to another recipe while the
+    first still holds it does not. An id first seen in a removal takes the next number,
+    which the removal ends.
+
+    A group number is written as the names and numbers of the recipes in the book in the
+    group, just after the add (`_group_names`): the client shows those recipes as one
+    button, and the number itself only keys them. A group is its category and group number,
+    the client's key: vanilla gives a group one number across categories, which the client
+    shows as one button in each. So a server that gives a group another number, or the
+    recipes of a group another order, shows the same, and one that splits or joins buttons
+    does not.
 
     Attributes:
         ids: The display ids' names and numbers.
-        groups: The groups' numbers.
         book: The group of each display id in the client's book, None for no group, from
             every packet the Bot received, compared or not.
     """
 
     ids: _Numbering = dataclasses.field(default_factory=_Numbering)
-    groups: _Numbering = dataclasses.field(default_factory=_Numbering)
     book: dict[int, _Group | None] = dataclasses.field(default_factory=dict)
 
     def number(self, packet: Packet, copies: Sequence[dict[str, _Value]]) -> None:
-        """Number the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
+        """Write the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
 
         `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
         the first copy's order numbers them. An add is followed before its entries take
-        their numbers, and a removal after its ids' numbers are written (`follow`). Each
-        group no recipe in the book is in ends before an add and after a removal, so only
-        what the book holds at a compared packet ends a group, never the order of two
-        packets that are not compared.
+        their names and numbers, and a removal after its ids' are written (`follow`).
         """
         if packet.name == _RECIPE_BOOK_ADD:
-            self.groups.keep_only(self.book.values())
             self.follow(packet)
             self._number_add(copies)
         elif packet.name == _RECIPE_BOOK_REMOVE:
             self._number_removal(copies)
             self.follow(packet)
-            self.groups.keep_only(self.book.values())
 
     def uncompared(self, packet: Packet) -> None:
         """Change the book as `packet`, one not compared, changes it (`follow`); name what it adds.
@@ -1689,7 +1681,6 @@ class _RecipeNumbers:
         """Put the entries of `fields`, a `recipe_book_add`'s, in the book, or in its place."""
         if fields.get("replace") is True:
             self.ids.end_all()
-            self.groups.end_all()
             self.book.clear()
         self.book.update(_book_entries(fields))
 
@@ -1700,10 +1691,34 @@ class _RecipeNumbers:
             self.book.pop(display_id, None)
 
     def _number_add(self, copies: Sequence[dict[str, _Value]]) -> None:
-        """Number `copies`, each a copy of a `recipe_book_add`'s fields."""
+        """Write `copies`, each a copy of a `recipe_book_add`'s fields: ids, then groups.
+
+        Every id is numbered first, so that a group can be written as its recipes.
+        """
         for copy in copies:
             for contents in _recipe_contents(copy):
-                self._number_contents(contents)
+                if type(display_id := contents.get("id")) is int:
+                    contents["id"] = self.ids.of(display_id)
+        names = self._group_names()
+        for copy in copies:
+            for contents in _recipe_contents(copy):
+                if (group := _group(contents)) is not None:
+                    contents["group"] = names.get(group, "")
+
+    def _group_names(self) -> dict[_Group, str]:
+        """Each group of the book as its recipes' names and numbers, in `ids`' order, joined.
+
+        A group of an entry that the same add put in another group after it has no recipe in
+        the book, so it is not here: it is written "".
+        """
+        members: dict[_Group, list[int]] = {}
+        for display_id, group in self.book.items():
+            if group is not None:
+                members.setdefault(group, []).append(display_id)
+        return {
+            group: ", ".join(self.ids.of(each) for each in sorted(ids, key=self.ids.rank))
+            for group, ids in members.items()
+        }
 
     def _number_removal(self, copies: Sequence[dict[str, _Value]]) -> None:
         """Number `copies`, each a copy of a `recipe_book_remove`'s fields.
@@ -1713,13 +1728,6 @@ class _RecipeNumbers:
         for copy in copies:
             if isinstance(recipes := copy.get("recipes"), list):
                 recipes[:] = _numbered_and_sorted(recipes, self.ids)
-
-    def _number_contents(self, contents: dict[str, _Value]) -> None:
-        """Number the display id and group number of `contents`, one entry's."""
-        if type(display_id := contents.get("id")) is int:
-            contents["id"] = self.ids.of(display_id)
-        if (group := _group(contents)) is not None:
-            contents["group"] = self.groups.of(group)
 
 
 def _numbered_and_sorted(recipes: Sequence[_Value], ids: _Numbering) -> list[_Value]:
@@ -1781,9 +1789,9 @@ class _Numbers:
 
     An entity spawned outside the windows is named by its `add_entity` (`spawned`); any
     other entity id, and each entity UUID, is numbered by first appearance in the compared
-    Packets (`take`): `#1` is the first. The recipes are numbered on their own (`recipes`):
-    a compared recipe book packet through `_normalize`, and one that is not compared
-    changes the book their numbers follow (`uncompared`).
+    Packets (`take`): `#1` is the first. The recipes are named and numbered on their own
+    (`recipes`): a compared recipe book packet through `_normalize`, and one that is not
+    compared changes the book they follow, and names what it adds (`uncompared`).
 
     Attributes:
         ids: Each entity id's name or number.
@@ -1791,7 +1799,7 @@ class _Numbers:
         numbered: How many entity ids have taken a number.
         names: How many entities have taken each name, before its suffix.
         numbers: The number of each entity id in `ids` that took one, as an int.
-        recipes: The numbers of the recipe display ids and group numbers.
+        recipes: The names and numbers of the recipe display ids, and the group numbers.
     """
 
     ids: dict[int, str]

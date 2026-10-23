@@ -434,16 +434,16 @@ def test_a_name_another_recipe_holds_takes_the_first_free_suffix() -> None:
     )
 
 
-def test_a_recipe_in_another_group_after_an_uncompared_replace_is_not_told_apart() -> None:
-    # A known limit, until #462: the replace ends group 3's number while planks still hold
-    # it, so sticks take the next number in either group. #462 turns this red.
+def test_a_recipe_in_another_group_after_an_uncompared_replace_differs() -> None:
     planks = Entry(PLANKS, display_id=5, group=3, flags=TOAST)
     common = [OPEN, book_add(planks), CLOSE, book_add(planks, replace=True)]
 
     def sticks_in(group: int) -> list[Packet | str]:
         return [OPEN, book_add(Entry(STICKS, display_id=6, group=group, flags=TOAST)), CLOSE]
 
-    assert _diff_all([*common, *sticks_in(3)], [*common, *sticks_in(7)]) == []
+    assert _diff_all([*common, *sticks_in(3)], [*common, *sticks_in(7)]) == [
+        ("entries[0].contents.group", f"#2, {named(planks)}", "#2")
+    ]
 
 
 def test_a_book_packet_that_did_not_decode_ends_no_number() -> None:
@@ -478,24 +478,34 @@ def _planks_again(group: int, *, before: Sequence[Packet | str] = ()) -> list[Pa
     return [*before, OPEN, book_add(planks), book_remove(5), book_add(again), CLOSE]
 
 
-def test_a_group_number_ends_with_the_last_recipe_in_the_group() -> None:
+def test_a_group_is_named_by_the_names_and_numbers_of_its_recipes() -> None:
+    sticks = Entry(STICKS, display_id=6, group=3)
+    reference = [book_add(sticks), OPEN, book_add(Entry(PLANKS, display_id=5, group=3)), CLOSE]
+    candidate = [OPEN, book_add(Entry(PLANKS, display_id=9, group=3)), CLOSE]
+
+    assert _diff_all(reference, candidate) == [
+        ("entries[0].contents.group", f"#1, {named(sticks)}", "#1")
+    ]
+
+
+def test_a_recipe_alone_in_its_group_shows_the_same_whatever_the_group_number() -> None:
     assert _diff_all(_planks_again(3), _planks_again(4)) == []
 
 
-def test_a_group_number_lasts_while_another_recipe_is_in_the_group() -> None:
+def test_a_recipe_put_back_beside_another_recipe_or_apart_differs() -> None:
     sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3)), CLOSE]
 
     assert _diff_all(_planks_again(3, before=sticks), _planks_again(4, before=sticks)) == [
-        ("entries[0].contents.group", "#1", "#2")
+        ("entries[0].contents.group", "#1, #3", "#3")
     ]
 
 
-def test_a_recipe_got_outside_the_windows_keeps_its_group_number() -> None:
-    sticks = [book_add(Entry(STICKS, display_id=6, group=3))]
+def test_a_recipe_got_outside_the_windows_names_its_group() -> None:
+    sticks = Entry(STICKS, display_id=6, group=3)
 
-    assert _diff_all(_planks_again(3, before=sticks), _planks_again(4, before=sticks)) == [
-        ("entries[0].contents.group", "#1", "#2")
-    ]
+    assert _diff_all(
+        _planks_again(3, before=[book_add(sticks)]), _planks_again(4, before=[book_add(sticks)])
+    ) == [("entries[0].contents.group", f"#2, {named(sticks)}", "#2")]
 
 
 def test_a_book_replaced_takes_its_recipes_out_of_their_groups() -> None:
@@ -505,7 +515,7 @@ def test_a_book_replaced_takes_its_recipes_out_of_their_groups() -> None:
     assert _diff_all(_planks_again(3, before=replaced), _planks_again(4, before=replaced)) == []
 
 
-def test_a_recipe_added_again_in_another_group_ends_the_number_of_the_group_it_left() -> None:
+def test_a_recipe_added_again_in_another_group_leaves_the_group_it_was_in() -> None:
     planks_in = [book_add(Entry(PLANKS, display_id=5, group=each)) for each in (3, 4)]
     reference = [*planks_in, book_add(Entry(STICKS, display_id=6, group=3))]
     candidate = [*planks_in, book_add(Entry(STICKS, display_id=6, group=9))]
@@ -513,7 +523,7 @@ def test_a_recipe_added_again_in_another_group_ends_the_number_of_the_group_it_l
     assert _diff_all(reference, candidate) == []
 
 
-def test_the_order_of_two_book_packets_that_are_not_compared_ends_no_group_number() -> None:
+def test_the_order_of_two_book_packets_that_are_not_compared_is_no_difference() -> None:
     first = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
     last = [OPEN, book_add(Entry(BREAD, display_id=7, group=3, flags=TOAST)), CLOSE]
     planks = book_add(Entry(PLANKS, display_id=5, group=3))
@@ -532,7 +542,7 @@ def test_the_order_of_two_book_packets_that_are_not_compared_ends_no_group_numbe
     )
 
 
-def test_a_group_emptied_outside_the_windows_is_numbered_again_at_the_next_add() -> None:
+def test_a_group_emptied_outside_the_windows_holds_only_what_comes_next() -> None:
     sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
 
     def planks_in(group: int) -> list[Packet | str]:
@@ -546,14 +556,38 @@ def test_a_group_emptied_outside_the_windows_is_numbered_again_at_the_next_add()
     )
 
 
-def test_a_group_emptied_in_a_window_is_numbered_again_if_it_is_filled_outside() -> None:
-    def planks_then_bread(group: int) -> list[Packet | str]:
-        sticks = book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST))
-        bread = book_add(Entry(BREAD, display_id=7, group=group, flags=TOAST))
-        planks = book_add(Entry(PLANKS, display_id=5, group=group))
-        return [OPEN, sticks, book_remove(6), CLOSE, planks, OPEN, bread, CLOSE]
+def _planks_then_bread(planks_in: int, bread_in: int) -> list[Packet | str]:
+    """Sticks given and taken in a window, then planks outside, then bread in a window."""
+    sticks = book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST))
+    planks = book_add(Entry(PLANKS, display_id=5, group=planks_in))
+    bread = book_add(Entry(BREAD, display_id=7, group=bread_in, flags=TOAST))
+    return [OPEN, sticks, book_remove(6), CLOSE, planks, OPEN, bread, CLOSE]
 
-    assert _diff_all(planks_then_bread(3), planks_then_bread(12)) == []
+
+def test_a_group_emptied_in_a_window_and_filled_outside_shows_what_fills_it() -> None:
+    assert _diff_all(_planks_then_bread(3, 3), _planks_then_bread(12, 12)) == []
+
+
+def test_a_group_emptied_in_a_window_and_filled_outside_differs_from_two_groups() -> None:
+    planks = Entry(PLANKS, display_id=5, group=3)
+
+    assert _diff_all(_planks_then_bread(3, 3), _planks_then_bread(3, 12)) == [
+        ("entries[0].contents.group", f"#2, {named(planks)}", "#2")
+    ]
+
+
+def test_a_group_whose_recipes_leave_and_come_back_outside_the_windows_shows_the_same() -> None:
+    sticks_as = [Entry(STICKS, display_id=6, group=each, flags=TOAST) for each in (3, 7)]
+    in_window = f"{OPEN} minecraft:set_time"
+
+    def regrouped(group: int, *, window: Sequence[str]) -> list[Packet | str]:
+        sticks_again = book_add(Entry(STICKS, display_id=6, group=group))
+        bread = book_add(Entry(BREAD, display_id=7, group=group, flags=TOAST))
+        outside = [*window[:1], book_remove(6), sticks_again, *window[1:]]
+        return [OPEN, book_add(sticks_as[0]), CLOSE, *outside, OPEN, bread, CLOSE]
+
+    for window in ((), (in_window, CLOSE)):
+        assert _diff_all(regrouped(3, window=window), regrouped(7, window=window)) == []
 
 
 def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:
@@ -564,7 +598,10 @@ def test_two_groups_on_one_server_and_one_on_the_other_differ() -> None:
         book_add(Entry(PLANKS, display_id=100, group=9), Entry(STICKS, display_id=55, group=9))
     ]
 
-    assert _diff_all(reference, candidate) == [("entries[1].contents.group", "#2", "#1")]
+    assert _diff_all(reference, candidate) == [
+        ("entries[0].contents.group", "#1", "#1, #2"),
+        ("entries[1].contents.group", "#2", "#1, #2"),
+    ]
 
 
 def test_one_group_number_in_two_categories_is_two_groups_as_in_the_client() -> None:
@@ -578,21 +615,27 @@ def test_one_group_number_in_two_categories_is_two_groups_as_in_the_client() -> 
     assert _diff_all([book_add(*shared)], [book_add(*apart)]) == []
     assert _diff_all([book_add(*apart)], [book_add(*shared)]) == []
     assert _diff_all([book_add(*apart)], [book_add(*one_number)]) == [
+        ("entries[0].contents.group", "#1", "#1, #2"),
         ("entries[1].contents.category", 1, 0),
-        ("entries[1].contents.group", "#2", "#1"),
+        ("entries[1].contents.group", "#2", "#1, #2"),
     ]
 
 
-def test_no_group_takes_no_number() -> None:
+def test_a_group_an_add_moves_its_only_recipe_out_of_holds_none() -> None:
+    # The client puts the entries in turn (`known.put`), so the id ends in the last group.
+    twice = book_add(Entry(PLANKS, display_id=5, group=3), Entry(PLANKS, display_id=5, group=4))
+    once = book_add(Entry(PLANKS, display_id=5, group=3), Entry(PLANKS, display_id=5, group=3))
+
+    assert _diff_all([twice], [once]) == [("entries[0].contents.group", "", "#1")]
+
+
+def test_a_recipe_in_no_group_has_none() -> None:
     reference = [book_add(Entry(PLANKS, display_id=1), Entry(STICKS, display_id=2, group=7))]
     candidate = [
         book_add(Entry(PLANKS, display_id=1, group=4), Entry(STICKS, display_id=2, group=7))
     ]
 
-    assert _diff_all(reference, candidate) == [
-        ("entries[0].contents.group", None, "#1"),
-        ("entries[1].contents.group", "#1", "#2"),
-    ]
+    assert _diff_all(reference, candidate) == [("entries[0].contents.group", None, "#1")]
 
 
 def test_a_recipe_in_a_group_on_one_server_only_differs() -> None:
