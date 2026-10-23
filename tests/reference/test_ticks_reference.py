@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from support.probe import REPEATER_STEPPED
 from support.reference import own_reference
+from support.verdict_text import describe_mismatches
 
 from mscts.compare import Outcome
 from mscts.run import run_results
@@ -32,7 +33,7 @@ async def test_a_tick_exact_group_self_checks_20_of_20(cache_dir: Path, tmp_path
 
     verdicts = result.verdicts
     assert len(verdicts) == _REPEAT
-    not_matching = [v for v in verdicts if v.outcome is not Outcome.MATCH]
-    assert not_matching == [], not_matching
+    matched = all(verdict.outcome is Outcome.MATCH for verdict in verdicts)
+    assert matched, describe_mismatches(verdicts)
     packets = {case.split(".")[0] for case in verdicts[0].test_cases}
     assert packets & {"block_update", "section_blocks_update"}, packets
