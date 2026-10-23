@@ -463,13 +463,13 @@ the death sends after `player_combat_kill` is in no window.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it, in a window that ends on the death. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
-| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
+| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | `drowning.bubbles_to_death` |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
 | `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
 | `player/fire` | exact | none | A Bot is put in fire and takes damage. Then a fresh Bot steps into lava, out of it onto dry grass still burning, and into water. | none |
 | `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
 
-`player/drowning` compares how many air values come between two hits. Vanilla takes a point of air each tick the player is under water, so a Candidate that hurts a drowning player 40 air values apart instead of 20 sends 20 more of them between two hits, or none if it holds the air at 0. A Candidate whose air goes down a point every other tick hurts every 40 ticks and still sends the same values in the same order, so it passes: no window compares how long a tick of air lasts.
+`player/drowning` compares how many air values come between two hits. Vanilla takes a point of air each tick the player is under water, so a Candidate that hurts a drowning player 40 air values apart instead of 20 sends 20 more of them between two hits, or none if it holds the air at 0. A Candidate whose air goes down a point every other tick hurts every 40 ticks and still sends the same values in the same order, so it passes: no window compares how long a tick of air lasts. The Measurement `drowning.bubbles_to_death` records it instead. It is the time from the first bubbles to the death: 80 ticks on vanilla, which is 4 seconds, and about twice that on such a Candidate. A Measurement never fails a Group.
 
 The other Groups compare nothing that changes every tick, so a Candidate that hurts less often than vanilla sends them the same packets in the same order. `player/freezing` is sent the player's frozen ticks every tick, but leaves its entity data out, for the reason given below. These Groups do not compare how often damage repeats:
 
@@ -916,4 +916,5 @@ level is reported per chunk section, with the positions that differ.
 | --- | --- | --- |
 | `status.rtt` | ms | The `status.rtt` span in `status/ping`: from sending the ping to receiving the pong. |
 | `join.to_first_chunk` | ms | The `join.to_first_chunk` span in `join/basic`: from the start of the login to the end of the first chunk batch. |
+| `drowning.bubbles_to_death` | ms | The `drowning.bubbles_to_death` span in `player/drowning`: from the first bubbles to the death. |
 | `instance.startup` | ms | Every Run: from launching a server until it is ready. |
