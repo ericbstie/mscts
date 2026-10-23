@@ -334,7 +334,8 @@ UNORDERED: Mapping[str, str] = MappingProxyType(
             "the order they came, so those keep their order."
         ),
         "minecraft:recipe_book_remove": (
-            "recipes, sorted by the numbers their display ids take, after they are numbered: "
+            "recipes, sorted by the numbers their display ids take, then by the names they "
+            "take, after they are named or numbered: "
             "each server picks its ids, so their own order would follow its numbering. Vanilla "
             "lists them in the order of the collection it is given (ServerRecipeBook"
             ".removeRecipes). The client removes each id from its book at its own key "
@@ -1530,36 +1531,72 @@ _RECIPE_BOOK_REMOVE = "minecraft:recipe_book_remove"
 
 @dataclass(slots=True)
 class _Numbering:
-    """Keys numbered from 1 by first appearance, until a number ends; none is given twice.
+    """Keys named, or else numbered from 1 by first appearance, until a name or number ends.
+
+    No number is given twice. A name is given by what the key shows (`name`), and one key
+    holds it at a time: a key whose name another holds takes the first of `<name> #2`,
+    `<name> #3` and on that none holds.
 
     Attributes:
-        numbers: Each key's number, until it ends.
+        numbers: Each numbered key's number, until it ends.
+        names: Each named key's name, until it ends.
         given: How many numbers have been given.
     """
 
     numbers: dict[Hashable, int] = dataclasses.field(default_factory=dict)
+    names: dict[Hashable, str] = dataclasses.field(default_factory=dict)
     given: int = 0
 
-    def of(self, key: Hashable) -> int:
-        """`key`'s number: the next one if it has none."""
+    def of(self, key: Hashable) -> str:
+        """`key`'s name, or its number as `#<n>`: the next number if it has neither."""
+        if (name := self.names.get(key)) is not None:
+            return name
         number = self.numbers.get(key)
         if number is None:
             self.given += 1
             number = self.numbers[key] = self.given
-        return number
+        return f"#{number}"
+
+    def rank(self, key: Hashable) -> tuple[int, int, str]:
+        """Where `key` sorts: numbered keys first, by number, then named ones, by name.
+
+        A key with neither takes the next number (`of`).
+        """
+        name = self.of(key)
+        number = self.numbers.get(key)
+        return (1, 0, name) if number is None else (0, number, "")
+
+    def name(self, shown: Iterable[tuple[Hashable, str]]) -> None:
+        """Name each key of `shown` by what it shows there, unless it has a name or number."""
+        held = set(self.names.values())
+        for key, name in shown:
+            if key not in self.numbers and key not in self.names:
+                self.names[key] = _free(name, held)
+                held.add(self.names[key])
 
     def end(self, key: Hashable) -> None:
-        """End `key`'s number, if it has one: it takes the next one if it comes again."""
+        """End `key`'s name or number, if it has one: it takes another if it comes again."""
         self.numbers.pop(key, None)
+        self.names.pop(key, None)
 
     def end_all(self) -> None:
-        """End every key's number."""
+        """End every key's name and number."""
         self.numbers.clear()
+        self.names.clear()
 
     def keep_only(self, keys: Iterable[Hashable]) -> None:
         """End the number of every key that is not one of `keys`."""
         kept = set(keys)
         self.numbers = {key: number for key, number in self.numbers.items() if key in kept}
+
+
+def _free(name: str, held: set[str]) -> str:
+    """`name`, or the first of `<name> #2`, `<name> #3` and on, that is not in `held`."""
+    free, taken = name, 1
+    while free in held:
+        taken += 1
+        free = f"{name} #{taken}"
+    return free
 
 
 type _Group = tuple[str, int]
@@ -1578,7 +1615,9 @@ class _RecipeNumbers:
     sends one back, is serverbound, so no Comparison sees it.
 
     Each is numbered by first appearance, in the order the Packets are compared (sorted,
-    `UNORDERED`), so neither server's numbering decides it. Display ids and groups are
+    `UNORDERED`), so neither server's numbering decides it. A display id first got in a packet
+    that is not compared is named by what its entry shows instead (`uncompared`), as an
+    entity spawned outside the windows is, so it moves no number. Display ids and groups are
     counted on their own, and a group is its category and group number, the client's key:
     vanilla gives a group one number across categories, which the client shows as one
     button in each. A number lasts as long as the client keeps the key, so every packet
@@ -1593,7 +1632,7 @@ class _RecipeNumbers:
     id first seen in a removal takes the next number, which the removal ends.
 
     Attributes:
-        ids: The display ids' numbers.
+        ids: The display ids' names and numbers.
         groups: The groups' numbers.
         book: The group of each display id in the client's book, None for no group, from
             every packet the Bot received, compared or not.
@@ -1622,11 +1661,22 @@ class _RecipeNumbers:
             self.follow(packet)
             self.groups.keep_only(self.book.values())
 
-    def follow(self, packet: Packet) -> None:
-        """Change the book as `packet`, compared or not, changes the client's, ending id numbers.
+    def uncompared(self, packet: Packet) -> None:
+        """Change the book as `packet`, one not compared, changes it (`follow`); name what it adds.
 
-        A `recipe_book_remove` ends its ids' numbers, and a `recipe_book_add` that replaces
-        the book ends every number.
+        A `recipe_book_add`'s display ids that have no name or number yet are named by what
+        their entries show (`_shown_recipes`), as `_Numbers.spawned` names an entity, so a
+        recipe got outside the windows is told from another however many came first.
+        """
+        self.follow(packet)
+        if packet.name == _RECIPE_BOOK_ADD and packet.fields is not None:
+            self.ids.name(_shown_recipes(packet.fields))
+
+    def follow(self, packet: Packet) -> None:
+        """Change the book as `packet`, compared or not, changes the client's, ending ids' numbers.
+
+        A `recipe_book_remove` ends its ids' names and numbers, and a `recipe_book_add` that
+        replaces the book ends every one.
         """
         if packet.fields is None:
             return
@@ -1667,19 +1717,31 @@ class _RecipeNumbers:
     def _number_contents(self, contents: dict[str, _Value]) -> None:
         """Number the display id and group number of `contents`, one entry's."""
         if type(display_id := contents.get("id")) is int:
-            contents["id"] = f"#{self.ids.of(display_id)}"
+            contents["id"] = self.ids.of(display_id)
         if (group := _group(contents)) is not None:
-            contents["group"] = f"#{self.groups.of(group)}"
+            contents["group"] = self.groups.of(group)
 
 
 def _numbered_and_sorted(recipes: Sequence[_Value], ids: _Numbering) -> list[_Value]:
-    """`recipes`, a removal's, each display id as its number in `ids`, sorted by number.
+    """`recipes`, a removal's, each display id as its name or number in `ids`, in its order.
 
-    An id with no number takes the next. Anything that is not an id follows the ids, in order.
+    The order is `ids.rank`'s, and an id with neither takes the next number. Anything that is
+    not an id follows the ids, in order.
     """
-    numbers = sorted(ids.of(each) for each in recipes if type(each) is int)
+    ranked = sorted((each for each in recipes if type(each) is int), key=ids.rank)
     others = [each for each in recipes if type(each) is not int]
-    return [f"#{number}" for number in numbers] + others
+    return [ids.of(each) for each in ranked] + others
+
+
+def _shown_recipes(fields: Mapping[str, object]) -> Iterator[tuple[int, str]]:
+    """Each display id of `fields`, a `recipe_book_add`'s, with what its entry shows.
+
+    That is the entry less its flags, as `_shown_entry` writes it: no display id, and of the
+    group number only whether it has one.
+    """
+    for contents in _recipe_contents(fields):
+        if type(display_id := contents.get("id")) is int:
+            yield display_id, _shown_entry({"contents": contents})
 
 
 def _group(contents: Mapping[str, object]) -> _Group | None:
@@ -1754,7 +1816,7 @@ class _Numbers:
 
         A compared one changes it as it is numbered (`_normalize`), so each changes it once.
         """
-        self.recipes.follow(packet)
+        self.recipes.uncompared(packet)
 
     def spawned(self, packet: Packet, masks: _Masks) -> None:
         """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.

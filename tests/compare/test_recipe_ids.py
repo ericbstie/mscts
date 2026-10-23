@@ -6,6 +6,7 @@ the server's display id and group number left out. The toast shows the others on
 another in the order they came, so those keep their order.
 """
 
+import json
 from collections.abc import Sequence
 from typing import NamedTuple
 
@@ -340,14 +341,97 @@ def test_a_book_replaced_ends_every_number_before_its_entries_take_theirs() -> N
     assert _diff_all(reference, candidate) == []
 
 
-def test_a_removal_of_another_recipe_after_an_uncompared_replace_is_not_told_apart() -> None:
-    # A known limit, until #462: the replace ends both ids' numbers, and the uncompared add
-    # gives them none, so each removal takes the next number. #462 turns this red.
+def named(entry: Entry) -> str:
+    """The name of `entry`'s recipe got outside the windows: the entry as JSON, but id and flags."""
+    contents = {
+        "display": _display(entry.makes),
+        "group": entry.group is not None,
+        "category": entry.category,
+        "crafting_requirements": None,
+    }
+    return json.dumps({"contents": contents}, sort_keys=True)
+
+
+PLANKS_NAME = (
+    '{"contents": {"category": 0, "crafting_requirements": null, "display": {"type": '
+    '"minecraft:crafting_shapeless", "value": {"crafting_station": {"type": "minecraft:item", '
+    '"value": 1}, "ingredients": [{"type": "minecraft:item", "value": 1}], "result": {"type": '
+    '"minecraft:item", "value": 20}}}, "group": true}}'
+)
+"""The name of the planks recipe in a group, got outside the windows."""
+
+
+def test_a_recipe_got_outside_the_windows_is_named_by_what_it_shows() -> None:
+    reference = [book_add(Entry(PLANKS, display_id=5, group=3)), OPEN, book_remove(5), CLOSE]
+    candidate = [OPEN, book_remove(9), CLOSE]
+
+    assert _diff_all(reference, candidate) == [("recipes[0]", PLANKS_NAME, "#1")]
+
+
+def test_a_recipe_named_outside_the_windows_has_the_name_whatever_its_id_and_place() -> None:
+    planks_as = [Entry(PLANKS, display_id=each, group=each) for each in (5, 8)]
+    sticks_as = [Entry(STICKS, display_id=each) for each in (6, 5)]
+    reference = [book_add(planks_as[0], sticks_as[0]), OPEN, book_remove(5), CLOSE]
+    candidate = [book_add(sticks_as[1], planks_as[1]), OPEN, book_remove(8), CLOSE]
+
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_removal_of_another_recipe_after_an_uncompared_replace_differs() -> None:
     planks, sticks = Entry(PLANKS, display_id=5, flags=TOAST), Entry(STICKS, display_id=6)
     common = [OPEN, book_add(planks, sticks), CLOSE, book_add(planks, sticks, replace=True)]
     removal = [[OPEN, book_remove(each), CLOSE] for each in (5, 6)]
 
-    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == []
+    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == [
+        ("recipes[0]", named(planks), named(sticks))
+    ]
+
+
+def test_a_removal_of_another_recipe_taken_and_given_back_outside_the_windows_differs() -> None:
+    planks, sticks = Entry(PLANKS, display_id=5, flags=TOAST), Entry(STICKS, display_id=6)
+    common = [OPEN, book_add(planks, sticks), CLOSE, book_remove(5, 6), book_add(planks, sticks)]
+    removal = [[OPEN, book_remove(each), CLOSE] for each in (5, 6)]
+
+    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == [
+        ("recipes[0]", named(planks), named(sticks))
+    ]
+
+
+def test_a_removal_of_another_recipe_taken_in_a_window_and_given_back_outside_differs() -> None:
+    planks, sticks = Entry(PLANKS, display_id=5, flags=TOAST), Entry(STICKS, display_id=6)
+    common = [OPEN, book_add(planks, sticks), CLOSE, OPEN, book_remove(5, 6), CLOSE]
+    removal = [[OPEN, book_remove(each), CLOSE] for each in (5, 6)]
+    given_back = [*common, book_add(planks, sticks)]
+
+    assert _diff_all([*given_back, *removal[0]], [*given_back, *removal[1]]) == [
+        ("recipes[0]", named(planks), named(sticks))
+    ]
+
+
+def test_a_recipe_given_again_outside_the_windows_keeps_its_number() -> None:
+    planks = Entry(PLANKS, display_id=5, flags=TOAST)
+    given = [OPEN, book_add(planks), CLOSE]
+    removal = [OPEN, book_remove(5), CLOSE]
+
+    assert _diff_all([*given, book_add(planks), *removal], [*given, *removal]) == []
+
+
+def test_a_name_another_recipe_holds_takes_the_first_free_suffix() -> None:
+    planks_as = [Entry(PLANKS, display_id=each) for each in (5, 6, 7)]
+    both = book_add(planks_as[0], planks_as[1])
+    name = named(planks_as[0])
+
+    assert _diff_all([both, OPEN, book_remove(6, 5), CLOSE], [OPEN, book_remove(1, 2), CLOSE]) == [
+        ("recipes[0]", name, "#1"),
+        ("recipes[1]", f"{name} #2", "#2"),
+    ]
+    assert (
+        _diff_all(
+            [both, book_remove(5), book_add(planks_as[2]), OPEN, book_remove(7), CLOSE],
+            [book_add(planks_as[0]), OPEN, book_remove(5), CLOSE],
+        )
+        == []
+    )
 
 
 def test_a_recipe_in_another_group_after_an_uncompared_replace_is_not_told_apart() -> None:
