@@ -2552,17 +2552,24 @@ proves it necessary:
    name or number of the recipe the book holds at it. A recipe is what
    its entry shows (#462): the entry as JSON with sorted keys, after the
    Group's Masks, without its display id and flags, and with of its
-   group number only whether it has one. A recipe the Bot first gets in
-   a compared packet becomes `#<n>` as an entity does, counted on its
-   own: the n-th recipe in the Bot's compared packets, read after the
-   sort of step 1, so neither server's numbering decides it. One the Bot
-   first gets in an add that is not compared (outside the windows, or
-   dropped by a `*` Mask) is named by what it shows instead, as an
-   entity is by its `add_entity`. A recipe keeps its name or number for
-   the rest of the Transcript, and recipes that show the same are
-   written the same. A removal's ids are sorted with the numbers first,
-   by number, then the names. The book follows every add, removal and
-   `login`, compared or not: a removal takes its ids out
+   group number only whether it has one. A recipe with no name or number
+   that the Bot gets in a compared packet becomes `#<n>` as an entity
+   does, counted on its own: the n-th recipe in the Bot's compared
+   packets, read after the sort of step 1, so neither server's numbering
+   decides it. One the Bot gets in an add that is not compared (outside
+   the windows, or dropped by a `*` Mask) is named by what it shows
+   instead, as an entity is by its `add_entity`. A name lasts while the
+   book holds a recipe that shows it, so a recipe one server alone gives
+   and takes outside the windows changes nothing (review C of #462). A
+   number lasts until a `login`, which ends every name and number, and
+   the next number is `#1` again, so a rejoin reads as a first join
+   does. What came before decides how a recipe reads only where the
+   books differed before a window: a recipe named outside the windows
+   that one server alone took before both give it again in a window is
+   a number on that side and its name on the other. Recipes that show
+   the same are written the same. A removal's ids are sorted with the
+   numbers first, by number, then the names. The book follows every
+   add, removal and `login`, compared or not: a removal takes its ids out
    (`ClientRecipeBook.remove`), an add with `replace` empties the book
    first (`ClientRecipeBook.clear`), and a `login` empties it, since the
    client gives the player it makes a new, empty book
@@ -2571,9 +2578,9 @@ proves it necessary:
    holds is written `<recipe> in place of <recipe>`, as the client puts
    the new one in the old one's place (`known.put`). An id the book
    holds no recipe at, in a removal, takes the next number, which the
-   removal ends. A number is never given twice. So a Candidate that
-   gives a recipe another id when it adds it again shows what vanilla
-   does (vanilla keeps the id: `RecipeManager.unpackRecipeInfo` numbers
+   removal ends. A number is never given twice between two logins. So a
+   Candidate that gives a recipe another id when it adds it again shows
+   what vanilla does (vanilla keeps the id: `RecipeManager.unpackRecipeInfo` numbers
    every display once). One that gives an id to another recipe differs,
    and so does a removal of another recipe, wherever the Bot got it.
    `recipe_book_add`'s `entries[].contents.group` (None, no group, stays

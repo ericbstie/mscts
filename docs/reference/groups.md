@@ -645,12 +645,18 @@ A recipe book click names the recipe by the number the server gave it in the pla
 and the Report names the recipe.
 
 Each server picks these numbers, and the numbers of recipe groups, its own way. mscts numbers
-the recipes again in the order each Bot first gets them in a window. A recipe the Bot first gets
-outside the windows is named by what it shows instead, and a group is written as the recipes it
-holds. A recipe keeps its name or number when the server gives it another number later. So a
-server that numbers its recipes and groups another way but keeps to it shows the same recipe
-book, while a removal of another recipe, or a recipe put in another group, differs. Two recipes
-that show the same are written the same, so a removal does not show which of them went. The order
+the recipes again in the order each Bot gets them in a window. A recipe the Bot gets outside the
+windows is named by what it shows instead, and a group is written as the recipes it holds. A
+recipe keeps its number when the server gives it another number later, until the Bot logs in
+again. It keeps its name while the book holds it. So a server that numbers its recipes and
+groups another way but keeps to it shows the same recipe book, and so does a server that gives
+and takes a recipe outside the windows. A removal of another recipe, or a recipe put in another
+group, differs. If one server alone takes a recipe outside the windows and both give it again in
+a window, it is a number on one side and a name on the other, and that differs too. Two recipes
+that show the same are written the same, so a removal does not show which of them went. If one
+`recipe_book_add` holds two such recipes in different groups, they are compared in the order each
+server sent them, so a server that sends them in the other order differs, though the book shows
+the same buttons. No two vanilla recipes show the same. The order
 of the book's buttons is not compared. It follows the server's numbers, how many recipes the
 book has held since the Bot joined, and the order the recipes came in.
 
