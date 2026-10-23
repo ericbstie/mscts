@@ -39,7 +39,7 @@ from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
-RECORDED_AGAINST = Build(version="nightly", commit="b57d821")
+RECORDED_AGAINST = Build(version="nightly", commit="8ea2b7d1c81e977443de85d60a54155a43e9453b")
 """The Pumpkin build the three tables below were recorded against."""
 
 MALFORMED = frozenset(
@@ -55,13 +55,9 @@ MALFORMED = frozenset(
         "banner_patterns",
         "blocks_attacks",
         "blocks_attacks all",
-        "break_sound",
-        "direct instrument",
         "direct trim",
-        "instrument",
         "pot_decorations",
         "provides_banner_patterns",
-        "provides_trim_material",
         "trim",
         # A byte too many.
         "damage_resistant",
@@ -69,25 +65,18 @@ MALFORMED = frozenset(
 )
 """Rows whose stack arrives in bytes `SLOT` does not decode (Pumpkin 26.3, as run)."""
 
-SILENT = frozenset(
-    {"brewing_fuel", "cooking_fuel", "hidden effect", "potion_contents", "removed", "waxed"}
-)
+SILENT = frozenset({"hidden effect", "potion_contents", "removed"})
 """Rows for which no stack arrives: Pumpkin does not take the command."""
 
 DIFFERENT: dict[str, tuple[str, ...]] = dict.fromkeys(
     (
-        "block_transformer",
         "compostable",
         "consume effects",
         "custom_name",
+        "direct instrument",
         "direct sound",
-        "interact_animation",
         "jukebox_playable",
-        "mob_visibility",
-        "provides_pottery_pattern",
-        "sign_text_back",
-        "sign_text_front",
-        "villager_food",
+        "sulfur_cube_content",
     ),
     (),
 )
