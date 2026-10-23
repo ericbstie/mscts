@@ -645,16 +645,20 @@ A recipe book click names the recipe by the number the server gave it in the pla
 and the Report names the recipe.
 
 Each server picks these numbers, and the numbers of recipe groups, its own way. mscts numbers
-the recipes again in the order each Bot first gets them, and the groups the same way, so a
-server that numbers its recipes another way but keeps to it shows the same recipe book. A
-removal of another recipe still differs if the Bot last got the recipe in a window and it has
-not been taken or replaced since. A recipe put in another group still differs if a
-recipe in that group was added in a window and, since then, the group has never been empty when
-a recipe was added or removed in a window, and the book has not been replaced outside the
-windows. Other such removals and groups cannot be told apart yet
-([#462](https://github.com/ericbstie/mscts/issues/462)); no Group compares one. The order of
-the book's buttons is not compared. It follows the server's numbers, how many recipes the book
-has held since the Bot joined, and the order the recipes came in.
+the recipes again in the order each Bot gets them in a window. A recipe the Bot gets outside the
+windows is named by what it shows instead, and a group is written as the recipes it holds. A
+recipe keeps its number when the server gives it another number later, until the Bot logs in
+again. It keeps its name while the book holds it. So a server that numbers its recipes and
+groups another way but keeps to it shows the same recipe book, and so does a server that gives
+and takes a recipe outside the windows. A removal of another recipe, or a recipe put in another
+group, differs. If one server alone takes a recipe outside the windows and both give it again in
+a window, it is a number on one side and a name on the other, and that differs too. Two recipes
+that show the same are written the same, so a removal does not show which of them went. If one
+`recipe_book_add` holds two such recipes in different groups, they are compared in the order each
+server sent them, so a server that sends them in the other order differs, though the book shows
+the same buttons. No two vanilla recipes show the same. The order
+of the book's buttons is not compared. It follows the server's numbers, how many recipes the
+book has held since the Bot joined, and the order the recipes came in.
 
 A player unlocks recipes when an item first enters its inventory, once per player. The
 `recipe-book` Bot gets every item it uses before its book is emptied, so that no case unlocks a

@@ -2730,8 +2730,15 @@ out is missing from the book.
 
 The number the server gives a recipe in this player's book. A click in
 the book sends it back to place the recipe. Each server picks its own
-numbers, so the recipes are numbered again in the order they first
-come, `#1` first, and those numbers are compared. The book lists its
+numbers, so the recipes are numbered again in the order they come in
+a window, `#1` first, and those numbers are compared. A recipe the
+player gets outside the windows is named by what it shows instead: its
+entry as JSON, without its display id and flags, and with of its group
+only whether it has one. A recipe keeps its number when the server
+gives it another number later, until the player logs in again, and
+its name while the book holds it. A number given to
+another recipe is written as the new recipe `in place of` the old one,
+as the client puts it in the old one's place. The book lists its
 buttons in an order that follows the server's numbers, how many recipes
 the book has held since the player joined, and the order the recipes
 came in. That order is not compared.
@@ -2742,12 +2749,10 @@ came in. That order is not compared.
 
 The group that shows several recipes as one button in the book, such as
 every kind of planks. A recipe in no group has none. Each server picks
-its own group numbers, so they are numbered again in the order they
-first come, as the display ids are. A group is counted once in each
-category, since the book shows it as one button in each. If no recipe
-in the book is in a group when a recipe is added or removed in a
-window, the book has no button for it, so the group is numbered again
-if it comes back.
+its own group numbers, so a group is written as the recipes it holds in
+the book once the recipe is added, each as its display id is written.
+A group number is one group in each category, since the book shows it
+as one button in each.
 
 ## `recipe_book_add.entries[].contents.category`
 
@@ -2807,18 +2812,14 @@ Recipes the client removes from the player's recipe book.
 
 The display ids of the recipes removed in one packet. The client removes
 each one on its own, so they can come in any order, and are compared
-sorted by their numbers.
+sorted by their numbers, then their names.
 
 ## `recipe_book_remove.recipes[]`
 
 **Display id removed**
 
-The display id of one recipe removed from the book, numbered as the
-recipes added are, so a removal of another recipe differs if the Bot
-last got the recipe in a window and it has not been taken or replaced
-since. The removal of any other recipe cannot be told from a
-removal of another such recipe yet
-([#462](https://github.com/ericbstie/mscts/issues/462)).
+The display id of one recipe removed from the book, numbered or named
+as the recipes added are, so a removal of another recipe differs.
 
 ## `place_ghost_recipe.recipe_display.type`
 
