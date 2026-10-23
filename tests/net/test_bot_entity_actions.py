@@ -152,10 +152,17 @@ PERFORM_RESPAWN = 0
 RESPAWNED_AT = {"x": 0.5, "y": -60.0, "z": 0.5, "yaw": 0.0, "pitch": 0.0}
 
 
-def dying_server(seen: list[Packet]) -> Handler:
+ENTITY_EVENT = "minecraft:entity_event"
+POOF = 60
+"""The entity event a dead player gets 20 ticks after its death (`LivingEntity.tickDeath`)."""
+
+
+def dying_server(seen: list[Packet], *, late_event: int | None = None) -> Handler:
     """Join like vanilla; answer a respawn request as `PlayerList.respawn` does, and `sync`.
 
-    The respawn is the `respawn` packet, the teleport to the spawn, then one chunk batch.
+    The respawn is the `respawn` packet, the teleport to the spawn, then one chunk batch. With
+    `late_event`, an `entity_event` of that id for the player comes first: what vanilla sends a
+    player that asks to respawn 20 ticks or more after its death is event 60.
     """
 
     async def then(peer: Peer) -> None:
@@ -165,6 +172,8 @@ def dying_server(seen: list[Packet]) -> Handler:
             if packet.name != "minecraft:client_command":
                 continue
             if packet.fields == {"action": PERFORM_RESPAWN}:
+                if late_event is not None:
+                    await peer.send(ENTITY_EVENT, entity_id=LOGIN["entity_id"], event_id=late_event)
                 await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
                 await peer.send(
                     "minecraft:player_position",
@@ -209,3 +218,45 @@ def test_respawn_asks_then_says_it_has_loaded_once_the_first_batch_is_in() -> No
         ("minecraft:chunk_batch_received", {"chunks_per_tick": 9.0}),
         ("minecraft:player_loaded", {}),
     ]
+
+
+def is_poof(packet: Packet) -> bool:
+    return packet.name == ENTITY_EVENT and (packet.fields or {}).get("event_id") == POOF
+
+
+def respawned(late_event: int | None, unless: Callable[[Packet], bool] | None) -> list[str]:
+    """Whether the Bot said it loaded the world after the respawn, or the ProtocolError's text."""
+    seen: list[Packet] = []
+    errors: list[str] = []
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        try:
+            await bot.respawn(unless=unless)
+        except ProtocolError as error:
+            errors.append(str(error) if bot.failure is error else "not the Bot's failure")
+        await bot.sync()
+
+    server = dying_server(seen, late_event=late_event)
+    with_bot(CODEC, Transcript(group_id="test/respawn", server="fake"), server, use)
+    [asked] = [packet for packet in seen if packet.fields == {"action": PERFORM_RESPAWN}]
+    loaded = [p.name for p in seen[seen.index(asked) :] if p.name == "minecraft:player_loaded"]
+    return [*loaded, *errors]
+
+
+def test_respawn_fails_on_a_packet_it_is_told_to_fail_on_that_comes_before_the_respawn() -> None:
+    # A Group cannot see what respawn takes before the `respawn`, so respawn checks it. It
+    # raises before the chunk batch, so the Bot never says it has loaded the world.
+    refused = (
+        "alice got minecraft:entity_event {'entity_id': 300, 'event_id': 60} before "
+        "minecraft:respawn"
+    )
+    assert respawned(POOF, is_poof) == [refused]
+
+
+def test_respawn_plays_on_after_a_packet_it_is_not_told_to_fail_on() -> None:
+    assert respawned(POOF + 1, is_poof) == ["minecraft:player_loaded"]
+
+
+def test_respawn_takes_any_packet_before_the_respawn_when_told_to_fail_on_none() -> None:
+    assert respawned(POOF, None) == ["minecraft:player_loaded"]

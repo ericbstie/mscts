@@ -543,7 +543,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
-    async def respawn(self) -> None: ...                               # PERFORM_RESPAWN → player_loaded
+    async def respawn(self, *, unless: Callable[[Packet], bool] | None = None) -> None: ...
+    # PERFORM_RESPAWN → player_loaded; a packet `unless` holds for before `respawn` raises
+    # ProtocolError (#463)
     async def expect(self, name: str, /, *others: str, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)

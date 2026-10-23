@@ -130,6 +130,8 @@ _PERFORM_RESPAWN = 0
 """The `client_command` action the client sends from the death screen's respawn button
 (`ServerboundClientCommandPacket.Action`: PERFORM_RESPAWN 0, REQUEST_STATS 1; 26.3 javap)."""
 
+_RESPAWN = "minecraft:respawn"
+
 
 def offline_uuid(name: str) -> uuid.UUID:
     """The UUID an offline-mode server gives the player called `name`.
@@ -859,7 +861,7 @@ class Bot:
             # client could be ready earlier (docs/research/2026-09-26-join.md).
             await self._connection.send("minecraft:player_loaded")
 
-    async def respawn(self) -> None:
+    async def respawn(self, *, unless: Callable[[Packet], bool] | None = None) -> None:
         """Respawn a dead player, and return once the Bot has said it loaded the world again.
 
         Sends `client_command` PERFORM_RESPAWN, as the death screen's button does, takes each
@@ -869,8 +871,12 @@ class Bot:
         ignores its attacks and interactions (`hasClientLoaded`); as at the join, the Bot says
         so once the first chunk batch has arrived and been acknowledged.
 
+        `unless` is called with each packet taken before the `respawn`: one it holds for fails
+        the respawn, for a Group whose window must not hold that packet before the `respawn`.
+
         Raises:
-            ProtocolError: The Bot is not in play, or the server disconnected it.
+            ProtocolError: The Bot is not in play, or the server disconnected it, or a packet
+                `unless` holds for came before the `respawn`.
             TimeoutError: The respawn and its first chunk batch did not come within
                 `timeout_s`: the server ignores the request while the player is alive.
         """
@@ -878,9 +884,20 @@ class Bot:
         waited_for = "minecraft:respawn, then minecraft:chunk_batch_finished"
         async with self._operation(self._timeout_s, waited_for):
             await self._connection.send("minecraft:client_command", action=_PERFORM_RESPAWN)
-            await self.expect("minecraft:respawn", timeout_s=self._timeout_s)
+            await self._respawned(unless)
             await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
             await self._connection.send("minecraft:player_loaded")
+
+    async def _respawned(self, unless: Callable[[Packet], bool] | None) -> None:
+        """Take packets until the `respawn`; raise ProtocolError at one `unless` holds for."""
+
+        def ends_the_wait(packet: Packet) -> bool:
+            return packet.name == _RESPAWN or (unless is not None and unless(packet))
+
+        packet = await self._take(ends_the_wait, timeout_s=self._timeout_s)
+        if packet.name != _RESPAWN:
+            msg = f"{self.name} got {packet.name} {dict(packet.fields or {})} before {_RESPAWN}"
+            raise ProtocolError(msg)
 
     async def expect(
         self,
@@ -912,13 +929,25 @@ class Bot:
         if len(set(names)) < len(names):
             msg = f"expect names a packet twice: {', '.join(names)}"
             raise ValueError(msg)
+
+        def wanted(packet: Packet) -> bool:
+            return packet.name in names and (where is None or where(packet))
+
         async with self._operation(timeout_s, " or ".join(names)):
-            while True:
-                packet = await self._connection.recv(timeout_s=timeout_s)
-                if packet.name in names and (where is None or where(packet)):
-                    self._disconnected |= _ends_the_session(packet)
-                    return packet
-                self._refuse(packet)
+            return await self._take(wanted, timeout_s=timeout_s)
+
+    async def _take(self, wanted: Callable[[Packet], bool], *, timeout_s: float) -> Packet:
+        """Take packets until `wanted` holds for one; return it.
+
+        Raises:
+            ProtocolError: A packet before it ends the session (`_refuse`).
+        """
+        while True:
+            packet = await self._connection.recv(timeout_s=timeout_s)
+            if wanted(packet):
+                self._disconnected |= _ends_the_session(packet)
+                return packet
+            self._refuse(packet)
 
     async def command(self, command: str) -> None:
         """Run `command`, without its leading `/`, as this Bot's player.
