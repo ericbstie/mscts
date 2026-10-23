@@ -1218,8 +1218,13 @@ numbers.
 **Registry name**
 
 Which registry a `registry_data` holds, such as
-`minecraft:worldgen/biome`. A difference here usually means the servers
-send their registries in a different order.
+`minecraft:worldgen/biome`. The client keeps each registry's entries
+apart and loads the registries in an order of its own, so mscts compares
+each registry with the same registry from the other server. A registry
+that only one server sends is a `registry_data` the other leaves out.
+When the servers send their registries in different orders, this test
+case differs in network traffic only, and `--verbose` shows the order
+each server sent.
 
 ## `section_blocks_update`
 

@@ -1631,7 +1631,8 @@ class Divergence:
     tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
-    #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
+    #   chunk_batch_start or chunk_batch_finished (step 1), or the order of registry_data
+    #   (path ORDER_PATH, step 1); gameplay: every other Divergence,
     #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
     #   raises ValueError for a bot or failed one that is network traffic, #221).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
@@ -1641,7 +1642,10 @@ class Divergence:
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
     # field: a difference between two matched packets, or (path TICK_PATH, the two ticks
     #   as int values, the packet's test case) one packet a tick-exact Group got on
-    #   different ticks (#23), followed by the two packets' differences;
+    #   different ticks (#23), followed by the two packets' differences, or (path
+    #   ORDER_PATH, network traffic, registry_id's test case, at the first matched
+    #   registry_data of a run of the reference's) the registries of the run both sides
+    #   sent, in each side's order (#451);
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
@@ -1686,6 +1690,10 @@ TICK_PATH = "(tick)"                # #23: the path of the field Divergence of a
                                     # a tick-exact Group got on different ticks; the Report
                                     # shows it before the values ("(tick): vanilla sends 1, ...");
                                     # no field path holds a parenthesis
+ORDER_PATH = "(order)"              # #451: the path of the network traffic field Divergence
+                                    # of registry_data of different registries sent in
+                                    # different orders; its values are each side's registry
+                                    # ids of the matched packets, in the order it sent them
 TICK_MARK = "tick:"                 # #23: "tick:<k>" ends tick k of a tick-exact Group:
                                     # for one Bot with its name after it ("tick:3 alice"),
                                     # without for every Bot with no Mark of its own
@@ -2200,6 +2208,32 @@ proves it necessary:
      ticks' as little as 25.7 ms, or 0 ms when the reader stalled (the
      research note). `set_passengers` (two entities) and bundles (the
      projectile power) end a run.
+   - the order of `registry_data` packets of different registries (#451).
+     A *run of registries* is a longest stretch of configuration packets,
+     in a Bot's normalized stream, that are each a `registry_data` the
+     codec read or a packet the run goes across (`compare._REGISTRY_NEUTRAL`:
+     every clientbound configuration packet but `registry_data`,
+     `finish_configuration`, `disconnect` and `transfer`; none of their
+     handlers reads the registries collected, javap). Each run becomes its
+     `registry_data`, sorted by `registry_id`, stably
+     (`compare._by_registry`), so two packets of one registry keep their
+     order, then its other packets in their order; indices count the
+     sorted stream. The client collects each registry's entries apart, in a
+     `HashMap` keyed by registry, appending a later packet's entries, and
+     loads the registries only at `finish_configuration`, in the order of
+     `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`, each by its key (`javap`
+     on the 26.3 client: `RegistryDataCollector$ContentsCollector.append`,
+     `RegistryDataCollector.loadNewElementsAndTags`,
+     `NetworkRegistryLoadTask.load`;
+     `docs/research/2026-10-23-registry-order.md`). Vanilla sends one
+     packet a registry, in that same list's order
+     (`RegistrySynchronization.packRegistries`). The order is still
+     reported, as network traffic (ADR-0007): for each run of the
+     reference whose matched packets came in different orders, one `field`
+     Divergence at `ORDER_PATH`, at the first of them, holds each side's
+     registry ids of them in the order it sent them
+     (`compare._registry_orders`). A packet moves only within its run, so
+     the runs keep their order on both sides.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
@@ -2621,8 +2655,11 @@ proves it necessary:
    forgotten chunk: two at different positions are never one packet sent
    two ways, so each is `missing` or `unexpected`, and shows
    `chunk <x> <z>` rather than its fields; a chunk the codec cannot
-   read has the position of its first two Ints, if it has 8 bytes),
-   so as few packets as possible are reported `missing` or `unexpected`.
+   read has the position of its first two Ints, if it has 8 bytes; and
+   the registry of a `registry_data` the codec read, #451: the client
+   collects each registry's entries apart, so a registry only one side
+   sends is one `missing` or `unexpected` packet and the others pair by
+   registry), so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
    mirrors it: match the common prefix and suffix as they stand (so of
    repeated packets the prefix matches the earliest and the suffix the

@@ -35,6 +35,7 @@ from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Seq
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
+from itertools import groupby
 from types import MappingProxyType
 from typing import Literal, NamedTuple, NoReturn, Self, cast, override
 from uuid import UUID
@@ -131,6 +132,16 @@ TICK_PATH = "(tick)"
 Its values are the two ticks, counting from 1 since the freeze (`TICK_MARK`). No field's path
 can be it: a path joins identifier keys with dots and puts any other key, and every index, in
 brackets, so it never holds a parenthesis.
+"""
+
+ORDER_PATH = "(order)"
+"""The path of the network traffic `field` Divergence of `registry_data` packets of different
+registries that the two sides sent in different orders (#451).
+
+Its values are each side's registry ids of the matched `registry_data`, in the order that side
+sent them; its test case is `registry_id`'s. The client loads the registries by key, whatever
+their order (docs/research/2026-10-23-registry-order.md). As for `TICK_PATH`, no field's path
+can be it.
 """
 
 OBSERVE_CLOSE = "observe:close"
@@ -471,7 +482,8 @@ class Divergence:
             canonical forms are equal, so the vanilla client reads both alike; its path
             and values are the raw ones; or a `missing` or `unexpected` `chunk_batch_start`
             or `chunk_batch_finished`, or one on another tick (`TICK_PATH`), which leave
-            the client's world as it is. `gameplay`:
+            the client's world as it is; or the order of `registry_data` (`ORDER_PATH`),
+            which the client loads by registry. `gameplay`:
             every other Divergence, including every `bot` and `failed` one.
         tested: For `distribution`, the test that rejected, its p-value after Holm's
             correction; None if a side has no samples of the name, or one side's are
@@ -560,7 +572,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
     Each Bot's stream is normalized first: the chunks in a row are sorted by position
     (`_by_position`), and the resends in a row for different entities by entity (`_RESENDS`,
-    `_by_entity`); then, if the Transcript has Observation windows, the play Packets they
+    `_by_entity`), and the `registry_data` of a configuration by registry (`_by_registry`);
+    then, if the Transcript has Observation windows, the play Packets they
     do not observe are left out (`_Windows.observes`); the Packets a `*` Mask names are
     dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
@@ -583,11 +596,14 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     Packets left out or dropped; paths and values are those of the sorted, canonical,
     numbered form.
 
-    Each Bot's two streams are aligned on their packet keys (State and name, and the position
-    of a packet about one chunk), leaving as few Packets unmatched as possible; swapping the
-    sides mirrors the alignment. Between two matched pairs, `missing` Divergences come before
-    `unexpected` ones. An unmatched chunk, light update or forgotten chunk shows
-    `chunk <x> <z>`, any other Packet its value.
+    Each Bot's two streams are aligned on their packet keys (State and name, the position
+    of a packet about one chunk, and the registry of a `registry_data`), leaving as few
+    Packets unmatched as possible; swapping the sides mirrors the alignment. Between two
+    matched pairs, `missing` Divergences come before `unexpected` ones. An unmatched chunk,
+    light update or forgotten chunk shows `chunk <x> <z>`, any other Packet its value. If the
+    matched `registry_data` of a run of the reference's came in another order on each side,
+    the first of them is preceded by one network traffic `field` Divergence at `ORDER_PATH`
+    (`_registry_orders`).
 
     In a tick-exact Group (its Transcript has `TICK_MARK` Marks), each play Packet holds the
     tick it arrived on (`_Ticks`), and the Packets are aligned as without ticks. Two matched
@@ -697,6 +713,20 @@ def _codec() -> Codec:
 # Bots and their streams.
 
 
+class _RegistryPlace(NamedTuple):
+    """A `registry_data` the codec read, as a Bot's stream holds it (`_by_registry`).
+
+    Attributes:
+        registry: Its registry id (`_registry_id`).
+        run: Which run of registries of the stream it came in, counting from 0.
+        arrived: Its index in the normalized stream before the runs were sorted.
+    """
+
+    registry: str
+    run: int
+    arrived: int
+
+
 @dataclass(frozen=True, slots=True)
 class _Normalized:
     """A Packet of a normalized stream, with its fields as the Comparison sees them.
@@ -716,6 +746,8 @@ class _Normalized:
         masked: The paths in `fields` at which a Mask found a value, None included.
         tick: For a play Packet of a tick-exact Group, the tick it arrived on (`_Ticks`);
             else None.
+        registry: For a `registry_data` the codec read, its registry and where it came
+            (`_by_registry`); else None.
     """
 
     packet: Packet
@@ -725,6 +757,7 @@ class _Normalized:
     unmasked: dict[str, _Value] | None = None
     masked: frozenset[_Path] = frozenset()
     tick: int | None = None
+    registry: _RegistryPlace | None = None
 
     @property
     def value(self) -> object:
@@ -807,7 +840,8 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     a Bot first hears of in the run keeps its place, since its number comes from it. A run
     ends at a window's end and at a tick Mark, so in a tick-exact Group it holds one tick's
     resends; elsewhere it may hold several ticks' of one window, and the order of different
-    entities' resends across those ticks is not compared.
+    entities' resends across those ticks is not compared. Last, each run of `registry_data`
+    is sorted by registry (`_by_registry`).
     """
     windows = _Windows.of(transcript, bot)
     ticks = _Ticks.of(transcript, bot)
@@ -827,7 +861,7 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     for run in _runs(arrivals):
         taken = [_take(arrival, masks, numbers) for arrival in _by_entity(run, numbers.ranks())]
         stream.extend(normalized for normalized in taken if normalized is not None)
-    return stream
+    return _by_registry(stream)
 
 
 class _Arrival(NamedTuple):
@@ -1144,6 +1178,112 @@ _CHUNK_POSITION_BYTES = 8
 _BIOMES_REGISTRY = "minecraft:worldgen/biome"
 
 
+_REGISTRY_DATA = "minecraft:registry_data"
+
+
+def _by_registry(stream: Sequence[_Normalized]) -> list[_Normalized]:
+    """A Bot's normalized `stream`, with each run of `registry_data` sorted by registry, stably.
+
+    A run is a longest stretch of configuration packets that each hold a registry
+    (`_registry_id`) or read none (`_REGISTRY_NEUTRAL`). Until `finish_configuration` the
+    client only collects each registry's entries apart, and then loads the registries by key,
+    in an order of its own; the entries of two packets of one registry it appends in the order
+    they came (docs/research/2026-10-23-registry-order.md). A run becomes its registries,
+    sorted by registry, stably, so those of one registry keep their order, then its other
+    packets in their order: so such a packet is in the same place whether it came before a
+    registry or after it. Each registry notes its registry, its run and its index in `stream`
+    (`_Normalized.registry`), so the order each side sent them in can still be compared
+    (`_registry_order`).
+    """
+    result: list[_Normalized] = []
+    for number, (start, run) in enumerate(_registry_runs(stream)):
+        result.extend(stream[len(result) : start])
+        result.extend(_placed_and_sorted(run, number=number, start=start))
+    result.extend(stream[len(result) :])
+    return result
+
+
+def _registry_runs(stream: Sequence[_Normalized]) -> Iterator[tuple[int, list[_Normalized]]]:
+    """Each run of registries of `stream` (`_by_registry`), with the index it starts at."""
+    start = 0
+    for in_run, entries in groupby(stream, key=_in_registry_run):
+        run = list(entries)
+        if in_run:
+            yield start, run
+        start += len(run)
+
+
+def _in_registry_run(entry: _Normalized) -> bool:
+    """Whether `entry` holds a registry (`_registry_id`) or is one a run goes across."""
+    packet = entry.packet
+    return _holds_registry(entry) or (
+        packet.state is State.CONFIGURATION and packet.name in _REGISTRY_NEUTRAL
+    )
+
+
+_REGISTRY_NEUTRAL = frozenset(
+    {
+        "minecraft:clear_dialog",
+        "minecraft:code_of_conduct",
+        "minecraft:cookie_request",
+        "minecraft:custom_payload",
+        "minecraft:custom_report_details",
+        "minecraft:keep_alive",
+        "minecraft:ping",
+        "minecraft:post_effects",
+        "minecraft:reset_chat",
+        "minecraft:resource_pack_pop",
+        "minecraft:resource_pack_push",
+        "minecraft:select_known_packs",
+        "minecraft:server_links",
+        "minecraft:show_dialog",
+        "minecraft:store_cookie",
+        "minecraft:update_enabled_features",
+        "minecraft:update_tags",
+    }
+)
+"""The configuration packets a run of registries goes across: every clientbound one but
+`registry_data`, `finish_configuration`, which loads the registries collected, and `disconnect`
+and `transfer`, after which the client handles nothing more (`Connection.disconnect`). The
+registries collected are in `ClientConfigurationPacketListenerImpl.registryDataCollector`, a
+private field that only `handleRegistryData`, `handleUpdateTags` (which adds the tags apart,
+`RegistryDataCollector.appendTags`) and `handleConfigurationFinished` read (javap on the 26.3
+client, docs/research/2026-10-23-registry-order.md)."""
+
+
+def _placed_and_sorted(run: Sequence[_Normalized], *, number: int, start: int) -> list[_Normalized]:
+    """Run `number` of registries, which starts at index `start`, in the order it is compared.
+
+    Its registries, each noting where it came (`_RegistryPlace`), sorted by registry, stably;
+    then its other packets, in their order.
+    """
+    placed = [
+        replace(entry, registry=_RegistryPlace(registry, run=number, arrived=start + offset))
+        for offset, entry in enumerate(run)
+        if (registry := _registry_id(entry.packet)) is not None
+    ]
+    others = [entry for entry in run if not _holds_registry(entry)]
+    return [*sorted(placed, key=_registry_text), *others]
+
+
+def _holds_registry(entry: _Normalized) -> bool:
+    """Whether `entry` is a `registry_data` whose registry the codec read (`_registry_id`)."""
+    return _registry_id(entry.packet) is not None
+
+
+def _registry_text(entry: _Normalized) -> str:
+    """`registry <id>` for a `registry_data` the codec read (`_by_registry`), else ""."""
+    return "" if entry.registry is None else f"registry {entry.registry.registry}"
+
+
+def _registry_id(packet: Packet) -> str | None:
+    """The registry id of a configuration `registry_data` the codec read; else None."""
+    if packet.state is not State.CONFIGURATION or packet.name != _REGISTRY_DATA:
+        return None
+    registry = None if packet.fields is None else packet.fields.get("registry_id")
+    return registry if isinstance(registry, str) else None
+
+
 @dataclass(frozen=True, slots=True)
 class _Context:
     """What a canonical form needs from the rest of a Bot's Transcript.
@@ -1177,9 +1317,8 @@ class _Context:
             else:
                 counts = [] if counts is None else counts
                 if (
-                    packet.name == "minecraft:registry_data"
+                    _registry_id(packet) == _BIOMES_REGISTRY
                     and packet.fields is not None
-                    and packet.fields.get("registry_id") == _BIOMES_REGISTRY
                     and isinstance(entries := packet.fields.get("entries"), list)
                 ):
                     counts.append(len(cast("list[object]", entries)))
@@ -2994,13 +3133,22 @@ the JSON is reported at its JSON path; and its test cases are named from inside 
 type _Key = tuple[str, ...]
 """What a Packet is aligned on (`_key`): its State, its name and, for a packet about one chunk,
 its position (`chunk x z`; empty for any other Packet). The client keeps a chunk and its light by
-position, so two such packets at different positions are never one Packet sent two ways. Not its
-tick in a tick-exact Group: two matched Packets on different ticks are a Divergence of their own
-(`_diff_ticks`), so a run of packets each a tick late still matches one for one (#23)."""
+position, so two such packets at different positions are never one Packet sent two ways. And for a
+`registry_data` the codec read, its registry (`registry <id>`, `_registry_text`; empty for any
+other Packet, so it pairs only with a `registry_data` of the same registry): the client collects
+each registry's entries apart, so a registry only one side sends is one Packet left unmatched
+(#451). Not its tick in a tick-exact Group: two matched Packets on different ticks are a
+Divergence of their own (`_diff_ticks`), so a run of packets each a tick late still matches one
+for one (#23)."""
 
 
 def _key(entry: _Normalized) -> _Key:
-    return (entry.packet.state.value, entry.packet.name, _place_text(entry.packet))
+    return (
+        entry.packet.state.value,
+        entry.packet.name,
+        _place_text(entry.packet),
+        _registry_text(entry),
+    )
 
 
 def _place_text(packet: Packet) -> str:
@@ -3178,6 +3326,7 @@ def _compare_streams(
         if timed
         else _align(ref_keys, cand_keys)
     )
+    orders = _registry_orders(bot, reference, candidate, pairs)
     next_reference = next_candidate = 0
     for ref_index, cand_index in [*pairs, (len(reference), len(candidate))]:
         for index in range(next_reference, ref_index):
@@ -3189,9 +3338,96 @@ def _compare_streams(
             yield _unmatched(bot, index, "unexpected", candidate[index])
         if ref_index < len(reference):
             matched = (reference[ref_index], candidate[cand_index])
+            if (order := orders.get(ref_index)) is not None:
+                yield order
             yield from _diff_ticks(bot, ref_index, *matched)
             yield from _diff_matched(bot, ref_index, *matched, compared)
         next_reference, next_candidate = ref_index + 1, cand_index + 1
+
+
+class _MatchedRegistry(NamedTuple):
+    """Two matched `registry_data` the codec read (`_matched_registries`).
+
+    Attributes:
+        index: The reference packet's index in its normalized stream.
+        reference: Where the reference packet came.
+        candidate: Where the candidate packet came.
+    """
+
+    index: int
+    reference: _RegistryPlace
+    candidate: _RegistryPlace
+
+
+def _registry_orders(
+    bot: str,
+    reference: Sequence[_Normalized],
+    candidate: Sequence[_Normalized],
+    pairs: Sequence[tuple[int, int]],
+) -> dict[int, Divergence]:
+    """The order of the matched packets of each run of registries of the reference, by index.
+
+    For each run whose matched packets the sides sent in different orders, its order
+    (`_registry_order`), by the index of the first of them. The sort moves a packet only
+    within its run, so packets of different runs keep their order on both sides.
+    """
+    matched = _matched_registries(reference, candidate, pairs)
+    runs = groupby(matched, key=lambda pair: pair.reference.run)
+    orders = (_registry_order(bot, reference, list(run)) for _, run in runs)
+    return {order.index: order for order in orders if order is not None}
+
+
+def _registry_order(
+    bot: str, reference: Sequence[_Normalized], matched: Sequence[_MatchedRegistry]
+) -> Divergence | None:
+    """The order of the `matched` packets of one run of registries, if the sides' differ.
+
+    One network traffic `field` Divergence at `ORDER_PATH`, at the first of them, with each
+    side's registry ids of them in the order it sent them (`_RegistryPlace.arrived`), and the
+    test case of `registry_id`: the client loads the registries by key, whatever their order
+    (`_by_registry`). None if both sent them in one order.
+    """
+    sent_reference = _sent_order(pair.reference for pair in matched)
+    sent_candidate = _sent_order(pair.candidate for pair in matched)
+    if sent_reference == sent_candidate:
+        return None
+    first = reference[matched[0].index].packet
+    return Divergence(
+        bot=bot,
+        index=matched[0].index,
+        kind="field",
+        packet=first.name,
+        path=ORDER_PATH,
+        reference=sent_reference,
+        candidate=sent_candidate,
+        test_case=_test_case(first.state, first.name, ("registry_id",)),
+        observability=Observability.NETWORK_TRAFFIC,
+    )
+
+
+def _matched_registries(
+    reference: Sequence[_Normalized],
+    candidate: Sequence[_Normalized],
+    pairs: Sequence[tuple[int, int]],
+) -> list[_MatchedRegistry]:
+    """The `pairs` of `registry_data` the codec read, in order (`_Normalized.registry`).
+
+    A packet with a registry pairs only with one of the same registry (`_key`).
+    """
+    places = [
+        (ref_index, reference[ref_index].registry, candidate[cand_index].registry)
+        for ref_index, cand_index in pairs
+    ]
+    return [
+        _MatchedRegistry(index, ref_place, cand_place)
+        for index, ref_place, cand_place in places
+        if ref_place is not None and cand_place is not None
+    ]
+
+
+def _sent_order(places: Iterable[_RegistryPlace]) -> list[str]:
+    """The registries of `places`, in the order they came (`_RegistryPlace.arrived`)."""
+    return [place.registry for place in sorted(places, key=lambda place: place.arrived)]
 
 
 def _field_cases(entry: _Normalized) -> set[str]:
