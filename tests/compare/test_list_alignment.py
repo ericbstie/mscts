@@ -13,10 +13,11 @@ from uuid import UUID
 import pytest
 
 import mscts.compare
-from mscts.codec.packets import Packet
+from mscts.codec.packets import Packet, State
 from mscts.compare import (
     ABSENT,
     MASKED,
+    Divergence,
     Mask,
     _Added,
     _Edit,
@@ -29,6 +30,7 @@ from mscts.compare import (
     _Value,
     compare,
 )
+from mscts.compare import test_case as case_name
 from tests.compare.build import packet, transcript
 
 
@@ -114,22 +116,47 @@ def test_a_reference_only_and_a_candidate_only_element_at_one_index_have_differe
 ENTRIES = "tagged_registries[0].tags[0].entries"
 
 
+def _update_tags(entries: list[int]) -> Packet:
+    """An `update_tags` with one tag, of these entries."""
+    tag = {"tag_name": "minecraft:logs", "entries": entries}
+    fields = {"tagged_registries": [{"registry": "minecraft:block", "tags": [tag]}]}
+    return packet("minecraft:update_tags", fields=fields)
+
+
+def _entries_compared(
+    reference: list[int], candidate: list[int], *masks: Mask
+) -> tuple[Divergence, ...]:
+    """The Divergences of two `update_tags` with one tag of these entries."""
+    return compare(
+        transcript(("alice", _update_tags(reference))),
+        transcript(("alice", _update_tags(candidate))),
+        masks,
+    ).divergences
+
+
 def _masked_entries(
     reference: list[int], candidate: list[int], mask_path: str
 ) -> list[tuple[str | None, object, object]]:
     """The Divergences of two `update_tags` with one tag of these entries, under one Mask."""
+    mask = Mask("minecraft:update_tags", mask_path, reason="a test")
+    return [
+        (d.path, d.reference, d.candidate) for d in _entries_compared(reference, candidate, mask)
+    ]
 
-    def update_tags(entries: list[int]) -> Packet:
-        tag = {"tag_name": "minecraft:logs", "entries": entries}
-        fields = {"tagged_registries": [{"registry": "minecraft:block", "tags": [tag]}]}
-        return packet("minecraft:update_tags", fields=fields)
 
-    verdict = compare(
-        transcript(("alice", update_tags(reference))),
-        transcript(("alice", update_tags(candidate))),
-        [Mask("minecraft:update_tags", mask_path, reason="a test")],
-    )
-    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+@pytest.mark.parametrize(
+    ("reference", "candidate"), [([1, 2], [2, 3, 1, 1]), ([1, 1, 2, 3], [2, 2, 1, 3, 1, 2])]
+)
+def test_each_path_of_a_lined_up_packet_is_its_own_and_names_its_test_case(
+    reference: list[int], candidate: list[int]
+) -> None:
+    # A path copied from a Divergence, arrows included, is a field path (review B of #455).
+    divergences = _entries_compared(reference, candidate)
+    paths = [d.path for d in divergences]
+    assert any("→" in str(path) for path in paths), paths
+    assert len(paths) == len(set(paths)), paths
+    for divergence in divergences:
+        assert case_name(State.PLAY, divergence.packet, divergence.path) == divergence.test_case
 
 
 def test_a_mask_at_the_index_of_an_element_only_the_candidate_has_hides_its_value_only() -> None:

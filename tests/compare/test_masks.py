@@ -14,7 +14,7 @@ REASON = "nondeterministic in vanilla"
 AWKWARD_KEYS = ["a.b", "", 'say "hi"', "\xe9", "]", '["x"]', "1", "a b", "\\", "\n"]
 
 
-def test_every_divergence_path_is_a_valid_mask_path() -> None:
+def test_every_divergence_path_without_an_arrow_is_a_valid_mask_path() -> None:
     def fields(value: int) -> dict[str, object]:
         return {"m": {key: [{key: value}] for key in AWKWARD_KEYS}}
 
@@ -108,6 +108,33 @@ def test_a_mask_path_must_be_spelled_as_divergences_spell_it(path: str, canonica
     # One spelling per path, so a path copied from a Divergence is the Mask's path.
     with pytest.raises(ValueError, match=re.escape(f"write {canonical!r}")):
         Mask(packet="minecraft:set_health", path=path, reason=REASON)
+
+
+@pytest.mark.parametrize(
+    ("path", "own"),
+    [("l[→2]", "l[2]"), ("l[1→3].id", "l[1].id"), ("m[0][→4][*]", "m[0][4][*]")],
+)
+def test_a_mask_path_with_an_arrow_is_refused_with_the_index_to_write(path: str, own: str) -> None:
+    # A Mask hides each list's own index on both sides, before the lists are lined up
+    # (#455), so no Mask can name an element only the candidate has, or a moved pair.
+    error = (
+        f"test:p: Mask path {path!r} has an arrow, which only a Divergence path writes; a "
+        f"Mask names each list's own index and hides it on both sides: write {own!r}"
+    )
+    with pytest.raises(ValueError, match=re.escape(error)):
+        Mask(packet="test:p", path=path, reason=REASON)
+
+
+def test_a_divergence_path_with_an_arrow_names_its_index_for_a_mask() -> None:
+    verdict = compare(
+        transcript(("alice", packet("test:p", fields={"l": [1, 2]}))),
+        transcript(("alice", packet("test:p", fields={"l": [1, 2, 3]}))),
+        [],
+    )
+    (divergence,) = verdict.divergences
+    assert divergence.path == "l[→2]"
+    with pytest.raises(ValueError, match=re.escape("write 'l[2]'")):
+        Mask(packet="test:p", path=divergence.path, reason=REASON)
 
 
 def _fields_diff(

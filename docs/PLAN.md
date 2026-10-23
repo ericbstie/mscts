@@ -1594,7 +1594,10 @@ class Mask:
     reason: str
     # ValueError at construction: an empty packet or reason (blank counts as empty), a
     # malformed path, or a path not spelled exactly as a Divergence path would be (the
-    # message gives the spelling), so a path copied from a Divergence is always valid.
+    # message gives the spelling), so a path copied from a Divergence is valid, unless it
+    # has an arrow (`[→2]`, `[1→3]`): a Mask's index is each list's own, hidden on both
+    # sides before lists are lined up, and the message gives the path to write (`[2]`,
+    # `[1]`), which hides that index in both lists (#455).
     # Also a path that is an entity id of the clientbound packet in any State, or a
     # list of them (`Codec.entity_id_paths`; a list index fits EACH, and a Variant is
     # no step of a path): every Comparison names or numbers those instead, and the message
@@ -1766,12 +1769,15 @@ def compare(reference: Transcript, candidate: Transcript,
     # (16) before the first byte that differs, down to a multiple of 16, after
     # `(N bytes before)`.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
-    # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
+    # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`. An element
+    # only the candidate has is `[→3]`, a pair at two indexes `[1→3]` (#455).
 
 def test_case(state: State, packet: str, path: str | None) -> str: ...
     # The name of the test case that compares `path` (spelled as a Divergence path; None
     # for the packet as a whole) of the clientbound `packet` in `state`, by the scheme in
     # Comparison semantics: `status_response.players.sample[].name`, `play:keep_alive.id`.
+    # `test_case(state, d.packet, d.path) == d.test_case` for every Divergence `d` but a
+    # `bot` one, arrows included.
     # ValueError if `path` is malformed or not spelled as a Divergence path would be.
 ```
 

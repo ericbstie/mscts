@@ -216,6 +216,8 @@ class Mask:
         path: The field path, spelled as Divergence paths are (e.g. `entity_id`,
             `players.sample[0].name`), where `[*]` is every index of a list
             (`players.sample[*].name`); or `*` (WHOLE_PACKET) for the whole packet.
+            An index is each list's own, hidden on both sides before lists are lined up,
+            so a Divergence path's arrow (`[→2]`, `[1→3]`) is refused, naming the index.
             A path that is an entity id is refused, but a path to a value that holds
             one (`set_entity_data` / `entries`), or `*`, hides the id with the rest:
             its reason is the only guard that nothing a player sees is hidden with it.
@@ -230,9 +232,10 @@ class Mask:
         """Reject a Mask that could never be right.
 
         Raises:
-            ValueError: The packet name or the reason is empty, the path is malformed or
-                not spelled as a Divergence path would be, or it is an entity id (or a
-                list of them), which every Comparison names or numbers instead (#21).
+            ValueError: The packet name or the reason is empty, the path is malformed,
+                not spelled as a Divergence path would be or has an arrow, or it is an
+                entity id (or a list of them), which every Comparison names or numbers
+                instead (#21).
         """
         if not self.packet:
             msg = "a Mask needs a packet name"
@@ -3752,14 +3755,18 @@ def _pairs(
         for ref_index, cand_index in _list_edits(reference, candidate, lined_up=lined_up(path)):
             if ref_index is not None and cand_index is not None:
                 values = (reference[ref_index], candidate[cand_index])
-                step = ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
-                yield from _pairs(*values, (*path, step), lined_up)
+                yield from _pairs(*values, (*path, _paired(ref_index, cand_index)), lined_up)
             elif ref_index is not None:
                 yield (*path, ref_index), reference[ref_index], ABSENT
             elif cand_index is not None:
                 yield (*path, _Added(cand_index)), ABSENT, candidate[cand_index]
     else:
         yield path, reference, candidate
+
+
+def _paired(ref_index: int, cand_index: int) -> int:
+    """The path step of two elements compared: their index, or a `_Moved` if they differ."""
+    return ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
 
 
 class _Moved(int):
@@ -3949,6 +3956,8 @@ def _same(reference: _Value | Absent, candidate: _Value | Absent) -> bool:
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _DOTTED_KEY = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
 _INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
+_ADDED = re.compile(r"\[→(0|[1-9][0-9]*)\]")
+_MOVED = re.compile(r"\[(0|[1-9][0-9]*)→(0|[1-9][0-9]*)\]")
 _EACH = "[*]"
 _JSON = json.JSONDecoder()
 
@@ -3984,8 +3993,26 @@ def _where(path: _Path) -> str:
 
 
 def _mask_steps(mask: Mask) -> _MaskPath:
-    """Return the steps of `mask`'s field path, where `[*]` is EACH (see `_steps`)."""
-    return _steps(mask.packet, mask.path, "Mask path", each=True)
+    """Return the steps of `mask`'s field path, where `[*]` is EACH (see `_steps`).
+
+    Raises:
+        ValueError: As `_steps` does, or the path has an arrow (`[→2]`, `[1→3]`). A Mask
+            hides each list's own index on both sides, before `_pairs` lines lists up.
+    """
+    steps = _steps(mask.packet, mask.path, "Mask path", each=True)
+    if (spelling := _render(_own_indexes(steps))) != mask.path:
+        msg = (
+            f"{mask.packet}: Mask path {mask.path!r} has an arrow, which only a Divergence "
+            "path writes; a Mask names each list's own index and hides it on both sides: "
+            f"write {spelling!r}"
+        )
+        raise ValueError(msg)
+    return steps
+
+
+def _own_indexes(path: _MaskPath) -> _MaskPath:
+    """`path` with each `_Added` or `_Moved` step as the plain index it equals."""
+    return tuple(int(step) if isinstance(step, _Added | _Moved) else step for step in path)
 
 
 def _steps(packet: str, path: str, what: str, *, each: bool = False) -> _MaskPath:
@@ -4034,10 +4061,19 @@ def _next_step(
         return None if match is None else (str(match[0]), match.end())
     if match := _DOTTED_KEY.match(text, position):
         return str(match[1]), match.end()
-    if match := _INDEX.match(text, position):
-        return int(match[1]), match.end()
     if each and text.startswith(_EACH, position):
         return EACH, position + len(_EACH)
+    return _index(text, position)
+
+
+def _index(text: str, position: int) -> tuple[int, int] | None:
+    """Read a list index at `position` as `_render` writes it (`[2]`, `[→2]`, `[1→3]`)."""
+    if match := _INDEX.match(text, position):
+        return int(match[1]), match.end()
+    if match := _ADDED.match(text, position):
+        return _Added(int(match[1])), match.end()
+    if match := _MOVED.match(text, position):
+        return _paired(int(match[1]), int(match[2])), match.end()
     return None
 
 

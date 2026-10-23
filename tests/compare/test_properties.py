@@ -8,7 +8,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 
-from mscts.codec.packets import Direction, Packet
+from mscts.codec.packets import Direction, Packet, State
 from mscts.compare import (
     ABSENT,
     WHOLE_PACKET,
@@ -20,6 +20,7 @@ from mscts.compare import (
     Verdict,
     compare,
 )
+from mscts.compare import test_case as case_name
 from mscts.transcript import Transcript
 from tests.compare.build import packet, transcript
 from tests.compare.generate import MASKS, random_fields, render, script, seeded
@@ -165,6 +166,20 @@ def test_every_gameplay_divergence_of_a_field_is_in_a_listed_test_case() -> None
             assert divergence.test_case in {"", *verdict.test_cases}, f"seed {seed}"
 
 
+def test_every_divergence_path_names_its_own_test_case() -> None:
+    # A path copied from a Divergence, `[→n]` included, is a valid field path (#455).
+    arrows = 0
+    for seed in SEEDS:
+        rng = seeded(seed)
+        reference, candidate = render(script(rng), rng), render(script(rng), rng)
+        states = _states(reference, candidate)
+        for d in compare(reference, candidate, MASKS if seed % 2 else ()).divergences:
+            if d.kind != "bot":
+                assert case_name(states[d.packet], d.packet, d.path) == d.test_case, f"seed {seed}"
+                arrows += "→" in str(d.path)
+    assert arrows >= 3  # not vacuous: 5 when written
+
+
 def test_two_runs_give_the_same_test_cases_however_the_format_differed() -> None:
     # Re-runs of one Script differ in masked values, ambient packets, interleaving and
     # how the status JSON is spelled. A network traffic difference adds no test case (#330),
@@ -185,6 +200,11 @@ def test_two_runs_give_the_same_test_cases_however_the_format_differed() -> None
 
 def _alice(sent: Sequence[Packet]) -> Transcript:
     return transcript(*(("alice", each) for each in sent))
+
+
+def _states(*transcripts: Transcript) -> dict[str, State]:
+    """The State each packet name of these Transcripts is in."""
+    return {event.packet.name: event.packet.state for each in transcripts for event in each.events}
 
 
 def _every_leaf_changed(value: object) -> object:
