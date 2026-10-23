@@ -963,8 +963,8 @@ def _runs(arrivals: Sequence[_Arrival]) -> Iterator[list[_Arrival]]:
     comes on the server's clock, whose phase differs between Instances, and a dropped packet
     is not compared at all. Neither reads or changes an entity's name or number, except an
     `add_entity` or `remove_entities` (`_NAMING`), which ends the run. A recipe book packet
-    changes recipe numbers, but no resend holds a recipe id, so taking one after the run
-    changes none.
+    or a `login` changes the recipe book, but no resend holds a recipe id, so taking one
+    after the run changes no recipe's name or number.
 
     A run also ends at a window's end: a resend in the next Observation window starts the
     next run, since each window is a step of the Group. In a tick-exact Group a run also
