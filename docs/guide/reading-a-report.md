@@ -127,7 +127,8 @@ were absent.
 mscts calls a difference network traffic only when a hand-written rule
 says both formats mean the same thing. Each rule comes from reading vanilla's
 own decoding code. Today these rules cover the server list response, chunks, light updates,
-chunk batch markers and the state numbers of inventory contents. Every
+chunk batch markers, the order the registries are sent in and the state
+numbers of inventory contents. Every
 other difference counts as gameplay until a rule proves otherwise.
 
 ## Skipped or failed Groups
