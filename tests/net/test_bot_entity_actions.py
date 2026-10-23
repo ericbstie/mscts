@@ -163,6 +163,8 @@ type Before = tuple[str, Mapping[str, object]]
 LATE_POOF: Before = (ENTITY_EVENT, {"entity_id": LOGIN["entity_id"], "event_id": POOF})
 """What vanilla sends a player that asks to respawn 20 ticks or more after its death."""
 
+KICKED: Before = ("minecraft:disconnect", {"reason": bytes.fromhex("08 0004") + b"kick"})
+
 
 def dying_server(seen: list[Packet], *, before: Before | None = None) -> Handler:
     """Join like vanilla; answer a respawn request as `PlayerList.respawn` does, and `sync`.
@@ -266,3 +268,23 @@ def test_respawn_plays_on_after_a_packet_fail_on_gives_no_reason_for() -> None:
 
 def test_respawn_takes_any_packet_before_the_respawn_when_told_to_fail_on_none() -> None:
     assert respawned(LATE_POOF, None) == ["minecraft:player_loaded"]
+
+
+def test_respawn_says_the_server_disconnected_the_bot_whatever_fail_on_names() -> None:
+    # A disconnect ends the session whatever the Group checks for, so `fail_on` never sees it,
+    # and the Bot fails as `expect` does (`_refuse`).
+    def disconnect(packet: Packet) -> str | None:
+        return "a disconnect" if packet.name == "minecraft:disconnect" else None
+
+    errors: list[str] = []
+
+    async def use(bot: Bot) -> None:
+        await bot.join()
+        try:
+            await bot.respawn(fail_on=disconnect)
+        except ProtocolError as error:
+            errors.append(str(error))
+
+    server = dying_server([], before=KICKED)
+    with_bot(CODEC, Transcript(group_id="test/respawn", server="fake"), server, use)
+    assert errors == ["the server disconnected alice in play: b'\\x08\\x00\\x04kick'"]

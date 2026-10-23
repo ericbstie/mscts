@@ -891,15 +891,18 @@ class Bot:
             await self._connection.send("minecraft:player_loaded")
 
     async def _respawned(self, fail_on: Callable[[Packet], str | None] | None) -> None:
-        """Take packets until the `respawn`; raise ProtocolError at one `fail_on` names."""
+        """Take packets until the `respawn`; raise ProtocolError at one `fail_on` names.
 
-        def ends_the_wait(packet: Packet) -> bool:
-            return packet.name == _RESPAWN or (fail_on is not None and fail_on(packet) is not None)
-
-        packet = await self._take(ends_the_wait, timeout_s=self._timeout_s)
-        if packet.name != _RESPAWN and fail_on is not None:
-            msg = f"{self.name} got {fail_on(packet)} before {_RESPAWN}"
-            raise ProtocolError(msg)
+        `fail_on` never sees the server's disconnect: `_take` refuses it, as for `expect`.
+        """
+        while True:
+            packet = await self._take(_goes_on, timeout_s=self._timeout_s)
+            if packet.name == _RESPAWN:
+                return
+            what = None if fail_on is None else fail_on(packet)
+            if what is not None:
+                msg = f"{self.name} got {what} before {_RESPAWN}"
+                raise ProtocolError(msg)
 
     async def expect(
         self,
@@ -1738,6 +1741,11 @@ def _ends_the_session(packet: Packet) -> bool:
             return True
         case _:
             return False
+
+
+def _goes_on(packet: Packet) -> bool:
+    """Whether the session goes on after `packet`: it is not the server's disconnect."""
+    return not _ends_the_session(packet)
 
 
 def _worded(error: Exception, waited: str) -> Exception:
