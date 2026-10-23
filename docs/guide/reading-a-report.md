@@ -236,10 +236,9 @@ value that holds it. List values also name their element's path.
 A missing value reads `leaves it out`, while `null` is still a value.
 Lists are compared position by position, because in most of them a
 position is what the client goes by, such as a container's slot. An element
-only one server sends is at its position in that server's list, with an
-arrow before it when only the Candidate sends it: `sections[24]` is a 25th
-section only vanilla sends, and `sections[→24]` one only the Candidate
-sends. The tags
+only one server's list has is at its position in that list, with an arrow
+before it when it is the Candidate's list: `sections[24]` is a 25th section
+only vanilla sends, and `sections[→24]` one only the Candidate sends. The tags
 of `update_tags` and the ids in each tag are lined up before they are
 compared. A tag or an id that one server sends and the other leaves out is
 one difference, and the ones after it are still compared with their

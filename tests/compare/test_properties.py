@@ -271,7 +271,12 @@ def _mirror(
 
 
 def _mirrored_path(divergence: Divergence) -> str | None:
-    """`divergence`'s path with the sides swapped: `l[2]` only one side has, `l[→2]` the other."""
+    """`divergence`'s path with the sides swapped: `l[2]` only one side has, `l[→2]` the other.
+
+    It mirrors `_render`'s three index forms, `[n]`, `[→n]` and `[r→c]`, and reads the side
+    from ABSENT. So it holds only for packets with no `_SHOWN` hook, which can show ABSENT
+    as text: generate.py's toy and status packets have none.
+    """
     path = divergence.path
     if path is None:
         return None

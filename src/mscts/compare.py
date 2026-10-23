@@ -3775,8 +3775,9 @@ class _Moved(int):
     It is the reference's index, which Masks, test cases and `_at` go by, and it keeps the
     candidate's, which `_render` shows next to it (`tags[2→5]`). So the rendered path of a
     pair is never that of an element only one side has. Unrendered, it equals its
-    reference index (`_Moved(2, 5) == 2`), as an `_Added` equals its candidate index, so two
-    paths can be equal as tuples and differ as text; nothing keys on a path once rendered.
+    reference index (`_Moved(2, 5) == 2`), as an `_Added` equals its candidate index, so a
+    set or dict keyed on unrendered paths takes either for that plain index. `masked` is the
+    only one, and it only decides which test cases a pair adds, never what differs.
     """
 
     candidate: int
@@ -3853,8 +3854,9 @@ _LINE_UP_LIMIT = 1_000_000
 """The most pairs of elements `_fewest_edits` weighs between the common ends of two lists.
 
 It bounds each list, not a packet. `compare` runs on the Run's event loop, and weighing the
-pairs takes about 0.3 µs a pair plus time and memory in the length of both lists: at the
-limit, 0.3 s and 8 MB for 1,000 by 1,000 elements, 0.8 s and 200 MB for 1 by 10^6 (#455).
+pairs takes time and memory in their number and in the length of both lists: at the limit,
+0.3 s and 8 MB for 1,000 by 1,000 elements, 0.8 s and 200 MB for 1 by 10^6, and 1.8 s and
+225 MB for 10^6 by 1 (#455).
 The most pairs between the common ends of a tag list in a join against Pumpkin nightly
 44d881c are 89,726."""
 
