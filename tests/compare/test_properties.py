@@ -180,6 +180,19 @@ def test_every_divergence_path_names_its_own_test_case() -> None:
     assert arrows >= 3  # not vacuous: 5 when written
 
 
+def test_no_two_divergences_of_one_pair_of_packets_share_a_path() -> None:
+    # Field Divergences, gameplay and network traffic, of one pair of packets (#455).
+    paths = 0
+    for seed in SEEDS:
+        rng = seeded(seed)
+        reference, candidate = render(script(rng), rng), render(script(rng), rng)
+        verdict = compare(reference, candidate, MASKS if seed % 2 else ())
+        keys = [(d.bot, d.index, d.path) for d in verdict.divergences if d.kind == "field"]
+        assert len(keys) == len(set(keys)), f"seed {seed}"
+        paths += len(keys)
+    assert paths >= 300  # not vacuous: 520 when written
+
+
 def test_two_runs_give_the_same_test_cases_however_the_format_differed() -> None:
     # Re-runs of one Script differ in masked values, ambient packets, interleaving and
     # how the status JSON is spelled. A network traffic difference adds no test case (#330),
