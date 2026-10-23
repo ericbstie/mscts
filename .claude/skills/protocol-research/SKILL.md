@@ -164,6 +164,9 @@ never depend on them.
   world is frozen (#426). Check with javap what a command sets and what a
   tick then does with it.
 - `scripts/research/javap.py --out DIR` writes `DIR/<Class>.txt`.
+- JDK-library behaviour (a `HashMap`'s iteration order) is settled by a
+  single-file Java program run as `mise exec -- java X.java`, not by
+  javap (#438).
 - Read a Candidate's source from raw.githubusercontent.com at the commit
   the installed build names (for Pumpkin, from the crate's `mod.rs`).
 

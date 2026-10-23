@@ -84,6 +84,9 @@ then one commit.
 ## Known traps
 
 - Read a mutation sweep's log with `grep -E 'KILLED|SURVIVED|mutation\(s\)'`, never whole: it holds every failure's traceback (90 KB for #418's sweep).
+- A mutant that hangs a test's long wait outlives a multi-test
+  selection and comes back INVALID. Give such a mutant a one-test
+  selection (#345).
 - `mise run commit` holds `.git/index.lock` for the whole check. If it is
   killed (usage limit, restart), every `git add` in that worktree fails with
   "index.lock exists". Once no Git command runs there, `rm` the lock the

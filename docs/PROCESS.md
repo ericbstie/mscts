@@ -250,6 +250,10 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          lists the test fakes and conftests the change reaches. A tier budget states
          the tier's time on main today.
          Scratch files go in `<scratchpad>/<worker letter>/` (the scratchpad is shared),
+         A Candidate count names the main revision it was taken on, and a Candidate
+         command is given as `mise exec -- uv run mscts run …`. A brief that adds a
+         Protocol member lets the worker reorder increments so the member lands with
+         every implementer. The footer the brief gives wins over any other.
          with a findings file there that the worker appends each verified fact to.
          ALWAYS include verbatim: "One plain command per Bash call (no `&&`, heredocs,
          `sed -i` or escaped spaces in `--format`); multi-step work goes in
@@ -415,6 +419,26 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-22 | lead (train 41) | Three review rounds on #443 each found a narrower latent case; the third cost 376k tokens for doc wording and one should-fix | **adopt**: tech-lead skill, after a third review with no blocking finding the lead fixes wording and files the rest |
+| 2026-10-22 | lead (train 41) | A merge call sent in parallel with the read of its sha carried a placeholder sha (#448) | **adopt**: tech-lead skill |
+| 2026-10-22 | lead (train 41) | Live-lock waits were most of every batch's wall time (batch D 7.2 h); a 5-run stress series held the lock about 1 h three times | **defer**: a lock priority for short runs needs measurements; next lead decides whether to file it |
+| 2026-10-22 | workers (#443, #345) | A resumed worker could not check out its branch while its old worktree held it | **adopt**: tech-lead skill, detach the old worktree before a fix round |
+| 2026-10-22 | worker (#362) | `mscts run` outside a mise task found Java 21 and lost a queue turn | **adopt**: brief template and common.md, `mise exec --` |
+| 2026-10-22 | worker (#436) | The brief's Pumpkin baseline was stale (8 against 14 passes) | **adopt**: brief template, a Candidate count names its main revision |
+| 2026-10-22 | worker (#188) | Each commit had to stay green, so a new Protocol member landed with both Adapters, not in the brief's order | **adopt**: brief template and common.md |
+| 2026-10-22 | workers (#188, #342) | The PR footer differed between the brief and the session reminder | **adopt**: brief template, the brief's footer wins |
+| 2026-10-22 | worker (#342) | The issue's premise ("the client reads them the same") was wrong; javap showed the client drops the description | **adopt**: triage skill, cite the decode path or say unverified |
+| 2026-10-22 | worker (#438) | A single-file Java program settled `HashMap` order in one run | **adopt**: protocol-research skill |
+| 2026-10-22 | worker (#345) | Four hang mutants came back INVALID under a multi-test selection | **adopt**: red-green Known traps |
+| 2026-10-22 | worker (#345) | The brief listed failing tests as their own commit | **reject**: the 2026-10-17 tech-lead rule already says red tests land with their fix; the lead's brief missed it |
+| 2026-10-22 | worker (#345) | Review probes depend on host speed; a deterministic fake knob would give a red test that runs the same anywhere | **adopt**: timing.md line on fakes that model catching up |
+| 2026-10-22 | worker (#146) | A container restart killed a `rebase -x` mid-run | **reject**: already detached; resume with a recheck and `rebase --continue` worked |
+| 2026-10-22 | worker (#146) | The issue's grep missed a form of the import | **adopt**: common.md, run each changed test file alone after a helper move |
+| 2026-10-22 | workers (#256, #443) | Detached git was refused in a worktree; `rebase --exec` skips already-rebased commits | **adopt**: common.md |
+| 2026-10-22 | worker (#256) | A helper rename in #450 stopped a rebase red | **adopt**: common.md, a PR that moves helpers lists old and new names |
+| 2026-10-22 | worker (#256) | The Self-check tier took 2 h under load against the brief's 25 min; a cheaper gate for Comparison-only changes would be the offline join compare plus the reference tier | **defer**: decide with the next Comparison-only change |
+| 2026-10-22 | worker (#39) | No command plays one Group on vanilla and shows each window's packets | **adopt**: already filed as #441 |
+| 2026-10-22 | worker (#443) | `join/basic` hit the Reference's rain after about 18 min of other Groups | **adopt**: filed #461 |
 | 2026-10-17 | lead (train 40) | The lead pushed #431's rebased branch in the same command as the rebase, before reading its rc; the red was the #432 flake and the re-run was green | **adopt**: tech-lead skill, read the rc, then push |
 | 2026-10-17 | worker (#354) | Stress load ran while the probe only waited for the live lock | **adopt**: common.md, probes under load use `repeat.py --stress --live-lock` |
 | 2026-10-17 | worker (#359) | A window whose packet neither side sent passed the 20-play Self-check | **adopt**: test-group skill, read one vanilla Transcript of each window first |
@@ -847,6 +871,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-22 | The tech-lead skill: detach a worker's old worktree before a fix round; never send a merge with the read of its sha; after a third review with no blocking finding, the lead fixes wording itself. The brief template: a Candidate count names its revision and its command uses `mise exec --`; Protocol increments may be reordered; the brief's footer wins. Triage cites a client decode path; red-green, a hanging mutant gets a one-test selection | Train 41's retrospectives: a stale Pumpkin baseline, a lost queue turn to Java 21, two resumed workers blocked by their old worktree, a wrong issue premise, a third review round spent on wording |
 | 2026-10-21 | The lead starts each batch as one Workflow run and is woken once, when the batch returns. Workers unsubscribe the lead from each PR they open. The token target is measured, not guessed: a train meets it when its lead has at most two wakes per batch besides the maintainer's messages, and its tokens per merged PR are below 48M, the median of trains 30 to 40 (22M to 68M). Each handoff reports both | Maintainer agreed to try the batch mechanism. The 2026-10-09 target (one wake per batch, under 10M per merged PR) was never met: foreground Agent calls never waited, so every worker woke the lead (72 wakes for one batch), and the lead's own turns alone were 53M of 385M. PR subscription events were about a third of train 40's wakes |
 | 2026-10-17 | The tech-lead skill: a brief says a test is seen red first and committed with its fix, names a Self-check's node id and `mscts run` command, gives play times measured on main before a 20-run Self-check, says which revisions lack the change a tool builds on, and gives one worker two issues only when neither waits on the other's runs. The brief template's timing claim names `scripts/time_tier.py`. red-green: read a sweep log with `grep` | Train 39: a strict xfail committed from the brief's wording; a worker spent 10 min finding what to run; an unsized 20-play Self-check held the live lock 2.5 h, the second repeat of the missing play times; a worker idle 25 min in a shared worktree; #412 merged |
 | 2026-10-16 | The brief template gives main's Candidate pass count and failure reasons; the tech-lead skill checks the Candidate is installed before briefing a candidate run; common.md: never set a rule the Fixture already has, and a fake gives a near miss per checked field | Train 37: a worker spent 1.5 h telling a Pumpkin kick main already had from its change; Pumpkin missing from the cache for the second train running; `spawn_mobs` turned on by an undo for the second time (#344, #63); a surviving mutant behind a one-field near miss |

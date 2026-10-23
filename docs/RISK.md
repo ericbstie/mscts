@@ -36,6 +36,17 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-22 | #462 | comparison core | #460 (`scrutiny::high`) | a recipe removed or put in another group passes when the book was replaced, or the recipe taken and given back, outside the windows first | the second review, the third review | no |
+| 2026-10-22 | #457 | Groups | #457 (`scrutiny::high`) | `player/drowning` timed the turn-on of `drowning_damage` on the wall clock, so a vanilla server catching up got a round of bubbles without a hit | the first review | no |
+| 2026-10-22 | #463 | Groups | unknown | the respawn window can catch `entity_event` 60 on one Instance only, in three player Groups | the first review of #457 | yes |
+| 2026-10-22 | #461 | Groups | unknown | `join/basic` leaves the weather cycle on, so after about 20 minutes one Reference rains | a Self-check (#460's, run after the crafting Groups) | yes |
+| 2026-10-22 | #456 | tests | unknown | the tick-exact reference test mismatched once in 20 plays under load, and its assertion hides the Divergence | a tier run (the reference tier of #452) | yes |
+| 2026-10-22 | #455 | comparison core | #449 (`scrutiny::high`) | an element only vanilla has and one only the Candidate has can show at the same path | the third review | no |
+| 2026-10-22 | #449 | comparison core | #449 (`scrutiny::high`) | lists indexed by slot or id (`container_set_content.slot_data`, `registry_data.entries`, `commands.nodes`) were lined up, so a moved item read as one left out | the first review, the second review | no |
+| 2026-10-22 | #454 | tests | unknown | the `time/sleep` fake sent too few `set_time` in the lie-down window under load | a tier run (the unit tier under `rebase -x`) | yes |
+| 2026-10-22 | #451 | comparison core | unknown | `registry_data` packets are paired by order, so registries in another order compare with each other | a worker (#256's Pumpkin measurement) | yes |
+| 2026-10-22 | #450 | tests | #450 (`scrutiny::low`) | moving the Group test helpers lost the import that registers the shipped Groups, so a test file run alone found no Group | the lead's integration (each changed test file run alone) | no |
+| 2026-10-22 | #445 | tests | #148 | a test that pins what one Pumpkin nightly sends failed when the nightly moved | a tier run (the candidate tier of #433) | yes |
 | 2026-10-17 | #363 | comparison core | #433 (`scrutiny::high`) | a recipe book removal was compared in the order each server sent it | the first review, the second review | no |
 | 2026-10-17 | #436 | Groups | unknown | a lava hit that came late under load landed in the dry-grass window, and `check_gap` (#367) did not catch it | the Self-check (#435's 20 plays) | yes |
 | 2026-10-17 | #432 | tests | #415 (`scrutiny::high`) | the player fake's hit could beat the Bot's barrier under load, failing a unit test of the dry-grass window | a tier run (the unit tier under `rebase -x`) | yes |
@@ -77,6 +88,17 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #458 |  | high | first review, second review | 0, 0 | none: no barrier or window change; Self-check 20 of 20 of the three piston Groups and once of the six other redstone Groups; mutation sweep 38 of 38 killed |
+| #457 | high | high | first review, second review, third review of the fixes | 1 (the turn-on of `drowning_damage` timed on the clock), 0, 0 | five stressed 20-play Self-checks of `player/drowning`, 5 of 5; Self-check 20 of 20 after the fixes; mutation sweep 16 of 16, then 10 of 10 |
+| #460 |  | high | first review, second review, third review of the fixes | 0, 0, 0 (should-fix findings fixed or filed as #462) | none: no barrier or window change; Self-check 20 of 20 of the three crafting Groups and `join/basic`; mutation sweep 20 of 20, then 10 of 11 (one equivalent) |
+| #459 | high (low if only the limit is named) | low | lead's diff read | 0 | none: docs only |
+| #449 |  | high | first review, second review, third review of the fixes | 1, 1 (the same: lists indexed by slot or id lined up), 0 (should-fix filed as #455) | none: no barrier or window change; the Self-check tier 81 of 81; mutation sweep 49 of 49 killed |
+| #452 |  | medium | lead's diff read | 0 | none; Self-check 20 of 20 of the three status Groups; mutation sweep 16 of 16 killed |
+| #453 |  | medium | lead's diff read | 0 | none; live installs of vanilla and Pumpkin into scratch caches; mutation sweep 35 of 35, then 3 of 3 |
+| #448 |  | medium | lead's diff read | 0 | none; Self-check 20 of 20 of `crafting/grid`; mutation sweep, 44 killed |
+| #444 |  | high | lead's diff read | 0 | five stressed 20-play Self-checks of `player/fire`, 5 of 5; `player/fall` 20 of 20; #432 under load 35 of 35 against 31 of 35 on main; mutation sweep 16 of 17 (one unreachable) |
+| #450 |  | low | lead's diff read | 0 | none; every changed test file run alone (81 of 84 pass; the other 3 need Java 25 and passed in the reference tier) |
+| #440 |  | medium | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 of the six redstone Groups; mutation sweep 78 of 80 |
 | #433 |  | high | first review, second review, third review of the fixes | 1, 1 (the same: removal order compared), 0 (2 should-fix, filed as #443) | none: no barrier or window change; Self-check 20 of 20 of the four Groups; mutation sweep 20 of 20 killed |
 | #439 |  | medium | lead's diff read | 0 | five stressed 20-play Self-checks of `player/exhaustion`, 5 of 5 (it changes how many ticks pass between jumps); Self-check 20 of 20; mutation sweep 11 of 11 killed |
 | #437 | high | medium (one send, no wait) | lead's diff read | 0 | none: no barrier or window change; Self-check 20 of 20 of `inventory/offhand`; mutation sweep 26 of 26 killed |

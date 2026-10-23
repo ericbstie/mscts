@@ -195,6 +195,37 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-22: train 41
+
+- #439, #433, #440, #450, #444, #453, #448, #452, #449, #459, #460,
+  #458 and #457 merged one at a time, each after a checked rebase and
+  the reference tier on its tip (36 of 36, except #452: 35 of 36, then
+  the failed test 20 of 20 alone, filed #456). Workers ran in six
+  Workflow batches.
+- #440 (#39): six redstone Groups (repeater, comparator, torch,
+  observer, dust, update order), each 20 of 20 in its Self-check.
+- #450 (#146): shared test helpers moved to tests/support/; no
+  `test_*.py` imports another.
+- #444 (#436, #432): `player/fire` takes its step right after the first
+  hit, so a late lava hit no longer fails it.
+- #453 (#188): each Adapter installs its own builds through
+  `Adapter.install(target, version, into, net)`, 7 lines for vanilla and
+  6 for Pumpkin; mscts keeps the cache, SOURCE.json, the prompt and
+  `--from`.
+- #448 (#362): crafting compares the result slot after a take.
+- #452 (#342): a status description's `extra` list is compared as the
+  client reads it.
+- #449 (#256): lists are lined up by edit distance, so a missing element
+  shows as missing (Pumpkin's default run: 177,155 Divergences to
+  5,720). Lists indexed by slot or position stay index by index.
+- #459 (#438): the recipe book's button order is not compared; the
+  research note says why.
+- #460 (#443): a recipe group's number ends only at a compared packet
+  that finds the group empty.
+- #458 (#40): three piston Groups. #457 (#345): `player/drowning`
+  compares the ticks between drowning hits.
+- Filed #451, #454, #455, #456, #461, #462, #463 and #464.
+
 ### 2026-10-17: train 40
 
 - #429, #430, #431, #434, #435 and #437 merged one at a time (reference

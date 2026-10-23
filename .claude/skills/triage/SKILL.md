@@ -132,6 +132,9 @@ Stop at the first of these and record which one stopped you:
   - A protocol or server fact that is not in `docs/research/`, the codec
     schemas, the code or the issue itself. Name the fact. The Spike
     section names any fact you took from the issue as unverified.
+    An issue that says what the client reads (two spellings read the
+    same) cites the client's decode path, or the Spike says it is
+    unverified (#342).
   - A change to a public interface, a CONTEXT term or an ADR.
   - A change in a core area that another lane owns (`docs/PROCESS.md`,
     Core areas have one owner).

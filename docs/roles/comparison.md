@@ -34,6 +34,10 @@ lighting, #35 block commands (running), #43 summon, #44 tracking range,
 
 Newest first: one line per lesson, with the issue it came from.
 
+- #438: the recipe book's button order is the iteration order of `ClientRecipeBook.known`, a `HashMap`: it depends on the ids, on the table size since the login and on the order ids sharing a bucket were put. Before comparing a client's "order", check whether it comes from a hash table's history as well as its keys.
+- #443: a recipe group's number ends once no recipe in the client's book is in the group (`rebuildCollections` over `known.values()`), and only at a compared packet that finds it gone: ending it between two uncompared packets makes their order a difference. Anything `_take` calls for an uncompared arrival runs on every packet, so return early for packets that change nothing.
+- #342: before "the client reads X and Y the same", javap the decode path to the field that owns it. `lenientOptionalFieldOf` turns any nested decode error into the default, so a harmless-looking spelling can blank the whole value.
+- #256: `_pairs` lines up lists by edit distance over canonical JSON. A list whose index is a world position goes in `_WORLD_LISTS` and stays index by index. To measure a Comparison change against Pumpkin without the live lock, rebuild Transcripts from `scripts/research/join.py` output and run `compare()` offline (under 0.5 s a join).
 - #373: a packet the Candidate leaves out adds its fields' test cases once it has a schema, so titling a packet field by field lowers the share of a Group the Candidate fails (Pumpkin on `blocks/gravity`: 14% to 13.1%, no pass changed). Say so in the PR.
 - #373: `compare(...).test_cases` lists every case compared, not only the ones that differ. A titles test that names the differing field asserts on `verdict.divergences` (`path`, `test_case`).
 - #43: `remove_tagged` stops when `execute if entity` matches nothing, which a dead body (20 ticks) never does. A Group that freezes the world after killing waits until a Bot is told the body is gone (`_world.remove_tagged_until_gone`, #368).
