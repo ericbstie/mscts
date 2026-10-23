@@ -151,11 +151,11 @@ def test_the_entries_with_a_toast_are_the_first_paths() -> None:
         Entry(PLANKS, display_id=7, flags=0), Entry(STICKS, display_id=1, flags=TOAST)
     )
     candidate = book_add(
-        Entry(PLANKS, display_id=7, flags=0), Entry(PLANKS, display_id=1, flags=TOAST)
+        Entry(PLANKS, display_id=7, flags=0), Entry(BREAD, display_id=1, flags=TOAST)
     )
 
     assert _diff(reference, candidate) == [
-        ("entries[0].contents.display.value.result.value", STICKS, PLANKS)
+        ("entries[0].contents.display.value.result.value", STICKS, BREAD)
     ]
 
 
@@ -277,15 +277,25 @@ def test_a_recipe_added_again_after_its_removal_may_take_another_display_id() ->
     assert _diff_all(reference, candidate) == []
 
 
-def test_a_number_ended_is_never_given_again() -> None:
+def test_an_id_given_to_another_recipe_while_the_first_holds_it_differs() -> None:
     planks, sticks = Entry(PLANKS, display_id=5), Entry(STICKS, display_id=6)
     reference = [book_add(planks, sticks), book_remove(5), book_add(Entry(PLANKS, display_id=7))]
     candidate = [book_add(planks, sticks), book_remove(5), book_add(Entry(PLANKS, display_id=6))]
 
-    assert _diff_all(reference, candidate) == [("entries[0].contents.id", "#3", "#2")]
+    assert _diff_all(reference, candidate) == [
+        ("entries[0].contents.id", "#1", "#1 in place of #2")
+    ]
 
 
-def test_a_book_replaced_ends_every_number() -> None:
+def test_a_recipe_given_again_at_its_own_id_takes_nothing_s_place() -> None:
+    planks_at = [Entry(PLANKS, display_id=each) for each in (5, 9)]
+    reference = [book_add(planks_at[0]), book_add(planks_at[0])]
+    candidate = [book_add(planks_at[1]), book_add(planks_at[0], replace=True)]
+
+    assert _diff_all(reference, candidate) == [("replace", False, True)]
+
+
+def test_a_book_replaced_is_emptied_first() -> None:
     planks_as = [Entry(PLANKS, display_id=each, group=each) for each in (5, 9)]
     sticks_as = [Entry(STICKS, display_id=each) for each in (6, 5)]
     reference = [book_add(planks_as[0], replace=True)] * 2 + [book_add(sticks_as[0])]
@@ -294,7 +304,7 @@ def test_a_book_replaced_ends_every_number() -> None:
     assert _diff_all(reference, [*candidate, book_add(sticks_as[1])]) == []
 
 
-def test_a_removal_outside_the_windows_ends_its_numbers() -> None:
+def test_a_recipe_taken_outside_the_windows_and_given_another_id_shows_the_same() -> None:
     planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
     reference = [OPEN, book_add(planks_as[0]), CLOSE, book_remove(5)]
     candidate = [OPEN, book_add(planks_as[1]), CLOSE, book_remove(8)]
@@ -308,7 +318,7 @@ def test_a_removal_outside_the_windows_ends_its_numbers() -> None:
     )
 
 
-def test_a_book_replaced_outside_the_windows_ends_every_number() -> None:
+def test_a_book_replaced_outside_the_windows_keeps_its_recipes_numbers() -> None:
     planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 2)]
     reference = [
         OPEN,
@@ -332,7 +342,7 @@ def test_a_book_replaced_outside_the_windows_ends_every_number() -> None:
     assert _diff_all(reference, candidate) == []
 
 
-def test_a_book_replaced_ends_every_number_before_its_entries_take_theirs() -> None:
+def test_a_book_replaced_is_emptied_before_its_entries_take_their_place() -> None:
     planks, sticks_as = (
         Entry(PLANKS, display_id=5),
         [Entry(STICKS, display_id=each) for each in (5, 6)],
@@ -384,9 +394,7 @@ def test_a_removal_of_another_recipe_after_an_uncompared_replace_differs() -> No
     common = [OPEN, book_add(planks, sticks), CLOSE, book_add(planks, sticks, replace=True)]
     removal = [[OPEN, book_remove(each), CLOSE] for each in (5, 6)]
 
-    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == [
-        ("recipes[0]", named(planks), named(sticks))
-    ]
+    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == [("recipes[0]", "#1", "#2")]
 
 
 def test_a_removal_of_another_recipe_taken_and_given_back_outside_the_windows_differs() -> None:
@@ -394,9 +402,7 @@ def test_a_removal_of_another_recipe_taken_and_given_back_outside_the_windows_di
     common = [OPEN, book_add(planks, sticks), CLOSE, book_remove(5, 6), book_add(planks, sticks)]
     removal = [[OPEN, book_remove(each), CLOSE] for each in (5, 6)]
 
-    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == [
-        ("recipes[0]", named(planks), named(sticks))
-    ]
+    assert _diff_all([*common, *removal[0]], [*common, *removal[1]]) == [("recipes[0]", "#1", "#2")]
 
 
 def test_a_removal_of_another_recipe_taken_in_a_window_and_given_back_outside_differs() -> None:
@@ -406,16 +412,16 @@ def test_a_removal_of_another_recipe_taken_in_a_window_and_given_back_outside_di
     given_back = [*common, book_add(planks, sticks)]
 
     assert _diff_all([*given_back, *removal[0]], [*given_back, *removal[1]]) == [
-        ("recipes[0]", named(planks), named(sticks))
+        ("recipes[0]", "#1", "#2")
     ]
 
 
-def test_a_name_an_earlier_packet_gave_is_held() -> None:
+def test_two_recipes_that_show_the_same_have_one_name() -> None:
     planks_as = [Entry(PLANKS, display_id=each) for each in (5, 6)]
     reference = [book_add(planks_as[0]), book_add(planks_as[1]), OPEN, book_remove(6), CLOSE]
 
     assert _diff_all(reference, [OPEN, book_remove(1), CLOSE]) == [
-        ("recipes[0]", f"{named(planks_as[0])} #2", "#1")
+        ("recipes[0]", named(planks_as[0]), "#1")
     ]
 
 
@@ -450,7 +456,109 @@ def test_a_recipe_given_again_outside_the_windows_keeps_its_number() -> None:
     assert _diff_all([*given, book_add(planks), *removal], [*given, *removal]) == []
 
 
-def test_a_name_another_recipe_holds_takes_the_first_free_suffix() -> None:
+def test_a_recipe_one_server_alone_takes_and_gives_back_outside_the_windows_keeps_its_number() -> (
+    None
+):
+    # Review A of #462, P2: the client ends with the same book on both sides.
+    def given(display_id: int, *, again: bool) -> list[Packet | str]:
+        planks = Entry(PLANKS, display_id=display_id, group=3, flags=TOAST)
+        sticks = Entry(STICKS, display_id=display_id + 1, group=3, flags=TOAST)
+        outside = [book_remove(display_id), book_add(planks)] if again else []
+        return [OPEN, book_add(planks), CLOSE, *outside, OPEN, book_add(sticks), CLOSE]
+
+    assert _diff_all(given(5, again=False), given(50, again=True)) == []
+
+
+def test_a_book_one_server_alone_sends_again_outside_the_windows_keeps_its_numbers() -> None:
+    # Review A of #462, P1: a Candidate that resyncs the book where vanilla sends nothing.
+    planks, sticks = Entry(PLANKS, display_id=5, flags=TOAST), Entry(STICKS, display_id=6)
+    given, removal = [OPEN, book_add(planks, sticks), CLOSE], [OPEN, book_remove(5), CLOSE]
+    sent_again = book_add(planks, sticks, replace=True)
+
+    assert _diff_all([*given, *removal], [*given, sent_again, *removal]) == []
+
+
+def _given_with_a_new_id(*, group: int | None, taken_first: bool) -> list[Packet | str]:
+    """Planks got outside the windows, then given again with a new id, the old one taken."""
+    old, new = (Entry(PLANKS, display_id=each, group=group) for each in (5, 7))
+    if taken_first:
+        return [book_add(old), book_remove(5), book_add(new)]
+    return [book_add(old), book_add(new), book_remove(5)]
+
+
+def test_a_recipe_given_a_new_id_outside_the_windows_is_named_alike_in_either_order() -> None:
+    # Review A of #462, P3 and P3b: both books end with one planks recipe.
+    removal = [OPEN, book_remove(7), CLOSE]
+    sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
+
+    assert (
+        _diff_all(
+            [*_given_with_a_new_id(group=None, taken_first=True), *removal],
+            [*_given_with_a_new_id(group=None, taken_first=False), *removal],
+        )
+        == []
+    )
+    assert (
+        _diff_all(
+            [*_given_with_a_new_id(group=3, taken_first=True), *sticks],
+            [*_given_with_a_new_id(group=3, taken_first=False), *sticks],
+        )
+        == []
+    )
+
+
+def test_an_id_given_to_another_recipe_outside_the_windows_shows_the_recipe_it_holds() -> None:
+    # Review B of #462, P1 and P1b: the Candidate's client removes sticks, not planks.
+    planks, sticks = Entry(PLANKS, display_id=7, flags=TOAST), Entry(STICKS, display_id=9)
+    removal = [OPEN, book_remove(7), CLOSE]
+    sticks_at_7 = book_add(Entry(STICKS, display_id=7))
+
+    assert _diff_all(
+        [book_add(planks), book_add(sticks), *removal], [book_add(planks), sticks_at_7, *removal]
+    ) == [("recipes[0]", named(planks), named(sticks))]
+    given = [OPEN, book_add(planks), CLOSE]
+    assert _diff_all([*given, book_add(sticks), *removal], [*given, sticks_at_7, *removal]) == [
+        ("recipes[0]", "#1", named(sticks))
+    ]
+
+
+def test_an_id_given_to_another_recipe_outside_the_windows_changes_its_group() -> None:
+    # Review B of #462, P1c: the Reference's button holds bread and sticks, the Candidate's
+    # bread and planks.
+    sticks, planks = Entry(STICKS, display_id=9, group=5), Entry(PLANKS, display_id=9, group=5)
+    bread = [OPEN, book_add(Entry(BREAD, display_id=8, group=5, flags=TOAST)), CLOSE]
+
+    assert _diff_all(
+        [book_add(sticks), *bread],
+        [book_add(Entry(STICKS, display_id=9)), book_add(planks), *bread],
+    ) == [("entries[0].contents.group", f"#1, {named(sticks)}", f"#1, {named(planks)}")]
+
+
+def test_recipes_that_show_the_same_are_written_alike_whatever_order_they_came_in() -> None:
+    # Review B of #462, P2g and its converse: the same planks in groups 3 and 5, sent in
+    # another order.
+    reference = book_add(
+        Entry(PLANKS, display_id=7, group=3),
+        Entry(PLANKS, display_id=4, group=5),
+        Entry(STICKS, display_id=6, group=3),
+    )
+    candidate = book_add(
+        Entry(PLANKS, display_id=55, group=5),
+        Entry(PLANKS, display_id=100, group=3),
+        Entry(STICKS, display_id=60, group=3),
+    )
+    bread = [OPEN, book_add(Entry(BREAD, display_id=8, group=3, flags=TOAST)), CLOSE]
+
+    assert _diff_all([reference, *bread], [candidate, *bread]) == []
+    assert (
+        _diff_all(
+            [reference, OPEN, book_remove(4), CLOSE], [candidate, OPEN, book_remove(55), CLOSE]
+        )
+        == []
+    )
+
+
+def test_recipes_that_show_the_same_are_written_the_same_however_many_the_book_holds() -> None:
     planks_as = [Entry(PLANKS, display_id=each) for each in (5, 6, 7)]
     both = book_add(planks_as[0], planks_as[1])
     name = named(planks_as[0])
@@ -460,8 +568,8 @@ def test_a_name_another_recipe_holds_takes_the_first_free_suffix() -> None:
         [OPEN, book_remove(1, 2, 3), CLOSE],
     ) == [
         ("recipes[0]", name, "#1"),
-        ("recipes[1]", f"{name} #2", "#2"),
-        ("recipes[2]", f"{name} #3", "#3"),
+        ("recipes[1]", name, "#2"),
+        ("recipes[2]", name, "#3"),
     ]
     assert (
         _diff_all(
@@ -480,7 +588,7 @@ def test_a_recipe_in_another_group_after_an_uncompared_replace_differs() -> None
         return [OPEN, book_add(Entry(STICKS, display_id=6, group=group, flags=TOAST)), CLOSE]
 
     assert _diff_all([*common, *sticks_in(3)], [*common, *sticks_in(7)]) == [
-        ("entries[0].contents.group", f"#2, {named(planks)}", "#2")
+        ("entries[0].contents.group", "#1, #2", "#2")
     ]
 
 
@@ -488,7 +596,7 @@ LOGIN = packet("minecraft:login", fields={})
 """A rejoin's `login`: `handleLogin` gives the new player a new, empty `ClientRecipeBook`."""
 
 
-def test_a_login_ends_every_name_and_number_as_it_empties_the_book() -> None:
+def test_a_rejoin_with_no_replace_shows_the_same_as_the_login_empties_the_book() -> None:
     planks = Entry(PLANKS, display_id=5, flags=TOAST)
     given = [OPEN, book_add(planks), CLOSE]
 
@@ -503,30 +611,19 @@ def test_a_compared_login_empties_the_book() -> None:
     assert _diff_all(rejoin(3), rejoin(7)) == []
 
 
-@pytest.mark.parametrize("name", [BOOK_REMOVE, BOOK_ADD])
-def test_a_book_packet_that_did_not_decode_ends_no_number(name: str) -> None:
-    planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
-    undecoded = packet(name, b"\xff")
-    reference = [
-        OPEN,
-        book_add(planks_as[0]),
-        CLOSE,
-        undecoded,
-        OPEN,
-        book_add(planks_as[0]),
-        CLOSE,
-    ]
-    candidate = [
-        OPEN,
-        book_add(planks_as[1]),
-        CLOSE,
-        undecoded,
-        OPEN,
-        book_add(planks_as[2]),
-        CLOSE,
-    ]
+def test_a_login_outside_the_windows_empties_the_book() -> None:
+    sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
+    planks = [OPEN, book_add(Entry(PLANKS, display_id=5, group=3, flags=TOAST)), CLOSE]
 
-    assert _diff_all(reference, candidate) == [("entries[0].contents.id", "#1", "#2")]
+    assert _diff_all([*sticks, LOGIN, *planks], [*sticks, LOGIN, book_remove(6), *planks]) == []
+
+
+@pytest.mark.parametrize("name", [BOOK_REMOVE, BOOK_ADD])
+def test_a_book_packet_that_did_not_decode_changes_no_book(name: str) -> None:
+    sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3, flags=TOAST)), CLOSE]
+    planks = [OPEN, book_add(Entry(PLANKS, display_id=5, group=3, flags=TOAST)), CLOSE]
+
+    assert _diff_all([*sticks, packet(name, b"\xff"), *planks], [*sticks, *planks]) == []
 
 
 def _planks_again(group: int, *, before: Sequence[Packet | str] = ()) -> list[Packet | str]:
@@ -554,7 +651,7 @@ def test_a_recipe_put_back_beside_another_recipe_or_apart_differs() -> None:
     sticks = [OPEN, book_add(Entry(STICKS, display_id=6, group=3)), CLOSE]
 
     assert _diff_all(_planks_again(3, before=sticks), _planks_again(4, before=sticks)) == [
-        ("entries[0].contents.group", "#1, #3", "#3")
+        ("entries[0].contents.group", "#1, #2", "#2")
     ]
 
 
@@ -563,7 +660,7 @@ def test_a_recipe_got_outside_the_windows_names_its_group() -> None:
 
     assert _diff_all(
         _planks_again(3, before=[book_add(sticks)]), _planks_again(4, before=[book_add(sticks)])
-    ) == [("entries[0].contents.group", f"#2, {named(sticks)}", "#2")]
+    ) == [("entries[0].contents.group", f"#1, {named(sticks)}", "#1")]
 
 
 def test_a_book_replaced_takes_its_recipes_out_of_their_groups() -> None:
