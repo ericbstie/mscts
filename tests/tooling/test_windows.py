@@ -1,13 +1,22 @@
 """Hermetic tests for scripts/research/windows.py: a play's Observation windows as text."""
 
+import contextlib
 import importlib.util
 import types
+from collections.abc import AsyncIterator
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
+from mscts import install
 from mscts.codec.packets import Packet
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_NO_PLAY, OBSERVE_OPEN, TICK_MARK
+from mscts.group import Group, GroupContext
+from mscts.net import Endpoint
+from mscts.run import GroupError
+from mscts.spec import ServerSpec
+from mscts.transcript import Transcript
 from tests.compare.build import SERVERBOUND, packet, transcript
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "research" / "windows.py"
@@ -118,3 +127,140 @@ def test_a_play_with_no_window_says_so(windows: types.ModuleType) -> None:
         "status/basic on vanilla",
         "no Observation window",
     ]
+
+
+async def _nothing(context: GroupContext) -> None:
+    """A Group script that does nothing."""
+
+
+def _group() -> Group:
+    return Group(
+        id="probe/test", run=_nothing, spec=lambda spec: replace(spec, operators=("alice",))
+    )
+
+
+@pytest.mark.asyncio
+async def test_play_boots_one_instance_with_the_groups_spec_and_plays_the_group_once(
+    windows: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prepared: list[ServerSpec] = []
+    played: list[tuple[Group, Endpoint, str]] = []
+    result = transcript(("alice", _chat()))
+
+    def prepare(_installation: object, spec: ServerSpec, _cwd: Path) -> types.SimpleNamespace:
+        prepared.append(spec)
+        return types.SimpleNamespace(endpoint=Endpoint(spec.host, spec.port))
+
+    @contextlib.asynccontextmanager
+    async def fake_running(plan: object, **_kwargs: object) -> AsyncIterator[object]:
+        yield plan
+
+    async def fake_run_group(group: Group, endpoint: Endpoint, *, server: str) -> Transcript:
+        played.append((group, endpoint, server))
+        return result
+
+    monkeypatch.setattr(
+        windows, "VanillaAdapter", lambda: types.SimpleNamespace(name="vanilla", prepare=prepare)
+    )
+    monkeypatch.setattr(windows.install, "require", lambda *_args: None)
+    monkeypatch.setattr(windows, "running", fake_running)
+    monkeypatch.setattr(windows, "run_group", fake_run_group)
+    group = _group()
+
+    assert await windows.play(group, tmp_path) is result
+
+    assert [spec.operators for spec in prepared] == [("alice",)]
+    assert played == [(group, Endpoint(prepared[0].host, prepared[0].port), "vanilla")]
+
+
+def _playing(
+    windows: types.ModuleType, monkeypatch: pytest.MonkeyPatch, outcome: Transcript | Exception
+) -> list[Path]:
+    """Make `windows.play` give `outcome` (raise it, if an error); the workdirs it is given."""
+    workdirs: list[Path] = []
+
+    async def play(group: Group, workdir: Path) -> Transcript:  # noqa: ARG001 - play's shape
+        workdirs.append(workdir)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(windows, "play", play)
+    return workdirs
+
+
+def test_main_prints_the_windows_of_the_group_and_removes_its_workdir(
+    windows: types.ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    played = transcript(f"{OBSERVE_OPEN} {BLOCK}", ("alice", packet(BLOCK, fields={})))
+    workdirs = _playing(windows, monkeypatch, played)
+
+    code = windows.main(["probe/test"], groups={"probe/test": _group()})
+
+    assert code == 0
+    assert capsys.readouterr().out == windows.windows_text(played) + "\n"
+    assert [workdir.exists() for workdir in workdirs] == [False]
+
+
+def test_main_cuts_the_fields_unless_asked_for_all_of_them(
+    windows: types.ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    long = "x" * (windows.FIELDS_WIDTH + 50)
+    _playing(windows, monkeypatch, transcript(OBSERVE_OPEN, ("alice", _chat(long))))
+    groups = {"probe/test": _group()}
+
+    windows.main(["probe/test"], groups=groups)
+    cut = capsys.readouterr().out
+    windows.main(["probe/test", "--full"], groups=groups)
+    full = capsys.readouterr().out
+
+    assert long not in cut
+    assert cut.splitlines()[2].endswith("…")
+    assert long in full
+
+
+def test_main_names_a_group_that_is_not_registered(
+    windows: types.ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workdirs = _playing(windows, monkeypatch, transcript())
+
+    code = windows.main(["player/nothing"], groups={"probe/test": _group()})
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == ""
+    assert captured.err == "windows.py: no Group is registered as 'player/nothing'\n"
+    assert workdirs == []
+
+
+def test_main_prints_the_windows_so_far_of_a_group_that_raised(
+    windows: types.ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    partial = transcript(f"{OBSERVE_OPEN} {BLOCK}", ("alice", packet(BLOCK, fields={})))
+    _playing(windows, monkeypatch, GroupError(partial, "bot alice timed out"))
+
+    code = windows.main(["probe/test"], groups={"probe/test": _group()})
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.out == windows.windows_text(partial) + "\n"
+    assert captured.err == "windows.py: probe/test failed: bot alice timed out\n"
+
+
+def test_main_says_what_is_wrong_when_vanilla_is_not_installed(
+    windows: types.ModuleType, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    workdirs = _playing(windows, monkeypatch, install.ProvisionError("no vanilla installed"))
+
+    code = windows.main(["probe/test"], groups={"probe/test": _group()})
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.err == "windows.py: no vanilla installed\n"
+    assert [workdir.exists() for workdir in workdirs] == [False]
+
+
+def test_a_group_id_is_required(windows: types.ModuleType) -> None:
+    with pytest.raises(SystemExit) as error:
+        windows.parse_args([])
+    assert error.value.code == 2

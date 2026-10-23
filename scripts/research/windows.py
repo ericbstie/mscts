@@ -9,11 +9,31 @@ each packet a Bot sent or received in the window, in time order:
 The status is `sent`, `compared` or `not compared`: whether the Comparison takes a received
 packet (`compare.window_takes`). A Transcript of a tick-exact Group also gives each packet
 the tick it came on, as the Comparison counts them.
+
+Usage: windows.py GROUP [--full]
+
+Boots one Instance of the vanilla Reference with the ServerSpec the Group asks for, plays
+the registered Group GROUP once on it, stops it and prints `windows_text` of the
+Transcript. `--full` prints every packet's fields, not the first 200 characters. A Group
+that raised prints the windows it played before that, then what it raised, and exits 1.
+Read it before a 20-play Self-check: a window whose compared packet nobody sent compares
+nothing (#359).
 """
 
+import argparse
+import asyncio
+import shutil
+import sys
+import tempfile
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Self
 
+from mscts import install
+from mscts.adapters.vanilla import VanillaAdapter
+from mscts.bot import status_probe
+from mscts.cache import cache_dir
 from mscts.codec.packets import Direction
 from mscts.compare import (
     OBSERVE_CLOSE,
@@ -22,10 +42,17 @@ from mscts.compare import (
     _Ticks,
     window_takes,
 )
+from mscts.group import GROUPS, Group
+from mscts.run import GroupError, run_group
+from mscts.runner import free_endpoint, running
+from mscts.spec import ServerSpec
+from mscts.target import TARGET
 from mscts.transcript import Event, Mark, Transcript
 
 FIELDS_WIDTH = 200
 """How many characters of a packet's decoded fields a line shows, by default."""
+READY_TIMEOUT_S = 120.0  # a cold vanilla boot unpacks bundled libraries and makes a world
+STOP_TIMEOUT_S = 30.0
 _NS_PER_MS = 1_000_000
 _SENT, _COMPARED, _NOT_COMPARED = "sent", "compared", "not compared"
 _STATUS_WIDTH = len(_NOT_COMPARED)
@@ -163,3 +190,70 @@ class _Layout:
         if self.width is None or len(text) <= self.width:
             return text
         return text[: self.width - 1] + "…"
+
+
+async def play(group: Group, workdir: Path) -> Transcript:
+    """Boot one vanilla Instance in `workdir`, play `group` once on it, and stop it.
+
+    The Instance boots with the ServerSpec the Group asks for (`group.spec`), as a Run does.
+
+    Raises:
+        install.ProvisionError: There is no vanilla Installation to boot.
+        GroupError: The Group raised; it holds the Transcript so far.
+    """
+    adapter = VanillaAdapter()
+    installation = install.require(adapter, TARGET, cache_dir())
+    endpoint = free_endpoint()
+    spec = group.spec(ServerSpec(host=endpoint.host, port=endpoint.port))
+    plan = adapter.prepare(installation, spec, workdir)
+    async with running(
+        plan,
+        ready=status_probe(TARGET),
+        ready_timeout=READY_TIMEOUT_S,
+        stop_timeout=STOP_TIMEOUT_S,
+    ) as instance:
+        return await run_group(group, instance.endpoint, server=adapter.name)
+
+
+def _play_in_new_workdir(group: Group) -> Transcript:
+    """`play` of `group` in a new directory, which is removed afterwards."""
+    workdir = Path(tempfile.mkdtemp(prefix="mscts-research-windows-"))
+    try:
+        return asyncio.run(play(group, workdir))
+    finally:
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse `argv` (or sys.argv[1:]); SystemExit(2) on a bad argument."""
+    parser = argparse.ArgumentParser(prog="windows.py", description=__doc__)
+    parser.add_argument("group", help="the id of a registered Group, such as player/fire")
+    parser.add_argument("--full", action="store_true", help="print every packet's fields, uncut")
+    return parser.parse_args(argv)
+
+
+def _fail(message: str) -> int:
+    """Print `message` to stderr as windows.py's; the exit code that says it failed."""
+    print(f"windows.py: {message}", file=sys.stderr)
+    return 1
+
+
+def main(argv: Sequence[str] | None = None, *, groups: Mapping[str, Group] = GROUPS) -> int:
+    """Run windows.py: print the windows of the Group `argv` names; 1 if it could not."""
+    args = parse_args(argv)
+    if args.group not in groups:
+        return _fail(f"no Group is registered as {args.group!r}")
+    width = None if args.full else FIELDS_WIDTH
+    try:
+        played = _play_in_new_workdir(groups[args.group])
+    except install.ProvisionError as error:
+        return _fail(str(error))
+    except GroupError as error:
+        print(windows_text(error.transcript, width=width))
+        return _fail(f"{args.group} failed: {error}")
+    print(windows_text(played, width=width))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
