@@ -1560,13 +1560,9 @@ class _Numbering:
         return f"#{number}"
 
     def rank(self, key: Hashable) -> tuple[int, int, str]:
-        """Where `key` sorts: numbered keys first, by number, then named ones, by name.
-
-        A key with neither takes the next number (`of`).
-        """
-        name = self.of(key)
+        """Where `key`, which has a name or number, sorts: numbers first, in order, then names."""
         number = self.numbers.get(key)
-        return (1, 0, name) if number is None else (0, number, "")
+        return (1, 0, self.names.get(key, "")) if number is None else (0, number, "")
 
     def name(self, shown: Iterable[tuple[Hashable, str]]) -> None:
         """Name each key of `shown` by what it shows there, unless it has a name or number."""
@@ -1742,12 +1738,13 @@ class _RecipeNumbers:
 def _numbered_and_sorted(recipes: Sequence[_Value], ids: _Numbering) -> list[_Value]:
     """`recipes`, a removal's, each display id as its name or number in `ids`, in its order.
 
-    The order is `ids.rank`'s, and an id with neither takes the next number. Anything that is
-    not an id follows the ids, in order.
+    An id with neither takes the next number, in the removal's order, and the order is then
+    `ids.rank`'s. Anything that is not an id follows the ids, in order.
     """
-    ranked = sorted((each for each in recipes if type(each) is int), key=ids.rank)
+    display_ids = [each for each in recipes if type(each) is int]
+    written = {each: ids.of(each) for each in display_ids}
     others = [each for each in recipes if type(each) is not int]
-    return [ids.of(each) for each in ranked] + others
+    return [written[each] for each in sorted(display_ids, key=ids.rank)] + others
 
 
 def _shown_recipes(fields: Mapping[str, object]) -> Iterator[tuple[int, str]]:
