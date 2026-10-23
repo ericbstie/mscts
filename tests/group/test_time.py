@@ -533,15 +533,16 @@ def test_sleep_leaves_the_two_bots_alone_in_the_world_for_each_lie_down() -> Non
         assert not [t for t in by_control if gone < t < closed_at]
 
 
-def test_sleep_with_100_percent_waits_100_ticks_after_lying_down() -> None:
+def test_sleep_with_100_percent_waits_for_7_set_time_inside_the_lie_down_window() -> None:
     transcript, _ = play("time/sleep")
 
     opened_at, closed_at = windows(transcript)[0]
     [said] = [t for t, _ in received(transcript, CLOCK, SYSTEM_CHAT) if opened_at < t < closed_at]
     lain = sent(transcript, SLEEPER, "minecraft:use_item_on")[0][0]
-    times = [t for t, _ in received(transcript, CLOCK, SET_TIME) if opened_at < t < closed_at]
+    times = [t for t, _ in received(transcript, CLOCK, SET_TIME) if opened_at <= t < closed_at]
     assert lain < said
-    # 7, the first of which may come before the lie-down: the other 6 span 100 ticks after it
+    # a count, not ticks: the fake sends a set_time every TIME_TICKS ticks, vanilla every 20, so
+    # 7 span 24 of the fake's ticks after the first, and 120 of vanilla's
     assert len(times) >= 7
 
 
