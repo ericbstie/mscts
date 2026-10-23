@@ -206,6 +206,15 @@ def test_a_run_of_registries_ends_at_a_disconnect() -> None:
     ]
 
 
+def test_an_empty_registry_id_is_not_a_registry_data_the_codec_cannot_read() -> None:
+    empty = registry("", 1)
+    unread = packet(_REGISTRY_DATA, b"\x00", state=State.CONFIGURATION)
+
+    verdict = compare(transcript(("alice", empty)), transcript(("alice", unread)), [])
+
+    assert [d.kind for d in verdict.divergences] == ["missing", "unexpected"]
+
+
 def _registry_in(value: object) -> object:
     """The registry id of a `registry_data` that a Divergence shows whole; else `value`."""
     if not isinstance(value, dict):
