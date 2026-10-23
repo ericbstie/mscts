@@ -35,6 +35,7 @@ from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Seq
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
+from itertools import groupby
 from types import MappingProxyType
 from typing import Literal, NamedTuple, NoReturn, Self, cast, override
 from uuid import UUID
@@ -571,7 +572,7 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
     Each Bot's stream is normalized first: the chunks in a row are sorted by position
     (`_by_position`), and the resends in a row for different entities by entity (`_RESENDS`,
-    `_by_entity`), and the `registry_data` in a row by registry (`_by_registry`);
+    `_by_entity`), and the `registry_data` of a configuration by registry (`_by_registry`);
     then, if the Transcript has Observation windows, the play Packets they
     do not observe are left out (`_Windows.observes`); the Packets a `*` Mask names are
     dropped; the lists of the Packets `UNORDERED` names are
@@ -1182,13 +1183,16 @@ _REGISTRY_DATA = "minecraft:registry_data"
 def _by_registry(stream: Sequence[_Normalized]) -> list[_Normalized]:
     """A Bot's normalized `stream`, with each run of `registry_data` sorted by registry, stably.
 
-    A run is a longest stretch of packets that each hold a registry (`_registry_id`). Until
-    `finish_configuration` the client only collects each registry's entries apart, and then
-    loads the registries by key, in an order of its own; the entries of two packets of one
-    registry it appends in the order they came (docs/research/2026-10-23-registry-order.md).
-    So the sort keeps those in their order. Each packet of a run notes its registry, its run
-    and its index in `stream` (`_Normalized.registry`), so the order each side sent them in
-    can still be compared (`_registry_orders`).
+    A run is a longest stretch of configuration packets that each hold a registry
+    (`_registry_id`) or read none (`_REGISTRY_NEUTRAL`). Until `finish_configuration` the
+    client only collects each registry's entries apart, and then loads the registries by key,
+    in an order of its own; the entries of two packets of one registry it appends in the order
+    they came (docs/research/2026-10-23-registry-order.md). A run becomes its registries,
+    sorted by registry, stably, so those of one registry keep their order, then its other
+    packets in their order: so such a packet is in the same place whether it came before a
+    registry or after it. Each registry notes its registry, its run and its index in `stream`
+    (`_Normalized.registry`), so the order each side sent them in can still be compared
+    (`_registry_order`).
     """
     result: list[_Normalized] = []
     for number, (start, run) in enumerate(_registry_runs(stream)):
@@ -1198,31 +1202,67 @@ def _by_registry(stream: Sequence[_Normalized]) -> list[_Normalized]:
     return result
 
 
-def _registry_runs(stream: Sequence[_Normalized]) -> Iterator[tuple[int, Sequence[_Normalized]]]:
+def _registry_runs(stream: Sequence[_Normalized]) -> Iterator[tuple[int, list[_Normalized]]]:
     """Each run of registries of `stream` (`_by_registry`), with the index it starts at."""
-    start: int | None = None
-    for index, entry in enumerate(stream):
-        if _holds_registry(entry):
-            start = index if start is None else start
-        elif start is not None:
-            yield start, stream[start:index]
-            start = None
-    if start is not None:
-        yield start, stream[start:]
+    start = 0
+    for in_run, entries in groupby(stream, key=_in_registry_run):
+        run = list(entries)
+        if in_run:
+            yield start, run
+        start += len(run)
+
+
+def _in_registry_run(entry: _Normalized) -> bool:
+    """Whether `entry` holds a registry (`_registry_id`) or is one a run goes across."""
+    packet = entry.packet
+    return _holds_registry(entry) or (
+        packet.state is State.CONFIGURATION and packet.name in _REGISTRY_NEUTRAL
+    )
+
+
+_REGISTRY_NEUTRAL = frozenset(
+    {
+        "minecraft:clear_dialog",
+        "minecraft:code_of_conduct",
+        "minecraft:cookie_request",
+        "minecraft:custom_payload",
+        "minecraft:custom_report_details",
+        "minecraft:keep_alive",
+        "minecraft:ping",
+        "minecraft:post_effects",
+        "minecraft:reset_chat",
+        "minecraft:resource_pack_pop",
+        "minecraft:resource_pack_push",
+        "minecraft:select_known_packs",
+        "minecraft:server_links",
+        "minecraft:show_dialog",
+        "minecraft:store_cookie",
+        "minecraft:update_enabled_features",
+        "minecraft:update_tags",
+    }
+)
+"""The configuration packets a run of registries goes across: every clientbound one but
+`registry_data`, `finish_configuration`, which loads the registries collected, and `disconnect`
+and `transfer`, after which the client handles nothing more (`Connection.disconnect`). The
+registries collected are in `ClientConfigurationPacketListenerImpl.registryDataCollector`, a
+private field that only `handleRegistryData`, `handleUpdateTags` (which adds the tags apart,
+`RegistryDataCollector.appendTags`) and `handleConfigurationFinished` read (javap on the 26.3
+client, docs/research/2026-10-23-registry-order.md)."""
 
 
 def _placed_and_sorted(run: Sequence[_Normalized], *, number: int, start: int) -> list[_Normalized]:
     """Run `number` of registries, which starts at index `start`, in the order it is compared.
 
-    Each of its registries notes where it came (`_RegistryPlace`); they are sorted by registry,
-    stably.
+    Its registries, each noting where it came (`_RegistryPlace`), sorted by registry, stably;
+    then its other packets, in their order.
     """
     placed = [
         replace(entry, registry=_RegistryPlace(registry, run=number, arrived=start + offset))
         for offset, entry in enumerate(run)
         if (registry := _registry_id(entry.packet)) is not None
     ]
-    return sorted(placed, key=_registry_text)
+    others = [entry for entry in run if not _holds_registry(entry)]
+    return [*sorted(placed, key=_registry_text), *others]
 
 
 def _holds_registry(entry: _Normalized) -> bool:

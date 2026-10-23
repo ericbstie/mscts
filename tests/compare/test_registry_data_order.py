@@ -102,6 +102,74 @@ def test_the_order_covers_every_run_of_registries() -> None:
     ]
 
 
+def test_a_configuration_packet_inside_one_sides_run_leaves_the_registries_paired() -> None:
+    # Review A of #451: the client handles a keep_alive the same between two registry_data.
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+    keep_alive = packet("minecraft:keep_alive", b"\x01", state=State.CONFIGURATION)
+
+    verdict = compare(
+        transcript(
+            ("alice", biome), ("alice", damage), ("alice", enchantment), ("alice", keep_alive)
+        ),
+        transcript(
+            ("alice", biome), ("alice", keep_alive), ("alice", damage), ("alice", enchantment)
+        ),
+        [],
+    )
+
+    assert verdict.divergences == ()
+
+
+def test_a_configuration_packet_before_the_registries_is_where_it_is_after_them() -> None:
+    biome, damage = registry(_BIOME, 3), registry(_DAMAGE, 3)
+    features = packet("minecraft:update_enabled_features", state=State.CONFIGURATION)
+
+    verdict = compare(
+        transcript(("alice", features), ("alice", biome), ("alice", damage)),
+        transcript(("alice", biome), ("alice", damage), ("alice", features)),
+        [],
+    )
+
+    assert verdict.divergences == ()
+
+
+def test_registries_in_another_order_across_a_configuration_packet_are_one_order() -> None:
+    # Review B of #451, P2c: only the order differs, as network traffic.
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+    features = packet("minecraft:update_enabled_features", state=State.CONFIGURATION)
+
+    verdict = compare(
+        transcript(
+            ("alice", biome), ("alice", damage), ("alice", enchantment), ("alice", features)
+        ),
+        transcript(
+            ("alice", damage), ("alice", features), ("alice", biome), ("alice", enchantment)
+        ),
+        [],
+    )
+
+    assert [(d.path, d.reference, d.candidate) for d in verdict.divergences] == [
+        (ORDER_PATH, [_BIOME, _DAMAGE, _ENCHANTMENT], [_DAMAGE, _BIOME, _ENCHANTMENT])
+    ]
+
+
+def test_a_run_of_registries_ends_at_a_disconnect() -> None:
+    # The client handles nothing after a disconnect, so a registry sent after one is not read.
+    biome, damage = registry(_BIOME, 3), registry(_DAMAGE, 3)
+    disconnect = packet("minecraft:disconnect", b"\x08", state=State.CONFIGURATION)
+
+    verdict = compare(
+        transcript(("alice", biome), ("alice", damage), ("alice", disconnect)),
+        transcript(("alice", damage), ("alice", disconnect), ("alice", biome)),
+        [],
+    )
+
+    assert [(d.kind, d.packet) for d in verdict.gameplay] == [
+        ("unexpected", "minecraft:disconnect"),
+        ("missing", "minecraft:disconnect"),
+    ]
+
+
 def _registry_in(value: object) -> object:
     """The registry id of a `registry_data` that a Divergence shows whole; else `value`."""
     if not isinstance(value, dict):

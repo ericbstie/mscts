@@ -2208,10 +2208,15 @@ proves it necessary:
      research note). `set_passengers` (two entities) and bundles (the
      projectile power) end a run.
    - the order of `registry_data` packets of different registries (#451).
-     A *run of registries* is a longest stretch of configuration
-     `registry_data` packets the codec read, in a Bot's normalized stream;
-     each run is sorted by `registry_id`, stably (`compare._by_registry`),
-     so two packets of one registry keep their order, and indices count the
+     A *run of registries* is a longest stretch of configuration packets,
+     in a Bot's normalized stream, that are each a `registry_data` the
+     codec read or a packet the run goes across (`compare._REGISTRY_NEUTRAL`:
+     every clientbound configuration packet but `registry_data`,
+     `finish_configuration`, `disconnect` and `transfer`; none of their
+     handlers reads the registries collected, javap). Each run becomes its
+     `registry_data`, sorted by `registry_id`, stably
+     (`compare._by_registry`), so two packets of one registry keep their
+     order, then its other packets in their order; indices count the
      sorted stream. The client collects each registry's entries apart, in a
      `HashMap` keyed by registry, appending a later packet's entries, and
      loads the registries only at `finish_configuration`, in the order of

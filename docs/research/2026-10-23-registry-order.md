@@ -33,6 +33,34 @@ and an entry's place gives its number.
 So until `finish_configuration` the client only collects the packets by registry, and then
 loads each registry by key, in the client's own order.
 
+## The other configuration packets (javap)
+
+Can another configuration packet between two `registry_data` see or change what was collected?
+
+- `registryDataCollector` is a private field of `ClientConfigurationPacketListenerImpl`. It is
+  read (`getfield`) only in `handleRegistryData`, `handleUpdateTags` and the lambda of
+  `handleConfigurationFinished`, and set in `<init>`. The superclass
+  `ClientCommonPacketListenerImpl`, which handles the common packets, never names it.
+- `handleUpdateTags` calls `RegistryDataCollector.appendTags(packet.tags())`: the tags are kept
+  apart from the entries, until `finish_configuration` too.
+- `handleEnabledFeatures` only sets `enabledFeatures`. `handleSelectKnownPacks` sets
+  `knownPacks` and answers with `ServerboundSelectKnownPacks`; `knownPacks` is read only in
+  `runWithResources`, at `finish_configuration`. `handleResetChat` sets `chatState` to null.
+  `handleCodeOfConduct` answers or shows a screen.
+- In `ClientCommonPacketListenerImpl`: `handleKeepAlive` and `handlePing` answer;
+  `handleCustomPayload` keeps the brand or logs the payload.
+- `handleDisconnect` calls `Connection.disconnect`, and `handleTransfer` calls
+  `Connection.disconnect`, `setReadOnly` and `handleDisconnection`, then connects elsewhere:
+  after either, the client handles no more packets of this connection.
+
+The configuration clientbound packets in 26.3 (`packets.json`): `clear_dialog`,
+`code_of_conduct`, `cookie_request`, `custom_payload`, `custom_report_details`, `disconnect`,
+`finish_configuration`, `keep_alive`, `ping`, `post_effects`, `registry_data`, `reset_chat`,
+`resource_pack_pop`, `resource_pack_push`, `select_known_packs`, `server_links`,
+`show_dialog`, `store_cookie`, `transfer`, `update_enabled_features`, `update_tags`. So the
+place of `registry_data` among any of them but `finish_configuration`, `disconnect` and
+`transfer` changes nothing the client builds.
+
 ## The server's order (javap)
 
 - `RegistrySynchronization.packRegistries` walks `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`
@@ -52,4 +80,5 @@ in the order they came, they made 375 gameplay Divergences, 75 of them at `regis
 
 Packets of different registries can be compared registry by registry, whatever order each
 server sent them in, and the order itself is network traffic (ADR-0007). Packets of one
-registry keep their order.
+registry keep their order. A configuration packet other than `finish_configuration`,
+`disconnect` and `transfer` between them changes nothing either.
