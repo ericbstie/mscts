@@ -892,8 +892,10 @@ def respawned_late(group_id: str, *before: tuple[str, Mapping[str, object]]) -> 
 def test_a_respawn_window_fails_the_group_when_entity_event_60_comes_before_the_respawn(
     group_id: str,
 ) -> None:
+    # The text names the event and what it shows, and no entity id, which differs between plays.
     refused = (
-        r"got minecraft:entity_event \{'entity_id': 300, 'event_id': 60\} before minecraft:respawn"
+        r"got entity event 60 \(vanilla sends it 20 ticks after the death: the respawn request "
+        r"came that late, or the server sent it early\) before minecraft:respawn$"
     )
     with pytest.raises(ProtocolError, match=refused):
         respawned_late(group_id, LATE_POOF)

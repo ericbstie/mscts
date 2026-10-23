@@ -861,7 +861,7 @@ class Bot:
             # client could be ready earlier (docs/research/2026-09-26-join.md).
             await self._connection.send("minecraft:player_loaded")
 
-    async def respawn(self, *, unless: Callable[[Packet], bool] | None = None) -> None:
+    async def respawn(self, *, fail_on: Callable[[Packet], str | None] | None = None) -> None:
         """Respawn a dead player, and return once the Bot has said it loaded the world again.
 
         Sends `client_command` PERFORM_RESPAWN, as the death screen's button does, takes each
@@ -871,12 +871,14 @@ class Bot:
         ignores its attacks and interactions (`hasClientLoaded`); as at the join, the Bot says
         so once the first chunk batch has arrived and been acknowledged.
 
-        `unless` is called with each packet taken before the `respawn`: one it holds for fails
-        the respawn, for a Group whose window must not hold that packet before the `respawn`.
+        `fail_on` is called with each packet taken before the `respawn`, for a Group whose window
+        must not hold that packet before the `respawn`. It returns what the packet is, which
+        fails the respawn, or None for a packet the respawn takes and goes on.
 
         Raises:
-            ProtocolError: The Bot is not in play, or the server disconnected it, or a packet
-                `unless` holds for came before the `respawn`.
+            ProtocolError: The Bot is not in play, or the server disconnected it, or `fail_on`
+                named a packet that came before the `respawn` (`<Bot> got <what fail_on
+                returned> before minecraft:respawn`).
             TimeoutError: The respawn and its first chunk batch did not come within
                 `timeout_s`: the server ignores the request while the player is alive.
         """
@@ -884,19 +886,19 @@ class Bot:
         waited_for = "minecraft:respawn, then minecraft:chunk_batch_finished"
         async with self._operation(self._timeout_s, waited_for):
             await self._connection.send("minecraft:client_command", action=_PERFORM_RESPAWN)
-            await self._respawned(unless)
+            await self._respawned(fail_on)
             await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
             await self._connection.send("minecraft:player_loaded")
 
-    async def _respawned(self, unless: Callable[[Packet], bool] | None) -> None:
-        """Take packets until the `respawn`; raise ProtocolError at one `unless` holds for."""
+    async def _respawned(self, fail_on: Callable[[Packet], str | None] | None) -> None:
+        """Take packets until the `respawn`; raise ProtocolError at one `fail_on` names."""
 
         def ends_the_wait(packet: Packet) -> bool:
-            return packet.name == _RESPAWN or (unless is not None and unless(packet))
+            return packet.name == _RESPAWN or (fail_on is not None and fail_on(packet) is not None)
 
         packet = await self._take(ends_the_wait, timeout_s=self._timeout_s)
-        if packet.name != _RESPAWN:
-            msg = f"{self.name} got {packet.name} {dict(packet.fields or {})} before {_RESPAWN}"
+        if packet.name != _RESPAWN and fail_on is not None:
+            msg = f"{self.name} got {fail_on(packet)} before {_RESPAWN}"
             raise ProtocolError(msg)
 
     async def expect(

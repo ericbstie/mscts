@@ -121,8 +121,17 @@ _POOF = 60
 20, and `ServerChunkCache.sendToTrackingPlayersAndSelf` sends it to the player too)."""
 
 
-def _is_poof(packet: Packet) -> bool:
-    return packet.name == _ENTITY_EVENT and (packet.fields or {}).get("event_id") == _POOF
+_LATE = (
+    "entity event 60 (vanilla sends it 20 ticks after the death: the respawn request came that "
+    "late, or the server sent it early)"
+)
+
+
+def _poof(packet: Packet) -> str | None:
+    """Say what entity event 60 shows, for a packet that is one; None for any other packet."""
+    if packet.name == _ENTITY_EVENT and (packet.fields or {}).get("event_id") == _POOF:
+        return _LATE
+    return None
 
 
 async def _respawn(context: GroupContext, bot: Bot) -> None:
@@ -131,7 +140,7 @@ async def _respawn(context: GroupContext, bot: Bot) -> None:
     The window opens a few ticks after the death, and the respawn comes long before the 20 ticks
     that event 60 waits for. A Bot that stalls about a second after the death gets the event
     inside the window on one Instance, and maybe not on the other: the windows would differ for
-    the harness's timing. So the Bot fails the respawn instead (`Bot.respawn`'s `unless`), which
+    the harness's timing. So the Bot fails the respawn instead (`Bot.respawn`'s `fail_on`), which
     on the Reference is an `error`. The Bot's own packets show the order, so this holds however
     late it reads them. No other entity in these Groups dies, so any event 60 is the Bot's.
 
@@ -139,7 +148,7 @@ async def _respawn(context: GroupContext, bot: Bot) -> None:
         ProtocolError: Event 60 came before the `respawn`.
     """
     async with context.observe(*PACKETS):
-        await bot.respawn(unless=_is_poof)
+        await bot.respawn(fail_on=_poof)
 
 
 # `player/fall`: a Bot reports a fall onto each surface, from each height.

@@ -40,7 +40,7 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.status()` | Sends the status handshake and request, and returns the parsed status JSON. |
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
-| `await bot.respawn(unless=...)` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. With `unless`, a packet it holds for that arrives before the server's `respawn` raises `ProtocolError`. |
+| `await bot.respawn(fail_on=...)` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. `fail_on` is called with each packet that arrives before the server's `respawn`. If it returns a text, the respawn raises `ProtocolError` with that text; if it returns None, the respawn goes on. |
 | `await bot.expect(name, ..., timeout_s=..., where=...)` | Reads packets until one with any of the names given arrives, and returns it. |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.signed_command(text)` | Runs a command with a message argument (`/say`, `/me`, `/msg`, `/teammsg`) the way the vanilla client sends one. The client signs each message argument, and a Bot, which has no chat signing keys, signs none. |
