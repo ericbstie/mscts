@@ -3,7 +3,8 @@
 `join/basic` compares one player's join alone, from the login to the end of its first chunk
 batch. The window ends where that batch's `chunk_batch_finished` arrives (`observe(until=)`,
 #105): later batches, and the animals that walk into view, depend on timing (#30's
-measurement).
+measurement). Before the player joins, Control stops the weather cycle, clears the weather and
+waits for it to fade: a storm one Instance started would reach the player there only (#461).
 """
 
 import contextlib
