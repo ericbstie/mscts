@@ -6,11 +6,13 @@ The client collects each registry's packets apart and loads the registries by ke
 
 from support.registries import registry
 
-from mscts.compare import compare
-from tests.compare.build import transcript
+from mscts.compare import ORDER_PATH, Observability, compare
+from tests.compare.build import divergence, transcript
 
 _BIOME = "minecraft:worldgen/biome"
 _DAMAGE = "minecraft:damage_type"
+_ENCHANTMENT = "minecraft:enchantment"
+_REGISTRY_DATA = "minecraft:registry_data"
 
 
 def test_the_same_registries_sent_in_another_order_are_compared_per_registry() -> None:
@@ -23,6 +25,29 @@ def test_the_same_registries_sent_in_another_order_are_compared_per_registry() -
     )
 
     assert verdict.gameplay == ()
+
+
+def test_registries_sent_in_another_order_are_one_network_traffic_divergence() -> None:
+    biome, damage, enchantment = (registry(name, 3) for name in (_BIOME, _DAMAGE, _ENCHANTMENT))
+
+    verdict = compare(
+        transcript(("alice", biome), ("alice", damage), ("alice", enchantment)),
+        transcript(("alice", damage), ("alice", enchantment), ("alice", biome)),
+        [],
+    )
+
+    assert verdict.divergences == (
+        divergence(
+            "field",
+            index=0,
+            packet=_REGISTRY_DATA,
+            path=ORDER_PATH,
+            reference=[_BIOME, _DAMAGE, _ENCHANTMENT],
+            candidate=[_DAMAGE, _ENCHANTMENT, _BIOME],
+            test_case="registry_data.registry_id",
+            observability=Observability.NETWORK_TRAFFIC,
+        ),
+    )
 
 
 def test_two_packets_of_one_registry_are_compared_in_the_order_they_came() -> None:

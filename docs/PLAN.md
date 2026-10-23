@@ -1631,7 +1631,8 @@ class Divergence:
     tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
-    #   chunk_batch_start or chunk_batch_finished (step 1); gameplay: every other Divergence,
+    #   chunk_batch_start or chunk_batch_finished (step 1), or the order of registry_data
+    #   (path ORDER_PATH, step 1); gameplay: every other Divergence,
     #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
     #   raises ValueError for a bot or failed one that is network traffic, #221).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
@@ -1641,7 +1642,9 @@ class Divergence:
     # unexpected: a candidate packet it left unmatched (reference is ABSENT);
     # field: a difference between two matched packets, or (path TICK_PATH, the two ticks
     #   as int values, the packet's test case) one packet a tick-exact Group got on
-    #   different ticks (#23), followed by the two packets' differences;
+    #   different ticks (#23), followed by the two packets' differences, or (path
+    #   ORDER_PATH, network traffic, registry_id's test case, at the first matched
+    #   registry_data) the registries both sides sent, in each side's order (#451);
     # failed: the Group failed on the Candidate (made by run.judge, never by compare):
     #   bot the Bot the failure came out of (GroupError.bot; "" only if the script
     #   itself raised it), index 0, reference ABSENT, candidate the failure ("TimeoutError: ...").
@@ -1686,6 +1689,10 @@ TICK_PATH = "(tick)"                # #23: the path of the field Divergence of a
                                     # a tick-exact Group got on different ticks; the Report
                                     # shows it before the values ("(tick): vanilla sends 1, ...");
                                     # no field path holds a parenthesis
+ORDER_PATH = "(order)"              # #451: the path of the network traffic field Divergence
+                                    # of registry_data of different registries sent in
+                                    # different orders; its values are each side's registry
+                                    # ids of the matched packets, in the order it sent them
 TICK_MARK = "tick:"                 # #23: "tick:<k>" ends tick k of a tick-exact Group:
                                     # for one Bot with its name after it ("tick:3 alice"),
                                     # without for every Bot with no Mark of its own
@@ -2214,7 +2221,12 @@ proves it necessary:
      `NetworkRegistryLoadTask.load`;
      `docs/research/2026-10-23-registry-order.md`). Vanilla sends one
      packet a registry, in that same list's order
-     (`RegistrySynchronization.packRegistries`).
+     (`RegistrySynchronization.packRegistries`). The order is still
+     reported, as network traffic (ADR-0007): if the matched packets of the
+     runs came in different orders, one `field` Divergence at `ORDER_PATH`,
+     at the first of them, holds each side's registry ids of them in the
+     order it sent them (`compare._registry_order`). A packet moves only
+     within its run, so the runs keep their order on both sides.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
