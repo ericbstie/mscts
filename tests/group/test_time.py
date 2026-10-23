@@ -75,6 +75,9 @@ STRAY_TICKS = 10
 LATE_TICKS = 5
 """How many ticks the fake takes to answer a player's command, and to tell the others that
 Control has left: longer than a barrier, so a window that did not wait for it would miss it."""
+ANSWER_LAG_S = TICK_S / 2
+"""How much later the sleeper gets each barrier answer than the clock, with
+`time_behind_answers`."""
 
 
 @dataclass
@@ -103,6 +106,10 @@ class TimeServer:
     sleeping: bool = False
     clocks: tuple[dict[str, object], ...] = ()
     """The clocks each 20-tick `set_time` carries: none, like vanilla 26.3."""
+    time_behind_answers: bool = False
+    """Whether the clock reads a `set_time` right behind each barrier answer, before the
+    sleeper's answer: so when a window opens, after the later answer, the clock has one queued
+    that it read before the open (#454)."""
     later: set[asyncio.Task[None]] = field(default_factory=set)
 
     @property
@@ -126,9 +133,7 @@ class TimeServer:
                 self.seen.append(packet)
                 if packet.name == CLIENT_COMMAND:
                     requests += 1
-                    if (requests - 1) % SYNC_REQUESTS != 0:
-                        await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
-                    await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+                    await self._award_stats(peer, first=(requests - 1) % SYNC_REQUESTS == 0)
                 elif packet.name == CHAT_COMMAND:
                     await self._command(peer, str((packet.fields or {})["command"]))
                 elif packet.name == USE_ITEM_ON:
@@ -139,6 +144,21 @@ class TimeServer:
             if peer.name == CONTROL:
                 del self.players[CONTROL]
                 self.later.add(asyncio.create_task(self._left()))
+
+    async def _award_stats(self, peer: Peer, *, first: bool) -> None:
+        """Answer a statistics request: the first of a barrier at once, the others a tick later.
+
+        With `time_behind_answers`, the clock's answer comes in one write with a `set_time`
+        behind it, and the sleeper's `ANSWER_LAG_S` later.
+        """
+        if not first:
+            await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
+        answer = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
+        if self.time_behind_answers and peer.name == SLEEPER:
+            await asyncio.sleep(ANSWER_LAG_S)
+        if self.time_behind_answers and peer.name == CLOCK:
+            answer += peer.frame(SET_TIME, game_time=self.game_time, clocks=list(self.clocks))
+        await peer.write(answer)
 
     async def _show(self, name: str) -> None:
         """Tell every player but Control that player `name` is there (`add_entity`)."""
@@ -513,16 +533,29 @@ def test_sleep_leaves_the_two_bots_alone_in_the_world_for_each_lie_down() -> Non
         assert not [t for t in by_control if gone < t < closed_at]
 
 
-def test_sleep_with_100_percent_waits_100_ticks_after_lying_down() -> None:
+def test_sleep_with_100_percent_waits_for_7_set_time_inside_the_lie_down_window() -> None:
     transcript, _ = play("time/sleep")
 
     opened_at, closed_at = windows(transcript)[0]
     [said] = [t for t, _ in received(transcript, CLOCK, SYSTEM_CHAT) if opened_at < t < closed_at]
     lain = sent(transcript, SLEEPER, "minecraft:use_item_on")[0][0]
-    times = [t for t, _ in received(transcript, CLOCK, SET_TIME) if opened_at < t < closed_at]
+    times = [t for t, _ in received(transcript, CLOCK, SET_TIME) if opened_at <= t < closed_at]
     assert lain < said
-    # 7, the first of which may come before the lie-down: the other 6 span 100 ticks after it
+    # a count, not ticks: the fake sends a set_time every TIME_TICKS ticks, vanilla every 20, so
+    # 7 span 24 of the fake's ticks after the first, and 120 of vanilla's
     assert len(times) >= 7
+
+
+def test_sleep_counts_only_the_set_time_the_clock_read_inside_each_lie_down_window() -> None:
+    # the clock reads a set_time after its barrier's answer but before the window opens
+    transcript = asyncio.run(_play("time/sleep", TimeServer(time_behind_answers=True)))
+
+    asks = [t for t, _ in sent(transcript, CLOCK, CLIENT_COMMAND)]
+    times = [t for t, _ in received(transcript, CLOCK, SET_TIME)]
+    for k, count in ((0, 7), (4, 3)):
+        opened_at, _ = windows(transcript)[k]
+        closing = min(t for t in asks if t > opened_at)  # the clock's barrier at the close
+        assert len([t for t in times if opened_at <= t < closing]) >= count
 
 
 def test_sleep_steps_to_dawn_until_a_set_time_shows_the_step_ended() -> None:
