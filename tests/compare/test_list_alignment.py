@@ -13,8 +13,11 @@ from uuid import UUID
 import pytest
 
 import mscts.compare
+from mscts.codec.packets import Packet
 from mscts.compare import (
     ABSENT,
+    MASKED,
+    Mask,
     _Added,
     _Edit,
     _fewest_edits,
@@ -106,6 +109,40 @@ def test_a_reference_only_and_a_candidate_only_element_at_one_index_have_differe
         ("l[→3]", ABSENT, 3),
         ("l[3]", 3, ABSENT),
     ]
+
+
+ENTRIES = "tagged_registries[0].tags[0].entries"
+
+
+def _masked_entries(
+    reference: list[int], candidate: list[int], mask_path: str
+) -> list[tuple[str | None, object, object]]:
+    """The Divergences of two `update_tags` with one tag of these entries, under one Mask."""
+
+    def update_tags(entries: list[int]) -> Packet:
+        tag = {"tag_name": "minecraft:logs", "entries": entries}
+        fields = {"tagged_registries": [{"registry": "minecraft:block", "tags": [tag]}]}
+        return packet("minecraft:update_tags", fields=fields)
+
+    verdict = compare(
+        transcript(("alice", update_tags(reference))),
+        transcript(("alice", update_tags(candidate))),
+        [Mask("minecraft:update_tags", mask_path, reason="a test")],
+    )
+    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+
+
+def test_a_mask_at_the_index_of_an_element_only_the_candidate_has_hides_its_value_only() -> None:
+    # A Mask hides a value, never whether it is there: the element is still one Divergence.
+    assert _masked_entries([1, 2], [1, 2, 9], f"{ENTRIES}[2]") == [
+        (f"{ENTRIES}[→2]", ABSENT, MASKED)
+    ]
+
+
+def test_a_mask_at_an_index_hides_each_sides_element_there_before_the_lists_are_lined_up() -> None:
+    # entries[1] is 2 in the reference and 9 in the candidate. Both are hidden, so they line up
+    # as equal, and the candidate's 2 is the element only it has.
+    assert _masked_entries([1, 2], [1, 9, 2], f"{ENTRIES}[1]") == [(f"{ENTRIES}[→2]", ABSENT, 2)]
 
 
 def test_a_moved_index_names_no_index_where_indexes_are_left_out() -> None:
