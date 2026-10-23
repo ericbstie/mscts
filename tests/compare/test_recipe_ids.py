@@ -581,6 +581,31 @@ def test_a_recipe_one_server_alone_gave_and_took_outside_the_windows_names_no_gr
     assert _diff_all(reference, candidate) == []
 
 
+def test_a_recipe_named_outside_and_taken_in_a_window_is_numbered_when_given_again() -> None:
+    # Whether a packet that changes nothing comes between the two windows is no difference.
+    def taken_and_given(display_id: int, *between: Packet) -> list[Packet | str]:
+        taken = [OPEN, book_remove(display_id), CLOSE]
+        return [
+            book_add(Entry(PLANKS, display_id=display_id)),
+            *taken,
+            *between,
+            *_planks_given(display_id),
+        ]
+
+    assert _diff_all(taken_and_given(5), taken_and_given(50, book_add())) == []
+
+
+def test_an_id_given_in_a_window_to_another_recipe_than_a_named_one_shows_its_name() -> None:
+    # Review C of #462, N5: the Candidate's client drops planks for sticks (`known.put`).
+    planks_as = [Entry(PLANKS, display_id=each) for each in (7, 70)]
+    sticks_as = [Entry(STICKS, display_id=each, flags=TOAST) for each in (9, 70)]
+
+    assert _diff_all(
+        [book_add(planks_as[0]), OPEN, book_add(sticks_as[0]), CLOSE],
+        [book_add(planks_as[1]), OPEN, book_add(sticks_as[1]), CLOSE],
+    ) == [("entries[0].contents.id", "#1", f"#1 in place of {named(planks_as[0])}")]
+
+
 def test_a_recipe_one_server_alone_gave_and_took_outside_numbers_no_later_recipe() -> None:
     # Review C of #462, N1u, crafting/unlocking's shape: vanilla alone unlocks planks when the
     # log enters the inventory, and `recipe take *` takes it, both outside the windows.
