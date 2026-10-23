@@ -458,10 +458,10 @@ freezes the world and steps it after each move.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
-| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own. | none |
+| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |
+| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
-| `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
+| `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |
 | `player/fire` | exact | none | A Bot is put in fire and takes damage. Then a fresh Bot steps into lava, out of it onto dry grass still burning, and into water. | none |
 | `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
 
@@ -532,6 +532,13 @@ Group made the player respawn, so the ticks before the first hit are timing.
 A death is `player_combat_kill`: the player that died, and the death message as the bytes of its
 text component. The player is numbered like any entity, because the id of a Bot differs between
 servers, and between plays on one server.
+
+Vanilla sends a dead player entity event 60, the smoke where its body was, 20 ticks after the
+death, unless the player has respawned by then. In `player/fall`, `player/drowning` and
+`player/void` the respawn window opens a few ticks after the death, so the respawn comes first.
+If the Bot is held up for about a second after the death, the event can come inside the window
+from one server and not from the other. So the Group fails if the event comes before the
+respawn. On the Reference that is an `error`, and not a Candidate's `mismatch`.
 
 ### Game modes, death and respawn
 
