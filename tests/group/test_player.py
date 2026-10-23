@@ -875,7 +875,7 @@ def test_fire_fails_when_the_move_into_the_water_comes_after_the_next_burn_may_h
 # respawn window on one Instance and maybe not on the other: the Group fails instead (#463).
 
 LATE_POOF = ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF})
-RESPAWNING = ("player/void",)
+RESPAWNING = ("player/fall", "player/drowning", "player/void")
 
 
 def respawned_late(group_id: str, *before: tuple[str, Mapping[str, object]]) -> Transcript:

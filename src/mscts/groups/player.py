@@ -262,7 +262,8 @@ async def fall(context: GroupContext) -> None:
     """A Bot falls 3, 4, 10 and 23 blocks onto stone, water, hay, slime and a bed.
 
     Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone,
-    which kills it: the Bot respawns in a window of its own.
+    which kills it: the Bot respawns in a window of its own, which fails the Group if entity
+    event 60 comes before the respawn (`_respawn`).
     """
     restore = (_KILL_ITEMS, *(c for landing in _LANDINGS for c in landing.restore))
     async with _environment(context, restore) as undo:
@@ -279,8 +280,7 @@ async def fall(context: GroupContext) -> None:
         await _fall(context, bot, _STONE, 10)
         await context.control.run(f"{_FALL_DAMAGE} true")
         await _fall(context, bot, _STONE, _HEIGHTS[-1])
-        async with context.observe(*PACKETS):
-            await bot.respawn()
+        await _respawn(context, bot)
 
 
 # Damage the player's own ticks do. The Bot is moved with `/tp` inside the window, which ends on
@@ -451,7 +451,8 @@ async def drowning(context: GroupContext) -> None:
 
     `drowning_damage` is off when the Bot goes under: the first time its air runs out, it gets the
     bubbles and no hit. Then the rule is turned on, and four hits kill it: the Group fails if the
-    air ran out again before the rule was on. The Bot respawns in a window of its own.
+    air ran out again before the rule was on. The Bot respawns in a window of its own, which fails
+    the Group if entity event 60 comes before the respawn (`_respawn`).
 
     The window opens while the Bot's air is full, so it holds every air value the server sends,
     between every two hits; it ends on the death. A server that drowns a player less often sends
@@ -472,8 +473,7 @@ async def drowning(context: GroupContext) -> None:
             await _set_drowning_damage(context.control, on=True)
             await _hurt_when_the_air_runs_out_again(bot)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
-        async with context.observe(*PACKETS):
-            await bot.respawn()
+        await _respawn(context, bot)
 
 
 # `player/suffocation`: a Bot inside a block of stone.
