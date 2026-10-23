@@ -10,6 +10,8 @@ import json
 from collections.abc import Sequence
 from typing import NamedTuple
 
+import pytest
+
 from mscts.codec.packets import Packet
 from mscts.compare import OBSERVE_CLOSE as CLOSE
 from mscts.compare import OBSERVE_OPEN as OPEN
@@ -408,6 +410,38 @@ def test_a_removal_of_another_recipe_taken_in_a_window_and_given_back_outside_di
     ]
 
 
+def test_a_name_an_earlier_packet_gave_is_held() -> None:
+    planks_as = [Entry(PLANKS, display_id=each) for each in (5, 6)]
+    reference = [book_add(planks_as[0]), book_add(planks_as[1]), OPEN, book_remove(6), CLOSE]
+
+    assert _diff_all(reference, [OPEN, book_remove(1), CLOSE]) == [
+        ("recipes[0]", f"{named(planks_as[0])} #2", "#1")
+    ]
+
+
+def test_a_recipe_given_again_outside_the_windows_keeps_its_name() -> None:
+    planks = Entry(PLANKS, display_id=5)
+    removal = [OPEN, book_remove(5), CLOSE]
+
+    assert (
+        _diff_all([book_add(planks), book_add(planks), *removal], [book_add(planks), *removal])
+        == []
+    )
+
+
+def test_a_book_replaced_outside_the_windows_names_its_recipes_again() -> None:
+    reference = [
+        book_add(Entry(PLANKS, display_id=5)),
+        book_add(Entry(STICKS, display_id=5), replace=True),
+        OPEN,
+        book_remove(5),
+        CLOSE,
+    ]
+    candidate = [book_add(Entry(STICKS, display_id=9)), OPEN, book_remove(9), CLOSE]
+
+    assert _diff_all(reference, candidate) == []
+
+
 def test_a_recipe_given_again_outside_the_windows_keeps_its_number() -> None:
     planks = Entry(PLANKS, display_id=5, flags=TOAST)
     given = [OPEN, book_add(planks), CLOSE]
@@ -421,9 +455,13 @@ def test_a_name_another_recipe_holds_takes_the_first_free_suffix() -> None:
     both = book_add(planks_as[0], planks_as[1])
     name = named(planks_as[0])
 
-    assert _diff_all([both, OPEN, book_remove(6, 5), CLOSE], [OPEN, book_remove(1, 2), CLOSE]) == [
+    assert _diff_all(
+        [book_add(*planks_as), OPEN, book_remove(7, 6, 5), CLOSE],
+        [OPEN, book_remove(1, 2, 3), CLOSE],
+    ) == [
         ("recipes[0]", name, "#1"),
         ("recipes[1]", f"{name} #2", "#2"),
+        ("recipes[2]", f"{name} #3", "#3"),
     ]
     assert (
         _diff_all(
@@ -465,9 +503,10 @@ def test_a_compared_login_empties_the_book() -> None:
     assert _diff_all(rejoin(3), rejoin(7)) == []
 
 
-def test_a_book_packet_that_did_not_decode_ends_no_number() -> None:
+@pytest.mark.parametrize("name", [BOOK_REMOVE, BOOK_ADD])
+def test_a_book_packet_that_did_not_decode_ends_no_number(name: str) -> None:
     planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
-    undecoded = packet(BOOK_REMOVE, b"\xff")
+    undecoded = packet(name, b"\xff")
     reference = [
         OPEN,
         book_add(planks_as[0]),
