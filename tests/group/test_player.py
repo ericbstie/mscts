@@ -939,6 +939,18 @@ def test_a_respawn_window_fails_the_group_when_entity_event_60_comes_before_the_
         respawned_late(group_id, LATE_POOF)
 
 
+def test_a_respawn_window_says_when_the_entity_event_60_is_for_another_entity() -> None:
+    # On vanilla no other entity dies in these Groups, so it fails all the same, and the text
+    # says it is not the Bot's, still without the id.
+    other_poof = ("minecraft:entity_event", {"entity_id": ENTITY_ID + 1, "event_id": POOF})
+    refused = (
+        r"got entity event 60 for another entity \(on vanilla no other entity dies in this "
+        r"Group\) before minecraft:respawn$"
+    )
+    with pytest.raises(ProtocolError, match=refused):
+        respawned_late("player/void", other_poof)
+
+
 def test_a_respawn_window_plays_on_after_another_event_before_the_respawn() -> None:
     # A near miss for each field the Group checks: another entity event, and a level event 60.
     other_event = ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF + 1})

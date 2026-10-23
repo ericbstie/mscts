@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Packet
-from support.bot_join import ENTITY_ID, RESPAWN
+from support.bot_join import ENTITY_ID, LOGIN, RESPAWN
 from support.control import CHAT_COMMAND, CLIENT_COMMAND, CONTROL, MARKER, text, tree
 from support.gametime import gametime_answer
 from support.moves import MOVES
@@ -122,6 +122,10 @@ ON_GROUND = 1
 """The bit of a move's `flags` that says the player is on the ground."""
 
 
+def _login(peer: Peer) -> bytes:
+    return peer.frame("minecraft:login", **LOGIN)
+
+
 def _lands(packet: Packet) -> bool:
     """Whether `packet` is a move that says the player is on the ground."""
     return packet.name in MOVES and int(str((packet.fields or {})["flags"])) & ON_GROUND != 0
@@ -201,9 +205,13 @@ class PlayerServer:
         self.barrier_since_hit.set()
 
     async def __call__(self, peer: Peer) -> None:
-        """Serve one connection: a Handler."""
+        """Serve one connection: a Handler.
+
+        Play's `login`, which names the player's entity id, comes with the first batch's end.
+        """
+        script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
         with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+            await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
         requests = 0

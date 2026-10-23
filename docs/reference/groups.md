@@ -542,7 +542,8 @@ death, unless the player has respawned by then. In `player/fall`, `player/drowni
 `player/void` the window before ends on the death, and the respawn window opens a few ticks
 later, so the respawn comes first. If the Bot is held up for most of a second after the death, the event can come inside the respawn
 window from one server and not from the other. So the Group fails if entity event 60, for any
-entity, comes inside the respawn window before the respawn. On the Reference that is an `error`.
+entity, comes inside the respawn window before the respawn, and says whether the event was for
+the Bot or for another entity. On the Reference that is an `error`.
 On a Candidate it is a `mismatch`, as is any failure of a Candidate's play, even when the Bot was
 the one held up. A Candidate that sends the event early fails every Run, while a stall seldom
 comes twice. An event 60 that comes after the death but before the respawn window opens is in

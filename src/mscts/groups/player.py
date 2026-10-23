@@ -24,6 +24,7 @@ not spawn: the Fixture world has `spawn_mobs` off, ADR-0013, and no Group turns 
 """
 
 import contextlib
+import functools
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -126,12 +127,15 @@ _LATE = (
     "late, or the server sent it early)"
 )
 
+_OTHERS = "entity event 60 for another entity (on vanilla no other entity dies in this Group)"
 
-def _poof(packet: Packet) -> str | None:
-    """Say what entity event 60 shows, for a packet that is one; None for any other packet."""
-    if packet.name == _ENTITY_EVENT and (packet.fields or {}).get("event_id") == _POOF:
-        return _LATE
-    return None
+
+def _poof(own_id: int | None, packet: Packet) -> str | None:
+    """Say what entity event 60 shows, for player `own_id` or another; None for other packets."""
+    fields = packet.fields or {}
+    if packet.name != _ENTITY_EVENT or fields.get("event_id") != _POOF:
+        return None
+    return _LATE if fields.get("entity_id") == own_id else _OTHERS
 
 
 async def _respawn(context: GroupContext, bot: Bot) -> None:
@@ -145,14 +149,15 @@ async def _respawn(context: GroupContext, bot: Bot) -> None:
     `error`. On a Candidate it is a `mismatch`, as is any failure of its play, even when the Bot
     stalled. The Bot's own packets show the order, so this holds however late it reads them. An
     event 60 the barrier that opens the window takes is in no window, and is not checked.
-    The check reads no entity id: no other entity dies in these Groups, so on vanilla any event
-    60 is the Bot's, and a Candidate's event 60 for another entity fails the Group the same way.
+    The check fails on event 60 for any entity: no other entity dies in these Groups, so on
+    vanilla any event 60 is the Bot's. Its text says whether the event was the Bot's, without the
+    id, which differs between plays.
 
     Raises:
         ProtocolError: Event 60 came before the `respawn`.
     """
     async with context.observe(*PACKETS):
-        await bot.respawn(fail_on=_poof)
+        await bot.respawn(fail_on=functools.partial(_poof, bot.entity_id))
 
 
 # `player/fall`: a Bot reports a fall onto each surface, from each height.
