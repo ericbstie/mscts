@@ -13,7 +13,7 @@ from typing import NamedTuple
 import pytest
 
 from mscts.codec.packets import Packet
-from mscts.compare import MASKED, UNORDERED, Mask, compare
+from mscts.compare import ABSENT, MASKED, UNORDERED, Mask, compare
 from mscts.compare import OBSERVE_CLOSE as CLOSE
 from mscts.compare import OBSERVE_OPEN as OPEN
 from tests.compare.build import packet, transcript
@@ -271,6 +271,10 @@ def test_an_id_first_seen_in_a_removal_takes_a_number_the_removal_ends() -> None
     assert _diff_all(reference, candidate) == []
 
 
+def test_an_id_the_book_does_not_hold_takes_another_number_at_each_removal() -> None:
+    assert _diff_all([book_remove(5), book_remove(5)], [book_remove(8), book_remove(9)]) == []
+
+
 def test_a_recipe_added_again_after_its_removal_may_take_another_display_id() -> None:
     planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
     reference = [book_add(planks_as[0]), book_remove(5), book_add(planks_as[0])]
@@ -393,6 +397,23 @@ def test_a_recipe_named_outside_the_windows_has_the_name_whatever_its_id_and_pla
 
 STATION = Mask(BOOK_ADD, "entries[*].contents.display.value.crafting_station", reason="a test")
 """A Mask on the item a recipe display shows it is made at."""
+
+
+def test_a_removal_of_recipes_got_outside_the_windows_is_sorted_by_their_names() -> None:
+    added = book_add(Entry(PLANKS, display_id=7), Entry(STICKS, display_id=4))
+
+    assert (
+        _diff_all([added, OPEN, book_remove(7, 4), CLOSE], [added, OPEN, book_remove(4, 7), CLOSE])
+        == []
+    )
+
+
+def test_a_recipe_named_outside_the_windows_takes_no_number_when_it_is_removed() -> None:
+    planks, sticks = Entry(PLANKS, display_id=5), Entry(STICKS, display_id=6, flags=TOAST)
+    reference = [book_add(planks), OPEN, book_remove(5), book_add(sticks), CLOSE]
+    candidate = [book_add(planks), book_remove(5), OPEN, book_add(sticks), CLOSE]
+
+    assert _diff_all(reference, candidate) == [(None, {"recipes": [named(planks)]}, ABSENT)]
 
 
 def _diff_masked(
