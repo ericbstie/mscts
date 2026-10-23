@@ -16,18 +16,22 @@ import pytest
 from support.control import CODEC
 from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
+    BUBBLES,
+    DEATH,
     FADE_READS,
     PERFORM_RESPAWN,
+    Drown,
     Hurt,
     PlayerServer,
 )
 from support.ticks import barriers_before_steps
 
 from mscts.bot import HANDLED_REQUESTS
-from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN
+from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
 from mscts.net import ProtocolError
+from mscts.run import judge
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.net.fakes import (
@@ -70,7 +74,7 @@ IMMUNE_TICKS = 10
 
 
 HURTS = {
-    "player/drowning": {"tp drowner 3.5 -62.0 2.5": Hurt(20)},  # the air runs out again
+    "player/drowning": {"tp drowner 3.5 -62.0 2.5": Drown()},  # the air runs out every 20 ticks
     "player/suffocation": {"tp suffocator 1.5 -60.0 2.5": Hurt(IMMUNE_TICKS)},
     "player/fire": {
         "tp burner 7.5 -60.0 2.5": Hurt(IMMUNE_TICKS),  # in fire
@@ -102,25 +106,30 @@ async def _play(
     due_at_once: bool = False,
     held: bool = True,
 ) -> tuple[Transcript, Play]:
+    server = PlayerServer(
+        hurts=HURTS.get(group_id, {}),
+        kills_after=KILLS_AFTER.get(group_id),
+        late=late,
+        due_at_once=due_at_once,
+        held=held,
+    )
+    transcript = await _play_on(group_id, server, clock)
+    return transcript, read(transcript)
+
+
+async def _play_on(
+    group_id: str, server: PlayerServer, clock: Callable[[], float] = always_on_time
+) -> Transcript:
+    """Play `group_id` against `server`, with `clock` timing the hits; its Transcript."""
     transcript = Transcript(group_id=group_id, server="fake")
-    async with serve(
-        CODEC,
-        PlayerServer(
-            hurts=HURTS.get(group_id, {}),
-            kills_after=KILLS_AFTER.get(group_id),
-            late=late,
-            due_at_once=due_at_once,
-            held=held,
-        ),
-        timeout_s=PLAY_TIMEOUT_S,
-    ) as endpoint:
+    async with serve(CODEC, server, timeout_s=PLAY_TIMEOUT_S) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
             with mock.patch.object(player, "clock", clock):
                 await GROUPS[group_id].run(context)
         finally:
             await context.close()
-    return transcript, read(transcript)
+    return transcript
 
 
 @functools.cache
@@ -415,8 +424,8 @@ def test_drowning_starts_from_a_fresh_player_and_puts_it_in_the_water_inside_the
 
     first, *_ = result.windows
     assert first.label == opened(*player.PACKETS)
-    assert first.before[-1] == "kill drowner"
-    assert first.sent == ((CONTROL, "tp drowner 3.5 -62.0 2.5"),)
+    assert first.before[-3] == "kill drowner"
+    assert first.sent[0] == (CONTROL, "tp drowner 3.5 -62.0 2.5")
     asked = [
         e
         for e in transcript.events
@@ -425,7 +434,7 @@ def test_drowning_starts_from_a_fresh_player_and_puts_it_in_the_water_inside_the
         and e.packet.fields == {"action": PERFORM_RESPAWN}
     ]
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
-    assert len(asked) == 1
+    assert len(asked) == 2  # the fresh Bot's respawn, then the drowned one's
     assert asked[0].t_ns < opens[0]
 
 
@@ -445,21 +454,100 @@ def test_drowning_builds_its_pool_once_the_world_is_frozen_and_restores_it() -> 
     )
 
 
-def test_drowning_waits_for_the_first_hit_and_three_more_then_for_the_bubbles() -> None:
+def test_drowning_harms_the_fresh_bot_to_8_health_and_turns_the_damage_off_before_the_window() -> (
+    None
+):
     result = played("player/drowning")
 
-    assert [window.label for window in result.windows] == [
-        opened(*player.PACKETS),
-        *[opened(*player.HIT_PACKETS)] * 4,
-    ]
-    assert [window.sent for window in result.windows[1:]] == [()] * 4
-
-
-def test_drowning_turns_the_damage_off_before_its_last_window() -> None:
-    result = played("player/drowning")
-
-    assert result.windows[-1].before[0] == "gamerule drowning_damage false"
+    assert result.windows[0].before[-2:] == (
+        "effect give drowner minecraft:instant_damage 1 1 true",
+        "gamerule drowning_damage false",
+    )
     assert result.after.count("gamerule drowning_damage true") == 1
+
+
+def test_drowning_turns_the_damage_on_inside_the_window_once_the_first_bubbles_came() -> None:
+    transcript, result = play("player/drowning")
+
+    assert result.windows[0].sent == (
+        (CONTROL, "tp drowner 3.5 -62.0 2.5"),
+        (CONTROL, "gamerule drowning_damage true"),
+    )
+    bubbles = next(
+        e.t_ns
+        for e in transcript.events
+        if e.bot == "drowner" and e.packet.name == "minecraft:entity_event"
+    )
+    turned_on = next(
+        e.t_ns
+        for e in transcript.events
+        if e.packet.name == CHAT_COMMAND
+        and e.packet.fields == {"command": "gamerule drowning_damage true"}
+    )
+    assert bubbles < turned_on
+
+
+def test_drowning_turns_the_damage_on_after_the_bubbles_and_not_after_another_entity_event() -> (
+    None
+):
+    transcript = drowned(Drown(other_event=2))
+
+    events = [
+        (e.t_ns, (e.packet.fields or {})["event_id"])
+        for e in transcript.events
+        if e.bot == "drowner" and e.packet.name == "minecraft:entity_event"
+    ]
+    turned_on = next(
+        e.t_ns
+        for e in transcript.events
+        if e.packet.name == CHAT_COMMAND
+        and e.packet.fields == {"command": "gamerule drowning_damage true"}
+    )
+    assert [event for t, event in events if t < turned_on] == [2, BUBBLES]
+
+
+def test_drowning_ends_its_window_on_the_death_and_respawns_in_a_window_of_its_own() -> None:
+    transcript, result = play("player/drowning")
+
+    assert [window.label for window in result.windows] == [opened(*player.PACKETS)] * 2
+    death = next(e.t_ns for e in transcript.events if e.packet.name == DEATH)
+    closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
+    assert closes[0] == death + 1
+    assert result.windows[1].sent == ()
+    respawn = next(
+        e.t_ns
+        for e in transcript.events
+        if e.packet.name == CLIENT_COMMAND
+        and e.packet.fields == {"action": PERFORM_RESPAWN}
+        and e.t_ns > death
+    )
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    assert opens[1] < respawn < closes[1]
+
+
+def drowned(drown: Drown) -> Transcript:
+    """Play `player/drowning` against a fake that drowns the Bot as `drown` says."""
+    server = PlayerServer(hurts={"tp drowner 3.5 -62.0 2.5": drown})
+    return asyncio.run(_play_on("player/drowning", server))
+
+
+def test_drowning_matches_a_server_that_drowns_the_bot_as_vanilla_does() -> None:
+    reference, _ = play("player/drowning")
+
+    verdict = judge(GROUPS["player/drowning"], reference, drowned(Drown()))
+
+    assert verdict.outcome is Outcome.MATCH, verdict.divergences
+
+
+def test_drowning_fails_a_server_whose_air_runs_out_every_40_ticks_after_the_first_time() -> None:
+    # The first time the air runs out, at -20, is vanilla's; after it, each hit comes 40 ticks
+    # after the last instead of 20 (#345).
+    reference, _ = play("player/drowning")
+
+    verdict = judge(GROUPS["player/drowning"], reference, drowned(Drown(period_ticks=40)))
+
+    assert verdict.outcome is Outcome.MISMATCH
+    assert "set_entity_data" in {d.test_case.split(".")[0] for d in verdict.divergences}
 
 
 # player/suffocation
@@ -638,15 +726,19 @@ def jumping_clock() -> Callable[[], float]:
     return lambda: float(next(now))
 
 
-@pytest.mark.parametrize(
-    "group_id",
-    ["player/drowning", "player/suffocation", "player/fire", "player/freezing"],
-)
+@pytest.mark.parametrize("group_id", ["player/suffocation", "player/fire", "player/freezing"])
 def test_a_window_that_opens_after_the_next_hit_fails_the_group_instead_of_comparing(
     group_id: str,
 ) -> None:
     with pytest.raises(ProtocolError, match="the next may have come between the windows"):
         asyncio.run(_play(group_id, clock=jumping_clock()))
+
+
+def test_drowning_fails_when_the_air_runs_out_again_before_the_damage_is_turned_on() -> None:
+    # A server catching up runs the 20 ticks after the first bubbles back to back, so the air
+    # runs out again before Control's gamerule arrives: the clock alone could not tell (#457).
+    with pytest.raises(ProtocolError, match="before drowning_damage was on"):
+        drowned(Drown(burst=25))
 
 
 @pytest.mark.parametrize("group_id", sorted(HURTS))
@@ -664,7 +756,10 @@ def test_each_window_still_holds_its_tp_when_controls_barrier_ends_after_the_bot
 
 
 def hits_between_windows(transcript: Transcript) -> list[int]:
-    """When each `set_health` that reached a Bot outside every window arrived."""
+    """When each `set_health` that reached a Bot outside every window, after the first, arrived.
+
+    One before the first window is setup: the harm that sets the drowning Bot's health.
+    """
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
     windows = list(zip(opens, closes, strict=True))
@@ -673,6 +768,7 @@ def hits_between_windows(transcript: Transcript) -> list[int]:
         for event in transcript.events
         if event.bot != CONTROL
         and event.packet.name == "minecraft:set_health"
+        and event.t_ns > opens[0]
         and not any(opened <= event.t_ns <= closed for opened, closed in windows)
     ]
 

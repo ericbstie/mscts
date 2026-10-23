@@ -459,13 +459,22 @@ freezes the world and steps it after each move.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
-| `player/drowning` | exact | none | A Bot is put under water in a pool 2 blocks deep and stays until it takes damage, then for three more hits. Then `drowning_damage` is turned off, and the Bot stays for one more round of bubbles. | none |
+| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own. | none |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
 | `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
 | `player/fire` | exact | none | A Bot is put in fire and takes damage. Then a fresh Bot steps into lava, out of it onto dry grass still burning, and into water. | none |
 | `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
 
-What these Groups do not compare is how often damage repeats. A window holds what one hit sends, and a Candidate that hurts a drowning player every 40 ticks instead of 20, or a suffocating one every 20 instead of 10, sends the same packets in the same order. The same holds for `player/void` and `player/freezing`: nothing in them depends on time. `player/fall` is the only tick-exact Group, and what it compares is the damage of each landing. The rate of damage needs a window that counts ticks, which these Groups do not have yet.
+`player/drowning` compares how many air values come between two hits. Vanilla takes a point of air each tick the player is under water, so a Candidate that hurts a drowning player 40 air values apart instead of 20 sends 20 more of them between two hits, or none if it holds the air at 0. A Candidate whose air goes down a point every other tick hurts every 40 ticks and still sends the same values in the same order, so it passes: no window compares how long a tick of air lasts.
+
+The other Groups compare nothing that changes every tick, so a Candidate that hurts less often than vanilla sends them the same packets in the same order. `player/freezing` is sent the player's frozen ticks every tick, but leaves its entity data out, for the reason given below. These Groups do not compare how often damage repeats:
+
+- `player/suffocation`: vanilla hurts every 10 ticks.
+- `player/void`: vanilla hurts 4 points every 10 ticks until the player dies.
+- `player/fire`: vanilla hurts a player in fire or lava every 10 ticks, and one still burning on dry ground every 20.
+- `player/freezing`: vanilla hurts a frozen player every 40 ticks.
+
+`player/fall` is the only tick-exact Group, and what it compares is the damage of each landing.
 
 A Bot does not simulate physics: `player/fall` gives each position, at most 8 blocks apart. The
 last move lands from 1 block above the surface, as a vanilla client's does. Before each fall, the
@@ -481,13 +490,18 @@ onto the pool's floor.
 A bed leaves an item behind when it is taken away, which would stay in the Instance for the next
 play and be picked up by the Bot, so the Group removes dropped items last.
 
-A player ticks in real time, so `player/drowning` does not step the world. It puts a fresh player
-(killed and respawned, with full air) under water with `/tp` inside its first window, which ends on
-the first `set_health` the Bot receives: the 300 ticks of air and the damage. Each
-later hit has a window of its own that compares only what the hit sends (`damage_event`,
-`entity_event`, `set_health`, `sound`). The entity data changes every tick, and a window that opens
-after a hit starts a tick or two later on one server than on another. With `drowning_damage` off,
-vanilla still resets the air and sends the bubbles, and sends no damage.
+A player ticks in real time, so `player/drowning` does not step the world. It makes the player
+fresh (killed and respawned, with full air), takes it to 8 health with an `instant_damage` effect
+(12 points), and turns `drowning_damage` off. Then one window holds the rest. The Bot is put under
+water with `/tp`, and its air runs down from 300, a point a tick. When the air runs out, vanilla
+sends the bubbles (`entity_event`) and, with `drowning_damage` off, no damage. The Group turns
+`drowning_damage` on, and the window ends on the Bot's death (`player_combat_kill`), four hits
+later. The window opens while the air is full and does not change, so it holds every value of the
+air (`set_entity_data`) on every server, and with them the number of ticks between two hits. The
+rule must be on before the air runs out again, 20 ticks after the bubbles. The Group checks the
+order of what the Bot receives: if the next bubbles come with no hit before the bubbles after
+them, the rule came too late, and the Group fails, which on the Reference is an `error`. The order
+does not depend on how late the Bot reads its packets, or on how fast the server runs its ticks.
 
 `player/suffocation` puts the Bot's feet and eyes inside stone, and `player/void` puts it at y -130:
 vanilla hurts a player 4 points a hit below y -128, the lowest block minus 64, until it dies. That

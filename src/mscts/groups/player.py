@@ -29,6 +29,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from mscts.bot import Bot
+from mscts.codec.packets import Packet
 from mscts.compare import Mask
 from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import (
@@ -259,6 +260,8 @@ async def fall(context: GroupContext) -> None:
 
 _SET_HEALTH = "minecraft:set_health"
 
+_DEATH = "minecraft:player_combat_kill"
+
 _DAMAGE_TIMEOUT_S = 60.0
 """How long a window waits for a hit: drowning takes 320 ticks, 16 s at 20 ticks a second."""
 
@@ -355,20 +358,77 @@ class _Hits:
                 pass
 
 
-# `player/drowning`: a Bot stays under water until it drowns, a few times.
+# `player/drowning`: a Bot stays under water until it drowns.
 
 _DROWNER = "drowner"
 _DROWNING_DAMAGE = "gamerule drowning_damage"
-_HITS_AFTER = 3
-_DROWNING_PERIOD = 20
-"""Ticks between two drowning hits: the air is back at 0 and runs out again."""
+
+_ENTITY_EVENT = "minecraft:entity_event"
+
+_BUBBLES = 67
+"""The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
+`LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
+
+
+def _is_bubbles(packet: Packet) -> bool:
+    return (packet.fields or {}).get("event_id") == _BUBBLES
+
+
+def _is_hit_or_bubbles(packet: Packet) -> bool:
+    """For a `set_health` or an `entity_event`: the health, or the bubbles."""
+    return packet.name == _SET_HEALTH or _is_bubbles(packet)
+
+
+async def _harm(control: Control, bot: Bot) -> None:
+    """Take 12 of a fresh Bot's 20 health (6 << 1, magic damage): 4 drowning hits of 2 kill it."""
+    await control.run(f"effect give {bot.name} minecraft:instant_damage 1 1 true")
+
+
+async def _set_drowning_damage(control: Control, *, on: bool) -> None:
+    await control.run(f"{_DROWNING_DAMAGE} {'true' if on else 'false'}")
+
+
+async def _air_runs_out(bot: Bot) -> None:
+    """Wait for the Bot's next drowning bubbles: vanilla sends them hurt or not."""
+    await bot.expect(_ENTITY_EVENT, timeout_s=_DAMAGE_TIMEOUT_S, where=_is_bubbles)
+
+
+async def _hurt_when_the_air_runs_out_again(bot: Bot) -> None:
+    """Wait for the Bot's next bubbles and the hit after them; fail if more bubbles come first.
+
+    For the first time the air runs out after `drowning_damage` was turned on. Vanilla sends the
+    bubbles, then the hit's `set_health`, in one tick, and the next bubbles 20 ticks later. Bubbles
+    with no hit before the next mean the air ran out again before the rule was on: the window
+    would hold a second round without a hit, which the other server's might not. Like
+    `moved_before_the_next_hit`, this reads the order of the Bot's own packets, so it holds
+    however late the Bot reads them and however fast the server runs the ticks it owes.
+
+    Raises:
+        ProtocolError: The air ran out again with no hit.
+    """
+    await _air_runs_out(bot)
+    packet = await bot.expect(
+        _SET_HEALTH, _ENTITY_EVENT, timeout_s=_DAMAGE_TIMEOUT_S, where=_is_hit_or_bubbles
+    )
+    if packet.name == _ENTITY_EVENT:
+        msg = (
+            f"{bot.name}'s air ran out again with no hit before drowning_damage was on: the "
+            "window would hold another round of bubbles without a hit"
+        )
+        raise ProtocolError(msg)
 
 
 @group("player/drowning", spec=normal)
 async def drowning(context: GroupContext) -> None:
-    """A Bot stays under water until it takes damage and for three hits after.
+    """A Bot with 8 health stays under water until it drowns, in one window.
 
-    Then `drowning_damage` is turned off, and the Bot stays under water for one more hit's time.
+    `drowning_damage` is off when the Bot goes under: the first time its air runs out, it gets the
+    bubbles and no hit. Then the rule is turned on, and four hits kill it: the Group fails if the
+    air ran out again before the rule was on. The Bot respawns in a window of its own.
+
+    The window opens while the Bot's air is full, so it holds every air value the server sends,
+    between every two hits; it ends on the death. A server that drowns a player less often sends
+    more air values, or fewer, between two hits.
     """
     async with _environment(context, _WATER.restore) as undo:
         bot = await join_at_spawn(context, undo, _DROWNER)
@@ -376,16 +436,17 @@ async def drowning(context: GroupContext) -> None:
         for command in _WATER.build:
             await context.control.run(command)
         await fresh(context, bot)
-        hits = _Hits(context, bot)
-        async with hits.window(PACKETS):
+        await _harm(context.control, bot)
+        undo.push_async_callback(_set_drowning_damage, context.control, on=True)
+        await _set_drowning_damage(context.control, on=False)
+        async with context.observe(*PACKETS, until=_DEATH, bot=bot):
             await _tp(context, bot, _at(_WATER.lane, -62.0))
-        await hits.more(_HITS_AFTER, period_ticks=_DROWNING_PERIOD)
-        undo.push_async_callback(context.control.run, f"{_DROWNING_DAMAGE} true")
-        await context.control.run(f"{_DROWNING_DAMAGE} false")
-        # The bubbles still come when the damage does not: the window ends a barrier after them.
-        async with context.observe(*HIT_PACKETS):
-            hits.check_gap(_DROWNING_PERIOD)
-            await bot.expect("minecraft:entity_event", timeout_s=_DAMAGE_TIMEOUT_S)
+            await _air_runs_out(bot)
+            await _set_drowning_damage(context.control, on=True)
+            await _hurt_when_the_air_runs_out_again(bot)
+            await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
+        async with context.observe(*PACKETS):
+            await bot.respawn()
 
 
 # `player/suffocation`: a Bot inside a block of stone.
@@ -422,8 +483,6 @@ async def suffocation(context: GroupContext) -> None:
 _VOID_BOT = "voider"
 _VOID_AT: _Point = (0.5, -130.0, 0.5)
 """Vanilla hurts a player below the lowest block minus 64 (`Entity.checkBelowWorld`): y -128."""
-
-_DEATH = "minecraft:player_combat_kill"
 
 
 @group("player/void", spec=normal)
