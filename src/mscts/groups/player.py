@@ -24,6 +24,7 @@ not spawn: the Fixture world has `spawn_mobs` off, ADR-0013, and no Group turns 
 """
 
 import contextlib
+import functools
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -113,6 +114,52 @@ async def _tp(context: GroupContext, bot: Bot, at: _Point) -> None:
     await context.control.run(f"tp {bot.name} {x} {y} {z}")
 
 
+_ENTITY_EVENT = "minecraft:entity_event"
+
+_POOF = 60
+"""The entity event vanilla sends a dead player 20 ticks after its death, unless it has respawned
+(26.3 javap: `LivingEntity.tickDeath` calls `broadcastEntityEvent(this, 60)` once `deathTime` is
+20, and `ServerChunkCache.sendToTrackingPlayersAndSelf` sends it to the player too)."""
+
+
+_LATE = (
+    "entity event 60 (vanilla sends it 20 ticks after the death: the respawn request came that "
+    "late, or the server sent it early)"
+)
+
+_OTHERS = "entity event 60 for another entity (on vanilla no other entity dies in this Group)"
+
+
+def _poof(own_id: int | None, packet: Packet) -> str | None:
+    """Say what entity event 60 shows, for player `own_id` or another; None for other packets."""
+    fields = packet.fields or {}
+    if packet.name != _ENTITY_EVENT or fields.get("event_id") != _POOF:
+        return None
+    return _LATE if fields.get("entity_id") == own_id else _OTHERS
+
+
+async def _respawn(context: GroupContext, bot: Bot) -> None:
+    """Respawn the dead Bot in a window of its own; fail if entity event 60 comes in it first.
+
+    The window before it ends on the death, and this one opens a few ticks after, so the respawn
+    comes long before the 20 ticks that event 60 waits for. A Bot that stalls most of a second
+    after the death gets the event inside the window on one Instance, and maybe not on the other:
+    the windows would differ for the harness's timing.
+    So the Bot fails the respawn instead (`Bot.respawn`'s `fail_on`). On the Reference that is an
+    `error`. On a Candidate it is a `mismatch`, as is any failure of its play, even when the Bot
+    stalled. The Bot's own packets show the order, so this holds however late it reads them. An
+    event 60 the barrier that opens the window takes is in no window, and is not checked.
+    The check fails on event 60 for any entity: no other entity dies in these Groups, so on
+    vanilla any event 60 is the Bot's. Its text says whether the event was the Bot's, without the
+    id, which differs between plays.
+
+    Raises:
+        ProtocolError: Event 60 came before the `respawn`.
+    """
+    async with context.observe(*PACKETS):
+        await bot.respawn(fail_on=functools.partial(_poof, bot.entity_id))
+
+
 # `player/fall`: a Bot reports a fall onto each surface, from each height.
 
 _FALLER = "faller"
@@ -127,6 +174,9 @@ _STEP = 8.0
 """The most a fall drops in one move: far below what the speed check allows, and few moves."""
 
 _FALL_DAMAGE = "gamerule fall_damage"
+
+_DEATH_TIMEOUT_S = 10.0
+"""How long the Bot waits for its death after the landing that kills it: a Bot's bound."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,13 +269,42 @@ def _descent(landing: _Site, height: int) -> list[tuple[float, bool]]:
 
 async def _fall(context: GroupContext, bot: Bot, landing: _Site, height: int) -> None:
     """Heal the Bot, put it `height` blocks above `landing`, and report its fall in a window."""
-    start = landing.lands_at + height
-    await context.control.run(_HEAL.format(bot=bot.name))
-    await _tp(context, bot, _at(landing.lane, start))
+    await _lift(context, bot, landing, height)
     async with context.observe(*PACKETS):
-        for y, on_ground in _descent(landing, height):
-            await bot.move(*_at(landing.lane, y), on_ground=on_ground)
-            await context.step_after(bot)
+        await _stepped(context, bot, landing, _descent(landing, height))
+
+
+async def _fall_to_death(context: GroupContext, bot: Bot) -> None:
+    """Report a fall of 23 blocks onto stone, which kills the Bot, in a window ending on the death.
+
+    Vanilla kills the player while it handles the landing. No step follows the landing: the dead
+    player ticks in real time, so a step would show it nothing, and would hold back the respawn
+    request by about 7 ticks, where event 60 comes 20 ticks after the death (`_respawn`). The
+    window ends on the death, as in `player/void` and `player/drowning`, so a server that kills a
+    few ticks after the landing still has its death compared. What the death sends after it is in
+    no window.
+    """
+    *moves, (y, on_ground) = _descent(_STONE, _HEIGHTS[-1])
+    await _lift(context, bot, _STONE, _HEIGHTS[-1])
+    async with context.observe(*PACKETS, until=_DEATH, bot=bot):
+        await _stepped(context, bot, _STONE, moves)
+        await bot.move(*_at(_STONE.lane, y), on_ground=on_ground)
+        await bot.expect(_DEATH, timeout_s=_DEATH_TIMEOUT_S)
+
+
+async def _lift(context: GroupContext, bot: Bot, landing: _Site, height: int) -> None:
+    """Heal the Bot, and put it `height` blocks above `landing`."""
+    await context.control.run(_HEAL.format(bot=bot.name))
+    await _tp(context, bot, _at(landing.lane, landing.lands_at + height))
+
+
+async def _stepped(
+    context: GroupContext, bot: Bot, landing: _Site, moves: list[tuple[float, bool]]
+) -> None:
+    """Make each of `moves` (a y, and whether on the ground) over `landing`; step after each."""
+    for y, on_ground in moves:
+        await bot.move(*_at(landing.lane, y), on_ground=on_ground)
+        await context.step_after(bot)
 
 
 @group("player/fall", kind=GroupKind.TICK_EXACT, spec=normal)
@@ -233,7 +312,8 @@ async def fall(context: GroupContext) -> None:
     """A Bot falls 3, 4, 10 and 23 blocks onto stone, water, hay, slime and a bed.
 
     Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone,
-    which kills it: the Bot respawns in a window of its own.
+    which kills it (`_fall_to_death`): the Bot respawns in a window of its own, which fails the
+    Group if entity event 60 comes in it before the respawn (`_respawn`).
     """
     restore = (_KILL_ITEMS, *(c for landing in _LANDINGS for c in landing.restore))
     async with _environment(context, restore) as undo:
@@ -249,9 +329,8 @@ async def fall(context: GroupContext) -> None:
         await context.control.run(f"{_FALL_DAMAGE} false")
         await _fall(context, bot, _STONE, 10)
         await context.control.run(f"{_FALL_DAMAGE} true")
-        await _fall(context, bot, _STONE, _HEIGHTS[-1])
-        async with context.observe(*PACKETS):
-            await bot.respawn()
+        await _fall_to_death(context, bot)
+        await _respawn(context, bot)
 
 
 # Damage the player's own ticks do. The Bot is moved with `/tp` inside the window, which ends on
@@ -363,8 +442,6 @@ class _Hits:
 _DROWNER = "drowner"
 _DROWNING_DAMAGE = "gamerule drowning_damage"
 
-_ENTITY_EVENT = "minecraft:entity_event"
-
 _BUBBLES = 67
 """The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
 `LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
@@ -424,7 +501,8 @@ async def drowning(context: GroupContext) -> None:
 
     `drowning_damage` is off when the Bot goes under: the first time its air runs out, it gets the
     bubbles and no hit. Then the rule is turned on, and four hits kill it: the Group fails if the
-    air ran out again before the rule was on. The Bot respawns in a window of its own.
+    air ran out again before the rule was on. The Bot respawns in a window of its own, which fails
+    the Group if entity event 60 comes before the respawn (`_respawn`).
 
     The window opens while the Bot's air is full, so it holds every air value the server sends,
     between every two hits; it ends on the death. A server that drowns a player less often sends
@@ -445,8 +523,7 @@ async def drowning(context: GroupContext) -> None:
             await _set_drowning_damage(context.control, on=True)
             await _hurt_when_the_air_runs_out_again(bot)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
-        async with context.observe(*PACKETS):
-            await bot.respawn()
+        await _respawn(context, bot)
 
 
 # `player/suffocation`: a Bot inside a block of stone.
@@ -487,7 +564,10 @@ _VOID_AT: _Point = (0.5, -130.0, 0.5)
 
 @group("player/void", spec=normal)
 async def void(context: GroupContext) -> None:
-    """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns."""
+    """A Bot is put below the world, takes 4 points of damage a hit until it dies, and respawns.
+
+    The Group fails if entity event 60 comes before the respawn (`_respawn`).
+    """
     async with _environment(context, ()) as undo:
         bot = await join_at_spawn(context, undo, _VOID_BOT)
         await context.freeze()
@@ -495,8 +575,7 @@ async def void(context: GroupContext) -> None:
         async with context.observe(*PACKETS, until=_DEATH, bot=bot):
             await _tp(context, bot, _VOID_AT)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
-        async with context.observe(*PACKETS):
-            await bot.respawn()
+        await _respawn(context, bot)
 
 
 # `player/fire`: a Bot in fire, in lava, out of it still burning, then in water.

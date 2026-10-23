@@ -9,10 +9,11 @@ request, and nothing else.
 import asyncio
 import functools
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from unittest import mock
 
 import pytest
+from support.bot_join import ENTITY_ID
 from support.control import CODEC
 from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
@@ -20,13 +21,14 @@ from support.player_server import (
     DEATH,
     FADE_READS,
     PERFORM_RESPAWN,
+    POOF,
     Drown,
     Hurt,
     PlayerServer,
 )
 from support.ticks import barriers_before_steps
 
-from mscts.bot import HANDLED_REQUESTS
+from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
@@ -88,6 +90,8 @@ HURTS = {
 """Each `tp` after which the fake hurts the Bot, and when, as on vanilla, by Group: hits that come
 a tick apart would end a window before the Group's `tp`."""
 KILLS_AFTER = {"player/void": "tp voider "}
+LETHAL_FALLS = {"player/fall": "tp faller 1.5 -36.0 2.5"}
+"""The `tp` after which the Bot's next landing kills it, by Group: 23 blocks above the stone."""
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
 """A move's `flags` when the Bot reports it is on the ground."""
@@ -109,6 +113,7 @@ async def _play(
     server = PlayerServer(
         hurts=HURTS.get(group_id, {}),
         kills_after=KILLS_AFTER.get(group_id),
+        lethal_fall=LETHAL_FALLS.get(group_id),
         late=late,
         due_at_once=due_at_once,
         held=held,
@@ -343,12 +348,32 @@ def test_fall_steps_the_world_after_every_move() -> None:
 
 def test_each_move_of_a_fall_reaches_the_server_before_the_step_after_it() -> None:
     transcript, result = play("player/fall")
-    moves = sum(len(window.moves("faller")) for window in result.windows)
+    # The landing that kills is the one move no step follows.
+    stepped = sum(len(window.moves("faller")) for window in result.windows) - 1
 
     barriers = barriers_before_steps(transcript, "faller", set(MOVES))
 
-    assert len(barriers) == moves > 0
+    assert len(barriers) == stepped > 0
     assert set(barriers) == {HANDLED_REQUESTS}
+
+
+def test_fall_asks_to_respawn_one_barrier_after_the_landing_that_kills() -> None:
+    # Vanilla sends entity event 60 20 ticks after the death, and each barrier answer takes a tick
+    # at least. A step after the landing took about 7 more (#463's reviews): the dead player ticks
+    # in real time, so the step showed it nothing. The window ends on the death, so only the
+    # respawn window's open comes between, as in player/void and player/drowning.
+    transcript, _ = play("player/fall")
+    faller = [event.packet for event in transcript.events if event.bot == "faller"]
+    asked = next(
+        i
+        for i, packet in enumerate(faller)
+        if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}
+    )
+    landed = max(i for i, packet in enumerate(faller[:asked]) if packet.name in MOVES)
+
+    answers = [packet for packet in faller[landed:asked] if packet.name == "minecraft:award_stats"]
+
+    assert len(answers) == SYNC_REQUESTS
 
 
 def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
@@ -379,7 +404,7 @@ def test_fall_turns_fall_damage_off_for_one_fall_and_on_again_for_the_last() -> 
     assert result.after.count("gamerule fall_damage true") == 1
 
 
-def test_fall_ends_with_the_deadly_fall_and_the_respawn_in_a_window_of_its_own() -> None:
+def test_fall_ends_the_deadly_fall_on_the_death_and_respawns_in_a_window_of_its_own() -> None:
     transcript, result = play("player/fall")
 
     *_, lethal, respawn = result.windows
@@ -395,7 +420,21 @@ def test_fall_ends_with_the_deadly_fall_and_the_respawn_in_a_window_of_its_own()
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
     [ask] = asked
+    [death] = [e.t_ns for e in transcript.events if e.packet.name == DEATH]
+    assert closes[-2] == death + 1
     assert opens[-1] < ask.t_ns < closes[-1]
+
+
+def test_fall_compares_a_death_that_comes_some_ticks_after_the_landing_that_kills() -> None:
+    # Vanilla kills the player while it handles the landing, and the fake on the Reference side
+    # does too. A server that kills it on a later tick of its own still has the death compared
+    # (#463, review C): the lethal fall's window ends on the death.
+    reference, _ = play("player/fall")
+    late = PlayerServer(lethal_fall=LETHAL_FALLS["player/fall"], death_delay_s=0.5)
+
+    verdict = judge(GROUPS["player/fall"], reference, asyncio.run(_play_on("player/fall", late)))
+
+    assert verdict.outcome is Outcome.MATCH, verdict.divergences
 
 
 def test_fall_restores_the_flat_world_and_unfreezes_it_last() -> None:
@@ -864,6 +903,66 @@ def test_fire_fails_when_the_move_into_the_water_comes_after_the_next_burn_may_h
     # the next burn, which the water's window would then hold on one server only.
     with pytest.raises(ProtocolError, match="the next may have come between the windows"):
         asyncio.run(_play("player/fire", clock=until_the_water(1.0)))
+
+
+# A respawn that comes late
+
+# Vanilla sends a dead player entity event 60 at 20 ticks after its death (`LivingEntity.tickDeath`)
+# unless it has respawned. A Bot that stalls that long after the death gets the event inside the
+# respawn window on one Instance and maybe not on the other: the Group fails instead (#463).
+
+LATE_POOF = ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF})
+RESPAWNING = ("player/fall", "player/drowning", "player/void")
+
+
+def respawned_late(group_id: str, *before: tuple[str, Mapping[str, object]]) -> Transcript:
+    """Play `group_id` against a fake that sends `before` just before each `respawn`."""
+    server = PlayerServer(
+        hurts=HURTS.get(group_id, {}),
+        kills_after=KILLS_AFTER.get(group_id),
+        lethal_fall=LETHAL_FALLS.get(group_id),
+        before_respawn=before,
+    )
+    return asyncio.run(_play_on(group_id, server))
+
+
+@pytest.mark.parametrize("group_id", RESPAWNING)
+def test_a_respawn_window_fails_the_group_when_entity_event_60_comes_before_the_respawn(
+    group_id: str,
+) -> None:
+    # The text names the event and what it shows, and no entity id, which differs between plays.
+    refused = (
+        r"got entity event 60 \(vanilla sends it 20 ticks after the death: the respawn request "
+        r"came that late, or the server sent it early\) before minecraft:respawn$"
+    )
+    with pytest.raises(ProtocolError, match=refused):
+        respawned_late(group_id, LATE_POOF)
+
+
+def test_a_respawn_window_says_when_the_entity_event_60_is_for_another_entity() -> None:
+    # On vanilla no other entity dies in these Groups, so it fails all the same, and the text
+    # says it is not the Bot's, still without the id.
+    other_poof = ("minecraft:entity_event", {"entity_id": ENTITY_ID + 1, "event_id": POOF})
+    refused = (
+        r"got entity event 60 for another entity \(on vanilla no other entity dies in this "
+        r"Group\) before minecraft:respawn$"
+    )
+    with pytest.raises(ProtocolError, match=refused):
+        respawned_late("player/void", other_poof)
+
+
+def test_a_respawn_window_plays_on_after_another_event_before_the_respawn() -> None:
+    # A near miss for each field the Group checks: another entity event, and a level event 60.
+    other_event = ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF + 1})
+    level_event = (
+        "minecraft:level_event",
+        {"event_id": POOF, "pos": {"x": 0, "y": 0, "z": 0}, "data": 0, "global_event": False},
+    )
+    transcript = respawned_late("player/void", other_event, level_event)
+
+    assert [window.sent for window in read(transcript).windows] == [
+        window.sent for window in played("player/void").windows
+    ]
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:

@@ -454,14 +454,18 @@ the three rules are set back to their values and the blocks it set are removed.
 
 A frozen world does not freeze a player: it ticks 20 times a second either way. A fall is
 different, because vanilla works out its damage when it reads the move that lands. So `player/fall`
-freezes the world and steps it after each move.
+freezes the world and steps it after each move, except the landing that kills the Bot. What comes
+after a death comes on the player's own ticks, so a step there would only hold back the respawn.
+That window ends on the death (`player_combat_kill`), as in `player/drowning` and `player/void`, so
+a server that kills the player a few ticks after the landing still has its death compared. What
+the death sends after `player_combat_kill` is in no window.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own. | none |
-| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own. | none |
+| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it, in a window that ends on the death. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
+| `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
-| `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns. | none |
+| `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
 | `player/fire` | exact | none | A Bot is put in fire and takes damage. Then a fresh Bot steps into lava, out of it onto dry grass still burning, and into water. | none |
 | `player/freezing` | exact | none | A Bot is put in powder snow and takes freezing damage twice. | none |
 
@@ -532,6 +536,18 @@ Group made the player respawn, so the ticks before the first hit are timing.
 A death is `player_combat_kill`: the player that died, and the death message as the bytes of its
 text component. The player is numbered like any entity, because the id of a Bot differs between
 servers, and between plays on one server.
+
+Vanilla sends a dead player entity event 60, the smoke where its body was, 20 ticks after the
+death, unless the player has respawned by then. In `player/fall`, `player/drowning` and
+`player/void` the window before ends on the death, and the respawn window opens a few ticks
+later, so the respawn comes first. If the Bot is held up for most of a second after the death, the event can come inside the respawn
+window from one server and not from the other. So the Group fails if entity event 60, for any
+entity, comes inside the respawn window before the respawn, and says whether the event was for
+the Bot or for another entity. On the Reference that is an `error`.
+On a Candidate it is a `mismatch`, as is any failure of a Candidate's play, even when the Bot was
+the one held up. A Candidate that sends the event early fails every Run, while a stall seldom
+comes twice. An event 60 that comes after the death but before the respawn window opens is in
+neither window, and no server is compared on it.
 
 ### Game modes, death and respawn
 

@@ -9,9 +9,10 @@ from dataclasses import dataclass, field
 
 from mscts.bot import SYNC_REQUESTS
 from mscts.codec.packets import Packet
-from support.bot_join import ENTITY_ID, RESPAWN
+from support.bot_join import ENTITY_ID, LOGIN, RESPAWN
 from support.control import CHAT_COMMAND, CLIENT_COMMAND, CONTROL, MARKER, text, tree
 from support.gametime import gametime_answer
+from support.moves import MOVES
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -79,6 +80,9 @@ FULL_HEALTH = 20.0
 BUBBLES = 67
 """The entity event a drowning player's air reset sends (`broadcastEntityEvent(this, 67)`)."""
 
+POOF = 60
+"""The entity event a dead player is sent 20 ticks after its death (`LivingEntity.tickDeath`)."""
+
 AIR_INDEX = 1
 """The entity data entry that holds an entity's air."""
 
@@ -112,6 +116,19 @@ class Drown:
     air: int = 3
     other_event: int | None = None
     burst: int = 0
+
+
+ON_GROUND = 1
+"""The bit of a move's `flags` that says the player is on the ground."""
+
+
+def _login(peer: Peer) -> bytes:
+    return peer.frame("minecraft:login", **LOGIN)
+
+
+def _lands(packet: Packet) -> bool:
+    """Whether `packet` is a move that says the player is on the ground."""
+    return packet.name in MOVES and int(str((packet.fields or {})["flags"])) & ON_GROUND != 0
 
 
 def _waits(drown: Drown) -> Iterator[float]:
@@ -158,6 +175,15 @@ class PlayerServer:
     """The task that hurts the Bot, while it is somewhere that hurts."""
     kills_after: str | None = None
     """A command after which the fake sends `player_combat_kill`, once."""
+    lethal_fall: str | None = None
+    """A `tp` after which the Bot's next landing (a move on the ground) kills it, as a fall of 23
+    blocks onto stone does."""
+    death_delay_s: float = 0.0
+    """How long after that landing the death comes: none on vanilla, which kills the player while
+    it handles the move."""
+    lethal: bool = False
+    """Whether the Bot's next landing kills it: the `tp` `lethal_fall` names came, and no landing
+    since."""
     players: dict[str, Peer] = field(default_factory=dict)
     """Each connected player's connection, by name."""
     late: frozenset[str] = frozenset()
@@ -169,15 +195,23 @@ class PlayerServer:
     """How many `player_position` the fake has sent: the last teleport id."""
     held: bool = True
     """Whether each hit waits for a barrier since the last; False sends it when it is due."""
+    before_respawn: tuple[tuple[str, Mapping[str, object]], ...] = ()
+    """The packets, by name and fields, the fake sends just before each `respawn`: what vanilla
+    has sent a dead player whose respawn request comes 20 ticks or more after its death is entity
+    event 60 (`LivingEntity.tickDeath`), as if the Bot had stalled that long."""
 
     def __post_init__(self) -> None:
         """No hit has come yet, so the first is not held back."""
         self.barrier_since_hit.set()
 
     async def __call__(self, peer: Peer) -> None:
-        """Serve one connection: a Handler."""
+        """Serve one connection: a Handler.
+
+        Play's `login`, which names the player's entity id, comes with the first batch's end.
+        """
+        script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
         with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+            await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
         requests = 0
@@ -189,6 +223,8 @@ class PlayerServer:
                 self.seen.append(packet)
                 if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
                     self.health = FULL_HEALTH
+                    for before, fields in self.before_respawn:
+                        await peer.send(before, **fields)
                     await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
                     await peer.send("minecraft:chunk_batch_start")
                     await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
@@ -205,6 +241,9 @@ class PlayerServer:
                 elif packet.name == CHAT_COMMAND:
                     command = str((packet.fields or {})["command"])
                     await self._command(peer, command)
+                elif self.lethal and _lands(packet):
+                    self.lethal = False
+                    self.hurting = asyncio.create_task(self._kill_after(peer, self.death_delay_s))
         finally:
             self._stop_hurting()
 
@@ -230,6 +269,7 @@ class PlayerServer:
             await victim.send("minecraft:set_health", health=self.health, food=20, saturation=5.0)
         elif command.startswith(("tp ", "kill ")):
             self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
+            self.lethal = command == self.lethal_fall
             if command.startswith("tp "):
                 await self._teleport(command)
             hurt = self.hurts.get(command)
@@ -241,6 +281,11 @@ class PlayerServer:
     @staticmethod
     async def _kill(victim: Peer) -> None:
         await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
+
+    async def _kill_after(self, victim: Peer, delay_s: float) -> None:
+        with suppress(ConnectionError):
+            await asyncio.sleep(delay_s)
+            await self._kill(victim)
 
     async def _teleport(self, command: str) -> None:
         """Send the player a `tp` moves its `player_position`, as vanilla does when it runs it."""

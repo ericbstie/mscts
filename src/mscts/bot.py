@@ -130,6 +130,8 @@ _PERFORM_RESPAWN = 0
 """The `client_command` action the client sends from the death screen's respawn button
 (`ServerboundClientCommandPacket.Action`: PERFORM_RESPAWN 0, REQUEST_STATS 1; 26.3 javap)."""
 
+_RESPAWN = "minecraft:respawn"
+
 
 def offline_uuid(name: str) -> uuid.UUID:
     """The UUID an offline-mode server gives the player called `name`.
@@ -750,6 +752,11 @@ class Bot:
         return not self._closed and self._connection.state is State.PLAY
 
     @property
+    def entity_id(self) -> int | None:
+        """The player's entity id, from play's `login`; None before the Bot has read it."""
+        return self._replies.entity_id
+
+    @property
     def position(self) -> Position:
         """Where the player is and faces: the last teleport's pose, or where it moved since."""
         pose = self._replies.pose
@@ -859,7 +866,7 @@ class Bot:
             # client could be ready earlier (docs/research/2026-09-26-join.md).
             await self._connection.send("minecraft:player_loaded")
 
-    async def respawn(self) -> None:
+    async def respawn(self, *, fail_on: Callable[[Packet], str | None] | None = None) -> None:
         """Respawn a dead player, and return once the Bot has said it loaded the world again.
 
         Sends `client_command` PERFORM_RESPAWN, as the death screen's button does, takes each
@@ -869,8 +876,14 @@ class Bot:
         ignores its attacks and interactions (`hasClientLoaded`); as at the join, the Bot says
         so once the first chunk batch has arrived and been acknowledged.
 
+        `fail_on` is called with each packet taken before the `respawn`, for a Group whose window
+        must not hold that packet before the `respawn`. It returns what the packet is, which
+        fails the respawn, or None for a packet the respawn takes and goes on.
+
         Raises:
-            ProtocolError: The Bot is not in play, or the server disconnected it.
+            ProtocolError: The Bot is not in play, or the server disconnected it, or `fail_on`
+                named a packet that came before the `respawn` (`<Bot> got <what fail_on
+                returned> before minecraft:respawn`).
             TimeoutError: The respawn and its first chunk batch did not come within
                 `timeout_s`: the server ignores the request while the player is alive.
         """
@@ -878,9 +891,23 @@ class Bot:
         waited_for = "minecraft:respawn, then minecraft:chunk_batch_finished"
         async with self._operation(self._timeout_s, waited_for):
             await self._connection.send("minecraft:client_command", action=_PERFORM_RESPAWN)
-            await self.expect("minecraft:respawn", timeout_s=self._timeout_s)
+            await self._respawned(fail_on)
             await self.expect("minecraft:chunk_batch_finished", timeout_s=self._timeout_s)
             await self._connection.send("minecraft:player_loaded")
+
+    async def _respawned(self, fail_on: Callable[[Packet], str | None] | None) -> None:
+        """Take packets until the `respawn`; raise ProtocolError at one `fail_on` names.
+
+        `fail_on` never sees the server's disconnect: `_take` refuses it, as for `expect`.
+        """
+        while True:
+            packet = await self._take(_goes_on, timeout_s=self._timeout_s)
+            if packet.name == _RESPAWN:
+                return
+            what = None if fail_on is None else fail_on(packet)
+            if what is not None:
+                msg = f"{self.name} got {what} before {_RESPAWN}"
+                raise ProtocolError(msg)
 
     async def expect(
         self,
@@ -912,13 +939,25 @@ class Bot:
         if len(set(names)) < len(names):
             msg = f"expect names a packet twice: {', '.join(names)}"
             raise ValueError(msg)
+
+        def wanted(packet: Packet) -> bool:
+            return packet.name in names and (where is None or where(packet))
+
         async with self._operation(timeout_s, " or ".join(names)):
-            while True:
-                packet = await self._connection.recv(timeout_s=timeout_s)
-                if packet.name in names and (where is None or where(packet)):
-                    self._disconnected |= _ends_the_session(packet)
-                    return packet
-                self._refuse(packet)
+            return await self._take(wanted, timeout_s=timeout_s)
+
+    async def _take(self, wanted: Callable[[Packet], bool], *, timeout_s: float) -> Packet:
+        """Take packets until `wanted` holds for one; return it.
+
+        Raises:
+            ProtocolError: A packet before it ends the session (`_refuse`).
+        """
+        while True:
+            packet = await self._connection.recv(timeout_s=timeout_s)
+            if wanted(packet):
+                self._disconnected |= _ends_the_session(packet)
+                return packet
+            self._refuse(packet)
 
     async def command(self, command: str) -> None:
         """Run `command`, without its leading `/`, as this Bot's player.
@@ -1707,6 +1746,11 @@ def _ends_the_session(packet: Packet) -> bool:
             return True
         case _:
             return False
+
+
+def _goes_on(packet: Packet) -> bool:
+    """Whether the session goes on after `packet`: it is not the server's disconnect."""
+    return not _ends_the_session(packet)
 
 
 def _worded(error: Exception, waited: str) -> Exception:

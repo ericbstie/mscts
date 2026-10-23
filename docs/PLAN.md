@@ -525,6 +525,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     in_play: bool                   # (property) joined, and not closed: what sync needs
     disconnected: bool              # (property) expect has returned the server's disconnect
                                     # (a Group that tests a kick takes it so)
+    entity_id: int | None           # (property, #463) the player's, from play's login;
+                                    # None before the Bot has read it (Replies.entity_id)
     position: Position              # (property) where the player is and faces: the last
                                     # teleport's pose, or where it moved since (a copy)
     entities: Entities              # (property, #27) the entities its server told it about,
@@ -543,7 +545,9 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     async def status(self) -> Mapping[str, object]: ...                # parsed status JSON
     async def ping(self, payload: int) -> None: ...
     async def join(self) -> None: ...                                  # handshake → login → configuration → play
-    async def respawn(self) -> None: ...                               # PERFORM_RESPAWN → player_loaded
+    async def respawn(self, *, fail_on: Callable[[Packet], str | None] | None = None) -> None: ...
+    # PERFORM_RESPAWN → player_loaded; a packet before `respawn` that `fail_on` names (returns
+    # a text for) raises ProtocolError "<bot> got <text> before minecraft:respawn" (#463)
     async def expect(self, name: str, /, *others: str, timeout_s: float,
                      where: Callable[[Packet], bool] | None = None) -> Packet: ...
     async def sync(self) -> None: ...                                  # the barrier (below)
