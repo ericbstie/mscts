@@ -5,8 +5,9 @@ sent and the Marks. What a server answers is never asserted.
 """
 
 import pytest
-from support.blocks_server import BlocksServer, sent
+from support.blocks_server import sent
 from support.control import playing
+from support.player_server import FADE_READS, PlayerServer
 
 from mscts.bot import Bot
 from mscts.case_titles import TITLES
@@ -24,10 +25,14 @@ BATCH_FINISHED = "minecraft:chunk_batch_finished"
 SET_UP = (
     "gamerule player_movement_check false",
     "gamerule respawn_radius 0",
+    "gamerule advance_weather false",
+    "weather clear",
+    *FADE_READS,
     "gamerule natural_health_regeneration false",
 )
 UNDO = (
     "gamerule natural_health_regeneration true",
+    "gamerule advance_weather true",
     "gamerule respawn_radius 10",
     "gamerule player_movement_check true",
 )
@@ -46,16 +51,16 @@ def settled(monkeypatch: pytest.MonkeyPatch) -> list[Endpoint]:
     return endpoints
 
 
-async def play(server: BlocksServer | None = None) -> tuple[Transcript, BlocksServer]:
+async def play(server: PlayerServer | None = None) -> tuple[Transcript, PlayerServer]:
     """Play the Group against a fake server; return its Transcript and the server."""
-    server = server or BlocksServer()
+    server = server or PlayerServer()
     transcript = Transcript(group_id=GROUP_ID, server="fake")
     async with playing(server, transcript) as context:
         await GROUPS[GROUP_ID].run(context)
     return transcript, server
 
 
-def joined(server: BlocksServer) -> list[str]:
+def joined(server: PlayerServer) -> list[str]:
     """The players who joined, in order."""
     return [
         str((packet.fields or {})["name"])
@@ -87,6 +92,21 @@ async def test_control_sets_the_rules_leaves_and_puts_them_back_after_alice_join
     assert [command for t, command in control if t > closed.t_ns] == list(UNDO)
     assert joined(server) == [CONTROL, ALICE, CONTROL], "alice joins alone"
     assert len(settled) == 2, "once Control has left, and once alice has"
+
+
+@pytest.mark.asyncio
+async def test_control_stops_the_weather_cycle_and_clears_the_weather_before_alice_joins() -> None:
+    # A storm the cycle starts during an earlier Group reaches alice on one Instance only (#461).
+    transcript, _ = await play()
+
+    (opened,) = [mark for mark in transcript.marks if mark.label.startswith(OBSERVE_OPEN)]
+    before = [command for t, command in sent(transcript, CONTROL) if t < opened.t_ns]
+    stopped = before.index("gamerule advance_weather false")
+    cleared = before.index("weather clear")
+    assert cleared > stopped
+    # `weather clear` sets the weather, but the rain level falls 0.01 a running tick: Control
+    # waits for the world to run the 100 ticks a storm takes to fade before alice joins.
+    assert tuple(before[cleared + 1 : cleared + 3]) == FADE_READS
 
 
 @pytest.mark.asyncio
@@ -199,7 +219,7 @@ async def test_control_puts_the_rules_back_when_the_join_fails(
     monkeypatch.setattr(Bot, "close", logged_close)
     monkeypatch.setattr(Bot, "command", logged_command)
     monkeypatch.setattr(join, "until_no_player_online", until_no_player_online)
-    server = BlocksServer()
+    server = PlayerServer()
     transcript = Transcript(group_id=GROUP_ID, server="fake")
     with pytest.raises(ProtocolError, match="disconnected alice"):
         async with playing(server, transcript) as context:
