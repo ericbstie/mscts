@@ -85,6 +85,15 @@ first.
   reference tier: a stricter schema can stop a Bot on what a Candidate
   sends (#20's item stack placeholder stopped every two-Bot run on
   Pumpkin).
+- Before a fix round, detach the worker's old worktree
+  (`git -C <wt> checkout --detach`): a branch checked out there cannot
+  be checked out in the new one, and the merge script fails the same
+  way.
+- Never send a merge in the same parallel call as the read of its head
+  sha: a placeholder sha reached GitHub once (#448).
+- After a third review with no blocking finding, fix doc wording
+  yourself and file the rest: the third round on #443 cost 376k tokens
+  for wording and one should-fix.
 
 ## Steering heuristics
 
