@@ -1528,6 +1528,7 @@ def _replaced(value: _Value, trie: _Trie, number: Callable[[_Value], _Value]) ->
 
 _RECIPE_BOOK_ADD = "minecraft:recipe_book_add"
 _RECIPE_BOOK_REMOVE = "minecraft:recipe_book_remove"
+_LOGIN = "minecraft:login"
 
 
 @dataclass(slots=True)
@@ -1617,7 +1618,8 @@ class _RecipeNumbers:
     name or number lasts as long as the client keeps the id, so every packet the Bot
     receives can end one, compared or not (`follow`): a `recipe_book_remove` ends its ids'
     (`ClientRecipeBook.remove`), and a `recipe_book_add` that replaces the book ends every
-    one before its entries take theirs (`ClientRecipeBook.clear`). So a recipe the server
+    one before its entries take theirs (`ClientRecipeBook.clear`), as does a `login`, which
+    gives the client a new book (`ClientPacketListener.handleLogin`). So a recipe the server
     adds again with another id shows the same, and an id given to another recipe while the
     first still holds it does not. An id first seen in a removal takes the next number,
     which the removal ends.
@@ -1643,15 +1645,14 @@ class _RecipeNumbers:
         """Write the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
 
         `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
-        the first copy's order numbers them. An add is followed before its entries take
-        their names and numbers, and a removal after its ids' are written (`follow`).
+        the first copy's order numbers them. A removal is followed after its ids' names and
+        numbers are written, and an add before its entries take theirs (`follow`).
         """
-        if packet.name == _RECIPE_BOOK_ADD:
-            self.follow(packet)
-            self._number_add(copies)
-        elif packet.name == _RECIPE_BOOK_REMOVE:
+        if packet.name == _RECIPE_BOOK_REMOVE:
             self._number_removal(copies)
-            self.follow(packet)
+        self.follow(packet)
+        if packet.name == _RECIPE_BOOK_ADD:
+            self._number_add(copies)
 
     def uncompared(self, packet: Packet) -> None:
         """Change the book as `packet`, one not compared, changes it (`follow`); name what it adds.
@@ -1668,7 +1669,9 @@ class _RecipeNumbers:
         """Change the book as `packet`, compared or not, changes the client's, ending ids' numbers.
 
         A `recipe_book_remove` ends its ids' names and numbers, and a `recipe_book_add` that
-        replaces the book ends every one.
+        replaces the book ends every one, as does a `login`: the client gives the player it
+        makes a new, empty book (`ClientPacketListener.handleLogin`, `new ClientRecipeBook`),
+        where a respawn keeps the old one (`handleRespawn`).
         """
         if packet.fields is None:
             return
@@ -1676,13 +1679,19 @@ class _RecipeNumbers:
             self._add(packet.fields)
         elif packet.name == _RECIPE_BOOK_REMOVE:
             self._remove(packet.fields)
+        elif packet.name == _LOGIN:
+            self._clear()
 
     def _add(self, fields: Mapping[str, object]) -> None:
         """Put the entries of `fields`, a `recipe_book_add`'s, in the book, or in its place."""
         if fields.get("replace") is True:
-            self.ids.end_all()
-            self.book.clear()
+            self._clear()
         self.book.update(_book_entries(fields))
+
+    def _clear(self) -> None:
+        """Empty the book, and end every id's name and number."""
+        self.ids.end_all()
+        self.book.clear()
 
     def _remove(self, fields: Mapping[str, object]) -> None:
         """Take the ids of `fields`, a removal's, out of the book, and end their numbers."""

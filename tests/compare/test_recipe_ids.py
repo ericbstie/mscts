@@ -446,6 +446,25 @@ def test_a_recipe_in_another_group_after_an_uncompared_replace_differs() -> None
     ]
 
 
+LOGIN = packet("minecraft:login", fields={})
+"""A rejoin's `login`: `handleLogin` gives the new player a new, empty `ClientRecipeBook`."""
+
+
+def test_a_login_ends_every_name_and_number_as_it_empties_the_book() -> None:
+    planks = Entry(PLANKS, display_id=5, flags=TOAST)
+    given = [OPEN, book_add(planks), CLOSE]
+
+    assert _diff_all([*given, LOGIN, book_add(replace=True), *given], [*given, LOGIN, *given]) == []
+
+
+def test_a_compared_login_empties_the_book() -> None:
+    def rejoin(sticks_in: int) -> list[Packet | str]:
+        planks, sticks = Entry(PLANKS, display_id=5, group=3), Entry(STICKS, 6, group=sticks_in)
+        return [book_add(planks), LOGIN, book_add(sticks)]
+
+    assert _diff_all(rejoin(3), rejoin(7)) == []
+
+
 def test_a_book_packet_that_did_not_decode_ends_no_number() -> None:
     planks_as = [Entry(PLANKS, display_id=each, flags=TOAST) for each in (5, 8, 9)]
     undecoded = packet(BOOK_REMOVE, b"\xff")
