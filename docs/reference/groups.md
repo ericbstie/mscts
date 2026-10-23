@@ -454,11 +454,12 @@ the three rules are set back to their values and the blocks it set are removed.
 
 A frozen world does not freeze a player: it ticks 20 times a second either way. A fall is
 different, because vanilla works out its damage when it reads the move that lands. So `player/fall`
-freezes the world and steps it after each move.
+freezes the world and steps it after each move, except the landing that kills the Bot. What comes
+after a death comes on the player's own ticks, so a step there would only hold back the respawn.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |
+| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it, with no step after the landing. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |
 | `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
 | `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns in a window of its own, which fails the Group if entity event 60 comes before the respawn. | none |

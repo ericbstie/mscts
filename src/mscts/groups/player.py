@@ -257,13 +257,38 @@ def _descent(landing: _Site, height: int) -> list[tuple[float, bool]]:
 
 async def _fall(context: GroupContext, bot: Bot, landing: _Site, height: int) -> None:
     """Heal the Bot, put it `height` blocks above `landing`, and report its fall in a window."""
-    start = landing.lands_at + height
-    await context.control.run(_HEAL.format(bot=bot.name))
-    await _tp(context, bot, _at(landing.lane, start))
+    await _lift(context, bot, landing, height)
     async with context.observe(*PACKETS):
-        for y, on_ground in _descent(landing, height):
-            await bot.move(*_at(landing.lane, y), on_ground=on_ground)
-            await context.step_after(bot)
+        await _stepped(context, bot, landing, _descent(landing, height))
+
+
+async def _fall_to_death(context: GroupContext, bot: Bot) -> None:
+    """Report a fall of 23 blocks onto stone, which kills the Bot, with no step after the landing.
+
+    The dead player ticks in real time, so a step after the landing would show it nothing, and its
+    barriers would hold back the respawn request by about 6 ticks: event 60 comes 20 ticks after
+    the death (`_respawn`). The window's closing barrier still takes what the death sends.
+    """
+    *moves, (y, on_ground) = _descent(_STONE, _HEIGHTS[-1])
+    await _lift(context, bot, _STONE, _HEIGHTS[-1])
+    async with context.observe(*PACKETS):
+        await _stepped(context, bot, _STONE, moves)
+        await bot.move(*_at(_STONE.lane, y), on_ground=on_ground)
+
+
+async def _lift(context: GroupContext, bot: Bot, landing: _Site, height: int) -> None:
+    """Heal the Bot, and put it `height` blocks above `landing`."""
+    await context.control.run(_HEAL.format(bot=bot.name))
+    await _tp(context, bot, _at(landing.lane, landing.lands_at + height))
+
+
+async def _stepped(
+    context: GroupContext, bot: Bot, landing: _Site, moves: list[tuple[float, bool]]
+) -> None:
+    """Make each of `moves` (a y, and whether on the ground) over `landing`; step after each."""
+    for y, on_ground in moves:
+        await bot.move(*_at(landing.lane, y), on_ground=on_ground)
+        await context.step_after(bot)
 
 
 @group("player/fall", kind=GroupKind.TICK_EXACT, spec=normal)
@@ -271,8 +296,8 @@ async def fall(context: GroupContext) -> None:
     """A Bot falls 3, 4, 10 and 23 blocks onto stone, water, hay, slime and a bed.
 
     Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone,
-    which kills it: the Bot respawns in a window of its own, which fails the Group if entity
-    event 60 comes before the respawn (`_respawn`).
+    which kills it (`_fall_to_death`): the Bot respawns in a window of its own, which fails the
+    Group if entity event 60 comes in it before the respawn (`_respawn`).
     """
     restore = (_KILL_ITEMS, *(c for landing in _LANDINGS for c in landing.restore))
     async with _environment(context, restore) as undo:
@@ -288,7 +313,7 @@ async def fall(context: GroupContext) -> None:
         await context.control.run(f"{_FALL_DAMAGE} false")
         await _fall(context, bot, _STONE, 10)
         await context.control.run(f"{_FALL_DAMAGE} true")
-        await _fall(context, bot, _STONE, _HEIGHTS[-1])
+        await _fall_to_death(context, bot)
         await _respawn(context, bot)
 
 

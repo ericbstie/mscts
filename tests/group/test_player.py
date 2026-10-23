@@ -28,7 +28,7 @@ from support.player_server import (
 )
 from support.ticks import barriers_before_steps
 
-from mscts.bot import HANDLED_REQUESTS
+from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
@@ -345,12 +345,32 @@ def test_fall_steps_the_world_after_every_move() -> None:
 
 def test_each_move_of_a_fall_reaches_the_server_before_the_step_after_it() -> None:
     transcript, result = play("player/fall")
-    moves = sum(len(window.moves("faller")) for window in result.windows)
+    # The landing that kills is the one move no step follows.
+    stepped = sum(len(window.moves("faller")) for window in result.windows) - 1
 
     barriers = barriers_before_steps(transcript, "faller", set(MOVES))
 
-    assert len(barriers) == moves > 0
+    assert len(barriers) == stepped > 0
     assert set(barriers) == {HANDLED_REQUESTS}
+
+
+def test_fall_asks_to_respawn_two_barriers_after_the_landing_that_kills() -> None:
+    # Vanilla sends entity event 60 20 ticks after the death, and each barrier answer takes a tick
+    # at least. A step after the landing took about 6 more (#463's reviews): the dead player ticks
+    # in real time, so the step showed it nothing. Only the window's close and the respawn
+    # window's open come between.
+    transcript, _ = play("player/fall")
+    faller = [event.packet for event in transcript.events if event.bot == "faller"]
+    asked = next(
+        i
+        for i, packet in enumerate(faller)
+        if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}
+    )
+    landed = max(i for i, packet in enumerate(faller[:asked]) if packet.name in MOVES)
+
+    answers = [packet for packet in faller[landed:asked] if packet.name == "minecraft:award_stats"]
+
+    assert len(answers) == 2 * SYNC_REQUESTS
 
 
 def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
