@@ -90,6 +90,8 @@ HURTS = {
 """Each `tp` after which the fake hurts the Bot, and when, as on vanilla, by Group: hits that come
 a tick apart would end a window before the Group's `tp`."""
 KILLS_AFTER = {"player/void": "tp voider "}
+LETHAL_FALLS = {"player/fall": "tp faller 1.5 -36.0 2.5"}
+"""The `tp` after which the Bot's next landing kills it, by Group: 23 blocks above the stone."""
 HEAL = "effect give faller minecraft:instant_health 1 5 true"
 ON_GROUND = 1
 """A move's `flags` when the Bot reports it is on the ground."""
@@ -111,6 +113,7 @@ async def _play(
     server = PlayerServer(
         hurts=HURTS.get(group_id, {}),
         kills_after=KILLS_AFTER.get(group_id),
+        lethal_fall=LETHAL_FALLS.get(group_id),
         late=late,
         due_at_once=due_at_once,
         held=held,
@@ -354,11 +357,11 @@ def test_each_move_of_a_fall_reaches_the_server_before_the_step_after_it() -> No
     assert set(barriers) == {HANDLED_REQUESTS}
 
 
-def test_fall_asks_to_respawn_two_barriers_after_the_landing_that_kills() -> None:
+def test_fall_asks_to_respawn_one_barrier_after_the_landing_that_kills() -> None:
     # Vanilla sends entity event 60 20 ticks after the death, and each barrier answer takes a tick
-    # at least. A step after the landing took about 6 more (#463's reviews): the dead player ticks
-    # in real time, so the step showed it nothing. Only the window's close and the respawn
-    # window's open come between.
+    # at least. A step after the landing took about 7 more (#463's reviews): the dead player ticks
+    # in real time, so the step showed it nothing. The window ends on the death, so only the
+    # respawn window's open comes between, as in player/void and player/drowning.
     transcript, _ = play("player/fall")
     faller = [event.packet for event in transcript.events if event.bot == "faller"]
     asked = next(
@@ -370,7 +373,7 @@ def test_fall_asks_to_respawn_two_barriers_after_the_landing_that_kills() -> Non
 
     answers = [packet for packet in faller[landed:asked] if packet.name == "minecraft:award_stats"]
 
-    assert len(answers) == 2 * SYNC_REQUESTS
+    assert len(answers) == SYNC_REQUESTS
 
 
 def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
@@ -401,7 +404,7 @@ def test_fall_turns_fall_damage_off_for_one_fall_and_on_again_for_the_last() -> 
     assert result.after.count("gamerule fall_damage true") == 1
 
 
-def test_fall_ends_with_the_deadly_fall_and_the_respawn_in_a_window_of_its_own() -> None:
+def test_fall_ends_the_deadly_fall_on_the_death_and_respawns_in_a_window_of_its_own() -> None:
     transcript, result = play("player/fall")
 
     *_, lethal, respawn = result.windows
@@ -417,7 +420,21 @@ def test_fall_ends_with_the_deadly_fall_and_the_respawn_in_a_window_of_its_own()
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
     [ask] = asked
+    [death] = [e.t_ns for e in transcript.events if e.packet.name == DEATH]
+    assert closes[-2] == death + 1
     assert opens[-1] < ask.t_ns < closes[-1]
+
+
+def test_fall_compares_a_death_that_comes_some_ticks_after_the_landing_that_kills() -> None:
+    # Vanilla kills the player while it handles the landing, and the fake on the Reference side
+    # does too. A server that kills it on a later tick of its own still has the death compared
+    # (#463, review C): the lethal fall's window ends on the death.
+    reference, _ = play("player/fall")
+    late = PlayerServer(lethal_fall=LETHAL_FALLS["player/fall"], death_delay_s=0.5)
+
+    verdict = judge(GROUPS["player/fall"], reference, asyncio.run(_play_on("player/fall", late)))
+
+    assert verdict.outcome is Outcome.MATCH, verdict.divergences
 
 
 def test_fall_restores_the_flat_world_and_unfreezes_it_last() -> None:
@@ -903,6 +920,7 @@ def respawned_late(group_id: str, *before: tuple[str, Mapping[str, object]]) -> 
     server = PlayerServer(
         hurts=HURTS.get(group_id, {}),
         kills_after=KILLS_AFTER.get(group_id),
+        lethal_fall=LETHAL_FALLS.get(group_id),
         before_respawn=before,
     )
     return asyncio.run(_play_on(group_id, server))

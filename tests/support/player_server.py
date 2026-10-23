@@ -12,6 +12,7 @@ from mscts.codec.packets import Packet
 from support.bot_join import ENTITY_ID, RESPAWN
 from support.control import CHAT_COMMAND, CLIENT_COMMAND, CONTROL, MARKER, text, tree
 from support.gametime import gametime_answer
+from support.moves import MOVES
 from tests.net.fakes import (
     EMPTY_CHUNK,
     NO_STATISTICS,
@@ -117,6 +118,15 @@ class Drown:
     burst: int = 0
 
 
+ON_GROUND = 1
+"""The bit of a move's `flags` that says the player is on the ground."""
+
+
+def _lands(packet: Packet) -> bool:
+    """Whether `packet` is a move that says the player is on the ground."""
+    return packet.name in MOVES and int(str((packet.fields or {})["flags"])) & ON_GROUND != 0
+
+
 def _waits(drown: Drown) -> Iterator[float]:
     """The wall-clock wait before each tick of `drown`: none for the ticks of its burst."""
     yield from itertools.repeat(TICK_S, drown.air + AIR_RUNS_OUT)
@@ -161,6 +171,15 @@ class PlayerServer:
     """The task that hurts the Bot, while it is somewhere that hurts."""
     kills_after: str | None = None
     """A command after which the fake sends `player_combat_kill`, once."""
+    lethal_fall: str | None = None
+    """A `tp` after which the Bot's next landing (a move on the ground) kills it, as a fall of 23
+    blocks onto stone does."""
+    death_delay_s: float = 0.0
+    """How long after that landing the death comes: none on vanilla, which kills the player while
+    it handles the move."""
+    lethal: bool = False
+    """Whether the Bot's next landing kills it: the `tp` `lethal_fall` names came, and no landing
+    since."""
     players: dict[str, Peer] = field(default_factory=dict)
     """Each connected player's connection, by name."""
     late: frozenset[str] = frozenset()
@@ -214,6 +233,9 @@ class PlayerServer:
                 elif packet.name == CHAT_COMMAND:
                     command = str((packet.fields or {})["command"])
                     await self._command(peer, command)
+                elif self.lethal and _lands(packet):
+                    self.lethal = False
+                    self.hurting = asyncio.create_task(self._kill_after(peer, self.death_delay_s))
         finally:
             self._stop_hurting()
 
@@ -239,6 +261,7 @@ class PlayerServer:
             await victim.send("minecraft:set_health", health=self.health, food=20, saturation=5.0)
         elif command.startswith(("tp ", "kill ")):
             self._stop_hurting()  # moved or respawned, the Bot is out of what hurt it
+            self.lethal = command == self.lethal_fall
             if command.startswith("tp "):
                 await self._teleport(command)
             hurt = self.hurts.get(command)
@@ -250,6 +273,11 @@ class PlayerServer:
     @staticmethod
     async def _kill(victim: Peer) -> None:
         await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
+
+    async def _kill_after(self, victim: Peer, delay_s: float) -> None:
+        with suppress(ConnectionError):
+            await asyncio.sleep(delay_s)
+            await self._kill(victim)
 
     async def _teleport(self, command: str) -> None:
         """Send the player a `tp` moves its `player_position`, as vanilla does when it runs it."""

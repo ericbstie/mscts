@@ -137,10 +137,10 @@ def _poof(packet: Packet) -> str | None:
 async def _respawn(context: GroupContext, bot: Bot) -> None:
     """Respawn the dead Bot in a window of its own; fail if entity event 60 comes in it first.
 
-    The window opens a few ticks after the death (in `player/fall`, after the lethal fall's
-    window has closed too), and the respawn comes long before the 20 ticks that event 60 waits
-    for. A Bot that stalls most of a second after the death gets the event inside the window on
-    one Instance, and maybe not on the other: the windows would differ for the harness's timing.
+    The window before it ends on the death, and this one opens a few ticks after, so the respawn
+    comes long before the 20 ticks that event 60 waits for. A Bot that stalls most of a second
+    after the death gets the event inside the window on one Instance, and maybe not on the other:
+    the windows would differ for the harness's timing.
     So the Bot fails the respawn instead (`Bot.respawn`'s `fail_on`). On the Reference that is an
     `error`. On a Candidate it is a `mismatch`, as is any failure of its play, even when the Bot
     stalled. The Bot's own packets show the order, so this holds however late it reads them. An
@@ -169,6 +169,9 @@ _STEP = 8.0
 """The most a fall drops in one move: far below what the speed check allows, and few moves."""
 
 _FALL_DAMAGE = "gamerule fall_damage"
+
+_DEATH_TIMEOUT_S = 10.0
+"""How long the Bot waits for its death after the landing that kills it: a Bot's bound."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,17 +270,21 @@ async def _fall(context: GroupContext, bot: Bot, landing: _Site, height: int) ->
 
 
 async def _fall_to_death(context: GroupContext, bot: Bot) -> None:
-    """Report a fall of 23 blocks onto stone, which kills the Bot, with no step after the landing.
+    """Report a fall of 23 blocks onto stone, which kills the Bot, in a window ending on the death.
 
-    The dead player ticks in real time, so a step after the landing would show it nothing, and its
-    barriers would hold back the respawn request by about 6 ticks: event 60 comes 20 ticks after
-    the death (`_respawn`). The window's closing barrier still takes what the death sends.
+    Vanilla kills the player while it handles the landing. No step follows the landing: the dead
+    player ticks in real time, so a step would show it nothing, and would hold back the respawn
+    request by about 7 ticks, where event 60 comes 20 ticks after the death (`_respawn`). The
+    window ends on the death, as in `player/void` and `player/drowning`, so a server that kills a
+    few ticks after the landing still has its death compared. What the death sends after it is in
+    no window.
     """
     *moves, (y, on_ground) = _descent(_STONE, _HEIGHTS[-1])
     await _lift(context, bot, _STONE, _HEIGHTS[-1])
-    async with context.observe(*PACKETS):
+    async with context.observe(*PACKETS, until=_DEATH, bot=bot):
         await _stepped(context, bot, _STONE, moves)
         await bot.move(*_at(_STONE.lane, y), on_ground=on_ground)
+        await bot.expect(_DEATH, timeout_s=_DEATH_TIMEOUT_S)
 
 
 async def _lift(context: GroupContext, bot: Bot, landing: _Site, height: int) -> None:
