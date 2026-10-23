@@ -23,14 +23,34 @@ TORCH = "redstone/torch"
 OBSERVER = "redstone/observer"
 DUST = "redstone/dust"
 UPDATE_ORDER = "redstone/update-order"
+PISTON_PUSH = "redstone/piston-push"
+STICKY = "redstone/sticky"
+QUASI = "redstone/quasi-connectivity"
 UNMASKED = (REPEATER, COMPARATOR, TORCH, OBSERVER, DUST)
-GROUP_IDS = (*UNMASKED, UPDATE_ORDER)
-COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw")
+CIRCUIT_IDS = (*UNMASKED, UPDATE_ORDER)
+PISTON_IDS = (PISTON_PUSH, STICKY, QUASI)
+GROUP_IDS = (*CIRCUIT_IDS, *PISTON_IDS)
+COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw", "kill")
 WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
     "minecraft:level_event minecraft:sound"
 )
-"""The open Mark of every window."""
+"""The open Mark of every window of a Group without a piston of its own to watch."""
+PISTON_WINDOW = (
+    f"{WINDOW} minecraft:block_entity_data minecraft:add_entity minecraft:set_entity_data"
+)
+"""The open Mark of every window of a piston Group: also block entities and dropped items."""
+UNDO = (
+    "fill 1 -60 1 15 -57 15 minecraft:air strict",
+    "fill 1 -60 1 15 -57 15 minecraft:air",
+    "gamerule random_tick_speed 3",
+    "tp watcher 0.5 -60 0.5",
+    "gamerule respawn_radius 10",
+    "gamerule player_movement_check true",
+    "tick unfreeze",
+)
+"""What Control undoes after every Group's last window, in order."""
+KILL_ITEMS = "kill @e[type=minecraft:item]"
 
 STEP = "tick step 1"
 TIME_QUERY = "time query gametime"
@@ -110,7 +130,7 @@ async def test_control_pins_the_join_stops_random_ticks_and_freezes_before_it_bu
     )
 
 
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", CIRCUIT_IDS)
 @pytest.mark.asyncio
 async def test_every_window_compares_the_blocks_block_events_world_events_and_sounds(
     group_id: str,
@@ -121,22 +141,25 @@ async def test_every_window_compares_the_blocks_block_events_world_events_and_so
     assert {window.label for window in windows} == {WINDOW}
 
 
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", PISTON_IDS)
+@pytest.mark.asyncio
+async def test_every_piston_window_also_compares_block_entities_and_dropped_items(
+    group_id: str,
+) -> None:
+    windows = (await play(group_id)).windows
+
+    assert windows
+    assert {window.label for window in windows} == {PISTON_WINDOW}
+
+
+@pytest.mark.parametrize("group_id", [i for i in GROUP_IDS if i != PISTON_PUSH])
 @pytest.mark.asyncio
 async def test_control_clears_without_updates_first_then_undoes_the_rest(group_id: str) -> None:
     # A plain fill would update a repeater or a torch beside each block it clears, which
     # schedules its tick for the next play: the strict one first (FillCommand, flag 816).
     after = (await play(group_id)).after
 
-    assert after == (
-        "fill 1 -60 1 15 -57 15 minecraft:air strict",
-        "fill 1 -60 1 15 -57 15 minecraft:air",
-        "gamerule random_tick_speed 3",
-        "tp watcher 0.5 -60 0.5",
-        "gamerule respawn_radius 10",
-        "gamerule player_movement_check true",
-        "tick unfreeze",
-    )
+    assert after == UNDO
 
 
 # `redstone/repeater`
@@ -373,8 +396,11 @@ async def test_dust_powers_the_line_for_a_tick_then_builds_and_cuts_a_climb_a_ti
 # `redstone/update-order`
 
 
-def test_update_order_masks_only_the_pistons_random_pitch() -> None:
-    (mask,) = GROUPS[UPDATE_ORDER].masks
+@pytest.mark.parametrize("group_id", [UPDATE_ORDER, STICKY, QUASI])
+def test_each_group_whose_only_sound_is_a_pistons_masks_only_its_random_pitch(
+    group_id: str,
+) -> None:
+    (mask,) = GROUPS[group_id].masks
 
     assert (mask.packet, mask.path) == ("minecraft:sound", "pitch")
 
@@ -414,3 +440,169 @@ async def test_update_order_powers_and_unpowers_each_copy_5_ticks_apart() -> Non
         *steps(6),
     )
     assert window.ticks == 21
+
+
+# `redstone/piston-push`
+
+PUSH_ROWS = (1, 3, 5, 7, 8, 9, 11, 13)
+"""The z of each piston powered on tick 0; the poppy's, at z 15, is powered on tick 2."""
+
+
+def east_piston(z: int, ahead: str) -> tuple[str, str]:
+    """The `/setblock`s of a piston at x 2, -60, z facing east and of `ahead` at x 3."""
+    return (
+        f"setblock 2 -60 {z} minecraft:piston[facing=east]",
+        f"setblock 3 -60 {z} minecraft:{ahead}",
+    )
+
+
+def behind(z: int, block: str) -> str:
+    """The `/setblock` of `block` behind the piston at x 2, -60, z."""
+    return f"setblock 1 -60 {z} minecraft:{block}"
+
+
+def test_piston_push_masks_the_pistons_pitch_and_where_a_dropped_item_appears_and_moves() -> None:
+    masks = GROUPS[PISTON_PUSH].masks
+
+    assert [(mask.packet, mask.path) for mask in masks] == [
+        ("minecraft:sound", "pitch"),
+        *(
+            ("minecraft:add_entity", path)
+            for path in ("x", "y", "z", "velocity.x", "velocity.z", "yaw")
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_piston_push_builds_rows_of_1_12_and_13_stones_blocks_that_stop_and_that_break() -> (
+    None
+):
+    first = (await play(PISTON_PUSH)).first
+
+    assert first[5:] == (
+        "fill 3 -60 1 3 -60 1 minecraft:stone",
+        "fill 3 -60 3 14 -60 3 minecraft:stone",
+        "fill 3 -60 5 15 -60 5 minecraft:stone",
+        "setblock 2 -60 1 minecraft:piston[facing=east]",
+        "setblock 2 -60 3 minecraft:piston[facing=east]",
+        "setblock 2 -60 5 minecraft:piston[facing=east]",
+        # The extended piston's power first: placed unpowered, it would retract.
+        "setblock 4 -60 11 minecraft:redstone_block",
+        *east_piston(7, "obsidian"),
+        *east_piston(8, "bedrock"),
+        *east_piston(9, "chest"),
+        *east_piston(11, "piston[facing=up,extended=true]"),
+        "setblock 3 -59 11 minecraft:piston_head[facing=up]",
+        *east_piston(13, "torch"),
+        *east_piston(15, "poppy"),
+    )
+
+
+@pytest.mark.asyncio
+async def test_piston_push_powers_the_pistons_then_the_poppys_and_unpowers_each_4_ticks_later() -> (
+    None
+):
+    # A piston pushes on the next tick and is out 2 ticks later; it retracts likewise. The
+    # torch and the poppy break 2 ticks apart, so that each item appears on a tick of its own.
+    (window,) = (await play(PISTON_PUSH)).windows
+
+    assert window.commands == (
+        *(behind(z, "redstone_block") for z in PUSH_ROWS),
+        *steps(2),
+        behind(15, "redstone_block"),
+        *steps(2),
+        *(behind(z, "air") for z in PUSH_ROWS),
+        *steps(2),
+        behind(15, "air"),
+        *steps(4),
+    )
+    assert window.ticks == 10
+
+
+@pytest.mark.asyncio
+async def test_piston_push_takes_the_dropped_items_away_before_it_clears() -> None:
+    after = (await play(PISTON_PUSH)).after
+
+    assert after == (KILL_ITEMS, *UNDO)
+
+
+# `redstone/sticky`
+
+
+@pytest.mark.asyncio
+async def test_sticky_builds_two_stones_and_a_slime_and_a_honey_block_above_the_grass() -> None:
+    # A slime block on the grass would drag the grass along (PistonStructureResolver).
+    first = (await play(STICKY)).first
+    sticky = "sticky_piston[facing=east]"
+
+    assert first[5:] == (
+        f"setblock 2 -60 1 minecraft:{sticky}",
+        "setblock 3 -60 1 minecraft:stone",
+        f"setblock 2 -60 3 minecraft:{sticky}",
+        "setblock 3 -60 3 minecraft:stone",
+        f"setblock 2 -59 6 minecraft:{sticky}",
+        "setblock 3 -59 6 minecraft:slime_block",
+        "setblock 3 -59 7 minecraft:stone",
+        "setblock 3 -59 5 minecraft:honey_block",
+        f"setblock 2 -59 10 minecraft:{sticky}",
+        "setblock 3 -59 10 minecraft:honey_block",
+        "setblock 3 -59 11 minecraft:stone",
+        "setblock 3 -59 9 minecraft:slime_block",
+    )
+
+
+@pytest.mark.asyncio
+async def test_sticky_powers_every_piston_unpowers_one_after_a_tick_and_the_rest_after_5() -> None:
+    # A piston whose power goes while its block still moves leaves the block (type 2); the
+    # others pull theirs back once in place.
+    (window,) = (await play(STICKY)).windows
+
+    assert window.commands == (
+        behind(1, "redstone_block"),
+        behind(3, "redstone_block"),
+        "setblock 1 -59 6 minecraft:redstone_block",
+        "setblock 1 -59 10 minecraft:redstone_block",
+        STEP,
+        behind(3, "air"),
+        *steps(4),
+        behind(1, "air"),
+        "setblock 1 -59 6 minecraft:air",
+        "setblock 1 -59 10 minecraft:air",
+        *steps(4),
+    )
+    assert window.ticks == 9
+
+
+# `redstone/quasi-connectivity`
+
+QUASI_ZS = (3, 7, 11)
+"""The z of the piston, the dropper and the dispenser."""
+
+
+@pytest.mark.asyncio
+async def test_quasi_connectivity_builds_a_piston_a_dropper_and_a_dispenser() -> None:
+    first = (await play(QUASI)).first
+
+    assert first[5:] == (
+        "setblock 3 -60 3 minecraft:piston[facing=east]",
+        "setblock 3 -60 7 minecraft:dropper[facing=east]",
+        "setblock 3 -60 11 minecraft:dispenser[facing=east]",
+    )
+
+
+@pytest.mark.asyncio
+async def test_quasi_connectivity_powers_2_above_updates_beside_then_undoes_both_in_order() -> None:
+    # A redstone block 2 above makes no block next to them change; stone placed beside does.
+    (window,) = (await play(QUASI)).windows
+
+    assert window.commands == (
+        *(f"setblock 3 -58 {z} minecraft:redstone_block" for z in QUASI_ZS),
+        *steps(2),
+        *(f"setblock 2 -60 {z} minecraft:stone" for z in QUASI_ZS),
+        *steps(6),
+        *(f"setblock 3 -58 {z} minecraft:air" for z in QUASI_ZS),
+        *steps(2),
+        *(f"setblock 2 -60 {z} minecraft:air" for z in QUASI_ZS),
+        *steps(4),
+    )
+    assert window.ticks == 14
