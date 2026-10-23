@@ -442,6 +442,11 @@ class _Hits:
 _DROWNER = "drowner"
 _DROWNING_DAMAGE = "gamerule drowning_damage"
 
+_DROWNING_SPAN = "drowning.bubbles_to_death"
+"""The Measurement of the time from the first bubbles to the death: vanilla's 80 ticks, four hits
+20 ticks apart, are 4 s. A server whose air runs down at another rate sends the same packets in
+the same order, and takes longer or shorter."""
+
 _BUBBLES = 67
 """The entity event vanilla sends each time a drowning player's air runs out (26.3 javap:
 `LivingEntity.baseTick` calls `broadcastEntityEvent(this, 67)`), with or without a hit."""
@@ -506,7 +511,8 @@ async def drowning(context: GroupContext) -> None:
 
     The window opens while the Bot's air is full, so it holds every air value the server sends,
     between every two hits; it ends on the death. A server that drowns a player less often sends
-    more air values, or fewer, between two hits.
+    more air values, or fewer, between two hits. The time from the first bubbles to the death is
+    the Measurement `drowning.bubbles_to_death`, which shows a server whose air runs down slower.
     """
     async with _environment(context, _WATER.restore) as undo:
         bot = await join_at_spawn(context, undo, _DROWNER)
@@ -520,9 +526,10 @@ async def drowning(context: GroupContext) -> None:
         async with context.observe(*PACKETS, until=_DEATH, bot=bot):
             await _tp(context, bot, _at(_WATER.lane, -62.0))
             await _air_runs_out(bot)
-            await _set_drowning_damage(context.control, on=True)
-            await _hurt_when_the_air_runs_out_again(bot)
-            await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
+            async with context.span(_DROWNING_SPAN):
+                await _set_drowning_damage(context.control, on=True)
+                await _hurt_when_the_air_runs_out_again(bot)
+                await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
         await _respawn(context, bot)
 
 
