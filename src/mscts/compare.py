@@ -35,6 +35,7 @@ from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Seq
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
+from itertools import groupby
 from types import MappingProxyType
 from typing import Literal, NamedTuple, NoReturn, Self, cast, override
 from uuid import UUID
@@ -560,7 +561,8 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
     Each Bot's stream is normalized first: the chunks in a row are sorted by position
     (`_by_position`), and the resends in a row for different entities by entity (`_RESENDS`,
-    `_by_entity`); then, if the Transcript has Observation windows, the play Packets they
+    `_by_entity`), and the `registry_data` in a row by registry (`_by_registry`);
+    then, if the Transcript has Observation windows, the play Packets they
     do not observe are left out (`_Windows.observes`); the Packets a `*` Mask names are
     dropped; the lists of the Packets `UNORDERED` names are
     sorted; the rest are put in canonical form (`_CANONICAL`: e.g. a status response's
@@ -807,7 +809,8 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     a Bot first hears of in the run keeps its place, since its number comes from it. A run
     ends at a window's end and at a tick Mark, so in a tick-exact Group it holds one tick's
     resends; elsewhere it may hold several ticks' of one window, and the order of different
-    entities' resends across those ticks is not compared.
+    entities' resends across those ticks is not compared. Last, each run of `registry_data`
+    is sorted by registry (`_by_registry`).
     """
     windows = _Windows.of(transcript, bot)
     ticks = _Ticks.of(transcript, bot)
@@ -827,7 +830,7 @@ def _stream(transcript: Transcript, bot: str, masks: _Masks) -> list[_Normalized
     for run in _runs(arrivals):
         taken = [_take(arrival, masks, numbers) for arrival in _by_entity(run, numbers.ranks())]
         stream.extend(normalized for normalized in taken if normalized is not None)
-    return stream
+    return _by_registry(stream)
 
 
 class _Arrival(NamedTuple):
@@ -1142,6 +1145,43 @@ _CHUNK_POSITION_BYTES = 8
 
 
 _BIOMES_REGISTRY = "minecraft:worldgen/biome"
+
+
+_REGISTRY_DATA = "minecraft:registry_data"
+
+
+def _by_registry(stream: Sequence[_Normalized]) -> list[_Normalized]:
+    """A Bot's normalized `stream`, with each run of `registry_data` sorted by registry, stably.
+
+    A run is a longest stretch of packets that each hold a registry (`_registry_id`). Until
+    `finish_configuration` the client only collects each registry's entries apart, and then
+    loads the registries by key, in an order of its own; the entries of two packets of one
+    registry it appends in the order they came (docs/research/2026-10-23-registry-order.md).
+    So the sort keeps those in their order.
+    """
+    result: list[_Normalized] = []
+    for in_run, entries in groupby(stream, key=_holds_registry):
+        run = list(entries)
+        result.extend(sorted(run, key=_registry_of) if in_run else run)
+    return result
+
+
+def _holds_registry(entry: _Normalized) -> bool:
+    """Whether `entry` is a `registry_data` whose registry the codec read (`_registry_id`)."""
+    return _registry_id(entry.packet) is not None
+
+
+def _registry_of(entry: _Normalized) -> str:
+    """The registry `entry` holds (`_registry_id`), or "" if it holds none."""
+    return _registry_id(entry.packet) or ""
+
+
+def _registry_id(packet: Packet) -> str | None:
+    """The registry id of a configuration `registry_data` the codec read; else None."""
+    if packet.state is not State.CONFIGURATION or packet.name != _REGISTRY_DATA:
+        return None
+    registry = None if packet.fields is None else packet.fields.get("registry_id")
+    return registry if isinstance(registry, str) else None
 
 
 @dataclass(frozen=True, slots=True)

@@ -2200,6 +2200,21 @@ proves it necessary:
      ticks' as little as 25.7 ms, or 0 ms when the reader stalled (the
      research note). `set_passengers` (two entities) and bundles (the
      projectile power) end a run.
+   - the order of `registry_data` packets of different registries (#451).
+     A *run of registries* is a longest stretch of configuration
+     `registry_data` packets the codec read, in a Bot's normalized stream;
+     each run is sorted by `registry_id`, stably (`compare._by_registry`),
+     so two packets of one registry keep their order, and indices count the
+     sorted stream. The client collects each registry's entries apart, in a
+     `HashMap` keyed by registry, appending a later packet's entries, and
+     loads the registries only at `finish_configuration`, in the order of
+     `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`, each by its key (`javap`
+     on the 26.3 client: `RegistryDataCollector$ContentsCollector.append`,
+     `RegistryDataCollector.loadNewElementsAndTags`,
+     `NetworkRegistryLoadTask.load`;
+     `docs/research/2026-10-23-registry-order.md`). Vanilla sends one
+     packet a registry, in that same list's order
+     (`RegistrySynchronization.packRegistries`).
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
    Canonicalization encodes a protocol equivalence. It is not a Mask,
