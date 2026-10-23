@@ -2725,12 +2725,21 @@ proves it necessary:
    index by index, because they are read at one path on both sides. A
    unit test checks every pair of
    lists up to length 4 over 3 values: in order, in the fewest steps, and
-   mirrored by a swap. The cost is O(n·m) time and memory between the
+   mirrored by a swap. Another checks every reference list up to length 4
+   against every candidate list up to length 6 for a repeated path: the
+   shortest lists whose paths repeated before #455 are 4 against 6. The
+   cost is O(n·m) time and memory between the
    common prefix and suffix, as for the packet alignment, and the
-   Comparison runs on the Run's event loop. So where there are more
+   Comparison runs on the Run's event loop. So where a list has more
    than a million pairs of elements in between
-   (`compare._LINE_UP_LIMIT`, 0.4 s and 8 MB), those elements are
-   compared index by index instead. An element
+   (`compare._LINE_UP_LIMIT`), those elements are
+   compared index by index instead. The limit applies to each list, not
+   to a packet, so every tag of an `update_tags` can take up to it. Lining
+   up costs about 0.3 µs a pair, plus time and memory in the length of
+   both lists: at the limit, 1,000 against 1,000 elements took 0.3 s and
+   8 MB, and 1 against a million took 0.8 s and 200 MB (#455, on 4 CPUs
+   under load). Compared whole, that skewed list took 4.5 s lined up and
+   2.5 s index by index. An element
    that both moved and changed, next to elements one side added, can be
    compared with a neighbour rather than its counterpart: the alignment
    knows only whether two elements are equal, not how alike they are.
