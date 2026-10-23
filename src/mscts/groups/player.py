@@ -135,14 +135,18 @@ def _poof(packet: Packet) -> str | None:
 
 
 async def _respawn(context: GroupContext, bot: Bot) -> None:
-    """Respawn the dead Bot in a window of its own; fail if entity event 60 comes first.
+    """Respawn the dead Bot in a window of its own; fail if entity event 60 comes in it first.
 
-    The window opens a few ticks after the death, and the respawn comes long before the 20 ticks
-    that event 60 waits for. A Bot that stalls about a second after the death gets the event
-    inside the window on one Instance, and maybe not on the other: the windows would differ for
-    the harness's timing. So the Bot fails the respawn instead (`Bot.respawn`'s `fail_on`), which
-    on the Reference is an `error`. The Bot's own packets show the order, so this holds however
-    late it reads them. No other entity in these Groups dies, so any event 60 is the Bot's.
+    The window opens a few ticks after the death (in `player/fall`, after the lethal fall's
+    window has closed too), and the respawn comes long before the 20 ticks that event 60 waits
+    for. A Bot that stalls most of a second after the death gets the event inside the window on
+    one Instance, and maybe not on the other: the windows would differ for the harness's timing.
+    So the Bot fails the respawn instead (`Bot.respawn`'s `fail_on`). On the Reference that is an
+    `error`. On a Candidate it is a `mismatch`, as is any failure of its play, even when the Bot
+    stalled. The Bot's own packets show the order, so this holds however late it reads them. An
+    event 60 the barrier that opens the window takes is in no window, and is not checked.
+    The check reads no entity id: no other entity dies in these Groups, so on vanilla any event
+    60 is the Bot's, and a Candidate's event 60 for another entity fails the Group the same way.
 
     Raises:
         ProtocolError: Event 60 came before the `respawn`.
