@@ -919,7 +919,7 @@ def _take(arrival: _Arrival, masks: _Masks, numbers: "_Numbers") -> _Normalized 
         if arrival.tick is not None:
             normalized = replace(normalized, tick=arrival.tick)
     else:
-        numbers.uncompared(packet)
+        numbers.uncompared(packet, masks)
     numbers.removed(packet)
     return normalized
 
@@ -1658,34 +1658,40 @@ class _RecipeNumbers:
     recipes: _Numbering = dataclasses.field(default_factory=_Numbering)
     book: dict[int, _Held] = dataclasses.field(default_factory=dict)
 
-    def number(self, packet: Packet, copies: Sequence[dict[str, _Value]]) -> None:
+    def number(
+        self, packet: Packet, copies: Sequence[dict[str, _Value]], paths: Sequence[_MaskPath]
+    ) -> None:
         """Write the display ids and group numbers in `copies`, each a copy of `packet`'s fields.
 
         `packet` is the Bot's next compared one, and the copies are sorted (`_copy`), so
         the first copy's order numbers the recipes. A removal is followed after its ids are
-        written, and an add before (`follow`).
+        written, and an add before (`follow`, through `paths`, the Masks of `packet`).
         """
         if packet.name == _RECIPE_BOOK_REMOVE:
             self._number_removal(copies)
-        replaced = self.follow(packet)
+        replaced = self.follow(packet, paths)
         if packet.name == _RECIPE_BOOK_ADD:
             self._write_ids(copies, replaced)
             self._write_groups(copies)
 
-    def uncompared(self, packet: Packet) -> None:
+    def uncompared(self, packet: Packet, paths: Sequence[_MaskPath]) -> None:
         """Change the book as `packet`, one not compared, changes it (`follow`); name what it adds.
 
         Each recipe of a `recipe_book_add` that has no name or number yet is named by what
-        it shows, as `_Numbers.spawned` names an entity, so a recipe got outside the windows
-        is told from another however many came first.
+        it shows through `paths`, the Masks of `packet`, as `_Numbers.spawned` names an
+        entity, so a recipe got outside the windows is told from another however many came
+        first.
         """
-        self.follow(packet)
+        self.follow(packet, paths)
         if packet.name == _RECIPE_BOOK_ADD:
             for held in self.book.values():
                 self.recipes.name(held.shown)
 
-    def follow(self, packet: Packet) -> dict[int, str]:
+    def follow(self, packet: Packet, paths: Sequence[_MaskPath]) -> dict[int, str]:
         """Change the book as `packet`, compared or not, changes the client's.
+
+        What a recipe added shows is read through `paths`, the Masks of `packet`
+        (`_book_entries`).
 
         Returns:
             Each display id at which a `recipe_book_add` put another recipe in place of the
@@ -1694,14 +1700,14 @@ class _RecipeNumbers:
         if packet.fields is None:
             return {}
         if packet.name == _RECIPE_BOOK_ADD:
-            return self._add(packet.fields)
+            return self._add(packet.fields, paths)
         if packet.name == _RECIPE_BOOK_REMOVE:
             self._remove(packet.fields)
         elif packet.name == _LOGIN:
             self.book.clear()
         return {}
 
-    def _add(self, fields: Mapping[str, object]) -> dict[int, str]:
+    def _add(self, fields: Mapping[str, object], paths: Sequence[_MaskPath]) -> dict[int, str]:
         """Put the entries of `fields`, a `recipe_book_add`'s, in the book, or in its place.
 
         Returns:
@@ -1710,7 +1716,7 @@ class _RecipeNumbers:
         """
         if fields.get("replace") is True:
             self.book.clear()
-        added = dict(_book_entries(fields))
+        added = dict(_book_entries(fields, paths))
         replaced = {
             display_id: held.shown
             for display_id, held in self.book.items()
@@ -1791,9 +1797,17 @@ def _numbered_and_sorted(
     return [written[key] for key in sorted(keys, key=numbering.rank)] + others
 
 
-def _shown_recipe(contents: _Value) -> str:
-    """What a recipe book entry with `contents` shows: `_shown_entry` of it without its flags."""
-    return _shown_entry({"contents": contents})
+def _shown_recipe(contents: _Value, paths: Sequence[_MaskPath]) -> str:
+    """What a recipe book entry with `contents` shows, through `paths`, its packet's Masks.
+
+    That is `_shown_entry` of the entry without its flags, once the Masks hide what they
+    hide in it, as in a compared copy (`_hide_all`). The Masks go on a copy made through
+    JSON, which `_shown_entry` writes anyway: `_copy` recurses once a level.
+    """
+    seen = json.loads(json.dumps({"entries": [{"contents": contents}]}, default=repr))
+    _hide_all(seen, paths)
+    entries = seen["entries"]
+    return _shown_entry(entries[0] if isinstance(entries, list) else entries)
 
 
 def _group(contents: Mapping[str, object]) -> _Group | None:
@@ -1804,11 +1818,17 @@ def _group(contents: Mapping[str, object]) -> _Group | None:
     return json.dumps(contents.get("category"), sort_keys=True, default=repr), number
 
 
-def _book_entries(fields: Mapping[str, object]) -> Iterator[tuple[int, _Held]]:
-    """Each entry of `fields`, a `recipe_book_add`'s, that has a display id: the id and recipe."""
+def _book_entries(
+    fields: Mapping[str, object], paths: Sequence[_MaskPath]
+) -> Iterator[tuple[int, _Held]]:
+    """Each entry of `fields`, a `recipe_book_add`'s, that has a display id: the id and recipe.
+
+    What the recipe shows is read through `paths`, the packet's Masks (`_shown_recipe`), and
+    its group as sent: the client keys its buttons on it.
+    """
     for contents in _recipe_contents(fields):
         if type(display_id := contents.get("id")) is int:
-            yield display_id, _Held(_shown_recipe(contents), _group(contents))
+            yield display_id, _Held(_shown_recipe(contents, paths), _group(contents))
 
 
 def _removed_ids(fields: Mapping[str, object]) -> Iterator[int]:
@@ -1863,12 +1883,14 @@ class _Numbers:
             for entity, name in self.ids.items()
         }
 
-    def uncompared(self, packet: Packet) -> None:
+    def uncompared(self, packet: Packet, masks: _Masks) -> None:
         """Change the recipe book as `packet`, one not compared, changes the client's (`follow`).
 
-        A compared one changes it as it is numbered (`_normalize`), so each changes it once.
+        It also names what an add brings, through the Group's `masks`
+        (`_RecipeNumbers.uncompared`). A compared one changes the book as it is numbered
+        (`_normalize`), so each changes it once.
         """
-        self.recipes.uncompared(packet)
+        self.recipes.uncompared(packet, masks.paths.get(packet.name, ()))
 
     def spawned(self, packet: Packet, masks: _Masks) -> None:
         """Note `packet`, one the Comparison leaves out: an `add_entity` names its entity.
@@ -2065,7 +2087,7 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     if canonical is None:
         fields = _copy(packet, packet.fields)
         numbers.apply(packet, fields)
-        numbers.recipes.number(packet, (fields,))
+        numbers.recipes.number(packet, (fields,), paths)
         masked = _hide_all(fields, paths)
         return _Normalized(packet=packet, fields=fields, masked=masked)
     raw = _copy(packet, packet.fields)
@@ -2076,7 +2098,7 @@ def _normalize(packet: Packet, masks: _Masks, numbers: _Numbers, context: _Conte
     fields = canonical(_copy(packet, packet.fields), context)
     for copy in (raw, parsed, unmasked, fields):
         numbers.apply(packet, copy)
-    numbers.recipes.number(packet, (raw, parsed, unmasked, fields))
+    numbers.recipes.number(packet, (raw, parsed, unmasked, fields), paths)
     for copy in (raw, parsed):
         _hide_all(copy, paths)
     masked = _hide_all(fields, paths)

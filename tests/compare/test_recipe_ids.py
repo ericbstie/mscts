@@ -13,9 +13,9 @@ from typing import NamedTuple
 import pytest
 
 from mscts.codec.packets import Packet
+from mscts.compare import MASKED, UNORDERED, Mask, compare
 from mscts.compare import OBSERVE_CLOSE as CLOSE
 from mscts.compare import OBSERVE_OPEN as OPEN
-from mscts.compare import UNORDERED, compare
 from tests.compare.build import packet, transcript
 
 BOOK_ADD = "minecraft:recipe_book_add"
@@ -23,14 +23,14 @@ NO_TOAST, TOAST = 2, 3
 """Entry flags: highlighted only, as at a join; and a toast too, as for a recipe given."""
 
 
-def _display(result: int) -> dict[str, object]:
-    """A shapeless recipe display of one item that makes item `result`."""
+def _display(result: int, station: int = 1) -> dict[str, object]:
+    """A shapeless recipe display of one item that makes item `result` at item `station`."""
     return {
         "type": "minecraft:crafting_shapeless",
         "value": {
             "ingredients": [{"type": "minecraft:item", "value": 1}],
             "result": {"type": "minecraft:item", "value": result},
-            "crafting_station": {"type": "minecraft:item", "value": 1},
+            "crafting_station": {"type": "minecraft:item", "value": station},
         },
     }
 
@@ -44,6 +44,7 @@ class Entry(NamedTuple):
         group: Its group number, or None for no group.
         flags: Its flags.
         category: Its recipe book category.
+        station: The item its display shows it is made at.
     """
 
     makes: int
@@ -51,12 +52,13 @@ class Entry(NamedTuple):
     group: int | None = None
     flags: int = NO_TOAST
     category: int = 0
+    station: int = 1
 
     def fields(self) -> dict[str, object]:
         """The entry as `recipe_book_add` holds it."""
         contents = {
             "id": self.display_id,
-            "display": _display(self.makes),
+            "display": _display(self.makes, self.station),
             "group": self.group,
             "category": self.category,
             "crafting_requirements": None,
@@ -356,7 +358,7 @@ def test_a_book_replaced_is_emptied_before_its_entries_take_their_place() -> Non
 def named(entry: Entry) -> str:
     """The name of `entry`'s recipe got outside the windows: the entry as JSON, but id and flags."""
     contents = {
-        "display": _display(entry.makes),
+        "display": _display(entry.makes, entry.station),
         "group": entry.group is not None,
         "category": entry.category,
         "crafting_requirements": None,
@@ -387,6 +389,47 @@ def test_a_recipe_named_outside_the_windows_has_the_name_whatever_its_id_and_pla
     candidate = [book_add(sticks_as[1], planks_as[1]), OPEN, book_remove(8), CLOSE]
 
     assert _diff_all(reference, candidate) == []
+
+
+STATION = Mask(BOOK_ADD, "entries[*].contents.display.value.crafting_station", reason="a test")
+"""A Mask on the item a recipe display shows it is made at."""
+
+
+def _diff_masked(
+    reference: Sequence[Packet | str], candidate: Sequence[Packet | str], mask: Mask
+) -> list[tuple[str | None, object, object]]:
+    """The divergences of `reference` and `candidate`, as `_diff_all`'s, under `mask`."""
+    verdict = compare(
+        transcript(*(_alices(each) for each in reference)),
+        transcript(*(_alices(each) for each in candidate)),
+        [mask],
+    )
+    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+
+
+def test_a_recipe_got_outside_the_windows_is_named_by_what_it_shows_through_the_masks() -> None:
+    removal = [OPEN, book_remove(5), CLOSE]
+    reference = [book_add(Entry(PLANKS, display_id=5, group=3, station=1)), *removal]
+    candidate = [book_add(Entry(PLANKS, display_id=5, group=3, station=2)), *removal]
+
+    assert _diff_masked(reference, candidate, STATION) == []
+
+
+def test_recipes_numbered_in_a_window_are_told_apart_only_by_what_the_masks_leave() -> None:
+    planks = Entry(PLANKS, display_id=5)
+    reference = [OPEN, book_add(planks, Entry(PLANKS, display_id=6)), CLOSE]
+    candidate = [OPEN, book_add(planks, Entry(PLANKS, display_id=6, station=2)), CLOSE]
+
+    assert _diff_masked(reference, candidate, STATION) == []
+
+
+def test_a_recipe_got_outside_the_windows_under_a_mask_of_every_entry_is_named_masked() -> None:
+    reference = [book_add(Entry(PLANKS, display_id=5)), OPEN, book_remove(5), CLOSE]
+    candidate = [OPEN, book_remove(9), CLOSE]
+
+    assert _diff_masked(reference, candidate, Mask(BOOK_ADD, "entries", reason="a test")) == [
+        ("recipes[0]", json.dumps(MASKED), "#1")
+    ]
 
 
 def test_a_removal_of_another_recipe_after_an_uncompared_replace_differs() -> None:
