@@ -195,6 +195,57 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-23: train 42
+
+- #466, #467, #468, #474, #475, #476, #482, #483, #484, #485 and #486 merged in
+  stack order. Workers pushed branches and opened no PR; one integrator
+  per batch stacked them, re-checked every commit and ran the tiers once
+  on the tip (reference tier 36 of 36 on each; candidate tier 14 of 15 on
+  the second, the failure #445's, and 15 of 15 on the third). Batch C
+  failed when a worker ended without its StructuredOutput, and batch D2
+  took over its issues.
+- #466 (#454): `time/sleep` takes what its clock has already read before
+  the sleeper lies down, so a `set_time` read with the clock's own barrier
+  answer is not counted. 3 of 176 probe plays came up short on main under
+  `-n 8 --stress`, 0 of 240 after.
+- #467 (#461): `join/basic` calms the weather and waits for it to fade, so
+  one Reference no longer rains after about 20 minutes.
+- #468 (#456): a mismatching probe Self-check names each Divergence in its
+  failure message. The 35-run stress series found no failure to read.
+- #474 (#451): `registry_data` packets are paired by registry. Their order
+  across registries is network traffic, shown once at `(order)`. Pumpkin's
+  default run: 29 of 35 test cases pass against 27.
+- #475 (#455): an element only the Candidate has reads `[→n]`, so no two
+  Divergences of one pair of packets share a path. A Mask refuses a path
+  with an arrow and names the one to write.
+- #476 (#462): a recipe first seen outside the windows is named by what
+  it shows, and a login ends every recipe name and number. A wrong later
+  removal or group no longer passes. Review C found a false mismatch in
+  the first fix, which a second round fixed.
+- #482 (#445): the Pumpkin item-stack test names the nightly its table was
+  recorded against, and the table is recorded again for 8ea2b7d.
+- #483 (#442): titles for the seven `block_event` test cases.
+- #484 (#441): `scripts/research/windows.py <group id>` plays a Group once
+  on vanilla and prints each window's packets.
+- #485 (#463): the respawn of `player/void`, `player/drowning` and
+  `player/fall` fails the Group when entity event 60 comes before it
+  (`Bot.respawn(fail_on=...)`), and `player/fall`'s lethal window ends on
+  the death. Review C found the first fix made a late death a mismatch,
+  which a third round fixed; `player/fall` 5 of 5 stress runs of 20.
+- #486 (#464): `player/drowning` measures `drowning.bubbles_to_death`.
+- Filed #469 (`time/sleep`: a `set_time` read between the window's open and
+  the drain still counts), #470 (Groups that never stop the weather
+  cycle), #471 (one description of a mismatching Self-check), #472
+  (`repeat.py` stops a stress series at its first failure), #473
+  (`combat/death`'s respawn can hold `entity_event` 60), #477 (a Mask
+  refusal advises a path that cannot hide an arrow's Divergence), #478
+  (the low findings #474 left), #479 (`_plain` raises RecursionError on a
+  deeply nested display), #480 (a recipe named outside the windows,
+  shorter than its JSON), #481 (recipe book entries read through the
+  Masks before sorting), #487 (what a death sends after the kill packet
+  is in no window) and #488 (a late Bot reads as a late Candidate in
+  real-time checks).
+
 ### 2026-10-22: train 41
 
 - #439, #433, #440, #450, #444, #453, #448, #452, #449, #459, #460,

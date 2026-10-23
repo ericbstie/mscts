@@ -23,18 +23,26 @@ first.
    `isolation: 'worktree'`, gathered with `parallel()`; `model: 'sonnet'`
    for mechanical work (the issue's model label), else the default. Use
    the brief template in PROCESS.md, and tell the worker to read the
-   Worker contract, work its issue on `issue-<n>-<slug>`, open one PR,
-   unsubscribe this session from that PR
-   (`mcp__claude-code-remote__unsubscribe_pr_activity`), and end with the
-   short Worker report as its final text (its Retrospective never goes on
-   GitHub). You are woken once, when the last report returns. At most two
+   Worker contract, work its issue on `issue-<n>-<slug>`, push the branch,
+   write `pr-body.md` and `pr-title.txt` in its scratch directory (it opens
+   no PR), and end with the short Worker report as its final text (its
+   Retrospective never goes on GitHub). End the Workflow with one
+   integrator agent (sonnet): it waits for earlier trains to merge, rebases
+   the batch into a stack with `git rebase -x "mise run check"
+   --force-rebase`, runs the tiers once on the top tip, opens all the PRs at
+   the end, assigns each, requests no reviewer (the PR author is the
+   maintainer, so the request fails) and unsubscribes this session from each
+   (`mcp__claude-code-remote__unsubscribe_pr_activity`). You are woken once,
+   when the last report returns, plus one wake per opened PR. At most two
    agents run at once on a 4-CPU host, so put the short jobs first.
 4. Before starting a batch, do lead work: review, write the next briefs,
    fix the process docs. Do not duplicate a worker's task.
 5. When the batch returns, for each worker:
    - Review its PR against the issue (Docs delta verbatim, Interface,
      Acceptance tests) and read the issue's new comments.
-   - Integrate: rebase the branch with
+   - Integrate: the integrator has stacked and checked the branches and
+     opened the PRs. Read its tier counts, then merge the PRs in stack order.
+     Without an integrator, rebase the branch with
      `git rebase main -x "mise run check"`, push it, and merge the PR
      with a merge commit (never a squash or a rebase-merge). With several
      PRs ready, use a merge train (docs/PROCESS.md, Integrate): stack
@@ -80,7 +88,18 @@ first.
   small script: the SubagentHandback tool input holds it. Never read the
   whole file.
 - When you land a fix for a red that blocks everyone, message the
-  in-flight workers (SendMessage).
+  in-flight workers (SendMessage), but never an agent a Workflow runs: its
+  hand-back then goes to you, not to the Workflow, which loses the result
+  (train 42, C1). Answer its question in a file or on the issue.
+- After a container restart, resume a Workflow by passing the finished
+  agents' results through `args` (a stage skips what `args.done` has). A
+  resume replays by call order, so editing an interrupted agent's prompt
+  re-runs every finished agent after it (train 42, batch B).
+- Every Workflow agent with a schema must end by calling StructuredOutput,
+  never by ending its turn to wait on a monitor: one schema error threw out
+  of `parallel()` and killed the integrator stage (train 42, C4). Say so in
+  the brief, and forbid the harness's thread-messaging tools
+  (`mcp__hearthbot__*`): a worker ended its turn early by calling one.
 - Before merging a codec change, run the candidate tier as well as the
   reference tier: a stricter schema can stop a Bot on what a Candidate
   sends (#20's item stack placeholder stopped every two-Bot run on
@@ -117,7 +136,9 @@ first.
   hypothesis. Its first
   increment reproduces the failure under load (a looping `mise run check`
   plus `scripts/research/probe_loop.py`) and keeps the failing Transcripts
-  (AO, #88: the lead's cause was wrong).
+  (AO, #88: the lead's cause was wrong). A flake seen under `mise run check`
+  may need parallel plays (`pytest -n 8`) inside `--stress`: one play per
+  process showed 0 of 35 where 8 side by side showed 3 of 176 (#454).
 - A design in a decision comment states what its unit tests assert: writing
   the assertion exposes a flaw before the worker builds it (#88's cap).
 - Before briefing, check a spec's acceptance tests against every ADR that

@@ -157,8 +157,25 @@ introduced it and what found it. A bug changes no label.
    wait: the harness backgrounds each after about 2 minutes and wakes the
    lead at every completion (2026-10-09 batch-wait check). A lane's next issue goes to a fresh specialist in the
    next batch, which picks up from the lane's handbook. The issue is the
-   spec; the brief adds only what the lead knows beyond it.
+   spec; the brief adds only what the lead knows beyond it. A worker opens
+   no PR: it pushes its branch and writes `pr-body.md` and `pr-title.txt` in
+   its scratch directory, and the batch's integrator opens the PRs. The lead
+   never SendMessages a Workflow agent: its hand-back goes to the lead, not
+   to the Workflow, so the Workflow loses its result (train 42). It answers a
+   question on the issue or in a file.
 3. **Integrate** the batch's PRs once it returns:
+   - **Integrator.** One integrator agent (sonnet) ends each batch's
+     Workflow. It waits for the earlier trains' PRs to merge, rebases the
+     batch's branches into a stack with
+     `git rebase -x "mise run check" --force-rebase`, runs the tiers once on
+     the top tip, and opens all PRs at the end from the workers' files. It
+     assigns each PR and unsubscribes the lead's session from it, and it
+     requests no reviewer: the PR author is the maintainer, so the request
+     fails. The lead still gets a wake per PR, within a minute of each other
+     (3 to 5 a batch in train 42). After a container restart the lead resumes the
+     Workflow by passing the finished results through `args`, so a stage
+     skips what is done. Editing an interrupted agent's prompt re-runs every
+     agent after it in call order, because a resume replays by call order.
    - Review the diff against the issue: the Docs delta applied verbatim,
      the Interface exact, the Acceptance tests present and failing
      without the code. Check that no lint, type or security rule was
@@ -220,6 +237,9 @@ Adapter/Candidate tests assert observable outcomes (chunk contents, spawn), neve
 Stress runs: <when the level asks for them or for a 20-run Self-check, each Group family's
              play time on main, so the worker can size the runs; a long family goes to a
              worker of its own>
+             A 20-play Self-check names `MSCTS_SELFCHECK_REPEAT=20`, and `repeat.py` on a live
+             selection is run as `mise exec -- uv run scripts/repeat.py`. A brief for a flaky
+             test reproduces it with parallel plays (`pytest -n 8`) inside `--stress`.
 Candidate: <main's pass count against the Candidate for the Groups touched, and its
            failure reasons, so the worker can tell its change from what main already fails>
 Done when: <observable condition, e.g. `mise run check` green + named tests exist;
@@ -259,6 +279,10 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
          `sed -i` or escaped spaces in `--format`); multi-step work goes in
          a script in the scratchpad; commit only with `mise run commit -- -F /abs/msg.txt`
          (it runs the check and commits only if green); never `git stash`.""
+Never call the harness's thread-messaging tools (`mcp__hearthbot__*`). A Workflow agent with an
+          output schema ends by calling StructuredOutput, never by ending its turn to wait on a
+          monitor. Commit subjects start with `area: `. A worker opens no PR when the batch has an
+          integrator (see Cycle, step 3).
 End with: the Worker report exactly as specified in docs/PROCESS.md; state your
           worktree path and branch name.
 ```
@@ -301,8 +325,10 @@ new classes of defect:
   commit passes `mise run check`.
 - **Your issue, your PR.** Push only your `issue-<n>-<slug>` branch and
   open one PR for it, titled like a commit subject and closing the issue
-  (`Closes #<n>`). Never push `main`, merge, or edit `docs/PROGRESS.md`
-  or `docs/PROCESS.md`. The tech lead owns them.
+  (`Closes #<n>`). When your brief names an integrator, open no PR: write
+  `pr-body.md` and `pr-title.txt` in your scratch directory instead. Never
+  push `main`, merge, or edit `docs/PROGRESS.md` or `docs/PROCESS.md`. The
+  tech lead owns them.
 - **Apply the Docs delta verbatim** in the same PR as the code, and add
   its examples to the docs check. The site must match the code at every
   commit.
@@ -367,8 +393,10 @@ new classes of defect:
 - **Commit early, push each commit.** An interrupted agent (API rate
   limit, container restart) loses a worktree that has no commits; push
   your branch after every green commit. The lead resumes an interrupted
-  worker by message. Keep research artifacts in your scratch dir, where
-  the next worker can reuse them, and a `findings.txt` there (the harness
+  worker by message (never one a Workflow still runs), and an interrupted
+  agent appends a per-commit state line to `findings.txt`. Keep research
+  artifacts in your scratch dir, where the next worker can reuse them, and
+  a `findings.txt` there (the harness
   refuses a worker's `.md` report files): append each
   verified fact (a javap line, a layout, a live observation) the moment
   you have it. A resumed or compacted worker reads it first and never
@@ -419,6 +447,20 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-23 | lead (train 42) | Workers that open their own PRs wake the lead once per PR and wait on earlier trains to merge; an integrator agent per batch stacked the branches, ran the tiers once and opened all PRs at the end (11 PRs in four batches) | **adopt**: PROCESS Cycle and Worker contract, tech-lead skill; workers push branches and write `pr-body.md` and `pr-title.txt` only |
+| 2026-10-23 | integrator (batch A) | A reviewer request to the PR author fails: the author is the maintainer | **adopt**: the integrator requests no reviewer (PROCESS Cycle, step 3) |
+| 2026-10-23 | worker (#454) | `repeat.py --times 35 --stress` on the test passed 35 of 35 on main, because one play per process barely loads the host; 3 of 176 plays came up short with parallel plays (`-n 8`) inside `--stress` | **adopt**: brief template and tech-lead skill, a flake spec reproduces with parallel plays under `--stress`; timing.md |
+| 2026-10-23 | worker (#461) | The first Self-check and stress stage ran at the default repeat of 3 and without `mise exec`, and were redone (about 30 min of lock time) | **adopt**: brief template and common.md name `MSCTS_SELFCHECK_REPEAT=20` and `mise exec -- uv run scripts/repeat.py` |
+| 2026-10-23 | lead (train 42) | Worker C4 (sonnet) ended its turn "waiting on the monitor" with no StructuredOutput; the schema error threw out of `parallel()` and killed batch C's integrator stage | **adopt**: brief template and common.md, every Workflow agent with a schema ends by calling StructuredOutput and never ends a turn waiting on a monitor |
+| 2026-10-23 | lead (train 42) | The lead SendMessaged C1; its hand-back went to the lead, not to the Workflow, so the journal had no result (a second copy of C1 ran in the same worktree) | **adopt**: PROCESS Cycle and tech-lead skill, never SendMessage a Workflow agent; answer in a file or on the issue |
+| 2026-10-23 | lead (train 42) | After a container restart, an edited prompt of an interrupted agent re-ran every finished agent after it, because a resume replays by call order | **adopt**: PROCESS Cycle and tech-lead skill, resume by passing finished results through `args` |
+| 2026-10-23 | workers (#451, #455, #462) | `git rebase --exec` on a branch already at main's tip still ran every commit's check (45 to 70 min, cut off by the background limit) | **adopt**: common.md, say so and start it detached |
+| 2026-10-23 | workers (#451, #462) | A resumed fix agent rebuilt which review items were open from commit messages and logs | **adopt**: PROCESS Worker contract and common.md, an interrupted agent writes a per-commit state line to `findings.txt` |
+| 2026-10-23 | worker (#462) | `scripts/mutate.py -x` with `-n` reported every failing mutant INVALID (exit 2): one sweep lost, about 15 min | **adopt**: common.md, `-x` is never combined with `-n` |
+| 2026-10-23 | lead (train 42) | The #476 fix agent ended its turn at 6 of 14 checks by calling a `mcp__hearthbot__` tool | **adopt**: brief template and common.md, worker prompts forbid the harness's thread-messaging tools |
+| 2026-10-23 | lead (train 42) | A sonnet worker's commit subject was "Add titles for the block_event test cases" (#442) | **adopt**: brief template and common.md, commit subjects keep the `area: ` prefix |
+| 2026-10-23 | worker (#456) | A reusable stress driver (stop at the first failing run, timestamped log, one deadline across a resume) was written fresh in a scratch directory | **defer**: filed as #472 (`repeat.py`) |
+| 2026-10-23 | worker (#476) | A bounded rc-file poll (`scripts/wait_for.py`, under 590 s) would replace each worker's own poll loop | **defer**: until a second worker asks for it |
 | 2026-10-22 | lead (train 41) | Three review rounds on #443 each found a narrower latent case; the third cost 376k tokens for doc wording and one should-fix | **adopt**: tech-lead skill, after a third review with no blocking finding the lead fixes wording and files the rest |
 | 2026-10-22 | lead (train 41) | A merge call sent in parallel with the read of its sha carried a placeholder sha (#448) | **adopt**: tech-lead skill |
 | 2026-10-22 | lead (train 41) | Live-lock waits were most of every batch's wall time (batch D 7.2 h); a 5-run stress series held the lock about 1 h three times | **defer**: a lock priority for short runs needs measurements; next lead decides whether to file it |
@@ -871,6 +913,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-23 | Workers push branches and write `pr-body.md` and `pr-title.txt`, and open no PR. One integrator agent per batch waits for earlier trains to merge, rebases the stack with `-x "mise run check" --force-rebase`, runs the tiers once on the top tip, opens all PRs at the end and unsubscribes from each; it requests no reviewer. The lead never SendMessages a Workflow agent and resumes a Workflow by passing finished results through `args`. The brief template: `MSCTS_SELFCHECK_REPEAT=20` and the `mise exec -- uv run scripts/repeat.py` form, parallel plays for a flake, no `mcp__hearthbot__` tools, StructuredOutput as the last call, the `area: ` commit prefix. common.md: `mutate.py -x` without `-n`, a state line in `findings.txt` | Train 42's retrospectives: PR noise and merge waits per PR, a Workflow that lost a result to a SendMessage and another to a resumed prompt, a worker that ended on a monitor, a flake that needed `-n 8` to show |
 | 2026-10-22 | The tech-lead skill: detach a worker's old worktree before a fix round; never send a merge with the read of its sha; after a third review with no blocking finding, the lead fixes wording itself. The brief template: a Candidate count names its revision and its command uses `mise exec --`; Protocol increments may be reordered; the brief's footer wins. Triage cites a client decode path; red-green, a hanging mutant gets a one-test selection | Train 41's retrospectives: a stale Pumpkin baseline, a lost queue turn to Java 21, two resumed workers blocked by their old worktree, a wrong issue premise, a third review round spent on wording |
 | 2026-10-21 | The lead starts each batch as one Workflow run and is woken once, when the batch returns. Workers unsubscribe the lead from each PR they open. The token target is measured, not guessed: a train meets it when its lead has at most two wakes per batch besides the maintainer's messages, and its tokens per merged PR are below 48M, the median of trains 30 to 40 (22M to 68M). Each handoff reports both | Maintainer agreed to try the batch mechanism. The 2026-10-09 target (one wake per batch, under 10M per merged PR) was never met: foreground Agent calls never waited, so every worker woke the lead (72 wakes for one batch), and the lead's own turns alone were 53M of 385M. PR subscription events were about a third of train 40's wakes |
 | 2026-10-17 | The tech-lead skill: a brief says a test is seen red first and committed with its fix, names a Self-check's node id and `mscts run` command, gives play times measured on main before a 20-run Self-check, says which revisions lack the change a tool builds on, and gives one worker two issues only when neither waits on the other's runs. The brief template's timing claim names `scripts/time_tier.py`. red-green: read a sweep log with `grep` | Train 39: a strict xfail committed from the brief's wording; a worker spent 10 min finding what to run; an unsized 20-play Self-check held the live lock 2.5 h, the second repeat of the missing play times; a worker idle 25 min in a shared worktree; #412 merged |
