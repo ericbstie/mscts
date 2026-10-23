@@ -542,6 +542,61 @@ def test_a_book_one_server_alone_sends_again_outside_the_windows_keeps_its_numbe
     assert _diff_all([*given, *removal], [*given, sent_again, *removal]) == []
 
 
+def _given_and_taken(display_id: int, group: int | None = None) -> list[Packet | str]:
+    """Planks given and taken outside the windows, as one server alone may send them."""
+    planks = Entry(PLANKS, display_id=display_id, group=group, flags=TOAST)
+    return [book_add(planks), book_remove(display_id)]
+
+
+def _planks_given(display_id: int, group: int | None = None) -> list[Packet | str]:
+    """Planks given in a window."""
+    return [OPEN, book_add(Entry(PLANKS, display_id=display_id, group=group, flags=TOAST)), CLOSE]
+
+
+def test_a_recipe_one_server_alone_gives_and_takes_outside_the_windows_shows_the_same() -> None:
+    # Review C of #462, N1: both books are empty before the window and hold planks after it.
+    assert _diff_all(_planks_given(5), [*_given_and_taken(50), *_planks_given(50)]) == []
+
+
+def test_a_recipe_one_server_alone_gave_and_took_outside_the_windows_is_removed_alike() -> None:
+    # Review C of #462, N1-removal.
+    reference = [*_planks_given(5), OPEN, book_remove(5), CLOSE]
+    candidate = [*_given_and_taken(50), *_planks_given(50), OPEN, book_remove(50), CLOSE]
+
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_recipe_one_server_alone_gave_and_took_outside_the_windows_names_no_group() -> None:
+    # Review C of #462, N1g: both buttons hold planks and sticks.
+    def sticks(display_id: int, group: int) -> list[Packet | str]:
+        return [
+            OPEN,
+            book_add(Entry(STICKS, display_id=display_id, group=group, flags=TOAST)),
+            CLOSE,
+        ]
+
+    reference = [*_planks_given(5, group=3), *sticks(6, 3)]
+    candidate = [*_given_and_taken(50, group=9), *_planks_given(50, group=9), *sticks(60, 9)]
+
+    assert _diff_all(reference, candidate) == []
+
+
+def test_a_recipe_one_server_alone_gave_and_took_outside_numbers_no_later_recipe() -> None:
+    # Review C of #462, N1u, crafting/unlocking's shape: vanilla alone unlocks planks when the
+    # log enters the inventory, and `recipe take *` takes it, both outside the windows.
+    def unlocked(planks: int, sticks: int, bread: int) -> list[Packet | str]:
+        given = [
+            Entry(each, display_id=at, flags=TOAST)
+            for each, at in ((PLANKS, planks), (STICKS, sticks), (BREAD, bread))
+        ]
+        return [
+            *[OPEN, book_add(given[1]), CLOSE, OPEN, book_remove(sticks), CLOSE],
+            *[OPEN, book_add(*given), CLOSE],
+        ]
+
+    assert _diff_all([*_given_and_taken(5), *unlocked(5, 6, 7)], unlocked(50, 60, 70)) == []
+
+
 def _given_with_a_new_id(*, group: int | None, taken_first: bool) -> list[Packet | str]:
     """Planks got outside the windows, then given again with a new id, the old one taken."""
     old, new = (Entry(PLANKS, display_id=each, group=group) for each in (5, 7))
@@ -680,6 +735,30 @@ def test_a_login_outside_the_windows_empties_the_book() -> None:
     planks = [OPEN, book_add(Entry(PLANKS, display_id=5, group=3, flags=TOAST)), CLOSE]
 
     assert _diff_all([*sticks, LOGIN, *planks], [*sticks, LOGIN, book_remove(6), *planks]) == []
+
+
+def test_a_recipe_one_server_alone_gave_before_a_login_shows_the_same_after_it() -> None:
+    # Review C of #462, N1l: the login empties the book, so it ends the planks' name too.
+    assert (
+        _diff_all(
+            [LOGIN, *_planks_given(5)], [book_add(Entry(PLANKS, 50)), LOGIN, *_planks_given(50)]
+        )
+        == []
+    )
+
+
+def test_a_login_ends_every_recipe_s_name_and_number() -> None:
+    # The lead's answer on #462: a rejoin reads as vanilla would, whatever came before it.
+    def given(*makes: int) -> list[Packet | str]:
+        entries = (Entry(each, display_id=each, flags=TOAST) for each in makes)
+        return [OPEN, book_add(*entries), CLOSE]
+
+    joined = book_add(Entry(PLANKS, display_id=PLANKS), Entry(STICKS, display_id=STICKS))
+    rejoin = [LOGIN, joined, OPEN, book_remove(PLANKS), CLOSE, *given(BREAD)]
+    before = _diff_all(given(PLANKS), given(STICKS, PLANKS))
+
+    assert before
+    assert _diff_all([*given(PLANKS), *rejoin], [*given(STICKS, PLANKS), *rejoin]) == before
 
 
 @pytest.mark.parametrize("name", [BOOK_REMOVE, BOOK_ADD])

@@ -32,6 +32,7 @@ import re
 import struct
 from array import array
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Set as AbstractSet
 from dataclasses import dataclass, replace
 from enum import Enum, StrEnum
 from functools import cache
@@ -1540,7 +1541,8 @@ display id of a recipe the book does not hold."""
 class _Numbering:
     """Keys numbered from 1 by first appearance, unless named first; no number is given twice.
 
-    A named key is written as itself. A number lasts until it ends (`end`), a name for good.
+    A named key is written as itself. A number lasts until it ends (`end`), and a name until
+    `end_names_but` leaves it out.
 
     Attributes:
         numbers: Each numbered key's number, until it ends.
@@ -1584,6 +1586,10 @@ class _Numbering:
         if key not in self.numbers:
             self.named.add(key)
 
+    def end_names_but(self, kept: AbstractSet[str]) -> None:
+        """End the name of each key not in `kept`: it takes a name or number if it comes again."""
+        self.named &= kept
+
     def end(self, key: _RecipeKey) -> None:
         """End `key`'s number, if it has one: it takes the next one if it comes again."""
         self.numbers.pop(key, None)
@@ -1623,22 +1629,27 @@ class _RecipeNumbers:
     sends one back, is serverbound, so no Comparison sees it.
 
     A display id is written as the name or number of the recipe the book holds at it, and a
-    recipe is what its entry shows (`_shown_recipe`), so neither its id nor what came before
-    decides it. A recipe the Bot first gets in a compared packet is numbered by first
-    appearance, in the order the Packets are compared (sorted, `UNORDERED`), and one it first
-    gets in a packet that is not compared is named by what it shows (`uncompared`), as an
-    entity spawned outside the windows is. A recipe keeps its name or number for the rest of
-    the Transcript, so a server that takes a recipe and gives it back, with its id or
-    another, shows the same. Recipes that show the same are written the same. An add that
-    gives an id another recipe than the one the book holds there is written `<recipe> in
-    place of <recipe>`: the client puts the new one in its place (`known.put`). An id the book
-    does not hold, in a removal, takes the next number, which the removal ends.
+    recipe is what its entry shows (`_shown_recipe`), so its id does not decide it. A recipe
+    with neither that the Bot gets in a compared packet is numbered by first appearance, in
+    the order the Packets are compared (sorted, `UNORDERED`), and one it gets in a packet
+    that is not compared is named by what it shows (`uncompared`), as an entity spawned
+    outside the windows is. A number lasts until a `login`, so a server that takes a recipe
+    and gives it back, with its id or another, shows the same. A name lasts while the book
+    holds a recipe that shows it, so a recipe one server alone gives and takes outside the
+    windows changes nothing. So what came before decides how a recipe reads only when the
+    books differed before the window: a recipe named outside the windows that one server
+    alone took before both give it again reads as a number on that side and as its name on
+    the other. Recipes that show the same are written the same. An add that gives an id
+    another recipe than the one the book holds there is written `<recipe> in place of
+    <recipe>`: the client puts the new one in its place (`known.put`). An id the book does
+    not hold, in a removal, takes the next number, which the removal ends.
 
     The book follows every packet the Bot receives, compared or not (`follow`): a
     `recipe_book_remove` takes its ids out (`ClientRecipeBook.remove`), a `recipe_book_add`
     that replaces the book empties it first (`ClientRecipeBook.clear`), and a `login` empties
     it, since the client gives the player it makes a new book
-    (`ClientPacketListener.handleLogin`).
+    (`ClientPacketListener.handleLogin`). A `login` also ends every number, and the next is
+    `#1`, so a rejoin reads the same whatever the windows before it held.
 
     A group number is written as the names and numbers of the recipes the book holds in the
     group, just after the add (`_group_names`): the client shows those recipes as one
@@ -1673,6 +1684,7 @@ class _RecipeNumbers:
         if packet.name == _RECIPE_BOOK_ADD:
             self._write_ids(copies, replaced)
             self._write_groups(copies)
+        self._end_names_gone()
 
     def uncompared(self, packet: Packet, paths: Sequence[_MaskPath]) -> None:
         """Change the book as `packet`, one not compared, changes it (`follow`); name what it adds.
@@ -1686,12 +1698,18 @@ class _RecipeNumbers:
         if packet.name == _RECIPE_BOOK_ADD:
             for held in self.book.values():
                 self.recipes.name(held.shown)
+        self._end_names_gone()
+
+    def _end_names_gone(self) -> None:
+        """End the name of each recipe the book holds none of: it is named anew if it comes back."""
+        self.recipes.end_names_but({held.shown for held in self.book.values()})
 
     def follow(self, packet: Packet, paths: Sequence[_MaskPath]) -> dict[int, str]:
         """Change the book as `packet`, compared or not, changes the client's.
 
         What a recipe added shows is read through `paths`, the Masks of `packet`
-        (`_book_entries`).
+        (`_book_entries`). A `login` also ends every name and number, and the next number
+        is `#1` again.
 
         Returns:
             Each display id at which a `recipe_book_add` put another recipe in place of the
@@ -1705,6 +1723,7 @@ class _RecipeNumbers:
             self._remove(packet.fields)
         elif packet.name == _LOGIN:
             self.book.clear()
+            self.recipes = _Numbering()
         return {}
 
     def _add(self, fields: Mapping[str, object], paths: Sequence[_MaskPath]) -> dict[int, str]:
