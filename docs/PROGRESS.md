@@ -197,7 +197,7 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ### 2026-10-23: train 42
 
-- #466, #467, #468, #474, #475, #476, #482, #483 and #484 merged in
+- #466, #467, #468, #474, #475, #476, #482, #483, #484, #485 and #486 merged in
   stack order. Workers pushed branches and opened no PR; one integrator
   per batch stacked them, re-checked every commit and ran the tiers once
   on the tip (reference tier 36 of 36 on each; candidate tier 14 of 15 on
@@ -227,6 +227,12 @@ briefs at 3–6 increments and about 1500 lines at most.
 - #483 (#442): titles for the seven `block_event` test cases.
 - #484 (#441): `scripts/research/windows.py <group id>` plays a Group once
   on vanilla and prints each window's packets.
+- #485 (#463): the respawn of `player/void`, `player/drowning` and
+  `player/fall` fails the Group when entity event 60 comes before it
+  (`Bot.respawn(fail_on=...)`), and `player/fall`'s lethal window ends on
+  the death. Review C found the first fix made a late death a mismatch,
+  which a third round fixed; `player/fall` 5 of 5 stress runs of 20.
+- #486 (#464): `player/drowning` measures `drowning.bubbles_to_death`.
 - Filed #469 (`time/sleep`: a `set_time` read between the window's open and
   the drain still counts), #470 (Groups that never stop the weather
   cycle), #471 (one description of a mismatching Self-check), #472
@@ -235,8 +241,10 @@ briefs at 3–6 increments and about 1500 lines at most.
   refusal advises a path that cannot hide an arrow's Divergence), #478
   (the low findings #474 left), #479 (`_plain` raises RecursionError on a
   deeply nested display), #480 (a recipe named outside the windows,
-  shorter than its JSON) and #481 (recipe book entries read through the
-  Masks before sorting).
+  shorter than its JSON), #481 (recipe book entries read through the
+  Masks before sorting), #487 (what a death sends after the kill packet
+  is in no window) and #488 (a late Bot reads as a late Candidate in
+  real-time checks).
 
 ### 2026-10-22: train 41
 

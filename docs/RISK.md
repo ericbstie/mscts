@@ -88,6 +88,8 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #486 | low | low | none | 0 | none: a span only; Self-check of `player/drowning` 3 of 3 on the train tip; reference tier 36 of 36 |
+| #485 | medium | high | first review, second review, third review of the fixes; the lead's diff read of the third fix round | 0, 0, 0 (should-fix: the first fix took the step out of the lethal fall window, so a Candidate killing 200 ms late became a mismatch; fixed in round 3 by ending the window on the death) | 5 of 5, each 20 of 20, of `player/fall` after round 3; mutation sweeps 6 of 6 and 8 of 8, then 10 of 10; review C's late-death probe matches from +50 ms to +3000 ms |
 | #484 | low | low | none | 0 | none: tooling; `player/fire` played live once, each of its four windows has a compared packet |
 | #483 | low | low | none | 0 | none: titles and docs only; a 5-play Pumpkin run of `redstone/*`: all 28 `block_event` test cases are in `TITLES`; no mutation sweep (table entries and prose) |
 | #482 | low | low | none | 0 | none: a recorded table in a Candidate test; the candidate tier 15 of 15 on the train's tip, with the new table (the test failed on the old one); no mutation sweep (an exact-equality pin) |
