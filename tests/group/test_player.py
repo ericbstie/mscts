@@ -32,6 +32,7 @@ from mscts.bot import HANDLED_REQUESTS, SYNC_REQUESTS
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, Outcome
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import player
+from mscts.measure import measurements
 from mscts.net import ProtocolError
 from mscts.run import judge
 from mscts.spec import Difficulty, ServerSpec
@@ -562,6 +563,32 @@ def test_drowning_ends_its_window_on_the_death_and_respawns_in_a_window_of_its_o
     )
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     assert opens[1] < respawn < closes[1]
+
+
+def test_drowning_measures_the_time_from_the_first_bubbles_to_the_death() -> None:
+    # A Candidate whose air goes down a point every other tick sends the same packets, in the
+    # same order, as vanilla: only the time it takes shows it (#464).
+    transcript, _ = play("player/drowning")
+
+    start, end = (m.t_ns for m in transcript.marks if m.label.startswith(DROWNING_SPAN))
+    bubbles = next(
+        e.t_ns
+        for e in transcript.events
+        if e.bot == "drowner" and e.packet.name == "minecraft:entity_event"
+    )
+    turned_on = next(
+        e.t_ns
+        for e in transcript.events
+        if e.packet.fields == {"command": "gamerule drowning_damage true"}
+    )
+    death = next(e.t_ns for e in transcript.events if e.packet.name == DEATH)
+    respawn_opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)][1]
+    assert bubbles <= start <= turned_on
+    assert death <= end < respawn_opens
+    assert [m.name for m in measurements(transcript)] == [DROWNING_SPAN]
+
+
+DROWNING_SPAN = "drowning.bubbles_to_death"
 
 
 def drowned(drown: Drown) -> Transcript:
