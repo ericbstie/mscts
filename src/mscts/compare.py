@@ -1317,9 +1317,8 @@ class _Context:
             else:
                 counts = [] if counts is None else counts
                 if (
-                    packet.name == "minecraft:registry_data"
+                    _registry_id(packet) == _BIOMES_REGISTRY
                     and packet.fields is not None
-                    and packet.fields.get("registry_id") == _BIOMES_REGISTRY
                     and isinstance(entries := packet.fields.get("entries"), list)
                 ):
                     counts.append(len(cast("list[object]", entries)))
