@@ -752,6 +752,11 @@ class Bot:
         return not self._closed and self._connection.state is State.PLAY
 
     @property
+    def entity_id(self) -> int | None:
+        """The player's entity id, from play's `login`; None before the Bot has read it."""
+        return self._replies.entity_id
+
+    @property
     def position(self) -> Position:
         """Where the player is and faces: the last teleport's pose, or where it moved since."""
         pose = self._replies.pose

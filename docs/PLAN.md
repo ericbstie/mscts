@@ -525,6 +525,8 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     in_play: bool                   # (property) joined, and not closed: what sync needs
     disconnected: bool              # (property) expect has returned the server's disconnect
                                     # (a Group that tests a kick takes it so)
+    entity_id: int | None           # (property, #463) the player's, from play's login;
+                                    # None before the Bot has read it (Replies.entity_id)
     position: Position              # (property) where the player is and faces: the last
                                     # teleport's pose, or where it moved since (a copy)
     entities: Entities              # (property, #27) the entities its server told it about,

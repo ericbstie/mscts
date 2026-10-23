@@ -229,6 +229,20 @@ def test_respawn_asks_then_says_it_has_loaded_once_the_first_batch_is_in() -> No
     ]
 
 
+def test_entity_id_is_the_players_from_the_login_and_none_before_it() -> None:
+    # A Group tells the Bot's own entity from another's by it, as in an entity event.
+    ids: list[int | None] = []
+
+    async def use(bot: Bot) -> None:
+        ids.append(bot.entity_id)
+        await bot.join()
+        await bot.sync()
+        ids.append(bot.entity_id)
+
+    with_bot(CODEC, Transcript(group_id="test/entity-id", server="fake"), dying_server([]), use)
+    assert ids == [None, LOGIN["entity_id"]]
+
+
 def poof(packet: Packet) -> str | None:
     if packet.name == ENTITY_EVENT and (packet.fields or {}).get("event_id") == POOF:
         return "entity event 60"
