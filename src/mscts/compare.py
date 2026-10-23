@@ -216,6 +216,8 @@ class Mask:
         path: The field path, spelled as Divergence paths are (e.g. `entity_id`,
             `players.sample[0].name`), where `[*]` is every index of a list
             (`players.sample[*].name`); or `*` (WHOLE_PACKET) for the whole packet.
+            An index is each list's own, hidden on both sides before lists are lined up,
+            so a Divergence path's arrow (`[→2]`, `[1→3]`) is refused, naming the index.
             A path that is an entity id is refused, but a path to a value that holds
             one (`set_entity_data` / `entries`), or `*`, hides the id with the rest:
             its reason is the only guard that nothing a player sees is hidden with it.
@@ -230,9 +232,10 @@ class Mask:
         """Reject a Mask that could never be right.
 
         Raises:
-            ValueError: The packet name or the reason is empty, the path is malformed or
-                not spelled as a Divergence path would be, or it is an entity id (or a
-                list of them), which every Comparison names or numbers instead (#21).
+            ValueError: The packet name or the reason is empty, the path is malformed,
+                not spelled as a Divergence path would be or has an arrow, or it is an
+                entity id (or a list of them), which every Comparison names or numbers
+                instead (#21).
         """
         if not self.packet:
             msg = "a Mask needs a packet name"
@@ -3738,10 +3741,11 @@ def _pairs(
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
     is ABSENT on the other. Lists are lined up where `lined_up` says so (`_fewest_edits`),
-    in the order of its steps: an element only one side has is at its own index, and a pair
-    at the reference's (`_Moved` if the candidate's differs). Other lists are compared
-    index by index, in path order, elements past the end of the shorter one being ABSENT.
-    Anything else is a leaf, compared as a whole.
+    in the order of its steps, and other lists are compared index by index, in path order,
+    elements past the end of the shorter one being ABSENT. An element only the reference
+    has is at its index, one only the candidate has at its own (`_Added`), and a pair at the
+    reference's (`_Moved` if the candidate's differs). Anything else is a leaf, compared as
+    a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
         for key in sorted(reference.keys() | candidate.keys()):
@@ -3751,22 +3755,29 @@ def _pairs(
         for ref_index, cand_index in _list_edits(reference, candidate, lined_up=lined_up(path)):
             if ref_index is not None and cand_index is not None:
                 values = (reference[ref_index], candidate[cand_index])
-                step = ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
-                yield from _pairs(*values, (*path, step), lined_up)
+                yield from _pairs(*values, (*path, _paired(ref_index, cand_index)), lined_up)
             elif ref_index is not None:
                 yield (*path, ref_index), reference[ref_index], ABSENT
             elif cand_index is not None:
-                yield (*path, cand_index), ABSENT, candidate[cand_index]
+                yield (*path, _Added(cand_index)), ABSENT, candidate[cand_index]
     else:
         yield path, reference, candidate
+
+
+def _paired(ref_index: int, cand_index: int) -> int:
+    """The path step of two elements compared: their index, or a `_Moved` if they differ."""
+    return ref_index if ref_index == cand_index else _Moved(ref_index, cand_index)
 
 
 class _Moved(int):
     """A list index in a path where `_pairs` compared elements at two different indexes.
 
     It is the reference's index, which Masks, test cases and `_at` go by, and it keeps the
-    candidate's, which `_render` shows next to it (`tags[2→5]`). So the path of a pair
-    is never that of an element only the candidate has, at its own index.
+    candidate's, which `_render` shows next to it (`tags[2→5]`). So the rendered path of a
+    pair is never that of an element only one side has. Unrendered, it equals its
+    reference index (`_Moved(2, 5) == 2`), as an `_Added` equals its candidate index, so a
+    set or dict keyed on unrendered paths takes either for that plain index. `masked` is the
+    only one, and it only decides which test cases a pair adds, never what differs.
     """
 
     candidate: int
@@ -3776,6 +3787,15 @@ class _Moved(int):
         step = super().__new__(cls, reference)
         step.candidate = candidate
         return step
+
+
+class _Added(int):
+    """A list index in a path where `_pairs` found an element only the candidate has.
+
+    It is the candidate's index, which `_at` and the candidate's Masks go by, and `_render`
+    writes it after an arrow (`tags[→5]`), with no reference index before it. So its
+    rendered path is never that of a pair or of an element only the reference has.
+    """
 
 
 type _Edit = tuple[int, int] | tuple[int, None] | tuple[None, int]
@@ -3833,9 +3853,12 @@ def _json_leaf(value: object) -> dict[str, str]:
 _LINE_UP_LIMIT = 1_000_000
 """The most pairs of elements `_fewest_edits` weighs between the common ends of two lists.
 
-`compare` runs on the Run's event loop, and weighing them takes about 0.4 µs and 8 bytes a
-pair: 0.4 s and 8 MB at the limit. The most pairs between the common ends of a tag list in
-a join against Pumpkin nightly 44d881c are 89,726."""
+It bounds each list, not a packet. `compare` runs on the Run's event loop, and weighing the
+pairs takes time and memory in their number and in the length of both lists: at the limit,
+0.3 s and 8 MB for 1,000 by 1,000 elements, 0.8 s and 200 MB for 1 by 10^6, and 1.8 s and
+225 MB for 10^6 by 1 (#455).
+The most pairs between the common ends of a tag list in a join against Pumpkin nightly
+44d881c are 89,726."""
 
 
 def _fewest_edits(reference: Sequence[str], candidate: Sequence[str]) -> list[_Edit]:
@@ -3935,6 +3958,8 @@ def _same(reference: _Value | Absent, candidate: _Value | Absent) -> bool:
 _IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _DOTTED_KEY = re.compile(r"\.([A-Za-z_][A-Za-z0-9_]*)")
 _INDEX = re.compile(r"\[(0|[1-9][0-9]*)\]")
+_ADDED = re.compile(r"\[→(0|[1-9][0-9]*)\]")
+_MOVED = re.compile(r"\[(0|[1-9][0-9]*)→(0|[1-9][0-9]*)\]")
 _EACH = "[*]"
 _JSON = json.JSONDecoder()
 
@@ -3944,8 +3969,9 @@ def _render(path: _MaskPath, *, index_free: bool = False) -> str:
 
     A key that is an identifier follows a dot (none at the start). Any other key is a
     JSON string in brackets, and a list index is a number in brackets, or nothing in
-    them if `index_free` (`players.sample[].name`, as test cases are named). EACH, in a
-    Mask's path, is `[*]`.
+    them if `index_free` (`players.sample[].name`, as test cases are named). A `_Moved`
+    index is both numbers (`[1→3]`), an `_Added` one an arrow and the candidate's (`[→3]`).
+    EACH, in a Mask's path, is `[*]`.
     """
     parts: list[str] = []
     for step in path:
@@ -3953,6 +3979,8 @@ def _render(path: _MaskPath, *, index_free: bool = False) -> str:
             parts.append(_EACH)
         elif isinstance(step, _Moved) and not index_free:
             parts.append(f"[{step}→{step.candidate}]")
+        elif isinstance(step, _Added) and not index_free:
+            parts.append(f"[→{step}]")
         elif isinstance(step, int):
             parts.append("[]" if index_free else f"[{step}]")
         elif _IDENTIFIER.fullmatch(step):
@@ -3967,8 +3995,26 @@ def _where(path: _Path) -> str:
 
 
 def _mask_steps(mask: Mask) -> _MaskPath:
-    """Return the steps of `mask`'s field path, where `[*]` is EACH (see `_steps`)."""
-    return _steps(mask.packet, mask.path, "Mask path", each=True)
+    """Return the steps of `mask`'s field path, where `[*]` is EACH (see `_steps`).
+
+    Raises:
+        ValueError: As `_steps` does, or the path has an arrow (`[→2]`, `[1→3]`). A Mask
+            hides each list's own index on both sides, before `_pairs` lines lists up.
+    """
+    steps = _steps(mask.packet, mask.path, "Mask path", each=True)
+    if (spelling := _render(_own_indexes(steps))) != mask.path:
+        msg = (
+            f"{mask.packet}: Mask path {mask.path!r} has an arrow, which only a Divergence "
+            "path writes; a Mask names each list's own index and hides it on both sides: "
+            f"write {spelling!r}"
+        )
+        raise ValueError(msg)
+    return steps
+
+
+def _own_indexes(path: _MaskPath) -> _MaskPath:
+    """`path` with each `_Added` or `_Moved` step as the plain index it equals."""
+    return tuple(int(step) if isinstance(step, _Added | _Moved) else step for step in path)
 
 
 def _steps(packet: str, path: str, what: str, *, each: bool = False) -> _MaskPath:
@@ -4017,10 +4063,19 @@ def _next_step(
         return None if match is None else (str(match[0]), match.end())
     if match := _DOTTED_KEY.match(text, position):
         return str(match[1]), match.end()
-    if match := _INDEX.match(text, position):
-        return int(match[1]), match.end()
     if each and text.startswith(_EACH, position):
         return EACH, position + len(_EACH)
+    return _index(text, position)
+
+
+def _index(text: str, position: int) -> tuple[int, int] | None:
+    """Read a list index at `position` as `_render` writes it (`[2]`, `[→2]`, `[1→3]`)."""
+    if match := _INDEX.match(text, position):
+        return int(match[1]), match.end()
+    if match := _ADDED.match(text, position):
+        return _Added(int(match[1])), match.end()
+    if match := _MOVED.match(text, position):
+        return _paired(int(match[1]), int(match[2])), match.end()
     return None
 
 

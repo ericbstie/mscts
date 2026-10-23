@@ -13,8 +13,13 @@ from uuid import UUID
 import pytest
 
 import mscts.compare
+from mscts.codec.packets import Packet, State
 from mscts.compare import (
     ABSENT,
+    MASKED,
+    Divergence,
+    Mask,
+    _Added,
     _Edit,
     _fewest_edits,
     _Moved,
@@ -25,6 +30,7 @@ from mscts.compare import (
     _Value,
     compare,
 )
+from mscts.compare import test_case as case_name
 from tests.compare.build import packet, transcript
 
 
@@ -69,7 +75,7 @@ def test_an_element_left_out_at_the_front_is_one_missing_element() -> None:
 
 
 def test_an_element_inserted_in_the_middle_is_one_extra_element_at_its_candidate_index() -> None:
-    assert _diff({"l": [1, 2, 3, 4]}, {"l": [1, 2, 9, 3, 4]}) == [("l[2]", ABSENT, 9)]
+    assert _diff({"l": [1, 2, 3, 4]}, {"l": [1, 2, 9, 3, 4]}) == [("l[→2]", ABSENT, 9)]
 
 
 def test_one_changed_element_in_a_long_list_is_one_change_in_place() -> None:
@@ -91,18 +97,90 @@ def test_two_elements_compared_at_different_indexes_name_both() -> None:
 def test_an_element_only_the_candidate_has_and_a_moved_pair_have_different_paths() -> None:
     # The reviews' case: named by the reference's index alone, the pair b, a was l[1] too.
     assert _diff({"l": ["a", "b"]}, {"l": ["b", "c", "a", "a"]}) == [
-        ("l[0]", ABSENT, "b"),
-        ("l[1]", ABSENT, "c"),
+        ("l[→0]", ABSENT, "b"),
+        ("l[→1]", ABSENT, "c"),
         ("l[1→3]", "b", "a"),
     ]
 
 
+def test_a_reference_only_and_a_candidate_only_element_at_one_index_have_different_paths() -> None:
+    # Review C of #449 (#455): both were l[3], the same value, one missing and one extra.
+    assert _diff({"l": [1, 1, 2, 3]}, {"l": [2, 2, 1, 3, 1, 2]}) == [
+        ("l[→0]", ABSENT, 2),
+        ("l[→1]", ABSENT, 2),
+        ("l[→3]", ABSENT, 3),
+        ("l[3]", 3, ABSENT),
+    ]
+
+
+ENTRIES = "tagged_registries[0].tags[0].entries"
+
+
+def _update_tags(entries: list[int]) -> Packet:
+    """An `update_tags` with one tag, of these entries."""
+    tag = {"tag_name": "minecraft:logs", "entries": entries}
+    fields = {"tagged_registries": [{"registry": "minecraft:block", "tags": [tag]}]}
+    return packet("minecraft:update_tags", fields=fields)
+
+
+def _entries_compared(
+    reference: list[int], candidate: list[int], *masks: Mask
+) -> tuple[Divergence, ...]:
+    """The Divergences of two `update_tags` with one tag of these entries."""
+    return compare(
+        transcript(("alice", _update_tags(reference))),
+        transcript(("alice", _update_tags(candidate))),
+        masks,
+    ).divergences
+
+
+def _masked_entries(
+    reference: list[int], candidate: list[int], mask_path: str
+) -> list[tuple[str | None, object, object]]:
+    """The Divergences of two `update_tags` with one tag of these entries, under one Mask."""
+    mask = Mask("minecraft:update_tags", mask_path, reason="a test")
+    return [
+        (d.path, d.reference, d.candidate) for d in _entries_compared(reference, candidate, mask)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"), [([1, 2], [2, 3, 1, 1]), ([1, 1, 2, 3], [2, 2, 1, 3, 1, 2])]
+)
+def test_each_path_of_a_lined_up_packet_is_its_own_and_names_its_test_case(
+    reference: list[int], candidate: list[int]
+) -> None:
+    # A path copied from a Divergence, arrows included, is a field path (review B of #455).
+    divergences = _entries_compared(reference, candidate)
+    paths = [d.path for d in divergences]
+    assert any("→" in str(path) for path in paths), paths
+    assert len(paths) == len(set(paths)), paths
+    for divergence in divergences:
+        assert case_name(State.PLAY, divergence.packet, divergence.path) == divergence.test_case
+
+
+def test_a_mask_at_the_index_of_an_element_only_the_candidate_has_hides_its_value_only() -> None:
+    # A Mask hides a value, never whether it is there: the element is still one Divergence.
+    assert _masked_entries([1, 2], [1, 2, 9], f"{ENTRIES}[2]") == [
+        (f"{ENTRIES}[→2]", ABSENT, MASKED)
+    ]
+
+
+def test_a_mask_at_an_index_hides_each_sides_element_there_before_the_lists_are_lined_up() -> None:
+    # entries[1] is 2 in the reference and 9 in the candidate. Both are hidden, so they line up
+    # as equal, and the candidate's 2 is the element only it has.
+    assert _masked_entries([1, 2], [1, 9, 2], f"{ENTRIES}[1]") == [(f"{ENTRIES}[→2]", ABSENT, 2)]
+
+
 def test_a_moved_index_names_no_index_where_indexes_are_left_out() -> None:
     assert _render(("l", _Moved(1, 3), "v"), index_free=True) == "l[].v"
+    assert _render(("l", _Added(3), "v"), index_free=True) == "l[].v"
 
 
 def test_no_two_differences_of_small_lists_share_a_path() -> None:
-    for reference, candidate in itertools.product(_small_lists(), repeat=2):
+    # The shortest lists over three values whose paths repeated before #455 are 4 against 6
+    # (84 pairs, and as many 6 against 4, its mirror). The candidate's go up to 6.
+    for reference, candidate in itertools.product(_small_lists(), _small_lists(6)):
         paths = [path for path, _, _ in _diff({"l": reference}, {"l": candidate})]
         assert len(paths) == len(set(paths)), (reference, candidate, paths)
 
@@ -116,7 +194,7 @@ def test_nested_lists_are_lined_up_too() -> None:
 def test_a_left_out_element_and_an_extra_one_at_another_place_are_one_each() -> None:
     assert _diff({"l": ["a", "b", "c", "d"]}, {"l": ["b", "c", "d", "e"]}) == [
         ("l[0]", "a", ABSENT),
-        ("l[3]", ABSENT, "e"),
+        ("l[→3]", ABSENT, "e"),
     ]
 
 
@@ -127,7 +205,7 @@ def test_a_change_and_a_left_out_element_side_by_side_compare_in_place_first() -
     ]
     assert _diff({"l": ["a", "z", "d"]}, {"l": ["a", "x", "y", "d"]}) == [
         ("l[1]", "z", "x"),
-        ("l[2]", ABSENT, "y"),
+        ("l[→2]", ABSENT, "y"),
     ]
 
 
@@ -137,7 +215,7 @@ def test_changed_elements_ahead_of_an_extra_one_are_compared_in_place() -> None:
     assert _diff(reference, candidate) == [
         ("l[0].data", None, 1),
         ("l[1].data", None, 2),
-        ("l[2]", ABSENT, {"id": "c", "data": 3}),
+        ("l[→2]", ABSENT, {"id": "c", "data": 3}),
     ]
 
 
@@ -183,9 +261,13 @@ def _differing(reference: Sequence[str], candidate: Sequence[str], edits: list[_
     return sum(i is None or j is None or reference[i] != candidate[j] for i, j in edits)
 
 
-def _small_lists() -> list[list[str]]:
-    """Every list up to length 4 over three values."""
-    return [list(items) for length in range(5) for items in itertools.product("abc", repeat=length)]
+def _small_lists(longest: int = 4) -> list[list[str]]:
+    """Every list up to length `longest` over three values."""
+    return [
+        list(items)
+        for length in range(longest + 1)
+        for items in itertools.product("abc", repeat=length)
+    ]
 
 
 def test_every_small_list_is_lined_up_in_order_in_fewest_steps_and_mirrored_by_a_swap() -> None:
@@ -234,6 +316,6 @@ def test_values_python_calls_equal_are_not_lined_up_as_equal() -> None:
 
 def test_a_reordered_list_is_its_moved_elements_left_out_and_extra() -> None:
     assert _diff({"l": [1, 2, 3, 4]}, {"l": [4, 1, 2, 3]}) == [
-        ("l[0]", ABSENT, 4),
+        ("l[→0]", ABSENT, 4),
         ("l[3]", 4, ABSENT),
     ]

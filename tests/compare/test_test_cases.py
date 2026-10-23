@@ -1,6 +1,7 @@
 """Test cases: every compared field has a name built from its packet and its path (#8)."""
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -55,6 +56,8 @@ CASES = {
         "status_response.players.sample[].name",
     ),
     "list-of-lists": Case(PLAY, "minecraft:set_health", "a[1][12].b", "set_health.a[][].b"),
+    "candidate-only-element": Case(PLAY, "minecraft:set_health", "a[→2].b", "set_health.a[].b"),
+    "moved-element": Case(PLAY, "minecraft:set_health", "a[1→3][→0]", "set_health.a[][]"),
     "status-json-list": Case(STATUS, STATUS_RESPONSE, "json_response[3]", "status_response[]"),
     # 4. A packet compared as a whole: by payload, missing or unexpected.
     "whole-packet": Case(PLAY, "minecraft:hurt_animation", None, "hurt_animation"),
@@ -104,10 +107,32 @@ def test_exactly_the_packet_ids_of_more_than_one_state_start_with_the_state() ->
     assert prefixed >= 30  # keep_alive, disconnect, custom_payload, pong_response, ...
 
 
-@pytest.mark.parametrize("path", ["", "a..b", "[0]", "a[01]", 'a["b"]', "a[-1]"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        "a..b",
+        "[0]",
+        "a[01]",
+        'a["b"]',
+        "a[-1]",
+        "a[→]",
+        "a[1→]",
+        "a[→01]",
+        "a[01→2]",
+        "a[1→2→3]",
+        "a[→1→2]",
+        "a[*]",
+    ],
+)
 def test_a_path_not_spelled_as_divergence_paths_are_is_refused(path: str) -> None:
     with pytest.raises(ValueError, match="minecraft:set_health"):
         case_name(PLAY, "minecraft:set_health", path)
+
+
+def test_a_pair_at_one_index_is_written_without_an_arrow() -> None:
+    with pytest.raises(ValueError, match=re.escape("write 'a[1]'")):
+        case_name(PLAY, "minecraft:set_health", "a[1→1]")
 
 
 # Each Divergence names the test case it was found in.

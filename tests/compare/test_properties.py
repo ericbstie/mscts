@@ -1,14 +1,16 @@
 """Properties of compare() over many seeded random Transcripts (see generate.py)."""
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 
-from mscts.codec.packets import Direction, Packet
+from mscts.codec.packets import Direction, Packet, State
 from mscts.compare import (
+    ABSENT,
     WHOLE_PACKET,
     Divergence,
     DivergenceKind,
@@ -18,6 +20,7 @@ from mscts.compare import (
     Verdict,
     compare,
 )
+from mscts.compare import test_case as case_name
 from mscts.transcript import Transcript
 from tests.compare.build import packet, transcript
 from tests.compare.generate import MASKS, random_fields, render, script, seeded
@@ -163,6 +166,33 @@ def test_every_gameplay_divergence_of_a_field_is_in_a_listed_test_case() -> None
             assert divergence.test_case in {"", *verdict.test_cases}, f"seed {seed}"
 
 
+def test_every_divergence_path_names_its_own_test_case() -> None:
+    # A path copied from a Divergence, `[→n]` included, is a valid field path (#455).
+    arrows = 0
+    for seed in SEEDS:
+        rng = seeded(seed)
+        reference, candidate = render(script(rng), rng), render(script(rng), rng)
+        states = _states(reference, candidate)
+        for d in compare(reference, candidate, MASKS if seed % 2 else ()).divergences:
+            if d.kind != "bot":
+                assert case_name(states[d.packet], d.packet, d.path) == d.test_case, f"seed {seed}"
+                arrows += "→" in str(d.path)
+    assert arrows >= 3  # not vacuous: 5 when written
+
+
+def test_no_two_divergences_of_one_pair_of_packets_share_a_path() -> None:
+    # Field Divergences, gameplay and network traffic, of one pair of packets (#455).
+    paths = 0
+    for seed in SEEDS:
+        rng = seeded(seed)
+        reference, candidate = render(script(rng), rng), render(script(rng), rng)
+        verdict = compare(reference, candidate, MASKS if seed % 2 else ())
+        keys = [(d.bot, d.index, d.path) for d in verdict.divergences if d.kind == "field"]
+        assert len(keys) == len(set(keys)), f"seed {seed}"
+        paths += len(keys)
+    assert paths >= 300  # not vacuous: 520 when written
+
+
 def test_two_runs_give_the_same_test_cases_however_the_format_differed() -> None:
     # Re-runs of one Script differ in masked values, ambient packets, interleaving and
     # how the status JSON is spelled. A network traffic difference adds no test case (#330),
@@ -183,6 +213,11 @@ def test_two_runs_give_the_same_test_cases_however_the_format_differed() -> None
 
 def _alice(sent: Sequence[Packet]) -> Transcript:
     return transcript(*(("alice", each) for each in sent))
+
+
+def _states(*transcripts: Transcript) -> dict[str, State]:
+    """The State each packet name of these Transcripts is in."""
+    return {event.packet.name: event.packet.state for each in transcripts for event in each.events}
 
 
 def _every_leaf_changed(value: object) -> object:
@@ -226,12 +261,31 @@ def _mirror(
                 d,
                 index=to_candidate[d.index] if d.kind == "field" else d.index,
                 kind=_MIRRORED_KIND[d.kind],
+                path=_mirrored_path(d),
                 reference=d.candidate,
                 candidate=d.reference,
             )
             for d in own
         )
     return mirrored
+
+
+def _mirrored_path(divergence: Divergence) -> str | None:
+    """`divergence`'s path with the sides swapped: `l[2]` only one side has, `l[→2]` the other.
+
+    It mirrors `_render`'s three index forms, `[n]`, `[→n]` and `[r→c]`, and reads the side
+    from ABSENT. So it holds only for packets with no `_SHOWN` hook, which can show ABSENT
+    as text: generate.py's toy and status packets have none.
+    """
+    path = divergence.path
+    if path is None:
+        return None
+    path = re.sub(r"\[(\d+)→(\d+)\]", r"[\2→\1]", path)
+    if divergence.candidate is ABSENT:
+        return re.sub(r"\[(\d+)\]$", r"[→\1]", path)
+    if divergence.reference is ABSENT:
+        return re.sub(r"\[→(\d+)\]$", r"[\1]", path)
+    return path
 
 
 _MIRRORED_KIND: dict[str, DivergenceKind] = {

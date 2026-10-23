@@ -1594,7 +1594,10 @@ class Mask:
     reason: str
     # ValueError at construction: an empty packet or reason (blank counts as empty), a
     # malformed path, or a path not spelled exactly as a Divergence path would be (the
-    # message gives the spelling), so a path copied from a Divergence is always valid.
+    # message gives the spelling), so a path copied from a Divergence is valid, unless it
+    # has an arrow (`[→2]`, `[1→3]`): a Mask's index is each list's own, hidden on both
+    # sides before lists are lined up, and the message gives the path to write (`[2]`,
+    # `[1]`), which hides that index in both lists (#455).
     # Also a path that is an entity id of the clientbound packet in any State, or a
     # list of them (`Codec.entity_id_paths`; a list index fits EACH, and a Variant is
     # no step of a path): every Comparison names or numbers those instead, and the message
@@ -1766,12 +1769,15 @@ def compare(reference: Transcript, candidate: Transcript,
     # (16) before the first byte that differs, down to a multiple of 16, after
     # `(N bytes before)`.
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
-    # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`.
+    # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`. An element
+    # only the candidate has is `[→3]`, a pair at two indexes `[1→3]` (#455).
 
 def test_case(state: State, packet: str, path: str | None) -> str: ...
     # The name of the test case that compares `path` (spelled as a Divergence path; None
     # for the packet as a whole) of the clientbound `packet` in `state`, by the scheme in
     # Comparison semantics: `status_response.players.sample[].name`, `play:keep_alive.id`.
+    # `test_case(state, d.packet, d.path) == d.test_case` for every Divergence `d` but a
+    # `bot` one or a tick one (at `TICK_PATH`), arrows included.
     # ValueError if `path` is malformed or not spelled as a Divergence path would be.
 ```
 
@@ -2709,13 +2715,13 @@ proves it necessary:
    the smaller element is the one on its own, whichever side it is on,
    so swapping the sides mirrors the result; the common prefix and
    suffix are paired as they stand. An element only one side has is one
-   Divergence at its index in its own list, `ABSENT` on the other side.
+   Divergence at its index in its own list, `ABSENT` on the other side;
+   in every list, the Divergence path writes the index of an element only
+   the candidate has after an arrow (`tags[→3]`, `compare._Added`).
    A pair is compared at the reference's index, which Masks and test
    cases go by; when the candidate's index differs, the Divergence path
-   shows both (`tags[1→3]`, `compare._Moved`), so a pair never shares a
-   path with an element only one side has. An element only the reference
-   has and one only the candidate has can still show at the same index
-   (#455). So `a, b, c,
+   shows both (`tags[1→3]`, `compare._Moved`). No two Divergences of one
+   pair of matched packets therefore share a path (#455). So `a, b, c,
    d` against `b, c, d` is one Divergence, `a` left out, where comparing
    index by index gave four, and the tags, which `UNORDERED` sorts, are
    compared as a multiset. In a join against Pumpkin nightly 44d881c, the 521 tags
@@ -2725,12 +2731,23 @@ proves it necessary:
    index by index, because they are read at one path on both sides. A
    unit test checks every pair of
    lists up to length 4 over 3 values: in order, in the fewest steps, and
-   mirrored by a swap. The cost is O(n·m) time and memory between the
+   mirrored by a swap. Another checks every reference list up to length 4
+   against every candidate list up to length 6 for a repeated path: the
+   shortest lists whose paths repeated before #455 are 4 against 6. A
+   property checks whole pairs of packets over random Transcripts, but no
+   packet it makes has a lined-up list, so it does not reach #455's case. The
+   cost is O(n·m) time and memory between the
    common prefix and suffix, as for the packet alignment, and the
-   Comparison runs on the Run's event loop. So where there are more
+   Comparison runs on the Run's event loop. So where a list has more
    than a million pairs of elements in between
-   (`compare._LINE_UP_LIMIT`, 0.4 s and 8 MB), those elements are
-   compared index by index instead. An element
+   (`compare._LINE_UP_LIMIT`), those elements are
+   compared index by index instead. The limit applies to each list, not
+   to a packet, so every tag of an `update_tags` can take up to it. Lining
+   up costs time and memory in the number of pairs and in the length of
+   both lists: at the limit, 1,000 against 1,000 elements took 0.3 s and
+   8 MB, 1 against a million 0.8 s and 200 MB, and a million against 1
+   1.8 s and 225 MB (#455, on 4 CPUs under load). Compared whole, either
+   skewed list took up to 4.5 s lined up and 2.5 s index by index. An element
    that both moved and changed, next to elements one side added, can be
    compared with a neighbour rather than its counterpart: the alignment
    knows only whether two elements are equal, not how alike they are.

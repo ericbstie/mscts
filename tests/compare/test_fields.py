@@ -53,8 +53,8 @@ def test_a_field_only_one_side_has_is_absent_on_the_other() -> None:
 
 def test_elements_past_the_end_of_a_list_are_absent() -> None:
     assert _diff({"l": [1, 2]}, {"l": [1, 2, 3, 4]}) == [
-        ("l[2]", ABSENT, 3),
-        ("l[3]", ABSENT, 4),
+        ("l[→2]", ABSENT, 3),
+        ("l[→3]", ABSENT, 4),
     ]
 
 

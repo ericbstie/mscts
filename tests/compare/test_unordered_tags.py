@@ -91,7 +91,7 @@ def test_a_tag_only_the_candidate_sends_is_one_divergence_whatever_follows_it() 
         divergence(
             "field",
             packet="minecraft:update_tags",
-            path="tagged_registries[0].tags[0]",
+            path="tagged_registries[0].tags[→0]",
             candidate={"tag_name": "c:barrels", "entries": [7]},
             test_case="configuration:update_tags.tagged_registries[].tags[]",
         ),
@@ -103,7 +103,7 @@ def test_a_tag_compared_after_an_extra_one_names_both_its_indexes() -> None:
     divergences = _compare(State.CONFIGURATION, [BLOCK], [changed])
     assert [(d.path, d.reference, d.candidate, d.test_case) for d in divergences] == [
         (
-            "tagged_registries[0].tags[0]",
+            "tagged_registries[0].tags[→0]",
             ABSENT,
             {"tag_name": "c:barrels", "entries": [7]},
             "configuration:update_tags.tagged_registries[].tags[]",
