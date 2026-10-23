@@ -170,7 +170,7 @@ def test_a_field_mask_on_a_list_element_keeps_it_in_the_list() -> None:
 
 def test_a_field_mask_on_an_index_past_the_end_hides_nothing_there() -> None:
     assert _fields_diff({"l": [1, 2]}, {"l": [1, 2, 3]}, _mask("l[2]")) == [
-        ("l[2]", ABSENT, MASKED)
+        ("l[→2]", ABSENT, MASKED)
     ]
 
 
@@ -188,7 +188,7 @@ def test_a_star_index_hides_values_but_not_whether_they_are_there() -> None:
     assert _fields_diff(reference, candidate, _mask("l[*].id")) == [
         ("l[1].id", None, MASKED),
         ("l[2].id", MASKED, ABSENT),
-        ("l[3]", ABSENT, {"id": MASKED}),
+        ("l[→3]", ABSENT, {"id": MASKED}),
     ]
 
 

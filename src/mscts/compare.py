@@ -3738,10 +3738,11 @@ def _pairs(
 
     Mappings are compared key by key, in sorted key order, and a key only one side has
     is ABSENT on the other. Lists are lined up where `lined_up` says so (`_fewest_edits`),
-    in the order of its steps: an element only one side has is at its own index, and a pair
-    at the reference's (`_Moved` if the candidate's differs). Other lists are compared
-    index by index, in path order, elements past the end of the shorter one being ABSENT.
-    Anything else is a leaf, compared as a whole.
+    in the order of its steps, and other lists are compared index by index, in path order,
+    elements past the end of the shorter one being ABSENT. An element only the reference
+    has is at its index, one only the candidate has at its own (`_Added`), and a pair at the
+    reference's (`_Moved` if the candidate's differs). Anything else is a leaf, compared as
+    a whole.
     """
     if isinstance(reference, dict) and isinstance(candidate, dict):
         for key in sorted(reference.keys() | candidate.keys()):
@@ -3756,7 +3757,7 @@ def _pairs(
             elif ref_index is not None:
                 yield (*path, ref_index), reference[ref_index], ABSENT
             elif cand_index is not None:
-                yield (*path, cand_index), ABSENT, candidate[cand_index]
+                yield (*path, _Added(cand_index)), ABSENT, candidate[cand_index]
     else:
         yield path, reference, candidate
 
@@ -3776,6 +3777,15 @@ class _Moved(int):
         step = super().__new__(cls, reference)
         step.candidate = candidate
         return step
+
+
+class _Added(int):
+    """A list index in a path where `_pairs` found an element only the candidate has.
+
+    It is the candidate's index, which `_at` and the candidate's Masks go by, and `_render`
+    writes it after an arrow (`tags[→5]`), with no reference index before it. So its
+    rendered path is never that of a pair or of an element only the reference has.
+    """
 
 
 type _Edit = tuple[int, int] | tuple[int, None] | tuple[None, int]
@@ -3944,8 +3954,9 @@ def _render(path: _MaskPath, *, index_free: bool = False) -> str:
 
     A key that is an identifier follows a dot (none at the start). Any other key is a
     JSON string in brackets, and a list index is a number in brackets, or nothing in
-    them if `index_free` (`players.sample[].name`, as test cases are named). EACH, in a
-    Mask's path, is `[*]`.
+    them if `index_free` (`players.sample[].name`, as test cases are named). A `_Moved`
+    index is both numbers (`[1→3]`), an `_Added` one an arrow and the candidate's (`[→3]`).
+    EACH, in a Mask's path, is `[*]`.
     """
     parts: list[str] = []
     for step in path:
@@ -3953,6 +3964,8 @@ def _render(path: _MaskPath, *, index_free: bool = False) -> str:
             parts.append(_EACH)
         elif isinstance(step, _Moved) and not index_free:
             parts.append(f"[{step}→{step.candidate}]")
+        elif isinstance(step, _Added) and not index_free:
+            parts.append(f"[→{step}]")
         elif isinstance(step, int):
             parts.append("[]" if index_free else f"[{step}]")
         elif _IDENTIFIER.fullmatch(step):

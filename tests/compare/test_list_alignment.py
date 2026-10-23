@@ -69,7 +69,7 @@ def test_an_element_left_out_at_the_front_is_one_missing_element() -> None:
 
 
 def test_an_element_inserted_in_the_middle_is_one_extra_element_at_its_candidate_index() -> None:
-    assert _diff({"l": [1, 2, 3, 4]}, {"l": [1, 2, 9, 3, 4]}) == [("l[2]", ABSENT, 9)]
+    assert _diff({"l": [1, 2, 3, 4]}, {"l": [1, 2, 9, 3, 4]}) == [("l[→2]", ABSENT, 9)]
 
 
 def test_one_changed_element_in_a_long_list_is_one_change_in_place() -> None:
@@ -91,9 +91,19 @@ def test_two_elements_compared_at_different_indexes_name_both() -> None:
 def test_an_element_only_the_candidate_has_and_a_moved_pair_have_different_paths() -> None:
     # The reviews' case: named by the reference's index alone, the pair b, a was l[1] too.
     assert _diff({"l": ["a", "b"]}, {"l": ["b", "c", "a", "a"]}) == [
-        ("l[0]", ABSENT, "b"),
-        ("l[1]", ABSENT, "c"),
+        ("l[→0]", ABSENT, "b"),
+        ("l[→1]", ABSENT, "c"),
         ("l[1→3]", "b", "a"),
+    ]
+
+
+def test_a_reference_only_and_a_candidate_only_element_at_one_index_have_different_paths() -> None:
+    # Review C of #449 (#455): both were l[3], the same value, one missing and one extra.
+    assert _diff({"l": [1, 1, 2, 3]}, {"l": [2, 2, 1, 3, 1, 2]}) == [
+        ("l[→0]", ABSENT, 2),
+        ("l[→1]", ABSENT, 2),
+        ("l[→3]", ABSENT, 3),
+        ("l[3]", 3, ABSENT),
     ]
 
 
@@ -116,7 +126,7 @@ def test_nested_lists_are_lined_up_too() -> None:
 def test_a_left_out_element_and_an_extra_one_at_another_place_are_one_each() -> None:
     assert _diff({"l": ["a", "b", "c", "d"]}, {"l": ["b", "c", "d", "e"]}) == [
         ("l[0]", "a", ABSENT),
-        ("l[3]", ABSENT, "e"),
+        ("l[→3]", ABSENT, "e"),
     ]
 
 
@@ -127,7 +137,7 @@ def test_a_change_and_a_left_out_element_side_by_side_compare_in_place_first() -
     ]
     assert _diff({"l": ["a", "z", "d"]}, {"l": ["a", "x", "y", "d"]}) == [
         ("l[1]", "z", "x"),
-        ("l[2]", ABSENT, "y"),
+        ("l[→2]", ABSENT, "y"),
     ]
 
 
@@ -137,7 +147,7 @@ def test_changed_elements_ahead_of_an_extra_one_are_compared_in_place() -> None:
     assert _diff(reference, candidate) == [
         ("l[0].data", None, 1),
         ("l[1].data", None, 2),
-        ("l[2]", ABSENT, {"id": "c", "data": 3}),
+        ("l[→2]", ABSENT, {"id": "c", "data": 3}),
     ]
 
 
@@ -234,6 +244,6 @@ def test_values_python_calls_equal_are_not_lined_up_as_equal() -> None:
 
 def test_a_reordered_list_is_its_moved_elements_left_out_and_extra() -> None:
     assert _diff({"l": [1, 2, 3, 4]}, {"l": [4, 1, 2, 3]}) == [
-        ("l[0]", ABSENT, 4),
+        ("l[→0]", ABSENT, 4),
         ("l[3]", 4, ABSENT),
     ]

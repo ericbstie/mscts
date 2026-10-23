@@ -1,6 +1,7 @@
 """Properties of compare() over many seeded random Transcripts (see generate.py)."""
 
 import os
+import re
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -9,6 +10,7 @@ from pathlib import Path
 
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import (
+    ABSENT,
     WHOLE_PACKET,
     Divergence,
     DivergenceKind,
@@ -226,12 +228,26 @@ def _mirror(
                 d,
                 index=to_candidate[d.index] if d.kind == "field" else d.index,
                 kind=_MIRRORED_KIND[d.kind],
+                path=_mirrored_path(d),
                 reference=d.candidate,
                 candidate=d.reference,
             )
             for d in own
         )
     return mirrored
+
+
+def _mirrored_path(divergence: Divergence) -> str | None:
+    """`divergence`'s path with the sides swapped: `l[2]` only one side has, `l[→2]` the other."""
+    path = divergence.path
+    if path is None:
+        return None
+    path = re.sub(r"\[(\d+)→(\d+)\]", r"[\2→\1]", path)
+    if divergence.candidate is ABSENT:
+        return re.sub(r"\[(\d+)\]$", r"[→\1]", path)
+    if divergence.reference is ABSENT:
+        return re.sub(r"\[→(\d+)\]$", r"[\1]", path)
+    return path
 
 
 _MIRRORED_KIND: dict[str, DivergenceKind] = {

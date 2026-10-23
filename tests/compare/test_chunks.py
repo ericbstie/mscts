@@ -1144,7 +1144,7 @@ def test_network_traffic_compares_the_arrays_sent_index_by_index() -> None:
         if d.path and d.path.startswith("light.block_light_arrays")
     ] == [
         ("light.block_light_arrays[0]", FULL, DARK),
-        ("light.block_light_arrays[1]", ABSENT, FULL),
+        ("light.block_light_arrays[→1]", ABSENT, FULL),
     ]
 
 
@@ -1216,7 +1216,7 @@ def test_a_light_section_past_a_chunks_height_is_no_such_light_section() -> None
     verdict = verdict_of(chunk(), chunk([*overworld(FLAT_BOTTOM), AIR_SECTION]))
 
     shown = {d.path: (d.reference, d.candidate) for d in verdict.divergences}
-    assert shown["light.sky[26]"] == (
+    assert shown["light.sky[→26]"] == (
         "chunk 0 0 (y from the world's bottom), y 400 to 415: no such light section",
         "chunk 0 0 (y from the world's bottom), y 400 to 415: not sent",
     )
@@ -1434,17 +1434,17 @@ def test_sections_past_the_most_a_level_has_are_one_value() -> None:
     verdict = verdict_of(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 19976]))
 
     shown = {d.path: d.candidate for d in verdict.divergences}
-    assert shown["sections[254]"] == "19746 more sections"
-    assert "sections[255]" not in shown
-    assert "light.sky[256]" not in shown
+    assert shown["sections[→254]"] == "19746 more sections"
+    assert "sections[→255]" not in shown
+    assert "light.sky[→256]" not in shown
     assert len(verdict.divergences) <= 3 * 254
 
 
 def test_as_many_sections_as_the_most_a_level_has_are_each_compared() -> None:
     verdict = verdict_of(chunk(), chunk([*overworld(FLAT_BOTTOM), *[AIR_SECTION] * 230]))
 
-    assert "sections[253]" in {d.path for d in verdict.divergences}
-    assert "sections[254]" not in {d.path for d in verdict.divergences}
+    assert "sections[→253]" in {d.path for d in verdict.divergences}
+    assert "sections[→254]" not in {d.path for d in verdict.divergences}
 
 
 def test_light_arrays_past_the_most_a_level_has_are_one_value() -> None:
@@ -1455,8 +1455,8 @@ def test_light_arrays_past_the_most_a_level_has_are_one_value() -> None:
 
     assert _network_traffic_only(verdict)
     shown = {d.path: d.candidate for d in verdict.divergences}
-    assert shown["light.sky_light_arrays[256]"] == "745 more arrays"
-    assert "light.sky_light_arrays[257]" not in shown
+    assert shown["light.sky_light_arrays[→256]"] == "745 more arrays"
+    assert "light.sky_light_arrays[→257]" not in shown
 
 
 def test_light_update_arrays_past_the_most_a_level_has_are_one_value() -> None:
@@ -1467,7 +1467,7 @@ def test_light_update_arrays_past_the_most_a_level_has_are_one_value() -> None:
 
     assert _network_traffic_only(verdict)
     assert {d.path: d.candidate for d in verdict.divergences}[
-        "data.sky_light_arrays[256]"
+        "data.sky_light_arrays[→256]"
     ] == "745 more arrays"
 
 
