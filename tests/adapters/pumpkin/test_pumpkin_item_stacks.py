@@ -3,7 +3,8 @@
 A record, not a requirement: the Candidate is not the Codec's authority (ADR-0001). An
 operator Bot is given every stack in tests/support/gives.py, the same ones the Reference
 test plays (tests/reference/test_item_stacks_reference.py), and each is sorted by what
-arrives for it. When Pumpkin changes, the first test fails with the new lists to record.
+arrives for it. When Pumpkin changes, the first test fails, naming the build the lists were
+recorded against and the build installed, with the new lists to record.
 
 A stack in bytes the Codec rejects ends the Bot's reading, whichever packet carries it, and
 stays in the operator's inventory for the next Bot to meet as it joins: that Bot sends the
@@ -28,6 +29,8 @@ from support.gives import (
 )
 from support.reference import booted
 
+from mscts import install
+from mscts.adapters.base import Build
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.bot import Bot
 from mscts.codec.packets import CodecError, Packet
@@ -36,7 +39,8 @@ from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
-pytestmark = pytest.mark.candidate
+RECORDED_AGAINST = Build(version="nightly", commit="b57d821")
+"""The Pumpkin build the three tables below were recorded against."""
 
 MALFORMED = frozenset(
     {
@@ -109,6 +113,31 @@ def _classify(give: Give, payloads: list[bytes]) -> tuple[str, tuple[str, ...]]:
     return "decoded", give.added
 
 
+def _mismatch_message(
+    installed: Build | None,
+    malformed: frozenset[str],
+    silent: frozenset[str],
+    different: dict[str, tuple[str, ...]],
+) -> str:
+    """The failure text: both builds, then the tables as `installed` gave them, to record."""
+    built = "an unknown build" if installed is None else str(installed)
+    return (
+        f"recorded against Pumpkin {RECORDED_AGAINST}, installed: Pumpkin {built}\n"
+        f"to record:\nMALFORMED = {sorted(malformed)}\nSILENT = {sorted(silent)}\n"
+        f"DIFFERENT = {different}"
+    )
+
+
+def test_a_mismatch_names_the_build_recorded_against_and_the_build_installed() -> None:
+    installed = Build(version="nightly", commit="1234567890abcdef1234567890abcdef12345678")
+    message = _mismatch_message(installed, frozenset({"lock"}), frozenset(), {"waxed": ("a",)})
+    assert message == (
+        f"recorded against Pumpkin {RECORDED_AGAINST}, installed: Pumpkin nightly 1234567\n"
+        "to record:\nMALFORMED = ['lock']\nSILENT = []\nDIFFERENT = {'waxed': ('a',)}"
+    )
+
+
+@pytest.mark.candidate
 @pytest.mark.asyncio
 @pytest.mark.timeout(300)
 async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
@@ -135,12 +164,13 @@ async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
     malformed = frozenset(label for label, (kind, _) in outcomes.items() if kind == "malformed")
     silent = frozenset(label for label, (kind, _) in outcomes.items() if kind == "silent")
     different = {label: names for label, (kind, names) in outcomes.items() if kind == "different"}
-    assert (malformed, silent, different) == (MALFORMED, SILENT, DIFFERENT), (
-        f"to record:\nMALFORMED = {sorted(malformed)}\nSILENT = {sorted(silent)}\n"
-        f"DIFFERENT = {different}"
+    source = install.require(PumpkinAdapter(), TARGET, cache_dir).source
+    assert (malformed, silent, different) == (MALFORMED, SILENT, DIFFERENT), _mismatch_message(
+        None if source is None else source.build, malformed, silent, different
     )
 
 
+@pytest.mark.candidate
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
 async def test_pumpkin_never_answers_a_give_of_a_component_with_a_slash_in_its_name(
