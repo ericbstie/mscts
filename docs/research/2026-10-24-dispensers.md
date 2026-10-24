@@ -24,7 +24,7 @@ and the click of an empty one are in docs/research/2026-10-22-pistons.md.
   slots. With one non-empty slot it is always that slot (`nextInt(1)` is 0), whichever slot it
   is. With none it answers -1.
 - `DispenserBlock.dispenseFrom` and `DropperBlock.dispenseFrom`: on -1, world event 1001 (the
-  click) and nothing else.
+  click). The dispenser also emits the game event `BLOCK_ACTIVATE`, which sends no packet.
 
 ## A dropper into a container
 
@@ -58,6 +58,10 @@ and the click of an empty one are in docs/research/2026-10-22-pistons.md.
   dimension where water evaporates plays a sound with a random pitch.
 - `LiquidBlock.onPlace` schedules the water's fluid tick 5 ticks on. A source with solid blocks
   on every side but the dispenser's flows nowhere when it ticks.
+- A change to a neighbour's state while the water is there, such as the dispenser's
+  `triggered` (flags 2 still updates neighbour shapes, `Level.setBlock`), schedules another
+  fluid tick 5 ticks on (`LiquidBlock.updateShape`). On the power of tick 12 it is due on 17,
+  after the pickup, and does nothing on air (`ServerLevel.tickFluid`).
 - `DispenseItemBehavior$4` (the empty bucket) picks up the fluid in front
   (`BucketPickup.pickupBlock`; `LiquidBlock.pickupBlock` sets air with flags 11 and plays no
   sound), and the stack becomes a water bucket. With nothing to pick up, it drops the bucket.
