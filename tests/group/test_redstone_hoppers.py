@@ -275,11 +275,11 @@ async def test_transfer_builds_a_chest_over_a_hopper_into_a_hopper_into_a_chest(
     source = (
         '{Items:[{Slot:0b,id:"minecraft:stone",count:1},{Slot:2b,id:"minecraft:oak_log",count:2}]}'
     )
-    dirt = '{Items:[{Slot:1b,id:"minecraft:dirt",count:1}]}'
+    upper = '{Items:[{Slot:1b,id:"minecraft:dirt",count:1},{Slot:3b,id:"minecraft:sand",count:2}]}'
 
     assert first[5:] == (
         "setblock 5 -60 8 minecraft:hopper[facing=east]",
-        f"setblock 4 -60 8 minecraft:hopper[facing=east]{dirt}",
+        f"setblock 4 -60 8 minecraft:hopper[facing=east]{upper}",
         f"setblock 4 -59 8 minecraft:chest{source}",
         "setblock 6 -60 8 minecraft:chest",
         "tp source 3.5 -60 6.5",
@@ -304,12 +304,12 @@ async def test_transfer_opens_the_source_both_hoppers_and_the_target() -> None:
 
 @pytest.mark.asyncio
 async def test_transfer_steps_until_the_lower_hoppers_last_push_has_shown() -> None:
-    # The lower hopper pushes its last log on tick 32. The target's menu sends it in the next
+    # The lower hopper pushes its last sand on tick 48. The target's menu sends it in the next
     # server tick, which runs before the step's barrier ends.
     _, stepped = (await play(TRANSFER)).play.windows
 
-    assert stepped.commands == steps(32)
-    assert stepped.ticks == 32
+    assert stepped.commands == steps(48)
+    assert stepped.ticks == 48
 
 
 # `redstone/hopper-full`

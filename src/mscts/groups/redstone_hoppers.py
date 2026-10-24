@@ -106,13 +106,13 @@ def _holding(block: str, *stacks: tuple[int, str, int]) -> str:
 
 _TRANSFER_BUILD = (
     on_grass(5, 8, "hopper[facing=east]"),
-    on_grass(4, 8, _holding("hopper[facing=east]", (1, "dirt", 1))),
+    on_grass(4, 8, _holding("hopper[facing=east]", (1, "dirt", 1), (3, "sand", 2))),
     _setblock(4, -59, 8, _holding("chest", (0, "stone", 1), (2, "oak_log", 2))),
     on_grass(6, 8, "chest"),
 )
 """The lower hopper is set first, so that it ticks first in each tick (`Level.tickBlockEntities`
 ticks block entities in the order they were added). The upper hopper holds a dirt in its slot
-1; the source a stone in slot 0 and 2 logs in slot 2, with slot 1 empty."""
+1 and 2 sand in slot 3; the source a stone in slot 0 and 2 logs in slot 2, with slot 1 empty."""
 
 _TRANSFER_OPENERS = (
     _Opener("source", "3.5 -60 6.5", (4, -59, 8)),
@@ -121,16 +121,17 @@ _TRANSFER_OPENERS = (
     _Opener("target", "7.5 -60 6.5", (6, -60, 8)),
 )
 
-_TRANSFER_TICKS = 32
+_TRANSFER_TICKS = 48
 """A hopper pushes first, from its first slot that holds anything, then pulls one item from the
 first slot of the container above that holds anything, into its own first slot that takes it;
 then it waits 8 ticks (`HopperBlockEntity.tryMoveItems`). A hopper that another fills while it
 is empty waits 8 ticks too, or 7 if it has ticked already in this tick, so the lower hopper
 pushes 7 ticks after the upper one fills it (`tryMoveInItem`). The upper hopper pushes its dirt
 and pulls the stone on tick 1, then pushes the stone and pulls a log on tick 9, and pushes and
-pulls a log on tick 17, its slot 0 holding one log before and after, and pushes the last log on
-tick 25. The lower hopper pushes each into the target on ticks 8, 16, 24 and 32: the dirt, the
-stone, and two logs into one stack."""
+pulls a log on tick 17, its slot 0 holding one log before and after. It pushes the last log on
+tick 25, while its sand waits in slot 3, then a sand on ticks 33 and 41. The lower hopper pushes
+each into the target on ticks 8, 16, 24, 32, 40 and 48: the dirt, the stone, two logs into one
+stack and two sand into another."""
 
 
 @group("redstone/hopper-transfer", kind=GroupKind.TICK_EXACT)
