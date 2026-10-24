@@ -17,6 +17,7 @@ import time
 import types
 import uuid
 from collections.abc import Callable, Iterator, Sequence
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -418,6 +419,24 @@ def test_stress_does_not_run_while_the_series_waits_for_the_lock(tmp_path: Path)
         assert series.runs() == [f"locked 1 {process.pid}"]
 
 
+def test_a_live_lock_series_that_waited_past_its_deadline_starts_no_run(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        series.cache.mkdir()
+        deadline = datetime.now(UTC) + timedelta(seconds=8)
+        with (series.cache / "live-tier.lock").open("w") as other_holder:
+            fcntl.flock(other_holder, fcntl.LOCK_EX)
+            other_holder.write(f"{os.getpid()}\n")
+            other_holder.flush()
+            process = start("--live-lock", "--deadline", deadline.isoformat())
+            assert process.stderr is not None
+            ready, _, _ = select.select([process.stderr], [], [], 10)
+            assert ready, "the series did not say it was waiting"
+            assert process.stderr.readline().startswith("waiting for another live tier")
+            time.sleep(max(0.0, (deadline - datetime.now(UTC)).total_seconds()) + 0.2)
+        assert _finish(process) == 3
+        assert series.runs() == []
+
+
 def test_an_interrupted_series_keeps_the_holders_pid_in_place(tmp_path: Path) -> None:
     with _series(tmp_path) as (series, start):
         series.cache.mkdir()
@@ -459,3 +478,373 @@ def test_killing_a_series_keeps_the_lock_until_its_run_exits(tmp_path: Path) -> 
                     time.sleep(0.01)
                 else:
                     break
+
+
+# -- --stop-at-first-failure: the series ends there and its output is kept (#472) ------
+
+
+def test_parse_args_reads_stop_at_first_failure_and_its_log(repeat: types.ModuleType) -> None:
+    default = repeat.parse_args(["--", "tests/"])
+    assert default.stop_at_first_failure is False
+    named = repeat.parse_args(
+        ["--stop-at-first-failure", "--failure-log", "first.log", "--", "tests/"]
+    )
+    assert named.stop_at_first_failure is True
+    assert named.failure_log == Path("first.log")
+
+
+def test_a_series_stops_after_its_first_failing_run(repeat: types.ModuleType) -> None:
+    outcomes: list[tuple[int, frozenset[str]]] = [
+        (0, frozenset()),
+        (1, frozenset({"t"})),
+        (0, frozenset()),
+    ]
+
+    def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        return outcomes.pop(0)
+
+    rules = repeat.SeriesRules(stop_at_first_failure=True)
+    result = repeat.run_repeats("uv", ("tests/",), 3, run=fake_run, rules=rules)
+
+    assert (result.passed, result.failed) == (1, 1)
+    assert outcomes == [(0, frozenset())]  # the third run never started
+
+
+def test_a_series_without_the_flag_goes_on_after_a_failing_run(repeat: types.ModuleType) -> None:
+    outcomes: list[tuple[int, frozenset[str]]] = [(1, frozenset()), (0, frozenset())]
+
+    def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        return outcomes.pop(0)
+
+    result = repeat.run_repeats("uv", ("tests/",), 2, run=fake_run)
+
+    assert (result.passed, result.failed) == (1, 1)
+
+
+def test_the_report_says_how_many_runs_ran_when_a_failure_stopped_the_series(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stopped = repeat.RepeatResult(
+        times=20, passed=3, failed=1, failing_ids=frozenset({"t"}), stopped_by="first failure"
+    )
+    assert repeat.print_report(stopped, failure_log=Path("first.log")) == 1
+    out = capsys.readouterr().out
+    assert "4 of 20 run(s) ran, stopped at the first failure: 3 passed, 1 failed" in out
+    assert "output of the failing run: first.log" in out
+
+
+def _stand_in_uv(tmp_path: Path, *, exit_code: int) -> str:
+    """A `uv` that prints a line on each stream and exits with `exit_code`."""
+    stand_in = tmp_path / "uv"
+    stand_in.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "print('to stdout')\n"
+        "print('to stderr', file=sys.stderr)\n"
+        f"sys.exit({exit_code})\n"
+    )
+    stand_in.chmod(0o755)
+    return str(stand_in)
+
+
+def test_a_failing_run_keeps_its_whole_output_in_the_named_file(
+    repeat: types.ModuleType, tmp_path: Path
+) -> None:
+    log = tmp_path / "first.log"
+    returncode, _ids = repeat.run_once(
+        _stand_in_uv(tmp_path, exit_code=1), ("tests/",), failure_log=log
+    )
+    assert returncode == 1
+    text = log.read_text()
+    assert "to stdout" in text
+    assert "to stderr" in text
+
+
+def test_the_command_stops_at_the_first_failure_and_names_the_kept_output(
+    repeat: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stand_in_uv(tmp_path, exit_code=1)
+    log = tmp_path / "first.log"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    argv = ["--times", "5", "--stop-at-first-failure", "--failure-log", str(log), "--", "tests/"]
+
+    assert repeat.main(argv) == 1
+    assert "to stdout" in log.read_text()
+    out = capsys.readouterr().out
+    assert "1 of 5 run(s) ran, stopped at the first failure" in out
+    assert f"output of the failing run: {log}" in out
+
+
+def test_a_series_without_the_flag_keeps_no_output_of_a_failing_run(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stand_in_uv(tmp_path, exit_code=1)
+    log = tmp_path / "first.log"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    assert repeat.main(["--times", "2", "--failure-log", str(log), "--", "tests/"]) == 1
+    assert not log.exists()
+
+
+def test_the_report_names_no_file_when_no_run_failed(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = repeat.RepeatResult(times=2, passed=2, failed=0, failing_ids=frozenset())
+    repeat.print_report(clean, failure_log=Path("first.log"))
+    assert "first.log" not in capsys.readouterr().out
+
+
+def test_a_passing_run_leaves_no_file(repeat: types.ModuleType, tmp_path: Path) -> None:
+    log = tmp_path / "first.log"
+    repeat.run_once(_stand_in_uv(tmp_path, exit_code=0), ("tests/",), failure_log=log)
+    assert not log.exists()
+
+
+# -- a live selection needs the Reference's Java (#472) -----------------------------
+
+
+@pytest.mark.parametrize(
+    "pytest_args",
+    [
+        ["tests/selfcheck/test_groups.py::test_selfcheck[status/basic]"],
+        ["tests/reference"],
+        ["tests/reference/test_join_reference.py::test_x", "-q"],
+        ["tests/runner/test_running_reference.py"],
+        ["tests/test_cli_candidate.py"],
+        ["-m", "reference"],
+        ["-m", "selfcheck and not statistical"],
+    ],
+)
+def test_a_selection_that_names_a_live_tier_is_live(
+    repeat: types.ModuleType, pytest_args: list[str]
+) -> None:
+    assert repeat.is_live_selection(pytest_args) is True
+
+
+@pytest.mark.parametrize(
+    "pytest_args",
+    [
+        ["tests/tooling/test_repeat.py"],
+        ["tests/tooling/test_selfcheck_pair.py::test_x"],
+        ["tests/net", "-n", "8"],
+        ["-m", "not reference and not selfcheck and not candidate"],
+        ["-k", "reference"],
+    ],
+)
+def test_a_selection_that_names_no_live_tier_is_not_live(
+    repeat: types.ModuleType, pytest_args: list[str]
+) -> None:
+    assert repeat.is_live_selection(pytest_args) is False
+
+
+def _java_home(tmp_path: Path, version: str) -> Path:
+    """A Java runtime image of `version`: `bin/java` beside a `release` file."""
+    launcher = tmp_path / f"jdk-{version}" / "bin" / "java"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("")
+    (launcher.parent.parent / "release").write_text(f'JAVA_VERSION="{version}"\n')
+    return launcher
+
+
+def test_a_live_selection_under_the_wrong_java_is_refused_naming_the_mise_form(
+    repeat: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stand_in = _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{Path(stand_in).parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MSCTS_JAVA", str(_java_home(tmp_path, "21.0.1")))
+
+    assert repeat.main(["--", "tests/selfcheck/test_groups.py"]) == 2
+
+    err = capsys.readouterr().err
+    assert "Java 21.0.1" in err
+    assert "mise exec -- uv run scripts/repeat.py" in err
+
+
+def test_a_live_selection_under_the_right_java_runs(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in = _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{Path(stand_in).parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MSCTS_JAVA", str(_java_home(tmp_path, "25.0.4")))
+
+    assert repeat.main(["--", "tests/selfcheck/test_groups.py"]) == 0
+
+
+def test_a_selection_that_is_not_live_runs_under_any_java(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in = _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{Path(stand_in).parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MSCTS_JAVA", str(_java_home(tmp_path, "21.0.1")))
+
+    assert repeat.main(["--", "tests/tooling/test_repeat.py"]) == 0
+
+
+def test_the_docstring_names_the_selfcheck_repeat_variable(repeat: types.ModuleType) -> None:
+    assert "MSCTS_SELFCHECK_REPEAT" in (repeat.__doc__ or "")
+    assert "mise exec -- uv run scripts/repeat.py" in (repeat.__doc__ or "")
+
+
+# -- timestamped progress lines (#472) ----------------------------------------------
+
+
+def test_each_progress_line_starts_with_the_time_the_run_ended_in_utc(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clock = [datetime(2026, 10, 24, 14, 0, 5, tzinfo=timezone(timedelta(hours=2)))]
+    rules = repeat.SeriesRules(now=lambda: clock[0])
+    outcomes: list[tuple[int, frozenset[str]]] = [(0, frozenset()), (1, frozenset({"t"}))]
+
+    def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        clock[0] += timedelta(minutes=3)
+        return outcomes.pop(0)
+
+    repeat.run_repeats("uv", ("tests/",), 2, run=fake_run, rules=rules)
+
+    assert capsys.readouterr().out.splitlines() == [
+        "[2026-10-24T12:03:05Z] run 1/2: exit code 0, 0 failing",
+        "[2026-10-24T12:06:05Z] run 2/2: exit code 1, 1 failing",
+    ]
+
+
+# -- --deadline: no run starts after it (#472) --------------------------------------
+
+_NOON = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
+
+
+def test_parse_args_reads_a_deadline_with_an_offset(repeat: types.ModuleType) -> None:
+    assert repeat.parse_args(["--", "tests/"]).deadline is None
+    args = repeat.parse_args(["--deadline", "2026-10-24T12:00:00Z", "--", "tests/"])
+    assert args.deadline == _NOON
+    offset = repeat.parse_args(["--deadline", "2026-10-24T14:00:00+02:00", "--", "tests/"])
+    assert offset.deadline == _NOON
+
+
+@pytest.mark.parametrize(
+    ("text", "complaint"),
+    [("2026-10-24T12:00:00", "UTC offset"), ("tomorrow", "not an ISO 8601 time")],
+)
+def test_parse_args_rejects_a_deadline_without_an_offset_or_not_a_time(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str], text: str, complaint: str
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        repeat.parse_args(["--deadline", text, "--", "tests/"])
+    assert exit_info.value.code == 2
+    assert complaint in capsys.readouterr().err
+
+
+def _ticking(
+    clock: list[datetime], step: timedelta
+) -> Callable[[str, object], tuple[int, frozenset[str]]]:
+    """A fake run that takes `step` of the fake `clock` and passes."""
+
+    def run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        clock[0] += step
+        return 0, frozenset[str]()
+
+    return run
+
+
+def test_no_run_starts_after_the_deadline(repeat: types.ModuleType) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(minutes=25), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 10, run=_ticking(clock, timedelta(minutes=10)), rules=rules
+    )
+
+    assert (result.passed, result.failed) == (3, 0)  # starts at 0, 10 and 20 minutes
+    assert result.stopped_by == "deadline"
+
+
+def test_a_run_that_starts_at_the_deadline_is_too_late(repeat: types.ModuleType) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(minutes=20), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 10, run=_ticking(clock, timedelta(minutes=10)), rules=rules
+    )
+
+    assert result.passed == 2
+
+
+def test_a_deadline_already_past_runs_nothing(repeat: types.ModuleType) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON - timedelta(seconds=1), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 3, run=_ticking(clock, timedelta(minutes=1)), rules=rules
+    )
+
+    assert (result.passed, result.failed) == (0, 0)
+    assert result.stopped_by == "deadline"
+
+
+def test_a_series_that_finishes_before_its_deadline_is_not_stopped(
+    repeat: types.ModuleType,
+) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(hours=1), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 3, run=_ticking(clock, timedelta(minutes=1)), rules=rules
+    )
+
+    assert (result.passed, result.stopped_by) == (3, "")
+
+
+def test_a_run_that_waited_for_the_lock_past_the_deadline_does_not_start(
+    repeat: types.ModuleType,
+) -> None:
+    clock = [_NOON]
+    events: list[str] = []
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(minutes=1), now=lambda: clock[0])
+
+    @contextlib.contextmanager
+    def hold() -> Iterator[int | None]:
+        clock[0] += timedelta(minutes=5)  # the wait for the lock
+        events.append("lock in")
+        try:
+            yield None
+        finally:
+            events.append("lock out")
+
+    locked = repeat.locked_run(
+        _run_recording(events), hold=hold, load=_recorded(events, "load"), rules=rules
+    )
+    result = repeat.run_repeats("uv", ("t",), 3, run=locked, rules=rules)
+
+    assert (result.passed, result.failed, result.stopped_by) == (0, 0, "deadline")
+    assert events == ["lock in", "lock out"]
+
+
+def test_the_report_says_how_many_runs_ran_before_the_deadline(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cut = repeat.RepeatResult(
+        times=20, passed=7, failed=0, failing_ids=frozenset(), stopped_by="deadline"
+    )
+    assert repeat.print_report(cut) == 3  # not 0: fewer runs than asked passed
+    assert "7 of 20 run(s) ran, stopped at the deadline: 7 passed, 0 failed" in (
+        capsys.readouterr().out
+    )
+
+
+def test_the_command_runs_nothing_after_a_deadline_that_has_passed(
+    repeat: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    argv = ["--times", "5", "--deadline", "2020-01-01T00:00:00Z", "--", "tests/"]
+
+    assert repeat.main(argv) == 3
+    assert "0 of 5 run(s) ran, stopped at the deadline" in capsys.readouterr().out
