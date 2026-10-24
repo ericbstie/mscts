@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from support.probe import SETBLOCK_OBSERVED
 from support.reference import own_reference
-from support.selfcheck import keep_timelines_and_describe
+from support.verdict_text import describe_mismatches
 
 from mscts.bot import Bot
 from mscts.compare import Outcome
@@ -92,4 +92,4 @@ async def test_status_basic_right_after_a_group_that_joined_bots_matches_20_of_2
     verdicts = result.verdicts
     assert [verdict.group_id for verdict in verdicts] == [group.id for group in groups] * _REPEAT
     if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
-        pytest.fail(keep_timelines_and_describe(result, tmp_path / "timelines"), pytrace=False)
+        pytest.fail(describe_mismatches(result, tmp_path / "timelines"), pytrace=False)

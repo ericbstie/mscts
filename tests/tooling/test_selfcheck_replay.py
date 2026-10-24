@@ -164,7 +164,8 @@ async def test_two_rejections_fail_and_show_both_verdicts(tmp_path: Path) -> Non
     message = describe_failure(plays, tmp_path / "timelines")
     assert plays == (REJECTED, other)
     assert message.splitlines()[0] == "Played again after the first play was rejected."
-    assert message.count("spawn/join-position: mismatch") == 2
+    # A line a Divergence: the first play's one, then both of the replay's.
+    assert message.count("spawn/join-position play 1 of 1: bot ''") == 3, message
     assert "First play:" in message
     assert "Replay:" in message
 
@@ -177,7 +178,9 @@ async def test_an_error_fails_without_a_replay(tmp_path: Path) -> None:
     plays = await play_and_replay([STATISTICAL], play, replay, tmp_path)
 
     assert replay.workdirs == []
-    assert describe_failure(plays, tmp_path / "timelines") == "spawn/join-position: error"
+    assert (
+        describe_failure(plays, tmp_path / "timelines") == "spawn/join-position play 1 of 1: error"
+    )
 
 
 @pytest.mark.asyncio
