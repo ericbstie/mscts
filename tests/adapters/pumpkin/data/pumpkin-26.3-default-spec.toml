@@ -45,11 +45,14 @@ autosave_ticks = 6000
 
 [world.chunk]
 type = "anvil"
-write_in_place = false
 
 [world.chunk.compression]
 algorithm = "ZLib"
 level = 6
+
+[world.entity_islands]
+unaudited_reach = 16.0
+knockback_reach = 4.0
 
 [networking.query]
 enabled = false

@@ -1,4 +1,4 @@
-seed = "1790806785395357268"
+seed = "1794477787656569488"
 default_difficulty = "Normal"
 op_permission_level = 4
 allow_nether = true
@@ -44,12 +44,11 @@ lighting = "default"
 autosave_ticks = 6000
 
 [world.chunk]
-type = "anvil"
-write_in_place = false
+type = "pump"
 
-[world.chunk.compression]
-algorithm = "LZ4"
-level = 6
+[world.entity_islands]
+unaudited_reach = 16.0
+knockback_reach = 4.0
 
 [networking.query]
 enabled = false
