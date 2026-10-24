@@ -135,8 +135,16 @@ with no `compared` line, and for a narrowed packet that is not in it.
    with a command (`data get block <pos> Items`) in a window of its own,
    and compare the feedback.
 
+9. A tick-exact Group that shows a wait (a cooldown, a retry, a delay)
+   starts it from a tick that no retry period from 2 to 8 divides, and
+   holds an item, a lock or a slot only as long as the first try it
+   stops: otherwise a server that retries every k ticks lands on the
+   same tick and matches (#41's reviews found it twice).
+
 What a Candidate does wrong is the Report's job, never the Group's:
-a command it lacks gives `blocked` (`CommandMissing`), a packet it sends
+a Group plays on when a server does something else, and never raises
+on it, which would turn the difference into an `error`. A command it
+lacks gives `blocked` (`CommandMissing`), a packet it sends
 that does not decode raises `CodecError` and fails that Bot. Known:
 Pumpkin answers commands out of order (#17) and stalls on
 `fill ... destroy`. A join may repeat its first `player_position` (a

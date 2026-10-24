@@ -107,7 +107,14 @@ first.
 - Before a fix round, detach the worker's old worktree
   (`git -C <wt> checkout --detach`): a branch checked out there cannot
   be checked out in the new one, and the merge script fails the same
-  way.
+  way. A fix agent cannot do it (a worktree guard refuses `git -C` into
+  another worktree): its brief says to check out a local `<branch>-fix`
+  from origin and push `HEAD:<branch>` (#41).
+- Each worker's schema reports `interface_changed` (a Group-author,
+  Adapter-author or CLI surface) and `core_changed`, and the Workflow
+  stacks those branches last. Read each worker's Interface changes before
+  merging: an interface change waits for the maintainer
+  (`needs-decision`). #493 sat under #494 and cost a 14-commit restack.
 - Never send a merge in the same parallel call as the read of its head
   sha: a placeholder sha reached GitHub once (#448).
 - After a third review with no blocking finding, fix doc wording

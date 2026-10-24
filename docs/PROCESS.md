@@ -168,7 +168,9 @@ introduced it and what found it. A bug changes no label.
      Workflow. It waits for the earlier trains' PRs to merge, rebases the
      batch's branches into a stack with
      `git rebase -x "mise run check" --force-rebase`, runs the tiers once on
-     the top tip, and opens all PRs at the end from the workers' files. It
+     the top tip, and opens all PRs at the end from the workers' files.
+     A branch whose worker reports an interface or a core change goes last in
+     the stack, so that holding it for a decision never forces a restack (#493). It
      assigns each PR and unsubscribes the lead's session from it, and it
      requests no reviewer: the PR author is the maintainer, so the request
      fails. The lead still gets a wake per PR, within a minute of each other
@@ -282,7 +284,9 @@ Context: <facts, file paths, gotchas the tech lead already knows; reusable scrat
 Never call the harness's thread-messaging tools (`mcp__hearthbot__*`). A Workflow agent with an
           output schema ends by calling StructuredOutput, never by ending its turn to wait on a
           monitor. Commit subjects start with `area: `. A worker opens no PR when the batch has an
-          integrator (see Cycle, step 3).
+          integrator (see Cycle, step 3). Start `git rebase --exec "mise run check"` detached
+          (about 7 min a commit), and run live checks from a detached copy at the commit
+          (`git worktree add --detach`), never from the worktree being edited.
 End with: the Worker report exactly as specified in docs/PROCESS.md; state your
           worktree path and branch name.
 ```
@@ -447,6 +451,16 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-24 | lead (train 43) | The integrator stacked #493 (#469), whose fix adds to the Group-author API, under #494 (#41); holding #493 for the maintainer forced a 14-commit restack of #494 (about 100 min of checks) | **adopt**: tech-lead skill and PROCESS Cycle, a worker reports `interface_changed`, and the Workflow puts such branches and core changes last in the stack |
+| 2026-10-24 | worker (#41) | A guard that raised when a container did not open turned a Candidate's difference into an `error` | **adopt**: common.md and the test-group skill, a Group plays on and lets the windows show what the server did |
+| 2026-10-24 | review B, fix worker (#41) | Two Groups waited from a tick that a 2-, 3- or 6-tick retry also reached, so a wrong Candidate matched | **adopt**: test-group skill, choose waits that no retry period from 2 to 8 divides |
+| 2026-10-24 | fix worker (#41) | Review B's proposed fix rested on a server fact that javap disproved (`entityInside` ignores the block above) | **adopt**: common.md, check a reviewer's proposed fix against the jar as you would your own facts |
+| 2026-10-24 | fix worker (#41) | A worktree guard refused `git -C` into the first worker's worktree, so the briefed detach failed; it worked on a local `-fix` branch and pushed `HEAD:<branch>` | **adopt**: tech-lead skill, a fix-round brief says so |
+| 2026-10-24 | worker (#41) | `scripts/mutate.py`'s default 60 s timeout left two Group-test mutants INVALID until rerun at 280 s | **adopt**: common.md, Group tests get `--timeout 280` |
+| 2026-10-24 | worker (#41) | `rebase -x` over 7 commits ran past the background limit and its 7th check was killed | **adopt**: the brief template says to start it detached (common.md already did) |
+| 2026-10-24 | worker (#487) | A Self-check waiting for the lock would have run edits made in the same worktree meanwhile | **adopt**: common.md and the brief template, live checks run from a detached copy at the commit |
+| 2026-10-24 | worker (#487) | The margin probe `fall_margin.py` never landed in `scripts/research/`; the worker wrote `death_margin.py` again in its scratch directory | **defer**: commit a death-to-respawn margin probe when a respawning Group next changes |
+| 2026-10-24 | worker (#469) | The brief's first increment was a fake seen red, which a green-only commit rule cannot land alone | **reject**: the tech-lead skill already says a red test lands with its fix; the lead's brief missed it, and batch B's briefs say it |
 | 2026-10-23 | lead (train 42) | Workers that open their own PRs wake the lead once per PR and wait on earlier trains to merge; an integrator agent per batch stacked the branches, ran the tiers once and opened all PRs at the end (11 PRs in four batches) | **adopt**: PROCESS Cycle and Worker contract, tech-lead skill; workers push branches and write `pr-body.md` and `pr-title.txt` only |
 | 2026-10-23 | integrator (batch A) | A reviewer request to the PR author fails: the author is the maintainer | **adopt**: the integrator requests no reviewer (PROCESS Cycle, step 3) |
 | 2026-10-23 | worker (#454) | `repeat.py --times 35 --stress` on the test passed 35 of 35 on main, because one play per process barely loads the host; 3 of 176 plays came up short with parallel plays (`-n 8`) inside `--stress` | **adopt**: brief template and tech-lead skill, a flake spec reproduces with parallel plays under `--stress`; timing.md |
@@ -913,6 +927,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-24 | The Workflow stacks branches that change an interface or the core last, from each worker's `interface_changed` and `core_changed`. A fix-round brief checks out a local `-fix` branch and pushes `HEAD:<branch>`. The brief template: start `rebase -x` detached, run live checks from a detached copy. common.md: a Group plays on when a server does something else; check a reviewer's proposed fix against the jar; Group-test mutants get `--timeout 280`. test-group: waits that no retry period from 2 to 8 divides | Train 43's retrospectives: a held interface PR forced a 100-minute restack, a guard turned a Candidate difference into an error, two hopper Groups let a wrong retry period match, a reviewer's fix rested on a wrong server fact |
 | 2026-10-23 | Workers push branches and write `pr-body.md` and `pr-title.txt`, and open no PR. One integrator agent per batch waits for earlier trains to merge, rebases the stack with `-x "mise run check" --force-rebase`, runs the tiers once on the top tip, opens all PRs at the end and unsubscribes from each; it requests no reviewer. The lead never SendMessages a Workflow agent and resumes a Workflow by passing finished results through `args`. The brief template: `MSCTS_SELFCHECK_REPEAT=20` and the `mise exec -- uv run scripts/repeat.py` form, parallel plays for a flake, no `mcp__hearthbot__` tools, StructuredOutput as the last call, the `area: ` commit prefix. common.md: `mutate.py -x` without `-n`, a state line in `findings.txt` | Train 42's retrospectives: PR noise and merge waits per PR, a Workflow that lost a result to a SendMessage and another to a resumed prompt, a worker that ended on a monitor, a flake that needed `-n 8` to show |
 | 2026-10-22 | The tech-lead skill: detach a worker's old worktree before a fix round; never send a merge with the read of its sha; after a third review with no blocking finding, the lead fixes wording itself. The brief template: a Candidate count names its revision and its command uses `mise exec --`; Protocol increments may be reordered; the brief's footer wins. Triage cites a client decode path; red-green, a hanging mutant gets a one-test selection | Train 41's retrospectives: a stale Pumpkin baseline, a lost queue turn to Java 21, two resumed workers blocked by their old worktree, a wrong issue premise, a third review round spent on wording |
 | 2026-10-21 | The lead starts each batch as one Workflow run and is woken once, when the batch returns. Workers unsubscribe the lead from each PR they open. The token target is measured, not guessed: a train meets it when its lead has at most two wakes per batch besides the maintainer's messages, and its tokens per merged PR are below 48M, the median of trains 30 to 40 (22M to 68M). Each handoff reports both | Maintainer agreed to try the batch mechanism. The 2026-10-09 target (one wake per batch, under 10M per merged PR) was never met: foreground Agent calls never waited, so every worker woke the lead (72 wakes for one batch), and the lead's own turns alone were 53M of 385M. PR subscription events were about a third of train 40's wakes |
