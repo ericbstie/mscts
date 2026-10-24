@@ -397,7 +397,7 @@ marker for it, an entity a server tells no player about, so it adds no packet.
 | `combat/damage-types` | tick-exact | none | The Bot wears no armor and takes 4 points of `generic`, `player_attack`, `mob_attack`, `arrow`, `fall`, `in_fire`, `lava`, `magic`, `wither`, `explosion`, `out_of_world` and `starve` damage, a window each. | none |
 | `combat/armor` | tick-exact | none | The Bot wears iron, diamond and netherite armor, then diamond armor enchanted with Protection IV, Fire Protection IV and Blast Protection IV, and takes damage through each set: the six kinds that armor reduces through every set, and all twelve kinds through the Protection set. | none |
 | `combat/effects` | tick-exact | none | The Bot wears no armor, has Resistance I, II, III or IV, or Absorption II. It takes all twelve kinds of damage under Resistance I and Absorption II, and four of them under Resistance II, III and IV. | none |
-| `combat/death` | tick-exact | none | The Bot takes 100 points of `generic`, `fall` and `magic` damage with `show_death_messages` on, and of `generic` damage with it off. Each death has a window, and the respawn after it has another. | none |
+| `combat/death` | tick-exact | none | The Bot takes 100 points of `generic`, `fall` and `magic` damage with `show_death_messages` on, and of `generic` damage with it off. Each death has a window, and the respawn after it has another, which fails the Group if entity event 60 comes in it before the respawn. | none |
 
 Armor reduces some kinds of damage and not others. In vanilla 26.3, `generic`, `fall`, `magic`,
 `wither`, `out_of_world` and `starve` are in the damage type tag `bypasses_armor`, so the
@@ -430,8 +430,10 @@ are left out, because the attacker's name and UUID are in the message and the UU
 between servers.
 
 A dead player still ticks in real time, and about a second after the death the server sends it
-`entity_event` 60. The respawn comes well before that. A host that stalls for a second on one
-Instance only can show it as a Divergence in the respawn's window.
+`entity_event` 60. The respawn comes well before that. If the Bot is held up for a second on one
+Instance only, the event can come inside the respawn window from one server and not from the
+other, so the Group fails if it comes before the respawn, as the `player` Groups that end in a
+death do (see below).
 
 ## Player (`player`)
 
@@ -456,13 +458,20 @@ A frozen world does not freeze a player: it ticks 20 times a second either way. 
 different, because vanilla works out its damage when it reads the move that lands. So `player/fall`
 freezes the world and steps it after each move, except the landing that kills the Bot. What comes
 after a death comes on the player's own ticks, so a step there would only hold back the respawn.
-That window ends on the death (`player_combat_kill`), as in `player/drowning` and `player/void`, so
-a server that kills the player a few ticks after the landing still has its death compared. What
-the death sends after `player_combat_kill` is in no window.
+That window waits for the death (`player_combat_kill`), as in `player/drowning` and `player/void`,
+so a server that kills the player a few ticks after the landing still has its death compared.
+
+In those three Groups the window that holds the death closes at a barrier after it, not on
+`player_combat_kill`. In vanilla, a player that dies is sent `player_combat_kill`, then entity
+event 3 at once, and then the health it is left with (`set_health`, and the health in its entity
+data). The barrier makes sure all of it has arrived, on every server, before the window closes. A
+dead player is sent nothing else that the window compares until entity event 60, 20 ticks later,
+so how long the barrier takes does not change what the window holds. The barrier holds back the
+Bot's respawn request by a few ticks.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it, in a window that ends on the death. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
+| `player/fall` | tick-exact | none | A Bot falls 3, 4, 10 and 23 blocks onto stone, water, a hay bale, a slime block and a bed, in a window of its own each. Then it falls 10 blocks onto stone with `fall_damage` off, and last 23 blocks onto stone, which kills it, in a window that ends a barrier after the death. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
 | `player/drowning` | exact | none | A Bot with 8 health is put under water in a pool 2 blocks deep with `drowning_damage` off, and stays until it drowns, all in one window. The first time its air runs out it gets only the bubbles. Then `drowning_damage` is turned on, and four hits kill it. The Bot respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | `drowning.bubbles_to_death` |
 | `player/suffocation` | exact | none | A Bot is put inside a column of stone 2 blocks high and takes damage, then two more hits. | none |
 | `player/void` | exact | none | A Bot is put at y -130, below the world, and takes damage until it dies. Then it respawns in a window of its own, which fails the Group if entity event 60 comes in it before the respawn. | none |
@@ -499,8 +508,8 @@ fresh (killed and respawned, with full air), takes it to 8 health with an `insta
 (12 points), and turns `drowning_damage` off. Then one window holds the rest. The Bot is put under
 water with `/tp`, and its air runs down from 300, a point a tick. When the air runs out, vanilla
 sends the bubbles (`entity_event`) and, with `drowning_damage` off, no damage. The Group turns
-`drowning_damage` on, and the window ends on the Bot's death (`player_combat_kill`), four hits
-later. The window opens while the air is full and does not change, so it holds every value of the
+`drowning_damage` on, and the window ends a barrier after the Bot's death (`player_combat_kill`),
+four hits later. The window opens while the air is full and does not change, so it holds every value of the
 air (`set_entity_data`) on every server, and with them the number of ticks between two hits. The
 rule must be on before the air runs out again, 20 ticks after the bubbles. The Group checks the
 order of what the Bot receives: if the next bubbles come with no hit before the bubbles after
@@ -509,7 +518,7 @@ does not depend on how late the Bot reads its packets, or on how fast the server
 
 `player/suffocation` puts the Bot's feet and eyes inside stone, and `player/void` puts it at y -130:
 vanilla hurts a player 4 points a hit below y -128, the lowest block minus 64, until it dies. That
-window ends on `player_combat_kill`, and a second window holds the respawn.
+window ends a barrier after `player_combat_kill`, and a second window holds the respawn.
 
 `player/fire` has a window for each place. The first ends on the first hit in fire, the next on the
 first hit in lava, and the third on the first burn after the Bot has stepped out onto dry grass.
@@ -539,9 +548,10 @@ servers, and between plays on one server.
 
 Vanilla sends a dead player entity event 60, the smoke where its body was, 20 ticks after the
 death, unless the player has respawned by then. In `player/fall`, `player/drowning` and
-`player/void` the window before ends on the death, and the respawn window opens a few ticks
-later, so the respawn comes first. If the Bot is held up for most of a second after the death, the event can come inside the respawn
-window from one server and not from the other. So the Group fails if entity event 60, for any
+`player/void` the window before ends a barrier after the death, and the respawn window opens a
+barrier later, so the respawn comes first. In `player/void` on vanilla, with the host under load,
+the Bot asked to respawn about 300 ms after the death, and at most about 410 ms, in 40 plays. If the Bot is held up for most of a second after the death, the
+event can come inside the respawn window from one server and not from the other. So the Group fails if entity event 60, for any
 entity, comes inside the respawn window before the respawn, and says whether the event was for
 the Bot or for another entity. On the Reference that is an `error`.
 On a Candidate it is a `mismatch`, as is any failure of a Candidate's play, even when the Bot was

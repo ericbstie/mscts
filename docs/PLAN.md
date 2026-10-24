@@ -549,7 +549,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # PERFORM_RESPAWN → player_loaded; a packet before `respawn` that `fail_on` names (returns
     # a text for) raises ProtocolError "<bot> got <text> before minecraft:respawn" (#463)
     async def expect(self, name: str, /, *others: str, timeout_s: float,
-                     where: Callable[[Packet], bool] | None = None) -> Packet: ...
+                     where: Callable[[Packet], bool] | None = None,
+                     since_ns: int | None = None) -> Packet: ...
+    # since_ns: a packet stamped before it (its arrival, Transcript time) is taken and passed
+    # over, not returned (#469)
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def wait_until_handled(self) -> None: ...                    # #360: lighter proof (below)
     async def drain(self) -> None: ...                                 # take what has arrived
@@ -1360,7 +1363,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when its Group ends;
   `join_at_spawn` — join a Bot and push the `tp` that puts it back at the spawn; `fresh` — kill a
   Bot and respawn it, with full health and food and no immunity (the `player` and `combat_damage`
-  Groups).
+  Groups); `respawn_in_a_window(context, bot, names)` — respawn a dead Bot in a window narrowed to
+  `names`, and fail if entity event 60 comes in it before the `respawn` (`player/fall`,
+  `player/drowning`, `player/void` and `combat/death`).
   `normal` — the spec on normal difficulty; `find_when_tracked` — the entity of a type nearest a
   place, once the Bot tracks one; `remove_tagged` — kill every entity with a tag, without drops,
   and wait until none is alive (the `combat` Groups); `remove_tagged_until_gone(control, tag,
@@ -1437,7 +1442,9 @@ class GroupContext:
                                     # (no end Mark if the body raises: no Measurement)
     def observe(self, *names: str, until: str | tuple[str, ...] | None = None,
                 bot: Bot | None = None, play: bool = True
-                ) -> AbstractAsyncContextManager[None]: ...
+                ) -> AbstractAsyncContextManager[int]: ...
+                                    # (gives the block the OBSERVE_OPEN Mark's time, for
+                                    # Bot.expect(since_ns=...); #469)
                                     # an Observation window: on entry, every Bot in play
                                     # and not disconnected passes Bot.sync (all at once, so
                                     # what setup caused has arrived at every Bot, if the
