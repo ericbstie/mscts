@@ -19,6 +19,7 @@ from support.moves import MOVES, Play, moves_and_commands, opened, read
 from support.player_server import (
     BUBBLES,
     DEATH,
+    DIES,
     FADE_READS,
     PERFORM_RESPAWN,
     POOF,
@@ -149,6 +150,17 @@ def play(group_id: str) -> tuple[Transcript, Play]:
 
 def played(group_id: str) -> Play:
     return play(group_id)[1]
+
+
+def died_at(transcript: Transcript) -> list[int]:
+    """When each entity event 3, which a death sends just after its kill packet, reached a Bot."""
+    return [
+        event.t_ns
+        for event in transcript.events
+        if event.bot != CONTROL
+        and event.packet.name == "minecraft:entity_event"
+        and (event.packet.fields or {}).get("event_id") == DIES
+    ]
 
 
 def tp(at: tuple[float, float, float], bot: str = "faller") -> str:
@@ -358,11 +370,12 @@ def test_each_move_of_a_fall_reaches_the_server_before_the_step_after_it() -> No
     assert set(barriers) == {HANDLED_REQUESTS}
 
 
-def test_fall_asks_to_respawn_one_barrier_after_the_landing_that_kills() -> None:
+def test_fall_asks_to_respawn_two_barriers_after_the_landing_that_kills() -> None:
     # Vanilla sends entity event 60 20 ticks after the death, and each barrier answer takes a tick
     # at least. A step after the landing took about 7 more (#463's reviews): the dead player ticks
-    # in real time, so the step showed it nothing. The window ends on the death, so only the
-    # respawn window's open comes between, as in player/void and player/drowning.
+    # in real time, so the step showed it nothing. Only the barrier that closes the deadly fall's
+    # window (#487) and the one that opens the respawn's come between, as in player/void and
+    # player/drowning.
     transcript, _ = play("player/fall")
     faller = [event.packet for event in transcript.events if event.bot == "faller"]
     asked = next(
@@ -374,7 +387,7 @@ def test_fall_asks_to_respawn_one_barrier_after_the_landing_that_kills() -> None
 
     answers = [packet for packet in faller[landed:asked] if packet.name == "minecraft:award_stats"]
 
-    assert len(answers) == SYNC_REQUESTS
+    assert len(answers) == 2 * SYNC_REQUESTS
 
 
 def test_fall_reports_every_move_in_the_air_but_the_last() -> None:
@@ -405,7 +418,7 @@ def test_fall_turns_fall_damage_off_for_one_fall_and_on_again_for_the_last() -> 
     assert result.after.count("gamerule fall_damage true") == 1
 
 
-def test_fall_ends_the_deadly_fall_on_the_death_and_respawns_in_a_window_of_its_own() -> None:
+def test_fall_ends_the_deadly_fall_after_the_death_and_respawns_in_a_window_of_its_own() -> None:
     transcript, result = play("player/fall")
 
     *_, lethal, respawn = result.windows
@@ -421,8 +434,8 @@ def test_fall_ends_the_deadly_fall_on_the_death_and_respawns_in_a_window_of_its_
     opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
     closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
     [ask] = asked
-    [death] = [e.t_ns for e in transcript.events if e.packet.name == DEATH]
-    assert closes[-2] == death + 1
+    [died] = died_at(transcript)
+    assert closes[-2] > died
     assert opens[-1] < ask.t_ns < closes[-1]
 
 
@@ -546,13 +559,14 @@ def test_drowning_turns_the_damage_on_after_the_bubbles_and_not_after_another_en
     assert [event for t, event in events if t < turned_on] == [2, BUBBLES]
 
 
-def test_drowning_ends_its_window_on_the_death_and_respawns_in_a_window_of_its_own() -> None:
+def test_drowning_ends_its_window_after_the_death_and_respawns_in_a_window_of_its_own() -> None:
     transcript, result = play("player/drowning")
 
     assert [window.label for window in result.windows] == [opened(*player.PACKETS)] * 2
     death = next(e.t_ns for e in transcript.events if e.packet.name == DEATH)
     closes = [m.t_ns for m in transcript.marks if m.label == OBSERVE_CLOSE]
-    assert closes[0] == death + 1
+    [died] = died_at(transcript)
+    assert closes[0] > died
     assert result.windows[1].sent == ()
     respawn = next(
         e.t_ns
@@ -668,6 +682,8 @@ def test_void_puts_a_fresh_bot_below_the_world_and_waits_for_its_death() -> None
     closes = [m.t_ns for m in transcript.marks if m.label == "observe:close"]
     assert len(asked) == 2  # the fresh start, and the respawn after the void
     assert opens[1] < asked[1].t_ns < closes[1]
+    [died] = died_at(transcript)
+    assert closes[0] > died
 
 
 def test_void_sets_no_block() -> None:
@@ -990,6 +1006,36 @@ def test_a_respawn_window_plays_on_after_another_event_before_the_respawn() -> N
     assert [window.sent for window in read(transcript).windows] == [
         window.sent for window in played("player/void").windows
     ]
+
+
+# What a death sends after the kill packet
+
+# `ServerPlayer.die` sends `player_combat_kill`, then entity event 3 in the same call, and the
+# player's next tick sends the health it left. A window that ended on the kill packet compared
+# none of it (#487).
+
+
+def died_quietly(group_id: str) -> Transcript:
+    """Play `group_id` against a fake that sends nothing after the death's kill packet."""
+    server = PlayerServer(
+        hurts=HURTS.get(group_id, {}),
+        kills_after=KILLS_AFTER.get(group_id),
+        lethal_fall=LETHAL_FALLS.get(group_id),
+        after_death=(),
+    )
+    return asyncio.run(_play_on(group_id, server))
+
+
+@pytest.mark.parametrize("group_id", RESPAWNING)
+def test_a_server_that_sends_no_entity_event_3_after_the_death_does_not_match(
+    group_id: str,
+) -> None:
+    reference, _ = play(group_id)
+
+    verdict = judge(GROUPS[group_id], reference, died_quietly(group_id))
+
+    assert verdict.outcome is Outcome.MISMATCH
+    assert {d.test_case.split(".")[0] for d in verdict.divergences} == {"entity_event"}
 
 
 def test_fire_makes_the_bot_fresh_before_the_fire_and_again_before_the_lava() -> None:
