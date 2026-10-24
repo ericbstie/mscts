@@ -145,3 +145,7 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Append a state line to `<scratch>/findings.txt` after each commit ("state: done X, next Y", and which review items are still open), so an interrupted agent that is resumed does not rebuild its state from commit messages (#451).
 - Never call the harness's thread-messaging tools (`mcp__hearthbot__*`): a worker ended its turn at 6 of 14 checked by calling one. A Workflow agent with an output schema ends by calling StructuredOutput, never by ending its turn to wait on a monitor: the schema error threw out of the whole Workflow (#476, #441).
 - Commit subjects keep the `area: ` prefix (`group: …`, `docs: …`, `tooling: …`), the form of `git log`. A sonnet worker wrote "Add titles for …" (#442).
+- A Group plays on when a server does something else (a container that does not open, a block that does not act): the windows show the difference. A guard that raises turns a Candidate's difference into an `error` (#41).
+- Check a reviewer's proposed fix against the jar before you build it, as you would your own facts: one rested on a server fact javap disproved (#41).
+- Give `scripts/mutate.py` `--timeout 280` for a Group's tests: the default 60 s left two mutants INVALID (#41).
+- Run live checks (Self-checks, `mscts run`) from a detached copy at the commit (`git worktree add --detach <path> <sha>`), never from the worktree you edit: a run waiting for the lock picks up edits made meanwhile (#487).

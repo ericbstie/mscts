@@ -195,6 +195,31 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-24: train 43
+
+- #491, #492 and #494 merged. #493 (#469) is held: its fix adds to the
+  API a Group author writes against (`Bot.expect(since_ns=)`, and
+  `observe` giving the time its window opened), so #469 waits for the
+  maintainer (`needs-decision`). The integrator had stacked #494 on it,
+  and the lead restacked #494 onto main without it (14 commits, each
+  checked). Reference tier 36 of 36 on both tips.
+- #494 (#41): four tick-exact hopper Groups, `redstone/hopper-transfer`,
+  `-full`, `-pickup` and `-lock`, compare what each open container shows,
+  step by step. Review B found two gaps where a hopper that retries every
+  2, 3 or 6 ticks matched; both fixed. Pumpkin completes all four as
+  `mismatch`: it opens no container set with items. `redstone/dropper-dispenser`
+  moved to #490.
+- #491 (#473): `combat/death` respawns through
+  `_world.respawn_in_a_window`, which fails the Group when entity event 60
+  comes before the respawn.
+- #492 (#487): the lethal windows of `player/void`, `player/drowning` and
+  `player/fall` close at a barrier after the death, so entity event 3 and
+  the health the death leaves are compared.
+- Filed #495 (Pumpkin 9c04f71 rewrites our `pumpkin.toml`; the candidate
+  tier fails 1 of 15 on main), #496 (event 60 inside a lethal window's
+  closing barrier), #497 (#41's lows, and a Pumpkin connection lost once
+  each in three hopper Groups). Closed #463, fixed by #485.
+
 ### 2026-10-23: train 42
 
 - #466, #467, #468, #474, #475, #476, #482, #483, #484, #485 and #486 merged in
