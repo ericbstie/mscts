@@ -258,9 +258,12 @@ async def test_each_bot_closes_its_container_then_the_chests_recheck_runs_before
 
 @pytest.mark.parametrize("group_id", GROUP_IDS)
 @pytest.mark.asyncio
-async def test_the_group_says_so_when_a_container_does_not_open(group_id: str) -> None:
-    with pytest.raises(ValueError, match="did not open"):
-        await replay(group_id, HopperServer(commands=COMMANDS, opens=False))
+async def test_the_group_steps_on_when_a_container_does_not_open(group_id: str) -> None:
+    # A Candidate that opens no container differs in the windows; the Group still completes.
+    played = await replay(group_id, HopperServer(commands=COMMANDS, opens=False))
+    _, stepped = played.play.windows
+
+    assert stepped.commands == (await play(group_id)).play.windows[1].commands
 
 
 # `redstone/hopper-transfer`

@@ -61,10 +61,8 @@ async def _opened(context: GroupContext, openers: Sequence[_Opener]) -> AsyncIte
     """Join a Bot for each of `openers`, stand it beside its container and open it, in one window.
 
     On the way out, each Bot closes its container, the world steps on until the chests' rechecks
-    have run, and the Bots go back to the spawn.
-
-    Raises:
-        ValueError: The server opened no container for a Bot.
+    have run, and the Bots go back to the spawn. A container that does not open is a difference
+    the windows show, not an error: the Group plays on, and that Bot is sent no slot.
     """
     async with contextlib.AsyncExitStack() as undo:
         bots = []
@@ -75,12 +73,6 @@ async def _opened(context: GroupContext, openers: Sequence[_Opener]) -> AsyncIte
         async with context.observe(*_OPEN_PACKETS):
             for bot, opener in zip(bots, openers, strict=True):
                 await bot.place(*opener.container, Face.UP)
-        shut = [bot.name for bot in bots if bot.inventory.window_id == 0]
-        if shut:
-            msg = (
-                f"the container did not open for {', '.join(shut)}: the server sent no open_screen"
-            )
-            raise ValueError(msg)
         yield
 
 
