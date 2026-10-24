@@ -88,6 +88,13 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #501 |  | high | first review, second review; the lead's diff read of the fix round | 0, 1 (fixed: a dropper that never took the item out of its own slot passed, since no Bot held the dropper open) | none: no barrier or window change; Self-check 20 of 20 after the fixes; a stressed Self-check 20 of 20 in review A; mutation sweep 21 of 21 before the fixes; the 14 `redstone/*` Groups 3 of 3 and reference tier 36 of 36 on the train's tip |
+| #500 |  | low | the lead's diff read | 0 | none: test helpers only; six reference tests once from a detached copy |
+| #499 |  | low | the lead's diff read | 0 | none: tooling; 62 unit tests of `repeat.py`; mutation sweep 28 of 28; each new flag used live once |
+| #498 |  | low | the lead's diff read | 0 | none: the Adapter's config; candidate tier 15 of 15 (14 of 15 on main); mutation sweep 6 of 6 |
+| #494 |  | high | first review, second review; the lead's diff read of the fix round | 0, 2 (both fixed: `hopper-full` and `hopper-lock` let a hopper that retries every 2, 3 or 6 ticks pass; no hopper pushed while holding two stacks) | none: no barrier or window change; Self-check 20 of 20 of each of the four Groups after the fixes; mutation sweep 32 of 32 before the fixes; the nine other `redstone/*` Groups 3 of 3 after the helper rename; reference tier 36 of 36 on the restacked head |
+| #492 |  | medium | the lead's diff read | 0 | 5 of 5, each 20 of 20, of `player/void`; Self-check 20 of 20 of `player/void`, `player/drowning`, `player/fall`; mutation sweep 4 of 4; the respawn request leaves 298 ms (median) after the death, against event 60's 1000 ms |
+| #491 |  | medium | the lead's diff read | 0 | none: a check before the respawn, no step moved (waived as for #463); Self-check 20 of 20 of `combat/death` twice; mutation sweep 7 of 7 |
 | #486 | low | low | none | 0 | none: a span only; Self-check of `player/drowning` 3 of 3 on the train tip; reference tier 36 of 36 |
 | #485 | medium | high | first review, second review, third review of the fixes; the lead's diff read of the third fix round | 0, 0, 0 (should-fix: the first fix took the step out of the lethal fall window, so a Candidate killing 200 ms late became a mismatch; fixed in round 3 by ending the window on the death) | 5 of 5, each 20 of 20, of `player/fall` after round 3; mutation sweeps 6 of 6 and 8 of 8, then 10 of 10; review C's late-death probe matches from +50 ms to +3000 ms |
 | #484 | low | low | none | 0 | none: tooling; `player/fire` played live once, each of its four windows has a compared packet |
