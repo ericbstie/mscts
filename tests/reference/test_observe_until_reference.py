@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 from support.chunks import OVERWORLD_SECTIONS, decode_chunk
 from support.reference import booted
-from support.selfcheck import keep_timeline
+from support.verdict_text import keep_timeline
 
 from mscts.codec.packets import Direction, State
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, is_heartbeat

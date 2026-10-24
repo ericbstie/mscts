@@ -29,11 +29,12 @@ async def test_a_tick_exact_group_self_checks_20_of_20(cache_dir: Path, tmp_path
             reference,
             workdir=tmp_path / "selfcheck",
             repeat=_REPEAT,
+            keep_transcripts=True,
         )
 
     verdicts = result.verdicts
     assert len(verdicts) == _REPEAT
-    matched = all(verdict.outcome is Outcome.MATCH for verdict in verdicts)
-    assert matched, describe_mismatches(verdicts)
+    if any(verdict.outcome is not Outcome.MATCH for verdict in verdicts):
+        pytest.fail(describe_mismatches(result, tmp_path / "timelines"), pytrace=False)
     packets = {case.split(".")[0] for case in verdicts[0].test_cases}
     assert packets & {"block_update", "section_blocks_update"}, packets

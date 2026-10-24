@@ -19,8 +19,7 @@ from mscts.compare import Outcome, Verdict
 from mscts.group import GROUPS, Group, GroupKind
 from mscts.run import RunResult
 from mscts.spec import ServerSpec
-from mscts.timeline import timeline
-from mscts.transcript import Transcript
+from support.verdict_text import keep_timelines
 
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
@@ -150,40 +149,14 @@ def describe_unmatched(verdicts: Sequence[Verdict]) -> str:
 def keep_timelines_and_describe(result: RunResult, where: Path) -> str:
     """Write the timelines of `result`'s plays that did not match, and describe its failure.
 
-    Each such play gets a file in `where` (`_keep_timelines`). The message is
+    Each such play gets a file in `where` (`keep_timelines`). The message is
     `describe_unmatched` of the Verdicts that are not `match`, then each file's path.
     """
     not_matching = [verdict for verdict in result.verdicts if verdict.outcome is not Outcome.MATCH]
-    kept = _keep_timelines(result, where)
+    kept = keep_timelines(result, where)
     files = [f"  {path}" for path in kept]
     heading = ["The timelines of the plays that did not match:"] if kept else []
     return "\n".join([describe_unmatched(not_matching), *heading, *files])
-
-
-def _keep_timelines(result: RunResult, where: Path) -> list[Path]:
-    """Write a file in `where` for each play of `result` that kept its Transcripts; return them.
-
-    The file holds the play's timeline on the Reference, then on the Candidate, and is
-    named after the Group and the repetition (`status-basic.2.txt`).
-    """
-    where.mkdir(parents=True, exist_ok=True)
-    kept: list[Path] = []
-    for group in result.results:
-        for repetition, transcripts in enumerate(group.transcripts, start=1):
-            if transcripts is not None:
-                name = f"{group.group_id.replace('/', '-')}.{repetition}.txt"
-                kept.append(keep_timeline(transcripts, where / name))
-    return kept
-
-
-def keep_timeline(transcripts: Sequence[Transcript], path: Path) -> Path:
-    """Write one play's timelines to `path`, one Transcript after another; return `path`.
-
-    The folder `path` is in is made if it is not there.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n\n".join(timeline(transcript) for transcript in transcripts) + "\n")
-    return path
 
 
 def _describe(verdict: Verdict) -> list[str]:
