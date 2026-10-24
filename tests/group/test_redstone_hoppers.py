@@ -11,7 +11,15 @@ from dataclasses import dataclass, field
 from typing import cast, override
 
 import pytest
-from support.control import CLIENT_COMMAND, CONTROL, ControlServer, playing, tree
+from support.control import (
+    CLIENT_COMMAND,
+    CONTROL,
+    HANG_LIMIT_S,
+    ControlServer,
+    commands_sent,
+    playing,
+    tree,
+)
 from support.control_play import Play, control_commands, read
 from support.gametime import gametime_answer
 
@@ -66,8 +74,10 @@ STEPPED_WINDOWS = {
 """The open Mark of each Group's stepped window."""
 KILL_ITEMS = "kill @e[type=minecraft:item]"
 KILL_ARMOR_STANDS = "kill @e[type=minecraft:armor_stand]"
-UNDONE_FIRST = {PICKUP: (KILL_ITEMS,), DISPENSE: (KILL_ARMOR_STANDS, KILL_ITEMS)}
+UNDONE_FIRST = {PICKUP: (KILL_ITEMS,)}
 """What a Group undoes before the Bots close their containers."""
+UNDONE_LAST = {DISPENSE: (KILL_ARMOR_STANDS, KILL_ITEMS)}
+"""What a Group undoes after the Bots are back at the spawn, before the arena's undo."""
 SETUP = (
     "gamerule player_movement_check false",
     "gamerule respawn_radius 0",
@@ -261,6 +271,7 @@ async def test_each_bot_closes_its_container_then_the_chests_recheck_runs_before
         *(entry for bot in bots for entry in (f"close {bot}", f"sync {bot}")),
         *RECHECK,
         *(f"tp {bot} 0.5 -60 0.5" for bot in reversed(bots)),
+        *UNDONE_LAST.get(group_id, ()),
         *UNDO,
     )
 
@@ -578,3 +589,29 @@ def test_the_dispense_test_cases_pumpkins_report_shows_have_titles() -> None:
     )
 
     assert sorted(set(shown) - TITLES.keys()) == []
+
+
+@pytest.mark.asyncio
+async def test_dispense_kills_the_armor_stand_when_the_play_fails_before_the_window() -> None:
+    # The stand is summoned in the build. A Bot that never gets to its container (here its
+    # `/tp` goes unanswered) fails the play before the stepped window; the stand must still go
+    # before the arena clears, or the next play summons a second one beside it.
+    def hang_at_the_chests_tp_until_the_kill(command: str) -> None:
+        if command == "tp chest 5.5 -60 1.5":
+            server.answers_markers = False
+        elif command == KILL_ARMOR_STANDS:
+            server.answers_markers = True
+
+    server = HopperServer(commands=COMMANDS, on_command=hang_at_the_chests_tp_until_the_kill)
+    transcript = Transcript(group_id=DISPENSE, server="fake")
+
+    async def failing() -> None:
+        async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
+            await GROUPS[DISPENSE].run(context)
+
+    with pytest.raises(TimeoutError):
+        await failing()
+
+    sent = commands_sent(server.seen)
+    assert KILL_ARMOR_STANDS in sent, sent
+    assert sent.index(KILL_ARMOR_STANDS) < sent.index(UNDO[0])

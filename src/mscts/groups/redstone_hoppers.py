@@ -418,10 +418,15 @@ _KILL_ARMOR_STANDS = "kill @e[type=minecraft:armor_stand]"
 
 @group("redstone/dropper-dispenser", kind=GroupKind.TICK_EXACT)
 async def dropper_dispenser(context: GroupContext) -> None:
-    """A dropper fills a chest; dispensers place water, take it back and equip an armor stand."""
-    async with arena(context, _DISPENSE_BUILD), _opened(context, _DROPPER_CHEST):
+    """A dropper fills a chest; dispensers place water, take it back and equip an armor stand.
+
+    The build summons the armor stand, so it goes however the play ends after the build, even
+    when a Bot does not get to its container.
+    """
+    async with arena(context, _DISPENSE_BUILD):
         try:
-            await stepped_window(context, _DISPENSE, _DISPENSE_TICKS, _DISPENSE_PACKETS)
+            async with _opened(context, _DROPPER_CHEST):
+                await stepped_window(context, _DISPENSE, _DISPENSE_TICKS, _DISPENSE_PACKETS)
         finally:
             await context.control.run(_KILL_ARMOR_STANDS)
             await context.control.run(_KILL_ITEMS)
