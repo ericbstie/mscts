@@ -185,3 +185,68 @@ async def hopper_full(context: GroupContext) -> None:
     """A hopper waits at a full chest, and pushes on the next tick once a slot takes its item."""
     async with arena(context, _FULL_BUILD), _opened(context, _FULL_OPENERS):
         await stepped_window(context, _FULL, _FULL_TICKS, _SLOT_PACKETS)
+
+
+# `redstone/hopper-pickup`: three hoppers facing down along z 4, at x 3, 7 and 11. Nothing is
+# above the first; stone is above the second, and a bottom slab above the third.
+
+_PICKUP_BUILD = (
+    on_grass(3, 4, "hopper"),
+    on_grass(7, 4, "hopper"),
+    _setblock(7, -59, 4, "stone"),
+    on_grass(11, 4, "hopper"),
+    _setblock(11, -59, 4, "smooth_stone_slab[type=bottom]"),
+)
+
+_PICKUP_OPENERS = (
+    _Opener("bare", "3.5 -60 7.5", (3, -60, 4)),
+    _Opener("covered", "7.5 -60 7.5", (7, -60, 4)),
+    _Opener("slabbed", "11.5 -60 7.5", (11, -60, 4)),
+)
+"""Each Bot stands 3 blocks from the items, out of the reach a player picks items up in."""
+
+
+def _summon(at: str, item: str, count: int) -> str:
+    """Summon `count` of `item` lying at `at`, still.
+
+    It has no gravity, since the world's steps run entities too, and faces south: vanilla turns
+    a new item entity at random (`ItemEntity`'s constructor), unless the summon says how.
+    """
+    stack = f'Item:{{id:"minecraft:{item}",count:{count}}}'
+    return f"summon minecraft:item {at} {{{stack},NoGravity:1b,Rotation:[0f,0f]}}"
+
+
+_PICKUP = (
+    At(0, _summon("3.5 -59 4.5", "stone", 3)),
+    At(0, _summon("7.5 -58 4.5", "oak_log", 1)),
+    At(0, _summon("11.5 -58.5 4.5", "stone", 1)),
+    At(2, _summon("3.5 -59 4.5", "dirt", 2)),
+)
+"""A hopper takes an item entity whose box meets the box from 11/16 of its block up to 2 blocks
+above its base (`Hopper.SUCK_AABB`), unless a full block is above it, and then waits 8 ticks
+(`HopperBlockEntity.suckInItems`). The first hopper takes the whole stack of stone on tick 1, and
+the dirt that comes on tick 2 on tick 9. The second never takes the log on its stone. The third
+takes the stone on its slab on tick 1."""
+
+_PICKUP_PACKETS = (
+    "minecraft:add_entity",
+    "minecraft:set_entity_data",
+    "minecraft:remove_entities",
+    *_SLOT_PACKETS,
+)
+"""What the pickup window compares: the items that appear, and go, and the hoppers' slots."""
+
+_PICKUP_TICKS = 9
+
+_KILL_ITEMS = "kill @e[type=minecraft:item]"
+"""Takes away the log the covered hopper left, so that the next play has none."""
+
+
+@group("redstone/hopper-pickup", kind=GroupKind.TICK_EXACT)
+async def hopper_pickup(context: GroupContext) -> None:
+    """Hoppers take the items above them, but not through a full block."""
+    async with arena(context, _PICKUP_BUILD), _opened(context, _PICKUP_OPENERS):
+        try:
+            await stepped_window(context, _PICKUP, _PICKUP_TICKS, _PICKUP_PACKETS)
+        finally:
+            await context.control.run(_KILL_ITEMS)

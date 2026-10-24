@@ -840,11 +840,13 @@ block's state.
 | `redstone/quasi-connectivity` | tick-exact | none | Quasi-connectivity is a vanilla behaviour in which a piston, a dropper or a dispenser also counts power at the block above it, but checks for power only when a block next to it changes. Control places a redstone block 2 above a piston, a dropper and a dispenser, then a stone behind each 2 ticks later. 6 ticks after that it takes the redstone blocks away, and 2 ticks later the stones. The world steps 14 ticks. Vanilla does nothing when the redstone blocks arrive or go, only when the stones do: the piston extends and the dropper and the dispenser click, then the piston retracts. | none |
 | `redstone/hopper-transfer` | tick-exact | none | A chest holds a stone in its first slot and 2 logs in its third. It stands on a hopper that holds a dirt in its second slot and faces a second hopper, which faces an empty chest. The world steps 32 ticks. Vanilla moves one item from each hopper every 8 ticks. A hopper pushes from its first slot that holds anything, then pulls from the first slot above it that holds anything. The second hopper pushes each item 7 ticks after it arrives, and the logs stack in the last chest. | none |
 | `redstone/hopper-full` | tick-exact | none | A hopper holding 3 dirt faces a chest with a full stack of stone in every slot. After 3 ticks, Control takes one stone from a stack, and 3 ticks later it empties another slot. The world steps 23 ticks. Vanilla moves nothing into the full chest, and no dirt onto the stone. A hopper that moved nothing tries again on the next tick, so it pushes a dirt on the tick after the slot empties, then every 8 ticks. | none |
+| `redstone/hopper-pickup` | tick-exact | none | Three hoppers face down: one with nothing above it, one under a stone and one under a bottom slab. Control summons an item lying above each, then a second item above the first hopper 2 ticks later. The world steps 9 ticks. Vanilla's first hopper takes the first item on the first tick and the second item 8 ticks later. The hopper under the slab takes its item through the slab, and the one under the stone never takes the item lying on the stone. | none |
 
 The piston Groups also compare block entities' data and the items a piston breaks a block into.
 
 In the hopper Groups, a Bot stands beside each hopper and chest and opens it before the world
-steps. Their windows compare what each open container shows. Vanilla sends a hopper's move to
+steps. Their windows compare what each open container shows, and `redstone/hopper-pickup` also
+compares the items that appear and go. Vanilla sends a hopper's move to
 an open container in the next server tick, which a frozen world runs too, so it arrives before
 the step ends. When a Group ends, the Bots close
 the containers and the world steps 5 more ticks, because an open chest checks again for its
