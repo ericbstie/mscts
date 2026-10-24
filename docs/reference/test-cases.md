@@ -1327,6 +1327,14 @@ The y coordinate of a changed block, counted from the section's bottom
 The z coordinate of a changed block, counted from the section's north edge
 (0 to 15).
 
+## `section_blocks_update.section.x`
+
+**Section x**
+
+Which chunk column the changes are in along x, counted in chunks of 16
+blocks from the world's origin. A different value puts the same changes
+in another chunk.
+
 ## `section_blocks_update.section.y`
 
 **Section height**
@@ -1334,6 +1342,14 @@ The z coordinate of a changed block, counted from the section's north edge
 Which chunk section the changes are in, counted in sections of 16 blocks
 from the world's origin: section -4 holds y from -64 to -49. A different
 value puts the same changes at a different height.
+
+## `section_blocks_update.section.z`
+
+**Section z**
+
+Which chunk column the changes are in along z, counted in chunks of 16
+blocks from the world's origin. A different value puts the same changes
+in another chunk.
 
 ## `select_known_packs.known_packs[].id`
 
@@ -2434,6 +2450,13 @@ Where the sound plays along z, in eighths of a block.
 
 How loud the sound is, and how far it carries.
 
+## `sound.pitch`
+
+**Sound pitch**
+
+How high the sound plays. A different pitch makes the same sound higher
+or lower.
+
 ## `animate`
 
 **Entity animation**
@@ -3495,6 +3518,29 @@ A villager's profession, which sets the clothes it wears. A difference dresses i
 **Villager type**
 
 The biome a villager comes from, which sets its outfit. A difference dresses it as a villager of another biome.
+
+## `set_equipment`
+
+**Equipment change**
+
+A packet that tells the client what an entity holds or wears in some of
+its slots, such as a helmet a dispenser puts on an armor stand. A server
+that sends one vanilla does not, or leaves one out, shows the entity with
+other equipment.
+
+## `set_equipment.equipment[].item.components.added`
+
+**Equipped item components**
+
+The components an equipped stack has on top of what its item has by
+default. A stack with none is compared as this empty list.
+
+## `set_equipment.equipment[].item.components.removed`
+
+**Equipped item removed components**
+
+The components of the item that an equipped stack takes away. A stack
+that takes none away is compared as this empty list.
 
 ## `set_equipment.entity_id`
 

@@ -11,11 +11,20 @@ from dataclasses import dataclass, field
 from typing import cast, override
 
 import pytest
-from support.control import CLIENT_COMMAND, CONTROL, ControlServer, playing, tree
+from support.control import (
+    CLIENT_COMMAND,
+    CONTROL,
+    HANG_LIMIT_S,
+    ControlServer,
+    commands_sent,
+    playing,
+    tree,
+)
 from support.control_play import Play, control_commands, read
 from support.gametime import gametime_answer
 
 from mscts.bot import Face
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE
 from mscts.group import GROUPS, GroupKind
@@ -27,7 +36,8 @@ TRANSFER = "redstone/hopper-transfer"
 FULL = "redstone/hopper-full"
 PICKUP = "redstone/hopper-pickup"
 LOCK = "redstone/hopper-lock"
-GROUP_IDS = (TRANSFER, FULL, PICKUP, LOCK)
+DISPENSE = "redstone/dropper-dispenser"
+GROUP_IDS = (TRANSFER, FULL, PICKUP, LOCK, DISPENSE)
 COMMANDS = tree(
     "gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw", "kill", "summon"
 )
@@ -49,16 +59,25 @@ LOCK_WINDOW = (
     "observe:open minecraft:block_update minecraft:section_blocks_update "
     "minecraft:container_set_content minecraft:container_set_slot"
 )
+DISPENSE_WINDOW = (
+    "observe:open minecraft:block_update minecraft:section_blocks_update "
+    "minecraft:level_event minecraft:sound minecraft:add_entity minecraft:set_equipment "
+    "minecraft:container_set_content minecraft:container_set_slot"
+)
 STEPPED_WINDOWS = {
     TRANSFER: SLOT_WINDOW,
     FULL: SLOT_WINDOW,
     PICKUP: PICKUP_WINDOW,
     LOCK: LOCK_WINDOW,
+    DISPENSE: DISPENSE_WINDOW,
 }
 """The open Mark of each Group's stepped window."""
 KILL_ITEMS = "kill @e[type=minecraft:item]"
+KILL_ARMOR_STANDS = "kill @e[type=minecraft:armor_stand]"
 UNDONE_FIRST = {PICKUP: (KILL_ITEMS,)}
 """What a Group undoes before the Bots close their containers."""
+UNDONE_LAST = {DISPENSE: (KILL_ARMOR_STANDS, KILL_ITEMS)}
+"""What a Group undoes after the Bots are back at the spawn, before the arena's undo."""
 SETUP = (
     "gamerule player_movement_check false",
     "gamerule respawn_radius 0",
@@ -252,6 +271,7 @@ async def test_each_bot_closes_its_container_then_the_chests_recheck_runs_before
         *(entry for bot in bots for entry in (f"close {bot}", f"sync {bot}")),
         *RECHECK,
         *(f"tp {bot} 0.5 -60 0.5" for bot in reversed(bots)),
+        *UNDONE_LAST.get(group_id, ()),
         *UNDO,
     )
 
@@ -476,3 +496,132 @@ async def test_lock_powers_the_hopper_three_times_once_inside_its_cooldown() -> 
         STEP,
     )
     assert stepped.ticks == 19
+
+
+# `redstone/dropper-dispenser`
+
+
+@pytest.mark.asyncio
+async def test_dispense_builds_a_dropper_at_a_chest_and_dispensers_at_a_cell_and_a_stand() -> None:
+    first = (await play(DISPENSE)).play.first
+    dirt = '{Items:[{Slot:4b,id:"minecraft:dirt",count:3}]}'
+    water = '{Items:[{Slot:0b,id:"minecraft:water_bucket",count:1}]}'
+    helmet = '{Items:[{Slot:8b,id:"minecraft:iron_helmet",count:1}]}'
+
+    assert first[5:] == (
+        f"setblock 3 -60 3 minecraft:dropper[facing=east]{dirt}",
+        "setblock 4 -60 3 minecraft:chest",
+        f"setblock 3 -60 7 minecraft:dispenser[facing=east]{water}",
+        # The water's cell: stone on every side but the dispenser's.
+        "setblock 5 -60 7 minecraft:stone",
+        "setblock 4 -60 6 minecraft:stone",
+        "setblock 4 -60 8 minecraft:stone",
+        "setblock 4 -59 7 minecraft:stone",
+        f"setblock 3 -60 11 minecraft:dispenser[facing=east]{helmet}",
+        "summon minecraft:armor_stand 4.5 -60 11.5 {NoGravity:1b}",
+        "tp chest 5.5 -60 1.5",
+        "tp dropper 3.5 -60 1.5",
+        "tp water 3.5 -60 5.5",
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispense_opens_the_droppers_chest_the_dropper_and_the_waters_dispenser() -> None:
+    # The dropper's own slot shows that it takes each dirt it puts in the chest
+    # (`DropperBlock.dispenseFrom`), and the water's dispenser's that the empty bucket stays in
+    # the water bucket's slot (`consumeWithRemainder`): no other packet does.
+    opens = (await play(DISPENSE)).opens()
+    up = int(Face.UP)
+
+    assert opens == [
+        ("chest", at(4, -60, 3), up),
+        ("dropper", at(3, -60, 3), up),
+        ("water", at(3, -60, 7), up),
+    ]
+
+
+def power(z: int) -> str:
+    """The redstone block behind the dropper or dispenser at z."""
+    return f"setblock 2 -60 {z} minecraft:redstone_block"
+
+
+def unpower(z: int) -> str:
+    """The redstone block behind the dropper or dispenser at z, taken away."""
+    return f"setblock 2 -60 {z} minecraft:air"
+
+
+@pytest.mark.asyncio
+async def test_dispense_powers_each_for_a_tick_then_for_14_ticks() -> None:
+    # Each acts 4 ticks after its power comes, powered or not (`DispenserBlock.tick`): the
+    # dropper on 4 and 10, the water's dispenser on 6 and 16, the armor's on 8 and 18. Its
+    # second power holds 10 ticks past its action, so a server that acts again every 1 to 10
+    # ticks while powered acts again inside the window.
+    _, stepped = (await play(DISPENSE)).play.windows
+
+    assert stepped.commands == (
+        power(3),
+        STEP,
+        unpower(3),
+        STEP,
+        power(7),
+        STEP,
+        unpower(7),
+        STEP,
+        power(11),
+        STEP,
+        unpower(11),
+        STEP,
+        power(3),
+        *steps(6),
+        power(7),
+        *steps(2),
+        power(11),
+        *steps(6),
+        unpower(3),
+        *steps(6),
+        unpower(7),
+        *steps(2),
+        unpower(11),
+        STEP,
+    )
+    assert stepped.ticks == 29
+
+
+def test_the_dispense_test_cases_pumpkins_report_shows_have_titles() -> None:
+    # The names a Pumpkin run of the Group showed that had no title yet.
+    shown = (
+        "section_blocks_update.section.x",
+        "section_blocks_update.section.z",
+        "set_equipment",
+        "set_equipment.equipment[].item.components.added",
+        "set_equipment.equipment[].item.components.removed",
+        "sound.pitch",
+    )
+
+    assert sorted(set(shown) - TITLES.keys()) == []
+
+
+@pytest.mark.asyncio
+async def test_dispense_kills_the_armor_stand_when_the_play_fails_before_the_window() -> None:
+    # The stand is summoned in the build. A Bot that never gets to its container (here its
+    # `/tp` goes unanswered) fails the play before the stepped window; the stand must still go
+    # before the arena clears, or the next play summons a second one beside it.
+    def hang_at_the_chests_tp_until_the_kill(command: str) -> None:
+        if command == "tp chest 5.5 -60 1.5":
+            server.answers_markers = False
+        elif command == KILL_ARMOR_STANDS:
+            server.answers_markers = True
+
+    server = HopperServer(commands=COMMANDS, on_command=hang_at_the_chests_tp_until_the_kill)
+    transcript = Transcript(group_id=DISPENSE, server="fake")
+
+    async def failing() -> None:
+        async with playing(server, transcript, timeout_s=HANG_LIMIT_S) as context:
+            await GROUPS[DISPENSE].run(context)
+
+    with pytest.raises(TimeoutError):
+        await failing()
+
+    sent = commands_sent(server.seen)
+    assert KILL_ARMOR_STANDS in sent, sent
+    assert sent.index(KILL_ARMOR_STANDS) < sent.index(UNDO[0])

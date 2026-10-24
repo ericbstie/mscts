@@ -818,8 +818,9 @@ source has had its last scheduled tick, which leaves none due for the next play.
 ## Redstone (`redstone`)
 
 When repeaters, comparators, torches, observers and dust switch, tick by tick, in what order
-dust updates the blocks around it, how pistons push, pull and power up, and when hoppers move
-items. A Bot called `watcher` stands at the spawn. Control stops
+dust updates the blocks around it, how pistons push, pull and power up, when hoppers move
+items, and what droppers and dispensers do on a pulse. A Bot called `watcher` stands at the
+spawn. Control stops
 random ticks, freezes the world, and builds what a Group needs with `/setblock` on the grass of
 the spawn chunk. Then, in an Observation window, Control places and removes the blocks that power
 each circuit and steps the world one tick at a time. The window compares the blocks that change
@@ -842,6 +843,7 @@ block's state.
 | `redstone/hopper-full` | tick-exact | none | A hopper holding 3 dirt faces a chest with a full stack of stone in every slot. After 3 ticks, Control takes one stone from a stack, and 8 ticks later it empties another slot. The world steps 28 ticks. Vanilla moves nothing into the full chest, and no dirt onto the stone. A hopper that moved nothing tries again on the next tick, so it pushes a dirt on the tick after the slot empties, then every 8 ticks. | none |
 | `redstone/hopper-pickup` | tick-exact | none | Three hoppers face down: one with nothing above it, one under a stone and one under a bottom slab. Control summons an item lying above the first and the third, and one inside the bowl of the second, below the stone. 2 ticks later it summons a second item at the first and at the second. The world steps 9 ticks. Vanilla's first hopper takes the first item on the first tick and the second item 8 ticks later. The hopper under the slab takes its item through the slab. A hopper under a full block does not look for items itself, but an item in its bowl still drops in, in the item's own part of the tick. So the hopper under the stone takes its first item on the first tick, and its second on tick 9, one tick after its 8-tick wait ends. | none |
 | `redstone/hopper-lock` | tick-exact | none | A hopper holding 3 dirt faces an empty chest. Control powers the hopper with a redstone block beside it three times: from the start to tick 1, from tick 4 to 7, and from tick 16 to 18. The world steps 19 ticks. Vanilla locks a powered hopper at once, and it moves nothing while locked, but its 8-tick wait still counts down. It pushes on tick 2 and again on tick 10, as if the second lock had not been there. The push due on tick 18 waits until the third lock goes, and comes on tick 19. | none |
+| `redstone/dropper-dispenser` | tick-exact | none | A dropper holding 3 dirt faces a chest. A dispenser holding a water bucket faces a space walled with stone, and a second dispenser holding an iron helmet faces an armor stand. Control powers each with a redstone block behind it for one tick, from ticks 0, 2 and 4, and then for 14 ticks, from ticks 6, 12 and 14. The world steps 29 ticks. Vanilla acts 4 ticks after the power comes, even when the power has gone by then, and acts once however long the power lasts: the dropper on ticks 4 and 10, the first dispenser on 6 and 16, and the second on 8 and 18. The dropper takes a dirt from its stack and puts it in the chest each time. The first dispenser places the water and keeps the empty bucket in the same slot, then takes the water back up. The second puts the helmet on the armor stand, then clicks, since it is empty. | none |
 
 The piston Groups also compare block entities' data and the items a piston breaks a block into.
 
@@ -853,6 +855,10 @@ an open container in the next server tick, which a frozen world runs too, so it 
 the step ends. When a Group ends, the Bots close
 the containers and the world steps 5 more ticks, because an open chest checks again for its
 players 5 ticks after the last check.
+
+In `redstone/dropper-dispenser`, Bots open the dropper, the chest it fills and the dispenser
+holding the water bucket in the same way. The window compares their slots, the blocks that change, world events, sounds, any entity that
+appears, and the armor stand's equipment.
 
 The Groups with pistons mask the pitch of `sound`: vanilla draws a piston's pitch at random.
 Which sound plays, where and at what volume is still compared. `redstone/piston-push` also

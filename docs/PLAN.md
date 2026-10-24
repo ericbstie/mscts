@@ -1327,7 +1327,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   the grass.
 - `groups.redstone_hoppers`: `hopper_transfer` — the `redstone/hopper-transfer` script;
   `hopper_full` — the `redstone/hopper-full` script; `hopper_pickup` — the
-  `redstone/hopper-pickup` script; `hopper_lock` — the `redstone/hopper-lock` script.
+  `redstone/hopper-pickup` script; `hopper_lock` — the `redstone/hopper-lock` script;
+  `dropper_dispenser` — the `redstone/dropper-dispenser` script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
