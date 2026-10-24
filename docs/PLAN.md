@@ -549,7 +549,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # PERFORM_RESPAWN → player_loaded; a packet before `respawn` that `fail_on` names (returns
     # a text for) raises ProtocolError "<bot> got <text> before minecraft:respawn" (#463)
     async def expect(self, name: str, /, *others: str, timeout_s: float,
-                     where: Callable[[Packet], bool] | None = None) -> Packet: ...
+                     where: Callable[[Packet], bool] | None = None,
+                     since_ns: int | None = None) -> Packet: ...
+    # since_ns: a packet stamped before it (its arrival, Transcript time) is taken and passed
+    # over, not returned (#469)
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def wait_until_handled(self) -> None: ...                    # #360: lighter proof (below)
     async def drain(self) -> None: ...                                 # take what has arrived

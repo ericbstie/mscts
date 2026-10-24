@@ -271,6 +271,7 @@ def test_expect_takes_packets_until_one_has_the_name(codec: Codec, transcript: T
 
 
 BATCH_START = "minecraft:chunk_batch_start"
+BATCH_FINISHED = "minecraft:chunk_batch_finished"
 
 
 @pytest.mark.parametrize("first", [DIFFICULTY, BATCH_START])
@@ -304,6 +305,24 @@ def test_expect_takes_packets_until_where_holds(codec: Codec, transcript: Transc
         return await bot.expect(DIFFICULTY, timeout_s=1, where=lambda p: p.payload == b"\x02\x00")
 
     script = play((DIFFICULTY, b"\x01\x00"), (DIFFICULTY, b"\x02\x00"), (DIFFICULTY, b"\x03\x00"))
+    packet, _ = with_bot(codec, transcript, join_server([], script), expect)
+    assert packet.payload == b"\x02\x00"
+    assert taken(transcript)[-2:] == [(State.PLAY, DIFFICULTY)] * 2
+
+
+def test_expect_takes_packets_until_one_arrived_since_the_time_given(
+    codec: Codec, transcript: Transcript
+) -> None:
+    def two_behind_the_batch(peer: Peer) -> bytes:
+        return peer.raw_frame(DIFFICULTY, b"\x01\x00") + peer.raw_frame(DIFFICULTY, b"\x02\x00")
+
+    async def expect(bot: Bot) -> Packet:
+        await bot.join()
+        # the two arrived in the batch's read, so 1 and 2 ns after its last packet
+        [finished] = [e.t_ns for e in transcript.events if e.packet.name == BATCH_FINISHED]
+        return await bot.expect(DIFFICULTY, timeout_s=1, since_ns=finished + 2)
+
+    script = JoinScript(after_batch=two_behind_the_batch)
     packet, _ = with_bot(codec, transcript, join_server([], script), expect)
     assert packet.payload == b"\x02\x00"
     assert taken(transcript)[-2:] == [(State.PLAY, DIFFICULTY)] * 2
