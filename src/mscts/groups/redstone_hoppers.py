@@ -160,10 +160,12 @@ _FULL_BUILD = (
 )
 """The hopper holds 3 dirt; the chest a stack of 64 stone in each slot."""
 
-_FULL_OPENERS = (
+_HOPPER_THEN_CHEST = (
     _Opener("hopper", "3.5 -60 10.5", (4, -60, 8)),
     _Opener("chest", "6.5 -60 10.5", (5, -60, 8)),
 )
+"""The Bots that open the hopper at x 4 and the chest at x 5 it faces: in `redstone/hopper-full`
+and `redstone/hopper-lock`."""
 
 
 def _chest_slot(slot: int, stack: str) -> str:
@@ -183,7 +185,7 @@ _FULL_TICKS = 23
 @group("redstone/hopper-full", kind=GroupKind.TICK_EXACT)
 async def hopper_full(context: GroupContext) -> None:
     """A hopper waits at a full chest, and pushes on the next tick once a slot takes its item."""
-    async with arena(context, _FULL_BUILD), _opened(context, _FULL_OPENERS):
+    async with arena(context, _FULL_BUILD), _opened(context, _HOPPER_THEN_CHEST):
         await stepped_window(context, _FULL, _FULL_TICKS, _SLOT_PACKETS)
 
 
@@ -250,3 +252,46 @@ async def hopper_pickup(context: GroupContext) -> None:
             await stepped_window(context, _PICKUP, _PICKUP_TICKS, _PICKUP_PACKETS)
         finally:
             await context.control.run(_KILL_ITEMS)
+
+
+# `redstone/hopper-lock`: the hopper and the chest of `redstone/hopper-full`, the chest empty,
+# and a redstone block that Control places north of the hopper, at z 7, and takes away.
+
+_LOCK_BUILD = (
+    on_grass(4, 8, _holding("hopper[facing=east]", (0, "dirt", 3))),
+    on_grass(5, 8, "chest"),
+)
+
+
+def _lock(tick: int) -> At:
+    """Power the hopper on `tick`: a redstone block beside it."""
+    return At(tick, on_grass(4, 7, "redstone_block"))
+
+
+def _unlock(tick: int) -> At:
+    """Take the redstone block beside the hopper away on `tick`."""
+    return At(tick, on_grass(4, 7, "air"))
+
+
+_LOCK = (_lock(0), _unlock(3), _lock(6), _unlock(9), _lock(18), _unlock(22))
+"""A powered hopper is locked at once, and unlocked once the power goes
+(`HopperBlock.checkPoweredState`). A locked hopper moves nothing, but its cooldown still counts
+down (`HopperBlockEntity.pushItemsTick`). Locked from the start, the hopper pushes on tick 4, once
+unlocked. A lock from tick 6 to 9 falls inside its cooldown, so it pushes again on tick 12. The
+next push, due on tick 20, waits for the lock from tick 18 to 22 to go: tick 23."""
+
+_LOCK_PACKETS = (
+    "minecraft:block_update",
+    "minecraft:section_blocks_update",
+    *_SLOT_PACKETS,
+)
+"""What the lock window compares: the redstone block and the hopper's `enabled`, and the slots."""
+
+_LOCK_TICKS = 23
+
+
+@group("redstone/hopper-lock", kind=GroupKind.TICK_EXACT)
+async def hopper_lock(context: GroupContext) -> None:
+    """A powered hopper moves nothing while its cooldown still counts down."""
+    async with arena(context, _LOCK_BUILD), _opened(context, _HOPPER_THEN_CHEST):
+        await stepped_window(context, _LOCK, _LOCK_TICKS, _LOCK_PACKETS)

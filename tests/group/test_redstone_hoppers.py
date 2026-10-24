@@ -26,7 +26,8 @@ from tests.net.fakes import Peer
 TRANSFER = "redstone/hopper-transfer"
 FULL = "redstone/hopper-full"
 PICKUP = "redstone/hopper-pickup"
-GROUP_IDS = (TRANSFER, FULL, PICKUP)
+LOCK = "redstone/hopper-lock"
+GROUP_IDS = (TRANSFER, FULL, PICKUP, LOCK)
 COMMANDS = tree(
     "gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw", "kill", "summon"
 )
@@ -44,7 +45,16 @@ PICKUP_WINDOW = (
     "observe:open minecraft:add_entity minecraft:set_entity_data minecraft:remove_entities "
     "minecraft:container_set_content minecraft:container_set_slot"
 )
-STEPPED_WINDOWS = {TRANSFER: SLOT_WINDOW, FULL: SLOT_WINDOW, PICKUP: PICKUP_WINDOW}
+LOCK_WINDOW = (
+    "observe:open minecraft:block_update minecraft:section_blocks_update "
+    "minecraft:container_set_content minecraft:container_set_slot"
+)
+STEPPED_WINDOWS = {
+    TRANSFER: SLOT_WINDOW,
+    FULL: SLOT_WINDOW,
+    PICKUP: PICKUP_WINDOW,
+    LOCK: LOCK_WINDOW,
+}
 """The open Mark of each Group's stepped window."""
 KILL_ITEMS = "kill @e[type=minecraft:item]"
 UNDONE_FIRST = {PICKUP: (KILL_ITEMS,)}
@@ -387,3 +397,54 @@ async def test_pickup_puts_an_item_on_each_then_a_second_on_the_bare_one_during_
         *steps(7),
     )
     assert stepped.ticks == 9
+
+
+# `redstone/hopper-lock`
+
+LOCK_ON = "setblock 4 -60 7 minecraft:redstone_block"
+LOCK_OFF = "setblock 4 -60 7 minecraft:air"
+
+
+@pytest.mark.asyncio
+async def test_lock_builds_a_hopper_of_dirt_facing_an_empty_chest() -> None:
+    first = (await play(LOCK)).play.first
+    dirt = '{Items:[{Slot:0b,id:"minecraft:dirt",count:3}]}'
+
+    assert first[5:] == (
+        f"setblock 4 -60 8 minecraft:hopper[facing=east]{dirt}",
+        "setblock 5 -60 8 minecraft:chest",
+        "tp hopper 3.5 -60 10.5",
+        "tp chest 6.5 -60 10.5",
+    )
+
+
+@pytest.mark.asyncio
+async def test_lock_opens_the_hopper_and_the_chest() -> None:
+    opens = (await play(LOCK)).opens()
+    up = int(Face.UP)
+
+    assert opens == [("hopper", at(4, -60, 8), up), ("chest", at(5, -60, 8), up)]
+
+
+@pytest.mark.asyncio
+async def test_lock_powers_the_hopper_three_times_once_inside_its_cooldown() -> None:
+    # A locked hopper's cooldown still counts down (`HopperBlockEntity.pushItemsTick`): it
+    # pushes on tick 4, on tick 12 through the lock from 6 to 9, and on 23, once the lock from
+    # 18 to 22 has gone.
+    _, stepped = (await play(LOCK)).play.windows
+
+    assert stepped.commands == (
+        LOCK_ON,
+        *steps(3),
+        LOCK_OFF,
+        *steps(3),
+        LOCK_ON,
+        *steps(3),
+        LOCK_OFF,
+        *steps(9),
+        LOCK_ON,
+        *steps(4),
+        LOCK_OFF,
+        STEP,
+    )
+    assert stepped.ticks == 23
