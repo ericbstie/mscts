@@ -165,13 +165,15 @@ def _chest_slot(slot: int, stack: str) -> str:
     return f"item replace block {_FULL_CHEST} container.{slot} with minecraft:{stack}"
 
 
-_FULL = (At(3, _chest_slot(13, "stone 63")), At(6, _chest_slot(20, "air")))
+_FULL = (At(3, _chest_slot(13, "stone 63")), At(11, _chest_slot(20, "air")))
 """A hopper pushes nothing into a container whose every slot is full (`isFullContainer`), nor an
 item that no slot takes: one stone short in slot 13 takes no dirt (`tryMoveInItem`). When nothing
 moves, the hopper sets no cooldown and tries again on the next tick (`tryMoveItems`): it pushes
-on tick 7, once slot 20 is empty, then on ticks 15 and 23."""
+on tick 12, once slot 20 is empty, then on ticks 20 and 28. Slot 20 empties after tick 11, which
+no number from 2 to 8 divides, so a hopper that tries again every 2 to 8 ticks from tick 1
+pushes later."""
 
-_FULL_TICKS = 23
+_FULL_TICKS = 28
 
 
 @group("redstone/hopper-full", kind=GroupKind.TICK_EXACT)

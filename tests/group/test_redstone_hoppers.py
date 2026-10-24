@@ -340,19 +340,20 @@ async def test_full_opens_the_hopper_and_the_chest() -> None:
 @pytest.mark.asyncio
 async def test_full_makes_room_for_stone_then_for_dirt_and_steps_past_the_third_push() -> None:
     # A hopper whose target is full moves nothing, and tries again on the next tick
-    # (`HopperBlockEntity.tryMoveItems` sets no cooldown): it pushes on tick 7, once there is
-    # room for its dirt, then 8 ticks apart: the third on tick 23.
+    # (`HopperBlockEntity.tryMoveItems` sets no cooldown): it pushes on tick 12, once there is
+    # room for its dirt, then 8 ticks apart: the third on tick 28. No retry every 2 to 8 ticks
+    # also lands on 12, since none of them divides 11.
     _, stepped = (await play(FULL)).play.windows
     chest = "item replace block 5 -60 8"
 
     assert stepped.commands == (
         *steps(3),
         f"{chest} container.13 with minecraft:stone 63",
-        *steps(3),
+        *steps(8),
         f"{chest} container.20 with minecraft:air",
         *steps(17),
     )
-    assert stepped.ticks == 23
+    assert stepped.ticks == 28
 
 
 # `redstone/hopper-pickup`
