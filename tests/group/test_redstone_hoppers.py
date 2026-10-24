@@ -407,19 +407,20 @@ async def test_pickup_opens_the_three_hoppers() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pickup_puts_an_item_on_each_then_a_second_on_the_bare_one_during_its_cooldown() -> (
-    None
-):
+async def test_pickup_puts_an_item_at_each_then_a_second_at_two_during_their_cooldown() -> None:
     # The bare hopper takes the stone on tick 1 and waits 8 ticks
-    # (`HopperBlockEntity.tryMoveItems`): it takes the dirt on tick 9.
+    # (`HopperBlockEntity.tryMoveItems`): it takes the dirt on tick 9. The covered hopper's
+    # items lie in its bowl, below the stone: it takes the log on tick 1 in the log's own tick
+    # (`HopperBlockEntity.entityInside`), and the dirt on tick 9, a tick after its wait ends.
     _, stepped = (await play(PICKUP)).play.windows
 
     assert stepped.commands == (
         item("3.5 -59 4.5", '{id:"minecraft:stone",count:3}'),
-        item("7.5 -58 4.5", '{id:"minecraft:oak_log",count:1}'),
+        item("7.5 -59.3 4.5", '{id:"minecraft:oak_log",count:1}'),
         item("11.5 -58.5 4.5", '{id:"minecraft:stone",count:1}'),
         *steps(2),
         item("3.5 -59 4.5", '{id:"minecraft:dirt",count:2}'),
+        item("7.5 -59.3 4.5", '{id:"minecraft:dirt",count:1}'),
         *steps(7),
     )
     assert stepped.ticks == 9

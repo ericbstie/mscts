@@ -236,17 +236,28 @@ def _summon(at: str, item: str, count: int) -> str:
     return f"summon minecraft:item {at} {{{stack},NoGravity:1b,Rotation:[0f,0f]}}"
 
 
+_IN_COVERED_BOWL = "7.5 -59.3 4.5"
+"""In the covered hopper's bowl, below the stone: within the box it takes items from, which starts
+at 11/16 of its block, y -59.3125."""
+
 _PICKUP = (
     At(0, _summon("3.5 -59 4.5", "stone", 3)),
-    At(0, _summon("7.5 -58 4.5", "oak_log", 1)),
+    At(0, _summon(_IN_COVERED_BOWL, "oak_log", 1)),
     At(0, _summon("11.5 -58.5 4.5", "stone", 1)),
     At(2, _summon("3.5 -59 4.5", "dirt", 2)),
+    At(2, _summon(_IN_COVERED_BOWL, "dirt", 1)),
 )
-"""A hopper takes an item entity whose box meets the box from 11/16 of its block up to 2 blocks
-above its base (`Hopper.SUCK_AABB`), unless a full block is above it, and then waits 8 ticks
-(`HopperBlockEntity.suckInItems`). The first hopper takes the whole stack of stone on tick 1, and
-the dirt that comes on tick 2 on tick 9. The second never takes the log on its stone. The third
-takes the stone on its slab on tick 1."""
+"""In its own tick, a hopper takes an item entity whose box meets the box from 11/16 of its block
+up to 2 blocks above its base (`Hopper.SUCK_AABB`), unless a full block is above it, and then
+waits 8 ticks (`HopperBlockEntity.suckInItems`). The first hopper takes the whole stack of stone
+on tick 1, and the dirt that comes on tick 2 on tick 9. The third takes the stone on its slab on
+tick 1.
+
+An item in a hopper's bowl is also taken in the item's own tick, which comes before the hoppers'
+in a tick, whenever the hopper is off its wait, full block or not
+(`HopperBlockEntity.entityInside`). So the second hopper takes the log in its bowl on tick 1.
+Its wait ends in its own tick on tick 8, which takes nothing through the stone and sets no wait,
+so the dirt in its bowl goes on tick 9."""
 
 _PICKUP_PACKETS = (
     "minecraft:add_entity",
@@ -259,12 +270,12 @@ _PICKUP_PACKETS = (
 _PICKUP_TICKS = 9
 
 _KILL_ITEMS = "kill @e[type=minecraft:item]"
-"""Takes away the log the covered hopper left, so that the next play has none."""
+"""Takes away any item a hopper left, so that the next play has none."""
 
 
 @group("redstone/hopper-pickup", kind=GroupKind.TICK_EXACT)
 async def hopper_pickup(context: GroupContext) -> None:
-    """Hoppers take the items above them, but not through a full block."""
+    """Hoppers take the items above them; under a full block, only the items in their bowl."""
     async with arena(context, _PICKUP_BUILD), _opened(context, _PICKUP_OPENERS):
         try:
             await stepped_window(context, _PICKUP, _PICKUP_TICKS, _PICKUP_PACKETS)
