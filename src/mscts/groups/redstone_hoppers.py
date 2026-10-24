@@ -21,7 +21,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 
 from mscts.bot import Bot, Face
-from mscts.group import GroupContext, GroupKind, group
+from mscts.group import Control, GroupContext, GroupKind, group
 from mscts.groups._world import fast_forward, join_at_spawn
 from mscts.groups.redstone import At, arena, on_grass, stepped_window
 
@@ -69,14 +69,14 @@ async def _opened(context: GroupContext, openers: Sequence[_Opener]) -> AsyncIte
         for opener in openers:
             bots.append(await join_at_spawn(context, undo, opener.name))
             await context.control.run(f"tp {opener.name} {opener.stand}")
-        undo.push_async_callback(_close, context, bots)
+        undo.push_async_callback(_close, context.control, bots)
         async with context.observe(*_OPEN_PACKETS):
             for bot, opener in zip(bots, openers, strict=True):
                 await bot.place(*opener.container, Face.UP)
         yield
 
 
-async def _close(context: GroupContext, bots: Sequence[Bot]) -> None:
+async def _close(control: Control, bots: Sequence[Bot]) -> None:
     """Close each Bot's container, then step the world on until the chests' rechecks have run.
 
     Each Bot waits until the server has closed its container: Control steps on another
@@ -85,7 +85,7 @@ async def _close(context: GroupContext, bots: Sequence[Bot]) -> None:
     for bot in bots:
         await bot.close_container()
         await bot.sync()
-    await fast_forward(context.control, _RECHECK_TICKS)
+    await fast_forward(control, _RECHECK_TICKS)
 
 
 def _setblock(x: int, y: int, z: int, block: str) -> str:
