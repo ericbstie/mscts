@@ -2,8 +2,16 @@
 """Flake hunter: run a pytest selection N times, optionally under CPU stress.
 
 Usage:
-    python3 scripts/repeat.py [--times N] [--stress] [--stress-workers N] [--live-lock]
+    uv run scripts/repeat.py [--times N] [--stress] [--stress-workers N] [--live-lock]
         [--stop-at-first-failure [--failure-log FILE]] [--deadline TIME] -- <pytest args...>
+
+A live selection (a Self-check, a reference or candidate test) runs as
+`mise exec -- uv run scripts/repeat.py ...`: the Reference needs Java 25, and without
+`mise exec` it finds Java 21 and stops with a PrepareError. repeat.py guesses a selection
+is live from its paths and `-m` expression (`selfcheck`, `reference`, `candidate`) and
+refuses to start under a Java the Reference refuses, naming that form (exit 2). A
+Self-check plays `MSCTS_SELFCHECK_REPEAT` times per run (default 3): a 20-play Self-check
+needs `MSCTS_SELFCHECK_REPEAT=20` exported, which repeat.py passes through.
 
 Runs `uv run pytest <pytest args...>` `--times` times in a row (default 1). With
 `--stress`, before the first run it spawns `--stress-workers` (default `os.cpu_count()`,
@@ -39,7 +47,9 @@ import argparse
 import contextlib
 import functools
 import importlib.util
+import itertools
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -315,6 +325,50 @@ class RepeatResult:
     stopped_by: str = ""
 
 
+_LIVE_TIERS = ("reference", "selfcheck", "candidate")
+_LIVE_MARKER = re.compile(rf"(?<!not )\b({'|'.join(_LIVE_TIERS)})\b")
+
+
+def _names_live_path(arg: str) -> bool:
+    """Whether `arg` is a test path with a directory or file named for a live tier.
+
+    That is `selfcheck`, `reference` or `candidate`, or a file ending `_reference.py`
+    and so on. A bare word (`-k reference`) is not a path.
+    """
+    if arg.startswith("-") or not ("/" in arg or ".py" in arg):
+        return False
+    parts = arg.split("::", maxsplit=1)[0].removesuffix(".py").split("/")
+    return any(part == tier or part.endswith(f"_{tier}") for part in parts for tier in _LIVE_TIERS)
+
+
+def is_live_selection(pytest_args: Sequence[str]) -> bool:
+    """Whether `pytest_args` name a live tier, by path or by `-m` marker expression.
+
+    A guess from the names: a selection that reaches a live test any other way (a unit
+    file with one live test in it) is not recognised.
+    """
+    if any(_names_live_path(arg) for arg in pytest_args):
+        return True
+    expressions = [after for before, after in itertools.pairwise(pytest_args) if before == "-m"]
+    return any(_LIVE_MARKER.search(expression) for expression in expressions)
+
+
+def _java_refusal() -> str | None:
+    """Why the Reference refuses the Java this process would find, or None if it accepts it.
+
+    Imports `mscts` here, since only a live selection needs it (see `_load_live_lock`).
+    """
+    from mscts.adapters.base import PrepareError  # noqa: PLC0415
+    from mscts.adapters.vanilla import resolve_java  # noqa: PLC0415
+    from mscts.target import TARGET  # noqa: PLC0415
+
+    try:
+        resolve_java(TARGET)
+    except PrepareError as exc:
+        return str(exc)
+    return None
+
+
 def _utc_now() -> datetime:
     return datetime.now(UTC)
 
@@ -495,6 +549,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         args = parse_args(sys.argv[1:] if argv is None else argv)
     except RepeatError as exc:
         print(f"repeat.py: {exc}", file=sys.stderr)
+        return 2
+    if is_live_selection(args.pytest_args) and (refusal := _java_refusal()):
+        print(
+            f"repeat.py: a live selection needs the Java the Reference runs on: {refusal}\n"
+            "run it as `mise exec -- uv run scripts/repeat.py ...` (Java 25)",
+            file=sys.stderr,
+        )
         return 2
     uv = shutil.which("uv")
     if uv is None:

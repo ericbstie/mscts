@@ -564,6 +564,94 @@ def test_a_passing_run_leaves_no_file(repeat: types.ModuleType, tmp_path: Path) 
     assert not log.exists()
 
 
+# -- a live selection needs the Reference's Java (#472) -----------------------------
+
+
+@pytest.mark.parametrize(
+    "pytest_args",
+    [
+        ["tests/selfcheck/test_groups.py::test_selfcheck[status/basic]"],
+        ["tests/reference"],
+        ["tests/reference/test_join_reference.py::test_x", "-q"],
+        ["tests/runner/test_running_reference.py"],
+        ["tests/test_cli_candidate.py"],
+        ["-m", "reference"],
+        ["-m", "selfcheck and not statistical"],
+    ],
+)
+def test_a_selection_that_names_a_live_tier_is_live(
+    repeat: types.ModuleType, pytest_args: list[str]
+) -> None:
+    assert repeat.is_live_selection(pytest_args) is True
+
+
+@pytest.mark.parametrize(
+    "pytest_args",
+    [
+        ["tests/tooling/test_repeat.py"],
+        ["tests/tooling/test_selfcheck_pair.py::test_x"],
+        ["tests/net", "-n", "8"],
+        ["-m", "not reference and not selfcheck and not candidate"],
+        ["-k", "reference"],
+    ],
+)
+def test_a_selection_that_names_no_live_tier_is_not_live(
+    repeat: types.ModuleType, pytest_args: list[str]
+) -> None:
+    assert repeat.is_live_selection(pytest_args) is False
+
+
+def _java_home(tmp_path: Path, version: str) -> Path:
+    """A Java runtime image of `version`: `bin/java` beside a `release` file."""
+    launcher = tmp_path / f"jdk-{version}" / "bin" / "java"
+    launcher.parent.mkdir(parents=True)
+    launcher.write_text("")
+    (launcher.parent.parent / "release").write_text(f'JAVA_VERSION="{version}"\n')
+    return launcher
+
+
+def test_a_live_selection_under_the_wrong_java_is_refused_naming_the_mise_form(
+    repeat: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stand_in = _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{Path(stand_in).parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MSCTS_JAVA", str(_java_home(tmp_path, "21.0.1")))
+
+    assert repeat.main(["--", "tests/selfcheck/test_groups.py"]) == 2
+
+    err = capsys.readouterr().err
+    assert "Java 21.0.1" in err
+    assert "mise exec -- uv run scripts/repeat.py" in err
+
+
+def test_a_live_selection_under_the_right_java_runs(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in = _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{Path(stand_in).parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MSCTS_JAVA", str(_java_home(tmp_path, "25.0.4")))
+
+    assert repeat.main(["--", "tests/selfcheck/test_groups.py"]) == 0
+
+
+def test_a_selection_that_is_not_live_runs_under_any_java(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stand_in = _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{Path(stand_in).parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("MSCTS_JAVA", str(_java_home(tmp_path, "21.0.1")))
+
+    assert repeat.main(["--", "tests/tooling/test_repeat.py"]) == 0
+
+
+def test_the_docstring_names_the_selfcheck_repeat_variable(repeat: types.ModuleType) -> None:
+    assert "MSCTS_SELFCHECK_REPEAT" in (repeat.__doc__ or "")
+    assert "mise exec -- uv run scripts/repeat.py" in (repeat.__doc__ or "")
+
+
 # -- timestamped progress lines (#472) ----------------------------------------------
 
 
