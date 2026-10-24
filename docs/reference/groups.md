@@ -549,8 +549,8 @@ servers, and between plays on one server.
 Vanilla sends a dead player entity event 60, the smoke where its body was, 20 ticks after the
 death, unless the player has respawned by then. In `player/fall`, `player/drowning` and
 `player/void` the window before ends a barrier after the death, and the respawn window opens a
-barrier later, so the respawn comes first: on vanilla under load, about 250 ms after the death, and
-at most about 300 ms in 40 plays. If the Bot is held up for most of a second after the death, the
+barrier later, so the respawn comes first. In `player/void` on vanilla, with the host under load,
+the Bot asked to respawn about 300 ms after the death, and at most about 410 ms, in 40 plays. If the Bot is held up for most of a second after the death, the
 event can come inside the respawn window from one server and not from the other. So the Group fails if entity event 60, for any
 entity, comes inside the respawn window before the respawn, and says whether the event was for
 the Bot or for another entity. On the Reference that is an `error`.
