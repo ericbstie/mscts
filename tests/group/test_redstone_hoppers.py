@@ -24,7 +24,8 @@ from mscts.transcript import Transcript
 from tests.net.fakes import Peer
 
 TRANSFER = "redstone/hopper-transfer"
-GROUP_IDS = (TRANSFER,)
+FULL = "redstone/hopper-full"
+GROUP_IDS = (TRANSFER, FULL)
 COMMANDS = tree("gamerule", "tp", "tick", "fill", "setblock", "item", "time", "tellraw", "kill")
 USE_ITEM_ON, CONTAINER_CLOSE = "minecraft:use_item_on", "minecraft:container_close"
 GENERIC_9X3 = 2
@@ -269,8 +270,52 @@ async def test_transfer_opens_the_source_both_hoppers_and_the_target() -> None:
 
 @pytest.mark.asyncio
 async def test_transfer_steps_until_the_lower_hoppers_last_push_has_shown() -> None:
-    # The lower hopper pushes its last log on tick 32, which the target's menu sends on 33.
+    # The lower hopper pushes its last log on tick 32. The target's menu sends it in the next
+    # server tick, which runs before the step's barrier ends.
     _, stepped = (await play(TRANSFER)).play.windows
 
-    assert stepped.commands == steps(33)
-    assert stepped.ticks == 33
+    assert stepped.commands == steps(32)
+    assert stepped.ticks == 32
+
+
+# `redstone/hopper-full`
+
+
+@pytest.mark.asyncio
+async def test_full_builds_a_hopper_of_dirt_facing_a_chest_full_of_stone() -> None:
+    first = (await play(FULL)).play.first
+    dirt = '{Items:[{Slot:0b,id:"minecraft:dirt",count:3}]}'
+    stone = ",".join(f'{{Slot:{slot}b,id:"minecraft:stone",count:64}}' for slot in range(27))
+
+    assert first[5:] == (
+        f"setblock 4 -60 8 minecraft:hopper[facing=east]{dirt}",
+        f"setblock 5 -60 8 minecraft:chest{{Items:[{stone}]}}",
+        "tp hopper 3.5 -60 10.5",
+        "tp chest 6.5 -60 10.5",
+    )
+
+
+@pytest.mark.asyncio
+async def test_full_opens_the_hopper_and_the_chest() -> None:
+    opens = (await play(FULL)).opens()
+    up = int(Face.UP)
+
+    assert opens == [("hopper", at(4, -60, 8), up), ("chest", at(5, -60, 8), up)]
+
+
+@pytest.mark.asyncio
+async def test_full_makes_room_for_stone_then_for_dirt_and_steps_past_the_third_push() -> None:
+    # A hopper whose target is full moves nothing, and tries again on the next tick
+    # (`HopperBlockEntity.tryMoveItems` sets no cooldown): it pushes on tick 7, once there is
+    # room for its dirt, then 8 ticks apart: the third on tick 23.
+    _, stepped = (await play(FULL)).play.windows
+    chest = "item replace block 5 -60 8"
+
+    assert stepped.commands == (
+        *steps(3),
+        f"{chest} container.13 with minecraft:stone 63",
+        *steps(3),
+        f"{chest} container.20 with minecraft:air",
+        *steps(17),
+    )
+    assert stepped.ticks == 23

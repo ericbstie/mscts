@@ -7,9 +7,9 @@ window that steps the world compares what each open container sends: `container_
 `container_set_content` should a server send a whole menu again.
 
 A hopper moves at most one item every 8 ticks, in the block entities' part of a tick, after the
-players' part. So an open container sends the change in its player's next tick: an item a hopper
-moves on tick N shows on tick N + 1, which the step barrier still holds
-(docs/research/2026-10-24-hoppers.md).
+players' part. So an open container sends the change in its player's next tick, which a frozen
+world runs too, 50 ms later, before the step's barrier ends: an item a hopper moves on the step
+of tick N shows on tick N (docs/research/2026-10-24-hoppers.md).
 
 When a Group ends, each Bot closes its container, and the world steps 5 ticks, so that an open
 chest's recheck of its openers, due 5 ticks after the last, has run before the chest goes: a
@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from mscts.bot import Bot, Face
 from mscts.group import GroupContext, GroupKind, group
 from mscts.groups._world import fast_forward, join_at_spawn
-from mscts.groups.redstone import arena, on_grass, stepped_window
+from mscts.groups.redstone import At, arena, on_grass, stepped_window
 
 _OPEN_PACKETS = (
     "minecraft:open_screen",
@@ -129,7 +129,7 @@ _TRANSFER_OPENERS = (
     _Opener("target", "7.5 -60 6.5", (6, -60, 8)),
 )
 
-_TRANSFER_TICKS = 33
+_TRANSFER_TICKS = 32
 """A hopper pushes first, from its first slot that holds anything, then pulls one item from the
 first slot of the container above that holds anything, into its own first slot that takes it;
 then it waits 8 ticks (`HopperBlockEntity.tryMoveItems`). A hopper that another fills while it
@@ -138,7 +138,7 @@ pushes 7 ticks after the upper one fills it (`tryMoveInItem`). The upper hopper 
 and pulls the stone on tick 1, then pushes the stone and pulls a log on tick 9, and pushes and
 pulls a log on tick 17, its slot 0 holding one log before and after, and pushes the last log on
 tick 25. The lower hopper pushes each into the target on ticks 8, 16, 24 and 32: the dirt, the
-stone, and two logs into one stack. The target's menu shows the last on tick 33."""
+stone, and two logs into one stack."""
 
 
 @group("redstone/hopper-transfer", kind=GroupKind.TICK_EXACT)
@@ -146,3 +146,42 @@ async def hopper_transfer(context: GroupContext) -> None:
     """A hopper pulls from a chest and pushes into a second hopper, which fills a chest."""
     async with arena(context, _TRANSFER_BUILD), _opened(context, _TRANSFER_OPENERS):
         await stepped_window(context, (), _TRANSFER_TICKS, _SLOT_PACKETS)
+
+
+# `redstone/hopper-full`: a hopper at x 4 that faces east into a chest at x 5.
+
+_CHEST_SLOTS = 27
+
+_FULL_CHEST = "5 -60 8"
+
+_FULL_BUILD = (
+    on_grass(4, 8, _holding("hopper[facing=east]", (0, "dirt", 3))),
+    on_grass(5, 8, _holding("chest", *((slot, "stone", 64) for slot in range(_CHEST_SLOTS)))),
+)
+"""The hopper holds 3 dirt; the chest a stack of 64 stone in each slot."""
+
+_FULL_OPENERS = (
+    _Opener("hopper", "3.5 -60 10.5", (4, -60, 8)),
+    _Opener("chest", "6.5 -60 10.5", (5, -60, 8)),
+)
+
+
+def _chest_slot(slot: int, stack: str) -> str:
+    """Put `stack` in the chest's `slot`, with `/item`."""
+    return f"item replace block {_FULL_CHEST} container.{slot} with minecraft:{stack}"
+
+
+_FULL = (At(3, _chest_slot(13, "stone 63")), At(6, _chest_slot(20, "air")))
+"""A hopper pushes nothing into a container whose every slot is full (`isFullContainer`), nor an
+item that no slot takes: one stone short in slot 13 takes no dirt (`tryMoveInItem`). When nothing
+moves, the hopper sets no cooldown and tries again on the next tick (`tryMoveItems`): it pushes
+on tick 7, once slot 20 is empty, then on ticks 15 and 23."""
+
+_FULL_TICKS = 23
+
+
+@group("redstone/hopper-full", kind=GroupKind.TICK_EXACT)
+async def hopper_full(context: GroupContext) -> None:
+    """A hopper waits at a full chest, and pushes on the next tick once a slot takes its item."""
+    async with arena(context, _FULL_BUILD), _opened(context, _FULL_OPENERS):
+        await stepped_window(context, _FULL, _FULL_TICKS, _SLOT_PACKETS)

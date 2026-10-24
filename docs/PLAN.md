@@ -1325,7 +1325,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   build, undoing it all on the way out; `stepped_window` — step the world a tick at a time in
   one window, running a schedule of `At` on time; `on_grass` — the `/setblock` of a block on
   the grass.
-- `groups.redstone_hoppers`: `hopper_transfer` — the `redstone/hopper-transfer` script.
+- `groups.redstone_hoppers`: `hopper_transfer` — the `redstone/hopper-transfer` script;
+  `hopper_full` — the `redstone/hopper-full` script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
