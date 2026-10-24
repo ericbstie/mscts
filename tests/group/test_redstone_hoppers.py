@@ -441,13 +441,14 @@ async def test_lock_opens_the_hopper_and_the_chest() -> None:
 @pytest.mark.asyncio
 async def test_lock_powers_the_hopper_three_times_once_inside_its_cooldown() -> None:
     # A locked hopper's cooldown still counts down (`HopperBlockEntity.pushItemsTick`): it
-    # pushes on tick 4, on tick 12 through the lock from 6 to 9, and on 23, once the lock from
-    # 18 to 22 has gone.
+    # pushes on tick 2, on tick 10 through the lock from 4 to 7, and on 19, once the lock from
+    # 16 to 18 has gone. Each lock that holds a push back goes right after the hopper's first
+    # try that it stopped, so a hopper that waits 2 ticks or more to try again pushes later.
     _, stepped = (await play(LOCK)).play.windows
 
     assert stepped.commands == (
         LOCK_ON,
-        *steps(3),
+        STEP,
         LOCK_OFF,
         *steps(3),
         LOCK_ON,
@@ -455,8 +456,8 @@ async def test_lock_powers_the_hopper_three_times_once_inside_its_cooldown() -> 
         LOCK_OFF,
         *steps(9),
         LOCK_ON,
-        *steps(4),
+        *steps(2),
         LOCK_OFF,
         STEP,
     )
-    assert stepped.ticks == 23
+    assert stepped.ticks == 19

@@ -267,12 +267,14 @@ def _unlock(tick: int) -> At:
     return At(tick, on_grass(4, 7, "air"))
 
 
-_LOCK = (_lock(0), _unlock(3), _lock(6), _unlock(9), _lock(18), _unlock(22))
+_LOCK = (_lock(0), _unlock(1), _lock(4), _unlock(7), _lock(16), _unlock(18))
 """A powered hopper is locked at once, and unlocked once the power goes
-(`HopperBlock.checkPoweredState`). A locked hopper moves nothing, but its cooldown still counts
-down (`HopperBlockEntity.pushItemsTick`). Locked from the start, the hopper pushes on tick 4, once
-unlocked. A lock from tick 6 to 9 falls inside its cooldown, so it pushes again on tick 12. The
-next push, due on tick 20, waits for the lock from tick 18 to 22 to go: tick 23."""
+(`HopperBlock.checkPoweredState`). A locked hopper moves nothing and sets no cooldown, but its
+cooldown still counts down (`HopperBlockEntity.pushItemsTick`). Locked from the start, the hopper
+pushes on tick 2, once unlocked. A lock from tick 4 to 7 falls inside its cooldown, so it pushes
+again on tick 10. The next push, due on tick 18, waits for the lock from tick 16 to 18 to go:
+tick 19. Each lock that holds a push back goes right after the hopper's first try that it
+stopped, so a hopper that waits 2 ticks or more to try again pushes later."""
 
 _LOCK_PACKETS = (
     "minecraft:block_update",
@@ -281,7 +283,7 @@ _LOCK_PACKETS = (
 )
 """What the lock window compares: the redstone block and the hopper's `enabled`, and the slots."""
 
-_LOCK_TICKS = 23
+_LOCK_TICKS = 19
 
 
 @group("redstone/hopper-lock", kind=GroupKind.TICK_EXACT)
