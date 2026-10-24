@@ -451,6 +451,10 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Source | Observation | Decision |
 | --- | --- | --- | --- |
+| 2026-10-24 | worker (#490) | Running the new Group on Pumpkin and checking the Report's test case names against `TITLES` found six untitled names | **adopt**: common.md, a Group's worker does it before hand-back |
+| 2026-10-24 | worker (#472) | A job started with `nohup … &` ignores SIGINT, so a test that interrupts it failed the mutation sweep's baseline | **adopt**: common.md, detach with `setsid -f` |
+| 2026-10-24 | worker (#495) | Finding what a Pumpkin nightly changed in its config took a first run under `unshare`, a diff against the pinned file and a read of its config source | **defer**: a `scripts/research/pumpkin_pristine.py` when the next nightly bump needs it |
+| 2026-10-24 | lead (train 43) | Batch B's Workflow skipped #490's reviews because its worker returned `complete=false` for one case it handed to the lead (the arrow), so the reviews took a batch of their own | **reject**: a part handed to the lead can change what the reviews read; the extra batch cost one wake |
 | 2026-10-24 | lead (train 43) | The integrator stacked #493 (#469), whose fix adds to the Group-author API, under #494 (#41); holding #493 for the maintainer forced a 14-commit restack of #494 (about 100 min of checks) | **adopt**: tech-lead skill and PROCESS Cycle, a worker reports `interface_changed`, and the Workflow puts such branches and core changes last in the stack |
 | 2026-10-24 | worker (#41) | A guard that raised when a container did not open turned a Candidate's difference into an `error` | **adopt**: common.md and the test-group skill, a Group plays on and lets the windows show what the server did |
 | 2026-10-24 | review B, fix worker (#41) | Two Groups waited from a tick that a 2-, 3- or 6-tick retry also reached, so a wrong Candidate matched | **adopt**: test-group skill, choose waits that no retry period from 2 to 8 divides |

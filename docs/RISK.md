@@ -88,6 +88,8 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #499 |  | low | the lead's diff read | 0 | none: tooling; 62 unit tests of `repeat.py`; mutation sweep 28 of 28; each new flag used live once |
+| #498 |  | low | the lead's diff read | 0 | none: the Adapter's config; candidate tier 15 of 15 (14 of 15 on main); mutation sweep 6 of 6 |
 | #494 |  | high | first review, second review; the lead's diff read of the fix round | 0, 2 (both fixed: `hopper-full` and `hopper-lock` let a hopper that retries every 2, 3 or 6 ticks pass; no hopper pushed while holding two stacks) | none: no barrier or window change; Self-check 20 of 20 of each of the four Groups after the fixes; mutation sweep 32 of 32 before the fixes; the nine other `redstone/*` Groups 3 of 3 after the helper rename; reference tier 36 of 36 on the restacked head |
 | #492 |  | medium | the lead's diff read | 0 | 5 of 5, each 20 of 20, of `player/void`; Self-check 20 of 20 of `player/void`, `player/drowning`, `player/fall`; mutation sweep 4 of 4; the respawn request leaves 298 ms (median) after the death, against event 60's 1000 ms |
 | #491 |  | medium | the lead's diff read | 0 | none: a check before the respawn, no step moved (waived as for #463); Self-check 20 of 20 of `combat/death` twice; mutation sweep 7 of 7 |
