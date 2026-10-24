@@ -916,6 +916,7 @@ class Bot:
         *others: str,
         timeout_s: float,
         where: Callable[[Packet], bool] | None = None,
+        since_ns: int | None = None,
     ) -> Packet:
         """Take packets until one is called any of `names` and `where` holds for it; return it.
 
@@ -925,8 +926,9 @@ class Bot:
         outside it is never compared, so name every packet you wait for in the window's
         names too.
         `where` is called with a packet of any of the names, so it must read only fields
-        they all have. Every packet taken is recorded, the ones before it included, and the Bot's
-        Replies have already answered each of them.
+        they all have. With `since_ns`, a packet that arrived before that time, as the
+        Transcript stamps it, does not end the wait. Every packet taken is recorded, the ones
+        before it included, and the Bot's Replies have already answered each of them.
 
         Raises:
             ValueError: A name is given twice.
@@ -941,10 +943,18 @@ class Bot:
             raise ValueError(msg)
 
         def wanted(packet: Packet) -> bool:
-            return packet.name in names and (where is None or where(packet))
+            return (
+                packet.name in names
+                and (where is None or where(packet))
+                and (since_ns is None or self._arrived_since(since_ns))
+            )
 
         async with self._operation(timeout_s, " or ".join(names)):
             return await self._take(wanted, timeout_s=timeout_s)
+
+    def _arrived_since(self, t_ns: int) -> bool:
+        """Whether the packet `recv` last returned arrived at `t_ns` or later."""
+        return cast("int", self._connection.last_arrival_ns) >= t_ns
 
     async def _take(self, wanted: Callable[[Packet], bool], *, timeout_s: float) -> Packet:
         """Take packets until `wanted` holds for one; return it.
