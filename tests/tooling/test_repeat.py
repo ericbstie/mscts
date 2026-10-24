@@ -459,3 +459,104 @@ def test_killing_a_series_keeps_the_lock_until_its_run_exits(tmp_path: Path) -> 
                     time.sleep(0.01)
                 else:
                     break
+
+
+# -- --stop-at-first-failure: the series ends there and its output is kept (#472) ------
+
+
+def test_parse_args_reads_stop_at_first_failure_and_its_log(repeat: types.ModuleType) -> None:
+    default = repeat.parse_args(["--", "tests/"])
+    assert default.stop_at_first_failure is False
+    named = repeat.parse_args(
+        ["--stop-at-first-failure", "--failure-log", "first.log", "--", "tests/"]
+    )
+    assert named.stop_at_first_failure is True
+    assert named.failure_log == Path("first.log")
+
+
+def test_a_series_stops_after_its_first_failing_run(repeat: types.ModuleType) -> None:
+    outcomes: list[tuple[int, frozenset[str]]] = [
+        (0, frozenset()),
+        (1, frozenset({"t"})),
+        (0, frozenset()),
+    ]
+
+    def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        return outcomes.pop(0)
+
+    result = repeat.run_repeats("uv", ("tests/",), 3, run=fake_run, stop_at_first_failure=True)
+
+    assert (result.passed, result.failed) == (1, 1)
+    assert outcomes == [(0, frozenset())]  # the third run never started
+
+
+def test_a_series_without_the_flag_goes_on_after_a_failing_run(repeat: types.ModuleType) -> None:
+    outcomes: list[tuple[int, frozenset[str]]] = [(1, frozenset()), (0, frozenset())]
+
+    def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        return outcomes.pop(0)
+
+    result = repeat.run_repeats("uv", ("tests/",), 2, run=fake_run)
+
+    assert (result.passed, result.failed) == (1, 1)
+
+
+def test_the_report_says_how_many_runs_ran_when_a_failure_stopped_the_series(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    stopped = repeat.RepeatResult(
+        times=20, passed=3, failed=1, failing_ids=frozenset({"t"}), stopped_by="first failure"
+    )
+    assert repeat.print_report(stopped, failure_log=Path("first.log")) == 1
+    out = capsys.readouterr().out
+    assert "4 of 20 run(s) ran, stopped at the first failure: 3 passed, 1 failed" in out
+    assert "output of the failing run: first.log" in out
+
+
+def _stand_in_uv(tmp_path: Path, *, exit_code: int) -> str:
+    """A `uv` that prints a line on each stream and exits with `exit_code`."""
+    stand_in = tmp_path / "uv"
+    stand_in.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "print('to stdout')\n"
+        "print('to stderr', file=sys.stderr)\n"
+        f"sys.exit({exit_code})\n"
+    )
+    stand_in.chmod(0o755)
+    return str(stand_in)
+
+
+def test_a_failing_run_keeps_its_whole_output_in_the_named_file(
+    repeat: types.ModuleType, tmp_path: Path
+) -> None:
+    log = tmp_path / "first.log"
+    returncode, _ids = repeat.run_once(
+        _stand_in_uv(tmp_path, exit_code=1), ("tests/",), failure_log=log
+    )
+    assert returncode == 1
+    text = log.read_text()
+    assert "to stdout" in text
+    assert "to stderr" in text
+
+
+def test_the_command_stops_at_the_first_failure_and_names_the_kept_output(
+    repeat: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stand_in_uv(tmp_path, exit_code=1)
+    log = tmp_path / "first.log"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    argv = ["--times", "5", "--stop-at-first-failure", "--failure-log", str(log), "--", "tests/"]
+
+    assert repeat.main(argv) == 1
+    assert "to stdout" in log.read_text()
+    assert "1 of 5 run(s) ran, stopped at the first failure" in capsys.readouterr().out
+
+
+def test_a_passing_run_leaves_no_file(repeat: types.ModuleType, tmp_path: Path) -> None:
+    log = tmp_path / "first.log"
+    repeat.run_once(_stand_in_uv(tmp_path, exit_code=0), ("tests/",), failure_log=log)
+    assert not log.exists()

@@ -2,8 +2,8 @@
 """Flake hunter: run a pytest selection N times, optionally under CPU stress.
 
 Usage:
-    python3 scripts/repeat.py [--times N] [--stress] [--stress-workers N] [--live-lock] --
-        <pytest args...>
+    python3 scripts/repeat.py [--times N] [--stress] [--stress-workers N] [--live-lock]
+        [--stop-at-first-failure [--failure-log FILE]] -- <pytest args...>
 
 Runs `uv run pytest <pytest args...>` `--times` times in a row (default 1). With
 `--stress`, before the first run it spawns `--stress-workers` (default `os.cpu_count()`,
@@ -18,6 +18,10 @@ releases it, so a short live run that queued meanwhile goes between two runs of 
 (#411). `--stress` then loads the CPUs only while a run holds the lock. Never wrap a live
 series in an outer `live_lock.py`: that holds the lock for the whole series.
 
+With `--stop-at-first-failure`, no run starts after a failing one, and that run's whole
+output (stdout, then stderr) is kept in `--failure-log` (default `repeat-failure.log` in
+the working directory). The final report then says how many of the runs ran.
+
 Prints one line per run and a final report: how many runs passed, how many failed, and
 the union of failing test ids (from pytest's "FAILED <id> - ..." summary lines) across
 every run. Exit code is 0 only if every run passed; a run that failed for any reason
@@ -27,6 +31,7 @@ failed.
 
 import argparse
 import contextlib
+import functools
 import importlib.util
 import os
 import shutil
@@ -50,6 +55,7 @@ _BUSY_LOOP = "\nwhile True:\n    pass\n"
 _STRESS_TOKEN_NAME = "MSCTS_REPEAT_STRESS"  # noqa: S105 - an env var name, not a secret
 _STOP_GRACE_S = 2.0  # a busy loop never checks anything, so this is really "give up and kill"
 _PROC = Path("/proc")
+_DEFAULT_FAILURE_LOG = "repeat-failure.log"
 
 
 def tagged_pids(token: str, *, proc_dir: Path = _PROC) -> list[int]:
@@ -99,6 +105,8 @@ class Args:
     stress: bool
     stress_workers: int
     live_lock: bool
+    stop_at_first_failure: bool
+    failure_log: Path
 
 
 def split_argv(argv: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -133,6 +141,17 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="take the live-tier lock for each run, not for the whole series",
     )
+    parser.add_argument(
+        "--stop-at-first-failure",
+        action="store_true",
+        help="end the series at the first failing run and keep that run's output in --failure-log",
+    )
+    parser.add_argument(
+        "--failure-log",
+        type=Path,
+        default=Path(_DEFAULT_FAILURE_LOG),
+        help=f"where the failing run's output is kept (default {_DEFAULT_FAILURE_LOG})",
+    )
     return parser
 
 
@@ -165,6 +184,8 @@ def parse_args(argv: Sequence[str]) -> Args:
         stress=parsed.stress,
         stress_workers=workers,
         live_lock=parsed.live_lock,
+        stop_at_first_failure=parsed.stop_at_first_failure,
+        failure_log=parsed.failure_log,
     )
 
 
@@ -215,12 +236,17 @@ def failing_ids_in(stdout: str) -> frozenset[str]:
 
 
 def run_once(
-    uv: str, pytest_args: Sequence[str], inherit: Sequence[int] = ()
+    uv: str,
+    pytest_args: Sequence[str],
+    inherit: Sequence[int] = (),
+    *,
+    failure_log: Path | None = None,
 ) -> tuple[int, frozenset[str]]:
     """Run `uv run pytest <pytest_args>` once; return (exit code, failing test ids).
 
     The run inherits the descriptors in `inherit` (the live lock's, which it keeps if this
-    process is killed).
+    process is killed). If it fails and `failure_log` is given, its whole output (stdout,
+    then stderr) is written there.
     """
     result = subprocess.run(  # noqa: S603 - a fixed, absolute-path launcher; no shell
         [uv, "run", "pytest", *pytest_args],
@@ -231,40 +257,61 @@ def run_once(
     )
     sys.stdout.write(result.stdout)
     sys.stderr.write(result.stderr)
+    if result.returncode != 0 and failure_log is not None:
+        failure_log.write_text(result.stdout + result.stderr, encoding="utf-8")
     return result.returncode, failing_ids_in(result.stdout)
 
 
 @dataclass(frozen=True, slots=True)
 class RepeatResult:
-    """The outcome of running a selection `times` times: how many passed, how many failed."""
+    """The outcome of running a selection up to `times` times.
+
+    `passed + failed` runs ran; `stopped_by` names what ended the series early
+    ("first failure"), or is empty if every run ran.
+    """
 
     times: int
     passed: int
     failed: int
     failing_ids: frozenset[str]
+    stopped_by: str = ""
 
 
 def run_repeats(
-    uv: str, pytest_args: Sequence[str], times: int, *, run: Run = run_once
+    uv: str,
+    pytest_args: Sequence[str],
+    times: int,
+    *,
+    run: Run = run_once,
+    stop_at_first_failure: bool = False,
 ) -> RepeatResult:
     """Run `pytest_args` `times` times with `uv`; return the aggregated `RepeatResult`.
 
     `run` is `run_once` by default; tests inject a fake with the same signature so the
-    aggregation logic is pinned without spawning real pytest processes.
+    aggregation logic is pinned without spawning real pytest processes. With
+    `stop_at_first_failure`, no run starts after a failing one.
     """
     passed = 0
     failed = 0
     failing_ids: set[str] = set()
+    stopped_by = ""
     for index in range(times):
         returncode, ids = run(uv, pytest_args)
         print(f"run {index + 1}/{times}: exit code {returncode}, {len(ids)} failing", flush=True)
         if returncode == 0:
             passed += 1
-        else:
-            failed += 1
-            failing_ids |= ids
+            continue
+        failed += 1
+        failing_ids |= ids
+        if stop_at_first_failure:
+            stopped_by = "first failure"
+            break
     return RepeatResult(
-        times=times, passed=passed, failed=failed, failing_ids=frozenset(failing_ids)
+        times=times,
+        passed=passed,
+        failed=failed,
+        failing_ids=frozenset(failing_ids),
+        stopped_by=stopped_by,
     )
 
 
@@ -282,9 +329,23 @@ def locked_run(run: InheritingRun, *, hold: Scope[int | None], load: Scope[objec
     return run_locked
 
 
-def print_report(result: RepeatResult) -> int:
-    """Print `result`'s summary; return the exit code (0 only if every run passed)."""
-    print(f"{result.times} run(s): {result.passed} passed, {result.failed} failed")
+def _tally(result: RepeatResult) -> str:
+    """How many runs ran, and how they went: "20 run(s): ..." or "4 of 20 run(s) ran, ..."."""
+    counts = f"{result.passed} passed, {result.failed} failed"
+    if not result.stopped_by:
+        return f"{result.times} run(s): {counts}"
+    ran = result.passed + result.failed
+    return f"{ran} of {result.times} run(s) ran, stopped at the {result.stopped_by}: {counts}"
+
+
+def print_report(result: RepeatResult, *, failure_log: Path | None = None) -> int:
+    """Print `result`'s summary; return the exit code (0 only if every run passed).
+
+    If a run failed and `failure_log` is given, the report names the file.
+    """
+    print(_tally(result))
+    if result.failed and failure_log is not None:
+        print(f"output of the failing run: {failure_log}")
     if result.failing_ids:
         print("failing test ids:")
         for test_id in sorted(result.failing_ids):
@@ -314,8 +375,8 @@ def _each_run_load(args: Args) -> Scope[object]:
     return load
 
 
-def _live_lock_run(args: Args) -> Run:
-    """`run_once` with the live lock taken for each run, and the CPU load only while it is held."""
+def _live_lock_run(args: Args, run: InheritingRun) -> Run:
+    """`run` with the live lock taken for each run, and the CPU load only while it is held."""
     live_lock = _load_live_lock()
     cache = live_lock.cache_dir()
 
@@ -324,7 +385,27 @@ def _live_lock_run(args: Args) -> Run:
             "AbstractContextManager[int | None]", live_lock.hold_live_lock(cache, os.environ)
         )
 
-    return locked_run(run_once, hold=hold, load=_each_run_load(args))
+    return locked_run(run, hold=hold, load=_each_run_load(args))
+
+
+def _run_keeping(failure_log: Path | None) -> InheritingRun:
+    """`run_once`, keeping a failing run's output in `failure_log` (if given)."""
+
+    def run(
+        uv: str, pytest_args: Sequence[str], inherit: Sequence[int]
+    ) -> tuple[int, frozenset[str]]:
+        return run_once(uv, pytest_args, inherit, failure_log=failure_log)
+
+    return run
+
+
+def _without_lock(run: InheritingRun) -> Run:
+    """`run`, inheriting no descriptor."""
+
+    def run_unlocked(uv: str, pytest_args: Sequence[str]) -> tuple[int, frozenset[str]]:
+        return run(uv, pytest_args, ())
+
+    return run_unlocked
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -338,15 +419,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if uv is None:
         print("repeat.py: no `uv` on PATH", file=sys.stderr)
         return 2
+    failure_log = args.failure_log if args.stop_at_first_failure else None
+    keeping = _run_keeping(failure_log)
+    series = functools.partial(
+        run_repeats,
+        uv,
+        args.pytest_args,
+        args.times,
+        stop_at_first_failure=args.stop_at_first_failure,
+    )
     if args.live_lock:
-        result = run_repeats(uv, args.pytest_args, args.times, run=_live_lock_run(args))
+        result = series(run=_live_lock_run(args, keeping))
     elif args.stress:
         token = uuid.uuid4().hex
         with stress_load(args.stress_workers, token):
-            result = run_repeats(uv, args.pytest_args, args.times)
+            result = series(run=_without_lock(keeping))
     else:
-        result = run_repeats(uv, args.pytest_args, args.times)
-    return print_report(result)
+        result = series(run=_without_lock(keeping))
+    return print_report(result, failure_log=failure_log)
 
 
 if __name__ == "__main__":
