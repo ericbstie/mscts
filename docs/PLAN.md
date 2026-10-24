@@ -1442,7 +1442,9 @@ class GroupContext:
                                     # (no end Mark if the body raises: no Measurement)
     def observe(self, *names: str, until: str | tuple[str, ...] | None = None,
                 bot: Bot | None = None, play: bool = True
-                ) -> AbstractAsyncContextManager[None]: ...
+                ) -> AbstractAsyncContextManager[int]: ...
+                                    # (gives the block the OBSERVE_OPEN Mark's time, for
+                                    # Bot.expect(since_ns=...); #469)
                                     # an Observation window: on entry, every Bot in play
                                     # and not disconnected passes Bot.sync (all at once, so
                                     # what setup caused has arrived at every Bot, if the
