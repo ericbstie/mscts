@@ -149,3 +149,5 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Check a reviewer's proposed fix against the jar before you build it, as you would your own facts: one rested on a server fact javap disproved (#41).
 - Give `scripts/mutate.py` `--timeout 280` for a Group's tests: the default 60 s left two mutants INVALID (#41).
 - Run live checks (Self-checks, `mscts run`) from a detached copy at the commit (`git worktree add --detach <path> <sha>`), never from the worktree you edit: a run waiting for the lock picks up edits made meanwhile (#487).
+- Before handing back a new Group, run it once on Pumpkin and check every test case name in its Report against `TITLES`: one run found six untitled names (#490).
+- Detach a long run with `setsid -f bash -c '…'`; a job started with `nohup … &` ignores SIGINT, which a test that interrupts it needs (#472).

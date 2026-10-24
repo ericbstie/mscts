@@ -219,6 +219,14 @@ briefs at 3–6 increments and about 1500 lines at most.
   tier fails 1 of 15 on main), #496 (event 60 inside a lethal window's
   closing barrier), #497 (#41's lows, and a Pumpkin connection lost once
   each in three hopper Groups). Closed #463, fixed by #485.
+- #498 (#495): the Pumpkin Adapter writes the config nightly 9c04f71
+  knows, keeping Anvil storage (vanilla's format) where the build now
+  defaults to its own. The candidate tier is 15 of 15 again.
+- #499 (#472): `scripts/repeat.py` stops a series at its first failure and
+  keeps that run's log, holds a deadline, stamps each line, and refuses a
+  live selection under a Java the Reference refuses.
+- #490: a dispensed arrow is left to #46 (`entities/motion`): its
+  `add_entity` velocity, yaw and pitch are random.
 
 ### 2026-10-23: train 42
 
