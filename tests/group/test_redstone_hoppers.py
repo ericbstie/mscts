@@ -16,6 +16,7 @@ from support.control_play import Play, control_commands, read
 from support.gametime import gametime_answer
 
 from mscts.bot import Face
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Direction, Packet
 from mscts.compare import OBSERVE_CLOSE
 from mscts.group import GROUPS, GroupKind
@@ -563,3 +564,17 @@ async def test_dispense_powers_each_for_a_tick_then_for_14_ticks() -> None:
         STEP,
     )
     assert stepped.ticks == 29
+
+
+def test_the_dispense_test_cases_pumpkins_report_shows_have_titles() -> None:
+    # The names a Pumpkin run of the Group showed that had no title yet.
+    shown = (
+        "section_blocks_update.section.x",
+        "section_blocks_update.section.z",
+        "set_equipment",
+        "set_equipment.equipment[].item.components.added",
+        "set_equipment.equipment[].item.components.removed",
+        "sound.pitch",
+    )
+
+    assert sorted(set(shown) - TITLES.keys()) == []
