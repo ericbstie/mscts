@@ -15,8 +15,8 @@ When a Group ends, each Bot closes its container, and the world steps 5 ticks, s
 chest's recheck of its openers, due 5 ticks after the last, has run before the chest goes: a
 tick left due is saved with the chunk and would run in the next play.
 
-`redstone/dropper-dispenser` plays the same way, with a Bot holding open the chest a dropper
-fills. Its window also compares what dispensers change on their pulses: blocks, world events,
+`redstone/dropper-dispenser` plays the same way, with Bots holding open a dropper and the chest
+it fills. Its window also compares what dispensers change on their pulses: blocks, world events,
 sounds and an armor stand's equipment (docs/research/2026-10-24-dispensers.md).
 """
 
@@ -355,7 +355,11 @@ picked. The dropper holds 3 dirt in slot 4; the water's dispenser a water bucket
 facing a cell with stone on every side but its own; the armor's dispenser an iron helmet in
 slot 8, facing an armor stand, which stands still."""
 
-_DROPPER_CHEST = (_Opener("chest", "5.5 -60 1.5", (4, -60, _DROPPER_Z)),)
+_DISPENSE_OPENERS = (
+    _Opener("chest", "5.5 -60 1.5", (4, -60, _DROPPER_Z)),
+    _Opener("dropper", "3.5 -60 1.5", (3, -60, _DROPPER_Z)),
+)
+"""The dropper's slot shows that it takes each dirt it puts in the chest: no other packet does."""
 
 
 def _power(tick: int, z: int) -> At:
@@ -387,7 +391,8 @@ _DISPENSE = (
 stops being `triggered` (`DispenserBlock.neighborChanged`, `DispenserBlock.tick`). Powered on
 tick k, it acts on k + 4. Each is powered twice: for one tick, then for 14 ticks.
 
-The dropper puts a dirt in the chest on ticks 4 and 10 (`DropperBlock.dispenseFrom`). The water's
+The dropper puts a dirt in the chest on ticks 4 and 10, and takes it from its slot, which holds 2
+dirt, then 1 (`DropperBlock.dispenseFrom`). The water's
 dispenser places the water on tick 6, keeping an empty bucket, and takes it back up on tick 16
 (`DispenseItemBehavior`'s bucket behaviours); each plays world events 1000 and 2000. The armor's
 dispenser puts the helmet on the armor stand on tick 8 (`EquipmentDispenseItemBehavior`), with
@@ -425,7 +430,7 @@ async def dropper_dispenser(context: GroupContext) -> None:
     """
     async with arena(context, _DISPENSE_BUILD):
         try:
-            async with _opened(context, _DROPPER_CHEST):
+            async with _opened(context, _DISPENSE_OPENERS):
                 await stepped_window(context, _DISPENSE, _DISPENSE_TICKS, _DISPENSE_PACKETS)
         finally:
             await context.control.run(_KILL_ARMOR_STANDS)
