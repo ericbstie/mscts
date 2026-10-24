@@ -8,11 +8,12 @@ answers Control's markers, the barrier and a respawn request, and nothing else.
 import asyncio
 import functools
 import json
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass, field
 
 import pytest
-from support.bot_join import RESPAWN
+from support.bot_join import ENTITY_ID, LOGIN, RESPAWN
 from support.control import CODEC, text, tree
 from support.moves import Play, read
 
@@ -22,6 +23,7 @@ from mscts.compare import OBSERVE_OPEN
 from mscts.group import GROUPS, GroupContext, GroupKind
 from mscts.groups import combat_damage
 from mscts.groups.combat_damage import Source
+from mscts.net import ProtocolError
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 from tests.net.fakes import (
@@ -63,26 +65,38 @@ SOURCE_TYPES = (
 BY_MARKER = ("player_attack", "mob_attack", "arrow")
 
 
+def _login(peer: Peer) -> bytes:
+    return peer.frame("minecraft:login", **LOGIN)
+
+
 @dataclass
 class DamageServer:
     """A fake server that joins like vanilla and answers Control's markers and the barrier.
 
     It answers a respawn request as `PlayerList.respawn` does: the `respawn` packet, then one
-    chunk batch.
+    chunk batch. Play's `login`, which names the player's entity id, comes with the first batch's
+    end.
     """
 
     seen: list[Packet] = field(default_factory=list)
+    before_respawn: tuple[tuple[str, Mapping[str, object]], ...] = ()
+    """The packets, by name and fields, the fake sends just before each `respawn`: what vanilla
+    has sent a dead player whose respawn request comes 20 ticks or more after its death is entity
+    event 60 (`LivingEntity.tickDeath`), as if the Bot had stalled that long."""
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
+        script = JoinScript(commands=COMMANDS, after_batch=_login, then=self._play)
         with suppress(ConnectionError):
-            await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
+            await join_server(self.seen, script)(peer)
 
     async def _play(self, peer: Peer) -> None:
         requests = 0
         async for packet in peer.packets():
             self.seen.append(packet)
             if packet.name == CLIENT_COMMAND and packet.fields == {"action": PERFORM_RESPAWN}:
+                for before, fields in self.before_respawn:
+                    await peer.send(before, **fields)
                 await peer.send("minecraft:respawn", **RESPAWN, data_kept=0)
                 await peer.send("minecraft:chunk_batch_start")
                 await peer.send("minecraft:level_chunk_with_light", **EMPTY_CHUNK)
@@ -101,9 +115,10 @@ class DamageServer:
                     )
 
 
-async def _play(group_id: str) -> tuple[Transcript, Play]:
+async def _play(group_id: str, server: DamageServer | None = None) -> tuple[Transcript, Play]:
     transcript = Transcript(group_id=group_id, server="fake")
-    async with serve(CODEC, DamageServer(), timeout_s=PLAY_TIMEOUT_S) as endpoint:
+    server = DamageServer() if server is None else server
+    async with serve(CODEC, server, timeout_s=PLAY_TIMEOUT_S) as endpoint:
         context = GroupContext(endpoint, transcript, timeout_s=10.0)
         try:
             await GROUPS[group_id].run(context)
@@ -467,3 +482,23 @@ def test_death_puts_the_message_rule_back_and_leaves_the_game_rule_for_respawnin
     commands = (*result.first, *result.after, *(c for w in result.windows for c in w.before))
     assert not [c for c in commands if "immediate_respawn" in c]
     assert respawns(transcript) == 2 * len(DEATHS)
+
+
+POOF = 60
+"""The entity event vanilla sends a dead player 20 ticks after its death (`tickDeath`)."""
+
+
+def test_death_fails_when_entity_event_60_comes_before_the_respawn() -> None:
+    # A Bot that stalls about a second after the death gets event 60 inside the respawn window on
+    # one Instance and maybe not on the other, so the Group fails instead (#473, as #463 did for
+    # the player Groups). The text names the event, and no entity id, which differs between plays.
+    late = DamageServer(
+        before_respawn=(("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": POOF}),)
+    )
+    refused = (
+        r"got entity event 60 \(vanilla sends it 20 ticks after the death: the respawn request "
+        r"came that late, or the server sent it early\) before minecraft:respawn$"
+    )
+
+    with pytest.raises(ProtocolError, match=refused):
+        asyncio.run(_play("combat/death", late))

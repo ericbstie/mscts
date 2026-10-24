@@ -1360,7 +1360,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   puts itself, out of the Bot's view; `SPAWN_AT` — where each Bot is put when its Group ends;
   `join_at_spawn` — join a Bot and push the `tp` that puts it back at the spawn; `fresh` — kill a
   Bot and respawn it, with full health and food and no immunity (the `player` and `combat_damage`
-  Groups).
+  Groups); `respawn_in_a_window(context, bot, names)` — respawn a dead Bot in a window narrowed to
+  `names`, and fail if entity event 60 comes in it before the `respawn` (`player/fall`,
+  `player/drowning`, `player/void` and `combat/death`).
   `normal` — the spec on normal difficulty; `find_when_tracked` — the entity of a type nearest a
   place, once the Bot tracks one; `remove_tagged` — kill every entity with a tag, without drops,
   and wait until none is alive (the `combat` Groups); `remove_tagged_until_gone(control, tag,

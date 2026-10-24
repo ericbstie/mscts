@@ -27,7 +27,7 @@ from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, pin_joins
+from mscts.groups._world import CONTROL_AT, fresh, join_at_spawn, pin_joins, respawn_in_a_window
 from mscts.spec import CONTROL_PLAYER, Difficulty, ServerSpec
 
 VICTIM = "victim"
@@ -349,8 +349,8 @@ async def death(context: GroupContext) -> None:
     (`player_combat_kill`) and waits for the Bot to ask to respawn.
 
     A dead player still ticks in real time, and about a second after its death the server sends
-    `entity_event` 60 to it. The respawn has to come before that, which it does unless the host
-    stalls: a stall that falls on one Instance only shows as a Divergence in the respawn's window.
+    `entity_event` 60 to it. The respawn comes before that unless the Bot stalls, and the Group
+    fails if the event comes in the respawn's window before the respawn (`respawn_in_a_window`).
     """
     control = context.control
     async with _arena(context) as undo:
@@ -360,5 +360,4 @@ async def death(context: GroupContext) -> None:
         for case in DEATHS:
             await control.run(f"gamerule show_death_messages {str(case.message).lower()}")
             await _hurt(context, bot, case.source, amount=_LETHAL)
-            async with context.observe(*PACKETS):
-                await bot.respawn()
+            await respawn_in_a_window(context, bot, PACKETS)
