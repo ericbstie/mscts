@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import functools
 from collections.abc import Iterable
 from dataclasses import replace
 
@@ -201,6 +202,51 @@ async def fresh(context: GroupContext, bot: Bot) -> None:
     """
     await context.control.run(f"kill {bot.name}")
     await bot.respawn()
+
+
+_ENTITY_EVENT = "minecraft:entity_event"
+
+_POOF = 60
+"""The entity event vanilla sends a dead player 20 ticks after its death, unless it has respawned
+(26.3 javap: `LivingEntity.tickDeath` calls `broadcastEntityEvent(this, 60)` once `deathTime` is
+20, and `ServerChunkCache.sendToTrackingPlayersAndSelf` sends it to the player too)."""
+
+_LATE = (
+    "entity event 60 (vanilla sends it 20 ticks after the death: the respawn request came that "
+    "late, or the server sent it early)"
+)
+
+_OTHERS = "entity event 60 for another entity (on vanilla no other entity dies in this Group)"
+
+
+def _poof(own_id: int | None, packet: Packet) -> str | None:
+    """Say what entity event 60 shows, for player `own_id` or another; None for other packets."""
+    fields = packet.fields or {}
+    if packet.name != _ENTITY_EVENT or fields.get("event_id") != _POOF:
+        return None
+    return _LATE if fields.get("entity_id") == own_id else _OTHERS
+
+
+async def respawn_in_a_window(context: GroupContext, bot: Bot, names: Iterable[str]) -> None:
+    """Respawn the dead Bot in a window of its own, narrowed to `names`; fail if event 60 is first.
+
+    The window before it ends on the death, or a barrier after it, and this one opens a few ticks
+    after, so the respawn comes long before the 20 ticks that event 60 waits for. A Bot that stalls
+    most of a second after the death gets the event inside the window on one Instance, and maybe
+    not on the other: the windows would differ for the harness's timing.
+    So the Bot fails the respawn instead (`Bot.respawn`'s `fail_on`). On the Reference that is an
+    `error`. On a Candidate it is a `mismatch`, as is any failure of its play, even when the Bot
+    stalled. The Bot's own packets show the order, so this holds however late it reads them. An
+    event 60 the barrier that opens the window takes is in no window, and is not checked.
+    The check fails on event 60 for any entity: no other entity dies in the Groups that respawn
+    this way, so on vanilla any event 60 is the Bot's. Its text says whether the event was the
+    Bot's, without the id, which differs between plays.
+
+    Raises:
+        ProtocolError: Event 60 came before the `respawn`.
+    """
+    async with context.observe(*names):
+        await bot.respawn(fail_on=functools.partial(_poof, bot.entity_id))
 
 
 async def find_when_tracked(bot: Bot, kind: str, near: tuple[float, float, float]) -> Entity:

@@ -397,7 +397,7 @@ marker for it, an entity a server tells no player about, so it adds no packet.
 | `combat/damage-types` | tick-exact | none | The Bot wears no armor and takes 4 points of `generic`, `player_attack`, `mob_attack`, `arrow`, `fall`, `in_fire`, `lava`, `magic`, `wither`, `explosion`, `out_of_world` and `starve` damage, a window each. | none |
 | `combat/armor` | tick-exact | none | The Bot wears iron, diamond and netherite armor, then diamond armor enchanted with Protection IV, Fire Protection IV and Blast Protection IV, and takes damage through each set: the six kinds that armor reduces through every set, and all twelve kinds through the Protection set. | none |
 | `combat/effects` | tick-exact | none | The Bot wears no armor, has Resistance I, II, III or IV, or Absorption II. It takes all twelve kinds of damage under Resistance I and Absorption II, and four of them under Resistance II, III and IV. | none |
-| `combat/death` | tick-exact | none | The Bot takes 100 points of `generic`, `fall` and `magic` damage with `show_death_messages` on, and of `generic` damage with it off. Each death has a window, and the respawn after it has another. | none |
+| `combat/death` | tick-exact | none | The Bot takes 100 points of `generic`, `fall` and `magic` damage with `show_death_messages` on, and of `generic` damage with it off. Each death has a window, and the respawn after it has another, which fails the Group if entity event 60 comes in it before the respawn. | none |
 
 Armor reduces some kinds of damage and not others. In vanilla 26.3, `generic`, `fall`, `magic`,
 `wither`, `out_of_world` and `starve` are in the damage type tag `bypasses_armor`, so the
@@ -430,8 +430,10 @@ are left out, because the attacker's name and UUID are in the message and the UU
 between servers.
 
 A dead player still ticks in real time, and about a second after the death the server sends it
-`entity_event` 60. The respawn comes well before that. A host that stalls for a second on one
-Instance only can show it as a Divergence in the respawn's window.
+`entity_event` 60. The respawn comes well before that. If the Bot is held up for a second on one
+Instance only, the event can come inside the respawn window from one server and not from the
+other, so the Group fails if it comes before the respawn, as the `player` Groups that end in a
+death do (see below).
 
 ## Player (`player`)
 
