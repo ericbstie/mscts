@@ -19,7 +19,7 @@ from mscts.compare import Outcome, Verdict
 from mscts.group import GROUPS, Group, GroupKind
 from mscts.run import RunResult
 from mscts.spec import ServerSpec
-from support.verdict_text import keep_timelines
+from support.verdict_text import describe_mismatches
 
 REPEAT_VAR = "MSCTS_SELFCHECK_REPEAT"
 DEFAULT_REPEAT = 3
@@ -42,10 +42,6 @@ SLOW_PLAY_LIMIT_S: Mapping[str, int] = {
 """Seconds a play may take, for the Groups that need more than `PLAY_LIMIT_S`. A Group goes in
 with its play time measured on main (`mise run test:selfcheck` with `--durations`) and the load
 average, and twice that as its limit."""
-MAX_VERDICTS = 3
-"""How many Verdicts that are not `match` a failure message lists."""
-MAX_DIVERGENCES = 5
-"""How many of a Verdict's differences a failure message lists."""
 
 
 def repeat_from(environ: Mapping[str, str]) -> int:
@@ -118,59 +114,18 @@ def describe_failure(plays: Sequence[RunResult], where: Path) -> str:
     """Why the Self-check failed, or "" if its last play matched.
 
     A replayed Self-check fails only if the replay did not match either, so the text names
-    the replay and the play it repeated, each as `keep_timelines_and_describe` writes it,
-    with their timelines in `first` and `replay` under `where`.
+    the replay and the play it repeated, each as `describe_mismatches` writes it, with their
+    timelines in `first` and `replay` under `where`.
     """
     last = plays[-1]
     if all(verdict.outcome is Outcome.MATCH for verdict in last.verdicts):
         return ""
     if len(plays) == 1:
-        return keep_timelines_and_describe(last, where)
-    first = keep_timelines_and_describe(plays[0], where / "first")
-    replay = keep_timelines_and_describe(last, where / "replay")
+        return describe_mismatches(last, where)
+    first = describe_mismatches(plays[0], where / "first")
+    replay = describe_mismatches(last, where / "replay")
     heading = "Played again after the first play was rejected."
     return f"{heading}\nFirst play:\n{first}\nReplay:\n{replay}"
-
-
-def describe_unmatched(verdicts: Sequence[Verdict]) -> str:
-    """Each Verdict that is not `match`, with the differences it found, for a failure message.
-
-    Only the first `MAX_VERDICTS` Verdicts and their first `MAX_DIVERGENCES` differences are
-    listed, each with the Bot, the packet, the field path and both values; the rest are counted.
-    """
-    lines: list[str] = []
-    for verdict in verdicts[:MAX_VERDICTS]:
-        lines.extend(_describe(verdict))
-    if len(verdicts) > MAX_VERDICTS:
-        lines.append(f"... and {len(verdicts) - MAX_VERDICTS} more Verdicts that are not match")
-    return "\n".join(lines)
-
-
-def keep_timelines_and_describe(result: RunResult, where: Path) -> str:
-    """Write the timelines of `result`'s plays that did not match, and describe its failure.
-
-    Each such play gets a file in `where` (`keep_timelines`). The message is
-    `describe_unmatched` of the Verdicts that are not `match`, then each file's path.
-    """
-    not_matching = [verdict for verdict in result.verdicts if verdict.outcome is not Outcome.MATCH]
-    kept = keep_timelines(result, where)
-    files = [f"  {path}" for path in kept]
-    heading = ["The timelines of the plays that did not match:"] if kept else []
-    return "\n".join([describe_unmatched(not_matching), *heading, *files])
-
-
-def _describe(verdict: Verdict) -> list[str]:
-    head = f"{verdict.group_id}: {verdict.outcome}"
-    lines = [f"{head}: {verdict.detail}" if verdict.detail else head]
-    for divergence in verdict.divergences[:MAX_DIVERGENCES]:
-        where = " ".join(
-            part for part in (divergence.kind, divergence.packet, divergence.path) if part
-        )
-        values = f"{divergence.reference!r} vs {divergence.candidate!r}"
-        lines.append(f"  {divergence.bot}: {where}: {values}")
-    if len(verdict.divergences) > MAX_DIVERGENCES:
-        lines.append(f"  ... and {len(verdict.divergences) - MAX_DIVERGENCES} more differences")
-    return lines
 
 
 def needs_instances_of_their_own(groups: Sequence[Group], pair_spec: ServerSpec) -> bool:
