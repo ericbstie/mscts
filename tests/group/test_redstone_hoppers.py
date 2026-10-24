@@ -270,27 +270,39 @@ async def test_the_group_steps_on_when_a_container_does_not_open(group_id: str) 
 
 
 @pytest.mark.asyncio
-async def test_transfer_builds_a_chest_over_a_hopper_into_a_hopper_into_a_chest() -> None:
+async def test_transfer_builds_a_chest_over_a_hopper_line_and_two_more_hopper_lines() -> None:
     first = (await play(TRANSFER)).play.first
     source = (
         '{Items:[{Slot:0b,id:"minecraft:stone",count:1},{Slot:2b,id:"minecraft:oak_log",count:2}]}'
     )
     upper = '{Items:[{Slot:1b,id:"minecraft:dirt",count:1},{Slot:3b,id:"minecraft:sand",count:2}]}'
+    dirt = '{Items:[{Slot:0b,id:"minecraft:dirt",count:1}]}'
+    cobblestone = '{Items:[{Slot:0b,id:"minecraft:cobblestone",count:2}]}'
 
     assert first[5:] == (
         "setblock 5 -60 8 minecraft:hopper[facing=east]",
         f"setblock 4 -60 8 minecraft:hopper[facing=east]{upper}",
         f"setblock 4 -59 8 minecraft:chest{source}",
         "setblock 6 -60 8 minecraft:chest",
+        # The upper hopper first, so that it ticks before the lower one.
+        f"setblock 4 -60 12 minecraft:hopper[facing=east]{dirt}",
+        "setblock 5 -60 12 minecraft:hopper[facing=east]",
+        "setblock 6 -60 12 minecraft:chest",
+        # The lower hopper first, holding items when the upper one fills it.
+        f"setblock 5 -60 14 minecraft:hopper[facing=east]{cobblestone}",
+        f"setblock 4 -60 14 minecraft:hopper[facing=east]{dirt}",
+        "setblock 6 -60 14 minecraft:chest",
         "tp source 3.5 -60 6.5",
         "tp upper 3.5 -60 10.5",
         "tp lower 5.5 -60 10.5",
         "tp target 7.5 -60 6.5",
+        "tp upper_first 7.5 -60 12.5",
+        "tp lower_holds 7.5 -60 14.5",
     )
 
 
 @pytest.mark.asyncio
-async def test_transfer_opens_the_source_both_hoppers_and_the_target() -> None:
+async def test_transfer_opens_the_source_both_hoppers_and_each_lines_target() -> None:
     opens = (await play(TRANSFER)).opens()
     up = int(Face.UP)
 
@@ -299,6 +311,8 @@ async def test_transfer_opens_the_source_both_hoppers_and_the_target() -> None:
         ("upper", at(4, -60, 8), up),
         ("lower", at(5, -60, 8), up),
         ("target", at(6, -60, 8), up),
+        ("upper_first", at(6, -60, 12), up),
+        ("lower_holds", at(6, -60, 14), up),
     ]
 
 

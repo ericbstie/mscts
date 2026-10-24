@@ -101,25 +101,38 @@ def _holding(block: str, *stacks: tuple[int, str, int]) -> str:
     return f"{block}{{Items:[{items}]}}"
 
 
-# `redstone/hopper-transfer`: a chest at y -59, the source, over the upper hopper at x 4, which
-# faces east into the lower hopper at x 5, which faces east into a chest at x 6, the target.
+# `redstone/hopper-transfer`: three lines along z 8, 12 and 14, each an upper hopper at x 4
+# that faces east into a lower hopper at x 5, which faces east into a chest at x 6, the target.
+# On the first line a chest at y -59, the source, stands on the upper hopper.
 
 _TRANSFER_BUILD = (
     on_grass(5, 8, "hopper[facing=east]"),
     on_grass(4, 8, _holding("hopper[facing=east]", (1, "dirt", 1), (3, "sand", 2))),
     _setblock(4, -59, 8, _holding("chest", (0, "stone", 1), (2, "oak_log", 2))),
     on_grass(6, 8, "chest"),
+    on_grass(4, 12, _holding("hopper[facing=east]", (0, "dirt", 1))),
+    on_grass(5, 12, "hopper[facing=east]"),
+    on_grass(6, 12, "chest"),
+    on_grass(5, 14, _holding("hopper[facing=east]", (0, "cobblestone", 2))),
+    on_grass(4, 14, _holding("hopper[facing=east]", (0, "dirt", 1))),
+    on_grass(6, 14, "chest"),
 )
-"""The lower hopper is set first, so that it ticks first in each tick (`Level.tickBlockEntities`
-ticks block entities in the order they were added). The upper hopper holds a dirt in its slot
-1 and 2 sand in slot 3; the source a stone in slot 0 and 2 logs in slot 2, with slot 1 empty."""
+"""Block entities tick in the order they were added (`Level.tickBlockEntities`). On the first
+line the lower hopper is set first, so that it ticks first in each tick. Its upper hopper holds a
+dirt in slot 1 and 2 sand in slot 3; the source a stone in slot 0 and 2 logs in slot 2, with
+slot 1 empty. On the second line the upper hopper, holding a dirt, is set first. On the third the
+lower hopper is set first, holding 2 cobblestone, and its upper hopper holds a dirt."""
 
 _TRANSFER_OPENERS = (
     _Opener("source", "3.5 -60 6.5", (4, -59, 8)),
     _Opener("upper", "3.5 -60 10.5", (4, -60, 8)),
     _Opener("lower", "5.5 -60 10.5", (5, -60, 8)),
     _Opener("target", "7.5 -60 6.5", (6, -60, 8)),
+    _Opener("upper_first", "7.5 -60 12.5", (6, -60, 12)),
+    _Opener("lower_holds", "7.5 -60 14.5", (6, -60, 14)),
 )
+"""On the second and third lines, only the target is open: its slots show when the lower hopper
+pushed."""
 
 _TRANSFER_TICKS = 48
 """A hopper pushes first, from its first slot that holds anything, then pulls one item from the
@@ -131,12 +144,22 @@ and pulls the stone on tick 1, then pushes the stone and pulls a log on tick 9, 
 pulls a log on tick 17, its slot 0 holding one log before and after. It pushes the last log on
 tick 25, while its sand waits in slot 3, then a sand on ticks 33 and 41. The lower hopper pushes
 each into the target on ticks 8, 16, 24, 32, 40 and 48: the dirt, the stone, two logs into one
-stack and two sand into another."""
+stack and two sand into another.
+
+On the second line the upper hopper ticks first, so the lower one has not ticked yet when it is
+filled on tick 1: it waits 8 ticks and pushes the dirt on tick 8, again 7 ticks after it arrived.
+On the third line the lower hopper pushes a cobblestone on tick 1, then the upper one fills it
+while it holds the other, which sets no cooldown: it pushes the second cobblestone on tick 9 and
+the dirt on tick 17."""
 
 
 @group("redstone/hopper-transfer", kind=GroupKind.TICK_EXACT)
 async def hopper_transfer(context: GroupContext) -> None:
-    """A hopper pulls from a chest and pushes into a second hopper, which fills a chest."""
+    """A hopper pulls from a chest and pushes into a second hopper, which fills a chest.
+
+    Two more lines of two hoppers each fill a chest: one whose upper hopper ticks first, and one
+    whose lower hopper holds items when the upper one fills it.
+    """
     async with arena(context, _TRANSFER_BUILD), _opened(context, _TRANSFER_OPENERS):
         await stepped_window(context, (), _TRANSFER_TICKS, _SLOT_PACKETS)
 
