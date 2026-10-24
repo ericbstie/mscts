@@ -17,7 +17,7 @@ import time
 import types
 import uuid
 from collections.abc import Callable, Iterator, Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -562,6 +562,28 @@ def test_a_passing_run_leaves_no_file(repeat: types.ModuleType, tmp_path: Path) 
     log = tmp_path / "first.log"
     repeat.run_once(_stand_in_uv(tmp_path, exit_code=0), ("tests/",), failure_log=log)
     assert not log.exists()
+
+
+# -- timestamped progress lines (#472) ----------------------------------------------
+
+
+def test_each_progress_line_starts_with_the_time_the_run_ended_in_utc(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clock = [datetime(2026, 10, 24, 14, 0, 5, tzinfo=timezone(timedelta(hours=2)))]
+    rules = repeat.SeriesRules(now=lambda: clock[0])
+    outcomes: list[tuple[int, frozenset[str]]] = [(0, frozenset()), (1, frozenset({"t"}))]
+
+    def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        clock[0] += timedelta(minutes=3)
+        return outcomes.pop(0)
+
+    repeat.run_repeats("uv", ("tests/",), 2, run=fake_run, rules=rules)
+
+    assert capsys.readouterr().out.splitlines() == [
+        "[2026-10-24T12:03:05Z] run 1/2: exit code 0, 0 failing",
+        "[2026-10-24T12:06:05Z] run 2/2: exit code 1, 1 failing",
+    ]
 
 
 # -- --deadline: no run starts after it (#472) --------------------------------------

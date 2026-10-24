@@ -28,11 +28,11 @@ split by a restart gets the same one by repeating the flag. With `--live-lock` t
 checked again once the lock is taken, so a run that waited past it does not start. Exit
 code 3: the deadline cut the series short and no run failed.
 
-Prints one line per run and a final report: how many runs passed, how many failed, and
-the union of failing test ids (from pytest's "FAILED <id> - ..." summary lines) across
-every run. Exit code is 0 only if every run passed; a run that failed for any reason
-(including a pytest exit code that is not 0 or 1, e.g. an internal error) counts as
-failed.
+Prints one line per run, which starts with the UTC time the run ended, and a final
+report: how many runs passed, how many failed, and the union of failing test ids (from
+pytest's "FAILED <id> - ..." summary lines) across every run. Exit code is 0 only if every
+run passed; a run that failed for any reason (including a pytest exit code that is not 0
+or 1, e.g. an internal error) counts as failed.
 """
 
 import argparse
@@ -359,7 +359,11 @@ def run_repeats(
         except DeadlinePassedError:
             stopped_by = "deadline"
             break
-        print(f"run {index + 1}/{times}: exit code {returncode}, {len(ids)} failing", flush=True)
+        stamp = rules.now().astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        print(
+            f"[{stamp}] run {index + 1}/{times}: exit code {returncode}, {len(ids)} failing",
+            flush=True,
+        )
         if returncode == 0:
             passed += 1
             continue
