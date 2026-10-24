@@ -88,6 +88,8 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #501 |  | high | first review, second review; the lead's diff read of the fix round | 0, 1 (fixed: a dropper that never took the item out of its own slot passed, since no Bot held the dropper open) | none: no barrier or window change; Self-check 20 of 20 after the fixes; a stressed Self-check 20 of 20 in review A; mutation sweep 21 of 21 before the fixes; the 14 `redstone/*` Groups 3 of 3 and reference tier 36 of 36 on the train's tip |
+| #500 |  | low | the lead's diff read | 0 | none: test helpers only; six reference tests once from a detached copy |
 | #499 |  | low | the lead's diff read | 0 | none: tooling; 62 unit tests of `repeat.py`; mutation sweep 28 of 28; each new flag used live once |
 | #498 |  | low | the lead's diff read | 0 | none: the Adapter's config; candidate tier 15 of 15 (14 of 15 on main); mutation sweep 6 of 6 |
 | #494 |  | high | first review, second review; the lead's diff read of the fix round | 0, 2 (both fixed: `hopper-full` and `hopper-lock` let a hopper that retries every 2, 3 or 6 ticks pass; no hopper pushed while holding two stacks) | none: no barrier or window change; Self-check 20 of 20 of each of the four Groups after the fixes; mutation sweep 32 of 32 before the fixes; the nine other `redstone/*` Groups 3 of 3 after the helper rename; reference tier 36 of 36 on the restacked head |

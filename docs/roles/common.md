@@ -151,3 +151,4 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Run live checks (Self-checks, `mscts run`) from a detached copy at the commit (`git worktree add --detach <path> <sha>`), never from the worktree you edit: a run waiting for the lock picks up edits made meanwhile (#487).
 - Before handing back a new Group, run it once on Pumpkin and check every test case name in its Report against `TITLES`: one run found six untitled names (#490).
 - Detach a long run with `setsid -f bash -c '…'`; a job started with `nohup … &` ignores SIGINT, which a test that interrupts it needs (#472).
+- If the sandbox refuses a detached script that runs `cd` and `git` in your worktree, start `mise run commit` or `git rebase --exec` with the Bash tool's background run instead, and wait on its output file for the commit summary or "Successfully rebased" (#471).

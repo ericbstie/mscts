@@ -197,7 +197,8 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ### 2026-10-24: train 43
 
-- #491, #492 and #494 merged. #493 (#469) is held: its fix adds to the
+- #491, #492, #494, #498, #499, #500 and #501 merged in three batches.
+  #493 (#469) is held: its fix adds to the
   API a Group author writes against (`Bot.expect(since_ns=)`, and
   `observe` giving the time its window opened), so #469 waits for the
   maintainer (`needs-decision`). The integrator had stacked #494 on it,
@@ -225,8 +226,14 @@ briefs at 3–6 increments and about 1500 lines at most.
 - #499 (#472): `scripts/repeat.py` stops a series at its first failure and
   keeps that run's log, holds a deadline, stamps each line, and refuses a
   live selection under a Java the Reference refuses.
-- #490: a dispensed arrow is left to #46 (`entities/motion`): its
-  `add_entity` velocity, yaw and pitch are random.
+- #501 (#490): `redstone/dropper-dispenser`. A dropper fills a chest, one
+  dispenser places water and picks it up, another equips an armor stand,
+  each with a Bot holding its container open. Review B found that a
+  dropper that never took the item out of its slot passed; fixed. A
+  dispensed arrow is left to #46 (`entities/motion`): its `add_entity`
+  velocity, yaw and pitch are random.
+- #500 (#471): one test helper describes a mismatching play, with every
+  Divergence and the timelines kept.
 
 ### 2026-10-23: train 42
 

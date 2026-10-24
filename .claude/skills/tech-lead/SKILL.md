@@ -109,7 +109,11 @@ first.
   be checked out in the new one, and the merge script fails the same
   way. A fix agent cannot do it (a worktree guard refuses `git -C` into
   another worktree): its brief says to check out a local `<branch>-fix`
-  from origin and push `HEAD:<branch>` (#41).
+  from origin and push `HEAD:<branch>` (#41). It rebases first and runs its
+  Self-check after, so the live evidence is from the final base (#490).
+- The integrator brief names a fresh worktree of its own
+  (`git worktree add --detach <scratch>/<batch>/top`): two integrators
+  left the lead's worktree on a detached HEAD (train 43).
 - Each worker's schema reports `interface_changed` (a Group-author,
   Adapter-author or CLI surface) and `core_changed`, and the Workflow
   stacks those branches last. Read each worker's Interface changes before
