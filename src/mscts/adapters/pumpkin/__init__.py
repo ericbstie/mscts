@@ -76,7 +76,8 @@ def pumpkin_defaults() -> Toml:
 # setting, vanilla's value, so the Candidate runs as the Reference does. Every other key
 # stays at Pumpkin's default: it has no vanilla counterpart, or it already equals vanilla
 # (op_permission_level 4, keep_alive_time 15 s, autosave every 6000 ticks, region
-# compression level 6, a chat and command spam threshold of 200 ticks, ...).
+# compression level 6, a chat and command spam threshold of 200 ticks, ...), except chunk
+# storage, which `_anvil_defaults` sets to vanilla's format.
 VANILLA_EQUIVALENTS: Mapping[str, TomlValue] = MappingProxyType(
     {
         "accepts_transfers": False,  # accepts-transfers=false
@@ -224,23 +225,43 @@ def _put(document: Toml, dotted: str, value: TomlValue) -> None:
     on a value of the wrong type, so either is a bug here.
     """
     *parents, key = dotted.split(".")
-    table = document
-    for part in parents:
-        child = table[part]
-        if not isinstance(child, dict):
-            msg = f"{dotted}: {part} is not a table"
-            raise TypeError(msg)
-        table = child
+    table = _table_at(document, parents)
     if type(table[key]) is not type(value):
         msg = f"{dotted}: {value!r} is not a {type(table[key]).__name__}"
         raise TypeError(msg)
     table[key] = value
 
 
+def _table_at(document: Toml, path: list[str]) -> Toml:
+    """The table at `path` (its keys joined by dots) in `document`."""
+    table = document
+    for part in path:
+        child = table[part]
+        if not isinstance(child, dict):
+            msg = f"{'.'.join(path)}: {part} is not a table"
+            raise TypeError(msg)
+        table = child
+    return table
+
+
+def _anvil_defaults() -> Toml:
+    """`pumpkin_defaults()` with chunks stored as vanilla stores them, in Anvil region files.
+
+    Pumpkin's first run now picks its own format (`type = "pump"`) and writes no compression
+    table for it. Anvil is what it picked before (and what this Adapter's compression value
+    below is for): the table it writes for Anvil is `AnvilChunkConfig`'s default.
+    """
+    document = pumpkin_defaults()
+    chunk = _table_at(document, ["world", "chunk"])
+    _put(document, "world.chunk.type", "anvil")
+    chunk["compression"] = {"algorithm": "LZ4", "level": 6}
+    return document
+
+
 def pumpkin_config(spec: ServerSpec) -> Toml:
     """Every pumpkin.toml entry for `spec`: defaults, vanilla's values, the spec, invariants."""
     _check_readable(spec)
-    document = pumpkin_defaults()
+    document = _anvil_defaults()
     for dotted, value in (
         *VANILLA_EQUIVALENTS.items(),
         *_spec_values(spec).items(),

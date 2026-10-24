@@ -10,6 +10,7 @@ from mscts.adapters.base import PrepareError
 from mscts.adapters.pumpkin import INVARIANTS as PUMPKIN_INVARIANTS
 from mscts.adapters.pumpkin import (
     VANILLA_EQUIVALENTS,
+    _anvil_defaults,
     _put,
     pumpkin_defaults,
     pumpkin_toml,
@@ -50,6 +51,8 @@ INVARIANTS = {
     "networking.bedrock.nethernet.enabled": False,
     "networking.java.authentication.enabled": False,
     "telemetry.endpoint": "http://127.0.0.1:0/",
+    # Chunks in Anvil region files, as vanilla's: its first-run default is its own "pump".
+    "world.chunk.type": "anvil",
 }
 
 UNUSUAL_SPEC = ServerSpec(
@@ -93,7 +96,7 @@ def key_paths(document: Mapping[str, object], prefix: str = "") -> Iterator[str]
 
 
 def test_the_pinned_defaults_render_as_pumpkins_first_run_file_byte_for_byte() -> None:
-    # pumpkin/pumpkin.toml is what the nightly (commit f1c0871) wrote on its first run. The
+    # pumpkin/pumpkin.toml is what the nightly (commit 9c04f71) wrote on its first run. The
     # renderer reproduces Pumpkin's own serialization of it exactly.
     pristine = resources.files("mscts.adapters.pumpkin").joinpath("pumpkin.toml")
     assert toml_document(pumpkin_defaults()) == pristine.read_text(encoding="utf-8")
@@ -113,7 +116,9 @@ def test_default_spec_file_is_pumpkins_own_defaults_plus_documented_substitution
     #   [networking.bedrock.authentication], [networking.bedrock.nethernet] and
     #   [networking.java.authentication]; [telemetry] endpoint "http://127.0.0.1:0/".
     # - Vanilla 26.3's values: accepts_transfers false (accepts-transfers=false);
-    #   scrub_ips false (log-ips=true); [world.chunk.compression] algorithm "ZLib"
+    #   scrub_ips false (log-ips=true); [world.chunk] type "anvil" (the pristine file says
+    #   "pump" and has no [world.chunk.compression]; the table added is Pumpkin's Anvil
+    #   default, LZ4 level 6) with algorithm "ZLib"
     #   (region-file-compression=deflate); [networking.java.compression] level 6 (vanilla's
     #   Deflater() default); [networking.java.packet_limiter] enabled false (rate-limit=0);
     #   [server_links] enabled false, bug_report "" (bug-report-link= is empty, so vanilla
@@ -256,7 +261,7 @@ def test_every_table_entry_is_a_key_pumpkin_writes_with_a_value_of_its_type(
 ) -> None:
     # Pumpkin keeps an unknown key but ignores it, and falls back to its default config on
     # a value of the wrong type.
-    assert type(value) is type(at(pumpkin_defaults(), path))
+    assert type(value) is type(at(_anvil_defaults(), path))
 
 
 def test_setting_a_key_pumpkin_does_not_write_is_a_bug() -> None:
