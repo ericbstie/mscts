@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import cast, override
 
 import pytest
-from support.control import CONTROL, ControlServer, playing, tree
+from support.control import CLIENT_COMMAND, CONTROL, ControlServer, playing, tree
 from support.control_play import Play, control_commands, read
 from support.gametime import gametime_answer
 
@@ -139,7 +139,8 @@ class Played:
     sent: tuple[tuple[str, str, dict[str, object]], ...]
     """Each Bot's serverbound packet but Control's: its Bot, its name and its fields."""
     after: tuple[str, ...]
-    """After the last window: Control's commands and each Bot's close (`close <Bot>`), in order."""
+    """After the last window, in order: Control's commands, each Bot's close (`close <Bot>`) and
+    each Bot's barrier (`sync <Bot>`, once for its requests in a row)."""
 
     def opens(self) -> list[tuple[str, object, object]]:
         """Which Bot used its hand on which block and face, in order."""
@@ -160,13 +161,18 @@ async def replay(group_id: str, server: ControlServer) -> Played:
         for event in transcript.events
         if event.bot != CONTROL and event.packet.direction is Direction.SERVERBOUND
     ]
-    closes = [(t_ns, f"close {bot}") for t_ns, bot, name, _ in sent if name == CONTAINER_CLOSE]
+    said = {CONTAINER_CLOSE: "close", CLIENT_COMMAND: "sync"}
+    own = [(t_ns, f"{said[name]} {bot}") for t_ns, bot, name, _ in sent if name in said]
     closed = max(mark.t_ns for mark in transcript.marks if mark.label == OBSERVE_CLOSE)
-    timeline = sorted([*closes, *control_commands(transcript)])
+    after = [e for t_ns, e in sorted([*own, *control_commands(transcript)]) if t_ns > closed]
     return Played(
         play=read(transcript),
         sent=tuple((bot, name, fields) for _, bot, name, fields in sent),
-        after=tuple(entry for t_ns, entry in timeline if t_ns > closed),
+        after=tuple(
+            entry
+            for entry, previous in zip(after, [None, *after], strict=False)
+            if not (entry == previous and entry.startswith("sync "))
+        ),
     )
 
 
@@ -239,9 +245,11 @@ async def test_each_bot_closes_its_container_then_the_chests_recheck_runs_before
     bots = [bot for bot, _, _ in played.opens()]
 
     assert played.closes() == [(bot, 1) for bot in bots]
+    # Each Bot waits until the server has closed its container: Control steps on another
+    # connection.
     assert played.after == (
         *UNDONE_FIRST.get(group_id, ()),
-        *(f"close {bot}" for bot in bots),
+        *(entry for bot in bots for entry in (f"close {bot}", f"sync {bot}")),
         *RECHECK,
         *(f"tp {bot} 0.5 -60 0.5" for bot in reversed(bots)),
         *UNDO,
