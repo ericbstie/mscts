@@ -818,7 +818,8 @@ source has had its last scheduled tick, which leaves none due for the next play.
 ## Redstone (`redstone`)
 
 When repeaters, comparators, torches, observers and dust switch, tick by tick, in what order
-dust updates the blocks around it, and how pistons push, pull and power up. A Bot called `watcher` stands at the spawn. Control stops
+dust updates the blocks around it, how pistons push, pull and power up, and when hoppers move
+items. A Bot called `watcher` stands at the spawn. Control stops
 random ticks, freezes the world, and builds what a Group needs with `/setblock` on the grass of
 the spawn chunk. Then, in an Observation window, Control places and removes the blocks that power
 each circuit and steps the world one tick at a time. The window compares the blocks that change
@@ -837,8 +838,21 @@ block's state.
 | `redstone/piston-push` | tick-exact | none | Control builds a row of pistons, each facing 1, 12 or 13 stones, obsidian, bedrock, a chest, an extended piston, a torch or a poppy. It powers each piston with a redstone block, the poppy's 2 ticks after the rest, and takes each power away 4 ticks later. The world steps 10 ticks. Vanilla pushes 1 and 12 blocks, and moves nothing when the row is 13 long or the first block is one that cannot move: that piston does nothing at all. The torch and the poppy break, each into an item. A piston acts on the tick after its power changes, and its blocks are in place 2 ticks later. | none |
 | `redstone/sticky` | tick-exact | none | Control builds four sticky pistons: two facing a stone, one facing a slime block with a stone and a honey block beside it, and one facing a honey block with a stone and a slime block beside it. It powers all four, takes one stone's power away after a single tick, and the rest 5 ticks later. The world steps 9 ticks. Vanilla pulls each block back when the power goes, but the piston powered for a single tick leaves its stone where it pushed it. The slime and honey blocks take the stones beside them along, and leave each other behind. | none |
 | `redstone/quasi-connectivity` | tick-exact | none | Quasi-connectivity is a vanilla behaviour in which a piston, a dropper or a dispenser also counts power at the block above it, but checks for power only when a block next to it changes. Control places a redstone block 2 above a piston, a dropper and a dispenser, then a stone behind each 2 ticks later. 6 ticks after that it takes the redstone blocks away, and 2 ticks later the stones. The world steps 14 ticks. Vanilla does nothing when the redstone blocks arrive or go, only when the stones do: the piston extends and the dropper and the dispenser click, then the piston retracts. | none |
+| `redstone/hopper-transfer` | tick-exact | none | A chest holds a stone in its first slot and 2 logs in its third. It stands on a hopper that holds a dirt in its second slot and 2 sand in its fourth, and faces a second hopper, which faces an empty chest. The world steps 48 ticks. Vanilla moves one item from each hopper every 8 ticks. A hopper pushes from its first slot that holds anything, so the sand goes last, then pulls from the first slot above it that holds anything. The second hopper pushes each item 7 ticks after it arrives, and the logs and the sand each stack in the last chest. Two more lines of two hoppers each end in a chest. In one, the first hopper holds a dirt and is placed before the second. In the other, the first hopper holds a dirt and the second holds 2 cobblestone. An empty hopper that another fills pushes 7 ticks later whichever of the two moves first in a tick. A hopper filled while it holds items keeps its own 8-tick wait. | none |
+| `redstone/hopper-full` | tick-exact | none | A hopper holding 3 dirt faces a chest with a full stack of stone in every slot. After 3 ticks, Control takes one stone from a stack, and 8 ticks later it empties another slot. The world steps 28 ticks. Vanilla moves nothing into the full chest, and no dirt onto the stone. A hopper that moved nothing tries again on the next tick, so it pushes a dirt on the tick after the slot empties, then every 8 ticks. | none |
+| `redstone/hopper-pickup` | tick-exact | none | Three hoppers face down: one with nothing above it, one under a stone and one under a bottom slab. Control summons an item lying above the first and the third, and one inside the bowl of the second, below the stone. 2 ticks later it summons a second item at the first and at the second. The world steps 9 ticks. Vanilla's first hopper takes the first item on the first tick and the second item 8 ticks later. The hopper under the slab takes its item through the slab. A hopper under a full block does not look for items itself, but an item in its bowl still drops in, in the item's own part of the tick. So the hopper under the stone takes its first item on the first tick, and its second on tick 9, one tick after its 8-tick wait ends. | none |
+| `redstone/hopper-lock` | tick-exact | none | A hopper holding 3 dirt faces an empty chest. Control powers the hopper with a redstone block beside it three times: from the start to tick 1, from tick 4 to 7, and from tick 16 to 18. The world steps 19 ticks. Vanilla locks a powered hopper at once, and it moves nothing while locked, but its 8-tick wait still counts down. It pushes on tick 2 and again on tick 10, as if the second lock had not been there. The push due on tick 18 waits until the third lock goes, and comes on tick 19. | none |
 
 The piston Groups also compare block entities' data and the items a piston breaks a block into.
+
+In the hopper Groups, a Bot stands beside each hopper and chest and opens it before the world
+steps. Their windows compare what each open container shows. `redstone/hopper-pickup` also
+compares the items that appear and go, and `redstone/hopper-lock` the blocks that change.
+Vanilla sends a hopper's move to
+an open container in the next server tick, which a frozen world runs too, so it arrives before
+the step ends. When a Group ends, the Bots close
+the containers and the world steps 5 more ticks, because an open chest checks again for its
+players 5 ticks after the last check.
 
 The Groups with pistons mask the pitch of `sound`: vanilla draws a piston's pitch at random.
 Which sound plays, where and at what volume is still compared. `redstone/piston-push` also
@@ -907,7 +921,7 @@ commands as chat, so the clock is no operator during that step.
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
-| Hoppers and redstone glitches | Tick-by-tick observation under `/tick freeze` and `/tick step`, as in [Redstone](#redstone-redstone) | Their Groups. The `tick-exact` kind they use exists. |
+| Redstone glitches | Tick-by-tick observation under `/tick freeze` and `/tick step`, as in [Redstone](#redstone-redstone) | Their Groups. The `tick-exact` kind they use exists. |
 | Mob spawning and loot | Distributions over many runs | Its Groups. The `statistical` kind they use exists, in its own opt-in tier. |
 See [Project status](/status) for the order.
 

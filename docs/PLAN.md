@@ -1320,7 +1320,14 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `redstone/observer` script; `dust` — the `redstone/dust` script; `update_order` — the
   `redstone/update-order` script; `piston_push` — the `redstone/piston-push` script; `sticky` —
   the `redstone/sticky` script; `quasi_connectivity` — the `redstone/quasi-connectivity`
-  script.
+  script. Shared with `groups.redstone_hoppers`: `At` — a command Control runs once a window has
+  stepped so many ticks; `arena` — join the watcher, stop random ticks, freeze the world and
+  build, undoing it all on the way out; `stepped_window` — step the world a tick at a time in
+  one window, running a schedule of `At` on time; `on_grass` — the `/setblock` of a block on
+  the grass.
+- `groups.redstone_hoppers`: `hopper_transfer` — the `redstone/hopper-transfer` script;
+  `hopper_full` — the `redstone/hopper-full` script; `hopper_pickup` — the
+  `redstone/hopper-pickup` script; `hopper_lock` — the `redstone/hopper-lock` script.
 - `groups.spawn`: `join_position` — the `spawn/join-position` script: a new player named by
   `context.player_name` joins, and the offsets of where it appears from the middle of the world
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
