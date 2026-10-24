@@ -419,6 +419,24 @@ def test_stress_does_not_run_while_the_series_waits_for_the_lock(tmp_path: Path)
         assert series.runs() == [f"locked 1 {process.pid}"]
 
 
+def test_a_live_lock_series_that_waited_past_its_deadline_starts_no_run(tmp_path: Path) -> None:
+    with _series(tmp_path) as (series, start):
+        series.cache.mkdir()
+        deadline = datetime.now(UTC) + timedelta(seconds=8)
+        with (series.cache / "live-tier.lock").open("w") as other_holder:
+            fcntl.flock(other_holder, fcntl.LOCK_EX)
+            other_holder.write(f"{os.getpid()}\n")
+            other_holder.flush()
+            process = start("--live-lock", "--deadline", deadline.isoformat())
+            assert process.stderr is not None
+            ready, _, _ = select.select([process.stderr], [], [], 10)
+            assert ready, "the series did not say it was waiting"
+            assert process.stderr.readline().startswith("waiting for another live tier")
+            time.sleep(max(0.0, (deadline - datetime.now(UTC)).total_seconds()) + 0.2)
+        assert _finish(process) == 3
+        assert series.runs() == []
+
+
 def test_an_interrupted_series_keeps_the_holders_pid_in_place(tmp_path: Path) -> None:
     with _series(tmp_path) as (series, start):
         series.cache.mkdir()
@@ -555,7 +573,28 @@ def test_the_command_stops_at_the_first_failure_and_names_the_kept_output(
 
     assert repeat.main(argv) == 1
     assert "to stdout" in log.read_text()
-    assert "1 of 5 run(s) ran, stopped at the first failure" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "1 of 5 run(s) ran, stopped at the first failure" in out
+    assert f"output of the failing run: {log}" in out
+
+
+def test_a_series_without_the_flag_keeps_no_output_of_a_failing_run(
+    repeat: types.ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stand_in_uv(tmp_path, exit_code=1)
+    log = tmp_path / "first.log"
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+    assert repeat.main(["--times", "2", "--failure-log", str(log), "--", "tests/"]) == 1
+    assert not log.exists()
+
+
+def test_the_report_names_no_file_when_no_run_failed(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    clean = repeat.RepeatResult(times=2, passed=2, failed=0, failing_ids=frozenset())
+    repeat.print_report(clean, failure_log=Path("first.log"))
+    assert "first.log" not in capsys.readouterr().out
 
 
 def test_a_passing_run_leaves_no_file(repeat: types.ModuleType, tmp_path: Path) -> None:
