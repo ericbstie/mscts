@@ -17,6 +17,7 @@ import time
 import types
 import uuid
 from collections.abc import Callable, Iterator, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -484,7 +485,8 @@ def test_a_series_stops_after_its_first_failing_run(repeat: types.ModuleType) ->
     def fake_run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
         return outcomes.pop(0)
 
-    result = repeat.run_repeats("uv", ("tests/",), 3, run=fake_run, stop_at_first_failure=True)
+    rules = repeat.SeriesRules(stop_at_first_failure=True)
+    result = repeat.run_repeats("uv", ("tests/",), 3, run=fake_run, rules=rules)
 
     assert (result.passed, result.failed) == (1, 1)
     assert outcomes == [(0, frozenset())]  # the third run never started
@@ -560,3 +562,140 @@ def test_a_passing_run_leaves_no_file(repeat: types.ModuleType, tmp_path: Path) 
     log = tmp_path / "first.log"
     repeat.run_once(_stand_in_uv(tmp_path, exit_code=0), ("tests/",), failure_log=log)
     assert not log.exists()
+
+
+# -- --deadline: no run starts after it (#472) --------------------------------------
+
+_NOON = datetime(2026, 10, 24, 12, 0, tzinfo=UTC)
+
+
+def test_parse_args_reads_a_deadline_with_an_offset(repeat: types.ModuleType) -> None:
+    assert repeat.parse_args(["--", "tests/"]).deadline is None
+    args = repeat.parse_args(["--deadline", "2026-10-24T12:00:00Z", "--", "tests/"])
+    assert args.deadline == _NOON
+    offset = repeat.parse_args(["--deadline", "2026-10-24T14:00:00+02:00", "--", "tests/"])
+    assert offset.deadline == _NOON
+
+
+@pytest.mark.parametrize(
+    ("text", "complaint"),
+    [("2026-10-24T12:00:00", "UTC offset"), ("tomorrow", "not an ISO 8601 time")],
+)
+def test_parse_args_rejects_a_deadline_without_an_offset_or_not_a_time(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str], text: str, complaint: str
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        repeat.parse_args(["--deadline", text, "--", "tests/"])
+    assert exit_info.value.code == 2
+    assert complaint in capsys.readouterr().err
+
+
+def _ticking(
+    clock: list[datetime], step: timedelta
+) -> Callable[[str, object], tuple[int, frozenset[str]]]:
+    """A fake run that takes `step` of the fake `clock` and passes."""
+
+    def run(_uv: str, _pytest_args: object) -> tuple[int, frozenset[str]]:
+        clock[0] += step
+        return 0, frozenset[str]()
+
+    return run
+
+
+def test_no_run_starts_after_the_deadline(repeat: types.ModuleType) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(minutes=25), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 10, run=_ticking(clock, timedelta(minutes=10)), rules=rules
+    )
+
+    assert (result.passed, result.failed) == (3, 0)  # starts at 0, 10 and 20 minutes
+    assert result.stopped_by == "deadline"
+
+
+def test_a_run_that_starts_at_the_deadline_is_too_late(repeat: types.ModuleType) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(minutes=20), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 10, run=_ticking(clock, timedelta(minutes=10)), rules=rules
+    )
+
+    assert result.passed == 2
+
+
+def test_a_deadline_already_past_runs_nothing(repeat: types.ModuleType) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON - timedelta(seconds=1), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 3, run=_ticking(clock, timedelta(minutes=1)), rules=rules
+    )
+
+    assert (result.passed, result.failed) == (0, 0)
+    assert result.stopped_by == "deadline"
+
+
+def test_a_series_that_finishes_before_its_deadline_is_not_stopped(
+    repeat: types.ModuleType,
+) -> None:
+    clock = [_NOON]
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(hours=1), now=lambda: clock[0])
+
+    result = repeat.run_repeats(
+        "uv", ("t",), 3, run=_ticking(clock, timedelta(minutes=1)), rules=rules
+    )
+
+    assert (result.passed, result.stopped_by) == (3, "")
+
+
+def test_a_run_that_waited_for_the_lock_past_the_deadline_does_not_start(
+    repeat: types.ModuleType,
+) -> None:
+    clock = [_NOON]
+    events: list[str] = []
+    rules = repeat.SeriesRules(deadline=_NOON + timedelta(minutes=1), now=lambda: clock[0])
+
+    @contextlib.contextmanager
+    def hold() -> Iterator[int | None]:
+        clock[0] += timedelta(minutes=5)  # the wait for the lock
+        events.append("lock in")
+        try:
+            yield None
+        finally:
+            events.append("lock out")
+
+    locked = repeat.locked_run(
+        _run_recording(events), hold=hold, load=_recorded(events, "load"), rules=rules
+    )
+    result = repeat.run_repeats("uv", ("t",), 3, run=locked, rules=rules)
+
+    assert (result.passed, result.failed, result.stopped_by) == (0, 0, "deadline")
+    assert events == ["lock in", "lock out"]
+
+
+def test_the_report_says_how_many_runs_ran_before_the_deadline(
+    repeat: types.ModuleType, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cut = repeat.RepeatResult(
+        times=20, passed=7, failed=0, failing_ids=frozenset(), stopped_by="deadline"
+    )
+    assert repeat.print_report(cut) == 3  # not 0: fewer runs than asked passed
+    assert "7 of 20 run(s) ran, stopped at the deadline: 7 passed, 0 failed" in (
+        capsys.readouterr().out
+    )
+
+
+def test_the_command_runs_nothing_after_a_deadline_that_has_passed(
+    repeat: types.ModuleType,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stand_in_uv(tmp_path, exit_code=0)
+    monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+    argv = ["--times", "5", "--deadline", "2020-01-01T00:00:00Z", "--", "tests/"]
+
+    assert repeat.main(argv) == 3
+    assert "0 of 5 run(s) ran, stopped at the deadline" in capsys.readouterr().out

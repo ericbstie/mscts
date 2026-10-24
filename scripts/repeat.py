@@ -3,7 +3,7 @@
 
 Usage:
     python3 scripts/repeat.py [--times N] [--stress] [--stress-workers N] [--live-lock]
-        [--stop-at-first-failure [--failure-log FILE]] -- <pytest args...>
+        [--stop-at-first-failure [--failure-log FILE]] [--deadline TIME] -- <pytest args...>
 
 Runs `uv run pytest <pytest args...>` `--times` times in a row (default 1). With
 `--stress`, before the first run it spawns `--stress-workers` (default `os.cpu_count()`,
@@ -21,6 +21,12 @@ series in an outer `live_lock.py`: that holds the lock for the whole series.
 With `--stop-at-first-failure`, no run starts after a failing one, and that run's whole
 output (stdout, then stderr) is kept in `--failure-log` (default `repeat-failure.log` in
 the working directory). The final report then says how many of the runs ran.
+
+With `--deadline <ISO 8601 time with a UTC offset>`, no run starts at or after that time,
+and the final report says how many of the runs ran. The deadline is absolute, so a series
+split by a restart gets the same one by repeating the flag. With `--live-lock` the time is
+checked again once the lock is taken, so a run that waited past it does not start. Exit
+code 3: the deadline cut the series short and no run failed.
 
 Prints one line per run and a final report: how many runs passed, how many failed, and
 the union of failing test ids (from pytest's "FAILED <id> - ..." summary lines) across
@@ -43,7 +49,8 @@ import types
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
@@ -96,6 +103,10 @@ class RepeatError(Exception):
     """Bad arguments: no "--" separator, no pytest arguments, or a non-positive count."""
 
 
+class DeadlinePassedError(Exception):
+    """The deadline came while a run waited for the live lock, so that run did not start."""
+
+
 @dataclass(frozen=True, slots=True)
 class Args:
     """One parsed invocation: how many times to run, the stress setting, and pytest's args."""
@@ -107,6 +118,7 @@ class Args:
     live_lock: bool
     stop_at_first_failure: bool
     failure_log: Path
+    deadline: datetime | None
 
 
 def split_argv(argv: Sequence[str]) -> tuple[list[str], list[str]]:
@@ -120,6 +132,25 @@ def split_argv(argv: Sequence[str]) -> tuple[list[str], list[str]]:
         raise RepeatError(msg)
     index = argv.index("--")
     return list(argv[:index]), list(argv[index + 1 :])
+
+
+def _deadline_arg(text: str) -> datetime:
+    """An ISO 8601 time with a UTC offset (`2026-10-24T18:00:00Z`), for `--deadline`.
+
+    Raises:
+        argparse.ArgumentTypeError: `text` is not an ISO 8601 time, or names no UTC offset
+            (a time with none could be read in the wrong zone, and a deadline shared across
+            a restart is the point).
+    """
+    try:
+        moment = datetime.fromisoformat(text)
+    except ValueError as exc:
+        msg = f"{text!r} is not an ISO 8601 time"
+        raise argparse.ArgumentTypeError(msg) from exc
+    if moment.tzinfo is None:
+        msg = f"{text!r} has no UTC offset: write it like 2026-10-24T18:00:00Z"
+        raise argparse.ArgumentTypeError(msg)
+    return moment
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -151,6 +182,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path(_DEFAULT_FAILURE_LOG),
         help=f"where the failing run's output is kept (default {_DEFAULT_FAILURE_LOG})",
+    )
+    parser.add_argument(
+        "--deadline",
+        type=_deadline_arg,
+        default=None,
+        help="start no run at or after this ISO 8601 time (with a UTC offset: ...T18:00:00Z)",
     )
     return parser
 
@@ -186,6 +223,7 @@ def parse_args(argv: Sequence[str]) -> Args:
         live_lock=parsed.live_lock,
         stop_at_first_failure=parsed.stop_at_first_failure,
         failure_log=parsed.failure_log,
+        deadline=parsed.deadline,
     )
 
 
@@ -267,7 +305,7 @@ class RepeatResult:
     """The outcome of running a selection up to `times` times.
 
     `passed + failed` runs ran; `stopped_by` names what ended the series early
-    ("first failure"), or is empty if every run ran.
+    ("first failure", "deadline"), or is empty if every run ran.
     """
 
     times: int
@@ -277,33 +315,57 @@ class RepeatResult:
     stopped_by: str = ""
 
 
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class SeriesRules:
+    """When a series ends early, and the clock that tells: no rule means it runs `times` runs."""
+
+    stop_at_first_failure: bool = False
+    deadline: datetime | None = None
+    now: Callable[[], datetime] = field(default=_utc_now)
+
+    def past_deadline(self) -> bool:
+        """Whether a run starting now would start at or after the deadline."""
+        return self.deadline is not None and self.now() >= self.deadline
+
+
 def run_repeats(
     uv: str,
     pytest_args: Sequence[str],
     times: int,
     *,
     run: Run = run_once,
-    stop_at_first_failure: bool = False,
+    rules: SeriesRules = SeriesRules(),  # noqa: B008 - frozen, so one shared default is safe
 ) -> RepeatResult:
     """Run `pytest_args` `times` times with `uv`; return the aggregated `RepeatResult`.
 
     `run` is `run_once` by default; tests inject a fake with the same signature so the
-    aggregation logic is pinned without spawning real pytest processes. With
-    `stop_at_first_failure`, no run starts after a failing one.
+    aggregation logic is pinned without spawning real pytest processes. `rules` can end
+    the series early: after a failing run, or when the deadline has come.
     """
     passed = 0
     failed = 0
     failing_ids: set[str] = set()
     stopped_by = ""
     for index in range(times):
-        returncode, ids = run(uv, pytest_args)
+        if rules.past_deadline():
+            stopped_by = "deadline"
+            break
+        try:
+            returncode, ids = run(uv, pytest_args)
+        except DeadlinePassedError:
+            stopped_by = "deadline"
+            break
         print(f"run {index + 1}/{times}: exit code {returncode}, {len(ids)} failing", flush=True)
         if returncode == 0:
             passed += 1
             continue
         failed += 1
         failing_ids |= ids
-        if stop_at_first_failure:
+        if rules.stop_at_first_failure:
             stopped_by = "first failure"
             break
     return RepeatResult(
@@ -315,16 +377,28 @@ def run_repeats(
     )
 
 
-def locked_run(run: InheritingRun, *, hold: Scope[int | None], load: Scope[object]) -> Run:
+def locked_run(
+    run: InheritingRun,
+    *,
+    hold: Scope[int | None],
+    load: Scope[object],
+    rules: SeriesRules = SeriesRules(),  # noqa: B008 - frozen, so one shared default is safe
+) -> Run:
     """`run`, but each call holds the live lock, then the CPU load, for that run only (#411).
 
     The load starts after the lock is taken, so it never runs while the series waits or
     while another run holds the lock. `run` inherits the lock's descriptor, if `hold` has one.
+
+    Raises (from the returned function):
+        DeadlinePassedError: The deadline in `rules` passed while the call waited for the lock.
     """
 
     def run_locked(uv: str, pytest_args: Sequence[str]) -> tuple[int, frozenset[str]]:
-        with hold() as descriptor, load():
-            return run(uv, pytest_args, () if descriptor is None else (descriptor,))
+        with hold() as descriptor:
+            if rules.past_deadline():
+                raise DeadlinePassedError
+            with load():
+                return run(uv, pytest_args, () if descriptor is None else (descriptor,))
 
     return run_locked
 
@@ -339,8 +413,9 @@ def _tally(result: RepeatResult) -> str:
 
 
 def print_report(result: RepeatResult, *, failure_log: Path | None = None) -> int:
-    """Print `result`'s summary; return the exit code (0 only if every run passed).
+    """Print `result`'s summary; return the exit code.
 
+    0 only if every run passed, 1 if a run failed, 3 if the deadline cut the series short.
     If a run failed and `failure_log` is given, the report names the file.
     """
     print(_tally(result))
@@ -350,7 +425,9 @@ def print_report(result: RepeatResult, *, failure_log: Path | None = None) -> in
         print("failing test ids:")
         for test_id in sorted(result.failing_ids):
             print(f"  {test_id}")
-    return 0 if result.failed == 0 else 1
+    if result.failed:
+        return 1
+    return 3 if result.stopped_by else 0
 
 
 def _load_live_lock() -> types.ModuleType:
@@ -375,7 +452,7 @@ def _each_run_load(args: Args) -> Scope[object]:
     return load
 
 
-def _live_lock_run(args: Args, run: InheritingRun) -> Run:
+def _live_lock_run(args: Args, run: InheritingRun, rules: SeriesRules) -> Run:
     """`run` with the live lock taken for each run, and the CPU load only while it is held."""
     live_lock = _load_live_lock()
     cache = live_lock.cache_dir()
@@ -385,7 +462,7 @@ def _live_lock_run(args: Args, run: InheritingRun) -> Run:
             "AbstractContextManager[int | None]", live_lock.hold_live_lock(cache, os.environ)
         )
 
-    return locked_run(run, hold=hold, load=_each_run_load(args))
+    return locked_run(run, hold=hold, load=_each_run_load(args), rules=rules)
 
 
 def _run_keeping(failure_log: Path | None) -> InheritingRun:
@@ -421,15 +498,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
     failure_log = args.failure_log if args.stop_at_first_failure else None
     keeping = _run_keeping(failure_log)
-    series = functools.partial(
-        run_repeats,
-        uv,
-        args.pytest_args,
-        args.times,
-        stop_at_first_failure=args.stop_at_first_failure,
-    )
+    rules = SeriesRules(stop_at_first_failure=args.stop_at_first_failure, deadline=args.deadline)
+    series = functools.partial(run_repeats, uv, args.pytest_args, args.times, rules=rules)
     if args.live_lock:
-        result = series(run=_live_lock_run(args, keeping))
+        result = series(run=_live_lock_run(args, keeping, rules))
     elif args.stress:
         token = uuid.uuid4().hex
         with stress_load(args.stress_workers, token):
