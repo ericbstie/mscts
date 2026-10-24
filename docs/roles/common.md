@@ -45,9 +45,16 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - `mscts run --group` takes one glob, and the last `--group` wins: run one
   `mscts run` per glob.
 - Repeat a selection with
-  `uv run scripts/repeat.py --times N [--stress] [--live-lock] -- <pytest args>` (one
-  line per run, the union of failures). Set `PYTHONUNBUFFERED=1` when you redirect it,
-  or its lines arrive only at the end. Never hand-roll a loop. Use
+  `uv run scripts/repeat.py --times N [--stress] [--live-lock] [--stop-at-first-failure
+  [--failure-log FILE]] [--deadline TIME] -- <pytest args>` (one line per run, starting
+  with the UTC time it ended, and the union of failures). `--stop-at-first-failure` ends
+  the series at the first failing run and keeps that run's whole output in `FILE`
+  (default `repeat-failure.log` in the working directory); `--deadline` (ISO 8601 with a
+  UTC offset, `2026-10-24T18:00:00Z`) starts no run at or after that time, so give the
+  same time again after a restart, and the report says how many runs ran (exit 3 if the
+  deadline cut the series short with no failure). Set `PYTHONUNBUFFERED=1` when you
+  redirect it, or its lines arrive only at the end. Never hand-roll a loop, a
+  stop-at-first-failure wrapper or a deadline of your own. Use
   `--stress` only when your brief or issue asks: it slows every other
   agent's tiers on this host. A live selection (a Self-check, a reference or
   candidate test) gets `--live-lock`: each run takes the live lock and
@@ -131,7 +138,7 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Run `mscts run` outside a mise task as `mise exec -- uv run mscts run …`, or it finds Java 21 and stops (#362). It takes no live lock: wrap it as `scripts/live_lock.py --tier candidate -- …`, on a `git archive` copy if you keep editing while it waits (#443).
 - Rebase in a second, detached worktree while your live runs hold the first. Start a detached git command from a script that uses `git -C <worktree>`. `git rebase --exec` replays already-rebased commits only with `--force-rebase` (#40, #256, #443).
 - A fake's `set_entity_data` entries name the serializer (`"int"`), not its id. A fake task that suppresses only ConnectionError dies silently on a CodecError, and the Group just times out (#345).
-- A Self-check plays `MSCTS_SELFCHECK_REPEAT` times, default 3: "20 of 20" needs `MSCTS_SELFCHECK_REPEAT=20` exported. `mise run test:selfcheck` and `repeat.py` pass it through. Run `repeat.py` on a live selection as `mise exec -- uv run scripts/repeat.py …`, or the Reference setup finds Java 21 and stops with a PrepareError; `mise run test:selfcheck` sets the Java itself (#461).
+- A Self-check plays `MSCTS_SELFCHECK_REPEAT` times, default 3: "20 of 20" needs `MSCTS_SELFCHECK_REPEAT=20` exported. `mise run test:selfcheck` and `repeat.py` pass it through. Run `repeat.py` on a live selection as `mise exec -- uv run scripts/repeat.py …`, or the Reference setup finds Java 21 and stops with a PrepareError; `mise run test:selfcheck` sets the Java itself (#461). `repeat.py` now guesses a live selection from its paths (`selfcheck`, `reference`, `candidate`) and `-m` expression, and under a Java the Reference refuses it stops at once with exit 2, naming the `mise exec` form (#472).
 - `mise run test:selfcheck -- <node ids> -vv` shows the node names: the project's `-q` in addopts hides them with a single `-v` (#461).
 - `scripts/mutate.py -x` must not be combined with `-n` (xdist): every failing mutant then reads INVALID (exit 2), not KILLED. Delete the sweep's rc file before you start it, and wait for its trailing rc line, never for a `FAILED` or `" in "` pattern: pytest output and uv's warnings match at once (#462).
 - `git rebase origin/main --exec "mise run check"` on a branch that already sits on origin/main's tip still runs the check on every commit: about 5 min a commit (11 commits took about 70 min and met the background limit). Start it with `setsid nohup` and wait on its rc file (#451, #455, #462).
