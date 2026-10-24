@@ -231,18 +231,18 @@ async def _fall(context: GroupContext, bot: Bot, landing: _Site, height: int) ->
 
 
 async def _fall_to_death(context: GroupContext, bot: Bot) -> None:
-    """Report a fall of 23 blocks onto stone, which kills the Bot, in a window ending on the death.
+    """Report a fall of 23 blocks onto stone, which kills the Bot, in a window that waits for it.
 
     Vanilla kills the player while it handles the landing. No step follows the landing: the dead
     player ticks in real time, so a step would show it nothing, and would hold back the respawn
     request by about 7 ticks, where event 60 comes 20 ticks after the death
-    (`respawn_in_a_window`). The window ends on the death, as in `player/void` and
+    (`respawn_in_a_window`). The window waits for the death, as in `player/void` and
     `player/drowning`, so a server that kills a few ticks after the landing still has its death
-    compared. What the death sends after it is in no window.
+    compared, and closes at the barrier after it (`_DEATH`).
     """
     *moves, (y, on_ground) = _descent(_STONE, _HEIGHTS[-1])
     await _lift(context, bot, _STONE, _HEIGHTS[-1])
-    async with context.observe(*PACKETS, until=_DEATH, bot=bot):
+    async with context.observe(*PACKETS):
         await _stepped(context, bot, _STONE, moves)
         await bot.move(*_at(_STONE.lane, y), on_ground=on_ground)
         await bot.expect(_DEATH, timeout_s=_DEATH_TIMEOUT_S)
@@ -296,6 +296,14 @@ async def fall(context: GroupContext) -> None:
 _SET_HEALTH = "minecraft:set_health"
 
 _DEATH = "minecraft:player_combat_kill"
+"""The death. A window that waits for it closes at the barrier after it, not on it: in vanilla,
+`ServerPlayer.die` sends entity event 3 just after it, and the player's tick sends the health it
+left (`set_health`, and its entity data at the next `ServerEntity.sendChanges`), and the barrier
+takes all of it into the window on every server (26.3 javap). A dead player is sent nothing else
+the window compares on each of its ticks (its air changes only while it is alive,
+`LivingEntity.baseTick`) until event 60, 20 ticks after the death, so how many ticks the barrier
+lasts changes nothing in it. The barrier holds back the respawn request by its 3 answers: with
+the respawn window's own barrier, 6 answers come between the death and the request (#487)."""
 
 _DAMAGE_TIMEOUT_S = 60.0
 """How long a window waits for a hit: drowning takes 320 ticks, 16 s at 20 ticks a second."""
@@ -466,9 +474,10 @@ async def drowning(context: GroupContext) -> None:
     the Group if entity event 60 comes before the respawn (`respawn_in_a_window`).
 
     The window opens while the Bot's air is full, so it holds every air value the server sends,
-    between every two hits; it ends on the death. A server that drowns a player less often sends
-    more air values, or fewer, between two hits. The time from the first bubbles to the death is
-    the Measurement `drowning.bubbles_to_death`, which shows a server whose air runs down slower.
+    between every two hits; it closes at the barrier after the death (`_DEATH`). A server that
+    drowns a player less often sends more air values, or fewer, between two hits. The time from
+    the first bubbles to the death is the Measurement `drowning.bubbles_to_death`, which shows a
+    server whose air runs down slower.
     """
     async with _environment(context, _WATER.restore) as undo:
         bot = await join_at_spawn(context, undo, _DROWNER)
@@ -479,7 +488,7 @@ async def drowning(context: GroupContext) -> None:
         await _harm(context.control, bot)
         undo.push_async_callback(_set_drowning_damage, context.control, on=True)
         await _set_drowning_damage(context.control, on=False)
-        async with context.observe(*PACKETS, until=_DEATH, bot=bot):
+        async with context.observe(*PACKETS):
             await _tp(context, bot, _at(_WATER.lane, -62.0))
             await _air_runs_out(bot)
             async with context.span(_DROWNING_SPAN):
@@ -535,7 +544,7 @@ async def void(context: GroupContext) -> None:
         bot = await join_at_spawn(context, undo, _VOID_BOT)
         await context.freeze()
         await fresh(context, bot)
-        async with context.observe(*PACKETS, until=_DEATH, bot=bot):
+        async with context.observe(*PACKETS):
             await _tp(context, bot, _VOID_AT)
             await bot.expect(_DEATH, timeout_s=_DAMAGE_TIMEOUT_S)
         await respawn_in_a_window(context, bot, PACKETS)

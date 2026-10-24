@@ -83,6 +83,10 @@ BUBBLES = 67
 POOF = 60
 """The entity event a dead player is sent 20 ticks after its death (`LivingEntity.tickDeath`)."""
 
+DIES = 3
+"""The entity event a player is sent as it dies, just after `player_combat_kill`
+(`ServerPlayer.die`: `broadcastEntityEvent(this, 3)`)."""
+
 AIR_INDEX = 1
 """The entity data entry that holds an entity's air."""
 
@@ -199,6 +203,11 @@ class PlayerServer:
     """The packets, by name and fields, the fake sends just before each `respawn`: what vanilla
     has sent a dead player whose respawn request comes 20 ticks or more after its death is entity
     event 60 (`LivingEntity.tickDeath`), as if the Bot had stalled that long."""
+    after_death: tuple[tuple[str, Mapping[str, object]], ...] = (
+        ("minecraft:entity_event", {"entity_id": ENTITY_ID, "event_id": DIES}),
+    )
+    """The packets, by name and fields, the fake sends just after each `player_combat_kill`: on
+    vanilla, `ServerPlayer.die` sends entity event 3 in the same call."""
 
     def __post_init__(self) -> None:
         """No hit has come yet, so the first is not held back."""
@@ -278,9 +287,11 @@ class PlayerServer:
             elif hurt is not None:
                 self.hurting = asyncio.create_task(self._hurt(hurt))
 
-    @staticmethod
-    async def _kill(victim: Peer) -> None:
+    async def _kill(self, victim: Peer) -> None:
+        """Send `victim` its death, then what `after_death` names, as `ServerPlayer.die` does."""
         await victim.write(victim.raw_frame(DEATH, b"\x02" + text("dead")))
+        for name, fields in self.after_death:
+            await victim.send(name, **fields)
 
     async def _kill_after(self, victim: Peer, delay_s: float) -> None:
         with suppress(ConnectionError):
