@@ -521,17 +521,23 @@ async def test_dispense_builds_a_dropper_at_a_chest_and_dispensers_at_a_cell_and
         "summon minecraft:armor_stand 4.5 -60 11.5 {NoGravity:1b}",
         "tp chest 5.5 -60 1.5",
         "tp dropper 3.5 -60 1.5",
+        "tp water 3.5 -60 5.5",
     )
 
 
 @pytest.mark.asyncio
-async def test_dispense_opens_the_droppers_chest_and_the_dropper() -> None:
+async def test_dispense_opens_the_droppers_chest_the_dropper_and_the_waters_dispenser() -> None:
     # The dropper's own slot shows that it takes each dirt it puts in the chest
-    # (`DropperBlock.dispenseFrom`): no other packet does.
+    # (`DropperBlock.dispenseFrom`), and the water's dispenser's that the empty bucket stays in
+    # the water bucket's slot (`consumeWithRemainder`): no other packet does.
     opens = (await play(DISPENSE)).opens()
     up = int(Face.UP)
 
-    assert opens == [("chest", at(4, -60, 3), up), ("dropper", at(3, -60, 3), up)]
+    assert opens == [
+        ("chest", at(4, -60, 3), up),
+        ("dropper", at(3, -60, 3), up),
+        ("water", at(3, -60, 7), up),
+    ]
 
 
 def power(z: int) -> str:

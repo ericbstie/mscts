@@ -15,9 +15,10 @@ When a Group ends, each Bot closes its container, and the world steps 5 ticks, s
 chest's recheck of its openers, due 5 ticks after the last, has run before the chest goes: a
 tick left due is saved with the chunk and would run in the next play.
 
-`redstone/dropper-dispenser` plays the same way, with Bots holding open a dropper and the chest
-it fills. Its window also compares what dispensers change on their pulses: blocks, world events,
-sounds and an armor stand's equipment (docs/research/2026-10-24-dispensers.md).
+`redstone/dropper-dispenser` plays the same way, with Bots holding open a dropper, the chest it
+fills and the dispenser that holds a water bucket. Its window also compares what dispensers
+change on their pulses: blocks, world events, sounds and an armor stand's equipment
+(docs/research/2026-10-24-dispensers.md).
 """
 
 import contextlib
@@ -358,8 +359,10 @@ slot 8, facing an armor stand, which stands still."""
 _DISPENSE_OPENERS = (
     _Opener("chest", "5.5 -60 1.5", (4, -60, _DROPPER_Z)),
     _Opener("dropper", "3.5 -60 1.5", (3, -60, _DROPPER_Z)),
+    _Opener("water", "3.5 -60 5.5", (3, -60, _WATER_Z)),
 )
-"""The dropper's slot shows that it takes each dirt it puts in the chest: no other packet does."""
+"""The dropper's slot shows that it takes each dirt it puts in the chest, and the water's
+dispenser's that the empty bucket stays in the water bucket's slot: no other packet does."""
 
 
 def _power(tick: int, z: int) -> At:
@@ -393,8 +396,9 @@ tick k, it acts on k + 4. Each is powered twice: for one tick, then for 14 ticks
 
 The dropper puts a dirt in the chest on ticks 4 and 10, and takes it from its slot, which holds 2
 dirt, then 1 (`DropperBlock.dispenseFrom`). The water's
-dispenser places the water on tick 6, keeping an empty bucket, and takes it back up on tick 16
-(`DispenseItemBehavior`'s bucket behaviours); each plays world events 1000 and 2000. The armor's
+dispenser places the water on tick 6, keeping an empty bucket in slot 0, and takes it back up on
+tick 16, a water bucket in slot 0 again (`DispenseItemBehavior`'s bucket behaviours,
+`consumeWithRemainder`); each plays world events 1000 and 2000. The armor's
 dispenser puts the helmet on the armor stand on tick 8 (`EquipmentDispenseItemBehavior`), with
 the same world events, and clicks on tick 18, empty (world event 1001).
 
