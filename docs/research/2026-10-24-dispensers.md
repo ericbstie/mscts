@@ -94,3 +94,10 @@ and the click of an empty one are in docs/research/2026-10-22-pistons.md.
 - No Mask in the Groups today hides an `add_entity`'s pitch: `blocks.DROP_MASKS` hides the
   place, the x and z motion and the yaw, and `inventory.DROP_MASKS` the motion and the yaw. So
   comparing a fired arrow's `add_entity` takes a new Mask.
+- *live* (a draft of `redstone/dropper-dispenser` with a fourth dispenser that fires one arrow
+  east over the grass, 20 plays on two vanilla 26.3 Instances, `scripts/research/probe_loop.py`'s
+  `run`): no play matched, and every Divergence was the arrow's. Its `add_entity` differed in
+  the motion on each axis for both Bots in all 20 plays (40 of 40), in the pitch in 34 of 40
+  and in the yaw in 32 of 40. The sound of its landing differed in when and where it played,
+  and in its pitch (`AbstractArrow`'s hit sound), since where it lands follows its motion. The
+  dropper's, the water's and the armor's cases showed no Divergence.

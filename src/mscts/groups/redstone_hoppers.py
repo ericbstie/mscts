@@ -14,6 +14,10 @@ of tick N shows on tick N (docs/research/2026-10-24-hoppers.md).
 When a Group ends, each Bot closes its container, and the world steps 5 ticks, so that an open
 chest's recheck of its openers, due 5 ticks after the last, has run before the chest goes: a
 tick left due is saved with the chunk and would run in the next play.
+
+`redstone/dropper-dispenser` plays the same way, with a Bot holding open the chest a dropper
+fills. Its window also compares what dispensers change on their pulses: blocks, world events,
+sounds and an armor stand's equipment (docs/research/2026-10-24-dispensers.md).
 """
 
 import contextlib
@@ -326,3 +330,98 @@ async def hopper_lock(context: GroupContext) -> None:
     """A powered hopper moves nothing while its cooldown still counts down."""
     async with arena(context, _LOCK_BUILD), _opened(context, _HOPPER_THEN_CHEST):
         await stepped_window(context, _LOCK, _LOCK_TICKS, _LOCK_PACKETS)
+
+
+# `redstone/dropper-dispenser`: three cases along z, each facing east from x 3 with a redstone
+# block that Control places behind it, at x 2, and takes away: a dropper at z 3 facing a chest,
+# a dispenser at z 7 facing a cell walled with stone, and one at z 11 facing an armor stand.
+
+_DROPPER_Z, _WATER_Z, _ARMOR_Z = 3, 7, 11
+
+_DISPENSE_BUILD = (
+    on_grass(3, _DROPPER_Z, _holding("dropper[facing=east]", (4, "dirt", 3))),
+    on_grass(4, _DROPPER_Z, "chest"),
+    on_grass(3, _WATER_Z, _holding("dispenser[facing=east]", (0, "water_bucket", 1))),
+    on_grass(5, _WATER_Z, "stone"),
+    on_grass(4, _WATER_Z - 1, "stone"),
+    on_grass(4, _WATER_Z + 1, "stone"),
+    _setblock(4, -59, _WATER_Z, "stone"),
+    on_grass(3, _ARMOR_Z, _holding("dispenser[facing=east]", (8, "iron_helmet", 1))),
+    f"summon minecraft:armor_stand 4.5 -60 {_ARMOR_Z}.5 {{NoGravity:1b}}",
+)
+"""Each holds one stack, in a slot of its own: a dropper and a dispenser pick a slot at random
+among those that hold anything (`DispenserBlockEntity.getRandomSlot`), so the one slot is always
+picked. The dropper holds 3 dirt in slot 4; the water's dispenser a water bucket in slot 0,
+facing a cell with stone on every side but its own; the armor's dispenser an iron helmet in
+slot 8, facing an armor stand, which stands still."""
+
+_DROPPER_CHEST = (_Opener("chest", "5.5 -60 1.5", (4, -60, _DROPPER_Z)),)
+
+
+def _power(tick: int, z: int) -> At:
+    """Power the dropper or dispenser at z on `tick`: a redstone block behind it."""
+    return At(tick, on_grass(2, z, "redstone_block"))
+
+
+def _unpower(tick: int, z: int) -> At:
+    """Take the redstone block behind the dropper or dispenser at z away on `tick`."""
+    return At(tick, on_grass(2, z, "air"))
+
+
+_DISPENSE = (
+    _power(0, _DROPPER_Z),
+    _unpower(1, _DROPPER_Z),
+    _power(2, _WATER_Z),
+    _unpower(3, _WATER_Z),
+    _power(4, _ARMOR_Z),
+    _unpower(5, _ARMOR_Z),
+    _power(6, _DROPPER_Z),
+    _power(12, _WATER_Z),
+    _power(14, _ARMOR_Z),
+    _unpower(20, _DROPPER_Z),
+    _unpower(26, _WATER_Z),
+    _unpower(28, _ARMOR_Z),
+)
+"""A dropper or a dispenser that a block beside it powers, and that is not `triggered`, becomes
+`triggered` and acts 4 ticks later, whether it is still powered or not; one that loses its power
+stops being `triggered` (`DispenserBlock.neighborChanged`, `DispenserBlock.tick`). Powered on
+tick k, it acts on k + 4. Each is powered twice: for one tick, then for 14 ticks.
+
+The dropper puts a dirt in the chest on ticks 4 and 10 (`DropperBlock.dispenseFrom`). The water's
+dispenser places the water on tick 6, keeping an empty bucket, and takes it back up on tick 16
+(`DispenseItemBehavior`'s bucket behaviours); each plays world events 1000 and 2000. The armor's
+dispenser puts the helmet on the armor stand on tick 8 (`EquipmentDispenseItemBehavior`), with
+the same world events, and clicks on tick 18, empty (world event 1001).
+
+A server that acts 1 to 3 ticks early or late acts on other ticks. While the second power lasts,
+each acts once, and the power holds 8 ticks past its action at least: a server that acts again
+every 2 to 8 ticks while powered acts again before the power goes."""
+
+_DISPENSE_PACKETS = (
+    "minecraft:block_update",
+    "minecraft:section_blocks_update",
+    "minecraft:level_event",
+    "minecraft:sound",
+    "minecraft:add_entity",
+    "minecraft:set_equipment",
+    *_SLOT_PACKETS,
+)
+"""What the window compares: the blocks that change, the water among them, the world events and
+the sounds, any entity that appears, the armor stand's equipment, and the chest's slots."""
+
+_DISPENSE_TICKS = 29
+"""The last power goes on tick 28; one tick more."""
+
+_KILL_ARMOR_STANDS = "kill @e[type=minecraft:armor_stand]"
+"""Takes away the armor stand, so that the next play has none. It drops nothing."""
+
+
+@group("redstone/dropper-dispenser", kind=GroupKind.TICK_EXACT)
+async def dropper_dispenser(context: GroupContext) -> None:
+    """A dropper fills a chest; dispensers place water, take it back and equip an armor stand."""
+    async with arena(context, _DISPENSE_BUILD), _opened(context, _DROPPER_CHEST):
+        try:
+            await stepped_window(context, _DISPENSE, _DISPENSE_TICKS, _DISPENSE_PACKETS)
+        finally:
+            await context.control.run(_KILL_ARMOR_STANDS)
+            await context.control.run(_KILL_ITEMS)
