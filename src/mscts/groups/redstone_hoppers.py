@@ -403,8 +403,8 @@ dispenser puts the helmet on the armor stand on tick 8 (`EquipmentDispenseItemBe
 the same world events, and clicks on tick 18, empty (world event 1001).
 
 A server that acts 1 to 3 ticks early or late acts on other ticks. While the second power lasts,
-each acts once, and the power holds 8 ticks past its action at least: a server that acts again
-every 2 to 8 ticks while powered acts again before the power goes."""
+each acts once, and the power holds 10 ticks past its action: a server that acts again every 1
+to 10 ticks while powered acts again before the power goes."""
 
 _DISPENSE_PACKETS = (
     "minecraft:block_update",

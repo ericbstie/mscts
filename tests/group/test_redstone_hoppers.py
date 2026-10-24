@@ -554,7 +554,7 @@ def unpower(z: int) -> str:
 async def test_dispense_powers_each_for_a_tick_then_for_14_ticks() -> None:
     # Each acts 4 ticks after its power comes, powered or not (`DispenserBlock.tick`): the
     # dropper on 4 and 10, the water's dispenser on 6 and 16, the armor's on 8 and 18. Its
-    # second power holds 10 ticks past its action, so a server that acts again every 2 to 8
+    # second power holds 10 ticks past its action, so a server that acts again every 1 to 10
     # ticks while powered acts again inside the window.
     _, stepped = (await play(DISPENSE)).play.windows
 
