@@ -11,6 +11,11 @@ a test PR.
 
 ## First: measure, before any code
 
+This section is the probe's job (docs/PROCESS.md, Cycle step 2). The
+probe ends by posting the issue's one-page `## Fact sheet`. An
+implementer starts from that sheet and plays a draft only for a window
+it leaves out.
+
 Play a draft of the Group 20 times on two fresh vanilla Instances
 before writing it in `src/`: a script in your scratch dir that hands
 `scripts/research/probe_loop.py`'s `run(group, plays, out_dir, workdir)`

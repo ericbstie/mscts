@@ -32,9 +32,11 @@ This file is owned by the tech lead. It changes only through the
   a merge train landing or a batch of issues closing; never on a timer.
   The lead judges when. It writes a short handoff note (the state of
   `main`, open PRs and trains, who is working on what, decisions pending)
-  and stops; the next lead starts from that note. The note ends with three
+  and stops; the next lead starts from that note. The note ends with four
   lines on the chunk's cost: the session's total tokens (from `get_session`
-  on itself), the number of batches and of wakes, and the PRs merged.
+  on itself), the number of batches and of wakes, the PRs merged, and the
+  tests landed (`test` issues closed as completed) with the tests per
+  billion tokens.
 
 **Specialist (a long-lived worker subagent).** Owns one lane (see
 [Lanes and review levels](#lanes-and-review-levels)) and takes its issues
@@ -46,6 +48,10 @@ fresh specialist in the next batch. Its report proposes what it learned
 as lines for its handbook, `docs/roles/<lane>.md`, and the lead commits
 them, so the next one can take over the lane.
 Everything this file says about a worker applies to a specialist.
+
+**Probe (a subagent).** Finds out what the servers do before anyone
+builds on it. It writes no product code and no tests, pushes nothing, and
+its only output is the issue's fact sheet (Cycle, step 2).
 
 **Reviewer (a subagent).** Never writes the code it reviews. It gives
 `scrutiny::high` PRs their independent reviews and runs audits
@@ -129,8 +135,8 @@ what the change touches, not the area its files live in, by this nudge:
 | Label | Before the PR merges |
 | --- | --- |
 | `scrutiny::low` | The worker's tests, `mise run check`, the changed tier once. The lead reads the diff. |
-| `scrutiny::medium` | Low, plus a mutation sweep of the changed branches, the Self-check 20 of 20, and the reference tier on the rebased branch. |
-| `scrutiny::high` | Medium, plus two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. When the fixes add a test or a branch to the comparison core, a third review checks the fixes. |
+| `scrutiny::medium` | Low, plus a mutation sweep of the changed branches, the Self-check 20 of 20 run once under `repeat.py --stress --live-lock`, and the reference tier on the rebased branch. |
+| `scrutiny::high` | Medium, plus two independent reviews by the reviewer: one for races and ordering, one for a wrong Verdict. Each finding is fixed or rejected with a reason before the merge. The lead reads the fix diff; there is no third review. |
 
 A change that touches timing, at any level, also needs the Self-check 20
 of 20 five times in a row under `repeat.py --stress` and a javap account of
@@ -146,7 +152,31 @@ introduced it and what found it. A bug changes no label.
    run in parallel have disjoint "Owns" lists (files, modules and doc
    sections). Skip any labelled `needs-decision`. Check each issue's
    `scrutiny::*` label against what its change will touch.
-2. **Brief** with the [template](#brief-template), naming
+2. **Probe, then build.** A `test` issue, and any issue whose spec rests
+   on server behaviour nobody has seen live, starts with a probe agent in
+   the batch's Workflow, ahead of its implementer. The probe follows the
+   `test-group` skill's "First: measure" section on vanilla and on the
+   Candidate, with javap, and posts one comment headed `## Fact sheet` on
+   the issue. The sheet fits on one page and gives:
+   - the packets each window compares, on which tick and in which order,
+     measured over 20 plays;
+   - what differs between plays or between the two Instances, and its
+     cause, with the javap line;
+   - the Masks, canonical sorts and `RANDOM_FIELDS` entries the Group
+     needs, each with its reason;
+   - the waits and barriers it needs, with the margin measured for each;
+   - what the Candidate does differently;
+   - each Group's play time, to size the Self-check;
+   - the scratch path of the probe's scripts;
+   - a core gap: what the Group needs that the core lacks, or "none".
+
+   The probe gets no review and touches no docs. Its agent reports
+   `core_gap`, and the Workflow skips the implementer when it is true: the
+   lead then labels the issue `needs-decision` or takes the gap as core
+   work first. Otherwise a fresh implementer is briefed on the issue and
+   its fact sheet, and plays a draft only for what the sheet leaves out.
+
+   **Brief** each agent with the [template](#brief-template), naming
    `docs/roles/common.md`, the lane's handbook and the scrutiny level.
    Start the whole batch as one Workflow run: one `agent()` per
    specialist or reviewer, each with `isolation: 'worktree'`, gathered
@@ -196,6 +226,10 @@ introduced it and what found it. A bug changes no label.
    - Add the PR's row to the review results in `docs/RISK.md` in the same
      train: the level triage suggested, the label the lead chose, the
      reviews that ran, the blocking findings of each, and the stress runs.
+   - **Follow-ups.** File an issue only for a finding that can change a
+     Verdict or break a run. Put every other finding (a low, wording, a
+     smell) in one comment on the merged PR, where a later change that
+     touches that code picks it up.
    - Read the issue's comments: a scope change the worker recorded there
      may need a follow-up issue.
    - Triage any new issue that carries `needs-triage`. Blocked issues need
@@ -226,6 +260,8 @@ red-green and protocol-research skills before starting.
 Issue: #<n> (the spec: Docs delta, Interface, Acceptance tests, Owns). Read it
        and its comments first. Branch: issue-<n>-<slug> (create it first:
        the worktree starts on another name).
+Fact sheet: <link to the issue's `## Fact sheet` comment (Cycle, step 2). Start from it;
+       play a draft only for what it leaves out.>
 Goal: <one sentence, in CONTEXT.md vocabulary>
 Increments (in order, one commit each; say whether a new dataclass field may default;
               a suggested signature keeps ≤ 5 parameters (PLR0913) or says "shape it")
@@ -291,6 +327,10 @@ End with: the Worker report exactly as specified in docs/PROCESS.md; state your
           worktree path and branch name.
 ```
 
+A probe's brief is this template without Branch, Increments and Fact sheet: its
+Goal names the issue's windows, and it is done when the `## Fact sheet` comment is
+posted and its StructuredOutput reports `core_gap` and the comment's link.
+
 ## Audit checklist
 
 Every audit brief checks at least these, and adds items as reviews find
@@ -327,6 +367,8 @@ new classes of defect:
   through `mise run …` or `mise exec -- …`.
 - Follow the `red-green` skill. One increment per commit, and every
   commit passes `mise run check`.
+- **A probe pushes nothing.** Its output is the issue's fact sheet
+  comment; its scripts stay in its scratch directory.
 - **Your issue, your PR.** Push only your `issue-<n>-<slug>` branch and
   open one PR for it, titled like a commit subject and closing the issue
   (`Closes #<n>`). When your brief names an integrator, open no PR: write
@@ -934,6 +976,7 @@ Newest first. Every retrospective item gets a row.
 
 | Date | Change | Why |
 | --- | --- | --- |
+| 2026-10-25 | A `test` issue starts with a probe agent that posts a one-page `## Fact sheet` on the issue and pushes nothing; a fresh implementer builds from it, and the Workflow skips the implementer when the probe reports a core gap. Issues that share one cause in the core are taken as one piece of work with one pass mark before more Groups need that part (tech-lead skill). `scrutiny::high` has no third review: the lead reads the fix diff. A `scrutiny::medium` Self-check runs once under `--stress`. A follow-up issue is filed only for a finding that can change a Verdict or break a run; the rest goes in one comment on the merged PR. The handoff also reports tests landed and tests per billion tokens | Maintainer, after the 2026-10-24 process analysis: "Make any changes you think is good for the process based on the analysis. I especially liked the probing first, then leave a one-pager for the implementer". A new test cost 168M tokens in trains 25 to 39 and 626M in trains 40 to 43, as the core changed again; bug fixes grew from 3% to 40% of merged PRs; 8 third reviews (#433 to #485) found no blocking bug; 9 of 15 escapes were found by runs under load and 3 by reviews; open issues stayed at 48 to 59 for 17 days |
 | 2026-10-24 | The Workflow stacks branches that change an interface or the core last, from each worker's `interface_changed` and `core_changed`. A fix-round brief checks out a local `-fix` branch and pushes `HEAD:<branch>`. The brief template: start `rebase -x` detached, run live checks from a detached copy. common.md: a Group plays on when a server does something else; check a reviewer's proposed fix against the jar; Group-test mutants get `--timeout 280`. test-group: waits that no retry period from 2 to 8 divides. Later in the train: a fix round rebases before its Self-check; an integrator works in a worktree of its own; common.md, a new Group's Report names are checked against `TITLES` after a Pumpkin run, long runs detach with `setsid -f`, and the Bash tool's background run is the fallback when a detached script is refused | Train 43's retrospectives: a held interface PR forced a 100-minute restack, a guard turned a Candidate difference into an error, two hopper Groups let a wrong retry period match, a reviewer's fix rested on a wrong server fact |
 | 2026-10-23 | Workers push branches and write `pr-body.md` and `pr-title.txt`, and open no PR. One integrator agent per batch waits for earlier trains to merge, rebases the stack with `-x "mise run check" --force-rebase`, runs the tiers once on the top tip, opens all PRs at the end and unsubscribes from each; it requests no reviewer. The lead never SendMessages a Workflow agent and resumes a Workflow by passing finished results through `args`. The brief template: `MSCTS_SELFCHECK_REPEAT=20` and the `mise exec -- uv run scripts/repeat.py` form, parallel plays for a flake, no `mcp__hearthbot__` tools, StructuredOutput as the last call, the `area: ` commit prefix. common.md: `mutate.py -x` without `-n`, a state line in `findings.txt` | Train 42's retrospectives: PR noise and merge waits per PR, a Workflow that lost a result to a SendMessage and another to a resumed prompt, a worker that ended on a monitor, a flake that needed `-n 8` to show |
 | 2026-10-22 | The tech-lead skill: detach a worker's old worktree before a fix round; never send a merge with the read of its sha; after a third review with no blocking finding, the lead fixes wording itself. The brief template: a Candidate count names its revision and its command uses `mise exec --`; Protocol increments may be reordered; the brief's footer wins. Triage cites a client decode path; red-green, a hanging mutant gets a one-test selection | Train 41's retrospectives: a stale Pumpkin baseline, a lost queue turn to Java 21, two resumed workers blocked by their old worktree, a wrong issue premise, a third review round spent on wording |
