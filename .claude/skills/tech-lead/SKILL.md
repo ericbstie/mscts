@@ -26,7 +26,10 @@ first.
    Worker contract, work its issue on `issue-<n>-<slug>`, push the branch,
    write `pr-body.md` and `pr-title.txt` in its scratch directory (it opens
    no PR), and end with the short Worker report as its final text (its
-   Retrospective never goes on GitHub). End the Workflow with one
+   Retrospective never goes on GitHub). A `test` issue gets a probe agent
+   ahead of its implementer (docs/PROCESS.md, Cycle step 2): the Workflow
+   passes the fact sheet's link into the implementer's brief and skips the
+   implementer when the probe reports `core_gap`. End the Workflow with one
    integrator agent (sonnet): it waits for earlier trains to merge, rebases
    the batch into a stack with `git rebase -x "mise run check"
    --force-rebase`, runs the tiers once on the top tip, opens all the PRs at
@@ -57,7 +60,8 @@ first.
 7. When a chunk of work is done (a train landed, a batch of issues
    closed), write the handoff note and stop (docs/PROCESS.md, Roles). End
    the note with your session's total tokens (`get_session` on yourself),
-   the number of batches and of wakes, and the PRs merged.
+   the number of batches and of wakes, the PRs merged, and the tests
+   landed with the tests per billion tokens.
 
 ## Integration safety (learned the hard way)
 
@@ -121,9 +125,19 @@ first.
   (`needs-decision`). #493 sat under #494 and cost a 14-commit restack.
 - Never send a merge in the same parallel call as the read of its head
   sha: a placeholder sha reached GitHub once (#448).
-- After a third review with no blocking finding, fix doc wording
-  yourself and file the rest: the third round on #443 cost 376k tokens
-  for wording and one should-fix.
+- After a `scrutiny::high` fix round, read the fix diff yourself
+  instead of ordering a third review, and fix doc wording yourself: 8
+  third reviews from #433 to #485 found no blocking bug, and the round
+  on #443 cost 376k tokens for wording and one should-fix.
+- Settle the core once. When two or more open issues share one cause in
+  the core (after train 43: #469, #487, #488 and #496 all ask how to
+  bound a window while a server is under load), take them as one piece
+  of work with one pass mark: every Group that uses that part of the
+  core passes 20 of 20 plays of vanilla against vanilla under
+  `--stress`. Brief no new Group that needs that part until it lands. A
+  new test cost 168M tokens on a settled core (trains 25 to 39) and
+  626M while the core changed again (trains 40 to 43). An interface the
+  work needs still waits for the maintainer (`needs-decision`).
 
 ## Steering heuristics
 
