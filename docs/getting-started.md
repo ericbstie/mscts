@@ -7,7 +7,10 @@ To install the `mscts` command from the latest
 mise use -g uv pypi:ericbstie/mscts
 ```
 
-Add `@<version>` for one release, such as `pypi:ericbstie/mscts@0.1.0`.
+Add `@v<version>` for one release, such as `pypi:ericbstie/mscts@v0.1.0`.
+mise holds back releases younger than 24 hours (its `minimum_release_age`
+setting), so for a day after each release only the `@v<version>` form
+installs it.
 uv installs Python 3.13 for it if you don't have it. With the installed
 command, type `mscts` where this page types `uv run mscts`, and install
 vanilla with `mscts adapter install vanilla`. Vanilla still requires
