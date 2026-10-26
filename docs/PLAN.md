@@ -1609,9 +1609,11 @@ class Mask:
     # ValueError at construction: an empty packet or reason (blank counts as empty), a
     # malformed path, or a path not spelled exactly as a Divergence path would be (the
     # message gives the spelling), so a path copied from a Divergence is valid, unless it
-    # has an arrow (`[→2]`, `[1→3]`): a Mask's index is each list's own, hidden on both
-    # sides before lists are lined up, and the message gives the path to write (`[2]`,
-    # `[1]`), which hides that index in both lists (#455).
+    # has an arrow (`[→2]`, `[1→3]`), which no index in a Mask hides (#455, #477). The
+    # message names the Mask that does: a Mask hides a value, never whether an element is
+    # there, so for `l[→2]`, an element only the Candidate has, it is one on the whole list
+    # (`l`); a Mask's index is each list's own, hidden on both sides before lists are lined
+    # up, so for `l[1→3].id`, a pair at two indexes, it is `l[*].id`, every element.
     # Also a path that is an entity id of the clientbound packet in any State, or a
     # list of them (`Codec.entity_id_paths`; a list index fits EACH, and a Variant is
     # no step of a path): every Comparison names or numbers those instead, and the message

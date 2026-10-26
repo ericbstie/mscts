@@ -279,9 +279,13 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
   reject a Mask that hides something a player could see. A Mask hides
   only the value: a field one server leaves out is still a difference.
   In a path, `[*]` stands for every element of a list, as in
-  `players.sample[*].id`. An index in a Mask is the same index in both
-  servers' lists, so a Report path with an arrow, such as `entries[→2]`,
-  becomes `entries[2]` in a Mask. Fields vanilla
+  `players.sample[*].id`. A Report path with an arrow cannot be a Mask
+  path. `entries[→2]` is an element only the Candidate sends, and only a
+  Mask on the whole list, `entries`, hides it. `entries[1→3]` pairs two
+  elements at different positions in a list that mscts lines up after the
+  Masks apply, so an index names a different element in each list.
+  `entries[*]` hides the values of both, and of every other element.
+  Fields vanilla
   picks at random every time, such as a login's session id, are already
   left out for every Group, so list only what your Group adds. Entity ids
   and the random UUIDs of mobs need no Mask. mscts names each entity by its

@@ -6,6 +6,7 @@ as many on each side, are compared in place. Every other list is compared index 
 """
 
 import itertools
+import re
 from collections.abc import Sequence
 from typing import cast
 from uuid import UUID
@@ -170,6 +171,48 @@ def test_a_mask_at_an_index_hides_each_sides_element_there_before_the_lists_are_
     # entries[1] is 2 in the reference and 9 in the candidate. Both are hidden, so they line up
     # as equal, and the candidate's 2 is the element only it has.
     assert _masked_entries([1, 2], [1, 9, 2], f"{ENTRIES}[1]") == [(f"{ENTRIES}[→2]", ABSENT, 2)]
+
+
+def _offered(path: str) -> str:
+    """The Mask path offered when a Mask on `update_tags` at `path`, with an arrow, is refused."""
+    with pytest.raises(ValueError, match="has an arrow") as refused:
+        Mask("minecraft:update_tags", path, reason="a test")
+    (offered,) = re.findall(r"(?:whole list, |write )'([^']*)'", str(refused.value))
+    return str(offered)
+
+
+def test_an_element_only_the_candidate_has_is_hidden_only_with_its_whole_list() -> None:
+    # Review C of #455 (#477): the refusal offered entries[2], which hid the 2 on one side and
+    # the 9 on the other, and the Report then read `entries[→3]: ABSENT | 3`.
+    (added,) = _entries_compared([1, 2, 3], [1, 2, 9, 3])
+    assert (added.path, added.reference, added.candidate) == (f"{ENTRIES}[→2]", ABSENT, 9)
+    assert _offered(f"{ENTRIES}[→2]") == ENTRIES
+    assert _masked_entries([1, 2, 3], [1, 2, 9, 3], ENTRIES) == []
+
+
+def test_a_pair_at_two_indexes_is_hidden_with_every_element() -> None:
+    # Review C's second case: 700 against 701 is a value that changes from run to run.
+    differences = [
+        (d.path, d.reference, d.candidate) for d in _entries_compared([1, 700], [9, 1, 701])
+    ]
+    assert differences == [(f"{ENTRIES}[→0]", ABSENT, 9), (f"{ENTRIES}[1→2]", 700, 701)]
+    assert _offered(f"{ENTRIES}[1→2]") == f"{ENTRIES}[*]"
+    assert _masked_entries([1, 700], [9, 1, 701], f"{ENTRIES}[*]") == [
+        (f"{ENTRIES}[→2]", ABSENT, MASKED)
+    ]
+
+
+def test_the_mask_a_refused_arrow_offers_leaves_fewer_divergences() -> None:
+    # Review C's search: with the index the refusal offered before, 198 of the 7,722 arrows
+    # of lists up to 4 long over three values gave more Divergences than no Mask.
+    lists = [
+        list(items) for length in range(5) for items in itertools.product((1, 2, 3), repeat=length)
+    ]
+    for reference, candidate in itertools.product(lists, repeat=2):
+        unmasked = _entries_compared(reference, candidate)
+        for path in (str(d.path) for d in unmasked if "→" in str(d.path)):
+            masked = _masked_entries(reference, candidate, _offered(path))
+            assert len(masked) < len(unmasked), (reference, candidate, path, masked)
 
 
 def test_a_moved_index_names_no_index_where_indexes_are_left_out() -> None:

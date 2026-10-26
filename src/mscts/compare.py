@@ -219,7 +219,8 @@ class Mask:
             `players.sample[0].name`), where `[*]` is every index of a list
             (`players.sample[*].name`); or `*` (WHOLE_PACKET) for the whole packet.
             An index is each list's own, hidden on both sides before lists are lined up,
-            so a Divergence path's arrow (`[→2]`, `[1→3]`) is refused, naming the index.
+            so a Divergence path's arrow (`[→2]`, `[1→3]`) is refused, naming the Mask that
+            hides it: on the whole list, or with `[*]`.
             A path that is an entity id is refused, but a path to a value that holds
             one (`set_entity_data` / `entries`), or `*`, hides the id with the rest:
             its reason is the only guard that nothing a player sees is hidden with it.
@@ -4288,23 +4289,49 @@ def _mask_steps(mask: Mask) -> _MaskPath:
     """Return the steps of `mask`'s field path, where `[*]` is EACH (see `_steps`).
 
     Raises:
-        ValueError: As `_steps` does, or the path has an arrow (`[→2]`, `[1→3]`). A Mask
-            hides each list's own index on both sides, before `_pairs` lines lists up.
+        ValueError: As `_steps` does, or the path has an arrow (`[→2]`, `[1→3]`), which no
+            Mask path has, and the message says what Mask hides that instead (`_arrow_advice`).
     """
     steps = _steps(mask.packet, mask.path, "Mask path", each=True)
-    if (spelling := _render(_own_indexes(steps))) != mask.path:
+    if (advice := _arrow_advice(steps)) is not None:
         msg = (
             f"{mask.packet}: Mask path {mask.path!r} has an arrow, which only a Divergence "
-            "path writes; a Mask names each list's own index and hides it on both sides: "
-            f"write {spelling!r}"
+            f"path writes: {advice}"
         )
         raise ValueError(msg)
     return steps
 
 
-def _own_indexes(path: _MaskPath) -> _MaskPath:
-    """`path` with each `_Added` or `_Moved` step as the plain index it equals."""
-    return tuple(int(step) if isinstance(step, _Added | _Moved) else step for step in path)
+def _arrow_advice(path: _MaskPath) -> str | None:
+    """What an arrow in `path` is, and the Mask that hides it; None if `path` has no arrow.
+
+    No index in a Mask hides either arrow (#477). An `_Added` step is an element only the
+    candidate has: a Mask hides a value, never whether it is there, so only a Mask on the whole
+    list holding it hides it. A `_Moved` step pairs two elements of a list `_pairs` lines up,
+    and a Mask hides each list's own index before that, so an index names a different element
+    on each side: EACH in its place hides the value in every element.
+    """
+    added = next((at for at, step in enumerate(path) if isinstance(step, _Added)), None)
+    if added is not None:
+        holder = _render(_every_moved(path[:added]))
+        return (
+            f"{_render(path[added : added + 1])} is an element only the Candidate has, and a "
+            "Mask hides a value, never whether it is there; only a Mask on the whole list, "
+            f"{holder!r}, hides it"
+        )
+    moved = next((step for step in path if isinstance(step, _Moved)), None)
+    if moved is not None:
+        return (
+            f"{_render((moved,))} pairs two elements of a list that is lined up after the Masks "
+            "apply, so an index names a different element on each side; write "
+            f"{_render(_every_moved(path))!r} to mask it in every element"
+        )
+    return None
+
+
+def _every_moved(path: _MaskPath) -> _MaskPath:
+    """`path` with each `_Moved` step as EACH."""
+    return tuple(EACH if isinstance(step, _Moved) else step for step in path)
 
 
 def _steps(packet: str, path: str, what: str, *, each: bool = False) -> _MaskPath:

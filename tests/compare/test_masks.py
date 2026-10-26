@@ -115,30 +115,49 @@ def test_a_mask_path_must_be_spelled_as_divergences_spell_it(path: str, canonica
 
 
 @pytest.mark.parametrize(
-    ("path", "own"),
-    [("l[→2]", "l[2]"), ("l[1→3].id", "l[1].id"), ("m[0][→4][*]", "m[0][4][*]")],
+    ("path", "arrow", "holder"),
+    [
+        ("l[→2]", "[→2]", "l"),
+        ("m[0][→4][*]", "[→4]", "m[0]"),
+        ("t[1→2].e[→0]", "[→0]", "t[*].e"),
+        ("l[→1][0→2]", "[→1]", "l"),
+    ],
 )
-def test_a_mask_path_with_an_arrow_is_refused_with_the_index_to_write(path: str, own: str) -> None:
-    # A Mask hides each list's own index on both sides, before the lists are lined up
-    # (#455), so no Mask can name an element only the candidate has, or a moved pair.
+def test_a_mask_path_with_an_element_only_the_candidate_has_is_refused_naming_its_list(
+    path: str, arrow: str, holder: str
+) -> None:
+    # No index hides it (#477): a Mask hides a value, never whether it is there.
     error = (
-        f"test:p: Mask path {path!r} has an arrow, which only a Divergence path writes; a "
-        f"Mask names each list's own index and hides it on both sides: write {own!r}"
+        f"test:p: Mask path {path!r} has an arrow, which only a Divergence path writes: "
+        f"{arrow} is an element only the Candidate has, and a Mask hides a value, never "
+        f"whether it is there; only a Mask on the whole list, {holder!r}, hides it"
     )
-    with pytest.raises(ValueError, match=re.escape(error)):
+    with pytest.raises(ValueError, match=f"^{re.escape(error)}$"):
         Mask(packet="test:p", path=path, reason=REASON)
 
 
-def test_a_divergence_path_with_an_arrow_names_its_index_for_a_mask() -> None:
-    verdict = compare(
-        transcript(("alice", packet("test:p", fields={"l": [1, 2]}))),
-        transcript(("alice", packet("test:p", fields={"l": [1, 2, 3]}))),
-        [],
+@pytest.mark.parametrize(
+    ("path", "arrow", "every"),
+    [
+        ("l[1→3].id", "[1→3]", "l[*].id"),
+        ("l[2→0]", "[2→0]", "l[*]"),
+        ("t[0→1].e[2→3]", "[0→1]", "t[*].e[*]"),
+        ("t[0].e[1→2]", "[1→2]", "t[0].e[*]"),
+    ],
+)
+def test_a_mask_path_with_a_pair_at_two_indexes_is_refused_with_every_element_to_write(
+    path: str, arrow: str, every: str
+) -> None:
+    # A Mask hides each list's own index before the lists are lined up (#455), so no index
+    # names both elements of the pair (#477).
+    error = (
+        f"test:p: Mask path {path!r} has an arrow, which only a Divergence path writes: "
+        f"{arrow} pairs two elements of a list that is lined up after the Masks apply, so an "
+        f"index names a different element on each side; write {every!r} to mask it in every "
+        "element"
     )
-    (divergence,) = verdict.divergences
-    assert divergence.path == "l[→2]"
-    with pytest.raises(ValueError, match=re.escape("write 'l[2]'")):
-        Mask(packet="test:p", path=divergence.path, reason=REASON)
+    with pytest.raises(ValueError, match=f"^{re.escape(error)}$"):
+        Mask(packet="test:p", path=path, reason=REASON)
 
 
 def _fields_diff(
