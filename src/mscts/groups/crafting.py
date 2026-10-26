@@ -11,7 +11,7 @@ the 2x2 grid of the inventory).
 """
 
 import contextlib
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass
 from typing import cast
 
@@ -125,9 +125,7 @@ async def _take(context: GroupContext, bot: Bot, stacks: tuple[Grid, ...], first
     window of its own, which waits for the server's next result. The last also puts what the
     cursor holds back in `first`, which the stacks emptied.
     """
-    async with context.observe(*PACKETS):
-        for index, stack in enumerate(stacks):
-            await _spread(bot, first + index, stack.slots)
+    await _spread_window(context, bot, stacks, first)
     for take in range(1, TAKES + 1):
         async with context.observe(*PACKETS):
             await bot.click(RESULT)
@@ -135,14 +133,124 @@ async def _take(context: GroupContext, bot: Bot, stacks: tuple[Grid, ...], first
                 await bot.click(first)
 
 
+async def _spread_window(
+    context: GroupContext, bot: Bot, stacks: tuple[Grid, ...], first: int
+) -> None:
+    """Put `stacks`, from the menu's slot `first` on, on the open grid in one window."""
+    async with context.observe(*PACKETS):
+        for index, stack in enumerate(stacks):
+            await _spread(bot, first + index, stack.slots)
+
+
 def _items(stacks: tuple[Grid, ...]) -> tuple[str, ...]:
     """The stacks as `_fill` gives them: an item and a count each."""
     return tuple(f"{stack.item} {stack.count}" for stack in stacks)
 
 
+LOGS = Grid("minecraft:oak_log", 3, (1, 1, 1))
+"""Three logs in one cell: planks for three crafts."""
+
+
+@dataclass(frozen=True, slots=True)
+class Station:
+    """A crafting grid whose result the Bot shift-clicks, presses 1 over and drops with Q.
+
+    `stacks` start in the menu's slots from `first` on (`inventory.0`): items for more than
+    one craft. `table` is whether it is a crafting table's 3x3, which the Bot opens first, or
+    the 2x2 of its inventory.
+    """
+
+    first: int
+    stacks: tuple[Grid, ...]
+    table: bool
+
+
+STATIONS = (
+    Station(INVENTORY_0, (LOGS,), table=False),
+    Station(TABLE_INVENTORY_0, TABLE_TAKE, table=True),
+)
+"""The 2x2 grid with planks for three crafts, then a crafting table with two stone pickaxes'."""
+
+FILL_UP = (
+    "item replace entity {name} hotbar.8 with minecraft:oak_planks 62",
+    "give {name} minecraft:stone 2240",
+)
+"""The commands that fill the Bot `name`'s inventory but for room for two planks: 62 planks
+in the last hotbar slot, then 35 stacks of stone."""
+
+KILL_ITEMS = "kill @e[type=minecraft:item]"
+"""What removes the items a Q or a full inventory drops. It runs right after their window, and
+a dropped item waits 40 ticks before a player can pick it up."""
+
+_SHIFT_CLICK, _NUMBER_KEY_1 = ("quick_move", 0), ("swap", 0)
+_Q, _CTRL_Q = ("throw", 0), ("throw", 1)
+"""Clicks on a result: a mode and a button each."""
+
+
+@contextlib.asynccontextmanager
+async def _laid_out(
+    context: GroupContext, bot: Bot, station: Station, stacks: tuple[Grid, ...]
+) -> AsyncIterator[None]:
+    """Give the Bot `stacks`, open the station, and put them on its grid in one window.
+
+    A crafting table is closed again when the body ends.
+    """
+    await _fill(context, bot.name, _items(stacks))
+    if station.table:
+        await _open_table(bot)
+    await _spread_window(context, bot, stacks, station.first)
+    yield
+    if station.table:
+        await _close_table(bot)
+
+
+async def _click_result(context: GroupContext, bot: Bot, *clicks: tuple[str, int]) -> None:
+    """Click the result once for each of `clicks`, a mode and a button each, in one window."""
+    async with context.observe(*PACKETS):
+        for mode, button in clicks:
+            await bot.click(RESULT, button, mode)
+
+
+async def _shift_click_number_key_and_q(context: GroupContext, bot: Bot, station: Station) -> None:
+    """Shift-click the station's result; lay its stacks out again, press 1 over it, then Q.
+
+    Each click has a window of its own. Control removes what Q drops after its window.
+    """
+    async with _laid_out(context, bot, station, station.stacks):
+        await _click_result(context, bot, _SHIFT_CLICK)
+    async with _laid_out(context, bot, station, station.stacks):
+        await _click_result(context, bot, _NUMBER_KEY_1)
+        await _click_result(context, bot, _Q)
+        await context.control.run(KILL_ITEMS)
+
+
+async def _ctrl_q(context: GroupContext, bot: Bot, station: Station) -> None:
+    """Ctrl+Q over the station's result; then the same over `LOGS`' with a full inventory.
+
+    With the inventory full but for two planks, the Bot shift-clicks the result in a window.
+    Then, in one window, it presses 1 over it, onto stone, which changes nothing, and Ctrl+Q.
+    Control removes what each of these windows drops after it.
+    """
+    control = context.control
+    async with _laid_out(context, bot, station, station.stacks):
+        await _click_result(context, bot, _CTRL_Q)
+        await control.run(KILL_ITEMS)
+    async with _laid_out(context, bot, station, (LOGS,)):
+        for command in FILL_UP:
+            await control.run(command.format(name=bot.name))
+        await _click_result(context, bot, _SHIFT_CLICK)
+        await control.run(KILL_ITEMS)
+        await _click_result(context, bot, _NUMBER_KEY_1, _CTRL_Q)
+        await control.run(KILL_ITEMS)
+
+
 @group("crafting/grid")
 async def grid(context: GroupContext) -> None:
-    """Items clicked into the 2x2 grid or a crafting table's 3x3 show a result, or none."""
+    """Items clicked into the 2x2 grid or a crafting table's 3x3 show a result, or none.
+
+    The Bot takes the result with a click, a shift-click, a number key and Q. The Ctrl+Q cases
+    come last, so a server that stops answering on one has the rest compared first.
+    """
     async with contextlib.AsyncExitStack() as undo:
         bot = await _stage(context, undo, CRAFTER)
         for case in GRID_CASES:
@@ -154,6 +262,10 @@ async def grid(context: GroupContext) -> None:
         await _open_table(bot)
         await _take(context, bot, TABLE_TAKE, TABLE_INVENTORY_0)
         await _close_table(bot)
+        for station in STATIONS:
+            await _shift_click_number_key_and_q(context, bot, station)
+        for station in STATIONS:
+            await _ctrl_q(context, bot, station)
 
 
 # `crafting/recipe-book`

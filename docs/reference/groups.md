@@ -661,7 +661,7 @@ emptied and put back at the spawn.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
-| `crafting/grid` | exact | none | A Bot, `crafter`, clicks items into the 2 × 2 grid of its inventory, one item a cell, in a window for each case: planks from a log, sticks, a crafting table, bone meal from a bone (shapeless), and two arrangements that make nothing. Then it puts two logs in one cell and takes the planks twice, a window each: onto an empty cursor, then onto the planks it holds. Last, in a crafting table, it lays out the items of two stone pickaxes (shaped) and takes a pickaxe twice. A pickaxe does not stack, so the second take finds no room on the cursor and takes nothing. | none |
+| `crafting/grid` | exact | none | A Bot, `crafter`, clicks items into the 2 × 2 grid of its inventory, one item a cell, in a window for each case: planks from a log, sticks, a crafting table, bone meal from a bone (shapeless), and two arrangements that make nothing. Then it puts two logs in one cell and takes the planks twice, a window each: onto an empty cursor, then onto the planks it holds. In a crafting table, it lays out the items of two stone pickaxes (shaped) and takes a pickaxe twice. A pickaxe does not stack, so the second take finds no room on the cursor and takes nothing. Then, in the 2 × 2 grid with three logs in one cell and in the table with the items of two pickaxes, the Bot shift-clicks the result, and with the items laid out again presses 1 over it and then Q. Last, in each grid, it presses Ctrl+Q over the result. Then it lays out three logs, Control fills its inventory but for room for two planks, and the Bot shift-clicks the result. In one more window it presses 1 over the result, with stone in the first hotbar slot, and Ctrl+Q. Each click has a window of its own. | none |
 | `crafting/recipe-book` | exact | none | A Bot, `bookworm`, clicks recipes in its recipe book, in a window each. In the 2 × 2 grid: planks, all the planks it can make, a crafting table with too few planks, and sticks, a recipe it does not know. Then in a crafting table: a stone pickaxe, a stone pickaxe with too little cobblestone, as many crafting tables as it can make, and sticks. | none |
 | `crafting/unlocking` | exact | none | Control gives a Bot, `learner`, the stick recipe and takes it, then gives and takes every recipe, in a window each. With `limited_crafting` on and then off, the Bot clicks an oak log into its grid while it knows no recipe. Last, Control revokes the advancement that unlocks oak planks and gives the Bot an oak log, which unlocks the recipe again. | none |
 
@@ -692,9 +692,11 @@ recipe of its own. A grid holds the items it was given until it is cleared. `/cl
 inventory's grid as well, and a crafting table gives its grid back when it is closed, so the
 Bot opens the table for each click and closes it after.
 
-The Bot takes a crafted result with a click, never with a shift-click. A shift-click crafts
-again for as long as the grid makes the same result, and the Bot cannot tell how long that is
-without knowing the recipes.
+A shift-click, a number key or Q on a result crafts once on the client, so the Bot reports one
+craft. Vanilla crafts again for as long as the grid makes the same result and the inventory has
+room for it, and sends the slots that changed. What does not fit is dropped. Control removes the
+items a window drops right after it, before the Bot can pick them up. The Ctrl+Q cases come
+last, so that a server that stops answering on one still has the other cases compared.
 
 ## Entities (`entities`)
 
