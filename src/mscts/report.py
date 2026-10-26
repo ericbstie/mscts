@@ -9,7 +9,7 @@ from enum import StrEnum
 from uuid import UUID
 
 import mscts.compare
-from mscts.compare import ABSENT, TICK_PATH, Divergence, Observability, Outcome
+from mscts.compare import ABSENT, TICK_PATH, Divergence, Nested, Observability, Outcome
 from mscts.run import GroupResult, RunResult, SideSummary
 from mscts.stats import PER_PLAY, Shares, Spread
 from mscts.target import Target
@@ -573,6 +573,8 @@ def _sent(value: object) -> _Line:
         return ("leaves it out",)
     if isinstance(value, bytes):
         return ("sends bytes ", _Literal(value.hex()))
+    if isinstance(value, Nested):
+        return ("sends ", _Literal(value))
     text = json.dumps(value, ensure_ascii=False, sort_keys=True, default=_json_value)
     return ("sends ", _Literal(text))
 

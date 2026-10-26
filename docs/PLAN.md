@@ -1628,6 +1628,12 @@ NETWORK_TRAFFIC_ONLY_PASSES = True  # the one place ADR-0007's rule is applied: 
 ABSENT: Absent                      # the value on the side that has no such packet (or field)
 MASKED = "<masked>"                 # what a field Mask shows in place of a value (not None),
                                     # on both sides, so presence still counts (step 3)
+class Nested(str): ...              # a list or mapping more than 255 levels into a field's
+                                    # value, compared as one leaf (#479): "(nested deeper than
+                                    # 255 levels) " and the value as report.json writes one,
+                                    # keys sorted, a NaN with its bits ({"float": "nan(<hex>)"});
+                                    # equal exactly when the values are, never to a server's
+                                    # str. The Report shows it unquoted
 
 @frozen
 class Divergence:

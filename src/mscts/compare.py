@@ -624,7 +624,7 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
     gameplay `field` Divergence per differing leaf, in path order, except in a list that
     is lined up (`_LINED_UP`), which is in the order of its steps. A list or mapping more
     than 255 levels into a field's value is one leaf, a text that writes it whole
-    (`_Nested`). If they have a
+    (`Nested`). If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
     and values, when the unmasked canonical values at that path (for a chunk, the canonical
@@ -2134,7 +2134,7 @@ def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
 
     Cut to what the client reads (`_CAPS`), in one spelling (`_ONE_SPELLING`), and sorted if
     `UNORDERED` names it. A list or mapping deeper than `_NESTING_LIMIT` in a field's value is
-    one leaf (`_Nested`), so no walk of the copy recurses deeper than that.
+    one leaf (`Nested`), so no walk of the copy recurses deeper than that.
     """
     copy = _plain_mapping(fields.items(), packet.name, ())
     if (cap := _CAPS.get((packet.state, packet.name))) is not None:
@@ -2185,19 +2185,23 @@ def _field_name(key: object, packet: str, path: _Path) -> str:
 
 
 _NESTING_LIMIT = 255
-"""How many levels of lists and mappings a field's value keeps; the rest is one `_Nested`.
+"""How many levels of lists and mappings a field's value keeps; the rest is one `Nested`.
 
-As deep as the JSON the client reads (`_JSON_NESTING_LIMIT`), so none of that is cut. Every
-walk of a copy recurses once or twice a level (`_plain`, `_pairs`, `_leaves`), and a
-Candidate's value nests as deep as the codec decodes it, near Python's recursion limit (#479).
+A Candidate's value nests as deep as the codec decodes it, near Python's recursion limit, and
+every walk of a copy recurses once or twice a level (`_plain`, `_pairs`, `_leaves`, and
+report.json's `_value` and `_read_value`). At 255, a walk of the deepest value kept still has
+474 frames to spare (#479). The status JSON `_strict_json` passes through `_plain` is at most
+`_JSON_NESTING_LIMIT` deep, the same number, so it is never cut; the two are set apart.
 """
 
 
-class _Nested(str):
-    """A list or mapping more than `_NESTING_LIMIT` levels into a field's value, as one leaf.
+class Nested(str):
+    """A list or mapping more than 255 levels into a field's value, as one leaf.
 
-    Its text says so, then writes the value as `repr` does, with each mapping's keys sorted:
-    two are equal exactly when the values are, a NaN's bits included (`_leaf_text`). `_same`
+    Its text is `(nested deeper than 255 levels) ` and then the value as report.json writes one:
+    JSON with sorted keys, bytes, a UUID or a float JSON cannot hold as a tagged object, and a
+    mapping whose only key is a tag inside `{"dict": ...}` (`_TAG_KEYS`). A NaN keeps its bits:
+    `{"float": "nan(7ff8000000000001)"}`. Two are equal exactly when the values are. `_same`
     compares leaves by exact type, so it never equals a string a server sent.
     """
 
@@ -2228,58 +2232,90 @@ def _plain_leaf(value: object, packet: str, path: _Path) -> _Value:
     raise TypeError(msg)
 
 
-type _Token = str | tuple[object]
-"""A piece of a `_Nested`'s text: written as it is, or (a value,) still to write."""
+class _Pending(NamedTuple):
+    """A value in a `Nested`'s text still to write."""
+
+    value: object
 
 
-def _nested(value: object, packet: str, path: _Path) -> _Nested:
-    """`value`, at `path` in `packet`'s fields, as a `_Nested`; written without recursion.
+type _Token = str | _Pending
+"""A piece of a `Nested`'s text: written as it is, or a value still to write."""
+
+_TAG_KEYS = frozenset({"absent", "bytes", "uuid", "float", "dict"})
+"""The keys of report.json's tagged objects; a `Nested` writes a mapping with one alone in one."""
+
+
+def _nested(value: object, packet: str, path: _Path) -> Nested:
+    """`value`, at `path` in `packet`'s fields, as a `Nested`; written without recursion.
 
     Raises:
         TypeError: As `_plain` does, at `path` for anything in `value`.
     """
     parts = [f"(nested deeper than {_NESTING_LIMIT} levels) "]
-    pending: list[_Token] = [(value,)]
+    pending: list[_Token] = [_Pending(value)]
     while pending:
         token = pending.pop()
         if isinstance(token, str):
             parts.append(token)
-        elif isinstance(node := token[0], Mapping | list):
+        elif isinstance(node := token.value, Mapping | list):
             container = cast("Mapping[object, object] | list[object]", node)
             pending.extend(reversed(_tokens(container, packet, path)))
         else:
             parts.append(_leaf_text(_plain_leaf(node, packet, path)))
-    return _Nested("".join(parts))
+    return Nested("".join(parts))
 
 
 def _tokens(node: Mapping[object, object] | list[object], packet: str, path: _Path) -> list[_Token]:
-    """The pieces of `node`'s text, in order: `{'a': 1, 'b': [2]}`, with the keys sorted.
+    """The pieces of `node`'s text, in order: `{"a": 1, "b": [2]}`.
 
     Raises:
         TypeError: A key is not a str, as `_plain_mapping` says, at `path`.
     """
     if isinstance(node, list):
-        items = [("", item) for item in node]
-        brackets = "[]"
-    else:
-        keyed = sorted(
-            ((_field_name(key, packet, path), item) for key, item in node.items()),
-            key=lambda pair: pair[0],
-        )
-        items = [(f"{key!r}: ", item) for key, item in keyed]
-        brackets = "{}"
-    tokens: list[_Token] = [brackets[0]]
-    for index, (key, item) in enumerate(items):
-        tokens.extend(((", " if index else "") + key, (item,)))
-    tokens.append(brackets[1])
+        return _enclosed("[", [("", item) for item in node], "]")
+    return _mapping_tokens(node, packet, path)
+
+
+def _mapping_tokens(mapping: Mapping[object, object], packet: str, path: _Path) -> list[_Token]:
+    """The pieces of `mapping`'s text, keys sorted, in `{"dict": ...}` if its one key is a tag.
+
+    Raises:
+        TypeError: A key is not a str, as `_plain_mapping` says, at `path`.
+    """
+    entries = sorted(
+        ((_field_name(key, packet, path), item) for key, item in mapping.items()),
+        key=lambda entry: entry[0],
+    )
+    tokens = _enclosed("{", [(f"{_json_text(key)}: ", item) for key, item in entries], "}")
+    if len(entries) == 1 and entries[0][0] in _TAG_KEYS:
+        return ['{"dict": ', *tokens, "}"]
+    return tokens
+
+
+def _enclosed(start: str, items: Sequence[tuple[str, object]], end: str) -> list[_Token]:
+    """`start`, then each item's label and value, with `, ` between items, then `end`."""
+    tokens: list[_Token] = [start]
+    for index, (label, item) in enumerate(items):
+        tokens.extend(((", " if index else "") + label, _Pending(item)))
+    tokens.append(end)
     return tokens
 
 
 def _leaf_text(leaf: _Value) -> str:
-    """`leaf` as `repr` writes it, but a NaN with its bits: `nan(7ff8000000000001)`."""
-    if isinstance(leaf, float) and math.isnan(leaf):
-        return f"nan({struct.pack('>d', leaf).hex()})"
-    return repr(leaf)
+    """`leaf` as report.json writes it, but a NaN with its bits: `{"float": "nan(7ff8...)"}`."""
+    match leaf:
+        case float() if math.isnan(leaf):
+            return _json_text({"float": f"nan({struct.pack('>d', leaf).hex()})"})
+        case float() if math.isinf(leaf):
+            return _json_text({"float": repr(leaf)})
+        case bytes() | UUID():
+            return _json_text(_json_leaf(leaf))
+    return _json_text(leaf)
+
+
+def _json_text(value: object) -> str:
+    """`value`, in the value model with no NaN or infinity, as JSON."""
+    return json.dumps(value, ensure_ascii=False, allow_nan=False)
 
 
 def _hidden(value: _Value, path: _MaskPath, at: _Path, found: list[_Path]) -> _Value:
@@ -4091,7 +4127,7 @@ def _identity(value: _Value) -> str:
 
 
 def _json_leaf(value: object) -> dict[str, str]:
-    """Bytes or a UUID, which JSON has no type for, as `_identity` writes it.
+    """Bytes or a UUID, which JSON has no type for, as `_identity` and a `Nested` write it.
 
     Anything else is outside the value model, a harness bug: TypeError, as `json.dumps`
     expects of its `default`.

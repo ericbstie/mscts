@@ -1,5 +1,6 @@
 """compare() on matched Packets with fields: the recursive diff and its paths."""
 
+import json
 import math
 import struct
 import sys
@@ -150,7 +151,7 @@ def test_a_value_nested_deeper_than_the_recursion_limit_is_a_mismatch_not_an_err
     [(path, reference, candidate)] = _diff({"v": 1}, {"v": _nested(deep, 1)})
     assert (path, reference) == ("v", 1)
     assert candidate == _nested(
-        255, "(nested deeper than 255 levels) " + repr(_nested(deep - 255, 1))
+        255, "(nested deeper than 255 levels) " + json.dumps(_nested(deep - 255, 1))
     )
     assert _diff({"v": _nested(deep, 1)}, {"v": _nested(deep, 1)}) == []
 
@@ -166,25 +167,47 @@ def test_lists_nested_deeper_than_the_recursion_limit_are_compared_too() -> None
 def test_the_report_shows_a_value_nested_deeper_than_the_recursion_limit() -> None:
     deep = sys.getrecursionlimit() + 1
     verdict = compare(
-        transcript(("alice", packet("test:p", fields={"v": 1}))),
+        transcript(("alice", packet("test:p", fields={"v": _nested(255, 1)}))),
         transcript(("alice", packet("test:p", fields={"v": _nested(deep, 1)}))),
         [],
     )
     shown = render_text(report_of(group_result(verdict)), verbose=True)
-    assert "(nested deeper than 255 levels) {'value': {'value':" in shown, shown[-300:]
+    # Unquoted: mscts wrote this text, no server sent it.
+    assert 'sends (nested deeper than 255 levels) {"value": {"value":' in shown, shown[-300:]
 
 
 def test_a_field_value_is_compared_as_one_leaf_from_its_256th_level_down() -> None:
     at_the_limit = "v" + ".value" * 255
     assert _diff({"v": _nested(255, 1)}, {"v": _nested(255, 2)}) == [(at_the_limit, 1, 2)]
-    reference, candidate = _nested(1, 1), _nested(1, 2)
     assert _diff({"v": _nested(256, 1)}, {"v": _nested(256, 2)}) == [
         (
             at_the_limit,
-            f"(nested deeper than 255 levels) {reference!r}",
-            f"(nested deeper than 255 levels) {candidate!r}",
+            '(nested deeper than 255 levels) {"value": 1}',
+            '(nested deeper than 255 levels) {"value": 2}',
         )
     ]
+
+
+def test_a_value_past_the_255th_level_is_written_as_report_json_writes_one() -> None:
+    leaf = {
+        "z": [None, True, False, -7, 1.5, -0.0],
+        "s": 'it\'s "x" é',
+        "b": b"\x00\x01",
+        "u": uuid.UUID(int=1),
+        "f": [math.inf, -math.inf, _NAN],
+        "t": {"bytes": "00"},
+        "e": [[], {}],
+        "a": {"absent": True},
+    }
+    [(_, text, _)] = _diff({"v": _nested(256, leaf)}, {"v": _nested(256, 0)})
+    assert text == (
+        "(nested deeper than 255 levels) "
+        '{"value": {"a": {"dict": {"absent": true}}, "b": {"bytes": "0001"}, "e": [[], {}], '
+        '"f": [{"float": "inf"}, {"float": "-inf"}, {"float": "nan(7ff8000000000000)"}], '
+        '"s": "it\'s \\"x\\" é", "t": {"dict": {"bytes": "00"}}, '
+        '"u": {"uuid": "00000000-0000-0000-0000-000000000001"}, '
+        '"z": [null, true, false, -7, 1.5, -0.0]}}'
+    )
 
 
 _NAN = struct.unpack(">d", bytes.fromhex("7ff8000000000000"))[0]
@@ -212,7 +235,11 @@ def test_values_past_the_255th_level_match_when_they_are_equal(
         (1, 1.0),
         (1, True),
         (b"a", "a"),
+        (b"\x00", {"bytes": "00"}),
         (uuid.UUID(int=1), str(uuid.UUID(int=1))),
+        (uuid.UUID(int=1), {"uuid": str(uuid.UUID(int=1))}),
+        (math.inf, {"float": "inf"}),
+        ({"dict": b"\x00"}, {"bytes": "00"}),
         ([1, 2], [2, 1]),
         ([1, 23], [12, 3]),
         ({"a": 1}, {"a": 1, "b": None}),
@@ -226,7 +253,7 @@ def test_values_past_the_255th_level_differ_when_they_do(
 
 
 def test_a_value_past_the_255th_level_never_equals_a_string_with_its_text() -> None:
-    text = "(nested deeper than 255 levels) {'value': 1}"
+    text = '(nested deeper than 255 levels) {"value": 1}'
     assert _diff({"v": _nested(256, 1)}, {"v": _nested(255, text)}) == [
         ("v" + ".value" * 255, text, text)
     ]
