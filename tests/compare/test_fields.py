@@ -155,6 +155,14 @@ def test_a_value_nested_deeper_than_the_recursion_limit_is_a_mismatch_not_an_err
     assert _diff({"v": _nested(deep, 1)}, {"v": _nested(deep, 1)}) == []
 
 
+def test_lists_nested_deeper_than_the_recursion_limit_are_compared_too() -> None:
+    deep: object = 1
+    for _ in range(sys.getrecursionlimit() + 1):
+        deep = [deep]
+    assert _diff({"v": deep}, {"v": deep}) == []
+    assert len(_diff({"v": 1}, {"v": deep})) == 1
+
+
 def test_the_report_shows_a_value_nested_deeper_than_the_recursion_limit() -> None:
     deep = sys.getrecursionlimit() + 1
     verdict = compare(
@@ -206,6 +214,7 @@ def test_values_past_the_255th_level_match_when_they_are_equal(
         (b"a", "a"),
         (uuid.UUID(int=1), str(uuid.UUID(int=1))),
         ([1, 2], [2, 1]),
+        ([1, 23], [12, 3]),
         ({"a": 1}, {"a": 1, "b": None}),
         ([], {}),
     ],
