@@ -925,10 +925,11 @@ class Bot:
         `expect` can't see an Observation window: in one narrowed to other packets, a packet
         outside it is never compared, so name every packet you wait for in the window's
         names too.
-        `where` is called with a packet of any of the names, so it must read only fields
-        they all have. With `since_ns`, a packet that arrived before that time, as the
-        Transcript stamps it, does not end the wait. Every packet taken is recorded, the ones
-        before it included, and the Bot's Replies have already answered each of them.
+        With `since_ns`, a packet that arrived before that time, as the Transcript stamps it,
+        does not end the wait. `where` is called with a packet of any of the names (with
+        `since_ns`, only one that arrived at that time or later), so it must read only fields
+        they all have. Every packet taken is recorded, the ones before it included, and the
+        Bot's Replies have already answered each of them.
 
         Raises:
             ValueError: A name is given twice.
@@ -945,8 +946,8 @@ class Bot:
         def wanted(packet: Packet) -> bool:
             return (
                 packet.name in names
-                and (where is None or where(packet))
                 and (since_ns is None or self._arrived_since(since_ns))
+                and (where is None or where(packet))
             )
 
         async with self._operation(timeout_s, " or ".join(names)):

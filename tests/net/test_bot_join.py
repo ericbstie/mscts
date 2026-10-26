@@ -310,22 +310,47 @@ def test_expect_takes_packets_until_where_holds(codec: Codec, transcript: Transc
     assert taken(transcript)[-2:] == [(State.PLAY, DIFFICULTY)] * 2
 
 
+def _two_behind_the_batch(peer: Peer) -> bytes:
+    """Two `change_difficulty` in the chunk batch's read: 1 and 2 ns after its last packet."""
+    return peer.raw_frame(DIFFICULTY, b"\x01\x00") + peer.raw_frame(DIFFICULTY, b"\x02\x00")
+
+
+def _batch_finished(transcript: Transcript) -> int:
+    """When the Bot read the chunk batch's last packet, in Transcript time."""
+    [finished] = [e.t_ns for e in transcript.events if e.packet.name == BATCH_FINISHED]
+    return finished
+
+
 def test_expect_takes_packets_until_one_arrived_since_the_time_given(
     codec: Codec, transcript: Transcript
 ) -> None:
-    def two_behind_the_batch(peer: Peer) -> bytes:
-        return peer.raw_frame(DIFFICULTY, b"\x01\x00") + peer.raw_frame(DIFFICULTY, b"\x02\x00")
-
     async def expect(bot: Bot) -> Packet:
         await bot.join()
-        # the two arrived in the batch's read, so 1 and 2 ns after its last packet
-        [finished] = [e.t_ns for e in transcript.events if e.packet.name == BATCH_FINISHED]
-        return await bot.expect(DIFFICULTY, timeout_s=1, since_ns=finished + 2)
+        return await bot.expect(DIFFICULTY, timeout_s=1, since_ns=_batch_finished(transcript) + 2)
 
-    script = JoinScript(after_batch=two_behind_the_batch)
+    script = JoinScript(after_batch=_two_behind_the_batch)
     packet, _ = with_bot(codec, transcript, join_server([], script), expect)
     assert packet.payload == b"\x02\x00"
     assert taken(transcript)[-2:] == [(State.PLAY, DIFFICULTY)] * 2
+
+
+def test_expect_calls_where_only_with_a_packet_that_arrived_since_the_time_given(
+    codec: Codec, transcript: Transcript
+) -> None:
+    seen: list[bytes] = []
+
+    def records(packet: Packet) -> bool:
+        seen.append(packet.payload)
+        return True
+
+    async def expect(bot: Bot) -> Packet:
+        await bot.join()
+        since_ns = _batch_finished(transcript) + 2
+        return await bot.expect(DIFFICULTY, timeout_s=1, where=records, since_ns=since_ns)
+
+    script = JoinScript(after_batch=_two_behind_the_batch)
+    with_bot(codec, transcript, join_server([], script), expect)
+    assert seen == [b"\x02\x00"]
 
 
 def test_expect_is_bounded(codec: Codec, transcript: Transcript) -> None:

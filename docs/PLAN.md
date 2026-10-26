@@ -552,7 +552,7 @@ class Bot:                          # what Groups use; answers keep_alive / tele
                      where: Callable[[Packet], bool] | None = None,
                      since_ns: int | None = None) -> Packet: ...
     # since_ns: a packet stamped before it (its arrival, Transcript time) is taken and passed
-    # over, not returned (#469)
+    # over, not returned, and `where` is not called with it (#469)
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def wait_until_handled(self) -> None: ...                    # #360: lighter proof (below)
     async def drain(self) -> None: ...                                 # take what has arrived
