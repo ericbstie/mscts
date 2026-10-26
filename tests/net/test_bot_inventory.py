@@ -794,8 +794,7 @@ def test_a_middle_click_clone_changes_nothing_for_a_survival_player() -> None:
         ({}, 9, 0, "drag", "mode must be one of"),
         ({}, 40_000, 0, "pickup", "Short"),
         ({}, 9, 200, "pickup", "Byte"),
-        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "swap", "crafting result"),
-        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "throw", "crafting result"),
+        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "pickup_all", "crafting result"),
         ({}, OUTSIDE, 0, "swap", "not one of the menu's 46 slots"),
         ({9: ("bundle", 1)}, 9, 0, "pickup", "bundle"),
         ({5: ("diamond_helmet", 1), 36: ("carved_pumpkin", 5)}, 5, 0, "swap", "elsewhere"),
@@ -804,8 +803,7 @@ def test_a_middle_click_clone_changes_nothing_for_a_survival_player() -> None:
         "mode",
         "slot",
         "button",
-        "result-swap",
-        "result-throw",
+        "result-double-click",
         "swap-outside",
         "bundle",
         "swap-back",
@@ -1335,6 +1333,34 @@ def test_a_shift_click_on_a_result_that_does_not_all_fit_leaves_the_rest_in_the_
         {0: ("oak_planks", 4), 1: ("oak_log", 3), **full, 44: ("oak_planks", 64 - room)}
     )
     assert tracker.click(0, 0, "quick_move") == click_sent(0, changed, None, mode=1)
+
+
+@pytest.mark.parametrize(("button", "into"), [(0, 36), (40, 45)], ids=["hotbar", "off-hand"])
+def test_a_number_key_over_the_crafting_result_moves_it_to_that_empty_slot_and_crafts_once(
+    button: int, into: int
+) -> None:
+    # doClick SWAP: Inventory.setItem, onSwapCraft, setByPlayer(EMPTY), then ResultSlot.onTake.
+    tracker = holding({0: ("oak_planks", 4), 1: ("oak_log", 3)})
+    changed = [(0, None), (1, hashed("oak_log", 2)), (into, hashed("oak_planks", 4))]
+    sent = click_sent(0, changed, None, button=button, mode=2)
+    assert tracker.click(0, button, "swap") == sent
+
+
+def test_a_number_key_over_the_crafting_result_with_that_slot_taken_changes_nothing() -> None:
+    # The result may not take the hotbar slot's stack (ResultSlot.mayPlace), so nothing moves.
+    tracker = holding({0: ("oak_planks", 4), 1: ("oak_log", 3), 36: ("stone", 64)})
+    assert tracker.click(0, 0, "swap") == click_sent(0, [], None, mode=2)
+
+
+@pytest.mark.parametrize("button", [0, 1], ids=["q", "ctrl-q"])
+def test_q_over_the_crafting_result_drops_all_of_it_and_crafts_once(button: int) -> None:
+    # doClick THROW: Slot.safeTake takes the whole result (ResultContainer.removeItem), then
+    # ResultSlot.onTake. Ctrl+Q takes again while the slot holds the same item: on the client
+    # the result is empty after the first take.
+    tracker = holding({0: ("oak_planks", 4), 1: ("oak_log", 3)})
+    changed = [(0, None), (1, hashed("oak_log", 2))]
+    sent = click_sent(0, changed, None, button=button, mode=4)
+    assert tracker.click(0, button, "throw") == sent
 
 
 # A crafting table: CraftingMenu (26.3 client, javap). The result (slot 0), the 3x3 (1 to 9,

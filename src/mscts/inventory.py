@@ -269,14 +269,16 @@ class InventoryTracker:
         until the server sends the next one. A shift-click on the 2x2 result moves it to the 27
         and the hotbar from the end, and uses one item from each cell, as the pickup does: it
         crafts once on the client, which the server corrects if it crafted more. What does not
-        fit stays in the result: the client's drop of it changes nothing.
+        fit stays in the result: the client's drop of it changes nothing. A number key over
+        the 2x2 result moves it to that empty slot, and Q drops all of it, Ctrl or not; each
+        uses one item from each cell. A number key whose slot holds a stack changes nothing.
 
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
                 a chest's, a dispenser's, a hopper's, a shulker box's or a crafting table's; a
-                click on the 2x2 result other than a pickup or a shift-click, or on a crafting
-                table's other than a pickup; a take from a grid that holds
+                drag, a clone or a double click on the 2x2 result, or any click but a pickup on
+                a crafting table's; a take from a grid that holds
                 an item with a crafting remainder (a bucket of milk, water or lava, a honey
                 bottle, dragon's breath); a bundle; a swap that puts the slot's stack elsewhere;
                 or a changed slot's or the cursor's stack with a component patch, which it
@@ -478,7 +480,7 @@ _TABLE_STORAGE, _TABLE_HOTBAR = 10, 37
 _GRIDS = MappingProxyType({None: range(1, _CRAFTING), _TABLE: range(1, _TABLE_STORAGE)})
 """The crafting menus' grid slots, by menu: each has its result in slot 0 (`ResultSlot`)."""
 _RESULT_CLICKS = MappingProxyType(
-    {None: frozenset({_PICKUP, _QUICK_MOVE}), _TABLE: frozenset({_PICKUP})}
+    {None: frozenset({_PICKUP, _QUICK_MOVE, _SWAP, _THROW}), _TABLE: frozenset({_PICKUP})}
 )
 """The clicks on its crafting result the Bot predicts, by menu."""
 _OFF_HAND_BUTTON = 40
@@ -899,6 +901,7 @@ class _Click:
             if self.may_pickup(slot):
                 self.player[button] = held
                 self.put(slot, None)
+                self.on_take(slot)
         elif held is None:
             if not self.may_place(slot, theirs):
                 return
@@ -921,9 +924,16 @@ class _Click:
         self._require_slot(slot)
         held = self.get(slot)
         count = 1 if button == 0 else (0 if held is None else held.count)
-        taken = self.try_remove(slot, count, None)
+        taken = self.safe_take(slot, count)
         while button == 1 and taken is not None and _same_item(self.get(slot), taken):
-            taken = self.try_remove(slot, count, None)
+            taken = self.safe_take(slot, count)
+
+    def safe_take(self, index: int, count: int) -> Stack | None:
+        """`Slot.safeTake`: `try_remove`, then `on_take` if it took anything."""
+        taken = self.try_remove(index, count, None)
+        if taken is not None:
+            self.on_take(index)
+        return taken
 
     def pickup_all(self, slot: int, button: int) -> None:
         """A double click: gather the carried stack's kind from the menu, full stacks last."""
