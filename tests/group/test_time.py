@@ -575,7 +575,7 @@ def test_sleep_counts_only_the_set_time_the_clock_read_inside_each_lie_down_wind
     for k, count in ((0, 7), (4, 3)):
         opened_at, _ = windows(transcript)[k]
         closing = min(t for t in asks if t > opened_at)  # the clock's barrier at the close
-        assert len([t for t in times if opened_at <= t < closing]) >= count
+        assert len([t for t in times if opened_at <= t < closing]) == count
 
 
 def test_sleep_counts_a_set_time_the_clock_read_after_the_open_before_the_lie_down() -> None:
