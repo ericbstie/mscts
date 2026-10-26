@@ -1791,6 +1791,8 @@ def compare(reference: Transcript, candidate: Transcript,
     # Field paths: identifier keys joined by dots, list indices in brackets, and any other
     # key as a JSON string in brackets: `players.sample[0].name`, `m["a.b"]`. An element
     # only the candidate has is `[→3]`, a pair at two indexes `[1→3]` (#455).
+    # A list or mapping more than 255 levels into a field's value is one leaf, a Nested
+    # (#479), so its differences are one Divergence at the 256th level, with both texts.
 
 def test_case(state: State, packet: str, path: str | None) -> str: ...
     # The name of the test case that compares `path` (spelled as a Divergence path; None
@@ -2722,7 +2724,10 @@ proves it necessary:
    against 1000 unrelated packets.
 
    Matched packets with fields are diffed recursively over the codec
-   value model. Mappings are compared key by key in sorted order (key
+   value model, down to a field's 255th level: a list or mapping below it
+   is one leaf, a `compare.Nested` text of it, since the codec decodes
+   values nested close to Python's recursion limit (#479). Mappings are
+   compared key by key in sorted order (key
    order is never significant: schema order is fixed, and JSON and NBT
    objects are unordered), and a key on one side only is `ABSENT` on the
    other. Lists are compared index by index, with `ABSENT` past the end
