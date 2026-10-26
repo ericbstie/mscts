@@ -1309,6 +1309,34 @@ def test_a_shift_click_on_the_crafting_result_moves_it_from_the_end_and_crafts_o
     assert tracker.click(0, 0, "quick_move") == click_sent(0, changed, None, mode=1)
 
 
+@pytest.mark.parametrize(
+    ("room", "changed"),
+    [
+        (
+            2,
+            [
+                (0, hashed("oak_planks", 2)),
+                (1, hashed("oak_log", 2)),
+                (44, hashed("oak_planks", 64)),
+            ],
+        ),
+        (0, []),
+    ],
+    ids=["some", "none"],
+)
+def test_a_shift_click_on_a_result_that_does_not_all_fit_leaves_the_rest_in_the_result(
+    room: int, changed: list[tuple[int, dict[str, object]]]
+) -> None:
+    # quickMoveStack drops the rest (Player.drop), which on the client changes nothing: the rest
+    # stays in the result. The next quickMoveStack moves nothing and ends the shift-click. A
+    # result that moves none of it is not taken (moveItemStackTo is false: no onTake).
+    full = dict.fromkeys(range(9, 44), ("stone", 64))
+    tracker = holding(
+        {0: ("oak_planks", 4), 1: ("oak_log", 3), **full, 44: ("oak_planks", 64 - room)}
+    )
+    assert tracker.click(0, 0, "quick_move") == click_sent(0, changed, None, mode=1)
+
+
 # A crafting table: CraftingMenu (26.3 client, javap). The result (slot 0), the 3x3 (1 to 9,
 # by row), the 27 (10 to 36), then the hotbar (37 to 45).
 

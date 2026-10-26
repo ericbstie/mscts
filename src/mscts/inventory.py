@@ -268,7 +268,8 @@ class InventoryTracker:
         holds one (`ResultSlot.onTake`); the client does not craft, so the result stays empty
         until the server sends the next one. A shift-click on the 2x2 result moves it to the 27
         and the hotbar from the end, and uses one item from each cell, as the pickup does: it
-        crafts once on the client, which the server corrects if it crafted more.
+        crafts once on the client, which the server corrects if it crafted more. What does not
+        fit stays in the result: the client's drop of it changes nothing.
 
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
