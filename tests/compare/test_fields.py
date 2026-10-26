@@ -1,13 +1,18 @@
 """compare() on matched Packets with fields: the recursive diff and its paths."""
 
+import json
 import math
+import struct
+import sys
 import uuid
 from collections.abc import Mapping
 
 import pytest
+from support.report_builders import group_result, report_of
 
 from mscts.codec.packets import State
 from mscts.compare import ABSENT, compare
+from mscts.report import render_text
 from tests.compare.build import divergence, packet, transcript
 
 
@@ -130,6 +135,144 @@ def test_divergence_values_are_copies_of_the_fields() -> None:
     assert value == fields
     assert value is not fields
     assert next(item for key, item in value.items() if key == "v") is not fields["v"]
+
+
+def _nested(depth: int, leaf: object) -> object:
+    """`leaf` in `depth` mappings, each `{"value": ...}`; built without recursion."""
+    value = leaf
+    for _ in range(depth):
+        value = {"value": value}
+    return value
+
+
+def test_a_value_nested_deeper_than_the_recursion_limit_is_a_mismatch_not_an_error() -> None:
+    # A Candidate's value can nest as deep as the codec decodes it (#479).
+    deep = sys.getrecursionlimit() + 1
+    [(path, reference, candidate)] = _diff({"v": 1}, {"v": _nested(deep, 1)})
+    assert (path, reference) == ("v", 1)
+    assert candidate == _nested(
+        255, "(nested deeper than 255 levels) " + json.dumps(_nested(deep - 255, 1))
+    )
+    assert _diff({"v": _nested(deep, 1)}, {"v": _nested(deep, 1)}) == []
+
+
+def test_lists_nested_deeper_than_the_recursion_limit_are_compared_too() -> None:
+    deep: object = 1
+    for _ in range(sys.getrecursionlimit() + 1):
+        deep = [deep]
+    assert _diff({"v": deep}, {"v": deep}) == []
+    assert len(_diff({"v": 1}, {"v": deep})) == 1
+
+
+def test_the_report_shows_a_value_nested_deeper_than_the_recursion_limit() -> None:
+    deep = sys.getrecursionlimit() + 1
+    verdict = compare(
+        transcript(("alice", packet("test:p", fields={"v": _nested(255, 1)}))),
+        transcript(("alice", packet("test:p", fields={"v": _nested(deep, 1)}))),
+        [],
+    )
+    shown = render_text(report_of(group_result(verdict)), verbose=True)
+    # Unquoted: mscts wrote this text, no server sent it.
+    assert 'sends (nested deeper than 255 levels) {"value": {"value":' in shown, shown[-300:]
+
+
+def test_a_field_value_is_compared_as_one_leaf_from_its_256th_level_down() -> None:
+    at_the_limit = "v" + ".value" * 255
+    assert _diff({"v": _nested(255, 1)}, {"v": _nested(255, 2)}) == [(at_the_limit, 1, 2)]
+    assert _diff({"v": _nested(256, 1)}, {"v": _nested(256, 2)}) == [
+        (
+            at_the_limit,
+            '(nested deeper than 255 levels) {"value": 1}',
+            '(nested deeper than 255 levels) {"value": 2}',
+        )
+    ]
+
+
+def test_a_value_past_the_255th_level_is_written_as_report_json_writes_one() -> None:
+    leaf = {
+        "z": [None, True, False, -7, 1.5, -0.0],
+        "s": 'it\'s "x" é',
+        "b": b"\x00\x01",
+        "u": uuid.UUID(int=1),
+        "f": [math.inf, -math.inf, _NAN],
+        "t": {"bytes": "00"},
+        "e": [[], {}],
+        "a": {"absent": True},
+        "m": {"bytes": "00", "n": 1},
+    }
+    [(_, text, _)] = _diff({"v": _nested(256, leaf)}, {"v": _nested(256, 0)})
+    assert text == (
+        "(nested deeper than 255 levels) "
+        '{"value": {"a": {"dict": {"absent": true}}, "b": {"bytes": "0001"}, "e": [[], {}], '
+        '"f": [{"float": "inf"}, {"float": "-inf"}, {"float": "nan(7ff8000000000000)"}], '
+        '"m": {"bytes": "00", "n": 1}, '
+        '"s": "it\'s \\"x\\" é", "t": {"dict": {"bytes": "00"}}, '
+        '"u": {"uuid": "00000000-0000-0000-0000-000000000001"}, '
+        '"z": [null, true, false, -7, 1.5, -0.0]}}'
+    )
+
+
+_NAN = struct.unpack(">d", bytes.fromhex("7ff8000000000000"))[0]
+_OTHER_NAN = struct.unpack(">d", bytes.fromhex("7ff8000000000001"))[0]
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        ({"b": 1, "a": [2, None]}, {"a": [2, None], "b": 1}),
+        ([1.5, _NAN, b"\x00", uuid.UUID(int=1)], [1.5, _NAN, b"\x00", uuid.UUID(int=1)]),
+    ],
+)
+def test_values_past_the_255th_level_match_when_they_are_equal(
+    reference: object, candidate: object
+) -> None:
+    assert _diff({"v": _nested(256, reference)}, {"v": _nested(256, candidate)}) == []
+
+
+@pytest.mark.parametrize(
+    ("reference", "candidate"),
+    [
+        (0.0, -0.0),
+        (_NAN, _OTHER_NAN),
+        (1, 1.0),
+        (1, True),
+        (b"a", "a"),
+        (b"\x00", {"bytes": "00"}),
+        (uuid.UUID(int=1), str(uuid.UUID(int=1))),
+        (uuid.UUID(int=1), {"uuid": str(uuid.UUID(int=1))}),
+        (math.inf, {"float": "inf"}),
+        ({"dict": b"\x00"}, {"bytes": "00"}),
+        ([1, 2], [2, 1]),
+        ([1, 23], [12, 3]),
+        ({"a": 1}, {"a": 1, "b": None}),
+        ([], {}),
+    ],
+)
+def test_values_past_the_255th_level_differ_when_they_do(
+    reference: object, candidate: object
+) -> None:
+    assert len(_diff({"v": _nested(256, reference)}, {"v": _nested(256, candidate)})) == 1
+
+
+def test_a_value_past_the_255th_level_never_equals_a_string_with_its_text() -> None:
+    text = '(nested deeper than 255 levels) {"value": 1}'
+    assert _diff({"v": _nested(256, 1)}, {"v": _nested(255, text)}) == [
+        ("v" + ".value" * 255, text, text)
+    ]
+
+
+@pytest.mark.parametrize(
+    ("leaf", "error"),
+    [
+        ([(1, 2)], r"test:p: v(\.value){255}: tuple is not a codec value"),
+        ({1: "a"}, r"test:p: v(\.value){255}: int key 1 is not a field name"),
+    ],
+)
+def test_values_past_the_255th_level_are_checked_against_the_codec_value_model(
+    leaf: object, error: str
+) -> None:
+    with pytest.raises(TypeError, match=error):
+        _diff({"v": 0}, {"v": _nested(255, {"deeper": leaf})})
 
 
 @pytest.mark.parametrize(

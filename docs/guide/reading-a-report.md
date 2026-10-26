@@ -246,7 +246,11 @@ counterparts. When the two compared are at
 different positions, the path names both, vanilla's first: `tags[1→3]` is
 vanilla's second tag and the Candidate's fourth. Binary values
 use hexadecimal, and UUIDs use their usual string form. Inside a composite
-value, binary data is written as `{"bytes": "<hex>"}`. A packet mscts
+value, binary data is written as `{"bytes": "<hex>"}`. A list or object
+more than 255 levels deep in a field is compared as one value from its
+256th level down. There it is written `(nested deeper than 255 levels)`
+and then the value as report.json writes values (below), with a NaN's
+bits, as in `{"float": "nan(7ff8000000000000)"}`. A packet mscts
 could not read is compared byte by byte and shown in hexadecimal: 256 of
 its bytes, followed by a count of the rest, such as `(257 more bytes)`. These
 are its first 256 bytes, unless both servers sent more than 256 bytes. In that
