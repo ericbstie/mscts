@@ -198,12 +198,14 @@ def test_a_value_past_the_255th_level_is_written_as_report_json_writes_one() -> 
         "t": {"bytes": "00"},
         "e": [[], {}],
         "a": {"absent": True},
+        "m": {"bytes": "00", "n": 1},
     }
     [(_, text, _)] = _diff({"v": _nested(256, leaf)}, {"v": _nested(256, 0)})
     assert text == (
         "(nested deeper than 255 levels) "
         '{"value": {"a": {"dict": {"absent": true}}, "b": {"bytes": "0001"}, "e": [[], {}], '
         '"f": [{"float": "inf"}, {"float": "-inf"}, {"float": "nan(7ff8000000000000)"}], '
+        '"m": {"bytes": "00", "n": 1}, '
         '"s": "it\'s \\"x\\" é", "t": {"dict": {"bytes": "00"}}, '
         '"u": {"uuid": "00000000-0000-0000-0000-000000000001"}, '
         '"z": [null, true, false, -7, 1.5, -0.0]}}'
