@@ -285,7 +285,11 @@ Name spans `<mechanic>.<what>`, for example `status.rtt`.
   elements at different positions in a list that mscts lines up after the
   Masks apply, so an index names a different element in each list.
   `entries[*]` hides the values of both, and of every other element.
-  Fields vanilla
+  After such a pair, an index in a list inside it can name a different
+  element in each list too, so for `tags[1→3].entries[0]` write
+  `tags[*].entries`. An entity in a list of entity ids that only the
+  Candidate sends, such as `entity_ids[→1]` of `remove_entities`, is
+  hidden only by a Mask on the whole packet. Fields vanilla
   picks at random every time, such as a login's session id, are already
   left out for every Group, so list only what your Group adds. Entity ids
   and the random UUIDs of mobs need no Mask. mscts names each entity by its

@@ -6,6 +6,7 @@ as many on each side, are compared in place. Every other list is compared index 
 """
 
 import itertools
+import random
 import re
 from collections.abc import Sequence
 from typing import cast
@@ -212,6 +213,61 @@ def test_the_mask_a_refused_arrow_offers_leaves_fewer_divergences() -> None:
         unmasked = _entries_compared(reference, candidate)
         for path in (str(d.path) for d in unmasked if "→" in str(d.path)):
             masked = _masked_entries(reference, candidate, _offered(path))
+            assert len(masked) < len(unmasked), (reference, candidate, path, masked)
+
+
+TAGS = "tagged_registries[0].tags"
+type _Tags = Sequence[tuple[str, list[int]]]
+
+
+def _tags_compared(
+    reference: _Tags, candidate: _Tags, *mask_paths: str
+) -> list[tuple[str | None, object, object]]:
+    """The Divergences of two `update_tags` with these tags (name, entries), under these Masks."""
+
+    def update_tags(tags: _Tags) -> Packet:
+        listed = [{"tag_name": name, "entries": entries} for name, entries in tags]
+        fields = {"tagged_registries": [{"registry": "minecraft:block", "tags": listed}]}
+        return packet("minecraft:update_tags", fields=fields)
+
+    masks = [Mask("minecraft:update_tags", path, reason="a test") for path in mask_paths]
+    verdict = compare(
+        transcript(("alice", update_tags(reference))),
+        transcript(("alice", update_tags(candidate))),
+        masks,
+    )
+    return [(d.path, d.reference, d.candidate) for d in verdict.divergences]
+
+
+def test_an_index_after_a_pair_at_two_indexes_is_hidden_with_its_whole_list() -> None:
+    # Review B of #477 (B1): the refusal offered tags[*].entries[0], and the line-up then moved
+    # the difference onto entries[1], the 2 both servers sent in planks.
+    reference = [("minecraft:logs", [1, 2]), ("minecraft:planks", [1, 2])]
+    candidate = [("minecraft:leaves", []), ("minecraft:logs", [1, 2]), ("minecraft:planks", [2])]
+    leaves = {"tag_name": "minecraft:leaves", "entries": []}
+    assert _tags_compared(reference, candidate) == [
+        (f"{TAGS}[→0]", ABSENT, leaves),
+        (f"{TAGS}[1→2].entries[0]", 1, ABSENT),
+    ]
+    assert _offered(f"{TAGS}[1→2].entries[0]") == f"{TAGS}[*].entries"
+    assert _tags_compared(reference, candidate, f"{TAGS}[*].entries") == [
+        (f"{TAGS}[→0]", ABSENT, {**leaves, "entries": MASKED})
+    ]
+
+
+def test_the_mask_a_refused_arrow_in_a_list_of_tags_offers_leaves_fewer_divergences() -> None:
+    # Review B's search (B1), on a seeded sample: up to three tags a side, named a or b, with
+    # entries up to [1, 2]. The advice before gave no fewer Divergences for 6 of its 1,147 arrows.
+    tags = [(name, entries) for name in ("a", "b") for entries in ([], [1], [2], [1, 2])]
+    lists = [
+        list(chosen) for length in range(4) for chosen in itertools.product(tags, repeat=length)
+    ]
+    sample = random.Random(0)
+    for _ in range(1000):
+        reference, candidate = sample.choice(lists), sample.choice(lists)
+        unmasked = _tags_compared(reference, candidate)
+        for path in (str(path) for path, _, _ in unmasked if "→" in str(path)):
+            masked = _tags_compared(reference, candidate, _offered(path))
             assert len(masked) < len(unmasked), (reference, candidate, path, masked)
 
 

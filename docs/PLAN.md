@@ -1613,7 +1613,10 @@ class Mask:
     # message names the Mask that does: a Mask hides a value, never whether an element is
     # there, so for `l[→2]`, an element only the Candidate has, it is one on the whole list
     # (`l`); a Mask's index is each list's own, hidden on both sides before lists are lined
-    # up, so for `l[1→3].id`, a pair at two indexes, it is `l[*].id`, every element.
+    # up, so for `l[1→3].id`, a pair at two indexes, it is `l[*].id`, every element, and
+    # past such a pair it stops at the next list index's list (`l[1→3].e[0]`: `l[*].e`).
+    # For an entity only the Candidate has in a list of entity ids (`entity_ids[→1]`),
+    # the message names only WHOLE_PACKET.
     # Also a path that is an entity id of the clientbound packet in any State, or a
     # list of them (`Codec.entity_id_paths`; a list index fits EACH, and a Variant is
     # no step of a path): every Comparison names or numbers those instead, and the message
@@ -2750,8 +2753,9 @@ proves it necessary:
    Divergence at its index in its own list, `ABSENT` on the other side;
    in every list, the Divergence path writes the index of an element only
    the candidate has after an arrow (`tags[→3]`, `compare._Added`).
-   A pair is compared at the reference's index, which Masks and test
-   cases go by; when the candidate's index differs, the Divergence path
+   A pair is compared at the reference's index, which test cases go by
+   (a Mask hides each side's own index before the line-up, step 3); when
+   the candidate's index differs, the Divergence path
    shows both (`tags[1→3]`, `compare._Moved`). No two Divergences of one
    pair of matched packets therefore share a path (#455). So `a, b, c,
    d` against `b, c, d` is one Divergence, `a` left out, where comparing

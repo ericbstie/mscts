@@ -141,7 +141,10 @@ def test_a_mask_path_with_an_element_only_the_candidate_has_is_refused_naming_it
     [
         ("l[1→3].id", "[1→3]", "l[*].id"),
         ("l[2→0]", "[2→0]", "l[*]"),
-        ("t[0→1].e[2→3]", "[0→1]", "t[*].e[*]"),
+        # Past a pair, an index may name a different element on each side too (B1).
+        ("t[0→1].e[2→3]", "[0→1]", "t[*].e"),
+        ("t[1→2].e[0]", "[1→2]", "t[*].e"),
+        ("t[1→2].e[0].v", "[1→2]", "t[*].e"),
         ("t[0].e[1→2]", "[1→2]", "t[0].e[*]"),
     ],
 )
@@ -158,6 +161,27 @@ def test_a_mask_path_with_a_pair_at_two_indexes_is_refused_with_every_element_to
     )
     with pytest.raises(ValueError, match=f"^{re.escape(error)}$"):
         Mask(packet="test:p", path=path, reason=REASON)
+
+
+@pytest.mark.parametrize(
+    ("name", "path", "arrow"),
+    [
+        ("minecraft:remove_entities", "entity_ids[→1]", "[→1]"),
+        ("minecraft:set_passengers", "passengers[→0]", "[→0]"),
+    ],
+)
+def test_a_mask_path_with_an_entity_only_the_candidate_has_is_refused_naming_the_packet(
+    name: str, path: str, arrow: str
+) -> None:
+    # Reviews A and B of #477 (A1, B3): the refusal named the whole list, a Mask refused too.
+    error = (
+        f"{name}: Mask path {path!r} has an arrow, which only a Divergence path writes: "
+        f"{arrow} is an entity only the Candidate has; a Mask hides a value, never whether it "
+        "is there, and an entity id needs no Mask, so only a Mask on the whole packet, '*', "
+        "hides it"
+    )
+    with pytest.raises(ValueError, match=f"^{re.escape(error)}$"):
+        Mask(packet=name, path=path, reason=REASON)
 
 
 def _fields_diff(

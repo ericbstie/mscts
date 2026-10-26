@@ -4063,8 +4063,9 @@ def _paired(ref_index: int, cand_index: int) -> int:
 class _Moved(int):
     """A list index in a path where `_pairs` compared elements at two different indexes.
 
-    It is the reference's index, which Masks, test cases and `_at` go by, and it keeps the
-    candidate's, which `_render` shows next to it (`tags[2→5]`). So the rendered path of a
+    It is the reference's index, which test cases and `_at` go by (a Mask hides each side's own
+    index, before `_pairs` lines lists up), and it keeps the candidate's, which `_render`
+    shows next to it (`tags[2→5]`). So the rendered path of a
     pair is never that of an element only one side has. Unrendered, it equals its
     reference index (`_Moved(2, 5) == 2`), as an `_Added` equals its candidate index, so a
     set or dict keyed on unrendered paths takes either for that plain index. `masked` is the
@@ -4293,7 +4294,7 @@ def _mask_steps(mask: Mask) -> _MaskPath:
             Mask path has, and the message says what Mask hides that instead (`_arrow_advice`).
     """
     steps = _steps(mask.packet, mask.path, "Mask path", each=True)
-    if (advice := _arrow_advice(steps)) is not None:
+    if (advice := _arrow_advice(mask.packet, steps)) is not None:
         msg = (
             f"{mask.packet}: Mask path {mask.path!r} has an arrow, which only a Divergence "
             f"path writes: {advice}"
@@ -4302,36 +4303,62 @@ def _mask_steps(mask: Mask) -> _MaskPath:
     return steps
 
 
-def _arrow_advice(path: _MaskPath) -> str | None:
-    """What an arrow in `path` is, and the Mask that hides it; None if `path` has no arrow.
+def _arrow_advice(packet: str, path: _MaskPath) -> str | None:
+    """What an arrow in `path`, a Mask path of `packet`, is, and what hides it; None if none.
 
-    No index in a Mask hides either arrow (#477). An `_Added` step is an element only the
-    candidate has: a Mask hides a value, never whether it is there, so only a Mask on the whole
-    list holding it hides it. A `_Moved` step pairs two elements of a list `_pairs` lines up,
-    and a Mask hides each list's own index before that, so an index names a different element
-    on each side: EACH in its place hides the value in every element.
+    The arrow is the first `_Added` step, or else the first `_Moved` one, and `_hiding_mask`
+    is the Mask that hides it, unless it is an entity id: then only WHOLE_PACKET does.
     """
-    added = next((at for at, step in enumerate(path) if isinstance(step, _Added)), None)
-    if added is not None:
-        holder = _render(_every_moved(path[:added]))
+    arrow = _first_arrow(path)
+    if arrow is None:
+        return None
+    hiding = _hiding_mask(path)
+    if isinstance(arrow, _Moved):
         return (
-            f"{_render(path[added : added + 1])} is an element only the Candidate has, and a "
-            "Mask hides a value, never whether it is there; only a Mask on the whole list, "
-            f"{holder!r}, hides it"
-        )
-    moved = next((step for step in path if isinstance(step, _Moved)), None)
-    if moved is not None:
-        return (
-            f"{_render((moved,))} pairs two elements of a list that is lined up after the Masks "
+            f"{_render((arrow,))} pairs two elements of a list that is lined up after the Masks "
             "apply, so an index names a different element on each side; write "
-            f"{_render(_every_moved(path))!r} to mask it in every element"
+            f"{_render(hiding)!r} to mask it in every element"
         )
-    return None
+    if _is_entity_id(packet, hiding):
+        return (
+            f"{_render((arrow,))} is an entity only the Candidate has; a Mask hides a value, "
+            "never whether it is there, and an entity id needs no Mask, so only a Mask on the "
+            f"whole packet, {WHOLE_PACKET!r}, hides it"
+        )
+    return (
+        f"{_render((arrow,))} is an element only the Candidate has, and a Mask hides a value, "
+        f"never whether it is there; only a Mask on the whole list, {_render(hiding)!r}, hides it"
+    )
 
 
-def _every_moved(path: _MaskPath) -> _MaskPath:
-    """`path` with each `_Moved` step as EACH."""
-    return tuple(EACH if isinstance(step, _Moved) else step for step in path)
+def _first_arrow(path: _MaskPath) -> _Added | _Moved | None:
+    """The first `_Added` step of `path`, or else its first `_Moved` step, or else None."""
+    added = [step for step in path if isinstance(step, _Added)]
+    moved = [step for step in path if isinstance(step, _Moved)]
+    return next(iter([*added, *moved]), None)
+
+
+def _hiding_mask(path: _MaskPath) -> _MaskPath:
+    """The Mask path that hides what the arrows in `path`, a Divergence path, name (#477).
+
+    It is `path` up to its first `_Added` step, or its first list index after a `_Moved` step,
+    with each `_Moved` step as EACH. No index in a Mask hides either arrow. An `_Added` step is
+    an element only the candidate has, and a Mask hides a value, never whether it is there, so
+    only a Mask on its whole list hides it. A `_Moved` step pairs two elements of a list
+    `_pairs` lines up, and a Mask hides each list's own index before that, so an index names a
+    different element on each side, and EACH, every element, takes its place. Past a pair, an
+    index in a list inside it
+    can name a different element on each side too (`update_tags`' entries are lined up as
+    well), so the Mask stops at that list.
+    """
+    hiding: list[_MaskStep] = []
+    moved = False
+    for step in path:
+        if isinstance(step, _Added) or (moved and isinstance(step, int)):
+            break
+        moved = moved or isinstance(step, _Moved)
+        hiding.append(EACH if isinstance(step, _Moved) else step)
+    return tuple(hiding)
 
 
 def _steps(packet: str, path: str, what: str, *, each: bool = False) -> _MaskPath:
