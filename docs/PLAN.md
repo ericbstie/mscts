@@ -1669,9 +1669,8 @@ class Divergence:
     tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
-    #   chunk_batch_start or chunk_batch_finished (step 1), or a missing or unexpected
-    #   registry_data the client can read, for a registry outside its SYNCHRONIZED_REGISTRIES
-    #   (step 4),
+    #   chunk_batch_start or chunk_batch_finished (step 1), or an unexpected registry_data
+    #   the client can read, for a registry outside its SYNCHRONIZED_REGISTRIES (step 4),
     #   or the order of registry_data (path ORDER_PATH, step 1); gameplay: every other Divergence,
     #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
     #   raises ValueError for a bot or failed one that is network traffic, #221).
@@ -2275,8 +2274,8 @@ proves it necessary:
      reported, as network traffic (ADR-0007): for each run of the
      reference whose matched packets came in different orders, one `field`
      Divergence at `ORDER_PATH`, at the first of them, holds each side's
-     registry ids of them in the order it sent them
-     (`compare._registry_orders`). A packet moves only within its run, so
+     registry ids of them, as the client reads them, in the order it sent
+     them (`compare._registry_orders`). A packet moves only within its run, so
      the runs keep their order on both sides.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
@@ -2738,14 +2737,16 @@ proves it necessary:
    `field` Divergence at `TICK_PATH`, then the two packets' differences.
    For a chunk batch marker that Divergence is network traffic, as a
    marker only one side sent is (#330, review A). So is a `registry_data`
-   only one side sent for a registry outside `compare._SYNCHRONIZED_REGISTRIES`
+   only the Candidate sent for a registry outside `compare._SYNCHRONIZED_REGISTRIES`
    (#478), when `Identifier.parse` reads its registry id and each entry
    id: the client decodes it, then loads only the registries of
    `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`, each by `Map.get`, and
    never loads another (`RegistryDataLoader.load`,
    `NetworkRegistryLoadTask.load`, `javap` on the 26.3 client jar). One
    with an id `Identifier.parse` refuses disconnects the client, so it
-   stays gameplay.
+   stays gameplay. A `missing` one stays gameplay too: vanilla sends
+   exactly the registries the client loads, so the Reference sending
+   another means that set is out of date.
    When both streams have ticks, they break ties (#229): of the longest
    alignments, the one with the most pairs on the same tick, so the copy
    of a repeated packet on a tick the other side lacks is the one left

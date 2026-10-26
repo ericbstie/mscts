@@ -3746,7 +3746,8 @@ def _registry_order(
     """The order of the `matched` packets of one run of registries, if the sides' differ.
 
     One network traffic `field` Divergence at `ORDER_PATH`, at the first of them, with each
-    side's registry ids of them in the order it sent them (`_RegistryPlace.arrived`), and the
+    side's registry ids of them, as the client reads them (`_registry_key`), in the order it
+    sent them (`_RegistryPlace.arrived`), and the
     test case of `registry_id`: the client loads the registries by key, whatever their order
     (`_by_registry`). None if both sent them in one order.
     """
@@ -3874,8 +3875,7 @@ def _unmatched(
 ) -> Divergence:
     """A Packet one side has: its value, or where it is for one about a chunk (`chunk x z`).
 
-    It is network traffic for a packet that marks a chunk batch (`_BATCH_PACKETS`) and for a
-    `registry_data` the client never loads (`_never_loaded`), else gameplay.
+    It is network traffic when the client does nothing with it (`_wire_only`), else gameplay.
     """
     state, name = entry.packet.state, entry.packet.name
     value = _place_text(entry.packet) or entry.value
@@ -3890,9 +3890,22 @@ def _unmatched(
         test_case=_test_case(state, name, ()),
         observability=(
             Observability.NETWORK_TRAFFIC
-            if (state, name) in _BATCH_PACKETS or _never_loaded(entry.packet)
+            if _wire_only(kind, entry.packet)
             else Observability.GAMEPLAY
         ),
+    )
+
+
+def _wire_only(kind: Literal["missing", "unexpected"], packet: Packet) -> bool:
+    """Whether the client does nothing with `packet`, which only one side sent, as `kind`.
+
+    True for a packet that marks a chunk batch (`_BATCH_PACKETS`), and for an `unexpected`
+    `registry_data` the client never loads (`_never_loaded`). A `missing` one stays gameplay:
+    vanilla sends exactly the registries the client loads, so a Reference's registry outside
+    `_SYNCHRONIZED_REGISTRIES` means that set is out of date.
+    """
+    return (packet.state, packet.name) in _BATCH_PACKETS or (
+        kind == "unexpected" and _never_loaded(packet)
     )
 
 
@@ -3977,9 +3990,9 @@ The client keeps every `registry_data` it gets, by registry
 (`RegistryDataCollector$ContentsCollector.append`), and at `finish_configuration` makes one
 load task for each of these, which takes its registry's entries by `Map.get`
 (`RegistryDataLoader.load`, `NetworkRegistryLoadTask.load`). So a `registry_data` for any other
-registry is never loaded: one only one side sends is network traffic, if the client can read it
-(`_never_loaded`). The client also decodes each entry's NBT `data` under its NBT limits, which
-the codec does not check."""
+registry is never loaded: one only the Candidate sends is network traffic, if the client can read
+it (`_never_loaded`, `_wire_only`). The client also decodes each entry's NBT `data` under its
+NBT limits, which the codec does not check."""
 
 
 PAYLOAD_SHOWN_BYTES = 256

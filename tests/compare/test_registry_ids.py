@@ -69,21 +69,41 @@ def test_an_entry_id_with_no_namespace_is_the_minecraft_one() -> None:
     )
 
 
-def test_a_registry_the_client_never_loads_is_network_traffic_on_either_side() -> None:
+_BOTH = transcript(("alice", registry(_DAMAGE, 3)), ("alice", registry(_BIOME, 3)))
+
+
+# The last name holds every character Identifier.isValidNamespace and isValidPath allow.
+@pytest.mark.parametrize("name", ["item", ":item", "a-z_0.9:a-z_0.9/a"])
+def test_a_registry_the_client_never_loads_is_network_traffic_when_the_candidate_sends_it(
+    name: str,
+) -> None:
     # The client loads each registry of SYNCHRONIZED_REGISTRIES by Map.get, and no other.
-    both = transcript(("alice", registry(_DAMAGE, 3)), ("alice", registry(_BIOME, 3)))
+    with_item = transcript(
+        ("alice", registry(_DAMAGE, 3)),
+        ("alice", registry(name, 3)),
+        ("alice", registry(_BIOME, 3)),
+    )
+
+    verdict = compare(_BOTH, with_item, [])
+
+    assert [(d.kind, d.observability) for d in verdict.divergences] == [
+        ("unexpected", Observability.NETWORK_TRAFFIC)
+    ]
+
+
+def test_a_registry_only_the_reference_sends_is_gameplay() -> None:
+    # Vanilla sends exactly the registries the client loads, so one only it sends means that
+    # _SYNCHRONIZED_REGISTRIES is out of date.
     with_item = transcript(
         ("alice", registry(_DAMAGE, 3)),
         ("alice", registry("item", 3)),
         ("alice", registry(_BIOME, 3)),
     )
 
-    unexpected = compare(both, with_item, []).divergences
-    missing = compare(with_item, both, []).divergences
+    verdict = compare(with_item, _BOTH, [])
 
-    assert [(d.kind, d.index, d.observability) for d in (*unexpected, *missing)] == [
-        ("unexpected", 1, Observability.NETWORK_TRAFFIC),
-        ("missing", 1, Observability.NETWORK_TRAFFIC),
+    assert [(d.kind, d.index, d.observability) for d in verdict.divergences] == [
+        ("missing", 1, Observability.GAMEPLAY)
     ]
 
 
