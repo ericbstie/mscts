@@ -76,8 +76,8 @@ LATE_TICKS = 5
 """How many ticks the fake takes to answer a player's command, and to tell the others that
 Control has left: longer than a barrier, so a window that did not wait for it would miss it."""
 ANSWER_LAG_S = TICK_S / 2
-"""How much later the sleeper gets each barrier answer than the clock, with
-`time_behind_answers`."""
+"""How much later one Bot gets each barrier answer than the other, with the fake's `time_`
+knobs."""
 
 
 @dataclass
@@ -114,6 +114,10 @@ class TimeServer:
     """Whether the clock reads a `set_time` right after each of the sleeper's barrier answers,
     which come `ANSWER_LAG_S` behind the clock's: so when a window opens, after the sleeper's
     answer, the clock reads one inside it before the Group's body runs (#469)."""
+    time_at_the_open: bool = False
+    """Whether the clock gets each barrier answer `ANSWER_LAG_S` behind the sleeper's, in one
+    write with a `set_time` behind it: so a window opens on the clock's answer, and the clock
+    stamps that `set_time` at the window's open Mark itself (#469)."""
     later: set[asyncio.Task[None]] = field(default_factory=set)
 
     @property
@@ -156,15 +160,16 @@ class TimeServer:
         behind it, and the sleeper's `ANSWER_LAG_S` later. With `time_after_answers`, the
         sleeper's answer comes `ANSWER_LAG_S` later, and the clock is sent a `set_time` a loop
         turn after it: the clock's socket has it only once the sleeper's reader is due to run,
-        so the clock's reader stamps it after the sleeper's answer.
+        so the clock's reader stamps it after the sleeper's answer. With `time_at_the_open`, the
+        clock's answer comes `ANSWER_LAG_S` later, in one write with a `set_time` behind it.
         """
         if not first:
             await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
         answer = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
-        lags = self.time_behind_answers or self.time_after_answers
-        if lags and peer.name == SLEEPER:
+        lags = self.time_behind_answers or self.time_after_answers or self.time_at_the_open
+        if lags and peer.name == (CLOCK if self.time_at_the_open else SLEEPER):
             await asyncio.sleep(ANSWER_LAG_S)
-        if self.time_behind_answers and peer.name == CLOCK:
+        if (self.time_behind_answers or self.time_at_the_open) and peer.name == CLOCK:
             answer += peer.frame(SET_TIME, game_time=self.game_time, clocks=list(self.clocks))
         await peer.write(answer)
         if self.time_after_answers and peer.name == SLEEPER:
@@ -584,6 +589,19 @@ def test_sleep_counts_a_set_time_the_clock_read_after_the_open_before_the_lie_do
         opened_at, _ = windows(transcript)[k]
         closing = min(t for t in asks if t > opened_at)  # the clock's barrier at the close
         assert [t for t in times if opened_at <= t < at]  # the case the fake makes
+        assert len([t for t in times if opened_at <= t < closing]) == count
+
+
+def test_sleep_counts_a_set_time_the_clock_stamped_at_the_open() -> None:
+    # the clock's barrier answer is the later one, with a set_time behind it in the same read
+    transcript = asyncio.run(_play("time/sleep", TimeServer(time_at_the_open=True)))
+
+    asks = [t for t, _ in sent(transcript, CLOCK, CLIENT_COMMAND)]
+    times = [t for t, _ in received(transcript, CLOCK, SET_TIME)]
+    for k, count in ((0, 7), (4, 3)):
+        opened_at, _ = windows(transcript)[k]
+        closing = min(t for t in asks if t > opened_at)  # the clock's barrier at the close
+        assert opened_at in times  # the case the fake makes
         assert len([t for t in times if opened_at <= t < closing]) == count
 
 
