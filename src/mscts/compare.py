@@ -1289,24 +1289,51 @@ def _registry_text(entry: _Normalized) -> str:
 def _registry_id(packet: Packet) -> str | None:
     """The registry id of a configuration `registry_data` the codec read, as the client reads it.
 
-    With its namespace (`_with_namespace`). None for any other packet.
+    With its namespace (`_registry_key`). None for any other packet.
     """
     if packet.state is not State.CONFIGURATION or packet.name != _REGISTRY_DATA:
         return None
-    registry = None if packet.fields is None else packet.fields.get("registry_id")
-    return _with_namespace(registry) if isinstance(registry, str) else None
+    return None if packet.fields is None else _registry_key(packet.fields)
 
 
-def _with_namespace(identifier: str) -> str:
-    """`identifier` with the namespace `Identifier.parse` gives it: `minecraft` if it names none.
+def _registry_key(fields: Mapping[str, object]) -> str | None:
+    """The registry id of a `registry_data`'s `fields`, as the client reads it.
+
+    With its namespace (`_client_identifier`), or as sent if the client cannot read it. None
+    if the fields have no registry id.
+    """
+    registry = fields.get("registry_id")
+    if not isinstance(registry, str):
+        return None
+    return _client_identifier(registry) or registry
+
+
+def _client_identifier(text: str) -> str | None:
+    """`text` as the client's `Identifier.parse` reads it, with its namespace; None if it throws.
 
     (`Identifier.bySeparator`: with no `:`, or with one first, the path is the rest, in the
-    `minecraft` namespace; javap on the 26.3 client.)
+    `minecraft` namespace. `createUntrusted` and `withDefaultNamespace` then throw
+    `IdentifierException` for a namespace or path that `isValidNamespace` or `isValidPath`
+    refuses, which disconnects the client; javap on the 26.3 client.)
     """
-    namespace, colon, path = identifier.partition(":")
+    namespace, colon, path = text.partition(":")
     if not colon:
-        return f"minecraft:{identifier}"
-    return identifier if namespace else f"minecraft:{path}"
+        namespace, path = "", text
+    namespace = namespace or "minecraft"
+    return f"{namespace}:{path}" if _valid_identifier(namespace, path) else None
+
+
+def _valid_identifier(namespace: str, path: str) -> bool:
+    """Whether `Identifier.isValidNamespace(namespace)` and `isValidPath(path)` both hold."""
+    return (
+        namespace != ".."
+        and set(namespace) <= _NAMESPACE_CHARACTERS
+        and set(path) <= _NAMESPACE_CHARACTERS | {"/"}
+    )
+
+
+_NAMESPACE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
+"""The characters `Identifier.validNamespaceChar` allows; `validPathChar` allows `/` too."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3156,16 +3183,14 @@ without `state_id`, as a `chunk_batch_finished` does without `batch_size`."""
 
 
 def _canonical_registry_data(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
-    """A `registry_data` with its registry id as the client reads it (`_with_namespace`).
+    """A `registry_data` with its registry id as the client reads it (`_registry_key`).
 
     (`ClientboundRegistryDataPacket.STREAM_CODEC` reads the id with `Identifier.STREAM_CODEC`,
     which is `Identifier.parse`, javap on the 26.3 client.) So `worldgen/biome` against
     `minecraft:worldgen/biome` is network traffic.
     """
-    registry = fields.get("registry_id")
-    if not isinstance(registry, str):
-        return fields
-    return {**fields, "registry_id": _with_namespace(registry)}
+    registry = _registry_key(fields)
+    return fields if registry is None else {**fields, "registry_id": registry}
 
 
 _BATCH_PACKETS = frozenset(
@@ -3857,9 +3882,41 @@ def _unmatched(
 
 
 def _never_loaded(packet: Packet) -> bool:
-    """Whether `packet` is a `registry_data` for a registry not in `_SYNCHRONIZED_REGISTRIES`."""
+    """Whether `packet` is a `registry_data` the client reads, for a registry it never loads.
+
+    The client reads it when it reads its registry id and each entry id (`_client_reads_ids`),
+    and never loads a registry outside `_SYNCHRONIZED_REGISTRIES`.
+    """
     registry = _registry_id(packet)
-    return registry is not None and registry not in _SYNCHRONIZED_REGISTRIES
+    return (
+        registry is not None
+        and registry not in _SYNCHRONIZED_REGISTRIES
+        and packet.fields is not None
+        and _client_reads_ids(packet.fields)
+    )
+
+
+def _client_reads_ids(fields: Mapping[str, object]) -> bool:
+    """Whether the client reads the registry id and each entry id of a `registry_data`'s `fields`.
+
+    It reads each with `Identifier.STREAM_CODEC` (`ClientboundRegistryDataPacket.STREAM_CODEC`,
+    `RegistrySynchronization$PackedRegistryEntry.STREAM_CODEC`, javap on the 26.3 client), and
+    one it cannot read disconnects it (`_client_identifier`).
+    """
+    ids = [fields.get("registry_id"), *_entry_ids(fields)]
+    return all(isinstance(text, str) and _client_identifier(text) is not None for text in ids)
+
+
+def _entry_ids(fields: Mapping[str, object]) -> list[object]:
+    """The `entry_id` of each entry of a `registry_data`'s `fields`."""
+    entries = fields.get("entries")
+    if not isinstance(entries, list):
+        return []
+    return [
+        cast("Mapping[str, object]", entry).get("entry_id")
+        for entry in cast("list[object]", entries)
+        if isinstance(entry, Mapping)
+    ]
 
 
 _SYNCHRONIZED_REGISTRIES = frozenset(
@@ -3905,7 +3962,9 @@ The client keeps every `registry_data` it gets, by registry
 (`RegistryDataCollector$ContentsCollector.append`), and at `finish_configuration` makes one
 load task for each of these, which takes its registry's entries by `Map.get`
 (`RegistryDataLoader.load`, `NetworkRegistryLoadTask.load`). So a `registry_data` for any other
-registry is never read: one only one side sends is network traffic."""
+registry is never loaded: one only one side sends is network traffic, if the client can read it
+(`_never_loaded`). The client also decodes each entry's NBT `data` under its NBT limits, which
+the codec does not check."""
 
 
 PAYLOAD_SHOWN_BYTES = 256

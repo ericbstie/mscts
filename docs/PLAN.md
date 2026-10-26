@@ -1670,7 +1670,8 @@ class Divergence:
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
     #   chunk_batch_start or chunk_batch_finished (step 1), or a missing or unexpected
-    #   registry_data for a registry outside the client's SYNCHRONIZED_REGISTRIES (step 4),
+    #   registry_data the client can read, for a registry outside its SYNCHRONIZED_REGISTRIES
+    #   (step 4),
     #   or the order of registry_data (path ORDER_PATH, step 1); gameplay: every other Divergence,
     #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
     #   raises ValueError for a bot or failed one that is network traffic, #221).
@@ -2513,7 +2514,9 @@ proves it necessary:
      `Identifier.parse` (`ClientboundRegistryDataPacket.STREAM_CODEC`,
      `Identifier.bySeparator`, `javap` on the 26.3 client jar), so
      `worldgen/biome` against `minecraft:worldgen/biome` is network
-     traffic only.
+     traffic only. An id `Identifier.parse` refuses (a namespace outside
+     `[a-z0-9_.-]`, `..`, or a path outside `[a-z0-9_./-]`) stays as
+     sent: the client cannot read it and disconnects.
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): an explicit `"type": "text"`; style
@@ -2733,10 +2736,13 @@ proves it necessary:
    For a chunk batch marker that Divergence is network traffic, as a
    marker only one side sent is (#330, review A). So is a `registry_data`
    only one side sent for a registry outside `compare._SYNCHRONIZED_REGISTRIES`
-   (#478): the client loads only the registries of
+   (#478), when `Identifier.parse` reads its registry id and each entry
+   id: the client decodes it, then loads only the registries of
    `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`, each by `Map.get`, and
-   never reads another (`RegistryDataLoader.load`,
-   `NetworkRegistryLoadTask.load`, `javap` on the 26.3 client jar).
+   never loads another (`RegistryDataLoader.load`,
+   `NetworkRegistryLoadTask.load`, `javap` on the 26.3 client jar). One
+   with an id `Identifier.parse` refuses disconnects the client, so it
+   stays gameplay.
    When both streams have ticks, they break ties (#229): of the longest
    alignments, the one with the most pairs on the same tick, so the copy
    of a repeated packet on a tick the other side lacks is the one left

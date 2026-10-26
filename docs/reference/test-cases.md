@@ -1329,8 +1329,11 @@ apart and loads the registries in an order of its own, so mscts compares
 each registry with the same registry from the other server, as long as
 no `registry_data` it cannot decode comes between them. A registry
 that only one server sends is a `registry_data` the other leaves out.
-The client ignores any registry that vanilla does not send, so a
-`registry_data` for such a registry differs in network traffic only.
+The client reads a `registry_data` for a registry that vanilla does not
+send, then ignores it, so such a `registry_data` differs in network
+traffic only. A name the client cannot read, in the registry or one of
+its entries, disconnects the client, so that `registry_data` is not
+ignored.
 When the servers send their registries in different orders, this test
 case differs in network traffic only, and `--verbose` shows the order
 each server sent. The client reads a name without a namespace, such as
