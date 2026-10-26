@@ -19,6 +19,7 @@ from mscts.bot import Bot, offline_uuid
 from mscts.codec.packets import Direction, Packet, State
 from mscts.codec.schema import Schema
 from mscts.codec.schemas import configuration, handshake, login, play
+from mscts.compare import _SYNCHRONIZED_REGISTRIES
 from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Event, Transcript
@@ -119,6 +120,21 @@ async def test_every_join_packet_decodes_strictly_with_fields_where_a_schema_exi
         "minecraft:finish_configuration",
     ]
     assert [p.name for p in through_configuration if not _has_schema(p)] == []
+
+
+async def test_vanilla_sends_exactly_the_registries_the_client_loads(reference: Instance) -> None:
+    # The Comparison calls a Candidate's registry_data for any other registry network
+    # traffic (#478), so a Target whose client loads another registry must fail here.
+    transcript = Transcript(group_id="reference/join-registries", server="vanilla")
+    bot = await _joined(reference, transcript, name="join_registries")
+    await bot.close()
+    sent = {
+        (event.packet.fields or {}).get("registry_id")
+        for event in _taken(transcript)
+        if (event.packet.state, event.packet.name)
+        == (State.CONFIGURATION, "minecraft:registry_data")
+    }
+    assert sent == _SYNCHRONIZED_REGISTRIES
 
 
 async def test_a_joined_bot_stays_connected_through_a_keep_alive_cycle(
