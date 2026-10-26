@@ -3834,7 +3834,8 @@ def _unmatched(
 ) -> Divergence:
     """A Packet one side has: its value, or where it is for one about a chunk (`chunk x z`).
 
-    It is network traffic for a packet that marks a chunk batch (`_BATCH_PACKETS`), else gameplay.
+    It is network traffic for a packet that marks a chunk batch (`_BATCH_PACKETS`) and for a
+    `registry_data` the client never loads (`_never_loaded`), else gameplay.
     """
     state, name = entry.packet.state, entry.packet.name
     value = _place_text(entry.packet) or entry.value
@@ -3849,10 +3850,62 @@ def _unmatched(
         test_case=_test_case(state, name, ()),
         observability=(
             Observability.NETWORK_TRAFFIC
-            if (state, name) in _BATCH_PACKETS
+            if (state, name) in _BATCH_PACKETS or _never_loaded(entry.packet)
             else Observability.GAMEPLAY
         ),
     )
+
+
+def _never_loaded(packet: Packet) -> bool:
+    """Whether `packet` is a `registry_data` for a registry not in `_SYNCHRONIZED_REGISTRIES`."""
+    registry = _registry_id(packet)
+    return registry is not None and registry not in _SYNCHRONIZED_REGISTRIES
+
+
+_SYNCHRONIZED_REGISTRIES = frozenset(
+    {
+        "minecraft:banner_pattern",
+        "minecraft:block_transformer",
+        "minecraft:cat_sound_variant",
+        "minecraft:cat_variant",
+        "minecraft:chat_type",
+        "minecraft:chicken_sound_variant",
+        "minecraft:chicken_variant",
+        "minecraft:cow_sound_variant",
+        "minecraft:cow_variant",
+        "minecraft:damage_type",
+        "minecraft:decorated_pot_pattern",
+        "minecraft:dialog",
+        "minecraft:dimension_type",
+        "minecraft:enchantment",
+        "minecraft:frog_variant",
+        "minecraft:instrument",
+        "minecraft:jukebox_song",
+        "minecraft:painting_variant",
+        "minecraft:pig_sound_variant",
+        "minecraft:pig_variant",
+        "minecraft:sulfur_cube_archetype",
+        "minecraft:test_environment",
+        "minecraft:test_instance",
+        "minecraft:timeline",
+        "minecraft:trim_material",
+        "minecraft:trim_pattern",
+        "minecraft:wolf_sound_variant",
+        "minecraft:wolf_variant",
+        "minecraft:world_clock",
+        "minecraft:worldgen/biome",
+        "minecraft:worldgen/block_state_provider",
+        "minecraft:zombie_nautilus_variant",
+    }
+)
+"""The registries the 26.3 client loads from `registry_data`: `RegistryDataLoader.
+SYNCHRONIZED_REGISTRIES` (javap on the 26.3 client; vanilla 26.3 sends exactly these, live).
+
+The client keeps every `registry_data` it gets, by registry
+(`RegistryDataCollector$ContentsCollector.append`), and at `finish_configuration` makes one
+load task for each of these, which takes its registry's entries by `Map.get`
+(`RegistryDataLoader.load`, `NetworkRegistryLoadTask.load`). So a `registry_data` for any other
+registry is never read: one only one side sends is network traffic."""
 
 
 PAYLOAD_SHOWN_BYTES = 256

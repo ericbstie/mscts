@@ -1669,8 +1669,9 @@ class Divergence:
     tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
-    #   chunk_batch_start or chunk_batch_finished (step 1), or the order of registry_data
-    #   (path ORDER_PATH, step 1); gameplay: every other Divergence,
+    #   chunk_batch_start or chunk_batch_finished (step 1), or a missing or unexpected
+    #   registry_data for a registry outside the client's SYNCHRONIZED_REGISTRIES (step 4),
+    #   or the order of registry_data (path ORDER_PATH, step 1); gameplay: every other Divergence,
     #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
     #   raises ValueError for a bot or failed one that is network traffic, #221).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
@@ -2730,7 +2731,12 @@ proves it necessary:
    matches one for one; two matched packets on different ticks give one
    `field` Divergence at `TICK_PATH`, then the two packets' differences.
    For a chunk batch marker that Divergence is network traffic, as a
-   marker only one side sent is (#330, review A).
+   marker only one side sent is (#330, review A). So is a `registry_data`
+   only one side sent for a registry outside `compare._SYNCHRONIZED_REGISTRIES`
+   (#478): the client loads only the registries of
+   `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`, each by `Map.get`, and
+   never reads another (`RegistryDataLoader.load`,
+   `NetworkRegistryLoadTask.load`, `javap` on the 26.3 client jar).
    When both streams have ticks, they break ties (#229): of the longest
    alignments, the one with the most pairs on the same tick, so the copy
    of a repeated packet on a tick the other side lacks is the one left

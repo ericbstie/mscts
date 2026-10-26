@@ -40,3 +40,34 @@ def test_a_registry_id_with_no_namespace_is_the_minecraft_one() -> None:
             (1, _BIOME, "worldgen/biome"),
         )
     )
+
+
+def test_a_registry_the_client_never_loads_is_network_traffic_on_either_side() -> None:
+    # The client loads each registry of SYNCHRONIZED_REGISTRIES by Map.get, and no other.
+    both = transcript(("alice", registry(_DAMAGE, 3)), ("alice", registry(_BIOME, 3)))
+    with_item = transcript(
+        ("alice", registry(_DAMAGE, 3)),
+        ("alice", registry("item", 3)),
+        ("alice", registry(_BIOME, 3)),
+    )
+
+    unexpected = compare(both, with_item, []).divergences
+    missing = compare(with_item, both, []).divergences
+
+    assert [(d.kind, d.index, d.observability) for d in (*unexpected, *missing)] == [
+        ("unexpected", 1, Observability.NETWORK_TRAFFIC),
+        ("missing", 1, Observability.NETWORK_TRAFFIC),
+    ]
+
+
+def test_a_synchronized_registry_only_one_side_sends_is_gameplay() -> None:
+    # Its id names no namespace, so it is minecraft:damage_type, which the client loads.
+    verdict = compare(
+        transcript(("alice", registry(_BIOME, 3))),
+        transcript(("alice", registry("damage_type", 3)), ("alice", registry(_BIOME, 3))),
+        [],
+    )
+
+    assert [(d.kind, d.observability) for d in verdict.divergences] == [
+        ("unexpected", Observability.GAMEPLAY)
+    ]
