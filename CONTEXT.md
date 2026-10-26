@@ -101,8 +101,9 @@ need is missing, add it here in the same commit that introduces it.
   server has sent everything caused by what the Bot sent before. Two
   `award_stats` the server sends unasked during one barrier can still
   end it early (ADR-0010). The window opens just after the latest last
-  answer of a Bot besides Control, so what a Bot receives right after
-  its own barrier is inside it. Each Bot's window ends
+  answer of a Bot besides Control, so what any Bot receives after that
+  answer is inside it. A Bot whose barrier ended sooner may receive
+  packets before the window opens, and those are outside it. Each Bot's window ends
   at its own barrier's last answer, regardless of what the other Bots are
   still waiting for. A Bot created after the window ends is outside it. A
   barrier covers what its own Bot sent, so a window that must hold
