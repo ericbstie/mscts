@@ -318,19 +318,19 @@ async def _lie_down(sleeper: Bot) -> None:
     await sleeper.place(*_FOOT, Face.UP)
 
 
-async def _lie_down_and_count(clock: Bot, sleeper: Bot, times: int, opened: int) -> None:
+async def _lie_down_and_count(clock: Bot, sleeper: Bot, times: int, *, since_ns: int) -> None:
     """Lie the sleeper down, then wait for `times` `set_time` the clock read inside the window.
 
-    Vanilla sends one every 20 ticks. A window `opened` after the later Bot's barrier, so the
-    clock may have read one after its own barrier but before the window opened, which is setup
-    and does not count (#454); and one after the window opened but before the body ran, which
-    does (#469).
+    Vanilla sends one every 20 ticks. A window opens at `since_ns`, after the later Bot's
+    barrier, so the clock may have read one after its own barrier but before the window opened,
+    which is setup and does not count (#454); and one after the window opened but before the
+    body ran, which does (#469).
     """
     await _lie_down(sleeper)
-    await _count_set_time(clock, times, opened)
+    await _count_set_time(clock, times, since_ns=since_ns)
 
 
-async def _count_set_time(clock: Bot, times: int, since_ns: int) -> None:
+async def _count_set_time(clock: Bot, times: int, *, since_ns: int) -> None:
     """Wait for `times` `set_time` that arrived at `since_ns` or later."""
     for _ in range(times):
         await clock.expect(_TIME, timeout_s=_WAIT_S, since_ns=since_ns)
@@ -381,13 +381,13 @@ async def sleep(context: GroupContext) -> None:
         undo.push_async_callback(control.run, "gamerule players_sleeping_percentage 100")
         await _alone_at_midnight(context, clock, 100)
         async with context.observe(*SLEEP_PACKETS) as opened:
-            await _lie_down_and_count(clock, sleeper, _QUIET_TIMES, opened)
+            await _lie_down_and_count(clock, sleeper, _QUIET_TIMES, since_ns=opened)
         await _read_day(context, clock)
         await _to_dawn(context, clock, game_time)
         await _read_day(context, clock)
         await _alone_at_midnight(context, clock, 50)
         async with context.observe(*SLEEP_PACKETS) as opened:
-            await _lie_down_and_count(clock, sleeper, _BEFORE_DEEP_SLEEP, opened)
+            await _lie_down_and_count(clock, sleeper, _BEFORE_DEEP_SLEEP, since_ns=opened)
         await _read(context, clock, "time query day")
         async with context.observe(*SLEEP_PACKETS):
             await clock.expect("minecraft:animate", timeout_s=_WAIT_S, where=_woke(clock))
