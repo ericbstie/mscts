@@ -1363,6 +1363,13 @@ def test_q_over_the_crafting_result_drops_all_of_it_and_crafts_once(button: int)
     assert tracker.click(0, button, "throw") == sent
 
 
+def test_q_over_an_empty_crafting_result_uses_no_cell() -> None:
+    # Slot.safeTake calls onTake only for what tryRemove took. The result is empty on the
+    # client after a take, until the server sends the next one.
+    tracker = holding({1: ("oak_log", 3)})
+    assert tracker.click(0, 0, "throw") == click_sent(0, [], None, mode=4)
+
+
 # A crafting table: CraftingMenu (26.3 client, javap). The result (slot 0), the 3x3 (1 to 9,
 # by row), the 27 (10 to 36), then the hotbar (37 to 45).
 

@@ -278,11 +278,10 @@ class InventoryTracker:
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
                 a chest's, a dispenser's, a hopper's, a shulker box's or a crafting table's; a
                 drag, a clone or a double click on the crafting result; a take from a grid that
-                holds
-                an item with a crafting remainder (a bucket of milk, water or lava, a honey
-                bottle, dragon's breath); a bundle; a swap that puts the slot's stack elsewhere;
-                or a changed slot's or the cursor's stack with a component patch, which it
-                cannot hash. Nothing changes.
+                holds an item with a crafting remainder (a bucket of milk, water or lava, a
+                honey bottle, dragon's breath); a bundle; a swap that puts the slot's stack
+                elsewhere; or a changed slot's or the cursor's stack with a component patch,
+                which it cannot hash. Nothing changes.
         """
         number = CLICK_MODES.get(mode)
         if number is None:
