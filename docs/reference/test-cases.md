@@ -256,6 +256,22 @@ its own options, and an alias such as `/tell` points to `/msg`.
 Where the client gets suggestions for an argument, such as asking the
 server as the player types.
 
+## `configuration:custom_payload`
+
+**Configuration plugin message**
+
+A plugin message the server sends while the player is being configured,
+such as the server's brand. A server that leaves it out, or sends
+another, differs here. Its fields have their own test cases, below.
+
+## `configuration:update_tags`
+
+**Tags at configuration**
+
+The tags the server sends while the player is being configured, for
+each registry that has some. A server that leaves them out sends the
+client no tags.
+
 ## `configuration:custom_payload.channel`
 
 **Configuration plugin message channel**
@@ -800,6 +816,14 @@ session, and for a command such as `/say` sent the way the client sends
 it. A server that sends this packet instead is reported here and under
 `player_chat`.
 
+## `finish_configuration`
+
+**End of configuration**
+
+The packet that ends the configuration of the player. The client then
+enters the world. A server that leaves it out keeps the player on the
+loading screen.
+
 ## `forget_level_chunk`
 
 **Chunk unloaded**
@@ -937,6 +961,27 @@ the bottom of the world, not at sea level.
 **Sea level**
 
 The world's sea level. In vanilla's flat world it is -63.
+
+## `login_compression`
+
+**Compression start**
+
+The packet that turns compression on during login. A server that leaves
+it out sends everything uncompressed.
+
+## `login_finished`
+
+**Login success**
+
+The packet that ends the login, with the player's profile. A server
+that leaves it out never lets the player into the world.
+
+## `login_finished.profile.properties`
+
+**Player profile properties**
+
+The properties of the player's profile, such as the textures of its
+skin. In offline mode vanilla sends none.
 
 ## `login_compression.threshold`
 
@@ -1243,6 +1288,13 @@ Recipes the client adds to the player's recipe book.
 
 Whether each recipe book is open and filtered.
 
+## `registry_data`
+
+**Registry contents**
+
+One registry the server sends while the player is being configured,
+such as the biomes. Its fields have their own test cases, below.
+
 ## `registry_data.entries[]`
 
 **Registry entry**
@@ -1350,6 +1402,13 @@ value puts the same changes at a different height.
 Which chunk column the changes are in along z, counted in chunks of 16
 blocks from the world's origin. A different value puts the same changes
 in another chunk.
+
+## `select_known_packs`
+
+**Known packs**
+
+The data packs the server tells the client it has, while the player is
+being configured. The client answers with the ones it has too.
 
 ## `select_known_packs.known_packs[].id`
 
@@ -1653,6 +1712,13 @@ The advancements the player can see and how far they have got with each.
 An entity's attributes, such as its movement speed or how far a player
 can reach, with their modifiers.
 
+## `update_enabled_features`
+
+**Enabled features**
+
+The feature flags the server enables, sent while the player is being
+configured.
+
 ## `update_enabled_features.feature_flags[]`
 
 **Enabled feature flag**
@@ -1675,6 +1741,13 @@ blocks, items or other entries that recipes, block behaviour and
 commands refer to. A tag that only one server sends is one difference,
 shown whole, and the tags around it are still compared with their
 counterparts.
+
+## `configuration:update_tags.tagged_registries[].tags[].entries`
+
+**Tag members**
+
+The entries of a tag. A list of another length holds entries the other
+server's tag lacks.
 
 ## `configuration:update_tags.tagged_registries[].tags[].entries[]`
 
