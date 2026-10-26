@@ -43,6 +43,32 @@ def test_a_registry_id_with_no_namespace_is_the_minecraft_one() -> None:
     )
 
 
+def test_an_entry_id_with_no_namespace_is_the_minecraft_one() -> None:
+    # PackedRegistryEntry.STREAM_CODEC reads each entry id with Identifier.parse too.
+    verdict = compare(
+        transcript(("alice", registry_of(_BIOME, ["minecraft:plains", "minecraft:desert"]))),
+        transcript(("alice", registry_of(_BIOME, ["plains", ":desert"]))),
+        [],
+    )
+
+    assert verdict.divergences == tuple(
+        divergence(
+            "field",
+            index=0,
+            packet=_REGISTRY_DATA,
+            path=f"entries[{entry}].entry_id",
+            reference=reference,
+            candidate=candidate,
+            test_case="registry_data.entries[].entry_id",
+            observability=Observability.NETWORK_TRAFFIC,
+        )
+        for entry, reference, candidate in (
+            (0, "minecraft:plains", "plains"),
+            (1, "minecraft:desert", ":desert"),
+        )
+    )
+
+
 def test_a_registry_the_client_never_loads_is_network_traffic_on_either_side() -> None:
     # The client loads each registry of SYNCHRONIZED_REGISTRIES by Map.get, and no other.
     both = transcript(("alice", registry(_DAMAGE, 3)), ("alice", registry(_BIOME, 3)))

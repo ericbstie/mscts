@@ -1317,7 +1317,8 @@ the client then takes it from that pack.
 
 The name of a registry entry, such as `minecraft:plains`. The client
 numbers entries in the order they come, so another order gives other
-numbers.
+numbers. The client reads a name without a namespace, such as `plains`,
+as a `minecraft:` name, so that difference is network traffic only.
 
 ## `registry_data.registry_id`
 

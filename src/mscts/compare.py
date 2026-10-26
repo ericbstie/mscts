@@ -1303,9 +1303,12 @@ def _registry_key(fields: Mapping[str, object]) -> str | None:
     if the fields have no registry id.
     """
     registry = fields.get("registry_id")
-    if not isinstance(registry, str):
-        return None
-    return _client_identifier(registry) or registry
+    return _identifier_read(registry) if isinstance(registry, str) else None
+
+
+def _identifier_read(text: str) -> str:
+    """`text` as the client reads it (`_client_identifier`), or as sent if the client cannot."""
+    return _client_identifier(text) or text
 
 
 def _client_identifier(text: str) -> str | None:
@@ -3183,14 +3186,26 @@ without `state_id`, as a `chunk_batch_finished` does without `batch_size`."""
 
 
 def _canonical_registry_data(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
-    """A `registry_data` with its registry id as the client reads it (`_registry_key`).
+    """A `registry_data` with its registry id and entry ids as the client reads them.
 
-    (`ClientboundRegistryDataPacket.STREAM_CODEC` reads the id with `Identifier.STREAM_CODEC`,
-    which is `Identifier.parse`, javap on the 26.3 client.) So `worldgen/biome` against
-    `minecraft:worldgen/biome` is network traffic.
+    (`ClientboundRegistryDataPacket.STREAM_CODEC` and `PackedRegistryEntry.STREAM_CODEC` read
+    them with `Identifier.STREAM_CODEC`, which is `Identifier.parse`, javap on the 26.3
+    client; `_identifier_read`.) So `worldgen/biome` against `minecraft:worldgen/biome` is
+    network traffic, and so is `plains` against `minecraft:plains`.
     """
-    registry = _registry_key(fields)
-    return fields if registry is None else {**fields, "registry_id": registry}
+    canonical = dict(fields)
+    if (registry := _registry_key(fields)) is not None:
+        canonical["registry_id"] = registry
+    if isinstance(entries := fields.get("entries"), list):
+        canonical["entries"] = [_canonical_registry_entry(entry) for entry in entries]
+    return canonical
+
+
+def _canonical_registry_entry(entry: _Value) -> _Value:
+    """An entry of a `registry_data`, with its `entry_id` as the client reads it."""
+    if not isinstance(entry, dict) or not isinstance(entry_id := entry.get("entry_id"), str):
+        return entry
+    return {**entry, "entry_id": _identifier_read(entry_id)}
 
 
 _BATCH_PACKETS = frozenset(

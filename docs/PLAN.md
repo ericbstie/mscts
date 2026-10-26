@@ -2514,9 +2514,12 @@ proves it necessary:
      `Identifier.parse` (`ClientboundRegistryDataPacket.STREAM_CODEC`,
      `Identifier.bySeparator`, `javap` on the 26.3 client jar), so
      `worldgen/biome` against `minecraft:worldgen/biome` is network
-     traffic only. An id `Identifier.parse` refuses (a namespace outside
-     `[a-z0-9_.-]`, `..`, or a path outside `[a-z0-9_./-]`) stays as
-     sent: the client cannot read it and disconnects.
+     traffic only. Each `entries[].entry_id` gets the same namespace,
+     since `PackedRegistryEntry.STREAM_CODEC` reads it the same way
+     (`plains` against `minecraft:plains`). An id `Identifier.parse`
+     refuses (a namespace outside `[a-z0-9_.-]`, `..`, or a path outside
+     `[a-z0-9_./-]`) stays as sent: the client cannot read it and
+     disconnects.
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): an explicit `"type": "text"`; style
