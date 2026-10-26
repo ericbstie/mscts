@@ -695,8 +695,7 @@ Bot opens the table for each click and closes it after.
 A shift-click, a number key or Q on a result crafts once on the client, so the Bot reports one
 craft. Vanilla crafts again for as long as the grid makes the same result and the inventory has
 room for it, and sends the slots that changed. What does not fit is dropped. Control removes the
-items a window drops right after it, before the Bot can pick them up. The Ctrl+Q cases come
-last, so that a server that stops answering on one still has the other cases compared.
+items a window drops right after it, before the Bot can pick them up.
 
 ## Entities (`entities`)
 
