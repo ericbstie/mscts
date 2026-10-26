@@ -2506,6 +2506,13 @@ proves it necessary:
      handleContainerInput`, which copies it into the
      `ServerboundContainerClickPacket` (`javap` on the 26.3 client jar). A
      different `state_id` is network traffic only.
+   - `configuration` / `minecraft:registry_data` (#478): `registry_id`
+     with the `minecraft` namespace when it names none (no `:`, or one
+     first). The client reads it with `Identifier.STREAM_CODEC`, that is
+     `Identifier.parse` (`ClientboundRegistryDataPacket.STREAM_CODEC`,
+     `Identifier.bySeparator`, `javap` on the 26.3 client jar), so
+     `worldgen/biome` against `minecraft:worldgen/biome` is network
+     traffic only.
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): an explicit `"type": "text"`; style
@@ -2704,8 +2711,9 @@ proves it necessary:
    two ways, so each is `missing` or `unexpected`, and shows
    `chunk <x> <z>` rather than its fields; a chunk the codec cannot
    read has the position of its first two Ints, if it has 8 bytes; and
-   the registry of a `registry_data` the codec read, #451: the client
-   collects each registry's entries apart, so a registry only one side
+   the registry of a `registry_data` the codec read, with the `minecraft`
+   namespace when it names none, as `Identifier.parse` reads it (#478),
+   #451: the client collects each registry's entries apart, so a registry only one side
    sends is one `missing` or `unexpected` packet and the others pair by
    registry), so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides

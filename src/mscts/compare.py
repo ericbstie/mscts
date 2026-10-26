@@ -1287,11 +1287,26 @@ def _registry_text(entry: _Normalized) -> str:
 
 
 def _registry_id(packet: Packet) -> str | None:
-    """The registry id of a configuration `registry_data` the codec read; else None."""
+    """The registry id of a configuration `registry_data` the codec read, as the client reads it.
+
+    With its namespace (`_with_namespace`). None for any other packet.
+    """
     if packet.state is not State.CONFIGURATION or packet.name != _REGISTRY_DATA:
         return None
     registry = None if packet.fields is None else packet.fields.get("registry_id")
-    return registry if isinstance(registry, str) else None
+    return _with_namespace(registry) if isinstance(registry, str) else None
+
+
+def _with_namespace(identifier: str) -> str:
+    """`identifier` with the namespace `Identifier.parse` gives it: `minecraft` if it names none.
+
+    (`Identifier.bySeparator`: with no `:`, or with one first, the path is the rest, in the
+    `minecraft` namespace; javap on the 26.3 client.)
+    """
+    namespace, colon, path = identifier.partition(":")
+    if not colon:
+        return f"minecraft:{identifier}"
+    return identifier if namespace else f"minecraft:{path}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -3140,6 +3155,19 @@ it into `ServerboundContainerClickPacket`.) Nothing the player sees depends on i
 without `state_id`, as a `chunk_batch_finished` does without `batch_size`."""
 
 
+def _canonical_registry_data(fields: dict[str, _Value], _context: _Context) -> dict[str, _Value]:
+    """A `registry_data` with its registry id as the client reads it (`_with_namespace`).
+
+    (`ClientboundRegistryDataPacket.STREAM_CODEC` reads the id with `Identifier.STREAM_CODEC`,
+    which is `Identifier.parse`, javap on the 26.3 client.) So `worldgen/biome` against
+    `minecraft:worldgen/biome` is network traffic.
+    """
+    registry = fields.get("registry_id")
+    if not isinstance(registry, str):
+        return fields
+    return {**fields, "registry_id": _with_namespace(registry)}
+
+
 _BATCH_PACKETS = frozenset(
     {(State.PLAY, "minecraft:chunk_batch_start"), (State.PLAY, "minecraft:chunk_batch_finished")}
 )
@@ -3358,6 +3386,7 @@ _CANONICAL: Mapping[
 ] = MappingProxyType(
     {
         (State.STATUS, "minecraft:status_response"): _canonical_status_response,
+        (State.CONFIGURATION, _REGISTRY_DATA): _canonical_registry_data,
         (State.PLAY, "minecraft:level_chunk_with_light"): _canonical_level_chunk,
         (State.PLAY, "minecraft:light_update"): _canonical_light_update,
         (State.PLAY, "minecraft:chunk_batch_finished"): _CANONICAL_BATCH_FINISHED,

@@ -1331,7 +1331,9 @@ no `registry_data` it cannot decode comes between them. A registry
 that only one server sends is a `registry_data` the other leaves out.
 When the servers send their registries in different orders, this test
 case differs in network traffic only, and `--verbose` shows the order
-each server sent.
+each server sent. The client reads a name without a namespace, such as
+`worldgen/biome`, as a `minecraft:` name, so that difference is network
+traffic only too.
 
 ## `section_blocks_update`
 
