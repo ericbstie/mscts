@@ -28,6 +28,7 @@ left out on purpose:
 import bisect
 import dataclasses
 import json
+import math
 import re
 import struct
 from array import array
@@ -621,7 +622,9 @@ def compare(reference: Transcript, candidate: Transcript, masks: Sequence[Mask])
 
     Two matched Packets with fields are diffed field by field (see `_pairs`), giving one
     gameplay `field` Divergence per differing leaf, in path order, except in a list that
-    is lined up (`_LINED_UP`), which is in the order of its steps. If they have a
+    is lined up (`_LINED_UP`), which is in the order of its steps. A list or mapping more
+    than 255 levels into a field's value is one leaf, a text that writes it whole
+    (`_Nested`). If they have a
     canonical form, their raw fields (with the Masks applied where the paths reach)
     are diffed too: a raw difference is a network traffic Divergence, with the raw path
     and values, when the unmasked canonical values at that path (for a chunk, the canonical
@@ -2130,7 +2133,8 @@ def _copy(packet: Packet, fields: Mapping[str, object]) -> dict[str, _Value]:
     """A copy of `fields`, `packet`'s, in the value model.
 
     Cut to what the client reads (`_CAPS`), in one spelling (`_ONE_SPELLING`), and sorted if
-    `UNORDERED` names it.
+    `UNORDERED` names it. A list or mapping deeper than `_NESTING_LIMIT` in a field's value is
+    one leaf (`_Nested`), so no walk of the copy recurses deeper than that.
     """
     copy = _plain_mapping(fields.items(), packet.name, ())
     if (cap := _CAPS.get((packet.state, packet.name))) is not None:
@@ -2163,24 +2167,119 @@ def _plain_mapping(
     """
     copy: dict[str, _Value] = {}
     for key, item in items:
-        if not isinstance(key, str):
-            msg = f"{packet}: {_where(path)}: {type(key).__name__} key {key!r} is not a field name"
-            raise TypeError(msg)
-        copy[key] = _plain(item, packet, (*path, key))
+        name = _field_name(key, packet, path)
+        copy[name] = _plain(item, packet, (*path, name))
     return copy
 
 
+def _field_name(key: object, packet: str, path: _Path) -> str:
+    """`key`, of the mapping at `path` in `packet`'s fields, checked to be a str.
+
+    Raises:
+        TypeError: It is not.
+    """
+    if not isinstance(key, str):
+        msg = f"{packet}: {_where(path)}: {type(key).__name__} key {key!r} is not a field name"
+        raise TypeError(msg)
+    return key
+
+
+_NESTING_LIMIT = 255
+"""How many levels of lists and mappings a field's value keeps; the rest is one `_Nested`.
+
+As deep as the JSON the client reads (`_JSON_NESTING_LIMIT`), so none of that is cut. Every
+walk of a copy recurses once or twice a level (`_plain`, `_pairs`, `_leaves`), and a
+Candidate's value nests as deep as the codec decodes it, near Python's recursion limit (#479).
+"""
+
+
+class _Nested(str):
+    """A list or mapping more than `_NESTING_LIMIT` levels into a field's value, as one leaf.
+
+    Its text says so, then writes the value as `repr` does, with each mapping's keys sorted:
+    two are equal exactly when the values are, a NaN's bits included (`_leaf_text`). `_same`
+    compares leaves by exact type, so it never equals a string a server sent.
+    """
+
+    __slots__ = ()
+
+
 def _plain(value: object, packet: str, path: _Path) -> _Value:
+    if isinstance(value, Mapping | list) and len(path) > _NESTING_LIMIT:
+        return _nested(value, packet, path)
     if isinstance(value, Mapping):
         return _plain_mapping(value.items(), packet, path)
     if isinstance(value, list):
         return [_plain(item, packet, (*path, index)) for index, item in enumerate(value)]
+    return _plain_leaf(value, packet, path)
+
+
+def _plain_leaf(value: object, packet: str, path: _Path) -> _Value:
+    """`value`, a leaf at `path` in `packet`'s fields, checked to be in the value model.
+
+    Raises:
+        TypeError: It is not.
+    """
     if value is None:
         return None
     if isinstance(value, (bool, int, float, str, bytes, UUID)) and type(value) in _LEAF_TYPES:
         return value
     msg = f"{packet}: {_where(path)}: {type(value).__name__} is not a codec value"
     raise TypeError(msg)
+
+
+type _Token = str | tuple[object]
+"""A piece of a `_Nested`'s text: written as it is, or (a value,) still to write."""
+
+
+def _nested(value: object, packet: str, path: _Path) -> _Nested:
+    """`value`, at `path` in `packet`'s fields, as a `_Nested`; written without recursion.
+
+    Raises:
+        TypeError: As `_plain` does, at `path` for anything in `value`.
+    """
+    parts = [f"(nested deeper than {_NESTING_LIMIT} levels) "]
+    pending: list[_Token] = [(value,)]
+    while pending:
+        token = pending.pop()
+        if isinstance(token, str):
+            parts.append(token)
+        elif isinstance(node := token[0], Mapping | list):
+            container = cast("Mapping[object, object] | list[object]", node)
+            pending.extend(reversed(_tokens(container, packet, path)))
+        else:
+            parts.append(_leaf_text(_plain_leaf(node, packet, path)))
+    return _Nested("".join(parts))
+
+
+def _tokens(node: Mapping[object, object] | list[object], packet: str, path: _Path) -> list[_Token]:
+    """The pieces of `node`'s text, in order: `{'a': 1, 'b': [2]}`, with the keys sorted.
+
+    Raises:
+        TypeError: A key is not a str, as `_plain_mapping` says, at `path`.
+    """
+    if isinstance(node, list):
+        items = [("", item) for item in node]
+        brackets = "[]"
+    else:
+        keyed = sorted(
+            ((_field_name(key, packet, path), item) for key, item in node.items()),
+            key=lambda pair: pair[0],
+        )
+        items = [(f"{key!r}: ", item) for key, item in keyed]
+        brackets = "{}"
+    tokens: list[_Token] = [brackets[0]]
+    for index, (key, item) in enumerate(items):
+        tokens.extend(((", " if index else "") + key, (item,)))
+    tokens.append(brackets[1])
+    return tokens
+
+
+def _leaf_text(leaf: _Value) -> str:
+    """`leaf` as `repr` writes it, but a NaN with its bits: `nan(7ff8000000000001)`."""
+    if isinstance(leaf, float) and math.isnan(leaf):
+        return f"nan({struct.pack('>d', leaf).hex()})"
+    return repr(leaf)
 
 
 def _hidden(value: _Value, path: _MaskPath, at: _Path, found: list[_Path]) -> _Value:
