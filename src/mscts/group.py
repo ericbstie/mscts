@@ -351,7 +351,7 @@ class GroupContext:
         until: str | tuple[str, ...] | None = None,
         bot: Bot | None = None,
         play: bool = True,
-    ) -> AsyncIterator[None]:
+    ) -> AsyncIterator[int]:
         """Compare only what the Bots receive inside the block: an Observation window.
 
         On entry, every Bot in play passes the barrier (`Bot.sync`), all at once, so what
@@ -361,7 +361,10 @@ class GroupContext:
         then the window gets its `observe:open` Mark, followed by `names`, each after a
         space. The Mark is a nanosecond after the latest last answer of a Bot but Control
         (now, if none passed a barrier), so a packet a Bot read right after that answer is
-        inside the window, where the body's `expect` may take it (#356). When the body
+        inside the window, where the body's `expect` may take it (#356). The block gets the
+        Mark's time (`async with context.observe() as opened`): a Bot may have read packets
+        after the Mark before the body runs, and `expect(since_ns=opened)` tells them from
+        what it read before (#469). When the body
         completes, every Bot in play passes the barrier again, all at
         once. Each Bot's window ends at its own barrier: it gets the Mark `observe:close
         <Bot name>` a nanosecond after its barrier's last answer arrived, whatever the other
@@ -461,7 +464,7 @@ class GroupContext:
             opened = self._mark(
                 label, t_ns=_after_the_last_answer(answered, now_ns=self._transcript.now_ns())
             )
-            yield
+            yield opened
             if ends is None:
                 self._mark_each(OBSERVE_CLOSE, await self._sync())
                 await self._drain()

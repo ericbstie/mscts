@@ -41,7 +41,7 @@ requires a unique name, and Divergences name the Bot they came from.
 | `await bot.ping(payload)` | Sends a ping with a Long payload and checks that the pong echoes it. |
 | `await bot.join()` | Logs in offline and returns once the first chunk batch in play has finished. |
 | `await bot.respawn(fail_on=...)` | Respawns after death, as the respawn button does. It returns once the Bot has loaded the world again. `fail_on` is called with each packet that arrives before the server's `respawn`. If it returns a text, the respawn raises `ProtocolError` with that text; if it returns None, the respawn goes on. |
-| `await bot.expect(name, ..., timeout_s=..., where=...)` | Reads packets until one with any of the names given arrives, and returns it. |
+| `await bot.expect(name, ..., timeout_s=..., where=..., since_ns=...)` | Reads packets until one with any of the names given arrives, and returns it. With `since_ns`, it reads past any packet that arrived before that time, such as the time a window opened (below). |
 | `await bot.command(text)` | Runs a command as this Bot's player, without the leading `/`. |
 | `await bot.signed_command(text)` | Runs a command with a message argument (`/say`, `/me`, `/msg`, `/teammsg`) the way the vanilla client sends one. The client signs each message argument, and a Bot, which has no chat signing keys, signs none. |
 | `await bot.chat(text)` | Says `text` in chat, the way the vanilla client says it without chat signing keys. |
@@ -183,6 +183,18 @@ causes something another Bot receives, and the window must hold it, wait
 inside the block for the action's feedback (its chat message or block
 update) before the block ends. Otherwise the other Bot's window can end
 before it arrives.
+
+The window opens once the last Bot's wait has ended. A Bot whose wait ended
+sooner may still hold packets it received before the window opened, and
+some it received after. To wait only for a packet that arrived inside the
+window, such as one the server sends every second, take the time the window
+opened and give it to `expect`:
+
+<!-- not run: A fragment of a Group's function; it needs a context and a Bot. -->
+```python
+async with context.observe() as opened:
+    await bot.expect("minecraft:set_time", timeout_s=5, since_ns=opened)
+```
 
 To test a kick, take the server's disconnect inside the window with
 `await bot.expect("minecraft:disconnect", timeout_s=...)`. That Bot then

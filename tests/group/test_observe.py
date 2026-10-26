@@ -88,6 +88,17 @@ async def test_a_window_marks_where_it_opens_and_where_it_closes() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_window_gives_its_body_the_time_it_opened() -> None:
+    transcript = Transcript(group_id="test/observe", server="fake")
+    async with playing(play_server([]), transcript) as context:
+        await joined(context)
+        async with context.observe() as opened:
+            pass
+
+    assert opened == window(transcript)[0]
+
+
+@pytest.mark.asyncio
 async def test_a_narrowed_window_names_its_packets_in_its_open_mark() -> None:
     transcript = Transcript(group_id="test/observe", server="fake")
     async with playing(play_server([]), transcript) as context:

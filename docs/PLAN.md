@@ -549,7 +549,10 @@ class Bot:                          # what Groups use; answers keep_alive / tele
     # PERFORM_RESPAWN → player_loaded; a packet before `respawn` that `fail_on` names (returns
     # a text for) raises ProtocolError "<bot> got <text> before minecraft:respawn" (#463)
     async def expect(self, name: str, /, *others: str, timeout_s: float,
-                     where: Callable[[Packet], bool] | None = None) -> Packet: ...
+                     where: Callable[[Packet], bool] | None = None,
+                     since_ns: int | None = None) -> Packet: ...
+    # since_ns: a packet stamped before it (its arrival, Transcript time) is taken and passed
+    # over, not returned, and `where` is not called with it (#469)
     async def sync(self) -> None: ...                                  # the barrier (below)
     async def wait_until_handled(self) -> None: ...                    # #360: lighter proof (below)
     async def drain(self) -> None: ...                                 # take what has arrived
@@ -1447,7 +1450,9 @@ class GroupContext:
                                     # (no end Mark if the body raises: no Measurement)
     def observe(self, *names: str, until: str | tuple[str, ...] | None = None,
                 bot: Bot | None = None, play: bool = True
-                ) -> AbstractAsyncContextManager[None]: ...
+                ) -> AbstractAsyncContextManager[int]: ...
+                                    # (gives the block the OBSERVE_OPEN Mark's time, for
+                                    # Bot.expect(since_ns=...); #469)
                                     # an Observation window: on entry, every Bot in play
                                     # and not disconnected passes Bot.sync (all at once, so
                                     # what setup caused has arrived at every Bot, if the
