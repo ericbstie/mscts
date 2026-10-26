@@ -266,19 +266,19 @@ class InventoryTracker:
         A pickup on the crafting result takes the whole result, onto an empty cursor or onto a
         cursor of the same item with room for all of it, and one item from each grid cell that
         holds one (`ResultSlot.onTake`); the client does not craft, so the result stays empty
-        until the server sends the next one. A shift-click on the 2x2 result moves it to the 27
-        and the hotbar from the end, and uses one item from each cell, as the pickup does: it
+        until the server sends the next one. A shift-click on the result moves it to the 27 and
+        the hotbar from the end, and uses one item from each cell, as the pickup does: it
         crafts once on the client, which the server corrects if it crafted more. What does not
         fit stays in the result: the client's drop of it changes nothing. A number key over
-        the 2x2 result moves it to that empty slot, and Q drops all of it, Ctrl or not; each
-        uses one item from each cell. A number key whose slot holds a stack changes nothing.
+        the result moves it to that empty slot, and Q drops all of it, Ctrl or not; each uses
+        one item from each cell. A number key whose slot holds a stack changes nothing.
 
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
                 a chest's, a dispenser's, a hopper's, a shulker box's or a crafting table's; a
-                drag, a clone or a double click on the 2x2 result, or any click but a pickup on
-                a crafting table's; a take from a grid that holds
+                drag, a clone or a double click on the crafting result; a take from a grid that
+                holds
                 an item with a crafting remainder (a bucket of milk, water or lava, a honey
                 bottle, dragon's breath); a bundle; a swap that puts the slot's stack elsewhere;
                 or a changed slot's or the cursor's stack with a component patch, which it
@@ -295,7 +295,7 @@ class InventoryTracker:
         if menu.layout is None or menu.menu not in _CLICK_MENUS:
             msg = f"the Bot does not predict a click in a {menu.menu} menu"
             raise ValueError(msg)
-        if menu.menu in _GRIDS and slot == _RESULT and number not in _RESULT_CLICKS[menu.menu]:
+        if menu.menu in _GRIDS and slot == _RESULT and number not in _RESULT_CLICKS:
             msg = f"the Bot does not predict a {mode} click on this crafting result"
             raise ValueError(msg)
         saved = (list(self._player), list(menu.own), menu.carried, menu.quickcraft_status)
@@ -475,14 +475,13 @@ _CLICK_MENUS = frozenset(
 """The menus whose `quickMoveStack` and slot rules the Bot predicts: `InventoryMenu`, `ChestMenu`,
 `DispenserMenu`, `HopperMenu`, `ShulkerBoxMenu` and `CraftingMenu`."""
 _TABLE = "minecraft:crafting"
-_TABLE_STORAGE, _TABLE_HOTBAR = 10, 37
-"""`CraftingMenu`'s first slot of the 27 and of the hotbar: the result and the 3x3 come first."""
+_TABLE_STORAGE, _TABLE_HOTBAR, _TABLE_END = 10, 37, 46
+"""`CraftingMenu`'s first slot of the 27 and of the hotbar, and its slot count: the result and the
+3x3 come first."""
 _GRIDS = MappingProxyType({None: range(1, _CRAFTING), _TABLE: range(1, _TABLE_STORAGE)})
 """The crafting menus' grid slots, by menu: each has its result in slot 0 (`ResultSlot`)."""
-_RESULT_CLICKS = MappingProxyType(
-    {None: frozenset({_PICKUP, _QUICK_MOVE, _SWAP, _THROW}), _TABLE: frozenset({_PICKUP})}
-)
-"""The clicks on its crafting result the Bot predicts, by menu."""
+_RESULT_CLICKS = frozenset({_PICKUP, _QUICK_MOVE, _SWAP, _THROW})
+"""The clicks on a crafting result the Bot predicts."""
 _OFF_HAND_BUTTON = 40
 """The swap button for the off hand (the F key): `Inventory` index 40."""
 _CONTAINER_MAX = 99
@@ -498,6 +497,11 @@ _INVENTORY_OFF_HAND = 45
 _INVENTORY_HOTBAR = 36
 _INVENTORY_END = 45
 _RESULT = 0
+_RESULT_TARGETS = MappingProxyType(
+    {None: (_INVENTORY_STORAGE, _INVENTORY_END, True), _TABLE: (_TABLE_STORAGE, _TABLE_END, True)}
+)
+"""Where each crafting menu's `quickMoveStack(0)` moves its result: the 27 and the hotbar, from
+the end."""
 _CRAFTING_REMAINDERS = frozenset(
     {
         "minecraft:water_bucket",
@@ -805,11 +809,10 @@ class _Click:
     def quick_move_targets(self, slot: int, held: Stack) -> tuple[tuple[int, int, bool], ...]:
         """The slot ranges `quickMoveStack` tries in turn for `held`, until one takes some.
 
-        Each is a start, an end, and whether it fills from the end. The crafting result goes
-        to the 27 and the hotbar, from the end.
+        Each is a start, an end, and whether it fills from the end.
         """
         if self.is_result(slot):
-            return ((_INVENTORY_STORAGE, _INVENTORY_END, True),)
+            return (_RESULT_TARGETS[self.menu.menu],)
         if self.is_inventory:
             return (self.inventory_target(slot, held),)
         if self.menu.menu == _TABLE:

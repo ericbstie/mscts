@@ -1423,9 +1423,40 @@ def test_a_tables_result_takes_nothing_from_the_cursor_or_a_double_click() -> No
     assert tracker.click(30, 0, "pickup_all") == sent
 
 
-def test_a_shift_click_on_a_tables_result_is_refused() -> None:
-    tracker = holding({0: ("stick", 4), 1: ("oak_planks", 2)}, menu=TABLE)
-    before = tracker.view()
-    with pytest.raises(ValueError, match="crafting result"):
-        tracker.click(0, 0, "quick_move")
-    assert tracker.view() == before
+PICKAXE_GRID = {
+    0: ("stone_pickaxe", 1),
+    1: ("cobblestone", 2),
+    2: ("cobblestone", 2),
+    3: ("cobblestone", 2),
+    5: ("stick", 2),
+    8: ("stick", 2),
+}
+"""A table laid out for two stone pickaxes, the first in its result."""
+PICKAXE_GRID_USED = [
+    (0, None),
+    *((cell, hashed("cobblestone", 1)) for cell in (1, 2, 3)),
+    *((cell, hashed("stick", 1)) for cell in (5, 8)),
+]
+"""`PICKAXE_GRID`'s slots that change when its result is taken once."""
+
+
+def test_a_shift_click_on_a_tables_result_moves_it_from_the_end_and_crafts_once() -> None:
+    # CraftingMenu.quickMoveStack(0): moveItemStackTo(10, 46, true), then ResultSlot.onTake.
+    tracker = holding(PICKAXE_GRID, menu=TABLE)
+    changed = [*PICKAXE_GRID_USED, (45, hashed("stone_pickaxe", 1))]
+    sent = in_chest(click_sent(0, changed, None, mode=1))
+    assert tracker.click(0, 0, "quick_move") == sent
+
+
+@pytest.mark.parametrize(
+    ("button", "mode", "moved"),
+    [(0, "swap", [(37, hashed("stone_pickaxe", 1))]), (0, "throw", []), (1, "throw", [])],
+    ids=["number-key", "q", "ctrl-q"],
+)
+def test_a_number_key_or_q_over_a_tables_result_takes_it_and_crafts_once(
+    button: int, mode: str, moved: list[tuple[int, dict[str, object]]]
+) -> None:
+    tracker = holding(PICKAXE_GRID, menu=TABLE)
+    changed = [*PICKAXE_GRID_USED, *moved]
+    sent = in_chest(click_sent(0, changed, None, button=button, mode=CLICK_MODES[mode]))
+    assert tracker.click(0, button, mode) == sent
