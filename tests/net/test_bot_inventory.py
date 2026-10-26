@@ -794,7 +794,6 @@ def test_a_middle_click_clone_changes_nothing_for_a_survival_player() -> None:
         ({}, 9, 0, "drag", "mode must be one of"),
         ({}, 40_000, 0, "pickup", "Short"),
         ({}, 9, 200, "pickup", "Byte"),
-        ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "quick_move", "crafting result"),
         ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "swap", "crafting result"),
         ({0: ("oak_planks", 4), 1: ("oak_log", 1)}, 0, 0, "throw", "crafting result"),
         ({}, OUTSIDE, 0, "swap", "not one of the menu's 46 slots"),
@@ -805,7 +804,6 @@ def test_a_middle_click_clone_changes_nothing_for_a_survival_player() -> None:
         "mode",
         "slot",
         "button",
-        "result",
         "result-swap",
         "result-throw",
         "swap-outside",
@@ -1291,6 +1289,24 @@ def test_a_take_from_a_grid_holding_an_item_with_a_crafting_remainder_is_refused
     with pytest.raises(ValueError, match=item):
         tracker.click(0, 0, "pickup")
     assert tracker.view() == before
+
+
+@pytest.mark.parametrize(
+    ("stacks", "moved"),
+    [
+        ({}, [(44, hashed("oak_planks", 4))]),
+        ({9: ("oak_planks", 10), 40: ("oak_planks", 10)}, [(40, hashed("oak_planks", 14))]),
+    ],
+    ids=["empty-slot", "merge"],
+)
+def test_a_shift_click_on_the_crafting_result_moves_it_from_the_end_and_crafts_once(
+    stacks: dict[int, tuple[str, int]], moved: list[tuple[int, dict[str, object]]]
+) -> None:
+    # InventoryMenu.quickMoveStack(0): moveItemStackTo(9, 45, true), then ResultSlot.onTake.
+    # The client does not craft again, so its result is empty and the shift-click ends.
+    tracker = holding({0: ("oak_planks", 4), 1: ("oak_log", 3), **stacks})
+    changed = [(0, None), (1, hashed("oak_log", 2)), *moved]
+    assert tracker.click(0, 0, "quick_move") == click_sent(0, changed, None, mode=1)
 
 
 # A crafting table: CraftingMenu (26.3 client, javap). The result (slot 0), the 3x3 (1 to 9,
