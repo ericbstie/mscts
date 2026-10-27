@@ -48,7 +48,8 @@ COMMANDS = tree(
 )
 PLAY_TIMEOUT_S = 300.0
 GRID, BOOK, UNLOCKING = "crafting/grid", "crafting/recipe-book", "crafting/unlocking"
-GROUP_IDS = (GRID, BOOK, UNLOCKING)
+CTRL_Q_GRID = "crafting/grid-ctrl-q"
+GROUP_IDS = (GRID, BOOK, UNLOCKING, CTRL_Q_GRID)
 INVENTORY_SLOTS = 46
 """The inventory menu's slots: result, the 2x2, the armor, the 27, the hotbar, the off hand."""
 TABLE_WINDOW = 1
@@ -263,7 +264,12 @@ def _synced_after_close(transcript: Transcript, bot: str, commands: list[int]) -
     return tuple(synced)
 
 
-BOTS = {GRID: crafting.CRAFTER, BOOK: crafting.BOOKWORM, UNLOCKING: crafting.LEARNER}
+BOTS = {
+    GRID: crafting.CRAFTER,
+    BOOK: crafting.BOOKWORM,
+    UNLOCKING: crafting.LEARNER,
+    CTRL_Q_GRID: crafting.CRAFTER,
+}
 
 
 async def replay(group_id: str, server: CraftingServer) -> Play:
@@ -538,14 +544,21 @@ async def test_the_bot_shift_clicks_each_result_then_presses_1_and_q_over_it() -
         assert spread_again.before[-len(laid_out) :] == laid_out
     assert all(window.control == () for window in windows)
     assert windows[CASE_WINDOWS].before[0] == KILL_ITEMS  # what the 2x2's Q dropped
-    assert result.windows[first + 2 * CASE_WINDOWS].before[0] == KILL_ITEMS
+    assert result.after[0] == KILL_ITEMS  # what the table's Q dropped
 
 
 @pytest.mark.asyncio
-async def test_ctrl_q_comes_last_in_each_grid_then_a_full_inventory_with_ctrl_q_again() -> None:
-    result = await play(GRID)
-    first = _first_result_window() + CASE_WINDOWS * len(crafting.STATIONS)
-    windows = result.windows[first:]
+async def test_the_grid_ends_with_q_and_leaves_ctrl_q_to_its_own_group() -> None:
+    windows = (await play(GRID)).windows
+
+    assert len(windows) == _first_result_window() + CASE_WINDOWS * len(crafting.STATIONS)
+    assert CTRL_Q not in [click for window in windows for click in clicks(window)]
+
+
+@pytest.mark.asyncio
+async def test_ctrl_q_is_pressed_in_each_grid_then_with_a_full_inventory_and_again() -> None:
+    result = await play(CTRL_Q_GRID)
+    windows = result.windows
     expected: list[list[tuple[int, int, int]]] = []
     for station in crafting.STATIONS:
         expected += [_spread(station.first, station.stacks), [CTRL_Q]]
@@ -592,20 +605,42 @@ async def test_the_bot_opens_the_table_for_each_table_case_and_closes_it_after()
     result = await play(GRID)
     take = len(crafting.GRID_CASES) + 1 + crafting.TAKES
     shift = _first_result_window() + CASE_WINDOWS
-    ctrl_q = shift + 2 * CASE_WINDOWS
-    starts = (take, shift, shift + 2, ctrl_q, ctrl_q + 2)
-    ends = (take + 1 + crafting.TAKES, shift + 2, shift + 5, ctrl_q + 2, ctrl_q + 5)
-    in_table = [*result.windows[shift : shift + CASE_WINDOWS], *result.windows[ctrl_q:]]
+    starts = (take, shift, shift + 2)
+    ends = (take + 1 + crafting.TAKES, shift + 2, shift + 5)
+    in_table = result.windows[shift : shift + CASE_WINDOWS]
 
-    assert result.table == tuple(
-        step
-        for start, end in zip(starts, ends, strict=True)
-        for step in ((USE_ITEM_ON, start), (CLOSE, end))
-    )
+    assert result.table == _table_steps(starts, ends)
     # The server gives the table's grid back when it handles the close: Control's next /clear
     # must come after that, or the items come back after the clear.
     assert result.synced_after_close == (True,) * len(starts)
     assert {f["window_id"] for w in in_table for _, f in w.sent} == {TABLE_WINDOW}
+
+
+def _table_steps(starts: tuple[int, ...], ends: tuple[int, ...]) -> tuple[tuple[str, int], ...]:
+    """Each use of the table and close of it, with how many windows had closed before it."""
+    return tuple(
+        step
+        for start, end in zip(starts, ends, strict=True)
+        for step in ((USE_ITEM_ON, start), (CLOSE, end))
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_bot_opens_the_table_for_each_table_ctrl_q_case_and_closes_it_after() -> None:
+    result = await play(CTRL_Q_GRID)
+    table = CASE_WINDOWS
+    starts, ends = (table, table + 2), (table + 2, table + 5)
+    x, y, z = crafting.TABLE
+
+    assert result.table == _table_steps(starts, ends)
+    assert result.synced_after_close == (True,) * len(starts)
+    assert {f["window_id"] for w in result.windows[table:] for _, f in w.sent} == {TABLE_WINDOW}
+    assert result.commands[4:6] == (  # after the pinned joins, Control's tp and the clear
+        f"setblock {x} {y} {z} minecraft:crafting_table",
+        f"tp {crafting.CRAFTER} 12.5 -60 12.5 0 0",
+    )
+    assert f"setblock {x} {y} {z} minecraft:air" in result.after
+    assert f"setblock {x} {y - 1} {z} minecraft:grass_block" in result.after
 
 
 def test_the_takes_craft_planks_and_a_shaped_stone_pickaxe_with_items_for_two() -> None:
