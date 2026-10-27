@@ -50,7 +50,7 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    not answer within 10 seconds is stopped and started again, so a server
    that hangs in one Group does not fail the Groups after it.
 6. **Report.** mscts lists each differing test case once, then any skipped
-   or failed Groups and the total Run time.
+   or failed Groups, any server it restarted, and the total Run time.
 
 If the mscts process is forcibly killed, its servers may keep running. The
 next time mscts launches an Instance with the same cache, it checks their

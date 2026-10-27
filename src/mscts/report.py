@@ -10,7 +10,7 @@ from uuid import UUID
 
 import mscts.compare
 from mscts.compare import ABSENT, TICK_PATH, Divergence, Nested, Observability, Outcome
-from mscts.run import GroupResult, RunResult, SideSummary
+from mscts.run import GroupResult, Restart, RunResult, SideSummary
 from mscts.stats import PER_PLAY, Shares, Spread
 from mscts.target import Target
 
@@ -316,6 +316,7 @@ class _Document:
         title: The first line.
         facts: The verbose header's labelled values, or none.
         entries: Each listed line, in the order played.
+        restarts: A line for each distinct restart of a side's Instances (`_restart_lines`).
         times: The verbose time of each Group (`status/basic 0.1 s`), or None.
         closing: The last lines: the totals, the score and the total Run time.
     """
@@ -323,6 +324,7 @@ class _Document:
     title: str
     facts: tuple[tuple[str, str], ...]
     entries: tuple[_Entry, ...]
+    restarts: tuple[_Line, ...]
     times: tuple[str, ...] | None
     closing: tuple[str, ...]
 
@@ -344,6 +346,7 @@ def render_text(report: Report, *, verbose: bool = False, color: bool = False) -
         mark = f"\x1b[{_COLORS[entry.mark]}m{entry.mark}\x1b[0m" if color else entry.mark
         lines.append(f"{mark} {entry.name}{label}")
         lines.extend(f"  {_plain(line)}" for line in entry.values)
+    lines.extend(_plain(line) for line in document.restarts)
     if document.times is not None:
         lines.append(_GROUP_TIMES)
         lines.extend(f"  {time}" for time in document.times)
@@ -360,6 +363,8 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str:
         )
     if document.entries:
         blocks.append("\n".join(_markdown_entry(entry) for entry in document.entries))
+    if document.restarts:
+        blocks.append("\\\n".join(_markdown(line) for line in document.restarts))
     if document.times is not None:
         blocks.append(f"## {_GROUP_TIMES}")
         blocks.append("\n".join(f"- {_escape(time)}" for time in document.times))
@@ -419,6 +424,7 @@ def _document(report: Report, *, verbose: bool) -> _Document:
         title=f"Running tests against {candidate.name}{f' {version}' if version else ''}",
         facts=_header(report) if verbose else (),
         entries=entries,
+        restarts=_restart_lines(report),
         times=_group_times(report.results) if verbose else None,
         closing=(*_totals_lines(totals(lines)), f"Took {_seconds(report.elapsed_s)} s"),
     )
@@ -434,6 +440,29 @@ def _entry(report: Report, group: GroupResult, line: Line, *, verbose: bool) -> 
             label = "(network traffic only, not scored)"
     values = _values(report, group, case) if verbose else ()
     return _Entry(_MARKS[line.result], name, label, values)
+
+
+def _restart_lines(report: Report) -> tuple[_Line, ...]:
+    """A line for each distinct restart of the Reference's Instances, then the Candidate's.
+
+    `Restarted pumpkin 2 times after crafting/grid, because it did not answer a status
+    request within 10 s.`: the count only when the same restart happened more than once.
+    """
+    return tuple(
+        _restart_line(side.name, restart, count)
+        for side in (report.reference, report.candidate)
+        for restart, count in Counter(side.restarts).items()
+    )
+
+
+def _restart_line(server: str, restart: Restart, count: int) -> _Line:
+    """The line of `restart` of `server`'s Instances, which happened `count` times."""
+    times = f" {count} times" if count > 1 else ""
+    return (
+        f"Restarted {server}{times} after ",
+        _Literal(restart.after),
+        f", because it {restart.reason}.",
+    )
 
 
 def _totals_lines(counts: Totals) -> tuple[str, ...]:

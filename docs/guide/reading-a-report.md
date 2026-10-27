@@ -173,6 +173,19 @@ them fails as `Candidate failed`.
 Different packet counts for a Bot also give the Group a
 line.
 
+## Restarted servers
+
+A line before the totals names each server mscts restarted during the
+Run, such as `Restarted pumpkin after crafting/grid, because it did not
+answer a status request within 10 s.`
+
+Before each Group, mscts sends a status request to each server that has
+played one, and stops and starts again any server that does not answer
+within 10 seconds. The line names the last Group played on that server.
+The Groups after it play on the new server. A server restarted after the same Group in more than
+one repetition has one line with the count, such as `Restarted pumpkin 5
+times after crafting/grid`.
+
 The line names each distinct reason from the Group's repetitions once. It
 counts as one test case: a failing one, unless every reason is an `Error`.
 Then the line is marked `!` instead of ✗ and is not scored, because the

@@ -22,8 +22,8 @@ from mscts.compare import (
     Outcome,
     Verdict,
 )
-from mscts.report import LineResult, render_markdown, render_text, report_lines
-from mscts.run import SideSummary
+from mscts.report import LineResult, Report, render_markdown, render_text, report_lines
+from mscts.run import Restart, SideSummary
 from mscts.stats import Difference, Shares, Spread, Summary
 
 FAILED_ONE = "0 passed, 1 failed. (0%)\nTook 41 s\n"
@@ -409,6 +409,54 @@ def test_verbose_markdown_keeps_the_header_values_and_group_times() -> None:
         "- status/basic not recorded\n"
         "\n"
         "0 passed, 1 failed. (0%)\\\n"
+        "Took 41 s\n"
+    )
+
+
+NO_ANSWER = "did not answer a status request within 10 s"
+
+
+def _restarted(*restarts: Restart, reference: tuple[Restart, ...] = ()) -> Report:
+    report = report_of(group_result(_compared("a", group_id="crafting/grid")))
+    return replace(
+        report,
+        reference=replace(report.reference, restarts=reference),
+        candidate=replace(report.candidate, restarts=restarts),
+    )
+
+
+def test_a_restart_has_a_line_after_the_test_cases_that_says_after_which_group_and_why() -> None:
+    report = _restarted(Restart("crafting/grid", NO_ANSWER))
+    assert render_text(report) == (
+        "Running tests against pumpkin\n"
+        "✓ crafting/grid/a\n"
+        "Restarted pumpkin after crafting/grid, because it did not answer a status request "
+        "within 10 s.\n" + PASSED_ONE
+    )
+
+
+def test_restarts_name_each_server_and_count_the_same_one_once() -> None:
+    again = Restart("crafting/grid", NO_ANSWER)
+    report = _restarted(again, Restart("blocks/door", NO_ANSWER), again, reference=(again,))
+    lines = render_text(report).splitlines()
+    assert [line for line in lines if line.startswith("Restarted")] == [
+        f"Restarted vanilla after crafting/grid, because it {NO_ANSWER}.",
+        f"Restarted pumpkin 2 times after crafting/grid, because it {NO_ANSWER}.",
+        f"Restarted pumpkin after blocks/door, because it {NO_ANSWER}.",
+    ], lines
+
+
+def test_markdown_gives_the_restarts_a_paragraph_with_each_group_as_code() -> None:
+    report = _restarted(Restart("crafting/grid", NO_ANSWER), Restart("blocks/door", NO_ANSWER))
+    assert render_markdown(report) == (
+        "# Running tests against pumpkin\n"
+        "\n"
+        "- ✓ `crafting/grid/a`\n"
+        "\n"
+        f"Restarted pumpkin after `crafting/grid`, because it {NO_ANSWER}.\\\n"
+        f"Restarted pumpkin after `blocks/door`, because it {NO_ANSWER}.\n"
+        "\n"
+        "1 passed, 0 failed. (100%)\\\n"
         "Took 41 s\n"
     )
 

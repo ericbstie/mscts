@@ -3128,6 +3128,9 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # " (network traffic only)" when it passed that way, " (network traffic only, not
 # scored)" for NOT_SCORED (#330); a Group line is
 # "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then
+# (#513) one line per distinct SideSummary.restarts entry, the Reference's first:
+# "Restarted <name>[ <n> times] after <group>, because it <reason>." (in report.md one
+# paragraph joined by hard breaks, the Group as code). Then
 # "<p> passed, <f> failed[ (<n> not tested)]. (<percent>%)" with the percent rounded down
 # to tenths (".0" dropped), and no "(…%)" when nothing was scored; then
 # "<e> error[s] (not scored)" when there are errors; and last "Took <seconds> s", rounded
