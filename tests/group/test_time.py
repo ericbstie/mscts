@@ -72,6 +72,9 @@ STRAYS = ({"entity_id": 99, "action": 0}, {"entity_id": ENTITY_IDS["sleeper"], "
 wake, and the sleeper's critical hit (action 1), neither of which is the sleeper getting up."""
 STRAY_TICKS = 10
 """Longer than a barrier, so a window that ended on the stray `animate` would miss the skip."""
+SKIP_BARRIER = 4
+"""Which barrier of the clock opens the skip window, counted from the one that closes the lie-down
+window: then the day's read opens and closes its window, and the skip window opens."""
 LATE_TICKS = 5
 """How many ticks the fake takes to answer a player's command, and to tell the others that
 Control has left: longer than a barrier, so a window that did not wait for it would miss it."""
@@ -118,6 +121,14 @@ class TimeServer:
     """Whether the clock gets each barrier answer `ANSWER_LAG_S` behind the sleeper's, in one
     write with a `set_time` behind it: so a window opens on the clock's answer, and the clock
     stamps that `set_time` at the window's open Mark itself (#469)."""
+    wake_between_answers: bool = False
+    """Whether the clock reads a wake `animate` of the sleeper between its own last barrier
+    answer and the sleeper's, which comes `ANSWER_LAG_S` behind, at the barrier that opens the
+    skip window (the 4th of the clock while the sleeper lies in bed with 50% needed): so the
+    clock has read it before the window opens. The usual wake comes later, inside the window
+    (#507)."""
+    barriers_asleep: int = 0
+    """How many barriers the clock has passed while the sleeper lay in bed with 50% needed."""
     later: set[asyncio.Task[None]] = field(default_factory=set)
 
     @property
@@ -141,7 +152,11 @@ class TimeServer:
                 self.seen.append(packet)
                 if packet.name == CLIENT_COMMAND:
                     requests += 1
-                    await self._award_stats(peer, first=(requests - 1) % SYNC_REQUESTS == 0)
+                    await self._award_stats(
+                        peer,
+                        first=(requests - 1) % SYNC_REQUESTS == 0,
+                        last=requests % SYNC_REQUESTS == 0,
+                    )
                 elif packet.name == CHAT_COMMAND:
                     await self._command(peer, str((packet.fields or {})["command"]))
                 elif packet.name == USE_ITEM_ON:
@@ -153,7 +168,7 @@ class TimeServer:
                 del self.players[CONTROL]
                 self.later.add(asyncio.create_task(self._left()))
 
-    async def _award_stats(self, peer: Peer, *, first: bool) -> None:
+    async def _award_stats(self, peer: Peer, *, first: bool, last: bool) -> None:
         """Answer a statistics request: the first of a barrier at once, the others a tick later.
 
         With `time_behind_answers`, the clock's answer comes in one write with a `set_time`
@@ -161,12 +176,15 @@ class TimeServer:
         sleeper's answer comes `ANSWER_LAG_S` later, and the clock is sent a `set_time` a loop
         turn after it: the clock's socket has it only once the sleeper's reader is due to run,
         so the clock's reader stamps it after the sleeper's answer. With `time_at_the_open`, the
-        clock's answer comes `ANSWER_LAG_S` later, in one write with a `set_time` behind it.
+        clock's answer comes `ANSWER_LAG_S` later, in one write with a `set_time` behind it. With
+        `wake_between_answers`, the sleeper's answer comes `ANSWER_LAG_S` later, and the clock
+        is sent a wake `animate` right after its last answer of the barrier that opens the skip.
         """
         if not first:
             await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
         answer = peer.raw_frame("minecraft:award_stats", NO_STATISTICS)
         lags = self.time_behind_answers or self.time_after_answers or self.time_at_the_open
+        lags = lags or self.wake_between_answers
         if lags and peer.name == (CLOCK if self.time_at_the_open else SLEEPER):
             await asyncio.sleep(ANSWER_LAG_S)
         if (self.time_behind_answers or self.time_at_the_open) and peer.name == CLOCK:
@@ -175,6 +193,15 @@ class TimeServer:
         if self.time_after_answers and peer.name == SLEEPER:
             await asyncio.sleep(0)
             await self._time(self.players[CLOCK])
+        if self.wake_between_answers and peer.name == CLOCK and last:
+            await self._wake_early(peer)
+
+    async def _wake_early(self, clock: Peer) -> None:
+        """Send the clock the sleeper's wake `animate` at the barrier that opens the skip."""
+        if self.sleeping and self.percentage == 50:
+            self.barriers_asleep += 1
+            if self.barriers_asleep == SKIP_BARRIER:
+                await clock.send(ANIMATE, entity_id=ENTITY_IDS[SLEEPER], action=0)
 
     async def _time(self, peer: Peer) -> None:
         """Send `peer` a `set_time` with the game time and `clocks`."""
@@ -603,6 +630,21 @@ def test_sleep_counts_a_set_time_the_clock_stamped_at_the_open() -> None:
         closing = min(t for t in asks if t > opened_at)  # the clock's barrier at the close
         assert opened_at in times  # the case the fake makes
         assert len([t for t in times if opened_at <= t < closing]) == count
+
+
+def test_sleep_waits_for_a_wake_that_arrived_after_the_skip_window_opened() -> None:
+    # the clock reads a wake animate after its barrier's answer, before the window opens
+    transcript = asyncio.run(_play("time/sleep", TimeServer(wake_between_answers=True)))
+
+    opened_at, closed_at = windows(transcript)[6]
+    asks = [t for t, _ in sent(transcript, CLOCK, CLIENT_COMMAND) if t < opened_at]
+    woke = [
+        t
+        for t, p in received(transcript, CLOCK, ANIMATE)
+        if p.fields == {"entity_id": ENTITY_IDS[SLEEPER], "action": 0}
+    ]
+    assert [t for t in woke if asks[-SYNC_REQUESTS] < t < opened_at]  # the case the fake makes
+    assert [t for t in woke if opened_at <= t < closed_at]
 
 
 def test_sleep_steps_to_dawn_until_a_set_time_shows_the_step_ended() -> None:

@@ -284,6 +284,18 @@ def _woke(clock: Bot) -> Callable[[Packet], bool]:
     return holds
 
 
+async def _wait_for_wake(clock: Bot, *, since_ns: int) -> None:
+    """Wait for the sleeper's `animate` that arrived at `since_ns` or later.
+
+    A window opens at `since_ns`, after the later Bot's barrier, so the clock may have read the
+    `animate` after its own barrier but before the window opened. The window does not hold
+    that one, and a wait that took it would end without the packet inside (#507).
+    """
+    await clock.expect(
+        "minecraft:animate", timeout_s=_WAIT_S, where=_woke(clock), since_ns=since_ns
+    )
+
+
 async def _alone(context: GroupContext, clock: Bot) -> None:
     """Make Control leave, and wait until the clock is told it has.
 
@@ -389,6 +401,6 @@ async def sleep(context: GroupContext) -> None:
         async with context.observe(*SLEEP_PACKETS) as opened:
             await _lie_down_and_count(clock, sleeper, _BEFORE_DEEP_SLEEP, since_ns=opened)
         await _read(context, clock, "time query day")
-        async with context.observe(*SLEEP_PACKETS):
-            await clock.expect("minecraft:animate", timeout_s=_WAIT_S, where=_woke(clock))
+        async with context.observe(*SLEEP_PACKETS) as opened:
+            await _wait_for_wake(clock, since_ns=opened)
         await _read_day(context, clock)
