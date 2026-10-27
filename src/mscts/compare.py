@@ -47,6 +47,7 @@ from mscts.codec.packets import Codec, Direction, Packet, State
 from mscts.codec.registry_names import registry_names
 from mscts.codec.schemas.play.chunks import BIOMES, BLOCK_STATES, PalettedContainer
 from mscts.codec.wire import WireError
+from mscts.identifier import client_identifier, identifier_read
 from mscts.spec import CONTROL_PLAYER
 from mscts.stats import Difference
 from mscts.target import TARGET
@@ -1299,44 +1300,11 @@ def _registry_id(packet: Packet) -> str | None:
 def _registry_key(fields: Mapping[str, object]) -> str | None:
     """The registry id of a `registry_data`'s `fields`, as the client reads it.
 
-    With its namespace (`_client_identifier`), or as sent if the client cannot read it. None
+    With its namespace (`client_identifier`), or as sent if the client cannot read it. None
     if the fields have no registry id.
     """
     registry = fields.get("registry_id")
-    return _identifier_read(registry) if isinstance(registry, str) else None
-
-
-def _identifier_read(text: str) -> str:
-    """`text` as the client reads it (`_client_identifier`), or as sent if the client cannot."""
-    return _client_identifier(text) or text
-
-
-def _client_identifier(text: str) -> str | None:
-    """`text` as the client's `Identifier.parse` reads it, with its namespace; None if it throws.
-
-    (`Identifier.bySeparator`: with no `:`, or with one first, the path is the rest, in the
-    `minecraft` namespace. `createUntrusted` and `withDefaultNamespace` then throw
-    `IdentifierException` for a namespace or path that `isValidNamespace` or `isValidPath`
-    refuses, which disconnects the client; javap on the 26.3 client.)
-    """
-    namespace, colon, path = text.partition(":")
-    if not colon:
-        namespace, path = "", text
-    namespace = namespace or "minecraft"
-    return f"{namespace}:{path}" if _valid_identifier(namespace, path) else None
-
-
-def _valid_identifier(namespace: str, path: str) -> bool:
-    """Whether `Identifier.isValidNamespace(namespace)` and `isValidPath(path)` both hold."""
-    return (
-        namespace != ".."
-        and set(namespace) <= _NAMESPACE_CHARACTERS
-        and set(path) <= _NAMESPACE_CHARACTERS | {"/"}
-    )
-
-
-_NAMESPACE_CHARACTERS = frozenset("abcdefghijklmnopqrstuvwxyz0123456789_-.")
-"""The characters `Identifier.validNamespaceChar` allows; `validPathChar` allows `/` too."""
+    return identifier_read(registry) if isinstance(registry, str) else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -3190,7 +3158,7 @@ def _canonical_registry_data(fields: dict[str, _Value], _context: _Context) -> d
 
     (`ClientboundRegistryDataPacket.STREAM_CODEC` and `PackedRegistryEntry.STREAM_CODEC` read
     them with `Identifier.STREAM_CODEC`, which is `Identifier.parse`, javap on the 26.3
-    client; `_identifier_read`.) So `worldgen/biome` against `minecraft:worldgen/biome` is
+    client; `identifier_read`.) So `worldgen/biome` against `minecraft:worldgen/biome` is
     network traffic, and so is `plains` against `minecraft:plains`.
     """
     canonical = dict(fields)
@@ -3205,7 +3173,7 @@ def _canonical_registry_entry(entry: _Value) -> _Value:
     """An entry of a `registry_data`, with its `entry_id` as the client reads it."""
     if not isinstance(entry, dict) or not isinstance(entry_id := entry.get("entry_id"), str):
         return entry
-    return {**entry, "entry_id": _identifier_read(entry_id)}
+    return {**entry, "entry_id": identifier_read(entry_id)}
 
 
 _BATCH_PACKETS = frozenset(
@@ -3929,10 +3897,10 @@ def _client_reads_ids(fields: Mapping[str, object]) -> bool:
 
     It reads each with `Identifier.STREAM_CODEC` (`ClientboundRegistryDataPacket.STREAM_CODEC`,
     `RegistrySynchronization$PackedRegistryEntry.STREAM_CODEC`, javap on the 26.3 client), and
-    one it cannot read disconnects it (`_client_identifier`).
+    one it cannot read disconnects it (`client_identifier`).
     """
     ids = [fields.get("registry_id"), *_entry_ids(fields)]
-    return all(isinstance(text, str) and _client_identifier(text) is not None for text in ids)
+    return all(isinstance(text, str) and client_identifier(text) is not None for text in ids)
 
 
 def _entry_ids(fields: Mapping[str, object]) -> list[object]:

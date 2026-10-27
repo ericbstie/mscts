@@ -1166,12 +1166,12 @@ def test_an_enchanted_armor_slot_is_refused_while_the_enchantments_are_unknown()
     assert tracker.view() == before
 
 
-def registry(*names: str) -> "Packet":
+def registry(*names: str, registry_id: str = "minecraft:enchantment") -> "Packet":
     entries = [{"entry_id": name, "data": None} for name in names]
     return arrived(
         State.CONFIGURATION,
         "minecraft:registry_data",
-        registry_id="minecraft:enchantment",
+        registry_id=registry_id,
         entries=entries,
     )
 
@@ -1185,6 +1185,31 @@ def test_the_enchantments_come_from_each_configurations_registry_data() -> None:
     assert replies.inventory.enchantments == ENCHANTMENTS
     answers(replies, registry("minecraft:binding_curse"), finish)
     assert replies.inventory.enchantments == ("minecraft:binding_curse",)
+
+
+def test_the_enchantments_are_read_as_the_client_reads_their_ids() -> None:
+    # Identifier.parse reads `enchantment` and `binding_curse` into the minecraft namespace, so
+    # a server that sends them short sends the client what vanilla does (#514).
+    replies = Replies()
+    finish = arrived(State.CONFIGURATION, "minecraft:finish_configuration")
+    short = registry("protection", "binding_curse", registry_id="enchantment")
+    answers(replies, short, finish)
+    assert replies.inventory.enchantments == ENCHANTMENTS
+
+
+def test_a_registry_id_the_client_cannot_read_is_not_the_enchantments() -> None:
+    # `Enchantment` throws in Identifier.parse, which disconnects the client: it is no registry.
+    replies = Replies()
+    finish = arrived(State.CONFIGURATION, "minecraft:finish_configuration")
+    answers(replies, registry("minecraft:binding_curse", registry_id="Enchantment"), finish)
+    assert replies.inventory.enchantments is None
+
+
+def test_an_entry_id_the_client_cannot_read_stays_as_sent() -> None:
+    replies = Replies()
+    finish = arrived(State.CONFIGURATION, "minecraft:finish_configuration")
+    answers(replies, registry("Binding Curse", "binding_curse"), finish)
+    assert replies.inventory.enchantments == ("Binding Curse", "minecraft:binding_curse")
 
 
 def test_a_slot_that_refuses_its_own_stack_gives_it_whole_onto_a_cursor_with_just_the_room() -> (

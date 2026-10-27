@@ -18,6 +18,7 @@ from mscts.codec.schemas.configuration import CLIENT_INFORMATION
 from mscts.codec.schemas.play.stats import REQUEST_STATS
 from mscts.codec.wire import Writer
 from mscts.entities import Entities, Entity, EntityTracker, java_round
+from mscts.identifier import identifier_read
 from mscts.inventory import Inventory, InventoryTracker
 from mscts.net import Connection, Endpoint, ProtocolError
 from mscts.target import Target
@@ -591,13 +592,14 @@ class Replies:
         """Keep the server's enchantments, by network id, from a configuration's registries.
 
         Each configuration collects its registries afresh (a new `RegistryDataCollector`),
-        appending each `registry_data`'s entries; they take effect as it finishes.
+        appending each `registry_data`'s entries; they take effect as it finishes. The client
+        reads the registry's id and each entry's id with `Identifier.parse` (`identifier_read`).
         """
         if packet.state is not State.CONFIGURATION:
             return
-        if packet.name == "minecraft:registry_data" and fields.get("registry_id") == _ENCHANTMENT:
+        if packet.name == "minecraft:registry_data" and _registry_read(fields) == _ENCHANTMENT:
             entries = cast("list[Mapping[str, object]]", _field(fields, "entries", list))
-            names = [_field(entry, "entry_id", str) for entry in entries]
+            names = [identifier_read(_field(entry, "entry_id", str)) for entry in entries]
             self._enchantments = [*(self._enchantments or []), *names]
         elif packet.name == "minecraft:finish_configuration" and self._enchantments is not None:
             self.inventory.enchantments = tuple(self._enchantments)
@@ -1738,6 +1740,12 @@ def _field[T](fields: Mapping[str, object], name: str, kind: type[T]) -> T:
         msg = f"expected a {kind.__name__} {name}, got {value!r}"
         raise ProtocolError(msg)
     return value
+
+
+def _registry_read(fields: Mapping[str, object]) -> str | None:
+    """The `registry_id` of a `registry_data`'s `fields`, as the client reads it; None if absent."""
+    registry = fields.get("registry_id")
+    return identifier_read(registry) if isinstance(registry, str) else None
 
 
 def _json_field(value: object, key: str) -> object:
