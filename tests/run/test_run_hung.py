@@ -13,7 +13,7 @@ from mscts import run as run_module
 from mscts.compare import Outcome
 from mscts.group import Group, GroupContext
 from mscts.groups import status
-from mscts.run import Server, run
+from mscts.run import Restart, Server, run, run_results
 from tests.run.fakes import FakeAdapter
 
 HANGS = 513
@@ -56,3 +56,17 @@ async def test_a_group_after_one_that_hung_the_candidate_plays_on_a_new_instance
     assert [verdict.outcome for verdict in verdicts] == [Outcome.MATCH, Outcome.MATCH], verdicts
     assert len(_adapter(reference).prepared) == 1
     assert len(_adapter(candidate).prepared) == 2
+
+
+@pytest.mark.asyncio
+async def test_the_run_says_which_side_it_restarted_after_which_group_and_why(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    reference, candidate = fake_server("one", hangs_after_ping=HANGS), fake_server("two")
+
+    result = await run_results([HANG, BASIC], reference, candidate, workdir=tmp_path / "run")
+
+    why = f"did not answer a status request within {SHORT_S} s"
+    assert result.reference.restarts == (Restart(after="test/hang", reason=why),)
+    assert result.candidate.restarts == ()
+    assert [verdict.outcome for verdict in result.verdicts] == [Outcome.MATCH, Outcome.MATCH]

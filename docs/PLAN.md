@@ -3014,6 +3014,11 @@ class GroupResult:
                                       # is not match and both sides played, else None (#162)
 
 @frozen
+class Restart:                      # #513: an Instance stopped and launched again before a Group
+    after: str                      # the last Group played on the one stopped
+    reason: str                     # after "it": "did not answer a status request within 10 s"
+
+@frozen
 class SideSummary:
     name: str                       # adapter name
     version: str | None             # version.name of its first status_response (lenient)
@@ -3021,6 +3026,7 @@ class SideSummary:
                                       # launched Instance; none for an Attached side
     installed_version: str | None = None # "nightly 4426d11 (sha256 b8382a8a…)": its Installation's
                                          # Build and short sha256; the full sha256 without a Build
+    restarts: tuple[Restart, ...] = ()   # each restart of its Instances, in order (#513)
 
 @frozen
 class RunResult:

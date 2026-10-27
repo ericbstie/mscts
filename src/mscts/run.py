@@ -142,6 +142,19 @@ class GroupResult:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class Restart:
+    """An Instance the Run stopped and launched again before a Group (#513).
+
+    Attributes:
+        after: The last Group played on the Instance it stopped, e.g. `crafting/grid`.
+        reason: Why, after "it": `did not answer a status request within 10 s`.
+    """
+
+    after: str
+    reason: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class SideSummary:
     """What a Run learned about one of its sides.
 
@@ -153,12 +166,14 @@ class SideSummary:
             it, launch to ready; none for an Attached side.
         installed_version: Its Installation's Build and short sha256, else its sha256; None for
             an Attached side or an Installation without recorded provenance.
+        restarts: Each time the Run restarted one of its Instances, in order.
     """
 
     name: str
     version: str | None
     startup: tuple[Measurement, ...]
     installed_version: str | None = None
+    restarts: tuple[Restart, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -708,7 +723,7 @@ class _Instances:
         self._versions: list[str | None] = [None, None]
         self._unusable: dict[Endpoint, str] = {}  # why no Group may play there any more
         self._launched: dict[Endpoint, _Launched] = {}
-        self._restarts = 0
+        self._restarts: tuple[list[Restart], list[Restart]] = ([], [])
 
     async def start(self, group: Group) -> None:
         """Make sure the Instances `group` plays against are up, and still answer.
@@ -730,18 +745,21 @@ class _Instances:
         launched = self._launched.get(endpoint)
         if launched is None or launched.played is None or await _answers(endpoint):
             return endpoint
-        return await self._restart(endpoint, launched)
+        why = f"did not answer a status request within {ANSWER_TIMEOUT_S:g} s"
+        return await self._restart(endpoint, launched, Restart(after=launched.played, reason=why))
 
-    async def _restart(self, endpoint: Endpoint, launched: _Launched) -> Endpoint:
-        """Stop the Instance at `endpoint`, which did not answer, and launch one in its place."""
+    async def _restart(self, endpoint: Endpoint, launched: _Launched, restart: Restart) -> Endpoint:
+        """Stop the Instance at `endpoint` and launch one in its place, for `restart`'s reason.
+
+        The side's summary records `restart` (`SideSummary.restarts`), for the Report.
+        """
         name = self._sides[launched.role].name
-        LOG.warning(
-            "%s did not answer a status request after %s: restarting it", name, launched.played
-        )
+        LOG.warning("%s %s after %s: restarting it", name, restart.reason, restart.after)
         del self._launched[endpoint]
         await launched.stop.aclose()
-        self._restarts += 1
-        where = self._workdir / f"restart-{self._restarts}" / _ROLES[launched.role]
+        self._restarts[launched.role].append(restart)
+        count = sum(len(restarts) for restarts in self._restarts)
+        where = self._workdir / f"restart-{count}" / _ROLES[launched.role]
         return await self._start(launched.role, launched.spec, where)
 
     async def play(self, group: Group, *, prerequisite_failed: Verdict | None = None) -> _Play:
@@ -917,6 +935,7 @@ class _Instances:
                 version=self._versions[role],
                 startup=tuple(self._startup[role]),
                 installed_version=_installed_version(side),
+                restarts=tuple(self._restarts[role]),
             )
             for role, side in enumerate(self._sides)
         )
