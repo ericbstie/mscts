@@ -1669,8 +1669,9 @@ class Divergence:
     tested: stats.Difference | None = None   # distribution only (below)
     # network traffic: a `field` Divergence between raw values whose canonical forms are
     #   equal (path and values are the raw ones), or a missing or unexpected
-    #   chunk_batch_start or chunk_batch_finished (step 1), or the order of registry_data
-    #   (path ORDER_PATH, step 1); gameplay: every other Divergence,
+    #   chunk_batch_start or chunk_batch_finished (step 1), or an unexpected registry_data
+    #   the client can read, for a registry outside its SYNCHRONIZED_REGISTRIES (step 4),
+    #   or the order of registry_data (path ORDER_PATH, step 1); gameplay: every other Divergence,
     #   so every bot and failed one (run.judge's `failed` keeps the default; __post_init__
     #   raises ValueError for a bot or failed one that is network traffic, #221).
     # bot: the Bot has Events (sent or received) in only one Transcript; reference and
@@ -2273,8 +2274,8 @@ proves it necessary:
      reported, as network traffic (ADR-0007): for each run of the
      reference whose matched packets came in different orders, one `field`
      Divergence at `ORDER_PATH`, at the first of them, holds each side's
-     registry ids of them in the order it sent them
-     (`compare._registry_orders`). A packet moves only within its run, so
+     registry ids of them, as the client reads them, in the order it sent
+     them (`compare._registry_orders`). A packet moves only within its run, so
      the runs keep their order on both sides.
 2. **Canonicalize** values the vanilla client treats as equal: text
    component `"x"` ≡ `{"text": "x"}`, JSON key order, and similar.
@@ -2506,6 +2507,18 @@ proves it necessary:
      handleContainerInput`, which copies it into the
      `ServerboundContainerClickPacket` (`javap` on the 26.3 client jar). A
      different `state_id` is network traffic only.
+   - `configuration` / `minecraft:registry_data` (#478): `registry_id`
+     with the `minecraft` namespace when it names none (no `:`, or one
+     first). The client reads it with `Identifier.STREAM_CODEC`, that is
+     `Identifier.parse` (`ClientboundRegistryDataPacket.STREAM_CODEC`,
+     `Identifier.bySeparator`, `javap` on the 26.3 client jar), so
+     `worldgen/biome` against `minecraft:worldgen/biome` is network
+     traffic only. Each `entries[].entry_id` gets the same namespace,
+     since `PackedRegistryEntry.STREAM_CODEC` reads it the same way
+     (`plains` against `minecraft:plains`). An id `Identifier.parse`
+     refuses (a namespace outside `[a-z0-9_.-]`, `..`, or a path outside
+     `[a-z0-9_./-]`) stays as sent: the client cannot read it and
+     disconnects.
 
    Considered and **not** encoded (strict until evidence says otherwise;
    see Open questions): an explicit `"type": "text"`; style
@@ -2704,8 +2717,9 @@ proves it necessary:
    two ways, so each is `missing` or `unexpected`, and shows
    `chunk <x> <z>` rather than its fields; a chunk the codec cannot
    read has the position of its first two Ints, if it has 8 bytes; and
-   the registry of a `registry_data` the codec read, #451: the client
-   collects each registry's entries apart, so a registry only one side
+   the registry of a `registry_data` the codec read, with the `minecraft`
+   namespace when it names none, as `Identifier.parse` reads it (#478),
+   #451: the client collects each registry's entries apart, so a registry only one side
    sends is one `missing` or `unexpected` packet and the others pair by
    registry), so as few packets as possible are reported `missing` or `unexpected`.
    Of the longest ones, the choice is fixed so that swapping the sides
@@ -2722,7 +2736,17 @@ proves it necessary:
    matches one for one; two matched packets on different ticks give one
    `field` Divergence at `TICK_PATH`, then the two packets' differences.
    For a chunk batch marker that Divergence is network traffic, as a
-   marker only one side sent is (#330, review A).
+   marker only one side sent is (#330, review A). So is a `registry_data`
+   only the Candidate sent for a registry outside `compare._SYNCHRONIZED_REGISTRIES`
+   (#478), when `Identifier.parse` reads its registry id and each entry
+   id: the client decodes it, then loads only the registries of
+   `RegistryDataLoader.SYNCHRONIZED_REGISTRIES`, each by `Map.get`, and
+   never loads another (`RegistryDataLoader.load`,
+   `NetworkRegistryLoadTask.load`, `javap` on the 26.3 client jar). One
+   with an id `Identifier.parse` refuses disconnects the client, so it
+   stays gameplay. A `missing` one stays gameplay too: vanilla sends
+   exactly the registries the client loads, so the Reference sending
+   another means that set is out of date.
    When both streams have ticks, they break ties (#229): of the longest
    alignments, the one with the most pairs on the same tick, so the copy
    of a repeated packet on a tick the other side lacks is the one left
