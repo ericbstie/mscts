@@ -1301,7 +1301,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   emptied; `recipe_book` — the `crafting/recipe-book` script. `LEARNER` — the Bot of
   `crafting/unlocking`; `BOOK_CHANGES` — the `recipe` commands that change its book in a window
   each; `OAK_PLANKS_ADVANCEMENT` — the advancement that unlocks oak planks; `unlocking` — the
-  `crafting/unlocking` script.
+  `crafting/unlocking` script; `grid_ctrl_q` — the `crafting/grid-ctrl-q` script, which plays
+  the Ctrl+Q cases of the `STATIONS` with `CRAFTER`, registered last of the module.
 - `groups.entities`: `WATCHER` — the Bot that is told about the entities; `PACKETS` — what a
   window compares (the spawn bundle, the data, attributes, equipment and head, the damage and
   death events, the removal); `summon_command` — the `/summon` of an entity type at a place with

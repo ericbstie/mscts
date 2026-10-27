@@ -33,7 +33,7 @@ PACKETS = (
 recipe the grid shows, and the recipes added to and taken from the recipe book."""
 
 CRAFTER = "crafter"
-"""The Bot of `crafting/grid`."""
+"""The Bot of `crafting/grid` and of `crafting/grid-ctrl-q`."""
 
 HOTBAR_0 = 36
 """The inventory menu's slot for the first hotbar slot (`InventoryMenu`: the result, the 2x2,
@@ -248,8 +248,8 @@ async def _ctrl_q(context: GroupContext, bot: Bot, station: Station) -> None:
 async def grid(context: GroupContext) -> None:
     """Items clicked into the 2x2 grid or a crafting table's 3x3 show a result, or none.
 
-    The Bot takes the result with a click, a shift-click, a number key and Q. The Ctrl+Q cases
-    come last, so a server that stops answering on one has the rest compared first.
+    The Bot takes the result with a click, a shift-click, a number key and Q. Ctrl+Q has its
+    own Group, `crafting/grid-ctrl-q`.
     """
     async with contextlib.AsyncExitStack() as undo:
         bot = await _stage(context, undo, CRAFTER)
@@ -264,8 +264,6 @@ async def grid(context: GroupContext) -> None:
         await _close_table(bot)
         for station in STATIONS:
             await _shift_click_number_key_and_q(context, bot, station)
-        for station in STATIONS:
-            await _ctrl_q(context, bot, station)
 
 
 # `crafting/recipe-book`
@@ -492,3 +490,21 @@ async def unlocking(context: GroupContext) -> None:
         for limited in (True, False):
             await _limited(context, bot, limited=limited)
         await _unlock_by_item(context, bot)
+
+
+# `crafting/grid-ctrl-q`
+
+
+@group("crafting/grid-ctrl-q")
+async def grid_ctrl_q(context: GroupContext) -> None:
+    """Ctrl+Q over a crafting result, in the 2x2 grid and in a crafting table.
+
+    It is a Group of its own because Pumpkin stops answering on Ctrl+Q over a crafting result:
+    the connection is lost, and a Group that loses it compares none of its cases. It is
+    registered last of `crafting`.
+    """
+    async with contextlib.AsyncExitStack() as undo:
+        bot = await _stage(context, undo, CRAFTER)
+        await _set_table(context, undo, bot)
+        for station in STATIONS:
+            await _ctrl_q(context, bot, station)
