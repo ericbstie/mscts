@@ -164,7 +164,7 @@ neither server. No shipped Group requires another yet.
 `Error` means mscts or vanilla failed. `Candidate failed` means the
 Candidate broke the protocol, sent a frame that did not decode, sent a
 value mscts could not compare with vanilla's, closed the connection, did
-not answer in time, lacked a command the Group requires (`Candidate
+not answer in time, during the Group or to a status request after it, lacked a command the Group requires (`Candidate
 failed: missing /tick`), failed a Group this one requires, or still had
 players online from the previous Group. In those last two cases, mscts
 plays the Group on vanilla only. If the Candidate's world stays frozen
@@ -179,10 +179,15 @@ A line before the totals names each server mscts restarted during the
 Run, such as `Restarted pumpkin after crafting/grid, because it did not
 answer a status request within 10 s.`
 
-Before each Group, mscts sends a status request to each server that has
-played one, and stops and starts again any server that does not answer
-within 10 seconds. The line names the last Group played on that server.
-The Groups after it play on the new server. A server restarted after the same Group in more than
+After each Group, mscts sends a status request to each server it started
+that played the Group. A server that does not answer within 10 seconds
+fails that Group as `Candidate failed: no answer to a status request
+within 10 s after the Group`, or makes it an `Error` if that server is
+vanilla. mscts then stops that server and starts it again before the
+next Group. The line names the Group after which it did not answer. The
+Groups after it play on the new server. A server that answers but still
+has a player online is not restarted, so each Group after it fails as
+`Candidate failed`. A server restarted after the same Group in more than
 one repetition has one line with the count, such as `Restarted pumpkin 5
 times after crafting/grid`.
 

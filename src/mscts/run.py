@@ -6,7 +6,7 @@ import dataclasses
 import json
 import logging
 import random
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
 
@@ -36,10 +36,11 @@ STOP_TIMEOUT_S = 30.0
 """How long each step of stopping an Instance may take (runner.running's `stop_timeout`)."""
 
 ANSWER_TIMEOUT_S = GROUP_TIMEOUT_S
-"""How long an Instance that played a Group may take to answer a status request before the next.
+"""How long an Instance may take to answer a status request after it played a Group.
 
-One that does not answer is stopped and launched again (#513). As long as a Bot operation:
-a server that takes longer would fail the next Group anyway.
+One that does not answer fails that Group, and is stopped and launched again before the next
+(#513). As long as a Bot operation: a server that takes longer would fail the next Group
+anyway.
 """
 
 LOG = logging.getLogger("mscts.run")
@@ -544,10 +545,11 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     launched in its own directory under `workdir` at an Endpoint of its own
     (`free_endpoint`) when a Group first needs it, and kept for every repetition.
     The Reference and Candidate Instances start together, and both are stopped at the
-    end, however the Run ends. Before each Group, an Instance that has played one and does
-    not answer a status request within ANSWER_TIMEOUT_S is stopped and launched again, so
-    a server that hung in one Group still plays the next (#513). An Attached side is
-    played at its Endpoint as it is, and neither started nor stopped.
+    end, however the Run ends. After each Group, an Instance it launched that played it is
+    sent a status request. One that does not answer within ANSWER_TIMEOUT_S fails that Group
+    (`_unanswered_verdict`), and is stopped and launched again before the next, so a server
+    that hung in one Group still plays the next (#513). An Attached side is played at its
+    Endpoint as it is, and neither started nor stopped.
 
     A statistical Group is played `runs` times on each side, the sides taking turns, for
     its one Verdict (`judge_samples`): in the first repetition only, whatever `repeat`
@@ -688,13 +690,15 @@ class _Launched:
         role: Its side: 0 for the Reference, 1 for the Candidate.
         spec: The `spec` of the Groups it plays.
         stop: Stops it when closed.
-        played: The last Group played on it, or None if none was yet.
+        played: The last Group played on it, until it is sent a status request; else None.
+        unanswered: The Group after which it did not answer that request, or None.
     """
 
     role: int
     spec: Callable[[ServerSpec], ServerSpec]
     stop: contextlib.AsyncExitStack
     played: str | None = None
+    unanswered: str | None = None
 
 
 class _Instances:
@@ -726,27 +730,27 @@ class _Instances:
         self._restarts: tuple[list[Restart], list[Restart]] = ([], [])
 
     async def start(self, group: Group) -> None:
-        """Make sure the Instances `group` plays against are up, and still answer.
+        """Make sure the Instances `group` plays against are up, restarting any that hung.
 
-        Each Instance the Run launched that has played a Group is sent a status request
-        first. One that does not answer within ANSWER_TIMEOUT_S, such as a server that hung
-        in that Group, is stopped and launched again (#513).
+        An Instance that did not answer a status request after the last Group it played
+        (`_answered`), such as a server that hung in that Group, is stopped and launched
+        again first (#513).
         """
         reference, candidate = await self._pair(group.spec)
-        answering = (await self._answering(reference), await self._answering(candidate))
-        self._pairs[_spec_key(group.spec)] = answering
+        restarted = (
+            await self._restarted_if_silent(reference),
+            await self._restarted_if_silent(candidate),
+        )
+        self._pairs[_spec_key(group.spec)] = restarted
 
-    async def _answering(self, endpoint: Endpoint) -> Endpoint:
-        """Where the Instance at `endpoint` is, after a restart if it no longer answers.
-
-        Only an Instance this Run launched and played a Group on is asked: an Attached one
-        is not the Run's to restart, and a new one has just answered its readiness probe.
-        """
+    async def _restarted_if_silent(self, endpoint: Endpoint) -> Endpoint:
+        """Where to play instead of `endpoint`: a new Instance, if the one there did not answer."""
         launched = self._launched.get(endpoint)
-        if launched is None or launched.played is None or await _answers(endpoint):
+        if launched is None or launched.unanswered is None:
             return endpoint
         why = f"did not answer a status request within {ANSWER_TIMEOUT_S:g} s"
-        return await self._restart(endpoint, launched, Restart(after=launched.played, reason=why))
+        restart = Restart(after=launched.unanswered, reason=why)
+        return await self._restart(endpoint, launched, restart)
 
     async def _restart(self, endpoint: Endpoint, launched: _Launched, restart: Restart) -> Endpoint:
         """Stop the Instance at `endpoint` and launch one in its place, for `restart`'s reason.
@@ -799,7 +803,7 @@ class _Instances:
             await self._attempt(group, role, endpoint) for role, endpoint in enumerate(endpoints)
         ]
         reference, candidate = (_transcript(attempt) for attempt in attempts)
-        verdict = judge(group, *attempts)
+        verdict = await self._answered(endpoints, judge(group, *attempts))
         return _Play(
             verdict,
             reference=tuple(measurements(reference)),
@@ -831,7 +835,7 @@ class _Instances:
             log.series() if failure is None else failure
             for log, failure in zip(logs, failed, strict=True)
         )
-        verdict = judge_samples(group, reference, candidate)
+        verdict = await self._answered(endpoints, judge_samples(group, reference, candidate))
         return _Play(verdict, elapsed_s=perf_counter() - started)
 
     async def _sampled_once(
@@ -863,10 +867,11 @@ class _Instances:
             samples = SampleLog()
             attempt = await self._attempt(group, 0, endpoint, samples=samples)
             sampled = attempt if isinstance(attempt, GroupError) else samples.series()
-            return _Play(_not_sampled(group, sampled, verdict), elapsed_s=perf_counter() - started)
+            judged = await self._answered((endpoint,), _not_sampled(group, sampled, verdict))
+            return _Play(judged, elapsed_s=perf_counter() - started)
         attempt = await self._attempt(group, 0, endpoint)
         return _Play(
-            _not_compared(group, attempt, verdict),
+            await self._answered((endpoint,), _not_compared(group, attempt, verdict)),
             reference=tuple(measurements(_transcript(attempt))),
             elapsed_s=perf_counter() - started,
         )
@@ -893,6 +898,36 @@ class _Instances:
         if isinstance(attempt, GroupError) and attempt.left_frozen:
             self._unusable[endpoint] = f"{group.id} left its world frozen"
         return attempt
+
+    async def _answered(self, endpoints: Sequence[Endpoint], verdict: Verdict) -> Verdict:
+        """`verdict`, failed for a side that does not answer a status request once it played.
+
+        `endpoints` are the Reference's, then the Candidate's if it was played. Each Instance
+        there the Run launched, and that played since it was last asked, is asked, both at
+        once (`_asked`); `_unanswered_verdict` says what the Verdict is then (#513).
+        """
+        try:
+            async with asyncio.TaskGroup() as group:
+                asked = [group.create_task(self._asked(endpoint)) for endpoint in endpoints]
+        except ExceptionGroup as failures:
+            raise failures.exceptions[0] from None
+        silent = {role for role, answered in enumerate(asked) if not answered.result()}
+        return _unanswered_verdict(verdict, silent, timeout_s=ANSWER_TIMEOUT_S)
+
+    async def _asked(self, endpoint: Endpoint) -> bool:
+        """Whether the Instance at `endpoint` answers a status request, if it played since asked.
+
+        Only an Instance this Run launched is asked: an Attached one is not the Run's to
+        restart. One that does not answer is restarted before the next Group (`start`).
+        """
+        launched = self._launched.get(endpoint)
+        if launched is None or launched.played is None:
+            return True
+        played, launched.played = launched.played, None
+        if await _answers(endpoint, timeout_s=ANSWER_TIMEOUT_S):
+            return True
+        launched.unanswered = played
+        return False
 
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
@@ -1064,13 +1099,42 @@ async def _attempt(
         return error
 
 
-async def _answers(endpoint: Endpoint) -> bool:
-    """Whether the Instance at `endpoint` answers a status request within ANSWER_TIMEOUT_S.
+def _unanswered_verdict(verdict: Verdict, silent: Collection[int], *, timeout_s: float) -> Verdict:
+    """`verdict`, unless the sides in `silent` (0, the Reference; 1) did not answer after playing.
+
+    They did not answer a status request within `timeout_s` once the Group was played (#513):
+
+    - The Reference did not: `error`, "the Reference gave no answer to a status request within
+      10 s after the Group", and the same for the Candidate after a "; " if it did not either.
+    - Only the Candidate did not: `mismatch`, its `failed` Divergence saying so after any
+      other, as for any Candidate failure (`judge`). A hang after the Group's last packet
+      still costs the Candidate the Group (review B1). Its detail is the first failure's.
+
+    An `error` stays as it is: the Reference or mscts had failed already.
+    """
+    if verdict.outcome is Outcome.ERROR or not silent:
+        return verdict
+    what = f"no answer to a status request within {timeout_s:g} s after the Group"
+    if 0 in silent:
+        detail = f"the Reference gave {what}"
+        if 1 in silent:
+            detail += f"; the Candidate gave {what}"
+        return Verdict(group_id=verdict.group_id, outcome=Outcome.ERROR, detail=detail)
+    return dataclasses.replace(
+        verdict,
+        outcome=Outcome.MISMATCH,
+        divergences=(*verdict.divergences, _failed(bot="", what=what)),
+        detail=verdict.detail or f"the Candidate failed: {what}",
+    )
+
+
+async def _answers(endpoint: Endpoint, *, timeout_s: float) -> bool:
+    """Whether the Instance at `endpoint` answers a status request within `timeout_s`.
 
     Any answer counts, even one that is not the Target's status: the server is not hung,
     and the next Group shows what it sends. A refused connection is no answer.
     """
-    probe = status_probe(TARGET, timeout_s=ANSWER_TIMEOUT_S)
+    probe = status_probe(TARGET, timeout_s=timeout_s)
     try:
         return await probe(endpoint)
     except (CodecError, ProtocolError):

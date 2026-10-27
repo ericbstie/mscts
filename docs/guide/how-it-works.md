@@ -45,10 +45,10 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
 4. **Compare.** mscts diffs the two Transcripts packet by packet and field by
    field. The result is a **Verdict**.
 5. **Repeat.** The Run plays every Group N times (five by default) against
-   the same pair of servers, then stops both. Before each Group, mscts sends
-   a status request to each server that has played one. A server that does
-   not answer within 10 seconds is stopped and started again, so a server
-   that hangs in one Group does not fail the Groups after it.
+   the same pair of servers, then stops both. After each Group, mscts sends
+   a status request to each server it started. A server that does not
+   answer within 10 seconds fails that Group, and mscts starts it again
+   before the next one.
 6. **Report.** mscts lists each differing test case once, then any skipped
    or failed Groups, any server it restarted, and the total Run time.
 
