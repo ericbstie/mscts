@@ -20,7 +20,7 @@ from mscts.compare import (
 )
 from mscts.measure import Measurement
 from mscts.report import Report
-from mscts.run import GroupResult, SideSummary
+from mscts.run import GroupResult, Restart, SideSummary
 from mscts.stats import Difference, Shares, Spread, Summary
 from mscts.target import TARGET
 
@@ -71,6 +71,32 @@ def test_a_report_reads_back_as_the_same_report() -> None:
     report = _report(_divergence("mscts", {"text": "mscts", "extra": [1, 2.5, True, None]}))
 
     assert report_json.loads(report_json.dumps(report)) == report
+
+
+RESTARTED = (
+    Restart("crafting/grid", "did not answer a status request within 10 s"),
+    Restart("blocks/door", "did not answer a status request within 10 s"),
+)
+
+
+def test_a_side_s_restarts_are_written_in_order_and_read_back() -> None:
+    report = _report()
+    report = replace(report, candidate=replace(report.candidate, restarts=RESTARTED))
+    text = report_json.dumps(report)
+
+    assert json.loads(text)["candidate"]["restarts"] == [
+        {"after": "crafting/grid", "reason": "did not answer a status request within 10 s"},
+        {"after": "blocks/door", "reason": "did not answer a status request within 10 s"},
+    ]
+    assert json.loads(text)["reference"]["restarts"] == []
+    assert report_json.loads(text) == report
+
+
+def test_a_report_json_from_before_513_reads_as_one_with_no_restarts() -> None:
+    data = json.loads(report_json.dumps(_report()))
+    del data["candidate"]["restarts"]
+
+    assert report_json.loads(json.dumps(data)).candidate.restarts == ()
 
 
 @pytest.mark.parametrize(

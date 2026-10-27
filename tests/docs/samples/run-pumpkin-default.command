@@ -7,3 +7,4 @@ Divergences of a test case (#254; 88 MB without). They are not trimmed to what t
 guide quotes: the .txt and .md are worked out from every Divergence the file holds.
 test_cases rewritten 2026-10-09 (#330): the status_response names only network traffic Divergences gave were dropped, as compare no longer lists them; lines, totals and the rendered output follow.
 Text re-rendered 2026-10-09 from the same report.json for the · mark of a line not scored (#330).
+report.json rewritten 2026-10-27 through report_json.dumps, adding each side's restarts (#513).

@@ -359,6 +359,11 @@ scored:
 A `result` is `pass`, `fail`, `not tested`, `error` or `not scored`. A Group's own line
 has its `reasons` instead of a `test_case`.
 
+`reference` and `candidate` each list their server's `restarts` in order,
+one entry per restart, such as `{"after": "crafting/grid", "reason": "did
+not answer a status request within 10 s"}`. A file an older mscts wrote
+has no `restarts`, and reads as one with none.
+
 `results` has one entry per Group, with each repetition's
 Verdict, its differences with both values, each server's
 Measurements, and its time in seconds in `elapsed_s`. A statistical
