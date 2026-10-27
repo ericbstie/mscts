@@ -1940,7 +1940,11 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # together (review B3: the two worlds keep the same history) in
     # <workdir>/restart-<n>/<reference|candidate>, n counting pair restarts, each at a new
     # free_endpoint(), with its own instance.startup Measurement; only a side that gave no
-    # answer gets a Restart. An Attached side is played at its endpoint for every Group, never started or
+    # answer gets a Restart. An unusable side (#228) is stopped and not launched again. A
+    # side whose launch raises RunnerError (review A1) gets no Restart and is unusable at its
+    # old Endpoint: "could not be started again after <group>: <RunnerError.reason>", so
+    # each later Group is the Candidate's `mismatch` or an `error`, and the Run goes on.
+    # An Attached side is played at its endpoint for every Group, never started or
     # stopped; the same code path otherwise (judge, prerequisite_verdict, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).

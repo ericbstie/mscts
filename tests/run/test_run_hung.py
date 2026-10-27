@@ -164,6 +164,66 @@ async def test_each_restart_has_a_directory_of_its_own_and_its_wait_in_whole_sec
     assert (tmp_path / "run/restart-2/reference").is_dir()
 
 
+SECOND = frozenset({2})
+"""The launches of a fake that exit at once: its restart (review A1)."""
+
+NOT_AGAIN = "could not be started again after test/hang: "
+"""How a side whose restart failed is said to be unusable, before the RunnerError's reason."""
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_cannot_be_started_again_fails_each_later_group(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    reference = fake_server("one")
+    candidate = fake_server("two", hangs_after_ping=HANGS, fails_launch=SECOND)
+
+    result = await run_results(
+        [HANG, BASIC], reference, candidate, workdir=tmp_path / "run", repeat=2
+    )
+
+    _, basic, hung, again = result.verdicts
+    assert basic.detail.startswith(f"the Candidate failed: {NOT_AGAIN}"), basic
+    assert "exited with code 3 before it was ready" in basic.detail
+    assert [basic.outcome, hung.outcome, again.outcome] == [Outcome.MISMATCH] * 3
+    assert basic.detail == hung.detail == again.detail
+    assert result.candidate.restarts == ()
+    assert len(_adapter(candidate).prepared) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_reference_that_cannot_be_started_again_makes_each_later_group_an_error(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    reference = fake_server("one", fails_launch=SECOND)
+    candidate = fake_server("two", hangs_after_ping=HANGS)
+
+    result = await run_results([HANG, BASIC], reference, candidate, workdir=tmp_path / "run")
+
+    basic = result.verdicts[1]
+    assert basic.outcome is Outcome.ERROR, basic
+    assert basic.detail.startswith(f"the Reference is unusable: {NOT_AGAIN}"), basic
+    why = f"did not answer a status request within {SHORT_S} s"
+    assert result.candidate.restarts == (Restart(after="test/hang", reason=why),)
+
+
+@pytest.mark.asyncio
+async def test_a_side_that_could_not_be_started_again_is_not_started_at_the_next_restart(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Its third launch would work, but it stays unusable for the rest of the Run (#228).
+    reference = fake_server("one", hangs_after_ping=HANGS)
+    candidate = fake_server("two", hangs_after_ping=HANGS, fails_launch=SECOND)
+
+    result = await run_results(
+        [HANG, BASIC], reference, candidate, workdir=tmp_path / "run", repeat=2
+    )
+
+    assert result.verdicts[3].detail.startswith(f"the Candidate failed: {NOT_AGAIN}")
+    assert len(_adapter(reference).prepared) == 3
+    assert len(_adapter(candidate).prepared) == 2
+
+
 @pytest.mark.asyncio
 async def test_a_status_that_is_not_the_target_s_is_still_an_answer() -> None:
     # The server is not hung: the next Group shows what it sends, so it is not restarted.

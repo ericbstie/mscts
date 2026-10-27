@@ -19,7 +19,7 @@ from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
 from mscts.measure import Measurement, measurements
 from mscts.net import Endpoint, ProtocolError
-from mscts.runner import free_endpoint, running
+from mscts.runner import RunnerError, free_endpoint, running
 from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
 from mscts.spec import ServerSpec
 from mscts.stats import PERMUTATION_SEED, Decision, SampleLog, Series, decide
@@ -562,7 +562,9 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
             it requires is not listed (`mscts.group.resolve` adds and orders them), or a
             Group needs a ServerSpec an Attached side was not launched from. Nothing was
             started.
-        RunnerError: An Instance could not be launched or did not become ready.
+        RunnerError: An Instance could not be launched or did not become ready. Not for a
+            restart: a side that cannot be launched again is unusable from then on, and each
+            later Group of its ServerSpec says so (`_unusable_verdict`).
     """
     _check(groups, (reference, candidate))
     plays: dict[str, list[_Play]] = {group.id: [] for group in groups}
@@ -692,14 +694,14 @@ class _Launched:
         endpoint: Where it is.
         stop: Stops it when closed.
         played: The last Group played on it, until it is sent a status request; else None.
-        unanswered: The Group after which it did not answer that request, or None.
+        unanswered: The restart it needs, if it did not answer that request, else None.
     """
 
     role: int
     endpoint: Endpoint
     stop: contextlib.AsyncExitStack
     played: str | None = None
-    unanswered: str | None = None
+    unanswered: Restart | None = None
 
 
 class _Instances:
@@ -739,38 +741,87 @@ class _Instances:
         launched again first, so the two worlds keep the same history (#513, review B3).
         """
         endpoints = await self._pair(group.spec)
-        launched = [
-            self._launched[endpoint] for endpoint in endpoints if endpoint in self._launched
-        ]
-        if any(instance.unanswered is not None for instance in launched):
-            self._pairs[_spec_key(group.spec)] = await self._restarted(group.spec, launched)
+        silent = {
+            launched.role: launched.unanswered
+            for launched in (self._launched.get(endpoint) for endpoint in endpoints)
+            if launched is not None and launched.unanswered is not None
+        }
+        if silent:
+            self._pairs[_spec_key(group.spec)] = await self._restarted(
+                group.spec, endpoints, silent
+            )
 
     async def _restarted(
-        self, spec: Callable[[ServerSpec], ServerSpec], launched: Sequence[_Launched]
+        self,
+        spec: Callable[[ServerSpec], ServerSpec],
+        endpoints: tuple[Endpoint, Endpoint],
+        silent: Mapping[int, Restart],
     ) -> tuple[Endpoint, Endpoint]:
-        """Stop the `launched` Instances of `spec`, and launch a pair in their place; its Endpoints.
+        """Stop the pair at `endpoints`, and launch one of `spec` in its place; where it is.
 
-        Each side whose Instance did not answer has its restart recorded (`_retire`).
-        An Attached side stays where it is.
+        `silent` maps each side that did not answer (0, the Reference; 1) to the restart that
+        calls for. An Attached side stays where it is, and so does an unusable one
+        (`_unusable_verdict`), stopped. The others are launched together (`_started_again`),
+        and each side's outcome is kept (`_relaunched`).
         """
-        for instance in launched:
-            self._retire(instance)
-            await instance.stop.aclose()
+        for role, restart in silent.items():
+            name = self._sides[role].name
+            LOG.warning("%s %s after %s: restarting both", name, restart.reason, restart.after)
+        for endpoint in endpoints:
+            await self._stopped(endpoint)
         self._relaunches += 1
-        return await self._launched_pair(spec, self._workdir / f"restart-{self._relaunches}")
+        where = self._workdir / f"restart-{self._relaunches}"
+        try:
+            async with asyncio.TaskGroup() as group:
+                again = [
+                    group.create_task(self._started_again(role, spec, where, endpoint))
+                    for role, endpoint in enumerate(endpoints)
+                ]
+        except ExceptionGroup as failures:
+            raise failures.exceptions[0] from None
+        reference, candidate = (
+            self._relaunched(role, endpoints[role], task.result(), silent)
+            for role, task in enumerate(again)
+        )
+        return reference, candidate
 
-    def _retire(self, instance: _Launched) -> None:
-        """Forget `instance`, about to stop, and record its side's restart if it did not answer.
+    async def _stopped(self, endpoint: Endpoint) -> None:
+        """Stop the Instance at `endpoint`, if the Run launched it and it still runs."""
+        launched = self._launched.pop(endpoint, None)
+        if launched is not None:
+            await launched.stop.aclose()
 
-        Its side's summary keeps the restart (`SideSummary.restarts`), for the Report.
+    async def _started_again(
+        self, role: int, spec: Callable[[ServerSpec], ServerSpec], where: Path, old: Endpoint
+    ) -> Endpoint | RunnerError:
+        """Launch side `role`'s Instance of `spec` again, in `where`; or why it could not be.
+
+        An Attached side is where it was (`_start`), and an unusable one stays at `old`.
         """
-        del self._launched[instance.endpoint]
-        if instance.unanswered is None:
-            return
-        why = f"did not answer a status request within {ANSWER_TIMEOUT_S:g} s"
-        name = self._sides[instance.role].name
-        LOG.warning("%s %s after %s: restarting both servers", name, why, instance.unanswered)
-        self._restarts[instance.role].append(Restart(after=instance.unanswered, reason=why))
+        if old in self._unusable:
+            return old
+        try:
+            return await self._start(role, spec, where / _ROLES[role])
+        except RunnerError as error:
+            return error
+
+    def _relaunched(
+        self, role: int, old: Endpoint, again: Endpoint | RunnerError, silent: Mapping[int, Restart]
+    ) -> Endpoint:
+        """Where side `role` plays now that its Instance at `old` was launched `again`.
+
+        A side launched again that did not answer has its restart recorded, for the Report
+        (`SideSummary.restarts`). A side that could not be launched again is unusable at
+        `old` from then on, so each later Group fails or is an `error` (`_unusable_verdict`),
+        and the Run goes on to its Report (review A1).
+        """
+        if isinstance(again, RunnerError):
+            after = next(iter(silent.values())).after
+            self._unusable[old] = f"could not be started again after {after}: {again.reason}"
+            return old
+        if role in silent and again != old:
+            self._restarts[role].append(silent[role])
+        return again
 
     async def play(self, group: Group, *, prerequisite_failed: Verdict | None = None) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it.
@@ -932,7 +983,8 @@ class _Instances:
         played, launched.played = launched.played, None
         if await _answers(endpoint, timeout_s=ANSWER_TIMEOUT_S):
             return True
-        launched.unanswered = played
+        why = f"did not answer a status request within {ANSWER_TIMEOUT_S:g} s"
+        launched.unanswered = Restart(after=played, reason=why)
         return False
 
     def _kept(self, verdict: Verdict) -> bool:

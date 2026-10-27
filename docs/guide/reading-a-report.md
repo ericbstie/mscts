@@ -173,6 +173,17 @@ them fails as `Candidate failed`.
 Different packet counts for a Bot also give the Group a
 line.
 
+The line names each distinct reason from the Group's repetitions once. It
+counts as one test case: a failing one, unless every reason is an `Error`.
+Then the line is marked `!` instead of ✗ and is not scored, because the
+fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
+failed also fails each test case that vanilla's play of it has in any
+repetition, including a Group mscts played on vanilla only. So a
+Candidate that crashes, lacks a command, fails a Group another requires,
+still has players online, leaves its world frozen, or sends something
+mscts cannot compare never scores better than one that sends every value
+wrong.
+
 ## Restarted servers
 
 A line before the totals names each server mscts restarted during the
@@ -186,22 +197,16 @@ within 10 s after the Group`, or makes it an `Error` if that server is
 vanilla. mscts then stops both servers and starts them again before the
 next Group, so the two still have the same history. The line names only
 the server that did not answer, and the Group after which it did not.
-The Groups after it play on the new servers. A server that answers but still
-has a player online is not restarted, so each Group after it fails as
-`Candidate failed`. A server restarted after the same Group in more than
-one repetition has one line with the count, such as `Restarted pumpkin 5
-times after crafting/grid`.
+The Groups after it play on the new servers. A server restarted after
+the same Group in more than one repetition has one line with the count,
+such as `Restarted pumpkin 5 times after crafting/grid`.
 
-The line names each distinct reason from the Group's repetitions once. It
-counts as one test case: a failing one, unless every reason is an `Error`.
-Then the line is marked `!` instead of ✗ and is not scored, because the
-fault lies with mscts or vanilla, not the Candidate. A Group the Candidate
-failed also fails each test case that vanilla's play of it has in any
-repetition, including a Group mscts played on vanilla only. So a
-Candidate that crashes, lacks a command, fails a Group another requires,
-still has players online, leaves its world frozen, or sends something
-mscts cannot compare never scores better than one that sends every value
-wrong.
+A server that answers but still has a player online is not restarted, so
+each Group after it fails as `Candidate failed`. A server that mscts
+cannot start again gets no line. Each later Group fails as `Candidate
+failed: could not be started again after crafting/grid`, followed by why,
+or is an `Error` if that server is vanilla, and the Run still ends with
+its Report.
 
 ## Total time
 
