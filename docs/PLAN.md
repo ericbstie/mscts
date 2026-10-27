@@ -1287,7 +1287,12 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   inventory menu's and a crafting table's slot of `inventory.0`; `RESULT` — the crafting
   result's slot; `TAKES` — how many times the Bot takes a result, a window each;
   `INVENTORY_TAKE` and `TABLE_TAKE` — the stacks it crafts from in the 2x2 grid (logs) and in a
-  crafting table (a stone pickaxe's); `grid` — the `crafting/grid` script.
+  crafting table (a stone pickaxe's); `LOGS` — three logs in one cell, for three crafts;
+  `Station` — a grid whose result the Bot shift-clicks, presses 1 over and drops (the menu's
+  slot of `inventory.0`, the stacks, whether it is a crafting table); `STATIONS` — the 2x2 grid
+  and a crafting table; `FILL_UP` — the commands that fill the Bot's inventory but for room for
+  two planks; `KILL_ITEMS` — what removes the items a window drops; `grid` — the
+  `crafting/grid` script.
   `BOOKWORM` — the Bot of `crafting/recipe-book`; `TABLE` — where its crafting table stands;
   `BOOK_RECIPES` — the recipes it is given, to read their display ids from `recipe_book_add`;
   `LOCKED` — the recipe taken from its book again; `Placement` — one recipe book click (the

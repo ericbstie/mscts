@@ -266,17 +266,22 @@ class InventoryTracker:
         A pickup on the crafting result takes the whole result, onto an empty cursor or onto a
         cursor of the same item with room for all of it, and one item from each grid cell that
         holds one (`ResultSlot.onTake`); the client does not craft, so the result stays empty
-        until the server sends the next one.
+        until the server sends the next one. A shift-click on the result moves it to the 27 and
+        the hotbar from the end, and uses one item from each cell, as the pickup does: it
+        crafts once on the client, which the server corrects if it crafted more. What does not
+        fit stays in the result: the client's drop of it changes nothing. A number key over
+        the result moves it to that empty slot, and Q drops all of it, Ctrl or not; each uses
+        one item from each cell. A number key whose slot holds a stack changes nothing.
 
         Raises:
             ValueError: The click cannot be sent as given (an unknown mode, a slot or button
                 out of range), or the Bot cannot predict it: a menu other than the inventory's,
                 a chest's, a dispenser's, a hopper's, a shulker box's or a crafting table's; a
-                click on the crafting result other than a pickup; a take from a grid that holds
-                an item with a crafting remainder (a bucket of milk, water or lava, a honey
-                bottle, dragon's breath); a bundle; a swap that puts the slot's stack elsewhere;
-                or a changed slot's or the cursor's stack with a component patch, which it
-                cannot hash. Nothing changes.
+                drag, a clone or a double click on the crafting result; a take from a grid that
+                holds an item with a crafting remainder (a bucket of milk, water or lava, a
+                honey bottle, dragon's breath); a bundle; a swap that puts the slot's stack
+                elsewhere; or a changed slot's or the cursor's stack with a component patch,
+                which it cannot hash. Nothing changes.
         """
         number = CLICK_MODES.get(mode)
         if number is None:
@@ -289,8 +294,8 @@ class InventoryTracker:
         if menu.layout is None or menu.menu not in _CLICK_MENUS:
             msg = f"the Bot does not predict a click in a {menu.menu} menu"
             raise ValueError(msg)
-        if menu.menu in _GRIDS and slot == _RESULT and number != _PICKUP:
-            msg = f"the Bot predicts no {mode} click on the crafting result, only a pickup"
+        if menu.menu in _GRIDS and slot == _RESULT and number not in _RESULT_CLICKS:
+            msg = f"the Bot does not predict a {mode} click on this crafting result"
             raise ValueError(msg)
         saved = (list(self._player), list(menu.own), menu.carried, menu.quickcraft_status)
         saved_drag = (menu.quickcraft_type, set(menu.quickcraft_slots))
@@ -469,10 +474,13 @@ _CLICK_MENUS = frozenset(
 """The menus whose `quickMoveStack` and slot rules the Bot predicts: `InventoryMenu`, `ChestMenu`,
 `DispenserMenu`, `HopperMenu`, `ShulkerBoxMenu` and `CraftingMenu`."""
 _TABLE = "minecraft:crafting"
-_TABLE_STORAGE, _TABLE_HOTBAR = 10, 37
-"""`CraftingMenu`'s first slot of the 27 and of the hotbar: the result and the 3x3 come first."""
+_TABLE_STORAGE, _TABLE_HOTBAR, _TABLE_END = 10, 37, 46
+"""`CraftingMenu`'s first slot of the 27 and of the hotbar, and its slot count: the result and the
+3x3 come first."""
 _GRIDS = MappingProxyType({None: range(1, _CRAFTING), _TABLE: range(1, _TABLE_STORAGE)})
 """The crafting menus' grid slots, by menu: each has its result in slot 0 (`ResultSlot`)."""
+_RESULT_CLICKS = frozenset({_PICKUP, _QUICK_MOVE, _SWAP, _THROW})
+"""The clicks on a crafting result the Bot predicts."""
 _OFF_HAND_BUTTON = 40
 """The swap button for the off hand (the F key): `Inventory` index 40."""
 _CONTAINER_MAX = 99
@@ -488,6 +496,11 @@ _INVENTORY_OFF_HAND = 45
 _INVENTORY_HOTBAR = 36
 _INVENTORY_END = 45
 _RESULT = 0
+_RESULT_TARGETS = MappingProxyType(
+    {None: (_INVENTORY_STORAGE, _INVENTORY_END, True), _TABLE: (_TABLE_STORAGE, _TABLE_END, True)}
+)
+"""Where each crafting menu's `quickMoveStack(0)` moves its result: the 27 and the hotbar, from
+the end."""
 _CRAFTING_REMAINDERS = frozenset(
     {
         "minecraft:water_bucket",
@@ -789,6 +802,7 @@ class _Click:
         if not moved:
             return None
         self.put(slot, _counted(held, left))
+        self.on_take(slot)
         return held
 
     def quick_move_targets(self, slot: int, held: Stack) -> tuple[tuple[int, int, bool], ...]:
@@ -796,6 +810,8 @@ class _Click:
 
         Each is a start, an end, and whether it fills from the end.
         """
+        if self.is_result(slot):
+            return (_RESULT_TARGETS[self.menu.menu],)
         if self.is_inventory:
             return (self.inventory_target(slot, held),)
         if self.menu.menu == _TABLE:
@@ -887,6 +903,7 @@ class _Click:
             if self.may_pickup(slot):
                 self.player[button] = held
                 self.put(slot, None)
+                self.on_take(slot)
         elif held is None:
             if not self.may_place(slot, theirs):
                 return
@@ -909,9 +926,16 @@ class _Click:
         self._require_slot(slot)
         held = self.get(slot)
         count = 1 if button == 0 else (0 if held is None else held.count)
-        taken = self.try_remove(slot, count, None)
+        taken = self.safe_take(slot, count)
         while button == 1 and taken is not None and _same_item(self.get(slot), taken):
-            taken = self.try_remove(slot, count, None)
+            taken = self.safe_take(slot, count)
+
+    def safe_take(self, index: int, count: int) -> Stack | None:
+        """`Slot.safeTake`: `try_remove`, then `on_take` if it took anything."""
+        taken = self.try_remove(index, count, None)
+        if taken is not None:
+            self.on_take(index)
+        return taken
 
     def pickup_all(self, slot: int, button: int) -> None:
         """A double click: gather the carried stack's kind from the menu, full stacks last."""
