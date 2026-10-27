@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 
@@ -303,6 +303,8 @@ is another."""
 LATE_TICKS = 4
 """How many ticks later a late player's answers come: more than a loop stall under load, so
 its barrier still ends after the others'."""
+POLL_S = 0.005
+"""How often a held-back answer looks at whether it may go (`Straggler.after`)."""
 ONE_BOT = "an until window can have only one Bot besides Control in play"
 
 
@@ -313,11 +315,14 @@ class Straggler:
     It joins like vanilla, with a command tree that has `tellraw`, and gives a marker its token
     back, as Control needs. It answers a statistics request like vanilla: the first of a barrier's
     at once, each other a tick (`TICK_S`) later. A player in `late` gets each answer `LATE_TICKS`
-    later still. Once a player has sent the command `straggle`, the last answer of its next
-    barrier is followed by a change_difficulty in the same write, so the Bot reads both at once.
+    later still, or, when `after` is given, only once `after()` is true: the test says there what
+    the Bots it waits for have read, so the order holds however long a Bot's loop stalls. Once a
+    player has sent the command `straggle`, the last answer of its next barrier is followed by a
+    change_difficulty in the same write, so the Bot reads both at once.
     """
 
     late: frozenset[str] = frozenset()
+    after: Callable[[], bool] | None = None
     seen: list[Packet] = field(default_factory=list)
 
     async def __call__(self, peer: Peer) -> None:
@@ -343,9 +348,16 @@ class Straggler:
         if (request - 1) % SYNC_REQUESTS != 0:
             await asyncio.sleep(TICK_S)
         if peer.name in self.late:
-            await asyncio.sleep(LATE_TICKS * TICK_S)
+            await self._hold_back()
         trailing = peer.raw_frame(DIFFICULTY, STRAGGLER) if straggles else b""
         await peer.write(peer.raw_frame(AWARD_STATS, NO_STATISTICS) + trailing)
+
+    async def _hold_back(self) -> None:
+        if self.after is None:
+            await asyncio.sleep(LATE_TICKS * TICK_S)
+            return
+        while not self.after():  # noqa: ASYNC110 - the Transcript has no event to wait on
+            await asyncio.sleep(POLL_S)
 
 
 def answers(transcript: Transcript, bot: str) -> list[int]:
@@ -404,7 +416,12 @@ async def test_a_later_end_of_controls_barrier_does_not_move_the_open_mark() -> 
 async def test_a_window_with_two_bots_opens_after_the_slower_bots_barrier() -> None:
     # What bob's barrier takes is still setup at bob, even after alice's barrier has ended.
     transcript = Transcript(group_id="test/until", server="fake")
-    async with playing(Straggler(late=frozenset({"bob"})), transcript) as context:
+
+    def alice_has_read_her_barrier() -> bool:
+        return len(answers(transcript, "alice")) >= SYNC_REQUESTS
+
+    straggler = Straggler(late=frozenset({"bob"}), after=alice_has_read_her_barrier)
+    async with playing(straggler, transcript) as context:
         await _joined(context, "alice")
         await _joined(context, "bob")
         async with context.observe():
