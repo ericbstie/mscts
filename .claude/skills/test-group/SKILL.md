@@ -128,8 +128,11 @@ with no `compared` line, and for a narrowed packet that is not in it.
    in a `finally`, because the Self-check tier and `mscts run` play every
    Group on the same two Instances. Push each undo on a
    `contextlib.AsyncExitStack` as its setting is made, so that one that
-   fails does not stop the rest. Put a case a Candidate may hang on
-   last, so the others are compared first.
+   fails does not stop the rest. A case a Candidate may hang on goes in
+   a Group of its own: a play that loses its connection scores none of
+   its Group's cases, wherever the hang comes (#512). Once the Group is
+   registered, play it once against the Candidate (`mscts run --candidate
+   <c> --group <id> --repeat 1`) to find such a case.
 6. The kind is `exact` unless the issue says `tick-exact` (#23) or
    `statistical` (#24).
 7. A span (`context.span`) ends when its body does, so it can time a

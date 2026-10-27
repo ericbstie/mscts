@@ -148,6 +148,9 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - A Group plays on when a server does something else (a container that does not open, a block that does not act): the windows show the difference. A guard that raises turns a Candidate's difference into an `error` (#41).
 - Check a reviewer's proposed fix against the jar before you build it, as you would your own facts: one rested on a server fact javap disproved (#41).
 - Give `scripts/mutate.py` `--timeout 280` for a Group's tests: the default 60 s left two mutants INVALID (#41).
+- Run the mutation sweep before the first push: a survivor's test then goes in its own commit, since an amend of a pushed commit is refused (#479).
+- A probe that looks at what the server sent reads it through the Bot (`bot.expect(..., where=lambda _: False)` with a short timeout, or a drain): `transcript.events` holds only packets the Bot took, so a probe that only sleeps sees none (#504).
+- A fenced block with no language in docs/guide must match a stored sample in tests/docs/samples (tests/docs/test_outputs.py): show a new Report line inline, or capture a real sample (#513).
 - Run live checks (Self-checks, `mscts run`) from a detached copy at the commit (`git worktree add --detach <path> <sha>`), never from the worktree you edit: a run waiting for the lock picks up edits made meanwhile (#487).
 - Before handing back a new Group, run it once on Pumpkin and check every test case name in its Report against `TITLES`: one run found six untitled names (#490).
 - Detach a long run with `setsid -f bash -c '…'`; a job started with `nohup … &` ignores SIGINT, which a test that interrupts it needs (#472).

@@ -36,6 +36,17 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-27 | #519 | runner | #519 (`scrutiny::high`) | a Candidate that hung after a Group's last packet was restarted before the next Group and lost no test case for the hang | the second review | no |
+| 2026-10-26 | #515 | tests | unknown | `test_a_window_with_two_bots_opens_after_the_slower_bots_barrier` failed once on its own precondition under the unit tier | a later issue's worker (#479's fix round, under `mise run commit`) | yes |
+| 2026-10-26 | #514 | Bot | unknown | the Bot reads `registry_data` ids as sent, so a short id the client reads the same can stop a click | the second review of #511 | yes |
+| 2026-10-26 | #513 | runner | unknown | a Candidate Instance that hangs in one Group stays in use, so every later Group of the Run times out | a later issue's worker (#447) | yes |
+| 2026-10-26 | #512 | Groups | #509 (`scrutiny::medium`) | Ctrl+Q cases in `crafting/grid` hang Pumpkin, so the Group's other cases score none | #509's worker | no, deferred to #512 |
+| 2026-10-26 | #511 | comparison core | #511 (`scrutiny::high`) | an `unexpected` `registry_data` with an id the client cannot parse counted as network traffic | the first review, the second review | no |
+| 2026-10-26 | #507 | Groups | unknown | `time/sleep`'s wake window could return an `animate` read before the window opened | the first review, the second review of #493 | yes |
+| 2026-10-26 | #506 | comparison core | #506 (`scrutiny::high`) | the refusal of `tags[r→c].entries[i]` offered a Mask that hides nothing | the second review | no |
+| 2026-10-26 | #505 | comparison core | #505 (`scrutiny::high`) | a value cut at the 256th level showed in the Report as a quoted Python repr, as if a server had sent that text | the second review | no |
+| 2026-10-26 | #497 | Candidate | none | Pumpkin 5e9101f kicks a Bot with "Wrong teleport id" in 24 of 30 hopper Runs; vanilla accepts the same acknowledgements 640 of 640 | #497's worker | not a harness bug: the Candidate's `mismatch` |
+| 2026-10-24 | #469 | Groups | #466 (`scrutiny::medium`) | `time/sleep` drained a `set_time` the clock read after the window opened, so the window held one more than the Group counted | the lead's review of #466 | yes |
 | 2026-10-22 | #462 | comparison core | #460 (`scrutiny::high`) | a recipe removed or put in another group passes when the book was replaced, or the recipe taken and given back, outside the windows first | the second review, the third review | no |
 | 2026-10-22 | #457 | Groups | #457 (`scrutiny::high`) | `player/drowning` timed the turn-on of `drowning_damage` on the wall clock, so a vanilla server catching up got a round of bubbles without a hit | the first review | no |
 | 2026-10-22 | #463 | Groups | unknown | the respawn window can catch `entity_event` 60 on one Instance only, in three player Groups | the first review of #457 | yes |
@@ -88,6 +99,16 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #519 |  | high | first review, second review; the lead's diff read of the fix round | 1, 0 (fixed: a Candidate that hung after a Group's last packet was restarted and lost nothing; the check now runs after the play, before its Verdict) | none: no Group change; mutation sweeps 23 of 25 and 24 of 26 (the survivors equivalent); reference tier 37 of 37, candidate tier 15 of 15; live `crafting/*` on Pumpkin on main and head |
+| #518 |  | medium | the lead's diff read | 0 | none: no Group change; mutation sweep 11 of 11; reference tier 37 of 37, candidate tier 15 of 15 on the stack |
+| #517 |  | medium | the lead's diff read | 0 | Self-check `crafting/grid` and `crafting/grid-ctrl-q` 20 of 20 once each under `--stress`; mutation sweep 9 of 9; Pumpkin `crafting/grid` 0 to 12 passed |
+| #511 |  | high | first review, second review; the lead's diff read of the fix round | 1, 1 (the same bug, fixed: an `unexpected` `registry_data` with an id the client cannot parse became network traffic, though the client disconnects on it) | none: no window change; mutation sweeps 10 of 10 and 26 of 26; reference tier 37 of 37 with the new pin of the registries vanilla sends |
+| #510 |  | medium | the lead's diff read | 0 | Self-check `time/sleep` 20 of 20 five times under `--stress`; mutation sweep 5 of 5 |
+| #509 | medium | medium | the lead's diff read | 0 | Self-check `crafting/grid` 20 of 20 once under `--stress`; mutation sweeps 17 of 18 (the survivor pinned) and 14 of 14; Pumpkin 14 to 0 passed on `crafting/grid` (it hangs on Ctrl+Q), left to #512 |
+| #508 |  | low | the lead's diff read | 0 | none; candidate tier 15 of 15 on Pumpkin 5e9101f |
+| #493 |  | high | first review, second review; the lead's diff read of the fix round | 0, 0 (one should-fix: no test of a `set_time` stamped at the open Mark; added) | Self-check `time/sleep` 20 of 20 five times under `--stress` on the fixed head (958 to 978 s a run); mutation sweep 10 of 10 |
+| #506 |  | high | first review, second review; the lead's diff read of the fix round | 0, 1 (fixed: for `tags[r→c].entries[i]` the refusal offered a Mask that moved the Divergence onto an id both servers sent) | none: no Group change; mutation sweeps 7 of 8 (1 INVALID) and 9 of 9; reference tier 36 of 36 |
+| #505 |  | high | first review, second review; the lead's diff read of the fix round | 0, 0 (one should-fix: a cut value showed in the Report as a quoted Python repr; fixed) | none: no Group change; mutation sweeps 13 (2 survivors, then killed) and 18 (1 survivor, then killed); reference tier 36 of 36 |
 | #501 |  | high | first review, second review; the lead's diff read of the fix round | 0, 1 (fixed: a dropper that never took the item out of its own slot passed, since no Bot held the dropper open) | none: no barrier or window change; Self-check 20 of 20 after the fixes; a stressed Self-check 20 of 20 in review A; mutation sweep 21 of 21 before the fixes; the 14 `redstone/*` Groups 3 of 3 and reference tier 36 of 36 on the train's tip |
 | #500 |  | low | the lead's diff read | 0 | none: test helpers only; six reference tests once from a detached copy |
 | #499 |  | low | the lead's diff read | 0 | none: tooling; 62 unit tests of `repeat.py`; mutation sweep 28 of 28; each new flag used live once |
