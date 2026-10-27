@@ -14,7 +14,8 @@
         "value": 23719.983328
       }
     ],
-    "installed_version": null
+    "installed_version": null,
+    "restarts": []
   },
   "candidate": {
     "name": "pumpkin",
@@ -26,7 +27,8 @@
         "value": 75.937704
       }
     ],
-    "installed_version": null
+    "installed_version": null,
+    "restarts": []
   },
   "lines": [
     {

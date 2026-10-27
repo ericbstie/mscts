@@ -23,12 +23,16 @@ class FakeAdapter:
     """An Adapter whose Instances are tests/run/status_fake.py processes.
 
     The description the fake answers with is `description`, or else the spec's motd.
-    Every ServerSpec it prepares is kept in `prepared`.
+    Every ServerSpec it prepares is kept in `prepared`. Given `hangs_after_ping`, each of
+    its Instances hangs after it pongs a ping of that payload (status_fake.py). The
+    Instances it prepares `fails_launch` (counting from 1) exit with code 3 at once.
     """
 
     name: str
     token: str
     description: str | None = None
+    hangs_after_ping: int | None = None
+    fails_launch: frozenset[int] = frozenset[int]()
     prepared: list[ServerSpec] = field(default_factory=list)
     binary: str = "status_fake.py"
     latest_aliases: frozenset[str] = frozenset[str]()
@@ -47,16 +51,16 @@ class FakeAdapter:
         workdir.mkdir(parents=True)
         self.prepared.append(spec)
         description = self.description if self.description is not None else spec.motd
+        hang = () if self.hangs_after_ping is None else (str(self.hangs_after_ping),)
+        serve = (str(STATUS_FAKE), spec.host, str(spec.port), description, *hang)
+        fails = ("-c", "raise SystemExit(3)")
         return LaunchPlan(
             # -I -S: isolated and without site, so it starts fast and sees only its env.
             argv=(
                 sys.executable,
                 "-I",
                 "-S",
-                str(STATUS_FAKE),
-                spec.host,
-                str(spec.port),
-                description,
+                *(fails if len(self.prepared) in self.fails_launch else serve),
             ),
             cwd=workdir,
             env={TOKEN_VAR: self.token},

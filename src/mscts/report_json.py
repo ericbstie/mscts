@@ -34,7 +34,7 @@ from mscts.compare import (
 )
 from mscts.measure import Measurement
 from mscts.report import GroupLine, Line, Report, Totals, report_lines, totals
-from mscts.run import GroupResult, SideSummary
+from mscts.run import GroupResult, Restart, SideSummary
 from mscts.stats import Difference, Shares, Spread, Summary
 from mscts.target import Target
 
@@ -118,6 +118,7 @@ def _side(side: SideSummary) -> dict[str, object]:
         "version": side.version,
         "startup": _measurements(side.startup),
         "installed_version": side.installed_version,
+        "restarts": [{"after": item.after, "reason": item.reason} for item in side.restarts],
     }
 
 
@@ -370,6 +371,16 @@ def _read_side(data: _Object) -> SideSummary:
         data.maybe_text("version"),
         _read_measurements(data, "startup"),
         data.maybe_text("installed_version"),
+        _read_restarts(data),
+    )
+
+
+def _read_restarts(data: _Object) -> tuple[Restart, ...]:
+    """A side's restarts; none in a report.json written before #513, which has no key for them."""
+    if "restarts" not in data.entries():
+        return ()
+    return tuple(
+        Restart(item.text("after"), item.text("reason")) for item in data.objects("restarts")
     )
 
 

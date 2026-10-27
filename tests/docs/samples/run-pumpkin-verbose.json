@@ -14,7 +14,8 @@
         "value": 15301.975663
       }
     ],
-    "installed_version": "26.3 (sha256 d052f14d…)"
+    "installed_version": "26.3 (sha256 d052f14d…)",
+    "restarts": []
   },
   "candidate": {
     "name": "pumpkin",
@@ -26,7 +27,8 @@
         "value": 51.197445
       }
     ],
-    "installed_version": "nightly 4426d11 (sha256 b8382a8a…)"
+    "installed_version": "nightly 4426d11 (sha256 b8382a8a…)",
+    "restarts": []
   },
   "lines": [
     {

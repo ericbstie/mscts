@@ -45,9 +45,12 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
 4. **Compare.** mscts diffs the two Transcripts packet by packet and field by
    field. The result is a **Verdict**.
 5. **Repeat.** The Run plays every Group N times (five by default) against
-   the same pair of servers, then stops both.
+   the same pair of servers, then stops both. After each Group, mscts sends
+   a status request to each server it started. A server that does not
+   answer within 10 seconds fails that Group, and mscts starts both servers
+   again before the next one, so the two still have the same history.
 6. **Report.** mscts lists each differing test case once, then any skipped
-   or failed Groups and the total Run time.
+   or failed Groups, any server it restarted, and the total Run time.
 
 If the mscts process is forcibly killed, its servers may keep running. The
 next time mscts launches an Instance with the same cache, it checks their

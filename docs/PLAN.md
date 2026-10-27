@@ -1854,6 +1854,7 @@ Running Groups (`run.py`):
 GROUP_TIMEOUT_S = 10.0              # each Bot operation (Bot timeout_s)
 READY_TIMEOUT_S = 120.0             # an Instance's readiness (a cold vanilla boot)
 STOP_TIMEOUT_S = 30.0               # each stop step
+ANSWER_TIMEOUT_S = GROUP_TIMEOUT_S  # #513: an Instance's status answer after each Group
 
 class GroupError(Exception):        # the Group raised against one Instance; __cause__ is
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
@@ -1928,6 +1929,21 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
+    # #513: once a Group is played, each launched Instance that played it gets one
+    # status_probe(TARGET, timeout_s=ANSWER_TIMEOUT_S), both sides at once; any answer
+    # counts (a ProtocolError or CodecError too). The Reference giving none makes the
+    # Verdict `error` ("the Reference gave no answer to a status request within 10 s after
+    # the Group"; the Candidate's after a "; "); the Candidate alone giving none makes it
+    # `mismatch`, a `failed` Divergence saying so after any other, the detail the first
+    # failure's; an `error` stays as it is. Before the next Group of that ServerSpec, if
+    # either of the pair gave none, both launched Instances are stopped and launched again
+    # together (review B3: the two worlds keep the same history) in
+    # <workdir>/restart-<n>/<reference|candidate>, n counting pair restarts, each at a new
+    # free_endpoint(), with its own instance.startup Measurement; only a side that gave no
+    # answer gets a Restart. An unusable side (#228) is stopped and not launched again. A
+    # side whose launch raises RunnerError (review A1) gets no Restart and is unusable at its
+    # old Endpoint: "could not be started again after <group>: <RunnerError.reason>", so
+    # each later Group is the Candidate's `mismatch` or an `error`, and the Run goes on.
     # An Attached side is played at its endpoint for every Group, never started or
     # stopped; the same code path otherwise (judge, prerequisite_verdict, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
@@ -3009,6 +3025,11 @@ class GroupResult:
                                       # is not match and both sides played, else None (#162)
 
 @frozen
+class Restart:                      # #513: an Instance stopped and launched again before a Group
+    after: str                      # the last Group played on the one stopped
+    reason: str                     # after "it": "did not answer a status request within 10 s"
+
+@frozen
 class SideSummary:
     name: str                       # adapter name
     version: str | None             # version.name of its first status_response (lenient)
@@ -3016,6 +3037,7 @@ class SideSummary:
                                       # launched Instance; none for an Attached side
     installed_version: str | None = None # "nightly 4426d11 (sha256 b8382a8a…)": its Installation's
                                          # Build and short sha256; the full sha256 without a Build
+    restarts: tuple[Restart, ...] = ()   # each restart of its Instances, in order (#513)
 
 @frozen
 class RunResult:
@@ -3089,6 +3111,8 @@ def totals(results: Iterable[Line]) -> Totals: ...
 # verdict has `omitted` (after divergences), the count left out, which Verdict.omitted
 # holds when read back; dumps(loads(text)) == text. loads reads a missing `omitted` as 0
 # (a file from before #254 kept every Divergence) and refuses a negative or non-integer one.
+# Each side has `restarts` (after installed_version): [{"after": group, "reason": text}] in
+# order (#513); loads reads a side without the key as no restarts.
 MAX_PER_TEST_CASE: int
 def dumps(report: Report) -> str: ...
 def loads(text: str) -> Report: ...
@@ -3117,6 +3141,9 @@ def render_markdown(report: Report, *, verbose: bool = False) -> str: ...
 # " (network traffic only)" when it passed that way, " (network traffic only, not
 # scored)" for NOT_SCORED (#330); a Group line is
 # "✗ <group> <reasons>", or "! <group> <reasons>" for an ERROR, which is not scored. Then
+# (#513) one line per distinct SideSummary.restarts entry, the Reference's first:
+# "Restarted <name>[ <n> times] after <group>, because it <reason>." (in report.md one
+# paragraph joined by hard breaks, the Group as code). Then
 # "<p> passed, <f> failed[ (<n> not tested)]. (<percent>%)" with the percent rounded down
 # to tenths (".0" dropped), and no "(…%)" when nothing was scored; then
 # "<e> error[s] (not scored)" when there are errors; and last "Took <seconds> s", rounded

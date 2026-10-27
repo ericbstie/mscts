@@ -5,3 +5,4 @@ Text re-rendered 2026-10-03 from the same report.json for one line per test case
 report.json rewritten 2026-10-03 through report_json.dumps, adding lines and totals (#101).
 join/basic's blocked repetitions list two test cases of vanilla's play 2026-10-04 (#285); re-rendered.
 join/basic fails as a Candidate failure of its prerequisite 2026-10-04 (#285 review B); re-rendered.
+report.json rewritten 2026-10-27 through report_json.dumps, adding each side's restarts (#513).

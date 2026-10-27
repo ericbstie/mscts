@@ -164,7 +164,7 @@ neither server. No shipped Group requires another yet.
 `Error` means mscts or vanilla failed. `Candidate failed` means the
 Candidate broke the protocol, sent a frame that did not decode, sent a
 value mscts could not compare with vanilla's, closed the connection, did
-not answer in time, lacked a command the Group requires (`Candidate
+not answer in time, during the Group or to a status request after it, lacked a command the Group requires (`Candidate
 failed: missing /tick`), failed a Group this one requires, or still had
 players online from the previous Group. In those last two cases, mscts
 plays the Group on vanilla only. If the Candidate's world stays frozen
@@ -183,6 +183,30 @@ Candidate that crashes, lacks a command, fails a Group another requires,
 still has players online, leaves its world frozen, or sends something
 mscts cannot compare never scores better than one that sends every value
 wrong.
+
+## Restarted servers
+
+A line before the totals names each server mscts restarted during the
+Run, such as `Restarted pumpkin after crafting/grid, because it did not
+answer a status request within 10 s.`
+
+After each Group, mscts sends a status request to each server it started
+that played the Group. A server that does not answer within 10 seconds
+fails that Group as `Candidate failed: no answer to a status request
+within 10 s after the Group`, or makes it an `Error` if that server is
+vanilla. mscts then stops both servers and starts them again before the
+next Group, so the two still have the same history. The line names only
+the server that did not answer, and the Group after which it did not.
+The Groups after it play on the new servers. A server restarted after
+the same Group in more than one repetition has one line with the count,
+such as `Restarted pumpkin 5 times after crafting/grid`.
+
+A server that answers but still has a player online is not restarted, so
+each Group after it fails as `Candidate failed`. A server that mscts
+cannot start again gets no line. Each later Group fails as `Candidate
+failed: could not be started again after crafting/grid`, followed by why,
+or is an `Error` if that server is vanilla, and the Run still ends with
+its Report.
 
 ## Total time
 
@@ -345,6 +369,11 @@ scored:
 
 A `result` is `pass`, `fail`, `not tested`, `error` or `not scored`. A Group's own line
 has its `reasons` instead of a `test_case`.
+
+`reference` and `candidate` each list their server's `restarts` in order,
+one entry per restart, such as `{"after": "crafting/grid", "reason": "did
+not answer a status request within 10 s"}`. A file an older mscts wrote
+has no `restarts`, and reads as one with none.
 
 `results` has one entry per Group, with each repetition's
 Verdict, its differences with both values, each server's
