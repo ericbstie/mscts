@@ -96,7 +96,7 @@ def key_paths(document: Mapping[str, object], prefix: str = "") -> Iterator[str]
 
 
 def test_the_pinned_defaults_render_as_pumpkins_first_run_file_byte_for_byte() -> None:
-    # pumpkin/pumpkin.toml is what the nightly (commit 9c04f71) wrote on its first run. The
+    # pumpkin/pumpkin.toml is what the nightly (commit 5e9101f) wrote on its first run. The
     # renderer reproduces Pumpkin's own serialization of it exactly.
     pristine = resources.files("mscts.adapters.pumpkin").joinpath("pumpkin.toml")
     assert toml_document(pumpkin_defaults()) == pristine.read_text(encoding="utf-8")

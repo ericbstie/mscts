@@ -7,15 +7,19 @@ Instance silently.
 
 | | |
 | --- | --- |
-| Binary | `pumpkin-X64-Linux` of the `nightly` release, sha256 `2f2369d8e7dc7843163d55dab4b3cff50e97b67cb73f8bf2dceefe6cdde2ca9c`, 117,583,512 bytes |
-| Version | `0.2.0+26.3-26.51`, commit `9c04f714bb7eb26579c652f9744895d465ee902b`: Java 26.3, protocol 777 |
-| Generated | 2026-10-24, by running the binary once with an empty environment (`PATH` only) in an empty directory inside a new network namespace (`unshare -rn`), so its pristine defaults (`0.0.0.0:25565`, telemetry, Bedrock) could reach nothing. It stopped on its own at the Bedrock UDP socket, which the namespace has no address family for; `pumpkin.toml` was written before that |
-| sha256 | `419ecc145fe888b3bf3d35d99de6bb8037609284903d91c64f2aceec3d9f0acc` |
+| Binary | `pumpkin-X64-Linux` of the `nightly` release, sha256 `da7ce80d05a254fe8ee66848bfefdc3ed64beaa24029da13ae847e5fad8c27b8`, 120,469,824 bytes |
+| Version | `0.2.1+26.3-26.51`, commit `5e9101f350245f6faa656a6b0676a99b4a40f2e1`: Java 26.3, protocol 777 |
+| Generated | 2026-10-26, by running the binary once with an empty environment (`PATH` only) in an empty directory inside a new network namespace (`unshare -rn`), so its pristine defaults (`0.0.0.0:25565`, telemetry, Bedrock) could reach nothing. It stopped on its own at the Bedrock UDP socket, which the namespace has no address family for; `pumpkin.toml` was written before that |
+| sha256 | `44bd52d80a0c359ec9fc576e57953638eeae5c0a10f43cab6f92bd111eac7cbd` |
 
 `seed` is random on every first run; every ServerSpec overrides it.
 
-The previous copy came from commit `f1c0871` (2026-10-07). This one differs
-from it only in `seed` and in `[world]`:
+The previous copy came from commit `9c04f71` (2026-10-24). This one differs
+from it only in `seed`: the nightly of 2026-10-26 added no key, and renamed
+and removed none.
+
+The copy before that came from commit `f1c0871` (2026-10-07). Against it,
+both later copies differ in `seed` and in `[world]`:
 
 - `[world.chunk]` has `type = "pump"` (Pumpkin's own format), where the
   previous copy had `"anvil"`. `"pump"` has no options, so

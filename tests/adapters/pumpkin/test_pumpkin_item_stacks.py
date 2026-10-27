@@ -33,13 +33,13 @@ from mscts import install
 from mscts.adapters.base import Build
 from mscts.adapters.pumpkin import PumpkinAdapter
 from mscts.bot import Bot
-from mscts.codec.packets import CodecError, Packet
+from mscts.codec.packets import CodecError
 from mscts.codec.wire import WireError
 from mscts.runner import Instance
 from mscts.target import TARGET
 from mscts.transcript import Transcript
 
-RECORDED_AGAINST = Build(version="nightly", commit="8ea2b7d1c81e977443de85d60a54155a43e9453b")
+RECORDED_AGAINST = Build(version="nightly", commit="5e9101f350245f6faa656a6b0676a99b4a40f2e1")
 """The Pumpkin build the three tables below were recorded against."""
 
 MALFORMED = frozenset(
@@ -65,22 +65,23 @@ MALFORMED = frozenset(
 )
 """Rows whose stack arrives in bytes `SLOT` does not decode (Pumpkin 26.3, as run)."""
 
-SILENT = frozenset({"hidden effect", "potion_contents", "removed"})
-"""Rows for which no stack arrives: Pumpkin does not take the command."""
-
-DIFFERENT: dict[str, tuple[str, ...]] = dict.fromkeys(
-    (
+SILENT = frozenset(
+    {
         "compostable",
         "consume effects",
         "custom_name",
         "direct instrument",
         "direct sound",
+        "hidden effect",
         "jukebox_playable",
+        "potion_contents",
         "sulfur_cube_content",
-    ),
-    (),
+    }
 )
-"""Rows whose stack arrives and decodes, with these components (none) instead of vanilla's."""
+"""Rows for which no stack arrives: Pumpkin does not take the command."""
+
+DIFFERENT: dict[str, tuple[str, ...]] = {}
+"""Rows whose stack arrives and decodes, with other components than vanilla's (none, as run)."""
 
 
 def _slashed(give: Give) -> bool:
@@ -162,11 +163,14 @@ async def test_the_stacks_pumpkin_sends_for_a_command_decode_as_recorded(
 @pytest.mark.candidate
 @pytest.mark.asyncio
 @pytest.mark.timeout(120)
-async def test_pumpkin_never_answers_a_give_of_a_component_with_a_slash_in_its_name(
+async def test_pumpkin_answers_a_give_of_a_component_with_a_slash_in_its_name(
     cache_dir: Path, tmp_path: Path
 ) -> None:
-    # Its parser spins a worker thread for good (one of as many as the machine has cores, so a
-    # few such commands stop the server): the rows with a slash are not played with the others.
+    # What changed: through nightly 9c04f71 its parser spun a worker thread for good on such a
+    # name (one of as many as the machine has cores, so a few commands stopped the server) and
+    # the give was never answered; this test then expected a TimeoutError. Nightly 5e9101f
+    # answers with the stack vanilla sends: all 30 such rows did in one Instance, which stopped
+    # at once. The rows are still played apart from the others, one Instance for this one.
     (give,) = (give for give in GIVES if give.label == "cushion/color")
     async with (
         booted(
@@ -176,11 +180,10 @@ async def test_pumpkin_never_answers_a_give_of_a_component_with_a_slash_in_its_n
             operators=(OPERATOR,),
             stop_timeout=5,
         ) as instance,
-        operator_bot(instance, "pumpkin") as (bot, _),
+        operator_bot(instance, "pumpkin") as (bot, transcript),
     ):
-        await bot.command(f"give {OPERATOR} minecraft:{give.argument}")
-        with pytest.raises(TimeoutError):
-            await bot.expect("minecraft:container_set_slot", timeout_s=3, where=_a_stack)
+        payloads = await given_slots(bot, transcript, give.argument, wait_s=3.0)
+    assert _classify(give, payloads) == ("decoded", give.added)
 
 
 async def _fresh_operator(
@@ -213,7 +216,3 @@ async def _clear_unread(bot: Bot, held: contextlib.AsyncExitStack) -> None:
     await bot.command(f"clear {OPERATOR}")
     await asyncio.sleep(1.0)
     await held.aclose()
-
-
-def _a_stack(packet: Packet) -> bool:
-    return bool(stacks_of(read_slots([packet.payload])))
