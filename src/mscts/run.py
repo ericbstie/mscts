@@ -38,8 +38,8 @@ STOP_TIMEOUT_S = 30.0
 ANSWER_TIMEOUT_S = GROUP_TIMEOUT_S
 """How long an Instance may take to answer a status request after it played a Group.
 
-One that does not answer fails that Group, and is stopped and launched again before the next
-(#513). As long as a Bot operation: a server that takes longer would fail the next Group
+One that does not answer fails that Group, and its pair is stopped and launched again before
+the next (#513). As long as a Bot operation: a server that takes longer would fail the next Group
 anyway.
 """
 
@@ -547,8 +547,9 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     The Reference and Candidate Instances start together, and both are stopped at the
     end, however the Run ends. After each Group, an Instance it launched that played it is
     sent a status request. One that does not answer within ANSWER_TIMEOUT_S fails that Group
-    (`_unanswered_verdict`), and is stopped and launched again before the next, so a server
-    that hung in one Group still plays the next (#513). An Attached side is played at its
+    (`_unanswered_verdict`). Before the next, both Instances of its pair are stopped and
+    launched again together, so a server that hung in one Group still plays the next, and
+    the two worlds keep the same history (#513). An Attached side is played at its
     Endpoint as it is, and neither started nor stopped.
 
     A statistical Group is played `runs` times on each side, the sides taking turns, for
@@ -688,14 +689,14 @@ class _Launched:
 
     Attributes:
         role: Its side: 0 for the Reference, 1 for the Candidate.
-        spec: The `spec` of the Groups it plays.
+        endpoint: Where it is.
         stop: Stops it when closed.
         played: The last Group played on it, until it is sent a status request; else None.
         unanswered: The Group after which it did not answer that request, or None.
     """
 
     role: int
-    spec: Callable[[ServerSpec], ServerSpec]
+    endpoint: Endpoint
     stop: contextlib.AsyncExitStack
     played: str | None = None
     unanswered: str | None = None
@@ -728,43 +729,48 @@ class _Instances:
         self._unusable: dict[Endpoint, str] = {}  # why no Group may play there any more
         self._launched: dict[Endpoint, _Launched] = {}
         self._restarts: tuple[list[Restart], list[Restart]] = ([], [])
+        self._relaunches = 0  # how many times a pair was launched again (`_restarted`)
 
     async def start(self, group: Group) -> None:
-        """Make sure the Instances `group` plays against are up, restarting any that hung.
+        """Make sure the Instances `group` plays against are up, restarting both if one hung.
 
-        An Instance that did not answer a status request after the last Group it played
-        (`_answered`), such as a server that hung in that Group, is stopped and launched
-        again first (#513).
+        If an Instance of the pair did not answer a status request after the last Group it
+        played (`_answered`), such as a server that hung in that Group, both are stopped and
+        launched again first, so the two worlds keep the same history (#513, review B3).
         """
-        reference, candidate = await self._pair(group.spec)
-        restarted = (
-            await self._restarted_if_silent(reference),
-            await self._restarted_if_silent(candidate),
-        )
-        self._pairs[_spec_key(group.spec)] = restarted
+        endpoints = await self._pair(group.spec)
+        launched = [
+            self._launched[endpoint] for endpoint in endpoints if endpoint in self._launched
+        ]
+        if any(instance.unanswered is not None for instance in launched):
+            self._pairs[_spec_key(group.spec)] = await self._restarted(group.spec, launched)
 
-    async def _restarted_if_silent(self, endpoint: Endpoint) -> Endpoint:
-        """Where to play instead of `endpoint`: a new Instance, if the one there did not answer."""
-        launched = self._launched.get(endpoint)
-        if launched is None or launched.unanswered is None:
-            return endpoint
+    async def _restarted(
+        self, spec: Callable[[ServerSpec], ServerSpec], launched: Sequence[_Launched]
+    ) -> tuple[Endpoint, Endpoint]:
+        """Stop the `launched` Instances of `spec`, and launch a pair in their place; its Endpoints.
+
+        Each side whose Instance did not answer has its restart recorded (`_retire`).
+        An Attached side stays where it is.
+        """
+        for instance in launched:
+            self._retire(instance)
+            await instance.stop.aclose()
+        self._relaunches += 1
+        return await self._launched_pair(spec, self._workdir / f"restart-{self._relaunches}")
+
+    def _retire(self, instance: _Launched) -> None:
+        """Forget `instance`, about to stop, and record its side's restart if it did not answer.
+
+        Its side's summary keeps the restart (`SideSummary.restarts`), for the Report.
+        """
+        del self._launched[instance.endpoint]
+        if instance.unanswered is None:
+            return
         why = f"did not answer a status request within {ANSWER_TIMEOUT_S:g} s"
-        restart = Restart(after=launched.unanswered, reason=why)
-        return await self._restart(endpoint, launched, restart)
-
-    async def _restart(self, endpoint: Endpoint, launched: _Launched, restart: Restart) -> Endpoint:
-        """Stop the Instance at `endpoint` and launch one in its place, for `restart`'s reason.
-
-        The side's summary records `restart` (`SideSummary.restarts`), for the Report.
-        """
-        name = self._sides[launched.role].name
-        LOG.warning("%s %s after %s: restarting it", name, restart.reason, restart.after)
-        del self._launched[endpoint]
-        await launched.stop.aclose()
-        self._restarts[launched.role].append(restart)
-        count = sum(len(restarts) for restarts in self._restarts)
-        where = self._workdir / f"restart-{count}" / _ROLES[launched.role]
-        return await self._start(launched.role, launched.spec, where)
+        name = self._sides[instance.role].name
+        LOG.warning("%s %s after %s: restarting both servers", name, why, instance.unanswered)
+        self._restarts[instance.role].append(Restart(after=instance.unanswered, reason=why))
 
     async def play(self, group: Group, *, prerequisite_failed: Verdict | None = None) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it.
@@ -983,14 +989,20 @@ class _Instances:
             launched = [side.name for side in self._sides if isinstance(side, Server)]
             if launched:
                 LOG.info("starting %s ...", " and ".join(launched))
-            try:
-                async with asyncio.TaskGroup() as group:
-                    reference = group.create_task(self._start(0, spec, where / _ROLES[0]))
-                    candidate = group.create_task(self._start(1, spec, where / _ROLES[1]))
-            except ExceptionGroup as failures:
-                raise failures.exceptions[0] from None
-            self._pairs[key] = (reference.result(), candidate.result())
+            self._pairs[key] = await self._launched_pair(spec, where)
         return self._pairs[key]
+
+    async def _launched_pair(
+        self, spec: Callable[[ServerSpec], ServerSpec], where: Path
+    ) -> tuple[Endpoint, Endpoint]:
+        """Launch the Reference's and the Candidate's Instances of `spec` together, in `where`."""
+        try:
+            async with asyncio.TaskGroup() as group:
+                reference = group.create_task(self._start(0, spec, where / _ROLES[0]))
+                candidate = group.create_task(self._start(1, spec, where / _ROLES[1]))
+        except ExceptionGroup as failures:
+            raise failures.exceptions[0] from None
+        return reference.result(), candidate.result()
 
     async def _start(
         self, role: int, spec: Callable[[ServerSpec], ServerSpec], workdir: Path
@@ -1015,7 +1027,7 @@ class _Instances:
         self._startup[role].append(
             Measurement(name="instance.startup", unit="ms", value=startup_ms)
         )
-        self._launched[instance.endpoint] = _Launched(role=role, spec=spec, stop=stop)
+        self._launched[instance.endpoint] = _Launched(role, instance.endpoint, stop)
         return instance.endpoint
 
 

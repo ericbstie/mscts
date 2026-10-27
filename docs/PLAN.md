@@ -1935,10 +1935,12 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # Verdict `error` ("the Reference gave no answer to a status request within 10 s after
     # the Group"; the Candidate's after a "; "); the Candidate alone giving none makes it
     # `mismatch`, a `failed` Divergence saying so after any other, the detail the first
-    # failure's; an `error` stays as it is. Before the next Group, one that gave none is
-    # stopped and launched again in
-    # <workdir>/restart-<n>/<reference|candidate>, at a new free_endpoint(), with its own
-    # instance.startup Measurement. An Attached side is played at its endpoint for every Group, never started or
+    # failure's; an `error` stays as it is. Before the next Group of that ServerSpec, if
+    # either of the pair gave none, both launched Instances are stopped and launched again
+    # together (review B3: the two worlds keep the same history) in
+    # <workdir>/restart-<n>/<reference|candidate>, n counting pair restarts, each at a new
+    # free_endpoint(), with its own instance.startup Measurement; only a side that gave no
+    # answer gets a Restart. An Attached side is played at its endpoint for every Group, never started or
     # stopped; the same code path otherwise (judge, prerequisite_verdict, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).

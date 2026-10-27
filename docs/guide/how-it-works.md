@@ -47,8 +47,8 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
 5. **Repeat.** The Run plays every Group N times (five by default) against
    the same pair of servers, then stops both. After each Group, mscts sends
    a status request to each server it started. A server that does not
-   answer within 10 seconds fails that Group, and mscts starts it again
-   before the next one.
+   answer within 10 seconds fails that Group, and mscts starts both servers
+   again before the next one, so the two still have the same history.
 6. **Report.** mscts lists each differing test case once, then any skipped
    or failed Groups, any server it restarted, and the total Run time.
 

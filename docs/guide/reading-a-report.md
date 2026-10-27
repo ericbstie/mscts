@@ -183,9 +183,10 @@ After each Group, mscts sends a status request to each server it started
 that played the Group. A server that does not answer within 10 seconds
 fails that Group as `Candidate failed: no answer to a status request
 within 10 s after the Group`, or makes it an `Error` if that server is
-vanilla. mscts then stops that server and starts it again before the
-next Group. The line names the Group after which it did not answer. The
-Groups after it play on the new server. A server that answers but still
+vanilla. mscts then stops both servers and starts them again before the
+next Group, so the two still have the same history. The line names only
+the server that did not answer, and the Group after which it did not.
+The Groups after it play on the new servers. A server that answers but still
 has a player online is not restarted, so each Group after it fails as
 `Candidate failed`. A server restarted after the same Group in more than
 one repetition has one line with the count, such as `Restarted pumpkin 5

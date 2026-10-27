@@ -51,15 +51,16 @@ def _short_waits(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_a_group_after_one_that_hung_the_candidate_plays_on_a_new_instance(
+async def test_a_group_after_one_that_hung_the_candidate_plays_on_a_new_pair(
     fake_server: MakeServer, tmp_path: Path
 ) -> None:
+    # Both sides start again, so the two worlds keep the same history (review B3).
     reference, candidate = fake_server("one"), fake_server("two", hangs_after_ping=HANGS)
 
     verdicts = await run([HANG, BASIC], reference, candidate, workdir=tmp_path / "run")
 
     assert verdicts[1].outcome is Outcome.MATCH, verdicts
-    assert len(_adapter(reference).prepared) == 1
+    assert len(_adapter(reference).prepared) == 2
     assert len(_adapter(candidate).prepared) == 2
 
 
@@ -101,11 +102,14 @@ async def test_both_sides_that_do_not_answer_are_both_named(
     reference = fake_server("one", hangs_after_ping=HANGS)
     candidate = fake_server("two", hangs_after_ping=HANGS)
 
-    hung, after = await run([HANG, BASIC], reference, candidate, workdir=tmp_path / "run")
+    result = await run_results([HANG, BASIC], reference, candidate, workdir=tmp_path / "run")
 
+    hung, after = result.verdicts
     both = f"the Reference gave {NO_ANSWER}; the Candidate gave {NO_ANSWER}"
     assert hung == Verdict("test/hang", Outcome.ERROR, detail=both)
     assert after.outcome is Outcome.MATCH, after
+    assert len(result.reference.restarts) == len(result.candidate.restarts) == 1
+    assert {path.name for path in (tmp_path / "run").iterdir()} == {"0", "restart-1"}
 
 
 def test_an_error_stays_as_it_is_whichever_side_did_not_answer() -> None:
@@ -157,6 +161,7 @@ async def test_each_restart_has_a_directory_of_its_own_and_its_wait_in_whole_sec
     assert result.candidate.restarts == (hung, hung)
     assert {path.name for path in (tmp_path / "run").iterdir()} == {"0", "restart-1", "restart-2"}
     assert (tmp_path / "run/restart-2/candidate").is_dir()
+    assert (tmp_path / "run/restart-2/reference").is_dir()
 
 
 @pytest.mark.asyncio
@@ -171,7 +176,7 @@ async def test_a_status_that_is_not_the_target_s_is_still_an_answer() -> None:
 
 
 @pytest.mark.asyncio
-async def test_the_instance_that_did_not_answer_is_stopped_before_the_next_group_plays(
+async def test_both_instances_are_stopped_before_the_next_group_plays(
     fake_server: MakeServer, tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     caplog.set_level(logging.INFO)
@@ -181,4 +186,4 @@ async def test_the_instance_that_did_not_answer_is_stopped_before_the_next_group
 
     messages = [record.getMessage() for record in caplog.records]
     before = messages[: messages.index("running status/basic (1 of 1) ...")]
-    assert sum(" stopped by " in message for message in before) == 1, messages
+    assert sum(" stopped by " in message for message in before) == 2, messages
