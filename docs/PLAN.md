@@ -84,6 +84,7 @@ test needs it:
 | `bot.py` | `Bot`: `status`, `join`, `expect`, `send`, `command` |
 | `entities.py` | `EntityTracker`: the entities a Bot's server told it about (`Entities`, `Entity`) |
 | `inventory.py` | `InventoryTracker`: the player's inventory and the open container (`Inventory`, `Stack`) |
+| `identifier.py` | `client_identifier(text)`: `text` as the client's `Identifier.parse` reads it, or None if it throws; `identifier_read(text)`: the same, or `text` as sent. The Comparison and the Bot read a registry's and an entry's id by it |
 | `spec.py` | `ServerSpec` and its enums |
 | `adapters/base.py` | `Adapter`, `Build`, `Installation`, `LaunchPlan`; `Download(url, body)` and `Fetch` (how a URL is read); `Net` (what an Adapter gets for the network) |
 | `adapters/fetch.py` | `https_get` → `Download`: HTTPS on every hop, redirects followed; `HttpsNet`, the `Net` built on a `Fetch`, its `ChecksumError`, and the `Saved` record of each download |
