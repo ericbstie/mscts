@@ -4,6 +4,7 @@ The fakes hang after they pong a ping of `HANGS` (status_fake.py), as Pumpkin ha
 Ctrl+Q over a crafting result: the process runs and accepts connections, but never answers.
 """
 
+import contextlib
 import json
 import logging
 from collections.abc import Callable
@@ -14,8 +15,9 @@ import pytest
 from mscts import run as run_module
 from mscts.codec.packets import Codec
 from mscts.compare import Outcome, Verdict
-from mscts.group import Group, GroupContext
+from mscts.group import Group, GroupContext, GroupKind
 from mscts.groups import status
+from mscts.net import Endpoint
 from mscts.run import Restart, Server, run, run_results
 from mscts.target import TARGET
 from tests.net.fakes import VANILLA_STATUS, serve, status_server
@@ -35,8 +37,15 @@ async def _hangs(context: GroupContext) -> None:
     await bot.ping(HANGS)
 
 
+async def _hangs_sampled(context: GroupContext) -> None:
+    await _hangs(context)
+    context.sample("x", 1.0)
+
+
 HANG = Group(id="test/hang", run=_hangs)
 BASIC = Group(id="status/basic", run=status.basic)
+HANG_AGAIN = Group(id="test/hang-again", run=_hangs)
+HANG_SAMPLED = Group(id="test/hang-sampled", run=_hangs_sampled, kind=GroupKind.STATISTICAL, runs=1)
 
 
 def _adapter(server: Server) -> FakeAdapter:
@@ -81,6 +90,34 @@ async def test_a_candidate_that_does_not_answer_after_a_group_fails_that_group(
     assert [divergence.candidate for divergence in hung.divergences] == [NO_ANSWER]
     assert hung.detail == f"the Candidate failed: {NO_ANSWER}"
     assert hung.test_cases == ("status:pong_response.timestamp",)
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_does_not_answer_after_a_statistical_group_fails_it(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    reference, candidate = fake_server("one"), fake_server("two", hangs_after_ping=HANGS)
+
+    [hung] = await run([HANG_SAMPLED], reference, candidate, workdir=tmp_path / "run")
+
+    assert hung.outcome is Outcome.MISMATCH, hung
+    assert [divergence.candidate for divergence in hung.divergences] == [NO_ANSWER]
+
+
+@pytest.mark.asyncio
+async def test_a_reference_that_plays_alone_and_does_not_answer_makes_the_group_an_error(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # The Candidate cannot be started again after test/hang, so the Reference plays alone.
+    reference = fake_server("one", hangs_after_ping=HANGS)
+    candidate = fake_server("two", hangs_after_ping=HANGS, fails_launch=SECOND)
+    groups = [HANG, HANG_AGAIN, HANG_SAMPLED]
+
+    _, again, sampled = await run(groups, reference, candidate, workdir=tmp_path / "run")
+
+    detail = f"the Reference gave {NO_ANSWER}"
+    assert again == Verdict("test/hang-again", Outcome.ERROR, detail=detail)
+    assert sampled == Verdict("test/hang-sampled", Outcome.ERROR, detail=detail)
 
 
 @pytest.mark.asyncio
@@ -222,6 +259,23 @@ async def test_a_side_that_could_not_be_started_again_is_not_started_at_the_next
     assert result.verdicts[3].detail.startswith(f"the Candidate failed: {NOT_AGAIN}")
     assert len(_adapter(reference).prepared) == 3
     assert len(_adapter(candidate).prepared) == 2
+
+
+@pytest.mark.asyncio
+async def test_a_side_that_stays_where_it_was_at_a_restart_has_no_restart_recorded(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # An unusable side (#228) is not launched again, even if it did not answer.
+    async with contextlib.AsyncExitStack() as stack:
+        sides = (fake_server("one"), fake_server("two"))
+        instances = run_module._Instances(stack, *sides, tmp_path, keep_transcripts=False)  # noqa: SLF001
+        old = Endpoint("127.1.2.3", 25565)
+        hung = Restart(after="test/hang", reason="did not answer")
+
+        stays = instances._relaunched(1, old, old, {1: hung})  # noqa: SLF001
+
+    assert stays == old
+    assert instances.summaries()[1].restarts == ()
 
 
 @pytest.mark.asyncio
