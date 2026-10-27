@@ -32,9 +32,11 @@ first.
    implementer when the probe reports `core_gap`. End the Workflow with one
    integrator agent (sonnet): it waits for earlier trains to merge, rebases
    the batch into a stack with `git rebase -x "mise run check"
-   --force-rebase`, runs the tiers once on the top tip, opens all the PRs at
-   the end, assigns each, requests no reviewer (the PR author is the
-   maintainer, so the request fails) and unsubscribes this session from each
+   --force-rebase`, runs the tiers once on the top tip and pushes nothing:
+   the auto-mode classifier refuses an agent's force push (train 44). You
+   push its local branches with `--force-with-lease`, open the PRs from the
+   workers' files, assign each, request no reviewer (the PR author is the
+   maintainer, so the request fails) and unsubscribe this session from each
    (`mcp__claude-code-remote__unsubscribe_pr_activity`). You are woken once,
    when the last report returns, plus one wake per opened PR. At most two
    agents run at once on a 4-CPU host, so put the short jobs first.
@@ -115,6 +117,11 @@ first.
   another worktree): its brief says to check out a local `<branch>-fix`
   from origin and push `HEAD:<branch>` (#41). It rebases first and runs its
   Self-check after, so the live evidence is from the final base (#490).
+- A fix-round brief names the PR body file the round appends to, or says
+  to edit the PR description: a PR opened in an earlier train has no
+  `pr-body.md` (#469).
+- A brief that adds a network traffic rule names
+  `docs/guide/reading-a-report.md` in Owns: it lists those rules (#478).
 - The integrator brief names a fresh worktree of its own
   (`git worktree add --detach <scratch>/<batch>/top`): two integrators
   left the lead's worktree on a detached HEAD (train 43).

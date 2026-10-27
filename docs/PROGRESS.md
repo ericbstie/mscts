@@ -195,6 +195,36 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-27: train 44
+
+- The maintainer approved #469's interface: `Bot.expect(..., since_ns=)` and
+  `async with context.observe(...) as opened`. #493 merged after two
+  reviews and `time/sleep` 20 of 20 five times under `--stress`.
+- Merged in three batches: #505 (#479), #506 (#477), #493 (#469), #508
+  (#504, Pumpkin nightly 5e9101f), #509 (#447, shift-click, 1+Q and
+  Ctrl+Q on a crafting result), #510 (#507), #511 (#478), #517 (#512),
+  #518 (#514) and #519 (part of #513). Reference tier 37 of 37 and
+  candidate tier 15 of 15 on each batch tip. No new catalogue test landed.
+- #509's Ctrl+Q cases hang Pumpkin, which cost it all of `crafting/grid`
+  (14 passed to 0). #517 moved them into `crafting/grid-ctrl-q`, and
+  `crafting/grid` scores 12 passed again.
+- #519: after each play, mscts asks each launched Instance for its
+  status. One that does not answer within 10 s fails that Group (or makes
+  it an `error`, for the Reference), and both Instances of the pair
+  restart before the next Group. The Report says so. Review B found that
+  the first version, checking before the next Group, let a hang cost
+  nothing; fixed before merge. Pumpkin is as often left answering with
+  its player still online. The lead ruled on #513 to fail that Group too
+  and restart the pair (option B); #513 stays open for it.
+- #497 closed: Pumpkin kicks the Bot with "Wrong teleport id", a
+  Candidate `mismatch`, not a harness bug.
+- Filed #504 (fixed), #507 (fixed), #512 to #514 (fixed, #513 in part),
+  #515 (a flaky two-Bot unit test) and #516 (a shared wait helper and a
+  Pumpkin first-run script).
+- Process: the integrator pushes nothing, and the lead pushes the stack
+  and opens the PRs. A case a Candidate may hang on goes in a Group of
+  its own. Reviewers keep their probes in /mnt/project-files/reviews/.
+
 ### 2026-10-24: train 43
 
 - #491, #492, #494, #498, #499, #500 and #501 merged in three batches.

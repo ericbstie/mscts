@@ -20,6 +20,9 @@ Every review also checks the diff against the `function-design` skill:
 a smell from its list is a finding (LOW unless it hides a bug), with the
 rule it breaks and the change that fixes it.
 
+Put each probe a finding cites in /mnt/project-files/reviews/, next to
+the review: a scratchpad ends with its session, and the next worker
+needs the probe (#477).
 Reproduce each high finding with a throwaway probe against the repo's
 fakes before reporting it.
 
