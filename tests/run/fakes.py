@@ -23,12 +23,14 @@ class FakeAdapter:
     """An Adapter whose Instances are tests/run/status_fake.py processes.
 
     The description the fake answers with is `description`, or else the spec's motd.
-    Every ServerSpec it prepares is kept in `prepared`.
+    Every ServerSpec it prepares is kept in `prepared`. Given `hangs_after_ping`, each of
+    its Instances hangs after it pongs a ping of that payload (status_fake.py).
     """
 
     name: str
     token: str
     description: str | None = None
+    hangs_after_ping: int | None = None
     prepared: list[ServerSpec] = field(default_factory=list)
     binary: str = "status_fake.py"
     latest_aliases: frozenset[str] = frozenset[str]()
@@ -47,6 +49,7 @@ class FakeAdapter:
         workdir.mkdir(parents=True)
         self.prepared.append(spec)
         description = self.description if self.description is not None else spec.motd
+        hang = () if self.hangs_after_ping is None else (str(self.hangs_after_ping),)
         return LaunchPlan(
             # -I -S: isolated and without site, so it starts fast and sees only its env.
             argv=(
@@ -57,6 +60,7 @@ class FakeAdapter:
                 spec.host,
                 str(spec.port),
                 description,
+                *hang,
             ),
             cwd=workdir,
             env={TOKEN_VAR: self.token},

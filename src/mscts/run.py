@@ -14,10 +14,11 @@ import mscts.compare
 import mscts.groups  # importing it registers the shipped Groups
 from mscts.adapters.base import Adapter, Installation
 from mscts.bot import status_probe
+from mscts.codec.packets import CodecError
 from mscts.compare import ABSENT, Divergence, Outcome, Verdict, compare
 from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
 from mscts.measure import Measurement, measurements
-from mscts.net import Endpoint
+from mscts.net import Endpoint, ProtocolError
 from mscts.runner import free_endpoint, running
 from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
 from mscts.spec import ServerSpec
@@ -33,6 +34,13 @@ READY_TIMEOUT_S = 120.0
 
 STOP_TIMEOUT_S = 30.0
 """How long each step of stopping an Instance may take (runner.running's `stop_timeout`)."""
+
+ANSWER_TIMEOUT_S = GROUP_TIMEOUT_S
+"""How long an Instance that played a Group may take to answer a status request before the next.
+
+One that does not answer is stopped and launched again (#513). As long as a Bot operation:
+a server that takes longer would fail the next Group anyway.
+"""
 
 LOG = logging.getLogger("mscts.run")
 """Where a Run says what it is doing (INFO): the Instances it starts, the Group it plays."""
@@ -521,8 +529,10 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     launched in its own directory under `workdir` at an Endpoint of its own
     (`free_endpoint`) when a Group first needs it, and kept for every repetition.
     The Reference and Candidate Instances start together, and both are stopped at the
-    end, however the Run ends. An Attached side is played at its Endpoint as it is,
-    and neither started nor stopped.
+    end, however the Run ends. Before each Group, an Instance that has played one and does
+    not answer a status request within ANSWER_TIMEOUT_S is stopped and launched again, so
+    a server that hung in one Group still plays the next (#513). An Attached side is
+    played at its Endpoint as it is, and neither started nor stopped.
 
     A statistical Group is played `runs` times on each side, the sides taking turns, for
     its one Verdict (`judge_samples`): in the first repetition only, whatever `repeat`
@@ -651,6 +661,27 @@ def _spec_key(spec: ServerSpec | Callable[[ServerSpec], ServerSpec]) -> ServerSp
     return dataclasses.replace(spec, host=_SPEC_KEY_ENDPOINT.host, port=_SPEC_KEY_ENDPOINT.port)
 
 
+_ROLES = ("reference", "candidate")
+"""Each side's directory name under its Instance pair's, by role (0, the Reference, then 1)."""
+
+
+@dataclasses.dataclass(slots=True)
+class _Launched:
+    """An Instance the Run launched, which it can stop on its own and launch again.
+
+    Attributes:
+        role: Its side: 0 for the Reference, 1 for the Candidate.
+        spec: The `spec` of the Groups it plays.
+        stop: Stops it when closed.
+        played: The last Group played on it, or None if none was yet.
+    """
+
+    role: int
+    spec: Callable[[ServerSpec], ServerSpec]
+    stop: contextlib.AsyncExitStack
+    played: str | None = None
+
+
 class _Instances:
     """The Instance pairs of one Run, one per distinct ServerSpec, started on demand.
 
@@ -676,10 +707,42 @@ class _Instances:
         self._startup: tuple[list[Measurement], list[Measurement]] = ([], [])
         self._versions: list[str | None] = [None, None]
         self._unusable: dict[Endpoint, str] = {}  # why no Group may play there any more
+        self._launched: dict[Endpoint, _Launched] = {}
+        self._restarts = 0
 
     async def start(self, group: Group) -> None:
-        """Make sure the Instances `group` plays against are up."""
-        await self._pair(group.spec)
+        """Make sure the Instances `group` plays against are up, and still answer.
+
+        Each Instance the Run launched that has played a Group is sent a status request
+        first. One that does not answer within ANSWER_TIMEOUT_S, such as a server that hung
+        in that Group, is stopped and launched again (#513).
+        """
+        reference, candidate = await self._pair(group.spec)
+        answering = (await self._answering(reference), await self._answering(candidate))
+        self._pairs[_spec_key(group.spec)] = answering
+
+    async def _answering(self, endpoint: Endpoint) -> Endpoint:
+        """Where the Instance at `endpoint` is, after a restart if it no longer answers.
+
+        Only an Instance this Run launched and played a Group on is asked: an Attached one
+        is not the Run's to restart, and a new one has just answered its readiness probe.
+        """
+        launched = self._launched.get(endpoint)
+        if launched is None or launched.played is None or await _answers(endpoint):
+            return endpoint
+        return await self._restart(endpoint, launched)
+
+    async def _restart(self, endpoint: Endpoint, launched: _Launched) -> Endpoint:
+        """Stop the Instance at `endpoint`, which did not answer, and launch one in its place."""
+        name = self._sides[launched.role].name
+        LOG.warning(
+            "%s did not answer a status request after %s: restarting it", name, launched.played
+        )
+        del self._launched[endpoint]
+        await launched.stop.aclose()
+        self._restarts += 1
+        where = self._workdir / f"restart-{self._restarts}" / _ROLES[launched.role]
+        return await self._start(launched.role, launched.spec, where)
 
     async def play(self, group: Group, *, prerequisite_failed: Verdict | None = None) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it.
@@ -800,9 +863,12 @@ class _Instances:
     ) -> Transcript | GroupError:
         """Play `group` on side `role` at `endpoint`, and learn what it shows about the side.
 
-        The version its first status_response names, and whether it left its world frozen.
-        Its samples are added to `samples`.
+        The version its first status_response names, whether it left its world frozen, and
+        that the Instance there has played `group`. Its samples are added to `samples`.
         """
+        launched = self._launched.get(endpoint)
+        if launched is not None:
+            launched.played = group.id
         attempt = await _attempt(group, endpoint, server=self._sides[role].name, samples=samples)
         if self._versions[role] is None:
             self._versions[role] = status_version(_transcript(attempt))
@@ -865,8 +931,8 @@ class _Instances:
                 LOG.info("starting %s ...", " and ".join(launched))
             try:
                 async with asyncio.TaskGroup() as group:
-                    reference = group.create_task(self._start(0, spec, where / "reference"))
-                    candidate = group.create_task(self._start(1, spec, where / "candidate"))
+                    reference = group.create_task(self._start(0, spec, where / _ROLES[0]))
+                    candidate = group.create_task(self._start(1, spec, where / _ROLES[1]))
             except ExceptionGroup as failures:
                 raise failures.exceptions[0] from None
             self._pairs[key] = (reference.result(), candidate.result())
@@ -882,7 +948,8 @@ class _Instances:
         plan = server.adapter.prepare(
             server.installation, spec(ServerSpec(host=endpoint.host, port=endpoint.port)), workdir
         )
-        instance = await self._stack.enter_async_context(
+        stop = await self._stack.enter_async_context(contextlib.AsyncExitStack())
+        instance = await stop.enter_async_context(
             running(
                 plan,
                 ready=status_probe(TARGET),
@@ -894,6 +961,7 @@ class _Instances:
         self._startup[role].append(
             Measurement(name="instance.startup", unit="ms", value=startup_ms)
         )
+        self._launched[instance.endpoint] = _Launched(role=role, spec=spec, stop=stop)
         return instance.endpoint
 
 
@@ -975,6 +1043,19 @@ async def _attempt(
         return await run_group(group, endpoint, server=server, samples=samples)
     except GroupError as error:
         return error
+
+
+async def _answers(endpoint: Endpoint) -> bool:
+    """Whether the Instance at `endpoint` answers a status request within ANSWER_TIMEOUT_S.
+
+    Any answer counts, even one that is not the Target's status: the server is not hung,
+    and the next Group shows what it sends. A refused connection is no answer.
+    """
+    probe = status_probe(TARGET, timeout_s=ANSWER_TIMEOUT_S)
+    try:
+        return await probe(endpoint)
+    except (CodecError, ProtocolError):
+        return True
 
 
 async def _left_online(endpoint: Endpoint) -> Exception | None:

@@ -1,6 +1,6 @@
 """A stand-in server process that answers the status protocol. Standard library only.
 
-Usage: status_fake.py HOST PORT DESCRIPTION
+Usage: status_fake.py HOST PORT DESCRIPTION [HANG_AFTER_PING]
 
 It listens on HOST:PORT and answers each connection's status exchange as vanilla 26.3
 does for the default ServerSpec, with DESCRIPTION as the description: a status_request
@@ -8,6 +8,10 @@ gets the status JSON, a ping_request its pong, after which it closes the connect
 It stops when a line `stop` arrives on stdin, like vanilla. It starts in ~20 ms, so a
 Run over two of them tests the Run's Instance handling hermetically, readiness (the
 status ping, with ownership) included.
+
+Given HANG_AFTER_PING, a ping whose payload is that number gets its pong, and then the
+fake hangs, as Pumpkin does on some clicks (#513): it still accepts connections and
+reads what comes, but never answers anything again.
 """
 
 import json
@@ -49,7 +53,25 @@ def frame(packet_id: int, payload: bytes) -> bytes:
     return var_int(len(data)) + data
 
 
-def serve_one(connection: socket.socket, status: bytes) -> None:
+class Hang:
+    """Whether the fake has hung, and the ping payload that hangs it (None: none does)."""
+
+    def __init__(self, after_ping: bytes | None) -> None:
+        self.after_ping = after_ping
+        self.hung = threading.Event()
+
+    def block_if_hung(self) -> None:
+        """Never return once the fake has hung: nothing is answered any more."""
+        if self.hung.is_set():
+            threading.Event().wait()
+
+    def pinged(self, payload: bytes) -> None:
+        """Hang from now on if `payload` is the ping payload that hangs the fake."""
+        if payload == self.after_ping:
+            self.hung.set()
+
+
+def serve_one(connection: socket.socket, status: bytes, hang: Hang) -> None:
     stream = connection.makefile("rb")
 
     def read(n: int) -> bytes:
@@ -63,11 +85,13 @@ def serve_one(connection: socket.socket, status: bytes) -> None:
             read(read_var_int(read))  # the handshake (intention): status is all this answers
             while True:
                 body = read(read_var_int(read))
+                hang.block_if_hung()
                 packet_id, payload = body[0], body[1:]
                 if packet_id == _STATUS_REQUEST:
                     connection.sendall(frame(_STATUS_RESPONSE, var_int(len(status)) + status))
                 elif packet_id == _PING_REQUEST:
                     connection.sendall(frame(_PONG_RESPONSE, payload))
+                    hang.pinged(payload)
                     return
         except (EOFError, OSError):
             return
@@ -75,6 +99,8 @@ def serve_one(connection: socket.socket, status: bytes) -> None:
 
 def main() -> None:
     host, port, description = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+    after_ping = int(sys.argv[4]).to_bytes(8, "big", signed=True) if len(sys.argv) > 4 else None
+    hang = Hang(after_ping)
     status = json.dumps(
         {
             "description": description,
@@ -87,7 +113,7 @@ def main() -> None:
     def accept_forever() -> None:
         while True:
             connection, _ = server.accept()
-            threading.Thread(target=serve_one, args=(connection, status), daemon=True).start()
+            threading.Thread(target=serve_one, args=(connection, status, hang), daemon=True).start()
 
     threading.Thread(target=accept_forever, daemon=True).start()
     os.write(1, b"listening\n")

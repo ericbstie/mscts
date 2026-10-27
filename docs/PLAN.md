@@ -1854,6 +1854,7 @@ Running Groups (`run.py`):
 GROUP_TIMEOUT_S = 10.0              # each Bot operation (Bot timeout_s)
 READY_TIMEOUT_S = 120.0             # an Instance's readiness (a cold vanilla boot)
 STOP_TIMEOUT_S = 30.0               # each stop step
+ANSWER_TIMEOUT_S = GROUP_TIMEOUT_S  # #513: an Instance's status answer before each Group
 
 class GroupError(Exception):        # the Group raised against one Instance; __cause__ is
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
@@ -1928,7 +1929,11 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
-    # An Attached side is played at its endpoint for every Group, never started or
+    # #513: before each Group, a launched Instance that has played a Group gets one
+    # status_probe(TARGET, timeout_s=ANSWER_TIMEOUT_S); any answer counts (a ProtocolError
+    # or CodecError too). One that gives none is stopped and launched again in
+    # <workdir>/restart-<n>/<reference|candidate>, at a new free_endpoint(), with its own
+    # instance.startup Measurement. An Attached side is played at its endpoint for every Group, never started or
     # stopped; the same code path otherwise (judge, prerequisite_verdict, repetitions).
     # Settling (#97): before a Group plays, both Instances are waited on at once with
     # `until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)` (settle.py, above).
