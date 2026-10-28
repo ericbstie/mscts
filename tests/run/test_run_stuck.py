@@ -17,7 +17,7 @@ from mscts.groups import status
 from mscts.net import Endpoint
 from mscts.run import Restart, Server, run_results
 from mscts.settle import PlayersStillOnline
-from tests.run.fakes import FakeAdapter
+from tests.run.fakes import FakeAdapter, attached
 
 LINGERS = 266
 """The ping payload after which a fake made with `lingers_after_ping=LINGERS` keeps a player."""
@@ -201,6 +201,25 @@ async def test_an_instance_that_did_not_answer_is_not_waited_on_after_the_group(
     await run_results([HANG], reference, candidate, workdir=tmp_path / "run")
 
     assert len(waited) == 1, waited
+
+
+@pytest.mark.asyncio
+async def test_an_attached_candidate_that_keeps_a_player_fails_the_next_group_as_before(
+    fake_server: MakeServer, run_token: str, tmp_path: Path
+) -> None:
+    # The Run did not launch it, so it is not the Run's to restart (#266 holds there).
+    lingers = FakeAdapter("two", run_token, lingers_after_ping=LINGERS)
+    reference = fake_server("one")
+    async with attached(lingers, tmp_path / "two") as candidate:
+        result = await run_results([LINGER, BASIC], reference, candidate, workdir=tmp_path / "run")
+
+    left, after = result.verdicts
+    assert left.outcome is Outcome.MATCH, left
+    assert after.outcome is Outcome.MISMATCH, after
+    assert [divergence.candidate for divergence in after.divergences] == [ONLINE]
+    assert after.detail == f"the Candidate failed: {ONLINE}"
+    assert result.candidate.restarts == result.reference.restarts == ()
+    assert len(_adapter(reference).prepared) == 1
 
 
 def test_an_error_stays_as_it_is_whichever_side_kept_a_player() -> None:
