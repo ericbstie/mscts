@@ -768,6 +768,22 @@ A frozen world does not freeze its players, so the Bot picks up what it can reac
 
 Whether two orbs merge depends on their entity ids in vanilla, so `entities/item-merge` lays no orbs.
 
+### Crowding
+
+How mobs crowded into one place push each other, and how many of them are hurt by cramming. Control summons pigs that cannot think (`NoAI`) a few blocks from a Bot at the world spawn. The pigs overlap, each a few hundredths of a block from the next, in a frozen world that then steps a tick at a time. A pig that cannot think never moves, but every push still adds to its velocity, which the server sends after each tick. When a Group ends, Control kills the pigs and anything they dropped.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `entities/pushing` | tick-exact | none | Crowds of 2, 5 and 12 pigs stand 0.2 blocks around a centre, first in a 1 × 1 pen of oak fences and then in the open. Each crowd appears in a window of its own, and the world steps 5 ticks. The window compares the pigs' spawn, data, velocity and attributes, and any damage, death or removal. | none |
+
+A server sends where an entity is every few seconds, on a clock that keeps running while the world is frozen. The pigs do not move, so no window compares their position.
+
+| Id | Kind | Runs | What it does | Samples |
+| --- | --- | --- | --- | --- |
+| `entities/cramming` | statistical | 20 | 30 pigs stand in one block space, 0.08 blocks apart. They stand 10 ticks with the `max_entity_cramming` game rule at 0, which turns cramming off, then 20 ticks with it at 24, vanilla's default. | `cramming.hurt_when_off`: the pigs hurt while cramming is off. `cramming.hurt_by_tick_1` and `cramming.hurt_by_tick_10`: the pigs hurt 1 and 10 ticks after it is on. `cramming.last_death`: the tick the last pig dies. `cramming.alive`: the pigs alive at the end. |
+
+In vanilla a mob that touches more than 23 others takes cramming damage on each tick with a chance of 1 in 4, drawn from a random source of its own, so no two plays go the same way. So `entities/cramming` is statistical: it plays many times on each server, and its Verdict compares how the samples are spread. It runs only with `--statistical`. Each play joins a Bot of its own, which reads each pig's health from what the server sends about it.
+
 ## Mobs (`mobs`)
 
 How a zombie finds, reaches and attacks a player who stands still. A mob's AI draws on a random
