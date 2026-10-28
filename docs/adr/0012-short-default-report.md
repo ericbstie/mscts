@@ -227,3 +227,41 @@ Divergence names it:
 This refines ADR-0007's "the Report scores it as compliant": a Verdict
 whose only Divergences are network traffic passes, and a test case that
 only such a Divergence names is left out of the score.
+
+## Amendment (#513, 2026-10-28)
+
+This changes the first case of the #266 amendment, a Candidate that still
+has players online from the Group before, for an Instance the Run
+launched. Pumpkin b70c7e1 keeps the player of a Bot that left after a
+Ctrl+Q over a crafting result, and its status keeps listing that player.
+Under #266, every later Group of the Run then failed as `Candidate
+failed: 1 player still online after waiting 2 s: 'crafter'`. A Candidate
+that did this once lost every Group after it, whatever it did there.
+
+Now, right after each play and before its Verdict is final, mscts waits
+for each Instance it launched that played the Group to have no player
+online, as it waits before a Group. A Candidate that still has one after
+`SETTLE_TIMEOUT_S` fails that Group. Its Verdict is a `mismatch` with a
+`failed` Divergence after any other, `after the Group, 1 player still
+online after waiting 2 s: 'crafter'`, and its detail is the first
+failure's. So the stuck player still costs the Candidate the Group where
+it happened, and #266's principle holds: a Candidate never scores higher
+by skipping work than by doing it wrong. A Reference that still has one
+makes that Group an `error`, as a Reference with a player online before a
+Group does. Since the wait runs before the Verdict is final, no judged
+Verdict is amended, and the wait is no part of the Group's time.
+
+Either way, both Instances of the pair are stopped and launched again
+before the next Group, so the two worlds keep the same history, as for a
+server that does not answer a status request after a Group (#519). The
+Report names the restart: `Restarted pumpkin after crafting/grid-ctrl-q,
+because it had 1 player still online after waiting 2 s: 'crafter'.`
+
+An Attached Candidate keeps the #266 rule. mscts did not launch it and
+does not restart it, so a player it keeps online fails each later Group,
+which is then played on the Reference alone. The wait before each Group
+stays for every side.
+
+The lead chose this (option B on #513) over restarting the pair without
+failing the Group (option A), under which a Candidate that leaves a
+player online would lose nothing but a Report line.
