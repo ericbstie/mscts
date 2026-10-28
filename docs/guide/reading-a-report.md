@@ -198,10 +198,13 @@ within 10 s after the Group`, or makes it an `Error` if that server is
 vanilla. A server that answers then has 2 seconds for the Group's
 players to leave. One that still lists a player fails that Group as
 `Candidate failed: after the Group, 1 player still online after waiting
-2 s: 'crafter'`, or makes it an `Error` if that server is vanilla. One
-that stops answering in those 2 seconds does not fail the Group, because
-mscts cannot tell whether a player is still online. A server that still
-lists a player before the next Group fails that one instead, as
+2 s: 'crafter'`, or makes it an `Error` if that server is vanilla.
+
+A Group that is an `Error` already stays one, so a player the Candidate
+kept in it shows only in the restart line. A server that stops answering
+in those 2 seconds does not fail the Group, because mscts cannot tell
+whether a player is still online. A server that lists a player only
+later, before the next Group, fails that next Group instead, as
 `Candidate failed: 1 player still online after waiting 2 s: 'crafter'`,
 or makes it an `Error` if that server is vanilla.
 

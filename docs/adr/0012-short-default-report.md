@@ -251,6 +251,13 @@ makes that Group an `error`, as a Reference with a player online before a
 Group does. Since the wait runs before the Verdict is final, no judged
 Verdict is amended, and the wait is no part of the Group's time.
 
+A Group that is an `error` already, because vanilla or mscts failed,
+stays one. A player the Candidate kept in that Group then costs it
+nothing, and only the Report's restart line names it. The Candidate
+cannot choose when vanilla fails, so it cannot use this to score higher.
+Failing the next Group for it instead, as #266 did, would bring back the
+failures this amendment removes.
+
 Either way, both Instances of the pair are stopped and launched again
 before the next Group, so the two worlds keep the same history, as for a
 server that does not answer a status request after a Group (#519). The

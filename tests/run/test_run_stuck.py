@@ -317,6 +317,33 @@ async def test_an_attached_candidate_that_keeps_a_player_fails_the_next_group_as
     assert len(_adapter(reference).prepared) == 1
 
 
+@pytest.mark.asyncio
+async def test_a_candidate_player_left_in_an_error_group_fails_no_group_but_is_restarted(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Review B1: the Group is an `error` (vanilla failed), and stays one; the Restart line
+    # still names the player. The next Group plays on a fresh pair, as after any Group.
+    played: list[int] = []
+
+    async def lingers_and_vanilla_fails(context: GroupContext) -> None:
+        await _lingers(context)
+        played.append(len(played))
+        if len(played) == 1:  # the Reference's play comes first
+            msg = "vanilla failed"
+            raise RuntimeError(msg)
+
+    group = Group(id="test/linger-reference-fails", run=lingers_and_vanilla_fails)
+    reference, candidate = fake_server("one"), fake_server("two", lingers_after_ping=LINGERS)
+
+    result = await run_results([group, BASIC], reference, candidate, workdir=tmp_path / "run")
+
+    failed, after = result.verdicts
+    assert failed.outcome is Outcome.ERROR, failed
+    assert failed.divergences == ()
+    assert after.outcome is Outcome.MATCH, after
+    assert result.candidate.restarts == (Restart(after=group.id, reason=f"had {ONLINE}"),)
+
+
 def test_an_error_stays_as_it_is_whichever_side_kept_a_player() -> None:
     error = Verdict("test/linger", Outcome.ERROR, detail="the Reference failed: TimeoutError")
     online = PlayersStillOnline(1, ["crafter"], SHORT_S)
