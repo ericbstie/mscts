@@ -6,7 +6,7 @@ import dataclasses
 import json
 import logging
 import random
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
 
@@ -20,7 +20,13 @@ from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
 from mscts.measure import Measurement, measurements
 from mscts.net import Endpoint, ProtocolError
 from mscts.runner import RunnerError, free_endpoint, running
-from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
+from mscts.settle import (
+    SETTLE_TIMEOUT_S,
+    NoStatusAnswer,
+    PlayersStillOnline,
+    until_answered_no_player_online,
+    until_no_player_online,
+)
 from mscts.spec import ServerSpec
 from mscts.stats import PERMUTATION_SEED, Decision, SampleLog, Series, decide
 from mscts.target import TARGET
@@ -147,8 +153,11 @@ class Restart:
     """An Instance the Run stopped and launched again before a Group (#513).
 
     Attributes:
-        after: The last Group played on the Instance it stopped, e.g. `crafting/grid`.
-        reason: Why, after "it": `did not answer a status request within 10 s`.
+        after: The Group after which it stopped the Instance, e.g. `crafting/grid`: the
+            last played on it, or the one its player online before it failed (review A2).
+        reason: Why, after "it": `did not answer a status request within 10 s`, `had 1
+            player still online after waiting 2 s: 'crafter'`, or `did not answer a status
+            request within 2 s while mscts waited for its players to leave`.
     """
 
     after: str
@@ -547,10 +556,14 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     The Reference and Candidate Instances start together, and both are stopped at the
     end, however the Run ends. After each Group, an Instance it launched that played it is
     sent a status request. One that does not answer within ANSWER_TIMEOUT_S fails that Group
-    (`_unanswered_verdict`). Before the next, both Instances of its pair are stopped and
-    launched again together, so a server that hung in one Group still plays the next, and
-    the two worlds keep the same history (#513). An Attached side is played at its
-    Endpoint as it is, and neither started nor stopped.
+    (`_unanswered_verdict`). One that answers then waits for no player online, and one that
+    still has a player online after SETTLE_TIMEOUT_S fails that Group too
+    (`_left_online_verdict`); that wait is no part of the Group's time. Before the next,
+    both Instances of its pair are stopped and launched again together, so a server that
+    hung in one Group, or kept a player of it online, still plays the next, and the two
+    worlds keep the same history (#513). An Attached side is played at its Endpoint as it
+    is, and neither started nor stopped: a player it keeps online fails the next Group, as
+    the wait before each Group finds it (#266).
 
     A statistical Group is played `runs` times on each side, the sides taking turns, for
     its one Verdict (`judge_samples`): in the first repetition only, whatever `repeat`
@@ -694,14 +707,16 @@ class _Launched:
         endpoint: Where it is.
         stop: Stops it when closed.
         played: The last Group played on it, until it is sent a status request; else None.
-        unanswered: The restart it needs, if it did not answer that request, else None.
+        restart: The restart it needs before the next Group, if it did not answer that request
+            (`_asked`) or a wait for no player online raised (`_restart_before_next`), else
+            None.
     """
 
     role: int
     endpoint: Endpoint
     stop: contextlib.AsyncExitStack
     played: str | None = None
-    unanswered: Restart | None = None
+    restart: Restart | None = None
 
 
 class _Instances:
@@ -734,37 +749,36 @@ class _Instances:
         self._relaunches = 0  # how many times a pair was launched again (`_restarted`)
 
     async def start(self, group: Group) -> None:
-        """Make sure the Instances `group` plays against are up, restarting both if one hung.
+        """Make sure the Instances `group` plays against are up, restarting both if one needs it.
 
         If an Instance of the pair did not answer a status request after the last Group it
-        played (`_answered`), such as a server that hung in that Group, both are stopped and
-        launched again first, so the two worlds keep the same history (#513, review B3).
+        played (`_answered`), such as a server that hung in that Group, or still had a player
+        online then (`_emptied`), both are stopped and launched again first, so the two worlds
+        keep the same history (#513, review B3).
         """
         endpoints = await self._pair(group.spec)
-        silent = {
-            launched.role: launched.unanswered
+        due = {
+            launched.role: launched.restart
             for launched in (self._launched.get(endpoint) for endpoint in endpoints)
-            if launched is not None and launched.unanswered is not None
+            if launched is not None and launched.restart is not None
         }
-        if silent:
-            self._pairs[_spec_key(group.spec)] = await self._restarted(
-                group.spec, endpoints, silent
-            )
+        if due:
+            self._pairs[_spec_key(group.spec)] = await self._restarted(group.spec, endpoints, due)
 
     async def _restarted(
         self,
         spec: Callable[[ServerSpec], ServerSpec],
         endpoints: tuple[Endpoint, Endpoint],
-        silent: Mapping[int, Restart],
+        due: Mapping[int, Restart],
     ) -> tuple[Endpoint, Endpoint]:
         """Stop the pair at `endpoints`, and launch one of `spec` in its place; where it is.
 
-        `silent` maps each side that did not answer (0, the Reference; 1) to the restart that
-        calls for. An Attached side stays where it is, and so does an unusable one
-        (`_unusable_verdict`), stopped. The others are launched together (`_started_again`),
-        and each side's outcome is kept (`_relaunched`).
+        `due` maps each side that needs a restart (0, the Reference; 1) to that restart. An
+        Attached side stays where it is, and so does an unusable one (`_unusable_verdict`),
+        stopped. The others are launched together (`_started_again`), and each side's outcome
+        is kept (`_relaunched`).
         """
-        for role, restart in silent.items():
+        for role, restart in due.items():
             name = self._sides[role].name
             LOG.warning("%s %s after %s: restarting both", name, restart.reason, restart.after)
         for endpoint in endpoints:
@@ -780,7 +794,7 @@ class _Instances:
         except ExceptionGroup as failures:
             raise failures.exceptions[0] from None
         reference, candidate = (
-            self._relaunched(role, endpoints[role], task.result(), silent)
+            self._relaunched(role, endpoints[role], task.result(), due)
             for role, task in enumerate(again)
         )
         return reference, candidate
@@ -806,21 +820,21 @@ class _Instances:
             return error
 
     def _relaunched(
-        self, role: int, old: Endpoint, again: Endpoint | RunnerError, silent: Mapping[int, Restart]
+        self, role: int, old: Endpoint, again: Endpoint | RunnerError, due: Mapping[int, Restart]
     ) -> Endpoint:
         """Where side `role` plays now that its Instance at `old` was launched `again`.
 
-        A side launched again that did not answer has its restart recorded, for the Report
+        A side launched again that needed it (`due`) has its restart recorded, for the Report
         (`SideSummary.restarts`). A side that could not be launched again is unusable at
         `old` from then on, so each later Group fails or is an `error` (`_unusable_verdict`),
         and the Run goes on to its Report (review A1).
         """
         if isinstance(again, RunnerError):
-            after = next(iter(silent.values())).after
+            after = next(iter(due.values())).after
             self._unusable[old] = f"could not be started again after {after}: {again.reason}"
             return old
-        if role in silent and again != old:
-            self._restarts[role].append(silent[role])
+        if role in due and again != old:
+            self._restarts[role].append(due[role])
         return again
 
     async def play(self, group: Group, *, prerequisite_failed: Verdict | None = None) -> _Play:
@@ -832,7 +846,8 @@ class _Instances:
         played on either, and its Verdict is `error`, naming why (`_unsettled`). If only
         the Candidate is, or the Candidate failed a prerequisite of `group`
         (`prerequisite_failed`, from `prerequisite_verdict`), `group` is played on the
-        Reference alone (`_reference_alone`); the prerequisite is named first.
+        Reference alone (`_reference_alone`); the prerequisite is named first. An Instance
+        the Run launched that had a player online is restarted after `group` (`_left_before`).
 
         Both Instances of `group`'s ServerSpec are up either way: they launch as a pair, the
         first time a Group of that ServerSpec is played on either side.
@@ -842,14 +857,29 @@ class _Instances:
         if unusable is not None and unusable.outcome is Outcome.ERROR:
             return _Play(unusable)
         skipped = prerequisite_failed or unusable
-        reference, candidate = endpoints
-        unsettled = await _unsettled(group, reference, candidate if skipped is None else None)
+        reference = endpoints[0]
+        left = await self._left_before(group, endpoints if skipped is None else (reference,))
+        unsettled = _unsettled(group, left)
         not_played = unsettled or skipped  # a Reference unsettled comes first: `error`
         if not_played is None:
             return await self._both(group, endpoints)
         if not_played.outcome is Outcome.ERROR:
             return _Play(not_played)
         return await self._reference_alone(group, reference, not_played)
+
+    async def _left_before(
+        self, group: Group, endpoints: Sequence[Endpoint]
+    ) -> Mapping[int, Exception]:
+        """Wait for each Instance at `endpoints` to have no player online before `group`.
+
+        What each wait raised, by side (0, the Reference; 1), as `_left_each` says. An
+        Instance the Run launched whose wait raised is restarted after `group`, so only
+        `group` fails for a player the wait after the last Group did not see (review A2).
+        """
+        left = await _left_each(endpoints)
+        for role, raised in left.items():
+            self._restart_before_next(endpoints[role], after=group.id, left=raised)
+        return left
 
     async def _both(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it."""
@@ -860,12 +890,14 @@ class _Instances:
             await self._attempt(group, role, endpoint) for role, endpoint in enumerate(endpoints)
         ]
         reference, candidate = (_transcript(attempt) for attempt in attempts)
-        verdict = await self._answered(endpoints, judge(group, *attempts))
+        answered = await self._answered(endpoints, judge(group, *attempts))
+        elapsed_s = perf_counter() - started
+        verdict = await self._emptied(endpoints, answered)
         return _Play(
             verdict,
             reference=tuple(measurements(reference)),
             candidate=tuple(measurements(candidate)),
-            elapsed_s=perf_counter() - started,
+            elapsed_s=elapsed_s,
             transcripts=(reference, candidate) if self._kept(verdict) else None,
         )
 
@@ -892,8 +924,9 @@ class _Instances:
             log.series() if failure is None else failure
             for log, failure in zip(logs, failed, strict=True)
         )
-        verdict = await self._answered(endpoints, judge_samples(group, reference, candidate))
-        return _Play(verdict, elapsed_s=perf_counter() - started)
+        answered = await self._answered(endpoints, judge_samples(group, reference, candidate))
+        elapsed_s = perf_counter() - started
+        return _Play(await self._emptied(endpoints, answered), elapsed_s=elapsed_s)
 
     async def _sampled_once(
         self, group: Group, role: int, endpoint: Endpoint, samples: SampleLog, *, first: bool
@@ -902,11 +935,16 @@ class _Instances:
 
         Before each play but the `first`, which `play` waited for, it waits for the Instance
         to have no player online, as before each Group. The side's failure is what the wait
-        raised (`_left_online`), or the play's GroupError.
+        raised (`_left_online`), or the play's GroupError. An Instance the Run launched whose
+        wait raised is restarted before the next Group, and so is not waited on again after
+        this one (review A3).
         """
-        left = None if first else await _left_online(endpoint)
-        if left is not None:
-            return left
+        if not first:
+            wait = until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+            left = await _left_online(wait)
+            if left is not None:
+                self._restart_before_next(endpoint, after=group.id, left=left)
+                return left
         samples.new_play()
         attempt = await self._attempt(group, role, endpoint, samples=samples)
         return attempt if isinstance(attempt, GroupError) else None
@@ -925,12 +963,15 @@ class _Instances:
             attempt = await self._attempt(group, 0, endpoint, samples=samples)
             sampled = attempt if isinstance(attempt, GroupError) else samples.series()
             judged = await self._answered((endpoint,), _not_sampled(group, sampled, verdict))
-            return _Play(judged, elapsed_s=perf_counter() - started)
+            elapsed_s = perf_counter() - started
+            return _Play(await self._emptied((endpoint,), judged), elapsed_s=elapsed_s)
         attempt = await self._attempt(group, 0, endpoint)
+        answered = await self._answered((endpoint,), _not_compared(group, attempt, verdict))
+        elapsed_s = perf_counter() - started
         return _Play(
-            await self._answered((endpoint,), _not_compared(group, attempt, verdict)),
+            await self._emptied((endpoint,), answered),
             reference=tuple(measurements(_transcript(attempt))),
-            elapsed_s=perf_counter() - started,
+            elapsed_s=elapsed_s,
         )
 
     async def _attempt(
@@ -984,8 +1025,60 @@ class _Instances:
         if await _answers(endpoint, timeout_s=ANSWER_TIMEOUT_S):
             return True
         why = f"did not answer a status request within {ANSWER_TIMEOUT_S:g} s"
-        launched.unanswered = Restart(after=played, reason=why)
+        launched.restart = Restart(after=played, reason=why)
         return False
+
+    async def _emptied(self, endpoints: Sequence[Endpoint], verdict: Verdict) -> Verdict:
+        """`verdict`, failed for a side that still has a player online once it played (#513).
+
+        `endpoints` are the Reference's, then the Candidate's if it was played. Each Instance
+        there that the Run launched waits for no player online, both at once
+        (`_still_online`); `_left_online_verdict` says what the Verdict is then. A player
+        still online after SETTLE_TIMEOUT_S is one the Instance kept, which would fail every
+        later Group (#266), so the pair is restarted before the next.
+        """
+        try:
+            async with asyncio.TaskGroup() as group:
+                waits = [
+                    group.create_task(self._still_online(endpoint, verdict.group_id))
+                    for endpoint in endpoints
+                ]
+        except ExceptionGroup as failures:
+            raise failures.exceptions[0] from None
+        left = {
+            role: online for role, wait in enumerate(waits) if (online := wait.result()) is not None
+        }
+        return _left_online_verdict(verdict, left)
+
+    async def _still_online(self, endpoint: Endpoint, played: str) -> Exception | None:
+        """What the wait for no player online at `endpoint` raised after `played`; None if none.
+
+        Only an Instance this Run launched waits: an Attached one is not the Run's to restart,
+        and the wait before the next Group finds its player, as before (`_unsettled`, #266).
+        Nor does one that already needs a restart (`_asked`). One whose wait raised is
+        restarted before the next Group (`_restart_reason`). What it raised is the side's
+        failure, a player still online or anything else (`_left_online`), unless a status
+        poll got no answer (`NoStatusAnswer`): the Instance answered `_asked`, and nothing
+        shows whether it kept a player then (review A1).
+        """
+        launched = self._launched.get(endpoint)
+        if launched is None or launched.restart is not None:
+            return None
+        wait = until_answered_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+        left = await _left_online(wait)
+        if left is not None:
+            self._restart_before_next(endpoint, after=played, left=left)
+        return None if isinstance(left, NoStatusAnswer) else left
+
+    def _restart_before_next(self, endpoint: Endpoint, *, after: str, left: Exception) -> None:
+        """Restart the Instance at `endpoint` before the next Group: its wait raised `left`.
+
+        Only if the Run launched it: an Attached one is not the Run's to restart. `start`
+        restarts it.
+        """
+        launched = self._launched.get(endpoint)
+        if launched is not None:
+            launched.restart = Restart(after=after, reason=_restart_reason(left))
 
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
@@ -1092,30 +1185,17 @@ def _installed_version(side: Side) -> str | None:
     return f"sha256 {source.sha256}"
 
 
-async def _unsettled(
-    group: Group, reference: Endpoint, candidate: Endpoint | None
-) -> Verdict | None:
-    """Wait for the Reference, and the Candidate if given, to have no player online.
+async def _left_each(endpoints: Sequence[Endpoint]) -> dict[int, Exception]:
+    """Wait for each Instance at `endpoints` to have no player online; what each wait raised.
 
-    None if each does. The two are waited on at once, each wait to its end, so neither is
-    left running when the Run moves on. The Candidate is not given when it will not be
-    played anyway. If one still has players at the deadline (`PlayersStillOnline`), or its
-    wait raised, the Verdict that says why `group` is not played there:
-
-    - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
-      2 players still online after waiting 2 s: 'watcher', 'control'" (or "the Reference
-      failed: the wait for no player online failed: RuntimeError: ..."), and the same
-      for the Candidate after a "; " if it did too. Neither side is played.
-    - Only the Candidate does, whatever its wait raised: `mismatch` (a Candidate failure is
-      never `error`, audit H3; the Reference's wait ran the same code, #222), led by a
-      `failed` Divergence that says who is still online, or what the wait raised. The
-      Reference is still played, for its test cases (#266).
+    By side (0, the Reference; 1), for each wait that raised: `PlayersStillOnline` if a
+    player is still online at the deadline, or anything else. They are waited on at once,
+    each wait to its end, so none is left running when the Run moves on.
 
     Raises:
         BaseException: A wait raised one that is not an Exception (a cancellation from
-            inside it, KeyboardInterrupt); raised once both waits are done.
+            inside it, KeyboardInterrupt); raised once every wait is done.
     """
-    endpoints = (reference,) if candidate is None else (reference, candidate)
     waits = (
         until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S) for endpoint in endpoints
     )
@@ -1123,20 +1203,36 @@ async def _unsettled(
     for result in results:
         if isinstance(result, BaseException) and not isinstance(result, Exception):
             raise result
-    reference_left = results[0] if isinstance(results[0], Exception) else None
-    left = results[-1] if candidate is not None and isinstance(results[-1], Exception) else None
-    if reference_left is not None:
-        detail = f"the Reference {_unsettled_by(reference_left)}"
-        if left is not None:
-            detail += f"; the Candidate {_unsettled_by(left)}"
+    return {role: left for role, left in enumerate(results) if isinstance(left, Exception)}
+
+
+def _unsettled(group: Group, left: Mapping[int, Exception]) -> Verdict | None:
+    """The Verdict of `group` if a side had a player online before it (`_left_each`), or None.
+
+    `left` maps each side whose wait raised (0, the Reference; 1) to what it raised. The
+    Candidate is not waited on when it will not be played anyway. Then:
+
+    - The Reference's wait raised: `error` (the Reference failed, as in `judge`), "the
+      Reference had 2 players still online after waiting 2 s: 'watcher', 'control'" (or
+      "the Reference failed: the wait for no player online failed: RuntimeError: ..."),
+      and the same for the Candidate after a "; " if it did too. Neither side is played.
+    - Only the Candidate's did, whatever it raised: `mismatch` (a Candidate failure is
+      never `error`, audit H3; the Reference's wait ran the same code, #222), led by a
+      `failed` Divergence that says who is still online, or what the wait raised. The
+      Reference is still played, for its test cases (#266).
+    """
+    if 0 in left:
+        detail = f"the Reference {_unsettled_by(left[0])}"
+        if 1 in left:
+            detail += f"; the Candidate {_unsettled_by(left[1])}"
         return _error(group, detail)
-    if left is None:
+    if 1 not in left:
         return None
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
-        divergences=(_failed(bot="", what=_left_what(left)),),
-        detail=f"the Candidate failed: {_left_what(left)}",
+        divergences=(_failed(bot="", what=_left_what(left[1])),),
+        detail=f"the Candidate failed: {_left_what(left[1])}",
     )
 
 
@@ -1170,9 +1266,7 @@ def _unanswered_verdict(verdict: Verdict, silent: Collection[int], *, timeout_s:
 
     - The Reference did not: `error`, "the Reference gave no answer to a status request within
       10 s after the Group", and the same for the Candidate after a "; " if it did not either.
-    - Only the Candidate did not: `mismatch`, its `failed` Divergence saying so after any
-      other, as for any Candidate failure (`judge`). A hang after the Group's last packet
-      still costs the Candidate the Group (review B1). Its detail is the first failure's.
+    - Only the Candidate did not: the Candidate failed it (`_failed_after`).
 
     An `error` stays as it is: the Reference or mscts had failed already.
     """
@@ -1184,6 +1278,41 @@ def _unanswered_verdict(verdict: Verdict, silent: Collection[int], *, timeout_s:
         if 1 in silent:
             detail += f"; the Candidate gave {what}"
         return Verdict(group_id=verdict.group_id, outcome=Outcome.ERROR, detail=detail)
+    return _failed_after(verdict, what)
+
+
+def _left_online_verdict(verdict: Verdict, left: Mapping[int, Exception]) -> Verdict:
+    """`verdict`, unless sides in `left` (0, the Reference; 1) kept a player online after playing.
+
+    `left` maps each to what its wait for no player online raised once the Group was played
+    (`_left_online`), as the wait before a Group would (`_unsettled`) (#513):
+
+    - The Reference did: `error`, "after the Group, the Reference had 1 player still online
+      after waiting 2 s: 'crafter'", and the same for the Candidate after a "; " if it did
+      too. The Reference failed, as when it has a player online before a Group.
+    - Only the Candidate did: `mismatch`, its `failed` Divergence "after the Group, 1 player
+      still online after waiting 2 s: 'crafter'" after any other, as for any Candidate
+      failure (`judge`). Its detail is the first failure's.
+
+    An `error` stays as it is: the Reference or mscts had failed already.
+    """
+    if verdict.outcome is Outcome.ERROR or not left:
+        return verdict
+    if 0 in left:
+        detail = f"after the Group, the Reference {_unsettled_by(left[0])}"
+        if 1 in left:
+            detail += f"; the Candidate {_unsettled_by(left[1])}"
+        return Verdict(group_id=verdict.group_id, outcome=Outcome.ERROR, detail=detail)
+    return _failed_after(verdict, f"after the Group, {_left_what(left[1])}")
+
+
+def _failed_after(verdict: Verdict, what: str) -> Verdict:
+    """`verdict`, failed by the Candidate for `what` it did once the Group was played (#513).
+
+    A `mismatch`, its `failed` Divergence saying `what` after any other, as for any Candidate
+    failure (`judge`): what the Candidate did after the Group's last packet still costs it
+    the Group (review B1). Its detail is the first failure's.
+    """
     return dataclasses.replace(
         verdict,
         outcome=Outcome.MISMATCH,
@@ -1205,20 +1334,30 @@ async def _answers(endpoint: Endpoint, *, timeout_s: float) -> bool:
         return True
 
 
-async def _left_online(endpoint: Endpoint) -> Exception | None:
-    """Wait for the Instance at `endpoint` to have no player online; what the wait raised, if any.
+async def _left_online(wait: Awaitable[None]) -> Exception | None:
+    """Run `wait`, a wait for no player online; what it raised, if anything.
 
-    `PlayersStillOnline` if a player is still online after `SETTLE_TIMEOUT_S`. Any other
-    Exception is the side's failure too, as in `_unsettled`.
+    `PlayersStillOnline` if a player is still online at its deadline. Any other Exception
+    is the side's failure too, as in `_unsettled`.
 
     Raises:
         BaseException: The wait raised one that is not an Exception.
     """
     try:
-        await until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+        await wait
     except Exception as left:  # noqa: BLE001 - the side's failure, whatever it is (#222)
         return left
     return None
+
+
+def _restart_reason(left: Exception) -> str:
+    """Why an Instance whose wait for no player online raised `left` is restarted, after "it"."""
+    if isinstance(left, NoStatusAnswer):
+        return (
+            f"did not answer a status request within {SETTLE_TIMEOUT_S:g} s"
+            " while mscts waited for its players to leave"
+        )
+    return _unsettled_by(left)
 
 
 def _not_sampled(group: Group, reference: Samples | Exception, verdict: Verdict) -> Verdict:

@@ -18,6 +18,7 @@ def fake_server(run_token: str, tmp_path: Path) -> Callable[..., Server]:
         description: str | None = None,
         *,
         hangs_after_ping: int | None = None,
+        lingers_after_ping: int | None = None,
         fails_launch: frozenset[int] = frozenset[int](),
     ) -> Server:
         adapter = FakeAdapter(
@@ -25,6 +26,7 @@ def fake_server(run_token: str, tmp_path: Path) -> Callable[..., Server]:
             token=run_token,
             description=description,
             hangs_after_ping=hangs_after_ping,
+            lingers_after_ping=lingers_after_ping,
             fails_launch=fails_launch,
         )
         installation = Installation(adapter=name, target=TARGET, root=tmp_path / "installations")

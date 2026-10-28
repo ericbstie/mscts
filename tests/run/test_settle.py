@@ -17,7 +17,12 @@ import pytest
 
 import mscts.settle as settle_module
 from mscts.net import Endpoint
-from mscts.settle import PlayersStillOnline, until_no_player_online
+from mscts.settle import (
+    NoStatusAnswer,
+    PlayersStillOnline,
+    until_answered_no_player_online,
+    until_no_player_online,
+)
 from tests.net.fakes import HOST, Peer, free_port
 from tests.net.fakes import status_server as fixed_status
 from tests.run.occupancy import Occupancy, listening, named, never_answer
@@ -58,6 +63,29 @@ async def test_it_raises_what_the_last_status_said_once_the_deadline_passes() ->
     assert (left.online, left.names, left.deadline_s) == (2, ("watcher", "control"), DEADLINE_S)
     assert str(left) == "2 players still online after waiting 0.3 s: 'watcher', 'control'"
     assert occupancy.polls > 1, "it gave up before the deadline"
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_a_reading_taken_before_the_deadline_but_read_after_it_is_polled_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review A4: our event loop can stall between a reply and the deadline check, so a
+    # reading from before the player left must not end the wait.
+    reading = settle_module._Reading  # noqa: SLF001
+    readings = [reading(online=1, names=()), reading(online=0, names=())]
+
+    async def slow_then_empty(endpoint: Endpoint, *, timeout_s: float) -> settle_module._Reading:
+        del endpoint, timeout_s
+        if readings[0].online:  # the first poll, which the stall makes late
+            await asyncio.sleep(2 * DEADLINE_S)
+        return readings.pop(0)
+
+    monkeypatch.setattr(settle_module, "_players_online", slow_then_empty)
+
+    await until_no_player_online(Endpoint(host=HOST, port=free_port()), deadline_s=DEADLINE_S)
+
+    assert readings == []
 
 
 @dataclasses.dataclass(frozen=True)
@@ -140,6 +168,47 @@ async def test_a_status_that_never_answers_ends_at_the_deadline() -> None:
         await until_no_player_online(endpoint, deadline_s=DEADLINE_S)
 
     assert perf_counter() - begun < 3 * DEADLINE_S
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(5)
+async def test_waiting_for_an_answer_a_status_that_never_answers_raises_at_the_deadline() -> None:
+    # After a Group, nothing plays next to meet the failure (#513, review A1).
+    async with listening(never_answer) as endpoint:
+        begun = perf_counter()
+        with pytest.raises(NoStatusAnswer):
+            await until_answered_no_player_online(endpoint, deadline_s=DEADLINE_S)
+
+    assert perf_counter() - begun < 3 * DEADLINE_S
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_waiting_for_an_answer_a_server_that_is_not_listening_raises() -> None:
+    endpoint = Endpoint(host=HOST, port=free_port())
+    with pytest.raises(NoStatusAnswer):
+        await until_answered_no_player_online(endpoint, deadline_s=DEADLINE_S)
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_waiting_for_an_answer_an_answer_that_cannot_be_read_still_counts_as_empty() -> None:
+    # The server answered, so it is not hung: the next Group shows what it sends.
+    async with listening(fixed_status(UNREADABLE["no online count"], [])) as endpoint:
+        await until_answered_no_player_online(endpoint, deadline_s=DEADLINE_S)
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_waiting_for_an_answer_it_raises_what_the_last_status_said_too() -> None:
+    occupancy = Occupancy(online=(1, 0))
+    async with listening(occupancy.handler()) as endpoint:
+        await until_answered_no_player_online(endpoint, deadline_s=DEADLINE_S)
+
+    assert occupancy.polls == 2
+    async with listening(Occupancy(online=(1,), sample=named("crafter")).handler()) as endpoint:
+        with pytest.raises(PlayersStillOnline):
+            await until_answered_no_player_online(endpoint, deadline_s=DEADLINE_S)
 
 
 TURNS_TO_A_STATUS_WAIT = 30

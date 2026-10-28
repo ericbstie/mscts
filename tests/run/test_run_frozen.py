@@ -1,6 +1,7 @@
 """An Instance a failed Group left frozen is unusable for the rest of the Run (#228)."""
 
 import functools
+from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,7 @@ from tests.run.occupancy import attached
 GROUP_TIMEOUT_S = 0.5
 """Each Bot operation's bound here: short, since the frozen side never answers its unfreeze."""
 
-UNSETTLED = run_module._unsettled  # noqa: SLF001 - the real wait, which `quick` replaces
+LEFT_EACH = run_module._left_each  # noqa: SLF001 - the real wait, which `quick` replaces
 """The wait for no player online, for a test that puts it back."""
 
 
@@ -57,10 +58,10 @@ def quick(monkeypatch: pytest.MonkeyPatch) -> None:
         functools.partial(run_module.run_group, timeout_s=GROUP_TIMEOUT_S),
     )
 
-    async def settled(*_: object) -> None:
-        return None
+    async def settled(*_: object) -> dict[int, Exception]:
+        return {}
 
-    monkeypatch.setattr(run_module, "_unsettled", settled)
+    monkeypatch.setattr(run_module, "_left_each", settled)
 
 
 async def _stays_frozen(context: GroupContext) -> None:
@@ -139,11 +140,11 @@ async def test_only_the_reference_is_waited_on_while_the_candidate_is_frozen(
     # would cost the whole deadline before each later Group.
     waited: list[int] = []
 
-    async def settled(group: Group, reference: Endpoint, candidate: Endpoint | None) -> None:
-        del group, reference
-        waited.append(1 if candidate is None else 2)
+    async def settled(endpoints: Sequence[Endpoint]) -> dict[int, Exception]:
+        waited.append(len(endpoints))
+        return {}
 
-    monkeypatch.setattr(run_module, "_unsettled", settled)
+    monkeypatch.setattr(run_module, "_left_each", settled)
     await _later(STAYS_FROZEN, "Candidate", tmp_path)
 
     assert waited == [2, 1], "both sides before the freeze, then the Reference alone"
@@ -155,11 +156,11 @@ async def test_no_side_is_waited_on_once_the_reference_is_frozen(
 ) -> None:
     waited: list[int] = []
 
-    async def settled(group: Group, reference: Endpoint, candidate: Endpoint | None) -> None:
-        del group, reference
-        waited.append(1 if candidate is None else 2)
+    async def settled(endpoints: Sequence[Endpoint]) -> dict[int, Exception]:
+        waited.append(len(endpoints))
+        return {}
 
-    monkeypatch.setattr(run_module, "_unsettled", settled)
+    monkeypatch.setattr(run_module, "_left_each", settled)
     await _later(STAYS_FROZEN, "Reference", tmp_path)
 
     assert waited == [2]
@@ -169,7 +170,7 @@ async def test_no_side_is_waited_on_once_the_reference_is_frozen(
 async def test_a_reference_unsettled_while_the_candidate_is_frozen_is_an_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setattr(run_module, "_unsettled", UNSETTLED)
+    monkeypatch.setattr(run_module, "_left_each", LEFT_EACH)
     polls: list[Endpoint] = []
 
     async def poll(endpoint: Endpoint, *, deadline_s: float) -> None:
