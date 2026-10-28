@@ -108,8 +108,9 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
   once restarted the container twice in train 30.
 - Run `mise run commit`, the live tiers and Self-checks in the background
   with the longest timeout (7200000 ms). A 10-minute limit kills the check
-  and leaves `.git/index.lock` behind. Wait for a background run by its
-  output, never by `pgrep -f` in a loop: it matches its own wrapper.
+  and leaves `.git/index.lock` behind. Wait for a background run with
+  `python3 scripts/wait_for.py` on its rc file or log (below), never by `pgrep -f`
+  in a loop: it matches its own wrapper.
 - Rebase onto main only before opening the PR
   (`git rebase main --exec "mise run check"`), and report commit hashes
   only in the final report. A timing claim compares clean main and your
@@ -127,10 +128,10 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - End each issue with the Worker report exactly as docs/PROCESS.md
   specifies, including the lines you propose for your lane's handbook.
   State your worktree path, branch and PR URL.
-- Start any live run that can outlast a few minutes with `setsid nohup` in a scratch script, and wait on its rc file within your turn: a background run that outlives your turn is killed.
+- Start any live run that can outlast a few minutes with `setsid nohup` in a scratch script, and wait on its rc file within your turn with `python3 scripts/wait_for.py <rc file>`: a background run that outlives your turn is killed.
 - Never set a rule the Fixture world already has (`spawn_mobs` is off, ADR-0013): its undo sets vanilla's default and turns spawning on for every later play (#344, #63).
 - A fake gives each `where=` predicate a near miss for every field it checks: a near miss that differs in one field leaves the others' checks untested (#63).
-- Wait on a detached run's rc file with foreground polls of at most 590 s each, one Bash call per poll: a longer wait moves to the background, and `Monitor`'s sleep can return at once. A commit (`mise run commit`) takes about 5 min and `rebase -x` about 5 min a commit, so start both detached too.
+- Wait on a detached run's rc file with `python3 scripts/wait_for.py <rc file>`, one Bash call per poll, and write no `until` loop of your own (#516). It prints `found <file>: <first line>` and exits 0, or gives up after `--timeout` seconds (default 580, under the Bash tool's 10 minutes) with exit 1, and you call it again. `--pattern REGEX` waits for a log line instead and prints the first match as `file:line:text`. A longer wait moves to the background, and `Monitor`'s sleep can return at once. A commit (`mise run commit`) takes about 5 min and `rebase -x` about 5 min a commit, so start both detached too.
 - A probe that needs load runs under `scripts/repeat.py --stress --live-lock`, which loads the CPUs only while the run holds the lock, not while it waits (#354).
 - Shared test helpers live in `tests/support/`; a `test_*.py` never imports another. After moving a helper, run each changed test file alone: the full suite can hide a lost import (#146). A PR that moves or renames helpers lists the old and new names in its body.
 - An Adapter Protocol member lands with every implementation in one commit, or `ty` fails; order the increments for it. Live install checks set `MSCTS_CACHE` to a scratch directory (#188).
@@ -140,8 +141,8 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - A fake's `set_entity_data` entries name the serializer (`"int"`), not its id. A fake task that suppresses only ConnectionError dies silently on a CodecError, and the Group just times out (#345).
 - A Self-check plays `MSCTS_SELFCHECK_REPEAT` times, default 3: "20 of 20" needs `MSCTS_SELFCHECK_REPEAT=20` exported. `mise run test:selfcheck` and `repeat.py` pass it through. Run `repeat.py` on a live selection as `mise exec -- uv run scripts/repeat.py …`, or the Reference setup finds Java 21 and stops with a PrepareError; `mise run test:selfcheck` sets the Java itself (#461). `repeat.py` now guesses a live selection from its paths (`selfcheck`, `reference`, `candidate`) and `-m` expression, and under a Java the Reference refuses it stops at once with exit 2, naming the `mise exec` form (#472).
 - `mise run test:selfcheck -- <node ids> -vv` shows the node names: the project's `-q` in addopts hides them with a single `-v` (#461).
-- `scripts/mutate.py -x` must not be combined with `-n` (xdist): every failing mutant then reads INVALID (exit 2), not KILLED. Delete the sweep's rc file before you start it, and wait for its trailing rc line, never for a `FAILED` or `" in "` pattern: pytest output and uv's warnings match at once (#462).
-- `git rebase origin/main --exec "mise run check"` on a branch that already sits on origin/main's tip still runs the check on every commit: about 5 min a commit (11 commits took about 70 min and met the background limit). Start it with `setsid nohup` and wait on its rc file (#451, #455, #462).
+- `scripts/mutate.py -x` must not be combined with `-n` (xdist): every failing mutant then reads INVALID (exit 2), not KILLED. Delete the sweep's rc file before you start it, and wait for its trailing rc line (`echo rc=$?` after the run) with `scripts/wait_for.py <log> --pattern '^rc='`, never for a `FAILED` or `" in "` pattern: pytest output and uv's warnings match at once (#462).
+- `git rebase origin/main --exec "mise run check"` on a branch that already sits on origin/main's tip still runs the check on every commit: about 5 min a commit (11 commits took about 70 min and met the background limit). Start it with `setsid nohup` and wait on its rc file with `scripts/wait_for.py` (#451, #455, #462).
 - Append a state line to `<scratch>/findings.txt` after each commit ("state: done X, next Y", and which review items are still open), so an interrupted agent that is resumed does not rebuild its state from commit messages (#451).
 - Never call the harness's thread-messaging tools (`mcp__hearthbot__*`): a worker ended its turn at 6 of 14 checked by calling one. A Workflow agent with an output schema ends by calling StructuredOutput, never by ending its turn to wait on a monitor: the schema error threw out of the whole Workflow (#476, #441).
 - Commit subjects keep the `area: ` prefix (`group: …`, `docs: …`, `tooling: …`), the form of `git log`. A sonnet worker wrote "Add titles for …" (#442).
@@ -154,4 +155,4 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Run live checks (Self-checks, `mscts run`) from a detached copy at the commit (`git worktree add --detach <path> <sha>`), never from the worktree you edit: a run waiting for the lock picks up edits made meanwhile (#487).
 - Before handing back a new Group, run it once on Pumpkin and check every test case name in its Report against `TITLES`: one run found six untitled names (#490).
 - Detach a long run with `setsid -f bash -c '…'`; a job started with `nohup … &` ignores SIGINT, which a test that interrupts it needs (#472).
-- If the sandbox refuses a detached script that runs `cd` and `git` in your worktree, start `mise run commit` or `git rebase --exec` with the Bash tool's background run instead, and wait on its output file for the commit summary or "Successfully rebased" (#471).
+- If the sandbox refuses a detached script that runs `cd` and `git` in your worktree, start `mise run commit` or `git rebase --exec` with the Bash tool's background run instead, and wait on its output file for the commit summary or "Successfully rebased" with `scripts/wait_for.py <file> --pattern 'Successfully rebased'` (#471).
