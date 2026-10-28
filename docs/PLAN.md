@@ -1320,7 +1320,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   distance; `MOVES` — what a window that watches entities move compares (the spawn bundle, the
   velocity, the sync on landing, the removal); `HURTS` — what the fall-damage window compares;
   `STANDS` — the armor stands summoned 2 blocks up at each distance; `PIGS` — the pigs summoned 5
-  blocks up; `activation_falling` — the `entities/activation-falling` script.
+  blocks up; `activation_falling` — the `entities/activation-falling` script. `ITEMS` — the
+  items summoned sliding west on ice and lying in a stream at each distance; `activation_items` —
+  the `entities/activation-items` script.
 - `groups.entities_items`: `ITEM_PACKETS` — what a window compares (entities appearing,
   changing and going, a pickup, the Bot's slots and experience, and sounds); `PAIRS` — the
   pairs of items `entities/item-merge` lays out, a tick apart; `item_merge` — the

@@ -35,7 +35,7 @@ from dataclasses import replace
 
 from mscts.bot import Bot
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, pin_joins, remove_tagged_until_gone
+from mscts.groups._world import CONTROL_AT, fast_forward, pin_joins, remove_tagged_until_gone
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 _WATCHER = "watcher"
@@ -174,3 +174,66 @@ async def activation_falling(context: GroupContext) -> None:
         await context.freeze()
         await _watch(context, MOVES, STANDS)
         await _watch(context, HURTS, PIGS)
+
+
+# `entities/activation-items`
+
+_ICE_ROW = "fill -70 -61 4 -1 -61 4"
+"""The ground of the ice row, east-west along z 4, past the farthest item and its slide."""
+
+
+def _trench(distance: int) -> str:
+    """The ground the stream of the item at `distance` runs in: 9 blocks west from under it."""
+    return f"fill {-distance - 8} -61 8 {-distance} -61 8"
+
+
+_FLOW_TICKS = 60
+"""How long the water runs before the window: it spreads a block every 5 ticks, 7 blocks from its
+source, so it has stopped after 35."""
+
+
+def _item(item: str, at: _Position, motion_x: float) -> str:
+    """The `/summon` of one `item` (without `minecraft:`) at `at`, moving `motion_x` east a tick."""
+    stack = f'Item:{{id:"minecraft:{item}",count:1}}'
+    return _summon("item", at, stack, f"Motion:[{motion_x}d,0.0d,0.0d]")
+
+
+ITEMS = (
+    *(
+        _item(item, (_west(d), -60.0, 4.5), -0.4)
+        for d, item in zip(DISTANCES, ("stone", "dirt", "cobblestone", "oak_planks"), strict=True)
+    ),
+    *(
+        _item(item, (_west(d), -61.0, 8.5), 0.0)
+        for d, item in zip(DISTANCES, ("sand", "gravel", "glass", "bricks"), strict=True)
+    ),
+)
+"""An item sliding west on the ice at each of `DISTANCES`, then an item lying still at the east
+end of each stream. Vanilla sends the velocity of an item in water every tick, since the water
+pushes it (`ItemEntity.tick` sets `needsSync`), and that of an item on ice every 20 calls of
+`ServerEntity.sendChanges`."""
+
+
+async def _build(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
+    """Lay the ice row and dig a stream for each distance; push the undo of each onto `undo`."""
+    control = context.control
+    await control.run(f"{_ICE_ROW} minecraft:ice")
+    undo.push_async_callback(control.run, f"{_ICE_ROW} minecraft:grass_block")
+    for distance in DISTANCES:
+        await control.run(f"{_trench(distance)} minecraft:air")
+        undo.push_async_callback(control.run, f"{_trench(distance)} minecraft:grass_block")
+        await control.run(f"setblock {-distance} -61 8 minecraft:water")
+
+
+@group("entities/activation-items", spec=activation_spec, kind=GroupKind.TICK_EXACT)
+async def activation_items(context: GroupContext) -> None:
+    """Items slide west on ice and are carried by water at 8, 24, 40 and 56 blocks away.
+
+    The world is frozen before the water has run, and steps on until it has, so that every
+    stream is the same when the items come.
+    """
+    async with _arena(context) as undo:
+        await _build(context, undo)
+        await context.freeze()
+        await fast_forward(context.control, _FLOW_TICKS)
+        await _watch(context, MOVES, ITEMS)

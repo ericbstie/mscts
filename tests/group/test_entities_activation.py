@@ -22,7 +22,8 @@ from mscts.transcript import Transcript
 from tests.net.fakes import EMPTY_CHUNK, JoinScript, Peer, join_server
 
 FALLING = "entities/activation-falling"
-GROUP_IDS = (FALLING,)
+ITEMS = "entities/activation-items"
+GROUP_IDS = (FALLING, ITEMS)
 COMMANDS = tree("gamerule", "tp", "tick", "summon", "kill", "fill", "setblock", "time", "tellraw")
 TAG = "mscts_activation"
 STEP = "tick step 1"
@@ -86,22 +87,35 @@ def summoned(entity: str, at: tuple[float, float, float], *nbt: str) -> str:
     return f"summon minecraft:{entity} {x} {y} {z} {{{fields}}}"
 
 
+def _chunks(at: tuple[tuple[int, int], ...]) -> list[dict[str, object]]:
+    """Empty chunks at each of `at`."""
+    return [{**EMPTY_CHUNK, "chunk_x": x, "chunk_z": z} for x, z in at]
+
+
 @dataclass
 class ActivationServer(ControlServer):
     """A ControlServer that sends the chunks in `held` as a joining Bot's first batch.
 
+    The watcher is sent the chunks in `late` right after its join, unread until it next reads.
     It also answers `time query gametime`, each answer 100 ticks after the last, so a
     fast-forward has run by the next read.
     """
 
     held: tuple[tuple[int, int], ...] = HELD
+    late: tuple[tuple[int, int], ...] = ()
     game_time: int = 0
 
     @override
     async def __call__(self, peer: Peer) -> None:
-        batch = [{**EMPTY_CHUNK, "chunk_x": x, "chunk_z": z} for x, z in self.held]
-        script = JoinScript(commands=COMMANDS, first_batch=batch, then=self._play)
+        script = JoinScript(commands=COMMANDS, first_batch=_chunks(self.held), then=self._play)
         await join_server(self.seen, script)(peer)
+
+    @override
+    async def _play(self, peer: Peer) -> None:
+        if peer.name == "watcher":
+            for chunk in _chunks(self.late):
+                await peer.send("minecraft:level_chunk_with_light", **chunk)
+        await super()._play(peer)
 
     @override
     def _answer(self, peer: Peer, command: str) -> bytes:
@@ -153,23 +167,20 @@ def test_the_windows_compare_how_entities_appear_move_and_are_hurt() -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-async def test_control_pins_the_join_goes_away_and_freezes_once_the_watcher_holds_its_chunks(
-    group_id: str,
-) -> None:
+async def test_control_pins_the_join_and_goes_away_before_anything_else(group_id: str) -> None:
     result = await play(group_id)
 
     assert result.first[: len(PINNED)] == PINNED
-    assert result.first[-1] == "tick freeze"
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("group_id", GROUP_IDS)
-async def test_the_tagged_entities_and_their_drops_go_and_the_rules_come_back(
+async def test_the_tagged_entities_and_their_drops_go_and_the_rules_come_back_last(
     group_id: str,
 ) -> None:
     result = await play(group_id)
 
-    assert result.after == (*CLEAR, "tick unfreeze")
+    assert result.after[-len(CLEAR) - 1 :] == (*CLEAR, "tick unfreeze")
 
 
 @pytest.mark.asyncio
@@ -197,12 +208,33 @@ async def test_a_chunk_that_never_comes_ends_the_play_before_anything_is_summone
     assert sent.after == (*PINNED, *CLEAR)
 
 
+@pytest.mark.asyncio
+async def test_the_watcher_reads_on_until_a_chunk_sent_after_its_join_has_come(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(entities_activation, "_CHUNK_SYNCS", 3)
+
+    result = await replay(FALLING, ActivationServer(held=HELD[1:], late=HELD[:1]))
+
+    assert len(result.windows) == 2
+
+
 async def _play_into(transcript: Transcript, server: ActivationServer) -> None:
     async with playing(server, transcript) as context:
         await GROUPS[FALLING].run(context)
 
 
 # `entities/activation-falling`
+
+
+@pytest.mark.asyncio
+async def test_falling_freezes_the_world_once_the_watcher_holds_its_chunks_and_builds_nothing() -> (
+    None
+):
+    result = await play(FALLING)
+
+    assert result.first == (*PINNED, "tick freeze")
+    assert result.after == (*CLEAR, "tick unfreeze")
 
 
 @pytest.mark.asyncio
@@ -227,3 +259,68 @@ async def test_falling_then_drops_four_pigs_five_blocks_and_compares_their_fall_
     assert result.windows[1].before == ()
     assert result.windows[1].commands == (*pigs, *steps(20))
     assert len(result.windows) == 2
+
+
+# `entities/activation-items`
+
+ICE_ROW = "fill -70 -61 4 -1 -61 4"
+
+
+def trench(distance: int) -> str:
+    """The 9 blocks of ground a stream of the item at `distance` runs west in."""
+    return f"fill {-distance - 8} -61 8 {-distance} -61 8"
+
+
+BUILD = (
+    f"{ICE_ROW} minecraft:ice",
+    *(
+        command
+        for d in DISTANCES
+        for command in (f"{trench(d)} minecraft:air", f"setblock {-d} -61 8 minecraft:water")
+    ),
+)
+"""A row of ice, then a trench with water at its east end for each distance, in order."""
+
+FAST_FORWARD = (TIME_QUERY, "tick step 60", TIME_QUERY)
+"""Control steps 60 ticks at once, so the water has run to the west end of each trench."""
+
+
+def stack(item: str) -> str:
+    """The `Item` field of one `item` (without `minecraft:`)."""
+    return f'Item:{{id:"minecraft:{item}",count:1}}'
+
+
+UNBUILD = (
+    *(f"{trench(d)} minecraft:grass_block" for d in reversed(DISTANCES)),
+    f"{ICE_ROW} minecraft:grass_block",
+)
+
+
+@pytest.mark.asyncio
+async def test_items_builds_ice_and_streams_then_freezes_and_lets_the_water_run() -> None:
+    result = await play(ITEMS)
+
+    assert result.first == (*PINNED, *BUILD, "tick freeze", *FAST_FORWARD)
+
+
+@pytest.mark.asyncio
+async def test_items_sends_items_west_on_the_ice_and_drops_items_in_the_streams() -> None:
+    result = await play(ITEMS)
+    on_ice = tuple(
+        summoned("item", (0.5 - d, -60.0, 4.5), stack(item), "Motion:[-0.4d,0.0d,0.0d]")
+        for d, item in zip(DISTANCES, ("stone", "dirt", "cobblestone", "oak_planks"), strict=True)
+    )
+    in_streams = tuple(
+        summoned("item", (0.5 - d, -61.0, 8.5), stack(item), "Motion:[0.0d,0.0d,0.0d]")
+        for d, item in zip(DISTANCES, ("sand", "gravel", "glass", "bricks"), strict=True)
+    )
+
+    assert [window.label for window in result.windows] == [MOVES_LABEL]
+    assert result.windows[0].commands == (*on_ice, *in_streams, *steps(20))
+
+
+@pytest.mark.asyncio
+async def test_items_takes_the_streams_and_the_ice_away_before_the_items() -> None:
+    result = await play(ITEMS)
+
+    assert result.after == (*UNBUILD, *CLEAR, "tick unfreeze")
