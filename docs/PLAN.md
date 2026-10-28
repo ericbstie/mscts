@@ -1989,7 +1989,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # sides fail, the detail joins both sentences with "; ": "the Reference had ...; the
     # Candidate failed: the wait ...". A BaseException that is not an Exception (a
     # cancellation from inside a wait) is raised once both waits are done. The wait is
-    # not part of `elapsed_s`.
+    # not part of `elapsed_s`. #513, review A2: a launched side whose wait raised gets a
+    # Restart(after=<this Group>, reason as above), and the pair is restarted before the
+    # next Group, so a player the wait after the last Group did not see fails one Group.
     # #228: an Instance a Group left frozen (GroupError.left_frozen) plays no later Group,
     # decided before the wait. The Reference's: each is `error`, "the Reference is
     # unusable: <group id> left its world frozen" (the Candidate's likewise,
@@ -3050,7 +3052,7 @@ class GroupResult:
 
 @frozen
 class Restart:                      # #513: an Instance stopped and launched again before a Group
-    after: str                      # the last Group played on the one stopped
+    after: str                      # the Group after which it was stopped
     reason: str                     # after "it": "did not answer a status request within 10 s",
                                     # "had 1 player still online after waiting 2 s: 'crafter'",
                                     # "did not answer a status request within 2 s while mscts

@@ -200,7 +200,10 @@ players to leave. One that still lists a player fails that Group as
 `Candidate failed: after the Group, 1 player still online after waiting
 2 s: 'crafter'`, or makes it an `Error` if that server is vanilla. One
 that stops answering in those 2 seconds does not fail the Group, because
-mscts cannot tell whether a player is still online.
+mscts cannot tell whether a player is still online. A server that still
+lists a player before the next Group fails that one instead, as
+`Candidate failed: 1 player still online after waiting 2 s: 'crafter'`,
+or makes it an `Error` if that server is vanilla.
 
 In each of these cases, mscts stops both servers and starts them again
 before the next Group, so the two still have the same history. The line

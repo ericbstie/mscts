@@ -153,7 +153,8 @@ class Restart:
     """An Instance the Run stopped and launched again before a Group (#513).
 
     Attributes:
-        after: The last Group played on the Instance it stopped, e.g. `crafting/grid`.
+        after: The Group after which it stopped the Instance, e.g. `crafting/grid`: the
+            last played on it, or the one its player online before it failed (review A2).
         reason: Why, after "it": `did not answer a status request within 10 s`, `had 1
             player still online after waiting 2 s: 'crafter'`, or `did not answer a status
             request within 2 s while mscts waited for its players to leave`.
@@ -707,7 +708,8 @@ class _Launched:
         stop: Stops it when closed.
         played: The last Group played on it, until it is sent a status request; else None.
         restart: The restart it needs before the next Group, if it did not answer that request
-            (`_asked`) or still had a player online (`_still_online`), else None.
+            (`_asked`) or a wait for no player online raised (`_restart_before_next`), else
+            None.
     """
 
     role: int
@@ -844,7 +846,8 @@ class _Instances:
         played on either, and its Verdict is `error`, naming why (`_unsettled`). If only
         the Candidate is, or the Candidate failed a prerequisite of `group`
         (`prerequisite_failed`, from `prerequisite_verdict`), `group` is played on the
-        Reference alone (`_reference_alone`); the prerequisite is named first.
+        Reference alone (`_reference_alone`); the prerequisite is named first. An Instance
+        the Run launched that had a player online is restarted after `group` (`_left_before`).
 
         Both Instances of `group`'s ServerSpec are up either way: they launch as a pair, the
         first time a Group of that ServerSpec is played on either side.
@@ -854,14 +857,29 @@ class _Instances:
         if unusable is not None and unusable.outcome is Outcome.ERROR:
             return _Play(unusable)
         skipped = prerequisite_failed or unusable
-        reference, candidate = endpoints
-        unsettled = await _unsettled(group, reference, candidate if skipped is None else None)
+        reference = endpoints[0]
+        left = await self._left_before(group, endpoints if skipped is None else (reference,))
+        unsettled = _unsettled(group, left)
         not_played = unsettled or skipped  # a Reference unsettled comes first: `error`
         if not_played is None:
             return await self._both(group, endpoints)
         if not_played.outcome is Outcome.ERROR:
             return _Play(not_played)
         return await self._reference_alone(group, reference, not_played)
+
+    async def _left_before(
+        self, group: Group, endpoints: Sequence[Endpoint]
+    ) -> Mapping[int, Exception]:
+        """Wait for each Instance at `endpoints` to have no player online before `group`.
+
+        What each wait raised, by side (0, the Reference; 1), as `_left_each` says. An
+        Instance the Run launched whose wait raised is restarted after `group`, so only
+        `group` fails for a player the wait after the last Group did not see (review A2).
+        """
+        left = await _left_each(endpoints)
+        for role, raised in left.items():
+            self._restart_before_next(endpoints[role], after=group.id, left=raised)
+        return left
 
     async def _both(self, group: Group, endpoints: Sequence[Endpoint]) -> _Play:
         """Play `group` on the Reference, then on the Candidate, and judge it."""
@@ -1046,8 +1064,18 @@ class _Instances:
         wait = until_answered_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
         left = await _left_online(wait)
         if left is not None:
-            launched.restart = Restart(after=played, reason=_restart_reason(left))
+            self._restart_before_next(endpoint, after=played, left=left)
         return None if isinstance(left, NoStatusAnswer) else left
+
+    def _restart_before_next(self, endpoint: Endpoint, *, after: str, left: Exception) -> None:
+        """Restart the Instance at `endpoint` before the next Group: its wait raised `left`.
+
+        Only if the Run launched it (an Attached one is not the Run's to restart), and it
+        needs no restart already (the first reason stays). `start` restarts it.
+        """
+        launched = self._launched.get(endpoint)
+        if launched is not None and launched.restart is None:
+            launched.restart = Restart(after=after, reason=_restart_reason(left))
 
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
@@ -1154,30 +1182,17 @@ def _installed_version(side: Side) -> str | None:
     return f"sha256 {source.sha256}"
 
 
-async def _unsettled(
-    group: Group, reference: Endpoint, candidate: Endpoint | None
-) -> Verdict | None:
-    """Wait for the Reference, and the Candidate if given, to have no player online.
+async def _left_each(endpoints: Sequence[Endpoint]) -> dict[int, Exception]:
+    """Wait for each Instance at `endpoints` to have no player online; what each wait raised.
 
-    None if each does. The two are waited on at once, each wait to its end, so neither is
-    left running when the Run moves on. The Candidate is not given when it will not be
-    played anyway. If one still has players at the deadline (`PlayersStillOnline`), or its
-    wait raised, the Verdict that says why `group` is not played there:
-
-    - The Reference does: `error` (the Reference failed, as in `judge`), "the Reference had
-      2 players still online after waiting 2 s: 'watcher', 'control'" (or "the Reference
-      failed: the wait for no player online failed: RuntimeError: ..."), and the same
-      for the Candidate after a "; " if it did too. Neither side is played.
-    - Only the Candidate does, whatever its wait raised: `mismatch` (a Candidate failure is
-      never `error`, audit H3; the Reference's wait ran the same code, #222), led by a
-      `failed` Divergence that says who is still online, or what the wait raised. The
-      Reference is still played, for its test cases (#266).
+    By side (0, the Reference; 1), for each wait that raised: `PlayersStillOnline` if a
+    player is still online at the deadline, or anything else. They are waited on at once,
+    each wait to its end, so none is left running when the Run moves on.
 
     Raises:
         BaseException: A wait raised one that is not an Exception (a cancellation from
-            inside it, KeyboardInterrupt); raised once both waits are done.
+            inside it, KeyboardInterrupt); raised once every wait is done.
     """
-    endpoints = (reference,) if candidate is None else (reference, candidate)
     waits = (
         until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S) for endpoint in endpoints
     )
@@ -1185,20 +1200,36 @@ async def _unsettled(
     for result in results:
         if isinstance(result, BaseException) and not isinstance(result, Exception):
             raise result
-    reference_left = results[0] if isinstance(results[0], Exception) else None
-    left = results[-1] if candidate is not None and isinstance(results[-1], Exception) else None
-    if reference_left is not None:
-        detail = f"the Reference {_unsettled_by(reference_left)}"
-        if left is not None:
-            detail += f"; the Candidate {_unsettled_by(left)}"
+    return {role: left for role, left in enumerate(results) if isinstance(left, Exception)}
+
+
+def _unsettled(group: Group, left: Mapping[int, Exception]) -> Verdict | None:
+    """The Verdict of `group` if a side had a player online before it (`_left_each`), or None.
+
+    `left` maps each side whose wait raised (0, the Reference; 1) to what it raised. The
+    Candidate is not waited on when it will not be played anyway. Then:
+
+    - The Reference's wait raised: `error` (the Reference failed, as in `judge`), "the
+      Reference had 2 players still online after waiting 2 s: 'watcher', 'control'" (or
+      "the Reference failed: the wait for no player online failed: RuntimeError: ..."),
+      and the same for the Candidate after a "; " if it did too. Neither side is played.
+    - Only the Candidate's did, whatever it raised: `mismatch` (a Candidate failure is
+      never `error`, audit H3; the Reference's wait ran the same code, #222), led by a
+      `failed` Divergence that says who is still online, or what the wait raised. The
+      Reference is still played, for its test cases (#266).
+    """
+    if 0 in left:
+        detail = f"the Reference {_unsettled_by(left[0])}"
+        if 1 in left:
+            detail += f"; the Candidate {_unsettled_by(left[1])}"
         return _error(group, detail)
-    if left is None:
+    if 1 not in left:
         return None
     return Verdict(
         group_id=group.id,
         outcome=Outcome.MISMATCH,
-        divergences=(_failed(bot="", what=_left_what(left)),),
-        detail=f"the Candidate failed: {_left_what(left)}",
+        divergences=(_failed(bot="", what=_left_what(left[1])),),
+        detail=f"the Candidate failed: {_left_what(left[1])}",
     )
 
 

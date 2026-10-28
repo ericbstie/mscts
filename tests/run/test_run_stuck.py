@@ -55,6 +55,7 @@ LINGER_SAMPLED = Group(
 )
 HANG = Group(id="test/hang", run=_hangs)
 BASIC = Group(id="status/basic", run=status.basic)
+BASIC_AGAIN = Group(id="test/basic-again", run=status.basic)
 
 ONLINE = f"1 player still online after waiting {SHORT_S:g} s: 'crafter'"
 """What a fake that keeps its player is found to have, once `SHORT_S` has passed."""
@@ -233,6 +234,47 @@ async def test_a_status_with_no_answer_in_the_wait_after_a_group_restarts_the_pa
     )
     assert result.candidate.restarts == (Restart(after="test/hang", reason=why),)
     assert result.reference.restarts == ()
+
+
+async def _missed(endpoint: Endpoint, *, deadline_s: float) -> None:
+    """A wait after a Group that sees no player: one its status lists only later (review A2)."""
+    del endpoint, deadline_s
+
+
+@pytest.mark.asyncio
+async def test_a_launched_candidate_with_a_player_before_a_group_fails_it_and_is_restarted(
+    fake_server: MakeServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(run_module, "until_answered_no_player_online", _missed)
+    reference, candidate = fake_server("one"), fake_server("two", lingers_after_ping=LINGERS)
+    groups = [LINGER, BASIC, BASIC_AGAIN]
+
+    result = await run_results(groups, reference, candidate, workdir=tmp_path / "run")
+
+    left, before, after = result.verdicts
+    assert left.outcome is Outcome.MATCH, left
+    assert before.outcome is Outcome.MISMATCH, before
+    assert before.detail == f"the Candidate failed: {ONLINE}"
+    assert after.outcome is Outcome.MATCH, after
+    assert result.candidate.restarts == (Restart(after="status/basic", reason=f"had {ONLINE}"),)
+    assert result.reference.restarts == ()
+
+
+@pytest.mark.asyncio
+async def test_a_launched_reference_with_a_player_before_a_group_is_restarted_after_it(
+    fake_server: MakeServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(run_module, "until_answered_no_player_online", _missed)
+    reference, candidate = fake_server("one", lingers_after_ping=LINGERS), fake_server("two")
+    groups = [LINGER, BASIC, BASIC_AGAIN]
+
+    result = await run_results(groups, reference, candidate, workdir=tmp_path / "run")
+
+    _, before, after = result.verdicts
+    assert before == Verdict("status/basic", Outcome.ERROR, detail=f"the Reference had {ONLINE}")
+    assert after.outcome is Outcome.MATCH, after
+    assert result.reference.restarts == (Restart(after="status/basic", reason=f"had {ONLINE}"),)
+    assert result.candidate.restarts == ()
 
 
 @pytest.mark.asyncio

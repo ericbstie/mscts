@@ -264,6 +264,11 @@ restarted, so a player it may have kept costs no later Group either.
 Before a Group, an unanswered status still counts as no player online,
 because the Group then meets the same failure and reports it.
 
+If the wait before a Group still finds a player on an Instance mscts
+launched, one the wait after the last Group did not see, that Group fails
+as the #266 amendment says. The pair is then restarted, so no Group after
+it fails for that player.
+
 An Attached Candidate keeps the #266 rule. mscts did not launch it and
 does not restart it, so a player it keeps online fails each later Group,
 which is then played on the Reference alone. The wait before each Group

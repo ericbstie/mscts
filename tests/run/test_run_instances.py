@@ -1,5 +1,5 @@
 import dataclasses
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
@@ -217,11 +217,11 @@ async def test_only_the_reference_is_waited_on_for_a_group_whose_prerequisite_th
     # only replace the reason with another.
     waited: list[int] = []
 
-    async def settled(group: Group, reference: Endpoint, candidate: Endpoint | None) -> None:
-        del group, reference
-        waited.append(1 if candidate is None else 2)
+    async def settled(endpoints: Sequence[Endpoint]) -> dict[int, Exception]:
+        waited.append(len(endpoints))
+        return {}
 
-    monkeypatch.setattr(run_module, "_unsettled", settled)
+    monkeypatch.setattr(run_module, "_left_each", settled)
     candidate = fake_server("two", description="not vanilla")
 
     await run([BASIC, PING], fake_server("one"), candidate, workdir=tmp_path)
