@@ -203,14 +203,13 @@ players to leave. One that still lists a player fails that Group as
 Either way, mscts stops both servers and starts them again before the
 next Group, so the two still have the same history. The line names only
 the server that failed, and the Group after which it did, such as
-`Restarted pumpkin after crafting/grid, because it had 1 player still
-online after waiting 2 s: 'crafter'.` The Groups after it play on the new
-servers. A server restarted after
-the same Group in more than one repetition has one line with the count,
-such as `Restarted pumpkin 5 times after crafting/grid`.
+`Restarted pumpkin after crafting/grid-ctrl-q, because it had 1 player
+still online after waiting 2 s: 'crafter'.` The Groups after it play on
+the new servers. A server restarted after the same Group in more than one
+repetition has one line with the count, such as `Restarted pumpkin 5
+times after crafting/grid`.
 
-A server that mscts
-cannot start again gets no line. Each later Group fails as `Candidate
+A server that mscts cannot start again gets no line. Each later Group fails as `Candidate
 failed: could not be started again after crafting/grid`, followed by why,
 or is an `Error` if that server is vanilla, and the Run still ends with
 its Report.
