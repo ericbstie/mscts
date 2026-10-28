@@ -1955,7 +1955,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # on the Candidate alone it makes it `mismatch`, a `failed` Divergence "after the Group,
     # 1 player still online after waiting 2 s: 'crafter'" after any other, the detail the
     # first failure's; an `error` stays as it is. An Attached side is not waited on here:
-    # the wait before its next Group finds the player (#266). Before the next Group of that
+    # the wait before its next Group finds the player (#266). Nor is a launched side whose
+    # wait between a statistical Group's plays raised (review A3): that failed it already,
+    # and it is restarted as below, Restart(after=<this Group>). Before the next Group of that
     # ServerSpec, if either of the pair gave no answer or its wait raised, both launched
     # Instances are stopped and launched again
     # together (review B3: the two worlds keep the same history) in

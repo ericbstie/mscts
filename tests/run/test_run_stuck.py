@@ -53,6 +53,9 @@ LINGER = Group(id="test/linger", run=_lingers)
 LINGER_SAMPLED = Group(
     id="test/linger-sampled", run=_lingers_sampled, kind=GroupKind.STATISTICAL, runs=1
 )
+LINGER_SAMPLED_3 = Group(
+    id="test/linger-sampled-3", run=_lingers_sampled, kind=GroupKind.STATISTICAL, runs=3
+)
 HANG = Group(id="test/hang", run=_hangs)
 BASIC = Group(id="status/basic", run=status.basic)
 BASIC_AGAIN = Group(id="test/basic-again", run=status.basic)
@@ -150,6 +153,24 @@ async def test_a_candidate_that_keeps_a_player_after_a_statistical_group_fails_i
     assert [divergence.candidate for divergence in left.divergences] == [
         f"after the Group, {ONLINE}"
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_candidate_that_keeps_a_player_between_samples_fails_once_for_it(
+    fake_server: MakeServer, tmp_path: Path
+) -> None:
+    # Review A3: the wait between two plays found it, so the wait after the Group need not.
+    reference, candidate = fake_server("one"), fake_server("two", lingers_after_ping=LINGERS)
+
+    groups = [LINGER_SAMPLED_3, BASIC]
+
+    result = await run_results(groups, reference, candidate, workdir=tmp_path / "run")
+
+    left, after = result.verdicts
+    assert [divergence.candidate for divergence in left.divergences] == [ONLINE]
+    assert after.outcome is Outcome.MATCH, after
+    restart = Restart(after="test/linger-sampled-3", reason=f"had {ONLINE}")
+    assert result.candidate.restarts == (restart,)
 
 
 @pytest.mark.asyncio

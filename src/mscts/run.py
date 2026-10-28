@@ -935,12 +935,15 @@ class _Instances:
 
         Before each play but the `first`, which `play` waited for, it waits for the Instance
         to have no player online, as before each Group. The side's failure is what the wait
-        raised (`_left_online`), or the play's GroupError.
+        raised (`_left_online`), or the play's GroupError. An Instance the Run launched whose
+        wait raised is restarted before the next Group, and so is not waited on again after
+        this one (review A3).
         """
         if not first:
             wait = until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
             left = await _left_online(wait)
             if left is not None:
+                self._restart_before_next(endpoint, after=group.id, left=left)
                 return left
         samples.new_play()
         attempt = await self._attempt(group, role, endpoint, samples=samples)
