@@ -45,22 +45,26 @@ def test_there_is_a_test_for_every_registered_group_and_no_other(suite: pytest.P
 @pytest.mark.parametrize(
     ("repeat", "budgets"),
     [
-        (None, (900, 900, 900)),
-        ("", (900, 900, 900)),
-        ("1", (900, 900, 900)),
-        ("3", (900, 900, 900)),
-        ("20", (1800, 4500, 3840)),
-        ("40", (3600, 9000, 7680)),
+        (None, (900, 900, 900, 900, 900, 900)),
+        ("", (900, 900, 900, 900, 900, 900)),
+        ("1", (900, 900, 900, 900, 900, 900)),
+        ("3", (900, 900, 900, 900, 900, 900)),
+        ("20", (1800, 4500, 3840, 3000, 3200, 2800)),
+        ("40", (3600, 9000, 7680, 6000, 6400, 5600)),
     ],
 )
 def test_the_collected_selfchecks_have_a_bounded_timeout_for_the_repeat_count(
     pytester: pytest.Pytester,
     monkeypatch: pytest.MonkeyPatch,
     repeat: str | None,
-    budgets: tuple[int, int, int],
+    budgets: tuple[int, int, int, int, int, int],
 ) -> None:
-    """`budgets`: the seconds of any Group, of `player/starvation` and of `player/fall`."""
-    timeout_s, starvation_s, fall_s = budgets
+    """`budgets`: the seconds of any Group and of each Group with its own play limit.
+
+    In order: any Group, `player/starvation`, `player/fall`, `glitches/bedrock-breaking`,
+    `glitches/tnt-duplication` and `glitches/rail-carpet-duplication`.
+    """
+    timeout_s, starvation_s, fall_s, bedrock_s, tnt_s, rail_carpet_s = budgets
     if repeat is None:
         monkeypatch.delenv("MSCTS_SELFCHECK_REPEAT", raising=False)
     else:
@@ -84,6 +88,9 @@ def pytest_collection_finish(session):
     limits = dict.fromkeys(GROUPS, timeout_s) | {
         "player/starvation": starvation_s,
         "player/fall": fall_s,
+        "glitches/bedrock-breaking": bedrock_s,
+        "glitches/tnt-duplication": tnt_s,
+        "glitches/rail-carpet-duplication": rail_carpet_s,
     }
     result.stdout.fnmatch_lines(
         [f"selfcheck budget {group_id} {limits[group_id]}" for group_id in GROUPS]

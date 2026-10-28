@@ -880,6 +880,37 @@ no tick is left due: the server would save it with the chunk, and it would run i
 When a Group ends, Control clears what it built with `/fill ... strict`, which updates none of
 the blocks beside the ones it clears, so it schedules no tick either.
 
+## Vanilla glitches (`glitches`)
+
+These are behaviours of vanilla that some servers remove on purpose, and mscts reports either way.
+
+Each Group builds a machine that players build to use a piston glitch. A Bot called `watcher`
+stands at the spawn. Control stops the weather and lets a storm fade, stops random ticks, freezes
+the world, and builds the machines with `/setblock` in the air near the spawn. Then, in an
+Observation window for each machine, Control sets it off and steps the world one tick at a time.
+The window compares the blocks that change on each tick, the pistons' block events and sounds,
+world events, explosions, and the entities that appear, change and go.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `glitches/bedrock-breaking` | tick-exact | `redstone/piston-push`, `redstone/sticky` | The Minecraft Wiki's way to break bedrock with a piston, once on bedrock and once on an end portal frame. A lever powers a piston on top of the block, and the piston extends. 4 ticks later Control summons a TNT beside the lever, which blows the lever up on the next tick. On the tick after that, before the piston retracts, Control replaces the piston with one facing down. Each window steps 9 ticks. Vanilla retracts a piston in the direction it faces when it retracts, and removes the block in front of it whatever it is: the bedrock and the end portal frame are gone. | none |
+| `glitches/tnt-duplication` | tick-exact | `redstone/piston-push`, `redstone/sticky` | A TNT duplicator. Control powers a sticky piston, which pushes a stone and a slime block, with a TNT stuck to the slime. A redstone block sits on the TNT, placed so that it never updated the TNT, and a dead coral fan sits on the stone. The world steps 6 ticks, then 70 at once outside any window while the primed TNT falls into a pool of water, then 10 more. Vanilla pops the fan when the piston head takes the stone's place, and the fan's update primes the TNT before the piston has moved it: a primed TNT appears where the TNT stood, and the TNT block lands a block further on. The primed TNT explodes in the water 80 ticks later and breaks nothing. | none |
+| `glitches/rail-carpet-duplication` | tick-exact | `redstone/piston-push`, `redstone/sticky` | A rail duplicator and a carpet duplicator, which use the same coral fan, each in a window of its own. A piston pushes a rail on a slime block, or a carpet stuck to a slime block and standing on the fan. Control powers each piston, and each window steps 5 ticks. Vanilla drops the rail and the carpet as items when the fan pops, and their blocks land a block further on. | none |
+
+A Candidate that fails `redstone/piston-push` or `redstone/sticky` fails these Groups too, as
+`Candidate failed`, since they require them (see [Redstone](#redstone-redstone)).
+
+The Groups mask what vanilla draws at random. In `glitches/bedrock-breaking` that is the pitch of
+a piston's sound. In `glitches/bedrock-breaking` and `glitches/rail-carpet-duplication` it is
+where each dropped item appears and how it moves: the lever, the rail and the carpet. In
+`glitches/tnt-duplication` it is the way the primed TNT drifts sideways, and so where it explodes
+along x and z. Which entities appear, which items drop, the TNT's fuse, when it explodes, at what
+height and how strongly, and how many blocks it breaks are all still compared.
+
+The Wiki's bedrock breaker sets off its TNT in the open air, where the number of blocks the
+explosion reaches is random. Here the TNT is summoned in a box of obsidian, so that its explosion
+always reaches the same blocks.
+
 ## Spawning (`spawn`)
 
 Where a new player first appears. Vanilla spreads new players over the blocks within `respawn_radius` of the world spawn, 10 by default, instead of stacking them on one block, and picks a safe one. Both Groups are `statistical`: each plays many times on each server and compares the distributions of what it records, and `mscts run` plays them only with `--statistical` (see [Writing a Group](/guide/writing-a-group)).
@@ -933,7 +964,6 @@ commands as chat, so the clock is no operator during that step.
 
 | Mechanic | First Group | Needs |
 | --- | --- | --- |
-| Redstone glitches | Tick-by-tick observation under `/tick freeze` and `/tick step`, as in [Redstone](#redstone-redstone) | Their Groups. The `tick-exact` kind they use exists. |
 | Mob spawning and loot | Distributions over many runs | Its Groups. The `statistical` kind they use exists, in its own opt-in tier. |
 See [Project status](/status) for the order.
 

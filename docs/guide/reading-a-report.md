@@ -159,7 +159,7 @@ required Group was an `Error`, this one is an `Error` too. mscts always
 runs a required Group first. `Not tested`, and the count in brackets on
 the totals line, appear only when mscts reads a `report.json` written
 before that: a required Group was not run, and this one was played on
-neither server. No shipped Group requires another yet.
+neither server.
 
 `Error` means mscts or vanilla failed. `Candidate failed` means the
 Candidate broke the protocol, sent a frame that did not decode, sent a

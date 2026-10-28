@@ -46,6 +46,22 @@ def test_a_listed_group_gets_its_own_play_limit() -> None:
     assert time_limit_s("player/starvation", 20) > time_limit_s("blocks/clone", 20)
 
 
+@pytest.mark.parametrize(
+    ("group_id", "play_s"),
+    [
+        ("glitches/bedrock-breaking", 75),
+        ("glitches/tnt-duplication", 80),
+        ("glitches/rail-carpet-duplication", 69),
+    ],
+)
+def test_a_glitch_group_gets_twice_its_play_with_the_piston_groups_it_requires(
+    group_id: str, play_s: int
+) -> None:
+    # A play of a glitch Group plays redstone/piston-push and redstone/sticky first, and took
+    # `play_s` a play over 20 plays: the default 90 s left no room for a loaded host (#42).
+    assert SLOW_PLAY_LIMIT_S[group_id] >= 2 * play_s
+
+
 def test_every_listed_group_has_more_than_the_default_play_limit() -> None:
     assert all(limit > PLAY_LIMIT_S for limit in SLOW_PLAY_LIMIT_S.values())
 

@@ -646,6 +646,23 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "set_entity_data.entries[].value.x": "Block x in entity data",
         "set_entity_data.entries[].value.y": "Block y in entity data",
         "set_entity_data.entries[].value.z": "Block z in entity data",
+        # glitches (#42)
+        "explode": "Explosion",
+        "explode.block_count": "Blocks an explosion destroyed",
+        "explode.block_particles[].particle.options": "Explosion debris particle options",
+        "explode.block_particles[].particle.type": "Explosion debris particle",
+        "explode.block_particles[].scaling": "Explosion debris particle scale",
+        "explode.block_particles[].speed": "Explosion debris particle speed",
+        "explode.block_particles[].weight": "Explosion debris particle weight",
+        "explode.center.x": "Explosion x",
+        "explode.center.y": "Explosion y",
+        "explode.center.z": "Explosion z",
+        "explode.explosion_particle.options": "Explosion particle options",
+        "explode.explosion_particle.type": "Explosion particle",
+        "explode.explosion_sound.reference": "Explosion sound",
+        "explode.play_sound": "Explosion sound played",
+        "explode.player_knockback": "Explosion knockback",
+        "explode.radius": "Explosion radius",
     }
 )
 """Known test case name → the short title checked against the docs reference."""

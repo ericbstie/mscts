@@ -3742,3 +3742,118 @@ The height of a block an entity's data points at, such as the bed a player sleep
 **Block z in entity data**
 
 The north-south position of a block an entity's data points at, such as the bed a player sleeps in. A difference draws the sleeping player in another place.
+
+## `explode`
+
+**Explosion**
+
+A packet that tells the client an explosion happened, such as a TNT
+going off: where, how strong, the particles and sound it shows, and how
+far it pushes the player. The blocks it destroys change in packets of
+their own. A server that leaves it out shows no explosion.
+
+## `explode.block_count`
+
+**Blocks an explosion destroyed**
+
+How many blocks the explosion destroyed, which the client uses for the
+debris particles it shows. A different number means the explosion
+reached other blocks.
+
+## `explode.block_particles[].particle.options`
+
+**Explosion debris particle options**
+
+The settings of one particle the client may show as an explosion's
+debris, such as its colour. A difference changes how that debris looks.
+
+## `explode.block_particles[].particle.type`
+
+**Explosion debris particle**
+
+One particle the client may show as an explosion's debris. A difference
+shows other debris.
+
+## `explode.block_particles[].scaling`
+
+**Explosion debris particle scale**
+
+How far that debris particle spreads, for the explosion's size. A
+difference spreads the debris more or less.
+
+## `explode.block_particles[].speed`
+
+**Explosion debris particle speed**
+
+How fast that debris particle moves. A difference makes the debris move
+faster or slower.
+
+## `explode.block_particles[].weight`
+
+**Explosion debris particle weight**
+
+How often the client picks that debris particle over the others. A
+difference shows a different mix of debris.
+
+## `explode.center.x`
+
+**Explosion x**
+
+The x coordinate of the explosion's centre. A different value shows the
+explosion somewhere else.
+
+## `explode.center.y`
+
+**Explosion y**
+
+The y coordinate of the explosion's centre. A different value shows the
+explosion at another height.
+
+## `explode.center.z`
+
+**Explosion z**
+
+The z coordinate of the explosion's centre. A different value shows the
+explosion somewhere else.
+
+## `explode.explosion_particle.options`
+
+**Explosion particle options**
+
+The settings of the particle the client shows at the explosion's
+centre. A difference changes how it looks.
+
+## `explode.explosion_particle.type`
+
+**Explosion particle**
+
+The particle the client shows at the explosion's centre: for a TNT, the
+large explosion cloud. A difference shows another effect.
+
+## `explode.explosion_sound.reference`
+
+**Explosion sound**
+
+The sound the explosion plays. A difference plays another sound.
+
+## `explode.play_sound`
+
+**Explosion sound played**
+
+Whether the client plays the explosion's sound at all. A difference
+makes an explosion silent, or one vanilla keeps silent heard.
+
+## `explode.player_knockback`
+
+**Explosion knockback**
+
+How far the explosion pushes the player who receives the packet, if it
+pushes them at all. A difference throws the player another way, or not
+at all.
+
+## `explode.radius`
+
+**Explosion radius**
+
+How strong the explosion is: 4 for a TNT. The client spreads the debris
+particles over it. A difference shows a bigger or smaller explosion.
