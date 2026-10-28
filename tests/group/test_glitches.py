@@ -20,7 +20,8 @@ from tests.net.fakes import Peer
 
 BEDROCK = "glitches/bedrock-breaking"
 TNT = "glitches/tnt-duplication"
-GROUP_IDS = (BEDROCK, TNT)
+RAIL_CARPET = "glitches/rail-carpet-duplication"
+GROUP_IDS = (BEDROCK, TNT, RAIL_CARPET)
 COMMANDS = tree(
     "gamerule", "weather", "time", "tp", "tick", "fill", "setblock", "summon", "kill", "tellraw"
 )
@@ -250,3 +251,39 @@ async def test_tnt_duplication_powers_the_piston_then_fast_forwards_to_the_explo
     assert pushed.ticks == 6
     assert exploded.before == (TIME_QUERY, "tick step 70", TIME_QUERY)
     assert exploded.commands == steps(10)
+
+
+# `glitches/rail-carpet-duplication`
+
+
+def test_rail_carpet_duplication_masks_where_the_rail_and_carpet_items_appear_and_move() -> None:
+    assert masked(RAIL_CARPET) == DROPPED_ITEM
+
+
+@pytest.mark.asyncio
+async def test_rail_carpet_duplication_builds_a_rail_and_a_carpet_on_slime_by_a_coral_fan() -> None:
+    first = (await play(RAIL_CARPET)).first
+
+    assert first[len(SET_UP) :] == (
+        "setblock 4 -45 22 minecraft:piston[facing=east]",
+        "setblock 5 -45 22 minecraft:stone",
+        "setblock 6 -45 22 minecraft:slime_block",
+        "setblock 6 -44 22 minecraft:rail[shape=east_west]",
+        "setblock 5 -44 22 minecraft:dead_tube_coral_fan[waterlogged=false]",
+        "setblock 4 -45 28 minecraft:piston[facing=east]",
+        "setblock 5 -45 28 minecraft:slime_block",
+        "setblock 5 -44 28 minecraft:slime_block",
+        "setblock 5 -45 27 minecraft:dead_tube_coral_wall_fan[facing=north,waterlogged=false]",
+        "setblock 5 -44 27 minecraft:white_carpet",
+    )
+
+
+@pytest.mark.parametrize(("window", "z"), [(0, 22), (1, 28)])
+@pytest.mark.asyncio
+async def test_rail_carpet_duplication_powers_each_piston_for_5_ticks(window: int, z: int) -> None:
+    # The piston pushes on tick 1: the fan pops, the rail or carpet drops an item, and its moving
+    # copy lands a block east on tick 3.
+    stepped = (await play(RAIL_CARPET)).windows[window]
+
+    assert stepped.commands == (f"setblock 3 -45 {z} minecraft:redstone_block", *steps(5))
+    assert stepped.ticks == 5

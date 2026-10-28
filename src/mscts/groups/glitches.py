@@ -208,3 +208,53 @@ async def tnt_duplication(context: GroupContext) -> None:
         await stepped_window(context, _TNT_PUSH, _TNT_PUSH_TICKS, _PACKETS)
         await fast_forward(context.control, _TNT_FAST_FORWARD)
         await stepped_window(context, (), _TNT_EXPLOSION_TICKS, _PACKETS)
+
+
+# `glitches/rail-carpet-duplication`: two duplicators by the same coral-fan update, at z 22 a
+# rail and at z 28 a carpet, each pushed east by a piston at x 4, which Control powers from x 3.
+
+_RAIL_Z, _CARPET_Z = 22, 28
+
+_RAIL_BUILD = (
+    _put(4, -45, _RAIL_Z, "piston[facing=east]"),
+    _put(5, -45, _RAIL_Z, "stone"),
+    _put(6, -45, _RAIL_Z, "slime_block"),
+    _put(6, -44, _RAIL_Z, "rail[shape=east_west]"),
+    _put(5, -44, _RAIL_Z, "dead_tube_coral_fan[waterlogged=false]"),
+)
+"""A rail on a slime block, which the piston pushes behind a stone, and a fan on the stone. The
+fan pops when the head takes the stone's place, and its update reaches the rail, which has lost
+its support (`BaseRailBlock.neighborChanged`): it drops as an item."""
+
+_CARPET_BUILD = (
+    _put(4, -45, _CARPET_Z, "piston[facing=east]"),
+    _put(5, -45, _CARPET_Z, "slime_block"),
+    _put(5, -44, _CARPET_Z, "slime_block"),
+    _put(5, -45, _CARPET_Z - 1, "dead_tube_coral_wall_fan[facing=north,waterlogged=false]"),
+    _put(5, -44, _CARPET_Z - 1, "white_carpet"),
+)
+"""Two slime blocks, one on the other, and a carpet stuck to the upper one's north side, on a
+fan on the lower one's: the fan pops when the head takes the lower slime's place, and the carpet,
+left with air below, drops as an item."""
+
+_DUPLICATING_TICKS = 5
+"""The piston pushes on tick 1, when the rail or the carpet drops; its moving copy lands a block
+east on tick 3 (`PistonMovingBlockEntity.tick`)."""
+
+
+def _duplicating(z: int) -> tuple[At, ...]:
+    """Power the piston at x 4, -45, z: a redstone block behind it."""
+    return (At(0, _put(3, -45, z, "redstone_block")),)
+
+
+@group(
+    "glitches/rail-carpet-duplication",
+    kind=GroupKind.TICK_EXACT,
+    requires=_REQUIRES,
+    masks=DROP_MASKS,
+)
+async def rail_carpet_duplication(context: GroupContext) -> None:
+    """A coral fan that pops as a piston pushes a rail or a carpet drops it, and the block lands."""
+    async with _machines(context, (*_RAIL_BUILD, *_CARPET_BUILD)):
+        for z in (_RAIL_Z, _CARPET_Z):
+            await stepped_window(context, _duplicating(z), _DUPLICATING_TICKS, _PACKETS)
