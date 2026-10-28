@@ -7,8 +7,11 @@ Ctrl+Q over a crafting result: the process runs and accepts connections, but nev
 import contextlib
 import json
 import logging
+import select
+import socket
 from collections.abc import Callable
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -21,6 +24,7 @@ from mscts.net import Endpoint
 from mscts.run import Restart, Server, run, run_results
 from mscts.target import TARGET
 from tests.net.fakes import VANILLA_STATUS, serve, status_server
+from tests.run import status_fake
 from tests.run.fakes import FakeAdapter
 
 HANGS = 513
@@ -46,6 +50,53 @@ HANG = Group(id="test/hang", run=_hangs)
 BASIC = Group(id="status/basic", run=status.basic)
 HANG_AGAIN = Group(id="test/hang-again", run=_hangs)
 HANG_SAMPLED = Group(id="test/hang-sampled", run=_hangs_sampled, kind=GroupKind.STATISTICAL, runs=1)
+
+
+def _pong_sent(client: socket.socket) -> bool:
+    """Whether a pong waits to be read on `client`: the fake has sent it."""
+    return bool(select.select([client], [], [], 0)[0])
+
+
+class _WatchedHang(status_fake.Hang):
+    """A Hang that notes whether the pong was sent when the ping hung it."""
+
+    def __init__(self, after_ping: bytes, client: socket.socket) -> None:
+        super().__init__(after_ping)
+        self.client = client
+        self.pong_sent: bool | None = None
+
+    @override
+    def pinged(self, payload: bytes) -> None:
+        self.pong_sent = _pong_sent(self.client)
+        super().pinged(payload)
+
+
+class _WatchedStatus(status_fake.Status):
+    """A Status that notes whether the pong was sent when the ping made a player linger."""
+
+    def __init__(self, linger_after_ping: bytes, client: socket.socket) -> None:
+        super().__init__("watched", linger_after_ping)
+        self.client = client
+        self.pong_sent: bool | None = None
+
+    @override
+    def pinged(self, payload: bytes) -> None:
+        self.pong_sent = _pong_sent(self.client)
+        super().pinged(payload)
+
+
+def test_a_fake_hangs_and_keeps_a_player_before_it_sends_the_pong_that_makes_it() -> None:
+    # A status ask made on seeing that pong must not be answered, however the fake is scheduled
+    # (#524): a fake that sent the pong first could be asked before it had hung.
+    client, served = socket.socketpair()
+    ping = HANGS.to_bytes(8, "big", signed=True)
+    hang, status = _WatchedHang(ping, client), _WatchedStatus(ping, client)
+
+    with client:
+        client.sendall(status_fake.frame(0, b"") + status_fake.frame(1, ping))
+        status_fake.serve_one(served, status, hang)
+
+    assert (hang.pong_sent, status.pong_sent) == (False, False)
 
 
 def _adapter(server: Server) -> FakeAdapter:

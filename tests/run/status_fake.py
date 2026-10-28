@@ -11,11 +11,13 @@ status ping, with ownership) included.
 
 Given `hang PING`, a ping whose payload is that number gets its pong, and then the
 fake hangs, as Pumpkin does on some clicks (#513): it still accepts connections and
-reads what comes, but never answers anything again.
+reads what comes, but never answers anything again. It hangs before the pong is sent,
+so a request sent on seeing the pong is never answered.
 
 Given `linger PING`, a ping whose payload is that number gets its pong, and from then on
 the status says `LINGERER` is online, as Pumpkin's does after some of those clicks (#513):
-the player of a Bot that has left is never removed.
+the player of a Bot that has left is never removed. The status says so from before the
+pong is sent.
 """
 
 import json
@@ -128,9 +130,11 @@ def serve_one(connection: socket.socket, status: Status, hang: Hang) -> None:
                     text = status.json()
                     connection.sendall(frame(_STATUS_RESPONSE, var_int(len(text)) + text))
                 elif packet_id == _PING_REQUEST:
-                    connection.sendall(frame(_PONG_RESPONSE, payload))
+                    # Before the pong, not after: a status ask made on seeing it must find
+                    # the fake hung or lingering, however this thread is scheduled (#524).
                     status.pinged(payload)
                     hang.pinged(payload)
+                    connection.sendall(frame(_PONG_RESPONSE, payload))
                     return
         except (EOFError, OSError):
             return
