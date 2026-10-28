@@ -38,6 +38,12 @@ SLOW_PLAY_LIMIT_S: Mapping[str, int] = {
     # 112 s a play on main (3 plays: 336.6 s; load average 0.76 before, 1.18 after), twice that
     # for headroom, as the default has (#423).
     "player/starvation": 225,
+    # A play of a glitch Group plays redstone/piston-push and redstone/sticky first. 20 plays on
+    # the #42 branch (d82c86e): 1501.8 s, 1596.4 s and 1382.8 s, so 75, 80 and 69 s a play (load
+    # average 0.3 to 0.7), twice that.
+    "glitches/bedrock-breaking": 150,
+    "glitches/tnt-duplication": 160,
+    "glitches/rail-carpet-duplication": 140,
 }
 """Seconds a play may take, for the Groups that need more than `PLAY_LIMIT_S`. A Group goes in
 with its play time measured on main (`mise run test:selfcheck` with `--durations`) and the load
