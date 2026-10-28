@@ -42,7 +42,7 @@ SET_UP = (
     "tick freeze",
 )
 """What Control does before it builds: the weather first, while the world still runs."""
-CLEAR = "fill 3 -60 3 25 -43 29 minecraft:air"
+CLEAR = "fill 3 -60 3 26 -43 29 minecraft:air"
 UNDO = (
     "fill 1 -60 1 15 -57 15 minecraft:air strict",
     "fill 1 -60 1 15 -57 15 minecraft:air",
@@ -229,8 +229,10 @@ async def test_tnt_duplication_builds_a_pool_and_a_sticky_piston_that_pushes_a_t
     first = (await play(TNT)).first
 
     assert first[len(SET_UP) :] == (
-        "fill 19 -60 5 25 -60 11 minecraft:glass",
-        "fill 20 -60 6 24 -60 10 minecraft:water",
+        # 3 blocks of water around the TNT's column: the moving TNT block pushes the primed one
+        # east, and it drifts up to a block more (a live play exploded 1.37 blocks east).
+        "fill 18 -60 4 26 -60 12 minecraft:glass",
+        "fill 19 -60 5 25 -60 11 minecraft:water",
         "setblock 20 -45 9 minecraft:sticky_piston[facing=east]",
         "setblock 21 -45 9 minecraft:stone",
         "setblock 22 -45 9 minecraft:slime_block",

@@ -43,7 +43,7 @@ _REQUIRES = ("redstone/piston-push", "redstone/sticky")
 """The Groups that show a server's pistons push and pull as vanilla's do: a glitch is how
 they misbehave, so it is played on the Candidate only once they match."""
 
-_CLEAR = "fill 3 -60 3 25 -43 29 minecraft:air"
+_CLEAR = "fill 3 -60 3 26 -43 29 minecraft:air"
 """Takes away every machine and what it made: from the grass up to y -43."""
 
 _CLEAR_STRICT = f"{_CLEAR} strict"
@@ -147,8 +147,8 @@ async def bedrock_breaking(context: GroupContext) -> None:
 # north side pops when the piston head takes the stone's place, and its update reaches the TNT.
 
 _TNT_BUILD = (
-    "fill 19 -60 5 25 -60 11 minecraft:glass",
-    "fill 20 -60 6 24 -60 10 minecraft:water",
+    "fill 18 -60 4 26 -60 12 minecraft:glass",
+    "fill 19 -60 5 25 -60 11 minecraft:water",
     _put(20, -45, 9, "sticky_piston[facing=east]"),
     _put(21, -45, 9, "stone"),
     _put(22, -45, 9, "slime_block"),
@@ -156,8 +156,10 @@ _TNT_BUILD = (
     _put(22, -45, 8, "tnt"),
     f"{_put(22, -44, 8, 'redstone_block')} strict",
 )
-"""A pool of water in glass on the grass, under the TNT, for the primed TNT to explode in, where
-it breaks nothing. Then the duplicator. The first block pushed is stone, not slime, so that the
+"""A pool of water in glass on the grass, for the primed TNT to explode in, where it breaks
+nothing: it reaches 3 blocks around the TNT's column, since the moving TNT block pushes the
+primed one east and it drifts up to a block more (a live play exploded 1.37 blocks east). Then
+the duplicator. The first block pushed is stone, not slime, so that the
 fan stays where it is. The redstone block is placed with `strict`, which updates no block beside
 it: an update would prime the TNT now (`TntBlock.neighborChanged`)."""
 
