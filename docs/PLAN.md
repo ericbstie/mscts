@@ -1315,6 +1315,12 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `DEATHS` — the pig and the zombie `entities/death` kills, with no loot; `DYING_TICKS` — the 20
   ticks a body stays; `death_position` — where each stands; `death` — the `entities/death`
   script.
+- `groups.entities_activation`: `activation_spec` — view distance 10 and simulation distance 4;
+  `DISTANCES` — how far west of the spawn the entities stand, all inside the simulation
+  distance; `MOVES` — what a window that watches entities move compares (the spawn bundle, the
+  velocity, the sync on landing, the removal); `HURTS` — what the fall-damage window compares;
+  `STANDS` — the armor stands summoned 2 blocks up at each distance; `PIGS` — the pigs summoned 5
+  blocks up; `activation_falling` — the `entities/activation-falling` script.
 - `groups.entities_items`: `ITEM_PACKETS` — what a window compares (entities appearing,
   changing and going, a pickup, the Bot's slots and experience, and sounds); `PAIRS` — the
   pairs of items `entities/item-merge` lays out, a tick apart; `item_merge` — the
