@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -12,6 +13,18 @@ from support import leak_guard
 def _write_environ(proc_dir: Path, pid: int, entries: list[str]) -> None:
     (proc_dir / str(pid)).mkdir()
     (proc_dir / str(pid) / "environ").write_bytes(b"\0".join(e.encode() for e in entries) + b"\0")
+
+
+def _wait_until_tagged(token: str, pid: int) -> None:
+    """Wait until `pid` shows `token` in its environ.
+
+    `Popen` returns when the child's exec closes its error pipe, a moment before the kernel
+    publishes the new environment: until then `/proc/<pid>/environ` reads empty (#525).
+    """
+    deadline = time.monotonic() + 5
+    while leak_guard.tagged_pids(token) != [pid]:
+        assert time.monotonic() < deadline, f"{pid} never showed {token}"
+        time.sleep(0.01)
 
 
 def test_tagged_pids_finds_only_processes_holding_the_exact_token(tmp_path: Path) -> None:
@@ -49,6 +62,7 @@ def test_kill_survivors_kills_and_reports_a_real_tagged_process() -> None:
         env={**os.environ, name: value},
     )
     try:
+        _wait_until_tagged(token, helper.pid)
         leaked = leak_guard.kill_survivors(token, within=1.0)
         assert leaked == [helper.pid]
         helper.wait(timeout=5)  # already killed; this just reaps it
