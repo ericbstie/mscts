@@ -19,8 +19,9 @@ built without updating the blocks beside them, so that no tick is scheduled on t
 import contextlib
 from collections.abc import AsyncIterator
 
+from mscts.compare import Mask
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import calm_weather, until_the_weather_fades
+from mscts.groups._world import calm_weather, fast_forward, until_the_weather_fades
 from mscts.groups.blocks import DROP_MASKS
 from mscts.groups.redstone import _PISTON_PITCH, At, arena, stepped_window
 
@@ -137,3 +138,73 @@ async def bedrock_breaking(context: GroupContext) -> None:
     async with _machines(context, _BREAKERS_BUILD):
         for z in _TARGETS:
             await stepped_window(context, _breaking(z), _BREAKING_TICKS, _PACKETS)
+
+
+# `glitches/tnt-duplication`: a coral-fan TNT duplicator (Tutorial:Block and item duplication,
+# "Piston-based TNT duplication", revision 3862182; random-j-farmer.github.io, "TNT Dupers"). A
+# sticky piston at x 20 pushes a stone and a slime block east; a TNT stuck to the slime's north
+# side, under a redstone block that never updated it, moves along. The coral fan on the stone's
+# north side pops when the piston head takes the stone's place, and its update reaches the TNT.
+
+_TNT_BUILD = (
+    "fill 19 -60 5 25 -60 11 minecraft:glass",
+    "fill 20 -60 6 24 -60 10 minecraft:water",
+    _put(20, -45, 9, "sticky_piston[facing=east]"),
+    _put(21, -45, 9, "stone"),
+    _put(22, -45, 9, "slime_block"),
+    _put(21, -45, 8, "dead_tube_coral_wall_fan[facing=north,waterlogged=false]"),
+    _put(22, -45, 8, "tnt"),
+    f"{_put(22, -44, 8, 'redstone_block')} strict",
+)
+"""A pool of water in glass on the grass, under the TNT, for the primed TNT to explode in, where
+it breaks nothing. Then the duplicator. The first block pushed is stone, not slime, so that the
+fan stays where it is. The redstone block is placed with `strict`, which updates no block beside
+it: an update would prime the TNT now (`TntBlock.neighborChanged`)."""
+
+_TNT_PUSH = (At(0, _put(19, -45, 9, "redstone_block")),)
+
+_TNT_PUSH_TICKS = 6
+"""On tick 1 the piston captures the blocks it moves (`PistonBaseBlock.moveBlocks`), sets moving
+blocks where they go, then its head where the stone was. The fan loses its support and pops, and
+its update reaches the TNT at its old place before that is set to air: the powered TNT primes
+(`TntBlock.prime`, fuse 80), and its moving copy lands a block east on tick 3."""
+
+_TNT_FAST_FORWARD = 70
+"""The ticks stepped at once, outside a window, while the primed TNT falls into the pool."""
+
+_TNT_EXPLOSION_TICKS = 10
+"""The TNT explodes 80 ticks after it was primed: on the 4th tick of this window."""
+
+_PRIMED_PUSH = tuple(
+    Mask(
+        packet,
+        path,
+        "Vanilla draws it at random for TNT a block primes (26.3 javap): `PrimedTnt.<init>` "
+        "turns it nextDouble() * 2 pi (offsets 17-30) and pushes it 0.02 a tick that way, "
+        "velocity (-sin * 0.02, 0.2, -cos * 0.02), so where it explodes moves with it. How "
+        "far primed TNT drifts is the subject of `entities/motion`; that it appears, its fuse, "
+        "when it explodes, at what height, how strongly and how many blocks it breaks are "
+        "compared.",
+    )
+    for packet, path in (
+        ("minecraft:add_entity", "velocity.x"),
+        ("minecraft:add_entity", "velocity.z"),
+        ("minecraft:explode", "center.x"),
+        ("minecraft:explode", "center.z"),
+    )
+)
+"""Which way the primed TNT drifts, drawn at random by vanilla, and so where it explodes."""
+
+
+@group(
+    "glitches/tnt-duplication",
+    kind=GroupKind.TICK_EXACT,
+    requires=_REQUIRES,
+    masks=_PRIMED_PUSH,
+)
+async def tnt_duplication(context: GroupContext) -> None:
+    """A coral fan that pops as a piston pushes a TNT primes it, and the TNT block moves on."""
+    async with _machines(context, _TNT_BUILD):
+        await stepped_window(context, _TNT_PUSH, _TNT_PUSH_TICKS, _PACKETS)
+        await fast_forward(context.control, _TNT_FAST_FORWARD)
+        await stepped_window(context, (), _TNT_EXPLOSION_TICKS, _PACKETS)
