@@ -1073,11 +1073,11 @@ class _Instances:
     def _restart_before_next(self, endpoint: Endpoint, *, after: str, left: Exception) -> None:
         """Restart the Instance at `endpoint` before the next Group: its wait raised `left`.
 
-        Only if the Run launched it (an Attached one is not the Run's to restart), and it
-        needs no restart already (the first reason stays). `start` restarts it.
+        Only if the Run launched it: an Attached one is not the Run's to restart. `start`
+        restarts it.
         """
         launched = self._launched.get(endpoint)
-        if launched is not None and launched.restart is None:
+        if launched is not None:
             launched.restart = Restart(after=after, reason=_restart_reason(left))
 
     def _kept(self, verdict: Verdict) -> bool:
