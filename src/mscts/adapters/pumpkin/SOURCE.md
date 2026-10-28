@@ -35,8 +35,10 @@ sets `type = "anvil"` and adds the `[world.chunk.compression]` table
 Pumpkin writes for it (`LZ4`, level 6). The file here stays what Pumpkin
 wrote.
 
-After any nightly bump, run the binary once the same way and diff its
-output against this file. A new, renamed or removed key must reach this
+After any nightly bump, run
+`uv run scripts/research/pumpkin_pristine.py <binary>`: it runs the binary once
+the way the Generated row describes and prints a diff of what it wrote against
+this file, ignoring `seed` (exit 0: no difference, 1: a diff). A new, renamed or removed key must reach this
 file, the adapter's tables and the golden test together. Then run
 `tests/adapters/pumpkin/test_pumpkin_running.py` against the Candidate tier:
 it fails if Pumpkin rewrites the file the Adapter wrote.
