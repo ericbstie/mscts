@@ -16,7 +16,11 @@ DEFAULT_PROC = Path("/proc")
 
 
 def tagged_pids(token: str, *, proc_dir: Path = DEFAULT_PROC) -> list[int]:
-    """Running processes whose environment holds `token` (an exact "NAME=value" entry)."""
+    """Running processes whose environment holds `token` (an exact "NAME=value" entry).
+
+    A child shows its token only once the kernel has published its new environment, a
+    moment after `Popen` returns (#525). A scan at teardown comes long after that.
+    """
     needle = token.encode()
     pids = []
     for entry in proc_dir.iterdir():
