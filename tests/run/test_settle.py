@@ -65,6 +65,29 @@ async def test_it_raises_what_the_last_status_said_once_the_deadline_passes() ->
     assert occupancy.polls > 1, "it gave up before the deadline"
 
 
+@pytest.mark.asyncio
+@pytest.mark.timeout(10)
+async def test_a_reading_taken_before_the_deadline_but_read_after_it_is_polled_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Review A4: our event loop can stall between a reply and the deadline check, so a
+    # reading from before the player left must not end the wait.
+    reading = settle_module._Reading  # noqa: SLF001
+    readings = [reading(online=1, names=()), reading(online=0, names=())]
+
+    async def slow_then_empty(endpoint: Endpoint, *, timeout_s: float) -> settle_module._Reading:
+        del endpoint, timeout_s
+        if readings[0].online:  # the first poll, which the stall makes late
+            await asyncio.sleep(2 * DEADLINE_S)
+        return readings.pop(0)
+
+    monkeypatch.setattr(settle_module, "_players_online", slow_then_empty)
+
+    await until_no_player_online(Endpoint(host=HOST, port=free_port()), deadline_s=DEADLINE_S)
+
+    assert readings == []
+
+
 @dataclasses.dataclass(frozen=True)
 class Wording:
     online: int

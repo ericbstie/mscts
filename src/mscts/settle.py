@@ -101,7 +101,9 @@ async def until_answered_no_player_online(
     the one after a Group (#513), a poll that gets no answer raises.
 
     The deadline is checked between polls, not by cancelling one, and each poll bounds
-    itself by `deadline_s` too, so a server that never answers costs at most two. A poll
+    itself by `deadline_s` too, so a server that never answers costs at most two. Only a
+    poll begun after the deadline raises, so a reading taken before it, but read late
+    (our event loop stalled), is polled again (review A4). A poll
     cancelled from outside (a Run cut short) still leaves no socket open: asyncio closes a
     socket cut off while it connects, and the poll closes its Bot in a `finally` once it
     has connected.
@@ -113,10 +115,11 @@ async def until_answered_no_player_online(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + deadline_s
     while True:
+        late = loop.time() >= deadline  # taken before the poll: its reading is that recent
         reading = await _players_online(endpoint, timeout_s=deadline_s)
         if reading is None or reading.online == 0:
             return
-        if loop.time() >= deadline:
+        if late:
             raise PlayersStillOnline(reading.online, reading.names, deadline_s)
         await asyncio.sleep(SETTLE_INTERVAL_S)
 

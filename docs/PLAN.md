@@ -1845,7 +1845,8 @@ async def until_no_player_online(endpoint: Endpoint, *,
     # closed, late, not a status, no integer players.online) counts as empty: whatever plays
     # next meets the same failure and reports it. The deadline is checked between polls, not
     # by cancelling one, and each poll bounds itself by deadline_s, so a server that never
-    # answers costs two. A poll cancelled from outside still leaves no socket open (#133).
+    # answers costs two. Only a poll begun after the deadline raises (review A4: a reading
+    # read late because our event loop stalled is polled again). A poll cancelled from outside still leaves no socket open (#133).
 
 class NoStatusAnswer(Exception):    # #513, review A1: a poll got no answer (refused, reset,
     ...                             # closed, late); __cause__ is the poll's OSError
