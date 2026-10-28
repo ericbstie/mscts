@@ -1334,7 +1334,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   orbs, one a window; `item_pickup` — the `entities/item-pickup` script.
 - `groups.entities_crowding`: `WATCHER` — the Bot that is told about the pigs of
   `entities/pushing`; `PUSH_TICKS` — the ticks each crowd pushes; `pushing` — the
-  `entities/pushing` script.
+  `entities/pushing` script. `CRAMMING_RUNS` — how many times `entities/cramming` plays on each
+  server; `OFF_TICKS` — the ticks its crowd stands with cramming off; `CRAMMING_TICKS` — the
+  ticks it stands with cramming on; `cramming` — the `entities/cramming` script.
 - `groups.fluids`: `water_spread` — the `fluids/water-spread` script; `lava_spread` — the
   `fluids/lava-spread` script; `sources` — the `fluids/sources` script; `interactions` — the
   `fluids/interactions` script.

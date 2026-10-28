@@ -3725,6 +3725,36 @@ Whom a zombie hurts first when it stands 8 blocks from a player and 8 blocks fro
 
 How many ticks the same zombie takes to hurt the player or the villager for the first time. A difference means zombies choose a target, or reach it, at another pace than in vanilla.
 
+## `cramming.hurt_when_off`
+
+**Pigs hurt with cramming off**
+
+How many of 30 pigs crowded into one block space are hurt in 10 ticks with the `max_entity_cramming` game rule at 0, which turns cramming off. The `entities/cramming` Group counts them over many plays. In vanilla none is hurt. A difference means the server hurts crowded mobs when the rule says not to.
+
+## `cramming.hurt_by_tick_1`
+
+**Pigs hurt by cramming in 1 tick**
+
+How many of the same 30 pigs are hurt in the first tick after the rule goes back to 24. In vanilla a mob that touches more than 23 others takes cramming damage on a tick with a chance of 1 in 4, so about 7 or 8 are. The Group compares how the counts are spread. A difference means crowded mobs are hurt more often or less often than in vanilla.
+
+## `cramming.hurt_by_tick_10`
+
+**Pigs hurt by cramming in 10 ticks**
+
+How many of the same pigs have been hurt by the end of the tenth tick. In vanilla almost all of them have, and none has died yet: a pig survives one hit, and a second can come only 10 ticks after the first. A difference means crowded mobs are hurt at another pace than in vanilla.
+
+## `cramming.last_death`
+
+**Last death by cramming**
+
+The tick, counted from when cramming went back on, of the last pig's death within 20 ticks. In vanilla it comes between ticks 11 and 15. A play in which no pig dies records no tick. A difference means crowded mobs die sooner or later than in vanilla.
+
+## `cramming.alive`
+
+**Pigs left alive by cramming**
+
+How many of the 30 pigs are alive after 20 ticks. In vanilla it is always 24: once 6 have died, each of the rest touches only 23 others, and cramming stops. A difference means the server kills more or fewer crowded mobs than the rule allows.
+
 ## `set_entity_data.entries[].value.x`
 
 **Block x in entity data**

@@ -162,3 +162,144 @@ async def pushing(context: GroupContext) -> None:
         for centre in (_PEN_AT, _OPEN_AT):
             for count in _CROWDS:
                 await _push(context, _ring(count, centre))
+
+
+# `entities/cramming`: 30 pigs in one block space. A mob that touches more than
+# `max_entity_cramming` - 1 other pushable entities takes 6 `cramming` damage, but only on a
+# tick its own random source draws `nextInt(4) == 0` (`LivingEntity.pushEntities`, 26.3 javap),
+# and a rule of 0 or less turns it off. That source is no world seed, so which pigs are hit,
+# and when, differs on every play: the samples are compared as distributions (#24). A hit pig
+# ignores another equal hit for 10 ticks (`LivingEntity.hurtServer`), so a pig of 10 health
+# dies at its second hit, 10 ticks or more after its first. Once 6 have died, the 24 left each
+# touch 23 others, and no more are hurt.
+#
+# The watcher reads each pig's health from the entity data it was sent (`_HEALTH`). Pumpkin
+# sends none when a pig appears, so a pig with none is at full health.
+
+CRAMMING_RUNS = 20
+"""How many times `entities/cramming` plays on each server."""
+
+_CRAM_AT: _Place = (8.5, 12.5)
+_CRAM_GAP = 0.08
+_CRAM_ROWS, _CRAM_COLUMNS = 5, 6
+"""The 30 pigs stand in 5 rows of 6, 0.08 blocks apart, round `_CRAM_AT`."""
+
+_CRAMMING_RULE = "max_entity_cramming"
+_CRAMMING_LIMIT = 24
+"""Vanilla's default `max_entity_cramming`, which the play turns back on after the rule is off."""
+
+OFF_TICKS = 10
+"""How many ticks the crowd stands with cramming off (`max_entity_cramming` 0)."""
+
+_FIRST_TICKS = 10
+"""The ticks with cramming on that `cramming.hurt_by_tick_10` covers: no pig has been hurt twice
+yet, so none has died."""
+
+CRAMMING_TICKS = 20
+"""How many ticks the crowd stands with cramming on: vanilla's last death comes by tick 15
+(measured on #48: 40 plays, ticks 11 to 15)."""
+
+_PIG = "minecraft:pig"
+_HEALTH = 9
+"""The index of a living entity's health in its entity data: `LivingEntity.DATA_HEALTH_ID`, the
+second it defines after the 8 of `Entity` (26.3 javap); vanilla and Pumpkin send it there."""
+
+_PIG_HEALTH = 10.0
+"""A pig's full health."""
+
+
+def _grid(centre: _Place) -> list[_Place]:
+    """`_CRAM_ROWS` rows of `_CRAM_COLUMNS` places centred on `centre`, from the north-west.
+
+    The rows run west to east, `_CRAM_GAP` apart; each place is rounded to a thousandth.
+    """
+    return [
+        _offset(centre, column - (_CRAM_COLUMNS - 1) / 2, row - (_CRAM_ROWS - 1) / 2)
+        for row in range(_CRAM_ROWS)
+        for column in range(_CRAM_COLUMNS)
+    ]
+
+
+def _offset(centre: _Place, east: float, south: float) -> _Place:
+    """The place `east` and `south` gaps of `_CRAM_GAP` from `centre`, to a thousandth."""
+    cx, cz = centre
+    return (round(cx + east * _CRAM_GAP, 3), round(cz + south * _CRAM_GAP, 3))
+
+
+def _healths(watcher: Bot) -> list[float]:
+    """The health of each pig `watcher` tracks: full if the server has sent it none."""
+    pigs = (entity for entity in watcher.entities.values() if entity.type == _PIG)
+    return [_health(pig.data.get(_HEALTH)) for pig in pigs]
+
+
+def _health(value: object) -> float:
+    """A pig's health from its entity data's `value`: full if it is not a number."""
+    return float(value) if isinstance(value, float | int) else _PIG_HEALTH
+
+
+def _hurt(healths: Sequence[float]) -> int:
+    """How many of `healths` are below a pig's full health, the dead included."""
+    return sum(health < _PIG_HEALTH for health in healths)
+
+
+def _dead(healths: Sequence[float]) -> int:
+    """How many of `healths` are 0 or less."""
+    return sum(health <= 0 for health in healths)
+
+
+async def _run_on(control: Control, watcher: Bot, ticks: int) -> None:
+    """Step the frozen world `ticks` ticks at once; return once `watcher` has what they sent."""
+    await fast_forward(control, ticks)
+    await watcher.sync()
+
+
+async def _last_death(context: GroupContext, watcher: Bot, ticks: range) -> int | None:
+    """Step the world once for each of `ticks`; the last of them on which a pig died, if any."""
+    last = None
+    died = _dead(_healths(watcher))
+    for tick in ticks:
+        await context.step()
+        now = _dead(_healths(watcher))
+        if now > died:
+            last, died = tick, now
+    return last
+
+
+async def _while_off(context: GroupContext, watcher: Bot) -> None:
+    """Let the crowd stand `OFF_TICKS` ticks; sample how many pigs are hurt."""
+    await _run_on(context.control, watcher, OFF_TICKS)
+    context.sample("cramming.hurt_when_off", _hurt(_healths(watcher)))
+
+
+async def _while_on(context: GroupContext, watcher: Bot) -> None:
+    """Turn cramming on and let the crowd stand `CRAMMING_TICKS` ticks; sample what it does.
+
+    The samples are how many pigs are hurt after tick 1 and after tick 10, the last tick a pig
+    died on, if one did, and how many pigs are alive at the end.
+    """
+    await context.control.run(f"gamerule {_CRAMMING_RULE} {_CRAMMING_LIMIT}")
+    await context.step()
+    context.sample("cramming.hurt_by_tick_1", _hurt(_healths(watcher)))
+    await _run_on(context.control, watcher, _FIRST_TICKS - 1)
+    context.sample("cramming.hurt_by_tick_10", _hurt(_healths(watcher)))
+    last = await _last_death(context, watcher, range(_FIRST_TICKS + 1, CRAMMING_TICKS + 1))
+    if last is not None:
+        context.sample("cramming.last_death", last)
+    healths = _healths(watcher)
+    context.sample("cramming.alive", len(healths) - _dead(healths))
+
+
+@group("entities/cramming", kind=GroupKind.STATISTICAL, runs=CRAMMING_RUNS)
+async def cramming(context: GroupContext) -> None:
+    """30 pigs stand in one block space with cramming off, then on; how many are hurt, and die.
+
+    The play joins a watcher of its own (`GroupContext.player_name`), which is told about the
+    pigs. The crowd stands `OFF_TICKS` ticks with `max_entity_cramming` 0, then the rule goes
+    back to 24 and it stands `CRAMMING_TICKS` ticks more, counted from 1.
+    """
+    off: _Rule = (_CRAMMING_RULE, "0", str(_CRAMMING_LIMIT))
+    async with _arena(context, context.player_name("crowd"), (off,)) as (watcher, _):
+        for place in _grid(_CRAM_AT):
+            await context.control.run(_summon(place))
+        await _while_off(context, watcher)
+        await _while_on(context, watcher)

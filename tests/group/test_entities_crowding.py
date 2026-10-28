@@ -11,7 +11,7 @@ import json
 import math
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 
@@ -22,6 +22,7 @@ from support.gametime import gametime_answer
 
 import mscts.groups
 from mscts.bot import SYNC_REQUESTS
+from mscts.case_titles import TITLES
 from mscts.codec.packets import Packet
 from mscts.codec.registry_names import registry_names
 from mscts.compare import OBSERVE_OPEN
@@ -43,6 +44,9 @@ TIME_QUERY = "time query gametime"
 STEP = "tick step 1"
 PIG = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:pig")
 FIRST_PIG_ID = 100
+HEALTH = 9
+"""The index of a living entity's health in its entity data."""
+FULL_HEALTH = 10.0
 
 PUSHING = "entities/pushing"
 
@@ -55,14 +59,22 @@ class CrowdServer:
 
     Each pig Control summons becomes an `add_entity` to the watcher, with ids from
     `FIRST_PIG_ID` on, and a kill of the tagged entities removes them all. The frozen world's
-    game time moves on only with `tick step`.
+    game time moves on only with `tick step`. What the watcher is told reaches it only with
+    the answer to its next statistics request, as a tick's packets reach a player some time
+    after Control's command: so a play reads them only after a barrier.
     """
 
+    health: Mapping[int, Sequence[tuple[int, float]]] = field(default_factory=dict)
+    """The pigs whose health changes on each tick: by the tick since the freeze, each pig by
+    its number in summon order, from 0, and its new health."""
+    full_health_sent: bool = True
+    """Whether a pig's full health follows its `add_entity`, as vanilla sends it."""
     seen: list[Packet] = field(default_factory=list)
     _watcher: Peer | None = None
     _pigs: list[int] = field(default_factory=list)
     _summoned: int = 0
     _game_time: int = 0
+    _queued: list[bytes] = field(default_factory=list)
 
     async def __call__(self, peer: Peer) -> None:
         """Serve one connection: a Handler."""
@@ -79,7 +91,10 @@ class CrowdServer:
                 requests += 1
                 if (requests - 1) % SYNC_REQUESTS != 0:
                     await asyncio.sleep(TICK_S)  # a barrier's answers come a tick apart
-                await peer.write(peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
+                told = b"".join(self._queued) if peer is self._watcher else b""
+                if peer is self._watcher:
+                    self._queued.clear()
+                await peer.write(told + peer.raw_frame("minecraft:award_stats", NO_STATISTICS))
             elif packet.name == CHAT_COMMAND:
                 await self._command(peer, str((packet.fields or {})["command"]))
 
@@ -91,18 +106,18 @@ class CrowdServer:
             answer = gametime_answer(self._game_time)
             await peer.send("minecraft:system_chat", content=answer, overlay=False)
         elif command.startswith("tick step "):
-            self._game_time += int(command.removeprefix("tick step "))
+            self._step(int(command.removeprefix("tick step ")))
         elif (summon := _SUMMON.match(command)) is not None:
-            await self._add(*(float(axis) for axis in summon.groups()))
+            self._add(*(float(axis) for axis in summon.groups()))
         elif command == KILL_PIGS and self._pigs:
-            await self._to_watcher("minecraft:remove_entities", entity_ids=list(self._pigs))
+            self._to_watcher("minecraft:remove_entities", entity_ids=list(self._pigs))
             self._pigs.clear()
 
-    async def _add(self, x: float, y: float, z: float) -> None:
+    def _add(self, x: float, y: float, z: float) -> None:
         entity_id = FIRST_PIG_ID + self._summoned
         self._summoned += 1
         self._pigs.append(entity_id)
-        await self._to_watcher(
+        self._to_watcher(
             "minecraft:add_entity",
             entity_id=entity_id,
             entity_uuid=uuid.UUID(int=entity_id),
@@ -116,10 +131,23 @@ class CrowdServer:
             head_yaw=64,
             data=0,
         )
+        if self.full_health_sent:
+            self._send_health(entity_id, FULL_HEALTH)
 
-    async def _to_watcher(self, name: str, **fields: object) -> None:
+    def _step(self, ticks: int) -> None:
+        """Run `ticks` ticks: send the health of each pig `health` changes in them."""
+        for tick in range(self._game_time + 1, self._game_time + ticks + 1):
+            for number, health in self.health.get(tick, ()):
+                self._send_health(FIRST_PIG_ID + number, health)
+        self._game_time += ticks
+
+    def _send_health(self, entity_id: int, health: float) -> None:
+        entry = {"index": HEALTH, "serializer": "float", "value": health}
+        self._to_watcher("minecraft:set_entity_data", entity_id=entity_id, entries=[entry])
+
+    def _to_watcher(self, name: str, **fields: object) -> None:
         if self._watcher is not None:
-            await self._watcher.send(name, **fields)
+            self._queued.append(self._watcher.frame(name, **fields))
 
 
 @dataclass(frozen=True)
@@ -150,8 +178,15 @@ _PLAYS: dict[str, Played] = {}
 async def play(group_id: str) -> Played:
     """The play of `group_id` against a default fake server, played the first time it is asked."""
     if group_id not in _PLAYS:
-        _PLAYS[group_id] = await replay(group_id, CrowdServer())
+        _PLAYS[group_id] = await replay(group_id, DEFAULT_SERVERS[group_id]())
     return _PLAYS[group_id]
+
+
+DEFAULT_SERVERS: dict[str, Callable[[], CrowdServer]] = {
+    "entities/pushing": CrowdServer,
+    "entities/cramming": lambda: CrowdServer(health=DEFAULT_HITS),
+}
+"""The fake server each Group's default play is against."""
 
 
 def joined_at(transcript: Transcript) -> int:
@@ -290,3 +325,156 @@ async def test_pushing_takes_the_pen_away_then_undoes_the_fixture_after_the_last
     result = await play(PUSHING)
 
     assert result.after == (*CLEAR, "fill 3 -60 3 5 -60 5 minecraft:air", *TEARDOWN)
+
+
+# `entities/cramming`
+
+CRAMMING = "entities/cramming"
+
+CRAM_SETUP = (
+    "gamerule player_movement_check false",
+    "gamerule respawn_radius 0",
+    "tp control 96.5 -60 96.5",
+    "gamerule mob_griefing false",
+    "gamerule mob_drops false",
+    "gamerule max_entity_cramming 0",
+    "tick freeze",
+)
+"""What Control runs before the watcher joins: cramming starts off."""
+
+GRID = [
+    pig(x, z)
+    for z in (12.34, 12.42, 12.5, 12.58, 12.66)
+    for x in (8.3, 8.38, 8.46, 8.54, 8.62, 8.7)
+]
+"""The 30 pigs, 0.08 blocks apart in rows of 6 round (8.5, 12.5), from the north-west."""
+
+CRAM_PLAY = (
+    *GRID,
+    TIME_QUERY,
+    "tick step 10",
+    TIME_QUERY,
+    "gamerule max_entity_cramming 24",
+    STEP,
+    TIME_QUERY,
+    "tick step 9",
+    TIME_QUERY,
+    *[STEP] * 10,
+)
+"""What Control runs once the watcher has joined: the crowd stands 10 ticks with cramming off,
+then 1 tick, 9 more and 10 more, a tick at a time, with it on."""
+
+CRAM_TEARDOWN = (
+    KILL_PIGS,
+    KILL_ITEMS,
+    "gamerule mob_drops false",
+    KILL_PIGS,
+    "gamerule mob_drops true",
+    "tick unfreeze",
+    "gamerule max_entity_cramming 24",
+    "gamerule mob_drops true",
+    "gamerule mob_griefing true",
+    "gamerule respawn_radius 10",
+    "gamerule player_movement_check true",
+    "tick unfreeze",
+)
+
+ON = 10
+"""The tick, counted from the freeze, after which cramming is on: cramming's tick k is ON + k."""
+
+
+def test_cramming_is_statistical_on_the_default_spec_and_plays_20_times() -> None:
+    group = GROUPS[CRAMMING]
+    default = ServerSpec(host="127.0.0.1", port=25566)
+
+    assert group.kind is GroupKind.STATISTICAL
+    assert group.runs == 20
+    assert group.requires == ()
+    assert group.masks == ()
+    assert group.spec(default) == default
+
+
+@pytest.mark.asyncio
+async def test_cramming_turns_cramming_off_and_freezes_before_a_watcher_of_its_play_joins() -> None:
+    result = await play(CRAMMING)
+    joined = joined_at(result.transcript)
+    before_join = [c for t, c in control_commands(result.transcript) if t < joined]
+    watchers = {e.bot for e in result.transcript.events if e.bot != CONTROL}
+
+    assert before_join == list(CRAM_SETUP)
+    assert len(watchers) == 1
+    assert next(iter(watchers)).startswith("crowd")
+
+
+@pytest.mark.asyncio
+async def test_cramming_summons_30_pigs_then_steps_10_ticks_off_and_20_on() -> None:
+    result = await play(CRAMMING)
+    commands = [c for _, c in control_commands(result.transcript)]
+
+    assert commands == [*CRAM_SETUP, *CRAM_PLAY, *CRAM_TEARDOWN]
+    assert result.windows == ()
+
+
+DEFAULT_HITS = {
+    ON + 1: ((0, 4.0), (1, 4.0), (2, 4.0)),
+    ON + 5: ((3, 4.0),),
+    ON + 10: ((4, 4.0),),
+    ON + 11: ((0, 0.0), (5, 4.0)),
+    ON + 14: ((1, 0.0),),
+}
+"""What the default fake sends: three pigs hurt on cramming's tick 1, one on tick 5 and one on
+tick 10; on tick 11 one dies and another is hurt, and on tick 14 another dies."""
+
+
+@pytest.mark.asyncio
+async def test_cramming_samples_the_pigs_hurt_by_tick_1_and_by_tick_10_and_the_last_death() -> None:
+    result = await play(CRAMMING)
+
+    assert result.samples == {
+        "cramming.hurt_when_off": (0.0,),
+        "cramming.hurt_by_tick_1": (3.0,),
+        "cramming.hurt_by_tick_10": (5.0,),
+        "cramming.last_death": (14.0,),
+        "cramming.alive": (28.0,),
+    }
+
+
+@pytest.mark.asyncio
+async def test_cramming_counts_a_pig_hurt_while_cramming_is_off() -> None:
+    result = await replay(CRAMMING, CrowdServer(health={3: ((7, 4.0),)}))
+
+    assert result.samples["cramming.hurt_when_off"] == (1.0,)
+    assert result.samples["cramming.hurt_by_tick_1"] == (1.0,)
+
+
+@pytest.mark.asyncio
+async def test_cramming_samples_no_death_when_no_pig_dies_with_cramming_on() -> None:
+    result = await replay(CRAMMING, CrowdServer(health={5: ((0, 0.0),)}))
+
+    assert "cramming.last_death" not in result.samples
+    assert result.samples["cramming.alive"] == (29.0,)
+
+
+@pytest.mark.asyncio
+async def test_cramming_samples_a_death_on_the_last_tick_and_none_after_it() -> None:
+    late = {ON + 20: ((0, 0.0),), ON + 21: ((1, 0.0),)}
+    result = await replay(CRAMMING, CrowdServer(health=late))
+
+    assert result.samples["cramming.last_death"] == (20.0,)
+    assert result.samples["cramming.alive"] == (29.0,)
+
+
+@pytest.mark.asyncio
+async def test_cramming_takes_a_pig_the_server_sent_no_health_for_as_unhurt() -> None:
+    # Pumpkin sends no health when a pig appears; vanilla sends 10.
+    result = await replay(CRAMMING, CrowdServer(health=DEFAULT_HITS, full_health_sent=False))
+
+    assert result.samples["cramming.hurt_by_tick_1"] == (3.0,)
+    assert result.samples["cramming.alive"] == (28.0,)
+
+
+@pytest.mark.asyncio
+async def test_every_sample_of_cramming_has_a_title() -> None:
+    result = await play(CRAMMING)
+
+    assert sorted(set(result.samples) - TITLES.keys()) == []
