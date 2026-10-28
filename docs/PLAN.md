@@ -96,7 +96,7 @@ test needs it:
 | `timeline.py` | `timeline(transcript)` → text: each Event and Mark in time order, whether a window takes each received Packet, and each `award_stats` gap; the live tiers write it for a play that did not match (#162) |
 | `group.py` | `@group`, `Group`, `GroupContext`, `GROUPS` (the registered Groups), `resolve`; `Control`, `OperatorBot`, `CommandMissing` |
 | `groups/*.py` | the Groups themselves (`import mscts.groups` registers them) |
-| `settle.py` | `until_no_player_online(endpoint, *, deadline_s)`: polls an Instance's status until no player is online, `PlayersStillOnline` if it never is. `run` waits with it before each Group |
+| `settle.py` | `until_no_player_online(endpoint, *, deadline_s)`: polls an Instance's status until no player is online, `PlayersStillOnline` if it never is. `run` waits with it before each Group, and after each with `until_answered_no_player_online`, which raises `NoStatusAnswer` on a poll that gets no answer |
 | `run.py` | `run_group` → `Transcript`; `judge` → `Verdict`; `run`: Groups against a Reference and a Candidate `Server`, on Instances it launches; `selfcheck` |
 | `compare.py` | `Mask`, canonicalization, `compare` → `Verdict`; `window_takes` |
 | `measure.py` | `Measurement`, span extraction, stats |
@@ -1846,6 +1846,15 @@ async def until_no_player_online(endpoint: Endpoint, *,
     # next meets the same failure and reports it. The deadline is checked between polls, not
     # by cancelling one, and each poll bounds itself by deadline_s, so a server that never
     # answers costs two. A poll cancelled from outside still leaves no socket open (#133).
+
+class NoStatusAnswer(Exception):    # #513, review A1: a poll got no answer (refused, reset,
+    ...                             # closed, late); __cause__ is the poll's OSError
+
+async def until_answered_no_player_online(endpoint: Endpoint, *,
+                                          deadline_s: float = SETTLE_TIMEOUT_S) -> None: ...
+    # As until_no_player_online (which is it, NoStatusAnswer suppressed), except that a poll
+    # that gets no answer raises NoStatusAnswer. An answer that cannot be read still counts
+    # as empty. For the wait after a Group, which nothing plays after to meet the failure.
 ```
 
 Running Groups (`run.py`):
@@ -1937,21 +1946,25 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # `mismatch`, a `failed` Divergence saying so after any other, the detail the first
     # failure's; an `error` stays as it is. Then (#513, stuck player) `elapsed_s` is taken,
     # and each launched Instance that played it and answered waits, both at once, with
-    # until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S), as before a Group. A
-    # wait that raised on the Reference makes the Verdict `error` ("after the Group, the
+    # until_answered_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S). A wait that
+    # raised NoStatusAnswer fails nothing (the side answered the status request above), but
+    # restarts the pair as below (review A1). Any other that raised on the Reference makes
+    # the Verdict `error` ("after the Group, the
     # Reference had 1 player still online after waiting 2 s: 'crafter'", or "failed: the
     # wait for no player online failed: <Type>: <message>"; the Candidate's after a "; ");
     # on the Candidate alone it makes it `mismatch`, a `failed` Divergence "after the Group,
     # 1 player still online after waiting 2 s: 'crafter'" after any other, the detail the
     # first failure's; an `error` stays as it is. An Attached side is not waited on here:
     # the wait before its next Group finds the player (#266). Before the next Group of that
-    # ServerSpec, if either of the pair gave no answer or kept a player, both launched
+    # ServerSpec, if either of the pair gave no answer or its wait raised, both launched
     # Instances are stopped and launched again
     # together (review B3: the two worlds keep the same history) in
     # <workdir>/restart-<n>/<reference|candidate>, n counting pair restarts, each at a new
     # free_endpoint(), with its own instance.startup Measurement; only a side that gave no
-    # answer or kept a player gets a Restart (reason "had 1 player still online after
-    # waiting 2 s: 'crafter'" for the second). An unusable side (#228) is stopped and not launched again. A
+    # answer or whose wait raised gets a Restart (reason "had 1 player still online after
+    # waiting 2 s: 'crafter'" for a player, "did not answer a status request within 2 s
+    # while mscts waited for its players to leave" for NoStatusAnswer). An unusable side
+    # (#228) is stopped and not launched again. A
     # side whose launch raises RunnerError (review A1) gets no Restart and is unusable at its
     # old Endpoint: "could not be started again after <group>: <RunnerError.reason>", so
     # each later Group is the Candidate's `mismatch` or an `error`, and the Run goes on.
@@ -3039,7 +3052,9 @@ class GroupResult:
 class Restart:                      # #513: an Instance stopped and launched again before a Group
     after: str                      # the last Group played on the one stopped
     reason: str                     # after "it": "did not answer a status request within 10 s",
-                                    # "had 1 player still online after waiting 2 s: 'crafter'"
+                                    # "had 1 player still online after waiting 2 s: 'crafter'",
+                                    # "did not answer a status request within 2 s while mscts
+                                    # waited for its players to leave"
 
 @frozen
 class SideSummary:

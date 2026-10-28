@@ -3,14 +3,16 @@
 `Bot.close()` only closes the socket, and a server removes the player later (vanilla on
 its next tick). So whatever plays against an Instance after Bots have left it, a Run before
 its next Group or a Group after one of its own Bots left, waits first, with
-`until_no_player_online`. It asks the status (the request `status/basic` sends), so it works
-the same on every Candidate (ADR-0001). What vanilla's status does when a player leaves, and
-how long it takes, is in docs/research/2026-10-02-settle.md.
+`until_no_player_online`. A Run waits after each Group too, on each Instance it launched, with
+`until_answered_no_player_online` (#513). It asks the status (the request `status/basic`
+sends), so it works the same on every Candidate (ADR-0001). What vanilla's status does when
+a player leaves, and how long it takes, is in docs/research/2026-10-02-settle.md.
 """
 
 import asyncio
+import contextlib
 import dataclasses
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from mscts.bot import Bot
 from mscts.codec.packets import CodecError
@@ -37,12 +39,15 @@ Bots, and 20 of one Bot, at most 114 ms). This is about ten times the worst
 (docs/research/2026-10-02-settle.md).
 """
 
-_UNREADABLE: tuple[type[Exception], ...] = (CodecError, ProtocolError, OSError)
-"""What a status poll raises when the Instance gives no readable answer.
+_UNREADABLE: tuple[type[Exception], ...] = (CodecError, ProtocolError)
+"""What a status poll raises when the Instance answers with something that is not a status."""
 
-An OSError is a refused, reset or closed connection (ConnectionError) or no answer in time
-(TimeoutError).
-"""
+
+class NoStatusAnswer(Exception):  # noqa: N818 - says what happened, as TimeoutError does
+    """A status poll got no answer: its connection was refused, reset or closed, or it was late.
+
+    Its cause is the OSError the poll raised (a ConnectionError, or a TimeoutError).
+    """
 
 
 class PlayersStillOnline(Exception):  # noqa: N818 - says what it found, as TimeoutError does
@@ -73,10 +78,27 @@ async def until_no_player_online(
 ) -> None:
     """Return once the status of the Instance at `endpoint` says no player is online.
 
+    As `until_answered_no_player_online`, except that a poll that gets no answer counts as
+    empty too: refused, closed or late. Whatever plays next meets the same failure and
+    reports it.
+
+    Raises:
+        PlayersStillOnline: The last status still said so after `deadline_s` seconds.
+    """
+    with contextlib.suppress(NoStatusAnswer):
+        await until_answered_no_player_online(endpoint, deadline_s=deadline_s)
+
+
+async def until_answered_no_player_online(
+    endpoint: Endpoint, *, deadline_s: float = SETTLE_TIMEOUT_S
+) -> None:
+    """Return once the status of the Instance at `endpoint` says no player is online.
+
     It polls every `SETTLE_INTERVAL_S`, on a connection of its own that it closes
-    (`players.online` is the status's count). A status that cannot be read counts as
-    empty: refused, closed, late, not a status, or without an integer `players.online`.
-    Whatever plays next meets the same failure and reports it.
+    (`players.online` is the status's count). An answer that cannot be read counts as
+    empty: not a status, or without an integer `players.online`. The server answered, so
+    whatever plays next shows what it sends. For a wait that nothing plays after, such as
+    the one after a Group (#513), a poll that gets no answer raises.
 
     The deadline is checked between polls, not by cancelling one, and each poll bounds
     itself by `deadline_s` too, so a server that never answers costs at most two. A poll
@@ -86,6 +108,7 @@ async def until_no_player_online(
 
     Raises:
         PlayersStillOnline: The last status still said so after `deadline_s` seconds.
+        NoStatusAnswer: A poll got no answer: refused, reset, closed, or none in `deadline_s`.
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + deadline_s
@@ -107,20 +130,17 @@ class _Reading:
 
 
 async def _players_online(endpoint: Endpoint, *, timeout_s: float) -> _Reading | None:
-    """The players the status at `endpoint` says are online, or None if it gives no readable one."""
-    transcript = Transcript(group_id="settle", server="")  # discarded
+    """The players the status at `endpoint` says are online, or None if its answer is unreadable.
+
+    Raises:
+        NoStatusAnswer: It gave no answer within `timeout_s`, or the connection failed.
+    """
     try:
-        bot = await Bot.connect(
-            endpoint, TARGET, name="settle", transcript=transcript, timeout_s=timeout_s
-        )
+        reply = await _status(endpoint, timeout_s=timeout_s)
+    except OSError as error:
+        raise NoStatusAnswer from error
     except _UNREADABLE:
         return None
-    try:
-        reply = await bot.status()
-    except _UNREADABLE:
-        return None
-    finally:
-        await bot.close()
     players: object = reply.get("players")
     if not isinstance(players, dict):
         return None
@@ -129,6 +149,23 @@ async def _players_online(endpoint: Endpoint, *, timeout_s: float) -> _Reading |
     if not isinstance(online, int) or isinstance(online, bool):
         return None
     return _Reading(online=online, names=_names(fields.get("sample")))
+
+
+async def _status(endpoint: Endpoint, *, timeout_s: float) -> Mapping[str, object]:
+    """The status JSON the Instance at `endpoint` answers with, asked on a connection of its own.
+
+    Raises:
+        OSError: No answer within `timeout_s` (TimeoutError), or the connection failed.
+        CodecError | ProtocolError: The answer is not a status.
+    """
+    transcript = Transcript(group_id="settle", server="")  # discarded
+    bot = await Bot.connect(
+        endpoint, TARGET, name="settle", transcript=transcript, timeout_s=timeout_s
+    )
+    try:
+        return await bot.status()
+    finally:
+        await bot.close()
 
 
 def _names(sample: object) -> tuple[str, ...]:

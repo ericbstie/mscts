@@ -198,11 +198,13 @@ within 10 s after the Group`, or makes it an `Error` if that server is
 vanilla. A server that answers then has 2 seconds for the Group's
 players to leave. One that still lists a player fails that Group as
 `Candidate failed: after the Group, 1 player still online after waiting
-2 s: 'crafter'`, or makes it an `Error` if that server is vanilla.
+2 s: 'crafter'`, or makes it an `Error` if that server is vanilla. One
+that stops answering in those 2 seconds does not fail the Group, because
+mscts cannot tell whether a player is still online.
 
-Either way, mscts stops both servers and starts them again before the
-next Group, so the two still have the same history. The line names only
-the server that failed, and the Group after which it did, such as
+In each of these cases, mscts stops both servers and starts them again
+before the next Group, so the two still have the same history. The line
+names only the server that failed, and the Group after which it did, such as
 `Restarted pumpkin after crafting/grid-ctrl-q, because it had 1 player
 still online after waiting 2 s: 'crafter'.` The Groups after it play on
 the new servers. A server restarted after the same Group in more than one

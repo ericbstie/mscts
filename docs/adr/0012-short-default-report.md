@@ -257,6 +257,13 @@ server that does not answer a status request after a Group (#519). The
 Report names the restart: `Restarted pumpkin after crafting/grid-ctrl-q,
 because it had 1 player still online after waiting 2 s: 'crafter'.`
 
+An Instance that stops answering status requests during that wait does
+not fail the Group. It answered the status request sent right after the
+Group, and nothing shows whether it kept a player. The pair is still
+restarted, so a player it may have kept costs no later Group either.
+Before a Group, an unanswered status still counts as no player online,
+because the Group then meets the same failure and reports it.
+
 An Attached Candidate keeps the #266 rule. mscts did not launch it and
 does not restart it, so a player it keeps online fails each later Group,
 which is then played on the Reference alone. The wait before each Group

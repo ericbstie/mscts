@@ -190,17 +190,49 @@ async def test_an_instance_that_did_not_answer_is_not_waited_on_after_the_group(
     # It is restarted anyway, and a wait on a hung server costs up to SETTLE_TIMEOUT_S.
     waited: list[Endpoint] = []
 
-    async def left_online(endpoint: Endpoint) -> Exception | None:
+    async def until_answered_no_player_online(endpoint: Endpoint, *, deadline_s: float) -> None:
+        del deadline_s
         waited.append(endpoint)
-        return None
 
     monkeypatch.setattr(run_module, "ANSWER_TIMEOUT_S", SHORT_S)
-    monkeypatch.setattr(run_module, "_left_online", left_online)
+    monkeypatch.setattr(
+        run_module, "until_answered_no_player_online", until_answered_no_player_online
+    )
     reference, candidate = fake_server("one"), fake_server("two", hangs_after_ping=HANGS)
 
     await run_results([HANG], reference, candidate, workdir=tmp_path / "run")
 
     assert len(waited) == 1, waited
+
+
+@pytest.mark.asyncio
+async def test_a_status_with_no_answer_in_the_wait_after_a_group_restarts_the_pair(
+    fake_server: MakeServer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Candidate answers the status request after test/hang, and hangs just after it
+    # (review A1). The wait gets no answer, so nothing tells whether a player is still on.
+    asked: list[Endpoint] = []
+    answers = run_module._answers  # noqa: SLF001
+
+    async def answered_once_each(endpoint: Endpoint, *, timeout_s: float) -> bool:
+        first = endpoint not in asked
+        asked.append(endpoint)
+        return first or await answers(endpoint, timeout_s=timeout_s)
+
+    monkeypatch.setattr(run_module, "_answers", answered_once_each)
+    reference, candidate = fake_server("one"), fake_server("two", hangs_after_ping=HANGS)
+
+    result = await run_results([HANG, BASIC], reference, candidate, workdir=tmp_path / "run")
+
+    hang, after = result.verdicts
+    assert hang.outcome is Outcome.MATCH, hang  # it answered once: no failure is proven
+    assert after.outcome is Outcome.MATCH, after
+    why = (
+        f"did not answer a status request within {SHORT_S:g} s"
+        " while mscts waited for its players to leave"
+    )
+    assert result.candidate.restarts == (Restart(after="test/hang", reason=why),)
+    assert result.reference.restarts == ()
 
 
 @pytest.mark.asyncio

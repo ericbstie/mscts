@@ -6,7 +6,7 @@ import dataclasses
 import json
 import logging
 import random
-from collections.abc import Callable, Collection, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Collection, Mapping, Sequence
 from pathlib import Path
 from time import perf_counter
 
@@ -20,7 +20,13 @@ from mscts.group import CommandMissing, Group, GroupContext, GroupKind, resolve
 from mscts.measure import Measurement, measurements
 from mscts.net import Endpoint, ProtocolError
 from mscts.runner import RunnerError, free_endpoint, running
-from mscts.settle import SETTLE_TIMEOUT_S, PlayersStillOnline, until_no_player_online
+from mscts.settle import (
+    SETTLE_TIMEOUT_S,
+    NoStatusAnswer,
+    PlayersStillOnline,
+    until_answered_no_player_online,
+    until_no_player_online,
+)
 from mscts.spec import ServerSpec
 from mscts.stats import PERMUTATION_SEED, Decision, SampleLog, Series, decide
 from mscts.target import TARGET
@@ -148,8 +154,9 @@ class Restart:
 
     Attributes:
         after: The last Group played on the Instance it stopped, e.g. `crafting/grid`.
-        reason: Why, after "it": `did not answer a status request within 10 s`, or `had 1
-            player still online after waiting 2 s: 'crafter'`.
+        reason: Why, after "it": `did not answer a status request within 10 s`, `had 1
+            player still online after waiting 2 s: 'crafter'`, or `did not answer a status
+            request within 2 s while mscts waited for its players to leave`.
     """
 
     after: str
@@ -912,9 +919,11 @@ class _Instances:
         to have no player online, as before each Group. The side's failure is what the wait
         raised (`_left_online`), or the play's GroupError.
         """
-        left = None if first else await _left_online(endpoint)
-        if left is not None:
-            return left
+        if not first:
+            wait = until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+            left = await _left_online(wait)
+            if left is not None:
+                return left
         samples.new_play()
         attempt = await self._attempt(group, role, endpoint, samples=samples)
         return attempt if isinstance(attempt, GroupError) else None
@@ -1025,16 +1034,20 @@ class _Instances:
 
         Only an Instance this Run launched waits: an Attached one is not the Run's to restart,
         and the wait before the next Group finds its player, as before (`_unsettled`, #266).
-        Nor does one that already needs a restart (`_asked`). One whose wait raised, a player
-        still online or anything else (`_left_online`), is restarted before the next Group.
+        Nor does one that already needs a restart (`_asked`). One whose wait raised is
+        restarted before the next Group (`_restart_reason`). What it raised is the side's
+        failure, a player still online or anything else (`_left_online`), unless a status
+        poll got no answer (`NoStatusAnswer`): the Instance answered `_asked`, and nothing
+        shows whether it kept a player then (review A1).
         """
         launched = self._launched.get(endpoint)
         if launched is None or launched.restart is not None:
             return None
-        left = await _left_online(endpoint)
+        wait = until_answered_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+        left = await _left_online(wait)
         if left is not None:
-            launched.restart = Restart(after=played, reason=_unsettled_by(left))
-        return left
+            launched.restart = Restart(after=played, reason=_restart_reason(left))
+        return None if isinstance(left, NoStatusAnswer) else left
 
     def _kept(self, verdict: Verdict) -> bool:
         """Whether the play judged `verdict` keeps its Transcripts."""
@@ -1287,20 +1300,30 @@ async def _answers(endpoint: Endpoint, *, timeout_s: float) -> bool:
         return True
 
 
-async def _left_online(endpoint: Endpoint) -> Exception | None:
-    """Wait for the Instance at `endpoint` to have no player online; what the wait raised, if any.
+async def _left_online(wait: Awaitable[None]) -> Exception | None:
+    """Run `wait`, a wait for no player online; what it raised, if anything.
 
-    `PlayersStillOnline` if a player is still online after `SETTLE_TIMEOUT_S`. Any other
-    Exception is the side's failure too, as in `_unsettled`.
+    `PlayersStillOnline` if a player is still online at its deadline. Any other Exception
+    is the side's failure too, as in `_unsettled`.
 
     Raises:
         BaseException: The wait raised one that is not an Exception.
     """
     try:
-        await until_no_player_online(endpoint, deadline_s=SETTLE_TIMEOUT_S)
+        await wait
     except Exception as left:  # noqa: BLE001 - the side's failure, whatever it is (#222)
         return left
     return None
+
+
+def _restart_reason(left: Exception) -> str:
+    """Why an Instance whose wait for no player online raised `left` is restarted, after "it"."""
+    if isinstance(left, NoStatusAnswer):
+        return (
+            f"did not answer a status request within {SETTLE_TIMEOUT_S:g} s"
+            " while mscts waited for its players to leave"
+        )
+    return _unsettled_by(left)
 
 
 def _not_sampled(group: Group, reference: Samples | Exception, verdict: Verdict) -> Verdict:
