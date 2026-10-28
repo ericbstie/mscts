@@ -14,6 +14,7 @@ from support.control_play import Play, replay
 from support.gametime import gametime_answer
 from support.player_server import FADE_READS, FADE_TICKS, TIME_QUERY
 
+from mscts.case_titles import TITLES
 from mscts.group import GROUPS, GroupKind
 from mscts.spec import ServerSpec
 from tests.net.fakes import Peer
@@ -289,3 +290,28 @@ async def test_rail_carpet_duplication_powers_each_piston_for_5_ticks(window: in
 
     assert stepped.commands == (f"setblock 3 -45 {z} minecraft:redstone_block", *steps(5))
     assert stepped.ticks == 5
+
+
+def test_the_explosion_test_cases_have_titles() -> None:
+    # A Pumpkin run of the Groups showed every path of `explode` untitled, and a server that
+    # leaves an explosion out shows the packet's own name.
+    shown = (
+        "explode",
+        "explode.block_count",
+        "explode.block_particles[].particle.options",
+        "explode.block_particles[].particle.type",
+        "explode.block_particles[].scaling",
+        "explode.block_particles[].speed",
+        "explode.block_particles[].weight",
+        "explode.center.x",
+        "explode.center.y",
+        "explode.center.z",
+        "explode.explosion_particle.options",
+        "explode.explosion_particle.type",
+        "explode.explosion_sound.reference",
+        "explode.play_sound",
+        "explode.player_knockback",
+        "explode.radius",
+    )
+
+    assert sorted(set(shown) - TITLES.keys()) == []
