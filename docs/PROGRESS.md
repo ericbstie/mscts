@@ -195,6 +195,38 @@ briefs at 3–6 increments and about 1500 lines at most.
 
 ## Log
 
+### 2026-10-29: train 45
+
+- Merged in three batches: #521 (#515), #522 (#516), #523 (#513), #526
+  (#524), #527 (#525), #528 (#42), #529 (#45) and #530 (#48). Reference
+  tier 37, then 38 of 38, and candidate tier 15 of 15 on each batch tip,
+  against Pumpkin nightly b70c7e1 (it writes the same `pumpkin.toml` as
+  the pinned 5e9101f).
+- New catalogue tests: `glitches/*` (#42: bedrock breaking, TNT
+  duplication, rail and carpet duplication; the first Groups that
+  `require` others), `entities/activation-*` (#45) and `entities/pushing`
+  with the statistical `entities/cramming` (#48). Each started from a
+  probe's fact sheet. Pumpkin fails all of them: it rejects every
+  `/setblock` with block states, and it panics about 300 s after it
+  starts (its player-data save).
+- #523 finishes #513 by the lead's option B: a launched Candidate that
+  keeps a player online after a play fails that Group, and the pair
+  restarts before the next. Two reviews found three should-fix items,
+  all fixed. On Pumpkin, `crafting/*` went from 0 to 28 test cases
+  passed, with every Group's Verdict the same in five Runs.
+- #470 closed with no change: under a thunderstorm 73 of 77 exact Groups
+  matched, and the other 4 differ the same way in clear weather.
+- Flaky tests fixed: #515 and #524 (a test's fake, not the code), #525
+  (`/proc/<pid>/environ` reads empty for a moment after `Popen`).
+- Filed #524, #525 (fixed) and #531: a Candidate that crashes in one
+  Group fails every later Group as "left its world frozen", instead of
+  being restarted. Any Pumpkin Run longer than 5 minutes meets it.
+- Process: a flake's brief names a stall to inject when load alone does
+  not reproduce it; a live comparison that is deterministic needs two
+  runs a side, not five; a new `SLOW_PLAY_LIMIT_S` entry also changes
+  `test_selfcheck_collection.py`; five stress runs go to the Group at
+  risk, with the expected lock time in the brief.
+
 ### 2026-10-27: train 44
 
 - The maintainer approved #469's interface: `Bot.expect(..., since_ns=)` and

@@ -86,6 +86,11 @@ tick-exact Group), the Bot, `sent`, `compared` or `not compared`, and
 its decoded fields (`--full` for all of them). Look for a window
 with no `compared` line, and for a narrowed packet that is not in it.
 
+A packet vanilla sends on a schedule of its own (every N `sendChanges`
+calls, frozen ticks included) follows the wall clock under stepped
+windows, however often it matched in a quiet probe. The fact sheet tries
+every compared packet type under `--stress` before keeping it (#45).
+
 ## Where things go
 
 - Groups go in `src/mscts/groups/<mechanic>.py`, one module per mechanic
