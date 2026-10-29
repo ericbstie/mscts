@@ -1322,7 +1322,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `STANDS` — the armor stands summoned 2 blocks up at each distance; `PIGS` — the pigs summoned 5
   blocks up; `activation_falling` — the `entities/activation-falling` script. `ITEMS` — the
   items summoned sliding west on ice and lying in a stream at each distance; `activation_items` —
-  the `entities/activation-items` script.
+  the `entities/activation-items` script. `EDGE` — the armor stands summoned just inside and
+  just outside the simulation distance; `activation_edge` — the `entities/activation-edge`
+  script.
 - `groups.entities_items`: `ITEM_PACKETS` — what a window compares (entities appearing,
   changing and going, a pickup, the Bot's slots and experience, and sounds); `PAIRS` — the
   pairs of items `entities/item-merge` lays out, a tick apart; `item_merge` — the

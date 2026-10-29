@@ -237,3 +237,23 @@ async def activation_items(context: GroupContext) -> None:
         await context.freeze()
         await fast_forward(context.control, _FLOW_TICKS)
         await _watch(context, MOVES, ITEMS)
+
+
+# `entities/activation-edge`
+
+EDGE = (
+    _summon("armor_stand", (-63.5, -58.0, 4.5)),
+    _summon("armor_stand", (-64.5, -58.0, 6.5)),
+)
+"""An armor stand 2 blocks up in chunk x -4, the last chunk inside the simulation distance, and
+one a block further west, in chunk x -5, the first outside it. Vanilla lands the first on the 8th
+tick and tells the watcher nothing more of the second after its spawn: it does not tick it, and
+sends its changes only in ticking range, unless it must (`ChunkMap.tick`)."""
+
+
+@group("entities/activation-edge", spec=activation_spec, kind=GroupKind.TICK_EXACT)
+async def activation_edge(context: GroupContext) -> None:
+    """An armor stand falls just inside the simulation distance; one just outside stays up."""
+    async with _arena(context):
+        await context.freeze()
+        await _watch(context, MOVES, EDGE)

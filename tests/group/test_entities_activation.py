@@ -23,7 +23,8 @@ from tests.net.fakes import EMPTY_CHUNK, JoinScript, Peer, join_server
 
 FALLING = "entities/activation-falling"
 ITEMS = "entities/activation-items"
-GROUP_IDS = (FALLING, ITEMS)
+EDGE = "entities/activation-edge"
+GROUP_IDS = (FALLING, ITEMS, EDGE)
 COMMANDS = tree("gamerule", "tp", "tick", "summon", "kill", "fill", "setblock", "time", "tellraw")
 TAG = "mscts_activation"
 STEP = "tick step 1"
@@ -324,3 +325,27 @@ async def test_items_takes_the_streams_and_the_ice_away_before_the_items() -> No
     result = await play(ITEMS)
 
     assert result.after == (*UNBUILD, *CLEAR, "tick unfreeze")
+
+
+# `entities/activation-edge`
+
+
+def chunk_x(x: float) -> int:
+    """The chunk x of the block column at `x`."""
+    return int(x // 16)
+
+
+@pytest.mark.asyncio
+async def test_edge_summons_a_stand_in_the_last_chunk_inside_and_one_in_the_first_outside() -> None:
+    result = await play(EDGE)
+    inside, outside = (-63.5, -58.0, 4.5), (-64.5, -58.0, 6.5)
+
+    assert (chunk_x(inside[0]), chunk_x(outside[0])) == (-4, -5)
+    assert result.first == (*PINNED, "tick freeze")
+    assert [window.label for window in result.windows] == [MOVES_LABEL]
+    assert result.windows[0].commands == (
+        summoned("armor_stand", inside),
+        summoned("armor_stand", outside),
+        *steps(20),
+    )
+    assert result.after == (*CLEAR, "tick unfreeze")
