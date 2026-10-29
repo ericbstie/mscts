@@ -642,6 +642,12 @@ TITLES: Mapping[str, str] = MappingProxyType(
         "doors_normal.door": "Door a zombie hits on normal",
         "targets.first": "Zombie's first victim",
         "targets.hit": "Zombie's first hit of a victim",
+        # entities (#48): the samples of entities/cramming
+        "cramming.hurt_when_off": "Pigs hurt with cramming off",
+        "cramming.hurt_by_tick_1": "Pigs hurt by cramming in 1 tick",
+        "cramming.hurt_by_tick_10": "Pigs hurt by cramming in 10 ticks",
+        "cramming.last_death": "Last death by cramming",
+        "cramming.alive": "Pigs left alive by cramming",
         # time (#63)
         "set_entity_data.entries[].value.x": "Block x in entity data",
         "set_entity_data.entries[].value.y": "Block y in entity data",
