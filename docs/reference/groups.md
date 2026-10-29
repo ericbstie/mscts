@@ -738,6 +738,20 @@ changed at the end of that tick, in an order that follows their entity ids, so t
 could come in either order ([#320](https://github.com/ericbstie/mscts/issues/320)). How many
 items a pig or a zombie drops is also random.
 
+### Simulation distance
+
+Whether entities move on every tick at any distance inside the simulation distance, and not at all outside it. These Groups run the server with a view distance of 10 chunks and a simulation distance of 4, so a player is told about entities the server does not tick. Vanilla ticks an entity when its chunk is at most 4 chunks from a player's chunk, east-west or north-south, whichever is further. Everything a Group summons lies west of the world spawn, from 1 to 5 chunks away, and Control stands far from all of it. The watcher waits until it holds those chunks. Then the world is frozen, and steps a tick at a time.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `entities/activation-falling` | tick-exact | none | Control summons armor stands 2 blocks over the ground at 8, 24, 40 and 56 blocks west of the watcher, one in each of the 4 chunks west of its own. The world steps 20 ticks. Then pigs fall 5 blocks at the same distances, and the world steps 20 ticks again. The first window compares how the stands fall and land, the second when each pig is hurt by its fall. | none |
+| `entities/activation-items` | tick-exact | none | Control lays a row of ice and a water stream at each of the same distances, and the world steps until the water stops spreading. Then an item slides west on the ice at each distance, and another lies at the start of each stream. The world steps 20 ticks, and the window compares how the items move. | none |
+| `entities/activation-edge` | tick-exact | none | Control summons an armor stand 2 blocks over the ground in the last chunk inside the simulation distance, and another a block further west, in the first chunk outside it. The world steps 20 ticks. Vanilla lands the first and tells the watcher nothing more about the second. | none |
+
+A window compares each entity's spawn, its velocity, where it is when it lands or stops, and its removal. It leaves out the small moves and turns: vanilla also sends where an entity is every few seconds, on a clock that keeps running while the world is frozen. A pig that cannot think (`NoAI`) does not fall in vanilla, and one that can looks around at random, so the stands fall. The pigs fall only for the damage, which comes on the tick they land.
+
+When a Group ends, Control brings what it summoned next to the watcher, then kills it and anything it dropped. A mob killed where the server does not tick it never finishes dying.
+
 ### Dropped items
 
 How items on the ground merge, despawn and are picked up. Each Group joins one Bot at the world spawn and freezes the world. Control summons every item still and without gravity, so an item changes only on the ticks a Group steps. When a Group ends, Control removes the items it summoned and empties the Bot's inventory.
