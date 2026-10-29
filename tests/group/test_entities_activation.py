@@ -273,23 +273,18 @@ async def test_falling_then_drops_four_pigs_five_blocks_and_compares_their_fall_
 
 # `entities/activation-items`
 
-ICE_ROW = "fill -70 -61 4 -1 -61 4"
-
 
 def trench(distance: int) -> str:
     """The 9 blocks of ground a stream of the item at `distance` runs west in."""
     return f"fill {-distance - 8} -61 8 {-distance} -61 8"
 
 
-BUILD = (
-    f"{ICE_ROW} minecraft:ice",
-    *(
-        command
-        for d in DISTANCES
-        for command in (f"{trench(d)} minecraft:air", f"setblock {-d} -61 8 minecraft:water")
-    ),
+BUILD = tuple(
+    command
+    for d in DISTANCES
+    for command in (f"{trench(d)} minecraft:air", f"setblock {-d} -61 8 minecraft:water")
 )
-"""A row of ice, then a trench with water at its east end for each distance, in order."""
+"""A trench with water at its east end for each distance, in order."""
 
 FAST_FORWARD = (TIME_QUERY, "tick step 60", TIME_QUERY)
 """Control steps 60 ticks at once, so the water has run to the west end of each trench."""
@@ -300,37 +295,30 @@ def stack(item: str) -> str:
     return f'Item:{{id:"minecraft:{item}",count:1}}'
 
 
-UNBUILD = (
-    *(f"{trench(d)} minecraft:grass_block" for d in reversed(DISTANCES)),
-    f"{ICE_ROW} minecraft:grass_block",
-)
+UNBUILD = tuple(f"{trench(d)} minecraft:grass_block" for d in reversed(DISTANCES))
 
 
 @pytest.mark.asyncio
-async def test_items_builds_ice_and_streams_then_freezes_and_lets_the_water_run() -> None:
+async def test_items_digs_streams_then_freezes_and_lets_the_water_run() -> None:
     result = await play(ITEMS)
 
     assert result.first == (*PINNED, *BUILD, "tick freeze", *FAST_FORWARD)
 
 
 @pytest.mark.asyncio
-async def test_items_sends_items_west_on_the_ice_and_drops_items_in_the_streams() -> None:
+async def test_items_drops_an_item_in_each_stream_and_slides_none_on_ice() -> None:
     result = await play(ITEMS)
-    on_ice = tuple(
-        summoned("item", (0.5 - d, -60.0, 4.5), stack(item), "Motion:[-0.4d,0.0d,0.0d]")
-        for d, item in zip(DISTANCES, ("stone", "dirt", "cobblestone", "oak_planks"), strict=True)
-    )
     in_streams = tuple(
         summoned("item", (0.5 - d, -61.0, 8.5), stack(item), "Motion:[0.0d,0.0d,0.0d]")
         for d, item in zip(DISTANCES, ("sand", "gravel", "glass", "bricks"), strict=True)
     )
 
     assert [window.label for window in result.windows] == [MOVES_LABEL]
-    assert result.windows[0].commands == (*on_ice, *in_streams, *steps(20))
+    assert result.windows[0].commands == (*in_streams, *steps(20))
 
 
 @pytest.mark.asyncio
-async def test_items_takes_the_streams_and_the_ice_away_before_the_items() -> None:
+async def test_items_takes_the_streams_away_before_the_items() -> None:
     result = await play(ITEMS)
 
     assert result.after == (*UNBUILD, *CLEAR, "tick unfreeze")

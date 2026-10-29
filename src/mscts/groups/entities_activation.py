@@ -192,9 +192,6 @@ async def activation_falling(context: GroupContext) -> None:
 
 # `entities/activation-items`
 
-_ICE_ROW = "fill -70 -61 4 -1 -61 4"
-"""The ground of the ice row, east-west along z 4, past the farthest item and its slide."""
-
 
 def _trench(distance: int) -> str:
     """The ground the stream of the item at `distance` runs in: 9 blocks west from under it."""
@@ -206,33 +203,26 @@ _FLOW_TICKS = 60
 source, so it has stopped after 35."""
 
 
-def _item(item: str, at: _Position, motion_x: float) -> str:
-    """The `/summon` of one `item` (without `minecraft:`) at `at`, moving `motion_x` east a tick."""
+def _item(item: str, at: _Position) -> str:
+    """The `/summon` of one `item` (without `minecraft:`) at `at`, still."""
     stack = f'Item:{{id:"minecraft:{item}",count:1}}'
-    return _summon("item", at, stack, f"Motion:[{motion_x}d,0.0d,0.0d]")
+    return _summon("item", at, stack, "Motion:[0.0d,0.0d,0.0d]")
 
 
-ITEMS = (
-    *(
-        _item(item, (_west(d), -60.0, 4.5), -0.4)
-        for d, item in zip(DISTANCES, ("stone", "dirt", "cobblestone", "oak_planks"), strict=True)
-    ),
-    *(
-        _item(item, (_west(d), -61.0, 8.5), 0.0)
-        for d, item in zip(DISTANCES, ("sand", "gravel", "glass", "bricks"), strict=True)
-    ),
+ITEMS = tuple(
+    _item(item, (_west(d), -61.0, 8.5))
+    for d, item in zip(DISTANCES, ("sand", "gravel", "glass", "bricks"), strict=True)
 )
-"""An item sliding west on the ice at each of `DISTANCES`, then an item lying still at the east
-end of each stream. Vanilla sends the velocity of an item in water every tick, since the water
-pushes it (`ItemEntity.tick` sets `needsSync`), and that of an item on ice every 20 calls of
-`ServerEntity.sendChanges`."""
+"""An item lying still at the east end of the stream at each of `DISTANCES`. Vanilla sends the
+velocity of an item in water every tick, since the water pushes it (`ItemEntity.tick` sets
+`needsSync`). No item slides on ice: vanilla would send its velocity and position only every 20
+calls of `ServerEntity.sendChanges`, which counts frozen ticks too, so they come on a step that
+depends on the wall clock. One Self-check play in 20 had them a step apart (#45)."""
 
 
 async def _build(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
-    """Lay the ice row and dig a stream for each distance; push the undo of each onto `undo`."""
+    """Dig a stream for each distance; push the undo of each onto `undo`."""
     control = context.control
-    await control.run(f"{_ICE_ROW} minecraft:ice")
-    undo.push_async_callback(control.run, f"{_ICE_ROW} minecraft:grass_block")
     for distance in DISTANCES:
         await control.run(f"{_trench(distance)} minecraft:air")
         undo.push_async_callback(control.run, f"{_trench(distance)} minecraft:grass_block")
@@ -241,7 +231,7 @@ async def _build(context: GroupContext, undo: contextlib.AsyncExitStack) -> None
 
 @group("entities/activation-items", spec=activation_spec, kind=GroupKind.TICK_EXACT)
 async def activation_items(context: GroupContext) -> None:
-    """Items slide west on ice and are carried by water at 8, 24, 40 and 56 blocks away.
+    """Items are carried by water at 8, 24, 40 and 56 blocks away.
 
     The world is frozen before the water has run, and steps on until it has, so that every
     stream is the same when the items come.

@@ -1321,7 +1321,7 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   velocity, the sync on landing, the removal); `HURTS` — what the fall-damage window compares;
   `STANDS` — the armor stands summoned 2 blocks up at each distance; `PIGS` — the pigs summoned 5
   blocks up; `activation_falling` — the `entities/activation-falling` script. `ITEMS` — the
-  items summoned sliding west on ice and lying in a stream at each distance; `activation_items` —
+  items summoned lying in a stream at each distance; `activation_items` —
   the `entities/activation-items` script. `EDGE` — the armor stands summoned just inside and
   just outside the simulation distance; `activation_edge` — the `entities/activation-edge`
   script.
