@@ -129,3 +129,7 @@ Newest first: one line per lesson, with the issue it came from.
 - #513: Pumpkin 5e9101f, after a Ctrl+Q hang, is left either not answering a status request or answering with the player still online. Run the live check on main before building on a theory of how a Candidate hangs.
 - #519: a runner check that can change a Verdict runs right after the play, before the Verdict is final, never before the next Group: a check that only triggers a restart costs the Candidate nothing (review B1).
 - #519: a restart relaunches the whole pair, so both worlds keep the same history.
+- #515: a fake that must put one Bot's answers behind another's makes the order certain with a predicate over the Transcript (`Straggler(after=...)`), not a lag: a stall in the first Bot's loop moves its chained answers past any lag.
+- #524: a fake server changes its state before it sends the reply that announces it; the client acts on the reply faster than the fake's thread runs.
+- #45: a packet vanilla sends only every N `ServerEntity.sendChanges` calls (an entity's `updateInterval`) is not tick-exact under stepped windows, because frozen ticks count toward N. Compare packets sent on every tick (`needsSync`, a landing) or on a game event.
+- #470: to ask whether a Group can see weather, play it on one vanilla Instance clear and again after `weather thunder 1000000`, and judge the two, with a clear-against-clear control.

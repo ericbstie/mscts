@@ -156,3 +156,5 @@ Open and edit your PR with the GitHub MCP tools too: `gh` gets a 403 here.
 - Before handing back a new Group, run it once on Pumpkin and check every test case name in its Report against `TITLES`: one run found six untitled names (#490).
 - Detach a long run with `setsid -f bash -c '…'`; a job started with `nohup … &` ignores SIGINT, which a test that interrupts it needs (#472).
 - If the sandbox refuses a detached script that runs `cd` and `git` in your worktree, start `mise run commit` or `git rebase --exec` with the Bash tool's background run instead, and wait on its output file for the commit summary or "Successfully rebased" with `scripts/wait_for.py <file> --pattern 'Successfully rebased'` (#471).
+- A child's `/proc/<pid>/environ` reads empty for a moment after `Popen` returns, so a test that scans for a just-spawned process's token waits until it shows (`tests/tooling/test_leak_guard.py::_wait_until_tagged`, #525).
+- Start a detached scratch script as an executable (`chmod +x`, then its path), not as `bash <script>`: the worktree guard refuses the latter (#48).

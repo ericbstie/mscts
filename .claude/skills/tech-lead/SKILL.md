@@ -226,3 +226,22 @@ first.
   worktree.
 - Relay what matters to the user briefly. The workers' reports are not
   shown to them.
+- A flake's brief names a stall to inject (a pytest plugin that sleeps in
+  the code under test, or in a patched copy of a subprocess fake) for when
+  load alone does not fail it: #515 and #524 never failed under
+  `--stress`, and a 0.1 to 0.2 s stall failed both at once.
+- A brief names Group ids as they are on main (`git grep '@group('`): the
+  #513 brief named `crafting/grid` for a hang that had moved to
+  `crafting/grid-ctrl-q`.
+- A live comparison that is deterministic runs twice a side, and more only
+  if the two differ: #513's five Runs a side agreed exactly and took 3.5 h.
+- Five stress runs go to the Group at risk, and the brief gives the lock
+  time to expect: three `glitches/*` Groups that each play their required
+  Groups held the lock 6.3 h (#42). A new `SLOW_PLAY_LIMIT_S` entry also
+  changes `tests/tooling/test_selfcheck_collection.py`.
+- A Group brief settles the fixture checklist (`calm_weather` when a
+  window compares `add_entity` while the world steps) before the first
+  live run: #45 ran its stress series twice.
+- The integrator starts each `rebase -x` with `setsid nohup` and waits on
+  its rc with `scripts/wait_for.py`: the Bash background cap killed a
+  14-commit rebase (train 45).

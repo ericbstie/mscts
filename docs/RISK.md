@@ -36,6 +36,12 @@ Log every bug found, caught or escaped, newest first:
 
 | Found | Issue | Area | Introduced by | Touched | Found by | Escaped |
 | --- | --- | --- | --- | --- | --- | --- |
+| 2026-10-29 | #531 | runner | unknown | a Candidate that crashes in a Group is taken for one that left its world frozen and never restarted, so every later Group fails | #45's and #48's workers (Pumpkin runs) | yes |
+| 2026-10-29 | #45 | Groups | #45 (`scrutiny::medium`) | items sliding on ice sent their packets on a step that follows the wall clock (every 20 `sendChanges` calls, frozen ticks counted); the fact sheet called them identical over 40 sides | the Self-check 20 of 20 | no |
+| 2026-10-28 | #525 | tests | unknown | the leak guard's test scanned `/proc` before the kernel published the child's environment | a later issue's worker (#516, under `mise run commit`) | yes |
+| 2026-10-28 | #524 | tests | #519 | the status fake sent its pong before it hung, so a status ask in between was answered and a hung Candidate matched | a later issue's worker (#515, under `mise run commit`) | yes |
+| 2026-10-28 | #523 | runner | #523 (`scrutiny::high`) | a status poll with no answer in the wait after a Group counted as no player online, and a player the wait missed failed every later Group with no restart | the first review | no |
+| 2026-10-28 | #523 | runner | #523 (`scrutiny::high`) | an `error` Group hid a player the Candidate kept in it, while the docs said it always fails the Group | the second review | no |
 | 2026-10-27 | #519 | runner | #519 (`scrutiny::high`) | a Candidate that hung after a Group's last packet was restarted before the next Group and lost no test case for the hang | the second review | no |
 | 2026-10-26 | #515 | tests | unknown | `test_a_window_with_two_bots_opens_after_the_slower_bots_barrier` failed once on its own precondition under the unit tier | a later issue's worker (#479's fix round, under `mise run commit`) | yes |
 | 2026-10-26 | #514 | Bot | unknown | the Bot reads `registry_data` ids as sent, so a short id the client reads the same can stop a click | the second review of #511 | yes |
@@ -99,6 +105,14 @@ caught, or "none".
 
 | PR | Triage suggested | Lead chose | Reviews | Blocking findings | Stress runs |
 | --- | --- | --- | --- | --- | --- |
+| #530 |  | medium | the lead's diff read | 0 | `entities/pushing` 20 of 20 and the `entities/cramming` statistical Self-check once each under `--stress`; mutation sweeps 25 of 25 and 44 of 45 (one equivalent) |
+| #529 |  | medium | the lead's diff read | 0 | Self-check of the three `entities/activation-*` Groups 20 of 20 five times under `--stress` (100 plays each); mutation sweep 60 of 60 |
+| #528 |  | medium | the lead's diff read | 0 | Self-check of the three `glitches/*` Groups 20 of 20 five times under `--stress` (100 plays each); mutation sweep 33 of 33; a live mutant killed by the new reference test |
+| #527 |  | low | the lead's diff read | 0 | none: a test fix; 50 of 50 under `--stress -n 8`, with and without an injected stall |
+| #526 |  | low | the lead's diff read | 0 | none: a test fix; 20 of 20 under `--stress -n 8` with an injected stall that failed 26 of 33 tests before |
+| #523 |  | high | first review, second review; the lead's diff read of the fix round | 0, 0 (three should-fix, all fixed: a status with no answer in the wait after a Group, a player only the wait before a Group sees, an `error` Group's stuck player in the docs) | none: no window change; mutation sweeps 16 of 16 and 11 of 12 (the survivor dead code, removed); reference tier 37 of 37; `crafting/*` on Pumpkin five times on main and on the head |
+| #522 |  | low | the lead's diff read | 0 | none: tooling; both test files 15 of 15 runs |
+| #521 |  | low | the lead's diff read | 0 | none: a test fix; 20 of 20 under `--stress -n 8`, with an injected stall that failed it before |
 | #519 |  | high | first review, second review; the lead's diff read of the fix round | 1, 0 (fixed: a Candidate that hung after a Group's last packet was restarted and lost nothing; the check now runs after the play, before its Verdict) | none: no Group change; mutation sweeps 23 of 25 and 24 of 26 (the survivors equivalent); reference tier 37 of 37, candidate tier 15 of 15; live `crafting/*` on Pumpkin on main and head |
 | #518 |  | medium | the lead's diff read | 0 | none: no Group change; mutation sweep 11 of 11; reference tier 37 of 37, candidate tier 15 of 15 on the stack |
 | #517 |  | medium | the lead's diff read | 0 | Self-check `crafting/grid` and `crafting/grid-ctrl-q` 20 of 20 once each under `--stress`; mutation sweep 9 of 9; Pumpkin `crafting/grid` 0 to 12 passed |
