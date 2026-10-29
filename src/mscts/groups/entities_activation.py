@@ -9,6 +9,10 @@ level 31 or less (`ServerLevel.tick`, `DistanceManager.inEntityTickingRange`,
 too, so Control stands 6 chunks east and south (`CONTROL_AT`), and everything the Groups summon
 lies west of the spawn in chunk z 0, from chunk x -1 to -5.
 
+Before anyone joins, Control stops the weather cycle and lets a storm fade (`calm_weather`,
+`until_the_weather_fades`): the windows compare every entity that appears while the world steps,
+and a storm on one Instance only could strike lightning in one.
+
 A Bot called `watcher` joins at the spawn, in chunk (0, 0), and waits until it holds the chunks
 from there to chunk x -5 (`_until_held`): a server tells a player about an entity only once it
 has sent the entity's chunk. Then the world is frozen (`tick freeze`), and Control summons
@@ -35,7 +39,14 @@ from dataclasses import replace
 
 from mscts.bot import Bot
 from mscts.group import GroupContext, GroupKind, group
-from mscts.groups._world import CONTROL_AT, fast_forward, pin_joins, remove_tagged_until_gone
+from mscts.groups._world import (
+    CONTROL_AT,
+    calm_weather,
+    fast_forward,
+    pin_joins,
+    remove_tagged_until_gone,
+    until_the_weather_fades,
+)
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 _WATCHER = "watcher"
@@ -132,14 +143,17 @@ async def _clear(context: GroupContext, watcher: Bot) -> None:
 
 @contextlib.asynccontextmanager
 async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
-    """Pin the join, send Control away, join the watcher and wait for its chunks; undo it all.
+    """Calm the world, send Control away, join the watcher and wait for its chunks; undo it all.
 
-    Yields the stack of undos, for what the body sets: they run first, then the tagged
-    entities go, then the rules come back.
+    Calming pins the joins and lets a storm fade with the weather cycle off (`pin_joins`,
+    `calm_weather`). Yields the stack of undos, for what the body sets: they run first, then
+    the tagged entities go, then the weather cycle and the rules come back.
     """
     control = context.control
     async with contextlib.AsyncExitStack() as undo:
         await pin_joins(control, undo)
+        await calm_weather(control, undo)
+        await until_the_weather_fades(control)
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
         watcher = await context.bot(_WATCHER)
         await watcher.join()

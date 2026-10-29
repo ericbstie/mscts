@@ -25,7 +25,9 @@ FALLING = "entities/activation-falling"
 ITEMS = "entities/activation-items"
 EDGE = "entities/activation-edge"
 GROUP_IDS = (FALLING, ITEMS, EDGE)
-COMMANDS = tree("gamerule", "tp", "tick", "summon", "kill", "fill", "setblock", "time", "tellraw")
+COMMANDS = tree(
+    "gamerule", "weather", "tp", "tick", "summon", "kill", "fill", "setblock", "time", "tellraw"
+)
 TAG = "mscts_activation"
 STEP = "tick step 1"
 TIME_QUERY = "time query gametime"
@@ -52,9 +54,14 @@ HURTS_LABEL = f"observe:open {' '.join(HURTS)}"
 PINNED = (
     "gamerule player_movement_check false",
     "gamerule respawn_radius 0",
+    "gamerule advance_weather false",
+    "weather clear",
+    TIME_QUERY,
+    TIME_QUERY,
     "tp control 96.5 -60 96.5",
 )
-"""What Control runs before the watcher joins, in order."""
+"""What Control runs before the watcher joins, in order: the joins pinned, the weather cleared
+and left to fade while the world still runs, and Control sent away."""
 
 CLEAR = (
     f"tp @e[tag={TAG}] 0.5 -60 12.5",
@@ -64,11 +71,13 @@ CLEAR = (
     f"kill @e[tag={TAG}]",
     "gamerule mob_drops true",
     "tick unfreeze",
+    "gamerule advance_weather true",
     "gamerule respawn_radius 10",
     "gamerule player_movement_check true",
 )
 """What Control runs after the last window, in order: the tagged entities come into the watcher's
-simulation distance and go, with what they dropped, then the rules come back."""
+simulation distance and go, with what they dropped, then the weather cycle and the rules come
+back."""
 
 HELD = tuple((x, 0) for x in range(-5, 1))
 """The chunks the watcher must hold before anything is summoned: the spawn's and five west."""

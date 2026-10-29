@@ -740,7 +740,7 @@ items a pig or a zombie drops is also random.
 
 ### Simulation distance
 
-Whether entities move on every tick at any distance inside the simulation distance, and not at all outside it. These Groups run the server with a view distance of 10 chunks and a simulation distance of 4, so a player is told about entities the server does not tick. Vanilla ticks an entity when its chunk is at most 4 chunks from a player's chunk, east-west or north-south, whichever is further. Everything a Group summons lies west of the world spawn, from 1 to 5 chunks away, and Control stands far from all of it. The watcher waits until it holds those chunks. Then the world is frozen, and steps a tick at a time.
+Whether entities move on every tick at any distance inside the simulation distance, and not at all outside it. These Groups run the server with a view distance of 10 chunks and a simulation distance of 4, so a player is told about entities the server does not tick. Vanilla ticks an entity when its chunk is at most 4 chunks from a player's chunk, east-west or north-south, whichever is further. Everything a Group summons lies west of the world spawn, from 1 to 5 chunks away, and Control stands far from all of it. Before the watcher joins, Control clears the weather, stops its cycle (`advance_weather`) and lets the world run the 100 ticks a storm takes to fade: a storm that one server started could strike lightning there, and a bolt is an entity the windows compare. The watcher waits until it holds the chunks the entities stand in. Then the world is frozen, and steps a tick at a time.
 
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
