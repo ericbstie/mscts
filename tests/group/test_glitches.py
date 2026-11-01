@@ -22,7 +22,10 @@ from tests.net.fakes import Peer
 BEDROCK = "glitches/bedrock-breaking"
 TNT = "glitches/tnt-duplication"
 RAIL_CARPET = "glitches/rail-carpet-duplication"
+HEADLESS = "glitches/headless-pistons"
 GROUP_IDS = (BEDROCK, TNT, RAIL_CARPET)
+"""The Groups whose windows compare the blocks, the pistons, the explosions and the entities."""
+GLITCH_IDS = (*GROUP_IDS, HEADLESS)
 COMMANDS = tree(
     "gamerule", "weather", "time", "tp", "tick", "fill", "setblock", "summon", "kill", "tellraw"
 )
@@ -116,7 +119,7 @@ DROPPED_ITEM = [
 # Every Group
 
 
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", GLITCH_IDS)
 def test_each_group_is_tick_exact_with_the_default_spec_and_requires_the_piston_groups(
     group_id: str,
 ) -> None:
@@ -128,7 +131,7 @@ def test_each_group_is_tick_exact_with_the_default_spec_and_requires_the_piston_
     assert group.spec(default) == default
 
 
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", GLITCH_IDS)
 @pytest.mark.asyncio
 async def test_control_calms_the_weather_then_sets_up_the_redstone_arena(group_id: str) -> None:
     # A storm on one Instance only can strike lightning, an `add_entity`, in a window: the
@@ -149,7 +152,7 @@ async def test_every_window_compares_blocks_pistons_explosions_and_entities(
     assert {window.label for window in windows} == {WINDOW}
 
 
-@pytest.mark.parametrize("group_id", GROUP_IDS)
+@pytest.mark.parametrize("group_id", GLITCH_IDS)
 @pytest.mark.asyncio
 async def test_control_kills_what_the_machines_made_then_clears_them_without_updates_first(
     group_id: str,
@@ -290,6 +293,163 @@ async def test_rail_carpet_duplication_powers_each_piston_for_5_ticks(window: in
 
     assert stepped.commands == (f"setblock 3 -45 {z} minecraft:redstone_block", *steps(5))
     assert stepped.ticks == 5
+
+
+# `glitches/headless-pistons`
+
+BLOCK_WINDOW = (
+    "observe:open minecraft:block_update minecraft:section_blocks_update minecraft:block_event "
+    "minecraft:level_event minecraft:sound"
+)
+"""The open Mark of every window but the last: no entity appears in them."""
+HEADLESS_BUILD = (
+    # Window 0 to 2: plain headless pistons at z 4, each with its block in front.
+    "setblock 4 -58 4 minecraft:piston[facing=up,extended=true] strict",
+    "setblock 4 -57 4 minecraft:bedrock strict",
+    "setblock 7 -58 4 minecraft:piston[facing=up,extended=true] strict",
+    "setblock 7 -57 4 minecraft:end_portal_frame strict",
+    "setblock 10 -58 4 minecraft:piston[facing=up,extended=true] strict",
+    "setblock 10 -57 4 minecraft:stone strict",
+    # Window 3: powered inside the window. Window 4: an ordinary piston faces it.
+    "setblock 4 -58 7 minecraft:piston[facing=up,extended=true] strict",
+    "setblock 4 -57 7 minecraft:bedrock strict",
+    "setblock 7 -58 7 minecraft:piston[facing=up,extended=true] strict",
+    "setblock 7 -57 7 minecraft:stone strict",
+    "setblock 8 -58 7 minecraft:piston[facing=west] strict",
+    # Window 5 and 6: sticky, with air and with stone two ahead of the bedrock in front.
+    "setblock 4 -58 10 minecraft:sticky_piston[facing=up,extended=true] strict",
+    "setblock 4 -57 10 minecraft:bedrock strict",
+    "setblock 7 -58 10 minecraft:sticky_piston[facing=up,extended=true] strict",
+    "setblock 7 -57 10 minecraft:bedrock strict",
+    "setblock 7 -56 10 minecraft:stone strict",
+    # Window 7: sticky, powered inside the window. Window 8: an ordinary piston faces it.
+    "setblock 10 -58 10 minecraft:sticky_piston[facing=up,extended=true] strict",
+    "setblock 10 -57 10 minecraft:end_portal_frame strict",
+    "setblock 4 -58 13 minecraft:sticky_piston[facing=up,extended=true] strict",
+    "setblock 4 -57 13 minecraft:stone strict",
+    "setblock 5 -58 13 minecraft:piston[facing=west] strict",
+    # Window 9: a piston with no head cell and a cell for the TNT, closed in by obsidian.
+    "fill 7 -59 12 9 -55 14 minecraft:obsidian",
+    "setblock 8 -58 13 minecraft:piston[facing=up]",
+    "setblock 8 -57 13 minecraft:air",
+    "setblock 8 -56 13 minecraft:air",
+)
+"""Every `/setblock` of a headless piston, and of each block beside one, is `strict`: a plain
+one runs `PistonBaseBlock.onPlace`, which retracts an unpowered extended piston at once."""
+SUMMON_TNT = "summon minecraft:tnt 8.5 -56 13.5 {fuse:2s,NoGravity:1b,explosion_power:1.0f}"
+
+
+def test_headless_pistons_masks_only_the_pistons_pitch() -> None:
+    assert masked(HEADLESS) == [("minecraft:sound", "pitch")]
+
+
+@pytest.mark.asyncio
+async def test_headless_pistons_builds_the_plain_and_sticky_pistons_without_a_head_strictly() -> (
+    None
+):
+    first = (await play(HEADLESS)).first
+
+    assert first[len(SET_UP) :] == HEADLESS_BUILD
+
+
+@pytest.mark.asyncio
+async def test_headless_pistons_compares_the_blocks_and_pistons_but_for_the_explosion() -> None:
+    windows = (await play(HEADLESS)).windows
+
+    assert [window.label for window in windows] == [*[BLOCK_WINDOW] * 9, WINDOW]
+
+
+@pytest.mark.parametrize(("window", "x"), [(0, 4), (1, 7), (2, 10)])
+@pytest.mark.asyncio
+async def test_headless_pistons_updates_each_plain_piston_by_placing_a_stone_under_it(
+    window: int, x: int
+) -> None:
+    # The piston retracts on tick 1 and removes the block in front (`PistonBaseBlock
+    # .triggerEvent`: `level.removeBlock`), the bedrock, the end portal frame and the stone
+    # alike. It lands on tick 3.
+    stepped = (await play(HEADLESS)).windows[window]
+
+    assert stepped.commands == (f"setblock {x} -59 4 minecraft:stone", *steps(4))
+    assert stepped.ticks == 4
+
+
+@pytest.mark.asyncio
+async def test_headless_pistons_powers_a_plain_piston_updates_it_and_takes_the_power_away() -> None:
+    # Powered, an update does nothing (`checkIfExtend`). The power goes on tick 4: the piston
+    # retracts on tick 5, removes the bedrock, and lands on tick 7.
+    stepped = (await play(HEADLESS)).windows[3]
+
+    assert stepped.commands == (
+        "setblock 5 -58 7 minecraft:redstone_block",
+        *steps(2),
+        "setblock 4 -59 7 minecraft:stone",
+        *steps(2),
+        "setblock 5 -58 7 minecraft:air",
+        *steps(4),
+    )
+    assert stepped.ticks == 8
+
+
+@pytest.mark.parametrize(("window", "x", "z"), [(4, 9, 7), (8, 6, 13)])
+@pytest.mark.asyncio
+async def test_headless_pistons_powers_the_ordinary_piston_that_faces_a_headless_one(
+    window: int, x: int, z: int
+) -> None:
+    # An extended piston is never pushable (`isPushable`): no block event is queued.
+    stepped = (await play(HEADLESS)).windows[window]
+
+    assert stepped.commands == (f"setblock {x} -58 {z} minecraft:redstone_block", *steps(3))
+    assert stepped.ticks == 3
+
+
+@pytest.mark.parametrize(("window", "x"), [(5, 4), (6, 7)])
+@pytest.mark.asyncio
+async def test_headless_pistons_updates_each_sticky_piston_with_bedrock_in_front(
+    window: int, x: int
+) -> None:
+    # With air two ahead it removes the bedrock as a plain one does; with stone two ahead
+    # `moveBlocks` fails and it removes nothing (`triggerEvent`).
+    stepped = (await play(HEADLESS)).windows[window]
+
+    assert stepped.commands == (f"setblock {x} -59 10 minecraft:stone", *steps(4))
+    assert stepped.ticks == 4
+
+
+@pytest.mark.asyncio
+async def test_headless_pistons_powers_a_sticky_piston_updates_it_and_takes_the_power_away() -> (
+    None
+):
+    stepped = (await play(HEADLESS)).windows[7]
+
+    assert stepped.commands == (
+        "setblock 11 -58 10 minecraft:redstone_block",
+        *steps(2),
+        "setblock 10 -59 10 minecraft:stone",
+        *steps(2),
+        "setblock 11 -58 10 minecraft:air",
+        *steps(4),
+    )
+    assert stepped.ticks == 8
+
+
+@pytest.mark.asyncio
+async def test_headless_pistons_blows_up_the_head_of_a_piston_and_retracts_it_on_bedrock() -> None:
+    # The piston, powered, starts to extend on tick 1; its head is a moving block until tick 3.
+    # The TNT, with a fuse of 2, explodes on tick 2 and breaks the head, never the base. Bedrock
+    # goes in front on tick 5, the power goes on tick 6, and the headless piston retracts on
+    # tick 7, removing the bedrock. It lands on tick 9.
+    stepped = (await play(HEADLESS)).windows[9]
+
+    assert stepped.commands == (
+        "setblock 8 -59 13 minecraft:redstone_block",
+        SUMMON_TNT,
+        *steps(5),
+        "setblock 8 -57 13 minecraft:bedrock",
+        STEP,
+        "setblock 8 -59 13 minecraft:obsidian",
+        *steps(4),
+    )
+    assert stepped.ticks == 10
 
 
 def test_the_explosion_test_cases_have_titles() -> None:

@@ -997,13 +997,19 @@ world events, explosions, and the entities that appear, change and go.
 | `glitches/bedrock-breaking` | tick-exact | `redstone/piston-push`, `redstone/sticky` | The Minecraft Wiki's way to break bedrock with a piston, once on bedrock and once on an end portal frame. A lever powers a piston on top of the block, and the piston extends. 4 ticks later Control summons a TNT beside the lever, which blows the lever up on the next tick. On the tick after that, before the piston retracts, Control replaces the piston with one facing down. Each window steps 9 ticks. Vanilla retracts a piston in the direction it faces when it retracts, and removes the block in front of it whatever it is: the bedrock and the end portal frame are gone. | none |
 | `glitches/tnt-duplication` | tick-exact | `redstone/piston-push`, `redstone/sticky` | A TNT duplicator. Control powers a sticky piston, which pushes a stone and a slime block, with a TNT stuck to the slime. A redstone block sits on the TNT, placed so that it never updated the TNT, and a dead coral fan sits on the stone. The world steps 6 ticks, then 70 at once outside any window while the primed TNT falls into a pool of water, then 10 more. Vanilla pops the fan when the piston head takes the stone's place, and the fan's update primes the TNT before the piston has moved it: a primed TNT appears where the TNT stood, and the TNT block lands a block further on. The primed TNT explodes in the water 80 ticks later and breaks nothing. | none |
 | `glitches/rail-carpet-duplication` | tick-exact | `redstone/piston-push`, `redstone/sticky` | A rail duplicator and a carpet duplicator, which use the same coral fan, each in a window of its own. A piston pushes a rail on a slime block, or a carpet stuck to a slime block and standing on the fan. Control powers each piston, and each window steps 5 ticks. Vanilla drops the rail and the carpet as items when the fan pops, and their blocks land a block further on. | none |
+| `glitches/headless-pistons` | tick-exact | `redstone/piston-push`, `redstone/sticky` | Pistons left extended with no head, which Control places with `/setblock ... strict`: a plain `/setblock` would retract an unpowered one at once. Each has a block in front of it: bedrock, an end portal frame or stone. Each window sets one off and steps 3 to 8 ticks. Control updates it with a stone set under it, or powers it, updates it and takes the power away, or powers an ordinary piston that faces it. The last window makes one the way the Minecraft Wiki does, with an explosion: Control powers an ordinary piston in a box of obsidian and summons a TNT above its head, which blows the head up while it still moves, then sets bedrock in front and takes the power away. Vanilla retracts an unpowered headless piston on an update and removes the block in front of it whatever it is: the bedrock and the end portal frame are gone. A powered one does nothing on an update and retracts when the power goes. An ordinary piston that faces one does not extend. A sticky one with bedrock in front and stone two blocks ahead removes nothing, where the Wiki says the stone replaces the bedrock. The explosion leaves the base extended with no head, and it retracts and removes the bedrock too. | none |
 
 A Candidate that fails `redstone/piston-push` or `redstone/sticky` fails these Groups too, as
 `Candidate failed`, since they require them (see [Redstone](#redstone-redstone)).
 
-The Groups mask what vanilla draws at random. In `glitches/bedrock-breaking` that is the pitch of
-a piston's sound. In `glitches/bedrock-breaking` and `glitches/rail-carpet-duplication` it is
-where each dropped item appears and how it moves: the lever, the rail and the carpet. In
+The windows of `glitches/headless-pistons` compare only the blocks that change, the pistons' block
+events and sounds, and world events, until the last one, which also compares the explosion and the
+entities.
+
+The Groups mask what vanilla draws at random. In `glitches/bedrock-breaking` and
+`glitches/headless-pistons` that is the pitch of a piston's sound. In `glitches/bedrock-breaking`
+and `glitches/rail-carpet-duplication` it is where each dropped item appears and how it moves: the
+lever, the rail and the carpet. In
 `glitches/tnt-duplication` it is the way the primed TNT drifts sideways, and so where it explodes
 along x and z. Which entities appear, which items drop, the TNT's fuse, when it explodes, at what
 height and how strongly, and how many blocks it breaks are all still compared.
