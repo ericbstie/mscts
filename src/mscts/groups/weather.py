@@ -106,3 +106,39 @@ async def commands(context: GroupContext) -> None:
         for command, ticks in _COMMANDS:
             await _command_window(context, watcher, command)
             await _step_window(context, ticks)
+
+
+# `weather/frozen`: rain in a world that does not run, then one tick.
+
+_TIME = "minecraft:set_time"
+
+_FROZEN_TIMES = 3
+"""How many `set_time` the watcher waits for after the command's feedback. Vanilla sends one
+every 20 ticks, frozen or not, so 3 span at least 40 ticks of the wall clock (#63)."""
+
+
+async def _rain_while_frozen(context: GroupContext, watcher: Bot) -> None:
+    """The watcher runs `weather rain`, and the window stays open while the world stands still.
+
+    The window closes after the feedback and `_FROZEN_TIMES` more `set_time`, each of them one
+    that came after the window opened. It holds whatever the server sends meanwhile: vanilla
+    sends no `game_event`, because a frozen world does not run its weather.
+    """
+    await watcher.drain()
+    async with context.observe(_CHAT, _EVENT) as opened:
+        await watcher.command("weather rain")
+        await watcher.expect(_CHAT, timeout_s=_WAIT_S, since_ns=opened)
+        for _ in range(_FROZEN_TIMES):
+            await watcher.expect(_TIME, timeout_s=_WAIT_S, since_ns=opened)
+
+
+@group("weather/frozen", spec=_operator, kind=GroupKind.TICK_EXACT)
+async def frozen(context: GroupContext) -> None:
+    """The watcher starts rain in the frozen world; 40 ticks of the wall clock pass; then one step.
+
+    Nothing changes the sky until the step, and a server that sends the rain at once shows it
+    in the first window.
+    """
+    async with _frozen_calm(context) as watcher:
+        await _rain_while_frozen(context, watcher)
+        await _step_window(context, 1)

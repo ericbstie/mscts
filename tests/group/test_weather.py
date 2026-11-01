@@ -48,9 +48,14 @@ TICK_S = 2 * TICK_GAP_S
 LATE_TICKS = 5
 """How many ticks the fake takes to answer the watcher: longer than a barrier, so a window that
 did not wait for the answer would miss it."""
+SET_TIME = "minecraft:set_time"
+SET_TIME_EVERY_S = 10 * TICK_S
+"""How often the fake sends `set_time` to the watcher: far apart next to a barrier (two ticks), so
+a Group that stops waiting for one too soon closes its window before the next comes."""
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
 STEP = (CONTROL, "tick step 1")
+GROUP_IDS = ("weather/commands", "weather/frozen")
 
 CALM = (
     "gamerule player_movement_check false",
@@ -96,6 +101,21 @@ class WeatherServer:
             await join_server(self.seen, JoinScript(commands=COMMANDS, then=self._play))(peer)
 
     async def _play(self, peer: Peer) -> None:
+        ticker = None if peer.name == CONTROL else asyncio.create_task(self._set_times(peer))
+        try:
+            await self._serve(peer)
+        finally:
+            if ticker is not None:
+                ticker.cancel()
+
+    async def _set_times(self, peer: Peer) -> None:
+        """Send `peer` a `set_time` as it enters play, and one every `SET_TIME_EVERY_S`."""
+        with suppress(ConnectionError):
+            while True:
+                await peer.send(SET_TIME, game_time=self.game_time, clocks=[])
+                await asyncio.sleep(SET_TIME_EVERY_S)
+
+    async def _serve(self, peer: Peer) -> None:
         requests = 0
         async with asyncio.TaskGroup() as later:
             try:
@@ -174,11 +194,12 @@ def operator_spec() -> ServerSpec:
     return ServerSpec(host="127.0.0.1", port=25566, operators=(WATCHER,))
 
 
-# weather/commands
+# Every Group
 
 
-def test_commands_is_registered_tick_exact_with_the_watcher_an_operator() -> None:
-    group = GROUPS["weather/commands"]
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_each_group_is_registered_tick_exact_with_the_watcher_an_operator(group_id: str) -> None:
+    group = GROUPS[group_id]
 
     assert group.kind is GroupKind.TICK_EXACT
     assert group.requires == ()
@@ -188,11 +209,15 @@ def test_commands_is_registered_tick_exact_with_the_watcher_an_operator() -> Non
 
 
 @pytest.mark.timeout(300)
-def test_commands_calms_the_world_freezes_it_and_puts_every_rule_back() -> None:
-    result = played("weather/commands")
+@pytest.mark.parametrize("group_id", GROUP_IDS)
+def test_each_group_calms_the_world_freezes_it_and_puts_every_rule_back(group_id: str) -> None:
+    result = played(group_id)
 
     assert result.first == CALM
     assert result.after == UNDO
+
+
+# weather/commands
 
 
 @pytest.mark.timeout(300)
@@ -239,3 +264,42 @@ def test_commands_wait_in_each_command_window_for_the_watchers_answer() -> None:
     answers = received(transcript, WATCHER, SYSTEM_CHAT)
     held = [[t for t in answers if o < t < c] for o, c in windows(transcript)[::2]]
     assert [len(window) for window in held] == [1] * 3
+
+
+# weather/frozen
+
+
+@pytest.mark.timeout(300)
+def test_frozen_runs_weather_rain_in_a_window_and_then_steps_one_tick_in_another() -> None:
+    result = played("weather/frozen")
+
+    assert [w.label for w in result.windows] == [
+        opened(SYSTEM_CHAT, GAME_EVENT),
+        opened(GAME_EVENT),
+    ]
+    assert [w.sent for w in result.windows] == [((WATCHER, "weather rain"),), (STEP,)]
+    assert result.windows[1].before == ()
+
+
+@pytest.mark.timeout(300)
+def test_frozen_holds_the_window_open_for_the_answer_and_3_set_time_that_follow() -> None:
+    transcript, _ = play("weather/frozen")
+
+    (opened_at, closed_at), _ = windows(transcript)
+    [said] = [t for t in received(transcript, WATCHER, SYSTEM_CHAT) if opened_at < t < closed_at]
+    [command] = [
+        e.t_ns
+        for e in transcript.events
+        if e.bot == WATCHER and (e.packet.fields or {}).get("command") == "weather rain"
+    ]
+    asks = [
+        e.t_ns
+        for e in transcript.events
+        if e.bot == WATCHER and e.packet.name == CLIENT_COMMAND and e.t_ns > command
+    ]
+    times = [t for t in received(transcript, WATCHER, SET_TIME) if command < t < asks[0]]
+    # a count, not ticks: the fake sends a set_time every 10 ticks, vanilla every 20, so 3 span at
+    # least 40 of vanilla's ticks after the command
+    assert said < asks[0]
+    assert len(times) >= 3
+    assert asks[0] < closed_at
