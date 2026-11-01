@@ -11,13 +11,15 @@ from dataclasses import dataclass
 from unittest import mock
 
 import pytest
-from support import blocks_server
+from support import blocks_server, player_server
 from support.blocks_server import BlocksServer
 from support.control import CONTROL, SYSTEM_CHAT, playing, tree
 from support.moves import moves_and_commands
+from support.player_server import Hurt, PlayerServer
 
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
+from mscts.groups import player
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 
@@ -372,3 +374,83 @@ async def test_border_collision_puts_the_bot_and_the_border_back_and_unfreezes_l
     result = await play(COLLISION_ID)
 
     assert result.after == (f"tp {WALKER} {SPAWN}", *UNDO, "tick unfreeze")
+
+
+# `world/border-damage`
+
+DAMAGE_ID = "world/border-damage"
+VICTIM = "victim"
+HIT_PACKETS = (
+    "minecraft:damage_event",
+    "minecraft:hurt_animation",
+    "minecraft:entity_event",
+    "minecraft:set_health",
+    "minecraft:sound",
+)
+OUTSIDE = f"tp {VICTIM} 12.5 {Y} {Z}"
+"""Where the Bot is put: 4.5 blocks past the border of 16, 2.5 past the buffer of 2."""
+HURTS = {OUTSIDE: Hurt(10)}
+"""The fake hurts the Bot every 10 ticks after the `tp`, as vanilla does (the immunity)."""
+PLAYER_COMMANDS = tree(
+    "worldborder", "gamerule", "gamemode", "tp", "tick", "kill", "tellraw", "effect"
+)
+
+
+def always_on_time() -> float:
+    """A clock that never moves: no hit is ever older than its period allows."""
+    return 0.0
+
+
+async def hit_play() -> Play:
+    """Play `world/border-damage` against a fake that hurts the Bot when it is put outside."""
+    transcript = Transcript(group_id=DAMAGE_ID, server="fake")
+    with (
+        mock.patch.object(player_server, "COMMANDS", PLAYER_COMMANDS),
+        mock.patch.object(player, "clock", always_on_time),
+    ):
+        async with playing(PlayerServer(hurts=HURTS), transcript) as context:
+            await GROUPS[DAMAGE_ID].run(context)
+    return read(transcript)
+
+
+def test_border_damage_is_exact_with_no_masks_on_normal_with_no_operator() -> None:
+    group = GROUPS[DAMAGE_ID]
+
+    assert group.kind is GroupKind.EXACT
+    assert group.requires == ()
+    assert group.masks == ()
+    assert specs(DAMAGE_ID) == {"difficulty": Difficulty.NORMAL, "operators": ()}
+
+
+@pytest.mark.asyncio
+async def test_border_damage_sets_the_border_and_its_damage_then_makes_the_victim_fresh() -> None:
+    result = await hit_play()
+
+    assert result.first == (
+        *SET_UP,
+        "tick freeze",
+        "worldborder set 16",
+        "worldborder damage amount 1",
+        "worldborder damage buffer 2",
+        f"kill {VICTIM}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_border_damage_puts_the_bot_outside_inside_the_first_of_three_hit_windows() -> None:
+    windows = (await hit_play()).windows
+
+    assert [window.label for window in windows] == [
+        opened(*HIT_PACKETS, "minecraft:player_position"),
+        opened(*HIT_PACKETS),
+        opened(*HIT_PACKETS),
+    ]
+    assert [window.by(CONTROL) for window in windows] == [[OUTSIDE], [], []]
+    assert [window.ticks for window in windows] == [0, 0, 0]
+
+
+@pytest.mark.asyncio
+async def test_border_damage_puts_the_bot_back_at_the_spawn_before_it_undoes_the_border() -> None:
+    result = await hit_play()
+
+    assert result.after == (f"tp {VICTIM} {SPAWN}", f"tp {VICTIM} {SPAWN}", *UNDO, "tick unfreeze")

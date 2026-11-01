@@ -17,7 +17,8 @@ from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
 from mscts.group import Control, GroupContext, GroupKind, group
-from mscts.groups._world import SPAWN_AT, join_at_spawn, normal, pin_joins
+from mscts.groups._world import SPAWN_AT, fresh, join_at_spawn, normal, pin_joins
+from mscts.groups.player import HIT_PACKETS, _Hits
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 _WARDEN = "warden"
@@ -250,3 +251,53 @@ async def border_collision(context: GroupContext) -> None:
         await context.control.run("worldborder set 16")
         for walk in _WALKS:
             await _walk(context, walker, walk)
+
+
+# `world/border-damage`
+
+_VICTIM = "victim"
+_DAMAGE_PACKETS = (*HIT_PACKETS, "minecraft:player_position")
+"""What the first window compares: the hit, and the Bot being put outside the border."""
+
+_OUTSIDE = f"12.5 {_Y} {_Z}"
+"""4.5 blocks past a border of 16 around 0, 0 (x 8), 2.5 past a buffer of 2: 2 damage a hit
+(`max(1, floor(2.5 * 1))`, `LivingEntity.baseTick`)."""
+
+_HITS = 3
+_IMMUNE_TICKS = 10
+"""Ticks between two hits: a player is immune for 10 ticks after one."""
+
+
+async def _arena(context: GroupContext, undo: contextlib.AsyncExitStack) -> Bot:
+    """Join the victim, freeze the world, set a border of 16 and its damage; make the victim fresh.
+
+    The damage is 1 a block past a buffer of 2. The victim is killed and respawned so that it
+    has full health, whatever the last play left it.
+    """
+    control = context.control
+    victim = await join_at_spawn(context, undo, _VICTIM)
+    await context.freeze()
+    await control.run("worldborder set 16")
+    await control.run("worldborder damage amount 1")
+    await control.run("worldborder damage buffer 2")
+    await fresh(context, victim)
+    return victim
+
+
+@group("world/border-damage", spec=normal)
+async def border_damage(context: GroupContext) -> None:
+    """A Bot put outside the border and its buffer takes three hits, a window ending on each.
+
+    Border damage follows the wall clock, not the world's: a player ticks while the world is
+    frozen (`TickRateManager.isEntityFrozen` never freezes a player), so the hits come every 10
+    ticks of real time, and a window that steps the world would hold as many as its wall time
+    does (9 of 10 plays matched quiet and 0 of 5 under load). So the windows wait for hits, as in
+    `player/suffocation`.
+    """
+    async with _fixture(context) as undo:
+        victim = await _arena(context, undo)
+        hits = _Hits(context, victim)
+        async with hits.window(_DAMAGE_PACKETS):
+            await context.control.run(f"tp {_VICTIM} {_OUTSIDE}")
+        await hits.more(_HITS - 1, period_ticks=_IMMUNE_TICKS)
+        await context.control.run(f"tp {_VICTIM} {SPAWN_AT}")

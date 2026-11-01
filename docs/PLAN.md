@@ -1367,7 +1367,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
 - `groups.world_border`: `border_commands` — the `world/border-commands` script: the warden, an
   operator, runs each `worldborder` command in a window of its own; `border_lerp` — the
   `world/border-lerp` script: a lerp read after each step, and a Bot that joins in the middle of it;
-  `border_collision` — the `world/border-collision` script: a Bot walks into the border.
+  `border_collision` — the `world/border-collision` script: a Bot walks into the border;
+  `border_damage` — the `world/border-damage` script: a Bot outside the border takes three hits.
 - `groups.mobs_pathfinding`: each play reads the game time (`_world.gametime`) before it
   steps the world and again whenever it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
   `chase_open` — the `mobs/chase-open` script, which samples when a zombie 16 blocks away is
