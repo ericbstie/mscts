@@ -11,7 +11,7 @@ import functools
 import json
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pytest
 from support.control import (
@@ -204,7 +204,9 @@ def test_each_group_is_registered_tick_exact_with_the_watcher_an_operator(group_
     assert group.kind is GroupKind.TICK_EXACT
     assert group.requires == ()
     assert group.masks == ()
-    assert group.spec(ServerSpec(host="127.0.0.1", port=25566)) == operator_spec()
+    default = ServerSpec(host="127.0.0.1", port=25566)
+    assert group.spec(default) == operator_spec()
+    assert group.spec(replace(default, operators=("alice",))).operators == ("alice", WATCHER)
     assert weather.WATCHER == WATCHER
 
 
@@ -297,12 +299,12 @@ def test_frozen_holds_the_window_open_for_the_answer_and_3_set_time_that_follow(
         for e in transcript.events
         if e.bot == WATCHER and e.packet.name == CLIENT_COMMAND and e.t_ns > command
     ]
-    times = [t for t in received(transcript, WATCHER, SET_TIME) if command < t < asks[0]]
+    times = [t for t in received(transcript, WATCHER, SET_TIME) if said < t < asks[0]]
     # a count, not ticks: the fake sends a set_time every 10 ticks, vanilla every 20, so 3 span at
-    # least 40 of vanilla's ticks after the command
-    assert said < asks[0]
+    # least 40 of vanilla's ticks after the feedback; the barrier that closes the window comes
+    # after the third
+    assert command < said < asks[0] < closed_at
     assert len(times) >= 3
-    assert asks[0] < closed_at
 
 
 # weather/advance
