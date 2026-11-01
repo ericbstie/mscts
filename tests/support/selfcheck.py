@@ -44,6 +44,9 @@ SLOW_PLAY_LIMIT_S: Mapping[str, int] = {
     "glitches/bedrock-breaking": 150,
     "glitches/tnt-duplication": 160,
     "glitches/rail-carpet-duplication": 140,
+    # 20 plays on the #64 branch: 93.0 s a play, 96.1 s under stress (the fact sheet's probe, load
+    # average 0.6 to 1.9: 122 steps), twice that.
+    "weather/commands": 190,
 }
 """Seconds a play may take, for the Groups that need more than `PLAY_LIMIT_S`. A Group goes in
 with its play time measured on main (`mise run test:selfcheck` with `--durations`) and the load
