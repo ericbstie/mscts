@@ -17,8 +17,14 @@ ends, because a player keeps them across plays.
 import contextlib
 
 from mscts.bot import Bot
-from mscts.group import GroupContext, group
-from mscts.groups._world import fresh, join_at_spawn, normal
+from mscts.group import GroupContext, GroupKind, group
+from mscts.groups._world import (
+    find_when_tracked,
+    fresh,
+    join_at_spawn,
+    normal,
+    remove_tagged_until_gone,
+)
 from mscts.groups.combat_damage import Effect, Source, damage_command, effect_command, quiet_arena
 
 PACKETS = (
@@ -33,6 +39,7 @@ PACKETS = (
 entity data it sets (particles, flags, health) and the health it gives or takes."""
 
 _REMOVED = "minecraft:remove_mob_effect"
+_SET_HEALTH = "minecraft:set_health"
 _SET_TIME = "minecraft:set_time"
 
 _END_TIMEOUT_S = 30.0
@@ -46,16 +53,19 @@ async def _effected(context: GroupContext, undo: contextlib.AsyncExitStack, name
     return bot
 
 
-async def _until_it_ends(context: GroupContext, bot: Bot, give: str) -> None:
-    """A window that runs `give` and closes at the barrier after the Bot reads the effect's end.
+async def _until_it_ends(
+    context: GroupContext, bot: Bot, give: str, *, end: str = _REMOVED
+) -> None:
+    """A window that runs `give` and closes at the barrier after the Bot reads `end`.
 
-    A hidden effect's end changes no entity data, so vanilla sends its attributes on the player's
-    next sync interval, 2 ticks after the removal: one answer before a closing barrier ends. One
-    more barrier first keeps that packet inside the window.
+    `end` is the packet that ends the effect: its removal. A hidden effect's end changes no
+    entity data, so vanilla sends its attributes on the player's next sync interval, 2 ticks
+    after the removal: one answer before a closing barrier ends. One more barrier first keeps
+    that packet inside the window.
     """
     async with context.observe(*PACKETS) as opened:
         await context.control.run(give)
-        await bot.expect(_REMOVED, timeout_s=_END_TIMEOUT_S, since_ns=opened)
+        await bot.expect(end, timeout_s=_END_TIMEOUT_S, since_ns=opened)
         await bot.sync()
 
 
@@ -143,3 +153,95 @@ async def effect_ticking(context: GroupContext) -> None:
             await _hurt_to(context, bot, _TICKING_HEALTH)
             give = effect_command(bot.name, effect, seconds=_TICKING_SECONDS, hide=True)
             await _until_it_ends(context, bot, give)
+
+
+# `player/effect-instant`: Instant Health and Instant Damage on the Bot, and on a zombie.
+
+_INSTANT_TICKS = 1
+"""`/effect give` takes an instant effect's number as ticks, not seconds
+(`EffectCommands.computeDurationInTicks`), so 1 is the one tick it takes."""
+
+_INSTANT_HEALTH = 10.0
+"""The health the Bot is hurt to: Instant Health I and II heal it 4 and 8, Instant Damage I hurts
+it 6, and none of them is lethal or ends at full health."""
+
+_BOT_INSTANTS = (
+    (Effect("instant_health", 0), True),
+    (Effect("instant_health", 1), False),
+    (Effect("instant_damage", 0), True),
+    (Effect("instant_damage", 0), False),
+)
+"""Each with its particles hidden or shown: Instant Health I and II, Instant Damage I twice."""
+
+_ZOMBIE_INSTANTS = (
+    (Effect("instant_health", 0), True),
+    (Effect("instant_damage", 0), True),
+    (Effect("instant_damage", 0), False),
+)
+"""On the undead the two swap: Instant Health hurts the zombie and Instant Damage heals it."""
+
+_ZOMBIE_TAG = "mscts_effected"
+_ZOMBIE = f"@e[type=minecraft:zombie,tag={_ZOMBIE_TAG},limit=1]"
+_ZOMBIE_AT: tuple[float, float, float] = (3.5, -60, 3.5)
+"""Where the zombie stands: 3 blocks from the Bot in x and z, on the grass."""
+
+_SUMMON = (
+    "summon minecraft:zombie {x} {y} {z} {{NoAI:1b,PersistenceRequired:1b,Silent:1b,"
+    'Rotation:[0f,0f],Tags:["{tag}"],equipment:{{head:{{id:"minecraft:carved_pumpkin",count:1}}}}}}'
+)
+"""A zombie that stands still, is silent and keeps its place, and does not burn in daylight (a
+pumpkin on its head, `Zombie.aiStep`). `NoAI` makes a frozen world freeze it, so its windows are
+stepped; a player is never frozen."""
+
+_ZOMBIE_STEPS = 2
+"""How many ticks a zombie window steps: the effect's tick and the one after it."""
+
+_ZOMBIE_IMMUNITY_STEPS = 10
+"""How many ticks a zombie is immune after a hit, which the stepped world counts."""
+
+
+async def _instants_on_the_bot(context: GroupContext, bot: Bot) -> None:
+    """Hurt the Bot to `_INSTANT_HEALTH` and give it each of `_BOT_INSTANTS`, a window each.
+
+    Pumpkin applies an instant effect inside the command and sends no `remove_mob_effect`, but
+    both servers send the health it sets, so each window ends on that.
+    """
+    for effect, hide in _BOT_INSTANTS:
+        await _hurt_to(context, bot, _INSTANT_HEALTH)
+        give = effect_command(bot.name, effect, seconds=_INSTANT_TICKS, hide=hide)
+        await _until_it_ends(context, bot, give, end=_SET_HEALTH)
+
+
+async def _instants_on_the_zombie(context: GroupContext) -> None:
+    """Give the zombie each of `_ZOMBIE_INSTANTS`, two steps a window.
+
+    The steps between two windows wait out the zombie's immunity to the hit before.
+    """
+    for number, (effect, hide) in enumerate(_ZOMBIE_INSTANTS):
+        if number:
+            await context.step(_ZOMBIE_IMMUNITY_STEPS)
+        give = effect_command(_ZOMBIE, effect, seconds=_INSTANT_TICKS, hide=hide)
+        async with context.observe(*PACKETS):
+            await context.control.run(give)
+            await context.step(_ZOMBIE_STEPS)
+
+
+@group("player/effect-instant", kind=GroupKind.TICK_EXACT, spec=normal)
+async def effect_instant(context: GroupContext) -> None:
+    """A Bot at 10 health and a zombie are given Instant Health and Instant Damage.
+
+    The Bot's windows end at the barrier after the health the effect sets. The zombie is a mob,
+    which a frozen world freezes, so its windows step the world two ticks. It is summoned after
+    the Bot's last respawn, and the Bot waits to be told of it: after a respawn vanilla was once
+    seen never to send the Bot the zombie again.
+    """
+    control = context.control
+    async with quiet_arena(context) as undo:
+        bot = await _effected(context, undo, "instant")
+        undo.push_async_callback(remove_tagged_until_gone, control, _ZOMBIE_TAG, bot)
+        await context.freeze()
+        await _instants_on_the_bot(context, bot)
+        x, y, z = _ZOMBIE_AT
+        await control.run(_SUMMON.format(x=x, y=y, z=z, tag=_ZOMBIE_TAG))
+        await find_when_tracked(bot, "minecraft:zombie", _ZOMBIE_AT)
+        await _instants_on_the_zombie(context)

@@ -8,6 +8,7 @@ sends every player `set_time` every `TIME_TICKS` ticks (vanilla: 20).
 """
 
 import asyncio
+import uuid
 from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import override
@@ -16,6 +17,7 @@ import pytest
 from support.bot_join import ENTITY_ID, LOGIN
 from support.control import CLIENT_COMMAND, CONTROL, playing, tree
 from support.control_play import Play, read
+from support.mobs import ZOMBIE
 from support.player_server import PERFORM_RESPAWN, PlayerServer
 from support.window import window_since
 
@@ -38,6 +40,10 @@ EFFECT_TICKS = 5
 that closed without waiting for the end would not hold it."""
 TIME_TICKS = 10
 """How many ticks apart the fake sends `set_time`."""
+ZOMBIE_TAG = "mscts_effected"
+ZOMBIE_ID = 500
+CORPSE_TICKS = 20
+"""How many ticks after a kill the fake removes the zombie, as vanilla removes a corpse."""
 
 
 def _login(peer: Peer) -> bytes:
@@ -75,16 +81,54 @@ class EffectServer(PlayerServer):
     @override
     async def _command(self, peer: Peer, command: str) -> None:
         words = command.split()
-        if words[:2] == ["effect", "give"]:
-            self.later.add(asyncio.create_task(self._end(words[2])))
+        if words[:2] == ["effect", "give"] and words[2] in self.players:
+            self.later.add(asyncio.create_task(self._end(words[2], words[3])))
+        elif words[0] == "summon":
+            await self._summon(*(float(word) for word in words[2:5]))
+        elif command.startswith(f"kill @e[tag={ZOMBIE_TAG}"):
+            self.later.add(asyncio.create_task(self._remove_zombie()))
         else:
             await super()._command(peer, command)
 
-    async def _end(self, name: str) -> None:
-        """Tell the player `name` its effect has ended, `EFFECT_TICKS` ticks after the give."""
+    async def _end(self, name: str, effect: str) -> None:
+        """Tell the player `name` its effect has ended, `EFFECT_TICKS` ticks after the give.
+
+        An instant effect also changes the health, in the same tick.
+        """
         await asyncio.sleep(EFFECT_TICKS * TICK_S)
         with suppress(ConnectionError):
             await self.players[name].send(REMOVED, entity_id=ENTITY_ID, effect=0)
+            if effect.startswith("minecraft:instant_"):
+                await self.players[name].send(
+                    "minecraft:set_health", health=14.0, food=20, saturation=5.0
+                )
+
+    async def _summon(self, x: float, y: float, z: float) -> None:
+        """Tell every player but Control of the zombie at `x`, `y`, `z`."""
+        for name, player in self.players.items():
+            if name != CONTROL:
+                await player.send(
+                    "minecraft:add_entity",
+                    entity_id=ZOMBIE_ID,
+                    entity_uuid=uuid.UUID(int=ZOMBIE_ID),
+                    type=ZOMBIE,
+                    x=x,
+                    y=y,
+                    z=z,
+                    velocity={"scale": 0, "x": 0, "y": 0, "z": 0},
+                    pitch=0,
+                    yaw=0,
+                    head_yaw=0,
+                    data=0,
+                )
+
+    async def _remove_zombie(self) -> None:
+        """Tell every player but Control the zombie is gone, `CORPSE_TICKS` after the kill."""
+        await asyncio.sleep(CORPSE_TICKS * TICK_S)
+        with suppress(ConnectionError):
+            for name, player in self.players.items():
+                if name != CONTROL:
+                    await player.send("minecraft:remove_entities", entity_ids=[ZOMBIE_ID])
 
 
 async def _play(group_id: str, server: EffectServer) -> tuple[Transcript, Play]:
@@ -121,15 +165,17 @@ def in_windows(transcript: Transcript, bot: str) -> list[list[Event]]:
     return [window_since(transcript, bot, opened) for opened in opens]
 
 
-def assert_each_window_waits_for_the_end_and_one_barrier(transcript: Transcript, bot: str) -> None:
-    """Check that `bot` sent two barriers' requests after it read the end in every window.
+def assert_each_window_waits_for_the_end_and_one_barrier(
+    windows: list[list[Event]], end: str
+) -> None:
+    """Check that the Bot sent two barriers' requests after it read `end` in every window.
 
     A hidden effect's last `update_attributes` comes 2 ticks after the end: one barrier of its
     own, then the window's, so that it is never between the closing barrier's answers.
     """
-    for events in in_windows(transcript, bot):
+    for events in windows:
         names = [event.packet.name for event in events]
-        assert names[names.index(REMOVED) + 1 :].count(CLIENT_COMMAND) == 2 * SYNC_REQUESTS
+        assert names[names.index(end) + 1 :].count(CLIENT_COMMAND) == 2 * SYNC_REQUESTS
 
 
 def command_times(transcript: Transcript, command: str) -> list[int]:
@@ -189,7 +235,11 @@ PACKETS = (
     "minecraft:set_health",
     "minecraft:damage_event",
 )
-KINDS = {"player/effect-attributes": GroupKind.EXACT, "player/effect-ticking": GroupKind.EXACT}
+KINDS = {
+    "player/effect-attributes": GroupKind.EXACT,
+    "player/effect-ticking": GroupKind.EXACT,
+    "player/effect-instant": GroupKind.TICK_EXACT,
+}
 """Each Group's kind: exact when every window is the Bot's, which a frozen world does not
 freeze, and tick-exact when a window steps a mob."""
 SET_UP = (
@@ -281,8 +331,9 @@ def test_attributes_gives_six_effects_with_the_particles_hidden_then_shown_a_win
 def test_attributes_ends_each_window_one_barrier_after_the_bot_reads_the_effect_end() -> None:
     transcript = play(ATTRIBUTES)[0]
 
-    assert len(in_windows(transcript, EFFECTED)) == 12
-    assert_each_window_waits_for_the_end_and_one_barrier(transcript, EFFECTED)
+    windows = in_windows(transcript, EFFECTED)
+    assert len(windows) == 12
+    assert_each_window_waits_for_the_end_and_one_barrier(windows, REMOVED)
 
 
 # `player/effect-ticking`
@@ -339,5 +390,107 @@ def test_ticking_hurts_the_bot_once_it_is_loaded_and_gives_the_effect_after_two_
 def test_ticking_ends_each_window_one_barrier_after_the_bot_reads_the_effect_end() -> None:
     transcript = play(TICKING)[0]
 
-    assert len(in_windows(transcript, TICKED)) == 5
-    assert_each_window_waits_for_the_end_and_one_barrier(transcript, TICKED)
+    windows = in_windows(transcript, TICKED)
+    assert len(windows) == 5
+    assert_each_window_waits_for_the_end_and_one_barrier(windows, REMOVED)
+
+
+# `player/effect-instant`
+
+INSTANT = "player/effect-instant"
+INSTANT_BOT = "instant"
+SET_HEALTH = "minecraft:set_health"
+ZOMBIES = "@e[type=minecraft:zombie,tag=mscts_effected,limit=1]"
+SUMMON = (
+    "summon minecraft:zombie 3.5 -60 3.5 {NoAI:1b,PersistenceRequired:1b,Silent:1b,"
+    'Rotation:[0f,0f],Tags:["mscts_effected"],'
+    'equipment:{head:{id:"minecraft:carved_pumpkin",count:1}}}'
+)
+"""A zombie that stands still, makes no sound and does not burn in daylight."""
+STEP = "tick step 1"
+HURT_TO_10 = f"damage {INSTANT_BOT} 10.0 minecraft:generic"
+BOT_GIVES = [
+    f"effect give {INSTANT_BOT} minecraft:{name} 1 {amplifier} {hide}"
+    for name, amplifier, hide in (
+        ("instant_health", 0, "true"),
+        ("instant_health", 1, "false"),
+        ("instant_damage", 0, "true"),
+        ("instant_damage", 0, "false"),
+    )
+]
+ZOMBIE_GIVES = [
+    f"effect give {ZOMBIES} minecraft:{name} 1 0 {hide}"
+    for name, hide in (
+        ("instant_health", "true"),
+        ("instant_damage", "true"),
+        ("instant_damage", "false"),
+    )
+]
+
+
+def test_instant_hurts_a_fresh_bot_to_10_before_the_window_and_removes_the_zombie_after() -> None:
+    result = play(INSTANT)[1]
+
+    assert result.first == (*SET_UP, "tick freeze", f"kill {INSTANT_BOT}", HURT_TO_10)
+    assert result.after == (
+        "gamerule mob_drops false",
+        "kill @e[tag=mscts_effected]",
+        "gamerule mob_drops true",
+        "tick unfreeze",
+        f"effect clear {INSTANT_BOT}",
+        f"tp {INSTANT_BOT} 0.5 -60 0.5",
+        *UNDO,
+    )
+
+
+def test_instant_gives_four_effects_to_the_bot_and_three_to_a_zombie_a_window_each() -> None:
+    result = play(INSTANT)[1]
+
+    assert [window.label for window in result.windows] == [opened(*PACKETS)] * 7
+    assert [window.commands for window in result.windows] == [
+        *((give,) for give in BOT_GIVES),
+        *((give, STEP, STEP) for give in ZOMBIE_GIVES),
+    ]
+    assert [window.before for window in result.windows][1:] == [
+        *[(f"kill {INSTANT_BOT}", HURT_TO_10)] * 3,
+        (SUMMON,),
+        *[(STEP,) * 10] * 2,
+    ]
+
+
+def test_instant_steps_the_world_two_ticks_in_each_zombie_window_and_none_in_the_bots() -> None:
+    result = play(INSTANT)[1]
+
+    assert [window.ticks for window in result.windows] == [0, 0, 0, 0, 2, 2, 2]
+
+
+def test_instant_ends_each_of_the_bots_windows_one_barrier_after_the_health_the_effect_sets() -> (
+    None
+):
+    transcript = play(INSTANT)[0]
+
+    # Pumpkin sends no remove_mob_effect for an instant effect, but it sends the health
+    assert_each_window_waits_for_the_end_and_one_barrier(
+        in_windows(transcript, INSTANT_BOT)[:4], SET_HEALTH
+    )
+
+
+def test_instant_summons_the_zombie_after_the_bots_last_respawn_and_waits_to_be_told_of_it() -> (
+    None
+):
+    transcript = play(INSTANT)[0]
+
+    [summoned] = command_times(transcript, SUMMON)
+    opens = [m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN)]
+    assert max(respawn_times(transcript, INSTANT_BOT)) < summoned
+    told = read_times(transcript, INSTANT_BOT, "minecraft:add_entity")
+    assert len(told) == 1
+    assert summoned < told[0] < opens[4]
+
+
+def test_instant_waits_until_the_bot_is_told_the_zombie_is_gone_before_it_leaves() -> None:
+    transcript = play(INSTANT)[0]
+
+    [gone] = read_times(transcript, INSTANT_BOT, "minecraft:remove_entities")
+    [leaves] = command_times(transcript, f"tp {INSTANT_BOT} 0.5 -60 0.5")
+    assert gone < leaves

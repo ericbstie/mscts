@@ -650,6 +650,7 @@ effects when it ends.
 | --- | --- | --- | --- | --- |
 | `player/effect-attributes` | exact | none | A Bot is given Speed I and II, Slowness, Strength, Haste and Jump Boost for 1 second, first with the particles hidden and then shown, in a window of its own each. | none |
 | `player/effect-ticking` | exact | none | A Bot at 6 health is given Regeneration I and II, Poison I and II and Wither I for 5 seconds with the particles hidden, in a window of its own each. | none |
+| `player/effect-instant` | tick-exact | none | A Bot at 10 health is given Instant Health I and II and Instant Damage I, then a zombie that stands still is given them, with the particles hidden and shown, in a window of its own each. | none |
 
 In `player/effect-attributes` each window holds the effect given, the attribute modifier it
 adds, the particle or ambience entity data, and the effect ending. Vanilla sends no attributes
@@ -664,6 +665,22 @@ immunity the hit gives are over. Regeneration I heals at ticks 1 and 51, Regener
 51 and 76, Poison I at 1, 26, 51 and 76, Poison II at 5, 17, 29, 41 and 53 and Wither I at 21
 and 61. Poison never takes the last half heart, so Poison II stops at 1 health. A Candidate that
 heals at another rate sends another number of hits, and another set of health values.
+
+`player/effect-instant` has two parts. The Bot is hurt to 10 health as in `player/effect-ticking`
+and given the effect for 1 tick, which is what `/effect give` makes of an instant effect's 1. Vanilla
+sends the effect, then in the next tick the entity data, the damage and the end of the effect,
+and the health. Each window ends on that health, because a server may apply an instant effect
+inside the command and never send a `remove_mob_effect`. Instant Health I takes the Bot to 14, II
+to 18, and Instant Damage I to 4.
+
+The zombie is the part of this section that a frozen world freezes, so the Group steps it: two
+ticks a window, then ten for the zombie's immunity before the next. It stands still with a pumpkin
+on its head, so that daylight does not burn it. Undead take the effects the other way round,
+Instant Health hurts and Instant Damage heals, so the Group compares a `damage_event` for the
+first and none for the other two. The Bot is told of the zombie before the first window, and the
+zombie is summoned after the Bot's last respawn, because after a respawn vanilla was once seen
+never to send the Bot the zombie. A Candidate whose `/effect` gives to players only leaves
+the zombie's windows empty.
 
 ## Inventory (`inventory`)
 
