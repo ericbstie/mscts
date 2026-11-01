@@ -368,10 +368,11 @@ async def repeater_delay(context: GroupContext) -> None:
 
 `await context.freeze()` freezes the world with `/tick freeze`. mscts
 unfreezes it when the Group ends, even if the Group failed. If the server
-does not answer the unfreeze, the Group fails and the server stays frozen.
-mscts then plays no later Group on either server. If vanilla stays frozen,
-each later Group is an error. If the Candidate stays frozen, each
-later Group fails.
+does not answer the unfreeze, the Group fails. If mscts started that
+server and it crashed or closed the connection, mscts starts both servers
+again before the next Group. Any other server stays frozen. If vanilla
+stays frozen, each later Group is an error. If the Candidate stays
+frozen, each later Group is played on vanilla only and fails.
 `await context.step(n)` advances the world `n` ticks, one `/tick step 1` at
 a time, and returns once the server has finished them. After a Bot acts
 (a dig, a hit, a move), step with `await context.step_after(bot, ticks=n)`

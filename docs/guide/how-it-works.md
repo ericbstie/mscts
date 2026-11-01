@@ -48,9 +48,11 @@ Group ──► Bot(s) ──► Candidate ──► Transcript C ──┘
    the same pair of servers, then stops both. After each Group, mscts sends
    a status request to each server it started, and waits for the Group's
    players to leave it. A server that does not answer within 10 seconds,
-   or still has a player online after 2 seconds, fails that Group. mscts
-   then starts both servers again before the next one, so the two still
-   have the same history.
+   or still has a player online after 2 seconds, fails that Group. So does
+   a server that crashes during the Group, or closes the connection while
+   the Group has its world frozen. mscts then starts both servers again before the next one,
+   so the two still have the same history and each later Group gets its
+   own Verdict.
 6. **Report.** mscts lists each differing test case once, then any skipped
    or failed Groups, any server it restarted, and the total Run time.
 
@@ -75,8 +77,8 @@ did not fail on vanilla, the Verdict is `mismatch`, led by a `failed`
 Divergence that says what happened. It is never `error`.
 The Report's score leaves `error` out, so a Candidate cannot score
 better by crashing. If the Candidate failed a Group this one requires,
-still has players online before the Group, or its world was left frozen, mscts plays the
-Group on vanilla only. The Report
+still has players online before the Group, or its world was left frozen and mscts did not
+start it again, mscts plays the Group on vanilla only. The Report
 then fails each test case of vanilla's play, so a Candidate cannot score
 better by skipping a Group either.
 

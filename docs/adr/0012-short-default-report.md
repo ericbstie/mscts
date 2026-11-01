@@ -284,3 +284,32 @@ stays for every side.
 The lead chose this (option B on #513) over restarting the pair without
 failing the Group (option A), under which a Candidate that leaves a
 player online would lose nothing but a Report line.
+
+## Amendment (#531, 2026-11-01)
+
+This changes the second case of the #266 amendment, a world a Group left
+frozen, for an Instance the Run launched whose connection was lost.
+Pumpkin b70c7e1 exits about 300 s after it starts, when its player-data
+save panics. In a Group that had frozen the world, mscts could not
+unfreeze it, since the connection was gone, and every later Group of the
+Run failed as `Candidate failed: entities/pushing left its world frozen`.
+A new Instance's world is not frozen, so those failures said nothing about
+the later Groups.
+
+Now, when the unfreeze raises a `ConnectionError` (the process exited,
+or the connection was closed, reset or refused), both Instances of the
+pair are stopped and launched again before the next Group, as #513 does
+for an Instance that does not answer a status request. The Group the
+server crashed in still fails: a `mismatch` led by the `failed`
+Divergence for what the connection did, or an `error` if the Reference
+crashed. That server is not sent the status request after the Group,
+since the Group has failed already. Nor is one whose wait between a
+statistical Group's plays raised. The Report names the restart:
+`Restarted pumpkin after entities/pushing, because it could not be
+reached to unfreeze its world: ConnectionClosedError: the server closed
+the connection.`
+
+An Instance whose unfreeze fails in any other way, such as one that
+answers a status request but not the unfreeze, stays unusable as the
+#266 amendment says. So does every Attached Instance, which mscts did
+not launch and does not restart.

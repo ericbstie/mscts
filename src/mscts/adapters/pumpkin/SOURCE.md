@@ -11,6 +11,7 @@ Instance silently.
 | Version | `0.2.1+26.3-26.51`, commit `5e9101f350245f6faa656a6b0676a99b4a40f2e1`: Java 26.3, protocol 777 |
 | Generated | 2026-10-26, by running the binary once with an empty environment (`PATH` only) in an empty directory inside a new network namespace (`unshare -rn`), so its pristine defaults (`0.0.0.0:25565`, telemetry, Bedrock) could reach nothing. It stopped on its own at the Bedrock UDP socket, which the namespace has no address family for; `pumpkin.toml` was written before that |
 | sha256 | `44bd52d80a0c359ec9fc576e57953638eeae5c0a10f43cab6f92bd111eac7cbd` |
+| Checked with | `pumpkin-X64-Linux` of the `nightly` release, commit `645895098fcea9fcfc6fb21445520491d364dcb0`, sha256 `2b3e45e851fe28292fcbfec1cdcfbcbc0d65be44f8f591a6498bc74ea5c48437`, 124,133,232 bytes, installed from https://github.com/Pumpkin-MC/Pumpkin/releases/download/nightly/pumpkin-X64-Linux on 2026-11-01. Its first-run `pumpkin.toml` differs from this file only in `seed` (`scripts/research/pumpkin_pristine.py`) |
 
 `seed` is random on every first run; every ServerSpec overrides it.
 

@@ -67,17 +67,27 @@ class GroupError(Exception):
         transcript: Everything recorded until it raised.
         bot: The name of the Bot it came out of, or "" if none raised it.
         left_frozen: The Group froze the world and it could not be unfrozen
-            (`GroupContext.left_frozen`): the Instance is unusable (#228).
+            (`GroupContext.left_frozen`): the Instance is unusable (#228), unless the Run
+            launched it and the connection was lost (`unfreeze_failure`).
+        unfreeze_failure: What the unfreeze raised (`GroupContext.unfreeze_failure`), or
+            None.
     """
 
     def __init__(
-        self, transcript: Transcript, description: str, *, bot: str = "", left_frozen: bool = False
+        self,
+        transcript: Transcript,
+        description: str,
+        *,
+        bot: str = "",
+        left_frozen: bool = False,
+        unfreeze_failure: BaseException | None = None,
     ) -> None:
         """Record that the Group of `transcript` failed, as `description` says."""
         super().__init__(description)
         self.transcript = transcript
         self.bot = bot
         self.left_frozen = left_frozen
+        self.unfreeze_failure = unfreeze_failure
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -156,8 +166,10 @@ class Restart:
         after: The Group after which it stopped the Instance, e.g. `crafting/grid`: the
             last played on it, or the one its player online before it failed (review A2).
         reason: Why, after "it": `did not answer a status request within 10 s`, `had 1
-            player still online after waiting 2 s: 'crafter'`, or `did not answer a status
-            request within 2 s while mscts waited for its players to leave`.
+            player still online after waiting 2 s: 'crafter'`, `did not answer a status
+            request within 2 s while mscts waited for its players to leave`, or `could not be
+            reached to unfreeze its world: ConnectionClosedError: the server closed the
+            connection` (#531).
     """
 
     after: str
@@ -275,7 +287,13 @@ async def run_group(
         description = _describe(first, timeout_s)
         bot = context.raised_by(first)
         await context.close()  # first: it tries to unfreeze, and says if it could not
-        raise GroupError(transcript, description, bot=bot, left_frozen=context.left_frozen) from exc
+        raise GroupError(
+            transcript,
+            description,
+            bot=bot,
+            left_frozen=context.left_frozen,
+            unfreeze_failure=context.unfreeze_failure,
+        ) from exc
     finally:
         await context.close()
     return transcript
@@ -558,12 +576,15 @@ async def run_results(  # noqa: PLR0913 - the sides, then keyword-only options o
     sent a status request. One that does not answer within ANSWER_TIMEOUT_S fails that Group
     (`_unanswered_verdict`). One that answers then waits for no player online, and one that
     still has a player online after SETTLE_TIMEOUT_S fails that Group too
-    (`_left_online_verdict`); that wait is no part of the Group's time. Before the next,
+    (`_left_online_verdict`); that wait is no part of the Group's time. One whose world a
+    Group froze and could not unfreeze because the connection was lost, such as one whose
+    process exited, is not asked: the Group has failed already (#531). Before the next,
     both Instances of its pair are stopped and launched again together, so a server that
-    hung in one Group, or kept a player of it online, still plays the next, and the two
-    worlds keep the same history (#513). An Attached side is played at its Endpoint as it
-    is, and neither started nor stopped: a player it keeps online fails the next Group, as
-    the wait before each Group finds it (#266).
+    hung or crashed in one Group, or kept a player of it online, still plays the next, and
+    the two worlds keep the same history (#513). An Attached side is played at its Endpoint
+    as it is, and neither started nor stopped: a player it keeps online fails the next
+    Group, as the wait before each Group finds it (#266), and a world a Group left frozen
+    fails each later Group (#228).
 
     A statistical Group is played `runs` times on each side, the sides taking turns, for
     its one Verdict (`judge_samples`): in the first repetition only, whatever `repeat`
@@ -708,8 +729,8 @@ class _Launched:
         stop: Stops it when closed.
         played: The last Group played on it, until it is sent a status request; else None.
         restart: The restart it needs before the next Group, if it did not answer that request
-            (`_asked`) or a wait for no player online raised (`_restart_before_next`), else
-            None.
+            (`_asked`), a wait for no player online raised (`_restart_before_next`), or the
+            connection was lost as a Group unfroze its world (`_left_frozen`); else None.
     """
 
     role: int
@@ -752,9 +773,10 @@ class _Instances:
         """Make sure the Instances `group` plays against are up, restarting both if one needs it.
 
         If an Instance of the pair did not answer a status request after the last Group it
-        played (`_answered`), such as a server that hung in that Group, or still had a player
-        online then (`_emptied`), both are stopped and launched again first, so the two worlds
-        keep the same history (#513, review B3).
+        played (`_answered`), such as a server that hung in that Group, still had a player
+        online then (`_emptied`), or lost the connection while that Group unfroze its world
+        (`_left_frozen`), such as a server that crashed, both are stopped and launched again
+        first, so the two worlds keep the same history (#513, review B3).
         """
         endpoints = await self._pair(group.spec)
         due = {
@@ -984,8 +1006,9 @@ class _Instances:
     ) -> Transcript | GroupError:
         """Play `group` on side `role` at `endpoint`, and learn what it shows about the side.
 
-        The version its first status_response names, whether it left its world frozen, and
-        that the Instance there has played `group`. Its samples are added to `samples`.
+        The version its first status_response names, whether it left its world frozen
+        (`_left_frozen`), and that the Instance there has played `group`. Its samples are added
+        to `samples`.
         """
         launched = self._launched.get(endpoint)
         if launched is not None:
@@ -994,8 +1017,23 @@ class _Instances:
         if self._versions[role] is None:
             self._versions[role] = status_version(_transcript(attempt))
         if isinstance(attempt, GroupError) and attempt.left_frozen:
-            self._unusable[endpoint] = f"{group.id} left its world frozen"
+            self._left_frozen(endpoint, group.id, attempt.unfreeze_failure)
         return attempt
+
+    def _left_frozen(self, endpoint: Endpoint, played: str, failure: BaseException | None) -> None:
+        """Note that `played` left the world at `endpoint` frozen: its unfreeze raised `failure`.
+
+        An Instance the Run launched whose connection was lost (a ConnectionError: its process
+        exited, or it closed, reset or refused the connection) is restarted before the next
+        Group (`start`), as one that hung is (#531): a new Instance's world is not frozen. Any
+        other, such as one that answers and still does not unfreeze, and every Attached one,
+        is unusable for the rest of the Run (#228).
+        """
+        launched = self._launched.get(endpoint)
+        if launched is not None and isinstance(failure, ConnectionError):
+            launched.restart = Restart(after=played, reason=_lost_reason(failure))
+        else:
+            self._unusable[endpoint] = f"{played} left its world frozen"
 
     async def _answered(self, endpoints: Sequence[Endpoint], verdict: Verdict) -> Verdict:
         """`verdict`, failed for a side that does not answer a status request once it played.
@@ -1016,10 +1054,12 @@ class _Instances:
         """Whether the Instance at `endpoint` answers a status request, if it played since asked.
 
         Only an Instance this Run launched is asked: an Attached one is not the Run's to
-        restart. One that does not answer is restarted before the next Group (`start`).
+        restart. Nor is one already due a restart, which its failure in the Group (`_left_frozen`)
+        or in a wait between a statistical Group's plays (`_sampled_once`) already fails. One
+        that does not answer is restarted before the next Group (`start`).
         """
         launched = self._launched.get(endpoint)
-        if launched is None or launched.played is None:
+        if launched is None or launched.played is None or launched.restart is not None:
             return True
         played, launched.played = launched.played, None
         if await _answers(endpoint, timeout_s=ANSWER_TIMEOUT_S):
@@ -1087,8 +1127,9 @@ class _Instances:
     def _unusable_verdict(self, group: Group, endpoints: Sequence[Endpoint]) -> Verdict | None:
         """The Verdict `group` gets if a side is unusable (#228), or None.
 
-        A side a failed Group left frozen (`GroupError.left_frozen`) would make every later
-        Group compare against a frozen world, so no later Group plays on it:
+        A side a failed Group left frozen (`GroupError.left_frozen`), and that the Run does not
+        restart (`_left_frozen`), would make every later Group compare against a frozen world,
+        so no later Group plays on it:
 
         - The Reference is unusable: `error`, "the Reference is unusable: <group> left
           its world frozen", and the same for the Candidate after a "; " if it is
@@ -1358,6 +1399,15 @@ def _restart_reason(left: Exception) -> str:
             " while mscts waited for its players to leave"
         )
     return _unsettled_by(left)
+
+
+def _lost_reason(lost: ConnectionError) -> str:
+    """Why an Instance whose unfreeze raised `lost` is restarted, after "it" (#531).
+
+    `lost` says how the connection went ("the connection was lost (connection reset by
+    peer)"), so the reason itself does not say "lost" again.
+    """
+    return f"could not be reached to unfreeze its world: {_describe(lost, GROUP_TIMEOUT_S)}"
 
 
 def _not_sampled(group: Group, reference: Samples | Exception, verdict: Verdict) -> Verdict:
