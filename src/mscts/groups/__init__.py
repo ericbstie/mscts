@@ -29,6 +29,7 @@ from mscts.groups import (
     status,
     time,
     weather,
+    world_border,
 )
 
 __all__ = [
@@ -60,4 +61,5 @@ __all__ = [
     "status",
     "time",
     "weather",
+    "world_border",
 ]

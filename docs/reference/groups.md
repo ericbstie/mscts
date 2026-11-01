@@ -851,6 +851,18 @@ together. In a frozen world the scheduled ticks of the fluids run only on the ti
 steps, so each placement takes effect on the tick its delay says. A window lasts until every
 source has had its last scheduled tick, which leaves none due for the next play.
 
+## The world border (`world`)
+
+The border's size and centre, its warnings and damage, and how a command changes them. Every Group
+plays in a frozen world. Vanilla saves the border with the world, so each Group sets every
+setting back to vanilla's default when it ends. Control is in creative while a Group plays: a
+border leaves Control's place far outside it, and a survival Control would take border damage
+there.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `world/border-commands` | exact | none | A Bot called `warden`, an operator, runs `worldborder set 20`, `set 40 5`, `center 10 10`, `warning distance 3`, `warning time 5`, `damage amount 1`, `damage buffer 2` and `get`, each in a window of its own. A window holds the border packet the command makes and the warden's feedback. Vanilla reads a number of time with no unit as ticks, so `set 40 5` is a lerp of 5 ticks, not 5 seconds, and `center 10 10` centres the border on 10.5, 10.5. `get` reads 20, because the world is frozen in the middle of the lerp. The two damage commands send chat only. | none |
+
 ## Redstone (`redstone`)
 
 When repeaters, comparators, torches, observers and dust switch, tick by tick, in what order

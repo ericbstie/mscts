@@ -1364,6 +1364,8 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   spawn block, its height and its distance are sampled (`spawn.x`, `spawn.y`, `spawn.z`,
   `spawn.distance`); `join_position_exact` — the `spawn/join-position-exact` script, the same
   with `respawn_radius` 0 (`pin_joins`).
+- `groups.world_border`: `border_commands` — the `world/border-commands` script: the warden, an
+  operator, runs each `worldborder` command in a window of its own.
 - `groups.mobs_pathfinding`: each play reads the game time (`_world.gametime`) before it
   steps the world and again whenever it sees what a sample is about; `CHASE_TICKS` — the tick budget of `mobs/chase-open`;
   `chase_open` — the `mobs/chase-open` script, which samples when a zombie 16 blocks away is
