@@ -640,7 +640,8 @@ What a status effect sends a player when it is given, while it lasts and when it
 world does not freeze a player, so a Bot's effects run in real time and stepping the world does
 not move them. Each window gives the effect, waits for the packet that ends it and closes at the
 barrier. What is compared is which packets the effect sends and in what order, not the tick each
-one comes on.
+one comes on. How many times an effect hurts or heals, and the health each hit leaves, still show
+its rhythm.
 
 Every part plays on normal difficulty with natural regeneration off, and clears the Bot's
 effects when it ends.
@@ -648,11 +649,21 @@ effects when it ends.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `player/effect-attributes` | exact | none | A Bot is given Speed I and II, Slowness, Strength, Haste and Jump Boost for 1 second, first with the particles hidden and then shown, in a window of its own each. | none |
+| `player/effect-ticking` | exact | none | A Bot at 6 health is given Regeneration I and II, Poison I and II and Wither I for 5 seconds with the particles hidden, in a window of its own each. | none |
 
 In `player/effect-attributes` each window holds the effect given, the attribute modifier it
 adds, the particle or ambience entity data, and the effect ending. Vanilla sends no attributes
 for Strength. A hidden effect's attributes come back 2 ticks after it ends, later than any other
 packet of the window, so the window waits for one more barrier after the end.
+
+In `player/effect-ticking` each effect starts from a fresh Bot, killed and respawned, that
+`/damage` of type `generic` takes to 6 health. The respawned player ignores damage until the
+server has read that it loaded the world, so the Bot waits for that first. The Bot then waits for
+two `set_time`, which vanilla sends every 20 ticks, frozen or not, so that the 10 ticks of
+immunity the hit gives are over. Regeneration I heals at ticks 1 and 51, Regeneration II at 1, 26,
+51 and 76, Poison I at 1, 26, 51 and 76, Poison II at 5, 17, 29, 41 and 53 and Wither I at 21
+and 61. Poison never takes the last half heart, so Poison II stops at 1 health. A Candidate that
+heals at another rate sends another number of hits, and another set of health values.
 
 ## Inventory (`inventory`)
 
