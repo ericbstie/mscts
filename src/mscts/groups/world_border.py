@@ -223,8 +223,8 @@ _WALKS = (
     _Walk(7.5, (8.5,)),
     _Walk(9.5, _along(9.5, -0.2, 8)),
 )
-"""Moves along x toward the border of a 16-wide border around 0, 0, whose plane is at x 8: 0.2, 0.3
-and 0.5 a tick from 6.5, a jump of a block from 7.5, and last 0.2 a tick from outside, back in.
+"""Moves along x toward a border 16 wide around 0, 0, whose plane is at x 8: 0.2, 0.3 and 0.5 a
+tick from 6.5, a jump of a block from 7.5, and last 0.2 a tick from outside, back in.
 The player is 0.6 wide, so its box touches the plane at x 7.7.
 
 Vanilla clips a move at the plane and sends the player back only if the clipped move is off by

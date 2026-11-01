@@ -6,7 +6,7 @@ server answers is never asserted: the fake answers Control's markers, the barrie
 command with a line of chat (`BlocksServer`).
 """
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from unittest import mock
 
@@ -14,12 +14,15 @@ import pytest
 from support import blocks_server, player_server
 from support.blocks_server import BlocksServer
 from support.control import CONTROL, SYSTEM_CHAT, playing, tree
-from support.moves import moves_and_commands
+from support.moves import MOVES, moves_and_commands
 from support.player_server import Hurt, PlayerServer
+from support.ticks import barriers_before_steps
 
+from mscts.bot import HANDLED_REQUESTS
 from mscts.compare import OBSERVE_CLOSE, OBSERVE_OPEN, TICK_MARK
 from mscts.group import GROUPS, GroupKind
 from mscts.groups import player
+from mscts.net import ProtocolError
 from mscts.spec import Difficulty, ServerSpec
 from mscts.transcript import Transcript
 
@@ -98,6 +101,7 @@ class Play:
     windows: tuple[Window, ...]
     first: tuple[str, ...]
     after: tuple[str, ...]
+    transcript: Transcript
 
 
 def read(transcript: Transcript) -> Play:
@@ -128,7 +132,8 @@ def read(transcript: Transcript) -> Play:
         )
         previous = end.t_ns
     first = tuple(c for t, c in control if t < opens[0].t_ns) if opens else ()
-    return Play(tuple(windows), first, tuple(c for t, c in control if t > closes[-1].t_ns))
+    after = tuple(c for t, c in control if t > closes[-1].t_ns)
+    return Play(tuple(windows), first, after, transcript)
 
 
 async def replay(group_id: str, server: BlocksServer) -> Play:
@@ -370,6 +375,18 @@ async def test_border_collision_sends_each_move_before_the_step_that_should_see_
 
 
 @pytest.mark.asyncio
+async def test_border_collision_waits_until_the_server_has_handled_a_move_before_it_steps() -> None:
+    # The Bot and Control are on two connections: without the Bot's proof that the server has the
+    # move, the step could reach the server first and the move land a tick late.
+    transcript = (await play(COLLISION_ID)).transcript
+
+    barriers = barriers_before_steps(transcript, WALKER, set(MOVES))
+
+    assert len(barriers) == sum(len(xs) for _, xs in WALKS)
+    assert set(barriers) == {HANDLED_REQUESTS}
+
+
+@pytest.mark.asyncio
 async def test_border_collision_puts_the_bot_and_the_border_back_and_unfreezes_last() -> None:
     result = await play(COLLISION_ID)
 
@@ -401,12 +418,12 @@ def always_on_time() -> float:
     return 0.0
 
 
-async def hit_play() -> Play:
+async def hit_play(clock: Callable[[], float] = always_on_time) -> Play:
     """Play `world/border-damage` against a fake that hurts the Bot when it is put outside."""
     transcript = Transcript(group_id=DAMAGE_ID, server="fake")
     with (
         mock.patch.object(player_server, "COMMANDS", PLAYER_COMMANDS),
-        mock.patch.object(player, "clock", always_on_time),
+        mock.patch.object(player, "clock", clock),
     ):
         async with playing(PlayerServer(hurts=HURTS), transcript) as context:
             await GROUPS[DAMAGE_ID].run(context)
@@ -447,6 +464,26 @@ async def test_border_damage_puts_the_bot_outside_inside_the_first_of_three_hit_
     ]
     assert [window.by(CONTROL) for window in windows] == [[OUTSIDE], [], []]
     assert [window.ticks for window in windows] == [0, 0, 0]
+
+
+def gap_clock(gap_s: float) -> Callable[[], float]:
+    """A clock that reads each hit `gap_s` seconds after the one before, as the Group reads it."""
+    readings = iter([0.0, gap_s, gap_s, 2 * gap_s, 2 * gap_s])
+    return lambda: next(readings)
+
+
+@pytest.mark.asyncio
+async def test_border_damage_plays_on_when_a_window_opens_within_the_period_of_a_hit() -> None:
+    # Hits are 10 ticks apart; a window may open up to 8 of them (0.4 s) after the last.
+    result = await hit_play(gap_clock(0.38))
+
+    assert len(result.windows) == 3
+
+
+@pytest.mark.asyncio
+async def test_border_damage_fails_when_a_window_opens_after_the_next_hit_may_have_come() -> None:
+    with pytest.raises(ProtocolError, match="the next may have come between the windows"):
+        await hit_play(gap_clock(0.45))
 
 
 @pytest.mark.asyncio
