@@ -13,7 +13,7 @@ border damage follows the wall clock, so a survival Control would die there.
 
 import contextlib
 from collections.abc import AsyncIterator
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
 from mscts.bot import Bot
 from mscts.group import Control, GroupContext, GroupKind, group
@@ -190,3 +190,63 @@ async def border_lerp(context: GroupContext) -> None:
         await _command_window(context, warden, f"worldborder set 40 {_GROW_TICKS}")
         await _read_each_step(context, undo, warden)
         await _shrink(context, warden)
+
+
+# `world/border-collision`
+
+_WALKER = "walker"
+_Y = -60.0
+_Z = 0.5
+_COLLISION_PACKETS = ("minecraft:player_position", "minecraft:disconnect", *_BORDER)
+"""What a window compares: the server sending the player back, kicking it, or changing the
+border."""
+
+
+@dataclass(frozen=True)
+class _Walk:
+    """One window: where the Bot is put, then the x it moves to in each tick."""
+
+    start: float
+    xs: tuple[float, ...]
+
+
+def _along(start: float, step: float, count: int) -> tuple[float, ...]:
+    """The `count` x a Bot reaches by moving `step` along x from `start`, one move each."""
+    return tuple(round(start + step * k, 6) for k in range(1, count + 1))
+
+
+_WALKS = (
+    _Walk(6.5, _along(6.5, 0.2, 13)),
+    _Walk(6.5, _along(6.5, 0.3, 9)),
+    _Walk(6.5, _along(6.5, 0.5, 5)),
+    _Walk(7.5, (8.5,)),
+    _Walk(9.5, _along(9.5, -0.2, 8)),
+)
+"""Moves along x toward the border of a 16-wide border around 0, 0, whose plane is at x 8: 0.2, 0.3
+and 0.5 a tick from 6.5, a jump of a block from 7.5, and last 0.2 a tick from outside, back in.
+The player is 0.6 wide, so its box touches the plane at x 7.7.
+
+Vanilla clips a move at the plane and sends the player back only if the clipped move is off by
+more than 0.25 (`ServerGamePacketListenerImpl.handleMovePlayer`): at 0.2 a tick it sends nothing,
+and at 0.3 or more it sends the player back to x 7.7 or 7.5 on each move from the plane on."""
+
+
+async def _walk(context: GroupContext, walker: Bot, walk: _Walk) -> None:
+    """Put the Bot at the start, then in a window move it a tick at a time, as `walk` says."""
+    await context.control.run(f"tp {_WALKER} {walk.start} {_Y} {_Z}")
+    async with context.observe(*_COLLISION_PACKETS):
+        for x in walk.xs:
+            await walker.move(x, _Y, _Z)
+            await context.step_after(walker)
+
+
+@group("world/border-collision", kind=GroupKind.TICK_EXACT, spec=normal)
+async def border_collision(context: GroupContext) -> None:
+    """A survival Bot walks into a border of 16 wide, one move a stepped tick, at several speeds."""
+    async with _fixture(context) as undo:
+        walker = await join_at_spawn(context, undo, _WALKER)
+        await context.control.run("gamerule player_movement_check true")
+        await context.freeze()
+        await context.control.run("worldborder set 16")
+        for walk in _WALKS:
+            await _walk(context, walker, walk)

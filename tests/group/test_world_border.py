@@ -305,3 +305,70 @@ async def test_border_lerp_puts_the_bots_and_the_border_back_and_unfreezes_last(
         *UNDO,
         "tick unfreeze",
     )
+
+
+# `world/border-collision`
+
+COLLISION_ID = "world/border-collision"
+WALKER = "walker"
+COLLISION_PACKETS = ("minecraft:player_position", "minecraft:disconnect", *BORDER)
+Y, Z = -60.0, 0.5
+WALKS = (
+    (6.5, [6.7, 6.9, 7.1, 7.3, 7.5, 7.7, 7.9, 8.1, 8.3, 8.5, 8.7, 8.9, 9.1]),
+    (6.5, [6.8, 7.1, 7.4, 7.7, 8.0, 8.3, 8.6, 8.9, 9.2]),
+    (6.5, [7.0, 7.5, 8.0, 8.5, 9.0]),
+    (7.5, [8.5]),
+    (9.5, [9.3, 9.1, 8.9, 8.7, 8.5, 8.3, 8.1, 7.9]),
+)
+"""Where each window puts the Bot, and the x it moves to, a move a tick: 0.2, 0.3 and 0.5 a tick
+from 6.5, a jump of a block from 7.5, and 0.2 a tick from outside, back in."""
+
+
+def test_border_collision_is_tick_exact_with_no_masks_on_normal_with_no_operator() -> None:
+    group = GROUPS[COLLISION_ID]
+
+    assert group.kind is GroupKind.TICK_EXACT
+    assert group.requires == ()
+    assert group.masks == ()
+    assert specs(COLLISION_ID) == {"difficulty": Difficulty.NORMAL, "operators": ()}
+
+
+@pytest.mark.asyncio
+async def test_border_collision_turns_the_movement_check_back_on_and_sets_a_border_of_16() -> None:
+    # The joins ran with the check off (a join can repeat its first position); the walk needs it.
+    result = await play(COLLISION_ID)
+
+    assert result.first == (
+        *SET_UP,
+        "gamerule player_movement_check true",
+        "tick freeze",
+        "worldborder set 16",
+        f"tp {WALKER} 6.5 {Y} {Z}",
+    )
+
+
+@pytest.mark.asyncio
+async def test_border_collision_walks_a_move_a_tick_in_a_window_of_its_own_for_each_walk() -> None:
+    windows = (await play(COLLISION_ID)).windows
+
+    assert [window.label for window in windows] == [opened(*COLLISION_PACKETS)] * len(WALKS)
+    assert [window.ticks for window in windows] == [len(xs) for _, xs in WALKS]
+    assert [window.before[-1:] for window in windows] == [
+        (f"tp {WALKER} {start} {Y} {Z}",) for start, _ in WALKS
+    ]
+
+
+@pytest.mark.asyncio
+async def test_border_collision_sends_each_move_before_the_step_that_should_see_it() -> None:
+    windows = (await play(COLLISION_ID)).windows
+
+    for window, (_, xs) in zip(windows, WALKS, strict=True):
+        assert [what for _, what in window.sent] == [item for x in xs for item in ((x, Y, Z), STEP)]
+        assert {who for who, _ in window.sent} == {WALKER, CONTROL}
+
+
+@pytest.mark.asyncio
+async def test_border_collision_puts_the_bot_and_the_border_back_and_unfreezes_last() -> None:
+    result = await play(COLLISION_ID)
+
+    assert result.after == (f"tp {WALKER} {SPAWN}", *UNDO, "tick unfreeze")
