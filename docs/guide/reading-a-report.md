@@ -208,12 +208,21 @@ later, before the next Group, fails that next Group instead, as
 `Candidate failed: 1 player still online after waiting 2 s: 'crafter'`,
 or makes it an `Error` if that server is vanilla.
 
+A server that crashes or closes the connection while a Group has its
+world frozen fails that Group, and mscts cannot unfreeze that world. The
+Group fails with what the connection did, such as `Candidate failed:
+ConnectionClosedError: the server closed the connection`, or is an
+`Error` if that server is vanilla. mscts sends that server no status
+request after the Group.
+
 In each of these cases, mscts stops both servers and starts them again
 before the next Group, so the two still have the same history. The line
 names only the server that failed, and the Group after which it did, such as
 `Restarted pumpkin after crafting/grid-ctrl-q, because it had 1 player
-still online after waiting 2 s: 'crafter'.` The Groups after it play on
-the new servers. A server restarted after the same Group in more than one
+still online after waiting 2 s: 'crafter'.` or `Restarted pumpkin after
+entities/pushing, because it could not be reached to unfreeze its world:
+ConnectionClosedError: the server closed the connection.` The Groups after
+it play on the new servers, so a crash fails only the Group it happened in. A server restarted after the same Group in more than one
 repetition has one line with the count, such as `Restarted pumpkin 5
 times after crafting/grid`.
 

@@ -167,9 +167,9 @@ class Restart:
             last played on it, or the one its player online before it failed (review A2).
         reason: Why, after "it": `did not answer a status request within 10 s`, `had 1
             player still online after waiting 2 s: 'crafter'`, `did not answer a status
-            request within 2 s while mscts waited for its players to leave`, or `lost the
-            connection before mscts could unfreeze its world: ConnectionClosedError: the
-            server closed the connection` (#531).
+            request within 2 s while mscts waited for its players to leave`, or `could not be
+            reached to unfreeze its world: ConnectionClosedError: the server closed the
+            connection` (#531).
     """
 
     after: str
@@ -1402,11 +1402,12 @@ def _restart_reason(left: Exception) -> str:
 
 
 def _lost_reason(lost: ConnectionError) -> str:
-    """Why an Instance whose unfreeze raised `lost` is restarted, after "it" (#531)."""
-    return (
-        "lost the connection before mscts could unfreeze its world: "
-        f"{_describe(lost, GROUP_TIMEOUT_S)}"
-    )
+    """Why an Instance whose unfreeze raised `lost` is restarted, after "it" (#531).
+
+    `lost` says how the connection went ("the connection was lost (connection reset by
+    peer)"), so the reason itself does not say "lost" again.
+    """
+    return f"could not be reached to unfreeze its world: {_describe(lost, GROUP_TIMEOUT_S)}"
 
 
 def _not_sampled(group: Group, reference: Samples | Exception, verdict: Verdict) -> Verdict:

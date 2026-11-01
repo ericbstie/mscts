@@ -2030,7 +2030,7 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # the Reference is waited on then. #531: except a launched Instance whose unfreeze
     # raised a ConnectionError (GroupError.unfreeze_failure: its process exited, or the
     # connection was closed, reset or refused): it gets a Restart(after=<this Group>,
-    # reason="lost the connection before mscts could unfreeze its world: <error>"), and
+    # reason="could not be reached to unfreeze its world: <Type>: <message>"), and
     # the pair is restarted before the next Group. A timeout or any other failure to
     # unfreeze, and any Attached Instance, stays unusable.
     # #266: when only the Candidate's side is not compared (unusable, or not empty), the
@@ -3090,9 +3090,8 @@ class Restart:                      # #513: an Instance stopped and launched aga
     reason: str                     # after "it": "did not answer a status request within 10 s",
                                     # "had 1 player still online after waiting 2 s: 'crafter'",
                                     # "did not answer a status request within 2 s while mscts
-                                    # waited for its players to leave", "lost the connection
-                                    # before mscts could unfreeze its world: <Type>: <message>"
-                                    # (#531)
+                                    # waited for its players to leave", "could not be reached
+                                    # to unfreeze its world: <Type>: <message>" (#531)
 
 @frozen
 class SideSummary:

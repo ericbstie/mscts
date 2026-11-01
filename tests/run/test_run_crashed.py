@@ -24,7 +24,7 @@ type MakeServer = Callable[..., Server]
 CRASHES = ("crash", "tick step 1")
 """control_fake.py's options for a fake that exits when its frozen world is stepped."""
 
-LOST = "lost the connection before mscts could unfreeze its world: ConnectionClosedError: "
+LOST = "could not be reached to unfreeze its world: ConnectionClosedError: "
 """How the Run says why it restarted an Instance that crashed in a frozen world."""
 
 
