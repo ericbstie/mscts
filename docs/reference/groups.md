@@ -634,6 +634,26 @@ nothing, and the readback carries the comparison. The windows compare only `set_
 `sound` or `entity_event`: a hit's sound and effects follow the attack charge, which grows in
 real time, so the same hit can differ from one play to the next.
 
+### Potion effects (`player_effects`)
+
+What a status effect sends a player when it is given, while it lasts and when it ends. A frozen
+world does not freeze a player, so a Bot's effects run in real time and stepping the world does
+not move them. Each window gives the effect, waits for the packet that ends it and closes at the
+barrier. What is compared is which packets the effect sends and in what order, not the tick each
+one comes on.
+
+Every part plays on normal difficulty with natural regeneration off, and clears the Bot's
+effects when it ends.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `player/effect-attributes` | exact | none | A Bot is given Speed I and II, Slowness, Strength, Haste and Jump Boost for 1 second, first with the particles hidden and then shown, in a window of its own each. | none |
+
+In `player/effect-attributes` each window holds the effect given, the attribute modifier it
+adds, the particle or ambience entity data, and the effect ending. Vanilla sends no attributes
+for Strength. A hidden effect's attributes come back 2 ticks after it ends, later than any other
+packet of the window, so the window waits for one more barrier after the end.
+
 ## Inventory (`inventory`)
 
 What a survival player sees when it is given items, clicks them about, drops them and swaps them between its hands. Each Group joins one Bot at the world spawn, looking down, with an empty inventory. `inventory/offhand` also joins a second Bot a few blocks away. Control freezes the world, so an item on the ground stays where it fell and counts down its pickup delay only on the ticks a Group steps. When a Group ends, Control removes the items it made and empties the Bot's inventory. Items that lay there before are tagged first and left alone.

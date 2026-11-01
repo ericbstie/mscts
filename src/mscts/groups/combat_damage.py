@@ -105,8 +105,8 @@ def damage_command(victim: str, source: Source, amount: float = _DAMAGE) -> str:
 
 
 @contextlib.asynccontextmanager
-async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
-    """Pin the join, stop natural healing, move Control away and put the marker down; undo it all.
+async def quiet_arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
+    """Pin the join, stop natural healing and move Control away; undo it all on the way out.
 
     Yields the stack of undos, for what the body sets: they run first, then these. Each undo runs
     even if another fails, and after the body however it ended.
@@ -117,8 +117,17 @@ async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitSta
         undo.push_async_callback(control.run, "gamerule natural_health_regeneration true")
         await control.run("gamerule natural_health_regeneration false")
         await control.run(f"tp {CONTROL_PLAYER} {CONTROL_AT}")
-        undo.push_async_callback(control.run, f"kill {_DAMAGER}")
-        await control.run(f'summon minecraft:marker {_DAMAGER_AT} {{Tags:["{_DAMAGER_TAG}"]}}')
+        yield undo
+
+
+@contextlib.asynccontextmanager
+async def _arena(context: GroupContext) -> AsyncIterator[contextlib.AsyncExitStack]:
+    """The quiet arena, with the marker put down; the marker goes first on the way out."""
+    async with quiet_arena(context) as undo:
+        undo.push_async_callback(context.control.run, f"kill {_DAMAGER}")
+        await context.control.run(
+            f'summon minecraft:marker {_DAMAGER_AT} {{Tags:["{_DAMAGER_TAG}"]}}'
+        )
         yield undo
 
 
@@ -285,9 +294,14 @@ _EFFECT_SECONDS = 1_000_000
 """How long an effect lasts: the most `/effect give` takes, so that it outlasts the window."""
 
 
-def effect_command(victim: str, effect: Effect) -> str:
-    """The command that gives `victim` the effect, with no particles."""
-    return f"effect give {victim} minecraft:{effect.name} {_EFFECT_SECONDS} {effect.amplifier} true"
+def effect_command(
+    victim: str, effect: Effect, *, seconds: int = _EFFECT_SECONDS, hide: bool = True
+) -> str:
+    """The command that gives `victim` the effect for `seconds`, with `hide` for its particles."""
+    return (
+        f"effect give {victim} minecraft:{effect.name} {seconds} {effect.amplifier} "
+        f"{str(hide).lower()}"
+    )
 
 
 @group("combat/effects", kind=GroupKind.TICK_EXACT, spec=_normal)
