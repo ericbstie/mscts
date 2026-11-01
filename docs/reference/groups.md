@@ -1003,6 +1003,7 @@ rule it changed is set back to vanilla's default.
 | --- | --- | --- | --- | --- |
 | `weather/commands` | tick-exact | none | The watcher runs `weather rain 600`, `weather thunder 600` and `weather clear`. After each command the world steps tick by tick: 30 ticks after rain and after thunder, and 62 after clear. One window holds each command and its feedback, and one window holds each run of steps. | none |
 | `weather/frozen` | tick-exact | none | The watcher runs `weather rain` in the frozen world, and the window stays open until three `set_time` have arrived after the feedback, at least 40 ticks of the wall clock. Then the world steps one tick in a window of its own. Vanilla sends no `game_event` until that step. | none |
+| `weather/advance` | tick-exact | none | With `advance_weather` off, the watcher runs `weather rain 10`, and the world steps 30 ticks, 20 past the tick the rain would end on. Vanilla counts no duration down while the rule is off, so the rain keeps rising. | none |
 
 A weather command only sets what the weather is heading for. The rain and thunder levels move
 0.01 a tick toward it, and the server sends a `game_event` on every tick a level moves: type 7
@@ -1013,7 +1014,8 @@ steps 62 ticks because thunder is gone after 30 and rain stops on tick 41, and t
 reaches 0 after 61.
 
 Every command gives a duration except `clear`, because a duration left out is drawn at random.
-With `advance_weather` off, nothing counts a duration down.
+With `advance_weather` off, which every Group here sets, nothing counts a duration down. The
+levels still move toward the weather.
 
 A frozen world does not run the weather cycle at all, so a weather command changes nothing the
 players are sent until the world runs again. A server that sends the rain at once differs in

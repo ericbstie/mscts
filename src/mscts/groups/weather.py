@@ -142,3 +142,24 @@ async def frozen(context: GroupContext) -> None:
     async with _frozen_calm(context) as watcher:
         await _rain_while_frozen(context, watcher)
         await _step_window(context, 1)
+
+
+# `weather/advance`: a rain that would end, in a world whose weather does not advance.
+
+_ADVANCE_DURATION = 10
+_ADVANCE_STEPS = 30
+"""A rain of 10 ticks, and the ticks stepped after it: it would end on the 10th, and rain passes
+0.2 on the 20th."""
+
+
+@group("weather/advance", spec=_operator, kind=GroupKind.TICK_EXACT)
+async def advance(context: GroupContext) -> None:
+    """With `advance_weather` off, a rain of 10 ticks is stepped on past its end.
+
+    `advance_weather` off skips only the count down of the weather's duration
+    (`ServerLevel.advanceWeatherCycle`): the levels still move 0.01 a tick, so the rain goes on
+    rising after the tick it would have ended.
+    """
+    async with _frozen_calm(context) as watcher:
+        await _command_window(context, watcher, f"weather rain {_ADVANCE_DURATION}")
+        await _step_window(context, _ADVANCE_STEPS)

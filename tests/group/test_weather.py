@@ -55,7 +55,7 @@ a Group that stops waiting for one too soon closes its window before the next co
 PLAY_TIMEOUT_S = 120.0
 """How long a fake serves a Bot: a whole play."""
 STEP = (CONTROL, "tick step 1")
-GROUP_IDS = ("weather/commands", "weather/frozen")
+GROUP_IDS = ("weather/commands", "weather/frozen", "weather/advance")
 
 CALM = (
     "gamerule player_movement_check false",
@@ -303,3 +303,27 @@ def test_frozen_holds_the_window_open_for_the_answer_and_3_set_time_that_follow(
     assert said < asks[0]
     assert len(times) >= 3
     assert asks[0] < closed_at
+
+
+# weather/advance
+
+
+@pytest.mark.timeout(300)
+def test_advance_runs_a_rain_of_10_ticks_in_a_window_and_steps_30_ticks_in_another() -> None:
+    result = played("weather/advance")
+
+    assert [w.label for w in result.windows] == [
+        opened(SYSTEM_CHAT, GAME_EVENT),
+        opened(GAME_EVENT),
+    ]
+    assert [w.sent for w in result.windows] == [((WATCHER, "weather rain 10"),), (STEP,) * 30]
+    assert result.windows[1].before == ()
+
+
+@pytest.mark.timeout(300)
+def test_advance_waits_in_the_command_window_for_the_watchers_answer() -> None:
+    transcript, _ = play("weather/advance")
+
+    opened_at, closed_at = windows(transcript)[0]
+    answers = [t for t in received(transcript, WATCHER, SYSTEM_CHAT) if opened_at < t < closed_at]
+    assert len(answers) == 1
