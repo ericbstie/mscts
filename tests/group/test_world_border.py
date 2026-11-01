@@ -224,3 +224,84 @@ async def test_border_commands_puts_the_border_and_the_rules_back_and_unfreezes_
     result = await play(COMMANDS_ID)
 
     assert result.after == ("tp warden 0.5 -60 0.5", *UNDO, "tick unfreeze")
+
+
+# `world/border-lerp`
+
+LERP_ID = "world/border-lerp"
+STEP = "tick step 1"
+SPAWN = "0.5 -60 0.5"
+GET = ["worldborder get"]
+
+
+def test_border_lerp_is_tick_exact_with_no_masks_and_the_warden_an_operator_on_normal() -> None:
+    group = GROUPS[LERP_ID]
+
+    assert group.kind is GroupKind.TICK_EXACT
+    assert group.requires == ()
+    assert group.masks == ()
+    assert specs(LERP_ID) == {"difficulty": Difficulty.NORMAL, "operators": (WARDEN,)}
+
+
+@pytest.mark.asyncio
+async def test_border_lerp_sets_a_border_of_20_once_the_world_is_frozen() -> None:
+    result = await play(LERP_ID)
+
+    assert result.first == (*SET_UP, "tick freeze", "worldborder set 20")
+
+
+@pytest.mark.asyncio
+async def test_border_lerp_starts_the_lerp_then_reads_the_size_after_each_of_12_steps() -> None:
+    # Two steps past the end of the lerp: the border has stopped, and says nothing more.
+    windows = (await play(LERP_ID)).windows
+
+    assert windows[0].by(WARDEN) == ["worldborder set 40 10"]
+    reads = [window for window in windows if window.by(WARDEN) == GET]
+    assert [window.before for window in reads] == [(STEP,)] * 12 + [()]
+
+
+@pytest.mark.asyncio
+async def test_border_lerp_steps_outside_every_window_that_compares_chat() -> None:
+    # An operator hears Control's `tick step` as admin chat.
+    windows = (await play(LERP_ID)).windows
+
+    chatty = [window for window in windows if window.label.startswith(opened(CHAT))]
+    assert chatty
+    assert [window.by(CONTROL) for window in chatty] == [[]] * len(chatty)
+    assert [window.ticks for window in chatty] == [0] * len(chatty)
+
+
+@pytest.mark.asyncio
+async def test_border_lerp_has_a_second_bot_join_in_a_border_window_after_the_fourth_step() -> None:
+    windows = (await play(LERP_ID)).windows
+
+    joined = windows[5]
+    assert joined.label == opened(*BORDER)
+    assert joined.by(WARDEN) == []
+    assert [window.by(WARDEN) for window in windows[1:5]] == [GET] * 4
+    assert windows[6].before == (STEP,)
+
+
+@pytest.mark.asyncio
+async def test_border_lerp_steps_the_shrinking_lerp_in_one_window_of_the_border_packets() -> None:
+    windows = (await play(LERP_ID)).windows
+
+    shrunk, stepped, read = windows[-3:]
+    assert shrunk.by(WARDEN) == ["worldborder set 10 10"]
+    assert stepped.label == opened(*BORDER)
+    assert stepped.by(CONTROL) == [STEP] * 12
+    assert stepped.ticks == 12
+    assert read.by(WARDEN) == GET
+    assert len(windows) == 17
+
+
+@pytest.mark.asyncio
+async def test_border_lerp_puts_the_bots_and_the_border_back_and_unfreezes_last() -> None:
+    result = await play(LERP_ID)
+
+    assert result.after == (
+        f"tp latecomer {SPAWN}",
+        f"tp warden {SPAWN}",
+        *UNDO,
+        "tick unfreeze",
+    )

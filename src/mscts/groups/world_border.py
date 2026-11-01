@@ -16,8 +16,8 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 
 from mscts.bot import Bot
-from mscts.group import Control, GroupContext, group
-from mscts.groups._world import join_at_spawn, normal, pin_joins
+from mscts.group import Control, GroupContext, GroupKind, group
+from mscts.groups._world import SPAWN_AT, join_at_spawn, normal, pin_joins
 from mscts.spec import CONTROL_PLAYER, ServerSpec
 
 _WARDEN = "warden"
@@ -117,3 +117,76 @@ async def border_commands(context: GroupContext) -> None:
         await context.freeze()
         for command in _COMMANDS:
             await _command_window(context, warden, command)
+
+
+# `world/border-lerp`
+
+_GROW_TICKS = 10
+"""How many ticks the border takes to grow from 20 to 40: 2 blocks a tick."""
+
+_SHRINK_TICKS = 10
+
+_EXTRA_STEPS = 2
+"""Steps past the end of a lerp: the border has stopped, and nothing more is sent."""
+
+_LATE_JOIN_AFTER = 4
+"""After how many steps of the growth the latecomer joins."""
+
+_LATECOMER = "latecomer"
+
+_GET = "worldborder get"
+
+
+async def _join_late(context: GroupContext, undo: contextlib.AsyncExitStack) -> None:
+    """A second Bot joins in a window of the border packets, in the middle of the lerp.
+
+    It is told where the lerp is: `initialize_border` has the size now as its old size and the
+    ticks left as its lerp time.
+    """
+    latecomer = await context.bot(_LATECOMER)
+    undo.push_async_callback(context.control.run, f"tp {_LATECOMER} {SPAWN_AT}")
+    async with context.observe(*_BORDER):
+        await latecomer.join()
+
+
+async def _read_each_step(
+    context: GroupContext, undo: contextlib.AsyncExitStack, warden: Bot
+) -> None:
+    """Step the lerp's ticks and two more, one at a time; the warden reads the size after each.
+
+    Control's `tick step` stays outside every window: an operator hears it as admin chat.
+    """
+    for step in range(1, _GROW_TICKS + _EXTRA_STEPS + 1):
+        await context.step()
+        await _command_window(context, warden, _GET)
+        if step == _LATE_JOIN_AFTER:
+            await _join_late(context, undo)
+
+
+async def _shrink(context: GroupContext, warden: Bot) -> None:
+    """Start a shrinking lerp, step it in one window of the border packets, and read the size.
+
+    A server that sends the border on each tick of a lerp differs in the window.
+    """
+    await _command_window(context, warden, f"worldborder set 10 {_SHRINK_TICKS}")
+    async with context.observe(*_BORDER):
+        await context.step(_SHRINK_TICKS + _EXTRA_STEPS)
+    await _command_window(context, warden, _GET)
+
+
+@group("world/border-lerp", kind=GroupKind.TICK_EXACT, spec=_operator)
+async def border_lerp(context: GroupContext) -> None:
+    """A border of 20 grows to 40 over 10 ticks, read after each step; then shrinks to 10.
+
+    Vanilla moves the border on the world's clock: `ServerLevel.tick` ticks it only when the
+    world runs normally, and each tick takes one off the ticks left (`MovingBorderExtent.update`).
+    So the border reads 22, 24 ... 40 after each step of a frozen world. No packet comes on any
+    tick of the lerp, or when it ends.
+    """
+    async with _fixture(context) as undo:
+        warden = await join_at_spawn(context, undo, _WARDEN)
+        await context.freeze()
+        await context.control.run("worldborder set 20")
+        await _command_window(context, warden, f"worldborder set 40 {_GROW_TICKS}")
+        await _read_each_step(context, undo, warden)
+        await _shrink(context, warden)

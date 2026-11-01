@@ -862,6 +862,7 @@ there.
 | Id | Kind | Requires | What it does | Measurements |
 | --- | --- | --- | --- | --- |
 | `world/border-commands` | exact | none | A Bot called `warden`, an operator, runs `worldborder set 20`, `set 40 5`, `center 10 10`, `warning distance 3`, `warning time 5`, `damage amount 1`, `damage buffer 2` and `get`, each in a window of its own. A window holds the border packet the command makes and the warden's feedback. Vanilla reads a number of time with no unit as ticks, so `set 40 5` is a lerp of 5 ticks, not 5 seconds, and `center 10 10` centres the border on 10.5, 10.5. `get` reads 20, because the world is frozen in the middle of the lerp. The two damage commands send chat only. | none |
+| `world/border-lerp` | tick-exact | none | A border of 20 grows to 40 over 10 ticks. After each of 12 steps, the 10 of the lerp and 2 more, the warden reads the size with `worldborder get` in a window of its own. After the 4th step a second Bot joins, in a window of the border packets, in the middle of the lerp. Then the border shrinks to 10 over 10 ticks, the world steps 12 ticks in one window of the border packets, and the warden reads the size again. Vanilla moves the border on the world's clock: it stands still in a frozen world, advances one tick for each tick stepped, and `get` reads 22, 24, up to 40, and 40 after that. It sends no packet on any tick of the lerp, or when the lerp ends. The second Bot is sent where the border is and the ticks it has left: from 28 to 40 with 6 ticks left. | none |
 
 ## Redstone (`redstone`)
 
