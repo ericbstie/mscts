@@ -41,6 +41,12 @@ EFFECT_TICKS = 5
 that closed without waiting for the end would not hold it."""
 TIME_TICKS = 10
 """How many ticks apart the fake sends `set_time`."""
+HEALTH_LATE_TICKS = 6
+"""How many ticks after it ends an instant effect the fake sends the health: more than two
+barriers, so a window that closed at the barrier after the end alone would not hold it."""
+ZOMBIE_LATE_TICKS = 4
+"""How many ticks after the summon the fake tells the players of the zombie: more than a window's
+opening barrier, so a window that opened without waiting to be told of it would hold the news."""
 ZOMBIE_TAG = "mscts_effected"
 ZOMBIE_ID = 500
 CORPSE_TICKS = 20
@@ -117,7 +123,8 @@ class EffectServer(PlayerServer):
         if words[:2] == ["effect", "give"] and words[2] in self.players:
             self.later.add(asyncio.create_task(self._end(words[2], words[3])))
         elif words[0] == "summon":
-            await self._summon(*(float(word) for word in words[2:5]))
+            where = (float(word) for word in words[2:5])
+            self.later.add(asyncio.create_task(self._summon(*where)))
         elif command.startswith(f"kill @e[tag={ZOMBIE_TAG}"):
             self.later.add(asyncio.create_task(self._remove_zombie()))
         else:
@@ -126,18 +133,20 @@ class EffectServer(PlayerServer):
     async def _end(self, name: str, effect: str) -> None:
         """Tell the player `name` its effect has ended, `EFFECT_TICKS` ticks after the give.
 
-        An instant effect also changes the health, in the same tick.
+        An instant effect also changes the health, `HEALTH_LATE_TICKS` later.
         """
         await asyncio.sleep(EFFECT_TICKS * TICK_S)
         with suppress(ConnectionError):
             await self.players[name].send(REMOVED, entity_id=ENTITY_ID, effect=0)
             if effect.startswith("minecraft:instant_"):
+                await asyncio.sleep(HEALTH_LATE_TICKS * TICK_S)
                 await self.players[name].send(
                     "minecraft:set_health", health=14.0, food=20, saturation=5.0
                 )
 
     async def _summon(self, x: float, y: float, z: float) -> None:
-        """Tell every player but Control of the zombie at `x`, `y`, `z`."""
+        """Tell every player but Control of the zombie at `x`, `y`, `z`, `ZOMBIE_LATE_TICKS` on."""
+        await asyncio.sleep(ZOMBIE_LATE_TICKS * TICK_S)
         for name, player in self.players.items():
             if name != CONTROL:
                 await player.send("minecraft:add_entity", **_entity(ZOMBIE, x, y, z))
@@ -507,6 +516,10 @@ def test_instant_summons_the_zombie_after_the_bots_last_respawn_and_waits_to_be_
     told = read_times(transcript, INSTANT_BOT, "minecraft:add_entity")
     assert len(told) == 1
     assert summoned < told[0] < opens[4]
+    # the news comes after the Bot's first look, so it passes a barrier of its own besides the
+    # one that opens the window
+    asked = sum(summoned < t < opens[4] for t in requests_times(transcript, INSTANT_BOT))
+    assert asked > SYNC_REQUESTS
 
 
 def test_instant_waits_until_the_bot_is_told_the_zombie_is_gone_before_it_leaves() -> None:
