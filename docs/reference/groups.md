@@ -990,6 +990,30 @@ spawn point only the first time a player sleeps, so Control takes both back befo
 lies down. Control steps the world to dawn inside a window, and an operator sees Control's
 commands as chat, so the clock is no operator during that step.
 
+## Weather (`weather`)
+
+When rain and thunder start and stop after a weather command, and what a frozen world does with
+them. Each Group joins a Bot called `watcher`, an operator, which runs the weather commands
+itself, because only the feedback of a Bot in a window is compared. Control stops the weather
+cycle (`advance_weather`), clears the sky, lets a storm fade and freezes the world, so the sky
+changes only on the ticks Control steps. When a Group ends, the weather is cleared and every
+rule it changed is set back to vanilla's default.
+
+| Id | Kind | Requires | What it does | Measurements |
+| --- | --- | --- | --- | --- |
+| `weather/commands` | tick-exact | none | The watcher runs `weather rain 600`, `weather thunder 600` and `weather clear`. After each command the world steps tick by tick: 30 ticks after rain and after thunder, and 62 after clear. One window holds each command and its feedback, and one window holds each run of steps. | none |
+
+A weather command only sets what the weather is heading for. The rain and thunder levels move
+0.01 a tick toward it, and the server sends a `game_event` on every tick a level moves: type 7
+for the rain level and type 8 for the thunder level. When the rain level passes 0.2 the server
+also sends type 1 (rain starts), and when it falls to 0.2 or below, type 2 (rain stops). Each
+is followed by types 7 and 8 again. The windows compare these in the order they come. `clear`
+steps 62 ticks because thunder is gone after 30 and rain stops on tick 41, and the rain level
+reaches 0 after 61.
+
+Every command gives a duration except `clear`, because a duration left out is drawn at random.
+With `advance_weather` off, nothing counts a duration down.
+
 ## Planned
 
 | Mechanic | First Group | Needs |

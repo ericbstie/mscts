@@ -28,6 +28,7 @@ from mscts.groups import (
     spawn,
     status,
     time,
+    weather,
 )
 
 __all__ = [
@@ -58,4 +59,5 @@ __all__ = [
     "spawn",
     "status",
     "time",
+    "weather",
 ]
