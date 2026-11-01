@@ -651,6 +651,7 @@ effects when it ends.
 | `player/effect-attributes` | exact | none | A Bot is given Speed I and II, Slowness, Strength, Haste and Jump Boost for 1 second, first with the particles hidden and then shown, in a window of its own each. | none |
 | `player/effect-ticking` | exact | none | A Bot at 6 health is given Regeneration I and II, Poison I and II and Wither I for 5 seconds with the particles hidden, in a window of its own each. | none |
 | `player/effect-instant` | tick-exact | none | A Bot at 10 health is given Instant Health I and II and Instant Damage I, then a zombie that stands still is given them, with the particles hidden and shown, in a window of its own each. | none |
+| `player/effect-visibility` | exact | none | A second Bot is given Invisibility and Glowing, with the particles hidden and shown, while the first Bot stands beside it. Each effect is given in one window and cleared with `/effect clear` in another. | none |
 
 In `player/effect-attributes` each window holds the effect given, the attribute modifier it
 adds, the particle or ambience entity data, and the effect ending. Vanilla sends no attributes
@@ -681,6 +682,13 @@ first and none for the other two. The Bot is told of the zombie before the first
 zombie is summoned after the Bot's last respawn, because after a respawn vanilla was once seen
 never to send the Bot the zombie. A Candidate whose `/effect` gives to players only leaves
 the zombie's windows empty.
+
+In `player/effect-visibility` the effect lasts the most `/effect give` takes, so that it outlasts
+its window. Vanilla sends the effect to the Bot that has it and to no one else. In the next tick it
+sends both Bots the same entity data, the shared flags (32 for invisible, 64 for glowing) and the
+particles or ambience. `/effect clear` sends the removal at once and sets the flags to 0 a tick
+later. Before the first window the first Bot passes up to four barriers until it is told of the
+second, so that the Group does not start before the two see each other.
 
 ## Inventory (`inventory`)
 

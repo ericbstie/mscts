@@ -7,4 +7,7 @@ HUSK = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("
 ZOMBIE = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:zombie")
 
 
+PLAYER = registry_names(TARGET.minecraft_version, "minecraft:entity_type").index("minecraft:player")
+
+
 NONE_LEFT = "commands.execute.conditional.fail"

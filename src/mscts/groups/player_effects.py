@@ -245,3 +245,50 @@ async def effect_instant(context: GroupContext) -> None:
         await control.run(_SUMMON.format(x=x, y=y, z=z, tag=_ZOMBIE_TAG))
         await find_when_tracked(bot, "minecraft:zombie", _ZOMBIE_AT)
         await _instants_on_the_zombie(context)
+
+
+# `player/effect-visibility`: Invisibility and Glowing on a Bot, as another Bot sees it.
+
+_VISIBILITY_EFFECTS = (
+    (Effect("invisibility", 0), True),
+    (Effect("invisibility", 0), False),
+    (Effect("glowing", 0), True),
+    (Effect("glowing", 0), False),
+)
+"""Each with its particles hidden or shown."""
+
+_SEEN_SYNCS = 4
+"""How many barriers the watcher passes at most for the vanilla server to tell it of the other
+Bot, which a player in view is sent a tick or two after it joins."""
+
+
+async def _until_tracked(watcher: Bot, seen: Bot) -> None:
+    """Pass barriers until `watcher` tracks the player `seen`, at most `_SEEN_SYNCS` of them.
+
+    A server that never shows the Bot goes on: the windows then show the difference.
+    """
+    for _ in range(_SEEN_SYNCS):
+        if seen.entity_id in watcher.entities:
+            return
+        await watcher.sync()
+
+
+@group("player/effect-visibility", spec=normal)
+async def effect_visibility(context: GroupContext) -> None:
+    """Two Bots stand together; the second is given Invisibility and Glowing, then cleared.
+
+    Each give and each clear is a window, whose packets both Bots are compared on: the effect is
+    sent to the Bot that has it only, and the flags in the entity data to both. The effect lasts
+    the most `/effect give` takes, so that it outlasts the window.
+    """
+    control = context.control
+    async with quiet_arena(context) as undo:
+        watcher = await _effected(context, undo, "watcher")
+        seen = await _effected(context, undo, "seen")
+        await context.freeze()
+        await _until_tracked(watcher, seen)
+        for effect, hide in _VISIBILITY_EFFECTS:
+            async with context.observe(*PACKETS):
+                await control.run(effect_command(seen.name, effect, hide=hide))
+            async with context.observe(*PACKETS):
+                await control.run(f"effect clear {seen.name}")

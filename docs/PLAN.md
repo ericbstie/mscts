@@ -1269,9 +1269,9 @@ def free_endpoint() -> Endpoint: ... # one Instance's own Endpoint: a random hos
   `player/regeneration`, `player/starvation`, `player/eating` and `player/exhaustion`
   scripts.
 - `groups.player_effects`: `PACKETS` — what a window compares (the effects given and taken, the
-  attributes, the entity data and the health); `effect_attributes`, `effect_ticking` and
-  `effect_instant` — the `player/effect-attributes`, `player/effect-ticking` and
-  `player/effect-instant` scripts.
+  attributes, the entity data and the health); `effect_attributes`, `effect_ticking`,
+  `effect_instant` and `effect_visibility` — the `player/effect-attributes`,
+  `player/effect-ticking`, `player/effect-instant` and `player/effect-visibility` scripts.
 - `groups.inventory`: `DROP_MASKS` — the Masks on how an item a player drops moves and faces;
   `PICKUP_PITCH` — the Mask on the pitch of the pickup sound `/give` plays; `GIVE_PACKETS` —
   what a give window compares; `GIVES` — the items and counts given, one window each; `give` —

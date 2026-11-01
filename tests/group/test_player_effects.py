@@ -17,7 +17,7 @@ import pytest
 from support.bot_join import ENTITY_ID, LOGIN
 from support.control import CLIENT_COMMAND, CONTROL, playing, tree
 from support.control_play import Play, read
-from support.mobs import ZOMBIE
+from support.mobs import PLAYER, ZOMBIE
 from support.player_server import PERFORM_RESPAWN, PlayerServer
 from support.window import window_since
 
@@ -31,6 +31,7 @@ from mscts.transcript import Event, Transcript
 from tests.net.fakes import TICK_S, JoinScript, Peer, join_server
 
 EFFECTED = "effected"
+WATCHER, SEEN = "watcher", "seen"
 REMOVED = "minecraft:remove_mob_effect"
 SET_TIME = "minecraft:set_time"
 RESPAWN_ASKED = {"action": PERFORM_RESPAWN}
@@ -50,12 +51,35 @@ def _login(peer: Peer) -> bytes:
     return peer.frame("minecraft:login", **LOGIN)
 
 
+def _entity(type_id: int, x: float, y: float, z: float) -> dict[str, object]:
+    """The fields of an `add_entity` for an entity of type `type_id` at x, y, z.
+
+    The entity gets the id of the zombie, or of the player that vanilla's `login` names.
+    """
+    entity_id = ENTITY_ID if type_id == PLAYER else ZOMBIE_ID
+    return {
+        "entity_id": entity_id,
+        "entity_uuid": uuid.UUID(int=entity_id),
+        "type": type_id,
+        "x": x,
+        "y": y,
+        "z": z,
+        "velocity": {"scale": 0, "x": 0, "y": 0, "z": 0},
+        "pitch": 0,
+        "yaw": 0,
+        "head_yaw": 0,
+        "data": 0,
+    }
+
+
 @dataclass
 class EffectServer(PlayerServer):
     """A fake player server that ends every effect it is given, `EFFECT_TICKS` ticks later."""
 
     later: set[asyncio.Task[None]] = field(default_factory=set)
     """The ends of the effects still to be sent."""
+    shows: bool = False
+    """Whether the watcher is told of the player `seen` as it joins."""
 
     @override
     async def __call__(self, peer: Peer) -> None:
@@ -68,9 +92,18 @@ class EffectServer(PlayerServer):
     async def _play(self, peer: Peer) -> None:
         clock = asyncio.create_task(self._tick(peer))
         try:
+            if self.shows and self._joined() == SEEN and WATCHER in self.players:
+                await self.players[WATCHER].send(
+                    "minecraft:add_entity", **_entity(PLAYER, 0.5, -60.0, 0.5)
+                )
             await super()._play(peer)
         finally:
             clock.cancel()
+
+    def _joined(self) -> str:
+        """The name of the player that has just said hello."""
+        hellos = [p for p in self.seen if p.name == "minecraft:hello"]
+        return str((hellos[-1].fields or {})["name"])
 
     async def _tick(self, peer: Peer) -> None:
         with suppress(ConnectionError):
@@ -107,20 +140,7 @@ class EffectServer(PlayerServer):
         """Tell every player but Control of the zombie at `x`, `y`, `z`."""
         for name, player in self.players.items():
             if name != CONTROL:
-                await player.send(
-                    "minecraft:add_entity",
-                    entity_id=ZOMBIE_ID,
-                    entity_uuid=uuid.UUID(int=ZOMBIE_ID),
-                    type=ZOMBIE,
-                    x=x,
-                    y=y,
-                    z=z,
-                    velocity={"scale": 0, "x": 0, "y": 0, "z": 0},
-                    pitch=0,
-                    yaw=0,
-                    head_yaw=0,
-                    data=0,
-                )
+                await player.send("minecraft:add_entity", **_entity(ZOMBIE, x, y, z))
 
     async def _remove_zombie(self) -> None:
         """Tell every player but Control the zombie is gone, `CORPSE_TICKS` after the kill."""
@@ -239,6 +259,7 @@ KINDS = {
     "player/effect-attributes": GroupKind.EXACT,
     "player/effect-ticking": GroupKind.EXACT,
     "player/effect-instant": GroupKind.TICK_EXACT,
+    "player/effect-visibility": GroupKind.EXACT,
 }
 """Each Group's kind: exact when every window is the Bot's, which a frozen world does not
 freeze, and tick-exact when a window steps a mob."""
@@ -494,3 +515,58 @@ def test_instant_waits_until_the_bot_is_told_the_zombie_is_gone_before_it_leaves
     [gone] = read_times(transcript, INSTANT_BOT, "minecraft:remove_entities")
     [leaves] = command_times(transcript, f"tp {INSTANT_BOT} 0.5 -60 0.5")
     assert gone < leaves
+
+
+# `player/effect-visibility`
+
+VISIBILITY = "player/effect-visibility"
+VISIBILITY_GIVES = [
+    f"effect give {SEEN} minecraft:{name} 1000000 0 {hide}"
+    for name, hide in (
+        ("invisibility", "true"),
+        ("invisibility", "false"),
+        ("glowing", "true"),
+        ("glowing", "false"),
+    )
+]
+CLEAR = f"effect clear {SEEN}"
+
+
+def test_visibility_joins_both_bots_before_the_world_is_frozen_and_undoes_for_both() -> None:
+    result = play(VISIBILITY)[1]
+
+    assert result.first == (*SET_UP, "tick freeze")
+    assert result.after == (
+        f"effect clear {SEEN}",
+        f"tp {SEEN} 0.5 -60 0.5",
+        f"effect clear {WATCHER}",
+        f"tp {WATCHER} 0.5 -60 0.5",
+        *UNDO,
+    )
+
+
+def test_visibility_gives_each_effect_then_clears_it_a_window_each() -> None:
+    result = play(VISIBILITY)[1]
+
+    assert [window.label for window in result.windows] == [opened(*PACKETS)] * 8
+    assert [window.commands for window in result.windows] == [
+        (command,) for give in VISIBILITY_GIVES for command in (give, CLEAR)
+    ]
+    assert [window.before for window in result.windows][1:] == [()] * 7
+
+
+def barriers_before_the_first_window(transcript: Transcript, bot: str) -> int:
+    """How many statistics requests `bot` sent between the freeze and the first window."""
+    [frozen] = command_times(transcript, "tick freeze")
+    first = min(m.t_ns for m in transcript.marks if m.label.startswith(OBSERVE_OPEN))
+    return sum(frozen < t < first for t in requests_times(transcript, bot))
+
+
+def test_visibility_waits_for_the_watcher_to_track_the_other_bot_for_up_to_four_barriers() -> None:
+    never = barriers_before_the_first_window(play(VISIBILITY)[0], WATCHER)
+    transcript, _ = replay(VISIBILITY, EffectServer(shows=True))
+    shown = barriers_before_the_first_window(transcript, WATCHER)
+
+    # the window's own barrier comes last
+    assert shown == SYNC_REQUESTS
+    assert never == 5 * SYNC_REQUESTS
