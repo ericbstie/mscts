@@ -1,11 +1,13 @@
-"""A fake Adapter for Run tests: its Instances are status_fake.py processes."""
+"""A fake Adapter for Run tests: its Instances are status_fake.py or control_fake.py processes."""
 
 import contextlib
+import os
 import sys
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import mscts
 from mscts.adapters.base import Build, Installation, LaunchPlan, Net
 from mscts.bot import status_probe
 from mscts.net import Endpoint
@@ -15,7 +17,14 @@ from mscts.spec import ServerSpec
 from mscts.target import TARGET, Target
 
 STATUS_FAKE = Path(__file__).with_name("status_fake.py")
+CONTROL_FAKE = Path(__file__).with_name("control_fake.py")
 TOKEN_VAR = "MSCTS_RUN_TOKEN"  # noqa: S105 - an env var name, not a secret
+
+_TESTS = Path(__file__).parents[1]
+_PLAY_PATH = os.pathsep.join(
+    str(path) for path in (Path(mscts.__file__).parents[1], _TESTS, _TESTS.parent)
+)
+"""control_fake.py's PYTHONPATH: the mscts these tests import, `support`, then `tests`."""
 
 
 @dataclass
@@ -26,7 +35,9 @@ class FakeAdapter:
     Every ServerSpec it prepares is kept in `prepared`. Given `hangs_after_ping`, each of
     its Instances hangs after it pongs a ping of that payload (status_fake.py); given
     `lingers_after_ping`, each keeps a player online after it. The Instances it prepares
-    `fails_launch` (counting from 1) exit with code 3 at once.
+    `fails_launch` (counting from 1) exit with code 3 at once. Given `plays`, its Instances
+    are tests/run/control_fake.py processes instead, which a Group's Control can join, with
+    `plays` as their options (`("crash", "tick step 1")`), and answer the status as vanilla.
     """
 
     name: str
@@ -35,6 +46,7 @@ class FakeAdapter:
     hangs_after_ping: int | None = None
     lingers_after_ping: int | None = None
     fails_launch: frozenset[int] = frozenset[int]()
+    plays: tuple[str, ...] | None = None
     prepared: list[ServerSpec] = field(default_factory=list)
     binary: str = "status_fake.py"
     latest_aliases: frozenset[str] = frozenset[str]()
@@ -52,22 +64,24 @@ class FakeAdapter:
         assert installation.adapter == self.name
         workdir.mkdir(parents=True)
         self.prepared.append(spec)
-        description = self.description if self.description is not None else spec.motd
-        serve = (str(STATUS_FAKE), spec.host, str(spec.port), description, *self._options())
-        fails = ("-c", "raise SystemExit(3)")
         return LaunchPlan(
-            # -I -S: isolated and without site, so it starts fast and sees only its env.
-            argv=(
-                sys.executable,
-                "-I",
-                "-S",
-                *(fails if len(self.prepared) in self.fails_launch else serve),
-            ),
+            argv=(sys.executable, *self._fake(spec)),
             cwd=workdir,
-            env={TOKEN_VAR: self.token},
+            env={TOKEN_VAR: self.token, "PYTHONPATH": _PLAY_PATH},
             endpoint=Endpoint(spec.host, spec.port),
             stop_stdin=b"stop\n",
         )
+
+    def _fake(self, spec: ServerSpec) -> tuple[str, ...]:
+        """The Python arguments of the Instance of `spec` this Adapter prepared last."""
+        if len(self.prepared) in self.fails_launch:
+            return ("-I", "-S", "-c", "raise SystemExit(3)")
+        if self.plays is not None:
+            return (str(CONTROL_FAKE), spec.host, str(spec.port), *self.plays)
+        description = self.description if self.description is not None else spec.motd
+        # -I -S: isolated and without site, so it starts fast and sees only its env.
+        serve = (str(STATUS_FAKE), spec.host, str(spec.port), description, *self._options())
+        return ("-I", "-S", *serve)
 
     def _options(self) -> tuple[str, ...]:
         """status_fake.py's options for what its Instances do after a ping: `hang 513`."""

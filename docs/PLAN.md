@@ -1561,6 +1561,8 @@ class GroupContext:
     async def close(self) -> None: ...   # unfreezes if still frozen (logged, not raised, and
                                     # sets left_frozen: #228), then closes every Bot; idempotent
     left_frozen: bool               # #228: end() or close() could not unfreeze the world
+                                    # (property: unfreeze_failure is not None)
+    unfreeze_failure: BaseException | None = None   # #531: what that unfreeze raised
     def raised_by(self, error: BaseException) -> str: ...   # the Bot `error` came out of: the
                                     # one whose bot() connect raised it, or whose `failure`
                                     # it is; "" if none (the script itself raised it)
@@ -1890,6 +1892,8 @@ class GroupError(Exception):        # the Group raised against one Instance; __c
     transcript: Transcript          # what it raised; str() describes it ("TimeoutError: ...")
     bot: str = ""                   # the Bot it came out of (GroupContext.raised_by)
     left_frozen: bool = False       # #228: GroupContext.left_frozen: the Instance is unusable
+    unfreeze_failure: BaseException | None = None   # #531: GroupContext.unfreeze_failure;
+                                    # a ConnectionError restarts a launched Instance instead
 
 @frozen
 class Server:                       # one side of a Run
@@ -1959,7 +1963,9 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # One Instance pair per distinct ServerSpec the Groups' `spec`
     # make, each side at its own free_endpoint(), launched together when first needed,
     # readiness by status_probe, kept for every repetition, stopped however the Run ends.
-    # #513: once a Group is played, each launched Instance that played it gets one
+    # #513: once a Group is played, each launched Instance that played it, and is not
+    # already due a restart (#531: a wait between a statistical Group's plays raised, or
+    # the Group's unfreeze lost the connection, which failed it already), gets one
     # status_probe(TARGET, timeout_s=ANSWER_TIMEOUT_S), both sides at once; any answer
     # counts (a ProtocolError or CodecError too). The Reference giving none makes the
     # Verdict `error` ("the Reference gave no answer to a status request within 10 s after
@@ -2021,7 +2027,12 @@ async def run(groups: Sequence[Group], reference: Side, candidate: Side, *,
     # after a "; " if both are). Only the Candidate's: each is `mismatch`, led by a
     # `failed` Divergence "<group id> left its world frozen", so the Score
     # counts it (an `error` is not scored, and would reward breaking the world); only
-    # the Reference is waited on then.
+    # the Reference is waited on then. #531: except a launched Instance whose unfreeze
+    # raised a ConnectionError (GroupError.unfreeze_failure: its process exited, or the
+    # connection was closed, reset or refused): it gets a Restart(after=<this Group>,
+    # reason="lost the connection before mscts could unfreeze its world: <error>"), and
+    # the pair is restarted before the next Group. A timeout or any other failure to
+    # unfreeze, and any Attached Instance, stays unusable.
     # #266: when only the Candidate's side is not compared (unusable, or not empty), the
     # Group is played on the Reference alone, and its `mismatch` lists the test cases of
     # compare(reference, reference, masks), which the Report fails, as for #262; the
@@ -3079,7 +3090,9 @@ class Restart:                      # #513: an Instance stopped and launched aga
     reason: str                     # after "it": "did not answer a status request within 10 s",
                                     # "had 1 player still online after waiting 2 s: 'crafter'",
                                     # "did not answer a status request within 2 s while mscts
-                                    # waited for its players to leave"
+                                    # waited for its players to leave", "lost the connection
+                                    # before mscts could unfreeze its world: <Type>: <message>"
+                                    # (#531)
 
 @frozen
 class SideSummary:
