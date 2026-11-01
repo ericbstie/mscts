@@ -845,6 +845,148 @@ changing or the client being told to wait for the chunks around it.
 
 The world border's centre, size and warning distances.
 
+## `initialize_border.absolute_max_size`
+
+**Border size limit**
+
+The largest size the border can be set to. A difference changes the largest size a
+command can give it.
+
+## `initialize_border.center_x`
+
+**Whole border centre x**
+
+Where the border's centre is along x, sent with the whole border when a player joins or
+respawns. A difference puts the border on another side of the world.
+
+## `initialize_border.center_z`
+
+**Whole border centre z**
+
+Where the border's centre is along z, sent with the whole border when a player joins or
+respawns. A difference puts the border on another side of the world.
+
+## `initialize_border.lerp_time`
+
+**Whole border ticks left to move**
+
+How many ticks the border still has to move from its size now to its new size, when a
+player joins in the middle of a change. 0 when the border is not moving. A difference
+shows the border reaching its new size sooner or later.
+
+## `initialize_border.new_size`
+
+**Whole border size it moves to**
+
+The size the border has or is moving to, sent with the whole border. A difference shows
+a border of another size.
+
+## `initialize_border.old_size`
+
+**Whole border size now**
+
+The size the border has when a player joins or respawns. When the border is not moving,
+it is the same as the size it moves to. A difference starts the border's change from
+another size.
+
+## `initialize_border.warning_blocks`
+
+**Whole border warning distance**
+
+How close to the border a player must be for the screen to turn red, sent with the whole
+border.
+
+## `initialize_border.warning_time`
+
+**Whole border warning time**
+
+The border's warning time in ticks, sent with the whole border. The screen turns red
+when a moving border could cover the distance to the player within that time.
+
+## `set_border_center`
+
+**Border centre change**
+
+The server moves the border's centre. A server that leaves it out leaves the border where
+it was.
+
+## `set_border_center.center_x`
+
+**Border centre change x**
+
+Where the border's centre moves to along x.
+
+## `set_border_center.center_z`
+
+**Border centre change z**
+
+Where the border's centre moves to along z.
+
+## `set_border_lerp_size`
+
+**Border size lerp**
+
+The server starts to change the border's size over some ticks. The client moves its own
+copy of the border one tick at a time, so the server sends nothing more until the change
+ends.
+
+## `set_border_lerp_size.lerp_time`
+
+**Border size lerp ticks**
+
+How many ticks the change takes. A server that counts in another unit makes the border
+move faster or slower.
+
+## `set_border_lerp_size.new_size`
+
+**Border size lerp target**
+
+The size the border is changing to.
+
+## `set_border_lerp_size.old_size`
+
+**Border size lerp start**
+
+The size the border has when the change starts.
+
+## `set_border_size`
+
+**Border size change**
+
+The server sets the border's size at once. A server that leaves it out leaves the border
+at its old size.
+
+## `set_border_size.size`
+
+**Border size set**
+
+The size the border takes at once.
+
+## `set_border_warning_delay`
+
+**Border warning time change**
+
+The server changes the border's warning time, in ticks. The screen turns red when a
+moving border could cover the distance to the player within that time.
+
+## `set_border_warning_delay.warning_delay`
+
+**Border warning time**
+
+The border's warning time in ticks.
+
+## `set_border_warning_distance`
+
+**Border warning distance change**
+
+The server changes how close to the border a player must be for the screen to turn red.
+
+## `set_border_warning_distance.warning_blocks`
+
+**Border warning distance**
+
+The distance from the border, in blocks, within which the screen turns red.
+
 ## `level_chunk_with_light`
 
 **Chunk**
