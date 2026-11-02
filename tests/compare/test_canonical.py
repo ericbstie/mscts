@@ -14,7 +14,7 @@ from support.compared import PUMPKIN_NIGHTLY, VANILLA, status
 from support.play import CLIENTBOUND
 from support.text_nbt import Writable, nbt, wrapped
 
-from mscts.codec.nbt import Numeric
+from mscts.codec.nbt import Array, Numeric
 from mscts.codec.packets import Codec, Packet, State
 from mscts.compare import ABSENT, Divergence, Mask, Observability, Verdict, compare
 from tests.compare.build import divergence, packet, transcript
@@ -761,6 +761,45 @@ def test_another_hover_events_value_stays() -> None:
         ),
     )
     assert [d.path for d in verdict.gameplay] == ["reason.hover_event.value"]
+
+
+def test_a_kick_reason_with_a_string_the_client_refuses_is_compared_as_its_bytes() -> None:
+    four_byte_form = b"\x08\x00\x04\xf0\x9f\x98\x80"  # readUTF refuses UTF-8's 4-byte form
+    verdict = _compared(
+        "minecraft:disconnect", _disconnect(nbt("kick")), _disconnect(four_byte_form)
+    )
+    assert _shown(verdict.gameplay) == [
+        ("reason", {"text": "kick"}, four_byte_form, "play:disconnect.reason")
+    ]
+
+
+def test_an_array_in_a_text_component_is_compared_as_its_numbers() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "x": Array("int_array", (1, 2))})),
+        _disconnect(nbt({"text": "a", "x": Array("int_array", (1, 3))})),
+    )
+    assert _shown(verdict.gameplay) == [("reason.x[1]", 2, 3, "play:disconnect.reason")]
+
+
+def test_a_list_element_with_more_than_the_empty_name_is_not_unwrapped() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "extra": ["b"]})),
+        _disconnect(nbt({"text": "a", "extra": [{"": "b", "text": "b"}]})),
+    )
+    assert [d.path for d in verdict.gameplay] == ['reason.extra[0][""]']
+
+
+def test_a_colour_is_shown_as_its_value() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "color": "red"})),
+        _disconnect(nbt({"text": "a", "color": "blue"})),
+    )
+    assert _shown(verdict.gameplay) == [
+        ("reason.color", "#FF5555", "#5555FF", "play:disconnect.reason")
+    ]
 
 
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:

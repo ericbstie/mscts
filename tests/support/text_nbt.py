@@ -2,13 +2,13 @@
 
 `nbt(value)` writes one unnamed root tag: a str is a String, a dict a Compound (its entries
 in the dict's order), a list a List of its first element's type (End when empty), and a
-`Numeric` its own type. A wrapped heterogeneous list is written as vanilla's `ListTag` does:
-a list of compounds, each `{"": element}`.
+`Numeric` or an `Array` its own type. A wrapped heterogeneous list is written as vanilla's
+`ListTag` does: a list of compounds, each `{"": element}`.
 """
 
 import struct
 
-from mscts.codec.nbt import Numeric
+from mscts.codec.nbt import Array, Numeric
 
 _NUMBERS = {
     "byte": (1, ">b"),
@@ -18,8 +18,9 @@ _NUMBERS = {
     "float": (5, ">f"),
     "double": (6, ">d"),
 }
+_ARRAYS = {"byte_array": (7, "b"), "int_array": (11, "i"), "long_array": (12, "q")}
 
-type Writable = str | Numeric | list[Writable] | dict[str, Writable]
+type Writable = str | Numeric | Array | list[Writable] | dict[str, Writable]
 
 
 def nbt(value: Writable) -> bytes:
@@ -40,6 +41,10 @@ def _typed(value: Writable) -> tuple[int, bytes]:
     if isinstance(value, Numeric):
         tag_type, layout = _NUMBERS[value.kind]
         return tag_type, struct.pack(layout, value.value)
+    if isinstance(value, Array):
+        tag_type, layout = _ARRAYS[value.kind]
+        count = len(value.values)
+        return tag_type, struct.pack(f">i{count}{layout}", count, *value.values)
     if isinstance(value, dict):
         entries = b""
         for name, item in value.items():
