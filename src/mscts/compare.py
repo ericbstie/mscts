@@ -2861,13 +2861,23 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
       takes that type's codec, and without one the first codec that reads the object, text
       first (javap, `ComponentSerialization$StrictEither.decode`, `FuzzyCodec.decode`; the
       text codec is `PlainTextContents.MAP_CODEC`, a string `text`).
+    - A style flag (`_STYLE_FLAGS`) that is a number is whether it is not 0: `Codec.BOOL`
+      reads it with `NbtOps.getBooleanValue`, `doubleValue() != 0` (javap), so NaN is true
+      and -0.0 false. A false flag stays: the style keeps it, unlike an absent one.
     """
     result = dict(component)
     if isinstance(extra := result.get("extra"), list):
         result["extra"] = [_read_component(element) for element in extra]
     if result.get("type") == "text" and isinstance(result.get("text"), str):
         del result["type"]
+    for flag in _STYLE_FLAGS & result.keys():
+        if type(value := result[flag]) in {int, float}:
+            result[flag] = value != 0
     return result
+
+
+_STYLE_FLAGS = frozenset({"bold", "italic", "underlined", "strikethrough", "obfuscated"})
+"""The style's flags, each `Codec.BOOL` (javap, `Style$Serializer.MAP_CODEC`)."""
 
 
 def _unwrapped(value: _Value) -> _Value:

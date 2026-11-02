@@ -14,6 +14,7 @@ from support.compared import PUMPKIN_NIGHTLY, VANILLA, status
 from support.play import CLIENTBOUND
 from support.text_nbt import Writable, nbt, wrapped
 
+from mscts.codec.nbt import Numeric
 from mscts.codec.packets import Codec, Packet, State
 from mscts.compare import ABSENT, Divergence, Mask, Observability, Verdict, compare
 from tests.compare.build import divergence, packet, transcript
@@ -579,6 +580,49 @@ def test_a_type_other_than_text_or_a_text_type_without_text_stays(typed: Writabl
         "minecraft:disconnect", _disconnect(nbt({"text": "a"})), _disconnect(nbt(typed))
     )
     assert "reason.type" in [d.path for d in verdict.gameplay]
+
+
+_FLAGS = ("bold", "italic", "underlined", "strikethrough", "obfuscated")
+
+
+@pytest.mark.parametrize("flag", _FLAGS)
+@pytest.mark.parametrize(
+    ("vanilla", "sent"),
+    [
+        pytest.param(Numeric("byte", 1), Numeric("int", 2), id="true"),
+        pytest.param(Numeric("byte", 1), Numeric("double", float("nan")), id="nan-is-true"),
+        pytest.param(Numeric("byte", 0), Numeric("long", 0), id="false"),
+        pytest.param(Numeric("byte", 0), Numeric("float", -0.0), id="minus-zero-is-false"),
+    ],
+)
+def test_a_style_flag_is_true_for_any_number_but_zero(
+    flag: str, vanilla: Numeric, sent: Numeric
+) -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", flag: vanilla})),
+        _disconnect(nbt({"text": "a", flag: sent})),
+    )
+    assert verdict.gameplay == ()
+
+
+def test_a_style_flag_that_is_a_string_stays_as_it_is() -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a", "bold": Numeric("byte", 1)})),
+        _disconnect(nbt({"text": "a", "bold": "1"})),
+    )
+    assert _shown(verdict.gameplay) == [("reason.bold", True, "1", "play:disconnect.reason")]
+
+
+@pytest.mark.parametrize("flag", _FLAGS)
+def test_a_false_style_flag_is_not_an_absent_one(flag: str) -> None:
+    verdict = _compared(
+        "minecraft:disconnect",
+        _disconnect(nbt({"text": "a"})),
+        _disconnect(nbt({"text": "a", flag: Numeric("byte", 0)})),
+    )
+    assert _shown(verdict.gameplay) == [(f"reason.{flag}", ABSENT, False, "play:disconnect.reason")]
 
 
 def test_a_kick_reason_that_does_not_decode_is_compared_as_its_bytes() -> None:
