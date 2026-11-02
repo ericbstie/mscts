@@ -2865,6 +2865,7 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
       reads it with `NbtOps.getBooleanValue`, `doubleValue() != 0` (javap), so NaN is true
       and -0.0 false. A false flag stays: the style keeps it, unlike an absent one.
     - Each translation argument in `with` is as `_read_argument` writes it.
+    - `color` is as `_read_color` writes it.
     """
     result = dict(component)
     if isinstance(extra := result.get("extra"), list):
@@ -2876,11 +2877,58 @@ def _read_object(component: dict[str, _Value]) -> dict[str, _Value]:
     for flag in _STYLE_FLAGS & result.keys():
         if type(value := result[flag]) in {int, float}:
             result[flag] = value != 0
+    if "color" in result:
+        result["color"] = _read_color(result["color"])
     return result
 
 
 _STYLE_FLAGS = frozenset({"bold", "italic", "underlined", "strikethrough", "obfuscated"})
 """The style's flags, each `Codec.BOOL` (javap, `Style$Serializer.MAP_CODEC`)."""
+
+
+def _read_color(color: _Value) -> _Value:
+    """`color` as `#RRGGBB` (upper case) when the client reads it as a colour, else as it is.
+
+    `TextColor.parseColor` reads `#` then `Integer.parseInt(rest, 16)` from 0 to 0xFFFFFF, or
+    else a name (`_COLOR_NAMES`), and `TextColor.equals` compares the value alone (javap). So
+    `red`, `#FF5555` and `#ff5555` are one colour. Only ASCII digits are read here: `parseInt`
+    also reads other Unicode digits, and a colour spelled with them stays as it is.
+    """
+    if not isinstance(color, str):
+        return color
+    value = _COLOR_NAMES.get(color)
+    if value is None and _HEX_COLOR.fullmatch(color) is not None:
+        value = int(color[1:], 16)
+    return color if value is None or not 0 <= value <= _RGB_MAX else f"#{value:06X}"
+
+
+_COLOR_NAMES: Mapping[str, int] = MappingProxyType(
+    {
+        "black": 0x000000,
+        "dark_blue": 0x0000AA,
+        "dark_green": 0x00AA00,
+        "dark_aqua": 0x00AAAA,
+        "dark_red": 0xAA0000,
+        "dark_purple": 0xAA00AA,
+        "gold": 0xFFAA00,
+        "gray": 0xAAAAAA,
+        "dark_gray": 0x555555,
+        "blue": 0x5555FF,
+        "green": 0x55FF55,
+        "aqua": 0x55FFFF,
+        "red": 0xFF5555,
+        "light_purple": 0xFF55FF,
+        "yellow": 0xFFFF55,
+        "white": 0xFFFFFF,
+    }
+)
+"""The colour names `TextColor.parseColor` reads, with their values (javap, `TextColor.<clinit>`,
+`NAMED_COLORS`)."""
+
+_HEX_COLOR = re.compile(r"#[+-]?[0-9A-Fa-f]+")
+"""A colour `Integer.parseInt(rest, 16)` reads after its `#`, in ASCII: a sign, then digits."""
+
+_RGB_MAX = 0xFFFFFF
 
 
 def _read_argument(argument: _Value) -> _Value:
